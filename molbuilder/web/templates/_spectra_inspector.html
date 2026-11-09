@@ -247,35 +247,37 @@
           <span id="modes-filter-count" class="status muted"></span>
         </div>
         <div class="modes-table-wrap">
-          <table id="modes-table" class="modes-table" tabindex="0"
-                 aria-label="Vibrational modes (click row to select)">
+          <table id="modes-table" class="modes-table"
+                 aria-label="Vibrational modes">
             <caption class="sr-only">
-              Vibrational modes table.  Sortable by column header
-              click.  Row click selects the mode and updates the
-              electronic-structure panel below.
+              Vibrational modes table.  Each column header is a button
+              that sorts by it.  The modes are one stop: the arrow keys
+              move between them, and Enter shows the mode, as a click on
+              its row does, and updates the electronic-structure panel
+              below.
             </caption>
             <thead>
               <tr id="modes-thead-row">
-                <th data-col="index_1based"          data-numeric="1">#</th>
-                <th data-col="frequency_cm1"         data-numeric="1">ω (cm⁻¹)</th>
+                <th data-col="index_1based"          data-numeric="1"><button type="button" class="modes-sort plain" aria-label="Mode number">#</button></th>
+                <th data-col="frequency_cm1"         data-numeric="1"><button type="button" class="modes-sort plain">ω (cm⁻¹)</button></th>
                 {#- THE QUANTITY NAMED AS WHAT IT IS (docs/web/spectra.md
                     § 3.3): PySCF's activity, or SIESTA's strength at the
                     laser asked, the static strength beside it. -#}
-                <th data-col="raman_activity_a4_amu" data-numeric="1" class="raman-col" id="raman-col-head">Raman activity (Å⁴/amu)</th>
-                <th data-col="raman_static" data-numeric="1" class="raman-col raman-static-col" id="raman-static-col-head">Raman strength, static (Å⁴/amu)</th>
+                <th data-col="raman_activity_a4_amu" data-numeric="1" class="raman-col" id="raman-col-head"><button type="button" class="modes-sort plain">Raman activity (Å⁴/amu)</button></th>
+                <th data-col="raman_static" data-numeric="1" class="raman-col raman-static-col" id="raman-static-col-head"><button type="button" class="modes-sort plain">Raman strength, static (Å⁴/amu)</button></th>
                 {#- IR SITS BESIDE RAMAN because they are two readings of ONE
                     mode, not two spectra: one Hessian, two property
                     derivatives on the same eigenvectors. -#}
-                <th data-col="ir_intensity_km_mol"   data-numeric="1" class="ir-col" id="ir-col-head">IR (km/mol)</th>
+                <th data-col="ir_intensity_km_mol"   data-numeric="1" class="ir-col" id="ir-col-head"><button type="button" class="modes-sort plain">IR (km/mol)</button></th>
                 {#- THE CHARGE A MODE MOVES into or out of the free atoms
                     (docs/web/spectra.md § 3.2), beside its infrared. -#}
-                <th id="charge-col-head" data-col="charge_moved" data-numeric="1" class="charge-col">Charge moved (e/(√amu·Å))</th>
-                <th data-col="has_imag">imag?</th>
-                <th data-col="has_es" class="es-col">ES?</th>
-                <th data-col="homo_eq_ev"   data-numeric="1" class="es-col">HOMO (eV)</th>
-                <th data-col="lumo_eq_ev"   data-numeric="1" class="es-col">LUMO (eV)</th>
-                <th data-col="gap_eq_ev"    data-numeric="1" class="es-col">Gap (eV)</th>
-                <th data-col="dgap_max_mev" data-numeric="1" class="es-col">ΔGap max (meV)</th>
+                <th id="charge-col-head" data-col="charge_moved" data-numeric="1" class="charge-col"><button type="button" class="modes-sort plain">Charge moved (e/(√amu·Å))</button></th>
+                <th data-col="has_imag"><button type="button" class="modes-sort plain">imag?</button></th>
+                <th data-col="has_es" class="es-col"><button type="button" class="modes-sort plain">ES?</button></th>
+                <th data-col="homo_eq_ev"   data-numeric="1" class="es-col"><button type="button" class="modes-sort plain">HOMO (eV)</button></th>
+                <th data-col="lumo_eq_ev"   data-numeric="1" class="es-col"><button type="button" class="modes-sort plain">LUMO (eV)</button></th>
+                <th data-col="gap_eq_ev"    data-numeric="1" class="es-col"><button type="button" class="modes-sort plain">Gap (eV)</button></th>
+                <th data-col="dgap_max_mev" data-numeric="1" class="es-col"><button type="button" class="modes-sort plain">ΔGap max (meV)</button></th>
               </tr>
             </thead>
             <tbody id="modes-tbody"></tbody>

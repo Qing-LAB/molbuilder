@@ -163,9 +163,11 @@
            aria-label="Run history" hidden>
     <header class="ps-checkpoint-header">
       <h3 class="ps-checkpoint-title">Run history</h3>
-      <span class="ps-checkpoint-sensor" id="ps-checkpoint-sensor"
-            aria-live="polite"
-            title="Click to refresh">…</span>
+      {#- A BUTTON, its words the folder's state (ui-contract.md § 4.1):
+          pressed, the state is read again. -#}
+      <button type="button" class="ps-checkpoint-sensor" id="ps-checkpoint-sensor"
+              aria-live="polite"
+              title="Read the folder's state again">…</button>
     </header>
 
     <!-- Empty-state CTA: shown when the selected dir has no .git/.
@@ -220,7 +222,8 @@
     <!-- List view: scrollable column of checkpoints, most recent
          first.  Each row is built by checkpoint.js -- a sha chip,
          message, refs (tag/branch chips), and archive size. -->
-    <ul class="ps-checkpoint-list" id="ps-checkpoint-list" hidden>
+    <ul class="ps-checkpoint-list" id="ps-checkpoint-list" hidden
+        aria-label="Saved states">
     </ul>
 
     <!-- Graph view: SVG commit DAG rendered by @gitgraph/js.

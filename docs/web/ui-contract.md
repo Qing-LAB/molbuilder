@@ -349,11 +349,29 @@ a tab: the app's page links are a `nav` whose current page is
 `aria-current="page"`. MolView's panel switch is a radio group, which the
 browser already gives one tab stop and the arrow keys. A
 tree's rows are focusable `treeitem`s carrying `aria-expanded` and
-`aria-selected`, Enter picking, the arrows moving and opening. The projects
-sidebar's rows are a `listbox` of `option`s with one tab stop: the arrows and
-Home / End move, Enter does what a click does — opens a folder, selects a
-file — and Enter on the selected file commits it, as the second click of a
-double-click does *(2026-10-13; the rows took a click alone until then)*. A control that
+`aria-selected`, Enter picking, the arrows moving and opening. **A list of
+choices is one tab stop, and one implementation**, `lib/one-stop-list.js`,
+loaded once by the shared header: the item chosen holds the stop, else the
+first, and the stop follows the keys; the arrows and Home / End move it,
+passing over an item not shown (hidden, or out of view under a filter); Enter
+does what a click on the item does, the page's own click handler run by both,
+and a key pressed on a control inside an item is that control's. A control
+inside an item — a row's menu button, a state's *Restore* — is a stop only
+while its item holds the list's, so Tab from the item reaches it and the list
+costs one stop. **A list drawn again under the keys keeps them** — on the item
+now carrying the id theirs had, else on the stop — so a list redrawn while a
+run is followed, or a folder opened by Enter, never leaves them on the page's
+body. The projects sidebar's rows are such a list — a `listbox` of `option`s,
+Enter opening a folder or selecting a file, and Enter on the selected file
+committing it, as the second click of a double-click does *(2026-10-13)* — and
+so are the spectrum's modes, Enter showing a mode, and the run history's saved
+states — each state's words a button that opens and closes its actions
+(`aria-expanded`), the buttons the list's items *(2.68.4; each with a stop per
+row or a click alone until then)*. A list drawn again with no item holds no
+stop, and leaves the keys where they were. **A
+control that reads as the text it stands for** — a column's name that sorts, a
+folder's arrow — **is `button.plain`**, the page shell's: it looks as its text
+does, hovered too, and the focus ring says the keys are on it. A control that
 holds a state says so with `aria-pressed`. *(Written 2026-10-08 — B8 F7 /
 U14 / R1-12: the browser driver the walks use and a screen reader have the
 same blind spot, and a control without a name was found by both.)*

@@ -1945,6 +1945,14 @@ const WORKSPACE_TAG = "transport";
     }
 
     function _init() {
+        /* THE ENGINE STRIP IS THE APP'S ONE TAB STRIP (ui-contract.md
+         * § 4.1): one tab stop and the arrow keys, an engine that runs no
+         * transport a disabled tab the keys pass over.  The page acts on no
+         * change of its own: the calculation is described on the engine
+         * whose tab is selected (`_engine`). */
+        var engineTabs = _$("transport-engine-tabs");
+        var tabStrip = root.molbuilder && root.molbuilder.tabStrip;
+        if (engineTabs && tabStrip) tabStrip.mount(engineTabs, {});
         var formContainer = _$("transport-form-container");
         if (!formContainer) return;
         var formSchema = root.molbuilder

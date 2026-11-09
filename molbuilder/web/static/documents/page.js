@@ -16,7 +16,6 @@
 
     var _activeLink = null;
     var _linksByPath = {};       // path -> DOM element
-    var _parents = {};           // child-path -> parent DOM element
 
     /* ---- theme toggle ------------------------------------------- */
 
@@ -173,11 +172,24 @@
 
     /* ---- tree building ------------------------------------------ */
 
+    /* A FOLDER'S ARROW IS ITS BUTTON (ui-contract.md § 4.1): the keyboard's
+     * way to what a click on the folder's row does, saying whether it is
+     * open. */
     function _makeToggle(collapsed) {
-        var t = document.createElement("span");
-        t.className = "docs-tree-toggle";
+        var t = document.createElement("button");
+        t.type = "button";
+        t.className = "docs-tree-toggle plain";
         t.textContent = collapsed ? "\u25B8" : "\u25BE";
+        t.setAttribute("aria-expanded", collapsed ? "false" : "true");
         return t;
+    }
+
+    /** A folder opened or closed: its documents shown or not, its button
+     *  saying which. */
+    function _setOpen(body, toggle, open) {
+        body.classList.toggle("is-collapsed", !open);
+        toggle.textContent = open ? "\u25BE" : "\u25B8";
+        toggle.setAttribute("aria-expanded", open ? "true" : "false");
     }
 
     /** Build a collapsible folder: header row + children body. */
@@ -192,10 +204,15 @@
         if (collapsed) body.classList.add("is-collapsed");
         children.forEach(function (c) { body.appendChild(c); });
 
+        // NAMED BY THE FOLDER'S NAME -- a document's path, never its
+        // subtitle run on after it.
+        var named = headerContent.querySelector
+            && headerContent.querySelector(".docs-link-name");
+        toggle.setAttribute("aria-label", "Documents under "
+            + ((named || headerContent).textContent || "this folder"));
         hdr.addEventListener("click", function (ev) {
-            if (ev.target.tagName === "A") return;  // don't toggle on link click
-            var isCollapsed = body.classList.toggle("is-collapsed");
-            toggle.textContent = isCollapsed ? "\u25B8" : "\u25BE";
+            if (ev.target.closest("a")) return;  // a document's link opens it
+            _setOpen(body, toggle, body.classList.contains("is-collapsed"));
         });
 
         var dir = document.createElement("div");
@@ -209,44 +226,31 @@
         // Document with sub-documents.
         if (node.path && node.children) {
             var link = _makeLink(node.path, node.subtitle, "docs-link-parent");
-            var dir = _makeDir(_makeToggle(false), link,
+            return _makeDir(_makeToggle(false), link,
                 node.children.map(_buildNode), false);
-            // Record parent for ancestor expansion.
-            node.children.forEach(function (c) {
-                if (c.path) _parents[c.path] = dir;
-            });
-            return dir;
         }
         // Plain leaf.
         if (node.path) return _makeLink(node.path, node.subtitle);
         // Directory.
         var dirKids = (node.children || []).map(_buildNode);
-        var dir = _makeDir(_makeToggle(node.collapsed),
+        return _makeDir(_makeToggle(node.collapsed),
             (function () { var s = document.createElement("span"); s.textContent = node.label; return s; })(),
             dirKids, node.collapsed);
-        (node.children || []).forEach(function (c) {
-            if (c.path) _parents[c.path] = dir;
-        });
-        return dir;
     }
 
     /** Expand every ancestor of a path so it's visible. */
     function _expandAncestors(path) {
-        var seen = {};
-        var el = _parents[path];
-        while (el && !seen[path]) {
-            seen[path] = true;
-            var body = el.querySelector(".docs-tree-body");
-            if (body) body.classList.remove("is-collapsed");
-            var tgl = el.querySelector(".docs-tree-toggle");
-            if (tgl) tgl.textContent = "\u25BE";
-            // Find the parent path that maps to this dir element.
-            var prev = path;
-            path = null;
-            for (var p in _parents) {
-                if (_parents[p] === el && p !== prev) { path = p; break; }
-            }
-            el = path ? _parents[path] : null;
+        // EVERY FOLDER THE DOCUMENT SITS IN, climbed by the page's own
+        // nesting from its link -- the top folder too.
+        var a = _linksByPath[path];
+        var dir = a ? a.closest(".docs-tree-dir") : null;
+        while (dir) {
+            var body = dir.querySelector(":scope > .docs-tree-body");
+            var tgl = dir.querySelector(
+                ":scope > .docs-tree-header > .docs-tree-toggle");
+            if (body && tgl) _setOpen(body, tgl, true);
+            dir = dir.parentElement
+                ? dir.parentElement.closest(".docs-tree-dir") : null;
         }
     }
 

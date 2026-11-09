@@ -440,6 +440,25 @@ button:disabled {
     cursor: not-allowed;
     opacity: 0.6;
 }
+/* THE PLAIN BUTTON: a control that reads as the text it stands for -- a
+ * column's name that sorts, a folder's arrow (ui-contract.md § 4.1: a
+ * control is a button, never a cell or a span with a click handler).  It
+ * looks as its text does, hovered too, aligned as its text is; the focus
+ * ring says it is the one the keys reach.  A module places it and colours
+ * its text; its look as a button is this rule's alone. */
+button.plain,
+button.plain:hover {
+    background: none;
+    border: 0;
+    border-radius: 0;
+    padding: 0;
+    color: inherit;
+    text-align: inherit;
+}
+button.plain:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
 /* ---- The button's two variants -------------------------------------
  * HERE, beside the button, because a dialog opens on every page -- the
  * sidebar's Move, Copy and Delete on Results and Documents too, which load

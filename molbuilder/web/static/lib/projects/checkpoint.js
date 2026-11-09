@@ -53,7 +53,14 @@ const _state = {
      *  preference survives dir changes and reloads (sessionStorage), so
      *  stepping out of a run dir and back returns the view you had. */
     open:          false,
+    /** The states whose actions are shown, by id: a redraw keeps them
+     *  open, so a Restore pressed is still where the keys were. */
+    shown:         new Set(),
 };
+/* THE STATES ARE A LIST OF CHOICES, the app's one (`lib/one-stop-list.js`,
+ * ui-contract.md § 4.1): one tab stop, the arrows moving, Enter showing a
+ * state's actions as a click on its row does. */
+let _rows = null;
 
 // DOM handles, populated by _attach().  elFileList / elFilterInput are the
 // OTHER half of the swap -- same module (the sidebar is one module in nine
@@ -132,6 +139,13 @@ function _attach() {
     // re-read; the Refresh button is the one that asks for certainty.
     elSensor.addEventListener("click", () => _refresh());
     elList.addEventListener("click", _onListClick);
+    const lists = window.molbuilder && window.molbuilder.oneStopList;
+    if (lists) {
+        _rows = lists.mount(elList, {
+            items: ".ps-checkpoint-row-open",
+            current: '.ps-checkpoint-row-open[aria-expanded="true"], '
+                   + "[data-standing] .ps-checkpoint-row-open" });
+    }
     // THE VIEW, through the one tab strip (`lib/tab-strip.js`,
     // ui-contract.md § 4.1): a click or a key picks it.
     const viewToggle = document.getElementById("ps-checkpoint-view-toggle");
@@ -174,6 +188,7 @@ export function onDirectoryChange(dirPath) {
     // is exactly the "don't rewrite on a no-op tick" rule.
     if (dirPath === _state.currentDir) return;
     _state.currentDir = dirPath;
+    _state.shown.clear();           // another folder's states, none open
     // NOTHING IS SHOWN UNTIL THE ANSWER LANDS.  Showing first and
     // retracting would flash a control onto every folder in the tree.
     _hide();
@@ -298,6 +313,23 @@ function _buildRow(state) {
     const li = document.createElement("li");
     li.className   = "ps-checkpoint-list-item";
     li.dataset.sha = state.id;
+    // FOUND AGAIN after a redraw by its id, the Restore inside it too
+    // (ui-contract.md § 10).
+    li.id = "ps-state-row-" + state.id;
+    const shown = _state.shown.has(state.id);
+    li.classList.toggle("is-expanded", shown);
+    /* THE ROW'S WORDS ARE ITS BUTTON (ui-contract.md § 4.1): it opens and
+     * closes the state's actions, saying which, named by what the row says
+     * -- the id, the note, where it came from, its names -- one of the
+     * list's choices (`lib/one-stop-list.js`). */
+    const opener = document.createElement("button");
+    opener.type      = "button";
+    opener.className = "ps-checkpoint-row-open plain";
+    opener.id        = "ps-state-" + state.id;
+    opener.tabIndex  = -1;
+    opener.setAttribute("aria-expanded", shown ? "true" : "false");
+    opener.setAttribute("aria-controls", "ps-state-actions-" + state.id);
+    li.appendChild(opener);
     if (_state.repoState && _state.repoState.standing_at
         && _state.repoState.standing_at.id === state.id) {
         li.setAttribute("data-standing", "true");
@@ -306,7 +338,7 @@ function _buildRow(state) {
     const id = document.createElement("span");
     id.className   = "ps-checkpoint-row-sha";
     id.textContent = state.short;
-    li.appendChild(id);
+    opener.appendChild(id);
 
     // The NOTE, never a generated stand-in.  It is the only thing that answers
     // the question you bring to this list a month later (L3), and the panel is
@@ -314,7 +346,7 @@ function _buildRow(state) {
     const note = document.createElement("span");
     note.className   = "ps-checkpoint-row-summary";
     note.textContent = state.note;
-    li.appendChild(note);
+    opener.appendChild(note);
 
     // Which state this one came from -- two rows sharing a parent ARE the fork
     // (§ 7.1), and nothing had to be named for it.
@@ -322,7 +354,7 @@ function _buildRow(state) {
         const from = document.createElement("span");
         from.className   = "ps-checkpoint-row-parent";
         from.textContent = "from " + state.parent.slice(0, 7);
-        li.appendChild(from);
+        opener.appendChild(from);
     }
 
     if (state.tags && state.tags.length) {
@@ -335,13 +367,14 @@ function _buildRow(state) {
             chip.textContent = name;
             tags.appendChild(chip);
         }
-        li.appendChild(tags);
+        opener.appendChild(tags);
     }
 
     // Inline action buttons -- shown when the row is expanded
     // (click toggles .is-expanded).
     const actions = document.createElement("div");
     actions.className = "ps-checkpoint-row-actions";
+    actions.id        = "ps-state-actions-" + state.id;
     const btnRestore = document.createElement("button");
     btnRestore.type        = "button";
     btnRestore.className   = "ps-checkpoint-row-action-btn";
@@ -524,10 +557,16 @@ function _showStateDetail(state) {
 
 function _renderListRows(states) {
     if (!elList) return;
-    elList.innerHTML = "";
-    for (const st of (states || [])) {
-        elList.appendChild(_buildRow(st));
-    }
+    // DRAWN AGAIN UNDER THE KEYS (`lib/one-stop-list.js`): a Restore or a
+    // refresh leaves them on the state they were on.
+    const draw = () => {
+        elList.innerHTML = "";
+        for (const st of (states || [])) {
+            elList.appendChild(_buildRow(st));
+        }
+    };
+    if (_rows) _rows.redraw(draw);
+    else draw();
 }
 
 
@@ -801,8 +840,13 @@ function _onListClick(ev) {
             return;
         }
     }
-    // Toggle expanded state (shows the inline action buttons).
-    li.classList.toggle("is-expanded");
+    // Toggle expanded state (shows the inline action buttons), said on the
+    // row's button.
+    const open = li.classList.toggle("is-expanded");
+    li.querySelector(".ps-checkpoint-row-open")
+        .setAttribute("aria-expanded", open ? "true" : "false");
+    if (open) _state.shown.add(li.dataset.sha);
+    else _state.shown.delete(li.dataset.sha);
 }
 
 async function _onRestoreClick(sha) {
@@ -824,7 +868,11 @@ async function _onRestoreClick(sha) {
     });
     if (!sure) return;
     _hideAdvisory();
-    await _restore(dir, sha, label, false);
+    // ONE COVER FOR EVERY HEAVY CLICK (ui-contract.md § 10): the whole
+    // folder is rewritten, and the question about unsaved work it may ask
+    // is a dialog of its own.
+    await pageBusy.run("Putting this folder back to " + label + "\u2026", [],
+                       () => _restore(dir, sha, label, false));
 }
 
 /**

@@ -1923,14 +1923,19 @@
         // A COLUMN NAMED SHORT, ITS VIEW IN ITS NOTE (web/spectra.md § 3).
         const view = results && results.infrared;
         const moved = !!(view && view.source === "charges");
-        if (els.irColHead) els.irColHead.textContent = view
-            ? "IR* (km/mol)" : "IR (km/mol)";
-        if (els.chargeColHead) els.chargeColHead.textContent = moved
-            ? "Charge moved† (e/(√amu·Å))" : "Charge moved (e/(√amu·Å))";
+        _nameColumn(els.irColHead, view ? "IR* (km/mol)" : "IR (km/mol)");
+        _nameColumn(els.chargeColHead, moved
+            ? "Charge moved† (e/(√amu·Å))" : "Charge moved (e/(√amu·Å))");
         _setNote(els.noteIr, "*", "IR", view ? _irNote(view) : null);
         _setNote(els.noteCharge, "†", "Charge moved",
                  moved ? _chargeNote(view) : null);
         _renderNotes();
+    }
+
+    /* A COLUMN'S NAME is its sort button's words (ui-contract.md § 4.1):
+     * written on the button, so the header keeps its keyboard path. */
+    function _nameColumn(th, words) {
+        if (th) th.querySelector(".modes-sort").textContent = words;
     }
 
     /* THE RAMAN'S COLUMNS (web/spectra.md § 3.3): the static strength
@@ -1943,12 +1948,12 @@
             "route-no-raman-static", !view);
         // THE QUANTITY NAMED AS WHAT IT IS: SIESTA's strength at a laser,
         // PySCF's tumbling-molecule activity -- never one name for both.
-        if (els.ramanColHead) els.ramanColHead.textContent = view
+        _nameColumn(els.ramanColHead, view
             ? "Raman strength‡ (Å⁴/amu)"
-            : optical ? "Raman strength (Å⁴/amu)" : "Raman activity (Å⁴/amu)";
-        if (els.ramanStaticColHead) els.ramanStaticColHead.textContent = view
+            : optical ? "Raman strength (Å⁴/amu)" : "Raman activity (Å⁴/amu)");
+        _nameColumn(els.ramanStaticColHead, view
             ? "Raman strength, static§ (Å⁴/amu)"
-            : "Raman strength, static (Å⁴/amu)";
+            : "Raman strength, static (Å⁴/amu)");
         _setNote(els.noteRaman, "‡", "Raman strength",
                  view ? _ramanNote(view) : null);
         _setNote(els.noteRamanStatic, "§", "Raman strength, static",
@@ -2509,8 +2514,12 @@
         // a future free-text column on a mode would otherwise be an
         // interpolation hazard.  textContent / appendChild keeps the
         // surface trustworthy by construction.
-        els.modesTbody.replaceChildren(
+        // DRAWN AGAIN UNDER THE KEYS (`lib/one-stop-list.js`): a filter, a
+        // sort, a run followed leave them on the mode they were on.
+        const draw = () => els.modesTbody.replaceChildren(
             ...modes.map(m => _renderModeRow(m, anyES)));
+        if (state.modeRows) state.modeRows.redraw(draw);
+        else draw();
 
         // Update filter-result count.
         const total = (state.results.modes || []).length;
@@ -2658,6 +2667,8 @@
             if (cls) td.className = cls;
             tr.appendChild(td);
         };
+        // ...FOUND AGAIN after a redraw by its id (ui-contract.md § 10).
+        tr.id = "mode-row-" + m.index_1based;
         addCell(String(m.index_1based));
         addCell(Number(m.frequency_cm1).toFixed(1));
         addCell(raman, "raman-col");
@@ -2690,6 +2701,7 @@
             r.setAttribute("aria-selected", active ? "true" : "false");
             if (active) chosen = r;
         });
+        if (state.modeRows) state.modeRows.settle();
         _scrollRowToTop(chosen);
     }
 
@@ -4527,6 +4539,16 @@
             }
             _on(els.modesTheadRow, "click", onTableHeaderClick);
             _on(els.modesTbody,    "click", onTableRowClick);
+            /* THE MODES ARE A LIST OF CHOICES, the app's one
+             * (`lib/one-stop-list.js`, ui-contract.md § 4.1): one tab stop
+             * -- the mode shown, else the first -- the arrows moving, Enter
+             * showing the mode as a click on its row does. */
+            const lists = window.molbuilder.oneStopList;
+            if (els.modesTbody && lists) {
+                state.modeRows = lists.mount(els.modesTbody, {
+                    items: "tr[data-mode]", current: "tr.active",
+                    listeners: _listeners });
+            }
             _on(els.modesFilter,   "input", onFilterInput);
             _on(els.modesCsvBtn,   "click", exportCSV);
             // THE BAR (web/spectra.md § 2.1): a change asks nothing --

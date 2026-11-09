@@ -207,7 +207,10 @@ box*).
 The **Modes table** is a table of every vibrational mode — its number,
 frequency, Raman activity, IR intensity, whether it is imaginary, and whether
 the per-mode orbital check reached it (*ES?*) — that you can **sort and
-filter**, export to CSV, and click a row to select a mode. Four more columns
+filter**, export to CSV, and click a row to select a mode — each column's
+header a button that sorts by it, and the modes one list of choices: one tab
+stop, the arrows moving, Enter selecting the mode *(2.68.4;
+[`ui-contract.md`](?doc=web/ui-contract.md) § 4.1)*. Four more columns
 give that check's numbers: the HOMO, the LUMO, the gap and the gap's largest
 shift along the mode. **A column whose number needs its method said is
 named short, with a mark, and the mark's note sits under the table** *(the

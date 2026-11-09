@@ -68,6 +68,9 @@
 {#- THE ONE TAB STRIP every page's strips are mounted with (`lib/tab-strip.js`,
     § 4.1), loaded once here, where every page includes it. -#}
 <script src="{{ url_for('static', filename='lib/tab-strip.js') }}"></script>
+{#- ...and THE ONE LIST OF CHOICES (`lib/one-stop-list.js`, § 4.1): one tab
+    stop, the arrow keys, Enter doing what a click does. -#}
+<script src="{{ url_for('static', filename='lib/one-stop-list.js') }}"></script>
 
 {#- App-wide system-notification bar (docs/web/notifications.md): ONE
     consistent surface for system-level messages that span tabs -- debuting with

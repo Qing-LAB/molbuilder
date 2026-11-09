@@ -119,30 +119,17 @@ function _markSelected(li) {
     li.classList.add("is-selected");
     li.setAttribute("aria-selected", "true");
   }
+  // THE CHOSEN ROW HOLDS THE STOP, however it was chosen -- another tab's
+  // pick too -- unless the keys are on a row (`lib/one-stop-list.js`).
+  if (_rows) _rows.settle();
 }
 
-/* THE KEYBOARD PATH (ui-contract.md § 4.1): the rows are a listbox with
- * one tab stop -- the selected row, else the first -- the arrows and
- * Home / End move between them, Enter does what a click does, and Enter
- * on the selected file commits it, as the second click of a double-click
- * does. */
-function _rowKey(ev, li, act, commit) {
-  const rows = Array.from(elList.querySelectorAll(".ps-entry"));
-  const i = rows.indexOf(li);
-  const to = ev.key === "ArrowDown" ? rows[i + 1]
-           : ev.key === "ArrowUp" ? rows[i - 1]
-           : ev.key === "Home" ? rows[0]
-           : ev.key === "End" ? rows[rows.length - 1] : null;
-  if (to) {
-    ev.preventDefault();
-    rows.forEach((r) => { r.tabIndex = r === to ? 0 : -1; });
-    to.focus();
-  } else if (ev.key === "Enter" || ev.key === " ") {
-    ev.preventDefault();
-    if (li.classList.contains("is-selected") && commit) commit();
-    else act();
-  }
-}
+/* THE KEYBOARD PATH (ui-contract.md § 4.1): the rows are a listbox, the
+ * app's one list of choices (`lib/one-stop-list.js`) -- one tab stop, the
+ * selected row else the first; the arrows and Home / End move; Enter does
+ * what a click does, and Enter on the selected file commits it, as the
+ * second click of a double-click does. */
+let _rows = null;
 
 function _renderBreadcrumb(currentPath) {
   const projectsRoot = getProjectsRoot();
@@ -664,8 +651,6 @@ function _renderList(entries, currentPath) {
       }
     };
     li.addEventListener("click", act);
-    li.addEventListener("keydown", (ev) => _rowKey(ev, li, act,
-      e.kind === "file" ? () => publishCommit(currentPath, fullPath) : null));
     // Double-click on a file = commit.  Tabs that subscribe via
     // ``projects.onCommit`` run their "use this file" action
     // (the Molbuilder tab Load, future form-tab structure
@@ -687,10 +672,6 @@ function _renderList(entries, currentPath) {
     });
     elList.appendChild(li);
   }
-  // ONE TAB STOP: the selected row, else the first.
-  const stop = elList.querySelector(".ps-entry.is-selected")
-            || elList.querySelector(".ps-entry");
-  if (stop) stop.tabIndex = 0;
 }
 
 /**
@@ -758,11 +739,17 @@ export async function openDir(absPath) {
     return { ok: false, error: resp.error || "Failed to list directory." };
   }
   _renderBreadcrumb(resp.path);
-  _renderList(resp.entries, resp.path);
-  // Re-apply the persisted filter after each render — entries are
-  // rebuilt on every openDir, so a previously-active filter would
-  // otherwise show ALL entries on directory change.
-  _applyFilter();
+  // DRAWN AGAIN UNDER THE KEYS: a folder opened by Enter leaves them on
+  // its first row, never on the page's body (`lib/one-stop-list.js`).
+  const draw = () => {
+    _renderList(resp.entries, resp.path);
+    // Re-apply the persisted filter after each render — entries are
+    // rebuilt on every openDir, so a previously-active filter would
+    // otherwise show ALL entries on directory change.
+    _applyFilter();
+  };
+  if (_rows) _rows.redraw(draw);
+  else draw();
 
   // Determine whether prevFile survives the refresh.
   let keptFile = "";
@@ -859,6 +846,8 @@ function _applyFilter() {
   );
   const clearBtn = document.getElementById("ps-filter-clear");
   if (clearBtn) clearBtn.hidden = !_filterQuery;
+  // A ROW THE FILTER PUTS OUT OF VIEW holds no stop.
+  if (_rows) _rows.settle();
 }
 
 /**
@@ -897,6 +886,15 @@ export function initList() {
   elCrumb = document.getElementById("ps-breadcrumb");
   elList  = document.getElementById("ps-list");
   setRefreshHandler(openDir);
+  const lists = window.molbuilder && window.molbuilder.oneStopList;
+  if (lists && elList) {
+    _rows = lists.mount(elList, {
+      items: ".ps-entry", current: ".ps-entry.is-selected",
+      // ...the second click of a double-click: a file committed.
+      commit: (li) => li.dispatchEvent(new MouseEvent("dblclick",
+                                                      { bubbles: true })),
+    });
+  }
   _initFilter();
   // renderSidebar subscriber.  Single point of selection-state-to-DOM
   // sync.  Fires once on subscribe with the current state (per the

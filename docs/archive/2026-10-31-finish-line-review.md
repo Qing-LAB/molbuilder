@@ -1866,6 +1866,24 @@ before it was fixed. Docs only — the code text the review found is 2.62.1's.
 | E2E-MON | **closed after 2.62.1** (the user, 2026-11-02: "those two failures seems to be an outdated tests") | `test_monitor_watches_a_live_run_e2e.py::test_every_file_that_ships_beside_a_job_reads_the_run_without_molbuilder` failed: `AttributeError: 'Run' object has no attribute 'run'` — it still handed the monitor the try number 2.60.0 removed (`WatchedRun(run=…)`) | the test: the monitor told the run by its names alone; passes |
 | E2E-STOP | **closed after 2.62.1** (the same) | `test_siesta_stopped_run_e2e.py::test_the_run_panel_says_what_ran_and_why_it_stopped[chromium]` failed: `FileNotFoundError` on a path with the calculation's folder doubled — it read the ladder button's title as a path from the calculation, where since 2.59.0 the page names a path it only shows from the projects folder (`web/results.md` § 0.3) | the test: the run's folder from the projects folder; passes |
 
+## Found by the UI review's group B, its keyboard items, and 2.68.4's review rounds (2026-11-08), by the release that owns each
+
+*(B8 and B10 of the UI review's findings, each read in the code against `web/ui-contract.md` § 4.1 before any fix; the user, 2026-11-08: "framework level fix not patching or hacking"; review rounds over the whole touched modules, every finding read again in the code; the roads walked in Chrome on the dev server)*
+
+| id | where | finding | door |
+|---|---|---|---|
+| K2684-1 | **closed 2.68.4** | the spectrum's modes table sorted by a click on a header cell alone and chose a mode by a click on its row alone | the column names are buttons (`button.plain`); the modes are the app's one list of choices — one stop, the arrows, Enter as a click (`lib/one-stop-list.js`) |
+| K2684-2 | **closed 2.68.4** | the run history showed a state's *Restore to here* only after a click on its row, the row no stop of the keyboard; its pill re-read the state on a click alone | each state's words a button opening its actions (`aria-expanded`), the buttons one list of choices, *Restore* the next stop of an open row; the pill a button |
+| K2684-3 | **closed 2.68.4** | a Documents folder opened and closed by a click on its row alone, saying neither | its arrow a button (`button.plain`) named for the folder, `aria-expanded` |
+| K2684-4 | **closed 2.68.4** | the Transport engine strip, unlike every other strip, was not mounted by `lib/tab-strip.js` — its panel named by nothing | mounted |
+| K2684-5 | **closed 2.68.4** | the sidebar's list keys were its own code, a second list would have been a copy | `lib/one-stop-list.js`, the one list, the sidebar on it |
+| K2684-6 | **closed 2.68.4** | a button reading as its text was reset in each module that drew one, the shell's hover still changing its look | `button.plain`, the shell's, one rule |
+| K2684-7 | **closed 2.68.4** | a Restore ran outside the page-wide cover, every other heavy click under it (`ui-contract.md` § 10) | `pageBusy.run`; a state's actions kept open across the redraw |
+| K2684-8 | **closed 2.68.4** | Documents opened on a document more than one folder deep left the folders above its own closed — the climb searched its siblings; a click on a parent document's name folded its own documents | the climb by the page's nesting; a click inside a document's link opens the document only |
+| K2684-10 | **closed 2.68.4** | a list drawn again under the keys -- the modes while a run is followed, the sidebar's folder opened by Enter -- left them on the page's body; a row a filter puts out of view could take the stop | `redraw`: the keys on the item carrying their id, else on the stop; an item out of view of its own passed over |
+| K2684-11 | **later** | the sidebar's rows are `option`s, each holding its menu button -- a control inside an option, which assistive technology reads poorly (`nested-interactive`) | the sidebar's rows as the history's: a list of buttons, when the sidebar's menu is next touched |
+| K2684-9 | **later** | the history's graph view shows a state's facts on a click of its node alone | the list view holds the same facts, by the keys; the graph's nodes when the graph is next touched |
+
 ## Found by the UI review's group B, its first item, and 2.68.3's review rounds (2026-11-08), by the release that owns each
 
 *(B7 of the UI review's findings, reproduced on the dev server and logged event by event in Chrome before each fix; three review rounds over the whole touched modules and chapters, every finding read again in the code; the fix walked in Chrome on the dev server)*

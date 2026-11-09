@@ -602,7 +602,8 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
   opacity: 0;
   transition: opacity 0.1s ease, background 0.1s ease;
 }
-.ps-entry:hover .ps-entry-action {
+.ps-entry:hover .ps-entry-action,
+.ps-entry-action:focus-visible {
   opacity: 1;
 }
 .ps-entry.is-selected .ps-entry-action {
@@ -1208,6 +1209,13 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
     color:             var(--ps-code-fg);
     font-size: var(--text-xs);
     margin-right: var(--space-sm);
+}
+/* THE ROW'S WORDS ARE ITS BUTTON (ui-contract.md § 4.1), the whole row
+ * wide, its words where they were. */
+.ps-checkpoint-row-open {
+    display:           block;
+    width:             100%;
+    text-align:        left;
 }
 
 /* Which state a row came from ("from a1b2c3d") -- quiet, like the sha. */

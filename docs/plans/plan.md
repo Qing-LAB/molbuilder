@@ -53,7 +53,10 @@ reload keeping it, the viewer's Export save recorded, the slab box never
 blank (the ledger's *Found by … 2.68.2*). **2.68.3**: group B's first item
 — in Task setup a value typed and Tab or a click land where they go, the
 page-wide cover giving focus back where the person left it (the ledger's
-*Found by … 2.68.3*); next, the rest of group B, then D and C.
+*Found by … 2.68.3*). **2.68.4**: group B's keyboard items — one list of
+choices for every list (`lib/one-stop-list.js`), one plain button, every
+action a click performs reached by the keys (the ledger's *Found by … 2.68.4*);
+next, B9, then B11/B12, then the rest of group B, then D and C.
 
 **What runs next**: **the UI review** *(the user, 2026-11-08: "Right after
 2.67.11")* — every tab walked in Chrome on the dev server through an

@@ -111,3 +111,17 @@ def replace_text(page, editor: str, text: str) -> None:
     page.keyboard.press("Control+Home")
     page.keyboard.press("Control+Shift+End")
     page.keyboard.insert_text(text)
+
+
+def history_shown(page) -> None:
+    """The run history brought forward in the sidebar, as a person brings it
+    -- its toggle in the filter bar -- and idempotent about it: the panel
+    shares its slot with the file list, and the toggle remembers which one
+    is showing, so a second press after a reload puts the list back."""
+    page.wait_for_selector("#ps-checkpoint-toggle", timeout=WAIT_MS)
+    showing = page.evaluate(
+        "() => { const p = document.getElementById('ps-checkpoint');"
+        "        return !!(p && !p.hidden && p.offsetParent !== null); }")
+    if not showing:
+        page.click("#ps-checkpoint-toggle")
+    page.wait_for_selector("#ps-checkpoint", state="visible", timeout=WAIT_MS)

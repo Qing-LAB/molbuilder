@@ -410,6 +410,13 @@ The projects sidebar's run-history panel does the same work for a calculation
 folder: a pill reading `saved`, `N unsaved` or `no states saved`; the states as
 a list or as a graph drawn from parentage; and buttons to make the folder a
 checkpoint folder, save (asking for the note), name a state and restore one.
+The list is the app's one list of choices
+([`web/ui-contract.md`](?doc=web/ui-contract.md) § 4.1): one tab stop, the
+arrows moving between the states, each state's words a button that opens its
+actions — *Restore to here* the next stop — as a click on the row does, named
+by what the row says, and kept open across a redraw; the pill is a button that
+reads the state again. A restore runs under
+the page-wide cover, as every heavy click does (§ 10 there) *(2.68.4)*.
 **Refresh is explicit**: the panel reads when you enter a directory and when you
 press Refresh, which asks the exact content question rather than the cheap one.
 There is no polling ([`web/projects.md`](?doc=web/projects.md)).

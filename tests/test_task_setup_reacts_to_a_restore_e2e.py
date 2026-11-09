@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import pytest
 from support.road import ladder_edited
-from support.sidebar import WAIT_MS
+from support.sidebar import WAIT_MS, history_shown
 from support.task_setup_page import file_text, task_setup_on, wait_for_file
 
 pytest.importorskip("playwright.sync_api")
@@ -67,22 +67,6 @@ def _yes(page):
     asked.locator("[data-action='discard']").click()
 
 
-def _show_panel(page):
-    """Bring the checkpoint panel forward, and be idempotent about it.
-
-    The panel shares its slot with the file tree and the toggle REMEMBERS
-    which one is showing, so a second unconditional click after a reload
-    puts the tree back.
-    """
-    page.wait_for_selector("#ps-checkpoint-toggle", timeout=WAIT_MS)
-    showing = page.evaluate(
-        "() => { const p = document.getElementById('ps-checkpoint');"
-        "        return !!(p && !p.hidden && p.offsetParent !== null); }")
-    if not showing:
-        page.click("#ps-checkpoint-toggle")
-    page.wait_for_selector("#ps-checkpoint", state="visible", timeout=WAIT_MS)
-
-
 def _rows(page):
     """Every checkpoint state on the panel, the text of its row."""
     return page.evaluate(
@@ -116,7 +100,7 @@ def test_a_restore_updates_the_tab_that_is_showing_the_folder(
     # ── put the folder under checkpoint control, and save state A ───────
     # The panel shares its slot with the file tree; the filter bar's toggle
     # is how a person brings it forward.
-    _show_panel(page)
+    history_shown(page)
     page.wait_for_selector("#ps-checkpoint-init", state="visible",
                            timeout=WAIT_MS)
     page.click("#ps-checkpoint-init")
@@ -151,7 +135,7 @@ def test_a_restore_updates_the_tab_that_is_showing_the_folder(
     # the restore, or "it changed" could just be the tab catching up.
     page.reload()
     wait_for_file(page, "task", "afterwards")
-    _show_panel(page)
+    history_shown(page)
     page.wait_for_selector(".ps-checkpoint-list-item", state="visible",
                            timeout=WAIT_MS)
 
