@@ -232,7 +232,7 @@
                 /* A RUN PICKED OFF THE ROOT'S LADDER (results.md § 2.4):
                  * its folder under the calculation, by design -- not the
                  * divergence the readout below warns about. */
-                text = _shown(dir) + "  \u2014 a run off its ladder, "
+                text = _shown(dir) + "  \u2014 a run picked from its ladder, "
                      + _shown(file);
             } else {
                 /* THE FILE IS NOT IN THE BOUND FOLDER, so do not write it as
@@ -349,8 +349,8 @@
         const title = document.createElement("h3");
         title.className = "results-ladder-title";
         title.textContent = "This calculation's ladder \u2014 " + stages.length
-            + " rung" + (stages.length === 1 ? "" : "s")
-            + (ladder.complete ? ", every rung finished" : "");
+            + " stage" + (stages.length === 1 ? "" : "s")
+            + (ladder.complete ? ", every stage finished" : "");
         host.appendChild(title);
         const table = document.createElement("table");
         table.className = "results-ladder-table";
@@ -611,8 +611,8 @@
             if (!host || !(ladder && Array.isArray(ladder.stages)
                            && ladder.stages.length)) return;
             host.hidden = false;
-            host.textContent = "The ladder could not be drawn: "
-                + "lib/results/point-words.js did not load (" + e + ").";
+            host.textContent = "The ladder could not be drawn: a part of "
+                + "this page did not load \u2014 reload the page (" + e + ").";
         });
         const reg  = (window.molbuilder || {}).inspectors;
         if (!reg) {

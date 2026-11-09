@@ -63,8 +63,8 @@ show. Within it:
 The workspace persistence layer, when a save to disk fails, dispatches a
 `molbuilder:persist-error` DOM event (`lib/workspace/dispatcher.js`). `notify`
 listens for it and shows a single, stable-id error row —
-*"Couldn't save state to disk … your edits are kept in memory, but
-retract / crash-recovery history may be incomplete."* A burst of failures updates
+*"Couldn't save state to disk (the reason). Your edits are kept in this
+page, but Retract and a reopened tab may not bring back everything."* A burst of failures updates
 that one row rather than stacking. **A save that succeeds lowers it**: the
 dispatcher signals `molbuilder:persist-ok` after a write lands, and the row is
 cleared — only that row, the others stay — so a warning never outlives the

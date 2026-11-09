@@ -297,7 +297,7 @@ const WORKSPACE_TAG = "transport";
             })
             .catch(function (e) {
                 _renderErrorParagraph(formContainer,
-                    "Could not load the rung forms: "
+                    "Could not load the stage forms: "
                     + (e && e.message ? e.message : String(e)));
                 if (seq === _rungsSeq) {
                     _panelsDrawn = false;
@@ -1800,11 +1800,11 @@ const WORKSPACE_TAG = "transport";
             ? (_extend ? _extend.says.shared : "")
             : src.kind === "deck"
             ? "Values from the run you cited (" + src.name + ").  Change "
-              + "any of them; a change applies to every rung that reads it."
+              + "any of them; a change applies to every stage that reads it."
             : src.kind === "pair"
             ? "Values from the record of the optimization your structure "
               + "pair carries (" + src.name + ").  Change any of them; a "
-              + "change applies to every rung that reads it."
+              + "change applies to every stage that reads it."
             : "The junction you cited states none of these settings in "
               + "a form this build reads, so it answers none of them.  "
               + "A blank field is not chosen: the template records no "
@@ -1952,8 +1952,8 @@ const WORKSPACE_TAG = "transport";
             || typeof formSchema.renderForm !== "function") {
             _renderErrorParagraph(
                 formContainer,
-                "form-schema.js did not load — check the script "
-                + "order in transport_calculation.html."
+                "A part of this page did not load, so its forms cannot be "
+                + "drawn \u2014 reload the page."
             );
             return;
         }

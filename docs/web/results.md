@@ -184,7 +184,7 @@ tab has had, so the division is written out in full:
 | **Single-click a file** in the sidebar | the **file card** says what it is (§ 3b), when it is in the folder whose files the card holds — the panel's, or the run picked off the ladder; nothing else here changes — a single click is a preview, and the mounted viewer stays |
 | **Double-click a file** in the sidebar | opens it in the sidebar's own **file viewer** (the same modal the View button opens). It does **not** reach this panel |
 | **Pick from the dropdown** | that file is mounted, and everything below follows it |
-| **Reload from current project dir** | **binds the panel to wherever the sidebar is now**, lists that folder's results, and opens the file on screen again (§ 2.3). This is the sidebar's whole authority over this tab |
+| **Reload from the sidebar's folder** | **binds the panel to wherever the sidebar is now**, lists that folder's results, and opens the file on screen again (§ 2.3). This is the sidebar's whole authority over this tab |
 | **Come back to the browser tab** | re-reads the folder already bound, **once**, so files written while you were away appear; it does **not** re-point. Coming back is the page turning visible, the browser's `visibilitychange` to `visible` — a tab brought to the front, or a page restored from the back/forward cache, which turns visible just before its `pageshow`. The picker and each viewer that asks on coming back listen to that one event |
 | **Open the tab** | binds the panel to the folder this tab was last pointed at and scans it **once**. `pageshow` fires on every load; on a fresh load it only binds a panel the mount found no folder for; a restore is a coming back (the row above) |
 
@@ -208,7 +208,7 @@ Read as written, the sentence would send someone to wire transport and reverse
 a recorded decision.)*
 
 **The panel owns a folder; Reload is the only thing that moves it.** The
-button says *"Reload from current project dir"* and not *"Refresh"* for that
+button says *"Reload from the sidebar's folder"* and not *"Refresh"* for that
 reason — the old name described the effect on the listing and said nothing
 about *where from*, which is the only part you now have to know. Browsing
 is browsing — scrolling the sidebar around to see what is where cannot disturb
@@ -479,7 +479,7 @@ its output says or for a run that converges nothing, TBtrans's) beside it, then
 the detail — and after it, ` · ` between them, a queued rung's standing (above)
 and a device rung's line about the leads' surface Green's function files
 (`tsgf`, the status door's, [`engines/transport.md`](?doc=engines/transport.md)
-§ 2a.11); the title says how many rungs, and *every rung finished* once they
+§ 2a.11); the title says how many stages, and *every stage finished* once they
 have; the rung to resume from is the highlighted row. **Under the rows, the
 next step** — the ladder answer's `steps`, [`execution/job-system.md`](?doc=execution/job-system.md),
 *The task*, *The next step*: the next group's words and the lines that move it,
@@ -670,7 +670,7 @@ colour a token, the presenter owning its sheet (`lib/inspectors/transport.css`):
 │ │ phases — periodic start, then NEGF — as separate traces; its NEGF E_F,  │ │
 │ │ iterations, charge; each residual's tolerance; how the run ended (chip) │ │
 │ └─────────────────────────────────────────────────────────────────────────┘ │
-│ ┌ Rungs and provenance ──────────────────────────────────────────────────┐ │
+│ ┌ Stages and provenance ──────────────────────────────────────────────────┐ │
 │ │ one row per rung: state chip, detail (the transmission's loop at its    │ │
 │ │ running point, the points after it, a finished point's loop)            │ │
 │ │ E_F, energy, iterations,                                                │ │

@@ -272,7 +272,7 @@ _BUSY = "#results-file-picker-meta.is-busy"
 
 def _bound(page, base, folder):
     """The Results tab bound to ``folder`` as a person binds it -- the
-    sidebar walked there, *Reload from current project dir* pressed
+    sidebar walked there, *Reload from the sidebar's folder* pressed
     (`support.sidebar.results_on`, `web/results.md` § 2.1) -- and the scan
     ended, with any load it started: the menu lists the folder's files, the
     bar's line no longer busy."""
@@ -301,7 +301,7 @@ def _opened(page, path, viewer, drawn=None):
     ended = page.evaluate("() => window.__ended.length")
     if page.locator(_MENU).input_value() == path:
         page.get_by_role("button",
-                         name="Reload from current project dir").click()
+                         name="Reload from the sidebar's folder").click()
     else:
         page.select_option(_MENU, path)
     page.wait_for_function(

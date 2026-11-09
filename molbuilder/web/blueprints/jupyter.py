@@ -429,7 +429,7 @@ def _not_answering():
     return jsonify({
         "ok": False,
         "error": ("no notebook is answering on this machine -- start it "
-                  "from the JupyterNB tab, or `molbuilder jupyter start`."),
+                  "from the JupyterLab tab, or `molbuilder jupyter start`."),
     }), 502
 
 

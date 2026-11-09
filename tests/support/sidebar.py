@@ -83,7 +83,7 @@ def reload_from(page, folder) -> None:
     dir* pressed -- the tab follows the sidebar on that press alone
     (`web/results.md` § 2.1)."""
     walk_to(page, folder)
-    page.get_by_role("button", name="Reload from current project dir").click()
+    page.get_by_role("button", name="Reload from the sidebar's folder").click()
 
 
 def results_on(page, base: str, folder) -> None:

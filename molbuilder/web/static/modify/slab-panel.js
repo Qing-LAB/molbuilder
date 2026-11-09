@@ -445,7 +445,8 @@ export function init(viewer) {
         body.lattice_constant = a;
         /* THROUGH THE PAGE'S ONE OP WRAPPER (viewer.js `runOp`), which owns
            the in-flight lock and the edit-status line. */
-        await runOp("/api/modify/slab", body, "Add slab");
+        await runOp("/api/modify/slab", body,
+                    { doing: "Adding a slab", done: "Added a slab" });
     }
 
     const layersBox = $("slab-layers");

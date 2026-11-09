@@ -42,7 +42,6 @@ import { mount as mountVibrationView } from "/static/lib/vibrationview/index.js"
         name:           "spectra",
         displayName:    "Spectra results",
         coreApiKey:     "spectraInspector",
-        coreScriptDir:  "spectra",
         partialUrl:     "/partials/spectra-inspector",
         // THE SERVER'S PARSE ANSWER (`runs.file_row`: `parser`), never a
         // suffix spelled here (R-RO1).

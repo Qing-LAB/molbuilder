@@ -98,9 +98,6 @@
         const provide       = opts.provide || {};
         const partialUrl    = opts.partialUrl;
         const errorDisplay  = opts.errorDisplayName || displayName;
-        const coreScriptHint =
-            opts.coreScriptHint
-            || ("lib/" + (opts.coreScriptDir || name) + "/core.js");
 
         const inspector = {
             name:        name,
@@ -125,9 +122,8 @@
             const api = (root.molbuilder || {})[coreApiKey];
             if (!api || typeof api.mount !== "function") {
                 _renderError(host, errorDisplay, file,
-                    coreScriptHint
-                    + " did not load -- check results.html "
-                    + "script order");
+                    "A part of this page did not load, so this file "
+                    + "cannot be shown \u2014 reload the page.");
                 return { dispose() { host.innerHTML = ""; } };
             }
 

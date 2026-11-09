@@ -35,7 +35,7 @@ _POLICY = {
 @pytest.mark.parametrize("path,more", [
     ("/api/health", {}),
     ("/results", {}),
-    # The JupyterNB tab frames the notebook from its own origin, at
+    # The JupyterLab tab frames the notebook from its own origin, at
     # `/jupyter/` (`web/jupyter.md` § 2): every page's policy, unchanged.
     ("/jupyternb", {}),
 ])

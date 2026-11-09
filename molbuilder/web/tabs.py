@@ -72,7 +72,7 @@ TABS: Final[List[Tab]] = [
     # the tab is a dead end, so it sits where a dead end costs least.
     {"key": "jupyternb",
      "path": "/jupyternb",
-     "label": "JupyterNB"},
+     "label": "JupyterLab"},
 ]
 
 

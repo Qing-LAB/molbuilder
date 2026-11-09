@@ -1361,9 +1361,9 @@ So it answers, and never throws:
 
 **A failure turns up afterwards, not here.** The workspace is non-blocking but
 *error-explicit*: a write that does not arrive reaches its own error channel, and
-the app-wide notification bar shows it — *"Couldn't save state to disk. Your
-edits are kept in memory, but retract / crash-recovery history may be
-incomplete."*
+the app-wide notification bar shows it — *"Couldn't save state to disk (the
+reason). Your edits are kept in this page, but Retract and a reopened tab may
+not bring back everything."*
 
 **And the app-wide bar is the right place for it**, which is worth saying because
 § 6.8 keeps notices *out* of it. The rule there is that the bar is for what

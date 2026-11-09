@@ -1866,6 +1866,24 @@ before it was fixed. Docs only — the code text the review found is 2.62.1's.
 | E2E-MON | **closed after 2.62.1** (the user, 2026-11-02: "those two failures seems to be an outdated tests") | `test_monitor_watches_a_live_run_e2e.py::test_every_file_that_ships_beside_a_job_reads_the_run_without_molbuilder` failed: `AttributeError: 'Run' object has no attribute 'run'` — it still handed the monitor the try number 2.60.0 removed (`WatchedRun(run=…)`) | the test: the monitor told the run by its names alone; passes |
 | E2E-STOP | **closed after 2.62.1** (the same) | `test_siesta_stopped_run_e2e.py::test_the_run_panel_says_what_ran_and_why_it_stopped[chromium]` failed: `FileNotFoundError` on a path with the calculation's folder doubled — it read the ladder button's title as a path from the calculation, where since 2.59.0 the page names a path it only shows from the projects folder (`web/results.md` § 0.3) | the test: the run's folder from the projects folder; passes |
 
+## Found by the UI review's group D, the other pages' words (2026-11-09), by the release that owns each
+
+*(Group D's items on the pages' own words, each read in the code before any fix; the user, 2026-11-09: one word *stage* on every page, the notebook tab *JupyterLab*)*
+
+| id | where | finding | door |
+|---|---|---|---|
+| K2695-1 | **closed 2.69.5** | the Transport tab, the transport viewer and the Results ladder said *rung* (*Rungs and provenance*, *5 rungs, every rung finished*); a run opened from the ladder read *a run off its ladder*, as if it were not on it | *stage*; *a run picked from its ladder* |
+| K2695-2 | **closed 2.69.5** | a part of a page that failed to load named a script and a template (*form-schema.js did not load — check the script order in transport_calculation.html*, *structure-load-save-contract*) | what to do: reload the page |
+| K2695-3 | **closed 2.69.5** | Results' *Reload from current project dir*; its empty state sent a person to a *View button next to each file* (it is in the file's ⋯ menu) and spoke of *inspector flows* | *Reload from the sidebar's folder*; the ⋯ menu's View; *the files that hold a calculation's results* |
+| K2695-4 | **closed 2.69.5** | the optimization tab: *Build accepts .xyz / .pdb only*, a pseudopotential caption *(unset -- SIESTA will fail…)* and the server's full path, *Tick all* when the click unticks, a footer linking `/api/health` (and on the Molbuilder tab) | plain words; the folder said within the projects folder; the button says what its click does; the footer link gone |
+| K2695-5 | **closed 2.69.5** | the Spectrum tab named *the Optimization tab* and promised a feature (*is planned*) | the tab's name; no promise |
+| K2695-6 | **closed 2.69.5** | the Molbuilder tab's edits said their past tense while running (*Deleted…*, *Deleted failed: …*) | each edit names what it is doing and what it did |
+| K2695-7 | **closed 2.69.5** | the history pill *33 unsaved*, its *Tag HEAD…* and *Sensor error*; the file viewer showing the server's full path | *33 changed*, *Tag this state…*, *the folder's history could not be read*; the path within the projects folder |
+| K2695-8 | **closed 2.69.5** | the notebook tab named *JupyterNB* over a page saying *JupyterLab*; its messages and the reload's spoke of a *supervisor* | the tab *JupyterLab* (the user); the process said in words |
+| K2695-9 | **closed 2.69.5** | one spin state worded twice — the chip's *closed shell* / *moment free*, the card's *restricted (closed shell, 2S = 0)* / *the moment floats (free)* | one wording, the chip's, both places |
+| K2695-10 | **closed 2.69.5** | the save warning named its internal step (*write-state*) and said *retract / crash-recovery history* | the reason alone; *Retract and a reopened tab may not bring back everything* |
+| K2695-11 | **later** | the run panel shows a phase's token as written (*negf*) where the SCF plot says *NEGF*, and an unknown field by its name; *CG/MD step 6* beside 8 frames (whether the two counts should agree, to be read); a *-0.0000*; the trajectory viewer named *Trajectory + SCF history* where the picker's group says *SIESTA optimization* | each when its page is next touched |
+
 ## Found by the UI review's group D, the server's words on a page, and 2.69.4's review round (2026-11-09), by the release that owns each
 
 *(Group D's items about how the server's sentences reach a page, mapped to where each is drawn before any fix; one review round over every changed file, every finding read again in the code)*

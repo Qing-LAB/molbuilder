@@ -89,9 +89,10 @@
                     return;
                 }
                 _notify("error",
-                    "The server did not come back within a minute. Its "
-                    + "supervisor is still running, so the new code most "
-                    + "likely fails to import — check the terminal.");
+                    "The server did not come back within a minute. The "
+                    + "process that restarts it is still running, so the new "
+                    + "code most likely fails to import — check the "
+                    + "terminal.");
                 if (btn) btn.disabled = false;
             })
             .catch(function (err) {

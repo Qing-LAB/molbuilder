@@ -68,7 +68,6 @@
         name:          "trajectory",
         displayName:   "Trajectory + SCF history",
         coreApiKey:    "trajectoryInspector",
-        coreScriptDir: "trajectory",
         partialUrl:    "/partials/trajectory-inspector",
         match: (file, meta) =>
             !!(meta && meta.role

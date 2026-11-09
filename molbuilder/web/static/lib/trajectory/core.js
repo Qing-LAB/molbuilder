@@ -1062,7 +1062,7 @@ import { ask } from "../server.js";
         // Source provenance label.
         const sourceMap = {
             "siesta_input_echo": "from SIESTA input echo (redata:)",
-            "molwatch_header":   "from molwatch log header",
+            "molwatch_header":   "from the run log's header",
         };
         if (sourceEl) {
             sourceEl.textContent =
@@ -1762,7 +1762,7 @@ import { ask } from "../server.js";
             : rt.n_threads_omp;
         if (t != null) {
             let cpu = t + "T";
-            if (rt.n_threads_blas != null) cpu += " BLAS=" + rt.n_threads_blas;
+            if (rt.n_threads_blas != null) cpu += ", " + rt.n_threads_blas + " for BLAS";
             parts.push(cpu);
         }
         // Memory cap, in GB if >= 1024 MB.

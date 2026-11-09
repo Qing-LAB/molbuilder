@@ -333,9 +333,10 @@ const STATES = [
       // SERVE log, because the notebook log is the thing that could not be
       // started.  Everything jupyter-server itself refuses is in the
       // NOTEBOOK log.
-      sayError("Asked for a notebook and none started. The supervisor may "
-               + "predate this feature — it survives a code reload, so "
-               + "`molbuilder serve stop` then `serve start` gives it one. "
+      sayError("Asked for a notebook and none started. The molbuilder "
+               + "server may have been started before this feature, and a "
+               + "code reload keeps it -- `molbuilder serve stop` then "
+               + "`serve start` gives it one. "
                + "`molbuilder serve status` names the server log; "
                + "`molbuilder jupyter status` names the notebook log, which "
                + "is where jupyter's own refusals are written.");
@@ -351,10 +352,10 @@ const STATES = [
     name: "unsupervised",
     when: (st) => !st.supervised,
     enter: () => say(
-      "JupyterLab is not running, and this molbuilder has no supervisor to "
-      + "hold one — it was started with `serve foreground` or "
-      + "`--no-supervise`. Restart it with `molbuilder serve start` and the "
-      + "button appears here."),
+      "JupyterLab is not running, and this molbuilder cannot start one "
+      + "-- it was started with `serve foreground` or `--no-supervise`. "
+      + "Restart it with `molbuilder serve start` and the button appears "
+      + "here."),
     pollMs: 30000,
   },
   {

@@ -94,7 +94,7 @@
             class="result-list-refresh"
             type="button"
             title="Show the folder the sidebar is on; browsing alone never moves this panel.">
-      Reload from current project dir
+      Reload from the sidebar's folder
     </button>
     <span id="results-file-picker-meta" class="result-list-meta"
           aria-live="polite"></span>
@@ -147,7 +147,7 @@
       <p class="inspector-card-note results-place-note" hidden></p>
       <p class="inspector-card-note">
         Open a folder in the <strong>Projects</strong> sidebar, then
-        <strong>Reload from current project dir</strong>.
+        <strong>Reload from the sidebar's folder</strong>.
       </p>
       {# What the tab opens, folded: the one foldable component
          (page-shell.css `.fold`, ui-contract.md § 4). #}
@@ -188,11 +188,10 @@
       <p class="inspector-card-note results-fallback-source-hint">
         For source files (<code>*.fdf</code> <code>*.py</code>
         <code>*.log</code> <code>*.json</code> <code>*.txt</code>
-        <code>*.md</code>), use the <strong>View</strong> button
-        next to each file in the Projects sidebar &mdash; it opens
-        a text viewer scoped to that file.  Results / inspector
-        flows on this tab are reserved for files that carry
-        structured data the engines produce.
+        <code>*.md</code>), open the file's <strong>&#8943;</strong> menu
+        in the Projects sidebar and choose <strong>View</strong> &mdash;
+        it opens the file as text.  This tab opens the files that hold
+        a calculation's results.
       </p>
       </details>
     </div>

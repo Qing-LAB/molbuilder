@@ -2242,7 +2242,7 @@
         function _esRouteLabel(r) {
             if (!_routeHas(r, "es_mode_selection")) {
                 return "not computed on this route (its electronic response "
-                     + "along a mode, the projected DOS, is planned)";
+                     + "along a mode, the projected DOS)";
             }
             if (r.config.es_mode_selection === "skip") return "not requested";
             return r.phase_es;

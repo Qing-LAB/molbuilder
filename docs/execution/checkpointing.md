@@ -409,7 +409,7 @@ sha256 molbuilder computes, a *proof* of what the archive holds (I2b).
 ### The panel, and the routes
 
 The projects sidebar's run-history panel does the same work for a calculation
-folder: a pill reading `saved`, `N unsaved` or `no states saved`; the states as
+folder: a pill reading `saved`, `N changed` or `no states saved`; the states as
 a list or as a graph drawn from parentage; and buttons to make the folder a
 checkpoint folder, save (asking for the note), name a state and restore one.
 The list is the app's one list of choices
@@ -852,7 +852,7 @@ one a redo restores.
   beside the job, knows when the run has ended, reads the outputs and can notify
   you — it observes and tells, and never changes the calculation.
 - **After the last run** nothing saves, because no act follows. The sidebar's
-  pill reads `N unsaved` until you save or the next act saves first.
+  pill reads `N changed` until you save or the next act saves first.
 
 ```mermaid
 sequenceDiagram
@@ -1676,7 +1676,7 @@ and "this state's archive is gone" are two different observations.
 
 That is read on **both** paths. A restore verifying the target is the obvious
 one; but a folder whose archive has vanished must not sit in the panel reading
-*"12 unsaved"* until somebody acts on it — with no record of what the state held,
+*"12 changed"* until somebody acts on it — with no record of what the state held,
 every archived file would look newly created, an invitation to save over the
 loss. So a missing archive, a missing digest, and a MANIFEST that does not hash
 to its own name are each named where they are found; `list` still prints the

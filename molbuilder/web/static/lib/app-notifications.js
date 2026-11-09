@@ -153,14 +153,13 @@
         }
         // ...THE READER'S SENTENCE, as the read row says it: the server's own
         // words, or what kind of failure it was (ui-contract.md § 12).
-        var where = (detail && detail.op) ? detail.op : "write";
-        var code = (detail && detail.error) ? " · " + detail.error : "";
         show({
             id:      "persist-error",
             level:   "error",
-            message: "Couldn't save state to disk (" + where + code
-                   + "). Your edits are kept in memory, but retract / "
-                   + "crash-recovery history may be incomplete.",
+            message: "Couldn't save state to disk ("
+                   + ((detail && detail.error) || "no reason given")
+                   + "). Your edits are kept in this page, but Retract and "
+                   + "a reopened tab may not bring back everything.",
             detail:  detail,
         });
     }

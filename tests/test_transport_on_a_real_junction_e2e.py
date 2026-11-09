@@ -1153,12 +1153,12 @@ def test_the_tabs_chemistry_card_answers_for_the_cited_run(junction, page,
         assert list(blocks) == ["SIESTA"], "transport runs on SIESTA alone"
         card = blocks["SIESTA"]
         assert "0 — rule: a transport junction is neutral" in card, card
-        assert "unrestricted, the moment floats (free)" in card, card
+        assert "unrestricted, moment free" in card, card
 
         page.select_option("#t-spin-treatment", "restricted")
         card_answered(page, "closed shell")
         card = card_blocks(page)["SIESTA"]
-        assert "restricted (closed shell, 2S = 0)" in card, card
+        assert "closed shell" in card, card
 
 
 def test_the_tab_shows_what_the_citation_measured(junction, page,
@@ -4201,7 +4201,7 @@ def test_the_results_tab_says_a_devices_forces_and_a_leads_stress(
         assert not {"Max force", "Stress in the (x, y) plane"} & set(rows), (
             rows)
         # THE LEAD, the tab re-pointed as a person does it -- the sidebar at
-        # its folder, then *Reload from current project dir*
+        # its folder, then *Reload from the sidebar's folder*
         # (`support.sidebar.reload_from`; `results.md` § 2.1: the tab keeps
         # its own folder); the panel stays open over its new record.
         from support.sidebar import reload_from

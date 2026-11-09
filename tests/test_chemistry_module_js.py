@@ -163,12 +163,12 @@ class TestTheCard:
             st = resp["state"][engine]
             assert st["net_charge"]["said"] in block, (engine, block)
             assert st["spin_treatment"]["said"] in block, (engine, block)
-        assert "unrestricted, the moment floats (free)" in blocks["siesta"]
+        assert "unrestricted, moment free" in blocks["siesta"]
         assert "a repeating cell" in blocks["siesta"]
         # a rule is not a choice anyone made: SIESTA's method is not shown
         assert "Method" not in blocks["siesta"]
         assert "-1 — " + pyscf["net_charge"]["said"] in blocks["pyscf"]
-        assert "restricted (closed shell, 2S = 0)" in blocks["pyscf"]
+        assert "closed shell" in blocks["pyscf"]
         assert ("HF — " + pyscf["method"]["said"]) in blocks["pyscf"]
 
     def test_the_metals_box_shows_only_when_there_is_a_metal(self, app_at):

@@ -113,7 +113,7 @@ from the run's own **output**. A SIESTA run echoes them into its `.out` (the
 `redata:` preamble), and a PySCF/geomeTRIC run — whose bare `*_optim.xyz` carries
 no targets — gets them from the sibling `*.molwatch.log` the builder writes next
 to it. A small label under the plot even says which of these it read them from
-("from SIESTA input echo", "from molwatch log header").
+("from SIESTA input echo", "from the run log's header").
 A run that relaxes nothing chases no force target, so none is drawn and no band
 is shown: a SIESTA single point's or force-constant run's seeded log carries no
 targets, because `prep` writes them only for a deck that relaxes

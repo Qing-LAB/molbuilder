@@ -56,7 +56,7 @@ copies.
 ```mermaid
 flowchart TD
   subgraph TABS["The tab pages — thin consumers, the roster is tabs.md § 1"]
-    T["Molbuilder · Structure-opt · Spectrum · Transport<br/>Task setup · Results · This machine · Documents · JupyterNB"]
+    T["Molbuilder · Structure-opt · Spectrum · Transport<br/>Task setup · Results · This machine · Documents · JupyterLab"]
   end
   subgraph MODS["Reusable front-end modules"]
     MV["MolView · VibrationView — the sibling 3D viewers"]

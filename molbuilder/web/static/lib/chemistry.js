@@ -102,11 +102,9 @@
 
     // ------------------------------------------------------------ render
 
+    /* THE SPIN STATE IN THE CHIP'S WORDS -- one wording, both places. */
     function _spinText(st) {
-        var t = st.spin_treatment.value, c = st.unpaired_electrons.value;
-        if (t === "restricted") return "restricted (closed shell, 2S = 0)";
-        return t + (c === "free" ? ", the moment floats (free)"
-                                 : ", 2S = " + c);
+        return root.molbuilder.detectionChip.spinWords(st);
     }
 
     /** One engine's state as the card's lines, headed by the engine's name

@@ -43,9 +43,9 @@ import { formula as mvFormula, toDisplay as displayNumber }
  * exactly one owner.) */
 let _postOp = null;
 
-export function runOp(path, extraBody, label) {
+export function runOp(path, extraBody, words) {
     return _postOp
-        ? _postOp(path, extraBody, label)
+        ? _postOp(path, extraBody, words)
         : Promise.resolve(null);
 }
 
@@ -381,7 +381,8 @@ export function init(viewer) {
     /* What an operation did, said from the atoms it held before and holds now:
      * deleting one atom of nineteen is *Deleted 1 atom: 18 left*, never a count
      * that reads as how many went. */
-    function _opSaid(label, before, now) {
+    function _opSaid(done, before, now) {
+        const label = done;
         const change = before === null ? 0 : now - before;
         const atoms = (n) => `${n} atom${n === 1 ? "" : "s"}`;
         if (change < 0) return `${label} ${atoms(-change)}: ${now} left.`;
@@ -389,7 +390,9 @@ export function init(viewer) {
         return `${label}: ${atoms(now)}.`;
     }
 
-    async function postOp(path, extraBody, label) {
+    /* ``words``: what the edit is doing as it runs and what it did --
+     * ``{doing: "Deleting", done: "Deleted"}`` -- each said at its moment. */
+    async function postOp(path, extraBody, words) {
         // Modifier-button wrapper around ``molview.data.applyOp``.  Owns the
         // UI-level concerns the module deliberately stays out of: the
         // in-flight lock (prevents a double-click double-fire), the
@@ -400,7 +403,7 @@ export function init(viewer) {
         if (state.inFlight) return null;
         state.inFlight = true;
         refreshSelectionUI();
-        setEditStatus(`${label}…`);
+        setEditStatus(`${words.doing}…`);
         const op = path.replace(/^\/api\/modify\//, "");
         let r = null;
         const held = _data();
@@ -410,27 +413,27 @@ export function init(viewer) {
             try {
                 const d = _data();
                 if (!d || typeof d.applyOp !== "function") {
-                    setEditStatus(`${label} failed: data model unavailable.`,
-                        "error");
+                    setEditStatus(`${words.doing} failed: the viewer is not `
+                        + `ready.`, "error");
                     return null;
                 }
                 r = await d.applyOp(op, extraBody);
             } catch (e) {
                 setEditStatus(
-                    `${label} failed: ${(e && e.message) || String(e)}`,
+                    `${words.doing} failed: ${(e && e.message) || String(e)}`,
                     "error",
                 );
                 return null;
             }
             if (!r) {
-                setEditStatus(`${label} failed.`, "error");
+                setEditStatus(`${words.doing} failed.`, "error");
                 return null;
             }
             /* THE COUNT IS READ OFF THE STRUCTURE THE DOOR HANDED BACK.
              * `applyOp` answers the structure itself (§ 6.9) — elements and
              * their metadata — not a report about it; what the operation did
              * is that against what it held before. */
-            setEditStatus(_opSaid(label, before, (r.elements || []).length),
+            setEditStatus(_opSaid(words.done, before, (r.elements || []).length),
                           "ok");
             return r;
         } finally {
@@ -498,7 +501,8 @@ export function init(viewer) {
         // rejects an empty one (delete's empty-policy = "reject"); the Delete
         // button is disabled at zero selection anyway.  We pass op-params only
         // -- NOT the group -- so the module owns resolution + enforcement.
-        await postOp("/api/modify/delete", {}, "Deleted");
+        await postOp("/api/modify/delete", {},
+                     { doing: "Deleting", done: "Deleted" });
     }
 
     // ----- Transform subtab: rigid translate ops ------------------ //
@@ -514,7 +518,7 @@ export function init(viewer) {
         await postOp(
             "/api/modify/translate",
             { recenter: true },
-            "Centered at origin",
+            { doing: "Centering at the origin", done: "Centered at the origin" },
         );
     }
 
@@ -536,7 +540,8 @@ export function init(viewer) {
         await postOp(
             "/api/modify/translate",
             { dx, dy, dz },
-            `Translated (${dx}, ${dy}, ${dz}) Å`,
+            { doing: `Translating by (${dx}, ${dy}, ${dz}) Å`,
+              done: `Translated by (${dx}, ${dy}, ${dz}) Å` },
         );
     }
 
@@ -572,7 +577,7 @@ export function init(viewer) {
         await postOp(
             "/api/modify/add_atom",
             { element, offset },
-            `Added ${element}`,
+            { doing: `Adding ${element}`, done: `Added ${element}` },
         );
     }
 
@@ -608,8 +613,10 @@ export function init(viewer) {
         await postOp(
             "/api/modify/orient",
             { axis, angle, center },
-            angle === 0 ? `Oriented along ${axis}`
-                        : `Oriented (${axis}, tilt ${angle}°)`,
+            angle === 0
+                ? { doing: `Orienting along ${axis}`, done: `Oriented along ${axis}` }
+                : { doing: `Orienting (${axis}, tilt ${angle}°)`,
+                    done: `Oriented (${axis}, tilt ${angle}°)` },
         );
     }
 
@@ -624,7 +631,8 @@ export function init(viewer) {
         await postOp(
             "/api/modify/rotate",
             { axis, angle, center },
-            `Rotated ${angle}° around ${axis} (${center} pivot)`,
+            { doing: `Rotating ${angle}° around ${axis} (${center} pivot)`,
+              done: `Rotated ${angle}° around ${axis} (${center} pivot)` },
         );
     }
 

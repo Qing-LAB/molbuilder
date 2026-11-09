@@ -446,7 +446,7 @@ Set on every response by an `after_request` hook (`app.py`):
   `Strict-Transport-Security`.
 - **The one exception is the notebook passed through at `/jupyter/…`**: its
   answers carry Jupyter's own policy and `X-Frame-Options: SAMEORIGIN`, so the
-  JupyterNB page may frame them (`web/jupyter.md` § 2).
+  JupyterLab page may frame them (`web/jupyter.md` § 2).
 - **CSRF** — there is no token layer. The defense is `connect-src 'self'` (the
   CSP blocks cross-origin fetches) plus `SameSite=Lax` session cookies on
   auth-enabled deployments. No CORS headers are sent (same-origin only). The

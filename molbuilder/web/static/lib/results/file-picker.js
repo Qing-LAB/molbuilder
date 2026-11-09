@@ -948,7 +948,7 @@
             if (d.picked_run) {
                 const shownFile = d.name || proj.relativeToProjects(d.file);
                 _prependUnchosen(selEl, "(showing " + shownFile
-                    + ", a run off the ladder)");
+                    + ", a run picked from the ladder)");
                 selEl.options[0].setAttribute("data-picked-run", "");
                 return;
             }

@@ -2,7 +2,7 @@
 and § 6 -- on the road: `molbuilder serve start`, `molbuilder jupyter start`,
 `molbuilder serve restart`, and a real browser on molbuilder's one port.
 
-The silent failures: a JupyterNB tab that hides a notebook it could show --
+The silent failures: a JupyterLab tab that hides a notebook it could show --
 the tab framed Jupyter on a port of its own and covered a working frame with
 "cannot reach it" when its own check was blocked by the page's security
 policy (every version from 2026-09-15, measured 2026-10-17); a kernel
@@ -184,7 +184,7 @@ def one_port(request, tmp_path_factory):
 
 def test_the_tab_frames_the_notebook_from_its_own_origin_and_a_cell_answers(
         page, one_port):
-    """`jupyter.md` § 2: the JupyterNB tab frames JupyterLab at
+    """`jupyter.md` § 2: the JupyterLab tab frames JupyterLab at
     ``/jupyter/`` on the page's own address, and a cell run in it answers --
     every request and the kernel's WebSocket carried by molbuilder's one
     port, the token presented by molbuilder and never by the page.

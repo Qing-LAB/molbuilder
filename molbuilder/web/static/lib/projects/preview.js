@@ -435,7 +435,7 @@ export async function showPreview(wanted) {
     _state = _emptyState();
     _state.path = path;
     elTitle.textContent = path.split("/").pop();
-    elMeta.textContent  = path;
+    elMeta.textContent  = projects.relativeToProjects(path) || path;
     elError.textContent = "";
     // Clear any prior file's view-only class so the new load decides
     // it fresh based on its own size.

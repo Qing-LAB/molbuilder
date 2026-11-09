@@ -133,7 +133,7 @@ def test_a_typed_charge_changes_the_answer(page, flask_server,
     card_answered(page, "-1")
     card = _card(page)
     assert "-1 — stated" in card, card
-    assert "restricted (closed shell, 2S = 0)" in card, card
+    assert "closed shell" in card, card
     assert "unrestricted, 2S = 1" in card, "the blank SIESTA form keeps its own"
 
 

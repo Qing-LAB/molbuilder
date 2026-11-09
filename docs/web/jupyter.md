@@ -1,4 +1,4 @@
-# Jupyter — the JupyterNB tab, and the lifecycle that keeps it honest
+# Jupyter — the JupyterLab tab, and the lifecycle that keeps it honest
 
 **Role:** contract
 **Domain:** web
@@ -86,7 +86,7 @@ headers are dropped: nothing outside the page is answered.
 being `/jupyter`. Every answer passed through carries `X-Frame-Options:
 SAMEORIGIN`, in place of the `DENY` molbuilder's own pages send, and
 `frame-ancestors 'self'` where Jupyter sent no policy of its own — so the page
-may frame it and nothing else may. The JupyterNB page's security policy is
+may frame it and nothing else may. The JupyterLab page's security policy is
 every page's.
 
 ### 2.1 Jupyter's own port, and what collides with it
@@ -590,7 +590,7 @@ Where it lives: `molbuilder/jupyter.py` (the lifecycle, the shepherd, and the
 generated Lab settings), `serve_daemon` (the two signals, the stop-on-exit,
 and the startup reconciliation — done with its own helpers, because it may
 import nothing of the application), `web/blueprints/jupyter.py` (status ·
-start · stop · the `/jupyter/` pass-through), and the **JupyterNB** tab at
+start · stop · the `/jupyter/` pass-through), and the **JupyterLab** tab at
 `/jupyternb`.
 
 There is deliberately **no kernel search path**. One stood here until

@@ -656,7 +656,7 @@ const WORKSPACE_TAG = "results:transport";
             (Array.isArray(st.scf) && st.scf.length) || Array.isArray(st.by_point));
         if (!withScf.length) {
             card.appendChild(_el("p", "transport-note",
-                "No rung has an SCF to draw yet."));
+                "No stage has an SCF to draw yet."));
             return card;
         }
         const tabs = _tabs(withScf.map((st) => [st.stage,
@@ -697,9 +697,9 @@ const WORKSPACE_TAG = "results:transport";
             const src = pts ? _find(pts, frame, state.bias) : st;
             if (!src) {
                 line.replaceChildren(_el("span", "transport-stage-detail",
-                    state.bias === null ? "this rung has not run yet"
+                    state.bias === null ? "this stage has not run yet"
                         : pointWords(frame, n, state.bias)
-                          + " · this rung has not run at this point"));
+                          + " · this stage has not run at this point"));
                 e.hidden = true;
                 r.hidden = true;
                 return;
@@ -747,7 +747,7 @@ const WORKSPACE_TAG = "results:transport";
 
     function _rungs(rec, stages, state) {
         const n = state.nFrames;
-        const card = _card("Rungs and provenance", "transport-rungs-card");
+        const card = _card("Stages and provenance", "transport-rungs-card");
         const table = _el("table", "num-table transport-rungs");
         const head = _el("tr");
         ["Rung", "State", "E_F [eV]", "E [eV]", "SCF", "Run"].forEach(
@@ -805,7 +805,7 @@ const WORKSPACE_TAG = "results:transport";
          * chain cannot be interpreted, reproduced, or compared"). */
         const chain = ((rec.provenance || {}).chain) || [];
         if (chain.length) {
-            card.appendChild(_el("h5", "transport-prov-title", "What each rung took"));
+            card.appendChild(_el("h5", "transport-prov-title", "What each stage took"));
             const ul = _el("ul", "transport-chain");
             chain.forEach((c) => {
                 const li = _el("li", null, c.attempt + ": ");

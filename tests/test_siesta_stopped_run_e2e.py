@@ -301,7 +301,7 @@ def test_the_run_panel_says_what_ran_and_why_it_stopped(stopped, page,
             "browsing moved the panel off the run")
         shutil.rmtree(gone)
         page.get_by_role("button",
-                         name="Reload from current project dir").click()
+                         name="Reload from the sidebar's folder").click()
         panel.wait_for(state="hidden", timeout=10000)
         reload_from(page, stopped)
         panel.locator(".rp-summary").wait_for(timeout=20000)
@@ -363,7 +363,7 @@ def test_the_run_panel_says_what_ran_and_why_it_stopped(stopped, page,
         # menu's first row says which run is shown; *back to the calculation*
         # names the root's choice again.
         assert menu.evaluate(chosen) == (
-            f"(showing {Path(opened).name}, a run off the ladder)")
+            f"(showing {Path(opened).name}, a run picked from the ladder)")
         page.locator(".results-ladder-back").click()
         page.wait_for_function(
             "(t) => { const s = document.querySelector("
@@ -387,7 +387,7 @@ def test_the_run_panel_says_what_ran_and_why_it_stopped(stopped, page,
         page.wait_for_selector(".results-ladder-back", timeout=10000)
         showing = menu.evaluate(chosen)
         page.get_by_role("button",
-                         name="Reload from current project dir").click()
+                         name="Reload from the sidebar's folder").click()
         page.wait_for_function(
             "(t) => { const s = document.querySelector("
             "'#results-file-picker-select');"

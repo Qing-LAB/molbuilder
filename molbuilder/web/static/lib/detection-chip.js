@@ -84,5 +84,7 @@
         module.exports = api;
     }
     root.molbuilder = root.molbuilder || {};
+    // THE ONE WORDING of a spin state, the chemistry card's too.
+    api.spinWords = _spin;
     root.molbuilder.detectionChip = api;
 })();

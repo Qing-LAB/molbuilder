@@ -144,7 +144,7 @@ Flags (shared by `foreground` and `start`; `molbuilder/cli.py`):
 
 **Symptom.** The web UI is on screen and works — it is a single-page app, so it
 renders and shows banners entirely in the browser — but every save fails with
-*"Couldn't save state to disk (write-state · **could not reach the server — check the connection, then try again**)"*, counting
+*"Couldn't save state to disk (**could not reach the server — check the connection, then try again**)"*, counting
 up. `curl` gets nothing either. The process is alive and holds the port.
 
 **Read the parenthetical first — it names the cause and the two cases are
@@ -152,8 +152,8 @@ different bugs:**
 
 | banner says | what happened |
 |---|---|
-| the server's own words, or `· the server's answer could not be read (HTTP n) …` | the server **answered**. A route or handler bug — debug molbuilder. |
-| `· could not reach the server …` | **no response at all**. The request never completed: the server is not accepting, or is unreachable. |
+| the server's own words, or `the server's answer could not be read (HTTP n) …` | the server **answered**. A route or handler bug — debug molbuilder. |
+| `could not reach the server …` | **no response at all**. The request never completed: the server is not accepting, or is unreachable. |
 
 **Confirm in two commands.**
 

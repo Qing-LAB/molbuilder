@@ -16,7 +16,7 @@ of these images changes.
 > **⚠ Known stale capture (2026-07-28, still stale 2026-09-01).**
 > `tab-bar.png` — and the nav strip inside `hero-molbuilder.png` — show
 > **five** tabs.  The shipped app has more: **Documents** landed after
-> these were taken, then **Task setup**, **This machine** and **JupyterNB**
+> these were taken, then **Task setup**, **This machine** and **JupyterLab**
 > ([`web/tabs.md § 1`](?doc=web/tabs.md) is the roster and the only place
 > the count is decided, so this note names none).  Both need a re-capture (the re-capture rule below
 > already mandates it: a new tab is exactly the trigger); the README's hero

@@ -411,8 +411,16 @@ import { ask } from "../lib/server.js";
             resetEl.disabled = true;
         }
 
+        /* THE BUTTON SAYS WHAT ITS CLICK DOES: every box ticked, it unticks
+         * them all. */
+        const allSays = () => {
+            const n = listEl.querySelectorAll("input[type=checkbox]").length;
+            allEl.textContent = (n && ticked().length === n)
+                ? "Untick all" : "Tick all";
+        };
         listEl.addEventListener("change", () => {
             resetEl.disabled = ticked().length === 0;
+            allSays();
         });
 
         allEl.addEventListener("click", () => {
@@ -420,6 +428,7 @@ import { ask } from "../lib/server.js";
             const turnOn = ticked().length !== boxes.length;
             boxes.forEach((c) => { c.checked = turnOn; });
             resetEl.disabled = !turnOn;
+            allSays();
         });
 
         resetEl.addEventListener("click", () => {
@@ -549,7 +558,7 @@ import { ask } from "../lib/server.js";
                     const filename = f.split("/").pop();
                     setStatus("load-status",
                         `${filename} is not a structure file `
-                        + `(Build accepts .xyz / .pdb only).`,
+                        + `(this tab loads .xyz and .pdb files).`,
                         "warn");
                 }
                 return;
@@ -575,8 +584,8 @@ import { ask } from "../lib/server.js";
             if (!_proj2 || !_proj2.parser
                     || typeof _proj2.parser.openMolecule !== "function") {
                 setStatus("load-status",
-                    "Projects file package unavailable "
-                    + "(structure-load-save-contract).", "error");
+                    "The sidebar's file tools did not load \u2014 reload "
+                    + "the page.", "error");
                 clearStructureInfo("load failed: " + filename);
                 return;
             }
@@ -872,11 +881,10 @@ import { ask } from "../lib/server.js";
         cap.id = "p-psml-lib-resolved";
         const parent = input.parentElement || input;
         parent.appendChild(cap);
-        const proj = (window.molbuilder || {}).projects;
         function render() {
             const v = (input.value || "").trim();
             if (!v) {
-                cap.textContent = "(unset -- SIESTA will fail to start without pseudos)";
+                cap.textContent = "not set \u2014 SIESTA cannot start without its pseudopotentials";
                 return;
             }
             // Absolute or ~/ -> echo (no anchor applied).
@@ -887,21 +895,10 @@ import { ask } from "../lib/server.js";
             // Relative -> show projects/-anchored form.  The Save
             // step also tries dest-relative first, but at type-time
             // we don't know dest yet; show the projects/ anchor.
-            const root = (proj && proj.getProjectsRoot && proj.getProjectsRoot()) || "";
-            if (root) {
-                cap.textContent = "→ " + root.replace(/\/$/, "") + "/" + v;
-            } else {
-                cap.textContent = "→ projects/" + v;
-            }
+            cap.textContent = "→ " + v + ", in the projects folder";
         }
         input.addEventListener("input", render);
-        // Initial paint AND re-paint when the projects root resolves
-        // (the sidebar bootstrap is async; root might not be ready
-        // when the form first mounts).
         render();
-        if (proj && typeof proj.onChange === "function") {
-            proj.onChange(render);
-        }
     }
     // Form fields render asynchronously (form-schema fetches the
     // schema from /api/build/schema/siesta then renders).  Retry the

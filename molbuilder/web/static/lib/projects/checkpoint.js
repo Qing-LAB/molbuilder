@@ -268,10 +268,10 @@ function _renderState(repoState) {
     // people learn to ignore.
     const unsaved = (repoState.unsaved || []).length;
     if (unsaved > 0) {
-        elSensor.textContent = `${unsaved} unsaved`;
+        elSensor.textContent = `${unsaved} changed`;
         elSensor.setAttribute("data-state", "dirty");
         elSensor.title = (repoState.unsaved || []).join("\n");
-        _paintToggle("dirty", `${unsaved} unsaved`);
+        _paintToggle("dirty", `${unsaved} changed`);
     } else {
         elSensor.textContent = "saved";
         elSensor.setAttribute("data-state", "clean");
@@ -302,7 +302,7 @@ function _renderError(message) {
     elSensor.textContent = "error";
     elSensor.setAttribute("data-state", "error");
     _paintToggle("error", "error");
-    _showAdvisory("Sensor error: " + message);
+    _showAdvisory("The folder's history could not be read: " + message);
 }
 
 function _renderStates(states) {

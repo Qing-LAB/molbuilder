@@ -71,8 +71,9 @@ through one door, *time limit* and *stage* as the one words (the ledger's
 *time limit* wherever molbuilder speaks (the ledger's *Found by … 2.69.3*);
 **2.69.4**: the server's words drawn as words on every page — one
 renderer, the terminal's dash a dash, no capitals as emphasis, the file card
-in a person's words (the ledger's *Found by … 2.69.4*); next, group D's other
-pages and the help texts, then C.
+in a person's words (the ledger's *Found by … 2.69.4*); **2.69.5**: every
+page in its own plain words, the notebook tab *JupyterLab* (the ledger's
+*Found by … 2.69.5*); next, group D's help texts, then C.
 
 **What runs next**: **the UI review** *(the user, 2026-11-08: "Right after
 2.67.11")* — every tab walked in Chrome on the dev server through an
