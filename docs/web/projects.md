@@ -96,9 +96,10 @@ button) listens to `onChange`.
   double-click — *not* on subscribe, because a commit is a one-off event, not a
   state to mirror.
 - Follow **the folder's contents changing underneath you**:
-  `projects.onFolderChanged(cb)`, payload `{dir}`. Like `onCommit` it does not
-  fire on subscribe. Compare `dir` against the folder your tab is showing and
-  re-read only your own.
+  `projects.onFolderChanged(cb)`, payload `{dir, by}`. Like `onCommit` it does
+  not fire on subscribe. Compare `dir` against the folder your tab is showing
+  and re-read only your own; `by` names the writer when it named itself, so a
+  page skips the announcement of its own write, which it has read already.
 
   **Why this is a channel of its own** *(2026-08-24)*. The other two answer
   *"which folder/file is picked"* — but a checkpoint **restore** rewrites a
@@ -108,10 +109,24 @@ button) listens to `onChange`.
   stages and a bench the folder no longer had.
 
   Anything that rearranges a folder behind an open tab **publishes**:
-  `projects.publishFolderChanged(dir)`. The writer does not know which tabs are
-  open or what they cache, so it announces rather than reaching in — the
+  `projects.publishFolderChanged(dir, by)`. The writer does not know which tabs
+  are open or what they cache, so it announces rather than reaching in — the
   checkpoint panel's own refresh repaints only itself, which is precisely how
-  this was missed.
+  this was missed. **The file doors publish themselves** *(2.68.5)*: every
+  write, upload, folder made, rename, move, copy and delete through
+  `projects.*` announces, once it has succeeded, each folder whose contents it
+  changed — and the path it took away — so no caller announces or re-lists by
+  hand, and a caller that would skip its own announcement names itself
+  (`opts.by`). A page whose own server door writes into a folder — a
+  structure saved, a calculation described, a description saved, a state
+  restored, a frame set saved, a transmission digest read — announces that
+  folder itself, the one call. Whoever shows a folder follows it: **the sidebar
+  re-lists the folder it shows** when that folder is announced — a file door
+  never moves the sidebar; its caller may (*New project* and *New folder* open
+  what they made), and a copy says where it went — the run history reads it
+  again, and Task setup reads its folder
+  again, or, holding edits not saved, keeps them and says the folder changed
+  ([`task-setup.md`](?doc=web/task-setup.md) § 2.1).
 
 **Making and organizing files.** The sidebar drives the create/rename/move/copy/
 upload/delete operations against the server (`/api/files/*` and
@@ -176,8 +191,9 @@ went with it — § 5):*
    the structure and writes the `.xyz` + `.molstruct.json` pair — the server owns
    the pairing *and* the sidecar's format (it stamps the schema version and a
    real content hash).
-3. On success the sidebar refreshes, the gate's `notices` ride the result, and
-   the calling page records where the bytes went.
+3. On success the folder written into is announced (§ 2) — the sidebar, showing
+   it, re-lists it — the gate's `notices` ride the result, and the calling page
+   records where the bytes went.
 
 Why the server writes the sidecar: a browser-written sidecar had no schema
 stamp, so the *load* door rejected it — a save-then-reload trap. Letting the
@@ -418,10 +434,11 @@ does not decide for the user.
 | `readFile(path, opts)` / `readCurrentFile(opts)` | read a file / the selected file |
 | `readRange(path, offset, maxBytes)` | read a byte window (for large files) |
 | `listDir(path)` | list a folder for a consumer (e.g. the Results file picker) |
-| `writeFile(path, text\|Blob)` | write a file (string → write, Blob → upload) |
+| `writeFile(path, text\|Blob)` | write a file (string → write, Blob → upload); the folder announced |
 | `isCancelError(err)` | tell a user-cancel apart from a real error |
 
-**Organizing files** (each refreshes the sidebar on success)
+**Organizing files** (each announces, on success, the folders it changed — and
+one it took away — § 2; the sidebar showing one re-lists it)
 
 | Call | Server route |
 |---|---|
@@ -512,8 +529,9 @@ into the Documents tab). These are tracked as known gaps.
 - `test_sidebar_e2e.py` — in the browser: each tab back to its own folder and file
   (§ 2), and a project deleted only once its name is typed.
 - `test_projects_public_surface_js.py` — what the public calls do, fed the real
-  files routes: a change that landed refreshes where it landed, a refused one
-  refreshes nothing, a commit names the whole path and moves the selection,
+  files routes: a change that landed announces the folders it changed, a
+  refused one announces nothing, a commit names the whole path and moves the
+  selection,
   a read and a write answer the uniform result, a subscription taken twice is
   refused by name, and the root asked for before the start has answered is
   answered once it does, and asked after, at once — with the words the start

@@ -636,12 +636,11 @@ function freshFolderState() {
 
 let _fs = freshFolderState();
 
-//: Set while this page announces its OWN write (`publishFolderChanged` runs
-//: its subscribers synchronously).  The writer re-reads the folder itself,
-//: once -- a Save inside its fence -- so this page's own subscriber skips
-//: the announcement: it is for the other views, and only another writer's
-//: (a restore) re-reads this page.
-let _ownPublish = false;
+//: THIS PAGE'S NAME on its own writes' announcements (`web/projects.md`
+//: § 2): the writer re-reads the folder itself, once -- a Save inside its
+//: fence -- so this page's own subscriber skips them; they are for the
+//: other views, and only another writer's change re-reads this page.
+const WRITER = "task-setup";
 
 
 function scheduleFitRefresh(bench) {
@@ -3698,9 +3697,7 @@ function prepButton(kind, picks) {
                     // the answer.
                     const p = window.molbuilder && window.molbuilder.projects;
                     if (p && typeof p.publishFolderChanged === "function") {
-                        _ownPublish = true;
-                        try { p.publishFolderChanged(_dir); }
-                        finally { _ownPublish = false; }
+                        p.publishFolderChanged(_dir, WRITER);
                     }
                     if (p) await loadFolder(p, _dir, { retire: false });
                 }
@@ -5006,7 +5003,8 @@ async function _save() {
     if (projects && body.handover_here
         && typeof projects.deleteEntry === "function") {
         const gone = await projects.deleteEntry(
-            _dir.replace(/\/$/, "") + "/" + body.handover_name, false)
+            _dir.replace(/\/$/, "") + "/" + body.handover_name, false,
+            { by: WRITER })
             .catch(() => null);
         if (!gone || gone.ok === false) {
             // The description is written and correct; a surviving hand-over is
@@ -5032,9 +5030,7 @@ async function _save() {
     /* THE FOLDER CHANGED, said as a prep says it, so the history panel
      * shows the state just saved; this page re-reads below on its own. */
     if (projects && typeof projects.publishFolderChanged === "function") {
-        _ownPublish = true;
-        try { projects.publishFolderChanged(_dir); }
-        finally { _ownPublish = false; }
+        projects.publishFolderChanged(_dir, WRITER);
     }
 
     // Re-open the folder: it is now a description.
@@ -5095,9 +5091,22 @@ function start(projects) {
             /* THIS PAGE'S OWN WRITE re-reads where it is made, once.  A
              * second read from here would escape a Save's fence and, landing
              * after the next edit, replace it with the disk's. */
-            if (_ownPublish) return;
+            if (ev && ev.by === WRITER) return;
             const changed = (ev && ev.dir) || "";
-            if (changed && _dir && changed !== _dir) return;   // not ours
+            if (changed && _dir
+                    && changed !== projects.folderKey(_dir)) return;   // not ours
+            /* EDITS NOT YET SAVED ARE NEVER DROPPED BY ANOTHER WRITER
+             * (`task-setup.md` § 2.1): kept, and the bar says the folder
+             * changed -- Save refuses a file changed on disk (§ 8), and
+             * the page read again is the person's to ask for. */
+            if (_cm && edited()) {
+                saidSave("This folder changed on disk since this page read "
+                         + "it. What this page holds is not saved, and is "
+                         + "kept. Save refuses a record changed on disk; "
+                         + "reloading the page reads the folder as it is "
+                         + "now, dropping what is not saved.", "warn");
+                return;
+            }
             // Another writer's change retires the prep answers.
             loadFolder(projects, _dir, { retire: true });
         });

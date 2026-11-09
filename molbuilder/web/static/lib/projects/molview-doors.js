@@ -19,7 +19,7 @@
 "use strict";
 
 import { chooseSavePath, confirmDestructive } from "./dialogs.js";
-import { apiUpload } from "./api.js";
+import { projects } from "./state.js";
 import { storeZip } from "../zip-store.js";
 import { download } from "./downloads.js";
 
@@ -126,7 +126,7 @@ export const molviewFiles = {
                     return { ok: false, error: (res.body && res.body.error)
                         || ("HTTP " + res.http) };
                 }
-                _refreshSidebar();
+                _announce(path.slice(0, path.lastIndexOf("/")));
                 return { ok: true, path: path,
                          notices: Array.isArray(res.body.notices)
                              ? res.body.notices : null };
@@ -156,16 +156,16 @@ export const molviewFiles = {
                 if (!picked) return { ok: false, cancelled: true };
                 const dir = picked.slice(0, picked.lastIndexOf("/"));
                 const name = picked.slice(picked.lastIndexOf("/") + 1);
-                // Binary bytes ride the upload route (apiWrite is JSON text);
-                // auto_rename keeps a collision from silently clobbering.
-                const out = await apiUpload(dir, blob,
-                                            { filename: name,
-                                              auto_rename: true });
+                // THROUGH THE WRITE DOOR (web/projects.md § 2), which
+                // announces the folder: binary bytes ride its upload route,
+                // and ``autoRename`` keeps a collision from silently
+                // clobbering.
+                const out = await projects.writeFile(
+                    dir + "/" + name, blob, { autoRename: true });
                 if (!out || out.ok === false) {
                     return { ok: false,
                              error: (out && out.error) || "write failed" };
                 }
-                _refreshSidebar();
                 // The NAME comes from the server's answer: auto_rename may
                 // have written `<stem>-2<ext>`, and reporting the name we
                 // ASKED for would confirm a file that does not exist.
@@ -181,12 +181,13 @@ export const molviewFiles = {
     },
 };
 
-/* The sidebar lists what is on disk; a save just changed that.  Reached
- * through the namespace's own refresh — and tolerated absent, because the
- * door must work on a page whose sidebar has not finished mounting. */
-function _refreshSidebar() {
-    try {
-        const p = window.molbuilder && window.molbuilder.projects;
-        if (p && typeof p.refresh === "function") p.refresh();
-    } catch (_) { /* the save stands either way */ }
+/* A STRUCTURE SAVED THROUGH ITS OWN SERVER DOOR CHANGED A FOLDER: announced
+ * (web/projects.md § 2) -- whoever shows it follows it, the sidebar
+ * re-listing it.  Tolerated absent: the door works on a page whose
+ * projects namespace has not finished mounting. */
+function _announce(dir) {
+    const p = window.molbuilder && window.molbuilder.projects;
+    if (p && typeof p.publishFolderChanged === "function") {
+        p.publishFolderChanged(dir);
+    }
 }

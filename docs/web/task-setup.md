@@ -138,6 +138,17 @@ card with nothing to show for that folder is hidden. **Until the folder's
 answer has landed, Save is held**, said in the save bar: what the page holds
 then is the last folder's, and nothing of it is written into this one.
 
+**Another writer's change to the folder is read** *(2.68.5)*: a restore, a
+file renamed, moved, copied, uploaded or deleted from the sidebar, the file
+viewer's Save, a structure saved into it — each announced
+([`projects.md`](?doc=web/projects.md) § 2) — and the page reads its folder
+again. **Edits not yet saved are never dropped by it**: holding them, the
+page keeps them and says, in the save bar, that the folder changed on disk
+since it was read — Save refuses a file changed on disk (§ 8), and the page
+read again, the edits copied first if they are wanted, is the person's to ask
+for. The page's own writes are announced in its name and not read again from
+the announcement: the write reads the folder itself, once.
+
 **And every folder-scoped answer names the folder it is about.** A consumer
 that has moved on discards it rather than rendering it. This is
 [`project-layout.md`](?doc=execution/project-layout.md) § 1.4a's rule applied

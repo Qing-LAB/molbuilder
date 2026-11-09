@@ -423,6 +423,14 @@ const WORKSPACE_TAG = "results:transport";
                 answer = b && b.ok
                     ? { ok: true, outcomes: b.outcomes || [] }
                     : { ok: false, error: String((b && b.error) || r.status) };
+                /* THE DIGEST IS WRITTEN BESIDE THE DATA FILE: its folder
+                 * announced (web/projects.md § 2). */
+                const projects = root.molbuilder && root.molbuilder.projects;
+                if (answer.ok && projects
+                        && typeof projects.publishFolderChanged === "function") {
+                    projects.publishFolderChanged(
+                        String(file).slice(0, String(file).lastIndexOf("/")));
+                }
             } catch (e) {
                 answer = { ok: false, error: String((e && e.message) || e) };
             } finally {

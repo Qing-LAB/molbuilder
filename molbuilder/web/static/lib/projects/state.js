@@ -113,10 +113,10 @@ const commitSubscribers = new Set();
  * the first one.  Reported 2026-08-24 -- Task setup kept displaying stages
  * and a bench that the folder no longer had. */
 const folderSubscribers = new Set();
-// list.js registers itself here at init time; state's refresh() and
-// writeFile() invoke this to ask the list module to re-list
-// the current directory + re-render.  Single handler (not a set)
-// because there's exactly one list view per page.
+// list.js registers itself here at init time; state's refresh() invokes
+// it to ask the list module to re-list the current directory.  Single
+// handler (not a set) because there's exactly one list view per page.
+// The file doors never call it: they announce (`_changed`).
 let refreshHandler = null;
 
 // ``navigateTo`` below refuses while the page-wide busy fence
@@ -186,11 +186,39 @@ function publishSelectionChange(payload) {
  * re-reads on selection would not fire, and one that repainted on every
  * selection publish would repaint constantly for no reason.
  *
- * Payload is ``{dir}``.  A subscriber compares it against the folder it is
- * showing and re-reads only its own.
+ * Payload is ``{dir, by}``.  A subscriber compares ``dir`` against the
+ * folder it is showing and re-reads only its own; ``by`` names the writer
+ * when it named itself, so a page skips its own write's announcement.
  */
-function publishFolderChanged(dir) {
-  _publishToSet(folderSubscribers, { dir: String(dir || "") });
+function publishFolderChanged(dir, by) {
+  _publishToSet(folderSubscribers, { dir: folderKey(dir), by: by || null });
+}
+
+/** A folder as an announcement names it: its absolute path, no trailing
+ *  slash -- the one spelling every subscriber compares. */
+export function folderKey(dir) {
+  return String(dir || "").replace(/\/+$/, "");
+}
+
+/* THE FOLDERS A FILE DOOR CHANGED, ANNOUNCED (`web/projects.md` § 2): every
+ * door below that writes, makes, renames, moves, copies or deletes calls
+ * this once it has succeeded, with each folder whose contents it changed --
+ * and a folder it took away -- so no caller announces or re-lists by hand.
+ * ``by`` is the caller's name when it asked to be named (``opts.by``). */
+function _changed(by, ...dirs) {
+  const seen = new Set();
+  for (const d of dirs) {
+    const dir = folderKey(d);
+    if (dir && !seen.has(dir)) {
+      seen.add(dir);
+      publishFolderChanged(dir, by);
+    }
+  }
+}
+
+/** The folder ``path`` sits in; a top-level entry's is the projects root. */
+function _parentOf(path) {
+  return path.indexOf("/") >= 0 ? path.replace(/\/[^/]+$/, "") : projectsRoot;
 }
 
 // Universal "the user committed this file" publish.  Called by
@@ -383,9 +411,8 @@ async function refresh(opts) {
  * return.
  *
  * Returns:
- *   * ``{ok: true, path, relPath, size, mtime}`` on success.
- *     The sidebar's current directory is auto-refreshed if the
- *     written file landed inside it (so the user sees it appear).
+ *   * ``{ok: true, path, relPath, size, mtime}`` on success, the
+ *     folder written into announced (`_changed`).
  *   * ``{ok: false, error}`` on any backend failure (409 conflict,
  *     400 bad path, 403 perm denied, etc.).  Callers display
  *     ``error`` verbatim to the user; backend messages already
@@ -426,13 +453,7 @@ export async function writeFile(path, text, opts) {
       if (w.aborted) err.aborted = true;
       return err;
     }
-    try {
-      const cur = readSelectionSlot(SS_DIR);
-      if (cur && path.startsWith(cur.replace(/\/$/, "") + "/")
-          && refreshHandler) {
-        await refreshHandler(cur);
-      }
-    } catch (_) { /* refresh failure shouldn't fail the write */ }
+    _changed(opts && opts.by, dir);
     return {
       ok:      true,
       path:    w.path,
@@ -459,15 +480,7 @@ export async function writeFile(path, text, opts) {
     if (w.aborted) err.aborted = true;
     return err;
   }
-  // Refresh the sidebar listing if we wrote into its current dir.
-  // Harmless if not (no-op).  We don't await refresh's own failures.
-  try {
-    const cur = readSelectionSlot(SS_DIR);
-    if (cur && path.startsWith(cur.replace(/\/$/, "") + "/")
-        && refreshHandler) {
-      await refreshHandler(cur);
-    }
-  } catch (_) { /* refresh failure shouldn't fail the write */ }
+  _changed(opts && opts.by, _parentOf(w.path || path));
   return {
     ok:       true,
     path:     w.path,
@@ -496,8 +509,8 @@ function isCancelError(err) {
 
 // ---- Public mutator wrappers ------------------------------------ //
 //
-// Thin pass-throughs over api.js that ALSO trigger a sidebar
-// listing refresh on success, on the public
+// Thin pass-throughs over api.js that ALSO announce the folders they
+// changed on success (`_changed`, web/projects.md § 2), on the public
 // ``window.molbuilder.projects.*`` surface so tab-level code (the
 // /results file-picker dropdown at ``lib/results/file-picker.js``)
 // can call them without reaching into ``projects/api.js`` directly.
@@ -509,9 +522,9 @@ function isCancelError(err) {
 //
 // Each wrapper:
 //   1. Calls the underlying api function.
-//   2. On success, fires ``refreshHandler(<parent>)`` so the
-//      sidebar listing picks up the mutation.  Refresh failure is
-//      swallowed (not a user error; the mutation already landed).
+//   2. On success, announces each folder whose contents it changed --
+//      and a folder it took away -- in ``opts.by``'s name when given;
+//      whoever shows one of them follows it (the sidebar re-lists it).
 //   3. Returns the api response verbatim so the caller sees the
 //      same {ok, ...} envelope shape.
 
@@ -547,112 +560,65 @@ async function readRange(path, offset, maxBytes, opts) {
   return await apiReadRange(path, offset, maxBytes, opts);
 }
 
-/** Create a new project directory at the projects root.  On
- *  success refreshes the projects listing so the new directory
- *  appears in the sidebar without a manual reload.
+/** Create a new project directory at the projects root, announced.
  *  ``opts.signal`` honoured. */
 async function createProject(name, opts) {
   const r = await apiCreateProject(name, opts);
-  if (r && r.ok && refreshHandler) {
-    const root = projectsRoot;
-    if (root) {
-      try { await refreshHandler(root); }
-      catch (_) { /* refresh failure must not fail the create */ }
-    }
-  }
+  if (r && r.ok) _changed(opts && opts.by, projectsRoot);
   return r;
 }
 
-/** Make a subdirectory under ``parent``.  Refreshes ``parent``
- *  on success.  ``opts.signal`` honoured. */
+/** Make a subdirectory under ``parent``, ``parent`` announced.
+ *  ``opts.signal`` honoured. */
 async function mkdir(parent, name, opts) {
   const r = await apiMkdir(parent, name, opts);
-  if (r && r.ok && refreshHandler) {
-    try { await refreshHandler(parent); }
-    catch (_) { /* refresh failure must not fail the mkdir */ }
-  }
+  if (r && r.ok) _changed(opts && opts.by, parent);
   return r;
 }
 
 /** Delete a file or directory.  ``recursive`` (default false)
- *  must be explicit for directory deletes.  Refreshes the
- *  containing directory on success.  ``opts.signal`` honoured. */
+ *  must be explicit for directory deletes.  The containing folder and
+ *  the path gone are announced.  ``opts.signal`` honoured. */
 async function deleteEntry(path, recursive, opts) {
   const r = await apiDelete(path, recursive, opts);
-  if (r && r.ok && refreshHandler) {
-    // Derive the parent dir from the deleted path.  If path has no
-    // separator (a top-level entry), refresh the projects root.
-    const parent = path.indexOf("/") >= 0
-      ? path.replace(/\/[^/]+$/, "")
-      : projectsRoot;
-    if (parent) {
-      try { await refreshHandler(parent); }
-      catch (_) { /* refresh failure must not fail the delete */ }
-    }
-  }
+  if (r && r.ok) _changed(opts && opts.by, _parentOf(path), path);
   return r;
 }
 
 /** Rename a file or directory in place.  ``new_name`` is the new
- *  basename (no path separators; no ``..``).  Refreshes the parent
- *  directory on success so the sidebar shows the new name without
- *  a manual reload.  ``opts.signal`` honoured.
+ *  basename (no path separators; no ``..``).  The parent folder and the
+ *  old path are announced.  ``opts.signal`` honoured.
  *
  *  Per design § C5.  Atomic-no-overwrite: backend returns 409 if
  *  ``new_name`` already exists in the parent. */
 async function rename(path, newName, opts) {
   const r = await apiRename(path, newName, opts);
-  if (r && r.ok && refreshHandler) {
-    const parent = path.indexOf("/") >= 0
-      ? path.replace(/\/[^/]+$/, "")
-      : projectsRoot;
-    if (parent) {
-      try { await refreshHandler(parent); }
-      catch (_) { /* refresh failure must not fail the rename */ }
-    }
-  }
+  if (r && r.ok) _changed(opts && opts.by, _parentOf(path), path);
   return r;
 }
 
 /** Move ``path`` (a file; not a directory in v1) into ``destDir``.
  *  Sidecar-aware: on .xyz/.pdb files, the paired .molstruct.json
  *  moves atomically.  Optional ``opts.newName`` renames during the
- *  move.  Refreshes BOTH the source parent dir AND the destination
- *  dir on success so the entry appears in its new location without
- *  a manual reload.  ``opts.signal`` honoured. */
+ *  move.  The source's folder, the destination and the old path are
+ *  announced.  ``opts.signal`` honoured. */
 async function move(path, destDir, opts) {
   const r = await apiMove(path, destDir, opts);
-  if (r && r.ok && refreshHandler) {
-    const parent = path.indexOf("/") >= 0
-      ? path.replace(/\/[^/]+$/, "")
-      : projectsRoot;
-    // Refresh the destination first so the new entry is visible
-    // immediately even if the source parent refresh fails.
-    try { await refreshHandler(destDir); }
-    catch (_) { /* swallow */ }
-    if (parent && parent !== destDir) {
-      try { await refreshHandler(parent); }
-      catch (_) { /* swallow */ }
-    }
-  }
+  if (r && r.ok) _changed(opts && opts.by, _parentOf(path), destDir, path);
   return r;
 }
 
 /** Copy ``path`` to ``destDir``.  Sidecar-aware on .xyz/.pdb.  Optional
  *  ``opts.newName`` renames the copy; required when destDir is the
- *  source's parent.  Refreshes destDir on success.  ``opts.signal``
- *  honoured. */
+ *  source's parent.  ``destDir`` announced.  ``opts.signal`` honoured. */
 async function copy(path, destDir, opts) {
   const r = await apiCopy(path, destDir, opts);
-  if (r && r.ok && refreshHandler) {
-    try { await refreshHandler(destDir); }
-    catch (_) { /* swallow */ }
-  }
+  if (r && r.ok) _changed(opts && opts.by, destDir);
   return r;
 }
 
 /** Upload a file into ``targetDir``.  ``opts.signal`` honoured.
- *  Refreshes ``targetDir`` on success.  Adds ``relPath`` to the
+ *  ``targetDir`` announced.  Adds ``relPath`` to the
  *  success envelope per design § C6 (UploadOk = WriteOk shape;
  *  backend's /api/files/upload only returns {ok, path, size, mtime}
  *  so we compute relPath from the projects root here). */
@@ -662,10 +628,7 @@ async function upload(targetDir, file, opts) {
     if (r.path && !r.relPath) {
       r.relPath = relativeToProjects(r.path);
     }
-    if (refreshHandler) {
-      try { await refreshHandler(targetDir); }
-      catch (_) { /* refresh failure must not fail the upload */ }
-    }
+    _changed(opts && opts.by, targetDir);
   }
   return r;
 }
@@ -688,16 +651,16 @@ async function upload(targetDir, file, opts) {
  *  ``{ok: false, error: "page is busy: <reason>"}`` while the page
  *  busy fence is claimed -- the impl (openDir) is NEVER called in
  *  that case.  openDir itself is intentionally NOT guarded because
- *  it doubles as the refresh handler called mid-Save-pipeline by
- *  writeFile; the guard lives at the public-surface layer here so
- *  external callers respect the contract without deadlocking the
- *  internal refresh path.
+ *  it doubles as the refresh handler -- the sidebar re-listing a folder
+ *  an operation holding the fence announced; the guard lives at the
+ *  public-surface layer here so external callers respect the contract
+ *  without deadlocking that re-list.
  */
 let _navigateToImpl = null;
 async function navigateTo(absPath, opts) {
   // Defense-in-depth busy guard per § 8.5.  openDir (the underlying
   // impl) is intentionally NOT guarded because it doubles as the
-  // refresh handler called mid-Save-pipeline by writeFile.  The
+  // refresh handler, re-listing an announced folder mid-operation.  The
   // public-surface wrapper enforces the contract here: external
   // callers go through navigateTo and get the refusal; internal
   // callers go through openDir directly and bypass it intentionally.
@@ -776,6 +739,7 @@ export const projects = {
   /* Publish one.  The checkpoint panel calls this after a restore; any
    * writer that rearranges a folder behind an open tab should too. */
   publishFolderChanged,
+  folderKey,
   // Publish a commit event directly.  Sidebar list.js calls this
   // from its dblclick handler; programmatic callers (e.g. the
   // file-picker dropdown on /results, future test harnesses) can
@@ -792,8 +756,8 @@ export const projects = {
   // ---- Public mutator + navigation surface ---------------------- //
   // External callers (the /results tab-level file-picker dropdown at
   // ``lib/results/file-picker.js``) use these WITHOUT reaching into
-  // ./api.js directly.  Each method auto-fires a sidebar listing refresh on
-  // success so the tree stays in sync.
+  // ./api.js directly.  Each mutator announces the folders it changed on
+  // success (`_changed`); whoever shows one follows it.
   readFile,
   readRange,
   listDir,

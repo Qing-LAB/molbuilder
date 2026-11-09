@@ -1866,6 +1866,20 @@ before it was fixed. Docs only — the code text the review found is 2.62.1's.
 | E2E-MON | **closed after 2.62.1** (the user, 2026-11-02: "those two failures seems to be an outdated tests") | `test_monitor_watches_a_live_run_e2e.py::test_every_file_that_ships_beside_a_job_reads_the_run_without_molbuilder` failed: `AttributeError: 'Run' object has no attribute 'run'` — it still handed the monitor the try number 2.60.0 removed (`WatchedRun(run=…)`) | the test: the monitor told the run by its names alone; passes |
 | E2E-STOP | **closed after 2.62.1** (the same) | `test_siesta_stopped_run_e2e.py::test_the_run_panel_says_what_ran_and_why_it_stopped[chromium]` failed: `FileNotFoundError` on a path with the calculation's folder doubled — it read the ladder button's title as a path from the calculation, where since 2.59.0 the page names a path it only shows from the projects folder (`web/results.md` § 0.3) | the test: the run's folder from the projects folder; passes |
 
+## Found by the UI review's group B, its folder item, and 2.68.5's review round (2026-11-08), by the release that owns each
+
+*(B9 of the UI review's findings, read in the code against `web/projects.md` § 2 before any fix; the user, 2026-11-08: "Go ahead with recommendation but I want framework level fix not patching or hacking"; one review round over the whole touched modules, every finding read again in the code)*
+
+| id | where | finding | door |
+|---|---|---|---|
+| K2685-1 | **closed 2.68.5** | the sidebar's rename, move, copy, upload and delete, and the file viewer's Save, announced no folder change: Task setup and the run history went on showing a folder that had changed | the file doors announce every folder they changed, once it has succeeded (`state.js` `_changed`), and re-list nothing by hand; the sidebar's deletes and the viewer's Save through the doors |
+| K2685-2 | **closed 2.68.5** | a page writing through its own server door re-listed the sidebar by hand, or announced nothing — MolView's structure save, the hand-over, the spectrum's frame set, the transmission digest's Read | each announces its folder, the one call |
+| K2685-3 | **closed 2.68.5** | a copy or a move re-listed the sidebar by opening the destination, moving the person to another folder | the sidebar re-lists the folder it shows when announced; a file door never moves it; a copy says where it went |
+| K2685-4 | **closed 2.68.5** | had Task setup read its folder again on every announcement, a file renamed beside it would have dropped what it held unsaved without a word | unsaved, kept and said in the save bar (`task-setup.md` § 2.1) |
+| K2685-5 | **closed 2.68.5** | a page skipped its own announcement by a flag set around a synchronous publish, which an awaited delete escapes | an announcement names its writer (`{dir, by}`), and a page skips its own |
+| K2685-6 | **later** | the sidebar re-lists from the folder last stored as shown: an announcement landing while a folder click is still listing re-lists the old one, and the click is lost — as before 2.68.5, now on more roads | the re-list naming the folder being listed |
+| K2685-7 | **later** | Task setup holding a proposal it has not saved (a hand-over opened) counts as unsaved, and follows no outside change until saved | the proposal's own state, when the hand-over road is next touched |
+
 ## Found by the UI review's group B, its keyboard items, and 2.68.4's review rounds (2026-11-08), by the release that owns each
 
 *(B8 and B10 of the UI review's findings, each read in the code against `web/ui-contract.md` § 4.1 before any fix; the user, 2026-11-08: "framework level fix not patching or hacking"; review rounds over the whole touched modules, every finding read again in the code; the roads walked in Chrome on the dev server)*

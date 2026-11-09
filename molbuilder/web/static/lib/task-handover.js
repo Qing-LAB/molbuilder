@@ -198,9 +198,10 @@
         /* A HAND-OVER'S BYTES go through the content-blind file layer, never
          * a fetch of our own (`web/projects.md` § 1), into `dest` -- the
          * folder checked above, not whatever the sidebar holds when each
-         * write lands.  `writeFile` re-lists the sidebar afterwards.  A
-         * writing door wrote the description itself: there is nothing
-         * to write, and the sidebar is re-listed to show it. */
+         * write lands.  `writeFile` announces the folder (`web/projects.md`
+         * § 2).  A writing door wrote the description itself: there is
+         * nothing to write, and the folder is announced here, the one
+         * call. */
         say("muted", "Writing…");
         /* The STRUCTURE goes first, and the order is deliberate: the hand-over
          * NAMES those files, so writing it before them would leave a folder
@@ -210,9 +211,7 @@
                   .concat([[out.template_name, out.template_text],
                            [out.handover_name, out.handover_text]]);
         const toWrite = parts.filter(([n, x]) => n && typeof x === "string");
-        if (door.writes && typeof projects.refresh === "function") {
-            await projects.refresh();
-        }
+        if (door.writes) projects.publishFolderChanged(dest);
         const done = [];
         for (const [name, text] of toWrite) {
             // writeFile(PATH, TEXT, opts) -- path first.
@@ -223,10 +222,8 @@
             if (wrote && wrote.aborted) {
                 // THE WRITE IN FLIGHT MAY HAVE LANDED -- an aborted request
                 // does not stop one the server already took -- so the folder
-                // is listed again and the line says so.
-                if (typeof projects.refresh === "function") {
-                    await projects.refresh();
-                }
+                // is announced and the line says so.
+                projects.publishFolderChanged(dest);
                 say("muted", "Cancelled while writing " + name + " — "
                     + (done.length ? "after " + done.join(" and ") + "; " : "")
                     + "it may have been written: the sidebar shows the "

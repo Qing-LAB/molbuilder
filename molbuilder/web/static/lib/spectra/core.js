@@ -3764,6 +3764,13 @@
             setStatus(els.framesetStatus, body.error || "not written", "error");
             return;
         }
+        /* THE FOLDER WRITTEN INTO, ANNOUNCED (web/projects.md § 2): whoever
+         * shows it -- the sidebar, the run history -- follows it. */
+        const projects = window.molbuilder && window.molbuilder.projects;
+        if (projects && typeof projects.publishFolderChanged === "function") {
+            projects.publishFolderChanged(
+                String(body.path).slice(0, String(body.path).lastIndexOf("/")));
+        }
         const lines = ["wrote " + body.path].concat(
             // NAMED AS THE FRAME-SET CARD NAMES THEM: the display's count
             // from 1 (`model/structure.md` § 2.2e).

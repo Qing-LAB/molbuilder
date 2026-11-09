@@ -30,7 +30,7 @@
 
 import { projects } from "./state.js";
 import { loadCodeMirror, modeFor } from "../codemirror-load.js";
-import { apiWrite, apiStat, apiRead, apiReadRange } from "./api.js";
+import { apiStat, apiRead, apiReadRange } from "./api.js";
 
 // Modal DOM handles, populated by initPreview().
 let elModal, elTitle, elMeta, elCmView, elError, elStatus, elFindBtn;
@@ -356,12 +356,13 @@ async function saveEdit() {
     elError.textContent = "";
     _setStatus("Saving…", null);
     elSaveBtn.disabled = true;
-    // Route through the api.js envelope: it normalises HTTP errors (409 =
-    // mtime mismatch, path rejected, parent missing -> the server's
-    // user-facing ``error``) AND network drops into one ``{ok:false, error}``
-    // shape, so success is simply ``resp.ok``.
-    const resp = await apiWrite(body.path, body.text,
-                                { expected_mtime: body.expected_mtime });
+    // THROUGH THE WRITE DOOR (web/projects.md § 2): the envelope normalises
+    // HTTP errors (409 = mtime mismatch, path rejected, parent missing ->
+    // the server's user-facing ``error``) and network drops into one
+    // ``{ok:false, error}`` shape, and the folder written into is announced
+    // -- a tab showing it reads it again.
+    const resp = await projects.writeFile(body.path, body.text,
+                                          { expected_mtime: body.expected_mtime });
     if (!resp.ok) {
         elError.textContent = resp.error || "Save failed.";
         _setStatus("", null);

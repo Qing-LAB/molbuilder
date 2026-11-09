@@ -5,8 +5,9 @@
  * directly (a modal dialog from projects/dialogs.js, or for
  * Download a plain navigation the server answers as an
  * attachment).  Backend calls go through projects.* (state.js),
- * which dispatches to projects/api.js + fires a directory refresh
- * on success.
+ * which dispatches to projects/api.js and announces the folder changed
+ * on success (web/projects.md § 2); New project and New folder then open
+ * what they made -- the caller's choice, never the door's.
  *
  * Depth-aware enable/disable (driven by projects.onChange):
  *   * New project    -- always enabled

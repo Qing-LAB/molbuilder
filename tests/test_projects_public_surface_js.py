@@ -235,119 +235,145 @@ def test_readRange_network_drop_returns_uniform_envelope():
 # ----- createProject / mkdir / upload: refresh on success --------- #
 
 
-def _refreshed(app_at, tree, call):
-    """``call`` through the public surface, the sidebar's refresh recorded
-    and its projects root the tree's: what came back, what the server
-    answered, and what was refreshed."""
+def _announced(app_at, tree, call):
+    """``call`` through the public surface, every folder announcement and
+    every hand re-list recorded, its projects root the tree's: what came
+    back, what the server answered, what was announced (``[dir, by]``, the
+    tree's own paths made relative) and what was re-listed by hand."""
     return _run(f"""
-        const refreshArgs = [];
+        const refreshArgs = [], said = [];
         state.setRefreshHandler(async (dir) => refreshArgs.push(dir));
         state.setProjectsRoot({json.dumps(str(tree))});
+        state.projects.onFolderChanged((info) => said.push(info));
         const P = {json.dumps(str(tree / "P"))};
         const r = await {call};
+        const root = {json.dumps(str(tree))};
+        const rel = (d) => d === root ? "" : d.slice(root.length + 1);
         console.log(JSON.stringify({{
-            envelope: r, answer: __answered[0] || null, refreshArgs }}));
+            envelope: r, answer: __answered[0] || null, refreshArgs,
+            said: said.map((s) => [rel(s.dir), s.by]) }}));
     """, app_at)
 
 
-class TestRefreshOnSuccess:
-    """`web/projects.md` § 5: each organizing call "refreshes the sidebar on
-    success" -- the wrapper's OWN decision (`api.js` knows nothing about the
-    sidebar), and the directory it refreshes is what makes it correct:
-    refreshing the wrong one leaves the change invisible while re-listing
-    something else; a file that lands and does not appear reads as an
-    upload that failed, and a row left for a deleted file is one someone
-    clicks.  Each call is answered by the route, and lands on disk."""
+class TestAnnouncedOnSuccess:
+    """`web/projects.md` § 2, § 5: each file door announces, once its change
+    has landed, every folder whose contents it changed -- and a folder it
+    took away -- and re-lists nothing by hand: whoever shows a folder
+    follows it.  The folders it names are what make it correct: naming the
+    wrong one leaves the change invisible to the tab showing it -- a file
+    that lands and does not appear reads as an upload that failed, a row
+    left for a deleted file is one someone clicks.  Each call is answered
+    by the route, and lands on disk.
 
-    @pytest.mark.parametrize("call, refreshed, landed", [
-        ("state.projects.createProject('myjob')", "", "myjob"),
-        ("state.projects.mkdir(P, 'optimization')", "P", "P/optimization"),
-        ("state.projects.upload(P, new File(['x'], 'f.xyz'))", "P", "P/f.xyz"),
-        ("state.projects.rename(P + '/notes.txt', 'new.txt')", "P",
+    MUTATIONS THIS MUST FAIL AGAINST: a door announcing nothing; a door
+    naming the wrong folder; a door re-listing by hand; the writer's name
+    dropped."""
+
+    @pytest.mark.parametrize("call, said, landed", [
+        ("state.projects.createProject('myjob')", [""], "myjob"),
+        ("state.projects.mkdir(P, 'optimization')", ["P"], "P/optimization"),
+        ("state.projects.upload(P, new File(['x'], 'f.xyz'))", ["P"],
+         "P/f.xyz"),
+        ("state.projects.rename(P + '/notes.txt', 'new.txt')",
+         ["P", "P/notes.txt"], "P/new.txt"),
+        ("state.projects.move(P + '/notes.txt', P + '/optimization')",
+         ["P", "P/optimization", "P/notes.txt"], "P/optimization/notes.txt"),
+        ("state.projects.copy(P + '/notes.txt', P + '/optimization')",
+         ["P/optimization"], "P/optimization/notes.txt"),
+        ("state.projects.writeFile(P + '/new.txt', 'hi\\n')", ["P"],
          "P/new.txt"),
-        ("state.projects.deleteEntry(P + '/notes.txt', false)", "P", None),
-    ], ids=["createProject refreshes the root", "mkdir its parent",
-            "upload its target", "rename the old path's parent",
-            "delete its parent"])
-    def test_a_change_that_landed_refreshes_where_it_landed(
-            self, app_at, tree, call, refreshed, landed):
-        out = _refreshed(app_at, tree, call)
+        ("state.projects.deleteEntry(P + '/notes.txt', false)",
+         ["P", "P/notes.txt"], None),
+    ], ids=["createProject the root", "mkdir its parent", "upload its target",
+            "rename the parent and the old path",
+            "move the source's folder, the destination, the old path",
+            "copy the destination", "writeFile its folder",
+            "delete the parent and the path gone"])
+    def test_a_change_that_landed_announces_where_it_changed(
+            self, app_at, tree, call, said, landed):
+        if ".move(" in call or ".copy(" in call:      # their destination
+            (tree / "P" / "optimization").mkdir()
+        out = _announced(app_at, tree, call)
         assert out["answer"]["ok"] is True, out["answer"]
         assert out["envelope"]["ok"] is True
-        assert out["refreshArgs"] == [str(tree / refreshed).rstrip("/")]
+        assert out["said"] == [[d, None] for d in said], out["said"]
+        assert out["refreshArgs"] == [], "a door re-listed by hand"
         if landed:
             assert (tree / landed).exists()
         else:
             assert not (tree / "P" / "notes.txt").exists()
 
+    def test_the_writer_named_is_named_in_the_announcement(self, app_at,
+                                                           tree):
+        """A caller that skips its own write's announcement names itself
+        (``opts.by``): Task setup deleting the hand-over it has just
+        turned into a description."""
+        out = _announced(app_at, tree, "state.projects.deleteEntry("
+                         "P + '/notes.txt', false, { by: 'task-setup' })")
+        assert out["said"] == [["P", "task-setup"],
+                               ["P/notes.txt", "task-setup"]], out["said"]
 
-# ----- Failure path: no refresh ----------------------------------- #
+
+    def test_a_listener_that_throws_fails_neither_the_change_nor_the_others(
+            self, app_at, tree):
+        """Each view follows on its own: a listener that throws -- a view
+        broken mid-redraw -- neither fails the change that landed nor keeps
+        the announcement from the views after it."""
+        out = _run(f"""
+            state.setProjectsRoot({json.dumps(str(tree))});
+            const said = [];
+            state.projects.onFolderChanged(() => {{
+                throw new Error("a view broken mid-redraw"); }});
+            state.projects.onFolderChanged((info) => said.push(info.dir));
+            const r = await state.projects.mkdir(
+                {json.dumps(str(tree / "P"))}, "optimization");
+            console.log(JSON.stringify({{ r, said }}));
+        """, app_at)
+        assert out["r"]["ok"] is True, out["r"]
+        assert out["said"] == [str(tree / "P")], out["said"]
+        assert (tree / "P" / "optimization").is_dir()
 
 
-class TestNoRefreshOnFailure:
-    """A refused change must NOT trigger the listing refresh -- the folder
-    did not change -- and comes back in the server's words."""
+# ----- Failure path: nothing announced ---------------------------- #
+
+
+class TestNothingAnnouncedOnFailure:
+    """A refused change announces nothing -- the folder did not change --
+    and comes back in the server's words."""
 
     @pytest.mark.parametrize("call", [
         "state.projects.rename(P + '/notes.txt', 'big.log')",
         "state.projects.mkdir(P, 'not-a-topic')",
     ], ids=["a rename onto an existing name (409)",
             "a folder the project's topics do not name"])
-    def test_a_refused_change_does_not_refresh(self, app_at, tree, call):
-        out = _refreshed(app_at, tree, call)
+    def test_a_refused_change_announces_nothing(self, app_at, tree, call):
+        out = _announced(app_at, tree, call)
         assert out["answer"]["ok"] is False, out["answer"]
         assert out["envelope"]["ok"] is False
         assert out["envelope"]["error"] == out["answer"]["error"]
-        assert out["refreshArgs"] == []
+        assert out["said"] == [] and out["refreshArgs"] == []
 
-    def test_upload_network_failure_does_not_refresh(self):
-        """A network drop during upload returns the failure envelope AND does not
-        refresh.
+    def test_upload_network_failure_announces_nothing(self):
+        """A network drop during upload returns the failure envelope AND
+        announces nothing.
 
-        Two halves that must hold together: `fetch` throwing must not propagate
-        (`web/projects.md` § 5 -- these calls never throw), and the refresh must
-        be gated on `r.ok` rather than merely on having returned. A refresh after a
-        failed upload re-lists a directory that did not change, which on a slow
-        filesystem makes a failure look like a success that has not appeared yet.
-        """
+        Two halves that must hold together: `fetch` throwing must not
+        propagate (`web/projects.md` § 5 -- these calls never throw), and the
+        announcement must be gated on `r.ok` rather than merely on having
+        returned: a folder announced after a failed upload is re-listed
+        unchanged, which on a slow filesystem makes a failure look like a
+        success that has not appeared yet."""
         out = _run('''
-            const refreshArgs = [];
-            state.setRefreshHandler(async (dir) => refreshArgs.push(dir));
+            const said = [];
+            state.projects.onFolderChanged((info) => said.push(info));
             global.fetch = async () => {
                 throw new TypeError("Failed to fetch");
             };
             const r = await state.projects.upload("/p", { name: "f" });
-            console.log(JSON.stringify({
-                envelope:    r,
-                refreshArgs: refreshArgs,
-            }));
+            console.log(JSON.stringify({ envelope: r, said }));
         ''')
         assert out["envelope"]["ok"] is False
-        assert out["refreshArgs"] == []
-
-
-# ----- Refresh failure swallowed ---------------------------------- #
-
-
-class TestRefreshFailureSwallowed:
-
-    def test_mkdir_success_with_failing_refresh_still_succeeds(self, app_at,
-                                                               tree):
-        """If the post-success refresh itself throws (e.g. transient
-        listing fetch failure), the mutation envelope should still
-        report success -- the dir DID land on disk; the user can
-        refresh manually."""
-        out = _run(f"""
-            state.setRefreshHandler(async () => {{
-                throw new Error("listing fetch failed");
-            }});
-            const r = await state.projects.mkdir(
-                {json.dumps(str(tree / "P"))}, "optimization");
-            console.log(JSON.stringify({{ r, answer: __answered[0] }}));
-        """, app_at)
-        assert out["answer"]["ok"] is True
-        assert out["r"] == out["answer"]
-        assert (tree / "P" / "optimization").is_dir()
+        assert out["said"] == []
 
 
 # ----- navigateTo ------------------------------------------------ #

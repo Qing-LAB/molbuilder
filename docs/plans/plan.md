@@ -56,7 +56,10 @@ page-wide cover giving focus back where the person left it (the ledger's
 *Found by … 2.68.3*). **2.68.4**: group B's keyboard items — one list of
 choices for every list (`lib/one-stop-list.js`), one plain button, every
 action a click performs reached by the keys (the ledger's *Found by … 2.68.4*);
-next, B9, then B11/B12, then the rest of group B, then D and C.
+**2.68.5**: group B's folder item — every file door and every page's own
+save announces the folder it changed, whoever shows it follows, Task setup
+keeping what it holds unsaved (the ledger's *Found by … 2.68.5*); next,
+B11/B12, then the rest of group B, then D and C.
 
 **What runs next**: **the UI review** *(the user, 2026-11-08: "Right after
 2.67.11")* — every tab walked in Chrome on the dev server through an

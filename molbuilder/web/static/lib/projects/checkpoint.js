@@ -899,7 +899,7 @@ async function _restore(dir, sha, label, force) {
              * are open or what they cache. */
             const _p = window.molbuilder && window.molbuilder.projects;
             if (_p && typeof _p.publishFolderChanged === "function") {
-                _p.publishFolderChanged(dir);
+                _p.publishFolderChanged(dir, "history");
             }
             _showAdvisory(`This folder is now ${label}.`);
             return;
@@ -962,7 +962,10 @@ export function initCheckpointPanel() {
         if (typeof window.molbuilder.projects.onFolderChanged === "function") {
             window.molbuilder.projects.onFolderChanged((info) => {
                 const dir = info && info.dir || null;
-                if (dir && dir === _state.currentDir && _state.open) _refresh();
+                // ITS OWN RESTORE it has read already (web/projects.md § 2).
+                if (info && info.by === "history") return;
+                if (dir && dir === window.molbuilder.projects.folderKey(
+                        _state.currentDir) && _state.open) _refresh();
             });
         }
         // Also seed from the current state if a dir is already

@@ -8,16 +8,17 @@
  *     Move / Copy / Delete; plus Delete-project / Delete-directory on dir rows).
  *
  * Registers openDir as state.setRefreshHandler(handler) at init time
- * so state.refresh() / state.writeFile() can ask for a re-list
- * without importing list.js (avoids a circular dep).
+ * so state.refresh() can ask for a re-list without importing list.js
+ * (avoids a circular dep); a folder the file doors announce is re-listed
+ * through it when it is the one shown (web/projects.md § 2).
  *
  * Spec: docs/web/projects.md § Sidebar interaction rules.
  */
 
-import { apiList, apiDelete } from "./api.js";
+import { apiList } from "./api.js";
 import {
   setShared, publishCommit, getProjectsRoot, setRefreshHandler,
-  SS_FILE, SS_DIR, readSelectionSlot, tell,
+  SS_FILE, SS_DIR, readSelectionSlot, tell, relativeToProjects,
   projects as _projectsApi,
 } from "./state.js";
 import { showPreview } from "./preview.js";
@@ -363,7 +364,7 @@ function _openKebab(trigger, entry, fullPath, currentPath) {
   // topic-dir menu (different scope: this wipes EVERY topic under
   // the project, plus any other files).  Strong confirmation: the user
   // must type the full project name to acknowledge.  Routes
-  // through ``apiDelete`` with both ``recursive`` AND ``force``
+  // through the delete door with both ``recursive`` AND ``force``
   // (the depth-0 path is special-cased in the backend too).  No
   // other items in this branch.
   if (_isProjectDirAtDepth0(entry, currentPath)) {
@@ -378,14 +379,13 @@ function _openKebab(trigger, entry, fullPath, currentPath) {
         confirmLabel: "Delete project",
       });
       if (!sure) return;
-      const r = await apiDelete(fullPath, true, { force: true });
+      // THE DOOR ANNOUNCES the folder (web/projects.md § 2): the list
+      // follows it, re-listed where it stands.
+      const r = await _projectsApi.deleteEntry(fullPath, true, { force: true });
       if (r && r.aborted) return;
       if (!r || !r.ok) {
         tell("error", (r && r.error) || "Delete failed.");
         return;
-      }
-      if (elList) {
-        await openDir(currentPath);
       }
     }, { destructive: true });
     // No ``return;`` -- the remaining branches gate themselves out
@@ -398,7 +398,7 @@ function _openKebab(trigger, entry, fullPath, currentPath) {
   // A project's topic folder: a SEPARATE menu shape with just one
   // item ("Delete directory") so the menu visibly expresses that
   // this is a different (destructive) action class from the regular
-  // file menu.  Routes through ``apiDelete`` with both ``recursive``
+  // file menu.  Routes through the delete door with both ``recursive``
   // (the dir may contain files) AND ``force`` (bypass the backend's
   // canonical-topic refusal at depth 2).  Strong confirmation
   // prompt explicitly warns about losing all contents -- the user
@@ -416,14 +416,13 @@ function _openKebab(trigger, entry, fullPath, currentPath) {
         confirmLabel: "Delete directory",
       });
       if (!sure) return;
-      const r = await apiDelete(fullPath, true, { force: true });
+      // THE DOOR ANNOUNCES the folder (web/projects.md § 2): the list
+      // follows it, re-listed where it stands.
+      const r = await _projectsApi.deleteEntry(fullPath, true, { force: true });
       if (r && r.aborted) return;
       if (!r || !r.ok) {
         tell("error", (r && r.error) || "Delete failed.");
         return;
-      }
-      if (elList) {
-        await openDir(currentPath);
       }
     }, { destructive: true });
     // No ``return;`` -- same reasoning as the project-dir branch
@@ -530,6 +529,9 @@ function _openKebab(trigger, entry, fullPath, currentPath) {
       if (r && r.aborted) return;
       if (!r || !r.ok) {
         tell("error", (r && r.error) || "Copy failed.");
+      } else {
+        // SAID WHERE IT WENT: the list stays on its folder (§ 2).
+        tell("info", "Copied to " + relativeToProjects(r.path || dest) + ".");
       }
     });
   }
@@ -544,14 +546,11 @@ function _openKebab(trigger, entry, fullPath, currentPath) {
         confirmLabel:  "Delete",
       });
       if (!ok) return;
-      const r = await apiDelete(fullPath,
+      const r = await _projectsApi.deleteEntry(fullPath,
         entry.kind === "directory");
       if (r && r.aborted) return;
       if (!r || !r.ok) {
         tell("error", (r && r.error) || "Delete failed.");
-      } else if (elList) {
-        // Reuse the openDir refresh path so the entry list re-paints.
-        await openDir(currentPath);
       }
     }, { destructive: true });
   }
@@ -695,10 +694,9 @@ function _renderList(entries, currentPath) {
  */
 export async function openDir(absPath) {
   // Read the current file selection BEFORE we clobber sessionStorage.
-  // ``state.writeFile`` (lib/projects/state.js) calls refreshHandler(cur)
-  // -> openDir() after every successful write -- which means every
-  // "Generate script + Save", every "Modify + Save", and every project-
-  // tree mutation re-runs this function with absPath = parent_dir.
+  // A folder the file doors announce re-runs this function, through
+  // refresh(), when it is the one shown -- every save into it and every
+  // project-tree change -- with absPath = that folder.
   // Always blanking the selection here would wipe it out of
   // sessionStorage on every save, silently breaking every
   // load-from-selection downstream.
@@ -905,13 +903,17 @@ export function initList() {
   // syncs the entry-marker + status line.
   _projectsApi.onChange(renderSidebar);
 
-  // AND WHEN THE FOLDER'S FILES CHANGE UNDERNEATH US.  A checkpoint
-  // restore rewrites what is in the directory while the SELECTION sits
-  // still, so `onChange` never fires and the list would keep showing
-  // files the folder no longer has (reported 2026-08-24).
-  // `refresh()` re-lists through the handler this module registered, so
-  // there is no second re-paint path to keep in step.
+  // AND WHEN THE FOLDER'S FILES CHANGE UNDERNEATH US -- a restore, a
+  // file door's write, rename, move, copy or delete, another page's save
+  // (web/projects.md § 2): the folder this list shows, announced, is
+  // re-listed where it stands.  A file operation never moves the list to
+  // another folder.  `refresh()` re-lists through the handler this module
+  // registered, so there is no second re-paint path to keep in step.
   if (typeof _projectsApi.onFolderChanged === "function") {
-    _projectsApi.onFolderChanged(() => { _projectsApi.refresh(); });
+    _projectsApi.onFolderChanged((info) => {
+      const shown = _projectsApi.folderKey(
+        readSelectionSlot(SS_DIR) || getProjectsRoot());
+      if (info && info.dir === shown) _projectsApi.refresh();
+    });
   }
 }
