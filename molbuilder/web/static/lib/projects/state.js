@@ -490,23 +490,6 @@ export async function writeFile(path, text, opts) {
   };
 }
 
-/**
- * Predicate matching every cancellation shape in the codebase
- * (AbortError thrown by fetch, raw envelope ``aborted``, a door's
- * ``cancelled`` for a question the person declined, embed ViewerError
- * ``code:"aborted"``).
- * Does NOT match ``code:"disposed"`` (host-teardown is not user
- * cancellation).  See docs/web/projects.md
- */
-function isCancelError(err) {
-  if (!err) return false;
-  if (err.name === "AbortError") return true;
-  if (err.aborted === true) return true;
-  if (err.cancelled === true) return true;
-  if (err.code === "aborted") return true;
-  return false;
-}
-
 // ---- Public mutator wrappers ------------------------------------ //
 //
 // Thin pass-throughs over api.js that ALSO announce the folders they
@@ -752,7 +735,6 @@ export const projects = {
   relativeToProjects,
   refresh,
   writeFile,
-  isCancelError,
   // ---- Public mutator + navigation surface ---------------------- //
   // External callers (the /results tab-level file-picker dropdown at
   // ``lib/results/file-picker.js``) use these WITHOUT reaching into

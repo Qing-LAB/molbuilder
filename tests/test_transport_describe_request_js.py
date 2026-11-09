@@ -34,6 +34,9 @@ from tests._node_esm import run_node, served
 
 _ROOT = Path(__file__).resolve().parents[1]
 _SENDER = _ROOT / "molbuilder/web/static/lib/task-handover.js"
+#: The one reader of a server's answer, which the page's header loads before
+#: any click can send (`web/ui-contract.md` § 12).
+_READER = _ROOT / "molbuilder/web/static/lib/server.js"
 
 pytestmark = pytest.mark.module
 
@@ -81,7 +84,7 @@ def _send(app_at, dest, door, calculation, fields):
     through it fails the run."""
     choice = json.dumps({"door": door, "calculation": calculation,
                          "fields": fields, "dest": dest})
-    return run_node([_SENDER], f"""
+    return run_node([_READER, _SENDER], f"""
         const choice = {choice};
         const projects = {{
             getCurrentDir: () => choice.dest,

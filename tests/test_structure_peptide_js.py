@@ -24,9 +24,11 @@ from tests._node_esm import run_node, served
 ROOT = Path(__file__).resolve().parents[1]
 MODULE = ROOT / "molbuilder/web/static/modify/structure/peptide.js"
 #: The panel reads its dependency slots from the shared wiring
-#: (`panel-deps.js`), which the page loads before it.  A harness that
-#: skips it is testing a module the browser never runs.
+#: (`panel-deps.js`), which the page loads before it, and asks through the
+#: page's one reader (`lib/server.js`, in the shared header).  A harness that
+#: skips either is testing a module the browser never runs.
 PANEL_DEPS = ROOT / "molbuilder/web/static/modify/structure/panel-deps.js"
+SERVER = ROOT / "molbuilder/web/static/lib/server.js"
 
 #: The panel wired as the page wires it -- its findings list named
 #: (`wirePanel`), the one renderer a recorder (`drawn`) -- its builds asked
@@ -51,7 +53,7 @@ def _run(snippet: str, app_at: str) -> object:
     ``app_at`` (`_node_esm.served`: ``__calls`` each request as it left,
     ``__answered`` each answer, read)."""
     return run_node(
-        [PANEL_DEPS],
+        [SERVER, PANEL_DEPS],
         f"const pep = (await import({json.dumps(MODULE.as_uri())})).default;\n"
         f"{WIRED}\n{snippet}",
         globals_js=served(app_at))

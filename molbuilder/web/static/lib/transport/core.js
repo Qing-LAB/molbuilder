@@ -22,7 +22,10 @@
  * start over (`web/tabs.md`).
  */
 import { mount } from "/static/lib/molview/index.js";
+// THE APP'S DOORS FOR A VIEWER, one bundle (molview.md § 4).
+import { molviewDoors } from "../projects/molview-doors.js";
 import { fitRow } from "/static/lib/transport/fit.js";
+import { ask } from "../server.js";
 
 /* WHO THIS TAB'S SAVED WORK BELONGS TO (workspace.md § 4) — the one string used
  * both as the viewer's `owner` and as the tag on any workspace call, so the two
@@ -79,14 +82,12 @@ const WORKSPACE_TAG = "transport";
             + (rung && _junction
                ? "&shared=" + encodeURIComponent(JSON.stringify(_sharedHeld()))
                : "");
-        return root.fetch(url)
-            .then(function (r) {
-                return r.json().then(function (body) {
-                    if (!r.ok || !body.ok) {
-                        throw new Error(body.error || "schema fetch failed");
-                    }
-                    return body;
-                });
+        // THE ONE READER (ui-contract.md § 12): a failure is drawn below in
+        // its words.
+        return ask(url)
+            .then(function (a) {
+                if (!a.ok) throw new Error(a.error);
+                return a.body;
             })
             .then(function (body) {
                 if (isCurrent && !isCurrent()) return null;
@@ -182,13 +183,12 @@ const WORKSPACE_TAG = "transport";
         // nothing -- a late one would point `_rungHosts` at a tab already
         // gone from the page, and the Send would read that.
         var seq = ++_rungsSeq;
-        return root.fetch(SCHEMA_URL + "?surface=rung&engine="
-                          + encodeURIComponent(_engine()))
-            .then(function (r) { return r.json(); })
-            .then(function (body) {
-                if (!body || !body.ok) {
-                    throw new Error((body && body.error) || "schema fetch failed");
-                }
+        // THE ONE READER (ui-contract.md § 12).
+        return ask(SCHEMA_URL + "?surface=rung&engine="
+                   + encodeURIComponent(_engine()))
+            .then(function (a) {
+                if (!a.ok) throw new Error(a.error);
+                var body = a.body;
                 if (seq !== _rungsSeq) return false;
                 var rungs = body.rungs || [];
                 _rungRows = rungs;
@@ -568,15 +568,10 @@ const WORKSPACE_TAG = "transport";
          * The first install into the empty viewer runs in any mode, and a
          * new citation swaps the structure through the load door's own
          * `enforce` (projects/parser.js) -- a deliberate swap is the
-         * host's business, not an edit (§ 11.2a).
-         *
-         * Both mount paths run at projects-ready moments -- the pick
-         * handler by construction, the init-restore because it awaits
-         * whenReady("projects") -- so the files door is real when read. */
-        var _proj = root.molbuilder && root.molbuilder.projects;
-        return mount(host, ws, { mode: "readonly",
-                                 owner: WORKSPACE_TAG,
-                                 files: _proj && _proj.molviewFiles })
+         * host's business, not an edit (§ 11.2a). */
+        return mount(host, ws, Object.assign({ mode: "readonly",
+                                               owner: WORKSPACE_TAG },
+                                             molviewDoors))
             .then(function (h) {
                 _mvHandle = (h && h.ok) ? h : null;
                 /* THE TAB'S DEFAULT REPRESENTATION IS BALL-AND-STICK
@@ -1073,19 +1068,18 @@ const WORKSPACE_TAG = "transport";
             });
     }
 
+    /* THE ONE READER (ui-contract.md § 12): the answer's body, or a rejection
+     * carrying its sentence -- the shape every caller here takes. */
     function _describeAttempt(rel, swap, reuses) {
-        return root.fetch("/api/transport/describe_attempt?path="
-                          + encodeURIComponent(rel.replace(/^\/+/, ""))
-                          + "&engine=" + encodeURIComponent(_engine())
-                          + (swap ? "&swap_electrodes=1" : "")
-                          + (reuses ? "&reuses=" + encodeURIComponent(reuses)
-                                    : ""))
-            .then(function (r) { return r.json(); })
-            .then(function (b) {
-                if (!b || b.ok === false) {
-                    throw new Error((b && b.error) || "unreadable");
-                }
-                return b;
+        return ask("/api/transport/describe_attempt?path="
+                   + encodeURIComponent(rel.replace(/^\/+/, ""))
+                   + "&engine=" + encodeURIComponent(_engine())
+                   + (swap ? "&swap_electrodes=1" : "")
+                   + (reuses ? "&reuses=" + encodeURIComponent(reuses)
+                             : ""))
+            .then(function (a) {
+                if (!a.ok) throw new Error(a.error);
+                return a.body;
             });
     }
 
@@ -1630,21 +1624,18 @@ const WORKSPACE_TAG = "transport";
         var name = _extend ? _extend.name : _reuses;
         status.hidden = false;
         status.textContent = "Working out the plan\u2026";
-        root.fetch("/api/transport/describe", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(body),
-        }).then(function (r) { return r.json(); })
+        // THE ONE READER (ui-contract.md § 12).
+        ask("/api/transport/describe", { method: "POST", body: body })
             .then(function (a) {
                 if (mine !== _planSeq) return;
-                if (!a || !a.ok) {
+                if (!a.ok) {
                     box.hidden = true;
                     box.textContent = "";
                     status.textContent = "The plan could not be worked "
-                        + "out: " + ((a && a.error) || "no answer");
+                        + "out: " + a.error;
                     return;
                 }
-                var lines = a.manifest || [];
+                var lines = a.body.manifest || [];
                 box.hidden = !lines.length;
                 box.textContent = lines.join("\n");
                 status.textContent = "The plan \u2014 what is copied from "

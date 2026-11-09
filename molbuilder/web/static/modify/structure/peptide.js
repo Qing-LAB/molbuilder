@@ -20,7 +20,7 @@
  * surfaces as "Kept existing workspace."
  *
  * Test seam: ``configure(opts)`` lets tests inject a fake
- * fetch + structurePage.
+ * structurePage.
  *
  * Design ref: docs/web/tabs.md § 2 (Creating a structure — the in-gate).
  */
@@ -135,9 +135,6 @@
         root.molbuilder = root.molbuilder || {};
         root.molbuilder.structurePeptide = api;
         configure({
-            fetch:         root.fetch
-                            ? root.fetch.bind(root)
-                            : undefined,
             structurePage: root.molbuilder.structurePage,
         });
         if (root.document) {

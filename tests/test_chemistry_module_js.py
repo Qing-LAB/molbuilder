@@ -33,10 +33,10 @@ from tests._node_esm import run_node, served
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
 STATIC = REPO / "molbuilder/web/static/lib"
-#: Loaded in the page's order: the card delegates the failed-fetch sentence to
-#: fetch-error.js and the chips to detection-chip.js -- a stub that fakes
-#: either would test the stub.
-MODULES = [STATIC / "fetch-error.js", STATIC / "dom.js",
+#: Loaded as the page has them: the card asks through the one reader
+#: (server.js) and delegates the chips to detection-chip.js -- a stub that
+#: fakes either would test the stub.
+MODULES = [STATIC / "server.js", STATIC / "dom.js",
            STATIC / "detection-chip.js", STATIC / "chemistry.js"]
 
 #: A DOM stub with just enough semantics for the modules, and a fetch whose

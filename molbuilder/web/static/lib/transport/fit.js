@@ -11,6 +11,7 @@
  * is made of the shared components both pages load (`form-components.css`
  * `.fdf-actions`; the shell's `.status` and `button`).
  */
+import { ask } from "../server.js";
 
 /** A row offering the fit for the calculation `reuses` names -- `name`,
  *  as the server names it (`Extension.name`); `use` takes the fitted
@@ -31,7 +32,7 @@ export function fitRow({ reuses, name, use, doc = document }) {
     const [loLabel, lo] = num("", "from", "any");
     const [hiLabel, hi] = num("", "to", "any");
     const [finerLabel, finer] = num("1", "times finer", "2");
-    const ask = el("button", { type: "button", class: "btn" }, "Fit");
+    const fit = el("button", { type: "button", class: "btn" }, "Fit");
     const said = el("span", { class: "status", role: "status" });
     // THE ONE STATUS WRITER (`lib/status.js`): a refusal in the error colour.
     const say = (msg, kind) => window.molbuilder.status.set(said, msg,
@@ -47,22 +48,18 @@ export function fitRow({ reuses, name, use, doc = document }) {
             say("");
         });
     }
-    ask.addEventListener("click", async () => {
+    fit.addEventListener("click", async () => {
         fitted = null;
         take.hidden = true;
         say("Fitting…");
         const q = new URLSearchParams({ reuses: reuses, lo: lo.value,
                                         hi: hi.value, finer: finer.value });
-        try {
-            const r = await fetch("/api/transport/fit?" + q);
-            const b = await r.json();
-            if (!b.ok) { say(b.error || "not fitted", "error"); return; }
-            fitted = b;
-            say(b.words);
-            take.hidden = false;
-        } catch (e) {
-            say(String((e && e.message) || e), "error");
-        }
+        // THE ONE READER (ui-contract.md § 12).
+        const a = await ask("/api/transport/fit?" + q);
+        if (!a.ok) { say(a.error, "error"); return; }
+        fitted = a.body;
+        say(fitted.words);
+        take.hidden = false;
     });
     take.addEventListener("click", () => {
         if (!fitted) return;
@@ -71,5 +68,5 @@ export function fitRow({ reuses, name, use, doc = document }) {
     return el("div", { class: "fdf-actions" },
               el("strong", null, "The window, fitted to the grid of "
                  + name + ":"),
-              loLabel, hiLabel, finerLabel, ask, said, take);
+              loLabel, hiLabel, finerLabel, fit, said, take);
 }

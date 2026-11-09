@@ -106,18 +106,14 @@
         if (barEl) barEl.hidden = false;
         _showMessage("docs-loading", "Loading…");
 
-        var r;
-        try {
-            r = await fetch("/api/docs/read?path=" + encodeURIComponent(path))
-                    .then(function (x) { return x.json(); });
-        } catch (e) {
-            _showMessage("docs-error", "Network error: " + (e && e.message || ""));
+        // THE ONE READER (ui-contract.md § 12), ready since init waited.
+        var a = await window.molbuilder.server.ask(
+            "/api/docs/read?path=" + encodeURIComponent(path));
+        if (!a.ok) {
+            _showMessage("docs-error", a.error);
             return;
         }
-        if (!r || !r.ok) {
-            _showMessage("docs-error", (r && r.error) || "Could not load document.");
-            return;
-        }
+        var r = a.body;
         try {
             await window.molbuilder.markdownRender.loadRenderLibs();
             renderEl.innerHTML = window.molbuilder.markdownRender.render(r.text);
@@ -263,12 +259,16 @@
     }
 
     async function init() {
-        var r;
-        try {
-            r = await fetch("/api/docs/toc").then(function (x) { return x.json(); });
-        } catch (e) { _setStatus("Failed to load the document list."); return; }
-        if (!r || !r.ok || (!r.tree || !r.tree.length) && !r.readme) {
-            _setStatus((r && r.error) || "No documents found."); return;
+        // THE ONE READER (ui-contract.md § 12) is a module: asked once it
+        // has run.
+        var server = await window.molbuilder.runtime.whenReady("server");
+        var a = await server.ask("/api/docs/toc");
+        if (!a.ok) {
+            _setStatus("Failed to load the document list: " + a.error); return;
+        }
+        var r = a.body;
+        if ((!r.tree || !r.tree.length) && !r.readme) {
+            _setStatus("No documents found."); return;
         }
         statusEl.remove();
         renderTree(r.tree, r.readme);

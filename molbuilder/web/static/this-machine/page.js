@@ -27,6 +27,9 @@
 
     var CHANNELS = "/api/notify/channels";
     var LISTENER = "/api/notify/listener";
+    /* Every question goes through THE ONE READER (`ui-contract.md` § 12),
+     * `window.molbuilder.server`: a module the header loads, run before
+     * DOMContentLoaded -- before this page first asks. */
 
     /* Remove is destructive, so it asks -- by becoming its own confirmation
      * rather than opening a modal.  One click arms, the next removes, and
@@ -123,12 +126,14 @@
     }
 
     async function loadChannels() {
-        try {
-            var r = await fetch(CHANNELS);
-            paintChannels(await r.json());
-        } catch (e) {
-            say("tm-file", "Could not ask this server: " + e, "error");
+        var answer = await window.molbuilder.server.ask(CHANNELS);
+        // A REFUSAL IS NOT "NO CHANNELS": said, in the server's words.
+        if (!answer.ok) {
+            say("tm-file", "This machine's channels could not be read: "
+                + answer.error, "error");
+            return;
         }
+        paintChannels(answer.body);
     }
 
     async function saveChannel(ev) {
@@ -146,32 +151,27 @@
         // thinking about.
         armed = null;
         say("tm-form-note", "saving…", "muted");
-        try {
-            var r = await fetch(CHANNELS + "/" + encodeURIComponent(name), {
+        var answer = await window.molbuilder.server.ask(
+            CHANNELS + "/" + encodeURIComponent(name), {
                 method: "PUT",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
+                body: {
                     url: url.trim(),
                     key: listener ? key.trim() : "",
                     // THE MONITOR'S OWN VOCABULARY, sent as chosen.
                     kind: kind,
-                }),
+                },
             });
-            var d = await r.json();
-            if (!d.ok) {
-                say("tm-form-note", d.error || "could not save", "error");
-                return;
-            }
-            /* CLEARED ON SUCCESS: the key field is write-only, and a secret
-             * left sitting in the DOM is how it ends up in a screenshot. */
-            if ($("tm-key")) $("tm-key").value = "";
-            paintChannels(d);
-            say("tm-form-note", "Saved " + name
-                + ". Test it — that is the only way to know it works.",
-                "ok");
-        } catch (e) {
-            say("tm-form-note", String(e), "error");
+        if (!answer.ok) {
+            say("tm-form-note", answer.error, "error");
+            return;
         }
+        /* CLEARED ON SUCCESS: the key field is write-only, and a secret
+         * left sitting in the DOM is how it ends up in a screenshot. */
+        if ($("tm-key")) $("tm-key").value = "";
+        paintChannels(answer.body);
+        say("tm-form-note", "Saved " + name
+            + ". Test it — that is the only way to know it works.",
+            "ok");
     }
 
     async function testChannel(name, button) {
@@ -180,17 +180,20 @@
         // ONE REPORT PER CLICK: the button waits for its answer.
         if (button) button.disabled = true;
         try {
-            var d = await (await fetch(
+            var answer = await window.molbuilder.server.ask(
                 CHANNELS + "/" + encodeURIComponent(name) + "/test",
-                { method: "POST" })).json();
+                { method: "POST" });
+            // A FAILED TEST IS RECORDED on its row: its answer carries it.
+            var d = answer.body || {};
             if (d.channels) paintChannels(d);
-            if (d.ok) { say("tm-form-note", "It arrived.", "ok"); return; }
-            /* The listener refuses every way identically, so the hint names
+            if (answer.ok) { say("tm-form-note", "It arrived.", "ok"); return; }
+            /* A TEST THAT REACHED IT says what the channel answered.  The
+             * listener refuses every way identically, so the hint names
              * all of the possibilities rather than guessing between them. */
-            say("tm-form-note",
-                d.error || d.hint || ("it answered " + d.status), "error");
-        } catch (e) { say("tm-form-note", String(e), "error"); }
-        finally { if (button) button.disabled = false; }
+            say("tm-form-note", d.reached
+                ? (d.hint || ("it answered " + d.status)) : answer.error,
+                "error");
+        } finally { if (button) button.disabled = false; }
     }
 
     async function removeChannel(name) {
@@ -202,17 +205,14 @@
             return;
         }
         armed = null;
-        try {
-            var d = await (await fetch(
-                CHANNELS + "/" + encodeURIComponent(name),
-                { method: "DELETE" })).json();
-            if (!d.ok) {
-                say("tm-form-note", d.error || "could not remove", "error");
-                return;
-            }
-            paintChannels(d);
-            say("tm-form-note", "Removed " + name + ".", "ok");
-        } catch (e) { say("tm-form-note", String(e), "error"); }
+        var answer = await window.molbuilder.server.ask(
+            CHANNELS + "/" + encodeURIComponent(name), { method: "DELETE" });
+        if (!answer.ok) {
+            say("tm-form-note", answer.error, "error");
+            return;
+        }
+        paintChannels(answer.body);
+        say("tm-form-note", "Removed " + name + ".", "ok");
     }
 
     /* ---------- the listener ---------- */
@@ -250,12 +250,14 @@
     }
 
     async function loadListener() {
-        try {
-            paintListener(await (await fetch(LISTENER)).json());
-        } catch (e) {
-            say("tm-listener-state", "Could not ask this server: " + e,
-                "error");
+        var answer = await window.molbuilder.server.ask(LISTENER);
+        // A REFUSAL IS NOT "NOT RECEIVING": said, in the server's words.
+        if (!answer.ok) {
+            say("tm-listener-state", "Whether this server takes reports "
+                + "could not be read: " + answer.error, "error");
+            return;
         }
+        paintListener(answer.body);
     }
 
     async function issueKey(ev) {
@@ -267,23 +269,20 @@
         }
         var replace = $("tm-replace") && $("tm-replace").checked;
         say("tm-listener-note", "issuing…", "muted");
-        try {
-            var d = await (await fetch(
-                LISTENER + "/keys/" + encodeURIComponent(user),
-                { method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ replace: !!replace }) })).json();
-            if (!d.ok) {
-                say("tm-listener-note", d.error || "could not issue", "error");
-                return;
-            }
-            showIssued(d);
-            say("tm-listener-note", d.joined
-                ? "Issued, on the route already in that file — everybody "
-                  + "already set up keeps working."
-                : "Issued, and the route segment was generated.", "ok");
-            loadListener();
-        } catch (e) { say("tm-listener-note", String(e), "error"); }
+        var answer = await window.molbuilder.server.ask(
+            LISTENER + "/keys/" + encodeURIComponent(user),
+            { method: "POST", body: { replace: !!replace } });
+        if (!answer.ok) {
+            say("tm-listener-note", answer.error, "error");
+            return;
+        }
+        var d = answer.body;
+        showIssued(d);
+        say("tm-listener-note", d.joined
+            ? "Issued, on the route already in that file — everybody "
+              + "already set up keeps working."
+            : "Issued, and the route segment was generated.", "ok");
+        loadListener();
     }
 
     /* THE ONE MOMENT A SECRET IS ON SCREEN.  It is not fetched; it is the
@@ -454,28 +453,24 @@
 
     async function loadReports() {
         if (!$("tm-reports")) return;
-        try {
-            var r = await fetch(REPORTS);
-            var d = await r.json();
-            if (!d.ok) {
-                say("tm-reports-state", d.error || "could not read the reports", "warn");
-                return;
-            }
-            reports = d.reports || [];
-            var seen = _seen();
-            var fresh = reports.filter(function (x) { return Number(x.sent_at || 0) > seen; }).length;
-            var count = $("tm-reports-count");
-            if (count) count.textContent = reports.length
-                ? (reports.length + " kept" + (fresh ? ", " + fresh + " since you last looked" : ""))
-                : "";
-            say("tm-reports-state", reports.length
-                ? d.total + " report" + (d.total === 1 ? "" : "s") + " in " + d.file
-                : (d.note || "Nothing received yet."), "muted");
-            paintReports();
-            if (reports.length) _markSeen(Number(reports[0].sent_at || 0));
-        } catch (e) {
-            say("tm-reports-state", "Could not ask this server: " + e, "error");
+        var answer = await window.molbuilder.server.ask(REPORTS);
+        if (!answer.ok) {
+            say("tm-reports-state", answer.error, "warn");
+            return;
         }
+        var d = answer.body;
+        reports = d.reports || [];
+        var seen = _seen();
+        var fresh = reports.filter(function (x) { return Number(x.sent_at || 0) > seen; }).length;
+        var count = $("tm-reports-count");
+        if (count) count.textContent = reports.length
+            ? (reports.length + " kept" + (fresh ? ", " + fresh + " since you last looked" : ""))
+            : "";
+        say("tm-reports-state", reports.length
+            ? d.total + " report" + (d.total === 1 ? "" : "s") + " in " + d.file
+            : (d.note || "Nothing received yet."), "muted");
+        paintReports();
+        if (reports.length) _markSeen(Number(reports[0].sent_at || 0));
     }
 
     if (document.readyState === "loading") {

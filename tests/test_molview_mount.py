@@ -28,6 +28,8 @@ from tests._node_esm import run_node
 REPO = Path(__file__).resolve().parents[1]
 MODULE_DIR = REPO / "molbuilder" / "web" / "static" / "lib" / "molview"
 INDEX = MODULE_DIR / "index.js"
+#: The page that hosts MolView, as a test plays it (`support/molview_host.mjs`).
+HOST = Path(__file__).resolve().parent / "support" / "molview_host.mjs"
 SUPPORT = Path(__file__).parent / "support"
 
 
@@ -61,17 +63,26 @@ globalThis.fetch = async function (route, init) {
     ];
     const extra = globalThis.__nextNotices
         ? { notices: globalThis.__nextNotices } : {};
-    // THE KINDS' LABELS ride every structure answer, as the server's do.
-    return { ok: true, status: 200, json: async () => Object.assign(
-        { atoms, labels: globalThis.__servedLabels }, extra) };
+    // THE KINDS' LABELS ride every structure answer, as the server's do --
+    // handed as a browser hands it, for the page's one reader (`lib/server.js`).
+    return new Response(JSON.stringify(Object.assign(
+        { atoms, labels: globalThis.__servedLabels }, extra)), { status: 200 });
 };
 globalThis.__nextNotices = null;
 globalThis.__servedLabels = __SERVED_LABELS__;
 globalThis.setInterval = globalThis.setInterval;
+// WHAT THE PAGE HOLDS before any module of the viewer or the page is loaded.
+globalThis.__pageHeld = Object.keys(globalThis.molbuilder);
 """
 
 PRELUDE = f"""
 const MV = await import({json.dumps(INDEX.resolve().as_uri())});
+// WHAT LOADING THE VIEWER PUT ON THE PAGE -- before the page's own modules.
+globalThis.__viewerPublished = Object.keys(globalThis.molbuilder)
+    .filter((k) => !globalThis.__pageHeld.includes(k));
+// ...MOUNTED AS A PAGE MOUNTS IT: handed the one reader of a server's
+// answer (`support/molview_host.mjs`).
+const {{ mount, ask }} = await import({json.dumps(HOST.as_uri())});
 
 const workspace = {{ read: async () => null, write: async () => {{}} }};
 
@@ -95,7 +106,7 @@ async function waitForDrawing(check, why) {{
 
 async function mounted(opts) {{
     const host = globalThis.__makeHost(opts && opts.width, opts && opts.minWidth);
-    const viewer = await MV.mount(host, workspace,
+    const viewer = await mount(host, workspace,
         Object.assign({{ owner: "test" }}, (opts && opts.mount) || {{}}));
     return {{ host, viewer }};
 }}
@@ -139,30 +150,35 @@ def test_the_entry_point_offers_its_four_names_and_no_others():
     assert out["empty"] == "—"
 
 
-def test_mounting_needs_only_a_host_and_a_workspace_door():
-    """§ 13.3: "the module mounts given only a host element and something that
-    satisfies the workspace door."
+def test_mounting_needs_only_what_it_is_handed():
+    """§ 13.3: "the module mounts given only a host element, something that
+    satisfies the workspace door, and the server door".
 
     § 8: "anything that can store and return bytes satisfies it. That is what
     lets a viewer mount in a test page with a stand-in, and it is the whole of
-    § 4's 'nothing it needs comes from a global'."
+    § 4's 'nothing it needs comes from a global'."  And it publishes nothing:
+    neither loading the viewer nor mounting one adds a name to the page's
+    namespace -- one that did would be the viewer reaching onto the page.
     """
     out = _run(
         """
         const host = globalThis.__makeHost();
         // A door, not a module: two functions and nothing else.
         const door = { read: async () => null, write: async () => {} };
-        const viewer = await MV.mount(host, door, { owner: "results-structure" });
+        const before = Object.keys(globalThis.molbuilder);
+        const viewer = await MV.mount(host, door,
+            { owner: "results-structure", server: { ask } });
         console.log(JSON.stringify({
             ok: viewer.ok,
-            published: Object.keys(globalThis.molbuilder),
+            loaded: globalThis.__viewerPublished,
+            mounted: Object.keys(globalThis.molbuilder)
+                .filter((k) => !before.includes(k)),
         }));
         """
     )
     assert out["ok"] is True, "a viewer must mount with a stand-in workspace"
-    assert out["published"] == [], (
-        f"mounting published into the app's global namespace: {out['published']}"
-    )
+    assert (out["loaded"], out["mounted"]) == ([], []), (
+        f"the viewer published into the app's global namespace: {out}")
 
 
 # ---------------------------------------------------------------------------
@@ -181,9 +197,12 @@ def test_mount_always_resolves_with_a_working_dispose():
         """
         const results = [];
         for (const [name, run] of [
-            ["no host",  () => MV.mount(null, workspace, { owner: "x" })],
-            ["no owner", () => MV.mount(globalThis.__makeHost(), workspace, {})],
-            ["too narrow", () => MV.mount(
+            ["no host",  () => mount(null, workspace, { owner: "x" })],
+            ["no owner", () => mount(globalThis.__makeHost(), workspace, {})],
+            // ...a viewer that could take nothing in (§ 4).
+            ["no server door", () => MV.mount(globalThis.__makeHost(), workspace,
+                                              { owner: "x" })],
+            ["too narrow", () => mount(
                 globalThis.__makeHost(200, 350), workspace, { owner: "x" })],
         ]) {
             let v, threw = false, disposeThrew = false;
@@ -220,9 +239,9 @@ def test_the_floor_is_the_stacked_minimum_not_the_row_sum():
     out = _run(
         """
         // A card whose stacked floor is 350 and whose side-by-side sum is 692.
-        const narrow = await MV.mount(globalThis.__makeHost(500, 350), workspace,
+        const narrow = await mount(globalThis.__makeHost(500, 350), workspace,
                                       { owner: "x" });
-        const broken = await MV.mount(globalThis.__makeHost(200, 350), workspace,
+        const broken = await mount(globalThis.__makeHost(200, 350), workspace,
                                       { owner: "x" });
         console.log(JSON.stringify({
             betweenSumAndFloor: narrow.ok,
@@ -248,7 +267,7 @@ def test_a_viewer_that_cannot_fit_draws_a_blank_card_with_the_error_in_it():
     out = _run(
         """
         const host = globalThis.__makeHost(200, 350);
-        const viewer = await MV.mount(host, workspace, { owner: "x" });
+        const viewer = await mount(host, workspace, { owner: "x" });
         const card = host.querySelector(".molviewer-card");
         console.log(JSON.stringify({
             ok: viewer.ok,
@@ -363,7 +382,7 @@ def test_a_movie_saves_the_frame_it_stops_on_and_none_it_passes():
             pruneStatesAbove: () => {},
         };
         const host = globalThis.__makeHost();
-        const viewer = await MV.mount(host, door, { owner: "test" });
+        const viewer = await mount(host, door, { owner: "test" });
         await viewer.data.installMolecule({ text: "x", filename: "x.xyz" });
         viewer.data.reloadFrames([[[0,0,0],[1,0,0]], [[2,0,0],[3,0,0]],
                                   [[4,0,0],[5,0,0]]]);
@@ -1027,8 +1046,8 @@ def test_two_viewers_on_one_page_share_no_name():
         """
         const first = globalThis.__makeHost();
         const second = globalThis.__makeHost();
-        await MV.mount(first, workspace, { owner: "left" });
-        await MV.mount(second, workspace, { owner: "right" });
+        await mount(first, workspace, { owner: "left" });
+        await mount(second, workspace, { owner: "right" });
 
         const ids = [];
         (function walk(node) {
@@ -1085,7 +1104,7 @@ def test_the_structure_leaves_through_the_door_and_its_facts_go_with_it():
         """
         const saved = [];
         const host = globalThis.__makeHost();
-        const viewer = await MV.mount(host, workspace, {
+        const viewer = await mount(host, workspace, {
             owner: "x",
             files: {
                 save: async (destination, stem, payload) => {
@@ -1161,7 +1180,7 @@ def test_a_picture_is_the_view_and_leaves_through_saveBinary():
         """
         const saved = [];
         const host = globalThis.__makeHost();
-        const viewer = await MV.mount(host, workspace, {
+        const viewer = await mount(host, workspace, {
             owner: "x",
             files: {
                 save: async () => ({ ok: true }),
@@ -1206,7 +1225,7 @@ def test_a_trajectorys_data_export_asks_the_range_and_sends_it():
         """
         const saved = [];
         const host = globalThis.__makeHost();
-        const viewer = await MV.mount(host, workspace, {
+        const viewer = await mount(host, workspace, {
             owner: "x",
             files: {
                 save: async (destination, stem, payload) => {
@@ -1334,7 +1353,7 @@ def test_the_page_tabs_are_the_switch_the_stylesheet_draws():
 
         // A second viewer on the same page: its tabs are its own.
         const otherHost = globalThis.__makeHost();
-        await MV.mount(otherHost, workspace, { owner: "second-viewer" });
+        await mount(otherHost, workspace, { owner: "second-viewer" });
         const otherOptions = otherHost.querySelector(".molviewer-panel-tab-switch").children;
 
         console.log(JSON.stringify({
@@ -2298,7 +2317,7 @@ def test_a_read_only_viewer_hides_the_control_the_gate_would_swallow():
         """
         async function panelFor(mode) {
             const host = globalThis.__makeHost();
-            const viewer = await MV.mount(host, workspace, { owner: "x", mode });
+            const viewer = await mount(host, workspace, { owner: "x", mode });
             await viewer.data.installMolecule({ text: "x", filename: "x.xyz" });
             const card = host.querySelector(".molviewer-card");
             return {

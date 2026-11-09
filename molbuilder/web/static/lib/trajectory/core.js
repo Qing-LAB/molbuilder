@@ -25,7 +25,8 @@
  */
 
 import { mount } from "/static/lib/molview/index.js";
-import { molviewFiles } from "../projects/molview-doors.js";
+import { molviewDoors } from "../projects/molview-doors.js";
+import { ask } from "../server.js";
 (function (root) {
     "use strict";
 
@@ -614,7 +615,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
             _mv = await mount(host, ws, {
                 mode:  "readonly",
                 owner: "results:trajectory",
-                files: molviewFiles,
+                ...molviewDoors,
             });
         } catch (e) {
             setStatus("Viewer failed: "
@@ -1588,14 +1589,18 @@ import { molviewFiles } from "../projects/molview-doors.js";
             const url = state.mtime !== null
                 ? "/api/watch/data?mtime=" + encodeURIComponent(state.mtime)
                 : "/api/watch/data";
-            const r = await fetch(url, { signal: signal })
-                .then(x => x.json());
-            if (signal.aborted) return;
+            // THE ONE READER (ui-contract.md § 12).
+            const a = await ask(url, { signal: signal });
+            // A cancelled ask: dispose() or a file-change supersede ran.
+            // Silent -- the next tick (or the unmount) is the
+            // authoritative state.
+            if (a.aborted || signal.aborted) return;
             if (myPath !== state.fileState.path) return;
-            if (!r.ok) {
-                setStatus(r.error || "Server error.", "error");
+            if (!a.ok) {
+                setStatus(a.error, "error");
                 return;
             }
+            const r = a.body;
             if (!r.changed) {
                 _withRunNotes(
                     "Up to date \u2014 " + state.data.frames.length
@@ -1618,16 +1623,12 @@ import { molviewFiles } from "../projects/molview-doors.js";
             // one's when the run ended with this write).
             _settlePostLoad();
         } catch (e) {
-            // AbortError: dispose() or a file-change supersede ran.
-            // Silent -- the next tick (or the unmount) is the
-            // authoritative state.
-            if (e.name === "AbortError") return;
-            setStatus("Network error: " + e.message, "error");
+            setStatus((e && e.message) ? e.message : String(e), "error");
         } finally {
             // Always release the in-flight flag so the NEXT tick
-            // (POLL_MS away) can fire.  Even on AbortError
-            // / network error, the controller is settled at this
-            // point and a new tick is welcome.
+            // (POLL_MS away) can fire.  Even on a failed answer the
+            // controller is settled at this point and a new tick is
+            // welcome.
             state.pollInFlight = false;
         }
     }
@@ -2320,25 +2321,29 @@ import { molviewFiles } from "../projects/molview-doors.js";
         state.lifecycle.loadAbort = new AbortController();
         const signal = state.lifecycle.loadAbort.signal;
         try {
-            const r = await fetch("/api/watch/load", {
+            // THE ONE READER (ui-contract.md § 12).
+            const a = await ask("/api/watch/load", {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ path: path }),
+                body: { path: path },
                 signal: signal,
-            }).then(x => x.json());
-
-            if (signal.aborted) return;
+            });
+            // A cancelled ask: the user picked another file (or dispose() ran)
+            // before this one answered.  Not a failure -- the new load (or the
+            // dispose) is the authoritative action.
+            if (a.aborted || signal.aborted) return;
             // Contract § 4 Invariant 1, asked of the answer's own
             // identity.  A newer LOADING moved
             // `fileState.path`; dispose set it to null.  The
             // `signal.aborted` check above is the other half: it is the
             // only thing that can tell two loads of the SAME file apart.
             if (path !== state.fileState.path) return;
-            if (!r.ok) {
-                setStatus(r.error || "Load failed.", "error");
-                _announceReady({ error: r.error || "Load failed." });
+            if (!a.ok) {
+                setStatus(a.error, "error");
+                transition("ERROR");
+                _announceReady({ error: a.error });
                 return;
             }
+            const r = a.body;
             applyNewData({
                 mtime:  r.mtime,
                 data:   r.data,
@@ -2388,17 +2393,12 @@ import { molviewFiles } from "../projects/molview-doors.js";
             // (WATCHING) -- a run that is over doesn't get polled.
             _settlePostLoad();
         } catch (e) {
-            // AbortError fires when the user picks another file
-            // (or dispose() runs) before this fetch completes.  Not
-            // a failure -- the new load (or the dispose) is the
-            // authoritative action; surfacing "Network error" here
-            // would be misleading.
-            if (e.name === "AbortError") return;
-            setStatus("Network error: " + e.message, "error");
-            transition("ERROR");
             // The load has ended, without a render: say so, as the refused
             // load does, so the cover does not sit over this error.
-            _announceReady({ error: e.message });
+            const said = (e && e.message) ? e.message : String(e);
+            setStatus(said, "error");
+            transition("ERROR");
+            _announceReady({ error: said });
         }
     }
 

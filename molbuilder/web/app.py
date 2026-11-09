@@ -457,8 +457,8 @@ def create_app(*, config=None) -> Flask:
         app.register_blueprint(notify_bp)
 
     # 413 Payload Too Large -- without this Flask returns its default
-    # HTML 413 page, which the JS uploaders parse as ``r.json()`` and
-    # crash with a misleading "Network error".  Returning the same
+    # HTML 413 page, of which the page's reader can say only that it could
+    # not be read (`ui-contract.md` § 12).  Returning the same
     # ``{ok: false, error: ...}`` JSON shape every other endpoint
     # uses gives the user an actionable message.
     from werkzeug.exceptions import RequestEntityTooLarge

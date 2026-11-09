@@ -60,11 +60,17 @@ const FOLD   = "molviewer-panel-fold-btn";
  *                   bytes satisfies it (§ 8). That is what lets a viewer mount
  *                   in a test page with a stand-in, and it is the whole of § 4's
  *                   "nothing it needs comes from a global".
- * @param opts       `{owner, mode, files}` — `owner` names the viewer and
- *                   therefore everything in it (§ 5.6); `mode: "readonly"`
+ * @param opts       `{owner, mode, files, server}` — `owner` names the viewer
+ *                   and therefore everything in it (§ 5.6); `mode: "readonly"`
  *                   freezes the master copy (§ 9.4); `files` is the door bytes
  *                   leave through (§ 6.7), handed in the same way the workspace
- *                   is, because MolView never reaches a file itself.
+ *                   is, because MolView never reaches a file itself; `server`
+ *                   is the door its questions go through — `{ask}`, the app's
+ *                   one reader of an answer (ui-contract.md § 12) — handed in
+ *                   alike, because MolView reaches no module of the app by
+ *                   name (§ 4).  Every structure comes in through the server
+ *                   (a load), so a viewer without it could show nothing: it is
+ *                   refused, as one with no owner is.
  */
 export async function mount(hostEl, workspace, opts) {
     opts = opts || {};
@@ -79,6 +85,12 @@ export async function mount(hostEl, workspace, opts) {
     if (!hostEl) return fail("mount: no host element");
     // A viewer with no owner has no identity, which is why one is always given.
     if (!opts.owner) return fail("mount: no owner");
+    // ...AND ONE WITH NO SERVER DOOR COULD TAKE NOTHING IN: every structure
+    // arrives through a load the server answers (§ 4).  Refused here, at the
+    // mount, rather than at the first load a person asks for.
+    if (!opts.server || typeof opts.server.ask !== "function") {
+        return fail("mount: no server door (opts.server.ask)");
+    }
 
     let card;
     try {
@@ -162,6 +174,7 @@ export async function mount(hostEl, workspace, opts) {
      * it. */
     const model = createModel({
         mode: opts.mode, workspace: workspace, owner: opts.owner,
+        ask: opts.server && opts.server.ask,
     });
     const engine = createRenderEngine(embed);
     model._attachRenderer(engine);

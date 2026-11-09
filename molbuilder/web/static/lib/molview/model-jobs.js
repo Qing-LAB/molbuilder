@@ -555,8 +555,9 @@ export function customizedRow(name, value, unit, note) {
  * arrives this way. One entrance means one place the rules are checked and one
  * place the history is anchored" (§ 9.3).
  *
- * Handed: where to put a loaded structure, how to announce a change, and a way
- * to record the first state (§ 7.3). It reaches nothing else.
+ * Handed: where to put a loaded structure, how to announce a change, a way to
+ * record the first state, and the server's reader, `ask` (§ 7.3, § 4). It
+ * reaches nothing else.
  */
 export function createLoad(handed) {
     return async function installMolecule(input) {
@@ -565,10 +566,11 @@ export function createLoad(handed) {
             throw new TypeError(
                 "installMolecule(input): pass { text, filename } or { path }");
         }
-        const payload = await postJson("/api/build/load", body);
+        const payload = await postJson(handed.ask, "/api/build/load", body);
         const loaded = structureFromServer(payload);
-        if (!loaded) throw said(payload,
-            "The server answered, but not with a structure.");
+        if (!loaded) {
+            throw new Error("The server answered, but not with a structure.");
+        }
 
         /* A TRAJECTORY ARRIVES WITH THE LOAD, not after it.
          *
@@ -831,7 +833,8 @@ export const OPERATIONS = {
  * being wrong, and it is why the model — not the caller — decides when a
  * structure has changed.
  *
- * Handed: read the atoms, and apply the structure the server sends back (§ 7.3).
+ * Handed: read the atoms, apply the structure the server sends back, and the
+ * server's reader, `ask` (§ 7.3, § 4).
  */
 export function createEdits(handed) {
     /* ONE MUTATION IN FLIGHT. A second edit started while one is running is
@@ -903,13 +906,14 @@ export function createEdits(handed) {
         let payload;
         running = true;
         try {
-            payload = await postJson("/api/modify/" + name, body);
+            payload = await postJson(handed.ask, "/api/modify/" + name, body);
         } finally {
             running = false;                    // even when the edit was refused
         }
         const applied = structureFromServer(payload);
-        if (!applied) throw said(payload,
-            "The server answered, but not with a structure.");
+        if (!applied) {
+            throw new Error("The server answered, but not with a structure.");
+        }
         /* The structure AND what the server found true of it, in one handoff.
          * The check runs on every op because it lives in the return path, not
          * in the ops -- so an op that says nothing has been checked and had
@@ -959,7 +963,7 @@ export function createCellEdit(handed) {
          * the gate cannot accept comes back 400 carrying the one sentence that
          * says what to do about it; swallowing that and answering `null` would
          * leave the Update button appearing to do nothing (§ 6.9). */
-        const answer = await postJson("/api/structure/periodicity", {
+        const answer = await postJson(handed.ask, "/api/structure/periodicity", {
             structure: structure,
             op:        op,
             payload:   payload === undefined ? null : payload,
@@ -969,8 +973,8 @@ export function createCellEdit(handed) {
          * raw ones — which is the same shape `/api/build/load` sends, so there
          * is nothing to translate and nothing to pick out. */
         const block = answer && answer.periodicity;
-        if (!answer || answer.ok === false || !block) {
-            throw said(answer, "The server answered, but not with a cell.");
+        if (!block) {
+            throw new Error("The server answered, but not with a cell.");
         }
         /* The answer's notices ride WITH the block it describes (§ 6.8). They
          * are passed on verbatim -- the server's own words, its own levels --
@@ -990,7 +994,7 @@ export function createCellEdit(handed) {
  * holds no matching logic" — the same boundary as § 2's: one place decides what
  * a structure means.
  */
-export async function resolveFilter(structure, rule) {
+export async function resolveFilter(structure, rule, ask) {
     if (!structure) return null;
     // Evaluated against the atoms THIS VIEWER HOLDS, not a disk read — so a
     // filter sees unsaved labels and edits. Coordinates are not sent: no rule
@@ -1018,7 +1022,7 @@ export async function resolveFilter(structure, rule) {
      * widening § 6.9 to cover reads is a decision about that section, not
      * something to slip in beside this one. */
     try {
-        const payload = await postJson("/api/selection/eval", { atoms, rule });
+        const payload = await postJson(ask, "/api/selection/eval", { atoms, rule });
         return Array.isArray(payload && payload.selected_indices)
             ? payload.selected_indices : null;
     } catch (_) {
@@ -1033,59 +1037,17 @@ export async function resolveFilter(structure, rule) {
  * structure, perform one geometry edit, resolve a cell, resolve a filter. The
  * field-level JSON of these payloads belongs to web-api.md.
  */
-async function postJson(route, body) {
-    let response;
-    try {
-        response = await fetch(route, {
-            method:  "POST",
-            headers: { "Content-Type": "application/json" },
-            body:    JSON.stringify(body),
-        });
-    } catch (_) {
-        /* IT NEVER GOT THERE, so there is no sentence to quote — one of the two
-         * cases § 6.9 lets MolView write a message of its own. The browser's
-         * own wording for this is "Failed to fetch", which reads as a bug in the
-         * page rather than as something the reader can act on. */
-        throw new Error(
-            "Could not reach the server. Check your connection and try again.");
+async function postJson(ask, route, body) {
+    /* THE ONE READER (ui-contract.md § 12), HANDED IN at mount as the
+     * workspace is (§ 4): a refusal, an unreadable answer and a server out of
+     * reach each come back as its one sentence, thrown here so the caller
+     * hears it (§ 6.9).  `mount` refuses a viewer with no door; a model
+     * built directly without one says so here, at its first question. */
+    if (typeof ask !== "function") {
+        throw new Error("this viewer was given no way to ask the server");
     }
-    if (!response.ok) {
-        /* THE BODY IS WHERE THE REASON IS: the envelope is `{ok: false,
-         * error}` at every door (web-api.md), so the server's sentence that
-         * says what to do ("swap two lattice vectors or negate one") is one
-         * read away, where a bare status is a line nobody can act on. */
-        throw said(await bodyOf(response),
-                   "The server refused the request and gave no reason.");
-    }
-    /* A 200 CARRYING SOMETHING THAT IS NOT JSON is rarer and lands in the same
-     * place: a proxy or a cache answering in the server's stead. Letting the
-     * parser's own rejection through would put "Unexpected token <" in front of
-     * the reader, which is the kind of sentence § 6.9 exists to keep off the
-     * screen. */
-    try {
-        return await response.json();
-    } catch (_) {
-        throw new Error("The server's answer could not be read.");
-    }
+    const answer = await ask(route, { method: "POST", body: body });
+    if (!answer.ok) throw new Error(answer.error);
+    return answer.body;
 }
 
-/* The answer's own words if it has any, ours if it has none — § 6.9: "the words
- * are the server's, unchanged... MolView writes a message itself only when there
- * is none to quote". */
-function said(payload, fallback) {
-    const words = payload && typeof payload.error === "string"
-        && payload.error.trim();
-    return new Error(words || fallback);
-}
-
-/* The body of a refusal, or nothing. It is JSON in every case the server itself
- * writes, and not JSON when something upstream answered instead — a proxy, a
- * crash page. This must not throw: it runs on the failure path, and a parse
- * error raised here would replace the reason with a second, worse one. */
-async function bodyOf(response) {
-    try {
-        return await response.json();
-    } catch (_) {
-        return null;
-    }
-}

@@ -86,7 +86,8 @@ tab looking like one app.**
 Two conventions recur in every module, so learn them once:
 
 - **The `{ok, …}` envelope.** Every server call returns `{ok: true, …}` or
-  `{ok: false, error}`; the browser's `_fetchEnvelope` unwraps it uniformly. A
+  `{ok: false, error}`, and every answer is read by the one reader, `ask` in
+  `lib/server.js` ([`ui-contract.md`](?doc=web/ui-contract.md) § 12). A
   molecule always crosses the wire in the same `workspace_payload` shape. Details
   in [`web-api.md`](?doc=web/web-api.md).
 - **The runtime registry.** Classic `<script>`s and `type="module"` scripts load
@@ -148,15 +149,15 @@ contrast, at a glance (each door's full contract is in its own doc):
 |---|---|---|---|
 | **`mount()`** — [molview](?doc=web/molview.md), [vibrationview](?doc=web/vibrationview.md) | returns `{ ok:false, error, dispose(){} }` — **never a null sentinel**; success is `{ ok:true, … }`. Branch on `.ok`; call `.dispose()` unconditionally | — | — |
 | **`molview.data`** | **`Promise.reject(Error)`** from the doors that change the structure through the server — `installMolecule` / `applyOp` / `commitPeriodicityOp` — carrying **the server's own sentence**, never a status code ([molview](?doc=web/molview.md) § 6.9). `null` from those same doors means only *there was nothing to do* (nothing loaded, a read-only viewer, an op the controls rule out, an edit already in flight) and is never a failure. `save` answers whether it landed; **validate-and-throw** on bad frame ops | reads return `null` / empty defaults | — |
-| **[workspace](?doc=web/workspace.md)** | **never rejects** — `readState` resolves `null` on *any* failure (a miss, a network drop, and malformed data are indistinguishable **by design**: the caller treats every miss as "re-anchor"); `persist` is fire-and-forget | `null` | — |
-| **[projects](?doc=web/projects.md)** (files) | a uniform `{ ok:false, error }` envelope — **never throws** | `null` = a deliberate third state ("no file selected") | **yes** — every file op threads `opts.signal`; an abort maps to `{ ok:false, error:"aborted", aborted:true }` |
+| **[workspace](?doc=web/workspace.md)** | **never rejects** — `readState` resolves `null` on *any* failure (a miss, a network drop, and malformed data are indistinguishable **to the caller, by design**: it treats every miss as "re-anchor"), and the failure itself is said on `onPersistError`; `persist` is fire-and-forget | `null` | — |
+| **[projects](?doc=web/projects.md)** (files) | a uniform `{ ok:false, error }` envelope — **never throws** | `null` = a deliberate third state ("no file selected") | **yes** — every file op threads `opts.signal`; an abort answers `aborted: true` ([`ui-contract.md`](?doc=web/ui-contract.md) § 12) |
 
 Three conventions cut across the table:
 
-- **Cancellation has one recognizer.** Four cancel shapes exist (fetch's `AbortError`,
-  a user-cancelled dialog's `{ cancelled:true }`, the envelope's `aborted:true`, the
-  embed's `ViewerError code:"aborted"`) — don't string-match them; use
-  `projects/state.js`'s `isCancelError(err)`, the one recognizer.
+- **A cancel is a mark, never a sentence.** A question to the server that was
+  cancelled answers `aborted: true` (the reader's, [`ui-contract.md`](?doc=web/ui-contract.md)
+  § 12) and the caller says nothing; a dialog the person cancelled answers
+  `{ cancelled: true }`. Neither is string-matched.
 - **Two lifecycle philosophies, on purpose.** `mount()` returns a **disposable**
   component (`dispose()` unwinds attachments → embed → card DOM, LIFO); `workspace` and
   `projects` are **page-lifetime singletons** whose only lifecycle surface is each

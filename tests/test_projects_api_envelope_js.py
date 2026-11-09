@@ -170,8 +170,10 @@ class TestNetworkFailure:
             console.log(JSON.stringify(r));
         ''')
         assert out["ok"] is False
-        assert "network error" in out["error"]
-        assert "Failed to fetch" in out["error"]
+        # ...SAID PLAINLY, never the browser's own words (`ui-contract.md`
+        # § 12).
+        assert "could not reach the server" in out["error"]
+        assert "Failed to fetch" not in out["error"]
 
 
 # ----- AbortSignal threading (#174 sidebar gap M1) ---------------- #
@@ -181,9 +183,9 @@ class TestAbortSignal:
 
     def test_apiWrite_aborted_returns_clean_envelope(self, app_at, tree):
         """When the caller's AbortSignal fires, fetch rejects with
-        AbortError.  api.js produces a CLEAN envelope (no "network
-        error" prose) so callers can distinguish user-cancellation
-        from connectivity failure."""
+        AbortError.  api.js produces a CLEAN envelope (no "could not
+        reach the server" prose) so callers can distinguish
+        user-cancellation from connectivity failure."""
         out = _run(f"""
             const ctl = new AbortController();
             ctl.abort();
@@ -191,7 +193,8 @@ class TestAbortSignal:
                                          "text", {{ signal: ctl.signal }});
             console.log(JSON.stringify(r));
         """, app_at)
-        assert out == {"ok": False, "error": "aborted", "aborted": True}
+        # ...CANCELLED, as the reader marks it (`ui-contract.md` § 12).
+        assert out["ok"] is False and out["aborted"] is True, out
         assert (tree / "P" / "notes.txt").read_text() == "hello\n"
 
     @pytest.mark.parametrize("call", [
@@ -247,7 +250,7 @@ class TestApiRoots:
             console.log(JSON.stringify(r));
         ''')
         assert out["ok"] is False
-        assert "network error" in out["error"]
+        assert "could not reach the server" in out["error"]
         assert out["roots"] == []
 
 
@@ -255,7 +258,7 @@ class TestApiRoots:
 
 
 class TestNoStoreCache:
-    """The central ``_fetchEnvelope`` defaults ``cache: "no-store"`` so
+    """The one reader (`lib/server.js`) asks with ``cache: "no-store"`` so
     every projects.* live-data GET reaches the server on a same-URL
     revisit.  Without this default the browser HTTP cache served the
     previous response on every same-URL hit -- the second-half cause of

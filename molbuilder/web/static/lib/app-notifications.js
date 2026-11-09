@@ -1,9 +1,9 @@
 /* App-wide system-notification bar (notifications.md).
  *
  * ONE consistent surface for system-level messages that matter regardless of
- * tab -- debuting with the non-blocking/error-explicit persist failures
- * (`notifications.md` § 3; the workspace side is `workspace.md` § 5's
- * `onPersistError` -- "never silent").  A STACK of notifications the user clears
+ * tab -- debuting with the non-blocking/error-explicit store failures, a save
+ * or a read (`notifications.md` § 3; the workspace side is `workspace.md`
+ * § 5's `onPersistError` -- "never silent").  A STACK of notifications the user clears
  * INDIVIDUALLY (× per row); dedup by id; errors persist until dismissed.
  *
  * Public: window.molbuilder.notify = { show, clear, clearAll, list }.
@@ -35,6 +35,19 @@
         body.className = "app-notification__msg";
         body.textContent = item.message + (item.count > 1 ? "  (×" + item.count + ")" : "");
         li.appendChild(body);
+
+        // ONE LINK, where the message names what to do (notifications.md § 1).
+        if (item.action) {
+            var a = doc.createElement("a");
+            a.className = "app-notification__action";
+            a.href = item.action.href;
+            a.textContent = item.action.label;
+            if (item.action.newTab) {
+                a.target = "_blank";
+                a.rel = "noopener";
+            }
+            li.appendChild(a);
+        }
 
         var x = doc.createElement("button");
         x.type = "button";
@@ -72,13 +85,17 @@
         }
     }
 
-    // show({level, message, id?, detail?}) -> {dismiss}.  Dedup by id: a
+    // show({level, message, id?, detail?, action?}) -> {dismiss}.  Dedup by id: a
     // repeated id UPDATES its row (message + a ×N counter) instead of stacking.
     function show(opts) {
         opts = opts || {};
         var level = LEVELS[opts.level] ? opts.level : "info";
         var message = String(opts.message == null ? "" : opts.message);
         var id = opts.id != null ? String(opts.id) : ("_n" + (++_seq));
+        var action = (opts.action && opts.action.label && opts.action.href)
+            ? { label: String(opts.action.label), href: String(opts.action.href),
+                newTab: !!opts.action.newTab }
+            : null;
 
         var existing = null;
         for (var i = 0; i < _items.length; i++) {
@@ -87,9 +104,11 @@
         if (existing) {
             existing.level = level;
             existing.message = message;
+            existing.action = action;
             existing.count += 1;
         } else {
-            _items.push({ id: id, level: level, message: message, count: 1 });
+            _items.push({ id: id, level: level, message: message, count: 1,
+                          action: action });
         }
         _render();
         return { dismiss: function () { clear(id); } };
@@ -114,12 +133,26 @@
         });
     }
 
-    // ---- Source: workspace persist failures (`notifications.md` § 3) ---- //
+    // ---- Source: workspace store failures (`notifications.md` § 3) ---- //
     // A burst of failures updates ONE row (stable id) instead of stacking.
+    // A failed READ is a row of its own: the save warning is lowered by the
+    // next save that lands, and that save does not put back what the read
+    // could not.
     function _onPersistError(detail) {
+        if (detail && detail.op === "read-state") {
+            show({
+                id:      "read-error",
+                level:   "error",
+                message: "What this page saved earlier could not be read back ("
+                       + detail.error + "), so it was not put back.",
+                detail:  detail,
+            });
+            return;
+        }
+        // ...THE READER'S SENTENCE, as the read row says it: the server's own
+        // words, or what kind of failure it was (ui-contract.md § 12).
         var where = (detail && detail.op) ? detail.op : "write";
-        var code = (detail && detail.status) ? " · HTTP " + detail.status
-                 : (detail && detail.error) ? " · " + detail.error : "";
+        var code = (detail && detail.error) ? " · " + detail.error : "";
         show({
             id:      "persist-error",
             level:   "error",

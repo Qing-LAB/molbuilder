@@ -339,10 +339,16 @@ is internal — the model, the stores, the renderEngine, the panel, the sealed
 layer. A consumer that imports any of them directly has broken the module, not
 found a shortcut.
 
-**Nothing it needs comes from a global.** A viewer needs two things at mount: an
-element to live in, and a workspace to save through. Both are handed in. It does
-not look up the tab it is inside, does not read app configuration, and does not
-consult any other module by name.
+**Nothing it needs comes from a global.** A viewer needs three things at mount:
+an element to live in, a workspace to save through, and the door its questions
+to the server go through — a load, an edit, a cell, a filter: `server`, `{ask}`,
+the app's one reader of an answer ([`ui-contract.md`](?doc=web/ui-contract.md)
+§ 12) *(2.69.0)*. All three are handed in. Every structure comes in through the
+server, so a mount without the server door is refused, as one without an owner
+is. The app's doors for a viewer — `files` (§ 11.3) and `server` — are one
+bundle, `molviewDoors` in `lib/projects/molview-doors.js`, which every page that
+mounts a viewer hands it whole. It does not look up the tab it is inside, does
+not read app configuration, and does not consult any other module by name.
 
 **Nothing leaks out.** No 3Dmol object, no store, no DOM node, and no internal
 function ever appears on the handle. Within this module the name `3Dmol` occurs
@@ -361,8 +367,8 @@ surface was left at are given again when it is next taken.
 **The test of all of this:** delete every other web module and MolView still
 loads, mounts, draws, selects, measures and exports. The only things it would
 miss are the server routes it calls and the workspace it saves through — and
-both of those are reached through named routes and an injected accessor, not by
-importing anything.
+both of those are reached through doors handed in at mount, not by importing
+anything.
 
 **This is true of the code today.** The module publishes nothing to
 `window.molbuilder` — no shared model, no node-test entry point, no readiness
@@ -1314,8 +1320,10 @@ reason.
 
 **The words are the server's, unchanged.** It is the side that decided, and its
 sentence carries the numbers — the clearance, the axis, what to do instead.
-MolView writes a message itself only when there is none to quote: the request
-never arrived, or something answered without saying why.
+When there is none to quote — the request never arrived, or something
+answered without saying why — the sentence is the reader's, the one handed in
+at mount (§ 4; [`ui-contract.md`](?doc=web/ui-contract.md) § 12), never
+MolView's own.
 
 **Nothing is stored, so there is no lifetime to get wrong.** A refusal is thrown,
 caught and shown; it is never kept anywhere. That is what keeps it away from the
@@ -1452,10 +1460,10 @@ flowchart TB
 
 | Helper | Its job | What it is handed |
 |---|---|---|
-| load | put a loaded structure into the model | where to put it; how to announce a change; a way to record the first state |
+| load | put a loaded structure into the model | where to put it; how to announce a change; a way to record the first state; the server's reader (§ 4) |
 | write out | read the structure out, for export and for saved states — as data, never as text (§ 11.7) | read-only access to the atoms, cell, selection and history position |
 | history | undo / redo (§ 11.2) | "record the current state" + "put a state back"; where the bytes go |
-| edits | the geometry operations (§ 11.1) | read the atoms; apply the structure the server sends back |
+| edits | the geometry operations (§ 11.1) | read the atoms; apply the structure the server sends back; the server's reader (§ 4) |
 | selection | what is selected + the switches (§ 9.5) | *(an optional starting selection)* |
 
 The cell is **not** in this list, deliberately. It is a field of the structure
@@ -4863,7 +4871,7 @@ This table is the test plan. **A rule with no row here is a rule nothing guards.
 
 | The rule | A test must show |
 |---|---|
-| § 4 — the module is self-contained | nothing outside is importable but the entry point; the module mounts given only a host element and something that satisfies the workspace door |
+| § 4 — the module is self-contained | nothing outside is importable but the entry point; the module mounts given only a host element, something that satisfies the workspace door, and the server door — and refuses a mount without the server door |
 | § 5.6 — a viewer is owned | two mounts hold two structures, two selections, two displayed frames, two points of view; changing one leaves the other untouched, and neither is reachable from the other's handle |
 | § 6.1 — one frame is not a special case | no read, edit, export or save path treats a single frame differently from four hundred |
 | § 6.2 — the data holds what the filter enumerates | every property the filter enumerates from an atom — element, labels, residue — is a property the structure actually carries; neither list can grow without the other |

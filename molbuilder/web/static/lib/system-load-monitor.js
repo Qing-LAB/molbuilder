@@ -204,13 +204,11 @@
          * belongs to the 1 Hz loop, and stopTimer() aborting this
          * one-shot would be exactly backwards. */
         function checkGpuOnce() {
-            fetch(ENDPOINT, { credentials: "same-origin", cache: "no-store" })
-                .then(function(r) { return r.ok ? r.json() : null; })
-                .then(function(body) {
-                    if (!body || body.ok !== true) return;
-                    applyGpuStatus(body.data || {});
-                })
-                .catch(function() { /* opening the card asks again */ });
+            window.molbuilder.server.ask(ENDPOINT)
+                .then(function(a) {
+                    if (!a.ok) return;      // opening the card asks again
+                    applyGpuStatus(a.body.data || {});
+                });
         }
 
         function poll() {
@@ -219,19 +217,15 @@
                 try { aborter.abort(); } catch (_) { /* ignore */ }
             }
             aborter = new AbortController();
-            fetch(ENDPOINT, {
-                credentials: "same-origin",
-                signal:      aborter.signal,
-                cache:       "no-store",
-            })
-                .then(function(r) { return r.ok ? r.json() : null; })
-                .then(function(body) {
+            window.molbuilder.server.ask(ENDPOINT, { signal: aborter.signal })
+                .then(function(a) {
                     // A failed reading leaves the cells showing the last
                     // good one.  That is deliberate: blanking them on a
                     // single dropped poll would flicker a card whose whole
-                    // job is to show a trend.
-                    if (!body || body.ok !== true) return;
-                    var d = body.data || {};
+                    // job is to show a trend.  An aborted one is the
+                    // normal shutdown path (collapse / background).
+                    if (!a.ok) return;
+                    var d = a.body.data || {};
                     // CPU + RAM are always present (psutil never fails on
                     // a healthy box; if it did, the server returns ok=false
                     // and we hit the branch above).
@@ -391,11 +385,9 @@
                     setDetail(cellVram,  "VRAM occupancy\n" + gpuListDetail);
                 })
                 .catch(function() {
-                    // Swallowed on purpose, and nothing is recorded: an
-                    // aborted fetch is the normal shutdown path (collapse
-                    // /background), and a genuine network failure is
-                    // handled the same way as a bad reading above -- keep
-                    // the last good sample and try again in a second.
+                    // Swallowed on purpose, and nothing is recorded: a
+                    // sample that cannot be drawn keeps the last good one,
+                    // and the next poll tries again in a second.
                 });
         }
 
@@ -482,9 +474,14 @@
         }
     }
 
+    // THE ONE READER (ui-contract.md § 12) is a module: the card mounts,
+    // and asks, once it has run.
+    function boot() {
+        window.molbuilder.runtime.whenReady("server").then(mount);
+    }
     if (document.readyState === "loading") {
-        document.addEventListener("DOMContentLoaded", mount);
+        document.addEventListener("DOMContentLoaded", boot);
     } else {
-        mount();
+        boot();
     }
 })();

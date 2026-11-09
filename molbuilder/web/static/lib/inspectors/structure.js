@@ -25,7 +25,9 @@ import { mount } from "/static/lib/molview/index.js";
  * viewer's `owner` and as the tag on every workspace call, so the two cannot
  * drift into naming different slots. */
 const WORKSPACE_TAG = "results:structure";
-import { molviewFiles } from "../projects/molview-doors.js";
+import { molviewDoors } from "../projects/molview-doors.js";
+// THE ONE READER of the server's answers (ui-contract.md § 12).
+import { ask } from "../server.js";
 
 (function (root) {
     "use strict";
@@ -167,7 +169,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
                     handle = await mount(molviewHost, ws, {
                         mode:  "readonly",
                         owner: WORKSPACE_TAG,
-                        files: molviewFiles,
+                        ...molviewDoors,
                     });
                     if (disposed) {
                         if (handle && typeof handle.dispose === "function") {
@@ -228,12 +230,12 @@ import { molviewFiles } from "../projects/molview-doors.js";
                      * relaxed against its own record (vibration.md 2.2).
                      * Best-effort: the viewer works without either. */
                     try {
-                        const cr = await fetch("/api/results/contract?path="
+                        const contract = await ask("/api/results/contract?path="
                             + encodeURIComponent(structPath));
-                        const cb = await cr.json();
-                        if (!disposed && cb && cb.ok
+                        if (!disposed && contract.ok
                                 && handle.data && handle.data.info
                                 && typeof handle.data.info.set === "function") {
+                            const cb = contract.body;
                             for (const key of ["calculation", "relaxation"]) {
                                 if (cb[key]) handle.data.info.set(key, cb[key]);
                             }

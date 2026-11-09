@@ -17,9 +17,9 @@
  * Errors / cancellation surface in #smiles-status (network drop,
  * 4xx from RDKit).
  *
- * Test seam: ``configure(opts)`` lets tests inject a fake fetch +
+ * Test seam: ``configure(opts)`` lets tests inject a fake
  * structurePage so the Node-only unit tests can
- * drive the state machine without a real DOM or HTTP roundtrip.
+ * drive the state machine without a real DOM.
  *
  * Design ref: docs/web/tabs.md § 2 (Creating a structure — the in-gate).
  */
@@ -135,9 +135,6 @@
         root.molbuilder.structureSmiles = api;
         // Auto-configure against the production singletons.
         configure({
-            fetch:         root.fetch
-                            ? root.fetch.bind(root)
-                            : undefined,
             structurePage: root.molbuilder.structurePage,
         });
         // Wire the panel on DOMContentLoaded.

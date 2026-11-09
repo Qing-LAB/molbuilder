@@ -119,17 +119,16 @@
             if (rescan) _backToRoot();
             _sayOnLadder(words, kind);
         };
-        fetch("/api/results/dir?path=" + encodeURIComponent(r.dir),
-              { cache: "no-store" })
-            .then((res) => res.json())
-            .then((body) => {
+        // THE ONE READER (ui-contract.md § 12).
+        mb.server.ask("/api/results/dir?path=" + encodeURIComponent(r.dir))
+            .then((answer) => {
                 if (mine !== pickSeq) return;
-                if (!body || body.ok !== true) {
-                    refused("Could not open " + shown + ": "
-                        + ((body && body.error) || "the folder did not answer")
+                if (!answer.ok) {
+                    refused("Could not open " + shown + ": " + answer.error
                         + ".", "error");
                     return;
                 }
+                const body = answer.body;
                 const a = mb.resultsFilePicker.readAnswer(
                     body, mb.inspectors && mb.inspectors.pickResult);
                 if (!a.opens) {

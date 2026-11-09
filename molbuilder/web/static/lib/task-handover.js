@@ -156,35 +156,25 @@
          * SIESTA calculation's pseudopotentials checked against it, the
          * files already there counting (`handover-procedure.md` § 2.2). */
         req.dest = dest;
-        let out;
-        try {
-            const r = await fetch(door.url, {
-                method:  "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(req),
-                signal: signal,
-            });
-            out = await r.json();
-            if (!r.ok || !out || out.ok === false) {
-                /* A refusal's findings, row by row, where the page shows its
-                 * findings -- the door's own sentence in the status line. */
-                // ...and a refusal that names none clears the last send's,
-                // which are not this one's.
-                if (showFindings) {
-                    showFindings(beside(out && Array.isArray(out.findings)
-                                        ? out.findings : []));
-                }
-                say("error",
-                    (out && out.error) || ("render failed (" + r.status + ")"));
-                return;
+        // THE ONE READER (ui-contract.md § 12); a send is a click, after
+        // the page's modules have run.
+        const answer = await window.molbuilder.server.ask(door.url, {
+            method: "POST", body: req, signal: signal });
+        if (answer.aborted) {
+            say("muted", "Cancelled — nothing written.");
+            return;
+        }
+        const out = answer.body;
+        if (!answer.ok) {
+            /* A refusal's findings, row by row, where the page shows its
+             * findings -- the door's own sentence in the status line. */
+            // ...and a refusal that names none clears the last send's,
+            // which are not this one's.
+            if (showFindings) {
+                showFindings(beside(out && Array.isArray(out.findings)
+                                    ? out.findings : []));
             }
-        } catch (e) {
-            if (projects.isCancelError(e)) {
-                say("muted", "Cancelled — nothing written.");
-                return;
-            }
-            say("error", "Could not reach the server: "
-                + (e && e.message ? e.message : e));
+            say("error", answer.error);
             return;
         }
 

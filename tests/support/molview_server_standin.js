@@ -27,14 +27,16 @@ globalThis.__payload = function (atoms, extra) {
  * inbound translation was tested against its own output and the cell was silently
  * null against the real server for every structure ever loaded. */
 
+/* Each answer as a browser hands it, for the page's one reader
+ * (`lib/server.js`). */
 globalThis.fetch = async function (route, init) {
     const body = JSON.parse(init.body);
     globalThis.__requests.push({ route, body });
     if (globalThis.__serverFails) {
-        return { ok: false, status: 500, json: async () => ({}) };
+        return new Response(JSON.stringify({}), { status: 500 });
     }
     const payload = globalThis.__nextPayload || globalThis.__payload([
         atomRow(0, "C", 0), atomRow(1, "O", 1),
     ]);
-    return { ok: true, status: 200, json: async () => payload };
+    return new Response(JSON.stringify(payload), { status: 200 });
 };

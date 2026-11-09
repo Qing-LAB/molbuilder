@@ -324,12 +324,11 @@ them.
 
 ### The client mirror
 
-The browser never wraps these calls in `try/catch`. `projects/api.js`'s
-`_fetchEnvelope` **normalizes every failure into `{ ok: false, error }`** —
-a dropped network, an abort (`{ ok:false, error:"aborted", aborted:true }`), or a
-non-JSON 5xx/HTML error page (`{ ok:false, error:"server returned non-JSON…" }`)
-all come back in the same shape. GETs default to `cache: "no-store"`. So both
-ends of every call speak the one envelope.
+The browser reads every answer through one reader, `ask` in `lib/server.js`:
+a refusal, an error page, no answer at all, a cancel and a person signed out
+each come back as `{ ok: false, error }` with what it was —
+[`ui-contract.md`](?doc=web/ui-contract.md) § 12 is its table. So both ends of
+every call speak the one envelope.
 
 ### Status codes
 

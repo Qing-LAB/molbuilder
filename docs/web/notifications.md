@@ -26,7 +26,7 @@ h.dismiss();
 
 | Call | What it does |
 |---|---|
-| `show({ level, message, id?, detail? })` → `{ dismiss }` | Push (or update) a message; returns a handle to dismiss it. |
+| `show({ level, message, id?, detail?, action? })` → `{ dismiss }` | Push (or update) a message; returns a handle to dismiss it. `action: {label, href, newTab?}` puts one link in the row — *Sign in*, from the one reader of an answer ([`ui-contract.md`](?doc=web/ui-contract.md) § 12), opening a new tab. |
 | `clear(id)` | Remove one message. |
 | `clearAll()` | Remove all. |
 | `list()` | A snapshot of the current messages (for tests / introspection). |
@@ -58,7 +58,7 @@ show. Within it:
   once); `warn`/`info` are `role="status"` with `aria-live="polite"`. Escape
   dismisses the focused row.
 
-## 3. The one built-in source — a failed save
+## 3. The one built-in source — a failed save or read
 
 The workspace persistence layer, when a save to disk fails, dispatches a
 `molbuilder:persist-error` DOM event (`lib/workspace/dispatcher.js`). `notify`
@@ -70,6 +70,12 @@ dispatcher signals `molbuilder:persist-ok` after a write lands, and the row is
 cleared — only that row, the others stay — so a warning never outlives the
 recovery it warned about (measured 2026-09-05: until then the row stayed up
 after the disk came back).
+
+A **read** that fails — what a page saved, asked for back when it opens or on a
+Retract — comes on the same event and is a row of its own: *"What this page
+saved earlier could not be read back (the server's reason), so it was not put
+back."* A save that lands later does not lower it: it does not put back what
+the read could not.
 
 ## 4. Where the module stands (current → target ESM)
 

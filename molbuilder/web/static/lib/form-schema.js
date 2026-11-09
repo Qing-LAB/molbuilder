@@ -982,15 +982,10 @@
             + "?calculation=" + encodeURIComponent(calculation)
             + (opts.surface ? "&surface=" + encodeURIComponent(opts.surface)
                             : "");
-        const r = await fetch(url);
-        const body = await r.json();
-        if (!r.ok || !body.ok) {
-            throw new Error(
-                "form-schema.fetchSchema: server returned "
-                + r.status + " — " + (body.error || "")
-            );
-        }
-        return body.schema;
+        // THE ONE READER (ui-contract.md § 12): a failure throws its sentence.
+        const a = await root.molbuilder.server.ask(url);
+        if (!a.ok) throw new Error(a.error);
+        return a.body.schema;
     }
 
     /* CSS.escape() polyfill for older browsers; modern Chrome /

@@ -383,7 +383,7 @@ export function createModel(opts) {
 
     // The selection store's two doors back into the truth.
     function resolveFilter(current, rule) {
-        return askServerToFilter(current, rule);
+        return askServerToFilter(current, rule, opts.ask);
     }
 
     /**
@@ -598,6 +598,7 @@ export function createModel(opts) {
     /* ══ The helpers, each handed exactly what it may call (§ 7.3) ════════ */
 
     const installMolecule = createLoad({
+        ask: opts.ask,
         put: (s, c, name, said) => {
             settle(() => put(s, c, name), {
                 resetFrame: true,
@@ -666,6 +667,7 @@ export function createModel(opts) {
     });
 
     const applyOp = createEdits({
+        ask: opts.ask,
         readStructure: () => structure,
         readData:      () => readData(),
         readSelection: () => selection.get(),
@@ -723,6 +725,7 @@ export function createModel(opts) {
     });
 
     const commitPeriodicityOp = createCellEdit({
+        ask: opts.ask,
         readData: readData,
         // A cell edit does not move an atom, so the frame and its range are
         // untouched — this is why § 10.5 makes it an overlay refresh.

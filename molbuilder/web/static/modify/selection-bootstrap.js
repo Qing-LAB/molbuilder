@@ -20,8 +20,9 @@ import { fromDisplay, mount } from "/static/lib/molview/index.js";
 import { init as startOpControls } from "./viewer.js";
 import { init as startCellPanel }  from "./periodicity.js";
 import { init as startSlabPanel }  from "./slab-panel.js";
-import { molviewFiles } from "/static/lib/projects/molview-doors.js";
+import { molviewDoors, molviewFiles } from "/static/lib/projects/molview-doors.js";
 import { chooseFrame } from "/static/lib/projects/dialogs.js";
+import { ask } from "../lib/server.js";
 
 /* THIS FILE IS THE MOLBUILDER TAB'S OWNER. It mounts the one viewer this page
  * has and hands it to everything else on the page.
@@ -78,6 +79,7 @@ import { chooseFrame } from "/static/lib/projects/dialogs.js";
          * "readonly" or it is editable, and there is no third word. */
         const _mounted = await mount(host, window.molbuilder.workspace, {
             owner: WORKSPACE_TAG,
+            ...molviewDoors,
             // ...THROUGH THE PAGE, which records a structure the viewer's own
             // Export menu writes to the project (tabs.md § 6, one door out).
             files: (window.molbuilder && window.molbuilder.structurePage
@@ -310,29 +312,19 @@ import { chooseFrame } from "/static/lib/projects/dialogs.js";
             const say = (text, kind) =>
                 window.molbuilder.status.set("status", text, kind);
             const load = async (which) => {
-                try {
-                    /* AN EDITOR HOLDS ONLY THE USER ORDER (`model/overview.md`
-                     * § 2.2a, I8): a file in an engine's order is answered
-                     * restored, and the answer says so -- said below with
-                     * what the read said. */
-                    const r = await fetch("/api/build/load", {
-                        method:  "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body:    JSON.stringify(Object.assign(
-                            { path: path, restore: true }, which)),
-                    });
-                    const answer = await r.json();
-                    if (!r.ok || !answer || answer.ok !== true) {
-                        say((answer && answer.error)
-                            || `Could not load ${path}`, "error");
-                        return null;
-                    }
-                    return answer;
-                } catch (e) {
-                    say(`Could not load ${path}: ${(e && e.message) || e}`,
-                        "error");
+                /* AN EDITOR HOLDS ONLY THE USER ORDER (`model/overview.md`
+                 * § 2.2a, I8): a file in an engine's order is answered
+                 * restored, and the answer says so -- said below with
+                 * what the read said.  THE ONE READER (ui-contract.md § 12). */
+                const a = await ask("/api/build/load", {
+                    method: "POST",
+                    body:   Object.assign({ path: path, restore: true }, which),
+                });
+                if (!a.ok) {
+                    say(a.error, "error");
                     return null;
                 }
+                return a.body;
             };
             let body = await load({});
             if (!body) return;

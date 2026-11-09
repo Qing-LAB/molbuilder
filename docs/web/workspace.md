@@ -125,7 +125,8 @@ Say you open a molecule in the Modify tab, delete an atom, then move another:
    point holds yet (the badge says when) is what the first press throws away.
 5. If a write ever fails — disk full, network drop — the editor does not freeze.
    The failure is reported through `onPersistError` and a page event, never
-   swallowed.
+   swallowed. A read that fails is reported the same way: the tab opens without
+   what it could not read, and says so.
 
 ## 4. The tag — how several savers share one page
 
@@ -189,10 +190,10 @@ two callers can disagree about whose slot they are in.
 | Member | What it does |
 |---|---|
 | `persist(tag, bytes, identity)` | Send these bytes to their file. Does not wait; `true` means sent, not saved. |
-| `readState(identity)` | Read one file back — a numbered point, or the draft. `identity` is `{workspace_id, state_index}`, and the id is the tag's own. `null` for a file that is not there **and** for any failure, deliberately: the only safe reading of it is "nothing to put back". |
+| `readState(identity)` | Read one file back — a numbered point, or the draft. `identity` is `{workspace_id, state_index}`, and the id is the tag's own. `null` for a file that is not there **and** for any failure, deliberately: the only safe reading of it is "nothing to put back". A failure is still said — through `onPersistError`, as a read — never passed off as nothing saved. |
 | `pruneStatesAbove(id, index)` | Drop server steps above `index` (used when Undo-then-a-new-edit throws away the redo tail); `-1` clears the whole history. |
 | `workspaceId(tag)` | The stable id this tag's draft is saved under (survives a same-tab reload). |
-| `onPersistError(fn)` | Be told when a background save fails — never silent. Returns an unsubscribe. |
+| `onPersistError(fn)` | Be told when the store fails — a background save, or a read back — never silent. Returns an unsubscribe. |
 
 **This is the whole of it.** There is no second way to save or load, and the
 browser-storage helper underneath is not part of the surface — reaching it

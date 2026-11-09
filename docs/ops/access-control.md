@@ -228,7 +228,11 @@ Same gate, two answers, because the callers cannot use the same one. A browser
 gets a redirect to `/login` with the path it wanted stashed, so signing in
 returns it there. Anything under `/api/` gets a clean JSON `401` carrying a
 `login_url` — a JavaScript client can render *please sign in* instead of trying
-to parse a login page as data.
+to parse a login page as data. The pages do, in one place: the one reader of
+an answer ([`web/ui-contract.md`](?doc=web/ui-contract.md) § 12) says *signed
+out* once, its **Sign in** link the page itself in a new tab — the browser
+road above, which returns there — so the tab that asked keeps what it holds
+*(2.69.0)*.
 
 ### 3.4 The session key lives outside the repo
 

@@ -287,6 +287,15 @@ def _from_this_page() -> bool:
     return origin is None or urlsplit(origin).netloc == request.host
 
 
+def _signalled(ok: bool, said: str):
+    """The supervisor's answer to a signal, as every route answers: 202, or a
+    refusal in the one envelope -- its reason as ``error`` (`web-api.md`
+    § 1), which the page's reader says (`ui-contract.md` § 12)."""
+    if ok:
+        return jsonify({"ok": True, "message": said}), 202
+    return jsonify({"ok": False, "error": said}), 409
+
+
 @bp.post("/api/jupyter/start")
 def api_jupyter_start():
     """Ask the supervisor to start it.  Admin only; idempotent."""
@@ -305,8 +314,7 @@ def api_jupyter_start():
         read_config()
     except RuntimeConfigError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 409
-    ok, msg = signal_supervisor(serve_port(), signal.SIGUSR1)
-    return jsonify({"ok": ok, "message": msg}), (202 if ok else 409)
+    return _signalled(*signal_supervisor(serve_port(), signal.SIGUSR1))
 
 
 @bp.post("/api/jupyter/stop")
@@ -323,8 +331,7 @@ def api_jupyter_stop():
     refused = _refuse()
     if refused is not None:
         return refused
-    ok, msg = signal_supervisor(serve_port(), signal.SIGUSR2)
-    return jsonify({"ok": ok, "message": msg}), (202 if ok else 409)
+    return _signalled(*signal_supervisor(serve_port(), signal.SIGUSR2))
 
 
 # --------------------------------------------------------------------- #

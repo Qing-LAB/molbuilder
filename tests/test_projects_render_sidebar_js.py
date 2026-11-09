@@ -178,9 +178,10 @@ def _run_node(snippet: str) -> object:
             removeItem: k => _store.delete(k),
             clear:      () => _store.clear(),
         }};
-        global.fetch = async () => ({{
-            ok: true, status: 200, json: async () => ({{ ok: true }}),
-        }});
+        // Answered as a browser hands an answer, for the page's one reader
+        // (`lib/server.js`); what is asked is not what these tests read.
+        global.fetch = async () => new Response(
+            JSON.stringify({{ ok: true }}), {{ status: 200 }});
         // No CSS available -- list.js's _cssEscape falls back to its
         // manual escape; we provide a no-op CSS object so the typeof
         // check returns "object" but CSS.escape is missing.

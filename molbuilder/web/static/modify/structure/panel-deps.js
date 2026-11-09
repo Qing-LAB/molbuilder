@@ -2,8 +2,8 @@
  * panels (smiles · name · peptide · rna · dna).
  *
  *   * `configure()` is the test door.  A Node unit test drives the panel's
- *     state machine with a fake fetch and a fake structure page, without a
- *     DOM or an HTTP roundtrip.
+ *     state machine with a fake structure page, without a DOM; the request
+ *     goes through the page's one reader (`lib/server.js`).
  *   * `resolve()` re-reads `window.molbuilder.*` on every call, so a
  *     template that loads a panel before `page.js` registers its globals
  *     still finds them: a later script-load cannot silently degrade the panel.
@@ -30,8 +30,7 @@
         /* `findings`: the one findings renderer
          * (`molbuilder.validationFindings`); `panel`: the list under the
          * panel's status its build's findings are drawn in (`findingsIn`). */
-        var deps = { fetch: null, structurePage: null, findings: null,
-                     panel: null };
+        var deps = { structurePage: null, findings: null, panel: null };
 
         /** THE BUILD'S FINDINGS, drawn under the panel through the one
          *  renderer (`science/validation.md` § 4.1 R2, R5) -- ``[]`` clears
@@ -62,10 +61,6 @@
             // THE SLOTS, read at the call: a panel may load before the page
             // that fills them; one still empty is said, naming the panel.
             resolve();
-            if (!deps.fetch) {
-                return Promise.reject(new Error(
-                    generator.kind + ": fetch not configured"));
-            }
             if (!deps.structurePage) {
                 return Promise.reject(new Error(
                     generator.kind + ": structurePage not configured"));
@@ -74,24 +69,18 @@
             var ctl = (typeof AbortController === "function")
                 ? new AbortController() : null;
             var chain = function () {
-                return deps.fetch(BUILD_URL, {
-                    method:  "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body:    JSON.stringify(request),
-                    signal:  ctl ? ctl.signal : undefined,
+                // THE ONE READER (ui-contract.md § 12).
+                return host.molbuilder.server.ask(BUILD_URL, {
+                    method: "POST",
+                    body:   request,
+                    signal: ctl ? ctl.signal : undefined,
                 })
-                .then(function (r) {
-                    return r.json().then(function (body) {
-                        return { httpOk: r.ok, body: body };
-                    });
-                })
-                .then(function (env) {
-                    var body = env.body || {};
-                    if (!env.httpOk || !body.ok) {
-                        return { ok: false,
-                                 error: body.error
-                                     || ("HTTP error from " + BUILD_URL) };
-                    }
+                .then(function (a) {
+                    // CANCEL IS AN ANSWER, not a failure: the request was
+                    // aborted by the person, and the server was reachable.
+                    if (a.aborted) return { ok: false, cancelled: true };
+                    if (!a.ok) return { ok: false, error: a.error };
+                    var body = a.body;
                     // The MODEL door: loadIntoCanvas installs into an empty
                     // viewer or appends to the open structure (the FILE
                     // door, projects.parser.openMolecule, is not this one).
@@ -114,17 +103,11 @@
                     });
                 })
                 .catch(function (err) {
-                    // CANCEL IS AN ANSWER, not a failure: the request was
-                    // aborted by the person, and the server was reachable.
-                    if (ctl && ctl.signal.aborted) {
-                        return { ok: false, cancelled: true };
-                    }
-                    // A network drop or an answer that is not JSON: one
-                    // envelope, so the panel need not branch on exceptions.
+                    // The load gate failing: one envelope, so the panel
+                    // need not branch on exceptions.
                     return { ok: false,
-                             error: "Could not reach " + BUILD_URL + ": "
-                                 + (err && err.message ? err.message
-                                                       : String(err)) };
+                             error: (err && err.message) ? err.message
+                                                         : String(err) };
                 });
             };
             var busy = host && host.molbuilder && host.molbuilder.pageBusy;
@@ -154,9 +137,6 @@
             if (typeof host === "undefined" || !host || !host.molbuilder) {
                 return;
             }
-            if (!deps.fetch && host.fetch) {
-                deps.fetch = host.fetch.bind(host);
-            }
             if (!deps.structurePage && host.molbuilder.structurePage) {
                 deps.structurePage = host.molbuilder.structurePage;
             }
@@ -174,12 +154,10 @@
             /** The test door: explicit fakes win, and keep winning. */
             configure: function (opts) {
                 opts = opts || {};
-                if (opts.fetch) deps.fetch = opts.fetch;
                 if (opts.structurePage) deps.structurePage = opts.structurePage;
                 if (opts.findings) deps.findings = opts.findings;
             },
             resolve: resolve,
-            get fetch() { return deps.fetch; },
             get structurePage() { return deps.structurePage; },
         };
     }

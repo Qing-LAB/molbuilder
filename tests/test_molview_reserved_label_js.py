@@ -33,7 +33,9 @@ from tests._node_esm import run_node, served
 
 REPO = Path(__file__).resolve().parents[1]
 MODULE_DIR = REPO / "molbuilder" / "web" / "static" / "lib" / "molview"
-MODEL = MODULE_DIR / "model.js"
+#: The page that hosts MolView, as a test plays it: it hands the viewer the
+#: one reader of a server's answer (`support/molview_host.mjs`).
+HOST = Path(__file__).resolve().parent / "support" / "molview_host.mjs"
 
 FROZEN = "frozen_atoms"          # the label's one name, on both sides
 
@@ -64,7 +66,7 @@ def pair(isolated_projects_root):
 
 def _prelude(path) -> str:
     return f"""
-const {{ createModel }} = await import({json.dumps(MODEL.resolve().as_uri())});
+const {{ createModel }} = await import({json.dumps(HOST.as_uri())});
 
 /* The pair, opened as a tab opens a project file: by its path. */
 async function labelled() {{

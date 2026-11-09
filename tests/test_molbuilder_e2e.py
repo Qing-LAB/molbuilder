@@ -1221,9 +1221,19 @@ def test_the_page_remembers_which_file_it_is_showing_across_a_reload(
     viewer's restore instead — now the normal case — it was empty while a
     structure was plainly on the canvas, so the readout fell back to
     "Picked:" after a reload that had lost nothing.
+
+    The reload waits for the note naming the file to be saved: a save is sent
+    without waiting (`workspace.md` § 3), one after another, so a reload
+    before it lands is a reload before the page had kept anything to come
+    back to.
     """
     _open(page, flask_server)
-    _load(page, labelled_xyz)
+    with page.expect_response(
+            lambda r: (r.url.endswith("/api/workspace-storage/write")
+                       and ((r.request.post_data_json or {}).get("data")
+                            or {}).get("loadedFrom")),
+            timeout=WAIT_MS):
+        _load(page, labelled_xyz)
     page.wait_for_function(
         "() => /^Loaded:/.test("
         "  document.getElementById('load-candidate-readout').textContent)",

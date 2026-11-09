@@ -27,9 +27,12 @@
  * ladder's state chip.
  */
 import { mount, toDisplay } from "/static/lib/molview/index.js";
-import { molviewFiles } from "../projects/molview-doors.js";
+import { molviewDoors } from "../projects/molview-doors.js";
 import { ALL, ONE, frameAxisControl } from "../frame-axis.js";
 import { frameWords, pointWords } from "../results/point-words.js";
+// THE ONE READER of the server's answers (ui-contract.md § 12); named apart
+// from the digest card's own `ask`, its poll.
+import { ask as askServer } from "../server.js";
 
 /* WHO THESE BYTES BELONG TO (workspace.md § 4): the viewer's `owner`. */
 const WORKSPACE_TAG = "results:transport";
@@ -374,13 +377,10 @@ const WORKSPACE_TAG = "results:transport";
                              && alive(r) !== false);
         };
         const ask = async () => {
-            let b = null;
-            try {
-                b = await (await fetch("/api/transport/digest?path="
-                                       + encodeURIComponent(file))).json();
-            } catch (_) { b = null; }
+            const a = await askServer("/api/transport/digest?path="
+                                      + encodeURIComponent(file));
             if (state.disposed) return;
-            if (!b || !b.ok) {
+            if (!a.ok) {
                 // A POLL THAT FAILED says nothing of a reading followed: asked
                 // again in 2 s.
                 if (!busy && reading) {
@@ -389,7 +389,7 @@ const WORKSPACE_TAG = "results:transport";
                 }
                 return;
             }
-            const now = show(b.points);
+            const now = show(a.body.points);
             if (busy) return;               // this card's own reading asks
             clearTimeout(follow);
             // ANOTHER'S READING -- another tab's, `summarize task`'s, another
@@ -416,13 +416,11 @@ const WORKSPACE_TAG = "results:transport";
             // there are none.
             let answer;
             try {
-                const r = await fetch("/api/transport/digest", {
-                    method: "POST", headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ path: file, ...body }) });
-                const b = await r.json();
-                answer = b && b.ok
-                    ? { ok: true, outcomes: b.outcomes || [] }
-                    : { ok: false, error: String((b && b.error) || r.status) };
+                const a = await askServer("/api/transport/digest", {
+                    method: "POST", body: { path: file, ...body } });
+                answer = a.ok
+                    ? { ok: true, outcomes: a.body.outcomes || [] }
+                    : { ok: false, error: a.error };
                 /* THE DIGEST IS WRITTEN BESIDE THE DATA FILE: its folder
                  * announced (web/projects.md § 2). */
                 const projects = root.molbuilder && root.molbuilder.projects;
@@ -1326,17 +1324,18 @@ const WORKSPACE_TAG = "results:transport";
                         + (state.nFrames > 1 ? "&frame=" + frame : "")
                         + "&atoms=" + s.atoms.join(",")
                         + "&orbitals=" + encodeURIComponent(s.orbitals);
-                    const body = await (await fetch(q)).json();
+                    const a = await askServer(q);
                     if (!keep()) return;
                     s.at = at;
-                    if (body && body.ok) {
+                    if (a.ok) {
+                        const body = a.body;
                         s.curve = body;
                         s.error = body.outside_device && body.outside_device.length
                             ? body.outside_device.length + " atom(s) outside the "
                               + "device region are not counted" : null;
                     } else {
                         s.curve = null;
-                        s.error = (body && body.error) || "no answer";
+                        s.error = a.error;
                     }
                 } catch (e) {
                     if (!keep()) return;
@@ -1366,7 +1365,7 @@ const WORKSPACE_TAG = "results:transport";
         try {
             handle = await mount(molHost, ws, { mode: "readonly",
                                                 owner: WORKSPACE_TAG,
-                                                files: molviewFiles });
+                                                ...molviewDoors });
         } catch (e) {
             molHost.textContent = "Viewer failed: " + e;
             return;
@@ -1468,9 +1467,10 @@ const WORKSPACE_TAG = "results:transport";
              * PDOS asked again; the page around them stays as it is. */
             state.reload = async () => {
                 try {
-                    const b = await (await fetch("/api/transport/record?path="
-                                                 + encodeURIComponent(file))).json();
-                    if (state.disposed || !b || !b.ok) return;
+                    const a = await askServer("/api/transport/record?path="
+                                              + encodeURIComponent(file));
+                    if (state.disposed || !a.ok) return;
+                    const b = a.body;
                     state.points = Array.isArray(b.record.points) ? b.record.points : [];
                     _redraw(state);
                     _loadPdos(state);
@@ -1479,20 +1479,13 @@ const WORKSPACE_TAG = "results:transport";
             (async function () {
                 let rec;
                 try {
-                    const r = await fetch("/api/transport/record?path="
-                                          + encodeURIComponent(file));
-                    /* A SERVER FAULT ANSWERS A PAGE, NOT JSON: said as the
-                     * status it is, never as a JSON syntax error. */
-                    if (!r.ok && !/json/.test(r.headers.get("content-type") || "")) {
-                        throw new Error("the record could not be composed: the "
-                                        + "server answered " + r.status);
-                    }
-                    const body = await r.json();
-                    if (!body || !body.ok) {
+                    const a = await askServer("/api/transport/record?path="
+                                              + encodeURIComponent(file));
+                    if (!a.ok) {
                         throw new Error("could not read " + file + ": "
-                                        + ((body && body.error) || "unknown"));
+                                        + a.error);
                     }
-                    rec = body.record;
+                    rec = a.body.record;
                 } catch (e) {
                     if (state.disposed) return;
                     if (ctx && ctx.showError) ctx.showError(String(e));

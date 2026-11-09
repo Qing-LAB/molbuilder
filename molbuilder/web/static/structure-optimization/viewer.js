@@ -23,7 +23,8 @@
  */
 import { mount as mvMount, formula as mvFormula }
     from "/static/lib/molview/index.js";
-import { molviewFiles } from "/static/lib/projects/molview-doors.js";
+import { molviewDoors } from "/static/lib/projects/molview-doors.js";
+import { ask } from "../lib/server.js";
 
 (function () {
     "use strict";
@@ -33,13 +34,6 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
     const WORKSPACE_TAG = "structure-opt";
 
     const $ = (id) => document.getElementById(id);
-
-    /** The one fetch-failure sentence (lib/fetch-error.js): what a failure
-     * MEANS is a rule, and a rule cannot live in two files.
-     */
-    function _formatFetchError(e) {
-        return window.molbuilder.fetchError.format(e);
-    }
 
     // ----- State ------------------------------------------------------
     const state = {
@@ -227,28 +221,25 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
         let params;
         try { params = collectParams(engine); }
         catch (_) { return; }   // the field's own caption says why
-        try {
-            const r = await fetch("/api/build/preflight", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                /* The cell rides inside `structure`, from the same read as the
-                 * atoms -- the preflight has to judge the structure the user is
-                 * looking at, not a cell fetched a moment later. */
-                body: JSON.stringify({ structure: _structureForRequest(),
-                                       engine, params,
-                                       calculation: "optimization" }),
-            }).then(x => x.json());
-            /* Rendered whenever issues came back, ok or not (E-A3): the
-             * endpoint's bad-params branch answers ok:false WITH the parse
-             * error as an issue precisely so this panel can show it.
-             * Same rule as the Spectrum tab (lib/spectra/core.js). */
-            if (Array.isArray(r.issues)) {
-                _live[engine] = r.issues;
-                _showFindings(engine, r.issues);
-            }
-        } catch (e) {
-            // Network error during preflight is not surfaced -- the
-            // panel stays in its previous state.
+        // THE ONE READER (ui-contract.md § 12).
+        const a = await ask("/api/build/preflight", {
+            method: "POST",
+            /* The cell rides inside `structure`, from the same read as the
+             * atoms -- the preflight has to judge the structure the user is
+             * looking at, not a cell fetched a moment later. */
+            body: { structure: _structureForRequest(),
+                    engine, params,
+                    calculation: "optimization" },
+        });
+        /* Rendered whenever issues came back, ok or not (E-A3): the
+         * endpoint's bad-params branch answers ok:false WITH the parse
+         * error as an issue precisely so this panel can show it.
+         * Same rule as the Spectrum tab (lib/spectra/core.js).  Any other
+         * failure is not surfaced -- the panel stays in its previous state. */
+        const issues = a.body && a.body.issues;
+        if (Array.isArray(issues)) {
+            _live[engine] = issues;
+            _showFindings(engine, issues);
         }
     }
     
@@ -602,7 +593,10 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
                 res = await _proj2.parser.openMolecule(_viewer, f);
             } catch (e) {
                 if (mySeq !== _sidebarLoadSeq) return;
-                setStatus("load-status", _formatFetchError(e), "error");
+                // The load door's own sentence -- the one reader's words
+                // (ui-contract.md § 12) where it asked the server.
+                setStatus("load-status",
+                          (e && e.message) ? e.message : String(e), "error");
                 clearStructureInfo("load failed: " + filename);
                 return;
             }
@@ -835,8 +829,7 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
         if (!ws) return null;
         if (_mvHandle) return _mvHandle;
         return mvMount($("viewer-host"), ws,
-                { mode: "readonly", owner: WORKSPACE_TAG,
-                  files: molviewFiles })
+                { mode: "readonly", owner: WORKSPACE_TAG, ...molviewDoors })
             .then(function (h) { _mvHandle = (h && h.ok) ? h : null; return _mvHandle; })
             .catch(function (e) {
                 // #load-status is the page's load/viewer status slot (there is

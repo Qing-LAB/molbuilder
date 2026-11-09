@@ -27,6 +27,8 @@ import {
   projects, getProjectsRoot, SS_DIR, atProjectsRoot, readSelectionSlot, tell,
 } from "./state.js";
 import { openDir } from "./list.js";
+// THE ONE READER of the server's answers (ui-contract.md § 12).
+import { ask } from "../server.js";
 
 let elProjBtn, elFolderBtn, elUploadBtn, elZipBtn;
 
@@ -127,22 +129,14 @@ async function _doDownloadZip() {
   const dir = readSelectionSlot(SS_DIR) || "";
   if (!dir || atProjectsRoot(dir)) return;
   _setZipBusy(true, "Reading sizes…");
-  let out = null;
-  try {
-    const r = await fetch("/api/files/zip_prepare", {
-      method:  "POST",
-      headers: { "Content-Type": "application/json" },
-      body:    JSON.stringify({ path: dir }),
-    });
-    out = await r.json();
-  } catch (e) {
-    out = { ok: false, error: String(e) };
-  }
+  const answer = await ask("/api/files/zip_prepare",
+                           { method: "POST", body: { path: dir } });
   _setZipBusy(false, "");
-  if (!out || !out.ok) {
-    tell("error", (out && out.error) || "Could not read the folder.");
+  if (!answer.ok) {
+    tell("error", answer.error);
     return;
   }
+  const out = answer.body;
   const report = out.name + " — " + _describeArchive(out);
   const body = [report];
   const left = _leftOutWords(out);

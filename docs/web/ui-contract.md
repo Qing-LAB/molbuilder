@@ -751,3 +751,46 @@ a failure, an archive that came out incomplete — is a notification
 (`notify.show`, [`notifications.md`](?doc=web/notifications.md)) or the page's
 own status line. MolView's hosts already held this for a clear
 ([`molview.md`](?doc=web/molview.md) § 6.7a).
+
+## 12. A server's answer — one reader *(2.69.0)*
+
+**Every question a page asks the server goes through one reader**, `ask` in
+`lib/server.js` — an ES module, imported by a module and mirrored on
+`window.molbuilder.server` for a classic script, loaded once by the shared
+header. A page never parses an answer itself, and **never paints a failed
+answer as data**: a refusal is not *"nothing is set up"*, an empty list, or a
+menu left empty.
+
+```js
+const a = await ask(url, { method, body, signal, as });
+// {ok: true,  status, body, headers?}
+// {ok: false, status, error, body?, aborted?, signedOut?}
+// as: "text" -- an answer that is not JSON (a partial); "file" -- a file,
+//     its bytes and the answer's headers (an export's name, what it said)
+```
+
+| the server's answer | `ask` returns | `error`, said as it is |
+|---|---|---|
+| 2xx, JSON, its `ok` not `false` | `{ok: true, body}` | — |
+| JSON with `ok: false`, or a refusing status — an empty one too (a rate limit) | `{ok: false, body}` | the server's own `error`, else *"the server refused (HTTP n)"* |
+| not JSON — an error page | `{ok: false}` | *"the server's answer could not be read (HTTP n) — its log says why"* |
+| no answer at all | `{ok: false, status: 0}` | *"could not reach the server — check the connection, then try again"*, never the browser's own words |
+| cancelled (the caller's `signal`) | `{ok: false, aborted: true}` | — the caller says nothing: a newer question replaced it |
+| **signed out** — a `401` carrying `login_url`, or an answer the gate sent to the sign-in page | `{ok: false, signedOut: true}` | *"you are signed out"* |
+
+**Being signed out is said once, for the whole page**, by the reader: one
+notification ([`notifications.md`](?doc=web/notifications.md)), *"You are
+signed out. What this page holds is kept: sign in in the new tab, then carry
+on here"*, its **Sign in** link the page itself opened in a new tab — a page
+request the gate sends through sign-in and back to the page
+([`ops/access-control.md`](?doc=ops/access-control.md) § 3.3) — so nothing
+held here is left behind. Each page says
+its own refusal beside the control that asked, as it says any other. A request
+the browser makes itself — a download link, an image — is no question the
+reader can read.
+
+**Why one reader.** A page that reads its answers its own way parses a body
+without asking whether the server said yes, calls an error page *"a network
+error"*, paints a refusal as data — *"No channels are set up … They live in
+undefined."* — and cannot know the person was signed out. One reader makes the
+reading one rule, and leaves each page only what it says.

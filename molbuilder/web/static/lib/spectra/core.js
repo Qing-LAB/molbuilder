@@ -991,25 +991,25 @@
         try { params = collectParams(engine); }
         catch (_) { return; }   // the field's own caption says why
         const mySeq = ++_preflightSeq;
-        try {
-            const r = await fetch("/api/build/preflight", {
-                method:  "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    structure:   _structure,
-                    engine:      engine,
-                    calculation: "vibration",
-                    params:      params,
-                }),
-            }).then(x => x.json());
-            if (mySeq !== _preflightSeq) return;
-            if (Array.isArray(r.issues)) {
-                live[engine] = r.issues;
-                showFindings(engine, r.issues);
-            }
-        } catch (e) {
-            // Network hiccup: the panel keeps its previous state; the
-            // settings gate at prep is the canonical refusal anyway.
+        // THE ONE READER (ui-contract.md § 12).
+        const a = await root.molbuilder.server.ask("/api/build/preflight", {
+            method: "POST",
+            body: {
+                structure:   _structure,
+                engine:      engine,
+                calculation: "vibration",
+                params:      params,
+            },
+        });
+        if (mySeq !== _preflightSeq) return;
+        /* Drawn when the answer carries findings, a refusal's too: the
+         * bad-params refusal says its reason as one.  Any other failure
+         * leaves the panel as it was; the settings gate at prep is the
+         * canonical refusal anyway. */
+        const issues = a.body && a.body.issues;
+        if (Array.isArray(issues)) {
+            live[engine] = issues;
+            showFindings(engine, issues);
         }
     }
     const refreshPreflightDebounced = _debouncePreflight(refreshPreflight, 250);
@@ -1122,18 +1122,18 @@
         ask = ask || _askOf();
         const sent = JSON.stringify(ask);
         _lastAsk = sent;
-        const r = await fetch("/api/spectra/load", {
-            method:  "POST",
-            headers: { "Content-Type": "application/json" },
+        // THE ONE READER (ui-contract.md § 12): `answer` is its answer, whole.
+        const answer = await root.molbuilder.server.ask("/api/spectra/load", {
+            method: "POST",
             // THE TEMPERATURE RIDES WITH THE ASK: each mode comes back with
             // its thermal spread at it (web/spectra.md § 4.1).
             // AND THE BAR'S CHOICES (web/spectra.md § 2.1): a result that
             // cannot answer says why in `infrared_said` or `raman_said` and
             // loads all the same.
-            body:    JSON.stringify(Object.assign({ path: path }, ask)),
-            signal:  signal,
+            body:   Object.assign({ path: path }, ask),
+            signal: signal,
         });
-        return { path: path, body: await r.json(), asked: sent };
+        return { path: path, answer: answer, asked: sent };
     }
 
     /* WHAT EVERY LOAD ASKS beside the file: the temperature, the infrared
@@ -1170,23 +1170,10 @@
         transition("LOADING", { path: path });
         state.lifecycle.loadAbort = new AbortController();
         const signal = state.lifecycle.loadAbort.signal;
-        let body, asked;
-        try {
-            // The JSON parse is inside `fetchResults`, which is called
-            // inside this try, so a malformed / truncated body lands on
-            // the same status-banner path as a network error.
-            ({ body, asked } = await fetchResults(path, signal));
-        } catch (exc) {
-            // AbortError: a newer loadByPath() superseded us, or
-            // dispose() ran.  Silent -- the newer action owns the
-            // status banner now.
-            if (exc.name === "AbortError") return;
-            setStatus(els.watchStatus,
-                      "Network error: " + exc.message, "error");
-            transition("ERROR");
-            _announceReady({ error: exc.message });
-            return;
-        }
+        const { answer: a, asked } = await fetchResults(path, signal);
+        // A cancelled ask: a newer loadByPath() superseded us, or dispose()
+        // ran.  Silent -- the newer action owns the status banner now.
+        if (a.aborted) return;
         // Contract § 4 Invariant 1, asked of the ANSWER'S OWN IDENTITY.
         // Two questions:
         //   * is this still the file on screen?  A newer LOADING moved
@@ -1196,14 +1183,15 @@
         //     file apart, which a path comparison cannot.
         if (signal.aborted) return;
         if (path !== state.fileState.path) return;
-        if (!body.ok) {
-            let msg = body.error || "Load failed.";
-            if (body.kind === "schema_mismatch") {
+        if (!a.ok) {
+            const refused = a.body || {};
+            let msg = a.error;
+            if (refused.kind === "schema_mismatch") {
                 msg = "Schema version mismatch (expected "
-                    + body.expected_version + ", got "
-                    + body.actual_version + "). "
+                    + refused.expected_version + ", got "
+                    + refused.actual_version + "). "
                     + "Update molbuilder or use a matching script version.";
-            } else if (body.kind === "not_found") {
+            } else if (refused.kind === "not_found") {
                 // The dropdown lists files that exist, so this one went
                 // between the listing and the read.
                 msg = "File not found at " + path
@@ -1214,6 +1202,7 @@
             _announceReady({ error: msg });
             return;
         }
+        const body = a.body;
         // How the run is doing, from the answer, before anything is drawn.
         transition("APPLY", { path: path,
                               run: body.run !== undefined ? body.run : null });
@@ -1300,7 +1289,6 @@
         // In-flight guard: skip overlap ticks entirely; dispose()
         // aborts via watchAbort.
         if (state.lifecycle.watchInFlight) return;
-        let body;
         state.lifecycle.watchAbort = new AbortController();
         const signal = state.lifecycle.watchAbort.signal;
         state.lifecycle.watchInFlight = true;
@@ -1310,23 +1298,27 @@
         // ends up painted under the wrong name -- and it is what every
         // guard below compares against.
         const myPath = state.fileState.path;
-        let asked;
+        let a, asked;
         try {
-            ({ body, asked } = await fetchResults(myPath, signal));
-        } catch (exc) {
-            if (exc.name === "AbortError") return;
+            ({ answer: a, asked } = await fetchResults(myPath, signal));
+        } finally {
+            state.lifecycle.watchInFlight = false;
+        }
+        if (a.aborted) return;
+        /* NO ANSWER READ -- the server out of reach, or an answer that is not
+         * JSON (ui-contract.md § 12: such a failure carries no body): a
+         * passing trouble, asked again at the next tick, up to a limit. */
+        if (!a.ok && a.body === undefined) {
             if (myPath !== state.fileState.path) return;
             state.lifecycle.watchErrors++;
             setStatus(els.watchStatus,
-                      "Network error (" + state.lifecycle.watchErrors + "/"
-                      + WATCH_MAX_ERRORS + "): " + exc.message, "error");
+                      a.error + " (" + state.lifecycle.watchErrors + "/"
+                      + WATCH_MAX_ERRORS + ")", "error");
             if (state.lifecycle.watchErrors >= WATCH_MAX_ERRORS) {
                 stopWatch("Stopped after " + WATCH_MAX_ERRORS
-                          + " consecutive network errors.");
+                          + " consecutive failures: " + a.error);
             }
             return;
-        } finally {
-            state.lifecycle.watchInFlight = false;
         }
         // TWO guards at resolution, the same pair `loadByPath` uses.
         //
@@ -1349,13 +1341,14 @@
         // needed.
         if (signal.aborted) return;
         if (myPath !== state.fileState.path) return;
-        if (!body.ok) {
+        if (!a.ok) {
             // The engine replaces the file atomically, so a poll never
             // finds it half-written or briefly missing: an error here --
             // the file gone included -- ends the follow, and says why.
-            stopWatch("Stopped following: " + (body.error || "load failed"));
+            stopWatch("Stopped following: " + a.error);
             return;
         }
+        const body = a.body;
         state.lifecycle.watchErrors = 0;
         // How the run is doing, then whatever phases are populated so far.
         transition("APPLY", { path: myPath,
@@ -2073,25 +2066,18 @@
         const asked = new AbortController();
         state.lifecycle.viewsAbort = asked;
         const ask = async () => {
-            let body;
-            try {
-                body = (await fetchResults(path, asked.signal,
-                                           _askOf(choices))).body;
-            } catch (exc) {
-                if (!asked.signal.aborted) {
-                    _barError = String((exc && exc.message) || exc);
-                    _renderBar(state.fileState.results);
-                }
-                return;
-            }
+            const a = (await fetchResults(path, asked.signal,
+                                          _askOf(choices))).answer;
             const held = state.fileState.results;
-            if (asked.signal.aborted || path !== state.fileState.path
-                || !held) return;
-            if (!body.ok || !body.results) {
-                _barError = body.error || "the load door answered no results";
+            if (a.aborted || asked.signal.aborted
+                || path !== state.fileState.path || !held) return;
+            if (!a.ok || !a.body.results) {
+                _barError = a.ok ? "the load door answered no results"
+                                 : a.error;
                 _renderBar(held);
                 return;
             }
+            const body = a.body;
             Object.keys(choices).forEach(k => { state[k] = choices[k]; });
             held.infrared = body.results.infrared || null;
             held.infrared_said = body.results.infrared_said || null;
@@ -3605,14 +3591,11 @@
         const path = state.fileState.path;
         if (!path || !state.fileState.results) return null;
         _setTemp = { path: path, t: t };
-        let body;
-        try {
-            body = (await fetchResults(path, undefined)).body;
-        } catch (_) { return null; }
-        if (path !== state.fileState.path || !body.ok || !body.results)
+        const a = (await fetchResults(path, undefined)).answer;
+        if (path !== state.fileState.path || !a.ok || !a.body.results)
             return null;
-        return { t: body.results.frameset_temperature_k,
-                 modes: body.results.modes || [] };
+        return { t: a.body.results.frameset_temperature_k,
+                 modes: a.body.results.modes || [] };
     }
 
     async function onWriteFrameSet() {
@@ -3743,27 +3726,20 @@
         }
         if (!out) return;
         setStatus(els.framesetStatus, "writing the frame set…", "muted");
-        let body;
-        try {
-            const res = await fetch("/api/spectra/frameset", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    path: String(path),
-                    mode: mode.index_1based,
-                    temperature_k: Number(asked.temperature),
-                    nodes: Number(asked.nodes), out: out }),
-            });
-            body = await res.json();
-        } catch (exc) {
-            setStatus(els.framesetStatus, "Network error: " + exc.message,
-                      "error");
+        // THE ONE READER (ui-contract.md § 12).
+        const a = await root.molbuilder.server.ask("/api/spectra/frameset", {
+            method: "POST",
+            body: {
+                path: String(path),
+                mode: mode.index_1based,
+                temperature_k: Number(asked.temperature),
+                nodes: Number(asked.nodes), out: out },
+        });
+        if (!a.ok) {
+            setStatus(els.framesetStatus, a.error, "error");
             return;
         }
-        if (!body.ok) {
-            setStatus(els.framesetStatus, body.error || "not written", "error");
-            return;
-        }
+        const body = a.body;
         /* THE FOLDER WRITTEN INTO, ANNOUNCED (web/projects.md § 2): whoever
          * shows it -- the sidebar, the run history -- follows it. */
         const projects = window.molbuilder && window.molbuilder.projects;
@@ -4036,13 +4012,12 @@
         if (!path || !held || !Array.isArray(held.modes)) return;
         if (_thermalAbort) _thermalAbort.abort();
         _thermalAbort = new AbortController();
-        let body;
-        try {
-            body = (await fetchResults(path, _thermalAbort.signal)).body;
-        } catch (exc) {
-            return;     // aborted by a newer ask, or the network -- the watch says so
-        }
-        if (path !== state.fileState.path || !body.ok
+        // Silent on a failure: aborted by a newer ask, or the server's
+        // trouble -- the watch says so.
+        const a = (await fetchResults(path, _thermalAbort.signal)).answer;
+        if (!a.ok) return;
+        const body = a.body;
+        if (path !== state.fileState.path
             || !body.results || !Array.isArray(body.results.modes)) return;
         held.temperature_k = body.results.temperature_k;
         body.results.modes.forEach((m, i) => {

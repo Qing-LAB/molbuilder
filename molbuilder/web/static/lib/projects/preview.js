@@ -70,7 +70,6 @@ function _emptyState() {
         size:          null,
         editable:      false,
         editing:       false,
-        readError:     null,
         // Paginated-view bookkeeping for files larger than
         // ``BULK_READ_MAX_BYTES``.  ``mode`` distinguishes bulk vs.
         // range; ``loadedBytes`` tracks how much of the file is
@@ -480,8 +479,6 @@ export async function showPreview(wanted) {
         const msg = statBody.error || "Could not stat file.";
         console.error("[preview] stat failed:", msg);
         elError.textContent = msg;
-        _state.readError = statBody.error && /network/.test(statBody.error)
-            ? "network" : "stat";
         _renderUiFromState();
         return;
     }
@@ -506,7 +503,6 @@ export async function showPreview(wanted) {
         console.error("[preview] load threw:", e);
         elError.textContent = "Load failed: "
             + (e && e.message ? e.message : String(e));
-        _state.readError = "load";
         _renderUiFromState();
     }
 }
@@ -541,9 +537,6 @@ async function _loadBulk(path) {
         if (/not valid UTF-8/.test(reason)) {
             _setStatus("Binary content; this modal edits text only.",
                        null);
-            _state.readError = "binary";
-        } else {
-            _state.readError = /network/.test(reason) ? "network" : "other";
         }
         _renderUiFromState();
         return;
@@ -636,8 +629,6 @@ async function _fetchNextRangeChunk(path) {
         if (body.aborted) return;
         if (!body.ok) {
             elError.textContent = body.error || "Range read failed.";
-            _state.readError = /network/.test(body.error || "")
-                ? "network" : "range";
             _renderUiFromState();
             return;
         }

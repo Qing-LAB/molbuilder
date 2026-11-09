@@ -35,13 +35,13 @@
         if (root.console) root.console.log("[reload] " + message);
     }
 
-    /* Ask the server whether it is still down.  A FAILED fetch is the expected
-     * answer while it restarts -- the socket is closed -- so a rejection here is
-     * progress, not an error, and must not reach the console as one. */
+    /* Ask the server whether it is still down.  A FAILED answer is the
+     * expected one while it restarts -- the socket is closed -- so it is
+     * progress, not an error, and must not reach the console as one.  Asked
+     * through THE ONE READER (ui-contract.md § 12); health is public. */
     function _isUp() {
-        return root.fetch("/api/health", { cache: "no-store" })
-            .then(function (r) { return r.ok; })
-            .catch(function () { return false; });
+        return root.molbuilder.server.ask("/api/health")
+            .then(function (a) { return a.ok; });
     }
 
     function _waitForServer(deadline) {
@@ -72,22 +72,13 @@
         if (btn) btn.disabled = true;
         _notify("info", "Restarting the server…");
 
-        root.fetch("/api/admin/reload", { method: "POST" })
-            .then(function (r) {
-                if (r.status === 403) {
-                    throw new Error("this session is not an admin");
-                }
-                if (!r.ok) {
-                    // THE SERVER'S OWN WORDS: a refusal says why -- a
-                    // molbuilder.json the fresh server could not read is
-                    // refused before this one exits (`deployment.md` § 1.0b)
-                    // -- and the status alone does not.
-                    return r.json().catch(function () { return null; })
-                        .then(function (b) {
-                            throw new Error((b && b.error) ? b.error
-                                : "the server refused (HTTP " + r.status + ")");
-                        });
-                }
+        root.molbuilder.server.ask("/api/admin/reload", { method: "POST" })
+            .then(function (a) {
+                // THE SERVER'S OWN WORDS: a refusal says why -- a
+                // molbuilder.json the fresh server could not read is
+                // refused before this one exits (`deployment.md` § 1.0b)
+                // -- and the status alone does not.
+                if (!a.ok) throw new Error(a.error);
                 return _waitForServer(Date.now() + GIVE_UP_MS);
             })
             .then(function (came_back) {
@@ -113,14 +104,17 @@
     function _start() {
         var btn = _btn();
         if (!btn) return;                       // no auth session, no button
-        root.fetch("/api/admin/reload/available", { cache: "no-store" })
-            .then(function (r) { return r.ok ? r.json() : null; })
-            .then(function (body) {
-                if (!body || !body.available) return;   // stays hidden
+        // THE ONE READER is a module: asked once it has run.
+        root.molbuilder.runtime.whenReady("server")
+            .then(function (server) {
+                return server.ask("/api/admin/reload/available");
+            })
+            .then(function (a) {
+                // A failed answer stays hidden, which is the safe state.
+                if (!a.ok || !a.body.available) return;
                 btn.hidden = false;
                 btn.addEventListener("click", _reload);
-            })
-            .catch(function () { /* stays hidden, which is the safe state */ });
+            });
     }
 
     if (root.document.readyState === "loading") {

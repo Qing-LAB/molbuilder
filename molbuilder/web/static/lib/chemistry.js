@@ -59,14 +59,6 @@
         return root.molbuilder.dom.el(tag, cls, text);
     }
 
-    /** The one fetch-failure sentence (lib/fetch-error.js), degrading to the
-     *  bare message when the formatter is not on the page. */
-    function _formatFetchError(e) {
-        var f = root.molbuilder && root.molbuilder.fetchError;
-        if (f && typeof f.format === "function") return f.format(e);
-        return (e && e.message) ? String(e.message) : "request failed";
-    }
-
     function _setStatus(text, severity) {
         var st = root.molbuilder && root.molbuilder.status;
         if (st && typeof st.set === "function") {
@@ -223,28 +215,18 @@
 
         function superseded() { return mySeq !== _seq; }
 
-        return root.fetch("/api/structure/analyze", {
-            method:  "POST",
-            headers: { "Content-Type": "application/json" },
-            body:    JSON.stringify(body),
-            signal:  mySignal,
-        }).then(function (r) {
-            return r.json().then(function (b) {
-                if (superseded()) return { ok: false, superseded: true };
-                if (!r.ok || !b || !b.ok) {
-                    return { ok: false,
-                             error: (b && b.error) ? b.error
-                                 : "Analyze failed (HTTP " + r.status + ")." };
-                }
-                return { ok: true, body: b };
-            });
-        }).catch(function (e) {
-            // AbortError IS the supersede signal.
-            if (e && e.name === "AbortError") {
+        // THE ONE READER (ui-contract.md § 12).
+        return root.molbuilder.server.ask("/api/structure/analyze", {
+            method: "POST",
+            body:   body,
+            signal: mySignal,
+        }).then(function (a) {
+            // A cancelled ask IS the supersede signal.
+            if (a.aborted || superseded()) {
                 return { ok: false, superseded: true };
             }
-            if (superseded()) return { ok: false, superseded: true };
-            return { ok: false, error: _formatFetchError(e) };
+            if (!a.ok) return { ok: false, error: a.error };
+            return { ok: true, body: a.body };
         });
     }
 

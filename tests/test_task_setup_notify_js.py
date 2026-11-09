@@ -30,6 +30,7 @@ from tests._node_esm import lifted, run_node, served
 ROOT = Path(__file__).resolve().parents[1]
 VIEWER = ROOT / "molbuilder/web/static/task-setup/viewer.js"
 PAGE_BUSY = ROOT / "molbuilder/web/static/lib/page-busy.js"
+SERVER = ROOT / "molbuilder/web/static/lib/server.js"
 
 
 #: THE PAGE'S FENCE, imported as the viewer imports it: in node it holds its
@@ -38,6 +39,9 @@ PAGE_BUSY = ROOT / "molbuilder/web/static/lib/page-busy.js"
 #: and the card's way through it the Task setup fence table's
 #: (`test_task_setup_prep_e2e.py`).
 _FENCE = f"const {{ pageBusy }} = await import({json.dumps(PAGE_BUSY.as_uri())});"
+#: THE ONE READER, imported as the viewer imports it (`ui-contract.md`
+#: § 12): the card's questions are read by it from what the app answers.
+_READER = f"const {{ ask }} = await import({json.dumps(SERVER.as_uri())});"
 
 
 #: WHAT THE HARNESSES LIFT OUT OF THE VIEWER, each by `lifted`'s two anchors:
@@ -68,7 +72,7 @@ _ON_THE_PAGE = (
      "\nif (document.readyState"),
     ("function readNotifyFromRequest(", "/** What a `prep` would resolve"),
     ("function notifyValues()", "/** Write the policy INTO"),
-    _FENCE, *_WRITING,
+    _READER, _FENCE, *_WRITING,
 )
 
 

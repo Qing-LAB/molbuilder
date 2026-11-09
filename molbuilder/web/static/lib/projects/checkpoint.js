@@ -40,6 +40,7 @@
 
 import { askFields } from "../dialog.js";
 import { pageBusy } from "../page-busy.js";
+import { ask } from "../server.js";
 
 const _state = {
     /** Currently selected directory path (relative to projects root,
@@ -572,24 +573,7 @@ function _renderListRows(states) {
 
 /* ---------- Network calls ---------- */
 
-async function _fetchJSON(method, url, body, signal) {
-    const opts = { method, headers: { "Content-Type": "application/json" } };
-    if (body !== undefined) opts.body = JSON.stringify(body);
-    if (signal) opts.signal = signal;
-    const r = await fetch(url, opts);
-    let payload = null;
-    try {
-        payload = await r.json();
-    } catch (e) {
-        /* AN ABORT IS NOT AN EMPTY BODY.  This catch is here for a
-         * reply that carries no JSON; the `AbortError` a Cancel raises
-         * when the headers have landed and the body has not must not
-         * read downstream as a server that answered with nothing.  Only
-         * the deep read passes a signal, so only it can reach this. */
-        if (e && e.name === "AbortError") throw e;
-    }
-    return { http: r.status, body: payload };
-}
+/* Each question goes through THE ONE READER (`ask`, ui-contract.md § 12). */
 
 /** Re-read the open folder and repaint the pill, the list and the graph.
  *
@@ -623,17 +607,15 @@ async function _refresh(opts = {}) {
 
 async function _readInto(dir, sig, opts) {
     try {
-        const stRes = await _fetchJSON("GET",
+        const stRes = await ask(
             `/api/checkpoint/state?path=${encodeURIComponent(dir)}`
-            + (opts.deep ? "&deep=1" : ""), undefined, sig);
+            + (opts.deep ? "&deep=1" : ""), { signal: sig });
         if (dir !== _state.currentDir) return;
-        if (stRes.http >= 500 || !stRes.body) {
-            _renderError(stRes.body?.error || "HTTP " + stRes.http);
-            return;
-        }
-        if (stRes.http !== 200) {
-            // 4xx: bad path or similar.  Sensor reads "error".
-            _renderError(stRes.body.error || "HTTP " + stRes.http);
+        // An abort is the Cancel button doing its job, not a failure.
+        if (stRes.aborted) return;
+        if (!stRes.ok) {
+            // Bad path, a fault, signed out...  Sensor reads "error".
+            _renderError(stRes.error);
             return;
         }
         // NOT A FOLDER CHECKPOINTS ARE FOR: no description and no repo.
@@ -658,11 +640,11 @@ async function _readInto(dir, sig, opts) {
             // The list is fetched only while the view is showing -- a
             // closed view needs the STATE (the button's color), never the
             // fifty rows nobody is looking at.
-            const lsRes = await _fetchJSON("GET",
+            const lsRes = await ask(
                 `/api/checkpoint/list?path=${encodeURIComponent(dir)}&limit=50`,
-                undefined, sig);
+                { signal: sig });
             if (dir !== _state.currentDir) return;
-            if (lsRes.body && lsRes.body.ok && lsRes.body.states) {
+            if (lsRes.ok && lsRes.body.states) {
                 _renderStates(lsRes.body.states);
             }
         } else {
@@ -670,10 +652,7 @@ async function _readInto(dir, sig, opts) {
             if (elGraph) elGraph.hidden = true;
         }
     } catch (e) {
-        // An abort is the Cancel button doing its job, not a failure.
-        if (!(e && e.name === "AbortError")) {
-            _renderError(String(e && e.message || e));
-        }
+        _renderError(String(e && e.message || e));
     }
 }
 
@@ -702,8 +681,8 @@ async function _onInitClick() {
     _hideAdvisory();
     elInitBtn.disabled = true;
     try {
-        let res = await _fetchJSON("POST", "/api/checkpoint/init",
-            { path: dir });
+        let res = await ask("/api/checkpoint/init",
+            { method: "POST", body: { path: dir } });
         const refusal = (res.body && Array.isArray(res.body.errors_only)
                          && res.body.errors_only.length)
             ? res.body.errors_only[0] : null;
@@ -719,18 +698,17 @@ async function _onInitClick() {
                 confirmLabel: "Set up",
             });
             if (!got) return;                        // cancelled
-            res = await _fetchJSON("POST", "/api/checkpoint/init",
-                { path: dir, calculation: got.name.trim() });
+            res = await ask("/api/checkpoint/init", { method: "POST",
+                body: { path: dir, calculation: got.name.trim() } });
         }
-        if (res.body && res.body.ok) {
+        if (res.ok) {
             await _refresh();
             return;
         }
         const again = (res.body && Array.isArray(res.body.errors_only)
                        && res.body.errors_only.length)
             ? res.body.errors_only[0].message : null;
-        _showAdvisory(again || ("Set-up failed: " +
-            (res.body?.error || "HTTP " + res.http)));
+        _showAdvisory(again || ("Set-up failed: " + res.error));
     } catch (e) {
         _showAdvisory("Set-up failed: " + String(e?.message || e));
     } finally {
@@ -767,18 +745,15 @@ async function _onCommitClick() {
         // Through the public API (§ 5), so the panel and a tab that must take
         // a state before writing share ONE implementation.
         const out = await saveState(dir, note.trim());
-        const res = { body: { ok: out.ok, changed: out.changed,
-                              error: out.error } };
-        if (res.body && res.body.ok) {
+        if (out.ok) {
             // `changed:false` is the honest "nothing differed from where you
             // stand" -- not a failure, and not a state that was invented.
-            if (res.body.changed === false) {
+            if (out.changed === false) {
                 _showAdvisory(
                     "Nothing changed since the state this folder stands at.");
             }
         } else {
-            _showAdvisory("Save failed: " +
-                (res.body?.error || "HTTP " + res.http));
+            _showAdvisory("Save failed: " + out.error);
         }
     } catch (e) {
         _showAdvisory("Save failed: " + String(e?.message || e));
@@ -811,16 +786,15 @@ async function _onTagClick() {
     _hideAdvisory();
     elTagBtn.disabled = true;
     try {
-        const res = await _fetchJSON("POST", "/api/checkpoint/tag", {
+        const res = await ask("/api/checkpoint/tag", { method: "POST", body: {
             path: dir,
             name: name.trim(),
             note: note.trim(),
-        });
-        if (res.body && res.body.ok) {
+        } });
+        if (res.ok) {
             await _refresh();
         } else {
-            _showAdvisory("Tag failed: " +
-                (res.body?.error || "HTTP " + res.http));
+            _showAdvisory("Tag failed: " + res.error);
         }
     } catch (e) {
         _showAdvisory("Tag failed: " + String(e?.message || e));
@@ -883,12 +857,12 @@ async function _onRestoreClick(sha) {
  */
 async function _restore(dir, sha, label, force) {
     try {
-        const res = await _fetchJSON("POST", "/api/checkpoint/restore", {
+        const res = await ask("/api/checkpoint/restore", { method: "POST", body: {
             path:  dir,
             state: sha,
             force: !!force,
-        });
-        if (res.body && res.body.ok) {
+        } });
+        if (res.ok) {
             await _refresh();
             /* THE FOLDER'S FILES JUST CHANGED UNDERNEATH EVERY OPEN TAB.
              * `_refresh()` above repaints THIS panel's own list and nothing
@@ -919,8 +893,7 @@ async function _restore(dir, sha, label, force) {
             }
             return;
         }
-        _showAdvisory(advisory || ("Restore failed: " +
-            (res.body?.error || "HTTP " + res.http)));
+        _showAdvisory(advisory || ("Restore failed: " + res.error));
     } catch (e) {
         _showAdvisory("Restore failed: " + String(e && e.message || e));
     }
@@ -1001,26 +974,25 @@ export function initCheckpointPanel() {
  * (`initialized`). */
 export async function status(dir) {
     if (!dir) return { ok: false, error: "no folder given" };
-    const res = await _fetchJSON("GET",
+    const res = await ask(
         "/api/checkpoint/state?path=" + encodeURIComponent(dir));
-    const b = (res && res.body) || {};
+    const b = res.ok ? res.body : {};
     return {
-        ok:          !!b.ok,
+        ok:          res.ok,
         initialized: !!b.initialized,
         clean:       b.clean !== false,
-        error:       b.error || null,
+        error:       res.ok ? null : res.error,
     };
 }
 
 /** Start a history here.  Refuses with a reason a caller can show. */
 export async function init(dir, opts) {
     if (!dir) return { ok: false, error: "no folder given" };
-    const res = await _fetchJSON("POST", "/api/checkpoint/init",
-        { path: dir, engine: (opts && opts.engine) || undefined });
-    const b = (res && res.body) || {};
-    const refusal = (Array.isArray(b.errors_only) && b.errors_only.length)
-        ? b.errors_only[0] : null;
-    return { ok: !!b.ok, error: b.error || refusal || null };
+    const res = await ask("/api/checkpoint/init", { method: "POST",
+        body: { path: dir, engine: (opts && opts.engine) || undefined } });
+    // ...A REFUSAL IN THE SERVER'S WORDS, as the reader read it: the route's
+    // advisory carries its issue's message as its `error`.
+    return res.ok ? { ok: true, error: null } : { ok: false, error: res.error };
 }
 
 /**
@@ -1040,12 +1012,13 @@ export async function saveState(dir, note) {
     if (!text) {
         return { ok: false, error: "A state needs a note. Nothing was saved." };
     }
-    const res = await _fetchJSON("POST", "/api/checkpoint/save",
-                                 { path: dir, note: text });
-    const b = (res && res.body) || {};
-    if (b.ok) {
+    const res = await ask("/api/checkpoint/save",
+                          { method: "POST", body: { path: dir, note: text } });
+    if (res.ok) {
         // The panel is showing this folder's history; keep it truthful.
         try { await _refresh(); } catch (_) { /* the state is saved either way */ }
     }
-    return { ok: !!b.ok, changed: b.changed !== false, error: b.error || null };
+    const b = res.ok ? res.body : {};
+    return { ok: res.ok, changed: b.changed !== false,
+             error: res.ok ? null : res.error };
 }

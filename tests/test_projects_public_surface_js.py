@@ -229,7 +229,7 @@ def test_readRange_network_drop_returns_uniform_envelope():
         console.log(JSON.stringify(r));
     ''')
     assert out["ok"] is False
-    assert "network error" in out["error"]
+    assert "could not reach the server" in out["error"]
 
 
 # ----- createProject / mkdir / upload: refresh on success --------- #
@@ -619,39 +619,6 @@ class TestWriteFileEdgeFields:
         """, app_at)
         assert out["ok"] is False
         assert out["aborted"] is True
-
-
-#: What a cancellation arrives as across the page, and what is not one:
-#: ``(the value, a cancel?)``.  A fetch aborted by its signal throws an
-#: ``AbortError``; api.js and ``writeFile`` answer ``aborted: true``; a
-#: door's answer for a question the person declined is ``cancelled: true``
-#: (projects.parser, molview-doors); mol-viewer-embed's ViewerError says
-#: ``code: "aborted"``.  ``code: "disposed"`` is a host tearing an embed
-#: down, not the person's cancel.
-CANCEL_SHAPES = [
-    ('Object.assign(new Error("aborted"), { name: "AbortError" })', True),
-    ('{ ok: false, aborted: true, error: "x" }', True),
-    ('{ ok: false, cancelled: true }', True),
-    ('{ code: "aborted", message: "x" }', True),
-    ('{ code: "disposed", message: "x" }', False),
-    ('new TypeError("Failed to fetch")', False),
-    ('{ ok: false, error: "permission denied" }', False),
-    ('null', False),
-    ('undefined', False),
-]
-
-
-def test_isCancelError_tells_a_cancel_from_an_error():
-    """`isCancelError` tells a person's cancel apart from a real error
-    (`web/projects.md` § 5), whichever shape the cancel arrives in
-    (:data:`CANCEL_SHAPES`).  THE SILENT FAILURE: a shape missed is a
-    cancel shown as an error; a shape too many is a failure dismissed as
-    the person's choice."""
-    out = _run("console.log(JSON.stringify([%s].map("
-               "(e) => state.projects.isCancelError(e))));"
-               % ", ".join(js for js, _ in CANCEL_SHAPES))
-    assert dict(zip((js for js, _ in CANCEL_SHAPES), out)) == dict(
-        CANCEL_SHAPES)
 
 
 # ----- upload adds relPath --------------------------------------- #

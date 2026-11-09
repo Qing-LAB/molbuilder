@@ -34,6 +34,12 @@
 .app-notification--info  { border-left-color: var(--accent); }
 
 .app-notification__msg { flex: 1 1 auto; }
+/* A ROW'S ONE LINK -- *Sign in* (notifications.md § 1). */
+.app-notification__action {
+    flex: 0 0 auto;
+    color: var(--accent);
+    font-weight: var(--weight-semibold);
+}
 
 .app-notification__dismiss {
     flex: 0 0 auto;

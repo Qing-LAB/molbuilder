@@ -661,13 +661,14 @@
             const signal = aborter.signal;
             // ASK THE DOOR.  `/api/results/dir` is the HTTP surface over
             // `parse.dirs` -- one call answering what is here, what reads
-            // each file, and which one to open.  ``cache: "no-store"`` keeps
-            // an identical URL from serving a cached prior scan; ``signal``
+            // each file, and which one to open -- through THE ONE READER
+            // (ui-contract.md § 12), whose ``cache: "no-store"`` keeps an
+            // identical URL from serving a cached prior scan; ``signal``
             // aborts a superseded scan.
-            fetch("/api/results/dir?path=" + encodeURIComponent(dir),
-                  { signal: signal, cache: "no-store" })
-                .then(r => r.json())
-                .then(body => {
+            root.molbuilder.server.ask(
+                "/api/results/dir?path=" + encodeURIComponent(dir),
+                { signal: signal })
+                .then(answer => {
                     if (disposed || signal.aborted) return;
                     /* AND THE ANSWER HAS TO BE ABOUT THE FOLDER WE ASKED
                      * ABOUT -- the rule `said.dir !== _dir` keeps in Task
@@ -687,19 +688,21 @@
                      * one we sent, and a string compare on that would refuse
                      * every correct answer under a symlinked projects root. */
                     if (boundDir !== dir) return;
-                    if (!body || body.ok !== true) {
-                        // Fetch failed (file listing API errored).
+                    if (!answer.ok) {
+                        // The listing failed, said in the reader's words.
                         // Keep the bar visible so Refresh is still
                         // clickable -- a transient error shouldn't
                         // strand the user; one Refresh click retries.
                         if (metaEl) metaEl.classList.remove("is-busy");
                         _populatePlaceholder(selEl,
-                            "(directory listing failed — click Reload)");
+                            "(directory listing failed: " + answer.error
+                            + " — click Reload)");
                         cachedResults = [];
                         cachedGroups  = [];
                         _showIdleMeta(null);
                         return;
                     }
+                    const body = answer.body;
                     lastRunDir = body.run_dir || dir;
                     /* THE ANSWER, READ ONCE (`readAnswer`, § 0.2): the
                      * folder's result files -- a run's master absorbing its
@@ -791,7 +794,6 @@
                     _adoptSelection(chosen);
                 })
                 .catch(err => {
-                    if (err && err.name === "AbortError") return;
                     console.warn(
                         "[results-file-picker] scan failed; "
                         + "showing placeholder",

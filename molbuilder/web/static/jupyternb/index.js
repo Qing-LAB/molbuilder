@@ -23,6 +23,9 @@
  *
  * AND EVERY STATE EITHER POLLS OR OFFERS A BUTTON (`plan.md` § 5n.8).
  */
+// THE ONE READER of a server's answer (`ui-contract.md` § 12).
+import { ask } from "../lib/server.js";
+
 const $ = (id) => document.getElementById(id);
 
 const state   = $("nb-state");
@@ -145,16 +148,6 @@ function labUrl(st, rel) {
     ? `/tree/${rel.split("/").map(encodeURIComponent).join("/")}`
     : "";
   return `${st.base}/lab${path}`;
-}
-
-async function post(path) {
-  const r = await fetch(path, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-  });
-  let body = {};
-  try { body = await r.json(); } catch (_) { /* a refusal may carry no JSON */ }
-  return { ok: r.ok && body.ok !== false, status: r.status, body };
 }
 
 /** Run `fn` once the sidebar's start has answered: the projects root, or
@@ -389,12 +382,11 @@ const STATES = [
       actions.appendChild(button("Start JupyterLab", async () => {
         say("Starting…");
         actions.replaceChildren();
-        const res = await post("/api/jupyter/start");
+        const res = await ask("/api/jupyter/start", { method: "POST" });
         if (!res.ok) {
           // AND A WAY FORWARD: the click emptied the action row and
           // `render` had already stopped polling.
-          sayError(`Could not start it: ${res.body.error || res.body.message
-                   || ("HTTP " + res.status)}`);
+          sayError(`Could not start it: ${res.error}`);
           actions.appendChild(recheckButton());
           return;
         }
@@ -417,7 +409,7 @@ function unreachable(err) {
   actions.replaceChildren();
   cmd.hidden = true;
   wrap.hidden = true;
-  sayError("Could not ask this server about the notebook: "
+  sayError("The notebook's state could not be read: "
            + (err.message || err));
   actions.appendChild(button("Try again", () => {
     say("Checking…");
@@ -441,13 +433,12 @@ function recheckButton(label = "Check again") {
 function stopButton() {
   return button("Stop JupyterLab", async () => {
     say("Stopping…");
-    const res = await post("/api/jupyter/stop");
+    const res = await ask("/api/jupyter/stop", { method: "POST" });
     if (!res.ok) {
       // REFUSED, so change nothing: blanking the frame would tear Lab down
       // -- layout, open documents and any unsaved editor state -- for a stop
       // that never happened.
-      sayError(`Could not stop it: ${res.body.error || res.body.message
-               || ("HTTP " + res.status)}`);
+      sayError(`Could not stop it: ${res.error}`);
       actions.appendChild(recheckButton());
       return;
     }
@@ -495,10 +486,10 @@ function render(st) {
 
 async function refresh() {
   try {
-    const r = await fetch("/api/jupyter/status");
-    const st = await r.json();
-    if (!st.ok) throw new Error("status refused");
-    render(st);
+    const answer = await ask("/api/jupyter/status");
+    // A REFUSAL IN THE SERVER'S WORDS, said as one.
+    if (!answer.ok) { unreachable(answer.error); return; }
+    render(answer.body);
   } catch (err) {
     unreachable(err);
   }

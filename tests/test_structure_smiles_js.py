@@ -32,9 +32,11 @@ from tests._node_esm import run_node, served
 
 ROOT = Path(__file__).resolve().parents[1]
 #: The panel reads its dependency slots from the shared wiring
-#: (`panel-deps.js`), which the page loads before it.  A harness that
-#: skips it is testing a module the browser never runs.
+#: (`panel-deps.js`), which the page loads before it, and asks through the
+#: page's one reader (`lib/server.js`, in the shared header).  A harness that
+#: skips either is testing a module the browser never runs.
 PANEL_DEPS = ROOT / "molbuilder/web/static/modify/structure/panel-deps.js"
+SERVER = ROOT / "molbuilder/web/static/lib/server.js"
 
 
 def _run(snippet: str, app_at: "str | None" = None, *,
@@ -46,7 +48,7 @@ def _run(snippet: str, app_at: "str | None" = None, *,
     read)."""
     module = (PANEL_DEPS.parent / f"{panel}.js").as_uri()
     return run_node(
-        [PANEL_DEPS],
+        [SERVER, PANEL_DEPS],
         f"const {panel} = (await import({json.dumps(module)})).default;\n"
         f"{snippet}",
         globals_js=served(app_at) if app_at else "")
@@ -203,22 +205,27 @@ class TestErrorPaths:
         assert out["r"] == {"ok": False, "error": out["answer"]["error"]}
 
     def test_network_failure_returns_envelope_not_throws(self):
-        """The browser's own failure to reach the server -- no answer."""
+        """The browser's own failure to reach the server -- no answer --
+        said in the one reader's words (`ui-contract.md` § 12)."""
         out = _run('''
+            globalThis.fetch = async () => {
+                throw new TypeError("Failed to fetch");
+            };
             smiles.configure({
-                fetch: async () => {
-                    throw new TypeError("Failed to fetch");
-                },
                 structurePage: {
                     loadIntoCanvas: async () => ({ok: true}),
                 },
             });
             const r = await smiles.generate("CCO");
-            console.log(JSON.stringify(r));
+            const read = await globalThis.molbuilder.server.ask(
+                smiles.BUILD_URL, { method: "POST", body: {} });
+            console.log(JSON.stringify({ r, read }));
         ''')
-        assert out["ok"] is False
-        assert "/api/build/molecule" in out["error"]
-        assert "Failed to fetch" in out["error"]
+        assert out["r"]["ok"] is False
+        assert out["r"]["error"] == out["read"]["error"]
+        # ...plainly, never the browser's own words (molview.md § 6.9).
+        assert "could not reach the server" in out["r"]["error"]
+        assert "Failed to fetch" not in out["r"]["error"]
 
 
 class TestCanvasGate:

@@ -1096,8 +1096,8 @@ class TestDoorHygieneAndRemainingOps:
         inside the structure -- each answer 400 with `ok: False` and a reason.
 
         Catches the door crashing into a 500 on a shape it did not expect. Flask's
-        500 is an HTML page, so the browser's `r.json()` raises and the failure
-        reaches the user as "network error" with no reason at all. The
+        500 is an HTML page, of which the page's reader can say only that it
+        could not be read -- no reason at all (`ui-contract.md` § 12). The
         top-level-`regions` case is the realistic one: a caller that flattened the
         envelope by hand.
 

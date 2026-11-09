@@ -280,6 +280,28 @@ def test_a_caller_who_may_not_control_gets_403_not_404(method, route,
     assert "admin" in r.get_json()["error"]
 
 
+def test_a_signal_that_cannot_be_delivered_is_refused_in_the_envelope(
+        monkeypatch):
+    """With a supervisor to ask and a caller who may, a signal that cannot
+    be delivered answers 409 with its reason as ``error`` (`jupyter.md`
+    § 5.2) -- the envelope every route refuses in (`web-api.md` § 1), which
+    the page's one reader says (`ui-contract.md` § 12).  No supervisor
+    listens on the port, so none can be signalled.
+
+    THE SILENT FAILURE: through 2.68.5 the reason rode as ``message``, and a
+    page reading the envelope could say only that the server refused."""
+    from molbuilder.web.app import create_app
+    from molbuilder.web.blueprints import jupyter as bp
+    monkeypatch.setattr(bp, "_supervised", lambda: True)
+    monkeypatch.setattr(bp, "_may_control", lambda: True)
+    app = create_app(config={})
+    app.config["MOLBUILDER_SERVE_PORT"] = free_serve_port()
+    r = app.test_client().post("/api/jupyter/stop")
+    assert r.status_code == 409, r.get_data(as_text=True)
+    body = r.get_json()
+    assert body["ok"] is False and body.get("error"), body
+
+
 @pytest.mark.parametrize("asked_by,passes", [
     ("127.0.0.1:5050", True),
     ("localhost:5050", True),

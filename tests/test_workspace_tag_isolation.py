@@ -22,7 +22,9 @@ from tests._node_esm import run_node
 
 REPO = Path(__file__).resolve().parents[1]
 WS = REPO / "molbuilder" / "web" / "static" / "lib" / "workspace" / "dispatcher.js"
-MODEL = REPO / "molbuilder" / "web" / "static" / "lib" / "molview" / "model.js"
+#: The page that hosts MolView, as a test plays it: it hands the viewer the
+#: one reader of a server's answer (`support/molview_host.mjs`).
+HOST = Path(__file__).resolve().parent / "support" / "molview_host.mjs"
 
 # A stand-in server that keeps the files the real one would write: one per
 # `<workspace_id>.<state_index>`, which is how the real one names them. Two tags
@@ -35,18 +37,19 @@ globalThis.dispatchEvent = () => {};
 globalThis.CustomEvent = class { constructor(t, o) { this.detail = o && o.detail; } };
 
 globalThis.files = {};          // "<workspace_id>.<state_index>" -> what was saved
+// Each answer as a browser hands it, for the page's one reader (`lib/server.js`).
+const answered = (body) => new Response(JSON.stringify(body), { status: 200 });
 globalThis.fetch = async (route, init) => {
     const body = JSON.parse(init.body);
     const name = body.workspace_id + "." + body.state_index;
     if (route.indexOf("write") !== -1) {
         globalThis.files[name] = body.data;
-        return { ok: true, status: 200, json: async () => ({ ok: true }) };
+        return answered({ ok: true });
     }
     if (route.indexOf("read") !== -1) {
         const there = name in globalThis.files;
-        return { ok: true, status: 200,
-                 json: async () => ({ ok: true,
-                                      data: there ? globalThis.files[name] : null }) };
+        return answered({ ok: true,
+                          data: there ? globalThis.files[name] : null });
     }
     if (route.indexOf("prune") !== -1) {
         Object.keys(globalThis.files).forEach((k) => {
@@ -56,9 +59,9 @@ globalThis.fetch = async (route, init) => {
                 delete globalThis.files[k];
             }
         });
-        return { ok: true, status: 200, json: async () => ({ ok: true }) };
+        return answered({ ok: true });
     }
-    return { ok: true, status: 200, json: async () => ({ ok: true }) };
+    return answered({ ok: true });
 };
 """
 
@@ -68,10 +71,10 @@ WITH_A_SERVER = BROWSER + """
 const _files = globalThis.fetch;
 globalThis.fetch = async (route, init) => {
     if (route.indexOf("workspace-storage") !== -1) return _files(route, init);
-    return { ok: true, status: 200, json: async () => ({
+    return answered({
         ok: true,
         atoms: [{ index: 0, element: "H", x: 0, y: 0, z: 0, regions: [] }],
-    }) };
+    });
 };
 """
 
@@ -224,7 +227,7 @@ def test_what_molview_saves_can_be_read_back():
     out = run_node(
         [],
         f"""
-        const {{ createModel }} = await import({json.dumps(MODEL.resolve().as_uri())});
+        const {{ createModel }} = await import({json.dumps(HOST.as_uri())});
         await import({json.dumps(WS.resolve().as_uri())});
         const ws = globalThis.molbuilder.workspace;
 
@@ -280,7 +283,7 @@ def test_an_edit_and_a_saved_point_go_to_different_files():
     out = run_node(
         [],
         f"""
-        const {{ createModel }} = await import({json.dumps(MODEL.resolve().as_uri())});
+        const {{ createModel }} = await import({json.dumps(HOST.as_uri())});
         await import({json.dumps(WS.resolve().as_uri())});
         const ws = globalThis.molbuilder.workspace;
 

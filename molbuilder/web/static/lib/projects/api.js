@@ -1,11 +1,11 @@
 /* projects/api.js -- HTTP wrappers for /api/files/* + /api/projects/*.
  *
  * Pure functions: no DOM, no module-level state.  Each function
- * issues one HTTP request and returns the parsed JSON body, ALWAYS
- * shaped as ``{ok: bool, ...}``.  Network errors AND non-JSON
- * responses are caught here and surfaced as
- * ``{ok: false, error: "..."}`` so callers don't need a try/catch
- * around every call.
+ * issues one HTTP request and returns the answer's fields, ALWAYS
+ * shaped as ``{ok: bool, ...}``.  Every failure -- a refusal, an
+ * answer that is not JSON, a server not reached, a cancel -- comes
+ * back as ``{ok: false, error: "..."}`` so callers don't need a
+ * try/catch around every call.
  *
  * The backend contract is in ``docs/web/projects.md`` § and
  * ``docs/web/web-api.md`` § ``/api/files/*``.  The uniform-
@@ -14,72 +14,21 @@
  * error}; NEVER throws").
  */
 
-/**
- * Issue one HTTP request and return the parsed JSON body.  All
- * failure modes (network drop, browser offline, server returning
- * 5xx with non-JSON, DNS failure, ...) map to
- * ``{ok: false, error: "<reason>"}`` so callers can rely on
- * ``response.ok`` without try/catch.
- *
- * ``fetchInit`` is forwarded verbatim to ``fetch`` so callers can
- * set method / headers / body / credentials.  The function does
- * NOT throw under any condition expected in production; an
- * unexpected throw indicates a programmer error (e.g. an invalid
- * URL).
- */
-async function _fetchEnvelope(url, fetchInit) {
-  // Default to ``cache: "no-store"`` so two GETs to the same URL during
-  // one browser session BOTH reach the server.  Without this, the
-  // browser HTTP cache happily serves the previous response for the
-  // same URL.  ``/api/files/list`` and ``/api/files/
-  // read_range`` return live data that changes between requests for
-  // the SAME URL (new files, mtime drift, file appended on disk), so
-  // browser caching is correctness-breaking, not perf-helping, here.
-  //
-  // Callers that legitimately want browser caching (e.g. a future
-  // immutable basis-set blob) can override by passing an explicit
-  // ``cache`` field in fetchInit; our default only fills in the gap.
-  //
-  // Note ``cache: "no-store"`` is a no-op for POST/DELETE/PUT (which
-  // browsers never cache by default), so applying it uniformly via
-  // the central wrapper is safe + sweeps every GET caller in one
-  // place.
-  const init = fetchInit || {};
-  if (init.cache === undefined) init.cache = "no-store";
-  let resp;
-  try {
-    resp = await fetch(url, init);
-  } catch (e) {
-    // Distinguish user-initiated cancellation (AbortError) from
-    // genuine network failure.  Both look like exceptions to the
-    // caller, but the UI usually wants to silently dismiss an
-    // abort (it was the user's choice) while showing a banner for
-    // a network drop.  The ``aborted: true`` flag lets callers
-    // branch without parsing the error string.
-    if (e && e.name === "AbortError") {
-      return { ok: false, error: "aborted", aborted: true };
-    }
-    // Network-level failure: TypeError "Failed to fetch", DNS
-    // failure, CORS rejection at preflight, etc.  Surface the
-    // error name + message; callers usually just need to know
-    // "could not reach server".
-    return {
-      ok:    false,
-      error: "network error: " + (e && e.message
-                                  ? e.message
-                                  : String(e)),
-    };
-  }
-  // Successful network, but the server might have returned non-JSON
-  // (5xx with an HTML error page, 501 from a stubbed endpoint, ...).
-  try {
-    return await resp.json();
-  } catch (_e) {
-    return {
-      ok:    false,
-      error: "server returned non-JSON (status " + resp.status + ")",
-    };
-  }
+import { ask } from "../server.js";
+
+/* THE ONE READER (ui-contract.md § 12), in this module's envelope: a yes
+ * is the body's fields with ``ok: true``; anything else keeps the body's
+ * fields (a refusal's ``actual_mtime``) beside ``ok: false``, ``error``,
+ * ``status`` and ``aborted`` / ``signedOut``.  ``opts`` is ``ask``'s; its
+ * ``cache: "no-store"`` keeps a live listing from a browser-cached answer. */
+async function _fetchEnvelope(url, opts) {
+  const a = await ask(url, opts);
+  if (a.ok) return Object.assign({}, a.body, { ok: true });
+  const out = Object.assign({}, a.body, { ok: false, error: a.error,
+                                          status: a.status });
+  if (a.aborted) out.aborted = true;
+  if (a.signedOut) out.signedOut = true;
+  return out;
 }
 
 
@@ -146,8 +95,7 @@ export async function apiMkdir(parent, name, opts) {
   opts = opts || {};
   return await _fetchEnvelope("/api/files/mkdir", {
     method:  "POST",
-    headers: {"Content-Type": "application/json"},
-    body:    JSON.stringify({parent: parent, name: name}),
+    body:    {parent: parent, name: name},
     signal:  opts.signal,
   });
 }
@@ -156,8 +104,7 @@ export async function apiCreateProject(name, opts) {
   opts = opts || {};
   return await _fetchEnvelope("/api/projects/create", {
     method:  "POST",
-    headers: {"Content-Type": "application/json"},
-    body:    JSON.stringify({name: name}),
+    body:    {name: name},
     signal:  opts.signal,
   });
 }
@@ -197,12 +144,11 @@ export async function apiDelete(path, recursive, opts) {
   // safety guard.
   return await _fetchEnvelope("/api/files/delete", {
     method:  "DELETE",
-    headers: {"Content-Type": "application/json"},
-    body:    JSON.stringify({
+    body:    {
       path:      path,
       recursive: !!recursive,
       force:     !!opts.force,
-    }),
+    },
     signal:  opts.signal,
   });
 }
@@ -211,8 +157,7 @@ export async function apiRename(path, newName, opts) {
   opts = opts || {};
   return await _fetchEnvelope("/api/files/rename", {
     method:  "POST",
-    headers: {"Content-Type": "application/json"},
-    body:    JSON.stringify({path: path, new_name: newName}),
+    body:    {path: path, new_name: newName},
     signal:  opts.signal,
   });
 }
@@ -228,8 +173,7 @@ export async function apiMove(path, destDir, opts) {
   if (opts.newName) body.new_name = opts.newName;
   return await _fetchEnvelope("/api/files/move", {
     method:  "POST",
-    headers: {"Content-Type": "application/json"},
-    body:    JSON.stringify(body),
+    body:    body,
     signal:  opts.signal,
   });
 }
@@ -243,8 +187,7 @@ export async function apiCopy(path, destDir, opts) {
   if (opts.newName) body.new_name = opts.newName;
   return await _fetchEnvelope("/api/files/copy", {
     method:  "POST",
-    headers: {"Content-Type": "application/json"},
-    body:    JSON.stringify(body),
+    body:    body,
     signal:  opts.signal,
   });
 }
@@ -260,8 +203,7 @@ export async function apiWrite(path, text, opts) {
   if (opts.expected_mtime != null) body.expected_mtime = opts.expected_mtime;
   return await _fetchEnvelope("/api/files/write", {
     method:  "POST",
-    headers: {"Content-Type": "application/json"},
-    body:    JSON.stringify(body),
+    body:    body,
     signal:  opts.signal,
   });
 }

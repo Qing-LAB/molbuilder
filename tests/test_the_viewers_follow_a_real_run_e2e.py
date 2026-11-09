@@ -78,6 +78,9 @@ _LIB = Path(__file__).resolve().parents[1] / "molbuilder/web/static/lib"
 TRAJECTORY = _LIB / "trajectory" / "core.js"
 SPECTRA = _LIB / "spectra" / "core.js"
 LIFECYCLE = _LIB / "inspectors" / "lifecycle.js"
+#: The page's one reader of a server's answer (`ui-contract.md` § 12): what
+#: the viewers ask through, so a route's answer reaches them as it reads it.
+SERVER = _LIB / "server.js"
 
 # --------------------------------------------------------------------- #
 #  The runs, and what the viewers' routes answered of them               #
@@ -416,10 +419,9 @@ def _poll_once(answer, *, held, path):
             lifecycle: {{ pollInFlight: false, pollAbort: null }},
             derived: {{}},
         }};
-        globalThis.fetch = async () => ({{
-            ok: true,
-            json: async () => ({json.dumps(answer)}),
-        }});
+        const {{ ask }} = await import({json.dumps(SERVER.as_uri())});
+        globalThis.fetch = async () => new Response(
+            JSON.stringify({json.dumps(answer)}), {{ status: 200 }});
         {settle}
         {poll}
         pollOnce().then(() => console.log(JSON.stringify({{
@@ -689,12 +691,17 @@ def _spectra_viewer(script, *, machine, path, results, run, replies=None,
         let _asks = 0;
         let _onAsk = () => {{}};
         function _askOf() {{ return _ask; }}
+        // ...each answer read as the page reads it, by the one reader.
+        const {{ ask: __ask }} = await import({json.dumps(SERVER.as_uri())});
         const fetchResults = async (p, signal) => {{
             const asked = JSON.stringify(_askOf());
             const n = _asks++;
             _onAsk(n, p);
             if (n >= _replies.length) return new Promise(() => {{}});
-            return {{ path: p, body: _replies[n], asked }};
+            globalThis.fetch = async () => new Response(
+                JSON.stringify(_replies[n]), {{ status: 200 }});
+            return {{ path: p, answer: await __ask("/api/spectra/load",
+                                                   {{ signal }}), asked }};
         }};
         function setStatus() {{ _drawn.push("status"); }}
         function stopWatch() {{ _drawn.push("stopped"); }}
@@ -934,7 +941,9 @@ def test_each_dot_says_its_phase_as_the_result_records_it(
 #  The rebuild reaches the read-only viewer (`web/trajectory.md` § 5)   #
 # --------------------------------------------------------------------- #
 
-MOLVIEW_MODEL = _LIB / "molview" / "model.js"
+#: The page that hosts MolView, as a test plays it: it hands the viewer the
+#: one reader of a server's answer (`support/molview_host.mjs`).
+MOLVIEW_HOST = Path(__file__).resolve().parent / "support" / "molview_host.mjs"
 
 
 @pytest.fixture(scope="module")
@@ -969,7 +978,7 @@ def test_a_rebuild_replaces_the_movie_in_a_read_only_viewer(followed, app_at):
                      "    // (No local showFrame()")
     out = run_node([], f"""
         const {{ createModel }} = await import(
-            {json.dumps(MOLVIEW_MODEL.resolve().as_uri())});
+            {json.dumps(MOLVIEW_HOST.as_uri())});
         const m = createModel({{ mode: "readonly" }});
         const _mv = {{}};
         const _mvReady = Promise.resolve();

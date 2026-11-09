@@ -572,10 +572,6 @@
 {# MolView component stack (viewer + selection/cell panel) — card 1 mounts it
    for structure inspection.  Loaded before transport/core.js, which mounts it. #}
 {% include "_molview_scripts.html" %}
-{# The chemistry card words a failed request through `lib/fetch-error.js`;
-   it degrades to the bare message without it, so this is for the wording,
-   not for the card to work. #}
-<script src="{{ url_for('static', filename='lib/fetch-error.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/dom.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/chemistry.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/form-schema.js') }}"></script>

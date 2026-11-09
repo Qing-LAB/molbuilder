@@ -202,6 +202,9 @@ def test_showing_the_unit_cell_draws_the_box_the_structure_uses(demo):
     out = demo.evaluate(
         """async () => {
             const { mount } = await import("/static/lib/molview/index.js");
+            // ...HANDED THE PAGE'S ONE READER, as a page that mounts a viewer
+            // hands it (`molview.md` § 4).
+            const { ask } = await import("/static/lib/server.js");
             const ws = """ + _MEMORY_WORKSPACE + """;
             const water = { text: "3\\n\\nO 0 0 0\\nH 0.957 0 0\\nH -0.239 0.927 0\\n",
                             filename: "water.xyz" };
@@ -228,9 +231,9 @@ def test_showing_the_unit_cell_draws_the_box_the_structure_uses(demo):
 
             const hostFirst = host(), hostAfter = host();
             const first = await mount(hostFirst, ws,
-                                      { owner: "cell-shown-first", mode: "readonly" });
+                                      { server: { ask }, owner: "cell-shown-first", mode: "readonly" });
             const after = await mount(hostAfter, ws,
-                                      { owner: "cell-shown-after", mode: "readonly" });
+                                      { server: { ask }, owner: "cell-shown-after", mode: "readonly" });
             first.data.selection.setSwitch("showCell", true);
             await first.data.installMolecule(water);
             await after.data.installMolecule(water);
@@ -604,11 +607,14 @@ def test_the_cell_door_speaks_the_route_it_posts_to(demo):
     got = demo.evaluate(
         """async () => {
             const { mount } = await import("/static/lib/molview/index.js");
+            // ...HANDED THE PAGE'S ONE READER, as a page that mounts a viewer
+            // hands it (`molview.md` § 4).
+            const { ask } = await import("/static/lib/server.js");
             const host = document.createElement("div");
             host.style.width = "900px";
             document.body.appendChild(host);
             const ws = """ + _MEMORY_WORKSPACE + """;
-            const v = await mount(host, ws, { owner: "cell-door" });
+            const v = await mount(host, ws, { server: { ask }, owner: "cell-door" });
 
             await v.data.installMolecule({
                 text: "2\\n\\nAu 0 0 0\\nAu 2 2 0\\n", filename: "au.xyz" });
@@ -679,8 +685,11 @@ def test_two_viewers_on_one_page_collide_over_nothing(demo, molview_server):
             host.style.width = "900px";
             document.body.appendChild(host);
             const { mount } = await import("/static/lib/molview/index.js");
+            // ...HANDED THE PAGE'S ONE READER, as a page that mounts a viewer
+            // hands it (`molview.md` § 4).
+            const { ask } = await import("/static/lib/server.js");
             const ws = """ + _MEMORY_WORKSPACE + """;
-            window.__second = await mount(host, ws, { owner: "second-viewer" });
+            window.__second = await mount(host, ws, { server: { ask }, owner: "second-viewer" });
         }"""
     )
     demo.wait_for_function("() => document.querySelectorAll('.molviewer-card').length === 2")
@@ -737,6 +746,9 @@ def test_a_viewer_on_a_kept_surface_draws_as_a_new_one(demo):
     out = demo.evaluate(
         """async () => {
             const { mount } = await import("/static/lib/molview/index.js");
+            // ...HANDED THE PAGE'S ONE READER, as a page that mounts a viewer
+            // hands it (`molview.md` § 4).
+            const { ask } = await import("/static/lib/server.js");
             const ws = """ + _MEMORY_WORKSPACE + """;
             const water = { elements: ["O", "H", "H"],
                             positions: [[0, 0, 0], [0.96, 0, 0], [-0.24, 0.93, 0]],
@@ -765,7 +777,7 @@ def test_a_viewer_on_a_kept_surface_draws_as_a_new_one(demo):
             };
 
             const hostA = host("400px");
-            const a = await mount(hostA, ws, { owner: "first", mode: "readonly" });
+            const a = await mount(hostA, ws, { server: { ask }, owner: "first", mode: "readonly" });
             await a.data.installMolecule({ structure: water });
             await drawn(hostA);
             const plain = picture(hostA);
@@ -780,8 +792,8 @@ def test_a_viewer_on_a_kept_surface_draws_as_a_new_one(demo):
             hostA.remove();
 
             const hostB = host("900px"), hostC = host("900px");
-            const b = await mount(hostB, ws, { owner: "second", mode: "readonly" });
-            const c = await mount(hostC, ws, { owner: "third", mode: "readonly" });
+            const b = await mount(hostB, ws, { server: { ask }, owner: "second", mode: "readonly" });
+            const c = await mount(hostC, ws, { server: { ask }, owner: "third", mode: "readonly" });
             await drawn(hostB, hostC);
             const empty = [picture(hostB), picture(hostC)];
             await b.data.installMolecule({ structure: water });
@@ -829,6 +841,9 @@ def test_a_molecule_along_z_is_seen_side_on(demo):
     out = demo.evaluate(
         """async () => {
             const { mount } = await import("/static/lib/molview/index.js");
+            // ...HANDED THE PAGE'S ONE READER, as a page that mounts a viewer
+            // hands it (`molview.md` § 4).
+            const { ask } = await import("/static/lib/server.js");
             const ws = """ + _MEMORY_WORKSPACE + """;
             const chain = (k) => ({
                 elements: ["H", "H", "H", "H"],
@@ -868,7 +883,7 @@ def test_a_molecule_along_z_is_seen_side_on(demo):
                 const h = document.createElement("div");
                 h.style.width = "400px";
                 document.body.appendChild(h);
-                const v = await mount(h, ws, { owner: "seen", mode: "readonly" });
+                const v = await mount(h, ws, { server: { ask }, owner: "seen", mode: "readonly" });
                 await v.data.installMolecule({ structure });
                 await drawn(h);
                 const n = painted(h);

@@ -264,9 +264,6 @@
         root.molbuilder = root.molbuilder || {};
         root.molbuilder.structureDna = api;
         configure({
-            fetch:         root.fetch
-                            ? root.fetch.bind(root)
-                            : undefined,
             structurePage: root.molbuilder.structurePage,
         });
         if (root.document) {

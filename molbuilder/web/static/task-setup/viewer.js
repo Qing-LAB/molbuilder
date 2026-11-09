@@ -31,6 +31,8 @@ import { fitRow } from "../lib/transport/fit.js";
 // THE PAGE'S FENCE (`ui-contract.md` § 10): every card edit, Save, Preview
 // and Prep takes it.
 import { pageBusy } from "../lib/page-busy.js";
+// THE ONE READER of a server's answer (`ui-contract.md` § 12).
+import { ask } from "../lib/server.js";
 
 /* The description's and the hand-over's names are the folder answer's
  * (`task_name`, `handover_name`): the page spells neither.  The hand-over a
@@ -668,35 +670,33 @@ async function refreshFit() {
     /* Typing outruns the network, and an earlier reply landing after a
      * later one would leave the card showing a grid for axes that no
      * longer exist. */
-    let body;
-    try {
-        const r = await fetch("/api/task-setup/bench-grid", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            // ...AND THE QUEUE PICKED, the model's too: the cells are fit
-            // on the queue the page shows chosen.
-            body: JSON.stringify({ dest: _dir, target: _machine || "",
-                                   bench: bench,
-                                   domain: ((_request && _request.allocation)
-                                            || {}).domain || "" }),
-        });
-        body = await r.json();
-    } catch (e) {
-        body = null;
-    }
+    const answer = await ask("/api/task-setup/bench-grid", {
+        method: "POST",
+        // ...AND THE QUEUE PICKED, the model's too: the cells are fit
+        // on the queue the page shows chosen.
+        body: { dest: _dir, target: _machine || "", bench: bench,
+                domain: ((_request && _request.allocation)
+                         || {}).domain || "" },
+    });
     if (seq !== _fitSeq) return;
 
-    // EACH ROW'S CLASS is the door's word (`rows`), a grid not yet stated or
-    // not; the card repaints its rows with it and decides none itself.
-    _rowKinds = (body && body.rows) || {};
-    paintRowKinds();
     /* A LIST THAT CANNOT LOAD SAYS SO: a blank where a verdict belongs
-     * reads as *nothing objected*. */
-    if (!body || !body.ok || !Array.isArray(body.cells)) {
-        sayUnknownFit(host, body && body.error);
+     * reads as *nothing objected*.  EACH ROW'S CLASS is the door's word
+     * (`rows`) -- its refusal of a grid not yet stated carries them too; an
+     * answer without them leaves every row's class not known. */
+    if (!answer.ok) {
+        _rowKinds = (answer.body && answer.body.rows) || {};
+        paintRowKinds();
+        sayUnknownFit(host, answer.error);
         return;
     }
-    paintFit(host, body);
+    _rowKinds = answer.body.rows || {};
+    paintRowKinds();
+    if (!Array.isArray(answer.body.cells)) {
+        sayUnknownFit(host);
+        return;
+    }
+    paintFit(host, answer.body);
 }
 
 /** SAY WHAT IS NOT KNOWN.  A check that could not run shows that it could
@@ -1628,20 +1628,19 @@ async function readFolder(projects, dir, opts) {
 
     /* ONE ANSWER FOR THE FOLDER (`task-setup.md` § 2.1).  The door answers
      * all of it at once and NAMES THE FOLDER it answered for. */
-    const said = await loadFolderAnswer(dir);
+    const answer = await loadFolderAnswer(dir);
     /* AND IF WE HAVE MOVED ON, THIS ANSWER IS NOT OURS.  `dir` on the
      * answer is what makes that checkable -- `calcdir.json`'s rule
      * (project-layout.md § 1.4a) on the wire. */
     if (dir !== _dir) return;
-    /* NO ANSWER FOR THE FOLDER STILL SELECTED: said, and nothing of the
-     * last folder left on the page for Save to write here (§ 6.2b: a check
-     * that cannot run says so). */
-    if (!said) {
-        await refuseFolder("This folder could not be read",
-                           "The server's answer for it did not arrive or "
-                           + "did not read. Pick the folder again.");
+    /* NO ANSWER FOR THE FOLDER STILL SELECTED: said in the server's words,
+     * and nothing of the last folder left on the page for Save to write
+     * here (§ 6.2b: a check that cannot run says so). */
+    if (!answer.ok) {
+        await refuseFolder("This folder could not be read", answer.error);
         return;
     }
+    const said = answer.body;
     if (said.dir !== _dir) return;
     _fs.readAs = said.read_as;
 
@@ -2214,17 +2213,13 @@ const _sweepInflight = {};  // key -> the pending fetch
  * raw names.
  */
 async function fetchVocabulary(url, what) {
-    try {
-        const r = await fetch(url);
-        if (!r.ok) throw new Error("HTTP " + r.status);
-        return { ok: true, body: await r.json() };
-    } catch (e) {
-        _vocabFailed = true;
-        if (window.console) {
-            console.warn("[task-setup] " + what + " unavailable:", e);
-        }
-        return { ok: false, body: null };
+    const answer = await ask(url);
+    if (answer.ok) return { ok: true, body: answer.body };
+    _vocabFailed = true;
+    if (window.console) {
+        console.warn("[task-setup] " + what + " unavailable:", answer.error);
     }
+    return { ok: false, body: null };
 }
 
 
@@ -2507,19 +2502,14 @@ async function loadFolderAnswer(dir) {
     _tmpl = { name: null, values: Object.create(null),
               said: Object.create(null) };
     if (!dir) return null;
-    try {
-        const r = await fetch("/api/task-setup/folder?dir="
-                              + encodeURIComponent(dir));
-        const j = await r.json();
-        if (!j || j.ok !== true) return null;
-        const t = j.template || {};
-        if (t.ok) _tmpl = { name: t.name, values: t.values || {},
-                            said: t.said || {} };
-        return j;
-    } catch (_) {
-        // NO ANSWER: the caller says the folder could not be read.
-        return null;
-    }
+    // THE ANSWER WHOLE: a failure is the caller's to say, in its words.
+    const answer = await ask("/api/task-setup/folder?dir="
+                             + encodeURIComponent(dir));
+    if (!answer.ok) return answer;
+    const t = answer.body.template || {};
+    if (t.ok) _tmpl = { name: t.name, values: t.values || {},
+                        said: t.said || {} };
+    return answer;
 }
 
 /** Rendered the way it will be written, unit and all. */
@@ -2769,22 +2759,16 @@ async function refreshNeed(task) {
     if ((fs.need && fs.need.key === key) || fs.needAsking === key) return;
     fs.needAsking = key;
     const seq = ++fs.needSeq;
-    let body;
-    try {
-        const r = await fetch("/api/task-setup/prep-plan", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ task: task, request: _request,
-                                   dest: _dir || null, need: true }),
-        });
-        body = await r.json();
-    } catch (e) {
-        body = null;
-    }
+    const answer = await ask("/api/task-setup/prep-plan", {
+        method: "POST",
+        body: { task: task, request: _request, dest: _dir || null,
+                need: true },
+    });
     // ANOTHER FOLDER SINCE, or a newer ask: this answer is not shown.
     if (fs !== _fs || seq !== fs.needSeq) return;
     fs.needAsking = null;
-    if (!body || !body.ok) return;
+    if (!answer.ok) return;
+    const body = answer.body;
     const stages = {};
     for (const row of body.stages || []) stages[row.stage] = row.need;
     fs.need = { key: key, stages: stages, largest: body.largest_need };
@@ -2811,32 +2795,25 @@ async function refreshPlan(task) {
         return;
     }
     const seq = ++_planSeq;
-    let body;
-    try {
-        const r = await fetch("/api/task-setup/prep-plan", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            // THE FOLDER TOO: a stage that has files keeps its number, so
-            // the names the plan shows are read where prep reads them.
-            // ...AND THE JOB REQUEST AS EDITED: the allocation each stage
-            // would carry is its (`execution/job-request.md` § 7).
-            body: JSON.stringify({ task: task, request: _request,
-                                   dest: _dir || null }),
-        });
-        body = await r.json();
-    } catch (e) {
-        body = null;
-    }
+    const answer = await ask("/api/task-setup/prep-plan", {
+        method: "POST",
+        // THE FOLDER TOO: a stage that has files keeps its number, so
+        // the names the plan shows are read where prep reads them.
+        // ...AND THE JOB REQUEST AS EDITED: the allocation each stage
+        // would carry is its (`execution/job-request.md` § 7).
+        body: { task: task, request: _request, dest: _dir || null },
+    });
     if (seq !== _planSeq) return;
     /* A DESCRIPTION MID-EDIT IS OFTEN UNREADABLE, and that is ordinary --
      * the list hides rather than showing a stale plan for a document that
      * no longer says what it did.  The cards above are the substance. */
-    if (!body || !body.ok) {
+    if (!answer.ok) {
         box.hidden = true;
         hideWritten();
         dropPlan();
         return;
     }
+    const body = answer.body;
     _fs.plan = body;
     paintPlan(box, host, body);
     paintWritten(body);
@@ -3445,14 +3422,9 @@ function commandsFor(kind, pick) {
     const body = Object.assign({ dest: _dir, kind,
                                  target: _machine || null },
                                pick, _continueOf(kind, pick));
-    fetch("/api/task-setup/commands", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-    }).then((r) => r.json()).catch(() => null).then((j) => {
-        pre.textContent = (j && j.ok)
-            ? j.lines.join("\n")
-            : "(" + ((j && j.error) || "the commands could not be read") + ")";
+    ask("/api/task-setup/commands", { method: "POST", body }).then((a) => {
+        pre.textContent = a.ok ? a.body.lines.join("\n")
+                               : "(" + a.error + ")";
         pre.removeAttribute("data-state");
     });
     return pre;
@@ -3802,18 +3774,11 @@ async function _prepCall(kind, picks, plan, planId) {
     // its own copy of the record answers (`configuration.md` M-3), as the
     // terminal's prep with no --target.
     if (_machine && !_fs.setTo) body.target = _machine;
-    try {
-        const r = await fetch("/api/task-setup/prep", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(body),
-        });
-        const j = await r.json();
-        return (j && typeof j.ok === "boolean")
-            ? j : { ok: false, error: "prep failed (" + r.status + ")" };
-    } catch (e) {
-        return { ok: false, error: String((e && e.message) || e) };
-    }
+    // A REFUSAL KEEPS WHAT IT POINTED AT -- its findings and notes -- with
+    // the reader's words for why.
+    const answer = await ask("/api/task-setup/prep", { method: "POST", body });
+    return answer.ok ? answer.body
+        : Object.assign({}, answer.body, { ok: false, error: answer.error });
 }
 
 /** One box of the entry's answer: its findings through the one renderer
@@ -3906,28 +3871,17 @@ function _showPrepAnswers(wrap, say, r) {
  *  ``null`` when the door gave no answer, said. */
 async function readByDoor(item, raw, home, stage) {
     const text = String(raw == null ? "" : raw).trim();
-    let j = null;
-    let why = "";
-    try {
-        const r = await fetch("/api/task-setup/value", {
-            method:  "POST",
-            headers: { "Content-Type": "application/json" },
-            body:    JSON.stringify({ engine: _handoverEngine(_task),
-                                      calculation: _kindOf(), item: item,
-                                      text: text, home: home,
-                                      stage: stage || null }),
-        });
-        j = await r.json().catch(() => null);
-        if (!r.ok || !j || j.ok !== true) {
-            why = (j && j.error) || ("the server answered " + r.status);
-        }
-    } catch (e) {
-        why = "could not reach the server: " + ((e && e.message) || e);
-    }
-    if (why) {
-        setState("refuse", item + " was not written", why);
+    const answer = await ask("/api/task-setup/value", {
+        method: "POST",
+        body:   { engine: _handoverEngine(_task), calculation: _kindOf(),
+                  item: item, text: text, home: home,
+                  stage: stage || null },
+    });
+    if (!answer.ok) {
+        setState("refuse", item + " was not written", answer.error);
         return null;
     }
+    const j = answer.body;
     const refused = item + " is kept as typed and refused";
     if (j.refusal) {
         setState("refuse", refused,
@@ -4107,6 +4061,18 @@ function setMachine(name) {
     const chosen = _machines.find((m) => m.name === name);
     const st = $("ts-target-state");
     if (!st) return;
+    const title = $("ts-target-state-title");
+    const body = $("ts-target-state-body");
+    /* THE MACHINES THEMSELVES COULD NOT BE READ: said where they would be
+     * chosen, as a refusal -- nothing can be prepared until they are. */
+    if (_machinesRefused) {
+        st.hidden = false;
+        st.setAttribute("data-state", "refuse");
+        st.toggleAttribute("data-attention", true);
+        if (title) title.textContent = "The machines could not be read";
+        if (body) body.replaceChildren(codeWords(_machinesRefused));
+        return;
+    }
     if (!chosen) { st.hidden = true; return; }
     /* An unreadable record is shown as a refusal rather than hidden: the
      * user picked it, so silence would leave them waiting for something
@@ -4114,8 +4080,6 @@ function setMachine(name) {
     st.hidden = false;
     st.setAttribute("data-state", chosen.readable ? "loaded" : "refuse");
     st.toggleAttribute("data-attention", !chosen.readable);
-    const title = $("ts-target-state-title");
-    const body = $("ts-target-state-body");
     // CHOSEN, NOT PREPARED: nothing is prepared until a Prep -- and once
     // one is, the machine is the calculation's (`_fs.setTo`).
     if (title) title.textContent = chosen.readable
@@ -4669,6 +4633,9 @@ function renderResolved(d) {
 
 /** The machines are listed (`loadMachines`), or the list failed. */
 let _machinesOk = false;
+/** The reader's sentence when the machines could not be read, else null:
+ *  said in the card, never a card left out (`ui-contract.md` § 12). */
+let _machinesRefused = null;
 /** Settles once the machines have answered -- a folder's read waits on it
  *  before it shows the machine card and opens what asks for you. */
 let _machinesListed = Promise.resolve();
@@ -4678,20 +4645,25 @@ let _machinesListed = Promise.resolve();
  *  prepared. */
 function showTargetCard() {
     const card = $("ts-target-card");
-    if (card) card.hidden = !(_machinesOk
+    if (card) card.hidden = !((_machinesOk || _machinesRefused)
         && (_mode === "description" || _mode === "handover"));
 }
 
 async function loadMachines() {
     const card = $("ts-target-card");
     if (!card) return;
-    let data = null;
-    try {
-        data = await fetch("/api/task-setup/machines").then((r) => r.json());
-    } catch (e) { data = null; }
-    if (!data || !data.ok) { _machinesOk = false; card.hidden = true; return; }
+    const answer = await ask("/api/task-setup/machines");
+    if (!answer.ok) {
+        _machinesOk = false;
+        _machinesRefused = answer.error;
+        showTargetCard();
+        setMachine("");
+        return;
+    }
+    const data = answer.body;
     _machines = data.machines || [];
     _machinesOk = true;
+    _machinesRefused = null;
     const host = $("ts-target-choice");
     if (!host) return;
     host.textContent = "";
@@ -4946,40 +4918,28 @@ async function _save() {
      * § 8): the save route saves it first, always, through the function prep
      * calls, and refuses the write when it cannot (`checkpointing.md` § 9). */
     setState(_mode === "handover" ? "handover" : "loaded", "Saving…", "");
-    let body;
-    try {
-        const r = await fetch("/api/task-setup/save", {
-            method:  "POST",
-            headers: { "Content-Type": "application/json" },
-            // BOTH BUFFERS, as edited: each is read by its own reader at
-            // the door, and written whole (`job-request.md` § 7) -- over the
-            // files as this page read them, or not at all (§ 8).
-            body:    JSON.stringify({ dest: _dir, text: bufferText("task"),
-                                      request_text: bufferText("request"),
-                                      read_as: _fs.readAs }),
-        });
-        body = await r.json();
-        if (!r.ok || !body || body.ok === false) {
-            // Refused, not repaired — show the reader's own words.
-            saidSave("NOT written — " + ((body && body.error)
-                     || "the server refused."), "bad");
-            setState("refuse", "Not written", (body && body.error)
-                     || ("save failed (" + r.status + ")"));
-            // EVERY FINDING THE REFUSAL CARRIES, its warnings too: nothing
-            // is dropped (`ui-contract.md` § 5.1).
-            if (body && Array.isArray(body.findings) && body.findings.length)
-                renderFindings(body.findings,
-                               { panel: $("ts-state-findings") });
-            refreshSave();
-            return;
-        }
-    } catch (e) {
-        saidSave("NOT written — the request failed.", "bad");
-        setState("refuse", "Not written",
-                 "Could not reach the server: " + (e && e.message ? e.message : e));
+    const answer = await ask("/api/task-setup/save", {
+        method: "POST",
+        // BOTH BUFFERS, as edited: each is read by its own reader at
+        // the door, and written whole (`job-request.md` § 7) -- over the
+        // files as this page read them, or not at all (§ 8).
+        body:   { dest: _dir, text: bufferText("task"),
+                  request_text: bufferText("request"),
+                  read_as: _fs.readAs },
+    });
+    if (!answer.ok) {
+        // Refused, not repaired — show the reader's own words.
+        saidSave("NOT written — " + answer.error, "bad");
+        setState("refuse", "Not written", answer.error);
+        // EVERY FINDING THE REFUSAL CARRIES, its warnings too: nothing
+        // is dropped (`ui-contract.md` § 5.1).
+        const findings = answer.body && answer.body.findings;
+        if (Array.isArray(findings) && findings.length)
+            renderFindings(findings, { panel: $("ts-state-findings") });
         refreshSave();
         return;
     }
+    const body = answer.body;
     /* NOTHING TO SAVE (§ 8): the files already hold what the page sent --
      * nothing was saved or written, so the folder is not read again and a
      * Prep's answer stays where it is. */
@@ -5227,6 +5187,9 @@ let _machineChannels = [];
 //: cannot be called missing, and painting it as missing would flash a
 //: warning about a channel that is in fact set up.
 let _channelsKnown = false;
+//: Why the server could not say which channels it has, in its words --
+//: `""` once it has said: a list that could not be read is not an empty one.
+let _channelsWhy = "";
 
 /* WHAT A REPORT OF THIS CALCULATION MAY CARRY -- asked of the server, which
  * answers from the one declaration (`report_fields`, `stages.md` § 6.9): the
@@ -5245,26 +5208,25 @@ let _reportFields = null;
 let _reportFieldsFor = null;
 //: The latest ask: an older answer arriving later does not overwrite it.
 let _reportFieldsAsk = 0;
+//: Why the server could not say, in its words -- `""` once it has said.
+let _reportFieldsWhy = "";
 
 /** Ask which fields a report of this engine and calculation can carry. */
 async function loadReportFields(engine, calculation) {
     const key = engine + "/" + calculation;
     if (_reportFieldsFor === key && _reportFields !== null) return;
-    const ask = ++_reportFieldsAsk;
-    let got = null;
-    try {
-        const q = new URLSearchParams({ engine: engine,
-                                        calculation: calculation });
-        const d = await (await fetch("/api/notify/report-fields?" + q)).json();
-        // NOTHING OFFERED rather than a guess on a malformed answer: a card
-        // that invented the list would be a second copy of it.
-        if (d && Array.isArray(d.fields)) got = d.fields;
-    } catch (e) {
-        got = null;
-    }
-    if (ask !== _reportFieldsAsk) return;       // a later ask answers instead
+    const seq = ++_reportFieldsAsk;
+    const q = new URLSearchParams({ engine: engine,
+                                    calculation: calculation });
+    const answer = await ask("/api/notify/report-fields?" + q);
+    if (seq !== _reportFieldsAsk) return;       // a later ask answers instead
+    // NOTHING OFFERED rather than a guess on a malformed answer: a card
+    // that invented the list would be a second copy of it.
+    const got = answer.ok && Array.isArray(answer.body.fields)
+        ? answer.body.fields : null;
     _reportFields = got;
     _reportFieldsFor = got === null ? null : key;
+    _reportFieldsWhy = answer.ok ? "" : answer.error;
 }
 
 /** The ticked report fields, or `null` for "every field it can work out".
@@ -5331,8 +5293,10 @@ function paintReportNote() {
     // THE NAME IS NAMED, every time, because it is the part that is not a
     // choice and the part a person most needs to know is there.
     if (_reportFields === null && sel !== null) {
-        note.textContent = "Could not ask this server which fields a report"
-            + " of this calculation can carry; the description's own list ("
+        note.textContent = "The fields a report of this calculation can "
+            + "carry could not be read"
+            + (_reportFieldsWhy ? ": " + _reportFieldsWhy : "")
+            + "; the description's own list ("
             + (sel.join(", ") || "none") + ") is kept as it is.";
     } else if (sel === null) {
         note.textContent = "Each message: this calculation's name and job id,"
@@ -5379,6 +5343,9 @@ function paintChannelTicks(chosen) {
 
     host.textContent = "";
     if (!every.length) {
+        // A LIST THAT COULD NOT BE READ is said under it (`ts-reports-note`),
+        // never as none set up.
+        if (_channelsWhy) return;
         const p = document.createElement("p");
         p.className = "hint";
         p.textContent = _channelsKnown
@@ -5410,6 +5377,9 @@ function paintChannelTicks(chosen) {
         sub.className = "ts-notify-sub";
         if (!known && !_channelsKnown) {
             sub.textContent = "asking this server about it\u2026";
+        } else if (!known && _channelsWhy) {
+            sub.textContent = "this server could not be asked about it";
+            sub.setAttribute("data-state", "bad");
         } else if (!known) {
             sub.textContent = "named here, but not set up on this machine — "
                 + "nothing is sent there from this box";
@@ -5433,11 +5403,16 @@ function paintChannelTicks(chosen) {
  *  that is enforced at the route, not here (`notify_setup.py::_row`). */
 async function loadChannelNames() {
     if (!$("ts-notify-channels")) return;
-    try {
-        const d = await (await fetch("/api/notify/channels")).json();
-        _machineChannels = Array.isArray(d.channels) ? d.channels : [];
-        _channelsKnown = true;
-        const note = $("ts-reports-note");
+    const answer = await ask("/api/notify/channels");
+    // KNOWN, in the sense that asking is over.  A page that stayed in
+    // "asking..." after a failed request would look like it was still
+    // trying, which is the one thing it is certainly not doing.
+    _channelsKnown = true;
+    const note = $("ts-reports-note");
+    if (answer.ok) {
+        _machineChannels = Array.isArray(answer.body.channels)
+            ? answer.body.channels : [];
+        _channelsWhy = "";
         if (note) {
             note.textContent = _machineChannels.length ? "" :
                 "Nothing is set up on this machine — add a channel on the "
@@ -5445,16 +5420,13 @@ async function loadChannelNames() {
             note.setAttribute("data-state",
                               _machineChannels.length ? "ok" : "bad");
         }
-    } catch (e) {
+    } else {
+        // A REFUSAL IS NOT "NOTHING SET UP": said, in the server's words.
         _machineChannels = [];
-        // KNOWN, in the sense that asking is over.  A page that stayed in
-        // "asking..." after a failed request would look like it was still
-        // trying, which is the one thing it is certainly not doing.
-        _channelsKnown = true;
-        const note = $("ts-reports-note");
+        _channelsWhy = answer.error;
         if (note) {
-            note.textContent = "Could not ask this server which channels it "
-                + "has: " + e;
+            note.textContent = "This machine's channels could not be read: "
+                + answer.error;
             note.setAttribute("data-state", "bad");
         }
     }

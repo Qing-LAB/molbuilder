@@ -617,21 +617,16 @@
 
             async function refresh() {
                 if (state.disposed) return;
-                let body;
-                try {
-                    const r = await fetch("/api/bench/summary?path="
-                                          + encodeURIComponent(file));
-                    body = await r.json();
-                } catch (e) {
-                    body = { ok: false, error: String(e) };
-                }
+                // THE ONE READER (ui-contract.md § 12).
+                const answer = await root.molbuilder.server.ask(
+                    "/api/bench/summary?path=" + encodeURIComponent(file));
                 if (state.disposed) return;
-                if (!body.ok) {
-                    if (ctx && ctx.showError) ctx.showError(body.error);
-                    else host.textContent = body.error || "could not read it";
+                if (!answer.ok) {
+                    if (ctx && ctx.showError) ctx.showError(answer.error);
+                    else host.textContent = answer.error;
                     return;                       // and stop polling a refusal
                 }
-                render(host, body);
+                render(host, answer.body);
                 /* FIRST RENDER ON SCREEN: the picker drops its "Parsing..."
                  * line on this event (`lib/results/file-picker.js`) rather than
                  * waiting out its fallback timer -- as the sweep presenter does. */

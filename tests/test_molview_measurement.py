@@ -33,7 +33,9 @@ from tests._node_esm import run_node
 REPO = Path(__file__).resolve().parents[1]
 MODULE_DIR = REPO / "molbuilder" / "web" / "static" / "lib" / "molview"
 STORES = MODULE_DIR / "stores.js"
-MODEL = MODULE_DIR / "model.js"
+#: The page that hosts MolView, as a test plays it: it hands the viewer the
+#: one reader of a server's answer (`support/molview_host.mjs`).
+HOST = Path(__file__).resolve().parent / "support" / "molview_host.mjs"
 
 STORE_PRELUDE = f"""
 const S = await import({json.dumps(STORES.resolve().as_uri())});
@@ -42,7 +44,8 @@ const S = await import({json.dumps(STORES.resolve().as_uri())});
 SERVER = """
 globalThis.fetch = async function (route, init) {
     const body = JSON.parse(init.body);
-    return { ok: true, status: 200, json: async () => ({
+    // As a browser hands it, for the page's one reader (`lib/server.js`).
+    return new Response(JSON.stringify({
         ok: true,
         atoms: [0, 1, 2, 3].map((i) => ({
             index: i, element: "C", x: i, y: 0, z: 0, regions: [] })),
@@ -51,12 +54,12 @@ globalThis.fetch = async function (route, init) {
         // when the structure has none).  This carried a retired origin key and
         // an axis kind ("free") that is not one.
         periodicity: null,
-    }) };
+    }), { status: 200 });
 };
 """
 
 MODEL_PRELUDE = f"""
-const {{ createModel }} = await import({json.dumps(MODEL.resolve().as_uri())});
+const {{ createModel }} = await import({json.dumps(HOST.as_uri())});
 async function loaded() {{
     const m = createModel({{}});
     await m.installMolecule({{
@@ -385,7 +388,8 @@ _RECORDING_SERVER = """
 globalThis.__sent = [];
 globalThis.fetch = async function (route, init) {
     globalThis.__sent.push({ route, body: JSON.parse(init.body) });
-    return { ok: true, status: 200, json: async () => ({
+    // As a browser hands it, for the page's one reader (`lib/server.js`).
+    return new Response(JSON.stringify({
         ok: true,
         atoms: [0, 1, 2, 3].map((i) => ({
             index: i, element: "C", x: i, y: 0, z: 0, regions: [] })),
@@ -394,7 +398,7 @@ globalThis.fetch = async function (route, init) {
         // when the structure has none).  This carried a retired origin key and
         // an axis kind ("free") that is not one.
         periodicity: null,
-    }) };
+    }), { status: 200 });
 };
 """
 

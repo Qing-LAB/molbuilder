@@ -95,8 +95,9 @@ def _route_load(tmp_path, monkeypatch, built, body, client=None):
     return answer.status_code, answer.get_json()
 
 
-_MODEL = (Path(__file__).resolve().parents[1]
-          / "molbuilder/web/static/lib/molview/model.js")
+#: The page that hosts MolView, as a test plays it: it hands the viewer the
+#: one reader of a server's answer (`support/molview_host.mjs`).
+_HOST = Path(__file__).resolve().parent / "support" / "molview_host.mjs"
 
 
 def _viewer(answer, mode):
@@ -108,13 +109,15 @@ def _viewer(answer, mode):
         "globalThis.fetch = async (route, init) => {\n"
         "  const body = JSON.parse(init.body);\n"
         "  const ok = route === '/api/build/load' && body.frames === true;\n"
-        "  return { ok: ok, status: ok ? 200 : 400, json: async () => (ok ? "
+        # As a browser hands it, for the page's one reader (`lib/server.js`).
+        "  return new Response(JSON.stringify(ok ? "
         + json.dumps(answer)
-        + " : { ok: false, error: 'not the whole file: ' + init.body }) };\n"
+        + " : { ok: false, error: 'not the whole file: ' + init.body }),"
+        " { status: ok ? 200 : 400 });\n"
         "};\n")
     return run_node([], (
         "const { createModel } = await import("
-        + json.dumps(_MODEL.as_uri()) + ");\n"
+        + json.dumps(_HOST.as_uri()) + ");\n"
         "const v = createModel({ mode: " + json.dumps(mode) + " });\n"
         "let out;\n"
         "try {\n"

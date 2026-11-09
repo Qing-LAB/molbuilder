@@ -658,12 +658,10 @@ def test_cancelling_a_deep_read_says_nothing_rather_than_HTTP_200(
         app_at, described):
     """Cancel after the headers land but before the body is read.
 
-    `_fetchJSON` catches a failed `r.json()` because a reply may carry
-    no JSON at all.  That catch used to swallow the `AbortError` a
-    Cancel raises mid-body too, and the call then returned
-    `{http: 200, body: null}` -- which reads downstream as a server that
-    answered with nothing, so pressing Cancel painted "HTTP 200" as an
-    error.  Only the deep read carries a signal, so only it gets here.
+    The `AbortError` a Cancel raises mid-body is a cancelled question
+    (`lib/server.js`, `web/ui-contract.md` § 12), never a server that
+    answered with nothing: read as one, pressing Cancel painted "HTTP 200"
+    as an error.  Only the deep read carries a signal, so only it gets here.
     The server's answer is the route's; Cancel is pressed the moment the
     deep read's response reaches the panel, before the panel reads its
     body, and the read fails with the runtime's own AbortError

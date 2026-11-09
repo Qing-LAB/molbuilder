@@ -28,7 +28,7 @@
  *   - tabs that mount a molview hand window.molbuilder.workspace to molview.mount:
  *     modify/, spectra/viewer.js, transport/core.js, structure-optimization/viewer.js,
  *     molview/demo.js, lib/inspectors/structure.js.
- *   - a UI notification layer subscribes to onPersistError() to warn on a failed disk write.
+ *   - a UI notification layer subscribes to onPersistError() to warn on a failed write or read.
  *
  * Public surface (window.molbuilder.workspace) -- THE ONLY WAY IN. There is no
  * layer under it to reach past (workspace.md § 4).
@@ -39,10 +39,12 @@
  *   - pruneStatesAbove(workspace_id, index)  -- tail-delete on-disk state files above ``index``
  *                                 (index === -1 clears the whole timeline).
  *   - workspaceId(tag)         -- the stable id this tag's draft is keyed under.
- *   - onPersistError(fn)       -- subscribe to non-blocking disk-write failures.
+ *   - onPersistError(fn)       -- subscribe to the store's failures: a write, a prune, a read.
  */
 "use strict";
 
+// THE ONE READER of the server's answers (ui-contract.md § 12).
+import { ask } from "../server.js";
 
 const root = (typeof window !== "undefined") ? window : globalThis;
 
@@ -111,8 +113,8 @@ const root = (typeof window !== "undefined") ? window : globalThis;
     // is NEVER swallowed: it is reported to the console AND emitted as a
     // ``molbuilder:persist-error`` DOM event so a UI layer can warn the user
     // ("state didn't reach disk; retract history / crash recovery may be
-    // incomplete").  A failure is either a rejected fetch (network) OR a
-    // non-2xx response (server refused, e.g. bad workspace_id / disk).
+    // incomplete").  A failure is any answer the one reader returns not ok
+    // (ui-contract.md § 12): a refusal, an unreadable answer, no answer.
     var _persistErrorHandlers = [];
     var _persistFailing = false;   // see Recovery, below
     // Subscribe to persist failures (the UI layer registers here to warn the
@@ -127,8 +129,7 @@ const root = (typeof window !== "undefined") ? window : globalThis;
         };
     }
     function _reportPersistError(detail) {
-        _persistFailing = true;
-        try { root.console.error("[workspace] persist FAILED (non-blocking)", detail); }
+        try { root.console.error("[workspace] store FAILED (non-blocking)", detail); }
         catch (_) { /* console may be absent */ }
         _persistErrorHandlers.slice().forEach(function (fn) {
             try { fn(detail); } catch (_) { /* one bad handler can't muzzle the rest */ }
@@ -142,10 +143,16 @@ const root = (typeof window !== "undefined") ? window : globalThis;
     }
 
     // ---- Recovery -------------------------------------------------------- //
-    // A failure is surfaced (above) and a persist-error banner is RAISED.
+    // A failed SAVE is surfaced (above) and a persist-error banner is RAISED.
     // A write that lands announces itself, and the UI layer clears the
     // warning.  Emitted ONLY on a transition out of the failed state, because
     // a per-write event on a healthy session is noise on every keystroke.
+    // A failed READ is no part of it: a save that lands later does not put
+    // back what the read could not.
+    function _saveFailed(detail) {
+        _persistFailing = true;
+        _reportPersistError(detail);
+    }
     function _reportPersistOk(detail) {
         if (!_persistFailing) return;      // nothing to take back
         _persistFailing = false;
@@ -171,22 +178,17 @@ const root = (typeof window !== "undefined") ? window : globalThis;
         var idx = identity && identity.state_index;
         _stateWriteChain = _stateWriteChain.then(function () {
             _trace("http:write-state:issue", { idx: idx });
-            return root.fetch("/api/workspace-storage/write", {
+            return ask("/api/workspace-storage/write", {
                 method:  "POST",
-                headers: { "Content-Type": "application/json" },
-                body:    JSON.stringify(Object.assign({}, identity || {}, { data: snapshotBlob })),
+                body:    Object.assign({}, identity || {}, { data: snapshotBlob }),
             }).then(function (res) {
-                _trace("http:write-state:done", { idx: idx, status: res && res.status });
-                if (!res || !res.ok) {
-                    _reportPersistError({ op: "write-state", state_index: idx,
-                                          status: res && res.status });
+                _trace("http:write-state:done", { idx: idx, status: res.status });
+                if (!res.ok) {
+                    _saveFailed({ op: "write-state", state_index: idx,
+                                  status: res.status, error: res.error });
                 } else {
                     _reportPersistOk({ op: "write-state", state_index: idx });
                 }
-            }).catch(function (err) {
-                _trace("http:write-state:error", { idx: idx });
-                _reportPersistError({ op: "write-state", state_index: idx,
-                                      error: (err && err.message) || String(err) });
             });
         });
     }
@@ -213,21 +215,30 @@ const root = (typeof window !== "undefined") ? window : globalThis;
     /**
      * Read the OPAQUE snapshot bytes on disk at {workspace_id, state_index} (§4.7 read-by-index),
      * what the history calls to fetch a saved index.  Resolves
-     * the parsed JSON, or null when the file is missing / unreadable.  Format-blind — the data
-     * model interprets what comes back.
+     * the parsed JSON, or null when nothing is saved there or the read failed.  Format-blind —
+     * the data model interprets what comes back.
      */
     function readState(identity) {
         if (!root.fetch || !identity) return Promise.resolve(null);
-        return root.fetch("/api/workspace-storage/read", {
+        return ask("/api/workspace-storage/read", {
             method:  "POST",
-            headers: { "Content-Type": "application/json" },
-            body:    JSON.stringify(identity),
+            body:    identity,
         }).then(function (res) {
-            if (!res || !res.ok) return null;          // 404 (missing) -> null
-            return res.json();
-        }).then(function (j) {
-            return (j && j.data != null) ? j.data : null;
-        }).catch(function () { return null; });
+            if (res.ok) {
+                return (res.body && res.body.data != null) ? res.body.data : null;
+            }
+            /* NOTHING SAVED IS AN ANSWER, ``data: null`` (the route's own rule),
+             * so an answer not ok is a FAILURE: a file the server could not
+             * read, a request refused, a server not reached.  The caller still
+             * gets null -- "nothing to put back" is the only safe reading of it
+             * (workspace.md § 5) -- and the failure is said, never passed off
+             * as nothing saved. */
+            _reportPersistError({ op: "read-state",
+                                  workspace_id: identity.workspace_id,
+                                  state_index: identity.state_index,
+                                  status: res.status, error: res.error });
+            return null;
+        });
     }
 
     /**
@@ -238,23 +249,17 @@ const root = (typeof window !== "undefined") ? window : globalThis;
     function pruneStatesAbove(workspace_id, index) {
         if (!root.fetch || !workspace_id) return Promise.resolve();
         _trace("http:prune-states:issue", { above: index });
-        return root.fetch("/api/workspace-storage/prune", {
+        return ask("/api/workspace-storage/prune", {
             method:  "POST",
-            headers: { "Content-Type": "application/json" },
-            body:    JSON.stringify({ workspace_id: workspace_id, above_index: index }),
+            body:    { workspace_id: workspace_id, above_index: index },
         }).then(function (res) {
-            _trace("http:prune-states:done", { above: index, status: res && res.status });
-            if (!res || !res.ok) {
-                _reportPersistError({ op: "prune-states", above_index: index,
-                                      status: res && res.status });
+            _trace("http:prune-states:done", { above: index, status: res.status });
+            if (!res.ok) {
+                // A failed prune leaves a stale tail, not a lost save.
+                _saveFailed({ op: "prune-states", above_index: index,
+                              status: res.status, error: res.error });
             }
             return res;   // resolve either way: the anchor write still proceeds
-        }).catch(function (err) {
-            _trace("http:prune-states:error", { above: index });
-            _reportPersistError({ op: "prune-states", above_index: index,
-                                  error: (err && err.message) || String(err) });
-            // Resolve (undefined) so a caller's ordered write still runs;
-            // a failed prune leaves a stale tail, not a lost save.
         });
     }
 
@@ -263,7 +268,7 @@ const root = (typeof window !== "undefined") ? window : globalThis;
         readState:             readState,
         pruneStatesAbove:      pruneStatesAbove,
         workspaceId:           workspaceId,
-        onPersistError:        onPersistError,   // subscribe to non-blocking write failures
+        onPersistError:        onPersistError,   // subscribe to the store's failures
     };
 
     // MERGE into any pre-existing ``workspace`` namespace, not replace it -- defensive, so a

@@ -58,8 +58,12 @@ choices for every list (`lib/one-stop-list.js`), one plain button, every
 action a click performs reached by the keys (the ledger's *Found by … 2.68.4*);
 **2.68.5**: group B's folder item — every file door and every page's own
 save announces the folder it changed, whoever shows it follows, Task setup
-keeping what it holds unsaved (the ledger's *Found by … 2.68.5*); next,
-B11/B12, then the rest of group B, then D and C.
+keeping what it holds unsaved (the ledger's *Found by … 2.68.5*);
+**2.69.0**: group B's answer items — one reader for every answer the server
+gives (`lib/server.js`, `web/ui-contract.md` § 12), *signed out* said once
+for the page with a way back, MolView handed the reader at mount with the
+app's other doors as one bundle (the ledger's *Found by … 2.69.0*); next, the
+rest of group B (B6, B13), then D and C.
 
 **What runs next**: **the UI review** *(the user, 2026-11-08: "Right after
 2.67.11")* — every tab walked in Chrome on the dev server through an

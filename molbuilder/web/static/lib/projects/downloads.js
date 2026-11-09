@@ -15,6 +15,8 @@
  */
 "use strict";
 
+import { ask } from "../server.js";
+
 /* A browser download of in-memory bytes.  Four lines of DOM, and they live
  * HERE — the projects module — because § 11.2a forbids exactly these four
  * lines inside the viewer: where files may go is one module's knowledge.
@@ -32,8 +34,8 @@ export function download(filename, blob) {
 
 /* The name a server route gave the file it sends, from its
  * Content-Disposition, or "" where it gave none. */
-function _sentName(response) {
-    const said = response.headers.get("Content-Disposition") || "";
+function _sentName(headers) {
+    const said = headers.get("Content-Disposition") || "";
     const utf = said.match(/filename\*=UTF-8''([^;]+)/i);
     const plain = said.match(/filename="?([^";]+)"?/i);
     return utf ? decodeURIComponent(utf[1]) : plain ? plain[1] : "";
@@ -43,24 +45,15 @@ function _sentName(response) {
  * (`projects.downloadExport`): ``url`` a GET route answering the file
  * itself, named.  Resolves ``{ok: true, said}`` -- ``said`` what the server
  * said beside it (``X-Molbuilder-Said``), or "" -- once the download is
- * handed to the browser; ``{ok: false, error}`` with the route's own refusal,
- * the HTTP status where it said none, or why the request failed.  Never
- * throws. */
+ * handed to the browser; ``{ok: false, error}`` in the words of the one
+ * reader of an answer (ui-contract.md § 12) -- the route's own refusal, or
+ * why it could not be read.  Never throws. */
 export async function downloadExport(url) {
-    try {
-        const r = await fetch(url, { cache: "no-store" });
-        if (!r.ok) {
-            let error = "HTTP " + r.status;
-            try { error = (await r.json()).error || error; }
-            catch (_) { /* the status is the answer */ }
-            return { ok: false, error };
-        }
-        const name = _sentName(r);
-        if (!name) return { ok: false, error: url + " sent a file it did "
-                                              + "not name" };
-        download(name, await r.blob());
-        return { ok: true, said: r.headers.get("X-Molbuilder-Said") || "" };
-    } catch (e) {
-        return { ok: false, error: String((e && e.message) || e) };
-    }
+    const a = await ask(url, { as: "file" });
+    if (!a.ok) return { ok: false, error: a.error, aborted: a.aborted };
+    const name = _sentName(a.headers);
+    if (!name) return { ok: false, error: url + " sent a file it did "
+                                          + "not name" };
+    download(name, a.body);
+    return { ok: true, said: a.headers.get("X-Molbuilder-Said") || "" };
 }

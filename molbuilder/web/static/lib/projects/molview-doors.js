@@ -1,4 +1,4 @@
-/* projects/molview-doors.js — the `files` door every MolView mount hands in.
+/* projects/molview-doors.js — the doors every MolView mount hands in.
  *
  * Contract: docs/web/projects.md § 5 (the MolView files door) and
  *           docs/web/molview.md § 11.3–§ 11.4 (what an export is; MolView
@@ -9,7 +9,8 @@
  *           at either destination: a browser download, or a dialog-chosen
  *           place in the project tree.
  * Called by: MolView's Export menu, through `opts.files` at mount.  ONE
- *           implementation.
+ *           implementation.  Every page that mounts a MolView hands it
+ *           `molviewDoors` -- this door and the server's (`opts.server`).
  *
  * NEVER: parse a structure (the server's codec writes the pair, § 11.7);
  *        invent a sidecar in the browser (the save-then-reload trap,
@@ -22,17 +23,8 @@ import { chooseSavePath, confirmDestructive } from "./dialogs.js";
 import { projects } from "./state.js";
 import { storeZip } from "../zip-store.js";
 import { download } from "./downloads.js";
-
-async function _postJSON(url, body) {
-    const r = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-    });
-    let payload = null;
-    try { payload = await r.json(); } catch (_) { /* empty body */ }
-    return { http: r.status, body: payload };
-}
+// THE ONE READER of the server's answers (ui-contract.md § 12).
+import { ask } from "../server.js";
 
 /* WHERE and AS WHAT is the unified question (`chooseSavePath`,
  * projects.md § 5) — this door phrases it for an export, the export's
@@ -63,14 +55,11 @@ export const molviewFiles = {
         }
         try {
             if (destination === "download") {
-                const res = await _postJSON("/api/structure/export", {
-                    structure: payload.structure,
-                    name: stem,
+                const res = await ask("/api/structure/export", {
+                    method: "POST",
+                    body: { structure: payload.structure, name: stem },
                 });
-                if (!res.body || !res.body.ok || !Array.isArray(res.body.files)) {
-                    return { ok: false, error: (res.body && res.body.error)
-                        || ("HTTP " + res.http) };
-                }
+                if (!res.ok) return { ok: false, error: res.error };
                 // BOTH files — the coordinates and the metadata that has to
                 // travel with them (§ 11.3).  As ONE artifact when there are
                 // two: a second programmatic download is exactly what
@@ -106,7 +95,8 @@ export const molviewFiles = {
                     path: path,
                     structure: payload.structure,
                 };
-                let res = await _postJSON("/api/structure/save", body);
+                let res = await ask("/api/structure/save",
+                                    { method: "POST", body: body });
                 if (res.body && res.body.needsOverwrite) {
                     // The module's own dialog, never a native confirm() --
                     // one dialog system, and a native modal freezes any
@@ -118,13 +108,11 @@ export const molviewFiles = {
                         confirmLabel: "Overwrite",
                     });
                     if (!sure) return { ok: false, cancelled: true };
-                    res = await _postJSON("/api/structure/save",
-                                          Object.assign({ overwrite: true },
-                                                        body));
+                    res = await ask("/api/structure/save", { method: "POST",
+                        body: Object.assign({ overwrite: true }, body) });
                 }
-                if (!res.body || !res.body.ok) {
-                    return { ok: false, error: (res.body && res.body.error)
-                        || ("HTTP " + res.http) };
+                if (!res.ok) {
+                    return { ok: false, error: res.error };
                 }
                 _announce(path.slice(0, path.lastIndexOf("/")));
                 return { ok: true, path: path,
@@ -191,3 +179,13 @@ function _announce(dir) {
         p.publishFolderChanged(dir);
     }
 }
+
+/* THE APP'S DOORS FOR A MOLVIEW, ONE BUNDLE: where its bytes leave
+ * (`files`, above) and how its questions reach the server (`server`, the
+ * app's one reader -- ui-contract.md § 12).  MolView reaches no module of the
+ * app by name (molview.md § 4), so each page that mounts one hands them in;
+ * handed as one, no page can hand one and forget the other. */
+export const molviewDoors = Object.freeze({
+    files: molviewFiles,
+    server: Object.freeze({ ask }),
+});

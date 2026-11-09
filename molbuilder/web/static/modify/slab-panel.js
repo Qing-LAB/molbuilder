@@ -17,6 +17,7 @@
 "use strict";
 
 import { runOp } from "./viewer.js";
+import { ask } from "../lib/server.js";
 import { clear as clearFindings, render as renderFindings }
     from "../lib/validation-findings.js";
 
@@ -111,11 +112,19 @@ export function init(viewer) {
      * `molbuilder.modify` reaches this dropdown with no template change.
      */
     async function loadMeta() {
-        try {
-            const r = await fetch("/api/modify/meta");
-            const j = await r.json();
-            if (j && j.ok) meta = j;
-        } catch (_) { /* a panel that cannot get its menu says so below */ }
+        // THE ONE READER (ui-contract.md § 12).  A panel that cannot get its
+        // menu says so: menus left empty are not "no metal is offered".
+        const a = await ask("/api/modify/meta");
+        if (a.ok) {
+            meta = a.body;
+        } else {
+            const notify = (window.molbuilder || {}).notify;
+            if (notify && notify.show) {
+                notify.show({ id: "slab-meta", level: "error",
+                              message: "The Slab panel's menus could not be "
+                                  + "read: " + a.error });
+            }
+        }
 
         const elSel = $("slab-element");
         if (elSel) {
@@ -277,11 +286,13 @@ export function init(viewer) {
         const q = `element=${encodeURIComponent(element)}`
                 + `&plane=${encodeURIComponent(plane)}`
                 + `&reference=${encodeURIComponent(String(a))}`;
-        fetch(`/api/modify/spacings?${q}`)
-            .then((r) => r.json())
-            .then((j) => {
+        // THE ONE READER (ui-contract.md § 12); an optional fact, so a
+        // failure hides the note rather than saying it.
+        ask(`/api/modify/spacings?${q}`)
+            .then((a) => {
                 if (mine !== latticeTicket) return;      // superseded
-                if (!j || j.ok !== true) { note.hidden = true; return; }
+                if (!a.ok) { note.hidden = true; return; }
+                const j = a.body;
                 note.textContent =
                     `d(${j.plane}) ${j.d_interlayer.toFixed(4)} Å`
                     + ` · nearest neighbour ${j.nearest_neighbour.toFixed(4)} Å`;
@@ -368,25 +379,19 @@ export function init(viewer) {
                 || /\.xyz$/i.test(entry.name || ""),
         });
         if (!path) return;                       // cancelled -- say nothing
-        let j = null;
-        try {
-            const r = await fetch("/api/modify/lattice-from-run", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    path: path,
-                    element: ($("slab-element") || {}).value || undefined,
-                }),
-            });
-            j = await r.json();
-        } catch (e) {
-            say("error", "could not reach the server: " + (e && e.message));
+        // THE ONE READER (ui-contract.md § 12).
+        const a = await ask("/api/modify/lattice-from-run", {
+            method: "POST",
+            body: {
+                path: path,
+                element: ($("slab-element") || {}).value || undefined,
+            },
+        });
+        if (!a.ok) {
+            say("error", a.error);
             return;
         }
-        if (!j || j.ok !== true) {
-            say("error", (j && j.error) || "the lattice could not be read");
-            return;
-        }
+        const j = a.body;
         const box = $("slab-a");
         if (box) box.value = j.a.toFixed(4);
         // A MEASURED VALUE IS A CUSTOM ONE -- it came off this user's own run,

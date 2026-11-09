@@ -27,7 +27,9 @@ from tests._node_esm import run_node
 
 REPO = Path(__file__).resolve().parents[1]
 MODULE_DIR = REPO / "molbuilder" / "web" / "static" / "lib" / "molview"
-MODEL = MODULE_DIR / "model.js"
+#: The page that hosts MolView, as a test plays it: it hands the viewer the
+#: one reader of a server's answer (`support/molview_host.mjs`).
+HOST = Path(__file__).resolve().parent / "support" / "molview_host.mjs"
 
 def _gate_sentence() -> str:
     """The gate's own words for a cell that cannot exist -- produced by the one
@@ -61,26 +63,23 @@ globalThis.fetch = async function (route, init) {
     if (globalThis.__unreachable) {
         throw new TypeError("Failed to fetch");
     }
+    // Each answer as a browser hands it, for the page's one reader
+    // (`lib/server.js`); `notJson` an error page in the server's stead.
     if (globalThis.__refuse) {
         const r = globalThis.__refuse;
-        return {
-            ok: false,
-            status: r.status,
-            json: async () => {
-                if (r.notJson) throw new SyntaxError("Unexpected token <");
-                return r.body;
-            },
-        };
+        return new Response(r.notJson ? "<html>Bad Gateway</html>"
+                                      : JSON.stringify(r.body),
+                            { status: r.status });
     }
     const payload = globalThis.__nextPayload || {
         atoms: [atomRow(0, "C", 0), atomRow(1, "O", 1)],
     };
-    return { ok: true, status: 200, json: async () => payload };
+    return new Response(JSON.stringify(payload), { status: 200 });
 };
 """
 
 PRELUDE = f"""
-const {{ createModel }} = await import({json.dumps(MODEL.resolve().as_uri())});
+const {{ createModel }} = await import({json.dumps(HOST.as_uri())});
 
 /* A loaded, editable viewer — the state every test below starts from, since a
  * viewer with nothing in it answers `null` for a different reason (§ 6.9). */
@@ -222,10 +221,8 @@ def test_an_unreadable_success_does_not_leak_the_parser_at_the_reader():
     out = _run(
         """
         const m = await loaded();
-        globalThis.fetch = async () => ({
-            ok: true, status: 200,
-            json: async () => { throw new SyntaxError("Unexpected token <"); },
-        });
+        globalThis.fetch = async () => new Response("<html>Bad Gateway</html>",
+                                                    { status: 200 });
         const got = await outcome(() => m.commitPeriodicityOp("vacuum", [1,1,1]));
         console.log(JSON.stringify(got));
         """
@@ -236,7 +233,8 @@ def test_an_unreadable_success_does_not_leak_the_parser_at_the_reader():
 
 
 def test_a_request_that_never_arrived_says_so_in_plain_language():
-    """§ 6.9's other written-by-MolView case. The browser's own wording is
+    """§ 6.9's other case with none of the server's words to quote: the
+    reader handed in at mount says it (§ 4). The browser's own wording is
     "Failed to fetch", which reads as a bug in the page rather than as something
     the reader can do anything about.
     """

@@ -154,9 +154,6 @@
         root.molbuilder = root.molbuilder || {};
         root.molbuilder.structureRna = api;
         configure({
-            fetch:         root.fetch
-                            ? root.fetch.bind(root)
-                            : undefined,
             structurePage: root.molbuilder.structurePage,
         });
         if (root.document) {

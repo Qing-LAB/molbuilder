@@ -7,21 +7,24 @@
  * Called by: nobody. It is a consumer, not a layer.
  *
  * NEVER:
- *   - import anything but index.js. The demo is worth having precisely because
- *     it is held to § 4's single import like every other consumer; a demo with a
- *     private door proves nothing.
+ *   - import anything of MolView's but index.js. The demo is worth having
+ *     precisely because it is held to § 4's single import like every other
+ *     consumer; a demo with a private door proves nothing.
  *   - be what a lower-level change is judged by. § 13.2's third level is a
  *     FINISHED-MODULE check: a page-level test fails for anything on the page,
  *     so using one to judge a data-structure or an API change says nothing about
  *     the change and throws away work that was correct.
  *
- * THIS PAGE IS THE PROOF OF § 4. It loads the drawing library and this file, and
- * nothing else — no application runtime, no shared globals, no workspace module.
+ * THIS PAGE IS THE PROOF OF § 4. It loads the drawing library, this file and the
+ * one reader of the server's answers (`lib/server.js`, ui-contract.md § 12), and
+ * nothing else — no application runtime, no workspace module; the reader's
+ * mirror on `window.molbuilder` is the page's, and MolView never reads it.
  * Everything MolView needs arrives as an argument to `mount`. If the module ever
  * grows a hidden dependency on something the app happens to have loaded, this
  * page is where it stops working.
  */
 import { mount, formula } from "/static/lib/molview/index.js";
+import { ask } from "../server.js";
 
 const SAMPLES = {
     water: "3\nwater\nO 0.000 0.000 0.000\nH 0.757 0.586 0.000\nH -0.757 0.586 0.000\n",
@@ -117,29 +120,24 @@ function demoFiles(say) {
             return { ok: true, path: filename };
         },
         async save(destination, stem, payload) {
-            let answer;
-            try {
-                const r = await fetch("/api/structure/export", {
-                    method:  "POST",
-                    headers: { "Content-Type": "application/json" },
-                    /* THE STEM GOES WITH IT. MolView knows what this export is
-                     * -- which structure, which frames; the server knows what
-                     * the files are CALLED, because the extension follows the
-                     * format and the format follows the frame count. */
-                    body:    JSON.stringify({
-                        structure: payload && payload.structure,
-                        frames:    (payload && payload.frames) || undefined,
-                        name:      stem,
-                    }),
-                });
-                answer = await r.json();
-                if (!answer || answer.ok !== true) {
-                    throw new Error(answer && answer.error);
-                }
-            } catch (err) {
-                say("export failed: " + (err && err.message ? err.message : err));
+            // THE ONE READER (ui-contract.md § 12).
+            const asked = await ask("/api/structure/export", {
+                method: "POST",
+                /* THE STEM GOES WITH IT. MolView knows what this export is
+                 * -- which structure, which frames; the server knows what
+                 * the files are CALLED, because the extension follows the
+                 * format and the format follows the frame count. */
+                body: {
+                    structure: payload && payload.structure,
+                    frames:    (payload && payload.frames) || undefined,
+                    name:      stem,
+                },
+            });
+            if (!asked.ok) {
+                say("export failed: " + asked.error);
                 return;
             }
+            const answer = asked.body;
             /* THE FILES COME BACK NAMED, and that is the whole of what this
              * page does with them. It appends no extension and serialises no
              * JSON: doing either would be a second answer to a question the
@@ -173,6 +171,7 @@ async function start() {
     const viewer = await mount(host, memoryWorkspace(), {
         owner: "molview-demo",
         files: demoFiles(say),
+        server: { ask },
     });
 
     // Mount always resolves (§ 8): on failure `ok` is false, `error` says why,

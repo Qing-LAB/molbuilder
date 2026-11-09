@@ -139,19 +139,20 @@
             const abortCtl  = new AbortController();
             cleanups.push(() => abortCtl.abort());
 
-            fetch(partialUrl, {
-                credentials: "same-origin",
-                signal:      abortCtl.signal,
+            // THE ONE READER (ui-contract.md § 12), as text: a partial
+            // answered by the sign-in page is read as signed out, and its
+            // HTML is never mounted.
+            root.molbuilder.server.ask(partialUrl, {
+                signal: abortCtl.signal, as: "text",
             })
-                .then((resp) => {
-                    if (!resp.ok) {
-                        throw new Error(
-                            "HTTP " + resp.status + " from " + partialUrl);
+                .then((answer) => {
+                    if (aborted || answer.aborted) return;
+                    if (!answer.ok) {
+                        _renderError(host, errorDisplay, file,
+                            partialUrl + ": " + answer.error);
+                        return;
                     }
-                    return resp.text();
-                })
-                .then((partialHtml) => {
-                    if (aborted) return;
+                    const partialHtml = answer.body;
                     // Trust boundary: partialHtml is a same-origin
                     // Jinja-autoescaped render of a static template
                     // with no user input; same content the per-tab
@@ -165,7 +166,6 @@
                     });
                 })
                 .catch((err) => {
-                    if (err.name === "AbortError") return;
                     _renderError(host, errorDisplay, file,
                         (err && err.message) || String(err));
                 });

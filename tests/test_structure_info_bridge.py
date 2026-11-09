@@ -53,6 +53,7 @@ class TestTheComposer:
 
 REPO = Path(__file__).resolve().parents[1]
 JOBS = _LIB / "molview" / "model-jobs.js"
+SERVER = _LIB / "server.js"
 
 #: `installMolecule` POSTs through `postJson`, so a stubbed `fetch` is what
 #: makes the REQUEST BODY inspectable -- the thing link 4 is actually about.
@@ -61,14 +62,17 @@ _FETCH_STUB = """
 globalThis.__sent = [];
 globalThis.fetch = async (route, opts) => {
     globalThis.__sent.push({ route, body: JSON.parse(opts.body) });
-    return { ok: true, status: 200,
-             json: async () => ({ atoms: [{ element: "O", xyz: [0,0,0] }],
-                                  structure: { info: { calculation: "relax" } } }) };
+    // As a browser hands it, for the page's one reader (`lib/server.js`).
+    return new Response(JSON.stringify(
+        { atoms: [{ element: "O", xyz: [0,0,0] }],
+          structure: { info: { calculation: "relax" } } }), { status: 200 });
 };
 """
 
 _PRELUDE = f"""
 const JOBS = await import({json.dumps(JOBS.resolve().as_uri())});
+// ...THE READER the page hands MolView (`molview.md` § 4), asking the stub.
+const {{ ask }} = await import({json.dumps(SERVER.resolve().as_uri())});
 """
 
 
@@ -116,7 +120,7 @@ class TestTheBrowserSide:
         out = _run("""
         let installed = null;
         const handed = { put(structure) { installed = structure; },
-                         recordFirstState() {}, announce() {} };
+                         recordFirstState() {}, announce() {}, ask };
         const install = JOBS.createLoad(handed);
         await install({ structure: { elements: ["O"], positions: [[0, 0, 0]],
                                      info: { calculation: "vibration" } } });

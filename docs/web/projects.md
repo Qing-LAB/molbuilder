@@ -40,7 +40,7 @@ Behind that one door are eleven small files, each with one concern:
 | `preview.js` | the file preview/edit pop-up (any file, view or edit) |
 | `checkpoint.js` | the run-history panel (git snapshots of a run folder) |
 | `parser.js` | the **one** door that understands molecules — open and save |
-| `molview-doors.js` | the `files` door every MolView mount hands in — export to project or download |
+| `molview-doors.js` | the doors every MolView mount hands in, as one bundle (`molviewDoors`): the `files` door — export to project or download — and the server's reader |
 | `downloads.js` | a file handed to the person as a browser download — bytes a page holds, or an export a server route composed |
 
 There are really **two layers**: a **content-blind file layer** (read/write raw
@@ -435,7 +435,6 @@ does not decide for the user.
 | `readRange(path, offset, maxBytes)` | read a byte window (for large files) |
 | `listDir(path)` | list a folder for a consumer (e.g. the Results file picker) |
 | `writeFile(path, text\|Blob)` | write a file (string → write, Blob → upload); the folder announced |
-| `isCancelError(err)` | tell a user-cancel apart from a real error |
 
 **Organizing files** (each announces, on success, the folders it changed — and
 one it took away — § 2; the sidebar showing one re-lists it)
@@ -457,7 +456,9 @@ Cancel hook.
 
 **The MolView files door** — `projects.molviewFiles` *(2026-08-19)*: the one
 implementation of the `files` option every MolView mount hands in
-(`molview.md` § 11.4). `save(destination, stem, {structure})` turns
+(`molview.md` § 11.4) — handed with the server's reader as one bundle,
+`molviewDoors`, which every page that mounts a viewer passes whole
+(`molview.md` § 4). `save(destination, stem, {structure})` turns
 the viewer's truth into the `.xyz` + `.molstruct.json` pair — `"download"`
 through `POST /api/structure/export`, delivered as **one `<stem>.zip`**
 when it is a pair (a second programmatic download is what browsers

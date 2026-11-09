@@ -71,6 +71,9 @@
 {#- ...and THE ONE LIST OF CHOICES (`lib/one-stop-list.js`, § 4.1): one tab
     stop, the arrow keys, Enter doing what a click does. -#}
 <script src="{{ url_for('static', filename='lib/one-stop-list.js') }}"></script>
+{#- ...and THE ONE READER of a server's answer (`lib/server.js`, § 12): a
+    module, mirrored on window.molbuilder.server for a classic script. -#}
+<script type="module" src="{{ url_for('static', filename='lib/server.js') }}"></script>
 
 {#- App-wide system-notification bar (docs/web/notifications.md): ONE
     consistent surface for system-level messages that span tabs -- debuting with
