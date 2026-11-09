@@ -150,6 +150,9 @@ def _written(app_at, records, *, scf=False, periodic=False, hours=None,
         // The save bar is not this file's subject: its writer is called.
         function _setDirty() {{}}
         function edited() {{ return true; }}
+        // ...nor the run cards a block's write draws again.
+        let _task = null;
+        function renderNext() {{}}
         {_fns(*_ON_THE_PAGE)}
         // THE PAGE OPENS THE CARD: its boxes wired, this machine's channels
         // asked, and the card filled from the job request.
@@ -333,6 +336,7 @@ def test_an_unparseable_document_loses_nothing():
         function edited() {{ return true; }}
         // ...nor the cards a refused write puts back from the model.
         let _task = null;
+        function renderNext() {{}}
         function readAsksFromRequest() {{}}
         function readNotifyFromRequest() {{}}
         function renderQueues() {{}}
@@ -415,6 +419,9 @@ def test_a_card_write_moves_the_MODEL_too_not_only_the_buffer(request_doc):
         // The save bar is not this file's subject: its writer is called.
         function _setDirty() {{}}
         function edited() {{ return true; }}
+        // ...nor the run cards a block's write draws again.
+        let _task = null;
+        function renderNext() {{}}
         {_fns(*_WRITER)}
         applyNotifyToDoc();                       // a card writes
         const afterPatch = JSON.parse(_doc).notify || null;

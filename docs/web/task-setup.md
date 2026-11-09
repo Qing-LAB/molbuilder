@@ -1107,11 +1107,17 @@ you care about half a second".)*
 **Two ways out, both fenced.** An edit of the stage table, the machine rows
 or the plan changes the model and leaves by one door, `commitEdit`, which
 writes the editor's text from the model and repaints every panel drawn from
-it. The queue and notify cards hold their values in their own controls and
+it — once the event that made the edit has finished, so a Tab or a click it
+began lands first ([`ui-contract.md` § 10](?doc=web/ui-contract.md)). The queue and notify cards hold their values in their own controls and
 write at each change, so they patch the document in place (`patchDoc`):
-both copies move, nothing is repainted, and the control being used keeps its
+both copies move, the run cards are drawn again — a blank row there says what
+the queue card asks — and the card being used is not, the control in it
+keeping its
 place. Both run under the fence through `pageBusy.run`, so the claim is
-taken in one way, never hand-rolled at a card. A hand-over's first proposal
+taken in one way, never hand-rolled at a card. **Neither is drawn again
+after the fence**: the editor's read-back (§ 9a) redraws the cards from a
+hand edit in the editor only — a card's write drawn a second time, after the
+release, took the focus from the control the person had moved to *(2.68.3)*. A hand-over's first proposal
 is not an edit: it builds the description from what came over (§ 3), under
 the same fence, and draws the cards from it.
 
@@ -1303,7 +1309,12 @@ has not been saved is said by the save bar (§ 7a). **A card never writes over t
 parse**: while the editor holds something that is not valid JSON — an edit in
 progress — a card's change is refused, said at the top of the page, and the
 text is left as typed — **and the card shows what the text says**, never the
-refused value: a control a refused edit changed is put back. **A hand-over's
+refused value: a control a refused edit changed is put back. **A hand edit
+that parses is read back into the cards** after a pause in the typing, so a
+card's next change starts from it and never writes an older value over it; a
+text the page put there itself — a load, a card's write — is not read back,
+its writer having drawn the cards (§ 7a), and a card's write landing inside
+the pause of a hand edit leaves that hand edit read back. **A hand-over's
 proposal is built once, from the hand-over as the page holds it**: opening the
 hand-over proposes the records, the folder's read ending when they land, and
 Save is held, said, from the hand-over's open until they land. A hand-over

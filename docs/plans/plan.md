@@ -50,7 +50,10 @@ road. **2.68.1**: a blank setting's default said by where it comes from —
 setup in the forms' words (the ledger's *Found by 2.68.1*). **2.68.2**: the
 UI review's group A — the Molbuilder page's *Unsaved* from its own note, a
 reload keeping it, the viewer's Export save recorded, the slab box never
-blank (the ledger's *Found by … 2.68.2*); next, groups B, D and C.
+blank (the ledger's *Found by … 2.68.2*). **2.68.3**: group B's first item
+— in Task setup a value typed and Tab or a click land where they go, the
+page-wide cover giving focus back where the person left it (the ledger's
+*Found by … 2.68.3*); next, the rest of group B, then D and C.
 
 **What runs next**: **the UI review** *(the user, 2026-11-08: "Right after
 2.67.11")* — every tab walked in Chrome on the dev server through an

@@ -114,3 +114,52 @@ _ROWS = [
                          ids=[r[0] for r in _ROWS])
 def test_the_bar_says_what_is_not_on_disk(what, moves, unsaved):
     assert _said(moves) is unsaved, what
+
+
+#: (what changed the buffers, each change's record and CodeMirror's word
+#: for it, how many times the read-back draws the stage table)
+_READ_BACK = [
+    ("a hand edit in the editor is read back into the stage table",
+     [("task", "+input")], 1),
+    ("the page's own write is not drawn again after its fence",
+     [("task", "setValue")], 0),
+    ("a card's write inside a hand edit's pause leaves it read back",
+     [("task", "+input"), ("request", "setValue")], 1),
+]
+
+
+@pytest.mark.parametrize("what,changes,drawn", _READ_BACK,
+                         ids=[r[0] for r in _READ_BACK])
+def test_the_stage_table_is_drawn_again_from_a_hand_edit_only(
+        what, changes, drawn):
+    """§ 7a: a card's write draws the cards once, under the fence; § 9a: a
+    hand edit in the editor is read back into them, a card's write inside
+    its pause too.  Through 2.68.2 the read-back drew the stage table again
+    after the page's own write, after the fence's release, and a value typed
+    in a stage cell and Tab left the person on the page's body.
+
+    MUTATIONS THIS MUST FAIL AGAINST: the read-back drawing the stage table
+    at every change of a buffer; the read-back judging by the last change
+    of its pause alone."""
+    out = _run("""
+        globalThis._reparse = undefined;
+        globalThis._handEdited = false;
+        globalThis._mode = "description";
+        globalThis._task = null;
+        globalThis._request = null;
+        let drawn = 0;
+        globalThis.renderStages = () => { drawn++; };
+        for (const f of ["readAsksFromRequest", "readNotifyFromRequest",
+                         "renderQueues", "renderMachine", "renderNext",
+                         "schedulePlan"]) {
+            globalThis[f] = () => {};
+        }
+        READ
+        for (const [which, origin] of CHANGES) {
+            _docs[which].setValue(which === "task" ? '{"a":2}' : '{"r":2}');
+            _bufferChanged(which, { origin });
+        }
+        await new Promise((r) => setTimeout(r, 450));
+        console.log(JSON.stringify({ drawn }));
+    """.replace("READ", _READ).replace("CHANGES", json.dumps(changes)))
+    assert out == {"drawn": drawn}, what

@@ -128,6 +128,7 @@ let _task       = null;
  * buffer; a hand edit of the buffer re-parses into this when it is valid. */
 let _request    = null;
 let _reparse    = null;   // debounce for the table's repaint after a hand edit
+let _handEdited = false;  // ...and a hand edit waits in it
 /* Does each buffer's text parse -- may a card write over it? */
 let _parses = { task: true, request: true };
 /* Each record's last text that parsed: what a refused card edit puts its
@@ -252,7 +253,7 @@ function renderStages(task) {
         }
 
         const nameInput = el("input", {
-            class: "ts-cell ts-cell-name", value: name,
+            class: "ts-cell ts-cell-name", value: name, id: _rowId(i, "name"),
             "aria-label": "stage " + (i + 1) + " name",
         });
         nameInput.addEventListener("change", () => {
@@ -273,7 +274,7 @@ function renderStages(task) {
 
         const drop = el("button", {
             type: "button", class: "ts-rowbtn ts-rowbtn-drop",
-            title: "Remove this stage",
+            title: "Remove this stage", id: _rowId(i, "remove"),
             "aria-label": "Remove stage " + name,
         }, "\u00d7");
         drop.addEventListener("click", () => removeStage(i));
@@ -285,7 +286,7 @@ function renderStages(task) {
         // would add columns `prep` refuses.
         let preset = null;
         if ((_presets || []).length) {
-            preset = el("select", { class: "ts-preset",
+            preset = el("select", { class: "ts-preset", id: _rowId(i, "preset"),
                                     "aria-label": "apply a preset to " + name });
             preset.appendChild(el("option", { value: "" }, "preset\u2026"));
             for (const ps of _presets) {
@@ -391,6 +392,7 @@ function renderStages(task) {
                 cell = el("select", {
                     class: "ts-cell",
                     title: helpText(col),
+                    id: _rowId(i, col),
                     "aria-label": name + " " + col,
                     "data-template": has ? null : "yes",
                 });
@@ -414,6 +416,7 @@ function renderStages(task) {
                     class: "ts-cell", value: has ? String(ov[col]) : "",
                     placeholder: fallback || "template",
                     title: helpText(col),
+                    id: _rowId(i, col),
                     "aria-label": name + " " + col,
                     "data-template": has ? null : "yes",
                 });
@@ -433,6 +436,15 @@ function ranMark(name) {
                        title: ran ? ran + " run(s) launched"
                                   : "nothing has run for this stage yet" },
              ran ? ran + "\u00d7" : "\u2014");
+}
+
+/* A STAGE ROW'S CONTROLS CARRY AN ID BY THE ROW'S NUMBER: their names carry
+ * the stage's name, which a rename changes, and a redraw after a rename, a
+ * cell or a regrouping finds the control the person was in by its id
+ * (ui-contract.md § 10).  After a removal the row below takes the number,
+ * its controls named for its own stage. */
+function _rowId(i, part) {
+    return "ts-stage-" + i + "-" + part;
 }
 
 /** A row's GROUP (`task-setup.md` § 5): the first row's is 1; every
@@ -461,7 +473,7 @@ function groupCell(stages, i) {
     const whyNot = (aboveSaid && aboveSaid.launched
                     && !(said && said.launched))
         ? aboveSaid.why_fixed : ((said && said.why_same) || null);
-    const sel = el("select", { class: "ts-cell",
+    const sel = el("select", { class: "ts-cell", id: _rowId(i, "group"),
                                "aria-label": "group of " + st.name });
     const same = el("option", { value: "same" },
                     above + " \u2014 same as above");
@@ -832,7 +844,7 @@ function dropEmptyCard(stage) {
  *  calculation's card (`task-setup.md` § 6.2b). */
 function setRunValue(name, raw, members) {
     // EVERY MEMBER READS THE ROW (`runRow`), so any one judges it.
-    return editTyped("Writing " + name + "\u2026", name, raw, "run_card",
+    return editTyped("Writing " + labelOf(name) + "\u2026", name, raw, "run_card",
                      members[0] || null, (read) => {
         for (const stage of members) {
             const box = executionOf(stage, !read.blank);
@@ -1028,10 +1040,13 @@ function runRow(task, name, members, opts) {
                       + ((_meta[name] && _meta[name].default_words)
                          || "default") + ")" : "");
     const legal = legalValues(name);
+    // THE FIELD'S NAME, the row's own where it has one (a member's wall):
+    // the name it is told apart by, and found again by after a write
+    // redraws the card (ui-contract.md § 10).
+    const fieldName = "value for " + (o.label || name);
     let input;
     if (legal) {
-        input = el("select", { class: "ts-runval",
-                               "aria-label": "value for " + name });
+        input = el("select", { class: "ts-runval", "aria-label": fieldName });
         input.appendChild(el("option", { value: "" },
                              behind || "\u2014 not stated"));
         for (const v of legal) {
@@ -1049,7 +1064,7 @@ function runRow(task, name, members, opts) {
                               placeholder: behind
                                   || (lane ? "e.g. " + lane.placeholder
                                            : "\u2014 not stated"),
-                              "aria-label": "value for " + name });
+                              "aria-label": fieldName });
         input.value = value === undefined ? "" : String(value);
     }
     // NO STAGE OF THE CARD READS IT: shown, never written -- the stated
@@ -1370,9 +1385,8 @@ function edited() {
  * writes an older model over it.  Only the repaint waits for a pause, and
  * a text that does not parse -- mid-typing -- is remembered, so a card
  * does not write over it (`syncFromModel`).  A text the page itself put
- * there (``setValue``: a load, a card's write) has had its cards drawn by
- * its writer, so the cards a Preview's answer lives in are not redrawn
- * under it. */
+ * there (``setValue``: a load, a card's write) is not read back: its
+ * writer drew what it changed (§ 7a). */
 function _bufferChanged(which, change) {
     const byHand = !(change && change.origin === "setValue");
     // A TEXT THE PAGE PUT THERE is said dirty or not by its writer, once
@@ -1390,22 +1404,31 @@ function _bufferChanged(which, change) {
     if (!parsed) return;
     _parsedText[which] = bufferText(which);
     if (which === "task") _task = next; else _request = next;
+    // A HAND EDIT WAITING IN THE PAUSE stays read back when the page writes
+    // a buffer inside it (a card's change): the pause is one for both.
+    if (byHand) _handEdited = true;
     clearTimeout(_reparse);
     _reparse = setTimeout(() => {
-        renderStages(_task);
+        const hand = _handEdited;
+        _handEdited = false;
         /* A HAND EDIT IS READ BACK by the cards drawn from the records, so
          * their next change starts from it, never writes an older value
-         * over it (§ 9a) -- the cards that write a block, the measure card
-         * and each group's run card.  A card's own write is not read back
-         * under the control being typed in. */
-        if (byHand && _task && _mode !== "empty") {
-            if (_request) {
-                readAsksFromRequest(_request);
-                readNotifyFromRequest(_request, _task);
-                renderQueues();
+         * over it (§ 9a) -- the stage table, the cards that write a block,
+         * the measure card and each group's run card.  A card's own write
+         * is not read back: its writer drew the cards, under the fence
+         * (§ 7a), and drawn again here, after the release, they took the
+         * focus of the control the person had moved to. */
+        if (hand) {
+            renderStages(_task);
+            if (_task && _mode !== "empty") {
+                if (_request) {
+                    readAsksFromRequest(_request);
+                    readNotifyFromRequest(_request, _task);
+                    renderQueues();
+                }
+                renderMachine(_task);
+                renderNext(_task);
             }
-            renderMachine(_task);
-            renderNext(_task);
         }
         // WHAT A PREP WILL WRITE follows the records as they stand.
         if (_mode === "description") schedulePlan(_task);
@@ -3495,9 +3518,16 @@ function prepButton(kind, picks) {
     const key = kind === "task" ? "task" : kind + ":" + picks.join("+");
     const what = kind === "task" ? "group " + picks.join(", ")
                                  : kind + " " + picks.join(", ");
-    const btnPreview = el("button", { type: "button", class: "btn" },
+    // A BENCH BOX NAMED FOR ITS STAGE: a group's panel holds one per member,
+    // told apart by it -- the words on the button first (ui-contract.md
+    // § 10).  The task's box is the panel's one.
+    const benchName = (words) => (kind === "task" ? null
+                                  : words + " \u2014 " + picks.join(", "));
+    const btnPreview = el("button", { type: "button", class: "btn",
+                                      "aria-label": benchName("Preview " + kind) },
                           "Preview " + kind);
-    const btnWrite = el("button", { type: "button", class: "btn", disabled: "" },
+    const btnWrite = el("button", { type: "button", class: "btn", disabled: "",
+                                    "aria-label": benchName("Prep " + kind + " here") },
                         "Prep " + kind + " here");
     /* THE PLAN THE LAST PREVIEW SHOWED, by its identity -- what Prep names,
      * so a prep that would write something else is refused. */
@@ -4287,7 +4317,7 @@ function askValues() {
  * synchronously and on the next frame -- because CodeMirror's own
  * `refresh` can scroll again after this returns.
  *
- * Both card writers use it.
+ * `patchDoc` uses it: the writer that puts the cursor back.
  */
 function keepingPagePut(fn) {
     const sc = document.querySelector(".app-content");
@@ -4313,8 +4343,9 @@ function keepingPagePut(fn) {
  * card, the notify card, written as each control changes -- changes the job
  * request (`job-request.md` § 3.1, § 3.5): it reads the buffer (the newer
  * of the two, since a hand edit lands there first), applies the change, and
- * writes BOTH, repainting nothing, so the control being used keeps its
- * place.  It runs under the edit's fence (`applyBlockToDoc`); every other
+ * writes BOTH and repaints nothing itself, so the control being used keeps
+ * its place; its caller draws the run cards again (`applyBlockToDoc`).  It
+ * runs under the edit's fence; every other
  * card edit leaves by `commitEdit`.  A caller that returns false changed
  * nothing and nothing is written. */
 function patchDoc(change) {
@@ -4360,9 +4391,20 @@ function patchDoc(change) {
  * persistently saved, the user can't do anything … what the fuck do you
  * care about half a second")*.  An edit made inside an operation that holds
  * the fence already is a step of it, and `pageBusy.run` runs it there. */
+/** ONCE THE EVENT THAT STARTED A WRITE HAS FINISHED (ui-contract.md
+ *  § 10): a redraw inside the change of a field Tab or a click leaves takes
+ *  out the control the move is going to, and the browser abandons the
+ *  move.  A write that waits on the server is past it already; one that
+ *  waits on nothing waits here before it redraws. */
+function afterTheEvent() {
+    return new Promise((r) => setTimeout(r, 0));
+}
+
 function commitEdit(reason) {
-    return pageBusy.run(reason || "Writing the records\u2026", [],
-                        syncFromModel);
+    return pageBusy.run(reason || "Writing the records\u2026", [], async () => {
+        await afterTheEvent();
+        return syncFromModel();
+    });
 }
 
 
@@ -4382,19 +4424,31 @@ function commitEdit(reason) {
  * the page's cursor for a keystroke that wrote the same text back.
  */
 function applyBlockToDoc(key, read) {
-    return pageBusy.run("Writing " + key + "\u2026", [], async () => patchDoc((request) => {
-        const want = read();
-        const next = Object.keys(want).length ? want : null;
-        // A CARD WRITES A CHANGE OF VALUE ONLY (`recordValue`): the same
-        // block in its own key order is the block the record holds.
-        if (recordValue(JSON.stringify(next))
-            === recordValue(JSON.stringify(request[key] || null))) {
-            return false;
+    return pageBusy.run("Writing " + key + "\u2026", [], async () => {
+        const changed = patchDoc((request) => {
+            const want = read();
+            const next = Object.keys(want).length ? want : null;
+            // A CARD WRITES A CHANGE OF VALUE ONLY (`recordValue`): the same
+            // block in its own key order is the block the record holds.
+            if (recordValue(JSON.stringify(next))
+                === recordValue(JSON.stringify(request[key] || null))) {
+                return false;
+            }
+            if (next) request[key] = next;
+            else delete request[key];
+            return true;
+        });
+        /* THE RUN CARDS ARE DRAWN FROM THE JOB REQUEST -- a blank row says
+         * what the queue card asks (§ 6.2b) -- so a change draws them again,
+         * once the event that made it has finished; the card being written
+         * is not, and keeps its place (§ 7a).  The buffers are written at
+         * once: the card's listener asks the save bar right after. */
+        if (changed) {
+            await afterTheEvent();
+            renderNext(_task);
         }
-        if (next) request[key] = next;
-        else delete request[key];
-        return true;
-    }));
+        return changed;
+    });
 }
 
 function applyAsksToDoc() { applyBlockToDoc("allocation", askValues); }

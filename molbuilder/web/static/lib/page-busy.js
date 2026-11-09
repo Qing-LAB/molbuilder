@@ -17,7 +17,12 @@
  * THE KEYBOARD IS FENCED TOO: the cover stops the mouse, and while claimed
  * a key pressed anywhere but on the cover, or in a dialog the operation
  * itself opened, does nothing -- Enter on the button just clicked does not
- * send again.  Focus moves to the cover and comes back at release.
+ * send again.  FOCUS COMES BACK WHERE THE PERSON LEFT IT: a control that
+ * held focus as the fence went up gives it to the cover and gets it back at
+ * release; a fence that went up while focus was moving (a field's change runs
+ * as Tab or a click leaves it) leaves the move to finish, and focus comes
+ * back to where it went -- a control the operation redrew found again
+ * (``_foundAgain``).
  *
  * ``claim()`` while claimed THROWS: one heavy operation at a time is the
  * design.  Periodic/automatic work (GPU sampler, polling) never claims —
@@ -31,7 +36,93 @@
 
 let _claim = null;          // { reason: string, cancelers: Function[] } | null
 let _els = null;            // { cover, panel, msg, cancel } once built
-let _before = null;         // the element focused when the fence went up
+let _before = null;         // the spot focused as the fence went up, or null
+
+/* A CONTROL'S SPOT: the control, and the address it is found again by once
+ * an operation has redrawn it -- its id; or, with none, its name (its
+ * `aria-label`, a button's text) inside the nearest container that has an
+ * id.  Taken while the control is in the page: a redraw detaches it from
+ * its container. */
+function _nameOf(node) {
+    const said = typeof node.getAttribute === "function"
+        ? node.getAttribute("aria-label") : null;
+    if (said) return said;
+    return node.tagName === "BUTTON" ? String(node.textContent || "").trim() : "";
+}
+
+function _spotOf(node) {
+    if (!node) return null;
+    if (node.id) return { node, id: node.id };
+    let box = node.parentElement || null;
+    while (box && !box.id) box = box.parentElement || null;
+    const name = _nameOf(node);
+    return { node, within: box ? box.id : null, tag: node.tagName, name };
+}
+
+/* ...FOUND AGAIN: the control itself while it is in the page; else the one
+ * now at its address -- by its id, or the ONE control of its kind and name
+ * in its container.  Two answering to the name: none is guessed, so no
+ * keystroke lands in another stage's field. */
+function _foundAgain(spot) {
+    if (!spot) return null;
+    if (spot.node && spot.node.isConnected) return spot.node;
+    if (typeof document.getElementById !== "function") return null;
+    if (spot.id) return document.getElementById(spot.id);
+    if (!spot.within || !spot.name) return null;
+    const box = document.getElementById(spot.within);
+    if (!box || typeof box.querySelectorAll !== "function") return null;
+    const hits = Array.from(box.querySelectorAll(spot.tag))
+        .filter((n) => _nameOf(n) === spot.name);
+    return hits.length === 1 ? hits[0] : null;
+}
+
+/* WHERE FOCUS IS, by the fence's own record (ui-contract.md § 10): the spot
+ * of the control outside the cover that last took it, cleared when focus
+ * goes to nothing (a click on bare page).  While a field's change runs as
+ * Tab leaves it, the browser names no control focused, and focus lands on
+ * the next field only after the fence went up: this record is how the
+ * release knows where it went.
+ *
+ * NOT EVERY "FOCUS WENT TO NOTHING" IS A CLICK ON BARE PAGE.  A browser
+ * says so too when the focused control is taken out of the page (the
+ * control still in it as it says so) and when the window loses focus: both
+ * keep the record.  A control an operation's redraw took out is found
+ * again at its release; one already out of the page when an operation
+ * begins is let go there (`claim`) -- never brought back. */
+let _held = null;
+if (typeof document === "object" && document
+        && typeof document.addEventListener === "function") {
+    document.addEventListener("focusin", (e) => {
+        if (_els && _els.cover.contains(e.target)) return;
+        _held = _spotOf(e.target);
+    }, true);
+    document.addEventListener("focusout", (e) => {
+        if (!_held || e.target !== _held.node || e.relatedTarget) return;
+        const left = _held;
+        queueMicrotask(() => {
+            if (_held !== left || !left.node.isConnected) return;
+            if (typeof document.hasFocus === "function" && !document.hasFocus()) {
+                return;                         // the window left
+            }
+            _held = null;
+        });
+    }, true);
+}
+
+/* FOCUS GIVEN BACK at the release (ui-contract.md § 10).  A control
+ * outside the cover that has focus keeps it: where the person's move
+ * landed, or where the operation put it.  Else the control that held focus
+ * as the fence went up, or the one focus moved to, found again. */
+function _giveFocusBack(before) {
+    const now = document.activeElement || null;
+    if (now && now !== document.body && !(_els && _els.cover.contains(now))) {
+        return;
+    }
+    const back = _foundAgain(before || _held);
+    if (back && back.isConnected && typeof back.focus === "function") {
+        back.focus({ preventScroll: true });
+    }
+}
 
 /** A key pressed outside the cover, or outside a dialog the operation
  *  opened, while claimed: nothing happens. */
@@ -125,7 +216,12 @@ export const pageBusy = {
             if (typeof _els.cover.setAttribute === "function") {
                 _els.cover.setAttribute("aria-busy", "true");
             }
-            _before = document.activeElement || null;
+            // FOCUS MOVING -- no control named focused: the move finishes.
+            const active = document.activeElement || null;
+            const moving = !active || active === document.body;
+            _before = moving ? null : _spotOf(active);
+            // A CONTROL ALREADY OUT OF THE PAGE is not where focus is.
+            if (_held && !_held.node.isConnected) _held = null;
             if (typeof document.addEventListener === "function") {
                 document.addEventListener("keydown", _fenceKey, true);
             }
@@ -133,7 +229,7 @@ export const pageBusy = {
             // back without scrolling, so what the operation brought into
             // view -- a refusal beside its field -- stays there.
             const rest = _els.cancel.hidden ? _els.panel : _els.cancel;
-            if (typeof rest.focus === "function") {
+            if (!moving && typeof rest.focus === "function") {
                 rest.focus({ preventScroll: true });
             }
         }
@@ -150,10 +246,11 @@ export const pageBusy = {
             if (typeof document.removeEventListener === "function") {
                 document.removeEventListener("keydown", _fenceKey, true);
             }
-            if (_before && _before.isConnected
-                    && typeof _before.focus === "function") {
-                _before.focus({ preventScroll: true });
-            }
+            // ...ONCE THE CALLER HAS ENDED ITS OPERATION -- a button it
+            // disabled enabled again -- and a move the browser is making has
+            // finished: an operation can end inside the change of the field
+            // Tab is leaving.
+            setTimeout(_giveFocusBack, 0, _before);
             _before = null;
         }
     },

@@ -619,7 +619,9 @@ def test_a_folder_opens_showing_what_it_already_states(
     # (`job-request.md` § 4) -- never "not stated", which says prep will
     # refuse it (measured 2026-10-12: the diagonaliser read so).
     assert rows["use_gpu"]["kind"] == "inherited", rows["use_gpu"]
-    assert rows["use_gpu"]["placeholder"] == "\u2014 false (default)", (
+    # ...in the words every form uses, a switch *on* or *off*
+    # (`task-setup.md` § 5.2, 2.68.1).
+    assert rows["use_gpu"]["placeholder"] == "\u2014 off (default)", (
         rows["use_gpu"])
 
     # A LANE ASK is an ordinary chosen row -- `time` is the RUN's own, and
@@ -978,6 +980,132 @@ def test_a_parameter_write_and_a_save_BLOCK_THE_WINDOW(
 
     # And the fence is DOWN afterwards -- no stuck cover.
     assert page.evaluate("() => window.molbuilder.pageBusy.isClaimed()") is False
+
+
+#: A field the person types a value into, and the value, a row each: a
+#: run card's, a stage table's cell and name, the queue card's -- each a
+#: write under the page-wide fence when the value changes (`task-setup.md`
+#: § 7a).
+_TABBED_FIELDS = (
+    ("a run-card value",
+     '.ts-next-step:not([hidden]) .ts-runcard input[aria-label="value for '
+     'omp_threads"]', "3"),
+    ("a stage cell", '.ts-cell[aria-label="coarse mesh_cutoff"]', "250"),
+    # A WRITE THAT WAITS ON NOTHING: the table drawn again inside the change
+    # would take out the control Tab is going to.
+    ("a stage's name", '.ts-cell[aria-label="stage 1 name"]', "renamed"),
+    ("the queue card's wall time", "#ts-ask-time", "0-05:00:00"),
+)
+
+
+def _where_focus_is(page):
+    """The control holding focus, by its id, or its name with none --
+    ``None`` on the page's body."""
+    return page.evaluate(
+        "() => { const a = document.activeElement;"
+        " return (!a || a === document.body) ? null"
+        "   : (a.id || a.getAttribute('aria-label')"
+        "      || a.textContent.trim()); }")
+
+
+#: ...and left by a click into another control, a row each: the field's
+#: write draws the control clicked again -- the run cards after the queue
+#: card's, the stage's row after its rename.
+_CLICKED_AWAY = (
+    ("the queue card's wall time, then a run card's field",
+     "#ts-ask-time", "0-05:00:00",
+     '.ts-next-step:not([hidden]) .ts-runcard input[aria-label="value for '
+     'omp_threads"]'),
+    ("a stage's name, then its own row's cell",
+     '.ts-cell[aria-label="stage 1 name"]', "renamed",
+     '.ts-cell[aria-label="coarse mesh_cutoff"]'),
+)
+
+
+@pytest.mark.parametrize("what,field,value,clicked", _CLICKED_AWAY,
+                         ids=[r[0] for r in _CLICKED_AWAY])
+def test_a_value_typed_and_a_click_land_where_the_click_goes(
+        page, flask_server, filled_dir, what, field, value, clicked):
+    """`ui-contract.md` § 10: a click into another control while a write
+    runs lands there -- found again after the write's redraw, which waits
+    for the click's event to finish.
+
+    THE SILENT FAILURE: the redraw inside the event takes out the control
+    clicked, and the browser drops the click's focus -- the person on the
+    page's body, or back in the field they left.  Never saved."""
+    task_setup_on(page, flask_server, filled_dir)
+    target = page.locator(clicked).first
+    target.wait_for(state="visible", timeout=20000)
+    target.click()
+    goes = _where_focus_is(page)
+    assert goes, f"{what}: a click with nothing written left the body"
+    box = page.locator(field).first
+    box.click()
+    box.fill(value)
+    page.locator(clicked).first.click()
+    page.wait_for_function("() => !window.molbuilder.pageBusy.isClaimed()",
+                           timeout=30000)
+    page.wait_for_timeout(800)
+    assert _where_focus_is(page) == goes, (
+        f"{what}: a value typed and a click left focus on "
+        f"{_where_focus_is(page)!r}, not on {goes!r}")
+
+
+@pytest.mark.parametrize("what,field,value", _TABBED_FIELDS,
+                         ids=[r[0] for r in _TABBED_FIELDS])
+def test_a_value_typed_and_tab_land_where_tab_goes(
+        page, flask_server, filled_dir, what, field, value):
+    """`ui-contract.md` § 10: the fence a write raises gives focus back
+    where the person left it -- a value typed and Tab land on the control
+    Tab lands on with nothing written, the write's redraw and the editor's
+    read-back after it notwithstanding (`task-setup.md` § 7a, § 9a).
+
+    THE SILENT FAILURE: through 2.68.2 the person was left on the page's
+    body, their next keystrokes going nowhere.  Never saved: the folder on
+    disk stays as the fixture wrote it."""
+    task_setup_on(page, flask_server, filled_dir)
+    box = page.locator(field).first
+    box.wait_for(state="visible", timeout=20000)
+    box.focus()
+    page.keyboard.press("Tab")
+    goes = _where_focus_is(page)
+    assert goes, f"{what}: Tab with nothing written left the page's body"
+    box.focus()
+    box.fill(value)
+    page.keyboard.press("Tab")
+    page.wait_for_function("() => !window.molbuilder.pageBusy.isClaimed()",
+                           timeout=30000)
+    # ...AND AFTER THE READ-BACK'S PAUSE (400 ms), which once drew the stage
+    # table again after the fence's release.
+    page.wait_for_timeout(800)
+    assert _where_focus_is(page) == goes, (
+        f"{what}: a value typed and Tab left focus on "
+        f"{_where_focus_is(page)!r}, not on {goes!r}")
+
+
+def test_a_blank_run_row_says_the_queue_cards_value_as_it_changes(
+        page, flask_server, calc_dir):
+    """`task-setup.md` § 6.2b, § 7a: a blank row says what the run uses --
+    for a wall clock, the queue card's -- and a change on the queue card
+    draws the run cards again.
+
+    THE SILENT FAILURE: through 2.68.2 the queue card's write redrew
+    nothing, and the row went on saying the old wall clock until another
+    edit redrew the card.  Never saved."""
+    task_setup_on(page, flask_server, calc_dir)
+    page.wait_for_selector(".ts-runcard .ts-row", timeout=20000)
+    _add_a_run_setting(page, "time")
+    page.wait_for_function(
+        "() => !!document.querySelector('.ts-next-step:not([hidden]) "
+        ".ts-runcard .ts-row[data-setting=\"time\"]')", timeout=20000)
+    assert "0-04:00:00" in _rows(page)["time"]["placeholder"], _rows(page)
+    committed(page, "#ts-ask-time", "0-05:00:00")
+    page.wait_for_function("() => !window.molbuilder.pageBusy.isClaimed()",
+                           timeout=30000)
+    said = _rows(page)["time"]["placeholder"]
+    assert "0-05:00:00" in said and "the queue card" in said, (
+        f"the blank wall-clock row says {said!r} after the queue card "
+        "changed to 0-05:00:00")
 
 
 def test_a_check_that_cannot_run_SAYS_SO_rather_than_going_blank(

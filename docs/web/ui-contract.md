@@ -629,9 +629,40 @@ covered, so *everything* — tabs, sidebar, forms — is blocked by
 construction; nothing is wired per-control.  **The keyboard is fenced
 too**: a key pressed anywhere but on the cover, or in a dialog the operation
 itself opened, does nothing — Enter on the button just clicked does not send
-again — and focus rests on the cover until the release puts it back,
-neither move scrolling the page: what the operation brought into view, a
-refusal beside its field, stays in view.
+again.  **Focus comes back where the person left it** *(2.68.3)*. A control
+that held focus as the fence went up — the button just clicked — gives it to
+the cover until the release puts it back. A fence that goes up while focus
+is moving — a field's change runs as Tab or a click leaves it, and the
+browser names no control focused then — leaves the move to finish, and the
+release puts focus where it went, by the fence's own record of the last
+control outside the cover to take focus; a click on bare page leaves focus
+on no control. So a value typed and Tab land on the next field, as without
+the fence. The release gives focus back once the operation's caller has
+ended it — a button it disabled is enabled again — and a move the browser is
+making has finished, since an operation can end inside the change that
+started it; it never takes focus from a control outside the cover that has
+it — where the person's move landed, or where the operation put it. Neither
+move scrolls the page: what the operation brought into view, a refusal
+beside its field, stays in view.
+
+**A control the operation redrew is found again** by its `id`, or, with
+none, by its name — its `aria-label`, a button's text — inside the nearest
+container that has an `id`, when exactly one control of its kind there
+carries that name: two answering to it, none is guessed, so no keystroke
+lands in another stage's field. A redrawn control is named for what it
+edits; one whose name an edit can change carries an `id` — a stage row's
+controls by the row's number, their names carrying the stage's — so a
+rename, then Tab or a click in that row, still finds it, and after a removal
+the row below, named for its own stage, takes the number. The record keeps a
+control taken out of the page, and the window losing focus clears nothing: a
+control an operation's redraw took out is found again at its release, and
+one already out of the page when an operation begins is let go — never
+brought back. **An operation that redraws without waiting on the server
+redraws once the event that started it has finished**: a redraw inside the
+change of a field Tab or a click leaves takes out the control the move is
+going to, and the browser abandons the move (Task setup's `commitEdit` — a
+stage renamed — and the run cards drawn again after a queue or notify card's
+write).
 
 **The recovery contract** (carried over from the sidebar lock, verbatim):
 `release()` sits in a `finally`, so a thrown operation still releases;
