@@ -913,7 +913,7 @@ def _probe_slurm_queues(env: Environment, user: str
     if no_submit_cap and qos_txt is not None:
         notes.append(
             "this Slurm did not accept MaxSubmitJobsPerUser in the QoS format "
-            "list, so no domain records a submitted-job cap -- the wall and "
+            "list, so no domain records a submitted-job cap -- the time-limit and "
             "core caps were read as usual.  A sweep will find that limit at "
             "sbatch time instead of before it.")
     if not policy:

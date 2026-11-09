@@ -2559,7 +2559,7 @@ def render_run_wrapper(script_path: Path, *,
               + ("Launch mode",) + (("Ranks",) if ranks else ())
               + ("Threading",)
               + (("GPU resources", "GPU monitor") if gpu_ranks else ())
-              + ("Mode", "Held atoms", "Command", "Wall", "Stdout"))
+              + ("Mode", "Held atoms", "Command", "Time limit", "Stdout"))
     width = max(map(len, labels))
 
     def lead(label: str) -> str:
@@ -2611,11 +2611,11 @@ def render_run_wrapper(script_path: Path, *,
         # command line, or a script deck from its environment -- or checks
         # no clock and runs to it (`running-a-job.md` § 3.6).
         + f'if [ -n "${{{WALL_VAR}:-}}" ]; then '
-          f'echo "{lead("Wall")}${{{WALL_VAR}}}s from the job\'s start; '
+          f'echo "{lead("Time limit")}${{{WALL_VAR}}}s from the job\'s start; '
         + (f'{words} stops ${{{WALL_SLACK_VAR}}}s before it ' if takes_wall
            else f'{words} checks no clock and runs to it ')
         + '"; '
-          f'else echo "{lead("Wall")}none stated -- runs until done"; fi\n'
+          f'else echo "{lead("Time limit")}none stated -- runs until done"; fi\n'
         + f'echo "{lead("Stdout")}$_out_file (live; tail -f to follow)"\n'
         + 'echo "========================================="\n'
         "\n"
@@ -2814,7 +2814,7 @@ def render_run_wrapper(script_path: Path, *,
            f"    _mb_wall_left=$(( {WALL_VAR} - ( $(date +%s) - {JOB_STARTED_VAR} ) ))\n"
            f'    [ "$_mb_wall_left" -lt 1 ] && _mb_wall_left=1\n'
            + (f"    _mb_wall_args=({_wall_array})\n" if _wall_words else "")
-           + f'    _log INFO "wall: ${{_mb_wall_left}}s left of ${{{WALL_VAR}}}s; '
+           + f'    _log INFO "time limit: ${{_mb_wall_left}}s left of ${{{WALL_VAR}}}s; '
            f'{words} stops ${{{WALL_SLACK_VAR}}}s '
            f'before it"\n'
            f"fi\n" if takes_wall else "")
@@ -2866,7 +2866,7 @@ def render_run_wrapper(script_path: Path, *,
         # concludes now.  A stop at the wall -- asked as such, where the
         # output's family names one -- says so first (§ 3.6).
         + (f'    if _mb_ending out-of-time; then\n'
-           f'        {_again_line(_again, "stopped at its wall")}'
+           f'        {_again_line(_again, "stopped at its time limit")}'
            f'    else\n'
            f'        {_again_line(_again)}'
            f'    fi\n'
@@ -2961,11 +2961,11 @@ def render_run_wrapper(script_path: Path, *,
         # a job's header said when it started; a run here says it now.  The
         # slack travels to the engine beside it -- a program on its command
         # line below, a script deck from its environment.
-        f"# The wall: the launch told this job the seconds it was sent with\n"
+        f"# The time limit: the launch told this job the seconds it was sent with\n"
         f"# ({WALL_VAR}); its start is the header's, or now; "
-        + (f"the engine stops\n# itself {WALL_SLACK_VAR} before the wall "
+        + (f"the engine stops\n# itself {WALL_SLACK_VAR} before the time limit "
            if takes_wall else
-           "this engine checks\n# no clock and runs to the wall ")
+           "this engine checks\n# no clock and runs to the time limit ")
         + "(running-a-job.md 3.6).\n"
         f': "${{{JOB_STARTED_VAR}:=$(date +%s)}}"\n'
         f"export {JOB_STARTED_VAR}\n"
@@ -3876,7 +3876,7 @@ def render_sbatch(names, *, scheduler,
         # monitor counts the job's wall down from it -- a walk's later
         # member too (`run-reports.md` § 2.1b).
         "# When this job started, for everything it runs: each run's monitor\n"
-        "# counts the job's wall down from it (run-reports.md 2.1b).\n"
+        "# counts the job's time limit down from it (run-reports.md 2.1b).\n"
         f'export {JOB_STARTED_VAR}="$(date +%s)"\n'
         + "\n"
         "# The scheduler lands us in the folder it was sent from;\n"

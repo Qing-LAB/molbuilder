@@ -518,8 +518,8 @@ any of them absent, no deadline, and the deck runs until it is done.
 - **A relaxation** (`relax_policy.relax`, `deadline=`) checks it in the
   callback it already runs after every step; the first step past it stops
   geomeTRIC, the geometry reached stays in `_optimized.xyz` as every step's
-  does, the deck prints `WARNING: stopped before the wall (the job's wall
-  less its slack): the geometry reached is kept` (and `; launch this stage
+  does, the deck prints `WARNING: stopped before the time limit (the job's
+  time limit less its slack): the geometry reached is kept` (and `; launch this stage
   again to continue from it` where its `restart` is `continue`), writes
   `# relaxed: no` in its trajectory log and ends normally, no SCF after it —
   the next launch continues from that geometry, `restart` permitting.

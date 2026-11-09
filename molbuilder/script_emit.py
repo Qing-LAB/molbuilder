@@ -712,7 +712,7 @@ def declarations(engine: str = None, *, calculation: str = None,
         # A CALLER'S MISTAKE, never a file's: a TypeError, so no reader that
         # reads ValueError as "unreadable" absorbs it.
         raise TypeError(
-            f"which items rung {stage!r} reads is asked with its stage token "
+            f"which items stage {stage!r} reads is asked with its stage token "
             f"(<NN>_<name>) and its calculation's kind (template.reads)")
     return [it for it in items
             if _T.reads(it, engine, calculation, token[1], role=role)]
@@ -1078,8 +1078,8 @@ class RenderedDeck(str):
 #: What a deck says beside an item the rung fixes (`role`) -- the reader of
 #: the deck learns it is not a setting before trying to change it.
 #: Two lines, at the deck's note width (`deck_note` copies ``extra`` as is).
-_FIXED_NOTE = ("Fixed by this rung -- not a setting: no template, stage or",
-               "pin changes it.")
+_FIXED_NOTE = ("Fixed by this stage -- not a setting: no template, override",
+               "or pin changes it.")
 
 
 def _render_sections(spec: "DeckSpec", cfg, *, verbose: bool = True,

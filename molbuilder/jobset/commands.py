@@ -133,7 +133,7 @@ class LaunchFlag:
 #: (`submit._sbatch_request`).
 LAUNCH_FLAGS: Tuple[LaunchFlag, ...] = (
     LaunchFlag("--time", modes=("submit", "ask"), kinds=(TASK, BENCH),
-               what="a submitted job's wall, restated on the line that "
+               what="a submitted job's time limit, restated on the line that "
                     "sends it",
                says="wall"),
     LaunchFlag("--only", modes=("submit", "ask"), kinds=(BENCH,),
@@ -151,7 +151,7 @@ LAUNCH_FLAGS: Tuple[LaunchFlag, ...] = (
     LaunchFlag("--from", modes=("submit", "ask", "direct"), kinds=(TASK,),
                what="the run a stage's run continues from"),
     LaunchFlag("--gather", modes=("submit", "ask", "direct"), kinds=(TASK,),
-               what="a transport rung's inputs, taken anew"),
+               what="a transport stage's inputs, taken anew"),
 )
 
 

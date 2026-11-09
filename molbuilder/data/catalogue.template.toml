@@ -372,7 +372,7 @@ tier = "advanced"
 help = """
 Inner loop: the most self-consistency cycles SIESTA will run inside one geometry step. A relaxation runs at most relax_steps outer steps, and each of those runs at most this many inner cycles, or until DM.Tolerance is met.
 1000 is SIESTA's own default, and it is the right guard here because this catalogue ships mixing_weight 0.02 against SIESTA's 0.25: the manual says a low weight "may result in high number of SCF steps but is more likely to converge", so a run that is converging normally needs more cycles than a stock one.
-This is a runaway guard, not a budget -- the budget is wall time. The two failure modes are not symmetric: too high wastes some CPU on a run that was going to fail anyway, while too low kills a converging run at the cap and throws away that whole geometry step, which compounds over 200 outer steps. With a 0.02 mixing weight, several hundred cycles is normal for a metal junction, so do not read this number as a target.
+This is a runaway guard, not a budget -- the budget is the time limit. The two failure modes are not symmetric: too high wastes some CPU on a run that was going to fail anyway, while too low kills a converging run at the cap and throws away that whole geometry step, which compounds over 200 outer steps. With a 0.02 mixing weight, several hundred cycles is normal for a metal junction, so do not read this number as a target.
 """
 
 [item.scf_must_converge]
@@ -648,11 +648,11 @@ default = 600
 unit = "s"
 range = [30, 7200]
 group = "staging"
-label = "Wall-time slack"
+label = "Time-limit slack"
 tier = "advanced"
 help = """
-How long before the job's wall the engine stops itself, with its restart state saved whole. The launch tells the job the wall it was sent with; the run script hands the engine what is left and this slack, and the engine stops once less than the slack is left -- SIESTA told on its command line, a PySCF deck by the deadline it computes.
-SIESTA checks the clock after every SCF iteration and every geometry step; a PySCF deck after every geometry step, and before every displaced SCF of a spectrum. Set it longer than the longest of those plus the write, or the kill is the scheduler's, mid-write. A step cut by the wall is then re-done from the state saved before it.
+How long before the job's time limit the engine stops itself, with its restart state saved whole. The launch tells the job the time limit it was sent with; the run script hands the engine what is left and this slack, and the engine stops once less than the slack is left -- SIESTA told on its command line, a PySCF deck by the deadline it computes.
+SIESTA checks the clock after every SCF iteration and every geometry step; a PySCF deck after every geometry step, and before every displaced SCF of a spectrum. Set it longer than the longest of those plus the write, or the kill is the scheduler's, mid-write. A step cut by the time limit is then re-done from the state saved before it.
 """
 
 [item.restart]
@@ -823,7 +823,7 @@ engine_default = { value = true, source = "SIESTA 5.4.2 read_options.F90:1874: s
 group = "output"
 label = "Write H+S matrices"
 help = """
-Write the Hamiltonian and overlap matrices to <label>.HSX at the end of each SCF.  The manual: it "contains all relevant information to construct the Brillouin zone Hamiltonian and can thus be used for subsequent density of states calculations" -- bands, DOS or PDOS afterwards without another SCF, in sisl for one.  molbuilder reads no .HSX: a transport calculation's rungs attach through the .TSHS and .TS.HSX that TS.HS.Save writes, another keyword.
+Write the Hamiltonian and overlap matrices to <label>.HSX at the end of each SCF.  The manual: it "contains all relevant information to construct the Brillouin zone Hamiltonian and can thus be used for subsequent density of states calculations" -- bands, DOS or PDOS afterwards without another SCF, in sisl for one.  molbuilder reads no .HSX: a transport calculation's stages attach through the .TSHS and .TS.HSX that TS.HS.Save writes, another keyword.
 
 On by default, matching SIESTA's own.  Without it a finished relaxation has no .HSX, so bands or DOS afterwards mean re-running the SCF.  The cost of having it is disk; the cost of not having it is a repeat run.
 
@@ -1776,7 +1776,7 @@ group = "output"
 label = "Save the optimised geometry"
 help = """
 Snapshot the relaxed geometry into its own file, <job>_optimized.xyz, when the optimization finishes.
-It is also the file one rung of a ladder hands the next as its starting geometry, so turning it off leaves the following rung nothing to pick up.
+It is also the file one stage of a ladder hands the next as its starting geometry, so turning it off leaves the following stage nothing to pick up.
 """
 
 [item.save_initial_xyz]
@@ -2296,11 +2296,11 @@ label = "If the step cap runs out"
 tier = "advanced"
 help = """
 What this deck does when geomeTRIC reports its 5 criteria unmet at max_steps -- the deck asks geomeTRIC, it never assumes convergence:
-  proceed  -- keep the geometry reached, say so, and let the next rung start from it; the record's verdict is the force left at that geometry, which can pass while geomeTRIC's other criteria did not.
+  proceed  -- keep the geometry reached, say so, and let the next stage start from it; the record's verdict is the force left at that geometry, which can pass while geomeTRIC's other criteria did not.
   continue -- re-enter from the geometry reached, up to geom_continue_retries more batches of max_steps; still short, stop as halt does.
   halt     -- stop the run before the relaxed geometry is written, rather than hand on a geometry nobody accepted.
 Every step's SCF must converge under all three: a gradient from an unconverged SCF is not a force, so an SCF that fails at a step stops the run whatever this says.
-This is THIS rung's answer: a ladder is N decks and N jobs, so each deck carries its own policy and none of them can see the others.
+This is THIS stage's answer: a ladder is N decks and N jobs, so each deck carries its own policy and none of them can see the others.
 """
 
 [item.geom_continue_retries]
@@ -2707,7 +2707,7 @@ kind = "engine"
 category = ["system"]
 engines = ["siesta"]
 role = ["transport"]
-why_fixed = "the bias is the description's bias list -- each rung writes the point it runs, the device and the transmission alike; change the list instead"
+why_fixed = "the bias is the description's bias list -- each stage writes the point it runs, the device and the transmission alike; change the list instead"
 per_point_from = "bias"
 calculations = ["transport"]
 anchor = "TS.Voltage"
@@ -2723,8 +2723,8 @@ group = "stage"
 label = "Bias voltage"
 tier = "basic"
 help = """
-The voltage held across the junction at this rung's point -- the difference between the two leads' chemical potentials.  The device converges at it and the transmission reads the same point.
-It is the description's BIAS LIST, not a value a template or a stage states: each point of the list is one device run and one transmission, written at that point, and the list starts at 0 V.  Change the list to change the bias.
+The voltage held across the junction at this stage's point -- the difference between the two leads' chemical potentials.  The device converges at it and the transmission reads the same point.
+It is the description's BIAS LIST, not a value a template or a stage's override states: each point of the list is one device run and one transmission, written at that point, and the list starts at 0 V.  Change the list to change the bias.
 
 You give it in volts, because that is what a person means and measures.  The deck spells it `TS.Voltage <v> eV`, which is not a mismatch: fdf treats this as an energy, and the energy an electron gains across V volts is exactly V electron-volts, so the number is the same and only the unit word differs.  Do not "fix" either side to match the other.
 
@@ -2753,11 +2753,11 @@ group = "output"
 label = "Write the TranSIESTA Hamiltonian"
 tier = "advanced"
 help = """
-Write the Hamiltonian and overlap the next rung attaches to: a lead's `<SystemLabel>.TSHS`, which the device's `TS.Elec.<name>` reference reads, and the device's `<SystemLabel>.TS.HSX`, which the transmission's `TBT.HS` reads.
-This is the rung's essential output, and it is the stage's ROLE rather than a preference: a lead run that omits it converges happily and produces nothing the device can attach to.  So its value, true, is the answer of the three rungs its `stages` names, and nobody is offered a switch.  A device run forces it on anyway -- TranSIESTA sets TS.HS.Save true in TS mode (`m_ts_options.F90`) -- and the deck says so rather than relying on it.
-Three similar names, and only this one is the rung's job:
+Write the Hamiltonian and overlap the next stage attaches to: a lead's `<SystemLabel>.TSHS`, which the device's `TS.Elec.<name>` reference reads, and the device's `<SystemLabel>.TS.HSX`, which the transmission's `TBT.HS` reads.
+This is the stage's essential output -- its ROLE rather than a preference: a lead run that omits it converges happily and produces nothing the device can attach to.  So its value, true, is the answer of the three stages its `stages` names, and nobody is offered a switch.  A device run forces it on anyway -- TranSIESTA sets TS.HS.Save true in TS mode (`m_ts_options.F90`) -- and the deck says so rather than relying on it.
+Three similar names, and only this one is the stage's job:
 
-  TS.HS.Save   this row -- writes `.TSHS` (a lead) or `.TS.HSX` (the device), the Hamiltonian the next rung attaches to.
+  TS.HS.Save   this row -- writes `.TSHS` (a lead) or `.TS.HSX` (the device), the Hamiltonian the next stage attaches to.
   SaveHS       writes `.HSX`, a post-processing file the ladder does not consume.  On by default for every SIESTA run but a vibration; it costs disk, not correctness.
   TS.DE.Save   writes the lead's DENSITY MATRIX.  The device reads it only when `TS.Elecs.DM.Init` asks for the bulk density -- `bulk` at zero bias, `force-bulk` at any bias (the manual's electrode options); the default is `diagon`, and no deck here writes another, so this ladder never reads it.
 """
@@ -3015,7 +3015,7 @@ label = "Electrode self-energy broadening (device)"
 tier = "advanced"
 help = """
 The small imaginary part added to the energy when TranSIESTA builds the leads' self-energies for the device's NEGF loop, in eV -- a numerical broadening.
-Written explicitly because it decides the self-energies every density this rung integrates is built from: TranSIESTA's own default is 0.001 eV (`m_ts_options.F90`), and the deck says it rather than relying on it.  The transmission's TBtrans has its own, `TBT.Elecs.Eta` (tbt_elecs_eta_ev): the two are the same quantity in two programs, not one value, and may legitimately differ -- a sharper T(E) is often read with a smaller one.
+Written explicitly because it decides the self-energies every density this stage integrates is built from: TranSIESTA's own default is 0.001 eV (`m_ts_options.F90`), and the deck says it rather than relying on it.  The transmission's TBtrans has its own, `TBT.Elecs.Eta` (tbt_elecs_eta_ev): the two are the same quantity in two programs, not one value, and may legitimately differ -- a sharper T(E) is often read with a smaller one.
 """
 
 [item.electrodes_bulk]

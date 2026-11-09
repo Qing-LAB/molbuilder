@@ -639,7 +639,7 @@ def _plan_calculation(calc, stage: Optional[str], resolved: "Resolved",
     log.produced("config", "which file supplied each setting")
     log.text(format_provenance(resolved.provenance))
     seam = engine_seam(task.engine)
-    log.phase("STEP 2 · RESOLVE — the values for this rung")
+    log.phase("STEP 2 · RESOLVE — the values for this stage")
     log.received(calc.template.path.name, f"{len(pset[0].provenance)} fields")
     log.received("stage", pset.stage)
     log.received("the ask", _flat_resources(allocation or Resources()))
@@ -651,7 +651,7 @@ def _plan_calculation(calc, stage: Optional[str], resolved: "Resolved",
         _rows = [r for r in config_rows(_el.render_config(), _el.provenance)
                  if r[0] in _el.said]
         _decided = [r for r in _rows if r[2] not in ("template", "default")]
-        log.step(f"{_el.label} — what this rung decided")
+        log.step(f"{_el.label} — what this stage decided")
         for _n, _v, _s in _decided:
             log.chose(_n, _v, _el.said[_n])
         log.step(f"{_el.label} — the rest, as the template and the "
@@ -1242,8 +1242,8 @@ def walk_words(calc, stage: str, *, read=None) -> str:
              f"job" if planned else
              f"its {known} {unit}{'s' if known != 1 else ''}")
     return (f"one job walking {count} ("
-            + ("one wall for the whole run" if rec.wall == WALL_ONE
-               else f"each {unit}'s wall, summed")
+            + ("one time limit for the whole run" if rec.wall == WALL_ONE
+               else f"each {unit}'s time limit, summed")
             + ")")
 
 
@@ -1883,7 +1883,7 @@ class PrepAnswer:
         if g is not None and stage == g["members"][-1]:
             out.append(f"group {g['number']} -- one job: "
                        f"{', '.join(g['members'])}, one after another (their "
-                       f"walls summed, the largest memory)"
+                       f"time limits summed, the largest memory)"
                        + (f"; its header: {g['header']}" if g["header"] else ""))
             out += _one_job_lines(g, self.preview)
         # THE SEQUENCE'S ONE JOB, once, after the last answer: and each group
@@ -1893,7 +1893,7 @@ class PrepAnswer:
             nums = ", ".join(map(str, seq["numbers"]))
             out.append(f"groups {nums} -- one job, each group launched when "
                        f"the one before has finished (the largest request "
-                       f"any asks, their walls summed)"
+                       f"any asks, their time limits summed)"
                        + (f"; its header: {seq['header']}" if seq["header"]
                           else ""))
             out += _one_job_lines(seq, self.preview)
@@ -2624,7 +2624,7 @@ def group_header(base, task, number: int, jobs, environment, *,
     return walk_header_of(
         base, names_for(base, task, names), shared, environment,
         engine=task.engine, jobs=jobs, emit_sbatch=emit_sbatch,
-        what=(f"group {number}'s one job ({', '.join(names)}: their walls "
+        what=(f"group {number}'s one job ({', '.join(names)}: their time limits "
               f"summed and the largest memory)"))
 
 
@@ -2673,7 +2673,7 @@ def sequence_header(base, task, request, numbers: Sequence[int], jobs_of,
         engine=task.engine, emit_sbatch=emit_sbatch,
         jobs=[j for n in numbers for j in jobs_of[n]],
         what=(f"groups {words} as one job, each launched when the one "
-              f"before has finished (the largest request, the walls "
+              f"before has finished (the largest request, the time limits "
               f"summed)"))
     return walk, less
 

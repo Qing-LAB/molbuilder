@@ -750,13 +750,13 @@ class Item:
             _known = {r for k in _with for r in _roles_of(k)}
             for _s in self.stages:
                 if _s not in _known:
-                    _refuse(f"stages names {_s!r}, which is no rung role of "
+                    _refuse(f"stages names {_s!r}, which is no stage role of "
                             f"the kinds that carry this item -- they are "
                             f"{', '.join(sorted(_known)) or '(none)'}", where=self.name)
             for _k in (k for k in self.calculations if _roles_of(k)):
                 if not set(self.stages) & set(_roles_of(_k)):
-                    _refuse(f"stages names no rung of {_kinds.kind(_k).with_article}, which "
-                            f"carries this item -- none of its rungs would "
+                    _refuse(f"stages names no stage of {_kinds.kind(_k).with_article}, which "
+                            f"carries this item -- none of its stages would "
                             f"read it",
                             where=self.name)
         # `group` is OPTIONAL (presentation), but when present it is closed --
@@ -769,7 +769,7 @@ class Item:
         # A rung's own answer answers a `role` -- without one the table is a
         # value nothing asks for (§ 6.4).
         if self.role_values and not self.role:
-            _refuse("'role_values' names a rung's own answer to a `role` item, "
+            _refuse("'role_values' names a stage's own answer to a `role` item, "
                     "and this item declares no `role`", where=self.name)
         # A REASON IS ITS RULE'S (§ 5): why a rung fixes it on a `role` item,
         # why the stages hold one value on a `shared` one, the list that
@@ -779,8 +779,8 @@ class Item:
             _refuse("'why_fixed' and 'per_point_from' are a `role` item's, and "
                     "this item declares no `role`", where=self.name)
         if self.per_point_from and not self.stages:
-            _refuse("'per_point_from' answers a rung point by point, and this "
-                    "item names no `stages` -- the rungs it answers",
+            _refuse("'per_point_from' answers a stage point by point, and this "
+                    "item names no `stages` -- the stages it answers",
                     where=self.name)
         if self.why_shared and not self.shared:
             _refuse("'why_shared' is a `shared` item's, and this item declares "
@@ -1752,7 +1752,7 @@ def _stages_from(name: str, raw) -> Tuple[str, ...]:
     if isinstance(raw, str):
         if raw not in _kinds.COMPUTES:
             _refuse(f"stages names the set {raw!r}, which is not one -- the "
-                    f"sets are what a rung computes, "
+                    f"sets are what a stage computes, "
                     f"{', '.join(_kinds.COMPUTES)}; or list the roles", where=name)
         return _kinds.role_set(raw)
     return tuple(raw)
@@ -2139,9 +2139,9 @@ def run_settings(engine: str) -> frozenset:
 def why_run_setting(name: str) -> str:
     """Why a run setting cannot be a column -- the clause a refusal puts
     after *"stage <s> overrides <name>"* or *"'varies' names <name>"*."""
-    return (f"a run setting: the rung states it on its run card in "
+    return (f"a run setting: the stage states it on its run card in "
             f"{JOB_REQUEST_FILE} -- \"execution\": {{\"{name}\": ...}} on the "
-            f"stage's entry, or on the calculation for every rung"
+            f"stage's entry, or on the calculation for every stage"
             f" -- never in the description")
 
 
@@ -2186,7 +2186,7 @@ def why_shared(name: str) -> str:
                 f"`{SIESTA_XV}` holds each atom's species index) and built on "
                 f"that set")
     if _scoped_shared(name) is not None:
-        return ("they are the rungs that read it, and must not be able to "
+        return ("they are the stages that read it, and must not be able to "
                 "disagree about it")
     raise ValueError(f"{name}: no catalogue item states why its stages share "
                      f"it, and no rule of `shared` explains it")
@@ -2197,7 +2197,7 @@ def shared_scope_words(item: "Item") -> str:
     reads it, else the rungs its ``stages`` names: `shared` with `stages` is
     one value carried by the named rungs only (§ 5, TD11).  Said beside the
     value on the transport tab's shared panel and in Task setup's echo."""
-    return (f"read by the {_rungs_words(item.stages)} rungs only"
+    return (f"read by the {_rungs_words(item.stages)} stages only"
             if item.stages else "")
 
 
@@ -2273,15 +2273,15 @@ def why_unread(name: str, engine: str, kind: str, stage: str, *,
     removed from the card it is stated on."""
     it = one(catalogue(), name, engine=engine)
     if it.calculations and kind not in it.calculations:
-        return (f"which {_kinds.kind(kind).with_article} does not carry -- no rung of it reads "
+        return (f"which {_kinds.kind(kind).with_article} does not carry -- no stage of it reads "
                 f"it, so the value would change nothing")
     roles = stage_roles(engine, kind, stage) or (stage,)
     # ...THE RUNGS OF THIS KIND that read it, never another kind's roles.
     mine = [r for r in it.stages if r in (_roles_of(kind) or it.stages)]
     who = " / ".join(mine)
     rung = (repr(stage) if roles == (stage,)
-            else f"{stage!r} (its {' + '.join(roles)} rung)")
-    return (f"which only the {who} rung{'s' if len(mine) > 1 else ''} "
+            else f"{stage!r} (its {' + '.join(roles)} stage)")
+    return (f"which only the {who} stage{'s' if len(mine) > 1 else ''} "
             f"of {_kinds.kind(kind).with_article} read{'' if len(mine) > 1 else 's'}, not "
             f"{rung} -- {then}")
 
@@ -2318,9 +2318,9 @@ def role_answers(engine: str, kind: str,
         answer = dict(it.role_values).get(stage, it.value)
         if answer is None:
             raise ValueError(
-                f"catalogue item {it.name!r} is fixed by the rung for "
-                f"{kind!r} (`role`) and answers nothing for rung "
-                f"{stage!r}: give it a `value`, or the rung's own in "
+                f"catalogue item {it.name!r} is fixed by the stage for "
+                f"{kind!r} (`role`) and answers nothing for stage "
+                f"{stage!r}: give it a `value`, or the stage's own in "
                 f"`role_values`.")
         out[it.name] = answer
     return out
@@ -2608,7 +2608,7 @@ SAID = {
     "default":    "the catalogue's default · not chosen",
     "sweep":      "a sweep point",
     "pin":        "a pin",
-    "role":       "the rung",
+    "role":       "the stage's role",
 }
 
 
@@ -2667,7 +2667,7 @@ def why_not_in(item: "Item", home: str, *, engine: str, kind: str,
                          f"{', '.join(HOMES)}")
     name, run = item.name, is_run_setting(item)
     if item.calculations and kind not in item.calculations:
-        return (f", which {_kinds.kind(kind).with_article} does not carry -- no rung of it "
+        return (f", which {_kinds.kind(kind).with_article} does not carry -- no stage of it "
                 f"reads it, so the value would change nothing")
     if home == "flag" and not item.allocation:
         return (", which no prep flag states -- a flag states the launch "
@@ -2688,7 +2688,7 @@ def why_not_in(item: "Item", home: str, *, engine: str, kind: str,
     if home == "override" and run:
         return ", " + why_run_setting(name)
     if home == "override" and kind in item.role:
-        return (f", which the rung fixes: {why_role(name)}.  Remove the "
+        return (f", which the stage fixes: {why_role(name)}.  Remove the "
                 f"override")
     if home == "override" and kind in item.shared:
         return (f", which is shared by {shared_by(name)}: "

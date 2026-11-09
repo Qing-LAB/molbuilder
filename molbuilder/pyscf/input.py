@@ -239,7 +239,7 @@ def spec_for(struct: Structure,
             # ONE rung's targets, because one deck IS one rung: a ladder is N
             # decks and N jobs (`stages.md` § 1.1a).  A summary of the whole
             # ladder would be this deck describing runs it cannot see.
-            out.append(f"Optimizer : geomeTRIC   (rung {names.stage})")
+            out.append(f"Optimizer : geomeTRIC   (stage {names.stage})")
             out.append(f"            maxsteps={cfg.geom_max_steps}, "
                        f"grms={cfg.geom_grms:.1e} Ha/Bohr, "
                        f"gmax={cfg.geom_gmax:.1e}, "
@@ -614,10 +614,10 @@ def spec_for(struct: Structure,
                 out.append("# ============================================================")
                 out.append("# geomeTRIC is the one optimizer (translation-rotation-")
                 out.append("# invariant internal coords, robust on large steps).")
-                out.append(f"# This deck is one rung of the ladder in "
+                out.append(f"# This deck is one stage of the ladder in "
                            f"{TASK_FILE}; its")
-                out.append("# targets are the rung's, below.  docs/engines/tuning.md")
-                out.append("# sect. 2.4 has the shipped rungs and their citations.")
+                out.append("# targets are the stage's, below.  docs/engines/tuning.md")
+                out.append("# sect. 2.4 has the shipped stages and their citations.")
             # Frozen-atom constraints (three-stage contract carrier).  When
             # Structure.frozen_atoms is non-empty, write a sibling
             # <JOB>.constraints.txt at run time and pass it to geomeTRIC via
@@ -1058,11 +1058,11 @@ def _emit_optimization(cfg: PySCFConfig,
     # membership rule*).
     out: List[str] = [""]
     if v:
-        out.append("# One relaxation: this deck IS one rung of the ladder.")
+        out.append("# One relaxation: this deck IS one stage of the ladder.")
         out.append(f"# The ladder lives in {TASK_FILE} and runs as separate "
                    f"jobs,")
         out.append("# so that a person can look at this geometry before")
-        out.append("# spending anything on the next rung.")
+        out.append("# spending anything on the next stage.")
     # THE ONE RELAXATION FUNCTION both PySCF decks run (`relax_policy.relax`,
     # `engines/pyscf.md` § 3), imported at the top of the script: it asks
     # geomeTRIC whether it converged -- `optimize()` cannot say -- and
@@ -1175,7 +1175,7 @@ def _emit_molwatch_emitter(v: bool, cfg: "PySCFConfig", names,
         out.append("# molbuilder's MolwatchEmitter, imported at the top of this")
         out.append("# script, writes one self-contained, marker-delimited")
         out.append("# record per accepted opt step to the molwatch log named in")
-        out.append("# the manifest above (the rung's own")
+        out.append("# the manifest above (the stage's own")
         out.append(f"# <JOB>_<NN>_<stage>{ROLE_MOLWATCH}).  molwatch reads "
                    f"this")
         out.append("# file directly (no sibling-file discovery needed) and shows")
@@ -1533,7 +1533,7 @@ def emit_outputs_block(names, *,
         out.append(f"    {names.name(PYSCF_OPTIMIZED)} + .molstruct.json   -- the "
                    f"relaxed coordinates, as a pair")
     if trajectory:
-        out.append(f"    {names.name(ROLE_GEOM_TRAJ)}   -- this rung's "
+        out.append(f"    {names.name(ROLE_GEOM_TRAJ)}   -- this stage's "
                    f"trajectory (multi-frame XYZ)")
     if held:
         out.append(f"    {names.name(ROLE_CONSTRAINTS)}   -- the held atoms, "
@@ -1657,10 +1657,10 @@ def _emit_troubleshooting_block(cfg: PySCFConfig) -> List[str]:
     out.append("#   * raise OMP_NUM_THREADS / MKL_NUM_THREADS")
     out.append("#")
     out.append("# Geometry optimization oscillates:")
-    out.append("#   * Go back to the state saved before this rung's prep,")
+    out.append("#   * Go back to the state saved before this stage's prep,")
     out.append("#     loosen its gmax / grms, and prep it anew")
-    out.append(f"#   * Add a looser warm-up rung ahead of it in {TASK_FILE}")
-    out.append("#   * Raise this rung's geom_max_steps")
+    out.append(f"#   * Add a looser warm-up stage ahead of it in {TASK_FILE}")
+    out.append("#   * Raise this stage's geom_max_steps")
     out.append("#")
     out.append("# Charged / open-shell anions need diffuse functions:")
     out.append("#   * cfg.basis = 'aug-cc-pVDZ' or 'def2-SVPD'")

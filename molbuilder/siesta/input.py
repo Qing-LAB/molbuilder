@@ -598,7 +598,7 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
     if point is not None or scratch_dir is not None or contours is not None:
         raise ValueError(
             f"a {calculation} deck has no point and no scratch folder: a "
-            f"frame, a voltage and the leads' files are a transport rung's"
+            f"frame, a voltage and the leads' files are a transport stage's"
             f".")
     # WHICH KINDS SIESTA RUNS is the kind table's (`kind(...).on`), which
     # refuses another naming the engines it runs on.

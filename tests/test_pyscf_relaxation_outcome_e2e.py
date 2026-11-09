@@ -402,7 +402,7 @@ def test_the_wall_stops_the_relaxation_and_keeps_the_geometry(
     from molbuilder.parse.engines._run_ending import ending_of
     run, state, said = relaxation_past_its_wall
     assert state == "finished", said[-3000:]
-    assert "stopped before the wall" in said, said[-3000:]
+    assert "stopped before the time limit" in said, said[-3000:]
     assert run.on_label("_optimized.xyz") is not None, sorted(
         p.name for p in run.folder.iterdir())
     # THE LOG'S FOOTER, read by the ending reader: the geometry verdict is
@@ -447,7 +447,7 @@ def test_the_wall_stops_a_vibration_before_its_spectrum(
     nowhere (`stop_if_past_wall` answering nothing)."""
     run, state, said = vibration_past_its_wall
     assert state == "failed", said[-3000:]
-    assert ("stopped before the wall (the job's wall less its slack) "
+    assert ("stopped before the time limit (the job's time limit less its slack) "
             "before the spectrum was written") in said, said[-3000:]
     # ITS OWN WORDS on every surface (:func:`_the_engines_words_kept`) --
     # and what a launch again will do: a PySCF vibration does not resume
@@ -457,7 +457,7 @@ def test_the_wall_stops_a_vibration_before_its_spectrum(
     # SILENT FAILURE: a run told it continues warm from files no launch
     # copies into the next run.
     session = _the_engines_words_kept(
-        run, "stopped before the wall (the job's wall less its slack) "
+        run, "stopped before the time limit (the job's time limit less its slack) "
              "before the spectrum was written")
     for words in ("a launch again starts this run over from its deck, "
                   "nothing of it copied in", "this kind of run does not "

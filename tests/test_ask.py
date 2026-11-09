@@ -128,6 +128,6 @@ def test_every_queue_says_the_jobs_fit_on_it_WITH_THE_NUMBERS():
     struck: the person names one, and the scheduler decides.  A record that
     lists no machines is read by its largest machine's figures (R3)."""
     t = _table()
-    assert "4h is over debug's wall (0-00:15:00)" in t
+    assert "4h is over debug's time limit (0-00:15:00)" in t
     assert "64 cores is over general's largest machine (48 cores)" in t
     assert "64 cores · 128 GB · 4h fits htc" in t

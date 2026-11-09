@@ -107,7 +107,7 @@ class Over:
     def message(self) -> str:
         if self.asked is None and self.allowed is None:
             return self.note or self.domain
-        what = {"walltime": "wall", "cores": "largest machine",
+        what = {"walltime": "time limit", "cores": "largest machine",
                 "mem": "largest machine", "gpus": "most GPUs on a node",
                 "cpus_per_job": "cap per job", "cpus_per_node": "cap per node",
                 "ask_ranks": "--np", "ask_cpus": "--cpus-per-task",

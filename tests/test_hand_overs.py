@@ -31,7 +31,7 @@ def _vibration():
 
 
 @pytest.mark.parametrize("task, stage, words", [
-    (_transport, "device", "takes its inputs from the rungs upstream"),
+    (_transport, "device", "takes its inputs from the stages upstream"),
     (_vibration, "freq", "builds on the calculation's structure"),
 ], ids=["a transport rung", "a SIESTA vibration's one stage"])
 def test_a_linked_stage_takes_no_from_or_cold(tmp_path, task, stage, words):

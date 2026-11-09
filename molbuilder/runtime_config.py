@@ -82,7 +82,7 @@ CONFIG_FILENAME = "molbuilder.json"
 _SCHEDULER_RETIRED = (
     "{path}: 'scheduler' is no longer configured -- "
     "delete the block.  Nothing in it may be set for every job:\n"
-    "  * a job's queue, wall, memory, ranks and cores per rank are the JOB's "
+    "  * a job's queue, time limit, memory, ranks and cores per rank are the JOB's "
     "own: its job request (`allocation`, or a run card `execution` in "
     + JOB_REQUEST_FILE + ") or the prep flags (--domain, --time, --mem, --np, "
     "--cpus-per-task, --gpus) -- prep refuses one stated nowhere;\n"
@@ -663,7 +663,7 @@ def _read_launch(raw: Mapping[str, Any]):
     if section is None:
         return None
     _refuse_unknown(section, ("mode",), "launch",
-                    hint="A job's queue, wall and shape are the job's own"
+                    hint="A job's queue, time limit and shape are the job's own"
                          ".")
     mode = section.get("mode")
     if mode is not None and mode not in _LAUNCH_MODES:

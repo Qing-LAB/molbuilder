@@ -1912,8 +1912,8 @@ def test_a_walk_of_points_is_placed_at_prep_its_walls_summed(junction):
     r = junction.walk.said["prep on short"]
     assert r.exit_code == 0, r.output
     for words in (f"one job walking its {len(_BIAS)} points (each "
-                  f"point's wall, summed)", "-t 0-01:20:00",
-                  "1h20m is over short's wall (01:00:00)"):
+                  f"point's time limit, summed)", "-t 0-01:20:00",
+                  "1h20m is over short's time limit (01:00:00)"):
         assert words in r.output, r.output
 
 
@@ -3199,7 +3199,7 @@ def test_the_files_say_which_index_their_atoms_are_listed_by(junction):
     from molbuilder.atom_index import AtomIndexUnknown
     lead = (_point(run, "device", _BIAS[0])
             / f"{rung_label(label, 'electrode_L')}.TSHS")
-    with pytest.raises(AtomIndexUnknown, match="electrode_L rung's file"):
+    with pytest.raises(AtomIndexUnknown, match="electrode_L stage's file"):
         atom_index_map(lead)
     # ...AND IN ITS OWN RUN it is that run's, a structure of its own: the
     # engine column alone.

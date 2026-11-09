@@ -301,7 +301,7 @@ def _past_wall(run_dir: Path, basename: str, launch: Any) -> Optional[str]:
     if time.time() - newest <= wall:
         return None
     return (f"{STOPPED}: nothing was written for longer than "
-            f"its wall ({(launch.get('placed_on') or {}).get('time')}; last "
+            f"its time limit ({(launch.get('placed_on') or {}).get('time')}; last "
             f"write {_iso_z(newest)}), so the job is over; how it ended was "
             f"not recorded")
 

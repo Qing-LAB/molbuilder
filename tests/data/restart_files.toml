@@ -107,7 +107,7 @@ run_sh_lacks = ['_mode="CLEAN (']
 name = "a continuing stage's run script says, on a failure, that a launch again continues warm -- and a stop at its wall says so first"
 template = { restart = "continue" }
 run_sh = ['what a launch again will do: launch the stage again to continue warm from the files this run saved',
-          'stopped at its wall: launch the stage again to continue warm from the files this run saved']
+          'stopped at its time limit: launch the stage again to continue warm from the files this run saved']
 
 # HOW IT ENDED, asked of the framework's reader for every engine
 # (`running-a-job.md` § 3.5): the output read by the reader its role names,

@@ -336,7 +336,7 @@ def _refuse_a_stated_answer(template_text: str, engine: str,
         at = f" at {alike[it.name]!r}" if it.name in alike else ""
         raise ResolveError(
             f"the template sets {it.name!r} to {it.value!r}, which the "
-            f"rung fixes{at}: {why_role(it.name)}.  Remove the value from "
+            f"stage fixes{at}: {why_role(it.name)}.  Remove the value from "
             f"the template.")
 
 
@@ -346,7 +346,7 @@ def _refuse_a_stated_answer(template_text: str, engine: str,
 #: (`jobset/prep.py`, C2), a bench trial's with its coordinate
 #: (`job-contracts.md` § 6.3).
 SET_AFTER = {
-    "rung_label": "the rung -- spelt from the calculation's label",
+    "rung_label": "the stage's label -- spelt from the calculation's",
     "trial_label": "this trial -- the calculation's label with its coordinate",
 }
 
@@ -621,7 +621,7 @@ def resolve(template_text: str, task, *,
     held = sorted(set(pins) & fixed)
     if held:
         raise ResolveError(
-            f"pin(s) {', '.join(map(repr, held))} name what the rung fixes: "
+            f"pin(s) {', '.join(map(repr, held))} name what the stage fixes: "
             f"{why_role(held[0])}.")
 
     elements: List[ResolvedConfig] = []
@@ -629,7 +629,7 @@ def resolve(template_text: str, task, *,
     held = sorted({k for p in points for k in p} & fixed)
     if held:
         raise ResolveError(
-            f"sweep axis(es) {', '.join(map(repr, held))} name what the rung "
+            f"sweep axis(es) {', '.join(map(repr, held))} name what the stage "
             f"fixes: {why_role(held[0])}.")
     for point in points:
         prov = dict(provenance)

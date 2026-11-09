@@ -337,7 +337,7 @@ class Task:
             if names != fixed.stages:
                 raise ValueError(
                     f"{_kind(self.calculation).with_article}'s stages "
-                    f"are its rungs, every one, in order -- "
+                    f"are fixed, every one, in order -- "
                     f"{', '.join(fixed.stages)} (got "
                     f"{', '.join(names) or 'none'}) -- the kind table's")
         # WHAT THE KIND'S DESCRIPTION CARRIES BEYOND EVERY KIND'S FIELDS

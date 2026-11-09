@@ -340,7 +340,7 @@ class JobStatus:
                        f"{span(self.call_elapsed_s)}"
                        if self.call_elapsed_s is not None else ""))
         if self.wall_s is not None and self.wall_left_s is not None:
-            bits.append(f"wall {span(self.wall_s)}: "
+            bits.append(f"time limit {span(self.wall_s)}: "
                         f"{span(max(0.0, self.wall_left_s))} left")
         return " | ".join(bits)
 
@@ -2446,7 +2446,7 @@ def run_monitor(watched: "WatchedRun", *,
             wall_warned = True
             _append(log, f"[{_iso(now)}] [WALL] "
                          f"{_fields.span_words(max(0.0, st.wall_left_s))} "
-                         f"left on the wall; the {st.units_left} "
+                         f"left before the time limit; the {st.units_left} "
                          f"{st.unit_words}s left need about "
                          f"{_fields.span_words(st.left_at_pace_s)} at "
                          f"{_fields.span_words(st.unit_s)} each "
@@ -2463,7 +2463,7 @@ def run_monitor(watched: "WatchedRun", *,
                          f"{_fields.span_words(max(0.0, st.wall_left_s))} "
                          f"left; {steps} took "
                          f"{_fields.span_words(longest_s)} -- the step "
-                         f"underway may not finish before the wall")
+                         f"underway may not finish before the time limit")
             _said(st, "wall_near", now)
 
         # --- the two settable triggers (`run-reports.md` § 2) ------------

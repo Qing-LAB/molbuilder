@@ -496,7 +496,7 @@ def sent_wall_s(record: Optional[dict]) -> Optional[int]:
         return parse_walltime(wall)
     except ValueError:
         raise LaunchRecordError(
-            f"the launch record's wall, {wall!r}, is no wall time -- "
+            f"the launch record's time limit, {wall!r}, is no time limit -- "
             f"D-HH:MM:SS is the spelling its writer uses -- so the time the "
             f"job has left cannot be counted from it.") from None
 

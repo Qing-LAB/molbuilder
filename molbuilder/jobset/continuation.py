@@ -329,8 +329,8 @@ def cannot_be_named(calc, stage: str, from_attempt, cold: bool
         # upstream (the gather its pair names), never named.
         from ..kind_table import kind
         return (f"--from / --cold name what a stage continues from; "
-                f"{kind(task.calculation).with_article}'s rung takes its "
-                f"inputs from the rungs upstream, gathered by its kind at "
+                f"{kind(task.calculation).with_article}'s stage takes its "
+                f"inputs from the stages upstream, gathered by its kind at "
                 f"its first launch, and anew with --gather when it is "
                 f"launched again.")
     if not independent(task):

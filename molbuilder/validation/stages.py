@@ -138,7 +138,7 @@ def check_a_relaxation_takes_a_step(
         out.append(Issue(
             "error",
             f"stage {name!r} relaxes ({cfg.relax_type}) in relax_steps = 0 steps -- "
-            f"MD.Steps 0 is a single point (read_options.F90), so the rung "
+            f"MD.Steps 0 is a single point (read_options.F90), so the stage "
             f"relaxes nothing.  Give it at least one step",
             where="config.relax_steps", stage=name))
     return out

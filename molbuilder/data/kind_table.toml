@@ -179,7 +179,7 @@ noun = "transport calculation"
 topic = "transport"
 # No `handover`: its stages and identity are fixed, so it describes
 # on its own tab (POST /api/transport/describe), nothing awaiting.
-no_benchmark = "its parameters come from its own template and each rung's run card, and its one axis is the bias list in task.json"
+no_benchmark = "its parameters come from its own template and each stage's run card, and its one axis is the bias list in task.json"
 roles = [
     { name = "seed",         computes = "scf" },
     { name = "electrode_L",  computes = "scf", lead = "L-electrode", about = "the left lead: bulk metal layers, FROZEN during relaxation, at bulk positions. Transport extracts the left electrode cell from exactly these atoms -- label only the bulk-like block, not the surface layers" },

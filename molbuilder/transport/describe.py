@@ -280,7 +280,7 @@ def describe(*, calculation: str, engine: Optional[str],
             if item not in resolvable:
                 raise NotDescribed(
                     f"{item!r} is not a parameter this calculation can "
-                    f"carry: `prep` resolves each rung against the {engine} "
+                    f"carry: `prep` resolves each stage against the {engine} "
                     f"schema, and either no field of it has that name or it "
                     f"is a machine fact the description must never carry"
                     f".")

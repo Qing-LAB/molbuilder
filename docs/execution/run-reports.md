@@ -193,7 +193,7 @@ the job's start, never its own.
 
 **It warns once, and only where it can say why.** For a run of points whose index states its points, when the
 points left need more than the wall leaves at the pace its finished points measured
-([`runs-of-points.md`](?doc=execution/runs-of-points.md) § 4.7) — *6h left on the wall; the 120 optical calls
+([`runs-of-points.md`](?doc=execution/runs-of-points.md) § 4.7) — *6h left before the time limit; the 120 optical calls
 left need about 10d at 2h each (1 done) -- the run may not finish before it*. Otherwise, when the time left falls
 below the longest step the run has taken so far (§ 2.2: a geometry move, a displacement, a PySCF step): *21m left;
 the longest of 3 steps so far took 46m -- the step underway may not finish before the wall*. A step's length runs

@@ -29,14 +29,14 @@ name = "a refusal is written down -- one the verb says before anything is planne
 launch = ["--time", "1h"]
 launch_mode = "direct"
 launch_sends = true
-launch_refused = "--time: a submitted job's wall, restated on the line that sends it -- `--mode direct` does not read it"
+launch_refused = "--time: a submitted job's time limit, restated on the line that sends it -- `--mode direct` does not read it"
 after_launch = { ledger_holds = ["refused"] }
 
 [[case]]
 name = "a refused dry run writes nothing"
 launch = ["--time", "1h"]
 launch_mode = "direct"
-launch_refused = "--time: a submitted job's wall, restated on the line that sends it -- `--mode direct` does not read it"
+launch_refused = "--time: a submitted job's time limit, restated on the line that sends it -- `--mode direct` does not read it"
 launch_writes_nothing = true
 
 # ---- A RUN HERE, IN THE BACKGROUND UNLESS SAID (job-system.md § 6.0, *A run

@@ -203,7 +203,7 @@ def _check_fixed_on_every_rung(cfg, calculation: str,
         if have != answer:
             issues.append(Issue(
                 "error",
-                f"``{name}`` is {have!r}, and the rung fixes it at "
+                f"``{name}`` is {have!r}, and the stage fixes it at "
                 f"{answer!r}: {why_role(name)}.  A deck is rendered from "
                 f"the config `resolve` answered, which lays it on"
                 f".",

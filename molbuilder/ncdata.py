@@ -156,7 +156,7 @@ AXES: Dict[str, Axis] = {a.name: a for a in (
     Axis("lead", "the two leads", ""),
     Axis("region", "molbuilder's regions of the junction", ""),
     Axis("eigenchannel", "transmission eigenchannels", "1"),
-    Axis("rung", "the rungs that run once", ""),
+    Axis("rung", "the stages that run once", ""),
     Axis("scf_cycle", "a run's SCF rows", "1"),
     Axis("charge_part", "TranSIESTA's charge columns", ""),
     Axis("mode", "vibrational modes", "1"),

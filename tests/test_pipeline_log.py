@@ -113,7 +113,7 @@ def test_every_resolved_value_carries_its_source(tmp_path, monkeypatch):
     who = {k.split(".", 1)[1]: v
            for k, v in block.items() if k.startswith("parameters.")}
     assert who["relax_type"] == "this stage's override", who
-    assert who["write_forces"] == "the rung", who
+    assert who["write_forces"] == "the stage's role", who
     assert who["mesh_cutoff"] in {f"the template · {w}"
                                   for w in SOURCE_WORDS.values()}, who
     # ONE VOCABULARY, TWO READERS (`engines/template.md` § 5.4): a run

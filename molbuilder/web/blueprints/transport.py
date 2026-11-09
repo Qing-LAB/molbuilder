@@ -706,7 +706,7 @@ def api_transport_describe() -> Any:
             or not all(isinstance(v, dict) for v in bags.values())):
         return jsonify({"ok": False,
                         "error": "stages must be an object of "
-                                 "rung -> {parameter: value}"}), 400
+                                 "stage -> {parameter: value}"}), 400
     shared_chosen = body.get("shared") or {}
     if not isinstance(shared_chosen, dict):
         return jsonify({"ok": False,
@@ -882,7 +882,7 @@ def api_transport_schema() -> Any:
         return jsonify({"ok": False,
                         "error": "shared must be a JSON object of what "
                                  "the shared panel holds, asked by a "
-                                 "rung's tab"}), 400
+                                 "stage's tab"}), 400
     if reuses:
         # A CALCULATION THAT REUSES A FINISHED ONE (`engines/transport.md`
         # § 2a.16): both surfaces drawn from that calculation's template,

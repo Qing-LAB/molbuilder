@@ -43,7 +43,7 @@ _VARS = (
     Var("voigt", ("voigt",), "coordinate", "", "stress component",
         "xx, yy, zz, yz, xz or xy, SIESTA's order", dtype=str),
     Var("run", ("run",), "coordinate", "", "a run",
-        "its folder below the calculation, rung by rung and each rung's starts "
+        "its folder below the calculation, stage by stage and each stage's starts "
         "in turn -- the ladder's order, not always the order they ran in "
         "(continued_from); a run with no step is here too, said says why",
         dtype=str),
@@ -55,7 +55,7 @@ _VARS = (
     Var("run_of_step", ("step",), "given", "", "the run the step is of",
         "that run's folder, as the run axis names it", dtype=str,
         auxiliary=True),
-    Var("rung_of_run", ("run",), "given", "", "the rung the run is of",
+    Var("rung_of_run", ("run",), "given", "", "the stage the run is of",
         "the stage's name", dtype=str, auxiliary=True),
     Var("continued_from", ("run",), "given", "", "the run it continued from",
         "that run's folder, as the run axis names it, by the run's own record; "
@@ -123,8 +123,8 @@ _VARS = (
         "as the run's own output says", dtype="i1", flag=True, source=_OUTPUT),
     Var("applied_offset_ang", ("run", "xyz"), "given", "angstrom",
         "what prep moved the structure it was handed by",
-        "that structure plus this is where a first rung starts, and the deck "
-        "already holds it; a later rung starts where the rung before ended; "
+        "that structure plus this is where a first stage starts, and the deck "
+        "already holds it; a later stage starts where the stage before ended; "
         "NaN where the deck records none"),
     Var("cell_ang", ("run", "cell_vector", "xyz"), "given", "angstrom",
         "the cell the run ended in",

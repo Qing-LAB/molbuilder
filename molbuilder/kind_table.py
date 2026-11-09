@@ -513,8 +513,8 @@ def _part(kind: str, engine: str, body: object,
     ladder = body.get("ladder")
     if ladder is not None:
         if sr == "own":
-            _refuse(where, "ladder on a pair whose stages are its rungs -- "
-                           "they are read off the kind's roles")
+            _refuse(where, "ladder on a pair whose stage_roles is \"own\" "
+                           "-- its stages are the kind's roles, read off them")
         if (not isinstance(ladder, list) or not ladder
                 or not all(isinstance(x, str) and x for x in ladder)):
             _refuse(where, "ladder is a list of stage names")
@@ -522,7 +522,7 @@ def _part(kind: str, engine: str, body: object,
     else:
         ladder = stages
     if ("inputs" in body) != ("gather" in body):
-        _refuse(where, "a rung's inputs and the gather that takes them come "
+        _refuse(where, "a stage's inputs and the gather that takes them come "
                        "together")
     if "inputs" in body and not roles:
         _refuse(where, "inputs on a kind without roles -- its stages "
@@ -913,7 +913,7 @@ def role_set(name: str) -> Tuple[str, ...]:
     order; :class:`KindTableError` naming the sets for a name none is."""
     if name not in COMPUTES:
         raise KindTableError(
-            f"no set of roles {name!r} -- the sets are what a rung "
+            f"no set of roles {name!r} -- the sets are what a stage "
             f"computes: {', '.join(COMPUTES)}")
     return tuple(r.name for k in _table().values() for r in k.roles
                  if r.computes == name)

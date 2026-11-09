@@ -73,7 +73,7 @@ def test_a_ladder_is_its_five_rungs_every_one(names):
              structure=None, calculation="transport",
              slots={"junction": _CITE}, bias=(0.0, 0.2),
              low_bias_approximation=False, varies=(), stages=stages)
-    assert ("stages are its rungs, every one, in order -- seed, "
+    assert ("stages are fixed, every one, in order -- seed, "
             "electrode_L, electrode_R, device, transmission") in str(got.value)
 
 

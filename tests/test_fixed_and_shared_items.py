@@ -71,12 +71,12 @@ def test_a_template_states_the_fixed_answer_or_is_refused(
                             hand_edit=_template_says("write_forces", stated),
                             refused=refused)
     if refused:
-        assert "'write_forces'" in said and "the rung fixes" in said, said
+        assert "'write_forces'" in said and "the stage fixes" in said, said
         return
     for keyword in ("WriteForces", "WriteCoorStep"):
         value, note = _setting(said, keyword)
         assert value == ".true.", (keyword, value)
-        assert any("Fixed by this rung" in ln for ln in note), (keyword, note)
+        assert any("Fixed by this stage" in ln for ln in note), (keyword, note)
 
 
 @pytest.mark.parametrize("kind", ["optimization", "vibration"])
@@ -91,7 +91,7 @@ def test_no_rung_turns_the_forces_or_coordinates_off(
     _d, _s, said = prepared(water_in_vacuum(), "siesta", calculation=kind,
                             overrides={"write_coor_step": False},
                             refused=True)
-    assert "'write_coor_step'" in said and "the rung fixes" in said, said
+    assert "'write_coor_step'" in said and "the stage fixes" in said, said
     assert "reads them back" in said, said
 
 

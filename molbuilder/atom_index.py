@@ -173,7 +173,7 @@ def _of_run(p: Path, folder: Path) -> AtomIndexMap:
             if (read_name(p.name, rung_label(task.label, stage)) is not None
                     and (run is None or stage_name(run.stage) != stage)):
                 raise AtomIndexUnknown(
-                    f"{p.name} is the {stage} rung's file, gathered here: "
+                    f"{p.name} is the {stage} stage's file, gathered here: "
                     f"its cell is "
                     f"{own_structure(task.calculation, stage)}"
                     f" -- its atoms are "
@@ -233,7 +233,7 @@ def _lead_run_words(p: Path, folder: Path, stage: str) -> str:
             got = None
         if got is not None:
             return f"its run folder, {got.run_folder()}"
-    return f"the {stage} rung's run"
+    return f"the {stage} stage's run"
 
 
 def _stated(p: Path) -> Optional[AtomIndexMap]:

@@ -1781,9 +1781,9 @@ def test_a_failed_part_is_said_at_once_and_once_per_reason(failed_parts):
     from molbuilder.runs import run_of
     walled = run_of(run.attempt("freq", 2) / first["rel"]).session_log
     walled_log = walled.read_text(errors="replace")
-    at_wall = next((ln.split("stopped at its wall: ", 1)[1]
+    at_wall = next((ln.split("stopped at its time limit: ", 1)[1]
                     for ln in walled_log.splitlines()
-                    if "stopped at its wall: " in ln), None)
+                    if "stopped at its time limit: " in ln), None)
     assert at_wall is not None, walled_log[-1500:]
     assert at_wall.startswith(
         "this point failed: a launch again takes the run's points done "

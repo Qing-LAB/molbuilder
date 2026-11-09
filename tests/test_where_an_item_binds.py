@@ -110,7 +110,7 @@ def test_an_override_its_rung_does_not_read_is_refused_where_it_is_saved(
     assert r.status_code == 400, r.get_json()
     refused = {f["stage"]: f["message"] for f in r.get_json()["findings"]
                if f["severity"] == "error"}
-    assert ("only the transmission rung of a transport calculation reads, "
+    assert ("only the transmission stage of a transport calculation reads, "
             "not 'seed'") in refused["seed"], refused
     assert not (d / "task.json").exists()
 
@@ -148,7 +148,7 @@ def test_a_run_card_value_its_rung_does_not_read_is_refused_where_it_is_saved(
                                         rung_execution={"gpu_count": 1}))
     assert r.status_code == 400, r.get_json()
     assert ("stage 'transmission' execution sets gpu_count = 1, which only "
-            "the seed / electrode_L / electrode_R / device rungs of a "
+            "the seed / electrode_L / electrode_R / device stages of a "
             "transport calculation read, not 'transmission'") \
         in r.get_json()["error"], r.get_json()["error"]
     assert ("not 'transmission' -- remove it from that run card -- on Task "

@@ -108,12 +108,12 @@ def test_a_run_here_is_told_its_cards_wall_and_its_engine_stops_before_it(
                and "OUT_OF_TIME" in ln
                for ln in launched.output.splitlines()), launched.output
     wrap = walled["wrap"].read_text(errors="replace")
-    assert re.search(r"^\s*Wall\s*: 20s from the job's start; SIESTA stops "
+    assert re.search(r"^\s*Time limit\s*: 20s from the job's start; SIESTA stops "
                      r"600s before it\s*$",
                      wrap, re.M), wrap[:3000]
-    assert re.search(r"\bwall: \d+s left of 20s; SIESTA stops 600s before "
+    assert re.search(r"\btime limit: \d+s left of 20s; SIESTA stops 600s before "
                      r"it\b", wrap), wrap[-2000:]
-    assert "stopped at its wall:" in wrap, wrap[-2000:]
+    assert "stopped at its time limit:" in wrap, wrap[-2000:]
     # ONE START (`project-layout.md` § 1.6.1): the session log holds the
     # run script's one start, the engine run once.
     assert wrap.count(WRAPPER_LOG_START) == 1, wrap[-3000:]

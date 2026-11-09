@@ -408,7 +408,7 @@ def stem(label: str, stage: Optional[str] = None) -> str:
             f"a name keyed on one reassigns itself when the ladder grows.")
     if not _STAGE.fullmatch(stage):
         raise RunFileError(
-            f"stage token {stage!r} is not `NN_name`.  Pass None for a file that CARRIES between rungs; a "
+            f"stage token {stage!r} is not `NN_name`.  Pass None for a file that CARRIES between stages; a "
             f"malformed token would produce a name nothing can parse back.")
     return f"{label}_{stage}"
 
@@ -1170,7 +1170,7 @@ def beside_the_deck(engine: str, calculation: str, finish: Optional[str],
 #: run is a folder of its own (`project-layout.md` § 1.6.1).
 WRITTEN: "tuple[Artifact, ...]" = (
     # ---- what we generated to run -------------------------------------
-    Artifact(".fdf", "the SIESTA deck — every keyword this rung runs with",
+    Artifact(".fdf", "the SIESTA deck — every keyword this stage runs with",
              engine="siesta",
              when="prep", level="stage", kind="derived",
              writer="prep (`script_emit.prepare_deck`), in the stage's "
@@ -1179,7 +1179,7 @@ WRITTEN: "tuple[Artifact, ...]" = (
              listed_by="engine_index", counted_by=("siesta",),
              reads=(("contract", "molbuilder.parse.engines.siesta_contract:"
                                  "contract_fields"),)),
-    Artifact(".py", "the PySCF script this rung runs", engine="pyscf",
+    Artifact(".py", "the PySCF script this stage runs", engine="pyscf",
              when="prep", level="stage", kind="derived",
              writer="prep (`script_emit.prepare_deck`), in the stage's "
                     "folder; a copy in each run",
@@ -1257,7 +1257,7 @@ WRITTEN: "tuple[Artifact, ...]" = (
              engine="siesta", when="launch",
              calculation=("vibration", "transport"), kind="record",
              only="a run of points: a SIESTA vibration, a device or "
-                  "transmission rung over several frames or voltages",
+                  "transmission stage over several frames or voltages",
              writer="launch, for the points it opens (`submit._points_walk`); "
                     "each point's report steps (`mb_monitor.pyz point`); a "
                     "planner's own step for the points it plans "
@@ -1541,7 +1541,7 @@ WRITTEN: "tuple[Artifact, ...]" = (
                     "`jobset migrate`",
              door="task.of"),
     Artifact(name=JOB_REQUEST_FILE,
-             what="the job request: the queue, wall and memory asked, the "
+             what="the job request: the queue, time limit and memory asked, the "
                   "run cards, each stage's group, a benchmark's plan, the "
                   "reports",
              when="setup", level="calculation", kind="source",
@@ -1690,7 +1690,7 @@ WRITTEN: "tuple[Artifact, ...]" = (
     # N-hour clock counts from the last event this record holds.
     Artifact(name=NOTIFIED_RECORD_FILE,
              what="the run's notification record: every event sent for the "
-                  "run -- start, a step, the periodic report, its wall near, "
+                  "run -- start, a step, the periodic report, its time limit nearing, "
                   "a milestone, a failed part and its reason, finish -- and "
                   "when",
              when="run", level="run", kind="record",
@@ -1756,11 +1756,11 @@ WRITTEN: "tuple[Artifact, ...]" = (
                     "copy in each run",
              only="a charged, isolated deck"),
     Artifact(name=GATHERED_FROM_FILE,
-             what="what a rung took, from which upstream run",
+             what="what a stage took, from which upstream run",
              calculation="transport", when="launch", level="run",
              kind="record",
              writer="launch, by its one hand-over (`materialize.hand_over`, "
-                    "through `runrecord.write_gathered_from`) -- a rung's "
+                    "through `runrecord.write_gathered_from`) -- a stage's "
                     "first launch or a `--gather` "
                     "(`transport.gather.transport_inputs`), or a launch again "
                     "keeping what its last run was given",
@@ -1772,7 +1772,7 @@ WRITTEN: "tuple[Artifact, ...]" = (
              kind="record",
              writer="prep, copying a group in from the finished calculation "
                     "it reuses (`transport.reuse.copy_in`), before the run's "
-                    "launch record; a rung of points' first launch, in each "
+                    "launch record; a stage of points' first launch, in each "
                     "point it takes over (`transport.reuse.take_into`) and each "
                     "point's `shared/`, written last (`transport.reuse."
                     "shared_into`) -- through `runrecord.write_copied_from`",
@@ -2073,7 +2073,7 @@ ENGINE_FILES: "tuple[EngineFile, ...]" = (
     # ---- TranSIESTA and TBtrans ----------------------------------------
     EngineFile("siesta", SIESTA_TSHS,
                what="an electrode's Hamiltonian and overlap -- gathered into "
-                    "the rungs after it"),
+                    "the stages after it"),
     EngineFile("siesta", SIESTA_TS_HSX,
                what="the device's Hamiltonian and overlap -- read by TBtrans "
                     "through the deck's `TBT.HS` line"),

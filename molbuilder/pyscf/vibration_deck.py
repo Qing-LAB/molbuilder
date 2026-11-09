@@ -298,7 +298,7 @@ def _vib_relax_block(cfg, names) -> List[str]:
         out += [
             "    # geomeTRIC streams its own multi-frame XYZ under this",
             f"    # prefix (<prefix>{GEOMETRIC_APPENDS}) -- the same file the",
-            "    # optimization deck's rungs write.",
+            "    # optimization deck's stages write.",
         ]
         # THE PREFIX IS DERIVED FROM THE STAGE'S NAMES, exactly as the
         # optimization deck's is (`pyscf/input.py`, `geometric_prefix_expr`;

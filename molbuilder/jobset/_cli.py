@@ -970,7 +970,7 @@ def _load_bench_set(calc, stage, verb: str = "launch"):
 #: ``D-HH:MM:SS``), always, and neither is any of the person's business here
 #: (`engines/stages.md` § 6.8a).
 TIME_METAVAR = "DURATION"
-TIME_HELP = ("wall-clock limit -- `4h`, `90m`, `2-00:00:00`, or a bare "
+TIME_HELP = ("time limit -- `4h`, `90m`, `2-00:00:00`, or a bare "
              "number of minutes.  A run on a scheduler states one -- here, "
              "or `allocation.time` / the run card's `time` in "
              f"{JOB_REQUEST_FILE} -- "
@@ -1058,13 +1058,13 @@ def _resolve_stage_name(js, stage: str) -> str:
                    ".")
 @click.option("--sbatch/--no-sbatch", "emit_sbatch", default=True,
               help=f"write the {ROLE_HEADER} headers (default on; withheld where the target's record names a kind with no queue, `workstation`).  --no-sbatch "
-                   "writes none, and then no queue, wall or memory is "
+                   "writes none, and then no queue, time limit or memory is "
                    "asked for.")
 @click.option("--one-job", "one_job", is_flag=True,
               help="task: the groups named also as ONE job that launches "
                    "each in turn, when the one before has finished -- its "
                    "one header written too: one queue, the largest request "
-                   "any group asks for, the walls summed.  A group named "
+                   "any group asks for, the time limits summed.  A group named "
                    "that is launched already is read as prepared.  Then "
                    "`launch task` with the same --group lines sends it"
                    ".")
@@ -1592,7 +1592,7 @@ def _show_and_ask(plan, *, dry_run: bool, auto_yes: bool,
               help="print the exact command each job WOULD get; launch "
                    "nothing, write nothing.")
 @click.option("--time", "time_text", default=None, metavar=TIME_METAVAR,
-              help="submit and ask: a submitted job's wall, restated on the "
+              help="submit and ask: a submitted job's time limit, restated on the "
                    "line that sends it -- for a run launched again that ran "
                    "out of it.  Every other value -- the queue, ranks, cores, "
                    "GPUs, memory -- is the header prep wrote, sent as it is"
@@ -1617,11 +1617,11 @@ def _show_and_ask(plan, *, dry_run: bool, auto_yes: bool,
                    "e.g. '01_coarse/run-0' -- at its first launch, or "
                    "launched again, taken as said; its restart files are "
                    "COPIED in -- a SIESTA displacement sweep's later stage, "
-                   "the run's relaxation.  A transport rung has no run to "
+                   "the run's relaxation.  A transport stage has no run to "
                    "name.")
 @click.option("--gather", is_flag=True,
-              help="ONE transport rung launched again: take its inputs anew "
-                   "-- the newest run of each rung upstream, under the "
+              help="ONE transport stage launched again: take its inputs anew "
+                   "-- the newest run of each stage upstream, under the "
                    "gather's gates -- instead of those its last run was "
                    "given.")
 @click.option("--trial-timeout", "trial_timeout_min", default=None,
@@ -1631,7 +1631,7 @@ def _show_and_ask(plan, *, dry_run: bool, auto_yes: bool,
                    "minutes so the rest of the walk still runs; the killed "
                    "trial reads failed.  Unstated, no per-trial bound "
                    "exists -- each trial runs until it ends, or the job's "
-                   "wall.")
+                   "time limit.")
 @click.option("--foreground", is_flag=True,
               help="--mode direct: run it here and wait for it, the launch "
                    "ending with how the run ended.  Without it a run here "
@@ -2056,7 +2056,7 @@ def _launch(told: dict, kind: str, stage, trial, bundle: str, mode: str,
     footer = walks + (["  per-trial bound: "
                + (f"{_bound_s // 60} min" if _bound_s else
                   "none -- each trial runs until it ends"
-                  + ("" if mode == "direct" else ", or the job's wall"))]
+                  + ("" if mode == "direct" else ", or the job's time limit"))]
               if grouped else [])
     if dry_run:
         _show_and_ask(shown, dry_run=True, auto_yes=auto_yes, footer=footer)
@@ -2625,7 +2625,7 @@ def cmd_machines() -> None:
 def cmd_probe(do_write: bool, name, yes: bool,
                         sets, scheduler_flag) -> None:
     """Record what a machine IS -- cores, GPUs, scheduler, and on a cluster
-    every (partition, QoS) you may actually submit to, with its wall.
+    every (partition, QoS) you may actually submit to, with its time limit.
 
     \b
     TWO USES, and the second is the one people miss:

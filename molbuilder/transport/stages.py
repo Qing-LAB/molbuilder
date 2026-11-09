@@ -502,6 +502,6 @@ def stages_for_transport(engine: str, bags=None):
     unknown = sorted(set(bags) - set(rungs))
     if unknown:
         raise ValueError(
-            f"no such rung {', '.join(map(repr, unknown))} -- a transport "
-            f"ladder's rungs are {', '.join(rungs)}.")
+            f"no such stage {', '.join(map(repr, unknown))} -- a transport "
+            f"ladder's stages are {', '.join(rungs)}.")
     return [Stage(name=n, overrides=dict(bags.get(n) or {})) for n in rungs]

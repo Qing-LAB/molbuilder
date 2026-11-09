@@ -121,9 +121,9 @@ molbuilder: detected phys_cores=20, n_sockets=2, cores_per_socket=10
   Mode           : CLEAN START (no restart file here)
   Held atoms     : none held -- every atom free
   Command        :  mpirun -np 1  siesta H2_01_coarse.fdf > H2_01_coarse.out
-  Wall           : 1800s from the job's start; SIESTA stops 600s before it (running-a-job.md 3.6)
+  Time limit     : 1800s from the job's start; SIESTA stops 600s before it (running-a-job.md 3.6)
 [09:58:43-0700] [INFO ] monitor: mb_monitor.pyz started
-[09:58:43-0700] [INFO ] wall: 1798s left of 1800s; SIESTA stops 600s before it (running-a-job.md 3.6)
+[09:58:43-0700] [INFO ] time limit: 1798s left of 1800s; SIESTA stops 600s before it (running-a-job.md 3.6)
 [09:59:08-0700] [INFO ] benchmark: SIESTA wall 24.9s, 54 SCF rows in H2_01_coarse.scf-timing.log
 SIESTA completed:  mpirun -np 1  siesta H2_01_coarse.fdf > H2_01_coarse.out
 ```
@@ -138,7 +138,7 @@ road (shortened) — one process, a script deck on its environment's python:
   Mode        : CLEAN START (no restart file here)
   Held atoms  : none held -- every atom free
   Command     : /home/qqing/miniconda3/envs/molbuilder-pySCF/bin/python3 H2_01_coarse.py > H2_01_coarse.pyscf.log 2>&1
-  Wall        : 1800s from the job's start; PySCF stops 600s before it (running-a-job.md 3.6)
+  Time limit  : 1800s from the job's start; PySCF stops 600s before it (running-a-job.md 3.6)
 ```
 
 ---
@@ -640,20 +640,20 @@ slack.
 
 | where | the line | when |
 |---|---|---|
-| the run script's banner, in the session log | `Wall : 14400s from the job's start; SIESTA stops 600s before it (running-a-job.md 3.6)` — the label padded, as every banner label is, to the longest the banner prints | every run |
-| the session log | `wall: 14382s left of 14400s; SIESTA stops 600s before it (running-a-job.md 3.6)` | a wall told, to an engine that stops before it, as the engine starts |
+| the run script's banner, in the session log | `Time limit : 14400s from the job's start; SIESTA stops 600s before it (running-a-job.md 3.6)` — the label padded, as every banner label is, to the longest the banner prints | every run |
+| the session log | `time limit: 14382s left of 14400s; SIESTA stops 600s before it (running-a-job.md 3.6)` | a time limit told, to an engine that stops before it, as the engine starts |
 | SIESTA's output | `OUT_OF_TIME: Time is up.` | SIESTA stopped itself at its wall |
-| the session log | `stopped at its wall: …` and what a launch again will do (§ 3.5) | that stop |
+| the session log | `stopped at its time limit: …` and what a launch again will do (§ 3.5) | that stop |
 | the run's state (`jobset status`, the Results tab) | *failed* — `stopped before its end: OUT_OF_TIME: Time is up.` | that stop |
 | the Results tab's *Reason* | `its wall (MaxWalltime): the engine stopped and saved its restart state` (the output family's words for the cause, `_run_ending.cause_words`) | that stop |
-| a PySCF relaxation's output | `WARNING: stopped before the wall (the job's wall less its slack): the geometry reached is kept; launch this stage again to continue from it`, then `# relaxed: no` in its trajectory log | the first step past the deadline |
-| a PySCF vibration's output | `RuntimeError: stopped before the wall (the job's wall less its slack) before the spectrum was written: launch this stage again` | a displaced SCF due past the deadline |
+| a PySCF relaxation's output | `WARNING: stopped before the time limit (the job's time limit less its slack): the geometry reached is kept; launch this stage again to continue from it`, then `# relaxed: no` in its trajectory log | the first step past the deadline |
+| a PySCF vibration's output | `RuntimeError: stopped before the time limit (the job's time limit less its slack) before the spectrum was written: launch this stage again` | a displaced SCF due past the deadline |
 | the monitor log | `[WALL] 21m left; the longest of 3 steps so far took 46m -- the step underway may not finish before the wall` | once, in a job sent to a queue |
 
 A program the item gives no words reads no wall: a TBtrans banner says `… TBtrans checks no clock and runs to it
 (running-a-job.md 3.6)`. A deck that is a script reads it from its environment, and its banner says the engine
 stops before it — `… PySCF stops 600s before it …`. A run told no wall says
-`Wall : none stated -- runs until done`. The clause after *stopped at its wall:* is § 3.5's
+`Time limit : none stated -- runs until done`. The clause after *stopped at its time limit:* is § 3.5's
 line for that run: a single run whose kind
 resumes continues warm from the files it saved; a point of a run of points — a vibration's call, a transport
 point — is run again as its run's relaunch says (a vibration's relaxation continues warm from its own last run;

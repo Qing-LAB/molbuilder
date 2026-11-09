@@ -379,12 +379,12 @@ def _sbatch_request(*, header: Path, placement: "Optional[_Placed]",
         # every job's wall or refuses (R-P13).  Refused here, the header
         # named (R-L44).
         raise SubmitError(
-            f"{header} states no wall ({kind.name}'s `wall` directive), so "
+            f"{header} states no time limit ({kind.name}'s `wall` directive), so "
             f"the launch cannot say what it sends -- prep writes one into "
             f"every header, so this one was edited since.  Prepare it again "
             f"where nothing of it was launched, or restore the state saved "
             f"before it was edited (`molbuilder checkpoint list`); --time "
-            f"states the wall for this launch alone.")
+            f"states the time limit for this launch alone.")
     restated = (kind.restated(row.says, sent.time) if sent.restated
                 else [])
     # The launch-door claim, EXPLICIT on the line: environment inheritance
@@ -894,9 +894,9 @@ class LaunchPlan:
 
 #: `--gather` AT A FIRST LAUNCH: nothing to take anew -- the first launch
 #: gathers, and a flag that would not be read is refused by name.
-GATHER_AT_FIRST = ("--gather takes a rung's inputs anew when it is launched "
+GATHER_AT_FIRST = ("--gather takes a stage's inputs anew when it is launched "
                    "again; its first launch gathers them from each upstream "
-                   "rung's newest run already.")
+                   "stage's newest run already.")
 
 
 def _no_run_open(who: str, container: Path, base: Path,
@@ -1014,12 +1014,12 @@ def _plan_member(calc, job, *, writes: Plan,
     inputs = inputs_of(task)
     if gather and inputs is None:
         raise SubmitError(
-            "--gather takes a rung's inputs anew from the rungs upstream, "
-            "where its kind names them, and this calculation's rungs take "
+            "--gather takes a stage's inputs anew from the stages upstream, "
+            "where its kind names them, and this calculation's stages take "
             "none.")
     if gather and not inputs(task, job.name):
         raise SubmitError(
-            f"--gather takes a rung's inputs anew from the rungs upstream, "
+            f"--gather takes a stage's inputs anew from the stages upstream, "
             f"and {job.name} takes none -- it is launched again without it"
             f".")
     if first and gather:
@@ -1028,7 +1028,7 @@ def _plan_member(calc, job, *, writes: Plan,
         raise SubmitError(
             "--from and --gather are two answers to one question: --from "
             "names the run an independent stage continues from, --gather "
-            "takes a rung's inputs anew from the rungs upstream"
+            "takes a stage's inputs anew from the stages upstream"
             ".")
     points = _a_sweep(calc, job.name)
     if first:

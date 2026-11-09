@@ -363,9 +363,9 @@ def test_a_tbtrans_step_s_run_script_starts_tbtrans_its_banner_lined_up(
 
 
 @pytest.mark.parametrize("frames, bias, walk", [
-    (2, "0,0.2", "one job walking its 4 points (each point's wall, summed)"),
-    (2, "0", "one job walking its 2 points (each point's wall, summed)"),
-    (1, "0,0.2", "one job walking its 2 points (each point's wall, summed)"),
+    (2, "0,0.2", "one job walking its 4 points (each point's time limit, summed)"),
+    (2, "0", "one job walking its 2 points (each point's time limit, summed)"),
+    (1, "0,0.2", "one job walking its 2 points (each point's time limit, summed)"),
     (1, "0", None),
 ], ids=["two frames, two voltages", "two frames, one voltage",
         "one frame, two voltages", "one frame, one voltage"])

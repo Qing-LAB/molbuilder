@@ -51,7 +51,7 @@ ACCEPTS = [
     ("diag_algorithm", "run_card", "optimization", None, "elpa",
      ", which is not one of 'ScaLAPACK', 'ELPA-1STAGE', 'ELPA-2STAGE'"),
     ("gpu_count", "run_card", "transport", "transmission", 2,
-     ", which only the seed / electrode_L / electrode_R / device rungs of a "
+     ", which only the seed / electrode_L / electrode_R / device stages of a "
      "transport calculation read, not 'transmission'"),
     ("ts_solution_method", "run_card", "optimization", None, "BTD",
      ", which an optimization does not carry"),
@@ -72,7 +72,7 @@ ACCEPTS = [
     ("net_charge", "override", "optimization", "tight", 1,
      ", which is shared by every stage of this calculation"),
     ("solution_method", "override", "transport", "device", "diagon",
-     ", which the rung fixes"),
+     ", which the stage fixes"),
     ("relax_steps", "override", "optimization", "tight", 2.5,
      ", which is not a whole number -- this setting counts things"),
     ("kgrid", "override", "optimization", "tight", "4,4,1",
@@ -232,7 +232,7 @@ def test_a_cards_wall_is_spelled_as_the_allocations(tmp_path, monkeypatch):
     assert request.stages["coarse"].execution["time"] == "0-04:00:00"
     assert request.to_dict()["stages"]["coarse"]["execution"]["time"] \
         == "0-04:00:00"
-    for card, said in (({"time": None}, "'time' is this run's wall"),
+    for card, said in (({"time": None}, "'time' is this run's time limit"),
                        ({"domain": None}, "'domain' is a queue's name"),
                        ({"time": "soon"}, "time: 'soon' is not a duration")):
         with pytest.raises(ValueError) as e:

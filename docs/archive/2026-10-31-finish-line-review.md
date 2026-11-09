@@ -1866,6 +1866,16 @@ before it was fixed. Docs only — the code text the review found is 2.62.1's.
 | E2E-MON | **closed after 2.62.1** (the user, 2026-11-02: "those two failures seems to be an outdated tests") | `test_monitor_watches_a_live_run_e2e.py::test_every_file_that_ships_beside_a_job_reads_the_run_without_molbuilder` failed: `AttributeError: 'Run' object has no attribute 'run'` — it still handed the monitor the try number 2.60.0 removed (`WatchedRun(run=…)`) | the test: the monitor told the run by its names alone; passes |
 | E2E-STOP | **closed after 2.62.1** (the same) | `test_siesta_stopped_run_e2e.py::test_the_run_panel_says_what_ran_and_why_it_stopped[chromium]` failed: `FileNotFoundError` on a path with the calculation's folder doubled — it read the ladder button's title as a path from the calculation, where since 2.59.0 the page names a path it only shows from the projects folder (`web/results.md` § 0.3) | the test: the run's folder from the projects folder; passes |
 
+## Found by the UI review's group D, the server's two words, and 2.69.3's review round (2026-11-09), by the release that owns each
+
+*(The user's word of 2026-11-09 — one word, *stage*, for one calculation's step on every page — carried to every sentence the server writes, since its sentences are what pages show; and *time limit*, 2.69.2's one word for the scheduler's limit, likewise; every person-facing string read first, a review round over every changed line, every finding read again in the code)*
+
+| id | where | finding | door |
+|---|---|---|---|
+| K2693-1 | **closed 2.69.3** | the server's sentences said *rung* where Task setup says *stage* — refusals, prep's and launch's lines, a stage's file named in a refusal, the transport and PySCF decks' comments, the catalogue's help, a data file's coordinate name | *stage* in every person-facing sentence; a data key, an API parameter (`surface=rung`, `rung=`), a module path and a code name unchanged |
+| K2693-2 | **closed 2.69.3** (and K2692-6) | the server said *wall* for the scheduler's limit — the Preview's *one wall for the whole run*, *walls summed*, a fit's *over debug's wall*, the run's *stopped at its wall*, the run script's banner *Wall :*, the slack setting's label *Wall-time slack* | *time limit*, the queue card's word; *wall time* for measured elapsed time is another thing and stays, as do the scheduler's `wall` directive and the log's `[WALL]` tag |
+| K2693-3 | **later** (F10, F11) | the documents still say *rung* and *wall* in their own prose; only their quotes of what molbuilder prints were changed | the documents made one word with the documents pass |
+
 ## Found by the UI review's group D, Task setup's words, and 2.69.2's review round (2026-11-09), by the release that owns each
 
 *(Group D's Task setup items, mapped to where each word is made before any fix; the user, 2026-11-09: "continue", and on the two names asked: one word *stage* on every page, the notebook tab *JupyterLab*; one review round over the whole touched files, every finding read again in the code)*

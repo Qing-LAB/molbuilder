@@ -526,7 +526,7 @@ def emit_electrode_declarations(struct: Structure, cfg, *,
     lines.append(
         "# split is inert; at a finite bias it sets the two Fermi levels.")
     lines.append(
-        "# Both reservoirs take the one ElectronicTemperature every rung "
+        "# Both reservoirs take the one ElectronicTemperature every stage "
         "shares:")
     lines.append(
         "# no `temp` line is written in either block, and TranSIESTA and "

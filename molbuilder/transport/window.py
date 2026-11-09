@@ -36,8 +36,8 @@ def window_rung() -> str:
     if len(rungs) != 1 or len(next(iter(rungs))) != 1:
         raise RuntimeError(
             f"catalogue.template.toml: the window items "
-            f"{', '.join(WINDOW_ITEMS)} name {sorted(rungs)} as their rungs "
-            f"-- they are read by one rung together")
+            f"{', '.join(WINDOW_ITEMS)} name {sorted(rungs)} as their stages "
+            f"-- they are read by one stage together")
     return next(iter(rungs))[0]
 
 

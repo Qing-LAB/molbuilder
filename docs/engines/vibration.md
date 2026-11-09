@@ -2877,7 +2877,7 @@ rank rule prep's check states, `science/normal-modes.md` § 3.1), and each
 step of `Optical.Broaden / 10`), one spin channel's and what a second adds.
 The run's one job is worded by the points declaration (`prep.walk_words`):
 its calls prepared — where the stage runs its optical phase, the rest
-planned by the job — one wall for the whole run. The wall stays the person's.
+planned by the job — one time limit for the whole run. The wall stays the person's.
 
 **A SIESTA vibration described before 2.45.0** states no *Compute IR*,
 *Compute Raman* or *Raman for*: its `es_mode_selection` decided the Raman,

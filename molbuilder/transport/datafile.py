@@ -337,8 +337,8 @@ def _variables() -> Tuple[Var, ...]:
             "reading's -- dos_region the fill value where it is not kept "
             "(model/parse.md 5e)", dtype=S),
         # EVERY RUN'S STATE AND CONVERGENCE, on the grid it varies over.
-        Var("rung", ("rung",), "coordinate", "", "rung",
-            "the rungs that run once, by their stage names", dtype=S),
+        Var("rung", ("rung",), "coordinate", "", "stage",
+            "the stages that run once, by their names", dtype=S),
         Var("scf_cycle", ("scf_cycle",), "coordinate", "1", "SCF row",
             "an SCF row's index within its run, from 0: every row of the "
             "run's last step, the periodic start and the NEGF loop alike",
@@ -415,28 +415,28 @@ def _variables() -> Tuple[Var, ...]:
         Var("device_scf_phases", ("frame", "bias_v"), "state", "",
             "the device run's phases", "periodic and negf: what each had to "
             "reach and how it ended, JSON", dtype=S),
-        Var("rung_state", ("rung",), "state", "", "the rung's state",
+        Var("rung_state", ("rung",), "state", "", "the stage's state",
             "the run door's word for its run", dtype=S),
         Var("rung_detail", ("rung",), "state", "",
-            "what the rung's state says",
+            "what the stage's state says",
             "the run door's sentence for its run", dtype=S),
         Var("rung_scf_converged", ("rung",), "state", "1",
-            "the rung's SCF converged", "1 converged, 0 not, -1 not stated",
+            "the stage's SCF converged", "1 converged, 0 not, -1 not stated",
             dtype="i1", flag=True),
-        Var("rung_energy_ev", ("rung",), "raw", "eV", "the rung's energy",
-            "its run's last energy", source="the rung's SIESTA output"),
-        Var("rung_fermi_ev", ("rung",), "raw", "eV", "the rung's Fermi level",
+        Var("rung_energy_ev", ("rung",), "raw", "eV", "the stage's energy",
+            "its run's last energy", source="the stage's SIESTA output"),
+        Var("rung_fermi_ev", ("rung",), "raw", "eV", "the stage's Fermi level",
             "its last SCF cycle's E_F, in its own run's frame -- how the "
-            "frames relate, fermi_frames", source="the rung's SIESTA output"),
+            "frames relate, fermi_frames", source="the stage's SIESTA output"),
         Var("rung_scf_cycles", ("rung",), "state", "1",
-            "how many SCF rows the rung holds",
+            "how many SCF rows the stage holds",
             "the cycles beyond it are the fill value; -1 where none ran",
             dtype="i4", fill=-1),
         *_scf_vars("rung", ("rung", "scf_cycle"), _SCF_COLUMNS),
-        Var("rung_scf_phases", ("rung",), "state", "", "the rung's phases",
+        Var("rung_scf_phases", ("rung",), "state", "", "the stage's phases",
             "what each had to reach and how it ended, JSON", dtype=S),
         Var("rung_copied_from", ("rung",), "state", "",
-            "the run a rung's newest run is a copy of",
+            "the run a stage's newest run is a copy of",
             "a calculation that reuses a finished one "
             "(engines/transport.md 2a.16)", dtype=S),
     )
@@ -772,7 +772,7 @@ def data_file_bytes(calc, record: Dict, *,
                          f"run's convergence"),
               schema=DATA_SCHEMA, molbuilder_version=__version__,
               source=("derived from the calculation's runs -- TranSIESTA's "
-                      "output and TBtrans's files, each rung's run named in "
+                      "output and TBtrans's files, each stage's run named in "
                       "provenance_chain and each point's in point_folder; "
                       "each variable's source names its file"))
         # A FRAME ROW'S DEFINITION is its meaning as the set writes it

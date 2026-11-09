@@ -21,7 +21,7 @@ _SHAPE_ITEMS = ("mpi_np", "omp_threads", "threads")
 #: came from.
 _LAUNCH_WORDS = {
     "domain":        ("queue", "--domain QUEUE"),
-    "time":          ("wall", "--time 2-00:00:00"),
+    "time":          ("time limit", "--time 2-00:00:00"),
     "mem":           ("memory", "--mem 64G"),
     "mpi_np":        ("ranks", "--np N"),
     "cpus_per_task": ("cores per rank", "--cpus-per-task N"),

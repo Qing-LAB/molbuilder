@@ -1642,7 +1642,7 @@ def _decide_template(rec: "_Records", task):
     zero_said = ([f"{name} = 0 -> not set" for name in zeros]
                  + [f"stage {st!r} {name} = 0 -> not set (the override "
                     f"taken out of {TASK_FILE}; the template's {name} is "
-                    f"written blank, since only that rung reads it)"
+                    f"written blank, since only that stage reads it)"
                     for st, name in stage_zeros])
     zeros = list(dict.fromkeys(zeros + [name for _st, name in stage_zeros]))
     # AN ITEM NO RELEASE HELD is refused by name, as the reader refuses it

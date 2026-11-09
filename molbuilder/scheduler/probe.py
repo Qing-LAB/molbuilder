@@ -444,7 +444,7 @@ def derive_domains(
                         if p.timelimit_secs < _INFINITE_SECS else None)
             if p.timelimit_secs >= _INFINITE_SECS:
                 notes.append(f"partition {p.name!r} has no time limit "
-                             f"(infinite); the record states no wall for "
+                             f"(infinite); the record states no time limit for "
                              f"it, and a job there is fit against none.")
         row = _row(_domain_name(p.name, q, _qos_on(allowed, p.name)),
                    max_time, p)

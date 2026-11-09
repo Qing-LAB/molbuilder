@@ -78,7 +78,7 @@ def stop_if_past_wall(deadline) -> None:
     launch runs it again."""
     if past_wall(deadline):
         raise RuntimeError(
-            "stopped before the wall (the job's wall less its slack) before "
+            "stopped before the time limit (the job's time limit less its slack) before "
             "the spectrum was written: launch this stage again")
 
 
@@ -158,7 +158,7 @@ def relax(mf, policy, retries, *, keep=None, resumable=False,
             # THE WALL (`engines/pyscf.md` § 3.9): the geometry reached is
             # kept as every step's is; the run ends normally, unconverged,
             # and the next launch continues from it.
-            print("WARNING: stopped before the wall (the job's wall less "
+            print("WARNING: stopped before the time limit (the job's time limit less "
                   "its slack): the geometry reached is kept"
                   + ("; launch this stage again to continue from it"
                      if keep is not None and resumable else ""))

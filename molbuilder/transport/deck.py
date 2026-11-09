@@ -117,7 +117,7 @@ TS_DEVICE_SECTION = _sc.Section(
      "ts_scf_dq_converge", "ts_scf_dq_tolerance", "ts_dq",
      "ts_solution_method", "ts_hartree_fix", "ts_elecs_out_of_core"),
     note=(
-        "# Read by siesta in its NEGF mode (TranSIESTA) -- this rung.  An item",
+        "# Read by siesta in its NEGF mode (TranSIESTA) -- this stage.  An item",
         "# not set is not written, and TranSIESTA applies its own rule there:",
         "# its line says which.  A 0 is written as 0 -- a value of its own",
         "# (engines/transport.md 6.1b).",
@@ -143,7 +143,7 @@ TS_READ_BY_TBTRANS_SECTION = _sc.Section(
 #: transmission attaches to.  Its note says why it is this keyword and not
 #: ``SaveHS`` or ``TS.DE.Save``.
 TS_ELECTRODE_SECTION = _sc.Section(
-    "The Hamiltonian this rung exists to write",
+    "The Hamiltonian this stage exists to write",
     ("ts_hs_save",))
 
 #: WHAT TBTRANS READS OF THE SCF SETTINGS: the electronic temperature alone
@@ -166,7 +166,7 @@ TBT_SECTION = _sc.Section(
      "tbt_t_all", "tbt_verbosity", "tbt_progress"),
     note=(
         "# Read by tbtrans, which runs no SCF: it takes the converged",
-        "# Hamiltonian the device rung wrote (TBT.HS above) and the leads'",
+        "# Hamiltonian the device stage wrote (TBT.HS above) and the leads'",
         f"# {SIESTA_TSHS}, and evaluates T(E) on the window above.  An item "
         "not set",
         "# is not written, and tbtrans applies its own rule there: its line",
@@ -185,7 +185,7 @@ def _device_layout(derived, frame, state_block, point, scratch_dir):
     parameter models that.
     """
     return (
-        _sc.Block("identity and what this rung computes", _emit_device_header),
+        _sc.Block("identity and what this stage computes", _emit_device_header),
         _sc.Block("cell, coordinates and region metadata",
                   _geometry_block(frame)),
         _sl.BASIS_SECTION,
@@ -202,7 +202,7 @@ def _device_layout(derived, frame, state_block, point, scratch_dir):
         _sl.spin_section(fixed=derived["spin_fixed"]),
         state_block,
         _sl.mpi_section(algorithm=derived.get("algorithm")),
-        _sc.Block("what this rung runs", _emit_device_run),
+        _sc.Block("what this stage runs", _emit_device_run),
         # THE LEADS' SURFACE GREEN'S FUNCTIONS ARE THE RUN'S, in its
         # scratch folder (§ 2a.11, *What a run's points share*), or beside
         # the run's files where the vocabulary states none: the block names
@@ -239,7 +239,7 @@ def _transmission_layout(derived, frame, state_block, point, scratch_dir,
     ``write_subs.F``, ``outcoor.f``).
     """
     return (
-        _sc.Block("identity and what this rung computes",
+        _sc.Block("identity and what this stage computes",
                   _emit_transmission_header),
         _sc.Block("cell, coordinates and region metadata",
                   _geometry_block(frame)),
@@ -250,7 +250,7 @@ def _transmission_layout(derived, frame, state_block, point, scratch_dir,
         _TRANSMISSION_TEMPERATURE_SECTION,
         _sl.spin_section(fixed=derived["spin_fixed"]),
         state_block,
-        _sc.Block("what this rung reads", _emit_transmission_run),
+        _sc.Block("what this stage reads", _emit_transmission_run),
         # tbtrans writes no Green's function file (§ 2a.11): no `GF` line.
         _sc.Block("the junction: its electrodes and reservoirs",
                   _electrode_block(None)),
@@ -270,12 +270,12 @@ def _emit_device_header(struct, cfg) -> str:
         f"#  TranSIESTA DEVICE {deck_role('siesta')} — {label}",
         "#  The open-boundary NEGF calculation on the composed junction, at",
         "#  one bias.  The leads are not solved here: each one's Hamiltonian",
-        f"#  was computed by its own rung and is read from the {SIESTA_TSHS} "
+        f"#  was computed by its own stage and is read from the {SIESTA_TSHS} "
         "named in",
         "#  the TS.Elec blocks below, which is what makes this an OPEN",
         "#  boundary rather than a bigger periodic cell.",
         "#",
-        "#  Read by siesta (TranSIESTA) alone.  The transmission rung has its",
+        "#  Read by siesta (TranSIESTA) alone.  The transmission stage has its",
         "#  own deck for tbtrans; siesta reads no TBT.* keyword, so none is",
         "#  written here (engines/transport.md 6.1b).",
         "# ================================================================== #",
@@ -290,7 +290,7 @@ def _emit_transmission_header(struct, cfg) -> str:
     return "\n".join([
         "# ================================================================== #",
         f"#  TBtrans TRANSMISSION {deck_role('siesta')} — {label}",
-        "#  T(E) from the device rung's converged Hamiltonian, at the same",
+        "#  T(E) from the device stage's converged Hamiltonian, at the same",
         "#  bias.  No self-consistent run happens here: tbtrans reads the",
         f"#  device's {compose(label, SIESTA_TS_HSX)} and the leads' "
         f"{SIESTA_TSHS} and evaluates the",
@@ -322,15 +322,15 @@ def _emit_device_run(struct, cfg) -> str:
     """What makes this deck the device's: TranSIESTA, started from the seed's
     density.  Its bias point is `TS.Voltage` in the TranSIESTA section."""
     return "\n".join([
-        "# --- TranSIESTA, at this rung's bias point ---",
+        "# --- TranSIESTA, at this stage's bias point ---",
         "#",
         "# `SolutionMethod transiesta` -- in the SCF section above, fixed by",
-        "# this rung -- switches the SCF cycle to NEGF.  (`TS.SolutionMethod`,",
+        "# this stage -- switches the SCF cycle to NEGF.  (`TS.SolutionMethod`,",
         "# in the TranSIESTA section below, is a different keyword: how the",
         "# NEGF Green's function is inverted.)",
         "",
         "# Start the NEGF SCF from a saved density when one is present: the",
-        f"# seed rung leaves <SystemLabel>{SIESTA_DM} beside this deck, and a "
+        f"# seed stage leaves <SystemLabel>{SIESTA_DM} beside this deck, and a "
         f"{SIESTA_TSDE}",
         "# is read through the same switch.  Written, though SIESTA's default",
         "# is true, so the deck states its answer.  With no file, SIESTA",
@@ -346,7 +346,7 @@ def _emit_transmission_run(struct, cfg) -> str:
     section of TranSIESTA settings tbtrans reads."""
     label = cfg.system_label
     return "\n".join([
-        "# --- tbtrans, on the device rung's converged Hamiltonian ---",
+        "# --- tbtrans, on the device stage's converged Hamiltonian ---",
         "#",
         "# No SolutionMethod: tbtrans runs no SCF.",
         "",
@@ -639,7 +639,7 @@ def _emit_restart_group(struct, cfg) -> str:
     from ..siesta.input import _restart_group_lines
 
     return "\n".join([
-        "# --- Restart: what this rung reads if it is there ---",
+        "# --- Restart: what this stage reads if it is there ---",
         "#",
         f"# Written in BOTH states on purpose: SIESTA reads "
         f"<SystemLabel>{SIESTA_DM}",
@@ -670,15 +670,15 @@ def _emit_solver_note(struct, cfg) -> str:
     return "\n".join([
         "# --- The seed's solver: ordinary diagonalisation, NOT transiesta ---",
         "#",
-        "# This rung is a periodic WARM-UP, not the NEGF calculation, so its",
-        "# `SolutionMethod` below is `diagon`, fixed by the rung: `transiesta`",
+        "# This stage is a periodic WARM-UP, not the NEGF calculation, so its",
+        "# `SolutionMethod` below is `diagon`, fixed by the stage: `transiesta`",
         "# here would attempt an open-boundary solve with no electrode",
         "# self-energies defined, which is not what this deck is and not",
         "# what the ladder needs from it.",
         "#",
         f"# SIESTA writes <SystemLabel>{SIESTA_DM} as this SCF converges, and "
         "that",
-        "# file -- nothing else from this rung -- is what the device stage",
+        "# file -- nothing else from this stage -- is what the device stage",
         "# reads as its starting density.  There is no MD block anywhere in",
         "# this deck, and that absence is what makes it a single point: the",
         "# geometry was relaxed upstream and moving it here would invalidate",
@@ -784,9 +784,9 @@ def transport_spec(struct: Structure, cfg, *, state,
     shape = SHAPE_OF_RUNG.get(rung)
     if shape is None:
         raise ValueError(
-            f"{rung!r} is not a transport rung; the ladder is "
+            f"{rung!r} is not a transport stage; the ladder is "
             f"{', '.join(SHAPE_OF_RUNG)}.  "
-            f"`prep` names the rung and hands it down as `stage_token`.")
+            f"`prep` names the stage and hands it down as `stage_token`.")
 
     # THE RUNG'S K-POINT MESH(ES), worked out once (`kmesh.mesh_for`,
     # `engines/siesta.md` § 6.1): read by the block that writes each, the
@@ -967,10 +967,10 @@ def _state_block(state):
         lines = [f"# Spin: {t.value} ({t.said});",
                  f"#   unpaired electrons (2S): {c.value} ({c.said}).",
                  "#   Decided ONCE, on the whole junction, and the same "
-                 "on every rung:",
+                 "on every stage:",
                  "#   TranSIESTA joins the leads' self-energies to the "
                  "device, so all",
-                 "#   five rungs solve the same spin channels."]
+                 "#   five stages solve the same spin channels."]
         lines.append(f"# NetCharge: not written -- {q.value:+d} ({q.said}).")
         return "\n".join(lines)
 

@@ -354,7 +354,7 @@ def prediction_table(preds: Sequence[Prediction]) -> str:
                  "it moves.")
     # WHAT A LAUNCH MAY RESTATE (`commands.LAUNCH_FLAGS`): the wall; the
     # queue, ranks, cores, GPUs and memory are prep's.
-    lines.append("  change the wall (--time) and ask again, or launch when you "
+    lines.append("  change the time limit (--time) and ask again, or launch when you "
                  "are happy -- the queue, ranks, cores, GPUs and memory are "
                  "prep's.")
     return "\n".join(lines)

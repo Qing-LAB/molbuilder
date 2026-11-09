@@ -607,7 +607,7 @@ def read_lane_ask(key: str, val: Any) -> str:
     from .template import shown
     if not isinstance(val, str) or not val.strip():
         raise ValueError(
-            ("'time' is this run's wall, written as text -- \"4h\", "
+            ("'time' is this run's time limit, written as text -- \"4h\", "
              "\"7-00:00:00\"; left out, the allocation's is used"
              if key == "time" else
              "'domain' is a queue's name, written as text; left out, the "

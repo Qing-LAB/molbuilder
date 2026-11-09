@@ -82,14 +82,14 @@ queues = [
 ]
 refused = ["states no queue (domain)", "the target's record lists:",
            "cpu/public", "cpu/debug",
-           "1h is over debug's wall (00:15:00)",
+           "1h is over debug's time limit (00:15:00)",
            "8 GB is over debug's largest machine (4 GB)"]
 
 [[case]]
 name = "every value stated nowhere is named in one refusal"
 run_unset = ["mpi_np", "omp_threads"]
 allocation_unset = ["domain", "time", "mem"]
-refused = "states no ranks (mpi_np), cores per rank (omp_threads), queue (domain), wall (time), memory (mem)"
+refused = "states no ranks (mpi_np), cores per rank (omp_threads), queue (domain), time limit (time), memory (mem)"
 
 [[case]]
 name = "a queue the target's record does not list is refused"
@@ -274,7 +274,7 @@ deck = ["MAX_MEMORY_MB = None", "max_memory = MAX_MEMORY_MB,", "max_memory_mb=MA
 
 [[case]]
 name = "a run's placement is recorded at prep, each value with its source, and said"
-said = ["placed on cpu (cpu/public)", "queue, wall, memory from the job request's allocation", "ranks, cores per rank from the run card",
+said = ["placed on cpu (cpu/public)", "queue, time limit, memory from the job request's allocation", "ranks, cores per rank from the run card",
         "header: -J H2_01_coarse  -N 1  -n 2  -c 1  -t 0-01:00:00  -p cpu  -q public  --mem=8G"]
 
 [[case]]
@@ -326,7 +326,7 @@ refused = "--mem: "
 [[case]]
 name = "the fit says the wall: one longer than the queue allows is prepared as asked, and said (scheduler.md R6)"
 allocation = { domain = "debug" }
-said = ["1h is over debug's wall (00:15:00)"]
+said = ["1h is over debug's time limit (00:15:00)"]
 header = ["#SBATCH -q debug", "#SBATCH -t 0-01:00:00"]
 
 # A benchmark keeps the calculation's ask -- `allocation` is the
