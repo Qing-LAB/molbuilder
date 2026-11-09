@@ -2184,16 +2184,17 @@ class TestFilesUpload:
         prompt.
 
         `web-api.md` § 1 status table (409). Refusal is the default;
-        `overwrite` is the opt-in.
+        `overwrite` is the opt-in -- and the answer says it is one the page
+        may ask about, as a save's is (`projects.md` § 5, `needsOverwrite`),
+        so the sidebar's Upload asks rather than telling the person to pass a
+        flag (2.69.9).
         """
-        # No implicit overwrite: clash at destination is 409.  The
-        # sidebar's UX is "delete first, then re-upload".
         target = picker_root / "proj" / "spectrum"
         target.mkdir(parents=True)
         (target / "geom.xyz").write_text("existing\n")
         r = self._post(web, target, "geom.xyz", b"replacement\n")
         assert r.status_code == 409
-        assert "already exists" in r.get_json()["error"]
+        assert r.get_json()["needsOverwrite"] is True, r.get_json()
         # Original file content is untouched.
         assert (target / "geom.xyz").read_text() == "existing\n"
 

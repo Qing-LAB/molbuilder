@@ -1360,13 +1360,11 @@ def api_files_upload():
                               f"tries; directory may be malfunctioning"),
                 }), 500
         else:
+            # THE DOOR'S CALLER ASKS, as a save's does (`projects.md` § 5):
+            # `needsOverwrite`, and the page offers to replace it.
             return jsonify({
-                "ok": False,
-                "error": (f"file already exists: {str(dest)!r}.  "
-                          f"Delete it first via the sidebar (or your "
-                          f"shell) and re-upload, pass overwrite=true, "
-                          f"or pass auto_rename=true to pick a non-"
-                          f"colliding name."),
+                "ok": False, "needsOverwrite": True,
+                "error": f"a file named {dest.name} is already here",
             }), 409
 
     # Phase 6e second-review LANDMINE #18: refuse to follow a

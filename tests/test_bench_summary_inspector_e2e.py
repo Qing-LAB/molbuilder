@@ -115,8 +115,15 @@ def test_it_really_re_polls_and_stops_when_put_away(page, server, sweep):
     while it ran, never less than 2 s: a watch shorter than one cycle sees
     a running loop as stopped.
 
-    MUTATION THIS MUST FAIL AGAINST: `POLL_MS` off 15 000 (the re-polls
-    armed at another delay).
+    AND A LOOK THAT FAILS IS NOT THE END (B4, 2.69.9): the second look finds
+    no server -- a restart, as the browser meets it -- and the sweep stays on
+    screen, the failure said in its foot in the reader's words, and the next
+    look comes on time.  Through 2.69.8 the page replaced the sweep with the
+    error and stopped looking.
+
+    MUTATIONS THIS MUST FAIL AGAINST: `POLL_MS` off 15 000 (the re-polls
+    armed at another delay); a failed look that stops the loop, or that is
+    not said.
     """
     errors = _open(page, server, sweep, before="""
         window.__starts = [];
@@ -127,9 +134,18 @@ def test_it_really_re_polls_and_stops_when_put_away(page, server, sweep):
             if (String(a[0]).includes('/api/bench/summary')) {
                 window.__starts.push(performance.now());
                 window.__armedBy.push(firing);
+                // THE SECOND LOOK FINDS NO SERVER.
+                if (window.__starts.length === 2)
+                    return Promise.reject(new TypeError('Failed to fetch'));
             }
             return realFetch(...a);
         };
+        window.__failedSaid = [];
+        new MutationObserver(() => {
+            const f = document.querySelector('.bench-failed');
+            if (f) window.__failedSaid.push(f.textContent);
+        }).observe(document, {subtree: true, childList: true,
+                              characterData: true});
         const realTimeout = window.setTimeout;
         window.setTimeout = (fn, ms, ...r) => realTimeout(
             typeof fn !== 'function' ? fn : (...x) => {
@@ -138,6 +154,12 @@ def test_it_really_re_polls_and_stops_when_put_away(page, server, sweep):
             },
             ms === 15000 ? 40 : ms, ...r);""")
     page.wait_for_function("() => window.__starts.length >= 3", timeout=10000)
+    said = page.evaluate("() => window.__failedSaid")
+    assert any("failed" in t and "could not reach the server" in t
+               for t in said), (
+        f"the failed look was not said in the sweep's foot: {said}")
+    assert page.locator(".bench-summary").count() == 1, (
+        "the sweep left the screen after a look that failed")
     armed = page.evaluate("() => window.__armedBy")
     assert 15000 in armed, (
         "no re-poll was armed on the trajectory viewer's 15 s cadence "

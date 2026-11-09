@@ -180,7 +180,8 @@ it:
 **Tagging atoms.** In an editable view the panel tags the selected atoms with a
 label — one a calculation reads (a transport calculation's `L-electrode`,
 `R-electrode`, `bridge`, `buffer`), MolView's own `interface` and
-`frozen_atoms`, or a name you type. They show as chips you can remove. These are not decoration: they are
+`frozen_atoms`, or a name you type. They show as chips you can remove, each spelled as it is stored — case
+kept, never set in capitals *(2.69.9)*. These are not decoration: they are
 written into the structure's sidecar file and into the generated input script, so
 the calculation and the results view both see what was set here.
 

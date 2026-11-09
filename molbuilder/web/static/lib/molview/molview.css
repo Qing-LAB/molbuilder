@@ -1168,8 +1168,8 @@
     padding: 0.05em 0.25em 0.05em 0.5em;
     margin: 0 0.25em 0.15em 0;
     font: 600 var(--molviewer-text-2xs)/1.4 var(--molviewer-font-ui);
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
+    /* A LABEL IS DRAWN AS IT IS SPELLED: it is the person's name for the
+     * atoms (`Au_tip` and `AU_TIP` are two labels), never set in capitals. */
     border-radius: var(--molviewer-radius-sm);
 }
 .molviewer-label-region {

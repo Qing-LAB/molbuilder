@@ -97,7 +97,13 @@
         return row;
     }
 
+    /* THE CHANNELS AS LAST READ, so a name typed that is one of them puts
+     * its kind back in the form: a save sends the kind ticked, and a
+     * channel re-saved under the form's first kind would change its kind. */
+    var stored = [];
+
     function paintChannels(d) {
+        stored = d.channels || [];
         var list = $("tm-list");
         if (list) {
             list.textContent = "";
@@ -343,11 +349,25 @@
         }
     }
 
+    /** A name typed that is a stored channel's: its kind ticked. */
+    function kindOfNamed() {
+        var name = (($("tm-name") || {}).value || "").trim();
+        var c = stored.filter(function (x) { return x.name === name; })[0];
+        if (!c) return;
+        KIND_IDS.forEach(function (id) {
+            var el = $(id);
+            if (el) el.checked = el.value === c.kind;
+        });
+        syncKindField();
+    }
+
     function init() {
         KIND_IDS.forEach(function (id) {
             var el = $(id);
             if (el) el.addEventListener("change", syncKindField);
         });
+        var nameEl = $("tm-name");
+        if (nameEl) nameEl.addEventListener("input", kindOfNamed);
         syncKindField();
         var form = $("tm-form");
         if (form) form.addEventListener("submit", saveChannel);

@@ -1866,6 +1866,22 @@ before it was fixed. Docs only — the code text the review found is 2.62.1's.
 | E2E-MON | **closed after 2.62.1** (the user, 2026-11-02: "those two failures seems to be an outdated tests") | `test_monitor_watches_a_live_run_e2e.py::test_every_file_that_ships_beside_a_job_reads_the_run_without_molbuilder` failed: `AttributeError: 'Run' object has no attribute 'run'` — it still handed the monitor the try number 2.60.0 removed (`WatchedRun(run=…)`) | the test: the monitor told the run by its names alone; passes |
 | E2E-STOP | **closed after 2.62.1** (the same) | `test_siesta_stopped_run_e2e.py::test_the_run_panel_says_what_ran_and_why_it_stopped[chromium]` failed: `FileNotFoundError` on a path with the calculation's folder doubled — it read the ladder button's title as a path from the calculation, where since 2.59.0 the page names a path it only shows from the projects folder (`web/results.md` § 0.3) | the test: the run's folder from the projects folder; passes |
 
+## Found by the UI review's group C, what a page says after an action (2026-11-09), by the release that owns each
+
+*(Group C's items on the sidebar, the Molbuilder tab, the benchmark page and This machine, each checked against its contract before the fix)*
+
+| id | where | finding | door |
+|---|---|---|---|
+| K2699-1 | **closed 2.69.9** | an upload whose name was already in the folder was refused with words for a script (*pass overwrite=true, or pass auto_rename=true*), which a person in the sidebar cannot do | the route answers `needsOverwrite`, as a save's does, and the sidebar asks *Replace water.xyz?*, sending again on a yes (`projects.md` § 5) |
+| K2699-2 | **closed 2.69.9** | the benchmark page replaced the sweep with the error at the first look that failed and stopped looking — a server restart froze it | the last answer stays with its two clocks, the foot says the failed look, the next look comes on time, as the trajectory viewer's poll (`bench-summary.md` B4) |
+| K2699-3 | **closed 2.69.9** | a label's chip was set in capitals, so `Au_tip` showed as `AU_TIP` — two different labels drawn alike | the chip spells the label as stored (`molview.md` § 1) |
+| K2699-4 | **closed 2.69.9** | the Molbuilder tab's Save said *Saved water.xyz.* and dropped what the server said of the box, which the viewer's own Export said | the server's notices after the outcome, in the tone that says read this (`tabs.md` § 6) |
+| K2699-5 | **closed 2.69.9** | on This machine, an edit of a listener's address under its name saved it as a Slack webhook — the form's first kind stayed ticked — so every report went unsigned to a listener that refuses it | a name typed that is a stored channel's ticks its kind (`this-machine.md` § 3) |
+| K2699-6 | **closed 2.69.9** | *Issue a key to* asked for *your molbuilder user id*, a name molbuilder uses nowhere else | *the email you sign in with* — the name the report log reads by default |
+| K2699-7 | 2.69.10 | the optimization and Spectrum tabs do not say where the Send writes before the click, and their live check asks with no folder (K2698-7) | each tab follows the sidebar's folder and says it beside the Send; the live check asks of that folder |
+| K2699-8 | 2.69.10 | the Spectrum tab's form starts over after a switch to another tab and back | kept across a tab switch as the optimization tab's is |
+| K2699-9 | 2.69.10 | Results' stage ladder clips a long stage name | the ladder's layout |
+
 ## Found by the UI review's group C, sending a structure (2026-11-09), by the release that owns each
 
 *(Group C's items on the road from a structure tab to Task setup — the optimization and Spectrum tabs' Send — each checked against its contract before the fix)*

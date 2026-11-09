@@ -303,3 +303,43 @@ def test_the_readout_follows_the_model_whichever_arrives_first():
         assert "Unsaved" in said, (
             f"with the {order} order the readout did not follow the model "
             f"after an edit: {said!r} -- the panel is wired to nothing")
+
+
+def test_a_save_says_what_the_server_said_of_it():
+    """`tabs.md` § 6 step 4: on success the periodicity gate's `notices` come
+    back verbatim -- and the panel's line says them after the outcome, in the
+    tone that says *read this*.  The notices are the gate's own, for a water
+    molecule with no box (`periodicity_gate.validate_periodicity`, which the
+    save route asks).
+
+    THE SILENT FAILURE: through 2.69.8 the line said only *Saved water.xyz.*
+    and dropped what the server said of the box -- the viewer's own Export
+    said it, the tab's button did not."""
+    import numpy as np
+    from molbuilder.periodicity_gate import validate_periodicity
+    from molbuilder.structure import Structure
+    _s, notices = validate_periodicity(Structure(
+        elements=["O", "H", "H"],
+        positions=np.array([[0.0, 0.0, 0.0], [0.757, 0.586, 0.0],
+                            [-0.757, 0.586, 0.0]])))
+    assert notices, "this row must reach the branch where the gate speaks"
+    out = _run_node(f"""
+        const said = [];
+        molbuilder.status = {{ set: (el, msg, kind) => said.push({{ msg, kind }}) }};
+        let click = null;
+        const el = () => ({{ textContent: "", disabled: false,
+            addEventListener: (t, f) => {{ if (t === "click") click = f; }} }});
+        const nodes = {{ "save-to-source-btn": el(), "save-readout": el(),
+                         "save-status": el() }};
+        mod.configure({{ projects: {{ molviewFiles: fakeDoor([
+                             {{ ok: true, path: "/p/water.xyz",
+                                notices: {json.dumps(notices)} }}]) }},
+                         structurePage: fakePage() }});
+        mod.useViewer({{ ok: true, data: fakeModel() }});
+        mod.wirePanel({{ doc: {{ getElementById: (id) => nodes[id] || null }} }});
+        click();
+        setTimeout(() => console.log(JSON.stringify(said[said.length - 1])), 20);
+    """)
+    assert out["msg"].startswith("Saved water.xyz."), out
+    assert all(n["message"] in out["msg"] for n in notices), out
+    assert out["kind"] == "warn", out

@@ -380,7 +380,7 @@ citation that cannot be cited answers `ok: true` with the refusal as its
 | 400 | bad body / validation / parse failure (the default of `err()`) — **including a path escaping the allowed roots**: the picker roots are an addressable-space boundary, not a permission model, so a path outside them is a malformed request rather than a forbidden one *(corrected 2026-09-09; this row said 403 while `files._resolve_within_roots` had always raised 400 across eight routes, and one test hedged `in (400, 403)`, which is how the disagreement stayed invisible)* |
 | 403 | forbidden — an admin-gate reject. **Authorization only**: the caller is known and may not do this |
 | 404 | no such file / directory / route |
-| 409 | conflict — among them a rename/move/copy/mkdir/write whose destination exists, and a checkpoint route that needs a history, asked of a folder without one (§ 5) |
+| 409 | conflict — among them a rename/move/copy/mkdir/write whose destination exists; an upload or a structure save whose file exists, `needsOverwrite: true`, which the page asks about and sends again with `overwrite`; and a checkpoint route that needs a history, asked of a folder without one (§ 5) |
 | 413 | payload too large — over the 50 MB global upload cap |
 | 422 | unprocessable (spectra) |
 | 500 | internal / I/O / parse fault |

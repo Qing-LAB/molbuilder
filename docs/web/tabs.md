@@ -566,7 +566,8 @@ things and no more: **what** (the viewer's export) and **a suggested stem**.
 4. An existing file answers **`409 {needsOverwrite: true}`**; the door confirms
    through `confirmDestructive` and retries with `overwrite: true`. On success
    the sidebar refreshes and the periodicity gate's `notices` come back
-   verbatim.
+   verbatim — and the panel's line says them after *Saved water.xyz.*, in the
+   tone that says *read this* *(2.69.9; the line said the outcome alone)*.
 
 **What the tab keeps is the panel, not the pipeline**: the readout beside the
 button — *"Target: `<name>.xyz`"*, *"Unsaved — Target: …"* once you edit

@@ -612,7 +612,24 @@
         match:       (file, meta) => !!(meta && meta.parser === "job-set-sweep"),
 
         mount(host, file, ctx) {
-            const state = { disposed: false, timer: null };
+            const state = { disposed: false, timer: null, drawn: false };
+
+            /* A LOOK THAT FAILED, said in the foot of the sweep on screen
+             * (B4): the last answer stays with its two clocks, which age as
+             * they should, and the failure is said beside them. */
+            function sayFailed(error) {
+                const foot = host.querySelector(".bench-foot");
+                if (!foot) return;
+                let said = foot.querySelector(".bench-failed");
+                if (!said) {
+                    said = el("span", "bench-failed");
+                    foot.appendChild(said);
+                }
+                said.replaceChildren(
+                    root.document.createTextNode(" \u00b7 the look at "
+                        + new Date().toLocaleTimeString() + " failed: "),
+                    root.molbuilder.dom.codeWords(error));
+            }
 
             async function refresh() {
                 if (state.disposed) return;
@@ -620,19 +637,32 @@
                 const answer = await root.molbuilder.server.ask(
                     "/api/bench/summary?path=" + encodeURIComponent(file));
                 if (state.disposed) return;
-                if (!answer.ok) {
-                    if (ctx && ctx.showError) ctx.showError(answer.error);
-                    else host.replaceChildren(root.molbuilder.dom.codeWords(answer.error));
-                    return;                       // and stop polling a refusal
+                if (answer.ok) {
+                    render(host, answer.body);
+                    if (!state.drawn) {
+                        state.drawn = true;
+                        /* FIRST RENDER ON SCREEN: the picker drops its
+                         * "Parsing..." line on this event
+                         * (`lib/results/file-picker.js`) rather than waiting
+                         * out its fallback timer -- as the sweep presenter
+                         * does. */
+                        root.document.dispatchEvent(new root.CustomEvent(
+                            ((root.molbuilder || {}).constants || {})
+                                .EVENT_INSPECTOR_READY
+                                || "molbuilder:inspector:ready",
+                            { detail: { inspector: "bench-summary" } }));
+                    }
+                } else if (state.drawn) {
+                    sayFailed(answer.error);
+                } else if (ctx && ctx.showError) {
+                    ctx.showError(answer.error);
+                } else {
+                    host.replaceChildren(
+                        root.molbuilder.dom.codeWords(answer.error));
                 }
-                render(host, answer.body);
-                /* FIRST RENDER ON SCREEN: the picker drops its "Parsing..."
-                 * line on this event (`lib/results/file-picker.js`) rather than
-                 * waiting out its fallback timer -- as the sweep presenter does. */
-                root.document.dispatchEvent(new root.CustomEvent(
-                    ((root.molbuilder || {}).constants || {})
-                        .EVENT_INSPECTOR_READY || "molbuilder:inspector:ready",
-                    { detail: { inspector: "bench-summary" } }));
+                /* THE NEXT LOOK COMES ON TIME, whatever this one answered --
+                 * as the trajectory viewer's poll does: a server restarting
+                 * is a look that failed, not a page that stops. */
                 state.timer = root.setTimeout(refresh, POLL_MS);
             }
             refresh();

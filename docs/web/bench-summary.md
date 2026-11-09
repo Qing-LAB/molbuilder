@@ -70,6 +70,12 @@ cache — or from a server running six-day-old code, which is how this was
 found — ticks just as freshly. A widening gap between the two is the tell, and
 it is only visible if both are printed.
 
+**A look that fails keeps the sweep on screen** *(2.69.9)*: the last answer
+stays drawn with its two clocks, the foot adds *the look at HH:MM:SS failed:*
+and the reader's words for why (`ui-contract.md` § 12), and the next look comes
+on time — as the trajectory viewer's poll does. The page stopped looking at the
+first failure until then, so a server restart froze it on an error.
+
 > **The plot's door is the PARSER, not `/api/watch/*` (corrected 2026-08-25).**
 > This table named the watch endpoint, which cannot serve a sweep: that
 > blueprint keeps *"a single global 'current file' dict guarded by a Lock"*

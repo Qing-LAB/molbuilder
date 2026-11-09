@@ -106,6 +106,12 @@ differently and a person cannot be expected to infer it from a URL:
 - a **molbuilder listener** — a plain address plus a key that signs the body
   and never travels.
 
+**A name typed that is a stored channel's ticks its kind** *(2.69.9)*: a save
+sends the kind ticked, so an edit of a listener's address under the form's
+first kind would have saved it as a webhook — every report then unsigned, and
+refused. Another kind can still be ticked after the name. The key is issued to
+**the email you sign in with**, the name the report log reads by default (§ 4.1).
+
 **Saving merges, twice over** (`run-reports.md` § 3.1). Saving one channel
 leaves the others exactly as they were, and within a channel the fields this
 page manages go over whatever is already stored — so the empty key box means

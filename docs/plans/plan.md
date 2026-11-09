@@ -80,8 +80,12 @@ with design questions for the user), then the launch-from-the-page design.
 plan's refusal said, a queue unchosen, the run's counts named (the ledger's
 *Found by … 2.69.7*); **2.69.8**: group C's Send — the name as typed, the box
 advice by engine, the pseudopotential folder not drawn missing, the frame on
-screen said (the ledger's *Found by … sending a structure*); next, 2.69.9,
-group C's page items.
+screen said (the ledger's *Found by … sending a structure*); **2.69.9**: what
+a page says after an action — an upload asks to replace, the benchmark page
+keeps looking, a label spelled as stored, the Save's notices, a channel's kind
+kept (the ledger's *Found by … after an action*); next, 2.69.10, the tabs
+following the sidebar's folder (where the Send writes, the live check of it),
+the Spectrum form kept, the ladder's layout.
 
 **What runs next**: **the UI review** *(the user, 2026-11-08: "Right after
 2.67.11")* — every tab walked in Chrome on the dev server through an

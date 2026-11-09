@@ -220,8 +220,7 @@
         /* The app's one severity surface (`lib/status.js`); its `error` IS
          * red. */
         function setStatus(msg, kind) {
-            root.molbuilder.status.set(
-                status, msg, kind === "error" ? "error" : null);
+            root.molbuilder.status.set(status, msg, kind || null);
         }
 
         _refresh = refreshState;
@@ -234,7 +233,16 @@
             save().then(function (r) {
                 _inFlight = false;
                 if (r && r.ok) {
-                    setStatus("Saved " + _basename(r.path) + ".");
+                    /* WHAT THE SERVER SAID OF IT, beside the outcome
+                     * (`tabs.md` § 6 step 4): the gate's notices, verbatim.
+                     * The save stood, so a notice is no error -- the line's
+                     * warn tone says *go and read it*, as the hand-over's. */
+                    var heard = (Array.isArray(r.notices) ? r.notices : [])
+                        .map(function (n) { return n && n.message; })
+                        .filter(Boolean);
+                    setStatus("Saved " + _basename(r.path) + "."
+                              + (heard.length ? "  " + heard.join("  ") : ""),
+                              heard.length ? "warn" : null);
                 } else if (r && r.cancelled) {
                     setStatus("");
                 } else {

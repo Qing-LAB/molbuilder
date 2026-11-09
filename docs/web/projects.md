@@ -445,7 +445,7 @@ one it took away — § 2; the sidebar showing one re-lists it)
 | `mkdir(parent, name)` | `POST /api/files/mkdir` |
 | `deleteEntry(path, recursive)` | `DELETE /api/files/delete` |
 | `rename(path, newName)` / `move(path, dest)` / `copy(path, dest)` | rename / move / copy |
-| `upload(dir, file)` | `POST /api/files/upload` |
+| `upload(dir, file, {overwrite})` | `POST /api/files/upload` — a name already in the folder answers `409 {needsOverwrite: true}`, and the sidebar's Upload asks, as a save does (*Replace geom.xyz?*), posting again with `overwrite` on a yes *(2.69.9)* |
 
 **Locking** (local, no network) — `lock(reason)` / `unlock()` / `isLocked()` /
 `getLockReason()` / `cancelLockedOperation()`: one operation at a time, with a

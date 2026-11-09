@@ -21,7 +21,7 @@
  */
 
 import {
-  chooseName, chooseUploadFile,
+  chooseName, chooseUploadFile, confirmDestructive,
 } from "./dialogs.js";
 import {
   projects, getProjectsRoot, SS_DIR, atProjectsRoot, readSelectionSlot, tell,
@@ -210,8 +210,20 @@ async function _doUpload() {
   const ctx = projects.relativeToProjects(currentDir) || "projects/";
   const file = await chooseUploadFile({ contextDir: ctx });
   if (!file) return;
-  const r = await projects.upload(currentDir, file);
+  let r = await projects.upload(currentDir, file);
   if (r && r.aborted) return;
+  // A FILE OF THAT NAME ALREADY HERE: the person is asked, as a save asks
+  // (`projects.md` § 5), and a yes replaces it.
+  if (r && r.needsOverwrite) {
+    const sure = await confirmDestructive({
+      title: "Replace " + file.name + "?",
+      body: "A file named " + file.name + " is already in " + ctx
+          + ".  Uploading replaces it.",
+      confirmLabel: "Replace",
+    });
+    if (!sure) return;
+    r = await projects.upload(currentDir, file, { overwrite: true });
+  }
   if (!r || !r.ok) {
     tell("error", (r && r.error) || "Upload failed.");
   }

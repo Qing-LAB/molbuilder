@@ -335,6 +335,36 @@ def test_a_listeners_key_never_reaches_the_page(page, flask_server,
         "has nothing to sign reports with")
 
 
+def test_an_edit_of_a_listener_keeps_it_a_listener(page, flask_server,
+                                                  config_home):
+    """`this-machine.md` § 3: a name typed that is a stored channel's ticks
+    its kind, because a save sends the kind ticked.  A person opens the page
+    to give the listener a new address: types its name, the new address,
+    Save -- and it is still a listener, its key kept.
+
+    THE SILENT FAILURE: through 2.69.8 the form's first kind, Slack, stayed
+    ticked, and the edit saved the listener as a Slack webhook -- every report
+    then sent unsigned, in Slack's shape, to a listener that refuses it."""
+    _open(page, flask_server)
+    _add_channel(page, "lab-listener", _LISTENER_URL,
+                 kind="listener", key=_SECRET_KEY)
+    errors = _open(page, flask_server)
+    moved = _LISTENER_URL.replace("aa11bb22cc33", "dd44ee55ff66")
+    page.fill("#tm-name", "lab-listener")
+    page.fill("#tm-url", moved)
+    page.click("#tm-save")
+    page.wait_for_function(
+        "() => document.querySelector('#tm-form-note')"
+        "      .textContent.startsWith('Saved lab-listener')", timeout=5000)
+    from molbuilder.monitor import load_channels
+    stored = load_channels()["lab-listener"]
+    assert stored["url"] == moved, stored.keys()
+    assert stored.get("kind") == "molbuilder", (
+        f"the edit saved the listener as {stored.get('kind')!r}")
+    assert stored.get("key") == _SECRET_KEY, "the edit lost the listener's key"
+    assert errors == [], errors
+
+
 def test_a_name_the_page_forbids_is_refused(page, flask_server):
     """The box says "Letters, digits, ``-`` and ``_``", so it must mean it.
 

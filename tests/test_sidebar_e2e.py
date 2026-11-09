@@ -180,3 +180,24 @@ def test_the_create_bar_makes_a_project_a_folder_and_an_upload(
     asked.locator("[data-action='confirm']").click()
     row(page, notes / "water.xyz").wait_for(state="visible", timeout=WAIT_MS)
     assert (notes / "water.xyz").read_bytes() == src.read_bytes()
+
+    # THE SAME NAME AGAIN (`projects.md` § 5, 2.69.9): the sidebar asks, as a
+    # save asks, and a yes replaces the file -- through 2.69.8 the upload was
+    # refused with words telling the person to "pass overwrite=true".
+    again = tmp_path_factory.mktemp("again") / "water.xyz"
+    again.write_text("3\nwater, moved\nO 0 0 1\nH 0.957 0 1\nH -0.239 0.927 1\n")
+    bar.locator("#ps-create-upload-btn").click()
+    asked.wait_for(state="visible", timeout=WAIT_MS)
+    asked.locator("input[data-role='file']").set_input_files(str(again))
+    asked.locator("[data-action='confirm']").click()
+    replace = page.locator("dialog.mb-dialog[open]",
+                           has_text="Replace water.xyz?")
+    replace.wait_for(state="visible", timeout=WAIT_MS)
+    replace.locator("[data-action='discard']").click()
+    replace.wait_for(state="detached", timeout=WAIT_MS)
+    for _ in range(100):           # the second post lands after the yes
+        if (notes / "water.xyz").read_bytes() == again.read_bytes():
+            break
+        page.wait_for_timeout(100)
+    assert (notes / "water.xyz").read_bytes() == again.read_bytes(), (
+        "the yes did not replace the file")
