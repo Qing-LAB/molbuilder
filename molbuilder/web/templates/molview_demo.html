@@ -36,10 +36,11 @@
     <button id="demo-water" type="button">Water</button>
     <button id="demo-benzene" type="button">Benzene</button>
     <button id="demo-au-cell" type="button">Au (with cell)</button>
-    <button id="demo-trajectory" type="button">Trajectory (6 frames → __molview.setFrame)</button>
+    <button id="demo-trajectory" type="button">Trajectory (6 frames → __molview.reloadFrames)</button>
     <button id="demo-bad-box" type="button">Box that misses the molecule</button>
     <span style="margin-left:1rem;">Console: <code>__molview.getStructure()</code>,
-      <code>__molview.getSelection()</code>, <code>__molview.onChange(fn)</code></span>
+      <code>__molview.selection</code>, <code>__molview.subscribe(fn)</code>,
+      <code>__molview.setCurrentFrame(i)</code></span>
   </div>
 
   {#- EMPTY host -> molview builds everything into it (the full-component build path). -#}

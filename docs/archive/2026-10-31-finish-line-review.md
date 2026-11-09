@@ -1866,6 +1866,15 @@ before it was fixed. Docs only — the code text the review found is 2.62.1's.
 | E2E-MON | **closed after 2.62.1** (the user, 2026-11-02: "those two failures seems to be an outdated tests") | `test_monitor_watches_a_live_run_e2e.py::test_every_file_that_ships_beside_a_job_reads_the_run_without_molbuilder` failed: `AttributeError: 'Run' object has no attribute 'run'` — it still handed the monitor the try number 2.60.0 removed (`WatchedRun(run=…)`) | the test: the monitor told the run by its names alone; passes |
 | E2E-STOP | **closed after 2.62.1** (the same) | `test_siesta_stopped_run_e2e.py::test_the_run_panel_says_what_ran_and_why_it_stopped[chromium]` failed: `FileNotFoundError` on a path with the calculation's folder doubled — it read the ladder button's title as a path from the calculation, where since 2.59.0 the page names a path it only shows from the projects folder (`web/results.md` § 0.3) | the test: the run's folder from the projects folder; passes |
 
+## Found by the UI review's group B, its last two items (2026-11-09), by the release that owns each
+
+*(B6 and B13 of the UI review's findings, read against `web/spectra.md` § 8, `web/molview.md` § 9.3 and § 9.4 before any fix; the user, 2026-11-09: "continue")*
+
+| id | where | finding | door |
+|---|---|---|---|
+| K2691-1 | **closed 2.69.1** | the Spectrum tab's Send card said to set frozen atoms *"in the viewer above"*, a read-only viewer that changes no label; `spectra.md` § 8 said the same | the card and § 8: the atoms labelled `frozen_atoms` on the Molbuilder tab and saved with the structure there |
+| K2691-2 | **closed 2.69.1** | the MolView demo page advertised `__molview.getSelection()`, `onChange(fn)` and `setFrame` — none exist on the handle | the page names the handle's own calls: `selection`, `subscribe(fn)`, `setCurrentFrame(i)`, and `reloadFrames` for its trajectory button |
+
 ## Found by the UI review's group B, its answer items, and 2.69.0's review rounds (2026-11-08), by the release that owns each
 
 *(B11 and B12 of the UI review's findings, read in the code against `web/ui-contract.md` and `ops/access-control.md` § 3.3 before any fix; the user, 2026-11-08: "Go ahead with recommendation but I want framework level fix not patching or hacking", and during the release: "make sure you are not patching, but understand the framework and do this systematically"; two review rounds over the whole touched modules, every finding read again in the code)*

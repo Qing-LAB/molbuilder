@@ -986,9 +986,12 @@ Frozen atoms are **structure-side facts**: they live in the model as a region
 and ride the structure's own files — the `.molstruct.json` half of the codec
 pair the hand-over writes — never a form field
 ([`archive/2026-08-20-spectra-migration-plan.md`](?doc=archive/2026-08-20-spectra-migration-plan.md)
-§ 2). Set them in the viewer, or load a structure whose sidecar already
-carries them; the Send button exports the model **in one read**
-(`exportFile()`), so what you see frozen is what the calculation holds fixed.
+§ 2). They are the atoms labelled `frozen_atoms` on the **Molbuilder** tab
+and saved with the structure there — this tab's inspect card is read-only and
+changes no label ([`molview.md`](?doc=web/molview.md) § 9.4) — so a structure
+loaded here brings its frozen set with it; the Send button exports the model
+**in one read** (`exportFile()`), so what you see frozen is what the
+calculation holds fixed.
 
 **Frozen means frozen through every phase** (user ruling 2026-08-21). When
 the deck relaxes, the relaxation holds the same set fixed — it writes
