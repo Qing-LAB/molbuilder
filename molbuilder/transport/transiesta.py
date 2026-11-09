@@ -228,10 +228,11 @@ def _lattice_block(struct: Structure, cell: np.ndarray) -> List[str]:
     # lead (`engines/transport.md` § 6.1c, I12 both ways; its findings
     # land in the deck's `.validation.txt`) -- the lines above are the
     # measurement, and this block judges nothing.
+    # THE ONE WRITER OF A GEOMETRY ROW (`siesta.deck_lines`), the SIESTA
+    # deck's too.
+    from ..siesta.deck_lines import lattice_rows
     lines.append("%block LatticeVectors")
-    for ax in range(3):
-        v = cell[ax]
-        lines.append(f"  {v[0]:14.8f} {v[1]:14.8f} {v[2]:14.8f}")
+    lines.extend(lattice_rows(cell))
     lines.append("%endblock LatticeVectors")
     return lines
 
@@ -266,21 +267,13 @@ def _emit_geometry(struct: Structure, cfg=None, frame=None) -> List[str]:
     # inside `.DM` and `.TSHS`, a value § 2a.13 binds to every stage, so a
     # second rule here is not a variation -- it is the defect.
     from ..chemistry import species_order as _species_order
+    from ..siesta.deck_lines import (coordinates_rows, species_index,
+                                     species_rows)
+    # An override that omits a species is refused by the one entry.
     species = _species_order(
         struct.elements,
         getattr(cfg, "species_order", None) if cfg is not None else None)
-    species_idx = {sp: i + 1 for i, sp in enumerate(species)}
-    # AN OVERRIDE THAT OMITS A SPECIES REFUSES HERE: `species_order` is
-    # honoured verbatim, so a list missing an element the structure contains
-    # would leave `species_idx[el]` to raise a bare `KeyError` while writing
-    # the coordinate block.
-    missing = sorted(set(struct.elements) - set(species_idx))
-    if missing:
-        raise ValueError(
-            f"species_order does not list {', '.join(missing)}, which this "
-            f"structure contains.  The order is honoured verbatim, so every "
-            f"species has to appear in it -- or leave it unset and the "
-            f"default rule orders them")
+    species_idx = species_index(species)
 
     # THE BOX, THEN ONE PLACEMENT (`engine_frame_for`).  A deck passes the
     # frame it records; a direct call gets the same answer computed here.
@@ -292,12 +285,11 @@ def _emit_geometry(struct: Structure, cfg=None, frame=None) -> List[str]:
     lines.append(f"NumberOfSpecies        {len(species)}")
     lines.append("")
     lines.append("%block ChemicalSpeciesLabel")
-    for sp in species:
-        # ``atomic_number`` raises rather than defaulting: a species with
-        # no element cannot be calculated, and Z=0 in this block is a
-        # ghost atom SIESTA would silently accept.
-        z = atomic_number(sp)
-        lines.append(f"  {species_idx[sp]:>3}  {z:>3}  {sp}")
+    # ``atomic_number`` raises rather than defaulting: a species with no
+    # element cannot be calculated, and Z=0 in this block is a ghost atom
+    # SIESTA would silently accept.
+    lines.extend(species_rows(species, [atomic_number(sp)
+                                        for sp in species]))
     lines.append("%endblock ChemicalSpeciesLabel")
     lines.append("")
     lines.extend(_lattice_block(struct, frame.cell))
@@ -306,7 +298,6 @@ def _emit_geometry(struct: Structure, cfg=None, frame=None) -> List[str]:
     lines.append("%block AtomicCoordinatesAndAtomicSpecies")
     # THE ONE WRITER OF A COORDINATE ROW (`siesta.deck_lines`), the
     # optimization and vibration deck's too.
-    from ..siesta.deck_lines import coordinates_rows
     lines.extend(coordinates_rows(struct.elements, frame.positions,
                                   species_idx))
     lines.append("%endblock AtomicCoordinatesAndAtomicSpecies")

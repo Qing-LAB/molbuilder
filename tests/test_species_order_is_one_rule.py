@@ -55,3 +55,18 @@ def test_numbered_labels_stay_distinct_and_hydrogen_lands_after_the_group():
         "a tie keeps first-seen order, so the file's own order survives"
 
 
+
+
+def test_an_order_a_person_states_is_taken_whole_or_refused_by_name():
+    """`species_order` as a person types it is honoured verbatim; one that
+    leaves out a species the structure holds is refused by the one entry,
+    naming it, before any deck exists -- for the SIESTA and the TranSIESTA
+    decks alike, which both ask it (`model/chemistry.md` § 3a).  THE SILENT
+    FAILURE: an order taken without the species, which the deck writers
+    each refused in their own words, or not at all.  MUTATION THIS MUST
+    FAIL AGAINST: the entry returning the override as typed (to 2.69.12)."""
+    assert species_order(["Au", "C", "H", "S"], ["Au", "S", "C", "H"]) == \
+        ["Au", "S", "C", "H"]
+    with pytest.raises(ValueError, match="species_order does not list H, "
+                                         "which this structure contains"):
+        species_order(["Au", "C", "H", "S"], ["Au", "S", "C"])

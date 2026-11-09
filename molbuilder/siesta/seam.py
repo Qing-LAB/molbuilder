@@ -1,6 +1,6 @@
 """SIESTA's seam -- what SIESTA supplies for `prep` to run its steps over it
 (`execution/script-preparation.md` § 4): its deck's spec, its sibling
-artifacts, its data files (the pseudopotentials, screened and copied into
+artifacts, its data files (the pseudopotentials, copied into
 ``pseudos/``), its shared package and its describe findings.  The part its
 record in the engine table names (``seam``), resolved by
 `jobset.engines.engine_seam`.  Floor 3 (`execution/architecture.md` § 2.1):
@@ -118,20 +118,16 @@ def siesta_provide_pseudos(struct, cfg, base: Path, plan=None) -> None:
     A species in neither place stops `prep` **by name**, before a deck is
     written.
 
-    **And then the science protocol runs on what is actually there.**
+    **The science protocol is the settings gate's, not this step's.**
     `science/pseudopotentials.md` exists because a defective `S.psml` with a
-    dead p-channel shipped into a real run on 2026-06-26: wrong sulfur bonding,
-    and `propor: ERROR: IMAX=0` — but only at high rank counts, so a small run
-    would have reported plausible, wrong numbers instead of crashing. The check
-    that catches that class reads the pseudopotentials themselves.
+    dead p-channel shipped into a real run on 2026-06-26.  The check that
+    catches that class reads the files the run will open, and it runs ONCE,
+    in the one gate (`validation.siesta._check_siesta_pseudo_coverage`, § 1),
+    at step 3.3 of every deck this prep renders -- after this step, reading
+    the folder as the plan will leave it.  This step copies.
 
-    This step runs the protocol against the **calculation** — which is where
-    the files the run reads actually are — and refuses on the same ERROR statuses the
-    preflight and `molbuilder pseudo check` refuse on, from the same shared
-    constant.
-
-    ``plan`` (`jobset.planned.Plan`) receives the copies; the screening
-    reads the folder as the plan will leave it (`pseudos.PLANNED`): `prep`
+    ``plan`` (`jobset.planned.Plan`) receives the copies, which the gate
+    reads as the plan will leave the folder (`pseudos.PLANNED`): `prep`
     decides everything before it writes (`job-system.md` § 5.0).
     """
     from ..jobset.errors import PrepError
@@ -147,7 +143,6 @@ def siesta_provide_pseudos(struct, cfg, base: Path, plan=None) -> None:
     want = [s for s, d in psml_sources(species, dest_dir=base).items()
             if d is None]
     if not want:
-        screen_pseudos(species, cfg, pdir)
         return
 
     lib_raw = getattr(cfg, "psml_lib", None)
@@ -183,44 +178,6 @@ def siesta_provide_pseudos(struct, cfg, base: Path, plan=None) -> None:
             f"<label>.psml in the directory it runs from and has no search "
             f"path, so it would refuse at startup.  Put the file in the "
             f"library, or point `psml_lib` at one that has it.")
-    screen_pseudos(species, cfg, pdir)
-
-
-def screen_pseudos(species, cfg, base: Path) -> None:
-    """`science/pseudopotentials.md` § 1, run on the calculation's own files.
-
-    Same engine (`pseudos.check_coverage`), same severity set
-    (`pseudos.ERROR_STATUSES`) and same XC-family table
-    (`pseudos.expected_xc_family`) as the render-time preflight and the
-    `molbuilder pseudo check` CLI, so the three surfaces cannot disagree about
-    what blocks.  What differs is only WHICH DIRECTORY is read: this one asks
-    about the files the run will open.
-
-    What blocks is `pseudos.ERROR_STATUSES` — a file absent or under a name
-    SIESTA does not open, a valence channel physically absent or claiming
-    zero strength, or the wrong XC family.  The rest are advisory, and the settings gate
-    reports them in the deck's report: it reads these same files
-    (`pseudos.psml_sources`), so printing them here too said each one twice.
-    While a prep is planned it reads the folder as the plan will leave it
-    (`pseudos.PLANNED`).
-    """
-    from ..jobset.errors import PrepError
-    from ..pseudos import ERROR_STATUSES, check_coverage, expected_xc_family
-    entries = check_coverage(
-        species, base,
-        expected_xc_family=expected_xc_family(
-            getattr(cfg, "xc_authors", "") or ""),
-        expected_xc_authors=(getattr(cfg, "xc_authors", "") or "") or None,
-    )
-    blocking = [e for e in entries if e.status in ERROR_STATUSES]
-    if blocking:
-        raise PrepError(
-            "the pseudopotentials in this calculation do not pass the "
-            "screening:\n  - "
-            + "\n  - ".join(f"{e.element}: {e.message}" for e in blocking)
-            + "\n  These are the checks that exist because a dead-channel "
-              "S.psml once shipped into a real run -- wrong bonding, and a "
-              "propor IMAX=0 crash that only appeared at high rank counts.")
 
 
 def _siesta_shared_package(base: Path, plan=None) -> List[str]:
@@ -254,5 +211,4 @@ def siesta_seam() -> EngineSeam:
                       describe_findings=_siesta_describe_findings)
 
 
-__all__ = ["siesta_seam", "pseudo_dir", "screen_pseudos",
-           "siesta_provide_pseudos"]
+__all__ = ["siesta_seam", "pseudo_dir", "siesta_provide_pseudos"]

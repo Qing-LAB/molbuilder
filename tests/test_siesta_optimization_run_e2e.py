@@ -53,7 +53,8 @@ def capped(tmp_path_factory):
     the road's H2 described as the one stage its template alone describes,
     one rank, ONE MOVE ALLOWED -- its first run, ``run-0``, ends out of
     moves -- and the stage launched again, which opens ``run-1`` warm from
-    it (`running-a-job.md` § 3.5): ``(run-0, run-1)``."""
+    it (`running-a-job.md` § 3.5): ``(run-0, run-1, what that launch
+    said)``."""
     from molbuilder.jobset.materialize import latest_attempt
     from molbuilder.jobset.naming import stage_home
     from molbuilder.task import of as task_of
@@ -82,7 +83,7 @@ def capped(tmp_path_factory):
                        bundle, "--mode", "direct", "--foreground", "--yes")
         second = latest_attempt(home)
         assert second is not None and second.name == "run-1", again.output
-        yield first, second
+        yield first, second, again.output
 
 
 @pytest.fixture(scope="module")
@@ -613,7 +614,7 @@ def test_a_relaxation_out_of_moves_ends_finished_not_converged(capped):
     from molbuilder.parse.engines._run_ending import ending_of
     from molbuilder.parse.engines.siesta_grammar import SCF_NOT_CONV_MARKER
     from molbuilder.runs import state_of
-    first, _ = capped
+    first, _, _ = capped
     run = _run(first)
     end = ending_of(run.stdout)
     assert end.relaxed is False and end.cause != SCF_NOT_CONV_MARKER, end
@@ -632,10 +633,15 @@ def test_a_relaxation_out_of_moves_launched_again_continues_warm(capped):
 
     THE SILENT FAILURES: a launch again that starts cold, its relaxation
     begun again from the structure; a new run that names no run it
-    continues, or another.  MUTATION THIS MUST FAIL AGAINST: launch again
-    copying none of the run's restart files."""
+    continues, or another; the launch saying of the run it continues from
+    a verdict the status column does not (`job-system.md` § 5.4: in the
+    status column's words).  MUTATION THIS MUST FAIL
+    AGAINST: launch again copying none of the run's restart files; the
+    continuation judging the run's forces itself (to 2.69.12), which said
+    *NOT converged* beside the column's *geometry NO*."""
     from molbuilder.runrecord import RunRef, launch_record, read_continued_from
-    first, again = capped
+    first, again, said = capped
+    assert "; geometry NO): copied " in said, said
     for folder in (first, again):
         run = _run(folder)
         assert run.session_log is not None and run.file(".concluded"), (

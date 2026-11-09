@@ -47,55 +47,6 @@ from ..issues import Issue
 _BASENAME_RE = re.compile(r"^[A-Za-z0-9_\-]+$")
 
 
-def _validate_kgrid(value):
-    """``kgrid``'s SHAPE: three whole counts -- the one thing its bounds
-    cannot say.  The bounds are declared, not checked here: the recommended
-    (1, 64) is the metadata range, warned per component
-    (`validation/metadata.py`, ``outside_range``) -- 1 is the Gamma-only
-    floor, more than 32 along any axis is rarely justified, 64 leaves
-    headroom for 1-D and 2-D periodic cells -- and 0 or below is the
-    catalogue's hard limit (``above``, `engines/template.md` § 5.3), refused
-    on every door.  What a rung writes along each axis is the k-point
-    mesh's (`kmesh.py`, `engines/siesta.md` § 6.1).
-    """
-    if not isinstance(value, (tuple, list)) or len(value) != 3:
-        return [Issue(
-            "error",
-            f"kgrid must be a 3-tuple of ints; got {value!r}",
-            "config.kgrid",
-        )]
-    out = []
-    for i, v in enumerate(value):
-        if not isinstance(v, int) or isinstance(v, bool):
-            out.append(Issue(
-                "error",
-                f"kgrid[{i}] = {v!r} must be a whole count of k-points",
-                "config.kgrid",
-            ))
-    return out
-
-
-def _validate_block_size(value):
-    """``BlockSize`` is a whole COUNT of orbitals.
-
-    Two states (tuning.md § 2.11): unset is *auto* -- the keyword is not
-    emitted and SIESTA uses its own automatic -- or a positive integer,
-    honoured verbatim.  ``0`` is refused by the catalogue's hard limit
-    (``above``), so this checks only that the value is an integer.
-    """
-    if value is None:
-        return []                       # auto -- the keyword is omitted
-    if not isinstance(value, int) or isinstance(value, bool):
-        return [Issue("error",
-                      f"block_size = {value!r} must be an integer "
-                      f"number of orbitals, or unset for (auto)",
-                      "config.block_size")]
-    # 0 or below is the catalogue's hard limit (``above``,
-    # `engines/template.md` § 5.3), refused on every door with one
-    # message.
-    return []
-
-
 def _validate_parallel_over_k(value, cfg):
     """``Diag.ParallelOverK`` on with an ELPA solver: SIESTA's manual says
     ELPA *"is not compatible with Diag.ParallelOverK"* (§ Diagonalization
@@ -112,35 +63,6 @@ def _validate_parallel_over_k(value, cfg):
                       f"split it used.",
                       "config.parallel_over_k")]
     return []
-
-
-def _validate_kgrid_displacement(value):
-    """``kgrid_displacement``'s SHAPE: three numbers, the block's fourth
-    column (SIESTA's ``displ(3)``, the k-grid origin in grid-vector
-    coordinates) -- a two-tuple or a string cannot become it.
-
-    Its BOUNDS are declared, not checked here: the metadata range [0, 1],
-    warned per component (`validation/metadata.py`, ``outside_range``) --
-    the offset is periodic in one mesh spacing, so 1.5 names the point 0.5
-    does.  **A shift on an axis sampled at a single k-point** -- which moves that
-    point off Gamma to the zone boundary -- is the k-point mesh's check
-    (`kmesh.check`, `engines/siesta.md` § 6.1), on the mesh the deck writes.
-
-    Not warned: 0.5 on an ODD mesh.  It is a legitimate (if unusual)
-    sampling choice, not a mistake, and the ``help`` text already says which
-    parity wants which value.
-    """
-    if not isinstance(value, (tuple, list)) or len(value) != 3:
-        return [Issue(
-            "error",
-            f"kgrid_displacement must be a 3-tuple of floats; got {value!r}",
-            "config.kgrid_displacement",
-        )]
-    return [Issue("error",
-                  f"kgrid_displacement[{i}] = {v!r} must be a number",
-                  "config.kgrid_displacement")
-            for i, v in enumerate(value)
-            if isinstance(v, bool) or not isinstance(v, (int, float))]
 
 
 def _validate_basename(label: str):
@@ -236,9 +158,7 @@ class SiestaConfig:
 
     # the k-point grid -- three integers; the form renders them as three
     # side-by-side inputs (kx / ky / kz).
-    kgrid: Tuple[int, int, int] = field(
-        default=(1, 1, 1),
-        metadata={"validate": lambda value, cfg: _validate_kgrid(value)})
+    kgrid: Tuple[int, int, int] = (1, 1, 1)
 
     # The FOURTH column of that same %block — SIESTA's ``displ(3)``, the
     # k-grid ORIGIN in grid-vector coordinates (``kgridinit.F``: "origin(ix)
@@ -246,10 +166,7 @@ class SiestaConfig:
     # numbers on ``kgrid``: it is a separate scientific decision (WHERE the
     # mesh sits, not how fine it is), and a stage may vary one without the
     # other.
-    kgrid_displacement: Tuple[float, float, float] = field(
-        default=(0.0, 0.0, 0.0),
-        metadata={"validate": (lambda value, cfg:
-                               _validate_kgrid_displacement(value))})
+    kgrid_displacement: Tuple[float, float, float] = (0.0, 0.0, 0.0)
 
     # Relaxation; relax_type="none" disables the relaxation block entirely.
     # SIESTA 5.4.2 step-count + max-displacement mapping (see
@@ -364,9 +281,7 @@ class SiestaConfig:
 
     gpu_count: Optional[int] = None
 
-    block_size: Optional[int] = field(
-        default=None,
-        metadata={"validate": lambda value, cfg: _validate_block_size(value)})
+    block_size: Optional[int] = None
     parallel_over_k: Optional[bool] = field(
         default=None, metadata={"validate": _validate_parallel_over_k})
     # OpenMP threads per MPI rank -- the cores per rank a run states

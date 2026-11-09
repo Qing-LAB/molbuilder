@@ -266,9 +266,11 @@ override is resolved **inside the one entry**, not at each call site — it was
 spelled in two emitters and honoured by one, which is exactly the shape that
 let transport drift.
 
-An override that omits an element the structure uses is caught at the deck
-gate: *"the coordinate block uses species X, which ChemicalSpeciesLabel does
-not declare"* (`siesta/layout.py`).
+An override that omits a species the structure uses is refused by the one
+entry, naming it, before any deck exists: *"species_order does not list X,
+which this structure contains"* — for the SIESTA and the TranSIESTA decks
+alike. Both write their species, lattice and coordinate rows through one
+writer, `siesta/deck_lines.py`.
 
 `chemistry.species_order(elements, override=None)` is **the one entry** — the default rule and the person's override resolved in one place. Nothing else derives a species list.
 

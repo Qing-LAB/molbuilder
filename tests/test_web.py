@@ -157,10 +157,9 @@ def test_preflight_bad_params_returned_as_error_issue(web_client, peptide_xyz):
     r = web_client.post("/api/build/preflight", json={
         "structure": _env(peptide_xyz),
         "engine": "siesta", "calculation": "optimization",
-        # kgrid coercion does int(v[i]) -- a non-numeric string here
-        # raises ValueError in the params door (`_shared.
-        # config_from_params`), which the
-        # endpoint catches as a config-parse error.
+        # a non-numeric k-grid will not read as three whole numbers: the
+        # params door (`_shared.stated_params`, `template.read_text`)
+        # refuses it, which the endpoint catches as a config-parse error.
         "params": {"kgrid": ["x", "y", "z"]},
     })
     body = r.get_json()
@@ -184,7 +183,7 @@ def test_preflight_bad_params_returned_as_error_issue(web_client, peptide_xyz):
 def test_a_blank_is_not_chosen_and_a_value_that_will_not_read_is_refused_by_name(
         web_client, peptide_xyz):
     """`web/form-schema.md` § 1.1 (plan § 5w K7), at the one door every form
-    goes through (`_shared.config_from_params`).
+    goes through (`_shared.stated_params`, then `template.stated_config`).
 
     A BLANK IS NOT CHOSEN, for every field: the field keeps what lies under
     it.  An empty number reached ``float(None)`` and answered a raw

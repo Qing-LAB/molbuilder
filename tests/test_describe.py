@@ -22,7 +22,7 @@ import pytest
 from molbuilder.calculation import open as open_calculation
 from molbuilder.task import Stage, of as task_of
 from molbuilder.template import read_template
-from support.road import (STRUCTURE, all_written, described, molbuilder,
+from support.road import (H2, STRUCTURE, all_written, described, molbuilder,
                           road_tree)
 
 
@@ -87,9 +87,16 @@ def test_the_structure_travels_as_the_calculations_own_pair(tmp_path,
     against a structure that has since changed *say so* (`stages.md` § 6.3);
     and the ``--vacuum 8`` it was described with travels in the sidecar, so
     the loader prep reads the pair with reads it back (the fix of 2026-08-12).
+    That vacuum is the Cell page's own edit (`structure-periodicity.md`
+    § 6.2, `periodicity_gate.apply_edit`): the road's typed 10 Å box gives
+    way to the one the atoms and the vacuum make, and the line says so.
 
     The structure FILE is ``structure.xyz`` and the label ``JOB``: init named
-    the pair after the file until 2026-10-04 (plan D20)."""
+    the pair after the file until 2026-10-04 (plan D20).
+
+    MUTATION THIS MUST FAIL AGAINST: the command line setting the vacuum on
+    the structure itself (to 2.69.12), which kept the typed 10 Å box under
+    an 8 Å vacuum."""
     from molbuilder.workingcopy_structure import StructureCodec
     described(road_tree(tmp_path, monkeypatch))
     r = _typed(vacuum=8)
@@ -100,8 +107,9 @@ def test_the_structure_travels_as_the_calculations_own_pair(tmp_path,
     task = task_of(calc)
     assert task.structure.source == "JOB.source.xyz"
     assert (task.structure.formula, task.structure.atoms) == ("H2", 2)
-    assert StructureCodec().load(calc / task.structure.source).vacuum == (
-        8.0, 8.0, 8.0)
+    pair = StructureCodec().load(calc / task.structure.source)
+    assert (pair.vacuum, pair.cell) == ((8.0, 8.0, 8.0), None)
+    assert "the box is derived again" in r.output, r.output
 
 
 @pytest.mark.parametrize("calculation", ["optimization", "vibration"])
@@ -149,28 +157,33 @@ def _a_ladder_of(monkeypatch, **overrides):
                                                         overrides=overrides)])
 
 
+#: The road's H2 with its third axis periodic, its typed 10 Å box a lattice.
+_PERIODIC_H2 = {**H2, "axis_kind": ["isolated", "isolated", "periodic"]}
+
 #: ONE ROW A RULE, each refused in its own words: `job-system.md` § 5.1.  The
-#: flags typed over the road's line, and what the refusal says.
+#: flags typed over the road's line, what the refusal says, and the structure
+#: the tree holds.
 _REFUSED = [
     # A label becomes a filename and a shell word, so the character set is
     # narrow; it is refused by name, not a crash (`run-identity.md` § 3).
-    ("a name that cannot be a label", {"name": "Über"}, "letter or a digit"),
+    ("a name that cannot be a label", {"name": "Über"}, "letter or a digit",
+     H2),
     # The kind is the kind table's to know: nothing is guessed from a word
     # (`architecture.md` § 3.3).
     ("a kind nothing describes", {"calculation": "no-hyphens!"},
-     "no calculation kind 'no-hyphens!'"),
+     "no calculation kind 'no-hyphens!'", H2),
     # A SIESTA run cannot start without a `.psml` for every species, so a
     # describe naming a library without one is refused by name.  Until 2.65.3
     # the command line wrote the calculation and said only `WARN: no H.psml`,
     # a calculation found unable to start at prep.
     ("a species with no pseudopotential", {"psml-lib": "P/structure"},
-     "no .psml file for H"),
+     "no .psml file for H", H2),
     # One calculation per folder (user, 2026-10-01), naming where the
     # description is changed.  PREVENTS (the W52 review, P1a-12): describing
     # again, silently, under whatever had been prepared from it.
     ("a folder that already holds a calculation",
      {"bundle": "P/optimization/H2", "name": "H3"},
-     "already holds a calculation"),
+     "already holds a calculation", H2),
     # A calculation is never inside another's folder, nor holds one (the
     # user, 2026-11-07: "calculations can continue from another, not within
     # another"; `project-layout.md` § 7, invariant 2a), each named by its
@@ -180,22 +193,30 @@ _REFUSED = [
     ("a folder inside another calculation's folder",
      {"bundle": "P/optimization/H2/variants/JOB"},
      "P/optimization/H2/variants/JOB is inside the calculation "
-     "P/optimization/H2"),
+     "P/optimization/H2", H2),
     ("a folder that holds a calculation below it",
      {"bundle": "P/optimization"},
-     "P/optimization holds the calculation P/optimization/H2"),
+     "P/optimization holds the calculation P/optimization/H2", H2),
+    # `--vacuum` is the Cell page's vacuum edit, refused as it is there while
+    # an axis is periodic: a bounding box is not a lattice
+    # (`structure-periodicity.md` § 6.2).  PREVENTS (to 2.69.12): a periodic
+    # cell described with a vacuum the deck never uses.
+    ("a vacuum on a periodic structure", {"vacuum": "8"},
+     "--vacuum: cannot re-derive the box while an axis is periodic",
+     _PERIODIC_H2),
 ]
 
 
-@pytest.mark.parametrize("flags, words", [r[1:] for r in _REFUSED],
+@pytest.mark.parametrize("flags, words, structure", [r[1:] for r in _REFUSED],
                          ids=[r[0] for r in _REFUSED])
 def test_describe_refuses_saying_why_and_writes_nothing(tmp_path, monkeypatch,
-                                                        flags, words):
+                                                        flags, words,
+                                                        structure):
     """*"Describing a calculation writes every file or none"*, and a refusal
     happens while nothing has been written: every file and folder of the tree
     is as it was."""
     tree = tmp_path / "projects"
-    described(road_tree(tmp_path, monkeypatch))
+    described(road_tree(tmp_path, monkeypatch, structure))
     was = all_written(tree), set(tree.rglob("*"))
     r = _typed(**flags)
     assert r.exit_code != 0, r.output

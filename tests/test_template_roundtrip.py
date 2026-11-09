@@ -305,6 +305,32 @@ def test_a_hand_edited_value_of_the_wrong_type_is_refused_by_name():
         T.read_template(mutated2)
 
 
+def test_a_value_is_judged_by_the_catalogues_type_not_the_files():
+    """A hand edit can change an item's declared ``type`` with its value and
+    default, and the file then reads cleanly against itself; the value is
+    judged by the catalogue's type, today's (`engines/template.md` § 5.4),
+    and refused by name when the template is read into a config.  THE
+    SILENT FAILURE: a PySCF count declared text reaching the settings gate's
+    range comparison as *"This is a programmer bug"* (to 2.69.12), naming
+    neither the edit nor the item's type.  MUTATION THIS MUST FAIL AGAINST:
+    `config_from_template` judging an enum's membership alone."""
+    import re
+    from molbuilder.config.pyscf import PySCFConfig
+    text = T.template_with_values(PySCFConfig(), calculation="optimization")
+    i = text.index("[item.scf_max_cycle]")
+    j = text.index("[item.", i + 10)
+    block = text[i:j]
+    edited = block
+    for line, said in (("type", '"str"'), ("value", '"fifty"'),
+                       ("default", '"fifty"')):
+        edited = re.sub(rf"^{line} = .*$", f"{line} = {said}", edited,
+                        flags=re.M)
+    edited = re.sub(r"^range = .*\n", "", edited, flags=re.M)
+    with pytest.raises(ValueError, match="template's scf_max_cycle = "
+                                         "'fifty', which is not a whole"):
+        T.config_from_template(text.replace(block, edited), PySCFConfig)
+
+
 def test_the_type_check_runs_before_shape_can_mangle(tmp_path):
     """R4: the E5 check ran post-construction, AFTER _shape -- so a
     scalar on a strlist exploded "Au" into ['A','u'] and PASSED the

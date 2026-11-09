@@ -630,8 +630,9 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
     cfg = config or SiestaConfig()
     # THE ONE ENTRY, override included (`model/chemistry.md` § 3a).
     from ..chemistry import species_order as _species_order
+    from .deck_lines import species_index as _species_index
     species = _species_order(struct.elements, cfg.species_order)
-    species_index = {s: i + 1 for i, s in enumerate(species)}
+    species_index = _species_index(species)
 
     # ---------- the electronic state: ONE answer ----------
     # `science/chemistry-correctness.md` § 2a.  The charge and the spin are
@@ -639,14 +640,6 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
     # answer -- it resolves nothing itself.  Each value carries where it came
     # from, which the comments below write beside it.
     state = electronic_state(struct, cfg, kind=calculation)
-
-    # Validate every element has a species index
-    for el in struct.elements:
-        if el not in species_index:
-            raise ValueError(
-                f"Atom element {el!r} not in the species order "
-                f"{list(species_index)!r}"
-            )
 
     # The box first, then ONE placement for either box (§ 6.0, below the two
     # branches).  The branches decide only which box and check that it is a
@@ -1120,20 +1113,21 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
         out.append("# --- Lattice ---")
         if cell_note:
             out.append(cell_note.rstrip())
+        # THE ONE WRITER OF A GEOMETRY ROW (`siesta.deck_lines`): the
+        # TranSIESTA decks write their lattice and species with it too.
+        from .deck_lines import lattice_rows, species_rows
         out.append("LatticeConstant 1.0 Ang")
         out.append("%block LatticeVectors")
-        for v in cell:
-            out.append(f"{v[0]:.12f} {v[1]:.12f} {v[2]:.12f}")
+        out.extend(lattice_rows(cell))
         out.append("%endblock LatticeVectors")
         out.append("")
 
-        # Species
+        # Species: ``index Z label``, the label the user's, Z derived.
         from ..chemistry import atomic_number
         out.append("# --- Species ---")
         out.append("%block ChemicalSpeciesLabel")
-        for i, s in enumerate(species):
-            # ``index Z label``: the label is the user's, Z is derived.
-            out.append(f"{i + 1} {atomic_number(s)} {s}")
+        out.extend(species_rows(species, [atomic_number(s)
+                                          for s in species]))
         out.append("%endblock ChemicalSpeciesLabel")
         out.append("")
 

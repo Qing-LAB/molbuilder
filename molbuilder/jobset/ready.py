@@ -510,7 +510,7 @@ def gather_of(task):
 
 def first_launch_takes(calc, stage: str, *,
                        from_attempt: Optional[str] = None,
-                       cold: bool = False, verdict: bool = True):
+                       cold: bool = False):
     """``(continuation, gather, refusal)`` -- what ``stage``'s first launch
     takes (`job-system.md` § 6.0, step 1), from the one door per kind, read
     now, every kind's refusal with it: a rung's gather where its pair names
@@ -557,8 +557,7 @@ def first_launch_takes(calc, stage: str, *,
             return None, None, str(exc)
         return None, got, None
     cont, refused = continuation_answer(calc, stage,
-                                        from_attempt=from_attempt, cold=cold,
-                                        verdict=verdict)
+                                        from_attempt=from_attempt, cold=cold)
     if refused:
         return None, None, refused
     if cont is None:
@@ -669,12 +668,10 @@ def takes_sentence(items: List[dict]) -> str:
             + " -- each from its newest run, which must have finished")
 
 
-def readiness(calc, stage: str, *, verdict: bool = True) -> Readiness:
+def readiness(calc, stage: str) -> Readiness:
     """``stage``'s answer (`job-system.md`, *The task*), each run taken by
     default: for a stage prepared, what its first launch would take.
-    ``verdict=False``
-    leaves a relaxation's convergence unread -- for `status`, read far more
-    often than a prep or a launch.  ``calc`` is the calculation as the verb
+    ``calc`` is the calculation as the verb
     opened it (`calculation.open`, A16): its description, template and
     plan, read once."""
     from .materialize import ever_launched
@@ -723,8 +720,7 @@ def readiness(calc, stage: str, *, verdict: bool = True) -> Readiness:
             return Readiness(stage, group, prepared=True, why=why,
                              blocked="regrouped", job_members=members,
                              **since)
-        cont, gather, why = first_launch_takes(calc, stage,
-                                               verdict=verdict)
+        cont, gather, why = first_launch_takes(calc, stage)
         if why:
             # A REFUSAL WAITS for a run the stage builds on.
             return Readiness(stage, group, prepared=True, why=why,
@@ -807,11 +803,10 @@ def _takes_lines(cont, gather) -> List[str]:
     return out
 
 
-def ladder(calc, *, verdict: bool = True) -> List[Readiness]:
+def ladder(calc) -> List[Readiness]:
     """Every stage of the description, in ladder order, with its answer --
     ``calc`` the calculation as the verb opened it (A16)."""
-    return [readiness(calc, st.name, verdict=verdict)
-            for st in calc.task.stages]
+    return [readiness(calc, st.name) for st in calc.task.stages]
 
 
 @dataclass
@@ -839,12 +834,10 @@ class TaskState:
         return groups_text(self.groups)
 
 
-def task_state(calc, *, verdict: bool = False) -> TaskState:
+def task_state(calc) -> TaskState:
     """The calculation's :class:`TaskState` -- ``calc`` as the verb opened
-    it (`calculation.open`, A16), every file read once there.  ``verdict``
-    reads a relaxation's convergence where a stage takes one (a prep's
-    question); `status` and the folder answer leave it unread."""
-    answers = ladder(calc, verdict=verdict)
+    it (`calculation.open`, A16), every file read once there."""
+    answers = ladder(calc)
     gs = groups(calc.request, answers)
     from ..joblist import Asked
     from .group import formed_again

@@ -346,9 +346,8 @@ def species_order(elements: "Iterable[str]",
 
     *override* is the person's own answer -- the ``species_order`` catalogue
     row.  Non-empty, it is honoured VERBATIM and the rule below does not
-    run; an override that omits an element the structure uses is refused BY
-    THE EMITTER, before a deck exists -- `siesta/input.py` and
-    `transport/transiesta.py`, each naming the missing species.  Resolving
+    run; an override that omits a species the structure uses is refused
+    HERE, naming it, before any deck exists -- a ``ValueError``.  Resolving
     the override here rather than at each call site is the point.
 
     THE DEFAULT, when nobody has said otherwise.
@@ -389,7 +388,15 @@ def species_order(elements: "Iterable[str]",
     default beneath it.
     """
     if override:
-        return list(override)
+        order = list(override)
+        missing = [s for s in dict.fromkeys(elements) if s not in order]
+        if missing:
+            raise ValueError(
+                f"species_order does not list {', '.join(missing)}, which "
+                f"this structure contains.  The order is honoured verbatim, "
+                f"so every species has to appear in it -- or leave it unset "
+                f"and the default rule orders them")
+        return order
     seen: List[str] = []
     for s in elements:
         if s not in seen:

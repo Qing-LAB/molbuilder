@@ -56,7 +56,6 @@ from ...issues import Issue
 from flask import Blueprint, jsonify, request
 from ._shared import (
     err,
-    config_from_params as _config_from_params,
     stated_params as _stated_params,
     catalogue_to_form_schema as _catalogue_to_form_schema,
     engine_key_for as _engine_key_for,
@@ -70,6 +69,7 @@ from molbuilder.persist import json_text
 from molbuilder.engine_table import (EngineTableError, config_class,
                                      engine as _engine)
 from molbuilder.structure import Structure
+from molbuilder.template import stated_config
 from molbuilder.validation import validate
 from .files import _resolve_within_roots
 
@@ -161,14 +161,16 @@ def _analyze_response(struct, body):
         # The form's items become the engine's config through the ONE
         # params door -- the same coercion the preflight and the hand-over
         # use -- so a blank means exactly what it means there.
+        # WHAT THE PERSON STATED, read by the one reader: a blank the
+        # config fills with the catalogue's value is not chosen, and said
+        # so (`web/form-schema.md` § 1.1) -- laid over the kind's
+        # recommendations by the one door (`template.stated_config`).
         try:
-            cfg = _config_from_params(config_class(engine), items or {}, kind)
-            # WHAT THE PERSON STATED, read by the same door: a blank the
-            # config fills with the catalogue's value is not chosen, and
-            # said so (`web/form-schema.md` § 1.1).
             chosen = _stated_params(config_class(engine), items or {})
         except (TypeError, ValueError) as exc:
             return err(str(exc), 400)
+        cfg, _ = stated_config(config_class(engine), kind,
+                               (chosen, "person"))
         states[engine] = electronic_state(struct, cfg, kind=kind,
                                           chosen=chosen).as_dict()
     return jsonify({
@@ -808,7 +810,9 @@ def api_build_preflight():
     struct = periodicity_checked_for_emit(struct)
 
     try:
-        cfg = _config_from_params(config_class(engine), params, calculation)
+        cfg, _ = stated_config(config_class(engine), calculation,
+                               (_stated_params(config_class(engine), params),
+                                "person"))
     except Exception as exc:
         # The "bad params" branch returns ``ok: False`` to match the
         # web-api.md envelope contract; the UI's ``!body.ok`` gate then
@@ -948,8 +952,13 @@ def api_task_setup_handover():
         return err(str(exc), 400)
 
     params: Dict[str, Any] = body.get("params") or {}
+    # WHAT THE PERSON'S FORM STATED, over the kind's recommendations, and
+    # who set each value (`template.md` § 6.3a, § 6.6 obligation 2): the
+    # one door, which reads a blank -- spaces too -- as not chosen.
     try:
-        cfg = _config_from_params(config_class(engine), params, calculation)
+        cfg, sources = stated_config(
+            config_class(engine), calculation,
+            (_stated_params(config_class(engine), params), "person"))
     except (ValueError, TypeError) as exc:
         return err(str(exc), 400)
 
@@ -1041,12 +1050,7 @@ def api_task_setup_handover():
     # (§ 3 rule 1) — this is the storing.
     cfg = engine_seam(engine).relabel(cfg, label)
 
-    # WHAT THE PERSON'S FORM SENT is theirs (`template.md` § 6.6
-    # obligation 2): the form sends the fields that hold a value
-    # (`form-schema.md` § 1.1), and the calculation's own name.  Every other
-    # item is nobody's choice.
-    sources = {k: "person" for k, v in params.items()
-               if v is not None and v != ""}
+    # AND THE CALCULATION'S OWN NAME is the person's too.
     sources[_field] = "person"
     try:
         template_text = template_with_values(cfg, engine=engine,

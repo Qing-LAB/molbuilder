@@ -1022,7 +1022,8 @@ Cell-page button; one module (`molbuilder/periodicity_gate.py`) owns
 `validate_periodicity` core shared with `StructureCodec`. Uniform response:
 `{ok, periodicity, info, notices[]}`, the periodicity block exactly as
 `/api/build/load` sends it — the client adopts it and renders the views; it
-never computes.
+never computes. `molbuilder describe --vacuum` is the `vacuum` op through the
+same door: it prints the receipt and refuses where the Cell page refuses.
 
 **Two regimes, explicit transitions.** In the **derived** regime,
 `{structure size, vacuum, axis_kind} ⇒ {cell, origin}` are computed views.

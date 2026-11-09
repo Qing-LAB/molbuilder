@@ -22,14 +22,14 @@ from pathlib import Path
 
 from ..pseudos import PSEUDO_DIRNAME
 from ..runfiles import PSEUDO_FILE, find_fixed, fixed_name
-from ..siesta.seam import pseudo_dir, screen_pseudos
+from ..siesta.seam import pseudo_dir
 from ..jobset.errors import PrepError, user_error_as_prep
 from ..jobset.naming import stage_home
 from ..jobset.rung import Rung, citation_of
 
 
-def provide_pseudos(struct, cfg, base: Path,
-                    citation: str, *, plan=None) -> None:
+def provide_pseudos(struct, base: Path, citation: str, *,
+                    plan=None) -> None:
     """A cited run's pseudopotentials arrive FROM THE RUN
     (engines/transport.md § 3.1: the files the junction relaxed with travel
     with it — one template governs).
@@ -38,8 +38,8 @@ def provide_pseudos(struct, cfg, base: Path,
     ``pseudos/`` already holds (an earlier prep, or the travelled
     folder) is left alone; only missing species are fetched, from the
     cited calculation's own ``pseudos/`` — the files the junction
-    actually relaxed with.  Then the science screening runs on what is
-    actually here, same protocol, same blocking statuses.
+    actually relaxed with.  Whether they are fit is the settings gate's
+    to say, once, at each deck (`science/pseudopotentials.md` § 1).
     """
     from ..projects import find_projects_root
     from ..pseudos import copy_pseudopotentials, psml_sources
@@ -74,7 +74,6 @@ def provide_pseudos(struct, cfg, base: Path,
                 f"relaxation run of molbuilder's own holds the .psml it "
                 f"ran with, so relax the junction through `molbuilder describe` -> "
                 f"`prep task` -> `launch task` and cite that run.")
-    screen_pseudos(species, cfg, pdir)
 
 
 def resolve_transport(task, stage: str, allocation, *, template_text,
@@ -190,7 +189,7 @@ def transport_parts(task, stage: str, composed, config):
     # molecule with an open-d centre would polarize the device beside
     # non-polarized leads.
     # The VALUES are folded into the config, so every reader of the rung's
-    # config -- the gate, the record, the pseudopotential screening -- reads
+    # config -- the gate and the record -- reads
     # the junction's answer; the STATE itself, with where each value came
     # from, is handed to the deck writer, which says so in every rung
     # (§ 2a.5).  Folded alone, the rungs read it as *stated*.
@@ -495,10 +494,8 @@ def transport_rung_of(calc, pset, *, seam, sweep, log, plan,
     def provide_data(plan):
         # The pseudopotentials: a cited run's travel with it, a cited pair's
         # come from the library the template names (`engines/transport.md`
-        # § 3.1) -- screened against the config the rung's decks render
-        # from: what it checks is each file's XC family against the
-        # functional the run will ask for.
-        cfg = configure(pset[0].render_config())
+        # § 3.1) -- the config the rung's decks render from names it.
+        # Whether they are fit is the settings gate's, at each deck.
         if task.reuses:
             # AN EXTENSION'S FILES ARE THE ONES ITS FINISHED RUNS READ,
             # taken before any other source (`engines/transport.md`
@@ -506,10 +503,11 @@ def transport_rung_of(calc, pset, *, seam, sweep, log, plan,
             from .reuse import carry_pseudos
             carry_pseudos(composed.junction, base, task.reuses, plan=plan)
         if composed.provenance["kind"] == "pair":
-            seam.provide_data(composed.junction, cfg, base, plan=plan)
+            seam.provide_data(composed.junction,
+                              configure(pset[0].render_config()), base,
+                              plan=plan)
         else:
-            provide_pseudos(composed.junction, cfg, base, citation,
-                            plan=plan)
+            provide_pseudos(composed.junction, base, citation, plan=plan)
 
     def job_facts(job):
         # The rung's own restart files (`transport.stages.warm_declaration`:

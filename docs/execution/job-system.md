@@ -1695,8 +1695,9 @@ its output says the engine stopped
 *(user: "yes, … but user can force a structure still")*:
 
 - **a run named with `--from`** (Task setup's *Continue from*) is taken as
-  said: the launch states what it sees there — *failed*, *not converged* — and
-  refuses only what cannot be done (R-L37);
+  said: the launch states what it sees there — *failed*; what the run says it
+  converged, in the status column's words (*geometry NO*, `model/parse.md`
+  § 2b) — and refuses only what cannot be done (R-L37);
 - **a structure stated relaxed** (`already_relaxed`,
   [`engines/vibration.md`](?doc=engines/vibration.md) § 2.2): the frequency
   stage takes it as given, the record it carries shown and checked, never
@@ -1804,8 +1805,8 @@ continues from — before the question, and once sent — and the ledger records
 it:
 
 ```text
-  medium: WOULD launch it into run-0: it continues from 01_coarse/run-0 (the stage before it; concluded rc=0 at Thu Sep 24 02:38:51 PM MST 2026; converged): would copy H2.XV, H2.DM
-  takes      medium         [launched into run-0: it continues from 01_coarse/run-0 (the stage before it; concluded rc=0 at Thu Sep 24 02:38:51 PM MST 2026; converged): copied H2.XV, H2.DM]
+  medium: WOULD launch it into run-0: it continues from 01_coarse/run-0 (the stage before it; concluded rc=0 at Thu Sep 24 02:38:51 PM MST 2026; geometry yes): would copy H2.XV, H2.DM
+  takes      medium         [launched into run-0: it continues from 01_coarse/run-0 (the stage before it; concluded rc=0 at Thu Sep 24 02:38:51 PM MST 2026; geometry yes): copied H2.XV, H2.DM]
 ```
 
 The optimiser's `H2.CG` is carried only between stages that use the same

@@ -183,7 +183,7 @@ def collect_sweep(calc, *,
             # NOT PREPARED, in the ready door's words: ready, and what it
             # takes, or waiting, and what for (`jobset.ready`).
             from ..jobset.ready import readiness
-            r = readiness(calc, name, verdict=False)
+            r = readiness(calc, name)
             pending.append({"stage": name, "state": r.state,
                             "detail": r.detail})
             continue

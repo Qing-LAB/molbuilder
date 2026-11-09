@@ -479,7 +479,7 @@ validation/
 │                   # kind's science the part its kind table entry names; a
 │                   # junction's checks where the kind's deck relaxes
 ├── geometry.py     # validate_geometry + geometry checks
-├── metadata.py     # dataclass-field-driven config validation (range/validate/choices)
+├── metadata.py     # dataclass-field-driven config validation (range/validate)
 ├── chemistry.py    # species labels; THE ELECTRONIC STATE'S ONE FAMILY
 │                   # (check_electronic_state); peptide protonation
 ├── identity.py     # names and labels (run identity, basenames)

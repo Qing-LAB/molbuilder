@@ -907,24 +907,6 @@ def stated_params(cls, params: Dict[str, Any]) -> Dict[str, Any]:
     return out
 
 
-def config_from_params(cls, params: Dict[str, Any],
-                       calculation: str = ""):
-    """The config a form's payload describes (`web/form-schema.md` § 1.1):
-    the kind's own recommendations (`template.apply_recommended`), with what
-    the payload states laid over them (:func:`stated_params`).
-
-    **A blank is not chosen**, for every field: it leaves the field at what
-    lies under it -- the kind's recommendation, else the class default,
-    which for an optional field is its own blank.  A value that will not
-    read as its type is refused, naming its field."""
-    kwargs = stated_params(cls, params)
-    base = cls()
-    if calculation:
-        from molbuilder.template import apply_recommended
-        base = apply_recommended(base, calculation)
-    return dataclasses.replace(base, **kwargs)
-
-
 class PeriodicityRefused(Exception):
     """The gate REFUSED the periodicity a request carried.
 
@@ -1057,7 +1039,6 @@ __all__ = [
     "sent_export",
     "finite_float",
     "catalogue_to_form_schema",
-    "config_from_params",
     "stated_params",
     "PeriodicityRefused",
     "checked_periodicity",

@@ -91,9 +91,19 @@ discipline reader before each commit (the ledger's *Found by the overlap
 audit*). **2.69.10**: structure files through the one writer. **2.69.11**:
 reading answers (the browser half; the files layer keeps its results, the
 user's word). **2.69.12**: every failure answer through the one builder
-(298 written by hand beside it, measured). Next, in order: 2.69.13 status lines and words
-drawn, 2.69.14 findings and notices, 2.69.15 page state, 2.69.16 words for
-values, 2.69.17 paths and keys, 2.69.18 tests; then the tabs following the sidebar's folder
+(298 written by hand beside it, measured). **The codebase overlap review**
+*(the user, 2026-11-09)*: ten readers over the whole codebase, about 170
+findings and 14 contract disagreements settled by the user's word
+("Accept all, defects first"; the ledger's *Found by the codebase overlap
+review*), two of them withdrawn the same day as crossing the sealed modules'
+wall (VibrationView's export is its own, `web/vibrationview.md` § 4).
+**2.69.13**: the science and correctness defects, each through its owning
+door (V-VAC, V-RELAX, V-HYD, V-LAT, V-PSML, V-TYPE, V-REC). Next, in order,
+each taking the next number when it ships: the path defects with the path
+door (V-PATH, X-PATH); record reading and the panels (V-READ, V-PANEL); the
+duplicates by owning door — X-STRUCT, X-PERSIST, X-PARSE, X-TMPL, X-EXEC,
+X-ENG — and the earlier plan's rows with the page doors they share (O-STATUS,
+O-FIND, O-STATE, O-WORDS, O-KEYS with X-UI and X-PLOT; O-TESTS); then the tabs following the sidebar's folder
 (where the Send writes, the live check of it — the user's yes, 2026-11-09),
 the ladder's layout.
 

@@ -59,8 +59,8 @@ from .structure import split_species_label  # noqa: E402 -- a label's name
 #: ``source_of`` -- or ``None``, and the disk answers.  `prep` sets it for
 #: the steps it plans (`job-system.md` § 5.0: nothing is written until the
 #: whole plan stands), so every reader of a calculation's pseudopotentials --
-#: the data-files step's screening, the settings gate -- reads the files the
-#: plan will put there.  A context variable, as the gate's report stream is
+#: the settings gate at each deck -- reads the files the plan will put
+#: there.  A context variable, as the gate's report stream is
 #: (`validation.REPORT_STREAM`): two preps at once each see their own.
 PLANNED: "ContextVar" = ContextVar("molbuilder.pseudos.planned",
                                    default=None)

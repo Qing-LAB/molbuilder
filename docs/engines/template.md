@@ -1013,11 +1013,11 @@ its own:
 
 | home | who asks | when |
 |---|---|---|
-| the template | `read_template` / `config_from_template` — the item's type, as the door reads it (`as_declared`); a run setting is refused by the file's own door (`template_file.of`, naming `jobset migrate`, § 2), a rung's answer stated otherwise by `resolve` (§ 6.4); the file names no kind, so the kind's rules — a component it fixes, a choice it does not offer, a limit — are `resolve`'s to ask when the template meets its kind (§ 5.3, `why_not`) | every read — prep, migrate, the folder answer |
+| the template | `read_template` / `config_from_template` — the item's type, as the door reads it (`as_declared`), the catalogue's of today and not the one the file declares beside it, which a hand edit or an older file can make another; a run setting is refused by the file's own door (`template_file.of`, naming `jobset migrate`, § 2), a rung's answer stated otherwise by `resolve` (§ 6.4); the file names no kind, so the kind's rules — a component it fixes, a choice it does not offer, a limit — are `resolve`'s to ask when the template meets its kind (§ 5.3, `why_not`) | every read — prep, migrate, the folder answer |
 | a stage's overrides | the description's preflight (`validation.task`) and `resolve` | every describe and prep, and Task setup's Save |
 | a run card, a benchmark row | the job request's check (`validation.task.request_checks`), and prep's read of the cards and the bench (`prep_inputs`), whose values `resolve` lays | every prep, and Task setup's Save |
 | a prep flag | `jobset prep`'s flags (`--np`, `--cpus-per-task`, `--gpus`, `--max-memory-mb`) | as they are typed |
-| a page | Task setup's cells and cards — through one server door, `POST /api/task-setup/value` (`{item, text, home, stage}` → `{value, refusal}`); a parameter form's values at Send (`config_from_params`, `read_text`); the hand-over and Save through the readers above | as a value is typed; at Send; at Save |
+| a page | Task setup's cells and cards — through one server door, `POST /api/task-setup/value` (`{item, text, home, stage}` → `{value, refusal}`); a parameter form's values at Send (`stated_params`, `read_text`, then `stated_config`); the hand-over and Save through the readers above | as a value is typed; at Send; at Save |
 | migrate | the readers above, of every file it writes | before it writes |
 
 **And the deck says what it was given.** A deck writer, a run script and the
@@ -1605,11 +1605,13 @@ help = "The largest force allowed on any free atom when the relaxation stops."
 Three readers, one rule: the form-schema door narrowed to a kind
 (`/api/build/schema/<engine>?calculation=<kind>`) presents the recommended
 value as the field's `default` — the hint beside a blank field, *not chosen*
-(`form-schema.md` § 1.1, K7); every door that writes a template from a form or
-a flag lays it under what the person gave (`molbuilder describe` and the form doors'
-`_shared.config_from_params`, both through `apply_recommended`), so a field
-nobody chose is written as the kind's recommendation and recorded as nobody's
-(`source = "default"`, § 6.6); and `template_with_values(..., calculation=)`
+(`form-schema.md` § 1.1, K7); every door that writes a template from what was
+stated lays it under what was given and says who gave each value —
+`template.stated_config(cls, kind, (values, who), …)` → `(config, sources)`,
+asked by `molbuilder describe`, the form doors and the hand-over, and by a
+transport describe with its citation's answers under the person's — so a
+field nobody chose is written as the kind's recommendation and recorded as
+nobody's (`source = "default"`, § 6.6); and `template_with_values(..., calculation=)`
 writes it as the `default` beside whatever value the config holds. After that
 the template is the answer and the person changes it like any other value —
 the recommendation is where the number starts, never a lock. A test compares every `recommended` value of a

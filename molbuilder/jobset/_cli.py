@@ -487,9 +487,10 @@ def _bias_of(bias_opt: str) -> tuple:
                    "calculation takes it for a cited structure pair, whose "
                    "pseudopotentials are not beside it.")
 @click.option("--vacuum", type=float, default=None, metavar="ANGSTROM",
-              help="isolation vacuum (A) per side on isolated axes. Needed "
-                   "for a flat or linear molecule from a bare XYZ, which "
-                   "otherwise has a degenerate cell.")
+              help="isolation vacuum (A) per side on isolated axes -- the "
+                   "Cell page's vacuum edit: the box becomes the atoms' "
+                   "extent plus this, a typed cell given up and said so; "
+                   "refused while an axis is periodic.")
 @click.option("--calculation", "calculation", required=True, metavar="TYPE",
               help="which KIND of calculation this describes -- "
                    "optimization, vibration or transport; the key into the "
@@ -642,13 +643,18 @@ def describe_cmd(structure, bundle: str,
                        f"frames; {frame_words(0, whole.n_frames)} was taken")
         struct = StructureCodec.frame_choice(whole)
         if vacuum is not None:
-            # The same channel the Modify -> Cell tab uses: the vacuum lives on
-            # the STRUCTURE, not on the engine config, so every surface that
-            # reads this structure sees the same isolation.
-            # THROUGH THE DOOR: `dataclasses.replace` does not dispatch to
-            # `Structure.replace`, and would share the loaded structure's
-            # `cell` and `info` dict by reference.
-            struct = struct.replace(vacuum=(vacuum, vacuum, vacuum))
+            # THE ONE DOOR the Cell page edits the box through
+            # (`periodicity_gate.apply_edit`, `structure-periodicity.md`
+            # § 6.2): the vacuum lives on the STRUCTURE, and setting it
+            # returns the box to the one derived from the atoms -- a typed
+            # cell cleared, said -- and is refused while an axis is periodic.
+            from ..periodicity_gate import apply_edit
+            try:
+                struct, box_said = apply_edit(struct, "vacuum", [vacuum] * 3)
+            except ValueError as exc:
+                raise click.ClickException(f"--vacuum: {exc}") from None
+            for n in box_said:
+                click.echo(n["message"])
 
         # § 6.5 (2026-08-16): a job always has at least one stage.  Without
         # ``--stage-strategy`` the ladder is ONE stage carrying no overrides
@@ -687,12 +693,13 @@ def describe_cmd(structure, bundle: str,
         if psml_lib and any(it.name == "psml_lib" for it in
                             _select(_catalogue(), engine=engine)):
             _own["psml_lib"] = psml_lib
-        cfg = config_class(engine)(**_own)
-        # The kind's own recommendations become the template's values
-        # (`template.md` § 6.3a): a vibration's relaxation settings start
-        # tight, and the person changes them there like any other value.
-        from ..template import apply_recommended as _apply_recommended
-        cfg = _apply_recommended(cfg, calculation, engine=engine)
+        # WHAT THE PERSON STATED here, over the kind's own recommendations
+        # (`template.md` § 6.3a: a vibration's relaxation settings start
+        # tight), and who set each value (§ 6.6 obligation 2) -- the one
+        # door every road that writes a template asks.
+        from ..template import stated_config
+        cfg, _said = stated_config(config_class(engine), calculation,
+                                   (_own, "person"))
 
         # THE PSEUDOPOTENTIALS, COVERED BEFORE ANYTHING IS WRITTEN -- the
         # engine's describe findings of the folder it writes into, as the
@@ -712,10 +719,8 @@ def describe_cmd(structure, bundle: str,
             for _issue in _found:
                 click.echo(f"note: {_issue.message}", err=True)
 
-        # WHAT THE PERSON STATED here is theirs (`template.md` § 6.6
-        # obligation 2): the calculation's name, and the pseudopotential
-        # folder when given; the kind's recommendations are nobody's choice.
-        _said = {name: "person" for name in (_ident, *_own)}
+        # AND THE CALCULATION'S NAME is the person's too.
+        _said[_ident] = "person"
         desc = build_description(
             struct, cfg, stages,
             engine=engine, name=run_name,
@@ -727,7 +732,7 @@ def describe_cmd(structure, bundle: str,
         # make -- a value outside its recommended range.
         for _issue in desc.notes:
             click.echo(f"note: {_issue.message}", err=True)
-        # The struct AS DESCRIBED travels: --vacuum replaced it in memory,
+        # The struct AS DESCRIBED travels: --vacuum edited it in memory,
         # and a raw copy of the source would drop that choice.
         written = write_description(desc, out_dir, psml_lib=psml_lib,
                                     struct=struct)
@@ -1269,7 +1274,7 @@ def _ask_which_groups(calc, named) -> tuple:
     # A DESCRIPTION OR TEMPLATE THAT DOES NOT READ is refused in its own
     # words, as prep refuses it.
     try:
-        state = task_state(calc, verdict=True)
+        state = task_state(calc)
     except ValueError as exc:
         raise _refuse(str(exc)) from None
     gs = state.groups

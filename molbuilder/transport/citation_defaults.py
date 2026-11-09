@@ -162,13 +162,14 @@ def citation_answers(cited) -> CitationAnswers:
 
 
 def siesta_config_from_citation(answers: CitationAnswers, *, label: str,
-                                blank=(), **chosen) -> "SiestaConfig":
-    """The config `molbuilder describe` and the describe door write a transport
-    template from: the citation's ``answers`` (:func:`citation_answers`), then
-    what the person chose on the shared panel (``chosen``, in the same
-    field names) laid over them -- the person may change any of it, for
-    every rung that reads it at once (`engines/transport.md` § 2a.7 ruling
-    1).
+                                blank=(), **chosen
+                                ) -> "Tuple[SiestaConfig, Dict[str, str]]":
+    """``(config, sources)``: the config `molbuilder describe` and the
+    describe door write a transport template from, and who set each value
+    -- the citation's ``answers`` (:func:`citation_answers`), then what the
+    person chose on the shared panel (``chosen``, in the same field names)
+    laid over them -- the person may change any of it, for every rung that
+    reads it at once (`engines/transport.md` § 2a.7 ruling 1).
 
     ``blank`` names the items the person emptied on the panel: a blank is
     not chosen (`web/form-schema.md` § 1.1), so the citation's value is not
@@ -188,16 +189,19 @@ def siesta_config_from_citation(answers: CitationAnswers, *, label: str,
             f"the leads set the electron number, so the junction must be "
             f"neutral.  Relax the junction "
             f"neutral and cite that run, or the pair saved from it.")
-    kw = {k: v for k, v in answers.values.items() if k not in blank}
-    kw.update(_the_persons(chosen))
     # UNDER BOTH, the kind's own recommendations (`engines/template.md`
-    # § 6.3a): every door that writes a template lays them under what was
-    # given -- the citation's answers here, then the person's.
-    import dataclasses
-    from ..template import apply_recommended
-    base = apply_recommended(SiestaConfig(system_label=label), "transport",
-                             engine="siesta")
-    return dataclasses.replace(base, **kw)
+    # § 6.3a), and WHO SET EACH (§ 6.6 obligation 2), by the one door every
+    # road asks: the citation's answers -- its recorded contract -- then
+    # what the person chose on the shared panel over them, and the
+    # calculation's own name.  A value the panel holds as the citation
+    # answered it is the citation's: the panel is drawn holding those
+    # answers and sends what it holds.  Every other item is nobody's choice.
+    from ..template import stated_config
+    cited = {k: v for k, v in answers.values.items() if k not in blank}
+    mine = {k: v for k, v in _the_persons(chosen).items()
+            if not (k in cited and cited[k] == v)}
+    return stated_config(SiestaConfig, "transport", (cited, "cited"),
+                         ({**mine, "system_label": label}, "person"))
 
 
 def asked_of_the_person(cited) -> Tuple[str, ...]:
@@ -273,25 +277,12 @@ def transport_template_text(answers: CitationAnswers, *, label: str,
     # caller (:func:`citation_answers`), every frame of a frame set and the
     # electrode gate with it.
     cited = answers
-    cfg = siesta_config_from_citation(cited, label=label, blank=blank,
-                                      **chosen)
-    mine = _the_persons(chosen)
-    answered = (set(cited.values) - set(blank)) | set(mine)
+    cfg, sources = siesta_config_from_citation(cited, label=label,
+                                               blank=blank, **chosen)
     unanswered = sorted(
         it.name for it in _T.select(_T.catalogue(), engine="siesta",
                                     citation=True)
-        if "transport" in it.citation and it.name not in answered)
-    # WHERE EACH VALUE CAME FROM (`template.md` § 6.6 obligation 2): the
-    # citation's own answers -- its recorded contract -- then what the person
-    # chose on the shared panel over them, and the calculation's own name.  A value
-    # the panel holds as the citation answered it is the citation's: the
-    # panel is drawn holding those answers and sends what it holds.  Every
-    # other item is nobody's choice (`default`).
-    via = {"deck": "cited", "pair": "cited"}.get(cited.source)
-    sources = {k: via for k in cited.values if via and k not in blank}
-    sources.update({k: "person" for k, v in mine.items()
-                    if not (k in sources and cited.values[k] == v)})
-    sources["system_label"] = "person"
+        if "transport" in it.citation and it.name not in sources)
     # A CITED RUN'S PSEUDOPOTENTIALS TRAVEL WITH IT (`asked_of_the_person`):
     # the citation answers the directory, so no surface says it is nobody's.
     if cited.source == "deck":

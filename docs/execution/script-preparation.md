@@ -189,7 +189,7 @@ is [`job-system.md`](?doc=execution/job-system.md) § 5.0.
 | **1 · machine** | the target's record read and checked (a) | — |
 | **2 · parameters** | each element resolved; a run placed on its queue (b) | a benchmark — **grid** (b) |
 | **3 · structure** (*load*) | the structure loaded and checked against what was described | transport — **compose**, **electronic state** (below) |
-| **3 · decks** (*data files* … *declare*) | the data files screened; each deck rendered, validated, merged with the reader's section and checked (c) | transport — **points** (below) |
+| **3 · decks** (*data files* … *declare*) | the data files copied; each deck rendered, validated — the data files judged there — merged with the reader's section and checked (c) | transport — **points** (below) |
 | **4 · wrappers** | `.run.sh` and, where the target has a queue, `.sbatch` | — |
 | **5 · directory** | the plan's row, `STAGE-PLAN.md`, the run to open (d) | a SIESTA vibration — a folder per phase (d) |
 | ***the writing*** | the folder's state saved, then the plan written (e) | — |
@@ -928,8 +928,8 @@ and the seam do for one real SIESTA deck — a two-atom relaxation, stage
   flags — the log's `STEP 2` above.
 - **Load** reads the structure and checks it against what the description
   witnessed; **data files** reads its elements and puts `H.psml` into the
-  calculation's `pseudos/`, then screens it. SIESTA answers this question; PySCF
-  would answer *nothing*.
+  calculation's `pseudos/`, which the settings gate judges at each deck.
+  SIESTA answers this question; PySCF would answer *nothing*.
 - **identity** through **declare** run once for the deck: `spec_for` hands over
   the 15-member layout, the framework validates, walks it, writes and checks;
   the conductor then keeps the deck's promises and declares the job.

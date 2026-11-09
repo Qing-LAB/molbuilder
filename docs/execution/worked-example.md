@@ -353,7 +353,7 @@ continues from 01_coarse/run-0 (…): would copy …* — and once sent, what it
 took:
 
 ```text
-  takes      tight          [launched into run-0: it continues from 01_coarse/run-0 (the stage before it; concluded rc=0 at …; converged): copied BDT_Au_relax.XV, BDT_Au_relax.DM]
+  takes      tight          [launched into run-0: it continues from 01_coarse/run-0 (the stage before it; concluded rc=0 at …; geometry yes): copied BDT_Au_relax.XV, BDT_Au_relax.DM]
 ```
 
 **You may say which run it comes from**, or none — continuing from `run-0` and

@@ -1293,8 +1293,7 @@ def _member(calc, finished, stage: str, once, copied: set
                           f"is short of done -- {said}")
             pairs.append((pt, src))
     else:
-        _c, state, _v, detail = read_run(finished, stage, newest,
-                                         verdict=False)
+        _c, state, _v, detail = read_run(finished, stage, newest)
         if not usable(state):
             return no(f"{stage}: {shown} is {state}"
                       + (f" -- {detail}" if detail else ""))

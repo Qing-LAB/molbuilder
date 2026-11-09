@@ -184,7 +184,7 @@ def transport_inputs(calc, stage: str, *, point=None,
                         + block(launch_lines("task", upstream, base=base))
                         + q2)
         else:
-            c, st, _v, d = (read_run(calc, upstream, newest, verdict=False)
+            c, st, _v, d = (read_run(calc, upstream, newest)
                             if newest is not None
                             else (None, "pending", None, None))
             if not usable(st):

@@ -37,8 +37,10 @@ class Continuation:
     concluded: Optional[str]
     #: Its run state, `run_status`'s word (finished, failed, running, ...).
     state: Optional[str]
-    #: The relaxation's verdict, ``None`` when the run relaxed nothing.
-    converged: Optional[bool]
+    #: What the run says it converged, in the status column's words --
+    #: ``geometry NO``, ``SCF yes`` -- from the same reading as its state
+    #: (:func:`read_run`); ``None`` where it says neither.
+    converged: Optional[str]
     #: What it carries into the attempt: the files, by the pair's rule
     #: (`model.warm_carry`) of what the run holds -- counted against the
     #: stage's job -- or, for a run of points, the points its kind carries,
@@ -54,7 +56,7 @@ class Continuation:
 
     def line(self, copied=(), *, would: bool = False, warned=None) -> str:
         """``continues from 01_coarse/run-0 (the stage before it; concluded
-        rc=0 at ...; converged): copied H2.XV, ...`` -- what both doors
+        rc=0 at ...; geometry yes): copied H2.XV, ...`` -- what both doors
         print; ``would``, a preview's: what it would copy.  ``warned`` is
         ``{name: why}`` for a copied file written as its run ended
         (`HandOver.written_as_ended`, `running-a-job.md` § 3.6), said after
@@ -64,8 +66,7 @@ class Continuation:
                   "its own latest run" if self.own else self.relation),
                  _what_it_is(self.concluded, self.state)]
         if self.converged is not None:
-            facts.append("converged" if self.converged else
-                         "NOT converged -- taken as it stands")
+            facts.append(self.converged)
         return (f"continues from {self.source} ({'; '.join(facts)})"
                 + (f": {'would copy' if would else 'copied'} "
                    + ", ".join(n + (f" -- WARNING: {warned[n]}"
@@ -162,26 +163,23 @@ def done(folder, names, *, base, launched_in=None, must_hold=(),
     return True, "done"
 
 
-def read_run(calc, stage: str, attempt: Path, *, verdict: bool = True
-             ) -> Tuple[Optional[str], Optional[str], Optional[bool],
+def read_run(calc, stage: str, attempt: Path
+             ) -> Tuple[Optional[str], Optional[str], Optional[str],
                         Optional[str]]:
     """``(concluded, state, converged, detail)`` of one run of ``stage``
     of ``calc``, the calculation whole as the verb opened it (A16) --
     ``detail`` the status door's own words for the state -- the
     line its conclusion said, through the one door (`runrecord.ending`;
     ``None`` when it has not ended on its own), its state through the one
-    door (`parse.dirs.run_status`) and its relaxation's verdict
-    (`parse.contract.relaxation_of`), read from the run's own files, the
-    run door's (`runs.run_of`): its engine output, then its progress log --
-    where a PySCF run writes its steps, which its stdout cannot stand in
-    for.  ``verdict=False``
-    skips the relaxation's parse -- a list of runs needs each one's
-    conclusion, not a parse of each output.  A RUN OF POINTS -- its root a
-    container (`calcdirs`) -- holds no conclusion marker of its own: its
-    state is its points' (:func:`read_points`), what it concluded the
-    words its points ended in, and its relaxation's verdict that of the
-    points it carries to a stage continuing from it
-    (`points.PointsOf.carried`)."""
+    door (`parse.dirs.run_status`) and what it says it converged, from
+    that same reading in the status column's words
+    (`RunStatus.converged_words`, `model/parse.md` § 2b P-S4: one reader
+    per question) -- never a second parse of its output.  A RUN OF POINTS
+    -- its root a container (`calcdirs`) -- holds no conclusion marker of
+    its own: its state is its points' (:func:`read_points`), what it
+    concluded the words its points ended in, and what it converged the
+    status column's one rule over its points
+    (:meth:`PointsReading.converged`)."""
     from ..runs import concluded as _concluded
     from ..runrecord import ending
     from .naming import stage_home
@@ -190,59 +188,21 @@ def read_run(calc, stage: str, attempt: Path, *, verdict: bool = True
     names = home.names
     if where(attempt).of_points:
         from ..parse.dirs.job import FINAL_STATES
-        from .points import points_of
         got = read_points(calc, stage, attempt, names)
         state, detail = got.state, got.detail
-        said = []
-        if verdict:
-            declared = points_of(calc.task)
-            said = [v for v in (_relaxed(pdir) for pdir, pt
-                                in declared.points_in(calc, stage, attempt)
-                                if declared.carried(pt))
-                    if v is not None]
         return ((detail if state in FINAL_STATES else None), state,
-                (all(said) if said else None), detail)
+                got.converged(calc.task, stage), detail)
     concluded = ending(attempt, names.stem).line
     # ITS STATE, through the one door, asked with its launch record -- a
     # record that does not read is the state `unreadable`, said, never taken
     # for a run that stopped (`runs.concluded`, which asks the scheduler
     # once where it can, `running-a-job.md` § 4.2).
     st = _concluded(attempt, names, base=base)
-    state, detail = st.state, st.detail
-    return (concluded, state, _relaxed(attempt) if verdict else None,
-            detail)
-
-
-def _relaxed(folder) -> Optional[bool]:
-    """Whether the run in ``folder`` relaxed to its criterion -- its
-    relaxation's verdict (`parse.contract.relaxation_of`) -- or ``None``
-    where it says none.  The run door's run (`runs.run_of`), read in the
-    order the run door reads a run (`runfiles.result_roles`): its engine
-    output, then its progress log, which a SIESTA run
-    never writes into and a PySCF run's output no parser reads."""
-    from ..parse.contract import relaxation_of
-    from ..parse.errors import ParseError
-    from ..runfiles import ROLE_MOLWATCH
-    from ..runs import run_of
-    _run = run_of(folder)
-    paths = ([_run.stdout, _run.file(ROLE_MOLWATCH)]
-             if _run is not None else [])
-    for path in (q for q in paths if q is not None):
-        try:
-            rec = relaxation_of(path, engine=_run.place.task.engine)
-        except (OSError, ValueError, ParseError):
-            # AN OUTPUT THAT DOES NOT READ says no verdict -- the line says
-            # its state, as the status door gave it; a defect in a reader
-            # is not caught.
-            rec = None
-        if rec is not None:
-            return bool(rec["converged"])
-    return None
+    return concluded, st.state, st.converged_words, st.detail
 
 
 def continuation_answer(calc, stage: str, *, from_attempt=None,
-                        cold: bool = False, verdict: bool = True,
-                        bench: bool = False
+                        cold: bool = False, bench: bool = False
                         ) -> Tuple[Optional[Continuation], Optional[str]]:
     """``(continuation, refusal)`` for ``stage`` (`job-system.md` § 5.4).
 
@@ -263,8 +223,6 @@ def continuation_answer(calc, stage: str, *, from_attempt=None,
     the commands that work.  ``(None, None)`` for ``--cold``, a stage that builds on no
     stage before it, the first stage, a stage that starts clean, and one
     the description does not hold (which prep refuses at its checkpoint 2).
-    ``verdict=False`` leaves the relaxation unread -- for a reader that
-    never prints it.
 
     ``calc`` is the calculation as the verb read it (A16) -- prep's, with
     its plan as prep's overlay leaves it (`Calculation.as_planned`).
@@ -282,8 +240,7 @@ def continuation_answer(calc, stage: str, *, from_attempt=None,
         # recorded; its stage, the one its folder lies in (`calcdirs.where`).
         attempt = base / from_attempt
         named = stage_name(where(attempt).stage)
-        concluded, state, converged, _ = read_run(
-            calc, named, attempt, verdict=verdict)
+        concluded, state, converged, _ = read_run(calc, named, attempt)
         return Continuation(stage=named, source=str(Path(from_attempt)),
                             by_default=False, concluded=concluded, state=state,
                             converged=converged), None
@@ -291,7 +248,7 @@ def continuation_answer(calc, stage: str, *, from_attempt=None,
         prev = stage_before(task, stage, calc.template_text)
         if prev is None:
             return None, None
-        return _by_default(calc, stage, prev, verdict=verdict, bench=bench)
+        return _by_default(calc, stage, prev, bench=bench)
     except unreadable() as exc:
         # RAISES NOTHING THE PERSON CAN FIX, as this module promises: a
         # template prep would refuse is a refusal here too, said.  A
@@ -382,8 +339,7 @@ def cannot_be_named(calc, stage: str, from_attempt, cold: bool
     return None
 
 
-def _by_default(calc, stage: str, prev: str, *, verdict: bool,
-                bench: bool = False
+def _by_default(calc, stage: str, prev: str, *, bench: bool = False
                 ) -> Tuple[Optional[Continuation], Optional[str]]:
     """The default for ``stage``, which continues from ``prev``, the stage
     before it: the newest attempt, or the refusal (`continuation_answer`).
@@ -431,8 +387,7 @@ def _by_default(calc, stage: str, prev: str, *, verdict: bool,
         return None, (f"{lead}, which has not run yet.  Run it "
                       f"first --\n{run_prev}\n{clean}")
     source = str(attempt.relative_to(base))
-    concluded, state, converged, detail = read_run(
-        calc, prev, attempt, verdict=verdict)
+    concluded, state, converged, detail = read_run(calc, prev, attempt)
     if usable(state):
         return Continuation(stage=prev, source=source, by_default=True,
                             concluded=concluded, state=state,
@@ -452,7 +407,7 @@ def _by_default(calc, stage: str, prev: str, *, verdict: bool,
     # build on, typed out -- never a placeholder.  Its ending is the
     # question, not its relaxation.
     other = (earlier_run(base, container, attempt, lambda a: usable(
-                 read_run(calc, prev, a, verdict=False)[1]))
+                 read_run(calc, prev, a)[1]))
              if not bench and alone else None)
     alt = (f"or continue from an earlier run of `{prev}` that finished --\n"
            + block(_taking("--from", other)) + "\n"
@@ -569,10 +524,7 @@ def continue_from_choices(calc, stage: str) -> Optional[dict]:
     stage before it with what it was; whether the structure (``--cold``) is
     a choice here -- or ``None`` when the stage continues from nothing by
     default (`job-system.md` § 5.4, `web/task-setup.md` § 11).  The answer
-    its first launch acts on -- served before it does, without the
-    relaxation's verdict (`continuation_answer` reads it): a folder is
-    answered every time it is opened, and parsing
-    each stage's output there is the cost of a preview nobody asked for."""
+    its first launch acts on -- served before it does."""
     from ..paths import attempt_dir as _adir
     from ..paths import attempts_in
     from .naming import stage_home
@@ -580,12 +532,12 @@ def continue_from_choices(calc, stage: str) -> Optional[dict]:
     prev = stage_before(task, stage, calc.template_text)
     if prev is None:
         return None
-    got, refused = _by_default(calc, stage, prev, verdict=False)
+    got, refused = _by_default(calc, stage, prev)
     runs = []
     container = stage_home(base, task, prev).dir
     for n in reversed(attempts_in(container)):
         a = _adir(container, n)
-        c, s, _v, d = read_run(calc, prev, a, verdict=False)
+        c, s, _v, d = read_run(calc, prev, a)
         runs.append({"source": str(a.relative_to(base)),
                      "what": _what_it_is(c, s, d)})
     return {"from_stage": prev,
@@ -883,7 +835,7 @@ def stage_run_state(calc, stage: str, run) -> "Tuple[str, str]":
     points by :func:`read_points`, any other run by the run door).
     Asked wherever a run's state alone is wanted: `jobset scratch`, a reuse of
     a finished calculation, a displacement sweep."""
-    _ended, state, _conv, detail = read_run(calc, stage, run, verdict=False)
+    _ended, state, _conv, detail = read_run(calc, stage, run)
     return state, detail
 
 
@@ -914,6 +866,30 @@ class PointsReading:
     detail: str
     rows: Tuple[dict, ...] = ()
     launch: Optional[dict] = None
+
+    def converged(self, task, stage: str) -> Optional[str]:
+        """WHAT THE RUN SAYS IT CONVERGED, in the status column's words
+        (`job-system.md`, rule 4) -- the one rule its row and what a stage
+        continues from say alike (:func:`read_run`): the first point whose
+        output says it did not, in that verdict's own words (a
+        relaxation's ``geometry NO``, an SCF's ``SCF NO``); ``SCF yes``
+        for a rung of ``task`` that computes an SCF -- ``stage``'s roles'
+        fact in the kind table (``computes``; a transmission, a product of
+        the device's, converges nothing) -- when every point's output says
+        it converged; otherwise ``None``, nothing yet."""
+        from ..kind_table import kind
+        from ..template import stage_roles
+        pts = self.rows
+        no = next((p for p in pts if p["converged"] is False), None)
+        if no is not None:
+            return no["verdict_words"]
+        k = kind(str(task.calculation))
+        scf = any((r := k.role(name)) is not None and r.computes == "scf"
+                  for name in stage_roles(str(task.engine),
+                                          str(task.calculation), stage)
+                  or ())
+        return ("SCF yes" if pts and scf
+                and all(p["converged"] is True for p in pts) else None)
 
 
 def read_points(calc, stage: str, run, names=None) -> PointsReading:

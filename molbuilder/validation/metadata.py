@@ -89,52 +89,17 @@ def _validate_config_metadata(cfg, refused=frozenset(),
             # three inputs.
             label = (item.label or f.name) if item is not None else f.name
             unit = f" {item.unit}" if item is not None and item.unit else ""
-            if isinstance(value, (tuple, list)):
-                # EVERY TRIPLE, per component, through the one helper the
-                # description's own check asks too (:func:`outside_range`).
-                for i, v in outside_range(value, rng):
-                    issues.append(Issue(
-                        "warn",
-                        f"{label}{_keyword_suffix(item)}[{i}] = "
-                        f"{v}{unit} is outside the recommended "
-                        f"range [{lo}, {hi}]{unit}",
-                        f"config.{f.name}",
-                    ))
-            else:
-                try:
-                    if value < lo or value > hi:
-                        issues.append(Issue(
-                            "warn",
-                            f"{label}{_keyword_suffix(item)} = {value}{unit} "
-                            f"is outside the recommended range "
-                            f"[{lo}, {hi}]{unit}",
-                            f"config.{f.name}",
-                        ))
-                except TypeError:
-                    # A SCALAR that will not compare -- a string where a
-                    # number belongs, say.
-                    issues.append(Issue(
-                        "error",
-                        (f"The catalogue declares ``{f.name}``'s "
-                         f"``range = {rng}`` but the value "
-                         f"{value!r} is not comparable with it.  "
-                         f"This is a programmer bug: either the range or "
-                         f"the field's type is wrong."),
-                        f"config.{f.name}",
-                    ))
-        # AN ENUM'S VALUE IS ONE OF ITS MEMBERS, with the member's type
-        # (`engines/template.md` § 5) -- the rule the template reader and the
-        # form's coercion already hold, here for a config built any other
-        # way.
-        choices = item.choices if item is not None else None
-        if choices and value is not None:
-            from ..template import is_member
-            if not is_member(value, choices):
+            # A NUMBER, or EVERY TRIPLE per component, through the one
+            # helper the description's own check asks too
+            # (:func:`outside_range`).  Whether the value is of its type is
+            # the setting door's, asked where it was written
+            # (`engines/template.md` § 5.4); this pass warns of a range.
+            for i, v in outside_range(value, rng):
+                at = "" if i is None else f"[{i}]"
                 issues.append(Issue(
-                    "error",
-                    f"{(item.label or f.name)}{_keyword_suffix(item)} = "
-                    f"{value!r} is not one of "
-                    f"{', '.join(map(repr, choices))}",
+                    "warn",
+                    f"{label}{_keyword_suffix(item)}{at} = {v}{unit} is "
+                    f"outside the recommended range [{lo}, {hi}]{unit}",
                     f"config.{f.name}",
                 ))
         # Optional callable: meta["validate"] -> Issue or None

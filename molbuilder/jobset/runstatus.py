@@ -407,9 +407,12 @@ def every_run(calc, st: StageStatus) -> List[Dict[str, Any]]:
             opened = {r["rel"]: openable(place.point(r["rel"]))[0]
                       for r in reading.rows if r["opened"]}
             row, _folder = _at_work(reading, run_dir)
+            # WHAT IT CONVERGED, by the one rule its stage row says it with
+            # (`job-system.md`, rule 4: one door).
             rows.append(_run_row(
                 calc, n, run_dir, None, state=reading.state,
-                detail=reading.detail, converged=None,
+                detail=reading.detail,
+                converged=reading.converged(calc.task, st.ref.name),
                 opens=_run_opens(run_dir, opened.get(row["rel"])
                                  if row is not None else None),
                 copied=_copied(calc.base, run_dir),
@@ -570,34 +573,12 @@ def _sweep_status(calc, job, *, run: Path, columns: dict) -> "StageStatus":
     base, task = calc.base, calc.task
     got = read_points(calc, job.name, run)
     pts = got.rows
-    # CONVERGED, in its own column (`job-system.md`, rule 4): the first
-    # point whose output says it did not, in that verdict's own words (a
-    # relaxation's `geometry NO`, an SCF's `SCF NO`); yes for a rung that
-    # computes an SCF -- its roles' fact in the kind table (`computes`; a
-    # transmission, a product of the device's, converges nothing) -- when
-    # every point's output says it converged; otherwise nothing yet.
-    no = next((p for p in pts if p["converged"] is False), None)
-    converged = (no["verdict_words"] if no is not None
-                 else "SCF yes" if pts and _computes_scf(task, job.name)
-                 and all(p["converged"] is True for p in pts)
-                 else None)
     return StageStatus(
-        state=got.state, detail=got.detail, converged=converged,
+        state=got.state, detail=got.detail,
+        converged=got.converged(task, job.name),
         attempt=run.name, launch=got.launch, points=pts,
         gathered=gathered_lines(run), copied_from=_copied(base, run),
         **columns)
-
-
-def _computes_scf(task, stage: str) -> bool:
-    """Whether the rung ``stage`` computes an SCF -- its roles' fact in the
-    kind table (`execution/architecture.md` § 3.3: a role's ``computes``),
-    the stage's roles by the one rule (`template.stage_roles`)."""
-    from ..kind_table import kind
-    from ..template import stage_roles
-    k = kind(str(task.calculation))
-    return any((r := k.role(name)) is not None and r.computes == "scf"
-               for name in stage_roles(str(task.engine),
-                                       str(task.calculation), stage) or ())
 
 
 def _job_status(calc, job, *, dirs, refs) -> StageStatus:

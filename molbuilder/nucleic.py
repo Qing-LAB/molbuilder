@@ -266,8 +266,7 @@ def _maybe_add_hydrogens(struct: Structure,
                         output: amber 0.63, rdkit 0.72 -- already
                         complete);
                         otherwise add (X3DNA's fiber-skeleton at
-                        ratio ~0.05 lands here, as does a partially-
-                        protonated user-loaded structure).
+                        ratio ~0.05 lands here).
 
     Heuristic caveat: H/heavy depends on molecular size and chemistry
     -- small organics sit at ratio ~1-4, large polymers at ~0.6-0.8,
@@ -283,12 +282,14 @@ def _maybe_add_hydrogens(struct: Structure,
     if norm == "on":
         from .chemistry import add_hydrogens as _add_hydrogens
         return _add_hydrogens(struct)
-    # auto
-    n_h     = sum(1 for e in struct.elements if e == "H")
-    n_heavy = sum(1 for e in struct.elements if e != "H")
+    # auto -- a hydrogen asked the one way (`model/chemistry.md` § 3,
+    # `chemistry.is_atom`), never by comparing a label.
+    from .chemistry import add_hydrogens as _add_hydrogens
+    from .chemistry import is_atom
+    n_h     = sum(1 for e in struct.elements if is_atom(e, "H"))
+    n_heavy = len(struct.elements) - n_h
     if n_heavy and (n_h / n_heavy) >= 0.5:
         return struct
-    from .chemistry import add_hydrogens as _add_hydrogens
     return _add_hydrogens(struct)
 
 

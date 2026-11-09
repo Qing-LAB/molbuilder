@@ -10,8 +10,8 @@ nothing and refuses nothing.
 A :class:`Plan` is that list: each file's text or bytes, each copy, each
 move and each removal, in the order the steps decided them.  A step that
 reads what an earlier step will write reads it through the plan -- the
-wrapper the deck's text, the first run the stage's files, the screening the
-pseudopotentials -- and the plan answers with what it holds, the disk with
+wrapper the deck's text, the first run the stage's files, the settings gate
+the pseudopotentials -- and the plan answers with what it holds, the disk with
 the rest (:meth:`Plan.is_file`, :meth:`Plan.read_bytes`, :meth:`Plan.glob`).
 """
 from __future__ import annotations

@@ -113,7 +113,7 @@ value is, and follows each edit: the source, *you set this*, or —
 `collectForm` reads what the form holds, **a blank as `null`**, and every
 door that takes a form reads a `null` as not chosen: the template is written
 with what then applies and records it as nobody's choice — the kind's
-default (`_shared.config_from_params`; on a rung's tab, the template's
+default (`template.stated_config`, [`engines/template.md`](?doc=engines/template.md) § 6.3a; on a rung's tab, the template's
 own value, since the rung sets nothing), or on transport's shared panel no
 value at all for a cited row the person emptied, which `prep` fills with the
 documented default ([`engines/transport.md`](?doc=engines/transport.md)

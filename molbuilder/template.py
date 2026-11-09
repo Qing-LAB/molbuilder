@@ -1865,17 +1865,44 @@ def with_recommended(item: "Item", calculation: str) -> "Item":
     return dataclasses.replace(item, value=rec, default=rec)
 
 
-def apply_recommended(config, calculation: str, *, engine: str = ""):
+def apply_recommended(config, calculation: str):
     """A copy of ``config`` carrying every recommendation the catalogue makes
-    for ``calculation`` on its engine (§ 6.3a) -- what `molbuilder describe` writes a kind's
-    template from, so the template starts where the kind says it should."""
-    eng = engine or engine_of_config(config)
+    for ``calculation`` on its engine (§ 6.3a) -- what :func:`stated_config`
+    lays under what was stated, so a template starts where the kind says it
+    should."""
     updates = {}
-    for it in select(catalogue(), engine=eng, calculation=calculation):
+    for it in select(catalogue(), engine=engine_of_config(config),
+                     calculation=calculation):
         rec = recommended_for(it, calculation)
         if rec is not None and hasattr(config, it.name):
             updates[it.name] = rec
     return dataclasses.replace(config, **updates) if updates else config
+
+
+def stated_config(cls, calculation: str, *layers):
+    """THE ONE DOOR FROM WHAT WAS STATED TO A CONFIG (§ 6.3a; § 6.6
+    obligation 2) -- ``(config, sources)``: ``cls``'s defaults, the kind's
+    own recommendations over them (:func:`apply_recommended`, for
+    ``calculation`` -- none for ``""``), then each layer ``(values, who)``
+    laid over the one before -- a citation's answers, then the person's --
+    and ``sources`` who set each value, the last layer that stated it.  A
+    value nobody stated is the recommendation or the default, nobody's
+    choice, and has no source.  Every door that writes a template from
+    what was stated asks this -- the form doors, the hand-over,
+    `molbuilder describe`, a transport describe's citation -- so the
+    recommendations lie UNDER what was stated on every road.  ``values``
+    are each of its item's type already: a form's read by
+    :func:`read_text`, a citation's from its record."""
+    base = cls()
+    if calculation:
+        base = apply_recommended(base, calculation)
+    values: Dict[str, Any] = {}
+    sources: Dict[str, str] = {}
+    for given, who in layers:
+        for name, value in given.items():
+            values[name] = value
+            sources[name] = who
+    return dataclasses.replace(base, **values), sources
 
 
 def _check_raw_value(name: str, key: str, raw, type_: str,
@@ -3157,24 +3184,29 @@ def config_from_template(text: str, config_cls):
                 f"template item is a schema field; "
                 f"check the spelling against the schema's own names.")
         raise ValueError("  ".join(why))
-    # A VALUE MUST BE ONE OF THE CATALOGUE'S CHOICES -- today's, not the ones
-    # the file carries beside it.  The file's own declaration is what it was
-    # written against, so an enum the catalogue has since changed parses
-    # cleanly against itself and would reach the config as a value no
-    # reader expects: `method = "RKS"` under the DFT/HF vocabulary is read as
-    # Hartree-Fock (M6, 2026-09-28).  Refused by name instead.
+    # A VALUE IS OF THE CATALOGUE'S TYPE -- today's, not the one the file
+    # declares beside it (§ 5.4: the item's type is the catalogue's).  The
+    # file's own declaration is what it was written against, or what a hand
+    # edited, so a value it holds parses cleanly against itself and would
+    # reach the config as one no reader expects: `method = "RKS"` under the
+    # DFT/HF vocabulary is read as Hartree-Fock (M6, 2026-09-28), and a
+    # count declared text in the file reaches the range comparison as no
+    # number at all.  Asked of the ONE type check
+    # (:func:`_type_refusal`), and the value spelled as the catalogue
+    # declares it (:func:`as_declared`).
     decls = {it.name: it for it in select(catalogue(), engine=eng)}
-    stale = [(k, v) for k, v in vals.items()
-             if k in decls and decls[k].type == "enum" and decls[k].choices
-             and not is_member(v, decls[k].choices)]
-    if stale:
-        k, v = stale[0]
-        raise ValueError(
-            f"template's {k} = {v!r} is not one of today's choices "
-            f"({', '.join(map(repr, decls[k].choices))})."
-            + (f"  It was written before the electronic state's items"
-               f".  {MIGRATE_HINT}"
-               if k in STATE_ITEMS else ""))
+    for k, v in list(vals.items()):
+        if k not in decls:
+            continue
+        spelled = as_declared(decls[k].type, v)
+        why = _type_refusal(decls[k].type, decls[k].choices, spelled)
+        if why:
+            raise ValueError(
+                f"template's {k} = {shown(v)}{why}."
+                + (f"  It was written before the electronic state's items"
+                   f".  {MIGRATE_HINT}"
+                   if k in STATE_ITEMS else ""))
+        vals[k] = spelled
     return config_cls(**vals)
 
 

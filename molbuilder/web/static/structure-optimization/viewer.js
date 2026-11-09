@@ -929,7 +929,7 @@ import { ask } from "../lib/server.js";
      *
      * A blank is sent as `null`, for both engines: not chosen, which the
      * server's one door reads as "what lies under it" for every field
-     * (`_shared.config_from_params`, form-schema.md § 1.1) -- a blank charge
+     * (`template.stated_config`, form-schema.md § 1.1) -- a blank charge
      * or spin among them, whose blank is "work it out"
      * (`science/chemistry-correctness.md` § 2a).  `dispersion = "none"`
      * is sent as itself: it is the value for no correction.  Throws, naming

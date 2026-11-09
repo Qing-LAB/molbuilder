@@ -2614,13 +2614,22 @@ def test_a_device_point_that_finishes_unconverged_is_walked_on_and_said_once(
     status door does -- finished, every point's run finished, converged or
     not -- with the first point not done and why, and the last round.  The
     silent failures: a failed `finish` while the walk still computes, then a
-    second; a run said failed that `status` says finished."""
+    second; a run said failed that `status` says finished; the run's own
+    row on the Results ladder saying nothing of what its stage row says it
+    converged (`job-system.md`, rule 4: one door)."""
+    from molbuilder.calculation import open as open_calculation
+    from molbuilder.jobset.runstatus import every_run
     from support.real_runs import notified, stage_status, told
     c = junction.unconverged
     device = stage_status(c.bundle, "device")
     n = device.attempts[-1]
     _index, rows = _run_index(c, "device", n)
     assert rows[0]["why"] == "finished, not converged (SCF NO)", rows
+    own = [r["converged"] for r in every_run(open_calculation(c.bundle),
+                                             device)
+           if r["run"] == device.attempt and r["frame"] is None
+           and r["bias_v"] is None]
+    assert (device.converged, own) == ("SCF NO", ["SCF NO"]), own
     assert all(r["ended"] and r["state"] == "finished" for r in rows), rows
     assert notified(c, "device", n) == ["start", "milestone", "finish"]
     left = [r for r in rows if not r["done"]]
