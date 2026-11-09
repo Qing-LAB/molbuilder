@@ -83,9 +83,17 @@ advice by engine, the pseudopotential folder not drawn missing, the frame on
 screen said (the ledger's *Found by … sending a structure*); **2.69.9**: what
 a page says after an action — an upload asks to replace, the benchmark page
 keeps looking, a label spelled as stored, the Save's notices, a channel's kind
-kept (the ledger's *Found by … after an action*); next, 2.69.10, the tabs
-following the sidebar's folder (where the Send writes, the live check of it),
-the Spectrum form kept, the ladder's layout.
+kept (the ledger's *Found by … after an action*). **The overlap audit**
+*(the user, 2026-11-09)*: four readers over 2.68.0–2.69.9 found about seventy
+places the releases re-made a door that existed; the plan the user agreed to
+is one release per owning door, the contract first, the copies deleted, a
+discipline reader before each commit (the ledger's *Found by the overlap
+audit*). **2.69.10**: structure files through the one writer. Next, in order:
+2.69.11 reading answers, 2.69.12 status lines and words drawn, 2.69.13
+findings and notices, 2.69.14 page state, 2.69.15 words for values, 2.69.16
+paths and keys, 2.69.17 tests; then the tabs following the sidebar's folder
+(where the Send writes, the live check of it — the user's yes, 2026-11-09),
+the ladder's layout.
 
 **What runs next**: **the UI review** *(the user, 2026-11-08: "Right after
 2.67.11")* — every tab walked in Chrome on the dev server through an

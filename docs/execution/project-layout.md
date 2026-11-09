@@ -1169,7 +1169,7 @@ pair's sidecar, never in a file of its own
 <!-- manifest:calculation -->
 | file | what it is for | written by | the door | kind |
 |---|---|---|---|---|
-| `<label>.template.toml` | every parameter, with the value it was given | `molbuilder describe` and the Transport tab's Describe; the hand-over, which the browser writes; `jobset migrate`, over the template it found | `template_file.of` | source |
+| `<label>.template.toml` | every parameter, with the value it was given | `molbuilder describe` and the Transport tab's Describe; the hand-over door; `jobset migrate`, over the template it found | `template_file.of` | source |
 | `<label>.source.xyz` | the structure the calculation is of | the hand-over and `molbuilder describe` | `jobset.rung.structure_for` | input |
 | `<label>.source.molstruct.json` | its cell and its region labels | the hand-over and `molbuilder describe` | `jobset.rung.structure_for` | input |
 | `<label>.transport.json` *(transport)* | the transport results, summarised by `summarize task` from the transmission points that ran | `jobset summarize task` | `parse.sidecars.transport.TransportRecordFileParser` | result |
@@ -1179,7 +1179,7 @@ pair's sidecar, never in a file of its own
 | `task.json` | the description: what varies, the stages, the layout, the structure | `molbuilder describe` and the Transport tab's Describe; Task setup's Save; `jobset migrate` | `task.of` | source |
 | `job-request.json` | the job request: the queue, time limit and memory asked, the run cards, each stage's group, a benchmark's plan, the reports | `molbuilder describe` and the Transport tab's Describe; Task setup's Save; `jobset migrate` | `job_request.of` | source |
 | `<kept>.pre-<rule>` — only: a calculation migrated | a record as it was before `jobset migrate` rewrote it | `jobset migrate`, beside the record it rewrote | none | record |
-| `task.1st.json` | a hand-over waiting for its stages; Save removes it | the hand-over route, which the browser writes | `web.blueprints.build.api_task_setup_folder` | record |
+| `task.1st.json` | a hand-over waiting for its stages; Save removes it | the hand-over route | `web.blueprints.build.api_task_setup_folder` | record |
 | `warm-files.toml` — only: a person writes one | this calculation's own restart-file list | a person, from molbuilder's list for the engine | `warmfiles.warm_list` | source |
 | `environment.json` | the machine record this calculation is set to — its first prep's | the first prep | `scheduler.record.machine_for` | record |
 | `job-set.json` | the plan: one job per prepared stage, merged per stage — and a benchmark's own, in its container | prep | `jobset.model.JobSet.of` | derived |

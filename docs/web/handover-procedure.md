@@ -47,13 +47,13 @@ open.
 ```mermaid
 flowchart LR
   P["<b>a parameter tab</b><br/>collects the physics"]
-  R{{"<b>render</b><br/>server: config → texts"}}
+  R{{"<b>render and write</b><br/>server: config → files"}}
   W[("<b>the folder</b><br/>&lt;label&gt;.source.xyz + .molstruct.json<br/>&lt;label&gt;.template.toml<br/>task.1st.json")]
   T["<b>Task setup</b><br/>asks what only it can ask"]
   D[("task.json")]
   P -->|"Send to Task setup"| R
-  R -->|"returns TEXT, writes nothing"| P
-  P -->|"projects.writeFile"| W
+  R -->|"writes every file or none,<br/>the pair through the codec"| W
+  R -->|"what it wrote"| P
   W -->|"opens on the same folder"| T
   T -->|"save: task.from_text validates"| D
   T -.->|"projects.deleteEntry, after"| W
@@ -64,8 +64,11 @@ so a Send with none loaded sends nothing and says *"Load a structure first — a
 description is of something."* — the hand-over door's own words, which the
 library asks of every door it is handed (`needs`) before anything is sent.
 
-**Step 1 — render.** The server turns the collected values into the texts and
-**returns them**. It writes nothing. Two of them can only be made here:
+**Step 1 — render and write, on the server.** The server turns the collected
+values into the files and **writes them into the folder**, every file or none
+(`describe.publish`, the transaction `molbuilder describe` and the transport
+describe door write through), and answers what it wrote (`written`). Two of
+them can only be made here:
 rendering `<label>.template.toml` means narrowing the catalogue to one engine
 and filling in the answers (`template_with_values`); and the structure's own
 pair comes from `StructureCodec`, because
@@ -80,16 +83,17 @@ sidecar beside it is called, is the pairing rule's — one home
 (`model/structure.md` § 2.4). A caller building either keeps a second copy of a
 rule it does not own.
 
-**Step 2 — write, through the file layer.** The tab writes every returned text
-with `projects.writeFile(dest + "/" + filename, text, {overwrite})` into the
-folder the user selected — `dest`, the folder the Send checked, read once: the
-whole Send holds the page fence ([`ui-contract.md`](?doc=web/ui-contract.md)
-§ 10), so no click can move the selection between the check and the last
-write, and the fence's Cancel aborts what is in flight. **The structure
-first**, because the hand-over *names* it and a
-hand-over pointing at a file that was never written is worse than no hand-over. Never a fetch of its own: the content-blind layer is what *"every tab
-can use"* (`projects.md` § 1), and it carries the roots guard, the lock, the
-uniform `{ok, …}` envelope and the sidebar re-list.
+**Step 2 — the folder announced.** The tab names the folder the user selected
+— `dest`, read once: the whole Send holds the page fence
+([`ui-contract.md`](?doc=web/ui-contract.md) § 10), so no click can move the
+selection while it runs — and the server writes into it inside the projects
+roots (`_resolve_within_roots`), as every door does; the tab announces the
+folder written (`projects.md` § 2), as a writing door's does. One act on the
+server, so the fence offers no Cancel. *(Until 2.69.10 the server returned the
+texts and the tab wrote each through the content-blind file layer: the pair as
+two separate writes, a structure file written past the codec
+(`model/structure.md` § 2.4), and a folder half written when a later write
+failed.)*
 
 **Step 3 — finish, in Task setup.** It reads the folder, asks for what the
 parameter tab could not know, and on save writes `task.json` and
@@ -179,8 +183,8 @@ The split is `projects.md`'s, not this document's invention:
 
 | | who | why |
 |---|---|---|
-| the structure's pair, the template, the hand-over | **the browser**, via `writeFile` — a transport calculation's template is its describe door's, with its `task.json` (row 3) | raw bytes — the content-blind layer. The browser is a **courier**: every byte was generated on the server, and it composes neither a name nor a document |
-| removing the hand-over | **the browser**, via `deleteEntry` | likewise, and **only after** the write succeeded: the reverse order loses the parameters if the write fails |
+| the structure's pair, the template, the hand-over | **the server**, the hand-over door, every file or none (`describe.publish`) — the pair through the codec; a transport calculation's template is its describe door's, with its `task.json` (row 3) | a structure file reaches disk only through the codec (`model/structure.md` § 2.4), and the three are one act. *(Until 2.69.10 the browser wrote them through the content-blind layer as a courier: the pair as two writes, and a folder half written when a later write failed.)* |
+| removing the hand-over | **the browser**, via `deleteEntry` | raw bytes, the content-blind layer — and **only after** the save succeeded: the reverse order loses the parameters if the save fails |
 | `task.json` and `job-request.json` | **the server**, via `/api/task-setup/save` (`task.from_text`, `job_request.from_text`) — or, for a transport calculation, `/api/transport/describe`, which writes the whole description and its job request in one act (§ 6) | a **content-aware door**, for the reason § 3 of `projects.md` gives about the sidecar: *"a browser-written sidecar had no schema stamp, so the load door rejected it — a save-then-reload trap"*. A description is validated through `task.task.from_text`, the same door `prep` uses, so the browser cannot become a second drifting writer |
 
 ---
@@ -254,7 +258,7 @@ optimization's was left out until 2026-10-06, plan W57 R10: the description
 states its kind)*; a request that states no engine or no calculation is
 refused by name, never given one. The sender
 itself moved into `lib/task-handover.js` when the second tab arrived: the
-guards, the write order and the notice handling are this procedure's contract,
+guards and the notice handling are this procedure's contract,
 and two copies of a contract drift.
 
 **Transport does not use this procedure — resolved 2026-08-29, and not the
@@ -312,8 +316,8 @@ Each check, and the test that holds it:
 | **the cell survived** — read the geometry back through `StructureCodec` and compare the lattice | a periodic calculation silently becomes a molecule in a box it never had | the same |
 | **the labels survived** — regions and frozen atoms, through the same read | region labels are how a device knows its electrodes; losing them is silent | the hand-over's pair is written by the server's one codec, whose round trip holds it — `tests/test_junction_sidecar_roundtrip.py` |
 | **the sidecar carries its `schema_version`** | the load door refuses the pair on the next open and drops every label — this has happened, in this codebase | the same |
-| the render endpoint returns the texts and **leaves the folder untouched** | a render that writes is not a render | `test_handover_renders_and_writes_nothing` |
-| neither surface calls `/api/files/write` directly | a second writer, and `projects.md` § 1's guard is bypassed | no test holds it |
+| the hand-over door **writes every file or none** into the folder it names, the pair through the codec, and answers what it wrote | a folder half written, or a structure file written past the codec (`model/structure.md` § 2.4) | `test_the_handover_door_writes_every_file` |
+| the plain file layer writes no structure file | a second writer of a structure, the pair torn | `tests/test_web_files.py`, the structure door's tests |
 | the hand-over declares its own schema, lacks `shape`/`stages`, and says what it is | it could be read as a description | `tests/test_task_setup_tab.py`, the hand-over's tests |
 | save writes `task.json` and `job-request.json`, reports the hand-over rather than deleting it, and refuses bad JSON, a missing stage list, and a destination outside the roots | the browser becomes a second, drifting writer | `tests/test_task_setup_tab.py`, the save's tests |
 

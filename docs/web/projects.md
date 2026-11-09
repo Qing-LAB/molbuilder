@@ -37,7 +37,7 @@ Behind that one door are eleven small files, each with one concern:
 | `list.js` | the tree on screen — breadcrumb, the rows, the `⋯` menu |
 | `dialogs.js` | the pop-up dialogs (name a file, pick a folder, confirm a delete, pick a frame of a file holding several) |
 | `mutation-bar.js` | the header buttons — New project, New folder, Upload |
-| `preview.js` | the file preview/edit pop-up (any file, view or edit) |
+| `preview.js` | the file preview/edit pop-up (any file to view; any but a structure file or its sidecar to edit) |
 | `checkpoint.js` | the run-history panel (git snapshots of a run folder) |
 | `parser.js` | the **one** door that understands molecules — open and save |
 | `molview-doors.js` | the doors every MolView mount hands in, as one bundle (`molviewDoors`): the `files` door — export to project or download — and the server's reader |
@@ -47,7 +47,8 @@ There are really **two layers**: a **content-blind file layer** (read/write raw
 bytes, list folders, rename — it doesn't care what's in a file) that every tab
 can use, and **one content-aware door** (`projects.parser`) that knows a
 molecule is an `.xyz` paired with a `.molstruct.json`. Only that one door
-understands file *contents*; everything else just moves bytes.
+understands file *contents*; everything else just moves bytes — and so the
+byte layer writes no structure file (§ 4.1).
 
 ## 2. Where you are and what you picked — the selection
 
@@ -198,9 +199,12 @@ went with it — § 5):*
 Why the server writes the sidecar: a browser-written sidecar had no schema
 stamp, so the *load* door rejected it — a save-then-reload trap. Letting the
 server own the write closes that. If the file already exists, the
-server answers `409 {needsOverwrite: true}`; the door itself asks — the one
-confirm, naming the file and its sidecar — and on a yes posts again with
+server answers `409 {needsOverwrite: true, replaces}` — the one answer every
+write door gives (`web-api.md` § 1), `replaces` the files a yes replaces, by
+the pairing rule; the door itself asks — the one confirm,
+`dialogs.confirmOverwrite`, naming those files — and on a yes posts again with
 `{ overwrite: true }`, on a no answers `cancelled`. The tab never sees the 409.
+The upload door asks the same question the same way (§ 5).
 
 ```mermaid
 flowchart TB
@@ -323,7 +327,8 @@ touch it. The parts:
   as you scroll). Editing and Save use the file's on-disk timestamp so a
   concurrent change on disk is caught ("file changed on disk; reload") instead
   of being silently overwritten. This is *raw file* editing — not the structure
-  Save panel (§ 3).
+  Save panel (§ 3) — so a structure file and its sidecar open **view-only**,
+  the read answer's `read_only` sentence beside them (§ 4.1, 2.69.10).
 - **The run-history view** — for a **calculation folder**, a small round
   **status button appears beside the filter box**, colored by the folder's
   checkpoint state (gray = no history, green = saved, amber = unsaved
@@ -351,7 +356,15 @@ touch it. The parts:
   collapses it on desktop, and on a narrow screen it becomes a drawer. A lock
   banner covers the sidebar while an operation is in flight.
 
-### 4.1 Two rules the file operations follow, and why
+### 4.1 Three rules the file operations follow, and why
+
+**A structure file is written by the structure door, never as bytes**
+*(2.69.10)*: this layer's write refuses a `.xyz`, a `.pdb` or a
+`.molstruct.json`, naming that door; its upload reads a structure file as an
+import and writes it as a pair through the save's path; a sidecar is never
+uploaded alone; the preview shows such a file and edits it nowhere
+([`model/structure.md`](?doc=model/structure.md) § 2.4). Saving is § 3's door;
+editing is the Molbuilder tab's.
 
 **A structure and its sidecar move as one.** Rename, move, copy and delete check for the
 paired `.molstruct.json` and take both. If the second half fails, the first is
@@ -445,7 +458,7 @@ one it took away — § 2; the sidebar showing one re-lists it)
 | `mkdir(parent, name)` | `POST /api/files/mkdir` |
 | `deleteEntry(path, recursive)` | `DELETE /api/files/delete` |
 | `rename(path, newName)` / `move(path, dest)` / `copy(path, dest)` | rename / move / copy |
-| `upload(dir, file, {overwrite})` | `POST /api/files/upload` — a name already in the folder answers `409 {needsOverwrite: true}`, and the sidebar's Upload asks, as a save does (*Replace geom.xyz?*), posting again with `overwrite` on a yes *(2.69.9)* |
+| `upload(dir, file)` | `POST /api/files/upload` — a structure file written as a pair (§ 4.1). A name already in the folder answers `409 {needsOverwrite, replaces}`, and **the door itself asks**, as the save door does (§ 3; `dialogs.confirmOverwrite`, one question naming what a yes replaces), posting again with `overwrite` on a yes and answering `cancelled` on a no — the caller never sees the 409 *(2.69.10; 2.69.9 asked in the sidebar's button)* |
 
 **Locking** (local, no network) — `lock(reason)` / `unlock()` / `isLocked()` /
 `getLockReason()` / `cancelLockedOperation()`: one operation at a time, with a

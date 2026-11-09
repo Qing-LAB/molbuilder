@@ -356,6 +356,7 @@ def test_a_describe_hook_that_raises_says_whose_it_was(
     outside its ``calling(...)`` boundary."""
     from molbuilder.jobset import engines as E
     from support.envelope import envelope
+    from support.road import fresh_calc_dir
 
     def _raises(*_a, **_k):
         raise TypeError("engine bug")
@@ -369,7 +370,8 @@ def test_a_describe_hook_that_raises_says_whose_it_was(
         web_client.post("/api/task-setup/handover", json={
             "structure": envelope(["H", "H"], [[0, 0, 0], [0, 0, 0.74]]),
             "engine": "siesta", "calculation": "optimization",
-            "name": "probe", "params": {"system_label": "probe"}})
+            "name": "probe", "params": {"system_label": "probe"},
+            "dest": str(fresh_calc_dir(isolated_projects_root))})
     assert str(caught.value) == "engine bug", "the message was replaced"
     notes = getattr(caught.value, "__notes__", [])
     assert any(f"raised inside siesta.{hook}" in n for n in notes), notes

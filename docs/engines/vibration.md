@@ -3850,7 +3850,7 @@ flowchart TB
 | `GET /api/build/schema/common?calculation=vibration&surface=state` · `GET /api/build/schema/common?calculation=vibration` · `GET /api/build/schema/<engine>?calculation=vibration&surface=own` | the form schema from the catalogue narrowed to the kind: the charge and spin both engines share, their other shared settings, and each engine's own |
 | `POST /api/build/preflight` | the live checks: `validate(struct, cfg, calculation="vibration")` |
 | `POST /api/structure/analyze` | the charge and spin each form's vibration will carry — the one electronic state, for exactly what the form says, about the structure the viewer holds; the chemistry card shows it and fills nothing in |
-| `POST /api/task-setup/handover` | render `<label>.template.toml` and `task.1st.json` for the kind; the browser writes them where the person chose |
+| `POST /api/task-setup/handover` | render and write `<label>.template.toml`, `task.1st.json` and the structure pair for the kind into the folder the person chose, every file or none |
 | `POST /api/task-setup/save` · `/prep` | write `task.json` and `job-request.json`; run `prep` for the groups picked, each one job, on a named machine — the function the terminal's `prep task` runs |
 | `POST /api/spectra/load` | parse an existing `.spectra.json` into display data, with the infrared and Raman views asked (§ 5.10 ②, § 5.11 § 10); typed errors |
 | `GET /api/spectra/export` · `molbuilder jobset export` | a vibration calculation's data files and its Raman view at a laser, one zip or a folder (§ 5.11 § 10) |

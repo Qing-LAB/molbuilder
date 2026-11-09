@@ -29,6 +29,7 @@ import {
   apiWrite,
 } from "./api.js";
 import { pageBusy } from "../page-busy.js";
+import { confirmOverwrite } from "./dialogs.js";
 
 export const SS_DIR  = "molbuilder.current_dir";
 export const SS_FILE = "molbuilder.current_file";
@@ -601,12 +602,23 @@ async function copy(path, destDir, opts) {
 }
 
 /** Upload a file into ``targetDir``.  ``opts.signal`` honoured.
- *  ``targetDir`` announced.  Adds ``relPath`` to the
- *  success envelope per design § C6 (UploadOk = WriteOk shape;
- *  backend's /api/files/upload only returns {ok, path, size, mtime}
- *  so we compute relPath from the projects root here). */
+ *  ``targetDir`` announced.  Adds ``relPath`` to the success envelope
+ *  (the backend answers ``path``: ``{ok, path, size, mtime}``, or for a
+ *  structure file, written as a pair, ``{ok, path, notices}`` --
+ *  `model/structure.md` § 2.4).  A name already in the folder is asked
+ *  about here, and the caller never sees the 409 (`projects.md` § 3). */
 async function upload(targetDir, file, opts) {
-  const r = await apiUpload(targetDir, file, opts);
+  let r = await apiUpload(targetDir, file, opts);
+  /* A NAME ALREADY HERE: THE DOOR ITSELF ASKS, as the save door does
+   * (`projects.md` § 3), naming what a yes replaces -- the server's
+   * `replaces` -- and the caller never sees the 409. */
+  if (r && r.needsOverwrite) {
+    if (!(await confirmOverwrite(r.replaces))) {
+      return { ok: false, cancelled: true };
+    }
+    r = await apiUpload(targetDir, file,
+                        Object.assign({}, opts, { overwrite: true }));
+  }
   if (r && r.ok) {
     if (r.path && !r.relPath) {
       r.relPath = relativeToProjects(r.path);

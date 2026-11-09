@@ -272,8 +272,8 @@ class TestAnnouncedOnSuccess:
     @pytest.mark.parametrize("call, said, landed", [
         ("state.projects.createProject('myjob')", [""], "myjob"),
         ("state.projects.mkdir(P, 'optimization')", ["P"], "P/optimization"),
-        ("state.projects.upload(P, new File(['x'], 'f.xyz'))", ["P"],
-         "P/f.xyz"),
+        ("state.projects.upload(P, new File(['x'], 'f.txt'))", ["P"],
+         "P/f.txt"),
         ("state.projects.rename(P + '/notes.txt', 'new.txt')",
          ["P", "P/notes.txt"], "P/new.txt"),
         ("state.projects.move(P + '/notes.txt', P + '/optimization')",
@@ -642,13 +642,13 @@ class TestUploadEnvelopeShape:
         out = _run(f"""
             state.setProjectsRoot({json.dumps(str(tree))});
             const r = await state.projects.upload(
-                {json.dumps(str(tree / "P"))}, new File(["xyz"], "data.xyz"));
+                {json.dumps(str(tree / "P"))}, new File(["xyz"], "data.txt"));
             console.log(JSON.stringify({{ r, answer: __answered[0] }}));
         """, app_at)
         answer = out["answer"]
         assert answer["ok"] is True and "relPath" not in answer, answer
-        assert out["r"] == {**answer, "relPath": "P/data.xyz"}
-        assert (tree / "P" / "data.xyz").read_text() == "xyz"
+        assert out["r"] == {**answer, "relPath": "P/data.txt"}
+        assert (tree / "P" / "data.txt").read_text() == "xyz"
 
 
 # ----- setShared when sessionStorage throws ----------------------- #

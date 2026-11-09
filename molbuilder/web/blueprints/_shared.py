@@ -511,7 +511,6 @@ _CONTROL_FOR_TYPE = {
 }
 
 
-
 def _control_for(item) -> str:
     """Which widget renders this item.  `choices` wins: an enum is a select
     whatever its underlying type, and a tri-select is an OPTIONAL bool."""
@@ -993,6 +992,58 @@ def periodicity_checked_for_emit(struct):
     return checked
 
 
+def structure_from_text(text: str, filename: str = ""):
+    """A STRUCTURE READ FROM A FILE'S TEXT, as an import reads it
+    (`model/structure.md` § 2.3) -- the load door's pasted or picked text and
+    the files layer's upload: the format the name names, else the text's own
+    (`StructureCodec.format_of_text`); every frame it holds; its title the
+    file's own (§ 2.2c: the geometry file owns `title`); atoms only, an XYZ
+    text a lone file, said (`structure.lone_file`).  Returns ``(whole, said,
+    fmt)``; a text that does not read raises ``ValueError`` in the reader's
+    words."""
+    from molbuilder.sidecars.molstruct import is_geometry
+    from molbuilder.workingcopy_structure import (LONE_FILE, StructureCodec,
+                                                  lone_xyz_said, read_notice)
+    fmt = (StructureCodec.format_named(filename) if is_geometry(filename)
+           else StructureCodec.format_of_text(text))
+    reader = Structure.from_xyz if fmt == "xyz" else Structure.from_pdb
+    try:
+        whole = reader(text)
+    except Exception as exc:                      # noqa: BLE001 -- the reader's words
+        raise ValueError(f"could not parse {fmt}: {exc}") from exc
+    said = (notices_for_report([read_notice(
+                LONE_FILE, lone_xyz_said(filename or "The pasted text", text))])
+            if fmt == "xyz" else [])
+    return whole, said, fmt
+
+
+def write_structure(struct: Structure, path, *, overwrite: bool, said=()):
+    """THE ONE WAY A WEB DOOR PUTS A STRUCTURE ON DISK (`model/structure.md`
+    § 2.4) -- the save, and the upload of a structure file: written as the
+    export writes it (:func:`for_writing`: the user order, the box judged; a
+    refusal is the door's 400, before anyone is asked to overwrite), then the
+    one "already here" answer (`files.exists_answer`), then the codec's pair,
+    both or neither.  ``said``: what the read said of a structure read from
+    a file's text, answered before the gate's verdicts.  Returns the
+    response, ``{ok, path, notices}``."""
+    from pathlib import Path
+    from molbuilder.workingcopy_structure import StructureCodec
+    from .files import exists_answer
+    path = Path(path)
+    struct, notices = for_writing(struct)
+    taken = exists_answer(path, overwrite)
+    if taken is not None:
+        return taken
+    try:
+        StructureCodec().write(struct, path)
+    except ValueError as exc:          # a frame set to a .pdb
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    except Exception as exc:  # noqa: BLE001 -- disk / permission -> 500
+        return jsonify({"ok": False,
+                        "error": f"could not write {path.name}: {exc}"}), 500
+    return jsonify({"ok": True, "path": str(path),
+                    "notices": list(said) + list(notices)})
+
 __all__ = [
     "atoms_list",
     "issues_to_json",
@@ -1009,4 +1060,6 @@ __all__ = [
     "PeriodicityRefused",
     "checked_periodicity",
     "for_writing",
+    "structure_from_text",
+    "write_structure",
 ]

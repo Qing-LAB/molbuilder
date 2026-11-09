@@ -114,23 +114,18 @@ def test_the_task_setup_save_findings_carry_their_card(
     page with the card its field is drawn in (`web/ui-contract.md` § 5.1):
     a stage overriding an integer setting with text."""
     import dataclasses
-    import json as _json
     from molbuilder.template import card_of, items_of
     from support.envelope import envelope
-    from support.road import save_both
+    from support.road import fresh_calc_dir, handed_over, save_both
     items = items_of(SiestaConfig)
     key = next(f.name for f in dataclasses.fields(SiestaConfig)
                if f.name in items and items[f.name].group == "stage"
                and f.type in ("int", int))
-    d = isolated_projects_root / "wg" / "optimization" / "probe"
-    d.mkdir(parents=True, exist_ok=True)
-    over = web_client.post("/api/task-setup/handover", json=dict(
+    d = fresh_calc_dir(isolated_projects_root, species=["H"])
+    _out, h, _t = handed_over(web_client, d, dict(
         structure=envelope(["H", "H"], [[0, 0, 0], [0, 0, 0.74]]),
         engine="siesta", calculation="optimization", name="probe",
-        params={"system_label": "probe"})).get_json()
-    assert over and over.get("ok"), over
-    (d / over["handover_name"]).write_text(over["handover_text"])
-    h = _json.loads(over["handover_text"])
+        params={"system_label": "probe"}))
     proposed = {"schema": h["task_schema"], "engine": h["engine"],
                 "calculation": h["calculation"],
                 "shape": h["task_shape"], "run": h["run"],

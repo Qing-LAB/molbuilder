@@ -8,10 +8,11 @@
  *      beside the control it is about.
  *   4. Show the charge and spin each form's calculation will carry, and why
  *      — the chemistry card (`lib/chemistry.js`, POST /api/structure/analyze).
- *   5. HAND THE DESCRIPTION OVER — POST /api/task-setup/handover, then write
- *      the returned files through the projects file layer (`writeFile`).  That
- *      is `task.1st.json` (`stages.md` § 6.5a): a partial description the Task
- *      Setup tab finishes.
+ *   5. HAND THE DESCRIPTION OVER — POST /api/task-setup/handover, which
+ *      writes the calculation's files into the sidebar's folder, every file
+ *      or none (`handover-procedure.md` § 2).  Among them `task.1st.json`
+ *      (`stages.md` § 6.5a): a partial description the Task Setup tab
+ *      finishes.
  *
  * IT RENDERS NO DECK.  A deck is written by `prep`, on the machine that will
  * run it (`project-layout.md` § 2.2) — never here.  What this tab produces is
@@ -1070,11 +1071,11 @@ import { ask } from "../lib/server.js";
     }
 
     async function _sendToTaskSetup() {
-        /* The guards, the render call, the write order and the notice
-         * handling live in lib/task-handover.js -- ONE door shared with
-         * the spectra tab (spectra-migration-plan.md P2).  The dest
-         * guards and write order are CONTRACT (`job-contracts.md`
-         * § 2.1 / § 2.5), and two copies of a contract drift.  This
+        /* The guards, the call and the notice handling live in
+         * lib/task-handover.js -- ONE door shared with the spectra tab
+         * (spectra-migration-plan.md P2).  The dest guards are CONTRACT
+         * (`job-contracts.md` § 2.1 / § 2.5), and two copies of a
+         * contract drift.  This
          * tab contributes only what it alone knows: its structure door,
          * its engine, its form. */
         const mb = window.molbuilder || {};

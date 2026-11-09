@@ -49,29 +49,20 @@ def _describe(root, name, label, stage):
 
 
 def _hand_over(dest, label):
-    """A hand-over as the Structure-optimization tab leaves one -- made by
-    the hand-over route, its files written through the door the browser
-    writes them by (`lib/task-handover.js`: `projects.writeFile`, `POST
-    /api/files/write`, overwriting), the structure first.  The hand-over
-    file's path."""
+    """A hand-over as the Structure-optimization tab leaves one -- written
+    by the hand-over door into ``dest``, every file or none
+    (`support.road.handed_over`; `web/handover-procedure.md` § 2).  The
+    hand-over file's path."""
+    from molbuilder.runfiles import TASK_HANDOVER_FILE
     from molbuilder.web.app import create_app
     from support.envelope import envelope
+    from support.road import handed_over
     dest.mkdir(parents=True)
-    web = create_app(config={}).test_client()
-    out = web.post(
-        "/api/task-setup/handover", json=dict(
-            {"structure": envelope(["H", "H"], [[0, 0, 0], [0, 0, 0.74]])},
-            engine="pyscf", calculation="optimization", name=label,
-            params={"job_name": label}, dest=str(dest))).get_json()
-    assert out["ok"], out
-    for name, text in [*((f["name"], f["text"])
-                         for f in out["structure_files"]),
-                       (out["template_name"], out["template_text"]),
-                       (out["handover_name"], out["handover_text"])]:
-        wrote = web.post("/api/files/write", json={
-            "path": str(dest / name), "text": text, "overwrite": True})
-        assert wrote.status_code == 200, wrote.get_json()
-    return dest / out["handover_name"]
+    handed_over(create_app(config={}).test_client(), dest, dict(
+        {"structure": envelope(["H", "H"], [[0, 0, 0], [0, 0, 0.74]])},
+        engine="pyscf", calculation="optimization", name=label,
+        params={"job_name": label}))
+    return dest / TASK_HANDOVER_FILE
 
 
 @pytest.fixture(scope="module")

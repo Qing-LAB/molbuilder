@@ -18,7 +18,7 @@ a junction no relaxation wrote, the hand-over door a SIESTA calculation with
 no pseudopotential to start from.  An accepted request is the browser's to
 follow: Describe on a junction a real relaxation wrote
 (`test_transport_on_a_real_junction_e2e.py`), and a hand-over's files
-written through the file layer (`test_build_e2e.py`, Send to Task setup).
+written by its door (`test_build_e2e.py`, Send to Task setup).
 What is read here of an answer is the sender's own rule for a refusal: the
 door's sentence, word for word, and nothing written.
 """
@@ -42,11 +42,13 @@ pytestmark = pytest.mark.module
 
 _JUNCTION = "P/optimization/R/01_x/run-0"
 
-# (the tab's door, its kind, the fields its description carries): a writing
-# door the tab names, with the rename among its fields; the hand-over door
-# every tab of a structure sends through.
+# (the tab's door, its kind, the fields its description carries): the
+# Transport tab's door as `transport/core.js` names it, with the rename among
+# its fields; the hand-over door every tab of a structure sends through.
 ROWS = [
-    pytest.param({"url": "/api/transport/describe", "writes": True,
+    pytest.param({"url": "/api/transport/describe",
+                  "doing": "Describing\u2026",
+                  "checked": "The description was checked:",
                   "next": "the road"},
                  "transport",
                  {"junction": _JUNCTION, "bias": [0.0], "stages": {},

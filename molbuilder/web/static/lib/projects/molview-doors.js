@@ -19,7 +19,7 @@
  */
 "use strict";
 
-import { chooseSavePath, confirmDestructive } from "./dialogs.js";
+import { chooseSavePath, confirmOverwrite } from "./dialogs.js";
 import { projects } from "./state.js";
 import { storeZip } from "../zip-store.js";
 import { download } from "./downloads.js";
@@ -98,15 +98,9 @@ export const molviewFiles = {
                 let res = await ask("/api/structure/save",
                                     { method: "POST", body: body });
                 if (res.body && res.body.needsOverwrite) {
-                    // The module's own dialog, never a native confirm() --
-                    // one dialog system, and a native modal freezes any
-                    // automation driving the page.
-                    const sure = await confirmDestructive({
-                        title: "Overwrite?",
-                        body: path + " exists.  Overwriting replaces it "
-                            + "and its metadata sidecar together.",
-                        confirmLabel: "Overwrite",
-                    });
+                    // THE ONE OVERWRITE QUESTION (`projects.md` § 3),
+                    // naming what the server says a yes replaces.
+                    const sure = await confirmOverwrite(res.body.replaces);
                     if (!sure) return { ok: false, cancelled: true };
                     res = await ask("/api/structure/save", { method: "POST",
                         body: Object.assign({ overwrite: true }, body) });

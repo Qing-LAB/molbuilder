@@ -179,11 +179,17 @@ def test_the_create_bar_makes_a_project_a_folder_and_an_upload(
     asked.locator("input[data-role='file']").set_input_files(str(src))
     asked.locator("[data-action='confirm']").click()
     row(page, notes / "water.xyz").wait_for(state="visible", timeout=WAIT_MS)
-    assert (notes / "water.xyz").read_bytes() == src.read_bytes()
+    # A STRUCTURE FILE IS WRITTEN AS A PAIR, through the codec
+    # (`model/structure.md` § 2.4): its sidecar beside it, the pair reading
+    # the atoms uploaded.
+    from molbuilder.workingcopy_structure import StructureCodec
+    assert (notes / "water.molstruct.json").is_file()
+    assert StructureCodec().load(notes / "water.xyz").n_atoms == 3
 
-    # THE SAME NAME AGAIN (`projects.md` § 5, 2.69.9): the sidebar asks, as a
-    # save asks, and a yes replaces the file -- through 2.69.8 the upload was
-    # refused with words telling the person to "pass overwrite=true".
+    # THE SAME NAME AGAIN (`projects.md` § 3, 2.69.10): the files door asks
+    # the one overwrite question, naming both halves a yes replaces, and a
+    # yes replaces the pair.
+    from support.road import until
     again = tmp_path_factory.mktemp("again") / "water.xyz"
     again.write_text("3\nwater, moved\nO 0 0 1\nH 0.957 0 1\nH -0.239 0.927 1\n")
     bar.locator("#ps-create-upload-btn").click()
@@ -191,13 +197,11 @@ def test_the_create_bar_makes_a_project_a_folder_and_an_upload(
     asked.locator("input[data-role='file']").set_input_files(str(again))
     asked.locator("[data-action='confirm']").click()
     replace = page.locator("dialog.mb-dialog[open]",
-                           has_text="Replace water.xyz?")
+                           has_text="Overwrite water.xyz?")
     replace.wait_for(state="visible", timeout=WAIT_MS)
+    expect(replace).to_contain_text("water.molstruct.json")
     replace.locator("[data-action='discard']").click()
     replace.wait_for(state="detached", timeout=WAIT_MS)
-    for _ in range(100):           # the second post lands after the yes
-        if (notes / "water.xyz").read_bytes() == again.read_bytes():
-            break
-        page.wait_for_timeout(100)
-    assert (notes / "water.xyz").read_bytes() == again.read_bytes(), (
-        "the yes did not replace the file")
+    until(lambda: StructureCodec().load(notes / "water.xyz")
+          .positions[0][2] == 1.0, within=WAIT_MS / 1000,
+          what="the yes replaced the pair")

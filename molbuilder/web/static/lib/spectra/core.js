@@ -1056,7 +1056,7 @@
     //
     // This tab
     // DESCRIBES a vibration calculation and hands the description to
-    // Task setup -- it renders no deck.  Guards, write order and
+    // Task setup -- it renders no deck.  Guards, the call and the
     // notice handling live in lib/task-handover.js, ONE door shared
     // with /structure-optimization; this tab contributes only what it
     // alone knows: its structure door, the engine, the kind, its form.

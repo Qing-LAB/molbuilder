@@ -245,7 +245,7 @@ def test_the_page_loads_the_shared_stylesheet_layers(web_client):
 
 import json as _json
 
-from support.road import fresh_calc_dir, save_both
+from support.road import fresh_calc_dir, handed_over, save_both
 from support.machines import SLURM, WORKSTATION
 
 
@@ -282,29 +282,26 @@ def _as_the_page_saves(over):
     return task, request
 
 
-def test_handover_renders_and_writes_nothing(web_client, isolated_projects_root):
-    """The endpoint returns TEXTS; the browser writes them.
-
-    `web/projects.md` § 1 puts raw bytes in the content-blind file layer that
-    "every tab can use" — a tab that writes files itself bypasses the roots
-    guard, the lock, the uniform envelope and the sidebar re-list.  What is
-    genuinely server-side is the RENDER: only Python can turn a config into
-    `<label>.template.toml`.
-    """
-    d = fresh_calc_dir(isolated_projects_root)
-    r = web_client.post("/api/task-setup/handover", json=dict(
+def test_the_handover_door_writes_every_file(web_client, isolated_projects_root):
+    """`web/handover-procedure.md` § 2: the door renders AND WRITES the
+    calculation's files into the folder it names, every file or none, and
+    answers what it wrote -- the structure's pair through the codec
+    (`model/structure.md` § 2.4), the template, the hand-over.  THE SILENT
+    FAILURE it replaced (2.69.10): the browser wrote the texts one by one,
+    the pair as two writes past the codec, and a folder was left half
+    written when a later write failed."""
+    d = fresh_calc_dir(isolated_projects_root, species=["H"])
+    held = {p.name for p in d.iterdir()}
+    out, h, template = handed_over(web_client, d, dict(
         _envelope(), engine="siesta", calculation="optimization",
         name="probe calc", params={"system_label": "probe"}))
-    assert r.status_code == 200, r.get_json()
-    out = r.get_json()
-    assert out["ok"] is True
-    assert out["template_text"].strip(), "no template rendered"
-    assert out["handover_name"] == "task.1st.json"
-    assert list(d.iterdir()) == [], (
-        "the render endpoint wrote into the folder; the browser writes, "
-        "through the file layer (projects.writeFile)")
-
-    h = _json.loads(out["handover_text"])
+    assert sorted(out["written"]) == sorted(
+        {p.name for p in d.iterdir()} - held), (out["written"], held)
+    assert "task.1st.json" in out["written"]
+    assert template.strip(), "no template written"
+    # THE PAIR, read back through its one reader as a pair.
+    from molbuilder.workingcopy_structure import StructureCodec
+    assert StructureCodec().load(d / h["structure"]["source"]).n_atoms == 2
     assert h["schema"] == "molbuilder/task-handover@1"
     assert "shape" not in h and "stages" not in h
     # THE ONE LAYOUT the description states, for the page to copy
@@ -327,13 +324,11 @@ def test_the_calculation_is_named_as_typed_else_after_its_folder(
     sends as nothing.  THE SILENT FAILURE: through 2.69.7 a name typed as the
     default (`siesta`) was replaced by the folder's, the page having shown
     it as the name that applies."""
-    fresh_calc_dir(isolated_projects_root)
-    r = web_client.post("/api/task-setup/handover", json=dict(
+    d = fresh_calc_dir(isolated_projects_root, species=["H"])
+    _out, over, _t = handed_over(web_client, d, dict(
         _envelope(), engine="siesta", calculation="optimization",
         name="probe", params={} if typed is None else {"system_label": typed}))
-    out = r.get_json()
-    assert r.status_code == 200 and out["ok"], out
-    assert _json.loads(out["handover_text"])["run"]["name"] == named, out
+    assert over["run"]["name"] == named, over["run"]
 
 
 @pytest.mark.parametrize("length, taken", [(1, True), (100, False)],
@@ -350,12 +345,12 @@ def test_the_handover_names_its_calculation_as_its_save_reads_it(
     from molbuilder.identity import MAX_LABEL_BYTES
     from molbuilder.jobset.ladder import fresh_stages
     from molbuilder.task import label_of
-    fresh_calc_dir(isolated_projects_root)
+    d = fresh_calc_dir(isolated_projects_root, species=["H"])
     name = "a" * (MAX_LABEL_BYTES + length)
     stages = tuple(s.name for s in fresh_stages("optimization", "siesta"))
     r = web_client.post("/api/task-setup/handover", json=dict(
         _envelope(), engine="siesta", calculation="optimization",
-        name=name, params={"system_label": name}))
+        name=name, params={"system_label": name}, dest=str(d)))
     if taken:
         assert r.status_code == 200, r.get_json()
         assert r.get_json()["label"] == label_of(
@@ -382,11 +377,10 @@ def test_the_handover_carries_the_proposed_ladder(web_client,
                                                   isolated_projects_root,
                                                   engine, calculation,
                                                   params, ladder):
-    rendered = web_client.post("/api/task-setup/handover", json=dict(
+    d = fresh_calc_dir(isolated_projects_root, species=["H"])
+    _out, over, _t = handed_over(web_client, d, dict(
         _envelope(), engine=engine, name="probe", calculation=calculation,
-        params=params)).get_json()
-    assert rendered["ok"], rendered
-    over = _json.loads(rendered["handover_text"])
+        params=params))
     assert [(s["name"], over["proposed_groups"][s["name"]])
             for s in over["proposed_stages"]] == ladder
     assert all(s["overrides"] == {} for s in over["proposed_stages"])
@@ -405,14 +399,11 @@ def test_save_writes_the_description_and_reports_the_handover(web_client, isolat
     It does NOT delete the hand-over; it reports that one is there, and the
     browser removes it through `projects.deleteEntry`.
     """
-    d = fresh_calc_dir(isolated_projects_root)
-    rendered = web_client.post("/api/task-setup/handover", json=dict(
+    d = fresh_calc_dir(isolated_projects_root, species=["H"])
+    _out, over, _t = handed_over(web_client, d, dict(
         _envelope(), engine="siesta", calculation="optimization",
-        name="probe", params={"system_label": "probe"})).get_json()
-    # the browser's half, through the file layer
-    (d / rendered["handover_name"]).write_text(rendered["handover_text"])
-    proposed, request = _as_the_page_saves(
-        _json.loads(rendered["handover_text"]))
+        name="probe", params={"system_label": "probe"}))
+    proposed, request = _as_the_page_saves(over)
     r = save_both(d, proposed, request, web_client)
     assert r.status_code == 200, r.get_json()
     out = r.get_json()
@@ -439,12 +430,11 @@ def test_save_never_writes_over_a_file_changed_since_it_was_read(
     none saves)."""
     import json
     from support.road import read_as
-    d = fresh_calc_dir(isolated_projects_root)
-    rendered = web_client.post("/api/task-setup/handover", json=dict(
+    d = fresh_calc_dir(isolated_projects_root, species=["H"])
+    _out, over, _t = handed_over(web_client, d, dict(
         _envelope(), engine="siesta", calculation="optimization",
-        name="probe", params={"system_label": "probe"})).get_json()
-    (d / rendered["handover_name"]).write_text(rendered["handover_text"])
-    task, request = _as_the_page_saves(_json.loads(rendered["handover_text"]))
+        name="probe", params={"system_label": "probe"}))
+    task, request = _as_the_page_saves(over)
     assert save_both(d, task, request, web_client).status_code == 200
     seen = read_as(d, web_client)
     # ANOTHER WRITER, after the page read the folder:
@@ -471,16 +461,11 @@ def test_a_stage_stating_a_default_may_share_the_group_above(
 
     MUTATION THIS MUST FAIL AGAINST: the cards compared as stated, an
     unstated setting not its default."""
-    d = fresh_calc_dir(isolated_projects_root)
-    rendered = web_client.post("/api/task-setup/handover", json=dict(
+    d = fresh_calc_dir(isolated_projects_root, species=["H"])
+    _out, over, _t = handed_over(web_client, d, dict(
         _envelope(), engine="siesta", calculation="optimization",
-        name="probe", params={"system_label": "probe"})).get_json()
-    # WHAT THE HAND-OVER SENDS, written as the page's road writes it.
-    for f in rendered["structure_files"]:
-        (d / f["name"]).write_text(f["text"])
-    (d / rendered["template_name"]).write_text(rendered["template_text"])
-    (d / rendered["handover_name"]).write_text(rendered["handover_text"])
-    task, request = _as_the_page_saves(_json.loads(rendered["handover_text"]))
+        name="probe", params={"system_label": "probe"}))
+    task, request = _as_the_page_saves(over)
     # A STAGE THE PERSON ADDS below the proposed one, in a group of its own,
     # starting clean and its card stating the default (`use_gpu: false`) --
     # as the page's ladder and run card write them, in one Save.
@@ -645,20 +630,17 @@ def test_the_folder_template_is_what_an_empty_cell_names(web_client, isolated_pr
     endpoint the tab read the catalogue's default and named a number the job
     would not run whenever the sender had changed that parameter.
     """
-    d = fresh_calc_dir(isolated_projects_root)
-    rendered = web_client.post("/api/task-setup/handover", json=dict(
+    from molbuilder.template_file import template_filename
+    d = fresh_calc_dir(isolated_projects_root, species=["H"])
+    rendered, _over, _t = handed_over(web_client, d, dict(
         _envelope(), engine="siesta", calculation="optimization",
         name="probe",
         params={"system_label": "probe", "kgrid": [4, 4, 1],
-                "mesh_cutoff": 450.0})).get_json()
-    # WHAT THE BROWSER WRITES: the hand-over's files, as the route
-    # returned them -- the template beside the hand-over that names it.
-    (d / rendered["template_name"]).write_text(rendered["template_text"])
-    (d / rendered["handover_name"]).write_text(rendered["handover_text"])
+                "mesh_cutoff": 450.0}))
 
     j = _folder(web_client, d)["template"]
     assert j["ok"], j
-    assert j["name"] == rendered["template_name"]
+    assert j["name"] == template_filename(rendered["label"])
     assert j["values"]["mesh_cutoff"] == 450.0, (
         "the value the parameter tab collected did not reach Task setup; "
         "the catalogue default (300.0) would be shown instead")
@@ -676,13 +658,12 @@ def test_each_template_value_says_whose_it_is(web_client, isolated_projects_root
     as nobody's.  Until K7 the form drew every default as a value and sent
     it, so no template could tell the person's 450 Ry from nobody's 300."""
     from molbuilder.template import one, read_template
-    d = fresh_calc_dir(isolated_projects_root)
-    rendered = web_client.post("/api/task-setup/handover", json=dict(
+    d = fresh_calc_dir(isolated_projects_root, species=["H"])
+    _out, over, template = handed_over(web_client, d, dict(
         _envelope(), engine="siesta", name="probe", calculation="vibration",
         params={"system_label": "probe", "mesh_cutoff": 450.0,
-                "relax_force_tol": None, "basis_size": None})).get_json()
-    assert rendered["ok"], rendered
-    tmpl = read_template(rendered["template_text"])
+                "relax_force_tol": None, "basis_size": None}))
+    tmpl = read_template(template)
     assert one(tmpl, "mesh_cutoff").source == "person"
     assert one(tmpl, "system_label").source == "person"
     # Not chosen: the vibration's own recommendation, held tighter than an
@@ -691,8 +672,6 @@ def test_each_template_value_says_whose_it_is(web_client, isolated_projects_root
     assert (rft.value, rft.source) == (0.01, "default"), rft
     assert one(tmpl, "basis_size").source == "default"
 
-    (d / rendered["template_name"]).write_text(rendered["template_text"])
-    (d / rendered["handover_name"]).write_text(rendered["handover_text"])
     said = _folder(web_client, d)["template"]["said"]
     assert said["mesh_cutoff"] == "you set this", said["mesh_cutoff"]
     assert said["relax_force_tol"] == "not chosen", said["relax_force_tol"]
@@ -703,8 +682,7 @@ def test_each_template_value_says_whose_it_is(web_client, isolated_projects_root
     # identity is one; a value a stage may set is none of them.  Saved as
     # the page saves the hand-over: its proposed ladder and groups, and the
     # one layout it carries (§ 4).
-    s = save_both(d, *_as_the_page_saves(
-        _json.loads(rendered["handover_text"])), web_client)
+    s = save_both(d, *_as_the_page_saves(over), web_client)
     assert s.status_code == 200, s.get_json()
     shared = {r["name"]: r for r in _folder(web_client, d)["template"]["shared"]}
     assert (shared["system_label"]["value"],
@@ -754,8 +732,8 @@ def test_the_whole_chain_from_structure_to_rendered_deck(web_client, tmp_path, i
     DECK's own lattice against the structure that started the chain rather than
     checking that each step returned `ok`.
     """
-    import json as _json, subprocess, sys
-    d = fresh_calc_dir(isolated_projects_root)
+    import subprocess, sys
+    d = fresh_calc_dir(isolated_projects_root, species=["Au", "S"])
     # a periodic slab: a cell, a region label, a frozen atom
     cell = [[5.77, 0.0, 0.0], [2.885, 4.997, 0.0], [0.0, 0.0, 20.0]]
     # BUILT, not a two-atom envelope overwritten field by field: the
@@ -767,17 +745,10 @@ def test_the_whole_chain_from_structure_to_rendered_deck(web_client, tmp_path, i
         [[0, 0, 0], [2.885, 0, 0], [0, 0, 4.755]],
         regions={"frozen_atoms": [0], "slab": [0, 1]},
         cell=cell)}
-    r = web_client.post("/api/task-setup/handover", json=dict(
+    out, over, _t = handed_over(web_client, d, dict(
         env, engine="siesta", calculation="optimization", name="chain",
         params={"system_label": "chain", "kgrid": [8, 8, 1],
                 "kgrid_displacement": [0.5, 0.5, 0.0], "mesh_cutoff": 350.0}))
-    assert r.status_code == 200, r.get_json()
-    out = r.get_json()
-
-    for f in out["structure_files"]:
-        (d / f["name"]).write_text(f["text"])
-    (d / out["template_name"]).write_text(out["template_text"])
-    over = _json.loads(out["handover_text"])
 
     # The run card states its launch shape, as a run's must
     # (`architecture.md` § 5.2) -- the person's, on the page.
@@ -855,24 +826,19 @@ def test_a_dispersion_turned_off_on_the_form_is_off_in_the_deck(
     Every link returned ok -- so this follows the value through all of them,
     hand-over to template to `prep` to the deck `prep` renders.
     """
-    import json as _json, subprocess, sys
+    import subprocess, sys
     d = fresh_calc_dir(isolated_projects_root)
     from support.envelope import envelope
     env = {"structure": envelope(
         ["O", "H", "H"],
         [[0, 0, 0.117], [0, 0.757, -0.467], [0, -0.757, -0.467]])}
-    r = web_client.post("/api/task-setup/handover", json=dict(
+    out, over, template = handed_over(web_client, d, dict(
         env, engine="pyscf", calculation="optimization", name="nodisp",
         params={"method": "DFT", "dispersion": "none"}))
-    assert r.status_code == 200, r.get_json()
-    out = r.get_json()
-    for f in out["structure_files"]:
-        (d / f["name"]).write_text(f["text"])
-    (d / out["template_name"]).write_text(out["template_text"])
-    blk = out["template_text"].split("[item.dispersion]", 1)[1].split("help", 1)[0]
+    blk = template.split("[item.dispersion]", 1)[1].split("help", 1)[0]
     assert 'value = "none"' in blk, blk
 
-    described, request = _as_the_page_saves(_json.loads(out["handover_text"]))
+    described, request = _as_the_page_saves(over)
     request["execution"] = {"threads": 1}
     s = save_both(d, described, request, web_client)
     assert s.status_code == 200, s.get_json()
@@ -922,19 +888,13 @@ def test_a_cpu_description_gets_a_cpu_benchmark(web_client, tmp_path, isolated_p
       exists to produce.
     """
     import json as _json, subprocess, sys
-    d = fresh_calc_dir(isolated_projects_root)
+    d = fresh_calc_dir(isolated_projects_root, species=["H"])
     env = _envelope()
-    r = web_client.post("/api/task-setup/handover", json=dict(
+    out, over, _t = handed_over(web_client, d, dict(
         env, engine="siesta", calculation="optimization", name="grid",
         params={"system_label": "grid", "mesh_cutoff": 200.0,
                 "use_gpu": False}))
-    assert r.status_code == 200, r.get_json()
-    out = r.get_json()
-    for f in out["structure_files"]:
-        (d / f["name"]).write_text(f["text"])
-    (d / out["template_name"]).write_text(out["template_text"])
-    described, request = _as_the_page_saves(
-        _json.loads(out["handover_text"]))
+    described, request = _as_the_page_saves(over)
     request["bench"] = {"mpi_np": [1, 2], "omp_threads": [1]}
     s = save_both(d, described, request, web_client)
     assert s.status_code == 200, s.get_json()
@@ -985,7 +945,8 @@ def test_a_cpu_description_gets_a_cpu_benchmark(web_client, tmp_path, isolated_p
             f"a CPU trial asks for {j.get('gres') or res.get('gres')!r}")
 
 
-def test_a_refused_cell_is_the_door_s_400_not_a_500(web_client):
+def test_a_refused_cell_is_the_door_s_400_not_a_500(web_client,
+                                                    isolated_projects_root):
     """`checked_periodicity` RAISES on a box it will not accept, and the app
     turns that into a 400 carrying the gate's own sentence.  The hand-over runs
     the same gate, so a refusal has to leave as the same answer — a 500 would
@@ -995,9 +956,10 @@ def test_a_refused_cell_is_the_door_s_400_not_a_500(web_client):
         "regions": {}, "cell": [[1.0, 0, 0], [1.0, 0, 0], [0, 0, 1.0]],
         "engine_offset": None, "axis_kind": None, "vacuum": None,
     }
+    d = fresh_calc_dir(isolated_projects_root, species=["H"])
     r = web_client.post("/api/task-setup/handover", json=dict(
         env, engine="siesta", calculation="optimization", name="bad",
-        params={"system_label": "bad"}))
+        params={"system_label": "bad"}, dest=str(d)))
     # Two equal rows: a flat box, an ERROR finding (`cell.no_volume`), so the
     # gate refuses and the door answers 400 with that sentence.
     assert r.status_code == 400, (r.status_code, r.get_json())
@@ -1300,21 +1262,18 @@ class TestTheFolderDoor:
         assert client.get("/api/task-setup/folder?dir=" + str(dest)
                           ).get_json()["mode"] == "description"
 
-        # ...THE HAND-OVER in its place, as its door renders one and the
-        # page writes it.
+        # ...THE HAND-OVER in its place, as its door writes one.
+        from molbuilder.runfiles import TASK_HANDOVER_FILE
         (dest / TASK_FILENAME).unlink()
-        rendered = client.post("/api/task-setup/handover", json=dict(
+        handed_over(client, dest, dict(
             _envelope(), engine="siesta", calculation="optimization",
-            name="probe", params={"system_label": "probe"})).get_json()
-        assert rendered["ok"], rendered
-        (dest / rendered["handover_name"]).write_text(
-            rendered["handover_text"])
+            name="probe", params={"system_label": "probe"}))
         body = client.get(
             "/api/task-setup/folder?dir=" + str(dest)).get_json()
         assert body["mode"] == "handover"
         assert body["description"] is None and body["handover"] is not None
 
-        (dest / rendered["handover_name"]).unlink()
+        (dest / TASK_HANDOVER_FILE).unlink()
         assert client.get("/api/task-setup/folder?dir=" + str(dest)
                           ).get_json()["mode"] == "empty"
 

@@ -1137,8 +1137,9 @@ class TestFilesWrite:
                      json={"path": target, "text": "replacement"})
         assert r.status_code == 409
         body = r.get_json()
-        assert body["ok"] is False
-        assert "already exists" in body["error"]
+        # THE ONE ANSWER every write door gives (`web-api.md` § 1, 409).
+        assert (body["ok"], body["needsOverwrite"], body["replaces"]) == (
+            False, True, ["out.txt"]), body
         # File is untouched -- conflict is detection-only.
         assert (sub / "out.txt").read_text() == "original"
 
@@ -2057,16 +2058,78 @@ class TestFilesUpload:
     root; target_dir must exist as a directory) plus a filename
     regex distinct from validate_name (dots allowed for extensions)."""
 
-    def _post(self, web, target_dir, filename, content=b"hello\n"):
+    def _post(self, web, target_dir, filename, content=b"hello\n", **form):
         import io
         return web.post(
             "/api/files/upload",
             data={
                 "target_dir": str(target_dir),
                 "file": (io.BytesIO(content), filename),
+                **form,
             },
             content_type="multipart/form-data",
         )
+
+    @staticmethod
+    def _water(dz):
+        """A water molecule's .xyz, as the codec's own text writes it."""
+        import numpy as np
+        from molbuilder.structure import Structure
+        return Structure(elements=["O", "H", "H"], positions=np.array(
+            [[0, 0, dz], [0.757, 0.586, dz], [-0.757, 0.586, dz]])
+            ).to_xyz().encode()
+
+    def test_an_uploaded_structure_is_written_as_a_pair(self, web,
+                                                        picker_root):
+        """`model/structure.md` § 2.4: a structure file reaches disk only
+        through the codec.  Uploaded, it is read as an import is read and
+        written as a pair; sent again, the one 409 names both halves; a yes
+        replaces both at once, so the pair reads the new atoms.
+
+        THE SILENT FAILURE (through 2.69.9): the upload wrote the bytes as
+        they came, and a replaced `.xyz` kept the sidecar of other atoms,
+        which the next load refused as changed since it was written."""
+        import numpy as np
+        from molbuilder.workingcopy_structure import StructureCodec
+        target = picker_root / "proj" / "optimization"
+        target.mkdir(parents=True)
+        r = self._post(web, target, "water.xyz", self._water(0.0))
+        assert r.status_code == 200, r.get_json()
+        assert sorted(p.name for p in target.iterdir()) == [
+            "water.molstruct.json", "water.xyz"]
+        r = self._post(web, target, "water.xyz", self._water(1.0))
+        assert (r.status_code, r.get_json()["replaces"]) == (
+            409, ["water.xyz", "water.molstruct.json"]), r.get_json()
+        r = self._post(web, target, "water.xyz", self._water(1.0),
+                       overwrite="true")
+        assert r.status_code == 200, r.get_json()
+        read = StructureCodec().load(target / "water.xyz")
+        assert np.allclose(read.positions[:, 2], 1.0), read.positions
+
+    @pytest.mark.parametrize("route", ["upload a sidecar alone",
+                                       "write a structure file"])
+    def test_the_byte_layer_writes_no_structure_file(self, web, picker_root,
+                                                     route):
+        """`model/structure.md` § 2.4: the content-blind layer refuses a
+        sidecar uploaded alone and a structure file written as text, and the
+        pair on disk is as it was; a read of it says it is not edited here."""
+        target = picker_root / "proj" / "optimization"
+        target.mkdir(parents=True)
+        assert self._post(web, target, "water.xyz",
+                          self._water(0.0)).status_code == 200
+        before = {p.name: p.read_bytes() for p in target.iterdir()}
+        if route == "upload a sidecar alone":
+            r = self._post(web, target, "water.molstruct.json", b"{}",
+                           overwrite="true")
+        else:
+            r = web.post("/api/files/write", json={
+                "path": str(target / "water.xyz"), "text": "1\n\nH 0 0 0\n",
+                "overwrite": True})
+        assert r.status_code == 400, r.get_json()
+        assert {p.name: p.read_bytes() for p in target.iterdir()} == before
+        read = web.get("/api/files/read", query_string={
+            "path": str(target / "water.xyz")}).get_json()
+        assert read["read_only"], read
 
     def test_upload_happy_path_writes_file(self, web, picker_root):
         """An upload that lands truncated, or under a different name than it
@@ -2180,23 +2243,23 @@ class TestFilesUpload:
 
     def test_upload_existing_filename_409(self, web, picker_root):
         """An upload silently replacing a file of the same name: the user drops
-        a second `geom.xyz` into a run folder and the first is gone with no
+        a second `notes.txt` into a run folder and the first is gone with no
         prompt.
 
         `web-api.md` § 1 status table (409). Refusal is the default;
-        `overwrite` is the opt-in -- and the answer says it is one the page
-        may ask about, as a save's is (`projects.md` § 5, `needsOverwrite`),
-        so the sidebar's Upload asks rather than telling the person to pass a
-        flag (2.69.9).
+        `overwrite` is the opt-in -- and the answer is the one every write
+        door gives, which the files door asks about (`projects.md` § 3:
+        `needsOverwrite`, `replaces`).
         """
         target = picker_root / "proj" / "spectrum"
         target.mkdir(parents=True)
-        (target / "geom.xyz").write_text("existing\n")
-        r = self._post(web, target, "geom.xyz", b"replacement\n")
+        (target / "notes.txt").write_text("existing\n")
+        r = self._post(web, target, "notes.txt", b"replacement\n")
         assert r.status_code == 409
-        assert r.get_json()["needsOverwrite"] is True, r.get_json()
+        assert (r.get_json()["needsOverwrite"],
+                r.get_json()["replaces"]) == (True, ["notes.txt"]), r.get_json()
         # Original file content is untouched.
-        assert (target / "geom.xyz").read_text() == "existing\n"
+        assert (target / "notes.txt").read_text() == "existing\n"
 
     def test_upload_overwrite_replaces_existing(self, web, picker_root):
         """Phase 6e: ``overwrite=true`` lets the upload endpoint
@@ -2389,7 +2452,7 @@ class TestFilesUpload:
 
     def test_upload_strips_client_path_prefix(self, web, picker_root):
         """A browser sending the full client path as the filename (`/tmp/from-
-        client/water.xyz`) either being refused as invalid -- an upload that
+        client/notes.txt`) either being refused as invalid -- an upload that
         works in one browser and not another -- or reaching the writer with
         separators still in it.
 
@@ -2408,22 +2471,23 @@ class TestFilesUpload:
             "/api/files/upload",
             data={
                 "target_dir": str(target),
-                "file": (io.BytesIO(b"data\n"), "/tmp/from-client/water.xyz"),
+                "file": (io.BytesIO(b"data\n"), "/tmp/from-client/notes.txt"),
             },
             content_type="multipart/form-data",
         )
         assert r.status_code == 200, r.get_data(as_text=True)
         body = r.get_json()
-        assert body["path"] == str(target / "water.xyz")
-        assert (target / "water.xyz").read_bytes() == b"data\n"
+        assert body["path"] == str(target / "notes.txt")
+        assert (target / "notes.txt").read_bytes() == b"data\n"
 
 
 class TestFilesWriteAutoRename:
     """Phase 6e second-review BOMB #11: the export dialog promises
     auto-rename for ALL kinds; previously only /upload (binary)
-    honored auto_rename, so text exports (.xyz/.pdb) 409'd on
-    collision after the dialog said they wouldn't.  These tests
-    pin the /write parity."""
+    honored auto_rename, so text exports 409'd on collision after the
+    dialog said they wouldn't.  These tests pin the /write parity -- on
+    plain text files: a structure file is the structure door's
+    (`model/structure.md` § 2.4)."""
 
     def _post(self, web, path, text, **extra):
         body = {"path": str(path), "text": text}
@@ -2445,16 +2509,16 @@ class TestFilesWriteAutoRename:
         """
         target = picker_root / "proj"
         target.mkdir(parents=True)
-        (target / "structure.xyz").write_text("first\n")
-        r = self._post(web, target / "structure.xyz", "second\n",
+        (target / "notes.txt").write_text("first\n")
+        r = self._post(web, target / "notes.txt", "second\n",
                        auto_rename=True)
         assert r.status_code == 200, r.get_data(as_text=True)
         body = r.get_json()
         assert body["ok"] is True
-        assert body["path"] == str(target / "structure-2.xyz")
+        assert body["path"] == str(target / "notes-2.txt")
         # Original untouched.
-        assert (target / "structure.xyz").read_text() == "first\n"
-        assert (target / "structure-2.xyz").read_text() == "second\n"
+        assert (target / "notes.txt").read_text() == "first\n"
+        assert (target / "notes-2.txt").read_text() == "second\n"
 
     def test_auto_rename_walks_multiple_collisions(
             self, web, picker_root):
@@ -2465,13 +2529,13 @@ class TestFilesWriteAutoRename:
         """
         target = picker_root / "proj"
         target.mkdir(parents=True)
-        for n in ["structure.xyz", "structure-2.xyz",
-                  "structure-3.xyz"]:
+        for n in ["notes.txt", "notes-2.txt",
+                  "notes-3.txt"]:
             (target / n).write_text("prior\n")
-        r = self._post(web, target / "structure.xyz", "n4\n",
+        r = self._post(web, target / "notes.txt", "n4\n",
                        auto_rename=True)
         assert r.status_code == 200
-        assert r.get_json()["path"] == str(target / "structure-4.xyz")
+        assert r.get_json()["path"] == str(target / "notes-4.txt")
 
     def test_auto_rename_no_collision_uses_original_path(
             self, web, picker_root):
@@ -2483,10 +2547,10 @@ class TestFilesWriteAutoRename:
         """
         target = picker_root / "proj"
         target.mkdir(parents=True)
-        r = self._post(web, target / "fresh.xyz", "data\n",
+        r = self._post(web, target / "fresh.txt", "data\n",
                        auto_rename=True)
         assert r.status_code == 200
-        assert r.get_json()["path"] == str(target / "fresh.xyz")
+        assert r.get_json()["path"] == str(target / "fresh.txt")
 
     def test_overwrite_wins_when_both_flags_set(
             self, web, picker_root):
@@ -2495,12 +2559,12 @@ class TestFilesWriteAutoRename:
         precedence."""
         target = picker_root / "proj"
         target.mkdir(parents=True)
-        (target / "x.xyz").write_text("first\n")
-        r = self._post(web, target / "x.xyz", "second\n",
+        (target / "x.txt").write_text("first\n")
+        r = self._post(web, target / "x.txt", "second\n",
                        overwrite=True, auto_rename=True)
         assert r.status_code == 200
-        assert r.get_json()["path"] == str(target / "x.xyz")
-        assert (target / "x.xyz").read_text() == "second\n"
+        assert r.get_json()["path"] == str(target / "x.txt")
+        assert (target / "x.txt").read_text() == "second\n"
 
     def test_write_refuses_symlink_target(
             self, web, picker_root, tmp_path):
@@ -2509,8 +2573,8 @@ class TestFilesWriteAutoRename:
         target = picker_root / "proj"
         target.mkdir(parents=True)
         outside = tmp_path / "outside.txt"
-        os.symlink(str(outside), str(target / "linky.xyz"))
-        r = self._post(web, target / "linky.xyz", "data\n",
+        os.symlink(str(outside), str(target / "linky.txt"))
+        r = self._post(web, target / "linky.txt", "data\n",
                        overwrite=True)
         assert r.status_code == 400
         assert "symlink" in r.get_json()["error"]
@@ -2549,12 +2613,12 @@ class TestFilesWriteAutoRename:
         space is the canonical case the sixth audit flagged."""
         target = picker_root / "proj"
         target.mkdir(parents=True)
-        r = self._post(web, target / " foo.xyz", "data\n",
+        r = self._post(web, target / " foo.txt", "data\n",
                        overwrite=True)
         assert r.status_code == 400
         assert "unsupported" in r.get_json()["error"].lower()
         # Confirm the file was NOT written.
-        assert not (target / " foo.xyz").exists()
+        assert not (target / " foo.txt").exists()
 
     def test_write_rejects_dotfile_leaf(
             self, web, picker_root):

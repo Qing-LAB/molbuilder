@@ -4,7 +4,8 @@
  * Each export asks one question and resolves with the answer (or null on
  * cancel / Esc).  No HTTP here -- the caller dispatches to
  * projects.{mkdir, move, copy, rename, upload, createProject} after the
- * dialog resolves.
+ * dialog resolves; a write door that the server answers `needsOverwrite`
+ * asks `confirmOverwrite` itself (`projects.md` § 3).
  *
  * Built on the ONE modal component (`lib/dialog.js`, `lib/dialog.css`):
  * one dialog at a time, its look and its keys said once there.  A yes/no
@@ -171,6 +172,24 @@ export function confirmDestructive(opts) {
     title: opts.title || "Confirm",
     body: opts.body || "",
     confirmLabel: opts.confirmLabel || "Proceed",
+  });
+}
+
+/**
+ * THE ONE OVERWRITE QUESTION (`projects.md` § 3): asked by a write door
+ * when the server answers `needsOverwrite`, naming the files a yes replaces
+ * -- `replaces`, the server's, a structure's pair by the pairing rule.
+ * Resolves true on Overwrite.
+ */
+export function confirmOverwrite(replaces) {
+  const names = Array.isArray(replaces) && replaces.length
+    ? replaces : ["the file"];
+  return confirmDestructive({
+    title: "Overwrite " + names[0] + "?",
+    body: names.length > 1
+      ? "Overwriting replaces " + names.join(" and ") + " together."
+      : names[0] + " is already here.  Overwriting replaces it.",
+    confirmLabel: "Overwrite",
   });
 }
 

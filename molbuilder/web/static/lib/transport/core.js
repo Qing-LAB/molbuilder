@@ -1523,7 +1523,8 @@ const WORKSPACE_TAG = "transport";
                 // "After you describe" card (transport.md \u00a7 3.8.2a).
                 door: {
                     url: "/api/transport/describe",
-                    writes: true,
+                    doing: "Describing\u2026",
+                    checked: "The description was checked:",
                     next: "Next: the steps under \u201cAfter you "
                         + "describe\u201d, on this page.",
                 },

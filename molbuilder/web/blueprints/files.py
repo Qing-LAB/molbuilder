@@ -307,6 +307,43 @@ def _replace_pair(src: Path, dst: Path, src_sidecar, dst_sidecar, *,
                  f"structure {verb} rolled back.") from exc
 
 
+def structure_door_refusal(path) -> Optional[str]:
+    """WHY THIS LAYER WRITES NO STRUCTURE FILE, or ``None`` for any other
+    file (`model/structure.md` § 2.4): a geometry file or a sidecar, by the
+    pairing rule's own predicates, reaches disk only through the codec --
+    the save, or an upload, which writes the pair.  The write refuses with
+    it; the read answers it as ``read_only``, so the preview edits neither."""
+    from molbuilder.sidecars.molstruct import is_geometry, is_sidecar
+    name = Path(path).name
+    if is_sidecar(path):
+        return (f"{name} is a structure's sidecar, and molbuilder writes it "
+                f"with its structure, never alone.  Save the structure from "
+                f"the Molbuilder tab, or upload its structure file.")
+    if is_geometry(path):
+        return (f"{name} is a structure file, and molbuilder writes it with "
+                f"its sidecar.  Edit it in the Molbuilder tab and save it "
+                f"there, or upload a new one.")
+    return None
+
+
+def exists_answer(path, overwrite: bool):
+    """THE ONE "A FILE OF THAT NAME IS ALREADY HERE" ANSWER every write door
+    gives (`web-api.md` § 1, 409): ``None`` when ``path`` is free or the
+    caller said overwrite; else the 409 ``{ok: false, needsOverwrite: true,
+    replaces, error}`` -- ``replaces`` the files a yes replaces: a structure
+    file's pair, by the pairing rule (:func:`_existing_paired_sidecar`).  The
+    upload door and the structure save door ask about it and send again with
+    ``overwrite`` (`projects.md` § 3)."""
+    path = Path(path)
+    if overwrite or not path.exists():
+        return None
+    sidecar = _existing_paired_sidecar(path)
+    return jsonify({"ok": False, "needsOverwrite": True,
+                    "replaces": [path.name] + ([sidecar.name] if sidecar
+                                               else []),
+                    "error": f"a file named {path.name} is already here"}), 409
+
+
 def _existing_paired_sidecar(structure_path: Path) -> Optional[Path]:
     """Return the ``.molstruct.json`` paired with ``structure_path``,
     or ``None`` when the path isn't a structure file or no sidecar
@@ -544,6 +581,7 @@ def api_files_read():
             "error": f"permission denied: {exc}",
         }), 403
 
+    read_only = structure_door_refusal(resolved)
     return jsonify({
         "ok":     True,
         "exists": True,
@@ -552,6 +590,7 @@ def api_files_read():
         "size":   st.st_size,
         "mtime":  st.st_mtime,
         "text":   text,
+        **({"read_only": read_only} if read_only else {}),
     })
 
 
@@ -1288,13 +1327,18 @@ def api_files_upload():
         chosen name is reported back in ``path``.
 
     Behaviour:
+      * A STRUCTURE FILE (``.xyz`` / ``.pdb``) is written through the one
+        writer (`model/structure.md` § 2.4, `_shared.write_structure`): read
+        as an import is read, written as a pair, answered ``{ok, path,
+        notices}``; a sidecar alone is refused, 400.
       * No implicit overwrite unless ``overwrite=true`` is sent;
-        otherwise name conflict at destination returns 409 (or is
-        resolved to a free name when ``auto_rename=true``).
+        otherwise name conflict at destination returns the one 409
+        (:func:`exists_answer`: ``needsOverwrite``, ``replaces``) -- or
+        is resolved to a free name when ``auto_rename=true``.
       * Max upload size is enforced globally by Flask's
         ``MAX_CONTENT_LENGTH`` (50 MB; the app-level 413 handler
         catches oversize uploads with a clean message).
-      * Returns the same shape as ``/api/files/write``
+      * Any other file returns the same shape as ``/api/files/write``
         (``{ok, path, size, mtime}``) so the sidebar refresh code
         path is identical for both write modes.
     """
@@ -1347,25 +1391,23 @@ def api_files_upload():
     overwrite = overwrite_raw in ("1", "true", "yes", "on")
     auto_rename_raw = (request.form.get("auto_rename") or "").strip().lower()
     auto_rename = auto_rename_raw in ("1", "true", "yes", "on")
-    if dest.exists() and not overwrite:
-        if auto_rename:
-            # Used by the embed's export-params dialog so a re-save of the
-            # same default name doesn't silently clobber the previous one.
-            dest = _next_free_name(dest)
-            if dest is None:
-                return jsonify({
-                    "ok": False,
-                    "error": (f"could not find an unused auto-rename "
-                              f"candidate for {filename!r} after 998 "
-                              f"tries; directory may be malfunctioning"),
-                }), 500
-        else:
-            # THE DOOR'S CALLER ASKS, as a save's does (`projects.md` § 5):
-            # `needsOverwrite`, and the page offers to replace it.
+    # A SIDECAR IS WRITTEN WITH ITS STRUCTURE OR NOT AT ALL
+    # (`model/structure.md` § 2.4).
+    from molbuilder.sidecars.molstruct import is_geometry, is_sidecar
+    if is_sidecar(dest):
+        return jsonify({"ok": False,
+                        "error": structure_door_refusal(dest)}), 400
+    if dest.exists() and not overwrite and auto_rename:
+        # Used by the embed's export-params dialog so a re-save of the
+        # same default name doesn't silently clobber the previous one.
+        dest = _next_free_name(dest)
+        if dest is None:
             return jsonify({
-                "ok": False, "needsOverwrite": True,
-                "error": f"a file named {dest.name} is already here",
-            }), 409
+                "ok": False,
+                "error": (f"could not find an unused auto-rename "
+                          f"candidate for {filename!r} after 998 "
+                          f"tries; directory may be malfunctioning"),
+            }), 500
 
     # Phase 6e second-review LANDMINE #18: refuse to follow a
     # symlink at the destination.  Without this, an attacker (or
@@ -1384,6 +1426,28 @@ def api_files_upload():
     except OSError as exc:
         return jsonify({"ok": False,
                         "error": f"is_symlink check failed: {exc}"}), 500
+    if is_geometry(dest):
+        # A STRUCTURE FILE THROUGH THE ONE WRITER (`model/structure.md`
+        # § 2.4): read as an import reads it, written as a pair by the save's
+        # own path -- the box judged, then the one "already here" answer,
+        # then the codec.
+        from ._shared import structure_from_text, write_structure
+        try:
+            text = upload.read().decode("utf-8-sig")
+        except UnicodeDecodeError:
+            return jsonify({"ok": False,
+                            "error": f"{dest.name} is not a text file, so it "
+                                     f"does not read as a structure"}), 400
+        try:
+            whole, said, _fmt = structure_from_text(text, dest.name)
+        except ValueError as exc:
+            return jsonify({"ok": False,
+                            "error": f"{dest.name} does not read as a "
+                                     f"structure: {exc}"}), 400
+        return write_structure(whole, dest, overwrite=overwrite, said=said)
+    taken = exists_answer(dest, overwrite)
+    if taken is not None:
+        return taken
     from molbuilder.persist import write_bytes
     try:
         write_bytes(dest, upload.read())
@@ -1426,7 +1490,10 @@ def api_files_write():
          auto_rename.
       3. ``auto_rename=true`` — pick ``<stem>-2``, ``<stem>-3``
          … on collision.
-      4. Default — 409 with a hint pointing at the two flags.
+      4. Default — the one 409 (:func:`exists_answer`).
+
+    A structure file or a sidecar is refused, 400: it reaches disk only
+    through the codec (`structure_door_refusal`, `model/structure.md` § 2.4).
 
     Two distinct call patterns share this endpoint:
 
@@ -1467,6 +1534,9 @@ def api_files_write():
         }), 400
 
     resolved = _resolve_within_roots(raw_path)
+    refused = structure_door_refusal(resolved)
+    if refused:
+        return jsonify({"ok": False, "error": refused}), 400
 
     # Depth check: the file's PARENT must be at depth >= 1 inside
     # the picker's root.  i.e., write to projects/<proj>/<...>/file
@@ -1542,12 +1612,7 @@ def api_files_write():
                 }), 500
             resolved = chosen
         else:
-            return jsonify({
-                "ok":   False,
-                "error": (f"file already exists: {str(resolved)!r}.  "
-                          f"Set overwrite=true or auto_rename=true, "
-                          f"or pick a different name / directory."),
-            }), 409
+            return exists_answer(resolved, False)
 
     # LANDMINE #18 mirror: refuse to clobber a symlink with text
     # writes too.  The write_text() helper resolves and follows

@@ -408,11 +408,10 @@ def api_structure_save():
     (``molstruct.to_dict``), so the pair the load door reads back is VALID.  The browser
     never authors the sidecar envelope (the drift that made a browser-written sidecar
     unloadable).  Body: ``{"path": "<project-relative .xyz>", "structure": {...},
-    "overwrite": bool}``.  Returns ``{ok:true, path, notices}`` | ``{ok:false, needsOverwrite:true}``
+    "overwrite": bool}``.  Returns ``{ok:true, path, notices}`` | ``{ok:false, needsOverwrite:true, replaces}``
     (409, drives the tab's overwrite dialog) | ``{ok:false, error}`` -- and the
     periodicity gate runs here exactly as on export: the same
     refusal is the same 400, the same verdicts ride ``notices``."""
-    from molbuilder.workingcopy_structure import StructureCodec
     body = request.get_json(silent=True) or {}
     path = body.get("path")
     overwrite = bool(body.get("overwrite"))
@@ -425,26 +424,13 @@ def api_structure_save():
         struct = _struct_from_body(body)
     except ValueError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
-    # WRITTEN AS THE EXPORT WRITES IT (`_shared.for_writing`): in the user order,
-    # its box judged -- a save and a download cannot produce different bytes,
-    # nor disagree about a refusal.  Runs BEFORE the overwrite gate, so
-    # nobody is asked to confirm an overwrite for a save that will be
-    # refused; the verdicts ride the response as `notices`.
-    from ._shared import for_writing
-    struct, notices = for_writing(struct)
-    resolved = _resolve_within_roots(path)   # save-as target need not exist yet
-    # Overwrite gate: the GEOMETRY file's existence drives the tab's overwrite dialog
-    # (mirrors the /api/files/write 409 contract) -- refuse unless the caller confirmed.
-    if resolved.exists() and not overwrite:
-        return jsonify({"ok": False, "needsOverwrite": True,
-                        "error": f"file already exists: {path}"}), 409
-    try:
-        StructureCodec().write(struct, resolved)
-    except ValueError as exc:          # a frame set to a .pdb
-        return jsonify({"ok": False, "error": str(exc)}), 400
-    except Exception as exc:  # noqa: BLE001 -- disk / permission -> 500
-        return jsonify({"ok": False, "error": f"could not save {path}: {exc}"}), 500
-    return jsonify({"ok": True, "path": path, "notices": notices})
+    # THE ONE WRITER a web door puts a structure on disk through
+    # (`_shared.write_structure`): written as the export writes it -- a save
+    # and a download cannot produce different bytes, nor disagree about a
+    # refusal -- the one "already here" answer, then the codec's pair.
+    from ._shared import write_structure
+    return write_structure(struct, _resolve_within_roots(path),
+                           overwrite=overwrite)
 
 
 @bp.route("/api/structure/export", methods=["POST"])
@@ -562,11 +548,9 @@ def api_build_load():
     # pairing, so there is NO raw-text hand-crafting and NO browser-side sidecar
     # derivation.  ``to_wire`` (via ok_structure_response) emits the enriched atoms
     # + periodicity + annotations in one response.
-    from molbuilder.sidecars.molstruct import is_geometry
-    from molbuilder.workingcopy_structure import (GEOMETRY_CHANGED, LONE_FILE,
+    from molbuilder.workingcopy_structure import (GEOMETRY_CHANGED,
                                                   ORDER_UNSTATED,
-                                                  StructureCodec,
-                                                  lone_xyz_said, read_notice)
+                                                  StructureCodec)
     body = request.get_json(silent=True) or {}
     path = body.get("path")
     if path:
@@ -659,29 +643,18 @@ def api_build_load():
     if not text.strip():
         return jsonify({"ok": False, "error": "empty input"}), 400
 
-    # The name's suffix when it names a structure file, else the text's own
-    # first line.
-    fmt = (StructureCodec.format_named(filename) if is_geometry(filename)
-           else StructureCodec.format_of_text(text))
-
+    # THE ONE READER of a structure's text (`_shared.structure_from_text`),
+    # the upload's too: the name's format, else the text's own; an XYZ text a
+    # lone file, said as the path branch says it (`model/structure.md` § 2.3).
+    from ._shared import structure_from_text
     try:
-        reader = Structure.from_xyz if fmt == "xyz" else Structure.from_pdb
-        whole = reader(text, title=filename or None)
-    except Exception as exc:
-        return jsonify({"ok": False,
-                        "error": f"could not parse {fmt}: {exc}"}), 400
+        whole, said, fmt = structure_from_text(text, filename)
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
     try:
         struct = _chosen_frame(whole, body)
     except (TypeError, ValueError) as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
-    # AN XYZ TEXT IS A LONE FILE -- atoms only, nothing beside it -- and says
-    # so as the path branch does, in the same sentence (`model/structure.md`
-    # § 2.3).
-    said: list = []
-    if fmt == "xyz":
-        from molbuilder.periodicity_gate import notices_for_report
-        said = notices_for_report([read_notice(
-            LONE_FILE, lone_xyz_said(filename or "The pasted text", text))])
 
     return ok_structure_response(struct, extra={
         # The title shown defaults to the filename (or format name) when the
@@ -908,17 +881,14 @@ def _proposal_refused(over) -> None:
 
 @bp.route("/api/task-setup/handover", methods=["POST"])
 def api_task_setup_handover():
-    """RENDER the parameter tab's work, for the browser to write.
-
-    **This writes nothing.**  `web/projects.md` § 1 puts raw bytes in the
-    content-blind file layer that *"every tab can use"* -- `writeFile` /
-    `deleteEntry` -- and a tab that opens files itself bypasses the roots
-    guard, the uniform `{ok, ...}` envelope and the sidebar re-list that come
-    with it.  So this returns the TEXTS and the caller puts them where the
-    user chose, through `projects.writeFile`.
-
-    What is genuinely server-side is the render: only Python can turn a config
-    into `<label>.template.toml`, because `template_with_values` narrows the
+    """RENDER AND WRITE the parameter tab's work into the folder it names
+    (`dest`), every file or none (`describe.publish`, the transaction
+    `molbuilder describe` and the transport describe door write through), and
+    answer what it wrote (`written`) -- `web/handover-procedure.md` § 2.  A
+    structure file reaches disk only through the codec
+    (`model/structure.md` § 2.4), so the pair is never handed to the browser
+    to write as bytes.  Only Python can turn a config into
+    `<label>.template.toml`, because `template_with_values` narrows the
     catalogue and fills in the answers.
 
     Four files, and none of them is a runnable anything:
@@ -982,28 +952,27 @@ def api_task_setup_handover():
     # adds (`EngineSeam.describe_findings` -- SIESTA's pseudopotentials),
     # asked of the folder the files go into -- files already beside it
     # count -- and a refusal while one is an error, its findings for the tab
-    # to put beside the field.  The sender names the folder (`dest`); a
-    # caller that names none is asked about the library alone, as the live
-    # check is.
+    # to put beside the field.  The sender names the folder (`dest`).
     # THE FOLDER'S RULES ARE THE SERVER'S, as the transport describe door's
     # are (`engines/transport.md` § 3.8.2a): a calculation lives under a
     # topic -- project / topic / its folder, three levels inside the picker's
     # root (`job-contracts.md` § 2.5; the file layer's one depth door,
     # `files._depth_inside_root`) -- and one calculation per folder
-    # (`describe.refuse_described`, the rule `molbuilder describe` asks).  A sender
-    # that names no folder is answered about the library alone.
-    dest_dir = None
-    if body.get("dest"):
-        from molbuilder.describe import DescribeError, refuse_described
-        from .files import calculation_folder_refusal
-        dest_dir = _resolve_within_roots(str(body["dest"]))
-        too_high = calculation_folder_refusal(dest_dir)
-        if too_high:
-            return jsonify({"ok": False, "error": too_high}), 400
-        try:
-            refuse_described(dest_dir)
-        except DescribeError as exc:
-            return jsonify({"ok": False, "error": str(exc)}), 400
+    # (`describe.refuse_described`, the rule `molbuilder describe` asks).
+    # THE FOLDER IS WHERE IT WRITES, so one is named or nothing is done.
+    if not body.get("dest"):
+        return jsonify({"ok": False, "error": "dest: a hand-over is written "
+                        "into a calculation's folder -- name it"}), 400
+    from molbuilder.describe import DescribeError, refuse_described
+    from .files import calculation_folder_refusal
+    dest_dir = _resolve_within_roots(str(body["dest"]))
+    too_high = calculation_folder_refusal(dest_dir)
+    if too_high:
+        return jsonify({"ok": False, "error": too_high}), 400
+    try:
+        refuse_described(dest_dir)
+    except DescribeError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
     from molbuilder.issues import calling
     from molbuilder.jobset.engines import engine_seam
     describe_findings = engine_seam(engine).describe_findings
@@ -1024,8 +993,6 @@ def api_task_setup_handover():
     from molbuilder.jobset.ladder import fresh_stages
     from molbuilder.task import label_of
     from molbuilder.template import template_with_values
-    from molbuilder.template_file import (
-        template_filename as _template_filename)
 
     # WHAT THIS CALCULATION IS CALLED — the identity the person typed, and the
     # destination folder only when they did not.
@@ -1114,8 +1081,6 @@ def api_task_setup_handover():
         made = StructureCodec().source_files(struct, label)
     except ValueError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
-    structure_files = [{"name": path.name, "text": blob.decode("utf-8")}
-                       for path, blob in made]
     # `source` names the COORDINATE document only -- the pair's first half,
     # as the codec answers it (`StructureCodec.source_files`), and as
     # `molbuilder describe` records it.  The sidecar beside it is found by
@@ -1202,23 +1167,37 @@ def api_task_setup_handover():
     # hand-over made two descriptions by the door it went through).
     handover["proposed_varies"] = list(fresh_varies(proposed))
 
+    # A hand-over already in the folder is replaced by this one -- said, so
+    # the page can say it.
+    handover_here = (dest_dir / TASK_HANDOVER_NAME).is_file()
+
+    # EVERY FILE OR NONE, through the one transaction (`describe.publish`):
+    # the pair as the codec rendered it, the template under its door's name
+    # (`template_file.template_path`), and the hand-over in every JSON file's
+    # one shape (`persist.json_text`).
+    from molbuilder.describe import publish
+    from molbuilder.persist import write_bytes
+    from molbuilder.template_file import template_path
+
+    def _fill(staging) -> None:
+        for path, blob in made:
+            write_bytes(staging / path.name, blob)
+        write_bytes(template_path(staging, label),
+                    template_text.encode("utf-8"))
+        write_bytes(staging / TASK_HANDOVER_NAME,
+                    json_text(handover).encode("utf-8"))
+    try:
+        written = publish(dest_dir, _fill)
+    except OSError as exc:
+        return jsonify({"ok": False,
+                        "error": f"could not write into {dest_dir.name}: "
+                                 f"{exc}"}), 500
     return jsonify({
         "ok":            True,
         "label":         label,
-        # THE door (`template_file.template_filename`), not a literal suffix.
-        "template_name": _template_filename(label),
-        "template_text": template_text,
-        "handover_name": TASK_HANDOVER_NAME,
-        # THE BYTES THE BROWSER WRITES, in every JSON file's one shape.
-        "handover_text": json_text(handover),
-        # A hand-over already in the folder is replaced by this one -- said,
-        # so the page can say it.
-        "handover_here": bool(dest_dir is not None
-                              and (dest_dir / TASK_HANDOVER_NAME).is_file()),
-        # Each entry is a file as it would exist on disk, under the name it
-        # would exist as -- nothing is left for the browser to work out.
-        "structure_files": structure_files,
-        "notices": struct_notices,
+        "written":       [p.name for p in written],
+        "handover_here": handover_here,
+        "notices":       struct_notices,
     })
 
 

@@ -325,14 +325,37 @@ def a_new_folder(tree: Path, under: str) -> str:
     return f"P/{under}/JOB{1 + sum(1 for _ in held)}"
 
 
-def fresh_calc_dir(root: Path) -> Path:
+def fresh_calc_dir(root: Path, *, species=()) -> Path:
     """An empty folder for a calculation under the projects root ``root``
     -- the picker refuses anything outside it -- made:
     ``<root>/handover/optimization/probe_calc``, for a hand-over or a Save
-    to write into."""
+    to write into.  ``species``: the pseudopotentials a SIESTA calculation
+    of them needs, beside it as a person leaves them
+    (`conftest.write_pseudos`) -- the hand-over checks the folder it writes
+    into (`web/handover-procedure.md` § 2.2)."""
     d = root / "handover/optimization/probe_calc"
     d.mkdir(parents=True, exist_ok=True)
+    if species:
+        from conftest import write_pseudos
+        write_pseudos(d, list(species))
     return d
+
+
+def handed_over(client, folder: Path, body: dict):
+    """A hand-over SENT AS THE PAGE SENDS IT (`lib/task-handover.js`): the
+    door's body with the folder it writes into (`dest`) -- the door writes
+    every file or none and answers what it wrote
+    (`web/handover-procedure.md` § 2) -- and what it wrote, read back from
+    the folder: ``(answer, the hand-over, the template's text)``."""
+    import json
+    from molbuilder.runfiles import TASK_HANDOVER_FILE
+    from molbuilder.template_file import template_path
+    r = client.post("/api/task-setup/handover",
+                    json=dict(body, dest=str(folder)))
+    out = r.get_json()
+    assert r.status_code == 200 and out["ok"], out
+    return (out, json.loads((folder / TASK_HANDOVER_FILE).read_text()),
+            template_path(folder, out["label"]).read_text())
 
 
 def described_and_prepared(tmp_path, monkeypatch, struct, engine, *,

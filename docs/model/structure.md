@@ -1051,6 +1051,24 @@ class StructureCodec:                       # L2 (may use the L2 sidecar codec)
 > An adapter with no door is either retired or unbuilt, and those have opposite
 > fixes — so the question gets asked rather than answered by call count.
 >
+> **On the web too, a structure file reaches disk only through this door**
+> *(2.69.10; the user, 2026-11-09: "writing of structure files are always
+> through one … unified api as we have designed")*. The content-blind file
+> layer writes no geometry file and no sidecar (`molstruct.is_geometry`,
+> `is_sidecar` — the pairing rule's own predicates): `/api/files/write`
+> refuses one, naming this door; an **upload** of a geometry file is read as
+> an import is read (§ 2.3 — by its name's format, atoms and coordinates, a
+> lone file, said) and written as a pair through the save's own path — the
+> periodicity gate, then `write` — an existing one replaced only on a yes,
+> both halves at once; a sidecar uploaded alone is refused, a sidecar being
+> written with its structure or not at all; the file read answers
+> `read_only` for both, so the preview shows them and edits neither; and the
+> hand-over's pair is written on the server
+> ([`handover-procedure.md`](?doc=web/handover-procedure.md) § 2). *(Until
+> 2.69.10 the sidebar's upload and the preview's editor wrote a structure's
+> bytes as they came, and a replaced `.xyz` kept the sidecar of other atoms,
+> which the next load refused as changed since it was written.)*
+>
 > **`write` names the file; `files` does not.** The difference is who chose the
 > name. A project save was given an exact path through a picker, with an
 > overwrite gate on it, so `write` puts the bytes exactly there. An export was
@@ -1187,9 +1205,10 @@ with `fmt="pdb"` through `to_pdb`, for a target that names `.pdb` (§ 2.4; the
 CLI's `--output-format`), a frame set refused — but no browser door asks for
 it. Asymmetry: `openMolecule` *loads* a `.pdb` (the parse seam sniffs PDB);
 the browser saves none.
-A 409 "exists" envelope → `{needsOverwrite:true}`, and the door confirms and
-retries with `{overwrite:true}` — the dialog is `projects`' own
-(`confirmDestructive`), so the model layer stays DOM-free.
+A 409 "exists" envelope → `{needsOverwrite:true, replaces}`, and the door
+confirms and retries with `{overwrite:true}` — the dialog is `projects`' own
+(`confirmOverwrite`, the one question naming what a yes replaces), so the
+model layer stays DOM-free.
 
 ### 3.2 The model primitives + the JS key-namer
 

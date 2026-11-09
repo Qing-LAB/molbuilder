@@ -1186,7 +1186,7 @@ WRITTEN: "tuple[Artifact, ...]" = (
     Artifact(ROLE_TEMPLATE, "every parameter, with the value it was given",
              staged=False,
              when="setup", level="calculation", kind="source",
-             writer="`molbuilder describe` and the Transport tab's Describe; the hand-over, which the browser writes; `jobset migrate`, over the template it found",
+             writer="`molbuilder describe` and the Transport tab's Describe; the hand-over door; `jobset migrate`, over the template it found",
              door="template_file.of"),
     # THE STRUCTURE THE CALCULATION IS OF, written into the bundle by the
     # hand-over (`web/handover-procedure.md`).
@@ -1526,7 +1526,7 @@ WRITTEN: "tuple[Artifact, ...]" = (
     Artifact(name=TASK_HANDOVER_FILE,
              what="a hand-over waiting for its stages; Save removes it",
              when="setup", level="calculation", kind="record",
-             writer="the hand-over route, which the browser writes",
+             writer="the hand-over route",
              door="web.blueprints.build.api_task_setup_folder"),
     Artifact(name=WARM_FILES_FILE,
              what="this calculation's own restart-file list",

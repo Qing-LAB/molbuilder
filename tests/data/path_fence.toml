@@ -529,16 +529,16 @@ request = { json = { engine = "siesta", calculation = "optimization", structure 
 [[route.path]]
 where = "json"
 name = "params.psml_lib"
-request = { json = { engine = "siesta", calculation = "optimization", structure = { elements = ["H", "H"], positions = [[0.0, 0.0, 0.0], [0.0, 0.0, 0.74]], metadata = {} }, params = { psml_lib = "{outside_by_climbing}" } } }
+request = { json = { engine = "siesta", calculation = "optimization", structure = { elements = ["H", "H"], positions = [[0.0, 0.0, 0.0], [0.0, 0.0, 0.74]], metadata = {} }, params = { psml_lib = "{outside_by_climbing}" }, dest = "{calc_dir}" } }
 refusal = ["may not contain '..'"]
 [[route.path]]
 where = "json"
 name = "params.psml_lib"
-request = { json = { engine = "siesta", calculation = "optimization", structure = { elements = ["H", "H"], positions = [[0.0, 0.0, 0.0], [0.0, 0.0, 0.74]], metadata = {} }, params = { psml_lib = "{outside_dir}" } } }
+request = { json = { engine = "siesta", calculation = "optimization", structure = { elements = ["H", "H"], positions = [[0.0, 0.0, 0.0], [0.0, 0.0, 0.74]], metadata = {} }, params = { psml_lib = "{outside_dir}" }, dest = "{calc_dir}" } }
 [[route.path]]
 where = "json"
 name = "params.psml_lib"
-request = { json = { engine = "siesta", calculation = "optimization", structure = { elements = ["H", "H"], positions = [[0.0, 0.0, 0.0], [0.0, 0.0, 0.74]], metadata = {} }, params = { psml_lib = "{link_out_from_root}" } } }
+request = { json = { engine = "siesta", calculation = "optimization", structure = { elements = ["H", "H"], positions = [[0.0, 0.0, 0.0], [0.0, 0.0, 0.74]], metadata = {} }, params = { psml_lib = "{link_out_from_root}" }, dest = "{calc_dir}" } }
 
 [[route]]
 rule = "/api/task-setup/machines"

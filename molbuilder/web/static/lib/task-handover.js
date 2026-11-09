@@ -1,15 +1,17 @@
 /* Task hand-over sender -- THE one door from a parameter tab to Task setup.
  *
- * The guards, the write order and the
- * notice handling are CONTRACT (`job-contracts.md` SS 2.1, SS 2.5;
- * `handover-procedure.md` SS 2), and two copies of a contract drift.
+ * The guards and the notice handling are CONTRACT (`job-contracts.md`
+ * SS 2.1, SS 2.5; `handover-procedure.md` SS 2), and two copies of a
+ * contract drift.
  *
  * IT COMPARES NO KIND (`handover-procedure.md`, 2.65.0): the calling tab
  * hands it the door it writes through and the fields its kind's description
- * carries.  The hand-over door is this library's (`HANDOVER`): its answer's
- * files are written into the folder.  A writing door -- one the tab names
- * with `writes` -- writes the description itself into the folder (`dest`)
- * and names what it wrote (`written`; transport.md § 3.8.2a, § 3.8.5).
+ * carries.  The hand-over door is this library's (`HANDOVER`).  EVERY DOOR
+ * WRITES ON THE SERVER, every file or none, into the folder (`dest`), and
+ * names what it wrote (`written`; `handover-procedure.md` § 2,
+ * `transport.md` § 3.8.2a) -- a structure file reaches disk only through
+ * the codec (`model/structure.md` § 2.4).  What differs between doors is
+ * their words, which each door carries.
  *
  * Classic script on the `window.molbuilder` namespace (same loading
  * pattern as lib/form-schema.js) so both a classic-script consumer
@@ -35,13 +37,12 @@
  *                   //   live check sends none.
  *     engine,       // the engine the tab describes on
  *     calculation,  // REQUIRED: the kind, stated by the tab
- *     door,         // REQUIRED: {url, next, writes?, needs?} -- the route
- *                   //   it sends to; `next`, the words for the road after
- *                   //   it; `writes` for a door that writes the description
- *                   //   itself (nothing for the page to write, no Cancel:
- *                   //   one act on the server); `needs`, [[field, words],
- *                   //   ...], a field it must be given, said in its words
- *                   //   when it is not
+ *     door,         // REQUIRED: {url, next, doing, checked, needs?} -- the
+ *                   //   route it sends to; `next`, the words for the road
+ *                   //   after it; `doing`, what the page says while it
+ *                   //   runs; `checked`, who spoke about the findings that
+ *                   //   came back; `needs`, [[field, words], ...], a field
+ *                   //   it must be given, said in its words when it is not
  *     fields,       // what the kind's description carries, sent as given
  *     frame,        // which frame of a structure with several is sent --
  *                   //   "frame 3 of 8, the one on screen" -- said with the
@@ -53,20 +54,14 @@
     "use strict";
 
     /* ONE HEAVY CLICK AT A TIME (`ui-contract.md` § 10): the fence covers
-     * the window from the folder check to the last write, so a click on
-     * another folder mid-send cannot split the files between two folders,
-     * and its Cancel aborts the request in flight.  A writing door's
-     * Describe offers none: it writes the description in one act on the
-     * server, which an aborted request does not stop. */
+     * the window from the folder check to the answer, so a click on another
+     * folder mid-send cannot move where it writes.  It offers no Cancel:
+     * the server writes in one act, which an aborted request does not stop. */
     async function send(opts) {
         const fence = window.molbuilder && window.molbuilder.pageBusy;
-        if (!fence) return await sendUnder(opts, undefined);
-        const ctl = new AbortController();
-        const writes = !!(opts && opts.door && opts.door.writes);
-        return await fence.run(
-            writes ? "Describing\u2026" : "Sending to Task setup\u2026",
-            writes ? [] : [() => ctl.abort()],
-            () => sendUnder(opts, ctl.signal));
+        if (!fence) return await sendUnder(opts);
+        return await fence.run((opts && opts.door && opts.door.doing) || "",
+                               [], () => sendUnder(opts));
     }
 
     /* THE HAND-OVER DOOR: the field every kind handed over needs -- a
@@ -74,13 +69,15 @@
      * once, for the tabs that send through it. */
     const HANDOVER = {
         url: "/api/task-setup/handover",
+        doing: "Sending to Task setup\u2026",
+        checked: "About the structure,",
         next: "Next: open Task setup and pick this folder — it shows the "
             + "stages proposed and writes task.json when you save.",
         needs: [["structure",
                  "Load a structure first — a description is of something."]],
     };
 
-    async function sendUnder(opts, signal) {
+    async function sendUnder(opts) {
         const o = opts || {};
         const projects = o.projects;
         const say = (typeof o.say === "function") ? o.say : function () {};
@@ -122,9 +119,11 @@
             return;
         }
         const door = o.door;
-        if (!door || !door.url || !door.next) {
+        if (!door || !door.url || !door.next || !door.doing
+                || !door.checked) {
             throw new Error("task-handover.send: the tab names the door it "
-                            + "writes through, and the road after it");
+                            + "writes through and the door's words -- what "
+                            + "it is doing, who checked, the road after it");
         }
         const fields = o.fields || {};
         /* WHAT THE DOOR NEEDS GIVEN, in its own words -- the hand-over
@@ -148,25 +147,21 @@
             throw new Error("task-handover.send: the tab states its "
                             + "calculation kind");
         }
-        say("muted", door.writes ? "Describing…" : "Rendering…");
+        say("muted", door.doing);
         const req = Object.assign({}, fields, {
             engine:    o.engine,
             name:      (dest.split("/").filter(Boolean).pop() || ""),
         });
         req.calculation = o.calculation;
-        /* THE FOLDER: the one a writing door writes the description into
-         * (transport.md § 3.8.2a); the one a hand-over's files go into, a
-         * SIESTA calculation's pseudopotentials checked against it, the
-         * files already there counting (`handover-procedure.md` § 2.2). */
+        /* THE FOLDER every door writes into (`handover-procedure.md` § 2,
+         * transport.md § 3.8.2a); a SIESTA calculation's pseudopotentials
+         * checked against it, the files already there counting
+         * (`handover-procedure.md` § 2.2). */
         req.dest = dest;
         // THE ONE READER (ui-contract.md § 12); a send is a click, after
         // the page's modules have run.
         const answer = await window.molbuilder.server.ask(door.url, {
-            method: "POST", body: req, signal: signal });
-        if (answer.aborted) {
-            say("muted", "Cancelled — nothing written.");
-            return;
-        }
+            method: "POST", body: req });
         const out = answer.body;
         if (!answer.ok) {
             /* A refusal's findings, row by row, where the page shows its
@@ -188,120 +183,45 @@
             o.showManifest(out.manifest || null);
         }
 
-        /* A HAND-OVER'S BYTES go through the content-blind file layer, never
-         * a fetch of our own (`web/projects.md` § 1), into `dest` -- the
-         * folder checked above, not whatever the sidebar holds when each
-         * write lands.  `writeFile` announces the folder (`web/projects.md`
-         * § 2).  A writing door wrote the description itself: there is
-         * nothing to write, and the folder is announced here, the one
-         * call. */
-        say("muted", "Writing…");
-        /* The STRUCTURE goes first, and the order is deliberate: the hand-over
-         * NAMES those files, so writing it before them would leave a folder
-         * whose description points at nothing if the next write fails. */
-        const parts = door.writes ? []
-            : (out.structure_files || []).map((f) => [f.name, f.text])
-                  .concat([[out.template_name, out.template_text],
-                           [out.handover_name, out.handover_text]]);
-        const toWrite = parts.filter(([n, x]) => n && typeof x === "string");
-        if (door.writes) projects.publishFolderChanged(dest);
-        const done = [];
-        for (const [name, text] of toWrite) {
-            // writeFile(PATH, TEXT, opts) -- path first.
-            const wrote = await projects.writeFile(
-                dest.replace(/\/$/, "") + "/" + name, text,
-                { overwrite: true, signal: signal })
-                .catch((e) => ({ ok: false, error: String(e && e.message || e) }));
-            if (wrote && wrote.aborted) {
-                // THE WRITE IN FLIGHT MAY HAVE LANDED -- an aborted request
-                // does not stop one the server already took -- so the folder
-                // is announced and the line says so.
-                projects.publishFolderChanged(dest);
-                say("muted", "Cancelled while writing " + name + " — "
-                    + (done.length ? "after " + done.join(" and ") + "; " : "")
-                    + "it may have been written: the sidebar shows the "
-                    + "folder as it is.");
-                return;
-            }
-            if (!wrote || !wrote.ok) {
-                say("error", "Could not write " + name + ": "
-                    + ((wrote && wrote.error) || "the write failed"));
-                return;
-            }
-            done.push(name);
-        }
-        const written = door.writes ? (out.written || [])
-                                    : toWrite.map(([n]) => n);
+        /* WRITTEN ON THE SERVER, every file or none (`handover-procedure.md`
+         * § 2): the folder announced here, the one call (`projects.md` § 2). */
+        projects.publishFolderChanged(dest);
+        const written = Array.isArray(out.written) ? out.written : [];
 
-        /* WHAT THE CELL GATE SAID.  The same gate every structure door runs
-         * answers with notices as well as refusals: a refusal is the 400 above,
-         * but a notice is a box it accepted and wants read — an axis it could
-         * not tell was periodic, a vacuum thinner than it expects.
-         *
-         * A notice does NOT hold the write back: the files are the person's own
-         * parameters and refusing to save them helps nobody. */
+        /* WHAT CAME BACK -- the cell gate's notices on a hand-over, the
+         * description's own check on a writing door -- goes to the findings
+         * panel (R2a: a notice is a finding), beside what the live check
+         * still says.  A notice does NOT hold the write back: the files are
+         * the person's own parameters and refusing to save them helps
+         * nobody. */
         const notices = Array.isArray(out.notices) ? out.notices : [];
         if (showFindings) showFindings(beside(notices));
-        // THE ROAD AFTER IT, pointed to whether or not something came back
-        // -- a notice is read, not a stop: the door's own words for it
-        // (`door.next`), never a copy here.
-        const next = door.next;
-        const described = "Described — wrote " + written.join(" and ")
-            + " into " + (rel || "the selected folder") + ".";
+        const wrote = "Wrote " + written.join(", ")
+            + " into " + (rel || "the selected folder")
+            + (o.frame ? " \u2014 the structure at " + o.frame : "")
+            + (out.handover_here
+               ? " \u2014 replacing the hand-over that was there" : "")
+            + ".";
+        /* NO NAVIGATION (user, 2026-09-19: *"we just skip the fancy tab to
+         * tab jump connection to avoid implicit coupling"*): this tab's job
+         * ends when the files are on disk; the road after it is the door's
+         * own words (`door.next`), and which tab you open next is yours. */
         if (notices.length) {
-            // TWO TONES ON PURPOSE, and it is not R4's vocabulary.
-            //
-            // This is a page STATUS line about an action that has happened --
-            // `status error|ok|warn|muted`, owned by `page-shell.css` -- not a
-            // finding row.  There is no `.status.info`, and there should not
-            // be: whatever came back, the line's job is "go and read it", so
-            // the quiet tone would be the wrong one even if it existed.  The
-            // findings themselves keep their own severities wherever they are
-            // rendered.
+            // THE STATUS LINE says how many came back and to read them --
+            // the findings keep their own severities where they are drawn.
             const worst = notices.some((n) => n && n.severity === "error")
                 ? "error" : "warn";
-            // WHO SPOKE is the door's: on a hand-over, what the server said
-            // of the structure -- the cell gate, or a structure put back in
-            // the user order (`model/overview.md` § 2.2a); the description's own
-            // check on a writing door, which has no Task setup to open next
-            // (`workflow.md` § 9, gates ② and ③).
-            // The findings themselves are the findings panel's, above.
             const count = (notices.length === 1 ? "one finding"
                            : notices.length + " findings");
-            say(worst,
-                (door.writes ? described + " The description was checked: "
-                             : "Wrote " + written.join(", ")
-                               + ". About the structure, ")
-                + count + " came back"
+            say(worst, wrote + "  " + door.checked + " " + count + " came back"
                 + (showFindings ? (notices.length === 1 ? " — read it"
                                                         : " — read them")
                                 : ", and this page has no findings panel "
                                   + "to show them in")
-                + ".  " + next);
+                + ".  " + door.next);
             return;
         }
-
-        if (door.writes) {
-            /* The tab decided; the description is DONE.  The road is
-             * stated, and going anywhere is the person's move (below). */
-            say("ok", described + "  " + next);
-            return;
-        }
-        /* NO NAVIGATION (user, 2026-09-19: *"we just skip
-         * the fancy tab to tab jump connection to avoid implicit
-         * coupling"*).  This tab's job ends when the files are on disk;
-         * which tab you open next is yours.
-         *
-         * `web/tabs.md` § 1 already forbids an in-memory hand-off, for
-         * costs that are all about hidden state.  A jump that depends on
-         * which folder the other tab happens to remember is the same
-         * hazard wearing a URL. */
-        say("ok", "Wrote " + written.join(" and ")
-            + " into " + (rel || "the selected folder")
-            + (o.frame ? " \u2014 the structure at " + o.frame : "")
-            + (out.handover_here
-               ? " — replacing the hand-over that was there" : "")
-            + ".  " + next);
+        say("ok", wrote + "  " + door.next);
     }
 
     window.molbuilder = window.molbuilder || {};

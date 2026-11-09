@@ -268,14 +268,14 @@ engines' were deleted with the same rule (a deck is rendered by `prep`).
 Live validation runs against `/api/build/preflight` as you edit.
 
 What the tab writes today is the DESCRIPTION, via Send to Task setup: the
-parameter template, the structure pair and the hand-over.  Everything a run
+parameter template, the structure pair and the hand-over — written by the
+server, every file or none, the pair through the codec
+([`handover-procedure.md`](?doc=web/handover-procedure.md) § 2; until 2.69.10
+the page wrote each through `writeFile`).  Everything a run
 needs beyond that — the deck, the pseudopotentials beside it, the `.run.sh`
 wrapper — is written by `prep` on the machine that runs it (the old
 `/api/siesta/install-pseudos` and `/api/run/install-wrapper` doors retired
-2026-08-21 with zero browser callers).  These files are written through the projects module's
-`writeFile` — note that's a *different* door from the structure-save in
-§6 (`molviewFiles.save` → `/api/structure/save`, which writes a molecule + sidecar
-pair); a script isn't a molecule, so it takes the plain file-write door.
+2026-08-21 with zero browser callers).
 
 ## 4. Transport — the composite's describe surface
 
@@ -563,8 +563,9 @@ things and no more: **what** (the viewer's export) and **a suggested stem**.
    structure hash itself. The browser never authors the sidecar (a past bug
    wrote one the load door then rejected; the server-writes-it rule closed
    it), and it assembles no bytes at all.
-4. An existing file answers **`409 {needsOverwrite: true}`**; the door confirms
-   through `confirmDestructive` and retries with `overwrite: true`. On success
+4. An existing file answers **`409 {needsOverwrite: true, replaces}`**; the
+   door confirms through `confirmOverwrite`, naming what a yes replaces, and
+   retries with `overwrite: true`. On success
    the sidebar refreshes and the periodicity gate's `notices` come back
    verbatim — and the panel's line says them after *Saved water.xyz.*, in the
    tone that says *read this* *(2.69.9; the line said the outcome alone)*.

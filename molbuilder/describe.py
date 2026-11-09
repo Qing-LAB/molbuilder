@@ -4,9 +4,9 @@
 ``validation.task``; imported by ``jobset/_cli``, the hand-over
 (``web/blueprints/build``)
 and a kind's own describe (``transport/describe``, ``transport/reuse``).
-It is **pure up to one function**: everything is built and
-checked in memory, and :func:`write_description` is the only part that touches
-a disk.
+It is **pure up to one transaction**: everything is built and checked in
+memory, and :func:`publish` -- which :func:`write_description` and the
+hand-over write through -- is the only part that touches a disk.
 
 **Contract:** [`execution/architecture.md`](?doc=execution/architecture.md) § 4
 — the `describe` route: *"**write** the portable description and its job
@@ -41,8 +41,8 @@ writes every file or none."*
 
 WHY A DATA OBJECT AND THEN A WRITER, rather than one function that writes.  Two
 surfaces have to produce byte-identical descriptions — the terminal and the
-browser — and the browser writes through its own concealed file layer rather
-than through raw paths: one producer, two writers.
+browser's doors — and both write on the server through the one transaction,
+:func:`publish`: one producer, one writer.
 """
 from __future__ import annotations
 
@@ -251,11 +251,7 @@ def write_description(desc: Description, dest, *,
     calculation's own pair, named for the label (`StructureCodec.source_files`,
     the call the hand-over makes).
 
-    The transaction is a staging directory **beside the target**, published
-    with :func:`os.replace` once every artifact exists, and removed entirely if
-    anything raises. Beside rather than in ``/tmp`` so the publish is a rename
-    within one filesystem — across devices it would be a copy, and a copy is
-    not atomic.
+    Written through :func:`publish`, every file or none.
 
     *psml_lib* is where the pseudopotentials are read from. It is a **path on
     this machine** and does not enter the description; what travels is the
@@ -267,7 +263,6 @@ def write_description(desc: Description, dest, *,
     calculation ran (`engines/transport.md` § 2a.16).
     """
     out_dir = Path(dest)
-    out_dir.mkdir(parents=True, exist_ok=True)
 
     # THE STRUCTURE TRAVELS AS THE CALCULATION'S OWN PAIR,
     # ``<label>.source.xyz`` + its sidecar, through the one call the hand-over
@@ -300,9 +295,7 @@ def write_description(desc: Description, dest, *,
                 desc.task.structure, source=pair[0][0].name,
                 fingerprint=StructureCodec.fingerprint(pair))))
 
-    staging = Path(tempfile.mkdtemp(prefix=f".{out_dir.name}.describe-",
-                                    dir=out_dir.parent))
-    try:
+    def _fill(staging: Path) -> None:
         # THE TWO RECORDS THROUGH THEIR OWNERS' WRITERS (`architecture.md`
         # A16), into the staging folder -- the writers Save takes too, so
         # the two surfaces write the same bytes; the template has no writer
@@ -345,13 +338,37 @@ def write_description(desc: Description, dest, *,
                     + "  The pseudopotentials travel with the calculation, "
                       "so they have to be somewhere readable now.")
             copy_pseudopotentials(list(desc.pseudo_species), lib, staging)
+
+    return publish(out_dir, _fill)
+
+
+def publish(dest, fill) -> List[Path]:
+    """EVERY FILE OR NONE, into the folder *dest* -- the one transaction a
+    calculation's files are written through: `molbuilder describe`, the
+    transport describe door and the hand-over (`web/handover-procedure.md`
+    § 2).  ``fill(staging)`` writes every file into a staging directory
+    **beside the target**; once it returns, each is put in place with
+    :func:`os.replace`, and if it raises the staging directory is removed
+    entirely and the target is exactly as it was.  Beside rather than in
+    ``/tmp`` so the publish is a rename within one filesystem -- across
+    devices it would be a copy, and a copy is not atomic.  THE STRUCTURE
+    FIRST, its geometry before its sidecar (`model/structure.md` § 2.4), for
+    the records name it; then every other file by name.  Returns the paths
+    written, in that order."""
+    out_dir = Path(dest)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    staging = Path(tempfile.mkdtemp(prefix=f".{out_dir.name}.describe-",
+                                    dir=out_dir.parent))
+    try:
+        fill(staging)
     except BaseException:
         # Nothing is published, so the target is exactly as it was.
         shutil.rmtree(staging, ignore_errors=True)
         raise
-
+    from .sidecars.molstruct import is_geometry, is_sidecar
     written: List[Path] = []
-    for src in sorted(staging.iterdir()):
+    for src in sorted(staging.iterdir(), key=lambda p: (
+            not (is_geometry(p) or is_sidecar(p)), is_sidecar(p), p.name)):
         dst = out_dir / src.name
         os.replace(src, dst)
         written.append(dst)
@@ -360,4 +377,5 @@ def write_description(desc: Description, dest, *,
 
 
 __all__ = ["Description", "DescribeError",
-           "build_description", "refuse_described", "write_description"]
+           "build_description", "publish", "refuse_described",
+           "write_description"]

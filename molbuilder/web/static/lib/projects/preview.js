@@ -552,7 +552,10 @@ async function _loadBulk(path) {
     // both gated by this flag — see ``VIEW_ONLY_BYTES`` for the
     // perf rationale.  ``is-view-only`` on the cmview wrapper
     // disables click-drag selection via CSS user-select.
-    _state.editable     = body.size <= VIEW_ONLY_BYTES;
+    // ...and A STRUCTURE FILE OR ITS SIDECAR is edited nowhere here: the
+    // server says why (`read_only`, `model/structure.md` § 2.4), and the
+    // line below says it.
+    _state.editable     = body.size <= VIEW_ONLY_BYTES && !body.read_only;
     if (elCmView) {
         elCmView.classList.toggle(
             "is-view-only", !_state.editable);
@@ -575,7 +578,7 @@ async function _loadBulk(path) {
             + (e && e.message ? e.message : String(e));
         return;
     }
-    _setStatus("", null);
+    _setStatus(body.read_only || "", null);
     _renderUiFromState();
 }
 
