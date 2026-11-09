@@ -260,7 +260,7 @@ Is it an identifier, a lookup key, or an iteration whose order only needs to
 be stable? Then it is not, and forcing the rule on it would be churn.
 
 **The person may override it.** `species_order` is a catalogue row
-(`engine_key = "(molbuilder: ChemicalSpeciesLabel block ordering)"`); set, it
+(`engine_key = "(molbuilder: the order of the ChemicalSpeciesLabel block)"`); set, it
 is honoured verbatim, and the rule above is the default beneath it. The
 override is resolved **inside the one entry**, not at each call site — it was
 spelled in two emitters and honoured by one, which is exactly the shape that

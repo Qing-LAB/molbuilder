@@ -1866,6 +1866,17 @@ before it was fixed. Docs only — the code text the review found is 2.62.1's.
 | E2E-MON | **closed after 2.62.1** (the user, 2026-11-02: "those two failures seems to be an outdated tests") | `test_monitor_watches_a_live_run_e2e.py::test_every_file_that_ships_beside_a_job_reads_the_run_without_molbuilder` failed: `AttributeError: 'Run' object has no attribute 'run'` — it still handed the monitor the try number 2.60.0 removed (`WatchedRun(run=…)`) | the test: the monitor told the run by its names alone; passes |
 | E2E-STOP | **closed after 2.62.1** (the same) | `test_siesta_stopped_run_e2e.py::test_the_run_panel_says_what_ran_and_why_it_stopped[chromium]` failed: `FileNotFoundError` on a path with the calculation's folder doubled — it read the ladder button's title as a path from the calculation, where since 2.59.0 the page names a path it only shows from the projects folder (`web/results.md` § 0.3) | the test: the run's folder from the projects folder; passes |
 
+## Found by the UI review's group D, the settings' help (2026-11-09), by the release that owns each
+
+*(Group D's items on the settings' own words in the catalogue, each read before any fix)*
+
+| id | where | finding | door |
+|---|---|---|---|
+| K2696-1 | **closed 2.69.6** | a setting that is molbuilder's own showed a badge naming code (*comment-block control*, *the SCF class module*, *geomopt callback*, *per-mode selector parameter*, *orbital-window record size*, `.run.sh` and `.fdf` for the run script and the deck) | each badge says what molbuilder does with the value, in words (*the run script's `mpirun -np N`; not in the deck*) |
+| K2696-2 | **closed 2.69.6** | two transport settings said *lead* where the others say *electrode*; one setting named a tool's old name (*the molwatch trajectory log*) | *electrode*, TranSIESTA's own word; *the trajectory log the live viewer reads* |
+| K2696-3 | **closed 2.69.6** | the help named an internal rule (*job-layout v1*) and shouted (*does NOT*) | why no dot, said; plain case |
+| K2696-4 | **kept** | the help cites SIESTA's source by file (*read_options.F90*), and each engine default carries its source line | a citation of where SIESTA's behaviour was read — evidence a scientist can check, not jargon |
+
 ## Found by the UI review's group D, the other pages' words (2026-11-09), by the release that owns each
 
 *(Group D's items on the pages' own words, each read in the code before any fix; the user, 2026-11-09: one word *stage* on every page, the notebook tab *JupyterLab*)*

@@ -73,7 +73,9 @@ through one door, *time limit* and *stage* as the one words (the ledger's
 renderer, the terminal's dash a dash, no capitals as emphasis, the file card
 in a person's words (the ledger's *Found by … 2.69.4*); **2.69.5**: every
 page in its own plain words, the notebook tab *JupyterLab* (the ledger's
-*Found by … 2.69.5*); next, group D's help texts, then C.
+*Found by … 2.69.5*); **2.69.6**: the settings' own words — group D done
+(the ledger's *Found by … 2.69.6*); next, group C (organization and flow,
+with design questions for the user), then the launch-from-the-page design.
 
 **What runs next**: **the UI review** *(the user, 2026-11-08: "Right after
 2.67.11")* — every tab walked in Chrome on the dev server through an

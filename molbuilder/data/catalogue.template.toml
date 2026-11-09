@@ -20,7 +20,7 @@ group = "setup"
 label = "System label (output prefix)"
 pattern = "^[A-Za-z0-9_\\-]+$"
 help = """
-The FDF SystemLabel: every file SIESTA writes takes this as its prefix, so it is what tells one run's output from another's.  Must match [A-Za-z0-9_-]+ (job-layout v1; no dots).
+The FDF SystemLabel: every file SIESTA writes takes this as its prefix, so it is what tells one run's output from another's.  Must match [A-Za-z0-9_-]+ -- no dots, because molbuilder's file names use the dot to separate their parts.
 """
 
 [item.basis_size]
@@ -670,7 +670,7 @@ engines = ["siesta", "pyscf"]
 calculations = ["optimization", "vibration"]
 stages = ["relaxation"]
 expands = ["DM.UseSaveDM", "MD.UseSaveXV", "MD.UseSaveCG"]
-engine_key = "(molbuilder: one field, one mechanism per engine -- SIESTA expands it to DM.UseSaveDM / MD.UseSaveXV / MD.UseSaveCG; PySCF emits control flow that reads <JOB>.chk and <JOB>_optimized.xyz.  Not a single engine key on either)"
+engine_key = "(molbuilder: one field, one mechanism per engine -- SIESTA expands it to DM.UseSaveDM / MD.UseSaveXV / MD.UseSaveCG; a PySCF deck reads <JOB>.chk and <JOB>_optimized.xyz.  Not a single engine key on either)"
 manual = "SIESTA 5.4.2 §6.9.5 'Initialization of the density-matrix' + §6.4.4 'Input of structural information from external files' + §7.2.1 'Conjugate-gradients optimization'"
 type = "enum"
 choices = ["clean", "continue"]
@@ -690,7 +690,7 @@ Continuing is the default because a run you launch from an earlier one is a run 
 [item.verbose_comments]
 kind = "produce"
 category = ["procedure"]
-engine_key = "(molbuilder: comment-block control in the generated input)"
+engine_key = "(molbuilder: the comments written into the deck)"
 type = "bool"
 value = true
 default = true
@@ -719,7 +719,7 @@ label = "Write forces each step"
 help = """
 The atomic forces in the main .out at every step -- on for every SIESTA run, and not a setting: molbuilder reads them back.  The relaxation record takes its judged force from them, the per-step trajectory carries them, and a vibration's finish reads the reference step's -- without them the finish fails after the whole force-constant run.
 SIESTA prints them only under LongOutput (`Write.Forces` defaults to it, read_options.F90), so every deck writes this line.  They also answer "did it descend or oscillate?", the first question about any relaxation that did not converge.
-It does NOT control the .FA file.  The last step's forces reach the .FA file whatever this is set to.
+It does not control the .FA file.  The last step's forces reach the .FA file whatever this is set to.
 """
 
 [item.write_coor_step]
@@ -838,7 +838,7 @@ type = "bool"
 value = true
 default = true
 group = "output"
-label = "Write the molwatch trajectory log"
+label = "Write the trajectory log the live viewer reads"
 help = """
 Write <job>.molwatch.log alongside the run: per-step coordinates, energy and forces, in one additive file the Results tab reads.  It exists so a trajectory can be followed while the engine is still running; with it off, nothing can be seen until the job finishes.
 """
@@ -846,7 +846,7 @@ Write <job>.molwatch.log alongside the run: per-step coordinates, energy and for
 kind = "wrapper"
 category = ["execution"]
 engines = ["siesta"]
-engine_key = "(molbuilder: .run.sh ``mpirun -np N`` only; not in .fdf)"
+engine_key = "(molbuilder: the run script's ``mpirun -np N``; not in the deck)"
 type = "int"
 allocation = true
 range = [1, 1024]
@@ -870,7 +870,7 @@ Another count is a prep again at that count, then a launch, which opens a run of
 stages = "scf"
 kind = "wrapper"
 category = ["execution"]
-engine_key = "(molbuilder: scheduler ``--gres=gpu:G``; not in the deck)"
+engine_key = "(molbuilder: the scheduler's ``--gres=gpu:G``; not in the deck)"
 type = "int"
 allocation = true
 null_label = "(none asked; a GPU run states one or prep refuses)"
@@ -932,7 +932,7 @@ Splitting over k-points when there is only one leaves the other ranks nothing to
 kind = "wrapper"
 category = ["execution"]
 engines = ["siesta"]
-engine_key = "(molbuilder: .run.sh OMP_NUM_THREADS + .fdf runtime_info comment)"
+engine_key = "(molbuilder: the run script's OMP_NUM_THREADS, noted in the deck)"
 type = "int"
 allocation = true
 above = { value = 0, why = "a count of threads per rank: 0 runs nothing" }
@@ -952,7 +952,7 @@ category = ["execution"]
 # Each engine applies it its own way: before a program the run script caps
 # it with `ulimit -v`; a PySCF deck passes it to mol.max_memory itself.
 limit_applied_by = { siesta = "run_script", pyscf = "deck" }
-engine_key = "(molbuilder: memory cap for the run -- ulimit -v in .run.sh / mol.max_memory)"
+engine_key = "(molbuilder: a memory cap on the run -- ``ulimit -v`` in the run script, PySCF's mol.max_memory)"
 type = "int"
 allocation = true
 unit = "MB"
@@ -996,7 +996,7 @@ label = "Use GPU (NVIDIA)"
 read_by = ["wrapper"]
 help = """
 OPTIONAL: move the heavy linear algebra onto an NVIDIA CUDA GPU.  It means something different for each engine.
-SIESTA: run the ELPA diagonalization on the GPU.  This does NOT turn ELPA on -- pick the solver in ``Diagonalizer`` (ELPA-1STAGE / -2STAGE); this toggle only moves that ELPA solve onto the GPU (GPU-only, no CPU fallback).  It needs an NVIDIA GPU on the run machine.  Off = the chosen ELPA solver runs on CPU.  This toggle is the ONLY thing that needs the source-built ``molbuilder-siesta-gpu`` env: the packaged SIESTA runs ELPA on CPU perfectly well, but its ELPA is built without the GPU entry.  Where the target's record lists no such env, prep prepares the job as asked and says so, naming the command that installs it.  Affinity hint: GPU favors 1STAGE.
+SIESTA: run the ELPA diagonalization on the GPU.  This does not turn ELPA on -- pick the solver in ``Diagonalizer`` (ELPA-1STAGE / -2STAGE); this toggle only moves that ELPA solve onto the GPU (GPU-only, no CPU fallback).  It needs an NVIDIA GPU on the run machine.  Off = the chosen ELPA solver runs on CPU.  This toggle is the ONLY thing that needs the source-built ``molbuilder-siesta-gpu`` env: the packaged SIESTA runs ELPA on CPU perfectly well, but its ELPA is built without the GPU entry.  Where the target's record lists no such env, prep prepares the job as asked and says so, naming the command that installs it.  Affinity hint: GPU favors 1STAGE.
 PySCF: run the SCF (and geom-opt forces) on an NVIDIA GPU via the gpu4pyscf extension.  The recipe for ``molbuilder-pySCF`` installs the matching ``cupy-cudaNx[ctk]`` + ``gpu4pyscf-cudaNx`` wheels for the project's pinned CUDA toolkit (see ``molbuilder envs doctor molbuilder-pySCF``).  The script probes gpu4pyscf at run start and STOPS with an actionable message if the package isn't importable or the GPU is missing / too old (compute capability < 7.0).  There is no silent CPU fallback: a run that changed where it executed would report a CPU time under a GPU label.  What gpu4pyscf does not do, for you to weigh: it has no stability analysis, so an unrestricted reference (UHF, UKS) keeps its first SCF solution unchecked on the GPU, where the CPU path may find a lower one; and its solvent model has not been compared with PySCF's here.  Said, never refused -- the choice is yours.
 """
 
@@ -1030,7 +1030,7 @@ kind = "produce"
 category = ["method"]
 engines = ["siesta"]
 shared = ["optimization", "vibration", "transport"]
-engine_key = "(molbuilder: stages .psml files next to .fdf; SIESTA reads them by element basename)"
+engine_key = "(molbuilder: copies the .psml files beside the deck; SIESTA finds each by its element)"
 type = "str"
 group = "setup"
 label = "Pseudopotential directory (.psml)"
@@ -1055,7 +1055,7 @@ kind = "produce"
 category = ["system"]
 engines = ["siesta"]
 shared = ["optimization", "vibration", "transport"]
-engine_key = "(molbuilder: ChemicalSpeciesLabel block ordering)"
+engine_key = "(molbuilder: the order of the ChemicalSpeciesLabel block)"
 type = "strlist"
 group = "profile"
 label = "Species order"
@@ -1238,7 +1238,7 @@ why = "a PySCF vibration is restricted: every electron paired"
 kind = "produce"
 category = ["system", "procedure"]
 engines = ["pyscf"]
-engine_key = "(molbuilder: filename + log-name basename)"
+engine_key = "(molbuilder: the name of the run's files and logs)"
 type = "str"
 value = "pyscf_relax"
 default = "pyscf_relax"
@@ -1247,7 +1247,7 @@ label = "Job name"
 pattern = "^[A-Za-z0-9_\\-]+$"
 help = """
 Name for this job.  Output files get it as a prefix, and the logs are named from it.
-Must match [A-Za-z0-9_-]+ -- letters, digits, underscore and hyphen, and no dots (the job-layout v1 rule).
+Must match [A-Za-z0-9_-]+ -- letters, digits, underscore and hyphen, and no dots: molbuilder's file names use the dot to separate their parts.
 """
 
 [item.symmetry]
@@ -1280,7 +1280,7 @@ category = ["method"]
 engines = ["pyscf"]
 shared = ["optimization", "vibration"]
 expands = ["dft", "scf"]
-engine_key = "(molbuilder: the SCF class module -- dft.<class> for DFT, scf.<class> for HF)"
+engine_key = "(molbuilder: PySCF's DFT or HF calculation -- dft.<class> or scf.<class>)"
 manual = "PySCF 2.13 pyscf.dft 'RKS / ROKS / UKS'; pyscf.scf 'RHF / ROHF / UHF'"
 type = "enum"
 choices = ["DFT", "HF"]
@@ -1639,7 +1639,7 @@ calculations = ["optimization"]
 kind = "produce"
 category = ["procedure"]
 engines = ["pyscf"]
-engine_key = "(molbuilder: gates geomeTRIC opt() vs single-point)"
+engine_key = "(molbuilder: geomeTRIC's optimization, or a single point)"
 type = "bool"
 value = true
 default = true
@@ -1797,7 +1797,7 @@ Write the geometry exactly as it entered the run to <job>_initial.xyz, before an
 kind = "produce"
 category = ["procedure"]
 engines = ["pyscf"]
-engine_key = "(molbuilder: per-step .xyz from geomopt callback)"
+engine_key = "(molbuilder: one .xyz per step, from the optimizer)"
 type = "bool"
 value = true
 default = true
@@ -2022,7 +2022,7 @@ calculations = ["vibration"]
 expands = ["per-mode displaced-SCF loop"]
 category = ["procedure"]
 engines = ["pyscf"]
-engine_key = "(molbuilder: per-mode electronic-structure selector)"
+engine_key = "(molbuilder: which modes get an electronic-structure probe)"
 type = "enum"
 value = "skip"
 default = "skip"
@@ -2047,7 +2047,7 @@ calculations = ["vibration"]
 expands = ["per-mode displaced-SCF loop"]
 category = ["procedure"]
 engines = ["pyscf"]
-engine_key = "(molbuilder: per-mode selector parameter)"
+engine_key = "(molbuilder: the modes, when you name them)"
 type = "str"
 value = ""
 default = ""
@@ -2068,7 +2068,7 @@ calculations = ["vibration"]
 expands = ["per-mode displaced-SCF loop"]
 category = ["procedure"]
 engines = ["pyscf"]
-engine_key = "(molbuilder: per-mode frequency filter)"
+engine_key = "(molbuilder: which modes are probed, by frequency)"
 type = "float"
 optional = true
 unit = "cm⁻¹"
@@ -2090,7 +2090,7 @@ calculations = ["vibration"]
 expands = ["per-mode displaced-SCF loop"]
 category = ["procedure"]
 engines = ["pyscf"]
-engine_key = "(molbuilder: per-mode frequency filter)"
+engine_key = "(molbuilder: which modes are probed, by frequency)"
 type = "float"
 optional = true
 unit = "cm⁻¹"
@@ -2111,7 +2111,7 @@ calculations = ["vibration"]
 expands = ["orbital-window record"]
 category = ["procedure"]
 engines = ["pyscf"]
-engine_key = "(molbuilder: orbital-window record size)"
+engine_key = "(molbuilder: how many orbitals each probe saves)"
 type = "int"
 value = 5
 default = 5
@@ -2131,7 +2131,7 @@ calculations = ["vibration"]
 expands = ["orbital-window record"]
 category = ["procedure"]
 engines = ["pyscf"]
-engine_key = "(molbuilder: orbital-window record size)"
+engine_key = "(molbuilder: how many orbitals each probe saves)"
 type = "int"
 value = 5
 default = 5
@@ -2285,7 +2285,7 @@ It is a runaway guard, not a target: a well-behaved optimisation finishes well i
 kind = "produce"
 category = ["procedure"]
 engines = ["pyscf"]
-engine_key = "(molbuilder: per-stage non-convergence policy)"
+engine_key = "(molbuilder: what a stage does when its steps run out)"
 type = "enum"
 value = "halt"
 default = "halt"
@@ -2307,7 +2307,7 @@ This is THIS stage's answer: a ladder is N decks and N jobs, so each deck carrie
 kind = "produce"
 category = ["procedure"]
 engines = ["pyscf"]
-engine_key = "(molbuilder: re-entries from the geometry reached when on_nonconvergence=continue)"
+engine_key = "(molbuilder: how many times a stage continues from the geometry reached)"
 type = "int"
 value = 1
 default = 1
@@ -2916,7 +2916,7 @@ type = "bool"
 default = true
 engine_default = { value = true, source = "SIESTA 5.4.2 m_ts_options.F90:476: Elecs(:)%out_of_core = fdf_get('TS.Elecs.Out-of-core', .true.)" }
 group = "staging"
-label = "Keep the leads' Green's functions as files"
+label = "Keep the electrodes' Green's functions as files"
 tier = "advanced"
 help = """
 Whether TranSIESTA writes each lead's surface Green's function to a file before its first SCF iteration and reads it back at every iteration (true, TranSIESTA's own default), or keeps the self-energies in memory and recomputes them at every iteration (false).
@@ -3056,7 +3056,7 @@ default = 100
 range = [50, 200]
 above = { value = 1, why = "a lead is periodic bulk metal along z, the transport direction: one k-point there gives a wrong lead Hamiltonian and Fermi level, and the device builds its self-energy from both -- a wrong transmission with no runtime error" }
 group = "stage"
-label = "Lead k-points along z"
+label = "Electrode k-points along z"
 tier = "basic"
 help = """
 How many k-points each LEAD's calculation samples along the transport direction (z) -- the direction the current flows.  A count, not a grid: in the electrode plane (x, y) the leads use the shared k-point grid.

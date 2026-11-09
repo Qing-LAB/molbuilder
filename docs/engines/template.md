@@ -566,7 +566,7 @@ writes two keywords.  Blank is auto: the electronic state works it out."""
 [item.species_order]
 kind       = "produce"
 category   = ["system"]
-engine_key = "(molbuilder: ChemicalSpeciesLabel block ordering)"
+engine_key = "(molbuilder: the order of the ChemicalSpeciesLabel block)"
 type       = "strlist"
 optional   = true
 group      = "profile"
@@ -1050,7 +1050,7 @@ never something it silently drops (§ 3).
 > orders a block it does not produce.** The `ChemicalSpeciesLabel` block comes
 > from the structure; `species_order` only tells the producer which way round
 > to write it, which is why its `engine_key` is the note
-> `(molbuilder: ChemicalSpeciesLabel block ordering)` rather than a keyword.
+> `(molbuilder: the order of the ChemicalSpeciesLabel block)` rather than a keyword.
 >
 > So the test is **does this item put keywords in the deck?** If yes it is
 > `deck` and must say which, in `expands` — that is why § 3 makes `expands`
