@@ -26,6 +26,7 @@
 
 import { mount } from "/static/lib/molview/index.js";
 import { molviewDoors } from "../projects/molview-doors.js";
+import { basename } from "../path-utils.js";
 import { ask } from "../server.js";
 (function (root) {
     "use strict";
@@ -2380,7 +2381,7 @@ import { ask } from "../server.js";
             // the next poll / page-revisit reuses it directly.
             if (r.resolved_from) {
                 const baseDir = r.resolved_from.replace(/\/+$/, "");
-                const fileNm  = (r.path || "").split("/").pop() || r.path;
+                const fileNm  = basename(r.path) || r.path;
                 // A directory resolves to ONE file (watch.py's discovery
                 // chain): stages are separate runs, and the person picks one.
                 // No mtime: the badge carries the run's time.

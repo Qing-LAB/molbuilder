@@ -95,7 +95,7 @@
             const elDirty  = wrap.querySelector(".md-dirty-flag");
             const elSave   = wrap.querySelector(".md-save-btn");
 
-            elTitle.textContent  = file.split("/").pop();
+            elTitle.textContent  = root.molbuilder.path.basename(file);
             say("Loading…", "muted");
 
             // State captured by the handle's dispose() so late

@@ -108,7 +108,6 @@ entry file for `import`/`export`.)
 | **VibrationView** | the concealed normal-mode animator (a *sibling* of MolView, mounted by the spectra viewer) | [vibrationview.md](?doc=web/vibrationview.md) | ✅ full³ |
 | **workspace** | session persistence + the Undo state timeline | [workspace.md](?doc=web/workspace.md) | ✅ full |
 | **projects** | the sidebar file browser + the load/save doors | [projects.md](?doc=web/projects.md) | ✅ full |
-| **xyz-io** | the shared XYZ parse/format primitive | [runtime.md](?doc=web/runtime.md) | ✅ full |
 | **trajectory** | the optimization-run movie + convergence plots | [trajectory.md](?doc=web/trajectory.md) | ⬤ hybrid¹ |
 | **transport** | the transport composite's describe surface (cite → describe) | [tabs.md § 4](?doc=web/tabs.md) | ⬤ hybrid¹ |
 | **presenters** | the Results-tab file-viewer registry | [presenters.md](?doc=web/presenters.md) | ○ classic² |
@@ -116,7 +115,8 @@ entry file for `import`/`export`.)
 | **results** | the Results-tab dispatch shell + file picker | [results.md](?doc=web/results.md) | ○ classic² |
 | **form-schema** | builds engine-option forms from the config dataclass | [form-schema.md](?doc=web/form-schema.md) | ○ classic² |
 | **notify** | the app-wide notification framework (any tab, any caller) | [notifications.md](?doc=web/notifications.md) | ○ classic² → #105 |
-| **runtime + primitives** | the load-order registry + the genuinely-shared helpers (warningModal, markdownRender, the CodeMirror code-viewer, path/constants) | [runtime.md](?doc=web/runtime.md) | ○ classic² |
+| **path helpers** | the browser's one path door: a path's name, its folder, a name joined to a folder, where it lies under a folder | [runtime.md](?doc=web/runtime.md) § 3 | ✅ full (mirrored on `window.molbuilder.path`) |
+| **runtime + primitives** | the load-order registry + the genuinely-shared helpers (markdownRender, the CodeMirror code-viewer, constants; the one confirm, warningModal, an ES module mirrored on its global) | [runtime.md](?doc=web/runtime.md) | ○ classic² |
 
 ¹ **hybrid** = the module already `import`s its dependencies as an ES module, but
 its own body is still a classic IIFE — it either publishes a `window.molbuilder.*`
@@ -168,7 +168,7 @@ Three conventions cut across the table:
 ## 6. ESM status — how far the doctrine is realized
 
 The **data + viewer modules are there** (MolView, VibrationView, workspace,
-projects, xyz-io — fully ES modules). What remains classic is the **Results-side
+projects, the path helpers — fully ES modules). What remains classic is the **Results-side
 stack and some shared plumbing**:
 
 - **Hybrid** (one foot in ESM — they `import` their deps as a module, but their
@@ -181,7 +181,7 @@ stack and some shared plumbing**:
 - **Still classic** (global scripts): the `spectra` engine, the `presenters`
   registry (+ its other viewers), the `results` shell, `form-schema`, the runtime
   registry itself, and the loose primitives (`markdown-render`, `detection-chip`,
-  `constants`, `path-utils`).
+  `constants`).
 
 Finishing the conversion is tracked in two workstreams (`plans/plan.md` **W15**):
 
@@ -206,9 +206,9 @@ pure-ES it leaves `window` and runs *deferred* (after the classic scripts), whic
 break every classic consumer still calling `window.molbuilder.<name>.*`. So a module is
 converted **together with its consumers**, one at a time, with a thin transitional
 `window.molbuilder.<name>` **shim** (its public API re-exposed on the global) kept until
-the *last* classic consumer migrates — then the shim is deleted. `xyz-io` is the live
-example: already an ES module, but keeping a classic access door for its not-yet-converted
-callers. The Node tests come along for free — a converted module publishes the *same*
+the *last* classic consumer migrates — then the shim is deleted. `path-utils` is the live
+example: an ES module the page header loads, keeping `window.molbuilder.path` for the
+classic scripts that read it when called. The Node tests come along for free — a converted module publishes the *same*
 global **and** exposes exports, so a test reading through `window.molbuilder.X` passes
 before and after conversion ([`testing.md § 4`](?doc=process/testing.md)).
 

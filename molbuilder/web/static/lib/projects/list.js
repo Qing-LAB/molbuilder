@@ -15,11 +15,12 @@
  * Spec: docs/web/projects.md § Sidebar interaction rules.
  */
 
+import { basename, dirname, isInside, join, relative } from "../path-utils.js";
 import { apiList } from "./api.js";
 import {
   setShared, publishCommit, getProjectsRoot, setRefreshHandler,
   SS_FILE, SS_DIR, readSelectionSlot, tell, relativeToProjects,
-  projects as _projectsApi,
+  atProjectsRoot, isStructureFile, projects as _projectsApi,
 } from "./state.js";
 import { showPreview } from "./preview.js";
 import {
@@ -33,10 +34,7 @@ function _isDeletableEntry(entry, currentPath) {
   if (!projectsRoot) return false;
   // Depth 0 (at projects/ root): every entry is a project; user
   // goes to the shell to delete those.
-  if (currentPath === projectsRoot
-      || currentPath === projectsRoot.replace(/\/$/, "")) {
-    return false;
-  }
+  if (atProjectsRoot(currentPath)) return false;
   // A topic folder is off-limits to the regular menu (it would orphan
   // the project layout); the server marks it (`web/projects.md` § 2).
   if (_isTopicDir(entry)) return false;
@@ -57,9 +55,7 @@ function _isDeletableEntry(entry, currentPath) {
 function _isProjectDirAtDepth0(entry, currentPath) {
   const projectsRoot = getProjectsRoot();
   if (!projectsRoot) return false;
-  const rootNormalized = projectsRoot.replace(/\/$/, "");
-  const curNormalized = currentPath.replace(/\/$/, "");
-  if (curNormalized !== rootNormalized) return false;
+  if (!atProjectsRoot(currentPath)) return false;
   return entry.kind === "directory";
 }
 
@@ -144,12 +140,11 @@ function _renderBreadcrumb(currentPath) {
   //     accent fill so the user can find it at a glance — see the
   //     pill-block in projects-sidebar.css.
   const hops = [{label: "projects", path: projectsRoot, isRoot: true}];
-  if (currentPath && currentPath !== projectsRoot) {
-    const rel = currentPath.slice(projectsRoot.length).replace(/^\/+/, "");
-    const parts = rel.split("/").filter(Boolean);
+  const rel = relative(currentPath, projectsRoot);
+  if (rel) {
     let accum = projectsRoot;
-    for (const part of parts) {
-      accum = accum.replace(/\/$/, "") + "/" + part;
+    for (const part of rel.split("/")) {
+      accum = join(accum, part);
       hops.push({label: part, path: accum, isRoot: false});
     }
   }
@@ -233,7 +228,7 @@ function renderSidebar(payload) {
     _markSelected(null);
   }
   // Status line: derived from the file basename.
-  const name = file ? file.slice(file.lastIndexOf("/") + 1) : "";
+  const name = basename(file);
   _renderSelectionStatus(name, file);
 }
 
@@ -472,7 +467,7 @@ function _openKebab(trigger, entry, fullPath, currentPath) {
         title:        "Rename " + entry.name,
         label:        "New name",
         initial:      entry.name,
-        hint:         entry.kind === "file" && /\.(xyz|pdb)$/i.test(entry.name)
+        hint:         entry.kind === "file" && isStructureFile(entry.name)
                        ? "If a paired .molstruct.json sidecar exists, "
                          + "it will rename together."
                        : "",
@@ -512,7 +507,7 @@ function _openKebab(trigger, entry, fullPath, currentPath) {
       if (!dest) return;
       // Same-dir copy needs a new name.  Ask if user picked the
       // file's own parent.
-      const parent = fullPath.replace(/\/[^/]+$/, "");
+      const parent = dirname(fullPath);
       let newName = null;
       if (dest === parent) {
         newName = await chooseName({
@@ -592,7 +587,7 @@ function _renderList(entries, currentPath) {
   if (entries.length === 0) return;
   const selectedFile = readSelectionSlot(SS_FILE);
   for (const e of entries) {
-    const fullPath = currentPath.replace(/\/$/, "") + "/" + e.name;
+    const fullPath = join(currentPath, e.name);
     const li = document.createElement("li");
     li.className = "ps-entry";
     li.dataset.path = fullPath;
@@ -752,12 +747,11 @@ export async function openDir(absPath) {
   // Determine whether prevFile survives the refresh.
   let keptFile = "";
   if (prevFile) {
-    const dirSlash = resp.path.replace(/\/$/, "") + "/";
-    if (prevFile.startsWith(dirSlash)) {
+    const expectedName = relative(prevFile, resp.path);
+    if (expectedName) {
       // prevFile claims to live inside the directory we just listed.
       // Verify it's still in the entry list (and is a file, not a
       // directory) -- the file may have been deleted or renamed.
-      const expectedName = prevFile.slice(dirSlash.length);
       const stillPresent = resp.entries.some(
         (e) => e.kind === "file" && e.name === expectedName
       );
@@ -784,7 +778,7 @@ export function restoreSelection() {
   const projectsRoot = getProjectsRoot();
   const file = readSelectionSlot(SS_FILE);
   const dir  = readSelectionSlot(SS_DIR);
-  if (!file || !projectsRoot || !file.startsWith(projectsRoot)) return;
+  if (!file || !projectsRoot || !isInside(file, projectsRoot)) return;
   // Render via the shared subscriber so the
   // entry-marker + status-line code lives in exactly one place.
   // The initial onChange fire ran before the list was populated;

@@ -1138,6 +1138,9 @@ def test_the_badge_reads_each_clock_from_its_own_series(
 PICKER = _LIB / "results" / "file-picker.js"
 TIME_AGO = _LIB / "time-ago.js"
 INSPECTORS = _LIB / "inspectors"
+#: The one path door, which every page header loads before any presenter
+#: reads it (`web/runtime.md` § 3).
+PATH_DOOR = _LIB / "path-utils.js"
 
 
 @pytest.fixture(scope="module")
@@ -1168,9 +1171,11 @@ def _listing(folder, monkeypatch) -> dict:
 
 def _picker(snippet: str):
     """``snippet`` against the picker as `results.html` loads it -- the one
-    "ago" first -- with the trajectory presenter beside it."""
+    "ago" first, and the one path door its header loads (`web/runtime.md`
+    § 3) -- with the trajectory presenter beside it."""
     return run_node(
-        [TIME_AGO, PICKER, INSPECTORS / "_partial_inspector_factory.js",
+        [PATH_DOOR, TIME_AGO, PICKER,
+         INSPECTORS / "_partial_inspector_factory.js",
          INSPECTORS / "trajectory.js"],
         "const traj = window.molbuilder.inspectors.trajectoryInspector;\n"
         "const P = window.molbuilder.resultsFilePicker;\n" + snippet,

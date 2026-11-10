@@ -101,9 +101,14 @@ wall (VibrationView's export is its own, `web/vibrationview.md` § 4).
 door (V-VAC, V-RELAX, V-HYD, V-LAT, V-PSML, V-TYPE, V-REC). **2.69.14**: the
 tree's names and places (V-PATH, X-PATH, the server's `projects` half).
 **2.69.15**: the files layer's checks (the rest of V-PATH and X-PATH's server
-half). Next, in order, each taking the next number when it ships: the
-browser's path helpers, the save and move/copy pickers among them, which offer
-the projects root that the server refuses since 2.69.15; record reading and the panels (V-READ, V-PANEL); the
+half). **2.69.16**: the browser's path door (V-PATH and X-PATH's browser
+half, O-KEYS's folder of a path). Next, in order, each taking the next number
+when it ships: **`.pdb` import-only** (the user, 2026-11-09: molbuilder's files
+are always `.xyz` + `.molstruct.json`; a `.pdb` is read, never written — an
+uploaded one becomes `<stem>.xyz` and its sidecar, `molbuilder modify` writes
+`.xyz` alone, only `.xyz` pairs with a sidecar, `model/structure.md` § 2.4
+rewritten; the save then offers a loaded file's name without its extension);
+record reading and the panels (V-READ, V-PANEL); the
 duplicates by owning door — X-STRUCT, X-PERSIST, X-PARSE, X-TMPL, X-EXEC,
 X-ENG — and the earlier plan's rows with the page doors they share (O-STATUS,
 O-FIND, O-STATE, O-WORDS, O-KEYS with X-UI and X-PLOT; O-TESTS); then the tabs following the sidebar's folder

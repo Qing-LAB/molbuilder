@@ -25,6 +25,8 @@
 import { mount as mvMount, formula as mvFormula }
     from "/static/lib/molview/index.js";
 import { molviewDoors } from "/static/lib/projects/molview-doors.js";
+import { isStructureFile } from "/static/lib/projects/state.js";
+import { basename, dirname, join } from "/static/lib/path-utils.js";
 import { ask } from "../lib/server.js";
 
 (function () {
@@ -556,16 +558,15 @@ import { ask } from "../lib/server.js";
              * its own process directory and refuse it as "outside every
              * configured root". */
             let f = (sel && sel.file) ? String(sel.file) : "";
-            if (f && !f.includes("/") && sel && sel.dir) {
-                f = String(sel.dir).replace(/\/+$/, "") + "/" + f;
+            if (f && !dirname(f) && sel && sel.dir) {
+                f = join(sel.dir, f);
             }
-            const ext = f.toLowerCase().split(".").pop();
-            if (ext !== "xyz" && ext !== "pdb") {
+            if (!isStructureFile(f)) {
                 // Commit on a non-structure file — tell the user
                 // what they double-clicked isn't loadable into
                 // Build; leave the existing structure alone.
                 if (f) {
-                    const filename = f.split("/").pop();
+                    const filename = basename(f);
                     setStatus("load-status",
                         `${filename} is not a structure file `
                         + `(this tab loads .xyz and .pdb files).`,
@@ -584,7 +585,7 @@ import { ask } from "../lib/server.js";
             // lost (`runtime.md`: the question is for an edited canvas).
             _sidebarLastFile = f;
             const mySeq = ++_sidebarLoadSeq;
-            const filename = f.split("/").pop();
+            const filename = basename(f);
             setStatus("load-status", `Loading ${filename}…`);
             // ONE load door (web/molview.md § 9.3 + model/structure.md § 2.4): read the .xyz + its
             // .molstruct.json sidecar via the concealed projects parser and install the
@@ -640,7 +641,8 @@ import { ask } from "../lib/server.js";
             const _atoms = _d ? (_d.getStructure() || {}).elements : null;
             setStatus("load-status",
                 `Loaded ${(Array.isArray(_atoms) ? _atoms.length : "")}-atom `
-                + `${ext.toUpperCase()} from ${filename}.`, "ok");
+                + `${filename.slice(filename.lastIndexOf(".") + 1).toUpperCase()}`
+                + ` from ${filename}.`, "ok");
             // Flip the load-bar readout to "Loaded: <name>" and ask the
             // chemistry card for this structure's charge and spin.
             if (typeof _refreshLoadButton === "function") _refreshLoadButton();
@@ -691,7 +693,7 @@ import { ask } from "../lib/server.js";
                  * (molview.md § 6.7), so it does not come back with the atoms. */
                 _sidebarLastFile = saved.loadedFrom || "";
                 const _name = _sidebarLastFile
-                    ? _basename(_sidebarLastFile) : "restored structure";
+                    ? basename(_sidebarLastFile) : "restored structure";
                 _applyLoadedModel(_name);
                 /* AND THE PAGE FURNITURE, or the tab contradicts itself: the
                  * molecule is back on the canvas while the load bar still reads
@@ -735,14 +737,6 @@ import { ask } from "../lib/server.js";
         // commits it through ``_commitStructure``.  Click is the
         // explicit user gesture; the button surfaces the current
         // pick + enables only when it's a loadable .xyz/.pdb.
-        const _isLoadable = (name) => {
-            const n = String(name || "").toLowerCase();
-            return n.endsWith(".xyz") || n.endsWith(".pdb");
-        };
-        const _basename = (p) => {
-            const ix = String(p || "").lastIndexOf("/");
-            return ix >= 0 ? p.slice(ix + 1) : p;
-        };
         let _candidatePath = "";
         // Workspace dirty state — surfaced in the readout so the user
         // sees "Loaded: X · unsaved changes" after they modify the
@@ -761,23 +755,23 @@ import { ask } from "../lib/server.js";
             const btn = $("load-from-sidebar-btn");
             const readout = $("load-source-readout");
             if (!btn) return;
-            const loadable = _isLoadable(_candidatePath);
+            const loadable = isStructureFile(_candidatePath);
             btn.disabled = !loadable;
             if (readout) {
                 const isLoaded = loadable
                     && _sidebarLastFile === _candidatePath;
                 if (isLoaded) {
                     readout.textContent = _modelDirty()
-                        ? `Loaded: ${_basename(_candidatePath)} · unsaved changes`
-                        : `Loaded: ${_basename(_candidatePath)}`;
+                        ? `Loaded: ${basename(_candidatePath)} · unsaved changes`
+                        : `Loaded: ${basename(_candidatePath)}`;
                 } else if (loadable) {
                     readout.textContent =
-                        `Selected: ${_basename(_candidatePath)}`;
+                        `Selected: ${basename(_candidatePath)}`;
                 } else if (_candidatePath) {
                     // SAY WHY, not just that: a single click names what
                     // would be loadable.
                     readout.textContent =
-                        `Selected: ${_basename(_candidatePath)} `
+                        `Selected: ${basename(_candidatePath)} `
                         + `(not loadable — .xyz / .pdb only)`;
                 } else {
                     readout.textContent =
@@ -805,7 +799,7 @@ import { ask } from "../lib/server.js";
         const _loadBtn = $("load-from-sidebar-btn");
         if (_loadBtn) {
             _loadBtn.addEventListener("click", () => {
-                if (!_isLoadable(_candidatePath)) return;
+                if (!isStructureFile(_candidatePath)) return;
                 const _dir = (typeof _proj.getCurrentDir === "function")
                     ? _proj.getCurrentDir() : "";
                 // Explicit Load = "load the current file NOW".  Always re-read

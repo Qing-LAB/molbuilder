@@ -28,6 +28,7 @@
  */
 import { mount, toDisplay } from "/static/lib/molview/index.js";
 import { molviewDoors } from "../projects/molview-doors.js";
+import { dirname, join } from "../path-utils.js";
 import { ALL, ONE, frameAxisControl } from "../frame-axis.js";
 import { frameWords, pointWords } from "../results/point-words.js";
 // THE ONE READER of the server's answers (ui-contract.md § 12); named apart
@@ -83,11 +84,6 @@ const WORKSPACE_TAG = "results:transport";
         ].filter(Boolean).join("; ");
         return "at " + pointWords(pr.frame, pr.of, pr.bias_v) + ": " + said
             + (tail ? " — " + tail : "");
-    }
-
-    function _dirOf(file) {
-        const i = String(file).lastIndexOf("/");
-        return i < 0 ? "" : String(file).slice(0, i);
     }
 
     function _plot(node, traces, layout) {
@@ -424,8 +420,7 @@ const WORKSPACE_TAG = "results:transport";
                 const projects = root.molbuilder && root.molbuilder.projects;
                 if (answer.ok && projects
                         && typeof projects.publishFolderChanged === "function") {
-                    projects.publishFolderChanged(
-                        String(file).slice(0, String(file).lastIndexOf("/")));
+                    projects.publishFolderChanged(dirname(file));
                 }
             } catch (e) {
                 answer = { ok: false, error: String((e && e.message) || e) };
@@ -1395,7 +1390,7 @@ const WORKSPACE_TAG = "results:transport";
          * viewer draws it, in TranSIESTA's order, marked, the record's line
          * above saying so (its PDOS refused by the record). */
         const res = await proj.parser.openMolecule(
-            handle, (state.dir ? state.dir + "/" : "") + junctionFile,
+            handle, state.dir ? join(state.dir, junctionFile) : junctionFile,
             { restore: !unstated });
         if (state.disposed) return;
         if (res && res.ok === false) {
@@ -1459,7 +1454,7 @@ const WORKSPACE_TAG = "results:transport";
             const state = { bias: null, points: [], pdos: [], nodes: {},
                             conv: null, handle: null, frames: null,
                             unsubFrame: null, unsubPlay: null, drawn: false,
-                            disposed: false, file: file, dir: _dirOf(file),
+                            disposed: false, file: file, dir: dirname(file),
                             nFrames: 1, average: {}, pendingFrame: null,
                             frameMode: { te: ONE, dos: ONE, iv: ONE, conv: ONE } };
             /* THE POINTS READ AGAIN -- once a data file's DOS per orbital

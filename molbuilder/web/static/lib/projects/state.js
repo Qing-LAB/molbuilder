@@ -15,6 +15,7 @@
  * Spec: docs/web/projects.md.
  */
 
+import { basename, dirname, relative } from "../path-utils.js";
 import {
   apiCopy,
   apiCreateProject,
@@ -220,7 +221,7 @@ function _changed(by, ...dirs) {
 
 /** The folder ``path`` sits in; a top-level entry's is the projects root. */
 function _parentOf(path) {
-  return path.indexOf("/") >= 0 ? path.replace(/\/[^/]+$/, "") : projectsRoot;
+  return dirname(path) || projectsRoot;
 }
 
 // Universal "the user committed this file" publish.  Called by
@@ -244,8 +245,8 @@ function _parentOf(path) {
 // subscribers.
 // THE SECOND ARGUMENT IS A FULL PATH, not a bare name.  `list.js` publishes
 // `publishCommit(currentPath, fullPath)`, and every subscriber uses it as a
-// path -- `structure-optimization` does `f.split("/").pop()` to get a name back
-// out of it.
+// path -- `structure-optimization` takes its name back out of it
+// (`path-utils.basename`).
 export function publishCommit(dir, path) {
   const file = path;
   // Update sessionStorage + onChange subscribers FIRST so a
@@ -334,14 +335,33 @@ export function projectsRootUnavailable(error) {
 export function whenProjectsRoot()    { return _rootAnswer; }
 export function getProjectsRoot()     { return projectsRoot; }
 
+/* THE SUFFIXES OF A STRUCTURE FILE, the server's pairing rule's
+ * (`molstruct.GEOMETRY_SUFFIXES`), as the page header states them: the app's
+ * template context puts them there for every page (`app._inject_tabs`), so a
+ * page has them from its first moment.  Read at the first question, kept. */
+let structureSuffixes = null;
+
+/** Whether ``path`` names a structure file, by the server's pairing rule:
+ *  its suffix one the page header states. */
+export function isStructureFile(path) {
+  if (structureSuffixes === null) {
+    const header = document.querySelector(".app-header");
+    structureSuffixes = ((header && header.dataset.structureSuffixes) || "")
+      .toLowerCase().split(" ").filter(Boolean);
+  }
+  const name = String(path || "").toLowerCase();
+  return structureSuffixes.some((s) => name.endsWith(s));
+}
+
 export function setRefreshHandler(handler) { refreshHandler = handler; }
 
 // ----- Public Inquire API (mounted on window.molbuilder.projects) //
 
 export function relativeToProjects(path) {
   if (!path || !projectsRoot) return path || "";
-  if (!path.startsWith(projectsRoot)) return path;
-  return path.slice(projectsRoot.length).replace(/^\/+/, "") || "/";
+  const rel = relative(path, projectsRoot);
+  if (rel === null) return path;
+  return rel || "/";
 }
 
 /** True when ``dir`` is the projects/ root itself (or unset).
@@ -353,8 +373,7 @@ export function relativeToProjects(path) {
 export function atProjectsRoot(dir) {
   if (!dir) return true;
   if (!projectsRoot) return true;
-  return dir === projectsRoot
-      || dir === projectsRoot.replace(/\/$/, "");
+  return relative(dir, projectsRoot) === "";
 }
 
 async function readCurrentFile(opts) {
@@ -431,13 +450,12 @@ export async function writeFile(path, text, opts) {
   const isBlob = (typeof Blob !== "undefined" && text instanceof Blob)
               || (typeof File !== "undefined" && text instanceof File);
   if (isBlob) {
-    const ix = path.lastIndexOf("/");
-    if (ix < 0) {
+    const dir = dirname(path);
+    if (!dir) {
       return { ok: false,
                error: "writeFile: path must be absolute, got " + path };
     }
-    const dir = path.slice(0, ix);
-    const filename = path.slice(ix + 1);
+    const filename = basename(path);
     // opts.autoRename (camelCase from the embed) maps to the
     // server's auto_rename form field.  When set, overwrite is
     // intentionally omitted so the server falls through to the
@@ -769,4 +787,6 @@ export const projects = {
   navigateTo,
   // The projects root's answer, once the sidebar's start has one (§ 5).
   whenProjectsRoot,
+  // Whether a path names a structure file, by the server's pairing rule.
+  isStructureFile,
 };

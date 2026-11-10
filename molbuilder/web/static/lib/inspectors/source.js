@@ -252,10 +252,9 @@
         },
     };
 
-    const _basename = (window.molbuilder
-                      && window.molbuilder.path
-                      && window.molbuilder.path.basename)
-                   || ((p) => p || "");
+    /* THE ONE PATH DOOR (`lib/path-utils.js`), which the page header
+     * loads; read when called. */
+    const _basename = (p) => window.molbuilder.path.basename(p);
 
     root.molbuilder = root.molbuilder || {};
     root.molbuilder.inspectors = root.molbuilder.inspectors || {};

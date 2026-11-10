@@ -21,6 +21,8 @@ import { init as startOpControls } from "./viewer.js";
 import { init as startCellPanel }  from "./periodicity.js";
 import { init as startSlabPanel }  from "./slab-panel.js";
 import { molviewDoors, molviewFiles } from "/static/lib/projects/molview-doors.js";
+import { isStructureFile } from "/static/lib/projects/state.js";
+import { basename } from "/static/lib/path-utils.js";
 import { chooseFrame } from "/static/lib/projects/dialogs.js";
 import { ask } from "../lib/server.js";
 
@@ -118,17 +120,11 @@ import { ask } from "../lib/server.js";
         // mount — the user arrived with intent ("send my structure
         // to the Molbuilder tab"), not with a stray click.
         const projects = window.molbuilder && window.molbuilder.projects;
-        // Both .xyz and .pdb are loadable into /molbuilder -- the
-        // server's selection blueprint dispatches by extension
-        // (see web/blueprints/selection.py
-        // ``_SUPPORTED_STRUCTURE_SUFFIXES``).  A pick of .log /
+        // A structure file is loadable into /molbuilder, by the server's
+        // pairing rule (`projects.isStructureFile`).  A pick of .log /
         // .fdf etc. is "view this file" not "swap the workspace
         // structure" -- those leave the candidate empty so the
         // Load button stays disabled.
-        function _isLoadableStructure(name) {
-            const lc = String(name || "").toLowerCase();
-            return lc.endsWith(".xyz") || lc.endsWith(".pdb");
-        }
 
         // ----- Candidate state ----------------------------------- //
         let _candidate = "";
@@ -147,7 +143,7 @@ import { ask } from "../lib/server.js";
             }
         }
         function _setCandidate(path) {
-            const next = _isLoadableStructure(path) ? String(path) : "";
+            const next = isStructureFile(path) ? String(path) : "";
             if (next === _candidate) return;
             _candidate = next;
             _notifyCandidate();
@@ -196,12 +192,12 @@ import { ask } from "../lib/server.js";
             const _onCanvas = _mounted.data.getStructure();
             const _hasRestore = !!(_onCanvas
                 && (_onCanvas.elements || []).length);
-            if (_isLoadableStructure(initial) && !_hasRestore) {
+            if (isStructureFile(initial) && !_hasRestore) {
                 // Empty canvas + a loadable sidebar pick: seed it on mount.
                 // Goes through the same _commitFile path as the Load button.
                 _commitFile(initial);
                 _setCandidate(initial);
-            } else if (_isLoadableStructure(initial)) {
+            } else if (isStructureFile(initial)) {
                 // A restorable snapshot exists (file-based OR generated) --
                 // the restore owns the canvas.  Reflect the candidate for the
                 // Load-button readout, but DO NOT commit (defer to
@@ -219,7 +215,7 @@ import { ask } from "../lib/server.js";
             if (typeof projects.onCommit === "function") {
                 projects.onCommit((sel) => {
                     const f = (sel && sel.file) ? sel.file : "";
-                    if (_isLoadableStructure(f)) _commitFile(f);
+                    if (isStructureFile(f)) _commitFile(f);
                 });
             }
         }
@@ -227,10 +223,6 @@ import { ask } from "../lib/server.js";
         // ----- Wire the Load button + readout -------------------- //
         const _loadBtn  = document.getElementById("load-candidate-btn");
         const _readout  = document.getElementById("load-candidate-readout");
-        function _basename(p) {
-            const ix = p.lastIndexOf("/");
-            return ix >= 0 ? p.slice(ix + 1) : p;
-        }
         /* WHICH FILE IS ON THE CANVAS — THE PAGE'S OWN NOTE.
          *
          * The readout tells "Picked" (chosen in the sidebar, not committed)
@@ -255,10 +247,10 @@ import { ask } from "../lib/server.js";
                     _readout.textContent = "";
                 } else if (isLoaded) {
                     _readout.textContent = "Loaded: "
-                        + _basename(_candidate);
+                        + basename(_candidate);
                 } else {
                     _readout.textContent = "Picked: "
-                        + _basename(_candidate);
+                        + basename(_candidate);
                 }
             }
         }
@@ -333,7 +325,7 @@ import { ask } from "../lib/server.js";
              * of several asks which one -- counted from 1, as the frame bar
              * counts -- and that one is loaded; Cancel loads nothing. */
             if (body.n_frames > 1) {
-                const n = await chooseFrame({ title: "Load " + _basename(path),
+                const n = await chooseFrame({ title: "Load " + basename(path),
                                               count: body.n_frames,
                                               initial: 1 });
                 if (n == null) return;
@@ -348,7 +340,7 @@ import { ask } from "../lib/server.js";
             let replace = false;
             if (!open.isEmpty) {
                 replace = await window.molbuilder.warningModal.confirm({
-                    title: "Load " + _basename(path),
+                    title: "Load " + basename(path),
                     body: "Do you want to add the structure to the existing "
                         + "view or clear the current view?"
                         + (open.isDirty ? "  Clearing it loses the view's "
@@ -380,8 +372,8 @@ import { ask } from "../lib/server.js";
                 .filter((x) => !shown.has(x.message))
                 .map((x) => x.message).join("  ");
             say((n > added
-                ? `Added ${_basename(path)}${which} — ${added} atoms, ${n} in total.`
-                : `Loaded ${_basename(path)}${which} — ${n} atoms.`)
+                ? `Added ${basename(path)}${which} — ${added} atoms, ${n} in total.`
+                : `Loaded ${basename(path)}${which} — ${n} atoms.`)
                 + (notes ? "  " + notes : ""), "ok");
         }
         if (_loadBtn) {

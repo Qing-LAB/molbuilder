@@ -33,6 +33,13 @@ import numpy as np
 import pytest
 
 from support.results_export import save_to_project, wait_for_viewer
+from support.road import STRUCTURE
+
+#: Where a save lands: the road's project's free-form topic, a folder below
+#: the projects root -- the root itself takes no file (`projects.md` § 4.1)
+#: -- and not its structure topic, which other tests on the same session's
+#: runs read (`tests/data/presenters.toml`).
+_SAVED_IN = str(Path(STRUCTURE).parts[0]) + "/user"
 
 pytestmark = pytest.mark.engine
 
@@ -133,9 +140,10 @@ def test_a_siesta_trajectory_saves_the_box_its_output_states(
     assert len(frames) > 1, "a relaxation with one frame asks no frame range"
     root = _open(page, flask_server, monkeypatch, real_h2_layered, out)
     wait_for_viewer(page, atoms=2, frames=len(frames))
-    offered = save_to_project(page, "siesta-trajectory", frames=len(frames))
+    offered = save_to_project(page, "siesta-trajectory", frames=len(frames),
+                              tree=root, folder=_SAVED_IN)
     assert offered == f"{out.stem}_frame{len(frames) - 1}", offered
-    _holds_the_engines_frame(root / "siesta-trajectory.xyz", cell,
+    _holds_the_engines_frame(root / _SAVED_IN / "siesta-trajectory.xyz", cell,
                              frames[-1].structure.positions)
 
 
@@ -157,8 +165,9 @@ def test_the_engines_own_geometry_file_saves_the_box_the_run_had(
     positions = Structure.from_xyz(own.read_text()).positions
     root = _open(page, flask_server, monkeypatch, real_h2_layered, own)
     wait_for_viewer(page, atoms=2, frames=1)
-    save_to_project(page, "siesta-own", frames=1)
-    _holds_the_engines_frame(root / "siesta-own.xyz", cell, positions)
+    save_to_project(page, "siesta-own", frames=1, tree=root, folder=_SAVED_IN)
+    _holds_the_engines_frame(root / _SAVED_IN / "siesta-own.xyz", cell,
+                             positions)
 
 
 def test_a_pyscf_trajectory_saves_the_box_its_deck_recorded(
@@ -182,6 +191,7 @@ def test_a_pyscf_trajectory_saves_the_box_its_deck_recorded(
     root = _open(page, flask_server, monkeypatch, real_h2_pyscf, log)
     assert _heading(page, log) == "PySCF optimization", _heading(page, log)
     wait_for_viewer(page, atoms=2, frames=len(frames))
-    save_to_project(page, "pyscf-trajectory", frames=len(frames))
-    _holds_the_engines_frame(root / "pyscf-trajectory.xyz", cell,
+    save_to_project(page, "pyscf-trajectory", frames=len(frames),
+                    tree=root, folder=_SAVED_IN)
+    _holds_the_engines_frame(root / _SAVED_IN / "pyscf-trajectory.xyz", cell,
                              frames[-1].structure.positions)

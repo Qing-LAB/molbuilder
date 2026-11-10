@@ -1189,6 +1189,12 @@ def test_saving_to_the_project_writes_the_pair_and_remembers_where(
     #    selected -- opening the project and clicking its structure folder's
     #    row is the selection, which is what a person does.
     dialog = page.locator("dialog.molbuilder-tree-picker-dialog")
+    # The projects root is the tree, never an answer: a file is placed in a
+    # folder below it, so its row cannot be chosen (`projects.md` § 4.1).
+    root_row = dialog.locator(
+        f'li.tp-node[data-path="{project.parent}"] > .tp-row')
+    root_row.wait_for(state="visible", timeout=WAIT_MS)
+    assert "tp-row--inert" in (root_row.get_attribute("class") or "")
     dialog.locator(f'li.tp-node[data-path="{project}"]'
                    " > .tp-row > .tp-twisty").click()
     row = dialog.locator(f'li.tp-node[data-path="{where}"] > .tp-row')

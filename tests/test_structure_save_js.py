@@ -25,6 +25,8 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 MODULE = ROOT / "molbuilder/web/static/modify/structure/save.js"
+#: What the page header loads before any click: the one path door.
+PATH_DOOR = ROOT / "molbuilder/web/static/lib/path-utils.js"
 
 
 def _run_node(snippet: str) -> object:
@@ -40,6 +42,9 @@ def _run_node(snippet: str) -> object:
     bootstrap = f"""
         globalThis.window = globalThis;
         globalThis.molbuilder = {{}};
+        // WHAT THE PAGE HEADER LOADS before any click: the one path door
+        // (`lib/path-utils.js`), which save.js reads when called.
+        require({json.dumps(str(PATH_DOOR.resolve()))});
 
         /** A stand-in viewer DATA model: the two reads the panel makes, plus
          *  the export it hands to the door. */

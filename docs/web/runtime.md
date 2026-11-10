@@ -100,7 +100,7 @@ a `window.molbuilder.*` global (a couple also register with the runtime).
 | Notification bar | `molbuilder.notify` | The app-wide message framework — dismissible messages (dedup by id, × / Esc / Clear-all), any tab. A **first-class module with its own doc**: [`notifications.md`](?doc=web/notifications.md). |
 | The one confirm | `molbuilder.warningModal` | Every yes/no question the app asks (`ui-contract.md` § 11), loaded by the page header on every page. `confirmDiscardUnsaved()` is the "you have unsaved changes — discard them?" dialog, its wording fixed below; `confirm({title, body, confirmLabel})` asks any other — the sidebar's overwrite and delete (`projects/dialogs.js`'s `confirmDestructive` delegates to it), the preview editor's unsaved edits, the server restart. Each returns a yes/no promise. (`modify/structure/save-dialog.js` held a second overwrite confirm until it was retired on 2026-09-02.) |
 | Markdown renderer | `molbuilder.markdownRender` | The **one** place markdown becomes safe HTML (marked → DOMPurify; then lazy KaTeX for `$...$` and `$$...$$` math, set aside before the markdown pass and never read inside code, and lazy mermaid). The Documents tab and the Results markdown viewer both go through it. |
-| Path helpers | `molbuilder.path` | Small POSIX path-string helpers (basename, relative-from-dir) — no filesystem, no DOM. |
+| Path helpers | `import { … } from "lib/path-utils.js"`, or `molbuilder.path` from a classic script, read when called | **The browser's one path door**: what a page works out of a path, by one rule each — `basename` (its name), `dirname` (its folder), `join(folder, name)` (one separator, however the folder ends), `relative(path, root)` (where it lies under a folder: `""` for the folder itself, the parts below it, `null` outside) and `isInside(path, root)`. Inside is the folder or below it, never a name that merely starts the same: `/a/projects2` is not inside `/a/projects`. Path strings only — no file system, no DOM, no server. An ES module the page header loads, mirrored on the global for a classic script (the pattern of `lib/server.js`). Which files are structures is the server's pairing rule, asked of the projects door (`projects.isStructureFile`, [`projects.md`](?doc=web/projects.md) § 5), never a suffix test of a page's own. MolView keeps its own: it is sealed ([`molview.md`](?doc=web/molview.md)). |
 | Shared constants | `molbuilder.constants` | The single source of truth for the `sessionStorage` keys + custom-event names the modules agree on — a frozen object. (Today it's *partly* duplicated: `projects/state.js` re-declares `SS_FILE`/`SS_DIR` as ES exports, held in lock-step by a test; the ESM pass makes this the one source and drops the copy — see § 4.) |
 
 ### The discard-unsaved modal's wording is a contract
@@ -150,15 +150,13 @@ they share the `lib/` folder, but their substance lives with their real subject:
   label vocabulary** (L/R-electrode, bridge, interface, with citations); belongs
   with the transport / region-labels domain.
 - **`form-schema.js`** — a whole subsystem, its own doc **`form-schema.md`**.
-- **`xyz-io.js`** — a small XYZ parse/format helper (data, not UI); *already* an
-  ES module; details with [`model/structure.md`](?doc=model/structure.md).
 
 ## 4. Current → target: ES modules
 
-Almost everything on this page — the runtime registry and the building blocks —
-is still a **classic `window.molbuilder.*` script** today. The one exception is
-`xyz-io.js`, which is already an ES module (with a classic access door kept for
-its not-yet-converted callers).
+Most of this page — the runtime registry and the building blocks — is still a
+**classic `window.molbuilder.*` script** today. The one confirm
+(`warning-modal.js`) and the path helpers (`path-utils.js`) are ES modules, each
+mirrored on its global for the classic scripts that still call it.
 
 Converting the registry and these primitives to ES modules is a planned pass
 ([`plans/plan.md`](?doc=plans/plan.md) **W15**) — grouped **by kind**, not lumped into one
@@ -170,9 +168,9 @@ Converting the registry and these primitives to ES modules is a planned pass
 - **`markdownRender`** → ESM.
 - the **CodeMirror code-viewer/editor** (today set up twice — in the sidebar
   preview and the markdown presenter) → one concealed ESM module + de-dup.
-- the **registry itself**, the `results` module, and the pure helpers
-  (`path`/`constants`). The pure helpers stay small standalone
-  ESM (not folded into the registry). In particular `constants` becomes the **one
+- the **registry itself**, the `results` module, and the pure helper
+  `constants`, which stays a small standalone
+  ESM (not folded into the registry), as `path-utils` is. `constants` becomes the **one
   ESM source** — `projects/state.js` imports `SS_FILE`/`SS_DIR` from it instead of
   re-declaring them, and the lock-step consistency test is then dropped. The
   registry's own load-order role shrinks once everything is a module.

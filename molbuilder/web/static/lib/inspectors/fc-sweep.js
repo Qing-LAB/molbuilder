@@ -45,9 +45,9 @@
             .join(", ") || "(the template’s values)";
     }
 
-    function _base(path) {
-        return String(path || "").split("/").pop();
-    }
+    /* A file's name, through THE ONE PATH DOOR (`lib/path-utils.js`), which
+     * the page header loads; read when called. */
+    const _base = (path) => root.molbuilder.path.basename(path);
 
     /* A table in its own scroller: wider than the card on a narrow panel,
      * it scrolls inside the card rather than spilling past it -- and stays

@@ -25,6 +25,7 @@
  */
 // THE ONE READER of a server's answer (`ui-contract.md` § 12).
 import { ask } from "../lib/server.js";
+import { relative } from "../lib/path-utils.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -114,8 +115,7 @@ function selectedRelative() {
   const root = p.getProjectsRoot() || "";
   if (!root) return null;                    // bootstrap still in flight
   const dir = (p.getCurrentDir && p.getCurrentDir()) || "";
-  if (!dir || !dir.startsWith(root)) return "";
-  return dir.slice(root.length).replace(/^\/+/, "");
+  return relative(dir, root) || "";
 }
 
 function labUrl(st, rel) {

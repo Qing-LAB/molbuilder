@@ -41,10 +41,9 @@
 (function (root) {
     "use strict";
 
-    const _basename = (root.molbuilder
-                       && root.molbuilder.path
-                       && root.molbuilder.path.basename)
-                    || ((p) => p || "");
+    /* THE ONE PATH DOOR (`lib/path-utils.js`), which the page header
+     * loads; read when called. */
+    const _basename = (p) => root.molbuilder.path.basename(p);
 
     /**
      * Render an error card into ``host``.  Used when the fetch

@@ -37,6 +37,8 @@ _SENDER = _ROOT / "molbuilder/web/static/lib/task-handover.js"
 #: The one reader of a server's answer, which the page's header loads before
 #: any click can send (`web/ui-contract.md` § 12).
 _READER = _ROOT / "molbuilder/web/static/lib/server.js"
+#: ...and the one path door, which it loads beside it (`web/runtime.md` § 3).
+_PATH_DOOR = _ROOT / "molbuilder/web/static/lib/path-utils.js"
 
 pytestmark = pytest.mark.module
 
@@ -86,7 +88,7 @@ def _send(app_at, dest, door, calculation, fields):
     through it fails the run."""
     choice = json.dumps({"door": door, "calculation": calculation,
                          "fields": fields, "dest": dest})
-    return run_node([_READER, _SENDER], f"""
+    return run_node([_READER, _PATH_DOOR, _SENDER], f"""
         const choice = {choice};
         const projects = {{
             getCurrentDir: () => choice.dest,

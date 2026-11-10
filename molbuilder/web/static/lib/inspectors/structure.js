@@ -26,6 +26,8 @@ import { mount } from "/static/lib/molview/index.js";
  * drift into naming different slots. */
 const WORKSPACE_TAG = "results:structure";
 import { molviewDoors } from "../projects/molview-doors.js";
+import { isStructureFile } from "../projects/state.js";
+import { basename, dirname } from "../path-utils.js";
 // THE ONE READER of the server's answers (ui-contract.md § 12).
 import { ask } from "../server.js";
 
@@ -48,10 +50,7 @@ import { ask } from "../server.js";
         // (`presenters.md` § 2).  A result a person wants to see, so the
         // file picker on /results surfaces it.
         isResult:    true,
-        match:       (file) => {
-            const lower = file.toLowerCase();
-            return lower.endsWith(".xyz") || lower.endsWith(".pdb");
-        },
+        match:       (file) => isStructureFile(file),
         resultCategory: (_file) => "Structure",
 
         mount(host, file, ctx) {
@@ -65,7 +64,7 @@ import { ask } from "../server.js";
             header.className = "inspector-card-header";
             const title = document.createElement("h2");
             title.className = "inspector-card-title";
-            title.textContent = "Structure — " + _basename(file);
+            title.textContent = "Structure — " + basename(file);
             header.appendChild(title);
             const actions = document.createElement("div");
             actions.className = "inspector-card-actions";
@@ -85,9 +84,8 @@ import { ask } from "../server.js";
                 // link still navigates and /molbuilder keeps its state.
                 const proj = (root.molbuilder || {}).projects;
                 if (proj && typeof proj.handOffSelection === "function") {
-                    const i = file.lastIndexOf("/");
-                    proj.handOffSelection("/molbuilder",
-                        i >= 0 ? file.slice(0, i) : "", file);
+                    proj.handOffSelection("/molbuilder", dirname(file),
+                                          file);
                 }
             });
             actions.appendChild(modifyLink);
@@ -296,11 +294,6 @@ import { ask } from "../server.js";
             };
         },
     };
-
-    const _basename = (window.molbuilder
-                       && window.molbuilder.path
-                       && window.molbuilder.path.basename)
-                    || ((p) => p || "");
 
     root.molbuilder = root.molbuilder || {};
     root.molbuilder.inspectors = root.molbuilder.inspectors || {};

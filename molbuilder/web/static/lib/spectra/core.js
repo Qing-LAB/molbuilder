@@ -3750,7 +3750,7 @@
         const projects = window.molbuilder && window.molbuilder.projects;
         if (projects && typeof projects.publishFolderChanged === "function") {
             projects.publishFolderChanged(
-                String(body.path).slice(0, String(body.path).lastIndexOf("/")));
+                root.molbuilder.path.dirname(body.path));
         }
         const lines = ["wrote " + body.path].concat(
             // NAMED AS THE FRAME-SET CARD NAMES THEM: the display's count

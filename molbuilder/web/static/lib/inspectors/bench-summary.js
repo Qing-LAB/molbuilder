@@ -24,11 +24,6 @@
      * worse than one showing nothing. */
     const POLL_MS = 15000;
 
-    const _basename = (root.molbuilder
-                      && root.molbuilder.path
-                      && root.molbuilder.path.basename)
-                   || ((p) => String(p || "").split(/[\\/]/).pop());
-
     /* The one element builder, `lib/dom.js`, which the shared header loads
      * for every page; looked up when called. */
     const el = (tag, cls, text) => root.molbuilder.dom.el(tag, cls, text);

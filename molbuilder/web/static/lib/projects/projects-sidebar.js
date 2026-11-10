@@ -21,6 +21,7 @@
  * natively in every modern browser; no bundler.
  */
 
+import { isInside } from "../path-utils.js";
 import { apiRoots } from "./api.js";
 import {
   projects, setProjectsRoot, projectsRootUnavailable, SS_DIR,
@@ -403,7 +404,7 @@ async function init() {
   // Navigate to the previously-visited dir if it's still inside
   // projects/, else start at the root.
   const lastDir = readSelectionSlot(SS_DIR);
-  const start = (lastDir && lastDir.startsWith(roots[0].path))
+  const start = (lastDir && isInside(lastDir, roots[0].path))
               ? lastDir : roots[0].path;
   await openDir(start);
 

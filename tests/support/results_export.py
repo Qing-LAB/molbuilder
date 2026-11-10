@@ -3,9 +3,10 @@
 Export -> Data -> Save to project on the viewer the tab is showing.  When the
 viewer holds more than one frame the dialog asks which, and the answer is the
 LAST -- asked for past the end, because the dialog clamps to the frames the
-viewer holds.  The folder is the picker's first row, the projects root; the
-name is typed over the one the dialog offered, and that offer is returned so
-a caller can hold it too.
+viewer holds.  The folder is one below the projects root, opened down to by
+the picker's rows -- the root itself is never an answer (`projects.md`
+§ 4.1); the name is typed over the one the dialog offered, and that offer is
+returned so a caller can hold it too.
 
 It waits for the VIEWER, not the page: the run-state badge and the SCF line
 are written before MolView has received its frames (`lib/trajectory/core.js`
@@ -33,9 +34,11 @@ def wait_for_viewer(page, *, atoms: int, frames: int) -> None:
             arg=frames, timeout=WAIT_MS)
 
 
-def save_to_project(page, name: str, *, frames: int) -> str:
-    """Save the viewer's structure as ``<projects root>/<name>.xyz`` (+ its
-    sidecar) and return the name the dialog offered."""
+def save_to_project(page, name: str, *, frames: int, tree, folder: str) -> str:
+    """Save the viewer's structure as ``<folder>/<name>.xyz`` (+ its sidecar)
+    -- ``folder`` a tree address in the projects tree ``tree`` -- and return
+    the name the dialog offered."""
+    from pathlib import Path
     page.locator(".molviewer-menu > summary", has_text="Export").click()
     page.locator(".molviewer-export-section", has_text="Data").locator(
         "button", has_text="Save to project").click()
@@ -45,7 +48,12 @@ def save_to_project(page, name: str, *, frames: int) -> str:
         for box in ask.locator("input[type=number]").all():
             box.fill("9999")
         ask.locator("[data-action='confirm']").click()
-    where = page.locator("dialog .tp-row:not(.tp-row--inert)").first
+    dialog = page.locator("dialog.molbuilder-tree-picker-dialog")
+    parts = Path(folder).parts
+    for depth in range(1, len(parts)):
+        dialog.locator(f'li.tp-node[data-path="{tree.joinpath(*parts[:depth])}"]'
+                       " > .tp-row > .tp-twisty").click()
+    where = dialog.locator(f'li.tp-node[data-path="{tree / folder}"] > .tp-row')
     where.wait_for(state="visible", timeout=WAIT_MS)
     where.click()
     page.locator("dialog [data-action='confirm']").first.click()

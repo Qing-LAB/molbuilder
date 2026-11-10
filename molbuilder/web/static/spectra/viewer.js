@@ -23,6 +23,8 @@ import { mount, formula as mvFormula } from "/static/lib/molview/index.js";
 // and the tag on any workspace call, so the two cannot name different slots.
 const WORKSPACE_TAG = "spectra";
 import { molviewDoors } from "../lib/projects/molview-doors.js";
+import { isStructureFile } from "../lib/projects/state.js";
+import { basename } from "../lib/path-utils.js";
 (function () {
     "use strict";
 
@@ -133,33 +135,25 @@ import { molviewDoors } from "../lib/projects/molview-doors.js";
         let _loadSeq         = 0;
 
         // ---- Load button + sidebar onCommit subscription -------- //
-        const _isLoadable = (name) => {
-            const n = String(name || "").toLowerCase();
-            return n.endsWith(".xyz") || n.endsWith(".pdb");
-        };
-        const _basename = (p) => {
-            const ix = String(p || "").lastIndexOf("/");
-            return ix >= 0 ? p.slice(ix + 1) : p;
-        };
 
         let _candidatePath = "";
         function _refreshLoadButton() {
             const btn = _$("load-from-sidebar-btn");
             const readout = _$("load-source-readout");
             if (!btn) return;
-            const loadable = _isLoadable(_candidatePath);
+            const loadable = isStructureFile(_candidatePath);
             btn.disabled = !loadable;
             if (readout) {
                 const isLoaded = loadable
                     && _sidebarLastFile === _candidatePath;
                 readout.textContent = isLoaded
-                    ? `Loaded: ${_basename(_candidatePath)}`
+                    ? `Loaded: ${basename(_candidatePath)}`
                     : loadable
-                        ? `Selected: ${_basename(_candidatePath)}`
+                        ? `Selected: ${basename(_candidatePath)}`
                         // SAY WHY, not just that: a single click names
                         // what would be loadable.
                         : (_candidatePath
-                            ? `Selected: ${_basename(_candidatePath)} `
+                            ? `Selected: ${basename(_candidatePath)} `
                               + `(not loadable — .xyz / .pdb only)`
                             : "Pick a .xyz / .pdb in the Projects sidebar.");
             }
@@ -167,11 +161,10 @@ import { molviewDoors } from "../lib/projects/molview-doors.js";
 
         async function _commitStructure(sel) {
             const f = (sel && sel.file) ? String(sel.file) : "";
-            const ext = f.toLowerCase().split(".").pop();
-            if (ext !== "xyz" && ext !== "pdb") {
+            if (!isStructureFile(f)) {
                 if (f) {
                     setStatus("load-status",
-                        `${_basename(f)} is not a structure file `
+                        `${basename(f)} is not a structure file `
                         + `(.xyz / .pdb only).`, "warn");
                 }
                 return;
@@ -184,7 +177,7 @@ import { molviewDoors } from "../lib/projects/molview-doors.js";
             }
             const mySeq = ++_loadSeq;
             setStatus("load-status",
-                `Loading ${_basename(f)}…`, null);
+                `Loading ${basename(f)}…`, null);
             try {
                 // THE VIEWER FIRST, THEN THE FILE: a viewer mounts before it has
                 // a structure (molview.md § 8), and the load door needs somewhere
@@ -230,9 +223,9 @@ import { molviewDoors } from "../lib/projects/molview-doors.js";
             if (_inspector && typeof _inspector.structureLoaded === "function") {
                 _inspector.structureLoaded();
             }
-            _updateInfo(mvHandle, _basename(f));
+            _updateInfo(mvHandle, basename(f));
             setStatus("load-status",
-                `Loaded ${_basename(f)}.`, "ok");
+                `Loaded ${basename(f)}.`, "ok");
             _refreshLoadButton();
             // The chemistry card: this structure's charge and spin, for
             // exactly what the forms say.
@@ -280,7 +273,7 @@ import { molviewDoors } from "../lib/projects/molview-doors.js";
         const loadBtn = _$("load-from-sidebar-btn");
         if (loadBtn) {
             loadBtn.addEventListener("click", () => {
-                if (!_isLoadable(_candidatePath)) return;
+                if (!isStructureFile(_candidatePath)) return;
                 // Explicit Load = "load the current file NOW", even the one
                 // already on screen: it may have changed on disk, so the
                 // same-file guard is cleared.  (The

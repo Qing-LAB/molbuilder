@@ -243,7 +243,7 @@ const projects = await window.molbuilder.runtime.whenReady("projects");
 
 // reflect the candidate — enable a Load button when a structure is picked:
 projects.onChange((sel) => {
-  loadBtn.disabled = !(sel.file && /\.(xyz|pdb)$/i.test(sel.file));
+  loadBtn.disabled = !(sel.file && projects.isStructureFile(sel.file));
 });
 
 // act on the double-click:
@@ -426,6 +426,7 @@ with nothing selected). The rule beside it is [`ui-contract.md`](?doc=web/ui-con
 |---|---|
 | `getCurrentDir()` / `getCurrentFile()` | the current folder / selected file, right now |
 | `getProjectsRoot()` / `atRoot()` | your projects folder; whether you're at its top |
+| `isStructureFile(path)` | whether `path` names a structure file, by the server's pairing rule — its suffix one of `molstruct.GEOMETRY_SUFFIXES`, which the page header states for every page (the app's template context). The one test a page asks: no page tests a suffix list of its own |
 | `onChange(cb)` | selection changed — fires once on subscribe too |
 | `onCommit(cb)` | a file was committed (double-clicked) — does not fire on subscribe |
 | `publishCommit(dir, path)` | commit a file from code (also moves the selection). **`path` is the file's FULL path**, not its name — subscribers use it as one |
@@ -440,7 +441,8 @@ known once the sidebar's start has asked the server (`GET /api/files/roots`,
 once per page); until then `getProjectsRoot()` is empty. `whenProjectsRoot()`
 is the one way to wait: a folder picker (`lib/tree-picker.js`, and through it
 the Move/Copy destination and `chooseSavePath`'s *where*) asked in that moment
-opens when the root lands; when the start cannot resolve it, the picker opens
+opens when the root lands — the root its tree, never an answer: no file is
+placed in it (§ 4.1) and nothing is cited from it, so its row cannot be chosen; when the start cannot resolve it, the picker opens
 and says why in its tree, and the notebook tab opens at the projects root
 ([`jupyter.md`](?doc=web/jupyter.md) § 4.0, state 3). Every page that asks
 carries the sidebar, so the wait always ends.

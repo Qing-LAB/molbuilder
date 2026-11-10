@@ -108,18 +108,14 @@
          * found from the string alone (`runfiles.parse`), because a role may
          * contain `_` and so may a label.
          *
-         * The name test stays as the fallback for a caller with no directory
-         * answer, which is the same shape `match` and `resultCategory` use.
+         * With no directory answer there is nothing to read the label from,
+         * and nothing is absorbed.
          */
         absorbs: (master, other, mMeta, oMeta) => {
-            const cut = (p) => {
-                const ix = Math.max(p.lastIndexOf("/"), p.lastIndexOf("\\"));
-                return { dir: ix < 0 ? "" : p.slice(0, ix),
-                         name: ix < 0 ? p : p.slice(ix + 1) };
-            };
-            const m = cut(master);
-            const o = cut(other);
-            if (m.dir !== o.dir) return false;          // same folder only
+            // Same folder only -- THE ONE PATH DOOR (`lib/path-utils.js`),
+            // read when called.
+            const path = root.molbuilder.path;
+            if (path.dirname(master) !== path.dirname(other)) return false;
 
             // THE SERVER'S READING, when there is one.  Same label, and
             // then the STAGE decides which rung a part belongs to -- which

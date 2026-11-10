@@ -33,6 +33,7 @@ import { fitRow } from "../lib/transport/fit.js";
 import { pageBusy } from "../lib/page-busy.js";
 // THE ONE READER of a server's answer (`ui-contract.md` § 12).
 import { ask } from "../lib/server.js";
+import { basename, join } from "../lib/path-utils.js";
 
 /* The description's and the hand-over's names are the folder answer's
  * (`task_name`, `handover_name`): the page spells neither.  The hand-over a
@@ -2143,7 +2144,7 @@ function renderCameOver(obj, treatment, frameSet, shared) {
     }
     if (st.source) {
         rows.push(
-            ["Structure", String(st.source).split("/").pop()],
+            ["Structure", basename(st.source)],
             ["Formula",   st.formula || "\u2014"],
             ["Atoms",     (st.atoms === undefined ? "\u2014" : String(st.atoms))]);
     }
@@ -4983,7 +4984,7 @@ async function _save() {
     if (projects && body.handover_here
         && typeof projects.deleteEntry === "function") {
         const gone = await projects.deleteEntry(
-            _dir.replace(/\/$/, "") + "/" + body.handover_name, false,
+            join(_dir, body.handover_name), false,
             { by: WRITER })
             .catch(() => null);
         if (!gone || gone.ok === false) {

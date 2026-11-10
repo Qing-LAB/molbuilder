@@ -13,6 +13,7 @@
  */
 
 import { askFields } from "../dialog.js";
+import { join } from "../path-utils.js";
 
 // ─── Filename / dirname validation ───────────────────────────────── //
 
@@ -229,5 +230,5 @@ export async function chooseSavePath(opts) {
   if (!name) return null;
   const typed = name.toLowerCase().endsWith(ext.toLowerCase())
     ? name : name + ext;
-  return String(dir).replace(/\/+$/, "") + "/" + typed;
+  return join(dir, typed);
 }

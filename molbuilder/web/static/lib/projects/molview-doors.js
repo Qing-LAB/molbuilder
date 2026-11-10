@@ -19,6 +19,7 @@
  */
 "use strict";
 
+import { basename, dirname, join } from "../path-utils.js";
 import { chooseSavePath, confirmOverwrite } from "./dialogs.js";
 import { projects } from "./state.js";
 import { storeZip } from "../zip-store.js";
@@ -108,7 +109,7 @@ export const molviewFiles = {
                 if (!res.ok) {
                     return { ok: false, error: res.error };
                 }
-                _announce(path.slice(0, path.lastIndexOf("/")));
+                _announce(dirname(path));
                 return { ok: true, path: path,
                          notices: Array.isArray(res.body.notices)
                              ? res.body.notices : null };
@@ -136,14 +137,12 @@ export const molviewFiles = {
                 const ext = dot > 0 ? filename.slice(dot) : "";
                 const picked = await _askProjectPath(stem, "image", ext);
                 if (!picked) return { ok: false, cancelled: true };
-                const dir = picked.slice(0, picked.lastIndexOf("/"));
-                const name = picked.slice(picked.lastIndexOf("/") + 1);
                 // THROUGH THE WRITE DOOR (web/projects.md § 2), which
                 // announces the folder: binary bytes ride its upload route,
                 // and ``autoRename`` keeps a collision from silently
                 // clobbering.
                 const out = await projects.writeFile(
-                    dir + "/" + name, blob, { autoRename: true });
+                    picked, blob, { autoRename: true });
                 if (!out || out.ok === false) {
                     return { ok: false,
                              error: (out && out.error) || "write failed" };
@@ -151,10 +150,8 @@ export const molviewFiles = {
                 // The NAME comes from the server's answer: auto_rename may
                 // have written `<stem>-2<ext>`, and reporting the name we
                 // ASKED for would confirm a file that does not exist.
-                const wrote = String(out.path || "");
-                const finalName = wrote
-                    ? wrote.slice(wrote.lastIndexOf("/") + 1) : name;
-                return { ok: true, path: dir + "/" + finalName };
+                const wrote = basename(out.path) || basename(picked);
+                return { ok: true, path: join(dirname(picked), wrote) };
             }
             return { ok: false, error: "unknown destination " + destination };
         } catch (e) {

@@ -20,11 +20,13 @@
  * Spec: docs/web/projects.md § Mutation UX.
  */
 
+import { basename } from "../path-utils.js";
 import {
   chooseName, chooseUploadFile,
 } from "./dialogs.js";
 import {
   projects, getProjectsRoot, SS_DIR, atProjectsRoot, readSelectionSlot, tell,
+  folderKey,
 } from "./state.js";
 import { openDir } from "./list.js";
 
@@ -119,8 +121,7 @@ function _leftOutWords(out) {
  * the target keeps a person from downloading a whole project by accident
  * (user, 2026-08-29). */
 function _dirName(dir) {
-  const parts = String(dir || "").split("/").filter(Boolean);
-  return parts.length ? parts[parts.length - 1] : "this folder";
+  return basename(folderKey(dir)) || "this folder";
 }
 
 async function _doDownloadZip() {

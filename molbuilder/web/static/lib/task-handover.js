@@ -150,7 +150,9 @@
         say("muted", door.doing);
         const req = Object.assign({}, fields, {
             engine:    o.engine,
-            name:      (dest.split("/").filter(Boolean).pop() || ""),
+            // The folder's own name, through THE ONE PATH DOOR
+            // (`lib/path-utils.js`), which the page header loads.
+            name:      window.molbuilder.path.basename(dest),
         });
         req.calculation = o.calculation;
         /* THE FOLDER every door writes into (`handover-procedure.md` § 2,

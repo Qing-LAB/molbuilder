@@ -28,6 +28,7 @@
  * Spec: docs/web/projects.md § Preview modal.
  */
 
+import { basename } from "../path-utils.js";
 import { projects } from "./state.js";
 import { loadCodeMirror, modeFor } from "../codemirror-load.js";
 import { apiStat, apiRead, apiReadRange } from "./api.js";
@@ -425,8 +426,8 @@ export async function showPreview(wanted) {
         const ok = await window.molbuilder.warningModal.confirm({
             title: "Unsaved edits",
             body: "You have unsaved edits in "
-                + String(_state.path).split("/").pop() + ".  Open "
-                + String(path).split("/").pop() + " anyway?  Cancel to "
+                + basename(_state.path) + ".  Open "
+                + basename(path) + " anyway?  Cancel to "
                 + "stay and save first.",
             confirmLabel: "Open without saving",
         });
@@ -434,7 +435,7 @@ export async function showPreview(wanted) {
     }
     _state = _emptyState();
     _state.path = path;
-    elTitle.textContent = path.split("/").pop();
+    elTitle.textContent = basename(path);
     elMeta.textContent  = projects.relativeToProjects(path) || path;
     elError.textContent = "";
     // Clear any prior file's view-only class so the new load decides

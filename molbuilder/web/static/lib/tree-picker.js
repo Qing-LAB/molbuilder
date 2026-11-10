@@ -28,6 +28,7 @@
 import {
   dialogActions, dialogHint, dialogTitle, newDialog, openDialog, settleDialog,
 } from "./dialog.js";
+import { join, relative } from "./path-utils.js";
 import { apiList } from "./projects/api.js";
 import { whenProjectsRoot } from "./projects/state.js";
 
@@ -118,6 +119,9 @@ export async function pickPath(opts) {
   }
 
   const selectable = (kind, path, name) => {
+    // THE PROJECTS ROOT IS THE TREE, never an answer: a file is placed in
+    // a folder below it, and nothing is cited from it (`projects.md` § 4.1).
+    if (known.ok && relative(path, known.root) === "") return false;
     const byMode = (mode === "any"
                     || (mode === "dir" ? kind === "directory"
                                        : kind === "file"));
@@ -243,8 +247,7 @@ export async function pickPath(opts) {
       entries = entries.filter((e) => e.kind === "directory");
     }
     if (opts.filter) {
-      entries = entries.filter((e) => opts.filter(
-        e, path.replace(/\/$/, "") + "/" + e.name));
+      entries = entries.filter((e) => opts.filter(e, join(path, e.name)));
     }
     // Folders first, each half in name order — the hierarchy reads
     // top-down instead of interleaving files into it.
@@ -256,8 +259,7 @@ export async function pickPath(opts) {
       return;
     }
     for (const e of entries) {
-      sub.appendChild(_buildNode(
-        e.name, path.replace(/\/$/, "") + "/" + e.name, e.kind));
+      sub.appendChild(_buildNode(e.name, join(path, e.name), e.kind));
     }
   }
 

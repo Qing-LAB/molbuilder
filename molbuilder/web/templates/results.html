@@ -220,7 +220,6 @@
    "Ordering".  Pinned by
    tests/test_results_blueprint.py::TestInspectorRegistrationOrder. #}
 {#- The 3Dmol embed is an ES module imported by molview/index.js. -#}
-<script src="{{ url_for('static', filename='lib/path-utils.js') }}"></script>
 {# The FULL MolView module (web/molview.md § 4 + § 9.1: mount is the only import) -- the structure inspector mounts it
    READ-ONLY via molview.mount's empty-host build path, including the persistence dispatcher.
    The Results view is a session like any other consumer: its state (opened file, current

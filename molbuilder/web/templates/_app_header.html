@@ -25,7 +25,7 @@
    the host root always lands on the canonical landing tab without
    hard-coding the path here.
 -#}
-<header class="app-header">
+<header class="app-header" data-structure-suffixes="{{ structure_suffixes | join(' ') }}">
   <div class="header-hero">
     <h1>molbuilder <span class="app-version">{{ molbuilder_version }}</span></h1>
     <p class="tagline">Build and edit structures; describe optimization, vibration and transport calculations; read their results.</p>
@@ -78,6 +78,11 @@
 {#- ...and THE ONE READER of a server's answer (`lib/server.js`, § 12): a
     module, mirrored on window.molbuilder.server for a classic script. -#}
 <script type="module" src="{{ url_for('static', filename='lib/server.js') }}"></script>
+{#- ...and THE ONE PATH DOOR (`lib/path-utils.js`, `runtime.md` § 3): a
+    path's name, its folder, a name joined to a folder, where it lies in a
+    tree -- a module, mirrored on window.molbuilder.path for a classic script,
+    which reads it when called. -#}
+<script type="module" src="{{ url_for('static', filename='lib/path-utils.js') }}"></script>
 
 {#- App-wide system-notification bar (docs/web/notifications.md): ONE
     consistent surface for system-level messages that span tabs -- debuting with

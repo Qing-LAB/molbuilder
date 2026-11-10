@@ -76,10 +76,10 @@
         }
     }
 
+    /* A file's name, through THE ONE PATH DOOR (`lib/path-utils.js`), which
+     * the page header loads; read when called. */
     function _basename(p) {
-        if (!p) return "";
-        var i = String(p).lastIndexOf("/");
-        return i >= 0 ? String(p).slice(i + 1) : String(p);
+        return root.molbuilder.path.basename(p);
     }
 
     /* Where this page last saved, or null.
