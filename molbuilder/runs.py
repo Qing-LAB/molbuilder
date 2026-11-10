@@ -810,8 +810,9 @@ def steps_at(path) -> StepsTable:
             atom_index_map(p)               # a folder: it names the runs it holds
         except AtomIndexUnknown as exc:
             raise RunStepsError(str(exc)) from None
-        raise RunStepsError(f"{p} is no run's file: parse() reads it alone, "
-                            f"read_structure() a structure pair")
+        raise RunStepsError(f"{p} is no run's file: parse() reads it as it "
+                            f"stands, read_structure() a structure pair in "
+                            f"the user order")
     chosen = p if p.is_file() else openable(p)[0]
     if chosen is None:
         raise RunStepsError(f"{p} holds no file of its run's steps yet")

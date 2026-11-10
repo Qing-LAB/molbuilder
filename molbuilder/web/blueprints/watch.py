@@ -132,7 +132,9 @@ def _refuse_if_not_a_trajectory(parser_cls):
     (`results.md` § 2.3) so the picker never offers it -- but absorption
     narrows the MENU, not what can be opened, and every other route to
     this one (a pasted path, `molbuilder watch parse`, a restored
-    session) reaches it.
+    session) reaches it.  A saved structure -- a pair, read whole by
+    ``structure-pair`` (`model/parse.md` § 4) -- is refused the same way:
+    it is no run's frames.
 
     A parser declares its own answer in ``output``, so this asks rather
     than guesses, and names the file's real kind in the refusal instead
@@ -147,9 +149,9 @@ def _refuse_if_not_a_trajectory(parser_cls):
                    "an unknown result")
     return (f"{parser_cls.label} is read by the {parser_cls.name!r} parser, "
             f"which answers a {kind} -- not a trajectory. This viewer shows "
-            f"a run's frames over time. Open the run's {ROLE_MOLWATCH} (or a "
-            f"*{ROLE_GEOM_TRAJ}) to see the trajectory this geometry came "
-            f"from.")
+            f"a run's frames over time, from the run's {ROLE_MOLWATCH} (or "
+            f"a *{ROLE_GEOM_TRAJ}); a structure opens in the Results tab's "
+            f"structure preview or on the Molbuilder tab.")
 
 
 def _engine_of(search_dir, payload, parser_cls) -> str:
@@ -545,9 +547,10 @@ def _api_load_multipart(uploaded_file):
 
     # KEPT UNDER ITS OWN NAME, a unique prefix before it: a reader is
     # chosen by the file's name (`model/parse.md` § 4 -- geomeTRIC's
-    # `_geom_optim.xyz` is `pyscf`'s, any other XYZ `xyz`'s), so the upload
-    # is read as it would be in its run's folder (`web-api.md`,
-    # `/api/watch/load`).  The basename alone, so no path reaches the
+    # `_geom_optim.xyz` is `pyscf`'s), so an engine's file uploaded is read
+    # as it would be in its run's folder (`web-api.md`, `/api/watch/load`).
+    # A file comes alone, so a pair's `.xyz` uploaded is read with no
+    # sidecar beside it, by `xyz`.  The basename alone, so no path reaches the
     # temp name.
     #
     # mkstemp (R6) reserves a unique filename atomically, so two uploads

@@ -129,10 +129,11 @@ class TrajectoryResult(ParseResult):
 
 @dataclass(frozen=True)
 class StructureResult(ParseResult):
-    """Geometry from .XV / .pdb / PySCF final geometry.
+    """Geometry from .XV / .pdb / PySCF final geometry / a structure pair.
 
-    Carries ``cell`` beside the structure, from the file's lattice block
-    where it has one.
+    Carries ``cell`` beside the structure, the box the file states where it
+    states one: an `.XV`'s lattice block, a pair's sidecar.  A pair's
+    structure holds every frame it was saved with.
     """
     structure:      Optional[Structure] = None
     cell:           Optional[np.ndarray] = None

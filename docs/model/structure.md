@@ -389,15 +389,15 @@ no rule anywhere.
 `chain_ids` until the rule below took it out, because unlike those it is
 **also a field of the geometry file**. That was the whole problem.
 
-#### Where it came from — five sources, one of them now retired
+#### Where it came from — five sources, two of them now retired
 
 | source | where |
 |---|---|
 | the `.xyz` **comment line**, verbatim | `from_xyz:1686` `comment = lines[1].strip()`, `:1733` `title=comment` |
 | the PDB `TITLE` record | `from_pdb` |
 | ~~the **sidecar's identity block**~~ | **retired** by the rule below — `title` is in `RETIRED_IDENTITY_KEYS`: tolerated on read, never applied |
-| the **upload filename** | `web/blueprints/build.py:720` — `from_xyz(text, title=filename or None)` (and `from_pdb` beside it) |
-| the **file stem** | `parse/coords/pyscf_geom.py:42-43` — *"mirror the file stem onto Structure.title"* |
+| ~~the **upload filename**~~ | **retired** as a source: a text is read by the codec's one parse (`StructureCodec.read_document`), its title the file's own; the paste's answer shows the name as its `title` only when the file states none (`build.py`, the text branch) |
+| the **file stem** | `parse/coords/pyscf_geom.py` (`_read_optimized_xyz`) — *"mirror the file stem onto Structure.title"* |
 
 #### Where it went — four writers, one of them now retired
 
@@ -834,7 +834,10 @@ the extension (`.xyz` / `.pdb`, anything else refused by name) and applies a
 `.xyz`'s `.molstruct.json` (`molstruct.paired_sidecar`; a `.pdb` holds none,
 § 2.4) through `apply_to_structure`. **The pair is the
 file**: a reader that takes the geometry alone hands back a structure smaller
-than what is on disk. **What the read says** to a person goes in `said_out`,
+than what is on disk — so the parse registry reads a `.xyz` with its sidecar
+through this door too (`parse/coords/pair.py`, [`model/parse.md`](?doc=model/parse.md)
+§ 4; the user, 2026-11-10: *read the pair whole*), and its `xyz` reader keeps
+the XYZ files no sidecar is beside. **What the read says** to a person goes in `said_out`,
 each a notice by its name and level — one table, `READ_NOTICES`, made by
 `read_notice`: `structure.lone_file` (info, below), `structure.geometry_changed`
 (warn, `structure-molstruct.md` § 3), `structure.order_unstated` (warn,
@@ -850,6 +853,14 @@ read of an editor or of `molbuilder describe`: a structure in an engine's order 
 back in the user order and said, and a run whose order nothing states is refused —
 asking to open it as well is refused too. A calculation's own structure needs
 no such read: molbuilder writes it in the user order (I1).
+
+**A text with no file** — pasted, or an upload read as an import — is read
+by the same parse, `StructureCodec.read_document(text, fmt)`: the format by
+the codec's one rule, `format_of_text(text, name)` — the one its name names,
+else the text's own first line (§ 2.4) — then the reader that format picks,
+every frame, the title the comment line without an engine record's words
+(`model/overview.md` § 2.2b), atoms only. `load` is that parse of a file's
+text with its sidecar applied.
 
 **A lone file says what was read** *(user, 2026-10-09: "If the XYZ file doesn't
 come with a JSON file, then we would notify the user that we're dumping the
@@ -942,9 +953,11 @@ copy of any of them:
    suffix (`format_named`), its atoms, coordinates and residue identity, a
    write to a `.pdb` is refused, and a `.pdb` brought in — uploaded, or loaded
    and saved — is written as `<stem>.xyz` with its sidecar, the residue
-   identity riding the sidecar. A text with no name, pasted or piped in, is
-   XYZ when its first non-blank line is a positive integer, its atom count,
-   else PDB (`format_of_text`);
+   identity riding the sidecar. A text is read in the format its name names,
+   when it has one — a picked or uploaded file's; with no such name, pasted
+   or piped in, it is XYZ when its first non-blank line is a positive
+   integer, its atom count, else PDB (`format_of_text(text, name)`, the one
+   rule);
 3. **the sidecar envelope** — `schema_version`, the `geometry_hash` pinning it
    to its geometry and checked on every read (`structure-molstruct.md` § 3),
    and the one serialisation (`molstruct.dumps`);
@@ -1035,6 +1048,14 @@ class StructureCodec:                       # L2 (may use the L2 sidecar codec)
         its `geometry_hash` made over the new document, through `write`'s
         own write path. The PySCF script calls it for every geometry it
         saves, imported from `mb_pyscf.pyz` (`engines/pyscf.md` § 3)."""
+
+    @staticmethod
+    def read_document(text, fmt) -> Structure:
+        """BACK IN, FROM TEXT. A geometry document's one parse -- the reader
+        `fmt` picks (`format_of_text(text, name)`: the name's format, else
+        the text's own), every frame, the title without an engine record's words;
+        atoms only. `read` (`load`) is this parse of a file's text, its
+        sidecar applied; the web's paste and upload ask it for a text."""
 
     def read(self, source_path, *, frame=None, frames=False) -> Structure:
         """BACK IN. Parse geometry (.pdb by extension, else .xyz) AND, for a

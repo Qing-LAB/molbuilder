@@ -8,10 +8,15 @@ read off a run made on the road, `tests/test_siesta_optimization_run_e2e.py`.
 
 from __future__ import annotations
 
+from functools import partial
+
 import pytest
 
+from molbuilder.atom_permutation import LISTED_BY_ENGINE, LISTED_BY_USER
 from molbuilder.parse import UnknownFormatError, detect
 from molbuilder.parse.registry import _registered_file_parsers
+from support.road import (CO2_HELD_FIRST, H2, co2_in_engine_order,
+                          road_structure)
 
 
 # Detection + dispatch ------------------------------------------------- #
@@ -87,37 +92,92 @@ def test_nothing_shipped_beside_a_job_is_claimed_as_its_output(tmp_path):
     assert not claimed, claimed
 
 
-#: EACH XYZ FILE AND THE READER THAT IS FOR IT, by its name
-#: (`model/parse.md` § 4): ``(name, reader)``.
+#: EACH XYZ FILE AND THE READER THAT IS FOR IT, by its name and whether its
+#: writer puts a sidecar beside it (`model/parse.md` § 4): ``(name, reader,
+#: pair)`` -- ``pair`` the file written as the codec writes it, with its
+#: sidecar; else the geometry alone, as an engine or another tool writes it.
 _XYZ_READERS = [
-    ("H2_initial.xyz", "pyscf-geom"),            # a PySCF deck's input, echoed back
-    ("H2_optimized.xyz", "pyscf-geom"),          # ...and the geometry it reached
-    ("H2_01_coarse_geom_optim.xyz", "pyscf"),    # geomeTRIC's trajectory
-    ("H2.xyz", "xyz"),                           # SIESTA's own geometry file
-    ("H2_01_coarse.ANI", "xyz"),                 # SIESTA's steps, as an animation
-    ("H2.source.xyz", "xyz"),                    # the structure a calculation is of
-    ("water.xyz", "xyz"),                        # a saved structure
+    ("H2_initial.xyz", "pyscf-geom", True),         # a PySCF deck's input, echoed back
+    ("H2_optimized.xyz", "pyscf-geom", True),       # ...and the geometry it reached
+    ("H2_01_coarse_geom_optim.xyz", "pyscf", False),  # geomeTRIC's trajectory
+    ("H2.xyz", "xyz", False),                       # SIESTA's own geometry file
+    ("H2_01_coarse.ANI", "xyz", False),             # SIESTA's steps, as an animation
+    ("H2.source.xyz", "structure-pair", True),      # the structure a calculation is of
+    ("water.xyz", "structure-pair", True),          # a saved structure
 ]
 
 
-@pytest.mark.parametrize("name,reader", _XYZ_READERS,
-                         ids=[n for n, _r in _XYZ_READERS])
-def test_each_xyz_is_read_by_the_reader_that_is_for_it(tmp_path, name, reader):
+@pytest.mark.parametrize("name,reader,pair", _XYZ_READERS,
+                         ids=[n for n, _r, _p in _XYZ_READERS])
+def test_each_xyz_is_read_by_the_reader_that_is_for_it(tmp_path, name, reader,
+                                                       pair):
     """Each XYZ file is read by the reader that is for it, by its name, and
     by that one alone, so `detect`, which is exactly-one-or-raise, opens it:
     a PySCF deck's two geometries by `pyscf-geom`, geomeTRIC's trajectory by
-    `pyscf`, any other XYZ by `xyz`.  The file is the structure's own
-    writer's.
+    `pyscf`, a `.xyz` with its sidecar by `structure-pair`, any other XYZ by
+    `xyz`.  The file is the structure's own writer's.
 
     THE SILENT FAILURES: the Results folder row naming no parser for a PySCF
     deck's pair, which then cannot be opened on its own; SIESTA's own
     geometry file and a calculation's structure read by geomeTRIC's reader,
     so the trajectory viewer claimed them as a run's steps -- SIESTA's
-    folded into its run's progress log and never listed."""
+    folded into its run's progress log and never listed; a saved pair read
+    by `xyz` alone, its cell and labels left behind (to 2.69.19)."""
     from molbuilder.structure import Structure
+    from molbuilder.workingcopy_structure import StructureCodec
     water = Structure(elements=["O", "H", "H"],
                       positions=[[0.0, 0.0, 0.119], [0.0, 0.757, -0.477],
                                  [0.0, -0.757, -0.477]])
     path = tmp_path / name
-    path.write_text(water.to_xyz())
+    if pair:
+        StructureCodec().write(water, path)
+    else:
+        path.write_text(water.to_xyz())
     assert detect(str(path)).name == reader
+
+
+#: A PAIR AS ITS WRITER WRITES IT -- ``(name, made by, frames, listed by,
+#: order record)``: a saved structure, the road's H2 (an atom held, a 10 Å
+#: box); a frame set of it, as a script makes one through the Structure API
+#: (`model/structure.md` § 2.2e); an engine's record -- the road's CO2 sorted
+#: as a SIESTA vibration's decks hold it, written by the composer's one door
+#: (`write(..., engine_record=True)`), its atoms listed by engine index and
+#: its order record the road's.
+_PAIRS = [
+    ("a saved structure", partial(road_structure, H2), 1, LISTED_BY_USER, None),
+    ("a frame set", partial(road_structure, H2), 3, LISTED_BY_USER, None),
+    ("an engine's record", co2_in_engine_order, 1, LISTED_BY_ENGINE,
+     CO2_HELD_FIRST),
+]
+
+
+@pytest.mark.parametrize("made_by,frames,listed_by,order",
+                         [row[1:] for row in _PAIRS],
+                         ids=[row[0] for row in _PAIRS])
+def test_a_saved_pair_is_read_whole(tmp_path, made_by, frames, listed_by,
+                                    order):
+    """`model/structure.md` § 2.3: the pair is the file.  Read through the
+    registry (`postprocess.parse`), a `.xyz` with its sidecar answers what
+    the pair states -- every frame, its labels, its box (the result's
+    `cell`, `model/parse.md` § 2), an engine's record its order record and
+    its atoms listed by engine index.  THE SILENT FAILURE (to 2.69.19): the
+    `xyz` reader read the `.xyz` alone, as bare frames with no box and no
+    labels (the user, 2026-11-10: read the pair whole)."""
+    import numpy as np
+    from molbuilder.postprocess import parse
+    from molbuilder.workingcopy_structure import StructureCodec
+    built = made_by()
+    if frames > 1:
+        built = built.with_frames(
+            [built.positions + 0.01 * i for i in range(frames)])
+    path = tmp_path / "s.xyz"
+    StructureCodec().write(built, path, engine_record=order is not None)
+    read = parse(path)
+    got = read.structure
+    assert (got.n_frames, got.regions) == (frames, built.regions)
+    assert np.allclose([got.frame_at(i).positions for i in range(frames)],
+                       [built.frame_at(i).positions for i in range(frames)],
+                       atol=1e-6)
+    assert np.allclose(read.cell, built.cell), read.cell
+    assert (got.atom_order.to_dict() if got.atom_order else None) == order
+    assert read.atom_index_map.listed_by == listed_by

@@ -9,6 +9,7 @@ first-class field.
 """
 
 from molbuilder.parse.registry import register
+from .pair import StructurePairFileParser
 from .pdb import PdbFileParser
 from .pyscf_geom import PySCFGeomFileParser
 from .siesta_xv import (
@@ -22,11 +23,13 @@ from .siesta_xv import (
 register(SiestaXVFileParser)
 register(PySCFGeomFileParser)
 register(PdbFileParser)
+register(StructurePairFileParser)
 
 __all__ = [
     "SiestaXVFileParser",
     "PySCFGeomFileParser",
     "PdbFileParser",
+    "StructurePairFileParser",
     "read_xv",            # .XV -> Structure (Å), in the ENGINE's order
     "read_xv_cell",       # .XV -> 3x3 cell (Å)
     "read_xv_with_cell",  # .XV -> (Structure, cell) in ONE pass -- the door

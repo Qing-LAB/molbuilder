@@ -8,9 +8,10 @@
  *   * ``<label>_<stage>.out`` — SIESTA's stdout, parser ``siesta``;
  *   * ``<label>[_<stage>]_geom_optim.xyz`` — geomeTRIC's trajectory, parser
  *     ``pyscf``: the one XYZ that reader is for, by its name (`parse.md`
- *     § 4).  Every other XYZ -- a saved structure, SIESTA's own
- *     ``<label>.xyz``, a calculation's ``<label>.source.xyz`` -- is read by
- *     ``xyz`` and left to the structure inspector.
+ *     § 4).  Every other XYZ -- a saved structure or a calculation's
+ *     ``<label>.source.xyz``, pairs read by ``structure-pair``; SIESTA's own
+ *     ``<label>.xyz``, read by ``xyz`` -- is left to the structure
+ *     inspector.
  *
  * Registration order in results.html puts this BEFORE the
  * structure inspector (which matches every ``.xyz`` / ``.pdb``), so
@@ -56,7 +57,8 @@
      * file the catalogue NAMES (its role): the role says the file is a
      * run's of ours, the parser that it holds a run's steps.  geomeTRIC's
      * trajectory is the one XYZ its parser is for (`parse.md` § 4); every
-     * other XYZ is `xyz`'s and stays the structure preview's
+     * other XYZ -- a pair `structure-pair`'s, any other `xyz`'s -- stays the
+     * structure preview's
      * (`presenters.md` § 2). */
     const TRAJECTORY_PARSERS = ["molwatch", "siesta", "pyscf"];
     /* A run's structure parts -- the input echoed back and the geometry

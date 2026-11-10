@@ -134,8 +134,9 @@ reads, the registry's `parser` (the progress log's, SIESTA's output's,
 geomeTRIC's trajectory's): the role says the file is a run's of ours and not a
 copy, the parser that it holds a run's steps. geomeTRIC's trajectory is the one
 XYZ its reader is for, by its name ([`parse.md`](?doc=model/parse.md) § 4);
-SIESTA's own `<label>.xyz` and a calculation's `<label>.source.xyz` are read
-by `xyz`, and are no run's steps. The sidecar viewers (`spectra`, `fc-sweep`,
+SIESTA's own `<label>.xyz` is read by `xyz` and a calculation's
+`<label>.source.xyz`, a pair, by `structure-pair`, and neither is a run's
+steps. The sidecar viewers (`spectra`, `fc-sweep`,
 `bench-summary`, `transport`) claim on the registry's `parser`; a file no
 viewer claims so is left to what its FORMAT says — a `.xyz` or `.pdb` no run
 viewer claims is a geometry, the structure preview's, whether a catalogue row

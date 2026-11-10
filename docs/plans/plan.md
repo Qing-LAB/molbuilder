@@ -104,9 +104,11 @@ tree's names and places (V-PATH, X-PATH, the server's `projects` half).
 half). **2.69.16**: the browser's path door (V-PATH and X-PATH's browser
 half, O-KEYS's folder of a path). **2.69.17**: a `.pdb` is read, never
 written (the user, 2026-11-09). **2.69.18**: the sidebar's upload says what
-landed. **2.69.19**: record reading and the panels (V-READ, V-PANEL). Next,
+landed. **2.69.19**: record reading and the panels (V-READ, V-PANEL).
+**2.69.20**: X-STRUCT's reads — the codec's one text read, a saved pair read
+whole by the registry (the user, 2026-11-10). Next,
 in order, each taking the next number when it ships: the
-duplicates by owning door — X-STRUCT, X-PERSIST, X-PARSE, X-TMPL, X-EXEC,
+duplicates by owning door — X-STRUCT's wire shape (the structure sent once, the user 2026-11-10), X-PERSIST, X-PARSE, X-TMPL, X-EXEC,
 X-ENG — and the earlier plan's rows with the page doors they share (O-STATUS,
 O-FIND, O-STATE, O-WORDS, O-KEYS with X-UI and X-PLOT; O-TESTS); then the tabs following the sidebar's folder
 (where the Send writes, the live check of it — the user's yes, 2026-11-09),

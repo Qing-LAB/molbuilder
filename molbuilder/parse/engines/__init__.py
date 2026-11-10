@@ -43,7 +43,8 @@ register(SiestaEpsimgFileParser)
 register(SiestaOutFileParser)
 register(PySCFOutFileParser)
 # EACH XYZ BY THE READER THAT IS FOR IT, by its name (`model/parse.md` § 4):
-# geomeTRIC's trajectory `pyscf`'s, every other XYZ this one's.
+# geomeTRIC's trajectory `pyscf`'s, a pair `structure-pair`'s (`coords`),
+# every other XYZ this one's.
 register(XyzFileParser)
 register(SiestaFdfLogParser)
 

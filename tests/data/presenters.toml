@@ -61,17 +61,18 @@ name = "a plain .xyz opens as a structure"
 file = "/tmp/water_demo/water.xyz"
 opens = "structure"
 
-# ...with the directory's answer too: a saved structure is read by `xyz`,
-# the reader of any XYZ no other reader is for (`model/parse.md` § 4) -- the
-# structure a calculation was described from, in a folder no calculation
-# claims, its engine `unknown` (2.16.3 opened it as a trajectory).
+# ...with the directory's answer too: a saved structure is a pair, read
+# whole by `structure-pair` (`model/parse.md` § 4) -- the structure a
+# calculation was described from, in a folder no calculation claims, its
+# engine `unknown` (2.16.3 opened it as a trajectory).
 [[pick]]
 name = "...and with the answer the directory gives it, no role, still"
-answer = { run = "pyscf", folder = "P/structure", parser = "xyz" }
+answer = { run = "pyscf", folder = "P/structure", parser = "structure-pair" }
 opens = "structure"
 
-# A run's own XYZ files that hold no run's steps: SIESTA's geometry file and
-# the calculation's structure, each read by `xyz` (`presenters.md` § 2).
+# A run's own XYZ files that hold no run's steps: SIESTA's geometry file, read
+# by `xyz`, and the calculation's structure, a pair, by `structure-pair`
+# (`presenters.md` § 2).
 # THE SILENT FAILURE: both read by geomeTRIC's reader, so the trajectory
 # viewer claimed them -- SIESTA's folded into its run's progress log and
 # never listed, and its box never saved from the structure preview.

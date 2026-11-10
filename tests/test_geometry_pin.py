@@ -33,6 +33,8 @@ Keys of a ``[[case]]``:
     through; ``route_load`` -- the pair in a project, then ``POST
     /api/build/load`` with ``{path}``, the browser's one load door;
     ``write`` -- the pair written for a person, ``StructureCodec().write``;
+    ``parse`` -- ``postprocess.parse(path)``, the registry's read a notebook
+    asks, its refusal the registry's ``ParseError``;
     ``route_save`` / ``route_export`` -- the structure's envelope sent to
     ``POST /api/structure/save`` / ``/api/structure/export``, as a viewer
     sends it, and the pair the route wrote or answered read back.
@@ -219,6 +221,13 @@ def test_the_pin_through_the_read_door(case, tmp_path, monkeypatch,
         return
 
     if "refused" in case:
+        if case["door"] == "parse":
+            from molbuilder.parse import ParseError
+            from molbuilder.postprocess import parse
+            with pytest.raises(ParseError,
+                               match=case["refused"].replace(".", r"\.")):
+                parse(path)
+            return
         with pytest.raises(GeometryChangedError,
                            match=case["refused"].replace(".", r"\.")):
             StructureCodec().load(path)

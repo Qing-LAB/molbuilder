@@ -47,6 +47,18 @@ def test_load_by_json_path_empty(client):
     assert body["ok"] is False
 
 
+def test_a_saved_structure_is_no_runs_frames(client, isolated_projects_root):
+    """`model/parse.md` § 4: this route shows a run's frames, so a saved
+    structure -- a pair, read whole by `structure-pair` -- is refused,
+    naming its reader.  THE SILENT FAILURE (to 2.69.19): it was read here by
+    `xyz` alone, a run of one frame with its box and labels left behind."""
+    from support.road import structure_saved
+    path = isolated_projects_root / structure_saved(isolated_projects_root)
+    r = client.post("/api/watch/load", json={"path": str(path)})
+    assert r.status_code == 400, r.get_json()
+    assert "'structure-pair' parser" in r.get_json()["error"], r.get_json()
+
+
 # --------------------------------------------------------------------- #
 #  Multipart upload mode (file-picker fallback)                         #
 # --------------------------------------------------------------------- #

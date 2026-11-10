@@ -535,7 +535,7 @@ if r.result_kind == "trajectory":            # a SIESTA / PySCF / molwatch .out
     print(next(f.energy for f in reversed(r.frames) if f.energy is not None))
     print(r.run_state)      # § 2b: "running"|"ended"|"stopped"|"out_of_memory"|"unknown"
     print(r.scf_converged)  # True | False | None -- a FACT, not a verdict
-elif r.result_kind == "structure":           # a .XV / *_optimized.xyz
+elif r.result_kind == "structure":           # a .XV / *_optimized.xyz / a saved pair
     print(len(r.structure.elements), r.cell)  # atom count, 3×3 cell or None
 ```
 
@@ -610,7 +610,7 @@ molbuilder/parse/
 │
 ├── engines/       # engine output → FileParsers, over the reading layer (§ 4a)
 │   ├── siesta.py · pyscf.py · molwatch.py   # registered → TrajectoryResult
-│   ├── xyz.py                 # registered: any other XYZ, read alone → TrajectoryResult (below)
+│   ├── xyz.py                 # registered: any other XYZ with no sidecar, read alone → TrajectoryResult (below)
 │   ├── siesta_fdflog.py       # registered: fdf.<stamp>.log → EngineParamsResult (§ 5d.3)
 │   ├── siesta_mdnc.py         # registered: a run's .MD.nc — sibling upgrade (§ 5a)
 │   ├── siesta_grammar.py      # the SIESTA family's output lines (§ 5d.5)   ─┐
@@ -631,7 +631,8 @@ molbuilder/parse/
 │   ├── siesta_xv.py           # .XV / .STRUCT_OUT (+ cell)
 │   ├── pyscf_geom.py          # *_optimized.xyz
 │   ├── pdb.py                 # .pdb
-│   └── _helpers.py            # StructureResult envelope
+│   ├── pair.py                # a .xyz with its .molstruct.json, read whole through the codec (below)
+│   └── _helpers.py            # StructureResult envelope · the codec's read, wrapped as the registry's ParseError
 │
 ├── instruments/   # what the WRAPPER measured → InstrumentResult (FileParsers, § 5c)
 │   ├── reports.py  # registered reports-log: the listener's reports/<user>.jsonl; read_reports answers GET /api/notify/reports
@@ -653,17 +654,26 @@ molbuilder/parse/
     └── run_info.py            # run_info → the `info` block (composer)
 ```
 
-**Each XYZ file is read by the reader that is for it, by its name**:
+**Each XYZ file is read by the reader that is for it, by its name — and a pair by its sidecar**:
 geomeTRIC's `<stem>_geom_optim.xyz` by `pyscf`, with its run's progress log
 and the engine's own log, named on the stem its name begins with (§ 5.3); a
 PySCF deck's `<label>_initial.xyz` and `<label>_optimized.xyz` by
-`pyscf-geom`; any other XYZ — a saved structure, a calculation's
-`<label>.source.xyz`, SIESTA's `<label>.xyz` and `.ANI` — by `xyz`
+`pyscf-geom`; a `.xyz` with its `.molstruct.json` beside it — a saved
+structure or frame set, a calculation's `<label>.source.xyz`, a transport
+calculation's `junction.xyz` — by `structure-pair` (`parse/coords/pair.py`),
+read whole through the codec's one read door, every frame, as a
+`StructureResult`: the pair is the file, and its box, labels, `info` and order
+record are its sidecar's ([`structure.md`](?doc=model/structure.md) § 2.3;
+the user, 2026-11-10: *read the pair whole*); any other XYZ — SIESTA's
+`<label>.xyz` and `.ANI`, another tool's file — by `xyz`
 (`parse/engines/xyz.py`), one frame or many, read alone: each frame's atoms
 and positions, as a `TrajectoryResult`, and nothing from its comment line,
-which is free text. What makes a file an XYZ — a positive atom count, a
+which is free text. A viewer of a run's frames — the `watch` verbs, the
+trajectory route — refuses a pair by name, as it refuses a `.pdb`: a saved
+structure is no run's frames; a file uploaded to the trajectory route comes
+alone, with no sidecar beside it, and is read by `xyz`. What makes a file an XYZ — a positive atom count, a
 comment line, atom lines of a symbol and three numbers — is `xyz`'s one
-check, which `pyscf` reads with too. `Structure.from_xyz` reads an XYZ for
+check, which `pyscf` reads with too; `xyz` and `structure-pair` ask one question of a file, whether it is an XYZ no reader claims by its name (`unclaimed_by_name`), and split such files by the sidecar. `Structure.from_xyz` reads an XYZ for
 building ([`structure.md`](?doc=model/structure.md)). **A deck's initial coordinates
 are not read at all**: a viewer's starting structure is the trajectory's frame 0,
 from the same file every later frame comes from.

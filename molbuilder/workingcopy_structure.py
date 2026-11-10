@@ -20,7 +20,8 @@ nothing else in the system may hold a second copy of:
 SHAPE: one generator, and one adapter per destination.  :meth:`StructureCodec.pair`
 is the generator; :meth:`~StructureCodec.write` puts it on disk,
 :meth:`~StructureCodec.files` hands it over as bytes WITH THE NAMES THEY BELONG
-UNDER, and :meth:`~StructureCodec.load` brings it back.
+UNDER, and :meth:`~StructureCodec.load` brings it back -- a file's text read by
+:meth:`~StructureCodec.read_document`, the one parse a text with no file gets too.
 
 THE RULE (model/structure.md § 2.4): *every structure-to-bytes translation goes
 through this codec, and every adapter has exactly one door.*  An adapter with no
@@ -30,7 +31,10 @@ the question gets asked rather than answered by counting callers.
 USED BY: ``/api/structure/save`` -> ``write`` · ``/api/structure/export`` ->
 ``files`` · ``/api/build/load`` -> ``load`` (web/blueprints/build.py) · and
 the task hand-over doors -> ``files``/``write`` · the PySCF script, from
-inside its run -> ``write_moved`` (imported from ``mb_pyscf.pyz``).
+inside its run -> ``write_moved`` (imported from ``mb_pyscf.pyz``) · the parse
+registry's structure readers -> ``load`` (``parse/coords``) · the paste and
+the upload (``web/blueprints/_shared.structure_from_text``) ->
+``read_document``.
 
 Layer: L2 — reuses `structure` (L1) + the `sidecars.molstruct` write/read stack.
 """
@@ -269,6 +273,22 @@ class StructureCodec:
     _REPLACEABLE_SUFFIXES = molstruct.GEOMETRY_SUFFIXES + (".extxyz",)
 
     # ---- load durable -> working Structure --------------------------- #
+    @staticmethod
+    def read_document(text: str, fmt: str) -> Structure:
+        """A GEOMETRY DOCUMENT READ, the one parse this door gives a text
+        (`model/structure.md` § 2.3): ``fmt`` -- :meth:`format_named` of a
+        file's name, :meth:`format_of_text` of a text -- picks the reader; every frame it holds; its title the comment line
+        without an engine record's words about its order
+        (:func:`title_of_comment`, `model/overview.md` § 2.2b).  Atoms only:
+        what a sidecar states is :meth:`load`'s, which reads a file's text
+        with this and applies its sidecar.  A text that does not read raises
+        its reader's error."""
+        if fmt == "pdb":
+            return Structure.from_pdb(text)
+        struct = Structure.from_xyz(text)
+        struct.title = title_of_comment(struct.title)
+        return struct
+
     def load(self, source_path, *,
              frame: "int | None" = None,
              frames: bool = False,
@@ -353,12 +373,7 @@ class StructureCodec:
         # hardening molstruct_json / spectra_json / transport_json carry.
         text = src.read_text(encoding="utf-8-sig")
         fmt = self.format_named(src)
-        if fmt == "pdb":
-            struct = Structure.from_pdb(text)
-        else:
-            struct = Structure.from_xyz(text)
-            # THE TITLE, never an engine record's words about its order.
-            struct.title = title_of_comment(struct.title)
+        struct = self.read_document(text, fmt)
         if opened and said_out is None:
             raise ValueError("a read that opens what it would refuse says "
                              "so: pass said_out")
@@ -568,13 +583,17 @@ class StructureCodec:
         is read back by the XYZ reader."""
         return "pdb" if Path(target).suffix.lower() == ".pdb" else "xyz"
 
-    @staticmethod
-    def format_of_text(text: str) -> str:
-        """The container a text with no name holds, by the format's own
-        first-line rule: an XYZ's first non-blank line is its atom count, a
-        positive integer; anything else is a PDB, whose header lines can push
-        its first atom far into the file.  A text misjudged fails in its
-        reader, which says it could not parse."""
+    @classmethod
+    def format_of_text(cls, text: str, name: str = "") -> str:
+        """The container a text holds: the one its ``name`` names when it
+        names a structure file (:meth:`format_named`) -- a picked or uploaded
+        file's; else, a text with no such name, pasted or piped in, by the
+        format's own first-line rule: an XYZ's first non-blank line is its
+        atom count, a positive integer; anything else is a PDB, whose header
+        lines can push its first atom far into the file.  A text misjudged
+        fails in its reader, which says it could not parse."""
+        if molstruct.is_geometry(name):
+            return cls.format_named(name)
         for line in text.splitlines():
             line = line.strip()
             if not line:

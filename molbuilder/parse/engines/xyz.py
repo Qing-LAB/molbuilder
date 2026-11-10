@@ -1,13 +1,17 @@
-"""Any XYZ no other reader is for -- a saved structure, a calculation's
-``<label>.source.xyz``, SIESTA's ``<label>.xyz`` and ``.ANI`` -- read alone,
-one frame or many (`model/parse.md` § 4).
+"""An XYZ with no sidecar that no other reader is for -- SIESTA's
+``<label>.xyz`` and ``.ANI``, another tool's file -- read alone, one frame or
+many (`model/parse.md` § 4).
 
 **Each XYZ file is read by the reader that is for it, by its name**:
 geomeTRIC's ``<stem>_geom_optim.xyz`` by ``pyscf``, with its run's files
 beside it; a PySCF deck's ``<label>_initial.xyz`` and ``<label>_optimized.xyz``
-by ``pyscf-geom``; every other XYZ by this one.  What makes a file an XYZ is
-checked here once (:func:`is_xyz`) and its frames are read here once
-(:func:`read_frames`); the geomeTRIC reader reads with both.
+by ``pyscf-geom``; a ``.xyz`` with its sidecar beside it by
+``structure-pair`` (`parse/coords/pair.py`), the pair being the file; every
+other XYZ by this one.  What makes a file an XYZ is
+checked here once (:func:`is_xyz`), which XYZ no reader claims by its name
+once (:func:`unclaimed_by_name`), and its frames are read here once
+(:func:`read_frames`); the geomeTRIC reader reads with the check and the
+frames, the pair's reader asks the same unclaimed-by-name question.
 
 Frame format::
 
@@ -34,6 +38,7 @@ from molbuilder.parse.errors import ParseError
 from molbuilder.parse.types import TrajectoryResult
 from molbuilder.runfiles import (PYSCF_OPTIMIZED, ROLE_GEOM_TRAJ, ROLE_INITIAL,
                                  stem_before)
+from molbuilder.sidecars.molstruct import paired_sidecar
 from molbuilder.structure import Structure
 
 from ._helpers import wrap_trajectory
@@ -43,6 +48,17 @@ from ._helpers import wrap_trajectory
 #: (`model/parse.md` § 4): geomeTRIC's trajectory (``pyscf``) and a PySCF
 #: deck's two geometries (``pyscf-geom``).
 NAMED_FOR_ANOTHER = (ROLE_GEOM_TRAJ, ROLE_INITIAL, PYSCF_OPTIMIZED)
+
+
+def unclaimed_by_name(path) -> bool:
+    """Is ``path`` an XYZ (:func:`is_xyz`) that no reader claims by its name
+    (:data:`NAMED_FOR_ANOTHER`)?  Such a file is this reader's, or the
+    pair's (`parse/coords/pair.py`) when its sidecar is beside it -- the
+    one question both ask, so the two split every such file between them."""
+    p = Path(path)
+    return (not any(stem_before(p.name, role) is not None
+                    for role in NAMED_FOR_ANOTHER)
+            and is_xyz(str(p)))
 
 # Bounded sanity-check on line-0 atom count when detecting an XYZ.
 _MAX_PLAUSIBLE_ATOMS = 1_000_000
@@ -133,23 +149,23 @@ def read_frames(path: str) -> List[Tuple[str, List[str], np.ndarray]]:
 
 
 class XyzFileParser(FileParser):
-    """Any XYZ no other reader is for, read alone: one frame per block, its
-    atoms and positions, as a :class:`TrajectoryResult`."""
+    """An XYZ with no sidecar that no other reader is for, read alone: one
+    frame per block, its atoms and positions, as a
+    :class:`TrajectoryResult`."""
 
     name   = "xyz"
     label  = "XYZ geometry, one frame or many"
-    hint   = ("an XYZ file -- a saved structure, a calculation's "
-              "<label>.source.xyz, SIESTA's <label>.xyz or .ANI: an atom "
-              "count, a comment line, then a symbol and three coordinates "
-              "(Å) per atom; read alone, its comment line free text")
+    hint   = ("an XYZ file with no sidecar -- SIESTA's <label>.xyz or .ANI, "
+              "another tool's: an atom count, a comment line, then a symbol "
+              "and three coordinates (Å) per atom; read alone, its comment "
+              "line free text")
     output = TrajectoryResult
 
     @classmethod
     def can_parse(cls, path: Path) -> bool:
-        if any(stem_before(path.name, role) is not None
-               for role in NAMED_FOR_ANOTHER):
-            return False
-        return is_xyz(str(path))
+        # A PAIR IS ITS READER'S (`parse/coords/pair.py`): read here it would
+        # lose what its sidecar states.
+        return unclaimed_by_name(path) and paired_sidecar(path) is None
 
     @classmethod
     def parse(cls, path: Path) -> TrajectoryResult:
@@ -172,4 +188,5 @@ class XyzFileParser(FileParser):
         return wrap_trajectory(traj, cls.name, path)
 
 
-__all__ = ["XyzFileParser", "is_xyz", "read_frames", "NAMED_FOR_ANOTHER"]
+__all__ = ["XyzFileParser", "is_xyz", "read_frames", "NAMED_FOR_ANOTHER",
+           "unclaimed_by_name"]

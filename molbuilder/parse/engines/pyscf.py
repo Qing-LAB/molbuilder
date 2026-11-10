@@ -403,10 +403,10 @@ class PySCFOutFileParser(FileParser):
     @classmethod
     def can_parse(cls, path: Path) -> bool:
         # GEOMETRIC'S TRAJECTORY, by its name: the one XYZ this reader is
-        # for, read with its run's files beside it.  Every other XYZ is
-        # `xyz`'s -- a PySCF deck's two geometries `pyscf-geom`'s -- so
-        # `detect()`, exactly-one-or-raise, opens each (`model/parse.md`
-        # § 4).
+        # for, read with its run's files beside it.  A PySCF deck's two
+        # geometries are `pyscf-geom`'s, a pair `structure-pair`'s, every
+        # other XYZ `xyz`'s -- so `detect()`, exactly-one-or-raise, opens
+        # each (`model/parse.md` § 4).
         return _run_stem_of(str(path)) is not None and is_xyz(str(path))
 
     @classmethod

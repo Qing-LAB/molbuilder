@@ -49,6 +49,15 @@ atom_line = { index = 1, line = "O 5.000000 5.000000 5.700000" }
 door = "load"
 refused = "co.xyz's atoms or cell are not the ones its .molstruct.json was saved with"
 
+# THE REGISTRY'S READ IS THE SAME DOOR (`model/parse.md` § 4): a notebook's
+# `parse()` of the pair refuses what the codec refuses, naming why, where it
+# read the moved atoms alone (to 2.69.19).
+[[case]]
+name = "...and by the registry's read, a notebook's parse()"
+atom_line = { index = 1, line = "O 5.000000 5.000000 5.700000" }
+door = "parse"
+refused = "co.xyz's atoms or cell are not the ones its .molstruct.json was saved with"
+
 [[case]]
 name = "a plain molecule's moved atom is refused too -- its sidecar carries the pin"
 plain = true

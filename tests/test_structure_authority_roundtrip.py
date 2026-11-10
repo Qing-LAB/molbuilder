@@ -396,6 +396,37 @@ class TestInfoIsANamespaceOfClusters:
     # (`process/testing.md`).
 
 
+def _through_the_file_load(record, _client, _root):
+    """The codec's file read, the door every builder reads through."""
+    return StructureCodec().load(record).title
+
+
+def _through_the_paste(record, client, _root):
+    """`POST /api/build/load` with the file's text and name, as the
+    Molbuilder tab's paste sends it; the title of the structure answered."""
+    answer = client.post("/api/build/load", json={
+        "text": record.read_text(), "filename": record.name})
+    assert answer.status_code == 200, answer.get_json()
+    return Structure.from_dict(answer.get_json()["structure"]).title
+
+
+def _through_the_upload(record, client, root):
+    """`POST /api/files/upload` of the file into a project's structure
+    topic, made as a person makes one; the comment line of the file it
+    wrote, by the format's reader -- what a tool reading the `.xyz` alone
+    is told."""
+    import io
+    from molbuilder.parse.engines.xyz import read_frames
+    from molbuilder.projects import populate_project_skeleton
+    populate_project_skeleton(root / "P", project_name="P")
+    answer = client.post(
+        "/api/files/upload", content_type="multipart/form-data",
+        data={"target_dir": str(root / "P" / "structure"),
+              "file": (io.BytesIO(record.read_bytes()), record.name)})
+    assert answer.status_code == 200, answer.get_json()
+    return read_frames(answer.get_json()["path"])[0][0]
+
+
 class TestTitleBelongsToTheGeometryFile:
     """`model/structure.md` § 2.2c — ONE rule, four things it decides.
 
@@ -404,9 +435,11 @@ class TestTitleBelongsToTheGeometryFile:
     halves instead, with no authority between them, all four assertions
     below are false.
 
-    One test, not four: they are one rule's observable consequences, and
-    splitting them would pin the same fact four times (`process/testing.md`
-    -- unifying must REDUCE the count).
+    One test, not four: they are one rule's observable consequences on a
+    file, and splitting them would pin the same fact four times
+    (`process/testing.md` -- unifying must REDUCE the count).  The second
+    is the rule through each door that reads a structure's text, a row a
+    door.
     """
 
     def _pair(self, tmp_path, name, comment):
@@ -461,3 +494,26 @@ class TestTitleBelongsToTheGeometryFile:
             f"the sidecar overrode the comment line: {back.title!r}"
         assert back.regions == {"L": [0]}, \
             "the sidecar stopped being applied at all"
+
+    @pytest.mark.parametrize("door", [_through_the_file_load,
+                                      _through_the_paste,
+                                      _through_the_upload],
+                             ids=["the file load", "the paste", "the upload"])
+    def test_an_engine_records_title_reads_back_alone(
+            self, tmp_path, isolated_projects_root, web_client, door):
+        """`model/overview.md` § 2.2b, the files table: an engine's record
+        says in its comment line, after the title, which index its atoms are
+        listed by; read back, the title is the line without it -- through
+        every door that reads a structure's text, the codec's one text read
+        (`StructureCodec.read_document`).  THE SILENT FAILURE (to 2.69.19):
+        the paste and the upload parsed the text themselves, so the record's
+        words stayed in the title, and an uploaded copy -- a user's pair --
+        said in its file that its atoms were listed by engine index.  The
+        file load is the control row: it read the title so before."""
+        from support.road import co2_in_engine_order
+        built = co2_in_engine_order()
+        built.title = "carbon dioxide"
+        record = tmp_path / "junction.xyz"
+        StructureCodec().write(built, record, engine_record=True)
+        assert door(record, web_client, isolated_projects_root) == (
+            "carbon dioxide")

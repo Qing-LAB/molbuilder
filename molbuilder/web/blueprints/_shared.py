@@ -980,20 +980,18 @@ def periodicity_checked_for_emit(struct):
 def structure_from_text(text: str, filename: str = ""):
     """A STRUCTURE READ FROM A FILE'S TEXT, as an import reads it
     (`model/structure.md` § 2.3) -- the load door's pasted or picked text and
-    the files layer's upload: the format the name names, else the text's own
-    (`StructureCodec.format_of_text`); every frame it holds; its title the
-    file's own (§ 2.2c: the geometry file owns `title`); atoms only, an XYZ
-    text a lone file, said (`structure.lone_file`).  Returns ``(whole, said,
-    fmt)``; a text that does not read raises ``ValueError`` in the reader's
-    words."""
-    from molbuilder.sidecars.molstruct import is_geometry
+    the files layer's upload: its format by the codec's rule, the name's
+    else the text's own (`StructureCodec.format_of_text`), read by the
+    codec's one text read
+    (`StructureCodec.read_document`: every frame, the title the file's own,
+    never an engine record's words); atoms only, an XYZ text a lone file,
+    said (`structure.lone_file`).  Returns ``(whole, said, fmt)``; a text
+    that does not read raises ``ValueError`` in the reader's words."""
     from molbuilder.workingcopy_structure import (LONE_FILE, StructureCodec,
                                                   lone_xyz_said, read_notice)
-    fmt = (StructureCodec.format_named(filename) if is_geometry(filename)
-           else StructureCodec.format_of_text(text))
-    reader = Structure.from_xyz if fmt == "xyz" else Structure.from_pdb
+    fmt = StructureCodec.format_of_text(text, filename)
     try:
-        whole = reader(text)
+        whole = StructureCodec.read_document(text, fmt)
     except Exception as exc:                      # noqa: BLE001 -- the reader's words
         raise ValueError(f"could not parse {fmt}: {exc}") from exc
     said = (notices_for_report([read_notice(

@@ -647,9 +647,10 @@ def api_build_load():
     if not text.strip():
         return err("empty input", 400)
 
-    # THE ONE READER of a structure's text (`_shared.structure_from_text`),
-    # the upload's too: the name's format, else the text's own; an XYZ text a
-    # lone file, said as the path branch says it (`model/structure.md` § 2.3).
+    # A STRUCTURE'S TEXT, READ AS THE UPLOAD READS IT
+    # (`_shared.structure_from_text`): the codec's format rule and its one
+    # text read; an XYZ text a lone file, said as the path branch says it
+    # (`model/structure.md` § 2.3).
     from ._shared import structure_from_text
     try:
         whole, said, fmt = structure_from_text(text, filename)
