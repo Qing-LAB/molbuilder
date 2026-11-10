@@ -26,6 +26,22 @@ export function dirname(path) {
   return ix >= 0 ? p.slice(0, ix) : "";
 }
 
+/** The extension of ``path``'s name, its dot included -- "" for a name
+ *  with none, whose one dot starts it (``.hidden``) or ends it (``a.``):
+ *  Python's ``Path.suffix``. */
+export function suffix(path) {
+  const name = basename(path);
+  const dot = name.lastIndexOf(".");
+  return dot > 0 && dot < name.length - 1 ? name.slice(dot) : "";
+}
+
+/** ``path``'s name without its extension (:func:`suffix`): Python's
+ *  ``Path.stem``. */
+export function stem(path) {
+  const name = basename(path);
+  return name.slice(0, name.length - suffix(name).length);
+}
+
 /** ``name`` in the folder ``folder``: one separator between them, however
  *  the folder ends. */
 export function join(folder, name) {
@@ -52,5 +68,6 @@ export function isInside(path, root) {
 
 if (typeof window !== "undefined") {
   window.molbuilder = window.molbuilder || {};
-  window.molbuilder.path = { basename, dirname, join, relative, isInside };
+  window.molbuilder.path = { basename, dirname, stem, suffix, join, relative,
+                             isInside };
 }

@@ -173,7 +173,7 @@ export async function apiRename(path, newName, opts) {
   });
 }
 
-/** Move ``path`` into ``destDir``.  Sidecar-aware on .xyz/.pdb (the
+/** Move ``path`` into ``destDir``.  Sidecar-aware on a paired .xyz (the
  *  paired .molstruct.json moves atomically).  Optional ``opts.newName``
  *  renames during the move.  See /api/files/move docstring + the
  *  web/projects.md § 4.1 (the pair moves as one).  Backend rejects
@@ -189,7 +189,7 @@ export async function apiMove(path, destDir, opts) {
   });
 }
 
-/** Copy ``path`` to ``destDir``.  Sidecar-aware on .xyz/.pdb.  Optional
+/** Copy ``path`` to ``destDir``.  Sidecar-aware on a paired .xyz.  Optional
  *  ``opts.newName`` (required when destDir == source's parent).
  *  Same v1 directory-source refusal as move. */
 export async function apiCopy(path, destDir, opts) {

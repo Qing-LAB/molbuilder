@@ -75,31 +75,6 @@ def test_a_long_header_does_not_hide_the_coordinates(tmp_path: Path):
     assert kind.parse(f).structure.elements == ["N", "C"]
 
 
-def test_a_pdb_keeps_what_its_author_put_in_the_sidecar(tmp_path: Path):
-    """The scientific half of "one door reads a structure".
-
-    A `.pdb` here is a PERSON'S structure, not an engine's output, so the
-    `.molstruct.json` beside it carries their regions, frozen atoms and
-    cell.
-
-    MUTATION THIS MUST FAIL AGAINST: read the file with `read_text` +
-    `Structure.from_pdb` instead of `StructureCodec`.
-    """
-    from molbuilder.structure import Structure
-    from molbuilder.workingcopy_structure import StructureCodec
-
-    # THE PERSON'S PAIR, as molbuilder saves one: the structure with the atom
-    # they froze, written through the codec -- the .pdb and its sidecar.
-    f = tmp_path / "mol.pdb"
-    authored = Structure.from_pdb(_PDB)
-    authored.regions = {"frozen_atoms": [0]}
-    StructureCodec().write(authored, f)
-
-    got = detect(str(f)).parse(f).structure
-    assert getattr(got, "regions", None) == {"frozen_atoms": [0]}, (
-        "the author froze an atom and the parser dropped it")
-
-
 def test_a_pdb_that_holds_no_coordinates_is_refused(tmp_path: Path):
     """THE CONTENT, not the suffix.
 

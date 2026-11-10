@@ -25,7 +25,7 @@
    the host root always lands on the canonical landing tab without
    hard-coding the path here.
 -#}
-<header class="app-header" data-structure-suffixes="{{ structure_suffixes | join(' ') }}">
+<header class="app-header" data-structure-suffixes="{{ structure_suffixes | join(' ') }}" data-paired-suffix="{{ paired_suffix }}">
   <div class="header-hero">
     <h1>molbuilder <span class="app-version">{{ molbuilder_version }}</span></h1>
     <p class="tagline">Build and edit structures; describe optimization, vibration and transport calculations; read their results.</p>

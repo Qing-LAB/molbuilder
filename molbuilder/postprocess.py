@@ -89,12 +89,12 @@ def _on_the_order_record(res, path, atoms):
     it: this is the file's reading."""
     from .atom_permutation import LISTED_BY_ENGINE
     from .runs import declared, run_of
-    from .sidecars.molstruct import is_geometry, sidecar_path_for
+    from .sidecars.molstruct import paired_sidecar
     from .workingcopy_structure import StructureCodec
     if atoms.listed_by != LISTED_BY_ENGINE or atoms.user is None:
         return res
     p = Path(path)
-    if is_geometry(p) and sidecar_path_for(p).is_file():
+    if paired_sidecar(p) is not None:
         order = StructureCodec().load(p).atom_order
     else:
         run = run_of(p)
@@ -153,8 +153,8 @@ def list_runs(calculation) -> list:
 
 
 def read_structure(path):
-    """A STRUCTURE PAIR -- ``.xyz`` or ``.pdb`` with its ``.molstruct.json``
-    -- through the codec's read (`workingcopy_structure.StructureCodec`),
+    """A STRUCTURE -- a ``.xyz`` with its ``.molstruct.json``, or a ``.pdb``
+    alone -- through the codec's read (`workingcopy_structure.StructureCodec`),
     IN THE USER ORDER: an engine's record (a calculation's
     ``junction.xyz``) put back through its order record, every frame with
     it.  ``(structure, atoms, said)``: ``atoms`` the atom index map OF THE

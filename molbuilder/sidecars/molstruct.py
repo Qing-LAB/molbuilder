@@ -194,11 +194,16 @@ def known_keys() -> frozenset:
 #: name (`project-layout.md` § 4.5).
 SUFFIX = ".molstruct.json"
 
-#: THE GEOMETRY FILES A SIDECAR PAIRS WITH -- the two formats the one read
-#: door opens (`StructureCodec.load`, `model/structure.md` § 2.4).  Asked
-#: here, beside the pairing rule, by everything that tells a structure file
-#: from another file.
+#: THE STRUCTURE FILES molbuilder READS -- the two formats the one read door
+#: opens (`StructureCodec.load`, `model/structure.md` § 2.4).  Asked here,
+#: beside the pairing rule, by everything that tells a structure file from
+#: another file.
 GEOMETRY_SUFFIXES = (".xyz", ".pdb")
+
+#: THE ONE GEOMETRY A SIDECAR PAIRS WITH, and the one molbuilder writes: a
+#: `.pdb` is read, never written (the user, 2026-11-09; `model/structure.md`
+#: § 2.4), so it holds no sidecar of its own.
+PAIRED_SUFFIX = ".xyz"
 
 
 # THE PAIR'S REFUSALS are the saved pair's own (`structure_pair`, L1), so the
@@ -224,10 +229,8 @@ def sidecar_path_for(structure_path: Union[str, Path]) -> Path:
         job.spectra.xyz       -> job.spectra.molstruct.json
         bridge                -> bridge.molstruct.json    (no suffix)
 
-    THE SUFFIX IS NOT READ, and the `.pdb` row is there to say so: a
-    structure molbuilder opens is `.xyz` or `.pdb` (`StructureCodec`
-    accepts exactly those two), and both carry their regions, frozen
-    atoms and cell in the same sister file.
+    THE SUFFIX IS NOT READ -- the name alone: whether a geometry pairs with
+    a sidecar at all is :func:`is_paired`'s.
 
     ``Path.with_suffix`` can't be chained for compound suffixes
     (it'd replace ``.molstruct`` with ``.json`` on the second call),
@@ -238,9 +241,26 @@ def sidecar_path_for(structure_path: Union[str, Path]) -> Path:
 
 
 def is_geometry(path: Union[str, Path]) -> bool:
-    """Is this a structure file a sidecar may pair with, whatever the case of
-    its suffix?"""
+    """Is this a structure file molbuilder reads, whatever the case of its
+    suffix?"""
     return Path(path).suffix.lower() in GEOMETRY_SUFFIXES
+
+
+def is_paired(path: Union[str, Path]) -> bool:
+    """Is this a geometry a sidecar pairs with -- a `.xyz`, whatever the case
+    of its suffix?"""
+    return Path(path).suffix.lower() == PAIRED_SUFFIX
+
+
+def paired_sidecar(path: Union[str, Path]) -> Optional[Path]:
+    """The sidecar ``path`` pairs with, when it is a paired geometry
+    (:func:`is_paired`) and that sidecar is there; else ``None``.  The
+    pairing rule read once, for every reader that asks whether a geometry
+    has its sidecar."""
+    if not is_paired(path):
+        return None
+    sidecar = sidecar_path_for(path)
+    return sidecar if sidecar.is_file() else None
 
 
 def is_sidecar(path: Union[str, Path]) -> bool:
@@ -250,27 +270,19 @@ def is_sidecar(path: Union[str, Path]) -> bool:
 
 def geometry_for(sidecar: Union[str, Path]) -> Optional[Path]:
     """The geometry file a sidecar sits beside -- the pairing rule read
-    backwards: ``<stem>.xyz`` or ``<stem>.pdb`` beside
-    ``<stem>.molstruct.json``, whichever is there; ``None`` when neither is,
-    or when ``sidecar`` is not one."""
+    backwards: ``<stem>.xyz`` beside ``<stem>.molstruct.json``; ``None`` when
+    it is not there, or when ``sidecar`` is not one."""
     p = Path(sidecar)
     if not is_sidecar(p):
         return None
-    stem = p.name[:-len(SUFFIX)]
-    for ext in GEOMETRY_SUFFIXES:
-        if (p.parent / f"{stem}{ext}").is_file():
-            return p.parent / f"{stem}{ext}"
-    return None
+    geometry = p.parent / (p.name[:-len(SUFFIX)] + PAIRED_SUFFIX)
+    return geometry if geometry.is_file() else None
 
 
-def _atom_lines(document: str, fmt: str) -> "List[List[str]]":
-    """The atom lines of a geometry document, frame by frame, as written:
-    an XYZ's every frame block, its count line and comment line left out;
-    a PDB's ATOM and HETATM records, one frame."""
+def _atom_lines(document: str) -> "List[List[str]]":
+    """The atom lines of a paired geometry's XYZ document, frame by frame, as
+    written: every frame block, its count line and comment line left out."""
     lines = document.splitlines()
-    if fmt == "pdb":
-        return [[ln for ln in lines
-                 if ln.startswith("ATOM  ") or ln.startswith("HETATM")]]
     frames: List[List[str]] = []
     i = 0
     while i < len(lines):
@@ -283,17 +295,17 @@ def _atom_lines(document: str, fmt: str) -> "List[List[str]]":
     return frames
 
 
-def geometry_hash(document: str, fmt: str, cell, axis_kind) -> str:
+def geometry_hash(document: str, cell, axis_kind) -> str:
     """THE PIN (`structure-molstruct.md` § 3): the sha256 (hex) of a
     geometry's atom lines -- each one's fields as written, one space between,
     after a ``frame`` line per frame -- then the cell and the axis kinds the
     sidecar states for them, ``none`` for one it states none of.  Never the
-    comment line, the offset, the labels or the times.  ``fmt`` is the
-    document's format, ``xyz`` or ``pdb``.  Made by every writer of a pair
+    comment line, the offset, the labels or the times.  Made by every
+    writer of a pair
     over the document it writes, and by the read door over the file it
     reads, to compare."""
     rows: List[str] = []
-    for frame in _atom_lines(document, fmt):
+    for frame in _atom_lines(document):
         rows.append("frame")
         rows.extend(" ".join(line.split()) for line in frame)
     rows.append("cell " + ("none" if cell is None else _json.dumps(
@@ -795,6 +807,9 @@ __all__ = [
     "geometry_hash",
     "is_geometry_hash",
     "GEOMETRY_SUFFIXES",
+    "PAIRED_SUFFIX",
+    "is_paired",
+    "paired_sidecar",
     "geometry_for",
     "is_sidecar",
     "apply_to_structure",

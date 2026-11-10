@@ -1006,7 +1006,8 @@ def write_structure(struct: Structure, path, *, overwrite: bool, said=()):
     """THE ONE WAY A WEB DOOR PUTS A STRUCTURE ON DISK (`model/structure.md`
     § 2.4) -- the save, and the upload of a structure file: written as the
     export writes it (:func:`for_writing`: the user order, the box judged; a
-    refusal is the door's 400, before anyone is asked to overwrite), then the
+    refusal is the door's 400, before anyone is asked to overwrite -- the
+    codec's name rule among them, `StructureCodec.refused_name`), then the
     one "already here" answer (`files.exists_answer`), then the codec's pair,
     both or neither.  ``said``: what the read said of a structure read from
     a file's text, answered before the gate's verdicts.  Returns the
@@ -1017,13 +1018,16 @@ def write_structure(struct: Structure, path, *, overwrite: bool, said=()):
     # THE ONE WRITE-PATH CHECK first: below the root, its folder there, an
     # upload's name, not a folder, not a symlink.
     path = _writable(Path(path))
+    refused = StructureCodec.refused_name(path)
+    if refused is not None:
+        return err(refused, 400)
     struct, notices = for_writing(struct)
     taken = exists_answer(path, overwrite)
     if taken is not None:
         return taken
     try:
         StructureCodec().write(struct, path)
-    except ValueError as exc:          # a frame set to a .pdb
+    except ValueError as exc:          # the codec's refusal, in its words
         return err(str(exc), 400)
     except Exception as exc:  # noqa: BLE001 -- disk / permission -> 500
         return err(f"could not write {path.name}: {exc}", 500)

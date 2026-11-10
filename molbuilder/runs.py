@@ -834,18 +834,17 @@ def steps_at(path) -> StepsTable:
 def saved_pair_row(path) -> Optional["tuple[str, str]"]:
     """``(what, writer)`` for one half of a saved structure pair -- a
     structure file with its sidecar beside it, or that sidecar with its
-    structure -- or ``None``.  The pairing is the codec's
-    (`sidecars.molstruct.sidecar_path_for`); a structure it opens is `.xyz`
-    or `.pdb`."""
-    from molbuilder.sidecars.molstruct import (is_geometry,
-                                               geometry_for, is_sidecar,
-                                               sidecar_path_for)
+    structure -- or ``None``.  The pairing is the pairing module's
+    (`sidecars.molstruct.paired_sidecar`): a `.xyz` with its sidecar; a
+    `.pdb` is read, never written, and holds none."""
+    from molbuilder.sidecars.molstruct import (geometry_for, is_sidecar,
+                                               paired_sidecar)
     p = Path(path)
     if is_sidecar(p):
         if geometry_for(p) is not None:
             return _rf.SAVED_PAIR_WHAT["sidecar"], _rf.SAVED_PAIR_WRITER
         return None
-    if is_geometry(p) and sidecar_path_for(p).is_file():
+    if paired_sidecar(p) is not None:
         return _rf.SAVED_PAIR_WHAT["structure"], _rf.SAVED_PAIR_WRITER
     return None
 

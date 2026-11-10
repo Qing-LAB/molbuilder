@@ -42,6 +42,14 @@ ROWS = [
     ("basename", [ROOT + "/P/structure/w.xyz"], "w.xyz"),
     ("dirname", [ROOT + "/P/structure/w.xyz"], ROOT + "/P/structure"),
     ("dirname", ["w.xyz"], ""),
+    # A name without its extension, and the extension -- a leading dot
+    # starts none (Python's `Path.stem` / `Path.suffix`), as the Save
+    # name, a picture's name and a copy's name all take them.
+    ("stem", [ROOT + "/P/structure/w.pdb"], "w"),
+    ("stem", [".hidden"], ".hidden"),
+    ("suffix", ["w.v2.xyz"], ".xyz"),
+    ("suffix", ["README"], ""),
+    ("suffix", ["a."], ""),
     # A name joined to a folder: one separator, however the folder ends.
     ("join", [ROOT + "/P/", "w.xyz"], ROOT + "/P/w.xyz"),
     ("join", [ROOT + "/P", "w.xyz"], ROOT + "/P/w.xyz"),

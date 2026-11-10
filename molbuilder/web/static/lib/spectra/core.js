@@ -3716,14 +3716,17 @@
         clearTimeout(timer);
         if (!asked) return;
         let out;
+        // THE SUFFIX A STRUCTURE IS WRITTEN UNDER, the projects door's
+        // (the server's pairing rule), read when asked.
+        const ext = window.molbuilder.projects.pairedSuffix();
         try {
             out = await chooseSavePath({
                 title: "Save the frame set where?",
                 nameTitle: "Save the frame set as",
                 initial: "mode" + mode.index_1based,
-                hint: "The set is written as two files: the name with .xyz, "
-                    + "and with .molstruct.json beside it.",
-                ext: ".xyz",
+                hint: "The set is written as two files: the name with "
+                    + ext + ", and with .molstruct.json beside it.",
+                ext: ext,
             });
         } catch (exc) {
             setStatus(els.framesetStatus, String(exc.message || exc), "error");

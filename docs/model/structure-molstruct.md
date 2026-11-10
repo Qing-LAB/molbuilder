@@ -395,8 +395,8 @@ a newline:
 | `cell` and the cell | the sidecar's cell, its three rows as the sidecar states them (`cell none` when it states none) |
 | `axis_kind` and the kinds | the sidecar's axis kinds (`axis_kind none` when it states none) |
 
-A `.pdb`'s atom lines are its `ATOM` / `HETATM` records, its atom and
-residue names among their fields.
+The geometry pinned is always a `.xyz`: a `.pdb` is read, never written,
+and holds no sidecar ([`model/structure.md`](?doc=model/structure.md) § 2.4).
 
 **What it leaves out, and why.** The comment line — the title, the geometry
 file's own and a person's to edit (`model/structure.md` § 2.2c). The engine
@@ -487,12 +487,12 @@ carry the other, or the labels are orphaned (renaming `water.xyz` →
 losing the user's labels).
 
 `POST /api/files/{rename,move,copy}` (`web/blueprints/files.py`, via
-`sidecar_path_for` / `_existing_paired_sidecar`) move or copy
+the pairing module's `molstruct.paired_sidecar`) move or copy
 both files in lockstep:
 
 | Concern | Behaviour |
 |---|---|
-| Detection | source must be `.xyz`/`.pdb`; pair the `<stem>.molstruct.json` if it exists (a bare `.molstruct.json` rename is single-file) |
+| Detection | source must be a `.xyz` (`molstruct.is_paired`: a `.pdb` is read, never written, and holds no sidecar — `model/structure.md` § 2.4); pair the `<stem>.molstruct.json` if it exists (a bare `.molstruct.json` rename, or a `.pdb`'s, is single-file) |
 | Atomicity | rename/move use `os.replace` on both legs; a failed sidecar leg **rolls back** the geometry leg. Copy uses `shutil.copy2`; a failed sidecar leg unlinks the half-copy |
 | No-overwrite | the destination sidecar slot must be empty, else the whole op refuses with **409 before touching either file** |
 | Directories | `move`/`copy` refuse directory sources (v1); directories have no sidecar |

@@ -560,12 +560,14 @@ def create_app(*, config=None) -> Flask:
     def _inject_tabs():
         # THE VERSION ON EVERY PAGE, beside the name, as the CLI says it
         # first on every call (the user, 2026-10-18).  AND WHAT A STRUCTURE
-        # FILE IS, the pairing rule's suffixes, which the page header states
-        # for the projects door (`projects.isStructureFile`): one source.
+        # FILE IS, the pairing rule's suffixes -- those read, and the one
+        # written -- which the page header states for the projects door
+        # (`projects.isStructureFile`, `isPairedFile`): one source.
         from .. import __version__
-        from ..sidecars.molstruct import GEOMETRY_SUFFIXES
+        from ..sidecars.molstruct import GEOMETRY_SUFFIXES, PAIRED_SUFFIX
         return {"tabs": TABS, "molbuilder_version": __version__,
-                "structure_suffixes": GEOMETRY_SUFFIXES}
+                "structure_suffixes": GEOMETRY_SUFFIXES,
+                "paired_suffix": PAIRED_SUFFIX}
 
     @app.route("/")
     def index():

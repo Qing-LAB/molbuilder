@@ -14,8 +14,6 @@ Keys of a ``[[case]]``:
     (``transport.sort.sort_by``) and written as an engine's record.
 ``plain``
     the pair is the molecule alone -- no cell, no axis kinds, no labels.
-``format``
-    ``xyz`` (the default) or ``pdb``: the geometry file the pair is written as.
 ``atom_line``
     ``{index, line}``: the ``index``-th atom line of the geometry file (0-based,
     in file order) replaced by ``line`` -- an atom moved by hand.
@@ -167,11 +165,7 @@ def _edited(case, path: Path) -> None:
     """The row's edits, made to the files as a person makes them."""
     lines = path.read_text().split("\n")
     if "atom_line" in case:
-        if path.suffix == ".pdb":
-            where = [i for i, ln in enumerate(lines)
-                     if ln.startswith(("ATOM  ", "HETATM"))]
-        else:
-            where = list(range(2, 2 + int(lines[0])))
+        where = list(range(2, 2 + int(lines[0])))
         lines[where[case["atom_line"]["index"]]] = case["atom_line"]["line"]
     if "comment" in case:
         lines[1] = case["comment"]
@@ -192,7 +186,7 @@ def test_the_pin_through_the_read_door(case, tmp_path, monkeypatch,
         built = _the_pair(case.get("plain", False))
     if case.get("marked"):
         built.order_unstated = True
-    name = "co." + case.get("format", "xyz")
+    name = "co.xyz"
     if case["door"].startswith("route_"):
         from conftest import point_the_one_door_at
         tree = point_the_one_door_at(tmp_path / "tree", monkeypatch.setenv)

@@ -496,10 +496,10 @@ def api_structure_export():
     stem = raw_name.rsplit("/", 1)[-1].strip()
     if not stem or stem in (".", ".."):
         stem = "structure"
-    # PLAIN XYZ, whatever the stem says: `name` is a stem, and the suffix
-    # follows from the format, which is this door's (web-api.md, *the export
-    # door answers with named files*).
-    made = StructureCodec().files(struct, stem, fmt="xyz")
+    # PLAIN XYZ, whatever the stem says: `name` is a stem, and the name the
+    # pair is answered under is the codec's (`StructureCodec.named`;
+    # web-api.md, *the export door answers with named files*).
+    made = StructureCodec().files(struct, stem)
     return jsonify({"ok": True,
                     "files": [{"name": path.name,
                                "text": blob.decode("utf-8")}

@@ -63,24 +63,15 @@ except ImportError:                         # beside a job, in mb_pyscf.pyz
 
 
 class StructurePair(NamedTuple):
-    """What a Structure looks like outside memory: the coordinate document, the
-    sidecar payload beside it, and the extension it belongs under.
+    """What a Structure looks like outside memory: the coordinate document --
+    plain XYZ, a block per frame -- and the sidecar payload beside it.
 
     ONE shape for every consumer -- disk, bytes, wire -- so "what does this
     structure look like when it leaves" has one answer instead of one per caller.
-
-    ``suffix`` is ``.xyz`` unless the destination named ``.pdb``: one frame or
-    many, the document is plain XYZ, a block per frame.  The CONTAINER is the
-    one axis the caller names -- ``write`` reads it off the target's suffix,
-    which is the same suffix ``load`` dispatches on.
-
-    Either way it is carried here rather than assumed by each caller, because
-    the pairing rule is the codec's -- a caller that appends its own extension
-    is keeping a second copy of a rule it does not own.
+    The name it belongs under is the codec's (:meth:`StructureCodec.named`).
     """
     document: str
     sidecar: dict
-    suffix: str
 
 
 def lone_xyz_said(name: str, text: str) -> str:
@@ -262,17 +253,20 @@ def read_notice(where: str, message: str):
 class StructureCodec:
     """``.xyz`` + ``.molstruct.json`` ⇄ :class:`~molbuilder.structure.Structure`."""
 
-    #: THE ONE EXTENSION THIS CODEC WRITES.  One frame or four hundred, the
-    #: file is plain XYZ under ``.xyz``, a block per frame.
-    GEOMETRY_SUFFIX = ".xyz"
+    #: THE ONE EXTENSION THIS CODEC WRITES -- the one a sidecar pairs with
+    #: (`molstruct.PAIRED_SUFFIX`).  One frame or four hundred, the file is
+    #: plain XYZ under ``.xyz``, a block per frame; a ``.pdb`` is read,
+    #: never written (`model/structure.md` § 2.4).
+    GEOMETRY_SUFFIX = molstruct.PAIRED_SUFFIX
 
     #: Extensions RECOGNISED on a target so they are replaced rather than
-    #: appended to.  ``.extxyz`` is here because it is a name a caller might
-    #: hand us, NOT one we produce: ``files(struct, "run.extxyz")`` answers
-    #: ``run.xyz``.  Anything else keeps its whole name and gets the suffix
-    #: appended, so ``run.v2`` becomes ``run.v2.xyz`` rather than losing the
-    #: ``.v2`` a bare ``with_suffix`` would have eaten.
-    _REPLACEABLE_SUFFIXES = (".xyz", ".extxyz")
+    #: appended to (:meth:`named`).  ``.extxyz`` and ``.pdb`` are here because
+    #: they are names a caller might hand us, NOT ones we produce:
+    #: ``named("run.extxyz")`` is ``run.xyz``, and a ``.pdb`` brought in is
+    #: written as its ``<stem>.xyz``.  Anything else keeps its whole name and
+    #: gets the suffix appended, so ``run.v2`` becomes ``run.v2.xyz`` rather
+    #: than losing the ``.v2`` a bare ``with_suffix`` would have eaten.
+    _REPLACEABLE_SUFFIXES = molstruct.GEOMETRY_SUFFIXES + (".extxyz",)
 
     # ---- load durable -> working Structure --------------------------- #
     def load(self, source_path, *,
@@ -373,8 +367,8 @@ class StructureCodec:
                              "order nothing states: nothing can put it in "
                              "the user order")
         restored_said = None
-        sidecar_path = molstruct.sidecar_path_for(src)
-        if sidecar_path.exists():
+        sidecar_path = molstruct.paired_sidecar(src)
+        if sidecar_path is not None:
             # WHAT THE FILE STATES, by its fields -- the order record's
             # among them (`model/overview.md` § 2.2a, I9: known by what the
             # file states, never its version).
@@ -383,7 +377,7 @@ class StructureCodec:
                                      stated_out=stated)
             pinned = payload.get("geometry_hash")
             if pinned is not None and pinned != molstruct.geometry_hash(
-                    text, fmt, payload["cell"], payload["axis_kind"]):
+                    text, payload["cell"], payload["axis_kind"]):
                 if GEOMETRY_CHANGED not in opened:
                     raise GeometryChangedError(
                         geometry_changed_said(src.name))
@@ -498,8 +492,7 @@ class StructureCodec:
         return run_of(src) is not None and not about(src)["ours"]
 
     # ---- THE ONE GENERATOR: a Structure -> the pair --------------------- #
-    def pair(self, struct: Structure, *,
-             fmt: str = "xyz") -> "StructurePair":
+    def pair(self, struct: Structure) -> "StructurePair":
         """A Structure as the two things that represent it: the coordinate
         document, and the sidecar payload beside it.
 
@@ -522,17 +515,10 @@ class StructureCodec:
         # line is never metadata (§ 2.3), so the cell has one home, the
         # sidecar, and nothing here writes a second copy of it.
         #
-        # THE SUFFIX IS DECIDED HERE, WITH THE FORMAT, and travels with the
-        # pair.  Deriving it anywhere else is deriving it a second time, and a
-        # second derivation is a chance to disagree with the bytes.
-        #
         # THE SIDECAR IS BUILT ONCE.  The labels and the cell are the
         # structure's shared identity -- the same for frame 0 and frame 400 --
         # so there is one .json beside a frame set, not one per frame.  Its
         # geometry hash pins it to the document actually written.
-        # WHICH CONTAINER.  `fmt` is the format the DESTINATION names, not a
-        # preference: `write` reads it off the target's suffix and `load`
-        # dispatches the same way.
         if struct.atom_order is not None:
             raise ValueError(f"a structure file is written in the user order: "
                              f"{REMAPPED_NOT_EDITED}")
@@ -544,27 +530,16 @@ class StructureCodec:
                                            VIEW_ORDER_UNSTATED_WHY)
                  if struct.order_unstated
                  else AtomIndexMap.of_user_structure(struct.n_atoms))
-        return self._pair(struct, fmt=fmt, atoms=atoms)
+        return self._pair(struct, atoms=atoms)
 
-    def _pair(self, struct: Structure, *, fmt: str, atoms,
+    def _pair(self, struct: Structure, *, atoms,
               comment: str = "") -> "StructurePair":
         """:meth:`pair`'s generator, in whatever order the structure is in --
         reached past the order's refusal by :meth:`write`'s ``engine_record``
         alone; ``atoms``, the atom index map the sidecar states, the door's
         (`model/overview.md` § 2.2b, F2), and ``comment`` the xyz's comment
         line where the door says one."""
-        if fmt not in ("xyz", "pdb"):
-            raise ValueError(
-                f"StructureCodec.pair: unsupported format {fmt!r}; "
-                f"expected 'xyz' or 'pdb'")
-        if fmt == "pdb":
-            if struct.n_frames > 1:
-                raise ValueError(
-                    "StructureCodec.pair: PDB holds one geometry, and this is "
-                    "a frame set. Write the set to a .xyz.")
-            document = struct.to_pdb()
-        else:
-            document = struct.to_xyz(comment=comment)
+        document = struct.to_xyz(comment=comment)
         meta = struct.metadata_to_dict()
         # The REAL identity columns ride the sidecar (schema 8, 2026-08-20):
         # additive "extra" -- an xyz-born structure's synthesized placeholders
@@ -577,21 +552,20 @@ class StructureCodec:
             n_atoms_total  = struct.n_atoms,
             n_frames_total = struct.n_frames,
             geometry_hash  = molstruct.geometry_hash(
-                document, fmt, meta["cell"], meta["axis_kind"]),
+                document, meta["cell"], meta["axis_kind"]),
             info           = dict(struct.info) if struct.info else None,
             created_at     = molstruct.stamp(),
             atom_index_map = atoms.to_dict(),
         )
-        return StructurePair(document=document, sidecar=payload,
-                             suffix=(".pdb" if fmt == "pdb"
-                                     else self.GEOMETRY_SUFFIX))
+        return StructurePair(document=document, sidecar=payload)
 
     @staticmethod
     def format_named(target) -> str:
-        """The container a destination names: ``pdb`` for a ``.pdb``, ``xyz``
-        for every other name (``model/structure.md`` § 2.4, *the format
-        choice*).  :meth:`load` dispatches on that same suffix -- which is
-        what makes write->read a round trip rather than a coincidence."""
+        """The container a file's name names, which the read door reads it
+        as: ``pdb`` for a ``.pdb``, ``xyz`` for every other name
+        (``model/structure.md`` § 2.4, *the format choice*).  :meth:`write`
+        writes a ``.xyz`` alone (:meth:`refused_name`), so whatever it writes
+        is read back by the XYZ reader."""
         return "pdb" if Path(target).suffix.lower() == ".pdb" else "xyz"
 
     @staticmethod
@@ -611,33 +585,52 @@ class StructureCodec:
                 return "pdb"
         return "pdb"
 
+    @classmethod
+    def named(cls, target) -> Path:
+        """THE NAME A STRUCTURE IS WRITTEN UNDER, for ``target`` -- the one
+        geometry molbuilder writes, ``<stem>.xyz`` (:data:`GEOMETRY_SUFFIX`):
+        a recognised extension replaced, any other kept and the ``.xyz``
+        appended.  Asked by :meth:`files` for an export, by the upload for
+        a file brought in, and by :meth:`refused_name` for the name it
+        offers."""
+        target = Path(target)
+        if target.suffix.lower() in cls._REPLACEABLE_SUFFIXES:
+            return target.with_suffix(cls.GEOMETRY_SUFFIX)
+        return target.with_name(target.name + cls.GEOMETRY_SUFFIX)
+
+    @classmethod
+    def refused_name(cls, target) -> Optional[str]:
+        """WHY :meth:`write` REFUSES ``target``, or ``None``: molbuilder
+        writes a structure as a ``.xyz`` with its sidecar, the one geometry
+        a sidecar pairs with (`molstruct.is_paired`) -- a ``.pdb`` is read,
+        never written, and a name no reader opens is no structure file.
+        Asked by :meth:`write`, and by a door that asks before writing (the
+        structure save, before its overwrite question)."""
+        target = Path(target)
+        if molstruct.is_paired(target):
+            return None
+        return (f"{target.name}: molbuilder writes a structure as a .xyz with "
+                f"its sidecar, and reads a .pdb without ever writing one.  "
+                f"Name it {cls.named(target).name}.")
+
     # ---- the pair as NAMED bytes: <stem>.xyz + <stem>.molstruct.json -- #
-    def files(self, struct: Structure, target, *,
-              fmt: "str | None" = None) -> List[Tuple[Path, bytes]]:
+    def files(self, struct: Structure, target) -> List[Tuple[Path, bytes]]:
         """The pair as bytes, WITH THE NAMES THEY BELONG UNDER -- what
         :meth:`write` writes, without writing it, and what the export door
         answers with.
 
-        THE SUFFIX IS THE ONE :meth:`pair` CHOSE, not the one the caller
-        guessed -- the pairing rule is the codec's.  Hand this a bare stem and it
-        comes back named correctly; hand it a full ``<stem>.xyz`` and the suffix
-        is corrected in place, which is why comparing this against :meth:`write`
-        still compares the same paths.  ``fmt`` as :meth:`write` takes it: by
-        default the format the target names (:meth:`format_named`), so a
-        ``.pdb`` is a PDB, named so; a caller with its own answer passes it.
+        THE NAME IS THE CODEC'S (:meth:`named`), not the one the caller
+        guessed.  Hand this a bare stem and it comes back named correctly; hand
+        it a full ``<stem>.xyz`` and the suffix is kept, which is why comparing
+        this against :meth:`write` still compares the same paths.
 
         Contrast :meth:`write`, which does NOT correct the name: a project save
         was given an exact path through a picker with an overwrite gate on it,
         so the bytes go exactly there.  An export was given a stem and nothing
         else.  Different questions (model/structure.md § 2.4).
         """
-        target = Path(target)
-        made = self.pair(struct, fmt=(fmt or self.format_named(target)))
-        if (target.suffix.lower() in self._REPLACEABLE_SUFFIXES
-                or target.suffix.lower() == made.suffix):
-            target = target.with_suffix(made.suffix)
-        else:
-            target = target.with_name(target.name + made.suffix)
+        target = self.named(target)
+        made = self.pair(struct)
         return [(target, made.document.encode("utf-8")),
                 (molstruct.sidecar_path_for(target),
                  molstruct.dumps(made.sidecar).encode("utf-8"))]
@@ -682,7 +675,6 @@ class StructureCodec:
 
     # ---- write the pair to disk, atomically -------------------------- #
     def write(self, struct: Structure, target, *,
-              fmt: "str | None" = None,
               engine_record: bool = False) -> Path:
         """Write ``struct`` to the ``<stem>.xyz`` + ``<stem>.molstruct.json``
         pair on disk and return the geometry path.  THE paired-file door
@@ -693,7 +685,9 @@ class StructureCodec:
         The target is written VERBATIM -- unlike :meth:`files`, this does not
         correct the suffix, because the caller did not guess it: a save names an
         exact path, chosen through a picker and cleared by an overwrite gate,
-        and silently writing somewhere else would make that gate a lie.
+        and silently writing somewhere else would make that gate a lie.  A
+        target that is not a ``.xyz`` is refused by name (:meth:`refused_name`):
+        a ``.pdb`` is read, never written (`model/structure.md` § 2.4).
 
         Both or neither (:meth:`_write_pair`): both halves rendered, then
         both staged, then both put in place -- a sidecar that cannot be
@@ -704,11 +698,9 @@ class StructureCodec:
         the composer alone, its order record in the sidecar beside it
         (`model/overview.md` § 2.2a).  Every other write is in the user order."""
         target = Path(target)
-        # `fmt` names the container.  Default: the one the name the caller
-        # chose names (`format_named`).  A caller with its own answer (the
-        # CLI's `--output-format`, which may name a format the extension does
-        # not) passes it and is obeyed.
-        fmt = fmt or self.format_named(target)
+        refused = self.refused_name(target)
+        if refused is not None:
+            raise ValueError(refused)
         if engine_record:
             # AN ENGINE'S RECORD (`model/overview.md` § 2.2b, F2): listed by
             # engine index, both columns from its order record -- and its
@@ -716,14 +708,14 @@ class StructureCodec:
             words = (struct.atom_order.words if struct.atom_order is not None
                      else "the sort moved nothing")
             made = self._pair(
-                struct, fmt=fmt,
+                struct,
                 atoms=AtomIndexMap.of_engine_record(struct.atom_order,
                                                     struct.n_atoms),
                 comment=engine_record_comment(
                     struct.title, words,
                     molstruct.sidecar_path_for(target).name))
         else:
-            made = self.pair(struct, fmt=fmt)
+            made = self.pair(struct)
         return self._write_pair(target, made.document, made.sidecar)
 
     def write_moved(self, target, elements: Sequence[str], positions,
@@ -756,7 +748,7 @@ class StructureCodec:
         payload = molstruct.renewed(
             sidecar,
             geometry_hash=molstruct.geometry_hash(
-                document, "xyz", sidecar["cell"], sidecar["axis_kind"]),
+                document, sidecar["cell"], sidecar["axis_kind"]),
             atom_index_map=AtomIndexMap.of_engine_record(
                 None, len(elements)).to_dict())
         return self._write_pair(Path(target), document, payload)

@@ -1307,8 +1307,13 @@ class TestFilesWrite:
 # --------------------------------------------------------------------- #
 
 
-def _seed_paired(picker_root: Path, dirname: str = "", stem: str = "water",
-                 ext: str = ".xyz") -> tuple[Path, Path]:
+#: A PDB a person brings in from another program (`tests/data`, conftest's
+#: ``data_dir``).
+_A_PDB = "multi_chain_well_formed.pdb"
+
+
+def _seed_paired(picker_root: Path, dirname: str = "",
+                 stem: str = "water") -> tuple[Path, Path]:
     """A structure's pair on disk, written through the codec as a save writes
     it.  Returns (structure_path, sidecar_path).  Used by the rename / move /
     copy sidecar-pairing tests."""
@@ -1322,7 +1327,7 @@ def _seed_paired(picker_root: Path, dirname: str = "", stem: str = "water",
                   positions=np.array([[0.0, 0.0, 0.0], [0.96, 0.0, 0.0],
                                       [-0.24, 0.93, 0.0]]),
                   title="water", regions={"L-electrode": [0]}),
-        parent / f"{stem}{ext}")
+        parent / f"{stem}.xyz")
     sidecar = molstruct.sidecar_path_for(struct)
     return struct, sidecar
 
@@ -1333,7 +1338,7 @@ def _seed_paired(picker_root: Path, dirname: str = "", stem: str = "water",
 
 
 class TestFilesDeleteSidecarPairing:
-    """2026-07: deleting a .xyz/.pdb file MUST also remove its paired
+    """2026-07: deleting a .xyz file MUST also remove its paired
     .molstruct.json -- the mirror of the rename/move/copy pairing -- else
     the sidecar orphans (labels/cell of a file that no longer exists)."""
 
@@ -1362,18 +1367,19 @@ class TestFilesDeleteSidecarPairing:
         assert not sidecar.exists()          # the fix: no orphaned sidecar
         assert j["sidecar_removed"] == str(sidecar)
 
-    def test_pdb_delete_removes_sidecar(self, web, picker_root):
-        """`.pdb` dropping out of the paired-suffix set -- which the `.xyz`
-        test above cannot see, because both read the same set.
-
-        `projects.md` § 4.1; the suffix set is the sidecar-pairing helper in
-        `web/blueprints/files.py`.
-        """
-        struct, sidecar = _seed_paired(picker_root, stem="prot", ext=".pdb")
-        r = self._delete(web, struct)
-        assert r.status_code == 200
-        assert not struct.exists()
-        assert not sidecar.exists()
+    def test_a_pdb_is_deleted_alone(self, web, picker_root, data_dir):
+        """`model/structure.md` § 2.4: a `.pdb` is read, never written, and
+        holds no sidecar -- the one beside it is its `.xyz`'s.  THE SILENT
+        FAILURE: deleting a person's `.pdb` takes the saved pair's sidecar
+        with it, and the `.xyz` loses its labels."""
+        struct, sidecar = _seed_paired(picker_root, stem="prot")
+        pdb = picker_root / "prot.pdb"
+        pdb.write_text((data_dir / _A_PDB).read_text())  # a person's, copied in
+        r = self._delete(web, pdb)
+        assert r.status_code == 200, r.get_json()
+        assert r.get_json()["sidecar_removed"] is None
+        assert not pdb.exists()
+        assert struct.exists() and sidecar.exists()
 
     def test_delete_without_sidecar_is_fine(self, web, picker_root):
         """The pairing branch turning a plain delete into a 404 or a 500 when
@@ -1485,7 +1491,7 @@ def test_a_door_beside_this_layer_writes_where_a_file_may_be(
 
 
 class TestFilesRenameSidecarPairing:
-    """2026-06-12: rename of a .xyz/.pdb file MUST move its paired
+    """2026-06-12: rename of a .xyz file MUST move its paired
     .molstruct.json sidecar to match the new stem -- otherwise the
     sidecar orphans (load can't find it; user's labels silently
     disappear).  See web/projects.md § Rename + the
@@ -1522,19 +1528,18 @@ class TestFilesRenameSidecarPairing:
         assert StructureCodec().load(new_struct).regions == {
             "L-electrode": [0]}
 
-    def test_pdb_rename_takes_sidecar(self, web, picker_root):
-        """`.pdb` dropping out of the paired-suffix set on the rename path
-        specifically.
-
-        `projects.md` § 4.1.
-        """
-        struct, sidecar = _seed_paired(picker_root, stem="prot", ext=".pdb")
-        r = self._rename(web, struct, "protein.pdb")
-        assert r.status_code == 200
-        assert not struct.exists()
-        assert not sidecar.exists()
+    def test_a_pdb_is_renamed_alone(self, web, picker_root, data_dir):
+        """`model/structure.md` § 2.4: a `.pdb` holds no sidecar -- the one
+        beside it is its `.xyz`'s.  THE SILENT FAILURE: renaming a person's
+        `.pdb` carries the saved pair's sidecar off under the new name."""
+        struct, sidecar = _seed_paired(picker_root, stem="prot")
+        pdb = picker_root / "prot.pdb"
+        pdb.write_text((data_dir / _A_PDB).read_text())  # a person's, copied in
+        r = self._rename(web, pdb, "protein.pdb")
+        assert r.status_code == 200, r.get_json()
         assert (picker_root / "protein.pdb").exists()
-        assert (picker_root / "protein.molstruct.json").exists()
+        assert struct.exists() and sidecar.exists()
+        assert not (picker_root / "protein.molstruct.json").exists()
 
     def test_rename_without_sidecar_still_works(self, web, picker_root):
         """A .xyz with NO paired sidecar renames cleanly (no spurious
@@ -1925,6 +1930,25 @@ def test_a_file_is_never_placed_in_the_projects_root(web, picker_root, verb):
     assert src.exists() and not (picker_root / src.name).exists()
 
 
+@pytest.mark.parametrize("verb", ["rename", "move", "copy"])
+def test_a_structure_keeps_its_xyz(web, picker_root, verb):
+    """`model/structure.md` § 2.4 (the user, 2026-11-10): a structure's `.xyz`
+    taken to another name is refused, 400, naming the `.xyz` to give it, and
+    nothing moves (`StructureCodec.refused_name`).  THE SILENT FAILURE: XYZ
+    text under a `.pdb` name, which then fails to load as a PDB, its sidecar
+    carried to a name nothing pairs."""
+    struct, sidecar = _seed_paired(picker_root, "spectrum", stem="water")
+    body = ({"path": str(struct), "new_name": "protein.pdb"}
+            if verb == "rename" else
+            {"path": str(struct), "dest_dir": str(picker_root / "spectrum" / "BDT"),
+             "new_name": "protein.pdb"})
+    r = web.post(f"/api/files/{verb}", json=body)
+    assert r.status_code == 400, r.get_json()
+    assert "Name it protein.xyz" in r.get_json()["error"]
+    assert struct.exists() and sidecar.exists()
+    assert not list(picker_root.rglob("protein*"))
+
+
 @pytest.mark.parametrize("verb", ["move", "copy"])
 def test_a_link_at_the_destination_is_an_entry_there(web, picker_root,
                                                      tmp_path, verb):
@@ -2253,6 +2277,28 @@ class TestFilesUpload:
         assert r.status_code == 200, r.get_json()
         read = StructureCodec().load(target / "water.xyz")
         assert np.allclose(read.positions[:, 2], 1.0), read.positions
+
+    def test_an_uploaded_pdb_is_imported_as_its_xyz_pair(self, web,
+                                                         picker_root,
+                                                         data_dir):
+        """`model/structure.md` § 2.4 (the user, 2026-11-09): a `.pdb` is read,
+        never written -- uploaded, it is imported as `<stem>.xyz` with its
+        sidecar, its residue identity riding the sidecar.  THE SILENT FAILURE
+        (2.69.10 to 2.69.16): the upload wrote `<stem>.pdb` and a sidecar of
+        its own, which a later save of `<stem>.xyz` took over."""
+        from molbuilder.structure import Structure
+        from molbuilder.workingcopy_structure import StructureCodec
+        target = picker_root / "proj" / "structure"
+        target.mkdir(parents=True)
+        r = self._post(web, target, "prot.pdb",
+                       (data_dir / _A_PDB).read_bytes())
+        assert r.status_code == 200, r.get_json()
+        assert r.get_json()["path"] == str(target / "prot.xyz")
+        assert sorted(p.name for p in target.iterdir()) == [
+            "prot.molstruct.json", "prot.xyz"]
+        assert (StructureCodec().load(target / "prot.xyz").residue_names
+                == Structure.from_pdb(
+                    (data_dir / _A_PDB).read_text()).residue_names)
 
     @pytest.mark.parametrize("route", ["upload a sidecar alone",
                                        "write a structure file"])

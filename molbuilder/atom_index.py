@@ -247,7 +247,9 @@ def _stated(p: Path) -> Optional[AtomIndexMap]:
         geometry = molstruct.geometry_for(p)
         return _of_pair(geometry or p, p)
     if molstruct.is_geometry(p):
-        return _of_pair(p, molstruct.sidecar_path_for(p))
+        # Its sidecar by the pairing rule -- none for a `.pdb`, which holds
+        # none (`model/structure.md` § 2.4).
+        return _of_pair(p, molstruct.paired_sidecar(p))
     if p.suffix == ".nc":
         return _of_nc(p)
     if p.suffix == ".json":
@@ -290,26 +292,25 @@ def _of_older_result(p: Path, n) -> Optional[AtomIndexMap]:
     return replace(AtomIndexMap.of_user_structure(n, why), stated_by=str(p))
 
 
-def _of_pair(geometry: Path, sidecar: Path) -> Optional[AtomIndexMap]:
+def _of_pair(geometry: Path,
+             sidecar: Optional[Path]) -> Optional[AtomIndexMap]:
     """A structure pair's map (F4), as the codec's read answers it
     (`workingcopy_structure.pair_atom_index_map`), stated by its sidecar;
     a pair the catalogue lists by engine index whose sidecar states no
-    order is refused (I9).  A geometry file with no sidecar is the user's
-    own, unless a run of ours holds it (``None``: its run answers)."""
+    order is refused (I9).  A geometry file with no sidecar (``sidecar``
+    ``None``, `molstruct.paired_sidecar`) is the user's own, unless a run of
+    ours holds it (``None``: its run answers)."""
     from .runs import run_of
     from .sidecars import molstruct
     from .workingcopy_structure import (pair_atom_index_map,
                                         pair_engine_listing,
                                         pair_order_unstated_said)
-    if not sidecar.is_file():
+    if sidecar is None or not sidecar.is_file():
         if run_of(read_with(geometry.parent)) is not None:
             return None
-        from .structure import Structure
+        # THE ONE READ DOOR, as every structure file is read.
         from .workingcopy_structure import StructureCodec
-        text = geometry.read_text(encoding="utf-8-sig")
-        n = (Structure.from_pdb(text)
-             if StructureCodec.format_named(geometry) == "pdb"
-             else Structure.from_xyz(text)).n_atoms
+        n = StructureCodec().load(geometry).n_atoms
         return replace(AtomIndexMap.of_user_structure(
             n, "the user's own file: its order is the user order"),
             stated_by=str(geometry))

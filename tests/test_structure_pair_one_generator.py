@@ -77,16 +77,14 @@ def _plain() -> Structure:
 #  The disk and the wire agree                                          #
 # --------------------------------------------------------------------- #
 
-@pytest.mark.parametrize("name", ["wire.xyz", "wire.pdb"])
 @pytest.mark.parametrize("make", [_with_metadata, _plain], ids=["metadata", "plain"])
-def test_what_write_puts_on_disk_is_what_files_hands_over(tmp_path, make, name):
+def test_what_write_puts_on_disk_is_what_files_hands_over(tmp_path, make):
     """`files()` is "what write() writes, without writing it". If the two can
     disagree, one of them is a second answer to what a saved structure looks
-    like — which is the whole defect this pins.  A destination naming `.pdb`
-    is a PDB to both (`model/structure.md` § 2.4, *the format choice*).
+    like — which is the whole defect this pins.
     """
     struct = make()
-    target = tmp_path / name
+    target = tmp_path / "wire.xyz"
     StructureCodec().write(struct, target)
 
     handed = dict(StructureCodec().files(struct, target))
@@ -100,6 +98,21 @@ def test_what_write_puts_on_disk_is_what_files_hands_over(tmp_path, make, name):
         assert given == on_disk[path], (
             f"{path.name}: the bytes handed over differ from the bytes written"
         )
+
+
+@pytest.mark.parametrize("target, offered", [("wire.pdb", "wire.xyz"),
+                                              ("wire", "wire.xyz")],
+                         ids=["a pdb", "a name no reader opens"])
+def test_a_structure_is_written_as_its_xyz_alone(tmp_path, target, offered):
+    """`model/structure.md` § 2.4 (the user, 2026-11-09): molbuilder writes a
+    structure as a `.xyz` with its sidecar, and refuses any other name,
+    naming the `.xyz`, nothing written (`StructureCodec.refused_name`).  THE
+    SILENT FAILURES: a `.pdb` with a sidecar of its own, beside the `.xyz`
+    whose stem it shares -- one sidecar, two geometries, a save of one taking
+    over the other's labels; a pair under a name no reader opens."""
+    with pytest.raises(ValueError, match=f"Name it {offered}"):
+        StructureCodec().write(_plain(), tmp_path / target)
+    assert not any(tmp_path.iterdir())
 
 
 def test_a_non_ascii_label_survives_both_paths_identically(tmp_path):
@@ -177,17 +190,9 @@ def test_a_stem_that_already_carries_a_suffix_is_corrected_not_appended_to():
     assert name("wire.extxyz") == "wire.xyz", (
         "a non-standard extension is corrected to the one load() accepts")
     assert name("run.v2") == "run.v2.xyz", "the .v2 was eaten"
+    assert name("prot.pdb") == "prot.xyz", (
+        "a .pdb brought in is written as its .xyz (`StructureCodec.named`)")
     assert name("run.v2", frame_set) == "run.v2.xyz"
-
-
-def test_the_suffix_travels_with_the_pair_rather_than_being_re_derived():
-    """`pair()` decides the format; carrying the suffix beside the document is
-    what stops anything downstream deciding it a second time and disagreeing."""
-    struct = _with_metadata()
-    assert StructureCodec().pair(struct).suffix == ".xyz"
-    assert StructureCodec().pair(struct.with_frames(
-        [struct.positions, struct.positions])).suffix == ".xyz", (
-        "extended XYZ is a superset of plain XYZ and shares its extension")
 
 
 @pytest.mark.parametrize("stated", [None, [1.0, 1.0, 1.0]],
@@ -273,9 +278,8 @@ def test_channels_survive_the_pipeline_through_the_real_translators(
     assert "cell_origin" not in side_out
 
 
-@pytest.mark.parametrize("suffix", [".xyz", ".pdb"])
 def test_identity_and_channels_survive_a_pair_round_trip_through_an_edit(
-        tmp_path, suffix):
+        tmp_path):
     """The user's 2026-08-20 contract, executed: per-atom information rides
     the atom list and SURVIVES atom edits; system information is stored
     separately.  A pair carrying real identity columns (schema 8), labelled
@@ -297,7 +301,6 @@ def test_identity_and_channels_survive_a_pair_round_trip_through_an_edit(
     from molbuilder.structure import Structure
     from molbuilder.workingcopy_structure import StructureCodec
 
-    read_format = {".xyz": Structure.from_xyz, ".pdb": Structure.from_pdb}
     s = Structure(
         elements=["Au1", "S", "C1"],
         positions=[[0, 0, 0], [2.0, 0, 0], [3.5, 0, 0]],
@@ -312,14 +315,14 @@ def test_identity_and_channels_survive_a_pair_round_trip_through_an_edit(
         "annotations": {"charge": {"kind": "value",
                                    "data": {"1": -0.4, "2": 0.1}}},
     })
-    StructureCodec().write(s, tmp_path / f"a{suffix}")
+    StructureCodec().write(s, tmp_path / "a.xyz")
     side = molstruct.load(tmp_path / "a.molstruct.json")
     assert side["residue_names"] == ["AUX", "CYS", "CYS"]
     # The geometry file, read by its format's own reader, holds elements.
-    alone = read_format[suffix]((tmp_path / f"a{suffix}").read_text())
+    alone = Structure.from_xyz((tmp_path / "a.xyz").read_text())
     assert alone.elements == ["Au", "S", "C"]
 
-    back = StructureCodec().load(tmp_path / f"a{suffix}")
+    back = StructureCodec().load(tmp_path / "a.xyz")
     assert back.elements == ["Au1", "S", "C1"]
     # A record about these coordinates names each atom by its element, so
     # it matches the pair and the file read alone (`model/parse.md` § 5b.1).
@@ -333,21 +336,20 @@ def test_identity_and_channels_survive_a_pair_round_trip_through_an_edit(
     # refused, naming it, never put back over silver.
     from molbuilder.sidecars.molstruct import MolstructPairingError
     from molbuilder.workingcopy_structure import GEOMETRY_CHANGED
-    edited_alone = read_format[suffix]((tmp_path / f"a{suffix}").read_text())
+    edited_alone = Structure.from_xyz((tmp_path / "a.xyz").read_text())
     edited_alone.elements[0] = "Ag"
-    write_format = {".xyz": edited_alone.to_xyz, ".pdb": edited_alone.to_pdb}
-    (tmp_path / f"c{suffix}").write_text(write_format[suffix]())
+    (tmp_path / "c.xyz").write_text(edited_alone.to_xyz())
     (tmp_path / "c.molstruct.json").write_bytes(
         (tmp_path / "a.molstruct.json").read_bytes())
     with pytest.raises(MolstructPairingError,
                        match=r"'Au1' for atom 0 names Au.*holds Ag"):
-        StructureCodec().load(tmp_path / f"c{suffix}",
+        StructureCodec().load(tmp_path / "c.xyz",
                               opened=(GEOMETRY_CHANGED,), said_out=[])
 
     # The edit: drop the Au anchor.  Per-atom facts must follow their atoms.
     edited = delete_atoms(back, [0])
-    StructureCodec().write(edited, tmp_path / f"b{suffix}")
-    again = StructureCodec().load(tmp_path / f"b{suffix}")
+    StructureCodec().write(edited, tmp_path / "b.xyz")
+    again = StructureCodec().load(tmp_path / "b.xyz")
     assert again.elements == ["S", "C1"]
     assert again.atom_names == ["SG", "CA"]
     assert again.residue_ids == [14, 14]

@@ -116,19 +116,25 @@ def _run_node(snippet: str) -> object:
 #  Saving = delegating                                                  #
 # --------------------------------------------------------------------- #
 
-def test_save_hands_the_viewers_export_to_the_project_door():
+@pytest.mark.parametrize("loaded_from", ["/p/bdt.xyz", "/p/bdt.pdb"],
+                         ids=["an xyz", "a pdb"])
+def test_save_hands_the_viewers_export_to_the_project_door(loaded_from):
     """One door out (`tabs.md` § 6).  The panel supplies WHAT and a suggested
-    stem; the door owns WHERE, the overwrite flow and the refresh."""
+    stem -- the loaded file's name without its extension, for a save writes
+    `<name>.xyz` with its sidecar whatever was loaded (a `.pdb` is read,
+    never written: `model/structure.md` § 2.4); the door owns WHERE, the
+    overwrite flow and the refresh.  THE SILENT FAILURE (to 2.69.16): a
+    `.pdb` loaded was offered as `bdt.pdb`, and saved as `bdt.pdb.xyz`."""
     out = _run_node("""
         const door = fakeDoor();
         molbuilder.projects = { molviewFiles: door };
         mod.configure({ projects: molbuilder.projects,
-                        structurePage: fakePage(null, "/p/bdt.xyz"),
+                        structurePage: fakePage(null, %s),
                         workspace: fakeModel() });
         mod.save().then((r) => {
             console.log(JSON.stringify({ r, calls: door.calls }));
         });
-    """)
+    """ % json.dumps(loaded_from))
     assert out["r"]["ok"] is True
     assert len(out["calls"]) == 1
     call = out["calls"][0]

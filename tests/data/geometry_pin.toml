@@ -79,13 +79,6 @@ sidecar = { regions = { frozen_atoms = [1] } }
 door = "load"
 
 [[case]]
-name = "a .pdb pair's moved atom is refused -- its ATOM records are its atom lines"
-format = "pdb"
-atom_line = { index = 1, line = "ATOM      2  O   MOL A   1       5.000   5.000   5.700  1.00  0.00           O" }
-door = "load"
-refused = "co.pdb's atoms or cell are not the ones its .molstruct.json was saved with"
-
-[[case]]
 name = "the browser's load door opens a changed pair, its labels applied, and says so -- the Molbuilder tab saves it anew"
 atom_line = { index = 1, line = "O 5.000000 5.000000 5.700000" }
 door = "route_load"

@@ -121,9 +121,35 @@ def _trajectory_parser_for(resolved):
 # --------------------------------------------------------------------- #
 
 
+def _a_structure_path(ctx, param, value):
+    """A STRUCTURE'S OUTPUT, ASKED BEFORE ANY WORK: the codec's name rule
+    (`StructureCodec.refused_name`: a ``.xyz``; a ``.pdb`` is read, never
+    written), so a build, a lookup or a question is never spent on a name
+    that is then refused.  ``-`` (stdout) and an option left out pass."""
+    if value is None or str(value) == "-":
+        return value
+    from .workingcopy_structure import StructureCodec
+    refused = StructureCodec.refused_name(value)
+    if refused is not None:
+        raise click.BadParameter(refused, ctx=ctx, param=param)
+    return value
+
+
+def _write_pair(struct: Structure, path) -> None:
+    """THE PAIR IS THE FILE (`model/structure.md` § 2.4): ``struct`` written
+    through the codec as a ``.xyz`` with its sidecar -- the builders',
+    ``modify``'s and ``xv2xyz``'s output, each name asked before the work
+    (:func:`_a_structure_path`) -- a refusal the codec still raises said as
+    the command's error."""
+    from .workingcopy_structure import StructureCodec
+    try:
+        StructureCodec().write(struct, path)
+    except ValueError as exc:
+        raise click.ClickException(str(exc)) from exc
+
+
 def _emit(struct: Structure, *,
           out: Optional[str],
-          pdb: Optional[str],
           pyscf_atom_block: bool) -> None:
     """Write the built Structure to whatever destinations the user asked
     for.  No destination at all -> dump XYZ to stdout (Unix-pipeable)."""
@@ -131,22 +157,16 @@ def _emit(struct: Structure, *,
     # writes the geometry and its sidecar, which carries the pin and
     # whatever the builder set -- the DNA/RNA duplex builders' residue
     # identity among it.
-    from .workingcopy_structure import StructureCodec
-    codec = StructureCodec()
     wrote_anything = False
     if out:
-        codec.write(struct, out, fmt="xyz")
+        _write_pair(struct, out)
         click.echo(f"wrote {struct.n_atoms} atoms to {out}", err=True)
-        wrote_anything = True
-    if pdb:
-        codec.write(struct, pdb, fmt="pdb")
-        click.echo(f"wrote {struct.n_atoms} atoms to {pdb}", err=True)
         wrote_anything = True
     if pyscf_atom_block:
         click.echo(struct.to_pyscf(as_string=True))
         wrote_anything = True
     if not wrote_anything:
-        sys.stdout.write(_struct_to_text(struct, "xyz"))
+        sys.stdout.write(_struct_to_text(struct))
     click.echo(struct.summary(), err=True)
 
 
@@ -269,7 +289,7 @@ cli.add_command(pseudo_group)
 
 
 def _build_options(*, nucleic: bool):
-    """Decorator factory: shared --out / --pdb / --pyscf-atom-block / --title
+    """Decorator factory: shared --out / --pyscf-atom-block / --title
     options across all builder subcommands; nucleic adds backend / form /
     terminal / no-protonate-phosphates."""
     def deco(f):
@@ -296,9 +316,8 @@ def _build_options(*, nucleic: bool):
         f = click.option("--pyscf-atom-block", "--pyscf", "pyscf_atom_block",
                          is_flag=True,
                          help="print PySCF-format atom block to stdout")(f)
-        f = click.option("--pdb", default=None, type=click.Path(),
-                         help="write .pdb file to this path")(f)
         f = click.option("--out", default=None, type=click.Path(),
+                         callback=_a_structure_path,
                          help="write .xyz file to this path")(f)
         f = click.argument("sequence")(f)
         return f
@@ -307,15 +326,15 @@ def _build_options(*, nucleic: bool):
 
 @cli.command("peptide", short_help="build a polypeptide from sequence")
 @_build_options(nucleic=False)
-def cmd_peptide(sequence, out, pdb, pyscf_atom_block, title):
+def cmd_peptide(sequence, out, pyscf_atom_block, title):
     """Build a polypeptide from a 1-letter sequence (with [SEP] etc)."""
     s = _build("peptide", sequence, title=title)
-    _emit(s, out=out, pdb=pdb, pyscf_atom_block=pyscf_atom_block)
+    _emit(s, out=out, pyscf_atom_block=pyscf_atom_block)
 
 
 @cli.command("dna", short_help="build DNA: a strand or a duplex notation")
 @_build_options(nucleic=True)
-def cmd_dna(sequence, out, pdb, pyscf_atom_block, title,
+def cmd_dna(sequence, out, pyscf_atom_block, title,
             backend, form, terminal, no_protonate_phosphates):
     """Build DNA from a sequence: a single strand, or a duplex notation --
     ``ds,<seq>`` for the canonical duplex, ``strand1,strand2`` for an
@@ -323,34 +342,34 @@ def cmd_dna(sequence, out, pdb, pyscf_atom_block, title,
     s = _build("dna", sequence, title=title, backend=backend, form=form,
                terminal=terminal,
                protonate_phosphates=not no_protonate_phosphates)
-    _emit(s, out=out, pdb=pdb, pyscf_atom_block=pyscf_atom_block)
+    _emit(s, out=out, pyscf_atom_block=pyscf_atom_block)
 
 
 @cli.command("rna", short_help="build single-stranded RNA from a sequence")
 @_build_options(nucleic=True)
-def cmd_rna(sequence, out, pdb, pyscf_atom_block, title,
+def cmd_rna(sequence, out, pyscf_atom_block, title,
             backend, form, terminal, no_protonate_phosphates):
     """Build single-stranded RNA from a sequence."""
     s = _build("rna", sequence, title=title, backend=backend, form=form,
                terminal=terminal,
                protonate_phosphates=not no_protonate_phosphates)
-    _emit(s, out=out, pdb=pdb, pyscf_atom_block=pyscf_atom_block)
+    _emit(s, out=out, pyscf_atom_block=pyscf_atom_block)
 
 
 @cli.command("smiles", short_help="build a molecule from SMILES (RDKit)")
 @_build_options(nucleic=False)
-def cmd_smiles(sequence, out, pdb, pyscf_atom_block, title):
+def cmd_smiles(sequence, out, pyscf_atom_block, title):
     """Build a molecule from a SMILES string (needs rdkit)."""
     s = _build("smiles", sequence, title=title)
-    _emit(s, out=out, pdb=pdb, pyscf_atom_block=pyscf_atom_block)
+    _emit(s, out=out, pyscf_atom_block=pyscf_atom_block)
 
 
 @cli.command("name", short_help="build a molecule from common/IUPAC name (PubChem)")
 @_build_options(nucleic=False)
-def cmd_name(sequence, out, pdb, pyscf_atom_block, title):
+def cmd_name(sequence, out, pyscf_atom_block, title):
     """Build a molecule from a common or IUPAC name (needs pubchempy)."""
     s = _build("name", sequence, title=title)
-    _emit(s, out=out, pdb=pdb, pyscf_atom_block=pyscf_atom_block)
+    _emit(s, out=out, pyscf_atom_block=pyscf_atom_block)
 
 
 # --------------------------------------------------------------------- #
@@ -781,11 +800,10 @@ def _parse_electrode_spec(spec):
     )
 
 
-def _struct_to_text(struct, fmt):
-    """Serialise a Structure to a string in the requested format.
-    Used for stdout output (output_path == '-').  Both ``Structure.to_xyz``
-    and ``Structure.to_pdb`` return the formatted text directly when
-    called without a path; we just pick the right one.
+def _struct_to_text(struct):
+    """A Structure as XYZ text, for stdout (output_path == '-'): molbuilder
+    writes XYZ alone, a ``.pdb`` read, never written (`model/structure.md`
+    § 2.4).
 
     A TEXT ALONE HOLDS AN ELEMENT PER ATOM (`model/chemistry.md` § 3): a
     species label that is not its element (``Au1``) has no room in it, so
@@ -794,17 +812,17 @@ def _struct_to_text(struct, fmt):
     labels = struct.labelled_species()
     if labels:
         click.echo(f"note: the species labels {', '.join(labels)} are "
-                   f"written as their elements: a {fmt} text alone has no "
+                   f"written as their elements: an XYZ text alone has no "
                    f"room for them.  Write the structure to a file instead "
                    f"to keep them in its .molstruct.json.", err=True)
-    return struct.to_pdb() if fmt == "pdb" else struct.to_xyz()
+    return struct.to_xyz()
 
 
 @cli.command("modify",
              short_help="edit a structure: one operation per call "
                         "(delete / orient / rotate / electrode)")
 @click.argument("input_path",  metavar="input")
-@click.argument("output_path", metavar="output")
+@click.argument("output_path", metavar="output", callback=_a_structure_path)
 # Operation flags -- exactly one TYPE must be present per call (delete,
 # orient, rotate, or electrode).  Multiple instances of the same TYPE
 # are allowed where geometrically meaningful (delete: flatten;
@@ -864,15 +882,11 @@ def _struct_to_text(struct, fmt):
               help="agree, without being asked, that the atom indices given "
                    "count from 0 -- for a script or a pipe, which has no one "
                    "to ask")
-@click.option("--output-format",
-              type=click.Choice(["xyz", "pdb"]), default=None,
-              help="output file format (default: infer from extension; "
-                   "stdout always xyz unless explicitly set)")
 def cmd_modify(input_path, output_path,
                delete, orient_axis, rotate, electrode,
                axis, angle, center,
                orthogonal, electrode_offset, lattice_constant,
-               auto_yes, output_format):
+               auto_yes):
     """Edit a structure: one operation TYPE per CLI call.  The operation
     types are mutually exclusive; chain calls via stdin/stdout pipes
     (`-` for input or output) for multi-step workflows.
@@ -1083,19 +1097,12 @@ def cmd_modify(input_path, output_path,
     except (ValueError, IndexError) as exc:
         raise click.ClickException(str(exc)) from exc
 
-    from .workingcopy_structure import StructureCodec
-    fmt = output_format or (
-        "xyz" if str(output_path) == "-" else StructureCodec.format_named(
-            output_path)
-    )
     if str(output_path) == "-":
-        click.echo(_struct_to_text(struct, fmt), nl=False)
+        click.echo(_struct_to_text(struct), nl=False)
     else:
-        # THE PAIR IS THE FILE (`model/structure.md` § 2.4): a device's labels,
-        # held atoms and explicit cell travel in the sidecar.  The codec owns the pairing rule and the both-or-neither write; the
-        # format is the one the user asked for, which may not be the one the
-        # extension implies.
-        StructureCodec().write(struct, output_path, fmt=fmt)
+        # THE PAIR IS THE FILE: a device's labels, held atoms and explicit
+        # cell travel in the sidecar.
+        _write_pair(struct, output_path)
         click.echo(
             f"Wrote {output_path}: {struct.n_atoms} atoms (input had {n_in})",
             err=True,
@@ -1107,7 +1114,8 @@ def cmd_modify(input_path, output_path,
                         f"pair")
 @click.argument("xv_path", metavar=f"input{SIESTA_XV}",
                 type=click.Path(exists=True, dir_okay=False, path_type=Path))
-@click.argument("xyz_path", metavar="output.xyz", type=click.Path(path_type=Path))
+@click.argument("xyz_path", metavar="output.xyz", type=click.Path(path_type=Path),
+                callback=_a_structure_path)
 @click.option("--from-run", "from_run", is_flag=True, default=False,
               help=f"Take what the run that wrote input{SIESTA_XV} declared "
                    f"about its atoms -- its own deck's labels, held atoms and "
@@ -1139,7 +1147,6 @@ def cmd_xv2xyz(xv_path: Path, xyz_path: Path, from_run: bool) -> int:
     looked like a run is hard to notice when it is wrong.
     """
     from .parse.coords.siesta_xv import SiestaXVError, read_xv_with_cell
-    from .workingcopy_structure import StructureCodec
 
     try:
         struct, _cell = read_xv_with_cell(xv_path)
@@ -1155,7 +1162,7 @@ def cmd_xv2xyz(xv_path: Path, xyz_path: Path, from_run: bool) -> int:
     else:
         _refuse_a_reordered_run(xv_path)
 
-    StructureCodec().write(struct, xyz_path)
+    _write_pair(struct, xyz_path)
     click.echo(f"Wrote the pair at {xyz_path}: {struct.n_atoms} atoms, "
                f"cell preserved")
     click.echo(f"  metadata: {note}")

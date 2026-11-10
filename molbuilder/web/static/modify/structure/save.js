@@ -104,7 +104,11 @@
         var from = (_structurePage
                     && typeof _structurePage.getLoadedFrom === "function")
             ? _structurePage.getLoadedFrom() : null;
-        return _basename(last || from || "").replace(/\.xyz$/i, "");
+        // The name without its extension (the one path door): a save writes
+        // `<name>.xyz` with its sidecar, whatever was loaded -- a `.pdb` is
+        // read, never written, and holds no sidecar (`model/structure.md`
+        // § 2.4).
+        return root.molbuilder.path.stem(last || from || "");
     }
 
     function save() {

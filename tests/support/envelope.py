@@ -84,8 +84,9 @@ def from_xyz(text: str, **kw) -> dict:
 def from_file(path, **kw) -> dict:
     """An envelope for a structure on disk (``.xyz`` or ``.pdb``), read through
     the application's own parsers."""
+    from molbuilder.workingcopy_structure import StructureCodec
     text = path.read_text() if hasattr(path, "read_text") else open(path).read()
-    if str(path).lower().endswith(".pdb"):
+    if StructureCodec.format_named(path) == "pdb":
         struct = Structure.from_pdb(text)
     else:
         struct = Structure.from_xyz(text)

@@ -304,15 +304,16 @@ def _classify_pair(path: Path) -> CitedPair:
     structure and never read here (`model/structure.md` § 2.2f).  The
     same atoms, species and cell are the structure's own invariant, refused
     by its reader."""
-    from ..sidecars.molstruct import sidecar_path_for
+    from ..sidecars.molstruct import paired_sidecar
     from ..workingcopy_structure import StructureCodec
-    sidecar = sidecar_path_for(path)
-    # A PAIR IS ITS .xyz WITH ITS .molstruct.json -- an engine's own file in
-    # a run, read with what its run states, is not one: cite the run.
-    if not sidecar.is_file():
+    sidecar = paired_sidecar(path)
+    # A PAIR IS ITS .xyz WITH ITS .molstruct.json (`molstruct.paired_sidecar`)
+    # -- a `.pdb` holds none, and an engine's own file in a run, read with
+    # what its run states, is not one: cite the run.
+    if sidecar is None:
         raise ComposeError(
             f"{path} carries no info.calculation -- it has no .molstruct.json "
-            f"beside it -- so nothing says which settings its geometry was "
+            f"of its own -- so nothing says which settings its geometry was "
             f"optimized with.  {CITATION_CONDITION}.")
     # A BUILDER'S READ (`model/overview.md` § 2.2a, I3, I8): the pair in the
     # user order -- an engine's record put back, a pair whose order nothing

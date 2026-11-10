@@ -830,8 +830,9 @@ truncate to first char), or crashing on a TER between ATOM blocks.
 **The one reading door.** `StructureCodec().load(path, *, frame=None,
 frames=False, retired_out=None, said_out=None, opened=(),
 in_user_order=False)` — `molbuilder/workingcopy_structure.py`. Dispatches on
-the extension (`.xyz` / `.pdb`, anything else refused by name) and applies the
-`.molstruct.json` beside it through `apply_to_structure`. **The pair is the
+the extension (`.xyz` / `.pdb`, anything else refused by name) and applies a
+`.xyz`'s `.molstruct.json` (`molstruct.paired_sidecar`; a `.pdb` holds none,
+§ 2.4) through `apply_to_structure`. **The pair is the
 file**: a reader that takes the geometry alone hands back a structure smaller
 than what is on disk. **What the read says** to a person goes in `said_out`,
 each a notice by its name and level — one table, `READ_NOTICES`, made by
@@ -930,14 +931,20 @@ together. That pairing + atomicity is owned by one L2 object,
 copy of any of them:
 
 1. **the pairing rule** — `<stem>.xyz` ↔ `<stem>.molstruct.json`, including how
-   the sidecar's name is derived (`molstruct.sidecar_path_for`);
-2. **the format choice** — plain XYZ, one block per frame the structure
-   holds (§ 2.2e), its comment line the title and nothing else (§ 2.3, *the
-   comment line is never metadata*); `.pdb` when the destination names it, a
-   frame set written to a `.pdb` refused, PDB holding one geometry
-   (`format_named`); and for a text with no name, pasted or piped in, XYZ when
-   its first non-blank line is a positive integer, its atom count, else PDB
-   (`format_of_text`);
+   the sidecar's name is derived (`molstruct.sidecar_path_for`); only a `.xyz`
+   pairs with a sidecar (`molstruct.PAIRED_SUFFIX`, `is_paired`), so a `.pdb`
+   beside one never takes it for its own;
+2. **the format choice** — molbuilder writes plain XYZ, one block per frame
+   the structure holds (§ 2.2e), its comment line the title and nothing else
+   (§ 2.3, *the comment line is never metadata*). **A `.pdb` is read, never
+   written** *(the user, 2026-11-09: molbuilder's files are always `.xyz` +
+   `.molstruct.json`; a `.pdb` is for import)*: the read door opens one by its
+   suffix (`format_named`), its atoms, coordinates and residue identity, a
+   write to a `.pdb` is refused, and a `.pdb` brought in — uploaded, or loaded
+   and saved — is written as `<stem>.xyz` with its sidecar, the residue
+   identity riding the sidecar. A text with no name, pasted or piped in, is
+   XYZ when its first non-blank line is a positive integer, its atom count,
+   else PDB (`format_of_text`);
 3. **the sidecar envelope** — `schema_version`, the `geometry_hash` pinning it
    to its geometry and checked on every read (`structure-molstruct.md` § 3),
    and the one serialisation (`molstruct.dumps`);
@@ -985,20 +992,31 @@ copy of any of them:
 
 ```python
 class StructureCodec:                       # L2 (may use the L2 sidecar codec)
-    def pair(self, struct, *, fmt="xyz") -> StructurePair:
+    def pair(self, struct) -> StructurePair:
         """THE GENERATOR. A Structure as the two things that represent it
-        outside memory: the coordinate document, the sidecar payload -- its
-        geometry hash made over that document -- and the suffix the format
-        implies.
+        outside memory: the coordinate document -- plain XYZ -- and the
+        sidecar payload, its geometry hash made over that document.
         Every outbound path below goes through this one call."""
 
-    def files(self, struct, target, *, fmt=None) -> list[tuple[Path, bytes]]:
-        """TO THE WIRE. The pair as bytes WITH THE NAMES THEY BELONG UNDER --
-        `target`'s suffix corrected to the one `pair` chose, the format the
-        target names unless `fmt` says (the export door's is XYZ). What
-        `write` writes, without writing it."""
+    @classmethod
+    def named(cls, target) -> Path:
+        """THE NAME A STRUCTURE IS WRITTEN UNDER: `<stem>.xyz`, a recognised
+        extension (`.xyz`, `.extxyz`, `.pdb`) replaced, any other kept and
+        `.xyz` appended -- the export's name, an upload's, and the one a
+        refusal offers."""
 
-    def write(self, struct, target, *, fmt=None) -> Path:
+    @classmethod
+    def refused_name(cls, target) -> str | None:
+        """WHY `write` REFUSES `target`: any name but a `.xyz` (a `.pdb` is
+        read, never written, § 2.4) -- asked by `write`, and by a door
+        before its overwrite question."""
+
+    def files(self, struct, target) -> list[tuple[Path, bytes]]:
+        """TO THE WIRE. The pair as bytes WITH THE NAMES THEY BELONG UNDER --
+        `named(target)` and its sidecar. What `write` writes, without
+        writing it."""
+
+    def write(self, struct, target) -> Path:
         """TO DISK. The pair as one unit: geometry to `target`, and the
         sidecar, its geometry hash made over that geometry, to
         sidecar_path_for(target).
@@ -1019,8 +1037,8 @@ class StructureCodec:                       # L2 (may use the L2 sidecar codec)
         saves, imported from `mb_pyscf.pyz` (`engines/pyscf.md` § 3)."""
 
     def read(self, source_path, *, frame=None, frames=False) -> Structure:
-        """BACK IN. Parse geometry (.pdb by extension, else .xyz) AND its
-        paired sidecar, applying metadata via molstruct.apply_to_structure
+        """BACK IN. Parse geometry (.pdb by extension, else .xyz) AND, for a
+        .xyz, its paired sidecar (`molstruct.paired_sidecar`), applying metadata via molstruct.apply_to_structure
         to the whole set, then answering frame 0, frame `frame`, or with
         `frames=True` every frame (§ 2.3, *Which frame*).
         Missing sidecar = empty metadata (NOT an error), except an engine's
@@ -1150,17 +1168,11 @@ only by `jobset prep`.)* Writes: `_emit` and
 > with a comment recording it), and the `cli.py` line citations, which had
 > drifted.
 
-> **`StructureCodec.write` could not write what `read` could read** — found the
-> same day. `pair` always produced XYZ, and `write` writes the target
-> verbatim, so `write(struct, "x.pdb")` put XYZ bytes under a `.pdb` name and
-> `load("x.pdb")` then answered *"no ATOM/HETATM records found in PDB input"*:
-> the door could not read back what it had just written. `pair` now takes the
-> container the destination names (`fmt`), `write` reads it off the target's
-> suffix — the same suffix `read` dispatches on, which is what makes the round
-> trip a guarantee rather than a coincidence — and a caller with its own answer
-> (the CLI's `--output-format`, which may name a format the extension does not)
-> passes it and is obeyed. This is a different axis from how many frames the
-> document holds, which follows the structure and is never asked as a question.
+> **What `write` writes, `load` reads back.** `write` writes the target
+> verbatim, and `load` dispatches on its suffix, so XYZ bytes under a `.pdb`
+> name would be read as a PDB and fail. The codec writes XYZ alone, and a
+> `.pdb` target is refused by name (§ 2.4, *the format choice*), so every
+> file `write` makes is read back by the reader its name selects.
 
 ---
 
@@ -1199,12 +1211,10 @@ task #75).
 (smiles/dna/…) has no file, so the generators' page hands its envelope to
 `molview.data.installMolecule({structure})` directly — the model primitive,
 not the door. **The browser saves XYZ only** — the save door names the file
-`<stem>.xyz` (`lib/projects/molview-doors.js:115-117`), and the codec writes a
-plain `.xyz` there, one block per frame. The codec does write PDB — `pair`
-with `fmt="pdb"` through `to_pdb`, for a target that names `.pdb` (§ 2.4; the
-CLI's `--output-format`), a frame set refused — but no browser door asks for
-it. Asymmetry: `openMolecule` *loads* a `.pdb` (the parse seam sniffs PDB);
-the browser saves none.
+`<stem>.xyz` (`lib/projects/molview-doors.js`), and the codec writes a
+plain `.xyz` there, one block per frame. A `.pdb` is read, never written
+(§ 2.4): `openMolecule` loads one, and its save writes `<stem>.xyz` with its
+sidecar.
 A 409 "exists" envelope → `{needsOverwrite:true, replaces}`, and the door
 confirms and retries with `{overwrite:true}` — the dialog is `projects`' own
 (`confirmOverwrite`, the one question naming what a yes replaces), so the

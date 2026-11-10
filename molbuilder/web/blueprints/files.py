@@ -53,7 +53,7 @@ from typing import Dict, List, Optional, Tuple
 from flask import Blueprint, jsonify, request
 from ._shared import err
 
-from molbuilder.sidecars.molstruct import sidecar_path_for
+from molbuilder.sidecars.molstruct import paired_sidecar, sidecar_path_for
 from molbuilder.projects import (
     CANONICAL_TOPICS, PROJECTS_ROOT_NAME, InvalidName, OutsideRoot,
     contain, populate_project_skeleton, project_dir, projects_root,
@@ -185,18 +185,17 @@ def _resolve_within_roots(raw_path: str) -> Path:
 #  Sidecar pairing                                                      #
 # --------------------------------------------------------------------- #
 #
-# Structure files (.xyz / .pdb) may carry a paired ``.molstruct.json``
-# sidecar holding region labels + frozen-atom indices (see
-# ``molbuilder/sidecars/molstruct.py``).  All file-tree operations
+# A structure's ``.xyz`` carries a paired ``.molstruct.json`` sidecar holding
+# region labels + frozen-atom indices (see ``molbuilder/sidecars/molstruct.py``;
+# a ``.pdb`` is read, never written, and holds none).  All file-tree operations
 # that touch a structure file -- rename / move / copy -- must keep the
 # sidecar in lockstep.  Without pairing, renaming ``water.xyz`` to
 # ``bridge.xyz`` orphans ``water.molstruct.json`` (sidecar's stem no
 # longer matches a structure on disk; sidecar-aware loads can't find
 # it; user's labels silently disappear).
 #
-# Which suffixes pair, and what a sidecar's path is, are the pairing
-# module's (``molstruct.GEOMETRY_SUFFIXES``, ``molstruct.sidecar_path_for``);
-# these helpers give the files blueprint its file-tree-shaped view of them.
+# Which geometry pairs, and the sidecar it has, are the pairing module's
+# (``molstruct.is_paired``, ``molstruct.paired_sidecar``), asked here.
 
 
 def _next_free_name(path: Path) -> Optional[Path]:
@@ -287,14 +286,23 @@ def _pair_to(src: Path, dst: Path, *, verb: str, past: str,
     refused up front (409); the sidecar's failure undoes the first half, so
     a person ends where they started, said; and should the undoing fail
     too, the refusal says which file is where.  The one pair operation of
-    rename, move and copy.  A destination name anything holds -- a file, a
-    folder, a link, a dangling one included, which a copy would follow -- is
-    refused, 409, as is its sidecar's."""
+    rename, move and copy.  A STRUCTURE STAYS A ``.xyz`` (the user,
+    2026-11-10): a ``.xyz`` taken to any other name is refused, 400, naming
+    the ``.xyz`` to give it -- the codec's own name rule
+    (`StructureCodec.refused_name`).  A destination name anything holds -- a
+    file, a folder, a link, a dangling one included, which a copy would
+    follow -- is refused, 409, as is its sidecar's."""
+    from molbuilder.sidecars.molstruct import is_paired
+    from molbuilder.workingcopy_structure import StructureCodec
+    if src.is_file() and is_paired(src):
+        refused = StructureCodec.refused_name(dst)
+        if refused is not None:
+            raise _PickerError(400, refused)
     if os.path.lexists(dst):
         raise _PickerError(
             409, f"destination already exists: {str(dst)!r}.  Pick a "
                  f"different name or delete the existing entry first.")
-    src_sidecar = _existing_paired_sidecar(src)
+    src_sidecar = paired_sidecar(src)
     dst_sidecar = sidecar_path_for(dst) if src_sidecar else None
     if dst_sidecar is not None and os.path.lexists(dst_sidecar):
         raise _PickerError(
@@ -339,16 +347,20 @@ def structure_door_refusal(path) -> Optional[str]:
     pairing rule's own predicates, reaches disk only through the codec --
     the save, or an upload, which writes the pair.  The write refuses with
     it; the read answers it as ``read_only``, so the preview edits neither."""
-    from molbuilder.sidecars.molstruct import is_geometry, is_sidecar
+    from molbuilder.sidecars.molstruct import is_geometry, is_paired, is_sidecar
     name = Path(path).name
     if is_sidecar(path):
         return (f"{name} is a structure's sidecar, and molbuilder writes it "
                 f"with its structure, never alone.  Save the structure from "
                 f"the Molbuilder tab, or upload its structure file.")
-    if is_geometry(path):
+    if is_paired(path):
         return (f"{name} is a structure file, and molbuilder writes it with "
                 f"its sidecar.  Edit it in the Molbuilder tab and save it "
                 f"there, or upload a new one.")
+    if is_geometry(path):
+        return (f"{name} is a structure file molbuilder reads and never "
+                f"writes.  Load it in the Molbuilder tab and save it there, "
+                f"which writes it as a .xyz with its sidecar, or upload it.")
     return None
 
 
@@ -357,36 +369,19 @@ def exists_answer(path, overwrite: bool):
     gives (`web-api.md` § 1, 409): ``None`` when ``path`` is free or the
     caller said overwrite; else the 409 ``{ok: false, needsOverwrite: true,
     replaces, error}`` -- ``replaces`` the files a yes replaces: a structure
-    file's pair, by the pairing rule (:func:`_existing_paired_sidecar`).  The
+    file's pair, by the pairing rule (`molstruct.paired_sidecar`).  The
     upload door and the structure save door ask about it and send again with
     ``overwrite`` (`projects.md` § 3)."""
     path = Path(path)
     if overwrite or not path.exists():
         return None
-    sidecar = _existing_paired_sidecar(path)
+    sidecar = paired_sidecar(path)
     return err(
         f"a file named {path.name} is already here",
         409,
         needsOverwrite=True,
         replaces=[path.name] + ([sidecar.name] if sidecar
                                 else []))
-
-
-def _existing_paired_sidecar(structure_path: Path) -> Optional[Path]:
-    """Return the ``.molstruct.json`` paired with ``structure_path``,
-    or ``None`` when the path isn't a structure file or no sidecar
-    exists.
-
-    Pairing rule: only ``.xyz`` / ``.pdb`` files can have paired
-    sidecars; other extensions (``.json``, ``.fdf``, ``.log``, ...)
-    are never pair-tracked.  Renaming a sidecar directly is allowed
-    but treated as a single-file operation.
-    """
-    from molbuilder.sidecars.molstruct import is_geometry
-    if not is_geometry(structure_path):
-        return None
-    sidecar = sidecar_path_for(structure_path)
-    return sidecar if sidecar.exists() else None
 
 
 def _entry_dict(p: Path) -> dict:
@@ -1214,8 +1209,10 @@ def api_files_upload():
     Behaviour:
       * A STRUCTURE FILE (``.xyz`` / ``.pdb``) is written through the one
         writer (`model/structure.md` § 2.4, `_shared.write_structure`): read
-        as an import is read, written as a pair, answered ``{ok, path,
-        notices}``; a sidecar alone is refused, 400.
+        as an import is read, written as a pair under the name the codec
+        writes it as -- a ``.pdb`` as its ``<stem>.xyz``
+        (`StructureCodec.named`) -- answered ``{ok, path, notices}``; a
+        sidecar alone is refused, 400.
       * No implicit overwrite unless ``overwrite=true`` is sent;
         otherwise name conflict at destination returns the one 409
         (:func:`exists_answer`: ``needsOverwrite``, ``replaces``) -- or
@@ -1236,17 +1233,23 @@ def api_files_upload():
         return err("missing 'file' multipart part", 400)
 
     # THE ONE WRITE-PATH CHECK, of the file the upload would write: the
-    # basename of upload.filename, to defang any client-supplied prefix.
+    # basename of upload.filename, to defang any client-supplied prefix -- a
+    # structure file under the name the codec writes it as
+    # (`StructureCodec.named`): a .pdb is read, never written, so an uploaded
+    # one is imported as its <stem>.xyz (`model/structure.md` § 2.4).
+    from molbuilder.sidecars.molstruct import is_geometry, is_sidecar
+    from molbuilder.workingcopy_structure import StructureCodec
     target_dir = _resolve_within_roots(target_dir_raw)
-    dest = _writable(target_dir / os.path.basename(upload.filename))
-    filename = dest.name
+    filename = os.path.basename(upload.filename)
+    dest = target_dir / filename
+    dest = _writable(StructureCodec.named(dest) if is_geometry(dest)
+                     else dest)
     overwrite_raw = (request.form.get("overwrite") or "").strip().lower()
     overwrite = overwrite_raw in ("1", "true", "yes", "on")
     auto_rename_raw = (request.form.get("auto_rename") or "").strip().lower()
     auto_rename = auto_rename_raw in ("1", "true", "yes", "on")
     # A SIDECAR IS WRITTEN WITH ITS STRUCTURE OR NOT AT ALL
     # (`model/structure.md` § 2.4).
-    from molbuilder.sidecars.molstruct import is_geometry, is_sidecar
     if is_sidecar(dest):
         return err(structure_door_refusal(dest), 400)
     if dest.exists() and not overwrite and auto_rename:
@@ -1263,22 +1266,22 @@ def api_files_upload():
         _writable(dest)
     if is_geometry(dest):
         # A STRUCTURE FILE THROUGH THE ONE WRITER (`model/structure.md`
-        # § 2.4): read as an import reads it, written as a pair by the save's
-        # own path -- the box judged, then the one "already here" answer,
-        # then the codec.
+        # § 2.4): read as an import reads it -- by the name it came with --
+        # written as a pair by the save's own path: the box judged, then the
+        # one "already here" answer, then the codec.
         from ._shared import structure_from_text, write_structure
         try:
             text = upload.read().decode("utf-8-sig")
         except UnicodeDecodeError:
             return err(
-                f"{dest.name} is not a text file, so it "
+                f"{filename} is not a text file, so it "
                 f"does not read as a structure",
                 400)
         try:
-            whole, said, _fmt = structure_from_text(text, dest.name)
+            whole, said, _fmt = structure_from_text(text, filename)
         except ValueError as exc:
             return err(
-                f"{dest.name} does not read as a "
+                f"{filename} does not read as a "
                 f"structure: {exc}",
                 400)
         return write_structure(whole, dest, overwrite=overwrite, said=said)
@@ -1617,8 +1620,8 @@ def api_files_move():
         copy + delete.
       * Refuses to overwrite an existing entry at the destination, a
         link included (atomic-no-overwrite, :func:`_pair_to`).
-      * If the source is a structure file (.xyz / .pdb) with a
-        paired ``.molstruct.json``, both files move together --
+      * If the source is a ``.xyz`` with its paired ``.molstruct.json``
+        (`molstruct.paired_sidecar`), both files move together --
         atomic-or-rollback identical to rename.
 
     Returns ``{ok, path}`` on success where ``path`` is the new
@@ -1803,14 +1806,14 @@ def api_files_delete():
                 f"everything inside.",
                 409)
 
-    # Sidecar pairing: deleting a structure FILE (.xyz/.pdb) must also remove
+    # Sidecar pairing: deleting a structure's .xyz must also remove
     # its paired .molstruct.json -- the mirror of the rename/move/copy pairing -- else the
     # sidecar is orphaned (the labels/cell of a file that no longer exists).  None for
     # directories, non-structure files, and files without an existing sidecar.  (Deleting
-    # a .molstruct.json directly is a single-file op -- _existing_paired_sidecar returns
+    # a .molstruct.json directly is a single-file op -- paired_sidecar returns
     # None for a non-structure suffix, same as rename.)
-    paired_sidecar = (None if resolved.is_dir()
-                      else _existing_paired_sidecar(resolved))
+    its_sidecar = (None if resolved.is_dir()
+                   else paired_sidecar(resolved))
 
     try:
         if resolved.is_dir():
@@ -1829,14 +1832,14 @@ def api_files_delete():
     # sidecar-removal failure is surfaced (the user can clean it up) but does not resurrect
     # the structure.  See `web/projects.md` § 4.1 (the pair moves as one).
     sidecar_removed = None
-    if paired_sidecar is not None:
+    if its_sidecar is not None:
         try:
-            paired_sidecar.unlink()
-            sidecar_removed = str(paired_sidecar)
+            its_sidecar.unlink()
+            sidecar_removed = str(its_sidecar)
         except OSError as exc:
             return err(
                 f"deleted {resolved.name!r} but its paired sidecar "
-                f"{paired_sidecar.name!r} could not be removed: {exc}.  "
+                f"{its_sidecar.name!r} could not be removed: {exc}.  "
                 f"Remove it manually to avoid an orphaned sidecar.",
                 500)
 

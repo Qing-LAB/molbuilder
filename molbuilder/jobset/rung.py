@@ -23,17 +23,15 @@ from .errors import PrepError
 def structure_path(task, base: Path) -> Optional[Path]:
     """Where the structure this calculation is *of* is -- beside the
     calculation first, at the recorded path second (`stages.md` § 6.3); the
-    suffix-corrected candidate is the codec's own naming rule (a .pdb source
-    travels as <stem>.xyz).  ``None`` when it is in neither place, and for
+    renamed candidate is the codec's own naming rule
+    (`StructureCodec.named`: a .pdb source travels as <stem>.xyz).  ``None`` when it is in neither place, and for
     a calculation of no structure of its own -- a transport calculation,
     which cites its junction."""
     from ..workingcopy_structure import StructureCodec
     if task.structure is None:
         return None
     src = Path(task.structure.source)
-    for candidate in (base / src.name,
-                      (base / src.name).with_suffix(
-                          StructureCodec.GEOMETRY_SUFFIX),
+    for candidate in (base / src.name, StructureCodec.named(base / src.name),
                       src):
         if candidate.is_file():
             return candidate

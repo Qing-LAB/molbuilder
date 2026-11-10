@@ -335,23 +335,42 @@ export function projectsRootUnavailable(error) {
 export function whenProjectsRoot()    { return _rootAnswer; }
 export function getProjectsRoot()     { return projectsRoot; }
 
-/* THE SUFFIXES OF A STRUCTURE FILE, the server's pairing rule's
- * (`molstruct.GEOMETRY_SUFFIXES`), as the page header states them: the app's
- * template context puts them there for every page (`app._inject_tabs`), so a
- * page has them from its first moment.  Read at the first question, kept. */
-let structureSuffixes = null;
+/* THE SERVER'S PAIRING RULE, as the page header states it: the suffixes of
+ * a structure file molbuilder reads (`molstruct.GEOMETRY_SUFFIXES`) and the
+ * one it writes, which a sidecar pairs with (`molstruct.PAIRED_SUFFIX`) --
+ * the app's template context puts them there for every page
+ * (`app._inject_tabs`), so a page has them from its first moment.  Read at
+ * the first question, kept. */
+let pairingRule = null;
 
-/** Whether ``path`` names a structure file, by the server's pairing rule:
- *  its suffix one the page header states. */
-export function isStructureFile(path) {
-  if (structureSuffixes === null) {
-    const header = document.querySelector(".app-header");
-    structureSuffixes = ((header && header.dataset.structureSuffixes) || "")
-      .toLowerCase().split(" ").filter(Boolean);
+function _pairing() {
+  if (pairingRule === null) {
+    const said = (document.querySelector(".app-header") || {}).dataset || {};
+    pairingRule = {
+      read: (said.structureSuffixes || "").toLowerCase().split(" ")
+        .filter(Boolean),
+      paired: (said.pairedSuffix || "").toLowerCase(),
+    };
   }
-  const name = String(path || "").toLowerCase();
-  return structureSuffixes.some((s) => name.endsWith(s));
+  return pairingRule;
 }
+
+/** Whether ``path`` names a structure file molbuilder reads, by the
+ *  server's pairing rule. */
+export function isStructureFile(path) {
+  const name = String(path || "").toLowerCase();
+  return _pairing().read.some((s) => name.endsWith(s));
+}
+
+/** Whether ``path`` names the geometry a sidecar pairs with -- the one
+ *  molbuilder writes; a `.pdb` is read, never written, and holds none. */
+export function isPairedFile(path) {
+  const paired = _pairing().paired;
+  return !!paired && String(path || "").toLowerCase().endsWith(paired);
+}
+
+/** The suffix a structure is written under, ``.xyz``. */
+export function pairedSuffix() { return _pairing().paired; }
 
 export function setRefreshHandler(handler) { refreshHandler = handler; }
 
@@ -601,7 +620,7 @@ async function rename(path, newName, opts) {
 }
 
 /** Move ``path`` (a file; not a directory in v1) into ``destDir``.
- *  Sidecar-aware: on .xyz/.pdb files, the paired .molstruct.json
+ *  Sidecar-aware: on a paired file (`isPairedFile`), the .molstruct.json
  *  moves atomically.  Optional ``opts.newName`` renames during the
  *  move.  The source's folder, the destination and the old path are
  *  announced.  ``opts.signal`` honoured. */
@@ -611,7 +630,7 @@ async function move(path, destDir, opts) {
   return r;
 }
 
-/** Copy ``path`` to ``destDir``.  Sidecar-aware on .xyz/.pdb.  Optional
+/** Copy ``path`` to ``destDir``.  Sidecar-aware on a paired file.  Optional
  *  ``opts.newName`` renames the copy; required when destDir is the
  *  source's parent.  ``destDir`` announced.  ``opts.signal`` honoured. */
 async function copy(path, destDir, opts) {
@@ -787,6 +806,9 @@ export const projects = {
   navigateTo,
   // The projects root's answer, once the sidebar's start has one (§ 5).
   whenProjectsRoot,
-  // Whether a path names a structure file, by the server's pairing rule.
+  // Whether a path names a structure file, and the one a sidecar pairs
+  // with, by the server's pairing rule -- and that one's suffix.
   isStructureFile,
+  isPairedFile,
+  pairedSuffix,
 };

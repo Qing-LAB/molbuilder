@@ -215,9 +215,10 @@ def frameset_from_mode(run_folder, *, mode: int, temperature_k: float,
     nodes = _checked_nodes(nodes)
     temperature_k = _checked_temperature(temperature_k)
     out = Path(out)
-    if out.suffix != ".xyz":
-        raise FrameSetError(f"{out.name}: the pair is written as its .xyz "
-                            f"and its .molstruct.json -- name the .xyz")
+    # THE NAME A STRUCTURE IS WRITTEN UNDER, the codec's rule.
+    refused = StructureCodec.refused_name(out)
+    if refused is not None:
+        raise FrameSetError(refused)
     taken = [p for p in (out, sidecar_path_for(out)) if p.exists()]
     if taken:
         raise FrameSetError(

@@ -210,7 +210,7 @@ The sources, and what each produces (all POST `/api/build/molecule` with
 |---|---|---|---|
 | **SMILES** | `smiles` | RDKit first, **OpenBabel fallback** | the fallback rescues big/awkward molecules RDKit chokes on; the response says which backend won |
 | **By name** | `name` | PubChem → SMILES → (same fallback) | type "aspirin", get a structure |
-| **Project file** | — (`/api/build/load`, `{path}`) | the server reads the `.xyz`/`.pdb` and its `.molstruct.json` sidecar (`StructureCodec`) | asks which frame when the file holds several, and add-or-clear when a structure is open (above) |
+| **Project file** | — (`/api/build/load`, `{path}`) | the server reads the `.xyz` and its `.molstruct.json` sidecar, or a `.pdb` alone — read, never written (`StructureCodec`) | asks which frame when the file holds several, and add-or-clear when a structure is open (above) |
 | **DNA** | `dna` | 3DNA (X3DNA) / AmberTools / RDKit | B/A/Z forms, single strand or duplex, optional clash relief |
 | **RNA** | `rna` | A-form canonical | |
 | **Peptide** | `peptide` | PeptideBuilder | extended chain from a sequence; its C-terminus as the kit writes it, which the findings say |

@@ -15,12 +15,14 @@
  * Spec: docs/web/projects.md § Sidebar interaction rules.
  */
 
-import { basename, dirname, isInside, join, relative } from "../path-utils.js";
+import {
+  basename, dirname, isInside, join, relative, stem, suffix,
+} from "../path-utils.js";
 import { apiList } from "./api.js";
 import {
   setShared, publishCommit, getProjectsRoot, setRefreshHandler,
   SS_FILE, SS_DIR, readSelectionSlot, tell, relativeToProjects,
-  atProjectsRoot, isStructureFile, projects as _projectsApi,
+  atProjectsRoot, isPairedFile, projects as _projectsApi,
 } from "./state.js";
 import { showPreview } from "./preview.js";
 import {
@@ -467,7 +469,7 @@ function _openKebab(trigger, entry, fullPath, currentPath) {
         title:        "Rename " + entry.name,
         label:        "New name",
         initial:      entry.name,
-        hint:         entry.kind === "file" && isStructureFile(entry.name)
+        hint:         entry.kind === "file" && isPairedFile(entry.name)
                        ? "If a paired .molstruct.json sidecar exists, "
                          + "it will rename together."
                        : "",
@@ -576,9 +578,7 @@ function _openKebab(trigger, entry, fullPath, currentPath) {
 function _suggestCopyName(name) {
   // Insert " copy" before the extension.  ``water.xyz`` ->
   // ``water copy.xyz``; bare names get a trailing ``" copy"``.
-  const dot = name.lastIndexOf(".");
-  if (dot <= 0) return name + " copy";
-  return name.slice(0, dot) + " copy" + name.slice(dot);
+  return stem(name) + " copy" + suffix(name);
 }
 
 function _renderList(entries, currentPath) {

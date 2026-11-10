@@ -383,11 +383,13 @@ flows is worth more than its marginal, protein-only tautomer edge.
 ## 8. Surfaces — CLI and web
 
 **CLI** (`molbuilder/cli.py`) — one command per builder, each writing `.xyz`
-(`--out`), `.pdb` (`--pdb`), or a PySCF atom block (`--pyscf-atom-block`):
+with its sidecar (`--out`) or a PySCF atom block (`--pyscf-atom-block`); a
+`.pdb` is read, never written ([`model/structure.md`](?doc=model/structure.md)
+§ 2.4):
 
 ```bash
 molbuilder peptide "ARND[SEP]C" --out pep.xyz          # [SEP] = phospho-Ser
-molbuilder dna "ATGC" --backend auto --pdb dna.pdb
+molbuilder dna "ATGC" --backend auto --out dna.xyz
 molbuilder dna "ds,ATGC" --backend threedna --out duplex.xyz   # canonical duplex
 molbuilder smiles "c1ccccc1" --out benzene.xyz
 molbuilder name "caffeine" --out caffeine.xyz          # PubChem lookup

@@ -73,8 +73,8 @@ def _require_text(source: object, fmt: str) -> str:
     """
     not_a_path = (
         f"Structure.from_{fmt}() takes {fmt.upper()} text, not a path. "
-        f"To read a file use StructureCodec().load(path), which reads the "
-        f".molstruct.json sidecar beside it too.")
+        f"To read a file use StructureCodec().load(path), which reads a "
+        f".xyz's .molstruct.json sidecar too.")
     if isinstance(source, Path):
         raise TypeError(not_a_path)
     if not isinstance(source, str):
@@ -2439,8 +2439,10 @@ class Structure:
 
     def to_pdb(self) -> str:
         """Standard PDB TEXT. Hydrogens included, single MODEL, no CONECT.
-        Not a file: ``StructureCodec().write(struct, path)`` writes one, and
-        :meth:`to_xyz` records why there is no ``path`` argument."""
+        Not a file: molbuilder writes a structure as a ``.xyz`` with its
+        sidecar and never a PDB (`model/structure.md` § 2.4); this text is
+        for the programs that read one, and :meth:`to_xyz` records why there
+        is no ``path`` argument."""
         try:                                    # inside molbuilder
             from .engine_atom_index import pdb_numbering
         except ImportError:                     # beside a job, in a bundle

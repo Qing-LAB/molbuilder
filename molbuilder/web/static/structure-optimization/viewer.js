@@ -26,7 +26,7 @@ import { mount as mvMount, formula as mvFormula }
     from "/static/lib/molview/index.js";
 import { molviewDoors } from "/static/lib/projects/molview-doors.js";
 import { isStructureFile } from "/static/lib/projects/state.js";
-import { basename, dirname, join } from "/static/lib/path-utils.js";
+import { basename, dirname, join, suffix } from "/static/lib/path-utils.js";
 import { ask } from "../lib/server.js";
 
 (function () {
@@ -641,8 +641,8 @@ import { ask } from "../lib/server.js";
             const _atoms = _d ? (_d.getStructure() || {}).elements : null;
             setStatus("load-status",
                 `Loaded ${(Array.isArray(_atoms) ? _atoms.length : "")}-atom `
-                + `${filename.slice(filename.lastIndexOf(".") + 1).toUpperCase()}`
-                + ` from ${filename}.`, "ok");
+                + `${suffix(filename).slice(1).toUpperCase()} from `
+                + `${filename}.`, "ok");
             // Flip the load-bar readout to "Loaded: <name>" and ask the
             // chemistry card for this structure's charge and spin.
             if (typeof _refreshLoadButton === "function") _refreshLoadButton();

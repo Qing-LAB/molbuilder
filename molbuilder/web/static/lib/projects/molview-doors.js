@@ -19,9 +19,9 @@
  */
 "use strict";
 
-import { basename, dirname, join } from "../path-utils.js";
+import { basename, dirname, join, stem, suffix } from "../path-utils.js";
 import { chooseSavePath, confirmOverwrite } from "./dialogs.js";
-import { projects } from "./state.js";
+import { pairedSuffix, projects } from "./state.js";
 import { storeZip } from "../zip-store.js";
 import { download } from "./downloads.js";
 // THE ONE READER of the server's answers (ui-contract.md § 12).
@@ -90,7 +90,8 @@ export const molviewFiles = {
                          notices: notices };
             }
             if (destination === "project") {
-                const path = await _askProjectPath(stem, "structure", ".xyz");
+                const path = await _askProjectPath(stem, "structure",
+                                                   pairedSuffix());
                 if (!path) return { ok: false, cancelled: true };
                 const body = {
                     path: path,
@@ -132,10 +133,8 @@ export const molviewFiles = {
                 return { ok: true, files: [filename] };
             }
             if (destination === "project") {
-                const dot = filename.lastIndexOf(".");
-                const stem = dot > 0 ? filename.slice(0, dot) : filename;
-                const ext = dot > 0 ? filename.slice(dot) : "";
-                const picked = await _askProjectPath(stem, "image", ext);
+                const picked = await _askProjectPath(
+                    stem(filename), "image", suffix(filename));
                 if (!picked) return { ok: false, cancelled: true };
                 // THROUGH THE WRITE DOOR (web/projects.md § 2), which
                 // announces the folder: binary bytes ride its upload route,

@@ -77,12 +77,9 @@ class PdbFileParser(FileParser):
     def parse(cls, path: Path) -> StructureResult:
         p = Path(path)
         # THROUGH THE ONE DOOR, because a `.pdb` here is a PERSON'S
-        # structure and not an engine's output.  `read_text` + `from_pdb`
-        # skips the `.molstruct.json` beside it, so the regions, frozen
-        # atoms and cell its author set are silently dropped and
-        # everything downstream is faithfully correct about the wrong
-        # thing -- the failure `test_one_door_reads_a_structure` exists
-        # to stop.
+        # structure and not an engine's output: the codec reads it as every
+        # door does -- alone, for a `.pdb` holds no sidecar (`model/
+        # structure.md` § 2.4) -- never a second reader of its own.
         #
         # `StructureCodec.load` also reads `utf-8-sig`, so a file saved
         # with a BOM parses here as it does when the sidebar opens it.

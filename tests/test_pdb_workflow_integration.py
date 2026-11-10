@@ -7,9 +7,11 @@ What it pins (in order):
 
   1.  /api/build/load reads the PDB and returns the per-atom rows.
   2.  The structure with ``frozen_atoms`` + a region is saved through
-      /api/structure/save, as the Molbuilder tab saves it: the pair, its
-      sidecar keyed by the PDB's stem -- and /api/build/load re-read picks
-      it up (atoms carry the labels in ``regions``).
+      /api/structure/save, as the Molbuilder tab saves it: a `.pdb` is read,
+      never written (`model/structure.md` § 2.4), so the save writes
+      ``<stem>.xyz`` and its sidecar, the PDB's residue identity riding the
+      sidecar -- and /api/build/load re-read picks it up (atoms carry the
+      labels in ``regions``).
 
 Run::
 
@@ -94,14 +96,16 @@ class TestPdbWorkflowEndToEnd:
         return str(pdb_path.resolve())
 
     def _saved(self, web, pdb_path, regions):
-        """The structure with ``regions`` saved over its file through the
-        save route -- the pair written by the codec, as the Molbuilder tab
-        saves it (`model/structure.md` § 3.1)."""
+        """The structure with ``regions`` saved through the save route as
+        the Molbuilder tab saves it -- ``<stem>.xyz`` beside the PDB, the
+        pair written by the codec (`model/structure.md` § 3.1) -- and its
+        path returned."""
+        saved = pdb_path.with_suffix(".xyz")
         r = web.post("/api/structure/save", json={
-            "path": self._path(pdb_path),
-            "structure": self._envelope(pdb_path, regions),
-            "overwrite": True})
+            "path": self._path(saved),
+            "structure": self._envelope(pdb_path, regions)})
         assert r.status_code == 200, r.get_json()
+        return saved
 
     # ----- Step 1: load the PDB through the one load door ---------- #
 
@@ -130,22 +134,26 @@ class TestPdbWorkflowEndToEnd:
     def test_step_2_labels_saved_on_the_pair_come_back_on_the_atoms(
         self, web, pdb_under_root,
     ):
-        """A PDB's save writes the pair, and its labels come back on the atoms
+        """A PDB's save writes the `.xyz` pair, the PDB read and left as it
+        was, and its labels and residue identity come back on the atoms
         (`structure-molstruct.md`).  THE SILENT FAILURE: the geometry saved and
         the frozen atoms lost, seen only when a run moves them."""
         from molbuilder.sidecars import molstruct as msj
+        from molbuilder.structure import Structure
+        from molbuilder.workingcopy_structure import StructureCodec
         pdb_path, n_atoms, _ = pdb_under_root
+        pdb_was = pdb_path.read_text()
         # Pick a few atom indices valid for the synthetic PDB (15 atoms).
         frozen_indices = [0, 1, 2]
         region_indices = [3, 4]
 
         # The save writes the whole pair in one shot: the geometry and its
         # sidecar, the labels the structure carries.
-        self._saved(web, pdb_path, {"L-electrode": region_indices,
-                                    "frozen_atoms": frozen_indices})
+        saved = self._saved(web, pdb_path, {"L-electrode": region_indices,
+                                            "frozen_atoms": frozen_indices})
 
-        # The sidecar lands on disk next to the PDB, keyed by stem.
-        sidecar = pdb_path.with_name(pdb_path.stem + ".molstruct.json")
+        # The sidecar lands on disk beside the saved .xyz, keyed by stem.
+        sidecar = saved.with_name(saved.stem + ".molstruct.json")
         assert sidecar.exists(), (
             f"the save did not write the sidecar at {sidecar}"
         )
@@ -157,8 +165,16 @@ class TestPdbWorkflowEndToEnd:
         assert "frozen_atoms" not in on_disk, "a second key for one fact"
         assert on_disk["regions"]["L-electrode"] == region_indices
 
+        # THE PDB'S RESIDUE IDENTITY rides the sidecar (`model/structure.md`
+        # § 2.4, *the format choice*) -- and the PDB is read alone: the
+        # sidecar beside it is the .xyz's, never its own.
+        assert (StructureCodec().load(saved).residue_names
+                == Structure.from_pdb(pdb_was).residue_names)
+        assert not StructureCodec().load(pdb_path).regions, (
+            "the .pdb took the .xyz's sidecar for its own")
+
         body = web.post("/api/build/load",
-                        json={"path": self._path(pdb_path)}).get_json()
+                        json={"path": self._path(saved)}).get_json()
         # ONE representation: every label an atom carries is in `regions`,
         # the reserved `frozen_atoms` among them.  There is no second member.
         atom0 = body["atoms"][0]

@@ -363,8 +363,10 @@ touch it. The parts:
 **A structure file is written by the structure door, never as bytes**
 *(2.69.10)*: this layer's write refuses a `.xyz`, a `.pdb` or a
 `.molstruct.json`, naming that door; its upload reads a structure file as an
-import and writes it as a pair through the save's path; a sidecar is never
-uploaded alone; the preview shows such a file and edits it nowhere
+import and writes it as a pair through the save's path — a `.pdb` as
+`<stem>.xyz`, for a `.pdb` is read, never written *(2.69.17)*; a sidecar is
+never uploaded alone; a `.pdb` holds no sidecar, so a rename, a move, a copy
+or a delete takes it alone; the preview shows such a file and edits it nowhere
 ([`model/structure.md`](?doc=model/structure.md) § 2.4). Saving is § 3's door;
 editing is the Molbuilder tab's.
 
@@ -380,7 +382,9 @@ it is given, a link included, and refuses one that leads out of the tree; a
 name it never saw — an upload's, joined to its folder — could still be a link,
 the person's, which the write's temp-and-replace would replace unseen. An
 auto-renamed name is one nothing holds, a link included. A rename, a move or a copy keeps any name without a separator *(the
-user, 2026-11-09)*, and refuses a destination anything holds — a file, a
+user, 2026-11-09)* — a structure's `.xyz` keeps `.xyz`, another extension
+refused naming the `.xyz` to give it *(the user, 2026-11-10;
+`StructureCodec.refused_name`)* — and refuses a destination anything holds — a file, a
 folder, a link, a dangling one included, which a copy would follow — 409.
 
 **A structure and its sidecar move as one.** Rename, move, copy and delete check for the
@@ -426,7 +430,7 @@ with nothing selected). The rule beside it is [`ui-contract.md`](?doc=web/ui-con
 |---|---|
 | `getCurrentDir()` / `getCurrentFile()` | the current folder / selected file, right now |
 | `getProjectsRoot()` / `atRoot()` | your projects folder; whether you're at its top |
-| `isStructureFile(path)` | whether `path` names a structure file, by the server's pairing rule — its suffix one of `molstruct.GEOMETRY_SUFFIXES`, which the page header states for every page (the app's template context). The one test a page asks: no page tests a suffix list of its own |
+| `isStructureFile(path)` · `isPairedFile(path)` | whether `path` names a structure file molbuilder reads (`molstruct.GEOMETRY_SUFFIXES`), and whether it names the one a sidecar pairs with and molbuilder writes (`molstruct.PAIRED_SUFFIX`, `.xyz`; `pairedSuffix()` names it) — the server's pairing rule, which the page header states for every page (the app's template context). The one test a page asks: no page tests a suffix list of its own |
 | `onChange(cb)` | selection changed — fires once on subscribe too |
 | `onCommit(cb)` | a file was committed (double-clicked) — does not fire on subscribe |
 | `publishCommit(dir, path)` | commit a file from code (also moves the selection). **`path` is the file's FULL path**, not its name — subscribers use it as one |
