@@ -16,7 +16,10 @@ These tests are written against the files the server keeps.
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
+
+import pytest
 
 from tests._node_esm import run_node
 
@@ -160,35 +163,52 @@ def test_reading_one_tag_never_returns_anothers():
     assert out["stranger"] is None, "a tag read back another tag's saved work"
 
 
-def test_a_tags_id_is_stable_and_differs_from_the_next_tags():
+@pytest.mark.parametrize("one, other", [
+    ("modify", "results:structure"),
+    ("results:structure", "results-structure"),
+    ("a:b", "a::b"),
+    ("a_b", "a-b"),
+    ("a_d", "a-"),
+    ("a.b", "a:b"),
+], ids=["two pages", "a colon and a dash", "one colon and two",
+        "an underscore and a dash", "an underscore spelled as a dash is",
+        "a dot and a colon"])
+def test_a_tags_id_is_stable_and_differs_from_the_next_tags(one, other):
     """The id names the file, so it has to be the same each time a tag comes back
     — otherwise a page reopening looks for its work under a name it has never
     used and finds nothing. And it has to differ between tags, or two savers
-    write into one file.
+    write into one file (`workspace.md` § 4: two tags are never one id).
 
     One remembered id passes the first half and fails the second, which is why
-    both are here.
+    both are here.  THE SILENT FAILURE (to 2.69.18): every character outside
+    the server's set became a dash, so `a-b` and `a:b` shared one slot.
     """
     out = _run(
-        """
-        console.log(JSON.stringify({
-            a1: ws.workspaceId("modify"),
-            a2: ws.workspaceId("modify"),
-            b1: ws.workspaceId("results:structure"),
-            b2: ws.workspaceId("results:structure"),
-        }));
+        f"""
+        console.log(JSON.stringify({{
+            a1: ws.workspaceId({json.dumps(one)}),
+            a2: ws.workspaceId({json.dumps(one)}),
+            b1: ws.workspaceId({json.dumps(other)}),
+        }}));
         """
     )
     assert out["a1"] == out["a2"], "a tag's id changed between two asks"
-    assert out["b1"] == out["b2"], "a tag's id changed between two asks"
     assert out["a1"] != out["b1"], (
         "two tags share an id, so their files are named the same and they write "
         "over each other's history"
     )
-    assert ":" not in out["b1"], (
-        f"the id has to work as a file name — the server takes only letters, "
-        f"digits, _ and -: {out['b1']}"
-    )
+    for got in (out["a1"], out["b1"]):
+        assert re.fullmatch(r"[A-Za-z0-9_-]+", got), (
+            f"the id has to work as a file name — the server takes only "
+            f"letters, digits, _ and -: {got}")
+
+
+def test_a_pages_saved_state_is_found_after_the_upgrade():
+    """A tag of letters, digits and `:` keeps the id it had before 2.69.19
+    (`workspace.md` § 4), so the work a page kept is where it looks for it."""
+    out = _run("""console.log(JSON.stringify(
+        ws.workspaceId("results:structure")));""")
+    assert out == "ws-results-structure", out
 
 
 # ---------------------------------------------------------------------------

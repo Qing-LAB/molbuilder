@@ -484,7 +484,15 @@ class WatchedRun:
             grow = self._growth.get(path)
             if grow is None:
                 grow = self._growth[path] = _Growth(make(self.stage))
-            grow.feed_from(path, lambda: make(self.stage))
+            try:
+                grow.feed_from(path, lambda: make(self.stage))
+            except ValueError:
+                # A LOG THAT DOES NOT READ -- a header line its reader
+                # refuses (`molwatch_grammar.parse_atom_index_map_line`) --
+                # leaves its facts out, as every file the monitor reads
+                # does; read afresh next time.
+                self._growth.pop(path, None)
+                continue
             state = grow.reader.now()
             if any(k in state for k in _POSITION):
                 heard.append((_mtime(path), role, state))

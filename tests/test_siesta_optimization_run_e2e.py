@@ -359,6 +359,11 @@ def test_the_run_states_the_build_it_ran_and_its_solver(opt):
     assert got["version"].startswith(version), got
     assert build.startswith("mpi") and "MPI" in got["parallelisations"], got
     assert traj.runtime_info["siesta_diag"].get("algorithm"), traj.runtime_info
+    # A PRINTED LOGICAL STORED AS ONE (`model/parse.md`, the solver row): the
+    # run's `Parallel over k = F`, read by fdf's words, never the letter left
+    # for a page to read.
+    assert traj.runtime_info["siesta_diag"]["parallel_over_k"] is False, (
+        traj.runtime_info["siesta_diag"])
     assert [w for w in traj.parse_warnings
             if w.category == "runtime_info"] == []
 

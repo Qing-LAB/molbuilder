@@ -108,13 +108,36 @@ def unread_words(exc: ValueError) -> str:
     return f"invalid JSON ({exc})"
 
 
-def read_json(path) -> Any:
-    """Read + parse a JSON file -- UTF-8, as the one writer writes it
+def text_of(data: bytes) -> str:
+    """A file's bytes as text -- UTF-8, as the one writer writes it
     (:func:`json_text`); a byte-order mark is read past, since it says nothing
-    of what a file holds (`job-contracts.md` § 6.1).  Text that is not UTF-8
-    raises :class:`UnicodeDecodeError`, text that is not JSON
-    :class:`json.JSONDecodeError` -- both a :class:`ValueError`."""
-    return json.loads(Path(path).read_text(encoding="utf-8-sig"))
+    of what a file holds (`job-contracts.md` § 6.1).  Bytes that are not
+    UTF-8 raise :class:`UnicodeDecodeError`, a :class:`ValueError`.  The
+    decode of a record's bytes (:func:`read_json`) and of what a prep plan
+    holds (`jobset.planned.Plan.read_text`), so a prep reads a file as the
+    disk's reader does."""
+    return data.decode("utf-8-sig")
+
+
+def json_of(data: bytes) -> Any:
+    """A JSON document's bytes, parsed (:func:`text_of`); text that is not
+    JSON raises :class:`json.JSONDecodeError`, a :class:`ValueError`."""
+    return json.loads(text_of(data))
+
+
+def read_json(path) -> Any:
+    """Read + parse a JSON file, by :func:`json_of`."""
+    return json_of(Path(path).read_bytes())
+
+
+def read_object(path) -> dict:
+    """A RECORD FILE: one JSON object, read by :func:`read_json`; a file
+    holding any other JSON value is refused, a :class:`ValueError` saying
+    so -- never a reader's crash on the value it did not expect."""
+    obj = read_json(path)
+    if not isinstance(obj, dict):
+        raise ValueError("not a JSON object")
+    return obj
 
 
 def stage_bytes(target, data: bytes, *, mode: Optional[int] = None,

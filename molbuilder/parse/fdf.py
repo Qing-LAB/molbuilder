@@ -266,11 +266,20 @@ FDF_TRUE_WORDS = frozenset({"yes", "true", ".true.", "t", "y"})
 FDF_FALSE_WORDS = frozenset({"no", "false", ".false.", "f", "n"})
 
 
+def fdf_logical(text) -> "Optional[bool]":
+    """A logical as SIESTA writes one -- a deck's value or a line it prints
+    (``Parallel over k = F``) -- read by fdf's words: ``True``, ``False``, or
+    ``None`` for any other word.  THE ONE READING of a printed logical."""
+    t = str(text).strip().lower()
+    return True if t in FDF_TRUE_WORDS else False if t in FDF_FALSE_WORDS \
+        else None
+
+
 def fdf_true(toks) -> bool:
     """fdf's boolean of a keyword's value tokens -- the one reading every
     reader of a deck's switch asks: a keyword present with no value is
     ``.true.``."""
-    return (not toks) or toks[0].lower() in FDF_TRUE_WORDS
+    return (not toks) or fdf_logical(toks[0]) is True
 
 
 def _read_state(sc, p: "FdfParams") -> None:
@@ -558,6 +567,7 @@ TRAVELS_WITH = ("molbuilder.constants",
                 "molbuilder.units")
 
 __all__ = ["DeckAtoms", "FdfParams", "FDF_TRUE_WORDS", "FDF_FALSE_WORDS",
+           "fdf_logical",
            "GEOMETRY_KEYS", "KEYWORDS", "deck_atoms", "fdf_key", "fdf_true",
            "read_fdf", "inline_includes", "read_deck", "parse_fdf_params",
            "system_label"]

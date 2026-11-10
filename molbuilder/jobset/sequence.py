@@ -100,12 +100,12 @@ def write_record(path, rec: Record) -> Path:
 def read_record(path) -> Record:
     """The record at ``path``; :class:`SequenceError` naming it when it is
     not there or does not read."""
-    from ..persist import check_schema, read_json
+    from ..persist import check_schema, read_object
     path = Path(path)
     if not path.is_file():
         raise SequenceError(f"{path}: no sequence's launch record is there")
     try:
-        d = read_json(path)
+        d = read_object(path)
         check_schema(d.get("schema", ""), SEQUENCE_SCHEMA, label=str(path))
         return Record(
             groups=[{"number": int(g["number"]),

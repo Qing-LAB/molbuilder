@@ -121,7 +121,7 @@ def record(calc, stages, *, plan) -> Path:
     from ..persist import json_text
     from ..identity import stage_key
     path = path_of(calc.base)
-    held = (_stages_in(lambda p: json.loads(plan.read_text(p)), path)
+    held = (_stages_in(plan.read_json, path)
             if plan.is_file(path) else {})
     for st in stages:
         held = {k: v for k, v in held.items() if stage_key(k) != stage_key(st)}

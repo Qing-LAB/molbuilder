@@ -72,11 +72,21 @@ const root = (typeof window !== "undefined") ? window : globalThis;
      * nothing would ever use again.
      *
      * The server allows letters, digits, `_` and `-` in an id — no dots, so the
-     * index stays unambiguous — so anything else in a tag becomes a dash.
+     * index stays unambiguous.  TWO TAGS ARE NEVER ONE ID (workspace.md § 4):
+     * each character has one spelling and no two share one -- a letter or a
+     * digit as it is, a `:` as the `-` it has always been (so a tag of
+     * letters, digits and `:` keeps its id, and its saved state), a `-` as
+     * `_d`, a `_` as `_u`, any other as `_x` and its six hex digits.
      */
     function workspaceId(tag) {
         _requireTag(tag);
-        return "ws-" + tag.replace(/[^A-Za-z0-9_-]+/g, "-");
+        return "ws-" + Array.from(tag).map((c) => {
+            if (/[A-Za-z0-9]/.test(c)) return c;
+            if (c === ":") return "-";
+            if (c === "-") return "_d";
+            if (c === "_") return "_u";
+            return "_x" + c.codePointAt(0).toString(16).padStart(6, "0");
+        }).join("");
     }
 
     /* EVERY CALL NAMES ITS TAG (workspace.md § 4), and a missing one is an error

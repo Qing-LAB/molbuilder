@@ -1093,6 +1093,16 @@ def collect_record(calc, *, partial: bool = False) -> Dict:
     except AverageError as exc:
         raise RecordError(str(exc)) from exc
     provenance = read_provenance(base)
+    # THE CITED RUN'S VERDICT AS DATA (`engines/transport.md`, *What is said
+    # about how it ended*): its kept words read back by their writer
+    # (`_run_ending.verdict_read`), so the report decides on the verdict and
+    # never on words -- a record composed before the field was served
+    # included.
+    relaxed = (provenance or {}).get("relaxation")
+    if isinstance(relaxed, dict):
+        from ..parse.engines._run_ending import verdict_read
+        verdict = verdict_read(relaxed.get("converged"))
+        relaxed["converged_ok"] = verdict[1] if verdict else None
     # THE DESCRIPTION'S, as stated (`Task.treatment`): a list of several
     # voltages states the switch; one is a single bias.  Never inferred
     # from how many points ran.

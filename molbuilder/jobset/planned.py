@@ -30,10 +30,10 @@ from typing import Dict, List, Optional, Union
 # package is not installed.
 try:                                       # inside molbuilder
     from ..deck_record import without_stamps
-    from ..persist import write_bytes
+    from ..persist import json_of, text_of, write_bytes
 except ImportError:                        # beside a job
     from deck_record import without_stamps
-    from persist import write_bytes
+    from persist import json_of, text_of, write_bytes
 
 
 def _at(path) -> Path:
@@ -190,7 +190,14 @@ class Plan:
         return held if isinstance(held, bytes) else held.read_bytes()
 
     def read_text(self, path) -> str:
-        return self.read_bytes(path).decode("utf-8")
+        """``path``'s text as the plan will leave it, decoded as the disk's
+        is (`persist.text_of`: a byte-order mark read past)."""
+        return text_of(self.read_bytes(path))
+
+    def read_json(self, path):
+        """``path``'s record as the plan will leave it, read as the disk's is
+        (`persist.json_of`)."""
+        return json_of(self.read_bytes(path))
 
     def source_of(self, path) -> Optional[Path]:
         """The file on disk that holds ``path``'s bytes now -- the path

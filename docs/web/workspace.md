@@ -148,6 +148,13 @@ enters it — so isolation between pages rests entirely on the owner literals
 staying distinct. Seven owners exist today and all differ; a future page that
 reuses one shares that page's saved state (camera, frame, switches) with zero
 warning. Picking a new owner string means checking it against the ones in use.
+**Two different tags are never one id**: the id is the tag spelled for a file
+name, one spelling per character and none shared — a letter or a digit as it
+is, a `:` as `-`, a `-` as `_d`, a `_` as `_u`, any other character as `_x` and
+its six hex digits, so a tag of letters, digits and `:` keeps the id it has
+always had. A tag never ends in `:draft`: a viewer's draft is its tag's id
+with `-draft` ([`molview.md`](?doc=web/molview.md) § 11.2), which `:draft`
+would spell the same.
 
 **Two things the workspace promises:**
 

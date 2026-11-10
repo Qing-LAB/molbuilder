@@ -4974,7 +4974,10 @@ the status verb's own reading (`RunStatus.converged_words`) — into the
 provenance (`slot-provenance.json`: `evidence`, `relaxation`) and onto the
 Transport tab's meta line, so a geometry that did not converge is cited
 knowingly: the geometry handed over is then the last step SIESTA wrote, not a
-converged minimum.
+converged minimum. The record serves the verdict as data beside the words
+(`provenance.slot.relaxation.converged_ok`), the kept words read back by their
+writer (`_run_ending.verdict_read`), and the report decides on it, never on
+the words.
 
 **Classifying is not composing.** A relaxation still running has a launch
 record and no conclusion; classification RECORDS that, because describing a

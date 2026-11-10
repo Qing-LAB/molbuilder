@@ -337,6 +337,15 @@ def verdict_words(verdict: Optional[Tuple[str, bool]]) -> Optional[str]:
     return f"{verdict[0]} " + ("yes" if verdict[1] else "NO")
 
 
+def verdict_read(words: Optional[str]) -> Optional[Tuple[str, bool]]:
+    """THE VERDICT a :func:`verdict_words` line states, read back by the
+    module that writes the words -- for a record that kept them (a cited
+    run's, `transport.compose`) -- or ``None`` for none, or for words it
+    never writes."""
+    what, _, said = str(words or "").rpartition(" ")
+    return (what, said == "yes") if what and said in ("yes", "NO") else None
+
+
 def not_done_why(verdict: Optional[Tuple[str, bool]], *, counts: bool,
                  missing) -> Optional[str]:
     """WHY A RUN THAT FINISHED IS NOT DONE -- its verdict said NO where it

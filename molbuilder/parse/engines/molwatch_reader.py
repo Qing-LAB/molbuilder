@@ -129,15 +129,12 @@ class MolwatchReader:
     def _on_atom_index_map(self, line: str, line_no: int) -> None:
         """``# atom_index_map: {…}`` into ``runtime_info["atom_index_map"]``
         -- which index the log's atoms are listed by, as the log states it
-        (`model/overview.md` § 2.2b); a line that is not JSON states
-        nothing."""
-        import json
-        m = _MG.ATOM_INDEX_MAP.match(line)
-        if m:
-            try:
-                self.runtime_info["atom_index_map"] = json.loads(m.group(1))
-            except ValueError:
-                pass
+        (`model/overview.md` § 2.2b), read by the format's one reader of the
+        line (`molwatch_grammar.parse_atom_index_map_line`): a stated map
+        that does not read is refused, never read as none."""
+        block = _MG.parse_atom_index_map_line(line)
+        if block is not None:
+            self.runtime_info["atom_index_map"] = block
 
     def _on_convergence(self, line: str, line_no: int) -> None:
         """``# convergence.<key>: <value>`` into

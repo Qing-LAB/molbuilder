@@ -17,7 +17,6 @@ said so -- or refused by name (:class:`AtomIndexUnknown`).
 """
 from __future__ import annotations
 
-import json
 from dataclasses import replace
 from pathlib import Path
 from typing import List, Optional
@@ -393,13 +392,11 @@ def _of_log(p: Path) -> Optional[AtomIndexMap]:
         for line in fh:
             if _MG.BLOCK_BEGIN.search(line):
                 break
-            m = _MG.ATOM_INDEX_MAP.match(line.strip())
-            if m:
-                try:
-                    block = json.loads(m.group(1))
-                except ValueError as exc:
-                    raise AtomIndexError(f"{p.name}: its atom_index_map line "
-                                         f"does not read: {exc}") from exc
+            try:
+                block = _MG.parse_atom_index_map_line(line)
+            except ValueError as exc:
+                raise AtomIndexError(f"{p.name}: {exc}") from exc
+            if block is not None:
                 return replace(map_of_block(block, p.name),
                                stated_by=str(p))
     return None

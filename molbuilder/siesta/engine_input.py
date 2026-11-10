@@ -16,13 +16,11 @@ from __future__ import annotations
 
 from typing import Dict, List, Optional, Tuple
 
-from ..parse.fdf import (FDF_FALSE_WORDS, FDF_TRUE_WORDS, GEOMETRY_KEYS,
-                         deck_atoms, fdf_key, fdf_true, parse_fdf_params,
-                         read_fdf)
+from ..parse.fdf import (GEOMETRY_KEYS, deck_atoms, fdf_key, fdf_logical,
+                         parse_fdf_params, read_fdf)
 from ..engine_atom_index import siesta_numbering
 from ..structure import SAME_PLACE_ANG, farthest_apart
 
-_LOGICAL = FDF_TRUE_WORDS | FDF_FALSE_WORDS
 
 #: THE ENGINE'S SCRATCH: where TranSIESTA keeps an electrode's surface
 #: Green's function file and whether it reads an existing one back -- the
@@ -179,8 +177,9 @@ def _same(a: List[str], b: List[str]) -> bool:
             continue
         except ValueError:
             pass
-        if x.lower() in _LOGICAL and y.lower() in _LOGICAL:
-            if fdf_true([x]) != fdf_true([y]):
+        lx, ly = fdf_logical(x), fdf_logical(y)
+        if lx is not None and ly is not None:
+            if lx != ly:
                 return False
         elif x.lower() != y.lower():
             return False

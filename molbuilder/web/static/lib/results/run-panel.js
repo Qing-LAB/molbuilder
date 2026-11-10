@@ -74,14 +74,6 @@ function yesno(v) {
     return v === true ? "yes" : v === false ? "no" : String(v);
 }
 
-/** An engine's printed logical: SIESTA's `T` / `F`. */
-function logical(v) {
-    const s = String(v).trim().toLowerCase().replace(/^\.|\.$/g, "");
-    if (["t", "true", "yes"].includes(s)) return "yes";
-    if (["f", "false", "no"].includes(s)) return "no";
-    return String(v);
-}
-
 function words(v) {
     if (v === null || v === undefined) return "";
     if (Array.isArray(v)) return v.map(words).join(", ");
@@ -153,10 +145,10 @@ const FIELDS = {
     binary:   { label: "Binary", style: MONO },
     // solver
     algorithm:       { label: "Algorithm" },
-    elpa_gpu:        { label: "ELPA on the GPU", fmt: logical },
+    elpa_gpu:        { label: "ELPA on the GPU" },
     diag_blocksize:  { label: "Block size" },
     distribution:    { label: "Process grid" },
-    parallel_over_k: { label: "Parallel over k-points", fmt: logical },
+    parallel_over_k: { label: "Parallel over k-points", fmt: yesno },
     // host
     hostname:              { label: "Host" },
     user:                  { label: "User" },

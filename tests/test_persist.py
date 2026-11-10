@@ -81,6 +81,35 @@ def test_write_json_roundtrips_and_is_pretty(tmp_path):
     assert persist.read_json(p) == obj    # lossless
 
 
+def test_a_record_reads_the_same_from_the_disk_and_through_a_prep_plan(
+        tmp_path):
+    """`job-contracts.md` § 6.1: one decode of a record's bytes
+    (`persist.text_of`) -- a byte-order mark an editor put first read past,
+    whether the disk is read or a prep's plan holding the file, as JSON or as
+    text a reader parses itself.  THE SILENT
+    FAILURE (to 2.69.18): the plan decoded plain UTF-8, so a record a
+    person's editor saved read on the disk and was refused at prep."""
+    from molbuilder.jobset.planned import Plan
+    obj = {"schema": "molbuilder/x@1", "label": "α-helix"}
+    p = persist.write_json(tmp_path / "d.json", obj)
+    p.write_bytes(b"\xef\xbb\xbf" + p.read_bytes())    # an editor's save
+    assert persist.read_json(p) == obj
+    assert Plan().read_json(p) == obj
+    assert json.loads(Plan().read_text(p)) == obj
+
+
+def test_a_record_file_holds_one_json_object(tmp_path):
+    """`job-contracts.md` § 6.1: a record file holds one JSON object
+    (`persist.read_object`); a file holding any other value is refused as
+    not reading.  THE SILENT FAILURE (to 2.69.18): a sequence's launch
+    record holding a list crashed its reader on `.get`."""
+    obj = persist.write_json(tmp_path / "a.json", {"schema": "x@1"})
+    assert persist.read_object(obj) == {"schema": "x@1"}
+    listed = persist.write_json(tmp_path / "b.json", ["x@1"])
+    with pytest.raises(ValueError, match="not a JSON object"):
+        persist.read_object(listed)
+
+
 # --------------------------------------------------------------------- #
 #  the three adopters route through the shared check                     #
 # --------------------------------------------------------------------- #

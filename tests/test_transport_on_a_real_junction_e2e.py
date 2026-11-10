@@ -919,6 +919,14 @@ def test_a_finished_relaxation_composes_and_says_how_it_ended(junction):
     said = record.provenance
     assert said["evidence"].startswith("rc=0 at "), said
     assert said["relaxation"]["converged"] == "geometry yes", said
+    # ...and the record serves the verdict as data beside the words, which
+    # the report decides on (`_run_ending.verdict_read`; until 2.69.19 the
+    # page read the words).
+    from molbuilder.calculation import open as open_calculation
+    from molbuilder.transport.record import collect_record
+    served = collect_record(open_calculation(junction.bundle),
+                            partial=True)["provenance"]["slot"]
+    assert served["relaxation"]["converged_ok"] is True, served
     assert said["relaxation"]["exit_code"] == 0, said
     assert len(record.electrode_left.elements) == _LEAD
     assert said["swap_electrodes"] is False

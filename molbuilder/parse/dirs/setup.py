@@ -25,19 +25,17 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional
 if TYPE_CHECKING:                                           # pragma: no cover
     from .record import RunFiles
 
-#: A logical as either engine spells it: fdf's words (`parse.fdf`, libfdf's
-#: own) and the 1 / 0 a PySCF value reads back as.
-from ..fdf import FDF_FALSE_WORDS, FDF_TRUE_WORDS  # noqa: E402
-_TRUE = FDF_TRUE_WORDS | {"1"}
-_FALSE = FDF_FALSE_WORDS | {"0"}
 #: fdf prints a number to ten significant digits; two values that agree to
 #: that are one value.
 _REL_TOL = 1e-8
 
 
 def _logical(text: str) -> Optional[bool]:
-    t = text.strip().lower()
-    return True if t in _TRUE else False if t in _FALSE else None
+    """fdf's words (`parse.fdf.fdf_logical`), and the 1 / 0 a PySCF value
+    reads back as."""
+    from ..fdf import fdf_logical
+    t = text.strip()
+    return {"1": True, "0": False}.get(t, fdf_logical(t))
 
 
 def _number_and_unit(text: str):

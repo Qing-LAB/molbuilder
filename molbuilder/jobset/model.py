@@ -668,7 +668,6 @@ class JobSet:
         rewrites it, its calculation by its folder --
         the root, or the one a benchmark's folder lies in
         (`calcdirs.root_of`)."""
-        import json
         from ..persist import read_json
         from .commands import command
         path = cls.path_of(folder)
@@ -677,7 +676,7 @@ class JobSet:
                 return None
         elif not path.is_file():
             return None
-        body = (json.loads(plan.read_text(path)) if plan is not None
+        body = (plan.read_json(path) if plan is not None
                 else read_json(path))
         try:
             return cls.from_dict(body)

@@ -862,11 +862,14 @@ const WORKSPACE_TAG = "results:transport";
         if (prov.evidence) row("concluded", prov.evidence);
         const relaxed = prov.relaxation || {};
         if (relaxed.converged) {
+            // THE VERDICT IS THE SERVER'S DATA (`converged_ok`), its words
+            // only shown.
+            const notConverged = relaxed.converged_ok === false;
             row("converged", relaxed.converged
-                + (/NO$/.test(relaxed.converged)
+                + (notConverged
                     ? " — the geometry cited is the last one SIESTA wrote, "
                       + "not a converged minimum" : ""),
-                /NO$/.test(relaxed.converged)
+                notConverged
                     ? "transport-prov-val is-weak" : "transport-prov-val");
         }
         const files = prov.files || {};

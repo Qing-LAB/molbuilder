@@ -9,9 +9,10 @@ wrapper's SCF-timing tee, being shell, gets its pattern rendered from here.
 Every pattern is read off SIESTA 5.4.2's own writer, named beside it.  The
 one older spelling kept, the 5.0 betas' ``Siesta Version``, is off that
 build's own output (a BDT run's, read 2026-09-26).
-The standard library and two leaf modules of ours, both standard library
-only -- the trajectory log's keys and the file catalogue -- imported as package
-modules here and as flat companions beside a job: it travels beside every job.
+The standard library and three modules of ours -- the trajectory log's keys,
+the file catalogue and fdf's words for a logical -- imported as package
+modules here and as flat companions beside a job (:data:`TRAVELS_WITH`): it
+travels beside every job.
 """
 from __future__ import annotations
 
@@ -934,6 +935,12 @@ DIAG_FACTS = {"Algorithm": "algorithm",
               "Parallel over k": "parallel_over_k"}
 
 
+try:
+    from ..fdf import fdf_logical  # noqa: E402
+except ImportError:  # pragma: no cover -- shipped flat beside the job
+    from fdf import fdf_logical  # type: ignore[no-redef]  # noqa: E402
+
+
 def read_diag_line(line: str, diag: dict) -> Optional[str]:
     """Record one ``diag:`` line into ``diag``; return its key, or ``None``
     when the line is not one the table keeps.  The first line wins."""
@@ -949,6 +956,10 @@ def read_diag_line(line: str, diag: dict) -> Optional[str]:
             return None
     elif key == "distribution":                    # "    4 x     5" -> "4 x 5"
         value = " x ".join(t.strip() for t in value.split("x"))
+    elif key == "parallel_over_k":                 # "  F" -> False
+        value = fdf_logical(value)
+        if value is None:
+            return None
     diag.setdefault(key, value)
     return key
 
@@ -1023,7 +1034,8 @@ def read_criterion_line(line: str, criteria: dict) -> Optional[str]:
     if m:
         col = SCF_CRITERION_OF.get(m.group(1).strip().lower())
         if col:
-            criteria.setdefault(col, {})["required"] = m.group(2).upper() == "T"
+            criteria.setdefault(col, {})["required"] = fdf_logical(
+                m.group(2))
         return col
     m = SCF_TOLERANCE.match(line)
     if m:
@@ -1055,9 +1067,9 @@ def negf_criteria(options: dict, periodic: dict) -> dict:
         if len(text) > 1:
             entry["unit"] = text[1]
         if col == "dq":
-            flag = str(options.get(TS_CHARGE_REQUIRED, "")).strip().upper()
-            if flag in ("T", "F"):
-                entry["required"] = flag == "T"
+            required = fdf_logical(options.get(TS_CHARGE_REQUIRED, ""))
+            if required is not None:
+                entry["required"] = required
         elif "required" in periodic.get(col, {}):
             entry["required"] = periodic[col]["required"]
         out[col] = entry
@@ -1382,4 +1394,5 @@ def fermi_levels(cycle: Dict[str, Any],
 #: WHAT THIS MODULE NEEDS BESIDE IT in a job's bundle -- the modules it
 #: imports there by their bare names (`runwrap.monitor_companions`).
 TRAVELS_WITH = ("molbuilder.trajectory_log.keys",
-                "molbuilder.runfiles")
+                "molbuilder.runfiles",
+                "molbuilder.parse.fdf")

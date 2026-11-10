@@ -268,7 +268,7 @@ own file unchanged, run by the job's own python, `$_mb_py`
 | it reports | read by | travels as |
 |---|---|---|
 | which files are this run's | `runfiles` — the stem, each file's role | `runfiles.py` · `identity.py` |
-| where the run is now (see below the table) | the output's ONE parser's reading pass, fed the file as it grows and chosen by the file's role: a SIESTA-family `.out` by `SiestaReader`, a PySCF run's progress log by `MolwatchReader` ([`model/parse.md`](?doc=model/parse.md) § 5d.5) | `siesta_reader.py` · `siesta_grammar.py` · `molwatch_reader.py` · `molwatch_grammar.py` · `_section_rules.py` · `keys.py` · `constants.py` · `tbtrans.py` · `transiesta.py` · `engine_atom_index.py` |
+| where the run is now (see below the table) | the output's ONE parser's reading pass, fed the file as it grows and chosen by the file's role: a SIESTA-family `.out` by `SiestaReader`, a PySCF run's progress log by `MolwatchReader` ([`model/parse.md`](?doc=model/parse.md) § 5d.5) | `siesta_reader.py` · `siesta_grammar.py` · `molwatch_reader.py` · `molwatch_grammar.py` · `_section_rules.py` · `keys.py` · `constants.py` · `tbtrans.py` · `transiesta.py` · `engine_atom_index.py` · `fdf.py` |
 | SCF iterations so far, and seconds per iteration, in the current SCF phase | the timing rule, `scf_timing_rows.timing_of`, over the run's stamped SCF rows: a SIESTA run's `.scf-timing.log`, a PySCF run's progress log ([`model/parse.md`](?doc=model/parse.md) § 5c) | `scf_timing_rows.py` · `molwatch_grammar.py` |
 | how it ended: `state`, `detail`, each SCF phase's convergence, whether a relaxation relaxed, the exit code | `run_status` over this run's files (`parse/dirs/job.py`) — the Results tab's own answer, by its order of evidence ([`running-a-job.md`](?doc=execution/running-a-job.md) § 4.2), and *unreadable*, with why, if that read fails: the monitor never stops the job and never calls a run that ended running; a SIESTA run's stderr from the session log (`wrapper_log`) | `job.py` · `_run_ending.py` · `end_lines.py` · `wrapper_log.py` · `monitor_log.py` · `runrecord.py` |
 | which fields a report may carry, and how a card says each | the one declaration, `report_fields` (§ 4.1a): `ReportField.said`, `span_words`, `pct_words` | `report_fields.py` |
@@ -291,7 +291,9 @@ of the output that begins with a line of its own (`siesta_grammar.PARTS`, § 2.8
 its own words and how many are done, the largest force beside its tolerance, and TBtrans's account of its loop —
 its passes, the one underway's per cent done and the time TBtrans says it has left, each completed pass's time
 (`tbtrans.loop_words`, the run record's and the transport report's sentence too). The Results tab builds its
-frames from the same pass.
+frames from the same pass. A file whose reading pass refuses a line — a stated atom-index map that does not read
+([`model/overview.md`](?doc=model/overview.md) § 2.2b) — states nothing that wake and is read afresh at the next;
+the monitor never stops on it.
 
 **What stays the monitor's is what no file states**: the watched PID — *when* the run ended — the machine and its
 utilisation, when to tell someone, and the envelope each channel reads.

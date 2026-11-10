@@ -217,6 +217,23 @@ def parse_frozen_atoms_line(line: str) -> Optional[List[int]]:
         return None
 
 
+def parse_atom_index_map_line(line: str) -> Optional[Dict[str, Any]]:
+    """The atom index map a ``# atom_index_map:`` header line states, as its
+    block -- or ``None`` for any other line.  A stated map that does not
+    read is refused, a :class:`ValueError` saying so: never taken as a log
+    that states none (`model/overview.md` § 2.2b).  THE ONE READER of the
+    line, for the trajectory read and the atom index door alike."""
+    import json
+    m = ATOM_INDEX_MAP.match(line.strip())
+    if m is None:
+        return None
+    try:
+        return json.loads(m.group(1))
+    except ValueError as exc:
+        raise ValueError(f"its atom_index_map line does not read: "
+                         f"{exc}") from exc
+
+
 def parse_runtime_line(line: str, runtime_info: Dict[str, Any]) -> bool:
     """Apply one ``# runtime.<key>: <value>`` header line to
     ``runtime_info`` and return whether the line matched.

@@ -104,8 +104,8 @@ tree's names and places (V-PATH, X-PATH, the server's `projects` half).
 half). **2.69.16**: the browser's path door (V-PATH and X-PATH's browser
 half, O-KEYS's folder of a path). **2.69.17**: a `.pdb` is read, never
 written (the user, 2026-11-09). **2.69.18**: the sidebar's upload says what
-landed. Next, in order, each taking the next number when it ships: record
-reading and the panels (V-READ, V-PANEL); the
+landed. **2.69.19**: record reading and the panels (V-READ, V-PANEL). Next,
+in order, each taking the next number when it ships: the
 duplicates by owning door — X-STRUCT, X-PERSIST, X-PARSE, X-TMPL, X-EXEC,
 X-ENG — and the earlier plan's rows with the page doors they share (O-STATUS,
 O-FIND, O-STATE, O-WORDS, O-KEYS with X-UI and X-PLOT; O-TESTS); then the tabs following the sidebar's folder

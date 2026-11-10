@@ -1506,8 +1506,11 @@ character beyond ASCII written as itself (`Å`, a region label's `α`). Read by
 of what a file holds and an editor may add one to a file a person keeps
 (`molbuilder.json`, [`job-request.md`](?doc=execution/job-request.md)'s two
 records); text that is not UTF-8, or not JSON, does not read. A prep reads a
-record through its plan (`Plan.read_text`: what the prep has written so far,
-otherwise the file).
+record through its plan (`Plan.read_json`, `Plan.read_text`: what the prep
+has written so far, otherwise the file, its bytes decoded as the disk's are,
+`persist.text_of`). A record read as one JSON object
+(`persist.read_object`) refuses any other value as not reading, never a
+reader's crash.
 
 **A run's status is not a file.** `run_status(run_dir)` answers it in memory
 (`parse/dirs/job.py`; its fields,
