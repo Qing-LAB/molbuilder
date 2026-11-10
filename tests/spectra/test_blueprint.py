@@ -60,15 +60,19 @@ class TestLoadEndpoint:
         or more, and another rule than three, five or seven frames.  The
         silent failure: a set written at a temperature the person never
         stated, or at a rule the page does not offer."""
+        from molbuilder.projects import populate_project_skeleton
         tree = isolated_projects_root
+        # The pair asked where a file may be written: a project's folder,
+        # the project made as New project makes it.
+        populate_project_skeleton(tree / "P", project_name="P")
+        out = tree / "P" / "structure" / "frames.xyz"
         body = {"path": str(tree / "x.spectra.json"), "mode": 1,
-                "nodes": 3,
-                "out": str(tree / "frames.xyz"), **ask}
+                "nodes": 3, "out": str(out), **ask}
         r = web_client.post("/api/spectra/frameset", data=json.dumps(body),
                             content_type="application/json")
         said = r.get_json()
         assert r.status_code == 400 and refused in said["error"], said
-        assert not (tree / "frames.xyz").exists()
+        assert not out.exists()
 
     @pytest.mark.parametrize("ask", [{"temperature_k": "warm"},
                                      {"frameset_temperature_k": -1}],

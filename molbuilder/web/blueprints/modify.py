@@ -880,7 +880,7 @@ def api_modify_lattice_from_run():
     is simply wrong), and **more than one element with none named**.
     Everything else is a note.
     """
-    from .files import _resolve_within_roots
+    from .files import _existing, _resolve_within_roots
 
     body = request.get_json(silent=True) or {}
     raw = body.get("path")
@@ -888,9 +888,7 @@ def api_modify_lattice_from_run():
         return _err("missing 'path'", 400)
     # THE FENCE IS AT THE ROUTE (web-api.md § 2.1): an untrusted path is
     # resolved through the one primitive before anything opens it.
-    path = _resolve_within_roots(raw)
-    if not (path.is_file() or path.is_dir()):
-        return _err(f"{path.name} is not there", 400)
+    path = _existing(_resolve_within_roots(raw))
 
     element = body.get("element")
     if element is not None and not isinstance(element, str):

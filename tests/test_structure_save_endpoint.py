@@ -27,12 +27,16 @@ pytest.importorskip("flask")
 
 @pytest.fixture
 def web(isolated_projects_root):
+    from molbuilder.projects import populate_project_skeleton
     from molbuilder.web.app import create_app
 
-    # The test's own projects tree, the one door pointed at it, so a save-as
-    # target resolves within it.
+    # The test's own projects tree, the one door pointed at it; a structure
+    # saved where a person saves one -- a project's structure topic, the
+    # project made as New project makes it.
+    populate_project_skeleton(isolated_projects_root / "proj",
+                              project_name="proj")
     client = create_app(config={}).test_client()
-    client._root = isolated_projects_root
+    client._root = isolated_projects_root / "proj" / "structure"
     return client
 
 
@@ -60,7 +64,7 @@ def test_a_saved_browser_payload_reads_back_whole(web):
     D2: "make sure no old retired key is written again")."""
     import numpy as np
     from molbuilder.workingcopy_structure import StructureCodec
-    path = web._root / "proj" / "whole.xyz"
+    path = web._root / "whole.xyz"
     r = web.post("/api/structure/save",
                  json={"path": str(path), "structure": _browser_blob()})
     assert r.status_code == 200 and r.get_json()["ok"], r.get_json()
@@ -75,7 +79,7 @@ def test_a_saved_browser_payload_reads_back_whole(web):
 
 def test_overwrite_gate_drives_the_dialog(web):
     blob = _browser_blob()
-    path = str(web._root / "proj" / "x.xyz")
+    path = str(web._root / "x.xyz")
     assert web.post("/api/structure/save", json={"path": path, "structure": blob}).get_json()["ok"]
 
     # A second save WITHOUT overwrite -> 409 + needsOverwrite (the tab's confirm dialog).
@@ -150,7 +154,9 @@ def test_saving_a_range_and_downloading_it_produce_identical_bytes(web):
         "metadata (model/structure.md § 2.3)")
     assert downloaded["frames"] == 3
 
-    written = sorted(p.name for p in web._root.iterdir())
+    # WHAT THE SAVE WROTE: the topic's README was made with the project.
+    written = sorted(p.name for p in web._root.iterdir()
+                     if p.name != "README.md")
     assert written == ["run.molstruct.json", "run.xyz"], (
         f"a range must write ONE sidecar beside the one document: {written}")
     # The NAMES agree too, not just the bytes -- given the same stem, the two

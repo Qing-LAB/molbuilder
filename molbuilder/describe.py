@@ -231,9 +231,9 @@ def refuse_place(dest) -> None:
     it lies in -- and every folder describing makes on the way named as one
     made in the sidebar is (`projects.validate_folder_name`), a project not
     there yet by a project's name, for it is made whole
-    (:func:`project_to_make`).  A folder above that place, or a name a
-    folder to be made cannot take, is refused naming it, before anything is
-    written.  Asked by every door that describes, beside
+    (:func:`project_to_make`).  A folder above that place, a file where a
+    folder goes, or a name a folder to be made cannot take, is refused
+    naming it, before anything is written.  Asked by every door that describes, beside
     :func:`refuse_described`; the fence, which each door asks first, keeps
     a folder outside the tree out."""
     from .projects import (InvalidName, address, validate_folder_name,
@@ -249,8 +249,12 @@ def refuse_place(dest) -> None:
             f"its own further down.")
     for depth, name in enumerate(parts):
         here = tree.joinpath(*parts[:depth + 1])
-        if here.exists():
+        if here.is_dir():
             continue
+        if here.exists():
+            raise DescribeError(
+                f"{address(here, tree)} is a file, not a folder -- a "
+                f"calculation's files go in a folder of its own.")
         try:
             if depth == 0:
                 validate_name(name, kind="project")

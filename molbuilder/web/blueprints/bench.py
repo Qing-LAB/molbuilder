@@ -50,13 +50,10 @@ def api_bench_summary():
     from molbuilder.jobset.model import JobSet
     from molbuilder.jobset.materialize import bench_owner
     from molbuilder.jobset.summarize import sweep_view
-    from .files import _resolve_within_roots
+    from .files import _existing, _resolve_within_roots
 
     raw = request.args.get("path", "")
-    path = _resolve_within_roots(raw)
-
-    if not path.is_file():
-        return err(f"no such file: {raw}", 404)
+    path = _existing(_resolve_within_roots(raw), "file")
 
     try:
         jobset = (JobSet.of(path.parent)

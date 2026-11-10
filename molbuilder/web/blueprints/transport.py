@@ -65,22 +65,22 @@ bp = Blueprint("transport", __name__)
 
 def _fence(raw: str):
     """A tree-relative path → ``(citation, path, root, refusal)``: the path
-    contained to the projects tree, required to exist, and the citation
-    string the rest of the composite speaks in.  ``refusal`` is a ready
-    answer when either test fails and ``None`` when neither did -- a bad
-    request, where a path that exists and is not citable answers 200 with
-    the condition as its summary (that is how a person learns what a
-    citation needs)."""
+    contained to the projects tree, and the citation string the rest of the
+    composite speaks in.  ``refusal`` is the ready answer when the path lies
+    outside the tree, 400, and ``None`` otherwise; a path not there raises
+    the one must-exist answer (`files._existing`), 404.  A path that exists
+    and is not citable answers 200 with the condition as its summary (that
+    is how a person learns what a citation needs)."""
     from pathlib import Path
 
     from molbuilder.projects import OutsideRoot, address, at, projects_root
+    from .files import _existing
     root = Path(projects_root()).resolve()
     try:
         cited = at(raw, root)
     except OutsideRoot as exc:
         return None, None, root, err(str(exc), 400)
-    if not cited.exists():
-        return None, None, root, err(f"{raw} does not exist", 404)
+    _existing(cited)
     return address(cited, root), cited, root, None
 
 
@@ -514,15 +514,13 @@ def _transport_calc(raw: str):
     """``(calc, refusal)`` -- the transport calculation a path names: its
     ``task.json``, its folder, or a folder below it, through the one door
     for that (`calculation.at`, A16); or the refusal: 400 for a path outside
-    the projects tree or not a transport calculation's, 404 for nothing
-    there."""
+    the projects tree or not a transport calculation's; a path not there
+    raises the one must-exist answer (`files._existing`), 404."""
     from molbuilder.calculation import NotACalculation, at
-    from .files import _resolve_within_roots
-    path = _resolve_within_roots(raw)
+    from .files import _existing, _resolve_within_roots
+    path = _existing(_resolve_within_roots(raw))
     try:
         calc = at(path)
-    except FileNotFoundError:
-        return None, err(f"nothing at {raw}", 404)
     except (NotACalculation, OSError, ValueError) as exc:
         return None, err(str(exc), 400)
     from molbuilder.transport.record import not_transport
@@ -747,8 +745,6 @@ def api_transport_describe() -> Any:
                 f"bias must be a list of volts, "
                 f"got {bias_raw!r}",
                 400)
-    if dest is not None and not dest.is_dir():
-        return err(f"{dest_raw} is not a folder", 400)
     from molbuilder.describe import DescribeError
     from molbuilder.transport.describe import NotDescribed, describe
     from molbuilder.validation.task import config_class_for as _cfg_cls_for

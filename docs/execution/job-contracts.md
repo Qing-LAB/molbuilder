@@ -409,8 +409,9 @@ A calculation is a folder at the third level of the projects tree:
 own — never inside another calculation's folder
 ([`project-layout.md`](?doc=execution/project-layout.md) § 7, invariant 2a).
 Every door that describes refuses a folder above that place — the root, a
-project, a bare topic — naming it, measured from the tree the folder lies in,
-and holds each folder it makes on the way to the name one made there takes
+project, a bare topic — and a file where a folder goes, naming it, measured
+from the tree the folder lies in, and holds each folder it makes on the way to
+the name one made there takes
 (`describe.refuse_place`); a project not there yet is made whole, as New
 project makes one (`projects.populate_project_skeleton`, the one way a project
 comes to be).

@@ -124,10 +124,12 @@ def test_state_on_a_plain_folder_says_it_is_not_initialised(client, calc):
     assert body["ok"] and body["initialized"] is False
 
 
-def test_state_refuses_a_path_that_is_not_a_directory(
-        client, isolated_projects_root):
-    assert _get(client, "state",
-                isolated_projects_root / "nope").status_code == 400
+def test_state_of_a_folder_not_there_is_404(client, isolated_projects_root):
+    """A folder that is not there: 404, the one must-exist answer
+    (`web-api.md` § 1's status table, `files._existing`)."""
+    r = _get(client, "state", isolated_projects_root / "nope")
+    assert r.status_code == 404
+    assert "path does not exist" in r.get_json()["error"]
 
 
 # ------------------------------------------------------------------ #

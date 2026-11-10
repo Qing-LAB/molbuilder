@@ -420,11 +420,11 @@ def api_load():
     raw_path = (body.get("path") or "").strip()
     if not raw_path:
         return err("Empty path.", 400)
-    # The JSON-path mode routes through the canonical
-    # ``_resolve_within_roots`` helper like every other path-taking
-    # endpoint, per web-api.md § 2.1: it constrains to the projects tree.
-    from .files import _resolve_within_roots
-    raw_path = str(_resolve_within_roots(raw_path))
+    # The JSON-path mode routes through the fence like every other
+    # path-taking endpoint, per web-api.md § 2.1: it constrains to the
+    # projects tree; a path not there is the one must-exist answer.
+    from .files import _existing, _resolve_within_roots
+    raw_path = str(_existing(_resolve_within_roots(raw_path)))
 
     # If the user passed a directory, the run door picks the file to load
     # (`runs.openable`); a regular file is loaded as it is.
@@ -451,8 +451,6 @@ def api_load():
         resolved_from_dir = raw_path
     else:
         path = raw_path
-        if not os.path.isfile(path):
-            return err(f"File or directory not found: {path}", 404)
 
     # Auto-detect parser before committing to the new path so an
     # unsupported file doesn't blank out a working one.

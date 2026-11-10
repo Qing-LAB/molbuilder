@@ -108,15 +108,13 @@ def api_results_contract():
     directory say about itself" -- rather than the ``contract_of``
     extractor beneath it, so this door and the trajectory load door
     cannot come to disagree about what a directory records."""
-    from pathlib import Path
-
-    from .files import _resolve_within_roots
+    from .files import _existing, _resolve_within_roots
 
     raw = str(request.args.get("path") or "")
     if not raw:
         return err("no path given", 400)
-    p = _resolve_within_roots(raw)
-    directory = Path(p) if Path(p).is_dir() else Path(p).parent
+    p = _existing(_resolve_within_roots(raw))
+    directory = p if p.is_dir() else p.parent
     # THE RUN THAT FOLDER SPEAKS FOR: its contract from its own deck, its
     # record of the file the Results tab opens there -- both the run door's,
     # handed down because `parse/` cannot ask it (`model/parse.md` § 5b,
@@ -149,19 +147,15 @@ def api_results_dir():
     Python, so it is served the directory's own answer rather than deciding
     from the filename, in JavaScript, what the backend already owns.
     """
-    from pathlib import Path
-
     from molbuilder.jobset.runstatus import views_of
     from molbuilder.runs import folder_answer
-    from .files import _resolve_within_roots
+    from .files import _existing, _resolve_within_roots
 
     raw = str(request.args.get("path") or "")
     if not raw:
         return err("no path given", 400)
-    p = _resolve_within_roots(raw)
-    directory = Path(p) if Path(p).is_dir() else Path(p).parent
-    if not directory.is_dir():
-        return err(f"{raw}: not a directory", 404)
+    p = _existing(_resolve_within_roots(raw))
+    directory = p if p.is_dir() else p.parent
     # `run_dir`: the folder answered, as the server resolves it -- the
     # picker's spelling of the folder bound (`web-api.md`).
     return jsonify({"ok": True, "run_dir": str(directory),

@@ -291,9 +291,8 @@ def test_the_run_panel_says_what_ran_and_why_it_stopped(stopped, page,
         # A FOLDER WHOSE SCAN FAILS: one of the person's, the sidebar walked
         # to it, then deleted from the disk elsewhere before Reload -- nothing
         # is announced, and the panel must not keep the run above under it.
-        # Two levels gone: the door answers a path that is not a directory
-        # for its parent, so one missing level would be answered as its
-        # parent.
+        # The door answers a folder not there 404, the one must-exist answer
+        # (`files._existing`); the folder and the one above it both go.
         gone = root / "P" / "gone"
         (gone / "attempt").mkdir(parents=True)
         walk_to(page, gone / "attempt")

@@ -200,22 +200,78 @@ def _resolve_within_roots(raw_path: str) -> Path:
 
 
 def _next_free_name(path: Path) -> Optional[Path]:
-    """The first ``<stem>-<n><suffix>`` beside ``path`` that nothing holds,
-    each passing the rule an uploaded name passes -- ``None`` after 998 tries,
-    when the directory is truly broken."""
+    """The first ``<stem>-<n><suffix>`` beside ``path`` that nothing holds --
+    no file, no folder, no link, a dangling one included -- each passing the
+    rule an uploaded name passes; ``None`` after 998 tries, when the directory
+    is truly broken."""
     for n in range(2, 1000):
         candidate = path.with_name(f"{path.stem}-{n}{path.suffix}")
         if _validate_upload_filename(candidate.name) is not None:
             continue
-        if not candidate.exists():
+        if not os.path.lexists(candidate):
             return candidate
     return None
 
 
-def _must_exist(path: Path) -> None:
-    """Refuse a path that is not there: 404, in the file routes' one sentence."""
+def _existing(path: Path, kind: str = "any") -> Path:
+    """THE ONE MUST-EXIST ANSWER (`web-api.md` § 1's status table): a path
+    that is not there is 404, *path does not exist*; one of the wrong
+    ``kind`` -- ``"dir"`` or ``"file"`` -- 400, *path is not a directory* /
+    *path is not a regular file*.  Every route that needs a path to be there
+    asks it, after the fence.  Returns the path."""
     if not path.exists():
         raise _PickerError(404, f"path does not exist: {str(path)!r}")
+    if kind == "dir" and not path.is_dir():
+        raise _PickerError(400, f"path is not a directory: {str(path)!r}")
+    if kind == "file" and not path.is_file():
+        raise _PickerError(400, f"path is not a regular file: {str(path)!r}")
+    return path
+
+
+def _below_root(folder: Path, dest: Path) -> Path:
+    """A FILE'S FOLDER LIES BELOW THE PROJECTS ROOT (`web/projects.md`
+    § 4.1): the root holds projects, made by *New project* alone, so no
+    file is placed in it -- written, uploaded, moved or copied there.
+    ``dest`` is what the refusal names: the file, or the folder a move or a
+    copy was asked into.  Returns ``folder``."""
+    depth = _depth_inside_root(folder)
+    if depth is None or depth < 1:
+        raise _PickerError(
+            400, f"cannot place a file directly in the projects root; create "
+                 f"or pick a folder in it first.  Got: {str(dest)!r}")
+    return folder
+
+
+def _writable(dest: Path) -> Path:
+    """THE ONE WRITE-PATH CHECK: may a file be written at ``dest``, a path
+    already fenced (`web-api.md` § 2.1) -- its folder below the projects
+    root (:func:`_below_root`) and there (:func:`_existing`), its name an
+    upload's (:func:`_validate_upload_filename`), and ``dest`` neither a
+    folder nor a symlink.  The fence resolves the path it is given, a link
+    included, and refuses one leading out of the tree; a name it never saw
+    -- an upload's, joined to its folder -- could still be a link, the
+    person's, which the writers' temp-and-replace (`persist.write_bytes`,
+    the codec's pair) would replace unseen.  Asked by the upload,
+    the write, the structure save (`_shared.write_structure`) and the
+    frame-set write -- of every name they would write, an auto-renamed one
+    included.  Raises :class:`_PickerError`; returns ``dest``."""
+    _existing(_below_root(dest.parent, dest), "dir")
+    refused = _validate_upload_filename(dest.name)
+    if refused is not None:
+        raise _PickerError(400, refused)
+    if dest.is_dir():
+        raise _PickerError(
+            400, f"path is a directory, not a file: {str(dest)!r}.  Pick a "
+                 f"filename inside the directory.")
+    try:
+        through_a_link = dest.is_symlink()
+    except OSError as exc:
+        raise _PickerError(500, f"is_symlink check failed: {exc}") from None
+    if through_a_link:
+        raise _PickerError(
+            400, f"refusing to write through a symlink at {str(dest)!r}; "
+                 f"delete the link and retry.")
+    return dest
 
 
 def _is_basename(name: str) -> bool:
@@ -223,27 +279,47 @@ def _is_basename(name: str) -> bool:
     return not ("/" in name or "\\" in name or name in (".", ".."))
 
 
-def _replace_pair(src: Path, dst: Path, src_sidecar, dst_sidecar, *,
-                  verb: str, past: str) -> None:
-    """A structure file moved to ``dst`` with its sidecar, as one
-    (`web/projects.md`: *a structure and its sidecar move as one*): the
-    sidecar's failure puts the structure back, so a person ends where they
-    started, and is refused saying what did not go."""
+def _pair_to(src: Path, dst: Path, *, verb: str, past: str,
+             copy: bool = False) -> None:
+    """A STRUCTURE AND ITS SIDECAR, AS ONE (`web/projects.md` § 4.1): ``src``
+    to ``dst`` -- renamed or moved, or copied (``copy``) -- its paired
+    sidecar with it.  A destination whose sidecar is already there is
+    refused up front (409); the sidecar's failure undoes the first half, so
+    a person ends where they started, said; and should the undoing fail
+    too, the refusal says which file is where.  The one pair operation of
+    rename, move and copy.  A destination name anything holds -- a file, a
+    folder, a link, a dangling one included, which a copy would follow -- is
+    refused, 409, as is its sidecar's."""
+    if os.path.lexists(dst):
+        raise _PickerError(
+            409, f"destination already exists: {str(dst)!r}.  Pick a "
+                 f"different name or delete the existing entry first.")
+    src_sidecar = _existing_paired_sidecar(src)
+    dst_sidecar = sidecar_path_for(dst) if src_sidecar else None
+    if dst_sidecar is not None and os.path.lexists(dst_sidecar):
+        raise _PickerError(
+            409, f"destination sidecar already exists: "
+                 f"{dst_sidecar.name!r}.  Delete it or pick a different "
+                 f"destination before the {verb}.")
+    step = shutil.copy2 if copy else os.replace
     try:
-        os.replace(str(src), str(dst))
+        # Cross-device, permission denied, quota: the errno tells them
+        # what to do.
+        step(str(src), str(dst))
     except OSError as exc:
-        # Cross-device, permission denied, quota: the errno tells them what
-        # to do.
         raise _PickerError(
             500, f"{verb} failed: {exc.strerror or str(exc)}") from exc
-    if src_sidecar is None or dst_sidecar is None:
+    if src_sidecar is None:
         return
     try:
-        os.replace(str(src_sidecar), str(dst_sidecar))
+        step(str(src_sidecar), str(dst_sidecar))
     except OSError as exc:
         why = exc.strerror or str(exc)
         try:
-            os.replace(str(dst), str(src))
+            if copy:
+                dst.unlink()
+            else:
+                os.replace(str(dst), str(src))
         except OSError:
             raise _PickerError(
                 500, f"{verb} partially failed: structure {past} to "
@@ -253,7 +329,8 @@ def _replace_pair(src: Path, dst: Path, src_sidecar, dst_sidecar, *,
                      f"needed.") from exc
         raise _PickerError(
             500, f"{verb} failed: sidecar {verb} failed ({why}); "
-                 f"structure {verb} rolled back.") from exc
+                 + ("the structure's copy removed, so no half pair is left."
+                    if copy else f"structure {verb} rolled back.")) from exc
 
 
 def structure_door_refusal(path) -> Optional[str]:
@@ -406,9 +483,7 @@ def api_files_list():
     raw_ext  = request.args.get("ext", "")
     resolved = _resolve_within_roots(raw_path)
 
-    _must_exist(resolved)
-    if not resolved.is_dir():
-        return err(f"path is not a directory: {str(resolved)!r}", 400)
+    _existing(resolved, "dir")
 
     ext_filter: Optional[List[str]] = None
     if raw_ext:
@@ -449,7 +524,7 @@ def api_files_stat():
     raw_path = request.args.get("path", "")
     resolved = _resolve_within_roots(raw_path)
 
-    _must_exist(resolved)
+    _existing(resolved)
 
     entry = _entry_dict(resolved)
     return jsonify({
@@ -471,9 +546,7 @@ def api_files_read():
     raw_path = request.args.get("path", "")
     resolved = _resolve_within_roots(raw_path)
 
-    _must_exist(resolved)
-    if not resolved.is_file():
-        return err(f"path is not a regular file: {str(resolved)!r}", 400)
+    _existing(resolved, "file")
 
     try:
         max_bytes = int(request.args.get("max_bytes", _DEFAULT_READ_BYTES))
@@ -548,9 +621,7 @@ def api_files_download():
 
     raw_path = request.args.get("path", "")
     resolved = _resolve_within_roots(raw_path)
-    _must_exist(resolved)
-    if not resolved.is_file():
-        return err(f"path is not a regular file: {str(resolved)!r}", 400)
+    _existing(resolved, "file")
     # ``as_attachment=True`` -> ``Content-Disposition: attachment;
     # filename="<basename>"``.  ``etag=False`` so a re-download
     # always hits the fresh bytes (the file may have changed
@@ -599,8 +670,8 @@ def _refuse_what_may_not_be_zipped(resolved: Path) -> None:
     step of the prepare call: the stream half does not repeat it (it is
     addressed by token, and the bytes already exist), so this is the one
     and only place a path is judged zippable."""
-    _must_exist(resolved)
-    if not resolved.is_dir():
+    # A FILE IS SENT BY THE SINGLE-FILE DOOR, named (`web-api.md` § 4).
+    if not _existing(resolved).is_dir():
         raise _PickerError(
             400, f"path is not a directory: {str(resolved)!r} -- "
                  f"/api/files/download is the single-file door")
@@ -617,7 +688,7 @@ def _archive_plan(resolved: Path) -> dict:
 
     ``entries`` are ``(source, arcname, size)`` in the order the stream
     sends them (`zip_stream.Entry`); ``skipped`` the links whose target
-    sits outside the picker root, counted, never followed; ``left_out``
+    sits outside the projects root, counted, never followed; ``left_out``
     what the archive leaves out, each with its files and bytes: the
     storage subtrees (`_archive_excluded_dirs`) and what no copy of a run
     folder carries (`warmfiles.never_carried`, the one answer the checkpoint
@@ -873,9 +944,7 @@ def api_files_read_range():
     raw_path = request.args.get("path", "")
     resolved = _resolve_within_roots(raw_path)
 
-    _must_exist(resolved)
-    if not resolved.is_file():
-        return err(f"path is not a regular file: {str(resolved)!r}", 400)
+    _existing(resolved, "file")
 
     try:
         max_bytes = int(request.args.get(
@@ -982,9 +1051,7 @@ def api_files_mkdir():
     parent_raw = body.get("parent", "")
     name = body.get("name", "")
 
-    parent = _resolve_within_roots(parent_raw)
-    if not parent.is_dir():
-        return err(f"parent path is not a directory: {str(parent)!r}", 400)
+    parent = _existing(_resolve_within_roots(parent_raw), "dir")
 
     if not isinstance(name, str) or not name:
         return err("missing 'name' in request body", 400)
@@ -1168,35 +1235,11 @@ def api_files_upload():
     if upload is None or not upload.filename:
         return err("missing 'file' multipart part", 400)
 
-    # Validate the destination directory.
+    # THE ONE WRITE-PATH CHECK, of the file the upload would write: the
+    # basename of upload.filename, to defang any client-supplied prefix.
     target_dir = _resolve_within_roots(target_dir_raw)
-
-    if not target_dir.is_dir():
-        return err(
-            f"target_dir does not exist or is not a directory: "
-            f"{str(target_dir)!r}.  Use /api/files/mkdir to "
-            f"create it first.",
-            400)
-
-    # Depth check: target_dir must be at depth >= 1 inside the
-    # projects tree (matches the /api/files/write rule -- no
-    # writes directly into projects/ itself).  Shared helper.
-    depth = _depth_inside_root(target_dir)
-    if depth is None or depth < 1:
-        return err(
-            f"cannot upload directly into the picker root; "
-            f"create or pick a subdirectory first.  Got: "
-            f"{str(target_dir)!r}",
-            400)
-
-    # Validate the filename.  We use the basename of upload.filename
-    # to defang any client-supplied path prefix.
-    filename = os.path.basename(upload.filename)
-    refused = _validate_upload_filename(filename)
-    if refused is not None:
-        return err(refused, 400)
-
-    dest = target_dir / filename
+    dest = _writable(target_dir / os.path.basename(upload.filename))
+    filename = dest.name
     overwrite_raw = (request.form.get("overwrite") or "").strip().lower()
     overwrite = overwrite_raw in ("1", "true", "yes", "on")
     auto_rename_raw = (request.form.get("auto_rename") or "").strip().lower()
@@ -1216,22 +1259,8 @@ def api_files_upload():
                 f"candidate for {filename!r} after 998 "
                 f"tries; directory may be malfunctioning",
                 500)
-
-    # Phase 6e second-review LANDMINE #18: refuse to follow a
-    # symlink at the destination.  Without this, an attacker (or
-    # honest mistake) could plant a dangling symlink at
-    # ``<target_dir>/movie-2.gif`` pointing at ``~/.ssh/...``;
-    # the existence check above sees the link as "doesn't exist"
-    # (dangling), then upload.save writes through it.  Refuse if
-    # the destination is a symlink AT ALL.
-    try:
-        if dest.is_symlink():
-            return err(
-                f"refusing to write through a symlink at "
-                f"{str(dest)!r}; delete the link and retry.",
-                400)
-    except OSError as exc:
-        return err(f"is_symlink check failed: {exc}", 500)
+        # The name chosen is asked as any written name is.
+        _writable(dest)
     if is_geometry(dest):
         # A STRUCTURE FILE THROUGH THE ONE WRITER (`model/structure.md`
         # § 2.4): read as an import reads it, written as a pair by the save's
@@ -1308,16 +1337,9 @@ def api_files_write():
          captured at /api/files/read time.  If the file's current
          mtime differs, 409 (someone else modified it).
 
-    Validation:
-      * ``path`` must resolve inside the projects tree
-      * raw ``path`` must not contain ``..``
-      * path depth inside the picker root must be >= 1 (no writing
-        files directly into ``projects/``; the root stays clean and
-        only holds project dirs)
-      * parent directory must already exist (no implicit ``mkdir -p``;
-        use ``/api/files/mkdir`` for that)
-      * ``text`` must be a string (UTF-8 encoded by Flask's JSON
-        parser; binary writes are a separate future feature)
+    Validation: ``path`` inside the projects tree (the fence), and where a
+    file may be written (:func:`_writable`) -- an auto-renamed name too;
+    ``text`` a string (UTF-8 encoded by Flask's JSON parser).
 
     Returns ``{ok, path, size, mtime}`` on success.
     """
@@ -1336,40 +1358,9 @@ def api_files_write():
     if refused:
         return err(refused, 400)
 
-    # Depth check: the file's PARENT must be at depth >= 1 inside
-    # the picker's root.  i.e., write to projects/<proj>/<...>/file
-    # but not directly into projects/ itself.  Shared with /upload
-    # via the _depth_inside_root helper.
-    parent_depth = _depth_inside_root(resolved.parent)
-    if parent_depth is None or parent_depth < 1:
-        return err(
-            f"cannot write directly into the picker root; "
-            f"create or pick a subdirectory first.  Got: "
-            f"{str(resolved)!r}",
-            400)
-
-    # Validate the leaf name with the same regex /upload uses, so the
-    # two endpoints don't drift apart.
-    leaf_err = _validate_upload_filename(resolved.name)
-    if leaf_err is not None:
-        return err(leaf_err, 400)
-
-    parent = resolved.parent
-    if not parent.is_dir():
-        return err(
-            f"parent directory does not exist: {str(parent)!r}.  "
-            f"Use /api/files/mkdir to create it first.",
-            400)
-
-    # Reject directory targets explicitly, else the write fails with a
-    # noisy IsADirectoryError (caught as 500) and ``auto_rename``
-    # produces ``<dirname>-2`` files next to the directory.
-    if resolved.is_dir():
-        return err(
-            f"path is a directory, not a file: "
-            f"{str(resolved)!r}.  Pick a filename inside "
-            f"the directory.",
-            400)
+    # THE ONE WRITE-PATH CHECK: below the root, its folder there, an
+    # upload's name, not a folder, not a symlink.
+    _writable(resolved)
 
     # Conflict checks (both apply when relevant).
     if resolved.exists():
@@ -1402,21 +1393,10 @@ def api_files_write():
                     f"auto-rename candidate for "
                     f"{resolved.name!r} after 998 tries",
                     500)
-            resolved = chosen
+            resolved = _writable(chosen)
         else:
             return exists_answer(resolved, False)
 
-    # LANDMINE #18 mirror: refuse to clobber a symlink with text
-    # writes too.  The write_text() helper resolves and follows
-    # links; refusing here keeps the write inside the picker root.
-    try:
-        if resolved.is_symlink():
-            return err(
-                f"refusing to write through a symlink at "
-                f"{str(resolved)!r}",
-                400)
-    except OSError as exc:
-        return err(f"is_symlink check failed: {exc}", 500)
     # Step 2b USER-CUSTOM round-trip preservation -- when this write
     # is a fresh regenerate (expected_mtime is None), splice any
     # USER-CUSTOM block content from the existing target into the
@@ -1468,7 +1448,7 @@ def api_files_rename():
 
       * ``path`` must resolve inside the projects tree.
       * ``path`` must exist.
-      * ``path`` must NOT be the picker root itself (depth 0).
+      * ``path`` must NOT be the projects root itself (depth 0).
       * ``path`` must NOT be a canonical-topic subdir directly under
         a project (depth 2, name in CANONICAL_TOPICS).  Renaming
         ``projects/<proj>/spectrum/`` to anything else would orphan
@@ -1477,13 +1457,12 @@ def api_files_rename():
         NO ``..`` segments, and NOT equal to ``.`` or ``..``; a folder's
         takes its depth's name (``projects.validate_folder_name``), as one
         made there does.
-      * ``new_name`` must not already exist in the same parent
-        directory (atomic-no-overwrite policy; explicit overwrite
-        would need a separate ``overwrite=true`` flag, not currently
-        supported).
+      * nothing may already be at ``new_name`` in the same parent
+        directory, a link included (atomic-no-overwrite policy,
+        :func:`_pair_to`).
 
-    Atomicity: uses :func:`os.rename` so the operation is atomic on
-    the same filesystem.  Cross-device renames (e.g. if the path is
+    Atomicity: :func:`_pair_to`'s :func:`os.replace`, atomic on the same
+    filesystem.  Cross-device renames (e.g. if the path is
     a bind mount from another disk) are rejected with a clear error
     rather than silently falling back to copy+delete (which loses
     inode identity).
@@ -1512,7 +1491,7 @@ def api_files_rename():
 
     resolved = _resolve_within_roots(raw_path)
 
-    _must_exist(resolved)
+    _existing(resolved)
 
     # Depth check + canonical-topic protection.  Same shape as
     # delete's check.
@@ -1520,7 +1499,7 @@ def api_files_rename():
     depth = len(rel_parts)
 
     if depth == 0:
-        return err("refusing to rename the picker root itself", 400)
+        return err("refusing to rename the projects root itself", 400)
 
     if _is_canonical_topic_dir(resolved, rel_parts):
         return err(
@@ -1537,7 +1516,7 @@ def api_files_rename():
             return err(str(exc), 400)
 
     # Compute the destination.  resolved.parent is guaranteed to be
-    # inside the picker root because resolved is.
+    # inside the projects root because resolved is.
     dst = resolved.parent / new_name
 
     # No-op rename: same name -> short-circuit to success BEFORE the
@@ -1552,34 +1531,13 @@ def api_files_rename():
             "path": str(resolved),
         })
 
-    # Reject overwrite.  The atomic-no-overwrite policy: a rename to
-    # an existing entry would silently replace it (and on POSIX
-    # destroy the destination's inode).  The user almost certainly
-    # didn't mean that.  An explicit overwrite=true flag could be
-    # added later if a real use case shows up.
-    if dst.exists():
-        return err(
-            f"destination already exists: {new_name!r}.  Pick a "
-            f"different name or delete the existing entry first.",
-            409)
-
-    # Sidecar pairing.  If the source is a structure file
-    # with a paired .molstruct.json sidecar, the rename MUST take both
-    # atomically (or both rollback).  Otherwise renaming water.xyz to
-    # bridge.xyz orphans water.molstruct.json -- next load can't find
-    # the sidecar from the new stem; the user's labels silently
-    # disappear.  See `web/projects.md` § 4.1.
-    src_sidecar = _existing_paired_sidecar(resolved)
-    dst_sidecar = sidecar_path_for(dst) if src_sidecar else None
-    if dst_sidecar is not None and dst_sidecar.exists():
-        return err(
-            f"destination sidecar already exists: "
-            f"{dst_sidecar.name!r}.  Delete it or pick a different "
-            f"name before renaming the structure file.",
-            409)
-
-    _replace_pair(resolved, dst, src_sidecar, dst_sidecar,
-                  verb="rename", past="renamed")
+    # No overwrite, and the pair as one (`_pair_to`): a rename onto an
+    # existing entry would replace it silently, so it is refused, 409; and a
+    # structure file's paired .molstruct.json goes with it, both or neither
+    # -- renaming water.xyz to bridge.xyz alone would orphan
+    # water.molstruct.json, the labels lost on the next load.  See
+    # `web/projects.md` § 4.1.
+    _pair_to(resolved, dst, verb="rename", past="renamed")
 
     return jsonify({
         "ok":   True,
@@ -1616,14 +1574,8 @@ def _dest_dir(raw_dest: str) -> Path:
     """
     if not isinstance(raw_dest, str) or not raw_dest.strip():
         raise _PickerError(400, "missing 'dest_dir' in request body")
-    dst_dir = _resolve_within_roots(raw_dest)
-    if not dst_dir.exists():
-        raise _PickerError(
-            404, f"destination directory does not exist: {str(dst_dir)!r}")
-    if not dst_dir.is_dir():
-        raise _PickerError(
-            400, f"destination is not a directory: {str(dst_dir)!r}")
-    return dst_dir
+    folder = _resolve_within_roots(raw_dest)
+    return _existing(_below_root(folder, folder), "dir")
 
 
 def _new_name(raw_new_name: object, src_name: str) -> str:
@@ -1645,8 +1597,8 @@ def _new_name(raw_new_name: object, src_name: str) -> str:
 
 @bp.route("/api/files/move", methods=["POST"])
 def api_files_move():
-    """Move a FILE from one directory to another inside the picker
-    roots.  Sidecar-aware: a paired ``.molstruct.json`` moves with
+    """Move a FILE from one directory to another inside the projects
+    tree.  Sidecar-aware: a paired ``.molstruct.json`` moves with
     its structure file atomically.
 
     JSON body: ``{path, dest_dir, new_name?}``
@@ -1655,18 +1607,16 @@ def api_files_move():
       * ``path`` must resolve inside the projects tree + must
         exist + must NOT be a directory (v1 scope; directory move
         is a separate feature).
-      * Same source-protection rules as rename: refuse to move
-        the picker root itself or a canonical-topic dir at depth 2.
-      * ``dest_dir`` must resolve inside the projects tree +
-        must be an existing directory.
+      * ``dest_dir`` must resolve inside the projects tree, below its
+        root (:func:`_below_root`), and be an existing directory.
       * ``new_name`` (optional) renames during the move.  Same
         basename validation as rename.  Defaults to the source's
         basename.
       * ``os.replace`` is used; cross-device moves are rejected
         with a clean error rather than silently falling back to
         copy + delete.
-      * Refuses to overwrite an existing entry at the destination
-        (atomic-no-overwrite).
+      * Refuses to overwrite an existing entry at the destination, a
+        link included (atomic-no-overwrite, :func:`_pair_to`).
       * If the source is a structure file (.xyz / .pdb) with a
         paired ``.molstruct.json``, both files move together --
         atomic-or-rollback identical to rename.
@@ -1684,7 +1634,7 @@ def api_files_move():
 
     src = _resolve_within_roots(raw_path)
 
-    _must_exist(src)
+    _existing(src)
 
     if src.is_dir():
         return err(
@@ -1699,24 +1649,7 @@ def api_files_move():
     if dst.resolve() == src.resolve():
         return jsonify({"ok": True, "path": str(src)})
 
-    if dst.exists():
-        return err(
-            f"destination already exists: {str(dst)!r}.  Pick a "
-            f"different name or delete the existing entry first.",
-            409)
-
-    # Sidecar pairing (see rename).
-    src_sidecar = _existing_paired_sidecar(src)
-    dst_sidecar = sidecar_path_for(dst) if src_sidecar else None
-    if dst_sidecar is not None and dst_sidecar.exists():
-        return err(
-            f"destination sidecar already exists: "
-            f"{dst_sidecar.name!r}.  Delete it or pick a different "
-            f"destination before moving the structure file.",
-            409)
-
-    _replace_pair(src, dst, src_sidecar, dst_sidecar,
-                  verb="move", past="moved")
+    _pair_to(src, dst, verb="move", past="moved")
 
     return jsonify({"ok": True, "path": str(dst)})
 
@@ -1750,7 +1683,7 @@ def api_files_copy():
 
     src = _resolve_within_roots(raw_path)
 
-    _must_exist(src)
+    _existing(src)
 
     if src.is_dir():
         return err(
@@ -1773,41 +1706,7 @@ def api_files_copy():
             "pick a different 'dest_dir'.",
             400)
 
-    if dst.exists():
-        return err(
-            f"destination already exists: {str(dst)!r}.  Pick a "
-            f"different name or delete the existing entry first.",
-            409)
-
-    src_sidecar = _existing_paired_sidecar(src)
-    dst_sidecar = sidecar_path_for(dst) if src_sidecar else None
-    if dst_sidecar is not None and dst_sidecar.exists():
-        return err(
-            f"destination sidecar already exists: "
-            f"{dst_sidecar.name!r}.  Delete it or pick a different "
-            f"destination before copying the structure file.",
-            409)
-
-    try:
-        shutil.copy2(str(src), str(dst))
-    except OSError as exc:
-        return err(f"copy failed: {exc.strerror or str(exc)}", 500)
-
-    if src_sidecar is not None and dst_sidecar is not None:
-        try:
-            shutil.copy2(str(src_sidecar), str(dst_sidecar))
-        except OSError as exc:
-            # Remove the half-copy so the user doesn't have a
-            # structure without its sidecar at the destination.
-            try:
-                dst.unlink()
-            except OSError:
-                pass
-            return err(
-                f"copy failed: sidecar copy failed "
-                f"({exc.strerror or str(exc)}); structure copy "
-                f"removed to avoid a half-paired result.",
-                500)
+    _pair_to(src, dst, verb="copy", past="copied", copy=True)
 
     return jsonify({"ok": True, "path": str(dst)})
 
@@ -1822,7 +1721,7 @@ def api_files_delete():
     they can't use):
 
       * ``path`` must resolve inside the projects tree.
-      * ``path`` must NOT be the picker root itself (depth 0:
+      * ``path`` must NOT be the projects root itself (depth 0:
         refuses to delete ``projects/``).
       * ``path`` must NOT be a canonical-topic subdir directly
         under a project (depth 2 inside the root, name in
@@ -1855,7 +1754,7 @@ def api_files_delete():
 
     resolved = _resolve_within_roots(raw_path)
 
-    _must_exist(resolved)
+    _existing(resolved)
 
     # Depth check + canonical-topic protection.  We need both the
     # depth (for the root-protection + recursive-flag rules) AND
@@ -1866,7 +1765,7 @@ def api_files_delete():
 
     if depth == 0:
         return err(
-            "refusing to delete the picker root itself; "
+            "refusing to delete the projects root itself; "
             "this would wipe every project at once",
             400)
 

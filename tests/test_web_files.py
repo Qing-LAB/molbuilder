@@ -1251,7 +1251,8 @@ class TestFilesWrite:
         r = web.post("/api/files/write",
                      json={"path": target, "text": "x"})
         assert r.status_code == 400
-        assert "picker root" in r.get_json()["error"]
+        assert "cannot place a file directly in the projects root" in (
+            r.get_json()["error"])
         assert not (picker_root / "orphan.txt").exists()
 
     def test_write_dot_dot_rejected(self, web, picker_root):
@@ -1274,16 +1275,17 @@ class TestFilesWrite:
         whole chain -- a typo in a path silently makes a tree -- or by a 500
         from the OS error.
 
-        `web-api.md` § 1 status table; `mkdir` is the route that creates
-        directories.
+        `web-api.md` § 1 status table -- 404, no such directory, the one
+        must-exist answer (`files._existing`); `mkdir` is the route that
+        creates directories.
         """
         sub = picker_root / "myproj"
         sub.mkdir()
         target = str(sub / "no" / "such" / "dir" / "file.txt")
         r = web.post("/api/files/write",
                      json={"path": target, "text": "x"})
-        assert r.status_code == 400
-        assert "parent directory does not exist" in r.get_json()["error"]
+        assert r.status_code == 404
+        assert "path does not exist" in r.get_json()["error"]
 
     def test_write_rejects_non_string_text(self, web, picker_root):
         """A JSON number or object in `text` reaching the writer: either a 500
@@ -1451,6 +1453,35 @@ def test_a_folder_renamed_takes_its_depths_name(web, picker_root, folder,
     else:
         assert r.status_code == 200, r.get_json()
         assert (folder.parent / new_name).is_dir()
+
+
+def _a_structure():
+    """A structure as the page's save sends one, through the one builder
+    (`tests/support/envelope.py`)."""
+    from support.envelope import envelope
+    return envelope(["H", "H"], [[0.0, 0.0, 0.0], [0.0, 0.0, 0.74]])
+
+
+@pytest.mark.parametrize("route, body", [
+    ("/api/structure/save",
+     lambda root: {"path": str(root / "y.xyz"), "structure": _a_structure()}),
+    ("/api/spectra/frameset",
+     lambda root: {"path": str(root / "proj" / "run" / "w.spectra.json"),
+                   "mode": 1, "out": str(root / "y.xyz")}),
+], ids=["the structure save", "the frame-set write"])
+def test_a_door_beside_this_layer_writes_where_a_file_may_be(
+        web, picker_root, route, body):
+    """THE ONE WRITE-PATH CHECK (`files._writable`), asked by every door
+    that writes a file a person names -- the upload and the write here, and
+    beside them the structure save and the frame-set write: none writes
+    straight into the projects root.  THE SILENT FAILURE (to 2.69.14): the
+    structure save and the frame-set write asked the fence alone, so a
+    pair landed at the root."""
+    r = web.post(route, json=body(picker_root))
+    assert r.status_code == 400, r.get_json()
+    assert "cannot place a file directly in the projects root" in (
+        r.get_json()["error"]), r.get_json()
+    assert not (picker_root / "y.xyz").exists()
 
 
 class TestFilesRenameSidecarPairing:
@@ -1634,16 +1665,17 @@ class TestFilesMove:
         assert r.status_code == 400
         assert "directories" in r.get_json()["error"]
 
-    def test_move_refuses_when_dest_missing(self, web, picker_root):
+    def test_a_move_into_a_folder_not_there_is_404(self, web, picker_root):
         """A move into a directory that does not exist answered by creating it
         -- a typo in `dest_dir` scatters files into new folders -- or by a 500.
 
-        `web-api.md` § 1 status table. Honest note: the assertion accepts 400
-        or 404, so it does not pin WHICH refusal.
+        `web-api.md` § 1 status table: the one must-exist answer.
         """
         src = picker_root / "config.json"
         r = self._move(web, src, picker_root / "does-not-exist")
-        assert r.status_code in (400, 404)
+        assert r.status_code == 404, r.get_json()
+        assert "path does not exist" in r.get_json()["error"]
+        assert src.exists()
 
     def test_move_refuses_overwrite(self, web, picker_root):
         """A move that silently replaces a file at the destination: the
@@ -1773,10 +1805,13 @@ class TestFilesCopy:
 
         `web-api.md` § 4 (`POST /api/files/copy`).
         """
-        src = picker_root / "config.json"
-        r = self._copy(web, src, picker_root)
+        src = picker_root / "spectrum" / "BDT" / "water_spectra.spectra.json"
+        was = src.read_text()
+        r = self._copy(web, src, src.parent)
         # Same path = source.  Refused.
         assert r.status_code == 400
+        assert "resolve to the same path" in r.get_json()["error"]
+        assert src.read_text() == was
 
     def test_copy_xyz_takes_sidecar(self, web, picker_root):
         """A copied structure arriving without its sidecar: the copy silently
@@ -1873,6 +1908,40 @@ class TestFilesCopy:
         # Destination structure unlinked + sidecar never landed.
         assert not (dst_dir / "water.xyz").exists()
         assert not (dst_dir / "water.molstruct.json").exists()
+
+
+@pytest.mark.parametrize("verb", ["move", "copy"])
+def test_a_file_is_never_placed_in_the_projects_root(web, picker_root, verb):
+    """`projects.md` § 4.1: the projects root holds projects, made by New
+    project alone, so no file is moved or copied into it, as none is written
+    or uploaded there (`files._below_root`).  THE SILENT FAILURE: a file
+    beside the projects in the sidebar's top list, in no project."""
+    src = picker_root / "spectrum" / "BDT" / "water_spectra.spectra.json"
+    r = web.post(f"/api/files/{verb}",
+                 json={"path": str(src), "dest_dir": str(picker_root)})
+    assert r.status_code == 400, r.get_json()
+    assert "cannot place a file directly in the projects root" in (
+        r.get_json()["error"])
+    assert src.exists() and not (picker_root / src.name).exists()
+
+
+@pytest.mark.parametrize("verb", ["move", "copy"])
+def test_a_link_at_the_destination_is_an_entry_there(web, picker_root,
+                                                     tmp_path, verb):
+    """`projects.md` § 4.1: a destination name anything holds is refused,
+    409 -- a link too, a dangling one included (`files._pair_to`).  THE
+    SILENT FAILURE: a copy that follows the link and writes wherever it
+    points, out of the tree; a move that replaces the link unseen."""
+    src = picker_root / "config.json"
+    dst_dir = picker_root / "spectrum"
+    outside = tmp_path / "outside.json"
+    (dst_dir / "config.json").symlink_to(outside)
+    r = web.post(f"/api/files/{verb}",
+                 json={"path": str(src), "dest_dir": str(dst_dir)})
+    assert r.status_code == 409, r.get_json()
+    assert "destination already exists" in r.get_json()["error"]
+    assert not outside.exists()
+    assert (dst_dir / "config.json").is_symlink() and src.exists()
 
 
 # --------------------------------------------------------------------- #
@@ -2268,29 +2337,26 @@ class TestFilesUpload:
 
         `job-contracts.md` § 2.5; the same depth rule `write` obeys.
         """
-        # Uploading directly into the picker root (depth 0) is forbidden;
+        # Uploading directly into the projects root (depth 0) is forbidden;
         # parallels the same rule on /api/files/write.
         r = self._post(web, picker_root, "stray.txt")
         assert r.status_code == 400
-        assert "subdirectory" in r.get_json()["error"]
+        assert "cannot place a file directly in the projects root" in (
+            r.get_json()["error"])
 
-    def test_upload_to_missing_dir_400(self, web, picker_root):
+    def test_an_upload_into_a_folder_not_there_is_404(self, web, picker_root):
         """An upload into a directory that is not there answered by creating
         the path, so a stale `target_dir` silently makes a folder instead of
         reporting that the folder is gone.
 
-        `web-api.md` § 1 status table. Honest note: the assertion accepts 400
-        or 404 and so does not pin which refusal fires.
+        `web-api.md` § 1 status table: the one must-exist answer.
         """
         # target_dir resolves inside the root but doesn't exist on disk.
         nonexistent = picker_root / "proj" / "ghost"
         r = self._post(web, nonexistent, "file.txt")
-        # /api/files/upload uses the same _resolve_within_roots that
-        # treats missing paths as 404; either response indicates the
-        # endpoint rejected cleanly.
-        assert r.status_code in (400, 404)
-        body = r.get_json()
-        assert body["ok"] is False
+        assert r.status_code == 404, r.get_json()
+        assert "path does not exist" in r.get_json()["error"]
+        assert not nonexistent.exists()
 
     def test_upload_to_a_file_400(self, web, picker_root):
         """`target_dir` pointing at a file: without the directory check the
@@ -2645,9 +2711,12 @@ class TestFilesWriteAutoRename:
         assert r.get_json()["path"] == str(target / "x.txt")
         assert (target / "x.txt").read_text() == "second\n"
 
-    def test_write_refuses_symlink_target(
+    def test_a_write_at_a_link_out_of_the_tree_is_refused(
             self, web, picker_root, tmp_path):
-        """LANDMINE #18 mirror for the text-write path."""
+        """LANDMINE #18 mirror for the text-write path: a link at the path,
+        pointing out of the tree, is never followed -- the fence resolves
+        the path, the link included, and refuses where it leads
+        (`files._resolve_within_roots`, `web-api.md` § 2.1)."""
         import os
         target = picker_root / "proj"
         target.mkdir(parents=True)
@@ -2656,8 +2725,28 @@ class TestFilesWriteAutoRename:
         r = self._post(web, target / "linky.txt", "data\n",
                        overwrite=True)
         assert r.status_code == 400
-        assert "symlink" in r.get_json()["error"]
+        assert "is outside every configured root" in r.get_json()["error"]
         assert not outside.exists()
+
+    def test_auto_rename_passes_a_name_a_link_holds(
+            self, web, picker_root, tmp_path):
+        """`projects.md` § 4.1: an auto-renamed name is one nothing holds --
+        a link, a dangling one included, holds its name (`files._next_free_name`).
+        THE SILENT FAILURE: the write refused at a name the server picked
+        itself, or written through the link out of the tree."""
+        import os
+        target = picker_root / "proj"
+        target.mkdir(parents=True)
+        (target / "notes.txt").write_text("first\n")
+        outside = tmp_path / "outside.txt"
+        os.symlink(str(outside), str(target / "notes-2.txt"))
+        r = self._post(web, target / "notes.txt", "second\n",
+                       auto_rename=True)
+        assert r.status_code == 200, r.get_json()
+        assert r.get_json()["path"] == str(target / "notes-3.txt")
+        assert (target / "notes-3.txt").read_text() == "second\n"
+        assert not outside.exists()
+        assert (target / "notes-2.txt").is_symlink()
 
     def test_write_refuses_directory_target(
             self, web, picker_root):
@@ -2670,7 +2759,7 @@ class TestFilesWriteAutoRename:
         # Try to write to the directory itself.
         r = self._post(web, target, "data\n", overwrite=True)
         assert r.status_code == 400, r.get_data(as_text=True)
-        assert "directory" in r.get_json()["error"]
+        assert "path is a directory, not a file" in r.get_json()["error"]
 
     def test_write_directory_target_with_auto_rename_still_400(
             self, web, picker_root):

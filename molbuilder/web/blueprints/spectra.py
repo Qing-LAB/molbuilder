@@ -398,16 +398,19 @@ def api_spectra_frameset():
     ``{path, mode, temperature_k, nodes, out}`` -- the vibration result the
     page shows, whose folder is its run's, the temperature the frames
     sample, the rule (the generator's default when unsaid), and the pair's
-    ``.xyz``, each path inside the tree (the fence, `web-api.md` § 2.1).
+    ``.xyz``, each path inside the tree (the fence, `web-api.md` § 2.1), the
+    ``.xyz`` where a file may be written (`files._writable`).
     Answers ``{ok, path, frames, said}``, or the generator's refusal in its
     words (400)."""
     from molbuilder.spectra.mode_frames import FrameSetError, frameset_from_mode
     from molbuilder.projects import projects_root
-    from .files import _resolve_within_roots
+    from .files import _resolve_within_roots, _writable
     body = request.get_json(silent=True) or {}
     # THE RUN IS THE RESULT'S FOLDER, derived here as the export's is.
     run = _resolve_within_roots(str(body.get("path") or "")).parent
-    out = _resolve_within_roots(str(body.get("out") or ""))
+    # THE PAIR'S .xyz, WHERE A FILE MAY BE WRITTEN (the files layer's one
+    # write-path check).
+    out = _writable(_resolve_within_roots(str(body.get("out") or "")))
     try:
         mode = int(body.get("mode"))
         rule = ({} if body.get("nodes") is None
@@ -442,17 +445,15 @@ def api_spectra_export():
     from molbuilder.spectra.export import export
     from molbuilder.spectra.raman import ASK_KEYS
     from ._shared import finite_float, sent_export
-    from .files import _resolve_within_roots
+    from .files import _existing, _resolve_within_roots
     raw_path = str(request.args.get("path") or "")
+    path = _existing(_resolve_within_roots(raw_path))
     try:
-        path = _resolve_within_roots(raw_path)
         calc = at(path)
         asked = {key: finite_float(key, request.args.get(key))
                  for key in ASK_KEYS if request.args.get(key) not in (None, "")}
         got = export(calc, str(request.args.get("format") or ""),
                      folder=path if path.is_dir() else path.parent, **asked)
-    except FileNotFoundError:
-        return err(f"nothing at {raw_path}", 404)
     except (NotACalculation, ExportError, ValueError, OSError) as exc:
         return err(str(exc), 400)
     return sent_export(got)

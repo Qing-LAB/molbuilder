@@ -71,7 +71,7 @@ from molbuilder.engine_table import (EngineTableError, config_class,
 from molbuilder.structure import Structure
 from molbuilder.template import stated_config
 from molbuilder.validation import validate
-from .files import _resolve_within_roots
+from .files import _existing, _resolve_within_roots
 
 
 bp = Blueprint("build", __name__)
@@ -562,9 +562,7 @@ def api_build_load():
     body = request.get_json(silent=True) or {}
     path = body.get("path")
     if path:
-        resolved = _resolve_within_roots(path)
-        if not resolved.exists():
-            return err(f"no such file: {path}", 404)
+        resolved = _existing(_resolve_within_roots(path))
         retired: Dict[str, Any] = {}
         read_said: list = []
         # A PAIR WHOSE GEOMETRY CHANGED OPENS HERE, said: this is the door the
@@ -1289,9 +1287,7 @@ def api_task_setup_prep():
             400)
     if not dest_raw:
         return err("no calculation folder given", 400)
-    dest = _resolve_within_roots(dest_raw)
-    if not dest.is_dir():
-        return err(f"not a directory: {dest_raw}", 400)
+    dest = _existing(_resolve_within_roots(dest_raw), "dir")
 
     target = _machine_named(target)
 
@@ -1382,9 +1378,7 @@ def api_task_setup_save():
             "the two are written together",
             400)
 
-    dest = _resolve_within_roots(dest_raw)
-    if not dest.is_dir():
-        return err(f"not a directory: {dest_raw}", 400)
+    dest = _existing(_resolve_within_roots(dest_raw), "dir")
     # A FILE CHANGED ON DISK SINCE THE PAGE READ IT IS NEVER WRITTEN OVER
     # (`web/task-setup.md` § 8): the page sends what each record was when
     # the folder answer served it, compared before anything else.
@@ -1977,9 +1971,7 @@ def api_task_setup_bench_grid():
     dest_raw = str(body.get("dest") or "")
     if not dest_raw:
         return err("no folder given", 400)
-    dest = _resolve_within_roots(dest_raw)
-    if not dest.is_dir():
-        return err(f"not a directory: {dest_raw}", 400)
+    dest = _existing(_resolve_within_roots(dest_raw), "dir")
     bench = body.get("bench")
     if bench is not None and not isinstance(bench, dict):
         return err(
@@ -2339,9 +2331,7 @@ def api_task_setup_folder():
     dir_raw = str(request.args.get("dir") or "")
     if not dir_raw:
         return err("no folder given", 400)
-    folder = _resolve_within_roots(dir_raw)
-    if not folder.is_dir():
-        return err(f"not a directory: {dir_raw}", 400)
+    folder = _existing(_resolve_within_roots(dir_raw), "dir")
 
     def _read_handover():
         """The hand-over file through its one reader: `persist.read_json`,
@@ -2792,7 +2782,7 @@ def api_task_setup_commands():
             "numbers) or stages (one name) are "
             "required",
             400)
-    dest = _resolve_within_roots(dest_raw)
+    dest = _existing(_resolve_within_roots(dest_raw), "dir")
     target = _machine_named(body.get("target") or None)
     prepared = False
     if picked and kind == "task":

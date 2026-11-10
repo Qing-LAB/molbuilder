@@ -1162,7 +1162,7 @@ def test_the_timeline_indicator_says_where_you_are(
 # --------------------------------------------------------------------- #
 
 def test_saving_to_the_project_writes_the_pair_and_remembers_where(
-        page, flask_server, labelled_xyz):
+        page, flask_server, labelled_xyz, isolated_projects_root):
     """A save writes BOTH files, and the page records the target.
 
     The pair is the point: coordinates alone lose the labels, and a browser must
@@ -1171,6 +1171,13 @@ def test_saving_to_the_project_writes_the_pair_and_remembers_where(
     the viewer's (§ 6.7), and nothing was setting it: ``markSavedTo`` had no
     caller, so the readout still offered "Save as…" straight after a save.
     """
+    from molbuilder.projects import populate_project_skeleton
+    # A PROJECT TO SAVE INTO, made as New project makes one: a file is placed
+    # in a folder below the projects root, never in the root itself
+    # (`projects.md` § 4.1).
+    project = isolated_projects_root.resolve() / "P"
+    populate_project_skeleton(project, project_name="P")
+    where = project / "structure"
     _open(page, flask_server)
     _load(page, labelled_xyz)
 
@@ -1179,11 +1186,13 @@ def test_saving_to_the_project_writes_the_pair_and_remembers_where(
     page.locator("#save-to-source-btn").click()
 
     # 1. WHERE.  The picker's Choose stays disabled until a folder is
-    #    selected -- clicking a row is the selection, which is what a person
-    #    does.
-    row = page.locator("dialog .tp-row:not(.tp-row--inert)").first
+    #    selected -- opening the project and clicking its structure folder's
+    #    row is the selection, which is what a person does.
+    dialog = page.locator("dialog.molbuilder-tree-picker-dialog")
+    dialog.locator(f'li.tp-node[data-path="{project}"]'
+                   " > .tp-row > .tp-twisty").click()
+    row = dialog.locator(f'li.tp-node[data-path="{where}"] > .tp-row')
     row.wait_for(state="visible", timeout=WAIT_MS)
-    where = Path(row.locator("xpath=..").get_attribute("data-path"))
     row.click()
     page.locator("dialog [data-action='confirm']").first.click()
 

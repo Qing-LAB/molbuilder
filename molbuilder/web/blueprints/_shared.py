@@ -1013,8 +1013,10 @@ def write_structure(struct: Structure, path, *, overwrite: bool, said=()):
     response, ``{ok, path, notices}``."""
     from pathlib import Path
     from molbuilder.workingcopy_structure import StructureCodec
-    from .files import exists_answer
-    path = Path(path)
+    from .files import _writable, exists_answer
+    # THE ONE WRITE-PATH CHECK first: below the root, its folder there, an
+    # upload's name, not a folder, not a symlink.
+    path = _writable(Path(path))
     struct, notices = for_writing(struct)
     taken = exists_answer(path, overwrite)
     if taken is not None:

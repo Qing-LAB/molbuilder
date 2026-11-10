@@ -358,7 +358,7 @@ touch it. The parts:
   collapses it on desktop, and on a narrow screen it becomes a drawer. A lock
   banner covers the sidebar while an operation is in flight.
 
-### 4.1 Three rules the file operations follow, and why
+### 4.1 Four rules the file operations follow, and why
 
 **A structure file is written by the structure door, never as bytes**
 *(2.69.10)*: this layer's write refuses a `.xyz`, a `.pdb` or a
@@ -368,8 +368,24 @@ uploaded alone; the preview shows such a file and edits it nowhere
 ([`model/structure.md`](?doc=model/structure.md) § 2.4). Saving is § 3's door;
 editing is the Molbuilder tab's.
 
+**A file is placed only where a file may be.** The projects root holds
+projects, so no file is written, uploaded, moved or copied into it
+(`files._below_root`). Every name a door would write — the upload, the write,
+the structure save and the frame-set write, an auto-renamed name included —
+passes one check, `files._writable`: its folder below the root and there (a
+missing one is 404, the one must-exist answer, `files._existing`), its name an
+upload's — letters, digits, `.`, `_` and `-`, starting with a letter or a
+digit — and it neither a folder nor a symlink. The fence resolves every path
+it is given, a link included, and refuses one that leads out of the tree; a
+name it never saw — an upload's, joined to its folder — could still be a link,
+the person's, which the write's temp-and-replace would replace unseen. An
+auto-renamed name is one nothing holds, a link included. A rename, a move or a copy keeps any name without a separator *(the
+user, 2026-11-09)*, and refuses a destination anything holds — a file, a
+folder, a link, a dangling one included, which a copy would follow — 409.
+
 **A structure and its sidecar move as one.** Rename, move, copy and delete check for the
-paired `.molstruct.json` and take both. If the second half fails, the first is
+paired `.molstruct.json` and take both — rename, move and copy through one pair
+operation (`files._pair_to`). If the second half fails, the first is
 rolled back, so you end up where you started rather than with `bridge.xyz`
 beside `water.molstruct.json` — a pairing the next load cannot find, which
 loses your labels silently. If the rollback *also* fails (same directory, same
