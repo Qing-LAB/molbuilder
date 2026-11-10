@@ -494,7 +494,7 @@ one it took away — § 2; the sidebar showing one re-lists it)
 | `mkdir(parent, name)` | `POST /api/files/mkdir` |
 | `deleteEntry(path, recursive)` | `DELETE /api/files/delete` |
 | `rename(path, newName)` / `move(path, dest)` / `copy(path, dest)` | rename / move / copy |
-| `upload(dir, file)` | `POST /api/files/upload` — a structure file written as a pair (§ 4.1). A name already in the folder answers `409 {needsOverwrite, replaces}`, and **the door itself asks**, as the save door does (§ 3; `dialogs.confirmOverwrite`, one question naming what a yes replaces), posting again with `overwrite` on a yes and answering `cancelled` on a no — the caller never sees the 409 *(2.69.10; 2.69.9 asked in the sidebar's button)* |
+| `upload(dir, file)` | `POST /api/files/upload` — a structure file written as a pair (§ 4.1). A name already in the folder answers `409 {needsOverwrite, replaces}`, and **the door itself asks**, as the save door does (§ 3; `dialogs.confirmOverwrite`, one question naming what a yes replaces), posting again with `overwrite` on a yes and answering `cancelled` on a no — the caller never sees the 409 *(2.69.10; 2.69.9 asked in the sidebar's button)*. The sidebar's Upload button **says where the file landed** — its path as the server wrote it, a `.pdb` imported as its `.xyz` — and what the server said of it, the gate's `notices` verbatim, in one notification, a warning when there are notices, as the Molbuilder save says them ([`tabs.md`](?doc=web/tabs.md) § 6 step 4) *(2.69.18; it said nothing on success)* |
 
 **Locking** (local, no network) — `lock(reason)` / `unlock()` / `isLocked()` /
 `getLockReason()` / `cancelLockedOperation()`: one operation at a time, with a

@@ -129,7 +129,8 @@ def test_a_project_is_deleted_only_once_its_name_is_typed(
 
 
 def test_the_create_bar_makes_a_project_a_folder_and_an_upload(
-        page, flask_server, isolated_projects_root, tmp_path_factory):
+        page, flask_server, isolated_projects_root, tmp_path_factory,
+        data_dir):
     """The sidebar's three actions (`web/projects.md` § 4), each pressed and
     its dialog answered: what it made is on disk and in the list, and the
     sidebar is where the person now works.
@@ -185,6 +186,26 @@ def test_the_create_bar_makes_a_project_a_folder_and_an_upload(
     from molbuilder.workingcopy_structure import StructureCodec
     assert (notes / "water.molstruct.json").is_file()
     assert StructureCodec().load(notes / "water.xyz").n_atoms == 3
+    # ...AND SAID WHERE IT LANDED (`projects.md` § 5, `upload`): the path the
+    # server wrote.  THE SILENT FAILURE (to 2.69.17): nothing said on success.
+    said = page.locator("#app-notifications .app-notification",
+                        has_text="Uploaded water.xyz")
+    expect(said).to_contain_text("as made/user/notes/water.xyz.",
+                                 timeout=WAIT_MS)
+
+    # A PDB A PERSON BRINGS IN is imported as its .xyz (`model/structure.md`
+    # § 2.4: a .pdb is read, never written), and the sidebar says so.
+    pdb = data_dir / "multi_chain_well_formed.pdb"
+    bar.locator("#ps-create-upload-btn").click()
+    asked.wait_for(state="visible", timeout=WAIT_MS)
+    asked.locator("input[data-role='file']").set_input_files(str(pdb))
+    asked.locator("[data-action='confirm']").click()
+    row(page, notes / "multi_chain_well_formed.xyz").wait_for(
+        state="visible", timeout=WAIT_MS)
+    expect(page.locator("#app-notifications .app-notification",
+                        has_text=f"Uploaded {pdb.name}")).to_contain_text(
+        "as made/user/notes/multi_chain_well_formed.xyz.", timeout=WAIT_MS)
+    assert not (notes / pdb.name).exists()
 
     # THE SAME NAME AGAIN (`projects.md` § 3, 2.69.10): the files door asks
     # the one overwrite question, naming both halves a yes replaces, and a

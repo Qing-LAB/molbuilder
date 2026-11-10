@@ -103,10 +103,9 @@ tree's names and places (V-PATH, X-PATH, the server's `projects` half).
 **2.69.15**: the files layer's checks (the rest of V-PATH and X-PATH's server
 half). **2.69.16**: the browser's path door (V-PATH and X-PATH's browser
 half, O-KEYS's folder of a path). **2.69.17**: a `.pdb` is read, never
-written (the user, 2026-11-09). Next, in order, each taking the next number
-when it ships: the sidebar's upload saying what landed — it says nothing on
-success today, so a `.pdb` imported as its `.xyz` and the gate's notices go
-unseen (found 2026-11-10); record reading and the panels (V-READ, V-PANEL); the
+written (the user, 2026-11-09). **2.69.18**: the sidebar's upload says what
+landed. Next, in order, each taking the next number when it ships: record
+reading and the panels (V-READ, V-PANEL); the
 duplicates by owning door — X-STRUCT, X-PERSIST, X-PARSE, X-TMPL, X-EXEC,
 X-ENG — and the earlier plan's rows with the page doors they share (O-STATUS,
 O-FIND, O-STATE, O-WORDS, O-KEYS with X-UI and X-PLOT; O-TESTS); then the tabs following the sidebar's folder

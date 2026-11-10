@@ -211,7 +211,18 @@ async function _doUpload() {
   if (r && (r.aborted || r.cancelled)) return;
   if (!r || !r.ok) {
     tell("error", (r && r.error) || "Upload failed.");
+    return;
   }
+  /* SAID WHERE IT LANDED (`projects.md` § 5, `upload`): the path the server
+   * wrote -- a `.pdb` imported as its `.xyz` -- and what the server said of
+   * it, the gate's notices verbatim, a warning when there are any, as the
+   * Molbuilder save says them (`tabs.md` § 6 step 4). */
+  const heard = (Array.isArray(r.notices) ? r.notices : [])
+    .map((n) => n && n.message).filter(Boolean);
+  tell(heard.length ? "warn" : "info",
+       "Uploaded " + file.name + " as "
+       + projects.relativeToProjects(r.path) + "."
+       + (heard.length ? "  " + heard.join("  ") : ""));
 }
 
 export function initForms() {
