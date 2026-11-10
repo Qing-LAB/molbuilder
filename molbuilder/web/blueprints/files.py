@@ -2,7 +2,7 @@
 
 Routes:
 
-    GET  /api/files/roots               list of allowed root paths
+    GET  /api/files/roots               the root it serves, as a list of one
     GET  /api/files/list?path=...&ext=  directory listing
     GET  /api/files/stat?path=...       file metadata
     GET  /api/files/read?path=...       text contents (size-capped)
@@ -31,9 +31,8 @@ Every endpoint that takes a ``path`` query parameter runs it through
      step already prevents escaping the roots, but rejecting ``..``
      in the user-supplied string gives a cleaner error than waiting
      for the equal-or-inside-a-root check to fail).
-  4. Requires the resolved path to equal-or-be-inside one of the
-     allowed roots, as defined by
-     :meth:`Capabilities.file_picker_roots`.
+  4. Requires the resolved path to equal-or-be-inside the projects
+     tree, ``projects.projects_root`` -- the one root it serves.
 
 Anything that fails validation gets HTTP 400 with a JSON error.
 
@@ -54,12 +53,11 @@ from typing import Dict, List, Optional, Tuple
 from flask import Blueprint, jsonify, request
 from ._shared import err
 
-from molbuilder import diagnostics
 from molbuilder.sidecars.molstruct import sidecar_path_for
 from molbuilder.projects import (
-    CANONICAL_TOPICS, InvalidName, OutsideRoot,
-    contain, populate_project_skeleton,
-    validate_name, validate_topic,
+    CANONICAL_TOPICS, PROJECTS_ROOT_NAME, InvalidName, OutsideRoot,
+    contain, populate_project_skeleton, project_dir, projects_root,
+    segments, validate_folder_name,
 )
 
 bp = Blueprint("files", __name__)
@@ -89,15 +87,22 @@ class _PickerError(Exception):
         self.message = message
 
 
-def _allowed_roots() -> Tuple[Tuple[Path, str], ...]:
-    """Roots the picker is allowed to browse.  Asks
-    ``projects.projects_root()`` at each call; nothing is cached."""
-    return diagnostics.get_capabilities().file_picker_roots()
+def _root() -> Path:
+    """THE ONE ROOT this layer serves: the projects tree,
+    ``projects.projects_root``, resolved -- asked at each call, nothing
+    cached -- refused 400 where it cannot be read on this machine."""
+    try:
+        return Path(projects_root()).expanduser().resolve()
+    except (OSError, RuntimeError):
+        raise _PickerError(
+            400,
+            "the projects folder cannot be read on this machine, so the "
+            "file picker has nothing to browse.")
 
 
 def _depth_inside_root(resolved: Path) -> Optional[int]:
-    """Depth of ``resolved`` inside whichever allowed picker root
-    contains it; ``None`` when no root contains it.
+    """Depth of ``resolved`` inside the projects tree this layer serves;
+    ``None`` outside it.
 
     Depth 0 = the root itself; depth 1 = a project directory under
     the root; depth 2 = a topic directory under a project; etc.
@@ -107,41 +112,6 @@ def _depth_inside_root(resolved: Path) -> Optional[int]:
     """
     parts = _rel_parts_inside_root(resolved)
     return None if parts is None else len(parts)
-
-
-def calculation_folder_refusal(resolved: Path) -> Optional[str]:
-    """Why ``resolved`` cannot hold a calculation, or ``None``: a
-    calculation lives under a topic -- project / topic / its folder, three
-    levels inside the picker's root (`job-contracts.md` § 2.5).  Asked by
-    every door that writes a calculation into a folder (Build's hand-over,
-    the Transport tab's Describe), so they refuse in one set of words."""
-    depth = _depth_inside_root(resolved)
-    if depth is None or depth < 3:
-        return ("That folder is too high in the tree -- a calculation lives "
-                "under a topic (projects / project / topic / your folder). "
-                "Pick or make one further down in the sidebar.")
-    return None
-
-
-def _root_containing(candidate) -> "Optional[Tuple[Path, Path]]":
-    """``(root, resolved)`` for the first allowed root that contains
-    ``candidate``, or ``None``.
-
-    **The one place that asks "which root is this in?"** -- this resolver,
-    the depth rule the write/delete/upload endpoints share, and the new-name
-    validator all ask it here.  Three copies of a security boundary would be
-    three chances for one of them to answer differently.
-
-    The containment test itself is `projects.contain`, shared with the
-    `jobset` CLI, so the browser and the terminal cannot disagree about
-    what is reachable.
-    """
-    for root_path, _label in _allowed_roots():
-        try:
-            return root_path, contain(candidate, root_path)
-        except OutsideRoot:
-            continue
-    return None
 
 
 def _is_canonical_topic_dir(resolved, rel_parts) -> bool:
@@ -172,65 +142,43 @@ def _is_canonical_topic_dir(resolved, rel_parts) -> bool:
 
 
 def _rel_parts_inside_root(resolved) -> "Optional[Tuple[str, ...]]":
-    """The path's segments RELATIVE to the root that contains it, or
-    ``None`` when no root does (a root's own parent).
+    """The path's segments from the projects tree this layer serves
+    (`projects.segments`), or ``None`` outside it.
 
     Every endpoint with a depth rule needs this: depth 1 is a project,
     depth 2 a topic, and what is legal to rename, move, copy or delete
     depends on which.  Several copies of a depth rule would be several
     chances to disagree about what a user may delete.
     """
-    hit = _root_containing(resolved)
-    if hit is None:
-        return None
-    root_path, real = hit
-    return real.relative_to(root_path).parts
+    return segments(resolved, _root())
 
 
 def _resolve_within_roots(raw_path: str) -> Path:
-    """Resolve ``raw_path`` to an absolute Path that lies inside an
-    allowed root.
+    """Resolve ``raw_path`` to an absolute Path that lies inside the
+    projects tree.
 
     Raises :class:`_PickerError` with status 400 if the path is
-    missing, contains ``..``, or resolves outside every allowed root.
+    missing, contains ``..``, or resolves outside the projects tree.
     Existence is NOT checked here (the caller decides: a listing wants 404 on
     a missing path, but a save-as target legitimately doesn't exist yet).
     """
     if not raw_path:
         raise _PickerError(400, "missing 'path' query parameter")
-
-    roots = _allowed_roots()
-    if not roots:
-        raise _PickerError(
-            400,
-            "the projects folder cannot be read on this machine, so the "
-            "file picker has nothing to browse.",
-        )
-
+    root = _root()
     # THE fence is `projects.contain` -- one implementation, shared with the
     # `jobset` CLI (`projects.py`).  This function keeps what is genuinely
-    # ITS OWN: the picker's root, and an HTTP-shaped refusal that names it.
-    # The rules about `..`,
-    # `expanduser`-not-`expandvars` and resolving both sides live in the
-    # shared primitive with their reasons attached.
-    # `..` and unresolvable paths are refused for their own reason rather
-    # than as "outside every root", which would say the wrong thing.
-    if ".." in Path(raw_path).parts:
-        raise _PickerError(400, f"path may not contain '..': {raw_path!r}")
-
-    hit = _root_containing(raw_path)
-    if hit is not None:
-        return hit[1]
-
+    # ITS OWN: the root it serves, and an HTTP-shaped refusal that names it.
+    # A `..` and a path that will not resolve are said in the fence's own
+    # words (`OutsideRoot.reason`); a path outside, naming the root.
     try:
-        shown = Path(raw_path).expanduser().resolve()
-    except (OSError, RuntimeError) as exc:
-        raise _PickerError(400, f"could not resolve path: {exc}")
-    raise _PickerError(
-        400,
-        f"path {str(shown)!r} is outside every configured root; "
-        f"allowed roots: {[str(p) for p, _ in roots]}",
-    )
+        return contain(raw_path, root)
+    except OutsideRoot as exc:
+        if not exc.outside:
+            raise _PickerError(400, f"{raw_path!r}: {exc.reason}") from None
+        raise _PickerError(
+            400,
+            f"path {str(exc.candidate)!r} is outside every configured "
+            f"root; allowed roots: {[str(root)]}") from None
 
 
 # --------------------------------------------------------------------- #
@@ -432,18 +380,16 @@ def _list_entries(d: Path, ext_filter: Optional[List[str]]) -> List[dict]:
 
 @bp.route("/api/files/roots", methods=["GET"])
 def api_files_roots():
-    """List the absolute root paths the picker is allowed to browse."""
-    roots = _allowed_roots()
+    """The root the picker browses, as a list of one: the projects tree --
+    none where it cannot be read on this machine."""
+    try:
+        roots = [_root()]
+    except _PickerError:
+        roots = []
     return jsonify({
         "ok": True,
-        "roots": [
-            {
-                "path":   str(p),
-                "label":  label,
-                "exists": p.exists(),
-            }
-            for p, label in roots
-        ],
+        "roots": [{"path": str(p), "label": PROJECTS_ROOT_NAME,
+                   "exists": p.exists()} for p in roots],
     })
 
 
@@ -583,7 +529,7 @@ def api_files_read():
 
 @bp.route("/api/files/download", methods=["GET"])
 def api_files_download():
-    """Stream a file from the picker roots to the browser with
+    """Stream a file from the projects tree to the browser with
     ``Content-Disposition: attachment`` so it triggers a download
     rather than rendering in-tab.
 
@@ -595,7 +541,7 @@ def api_files_download():
       * adds the download header keyed off the file's basename
 
     Same path-validation contract as the other file endpoints
-    (must resolve inside an allowed picker root, must exist, must
+    (must resolve inside the projects tree, must exist, must
     be a regular file).
     """
     from flask import send_file as _send_file
@@ -679,7 +625,7 @@ def _archive_plan(resolved: Path) -> dict:
     """
     from molbuilder.warmfiles import is_scratch, never_carried
 
-    root_path, _ = _root_containing(resolved)
+    root_path = _root()
     base = resolved.parent
     entries: List[Tuple[str, str, int]] = []
     skipped = 0
@@ -1015,56 +961,18 @@ def api_files_read_range():
 # --------------------------------------------------------------------- #
 
 
-def _validate_subdir_name(parent_abs: Path, name: str) -> None:
-    """Reject names that violate the projects-hierarchy naming rules.
-
-    The rules depend on the parent path's depth inside ``projects/``:
-
-      * Directly under ``projects/`` -> the name becomes a *project*
-        (e.g. ``projects/<name>``).  ``validate_name`` applies the
-        ``^[A-Za-z0-9_-]+$`` regex.
-      * Under ``projects/<project>/`` -> the name is a *topic* and must
-        be one of :data:`molbuilder.projects.CANONICAL_TOPICS`.
-        ``validate_topic`` enforces this.
-      * Under ``projects/<project>/<topic>/`` -> the name is a
-        *structure*; same regex as project.
-      * Deeper than that -- inside a calculation's folder, whose stages
-        and runs are molbuilder's (`execution/project-layout.md` § 1) --
-        the name is allowed as an ad-hoc subdir (the same name regex).
-
-    "Depth inside projects/" is computed relative to whichever root
-    surfaced the parent path -- the picker's single root from
-    ``Capabilities.file_picker_roots()`` IS the projects/ root, so
-    we use that here.
-
-    Raises :class:`molbuilder.projects.InvalidName` on rejection.
-    """
-    depth = len(_rel_parts_inside_root(parent_abs))
-    if depth == 1:
-        # Parent is projects/<project>/ -- the new name is a topic.
-        validate_topic(name)
-    else:
-        # All other cases use the same regex (project name, structure
-        # name, ad-hoc subdir).
-        validate_name(
-            name,
-            kind=("project" if depth == 0
-                  else "structure" if depth == 2
-                  else "subdir"),
-        )
-
-
 @bp.route("/api/files/mkdir", methods=["POST"])
 def api_files_mkdir():
-    """Create a new subdirectory inside an allowed root.
+    """Create a new subdirectory inside the projects tree.
 
     JSON body: ``{"parent": "<abs-path>", "name": "<new-dir-name>"}``
 
     Validation:
-      1. ``parent`` must resolve inside an allowed root (same check as
+      1. ``parent`` must resolve inside the projects tree (same check as
          every read endpoint).
       2. ``name`` must satisfy the naming rule for its depth inside
-         ``projects/`` -- see :func:`_validate_subdir_name`.
+         ``projects/`` -- ``projects.validate_folder_name``; none at the
+         root itself, where a project is made with its topics.
       3. The new path must not already exist (409 Conflict if it does).
 
     On success: returns ``{ok, path}`` with the absolute path of the
@@ -1082,7 +990,8 @@ def api_files_mkdir():
         return err("missing 'name' in request body", 400)
 
     try:
-        _validate_subdir_name(parent, name)
+        validate_folder_name(name, len(_rel_parts_inside_root(parent)),
+                             new=True)
     except InvalidName as exc:
         return err(str(exc), 400)
 
@@ -1118,18 +1027,15 @@ def api_projects_create():
     JSON body: ``{"name": "<project-name>"}``
 
     Validation:
-      1. ``name`` must satisfy ``validate_name`` (``^[A-Za-z0-9_-]+$``).
+      1. ``name`` is a project's name, its folder named by the tree's own
+         door (``projects.project_dir``), under ``projects_root()``.
       2. ``projects/<name>/`` must NOT already exist; 409 if it does
          (strict-create -- to add to an existing project, use
          ``/api/files/mkdir`` from inside it).
-      3. The picker's root must resolve to the canonical
-         ``projects_root()`` -- the new project lives there.  Tests
-         that monkey-patch the picker root also see the new project
-         appear at THAT root (the picker root IS the projects/ root).
 
-    Atomic: if any subdir create fails after the project root is
-    created, the whole project dir is rmtree'd before raising so
-    the user doesn't end up with a half-built tree.
+    Whole or nothing: the tree's one door makes the project
+    (``projects.populate_project_skeleton``), removing it again if any part
+    fails.
 
     On success: returns ``{ok, path, subdirs}`` -- ``path`` is the
     absolute path of the new project; ``subdirs`` is the list of
@@ -1141,27 +1047,12 @@ def api_projects_create():
     if not isinstance(name, str) or not name:
         return err("missing 'name' in request body", 400)
 
-    # Where the new project should live.  The picker's single root
-    # IS projects_root() at runtime; tests can swap it via a monkey-
-    # patched Capabilities, in which case the new project lands at
-    # the swapped root.  Use whichever root the picker is currently
-    # advertising so server + frontend stay consistent.
-    roots = _allowed_roots()
-    if not roots:
-        return err(
-            "the projects folder cannot be read on this machine, so "
-            "no project can be created.",
-            500)
-    root_path = roots[0][0]   # we ship single-root in v1
-
     try:
-        # validate_name first so the error message hits the user
-        # before we touch disk.
-        validate_name(name, kind="project")
+        # THE PROJECT'S FOLDER, named by the tree's own door -- its name
+        # checked before anything touches the disk.
+        project_path = project_dir(name).resolve()
     except InvalidName as exc:
         return err(str(exc), 400)
-
-    project_path = root_path / name
     if project_path.exists():
         return err(
             f"project {name!r} already exists at "
@@ -1170,27 +1061,19 @@ def api_projects_create():
             f"project to add to it.",
             409)
 
-    # Create the empty project root inside the picker's root, then
-    # delegate to populate_project_skeleton to bootstrap the canonical
-    # subdirs + READMEs.
+    # THE PROJECT, MADE WHOLE BY THE TREE'S ONE DOOR -- its folder, README
+    # and every topic, or nothing (`projects.populate_project_skeleton`).
     try:
-        project_path.mkdir(parents=False, exist_ok=False)
+        populate_project_skeleton(project_path, project_name=name)
     except FileExistsError:
         # Race with the existence check above.
         return err(f"project {name!r} already exists.", 409)
     except PermissionError as exc:
         return err(f"permission denied: {exc}", 403)
     except OSError as exc:
-        return err(f"mkdir failed: {exc}", 500)
-
-    try:
-        populate_project_skeleton(project_path, project_name=name)
-    except OSError as exc:
-        # Rollback on partial failure so the user can retry cleanly.
-        shutil.rmtree(project_path, ignore_errors=True)
         return err(
-            f"failed to populate project {name!r} ({exc}); "
-            f"the partial project tree has been rolled back.",
+            f"failed to make project {name!r} ({exc}); nothing of it was "
+            f"left.",
             500)
 
     return jsonify({
@@ -1243,7 +1126,7 @@ def api_files_upload():
 
     Form fields:
       * ``target_dir`` -- absolute path of the destination directory.
-        Must resolve inside an allowed picker root + be at depth >= 1
+        Must resolve inside the projects tree + be at depth >= 1
         (no uploads directly under ``projects/``) + already exist.
       * ``file``       -- the multipart file part.  ``file.filename``
         is validated against the upload-filename regex below.
@@ -1295,8 +1178,8 @@ def api_files_upload():
             f"create it first.",
             400)
 
-    # Depth check: target_dir must be at depth >= 1 inside an
-    # allowed picker root (matches the /api/files/write rule -- no
+    # Depth check: target_dir must be at depth >= 1 inside the
+    # projects tree (matches the /api/files/write rule -- no
     # writes directly into projects/ itself).  Shared helper.
     depth = _depth_inside_root(target_dir)
     if depth is None or depth < 1:
@@ -1396,7 +1279,7 @@ def api_files_upload():
 
 @bp.route("/api/files/write", methods=["POST"])
 def api_files_write():
-    """Write text content to a file inside an allowed picker root.
+    """Write text content to a file inside the projects tree.
 
     JSON body: ``{path, text, overwrite?, auto_rename?, expected_mtime?}``
 
@@ -1426,7 +1309,7 @@ def api_files_write():
          mtime differs, 409 (someone else modified it).
 
     Validation:
-      * ``path`` must resolve inside an allowed root
+      * ``path`` must resolve inside the projects tree
       * raw ``path`` must not contain ``..``
       * path depth inside the picker root must be >= 1 (no writing
         files directly into ``projects/``; the root stays clean and
@@ -1583,7 +1466,7 @@ def api_files_rename():
     the user can't get into a state where rename succeeds where
     delete would refuse):
 
-      * ``path`` must resolve inside an allowed picker root.
+      * ``path`` must resolve inside the projects tree.
       * ``path`` must exist.
       * ``path`` must NOT be the picker root itself (depth 0).
       * ``path`` must NOT be a canonical-topic subdir directly under
@@ -1591,7 +1474,9 @@ def api_files_rename():
         ``projects/<proj>/spectrum/`` to anything else would orphan
         the project layout.
       * ``new_name`` must be a non-empty string with NO path separator,
-        NO ``..`` segments, and NOT equal to ``.`` or ``..``.
+        NO ``..`` segments, and NOT equal to ``.`` or ``..``; a folder's
+        takes its depth's name (``projects.validate_folder_name``), as one
+        made there does.
       * ``new_name`` must not already exist in the same parent
         directory (atomic-no-overwrite policy; explicit overwrite
         would need a separate ``overwrite=true`` flag, not currently
@@ -1644,6 +1529,12 @@ def api_files_rename():
             f"project layout).  Use your shell if you really "
             f"need to.",
             400)
+    # A FOLDER'S NEW NAME BY ITS DEPTH, as one made there takes it.
+    if resolved.is_dir():
+        try:
+            validate_folder_name(new_name, depth - 1, new=False)
+        except InvalidName as exc:
+            return err(str(exc), 400)
 
     # Compute the destination.  resolved.parent is guaranteed to be
     # inside the picker root because resolved is.
@@ -1701,7 +1592,7 @@ def api_files_rename():
 # --------------------------------------------------------------------- #
 #
 # Same shape + validation as /api/files/rename, but the destination
-# is a different directory (always inside an allowed picker root).
+# is a different directory (always inside the projects tree).
 # Move uses ``os.replace`` (atomic on same FS; cross-device rejected
 # with a clean error); copy uses ``shutil.copy2`` (metadata preserved;
 # cross-device fine).  Both pair the .molstruct.json sidecar when the
@@ -1716,7 +1607,7 @@ def api_files_rename():
 
 
 def _dest_dir(raw_dest: str) -> Path:
-    """``raw_dest``, resolved inside an allowed root, an existing directory.
+    """``raw_dest``, resolved inside the projects tree, an existing directory.
 
     The destination MUST already exist (move/copy don't auto-mkdir;
     use /api/files/mkdir first if needed).  Refusing this on the
@@ -1761,12 +1652,12 @@ def api_files_move():
     JSON body: ``{path, dest_dir, new_name?}``
 
     Behaviour:
-      * ``path`` must resolve inside an allowed picker root + must
+      * ``path`` must resolve inside the projects tree + must
         exist + must NOT be a directory (v1 scope; directory move
         is a separate feature).
       * Same source-protection rules as rename: refuse to move
         the picker root itself or a canonical-topic dir at depth 2.
-      * ``dest_dir`` must resolve inside an allowed picker root +
+      * ``dest_dir`` must resolve inside the projects tree +
         must be an existing directory.
       * ``new_name`` (optional) renames during the move.  Same
         basename validation as rename.  Defaults to the source's
@@ -1832,7 +1723,7 @@ def api_files_move():
 
 @bp.route("/api/files/copy", methods=["POST"])
 def api_files_copy():
-    """Copy a FILE inside the picker roots, optionally to a different
+    """Copy a FILE inside the projects tree, optionally to a different
     directory and/or under a new name.  Sidecar-aware: a paired
     ``.molstruct.json`` copies with its structure file.
 
@@ -1923,14 +1814,14 @@ def api_files_copy():
 
 @bp.route("/api/files/delete", methods=["DELETE"])
 def api_files_delete():
-    """Remove a file or directory inside an allowed picker root.
+    """Remove a file or directory inside the projects tree.
 
     JSON body: ``{path, recursive?}``
 
     Validation contract (matches the JS ``_isDeletableEntry`` gate so the user never sees a control
     they can't use):
 
-      * ``path`` must resolve inside an allowed picker root.
+      * ``path`` must resolve inside the projects tree.
       * ``path`` must NOT be the picker root itself (depth 0:
         refuses to delete ``projects/``).
       * ``path`` must NOT be a canonical-topic subdir directly

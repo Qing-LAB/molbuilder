@@ -58,13 +58,12 @@ def cited_pair_path(task, base: Path) -> Optional[Path]:
     citation = citation_of(task)
     if not citation:
         return None
-    from ..projects import OutsideRoot, contain, find_projects_root
+    from ..projects import OutsideRoot, at, find_projects_root
     found = find_projects_root(base)
     if found is None:
         return None
-    root = Path(found)
     try:
-        path = contain(root / citation, root)
+        path = at(citation, found)
     except OutsideRoot:
         return None
     return path if path.is_file() else None

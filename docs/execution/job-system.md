@@ -1320,6 +1320,10 @@ molbuilder describe --structure BDT-Au/structure/bdt.xyz \
   the pseudopotential library too; `describe` takes no positionals.
 - **The engine and the kind are stated, every time** (`--engine`,
   `--calculation`): nothing is guessed from a folder's name.
+- **The folder is a calculation's place**: one above it — the projects root,
+  a project, a bare topic — is refused naming it, a calculation living under a
+  topic ([`job-contracts.md`](?doc=execution/job-contracts.md) § 2.5;
+  `describe.refuse_place`, which every door that describes asks).
 - **The folder is a calculation's own**: one that already holds a
   description, one inside another calculation's folder and one holding a
   calculation below it are refused before anything is written, naming the

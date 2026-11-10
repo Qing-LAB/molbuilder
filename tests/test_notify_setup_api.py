@@ -875,11 +875,13 @@ def test_the_card_is_offered_exactly_what_a_save_of_that_calculation_accepts(
     from support.road import described as describe
     from support.road import read_request, road_tree
 
+    from molbuilder.kind_table import kind
     c, _ = client
     tree = road_tree(tmp_path, monkeypatch)
+    # EACH UNDER ITS KIND'S TOPIC, one calculation per engine there.
     calcs = {(engine, calculation): describe(
-                 tree, f"P/{engine}-{calculation}/H2", engine=engine,
-                 calculation=calculation)
+                 tree, f"P/{kind(calculation).topic}/H2-{engine}",
+                 engine=engine, calculation=calculation)
              for engine, calculation in (("siesta", "optimization"),
                                          ("siesta", "vibration"),
                                          ("pyscf", "optimization"),

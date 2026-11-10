@@ -41,7 +41,7 @@ def provide_pseudos(struct, base: Path, citation: str, *,
     actually relaxed with.  Whether they are fit is the settings gate's
     to say, once, at each deck (`science/pseudopotentials.md` § 1).
     """
-    from ..projects import find_projects_root
+    from ..projects import OutsideRoot, at, find_projects_root
     from ..pseudos import copy_pseudopotentials, psml_sources
     from ..chemistry import species_order
 
@@ -55,8 +55,11 @@ def provide_pseudos(struct, base: Path, citation: str, *,
     if want:
         root = find_projects_root(base)
         lib = None
-        if root is not None:
-            cited = Path(root) / citation
+        try:
+            cited = at(citation, root) if root is not None else None
+        except OutsideRoot:
+            cited = None
+        if cited is not None:
             if (cited / PSEUDO_DIRNAME).is_dir():
                 lib = cited / PSEUDO_DIRNAME
             elif find_fixed(cited, PSEUDO_FILE):

@@ -209,6 +209,69 @@ def _check(desc: Description, *, generators=None) -> List[Any]:
 #  ... -> write                                                         #
 # --------------------------------------------------------------------- #
 
+def _place(dest):
+    """``(folder, tree, segments)`` of a calculation's folder ``dest``: the
+    tree it lies in, found as a calculation finds it
+    (`projects.find_projects_root`) -- the folder itself only when no tree
+    lies above it and it is the tree's own root -- and its segments from
+    there; ``tree`` ``None`` for a folder in none."""
+    from .projects import PROJECTS_ROOT_NAME, find_projects_root, segments
+    folder = Path(dest).resolve()
+    tree = find_projects_root(folder)
+    if tree is None:
+        if folder.name != PROJECTS_ROOT_NAME:
+            return folder, None, None
+        tree = folder
+    return folder, tree, segments(folder, tree)
+
+
+def refuse_place(dest) -> None:
+    """A CALCULATION'S PLACE (`job-contracts.md` § 2.5): under a topic --
+    project / topic / its own folder, three levels or more inside the tree
+    it lies in -- and every folder describing makes on the way named as one
+    made in the sidebar is (`projects.validate_folder_name`), a project not
+    there yet by a project's name, for it is made whole
+    (:func:`project_to_make`).  A folder above that place, or a name a
+    folder to be made cannot take, is refused naming it, before anything is
+    written.  Asked by every door that describes, beside
+    :func:`refuse_described`; the fence, which each door asks first, keeps
+    a folder outside the tree out."""
+    from .projects import (InvalidName, address, validate_folder_name,
+                           validate_name)
+    folder, tree, parts = _place(dest)
+    if tree is None:
+        return
+    if len(parts) < 3:
+        raise DescribeError(
+            f"{'the projects root' if not parts else address(folder, tree)} "
+            f"is too high in the tree -- a calculation lives under a topic, "
+            f"<project>/<topic>/<its folder>.  Describe it in a folder of "
+            f"its own further down.")
+    for depth, name in enumerate(parts):
+        here = tree.joinpath(*parts[:depth + 1])
+        if here.exists():
+            continue
+        try:
+            if depth == 0:
+                validate_name(name, kind="project")
+            else:
+                validate_folder_name(name, depth, new=True)
+        except InvalidName as exc:
+            raise DescribeError(
+                f"{address(here, tree)} cannot be made: {exc}") from None
+
+
+def project_to_make(dest):
+    """The project a calculation's folder ``dest`` lies in, when it is not
+    there yet -- made whole by :func:`publish`, as New project makes one
+    (`projects.populate_project_skeleton`) -- else ``None``."""
+    _folder, tree, parts = _place(dest)
+    if tree is None or not parts:
+        return None
+    project = tree / parts[0]
+    return None if project.exists() else project
+
+
 def refuse_described(dest) -> None:
     """ONE CALCULATION PER FOLDER (user, 2026-10-01: refuse): a folder that
     already holds a description is changed in Task setup or its
@@ -353,17 +416,27 @@ def publish(dest, fill) -> List[Path]:
     ``/tmp`` so the publish is a rename within one filesystem -- across
     devices it would be a copy, and a copy is not atomic.  THE STRUCTURE
     FIRST, its geometry before its sidecar (`model/structure.md` § 2.4), for
-    the records name it; then every other file by name.  Returns the paths
+    the records name it; then every other file by name.  A project the
+    folder lies in that is not there yet is made whole first
+    (:func:`project_to_make`; `projects.populate_project_skeleton`), and
+    removed again if the files are not published.  Returns the paths
     written, in that order."""
     out_dir = Path(dest)
+    project = project_to_make(out_dir)
+    if project is not None:
+        from .projects import populate_project_skeleton
+        populate_project_skeleton(project, project_name=project.name)
     out_dir.mkdir(parents=True, exist_ok=True)
     staging = Path(tempfile.mkdtemp(prefix=f".{out_dir.name}.describe-",
                                     dir=out_dir.parent))
     try:
         fill(staging)
     except BaseException:
-        # Nothing is published, so the target is exactly as it was.
+        # Nothing is published, so the target is exactly as it was -- and
+        # a project made for it is taken back.
         shutil.rmtree(staging, ignore_errors=True)
+        if project is not None:
+            shutil.rmtree(project, ignore_errors=True)
         raise
     from .sidecars.molstruct import is_geometry, is_sidecar
     written: List[Path] = []
@@ -377,5 +450,5 @@ def publish(dest, fill) -> List[Path]:
 
 
 __all__ = ["Description", "DescribeError",
-           "build_description", "publish", "refuse_described",
-           "write_description"]
+           "build_description", "project_to_make", "publish", "refuse_place",
+           "refuse_described", "write_description"]

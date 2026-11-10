@@ -182,7 +182,7 @@ _REFUSED = [
     # description is changed.  PREVENTS (the W52 review, P1a-12): describing
     # again, silently, under whatever had been prepared from it.
     ("a folder that already holds a calculation",
-     {"bundle": "P/optimization/H2", "name": "H3"},
+     {"bundle": "P/optimization/series/H2", "name": "H3"},
      "already holds a calculation", H2),
     # A calculation is never inside another's folder, nor holds one (the
     # user, 2026-11-07: "calculations can continue from another, not within
@@ -191,12 +191,19 @@ _REFUSED = [
     # folders down inside H2, whose history then holds it and whose every
     # later act walks over it -- or one written around H2.
     ("a folder inside another calculation's folder",
-     {"bundle": "P/optimization/H2/variants/JOB"},
-     "P/optimization/H2/variants/JOB is inside the calculation "
-     "P/optimization/H2", H2),
+     {"bundle": "P/optimization/series/H2/variants/JOB"},
+     "P/optimization/series/H2/variants/JOB is inside the calculation "
+     "P/optimization/series/H2", H2),
     ("a folder that holds a calculation below it",
-     {"bundle": "P/optimization"},
-     "P/optimization holds the calculation P/optimization/H2", H2),
+     {"bundle": "P/optimization/series"},
+     "P/optimization/series holds the calculation "
+     "P/optimization/series/H2", H2),
+    # A calculation lives under a topic (`job-contracts.md` § 2.5), refused
+    # on the command line as the browser's doors refuse it
+    # (`describe.refuse_place`).  PREVENTS (to 2.69.13): a calculation
+    # described into a topic -- every later one of the project inside it.
+    ("a folder above a calculation's place", {"bundle": "P/transport"},
+     "P/transport is too high in the tree", H2),
     # `--vacuum` is the Cell page's vacuum edit, refused as it is there while
     # an axis is periodic: a bounding box is not a lattice
     # (`structure-periodicity.md` § 6.2).  PREVENTS (to 2.69.12): a periodic
@@ -216,7 +223,8 @@ def test_describe_refuses_saying_why_and_writes_nothing(tmp_path, monkeypatch,
     happens while nothing has been written: every file and folder of the tree
     is as it was."""
     tree = tmp_path / "projects"
-    described(road_tree(tmp_path, monkeypatch, structure))
+    described(road_tree(tmp_path, monkeypatch, structure),
+              "P/optimization/series/H2")
     was = all_written(tree), set(tree.rglob("*"))
     r = _typed(**flags)
     assert r.exit_code != 0, r.output
@@ -253,6 +261,23 @@ def test_a_value_outside_its_recommended_range_describes_and_says_so(
     r = _typed(**{"stage-strategy": "publishable"})
     assert r.exit_code == 0, r.output
     assert "outside the recommended range" in r.output, r.output
+
+
+def test_a_project_not_there_yet_is_made_whole(tmp_path, monkeypatch):
+    """A calculation described into a project that is not there yet: the
+    project is made as New project makes one -- its README and every topic
+    folder (`project-layout.md` § 1.1; `projects.populate_project_skeleton`)
+    -- and the line says so.  THE SILENT FAILURE (to 2.69.13): a bare
+    project folder, with no topics, made by `molbuilder describe`."""
+    from molbuilder.projects import list_topics
+    tree = road_tree(tmp_path, monkeypatch)
+    r = _typed(bundle="Q/optimization/JOB")
+    assert r.exit_code == 0, r.output
+    assert (tree / "Q" / "README.md").is_file()
+    assert list_topics("Q", base=tree.parent) == [
+        "structure", "pseudopotential", "optimization", "spectrum",
+        "transport", "user"]
+    assert "Made the project Q" in r.output, r.output
 
 
 def test_a_failure_while_writing_publishes_nothing(tmp_path, monkeypatch):

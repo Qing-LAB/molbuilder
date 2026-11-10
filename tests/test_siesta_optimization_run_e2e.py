@@ -61,7 +61,7 @@ def capped(tmp_path_factory):
     from support.real_runs import on_the_road
     from support.road import described, group_words, jobset, structure_saved
     with on_the_road(tmp_path_factory, "capped") as tree:
-        bundle = described(tree, "P/opt/H2cap",
+        bundle = described(tree, "P/optimization/H2cap",
                            structure=structure_saved(tree, H2), name="H2",
                            calculation="optimization", stage_strategy="",
                            execution={"mpi_np": 1, "omp_threads": 1})

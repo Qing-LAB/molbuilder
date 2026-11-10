@@ -157,13 +157,13 @@ def test_the_trees_own_folders_are_no_project(tmp_path, caplog):
 
 
 def test_list_topics_returns_canonical_order(tmp_path):
-    """Topics come back in CANONICAL_TOPICS order, regardless of mkdir order."""
+    """A project made whole -- here by the notebook's door, for a calculation
+    under its transport topic -- lists every topic, in the canonical order
+    (`job-contracts.md` § 2.5's table), whatever was asked for first."""
     ensure_structure_dir("p", "transport", "s", base=tmp_path)
-    ensure_structure_dir("p", "optimization", "s", base=tmp_path)
-    ensure_structure_dir("p", "spectrum", "s", base=tmp_path)
-    # The kind table's order: optimization, spectrum, transport.
     assert list_topics("p", base=tmp_path) == [
-        "optimization", "spectrum", "transport",
+        "structure", "pseudopotential", "optimization", "spectrum",
+        "transport", "user",
     ]
 
 

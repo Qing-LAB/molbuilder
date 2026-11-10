@@ -73,15 +73,15 @@ def _fence(raw: str):
     citation needs)."""
     from pathlib import Path
 
-    from molbuilder.projects import OutsideRoot, contain, projects_root
+    from molbuilder.projects import OutsideRoot, address, at, projects_root
     root = Path(projects_root()).resolve()
     try:
-        cited = contain(root / raw, root)
+        cited = at(raw, root)
     except OutsideRoot as exc:
         return None, None, root, err(str(exc), 400)
     if not cited.exists():
         return None, None, root, err(f"{raw} does not exist", 404)
-    return str(cited.relative_to(root)), cited, root, None
+    return address(cited, root), cited, root, None
 
 
 # ===================================================================== #
@@ -714,7 +714,7 @@ def api_transport_describe() -> Any:
         return err("plan is true or false", 400)
 
     # THE FOLDER, fenced before anything else (`web/web-api.md` § 2.1).
-    from molbuilder.projects import OutsideRoot, contain
+    from molbuilder.projects import OutsideRoot, at
     from pathlib import Path
     root = Path(projects_root()).resolve()
     dest_raw = str(body.get("dest") or "")
@@ -727,14 +727,9 @@ def api_transport_describe() -> Any:
                 "projects sidebar",
                 400)
         try:
-            dest = contain(Path(dest_raw), root)
+            dest = at(dest_raw, root)
         except OutsideRoot as exc:
             return err(str(exc), 400)
-        # A CALCULATION LIVES UNDER A TOPIC, as Build's door refuses it.
-        from .files import calculation_folder_refusal
-        too_high = calculation_folder_refusal(dest)
-        if too_high:
-            return err(too_high, 400)
 
     # EVERYTHING ELSE IS THE KIND'S ONE DESCRIBE (`transport.describe`), the
     # one `molbuilder describe` takes too: the citation or the calculation

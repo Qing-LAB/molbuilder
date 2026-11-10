@@ -1194,7 +1194,7 @@ def _two_stages(root):
 def two_stage_dir(isolated_projects_root):
     """:func:`_two_stages`, under the test's own projects tree --
     `isolated_projects_root` points `$MOLBUILDER_PROJECTS` at it, and
-    `file_picker_roots()` calls `projects_root()` at CALL time, so the live
+    the files layer asks `projects_root()` at CALL time, so the live
     server serves it and the page opens a folder inside it."""
     return _two_stages(isolated_projects_root / "P2")
 

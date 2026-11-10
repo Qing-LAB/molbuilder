@@ -247,20 +247,14 @@ def _resolve_bundle(ctx, param, value, *, must_exist: bool = True):
     root").  Two doors onto the same tree that disagreed about what is
     reachable would be one door too many.
     """
-    from ..projects import OutsideRoot, contain, projects_root
+    from ..projects import OutsideRoot, at, contain, projects_root
     root = Path(projects_root()).expanduser()
     raw = str(value)
-    p = Path(raw).expanduser()
-    if p.is_absolute():
-        candidate = p
-    elif raw == ".":
-        candidate = Path.cwd()
-    else:
-        candidate = root / p
 
-    # THE fence is `projects.contain`, shared with the sidebar backend.
+    # THE fence is `projects.contain`, shared with the sidebar backend: the
+    # working directory where nothing is named, else the tree address.
     try:
-        real = contain(candidate, root)
+        real = contain(Path.cwd(), root) if raw == "." else at(raw, root)
     except OutsideRoot as exc:
         if raw == ".":
             raise click.BadParameter(
@@ -318,13 +312,10 @@ def _resolve_structure(ctx, param, value):
         # transport's legitimate absence -- required-per-calculation is
         # decided in the command body, where the refusal can name why.
         return None
-    from ..projects import OutsideRoot, contain, projects_root
-    root = Path(projects_root()).expanduser()
+    from ..projects import OutsideRoot, at
     raw = str(value)
-    p = Path(raw).expanduser()
-    candidate = p if p.is_absolute() else root / p
     try:
-        real = contain(candidate, root)
+        real = at(raw)
     except OutsideRoot as exc:
         raise click.BadParameter(
             f"{raw!r} does not name a structure inside the projects tree "
@@ -558,12 +549,14 @@ def describe_cmd(structure, bundle: str,
 
     out_dir = _P(bundle)
     run_name = name or out_dir.name
-    # ONE CALCULATION PER FOLDER, NEVER ONE INSIDE ANOTHER (user,
-    # 2026-10-01, 2026-11-07: refuse), the one check every door that
-    # describes asks (`describe.refuse_described`) -- before anything is
-    # read or written (`job-system.md` § 5.1).
-    from ..describe import refuse_described
+    # A CALCULATION LIVES UNDER A TOPIC (`describe.refuse_place`), ONE PER
+    # FOLDER AND NEVER ONE INSIDE ANOTHER (user, 2026-10-01, 2026-11-07:
+    # refuse; `describe.refuse_described`) -- the two checks every door that
+    # describes asks, before anything is read or written (`job-system.md`
+    # § 5.1).
+    from ..describe import refuse_place, refuse_described
     try:
+        refuse_place(out_dir)
         refuse_described(out_dir)
     except DescribeError as exc:
         raise click.ClickException(str(exc))
@@ -733,9 +726,16 @@ def describe_cmd(structure, bundle: str,
         for _issue in desc.notes:
             click.echo(f"note: {_issue.message}", err=True)
         # The struct AS DESCRIBED travels: --vacuum edited it in memory,
-        # and a raw copy of the source would drop that choice.
+        # and a raw copy of the source would drop that choice.  A project
+        # not there yet is made whole with it (`describe.publish`).
+        from ..describe import project_to_make
+        made = project_to_make(out_dir)
         written = write_description(desc, out_dir, psml_lib=psml_lib,
                                     struct=struct)
+        if made is not None:
+            click.echo(f"Made the project {made.name} with its README and "
+                       f"topic folders, as New project makes one.",
+                       err=True)
     except DescribeError as e:
         raise click.ClickException(str(e))
     except (ValueError, OSError) as e:

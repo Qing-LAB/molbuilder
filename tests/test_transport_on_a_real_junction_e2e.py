@@ -304,7 +304,7 @@ def junction(tmp_path_factory):
     with on_the_road(tmp_path_factory, "junction") as tree:
         # THE RELAXATION -- an ordinary optimization, one stage.
         relax = RealRun(tree=tree, bundle=described(
-            tree, "P/opt/J", structure=structure_saved(tree, _junction()),
+            tree, "P/optimization/J", structure=structure_saved(tree, _junction()),
             name="J", calculation="optimization", stage_strategy="",
             execution={"mpi_np": 1, "omp_threads": 1}))
         # ITS TEMPLATE SET AS A PERSON SETS IT, each value said to be the
@@ -315,7 +315,7 @@ def junction(tmp_path_factory):
               *group_words(relax.bundle, "coarse"), "--target", "this")
         taken(relax, "launch", "launch", "task", "--stage", "coarse",
               "--mode", "direct", "--foreground", "--yes")
-        cite = "P/opt/J/01_coarse/run-0"
+        cite = "P/optimization/J/01_coarse/run-0"
         cited_before = all_written(tree / cite)
 
         # THE PAIR -- the finished relaxation saved as a structure pair on
@@ -443,7 +443,7 @@ def junction(tmp_path_factory):
                                         | {_at(_LEAD + _WIRE // 2 - 1)})
         StructureCodec().write(held_more, tree / one_free)
         vib = RealRun(tree=tree, bundle=described(
-            tree, "P/frequency/V", structure=one_free, name="V",
+            tree, "P/spectrum/V", structure=one_free, name="V",
             calculation="vibration",
             execution={"mpi_np": 1, "omp_threads": 1}))
         set_by_the_person(vib.bundle, {**RELAXED_WITH,
@@ -453,7 +453,7 @@ def junction(tmp_path_factory):
               *group_words(vib.bundle, "freq"), "--target", "this")
         taken(vib, "launch freq", "launch", "task", "--stage", "freq",
               "--mode", "direct", "--foreground", "--yes")
-        vibration = "P/frequency/V/01_freq/run-0"
+        vibration = "P/spectrum/V/01_freq/run-0"
 
         # THE FRAME SET, written from its highest mode by the generator on
         # the command line (`engines/vibration.md` § 5.10 ③).
@@ -1203,16 +1203,19 @@ def test_describe_refuses_a_folder_above_a_calculations(junction):
     """`job-contracts.md` § 2.5, `web/task-setup.md` § 2: a calculation sits
     at the bottom of project / topic / its folder -- a topic is not a
     destination.  Describe into the kind's own topic is refused in the
-    words every door that writes a calculation says it in (Build's
-    hand-over too: `files.calculation_folder_refusal`), the topic left as
-    it was.  THE SILENT FAILURE: the description written into the topic,
+    words every door that describes says it in (`describe.refuse_place`,
+    which Build's hand-over and `molbuilder describe` ask too), the topic
+    left as it was.  THE SILENT FAILURE: the description written into the topic,
     every later transport calculation of the project sitting inside it.
     MUTATION THIS MUST FAIL AGAINST: the door asking no depth."""
-    from molbuilder.web.blueprints.files import calculation_folder_refusal
+    from molbuilder.projects import address, find_projects_root
     said = junction.said["describe into a topic"]
     assert said.exit_code == 400, said.output
-    assert json.loads(said.output)["error"] == calculation_folder_refusal(
-        junction.topic), said.output
+    error = json.loads(said.output)["error"]
+    # REFUSED, NAMING IT (`job-contracts.md` § 2.5): the topic by its
+    # address in the tree.
+    named = address(junction.topic, find_projects_root(junction.topic))
+    assert named in error and "under a topic" in error, (named, error)
     assert junction.topic_after == junction.topic_before
 
 
@@ -4356,7 +4359,7 @@ def reused(junction, tmp_path_factory):
         # REFUSED BEFORE ANYTHING IS WRITTEN.
         out["refused"] = {}
         for step, flags, folder in (
-                ("not transport", ("--reuses", "P/opt/J"), "P/transport/R1"),
+                ("not transport", ("--reuses", "P/optimization/J"), "P/transport/R1"),
                 ("inside", ("--reuses", finished), f"{finished}/inner"),
                 ("its label", ("--reuses", finished, "--name", "R"),
                  "P/transport/R3"),

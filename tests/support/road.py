@@ -205,6 +205,7 @@ def structure_saved(tree: Path, structure=None, *, frames: int = 1) -> str:
     frame moving its bridge (`transport.sort.REGION_BRIDGE`), as a frame set
     a transport calculation cites must.  A tree's structure is the one its
     last call saved; a calculation described from it holds its own copy."""
+    from molbuilder.projects import populate_project_skeleton
     from molbuilder.workingcopy_structure import StructureCodec
     s = road_structure(H2 if structure is None else structure)
     if frames > 1:
@@ -213,9 +214,23 @@ def structure_saved(tree: Path, structure=None, *, frames: int = 1) -> str:
         for i, at in enumerate(moved):
             at[s.regions[REGION_BRIDGE]] += 0.01 * i
         s = s.with_frames(moved)
-    (tree / STRUCTURE).parent.mkdir(parents=True, exist_ok=True)
+    # THE ROAD'S PROJECT, MADE AS A PERSON MAKES ONE -- whole, by the
+    # tree's one door -- the structure saved into its structure topic.
+    project = tree / Path(STRUCTURE).parts[0]
+    if not project.exists():
+        populate_project_skeleton(project, project_name=project.name)
     StructureCodec().write(s, tree / STRUCTURE)
     return STRUCTURE
+
+
+def library_of(tree: Path) -> Path:
+    """THE TREE'S PSEUDOPOTENTIAL LIBRARY -- `pseudos.CONVENTIONAL_LIBRARY`
+    at the tree's root, as a person keeps it (`job-contracts.md` § 2.5a) --
+    made when not there yet: the one maker every road helper asks."""
+    from molbuilder.pseudos import CONVENTIONAL_LIBRARY
+    lib = tree / CONVENTIONAL_LIBRARY
+    lib.mkdir(exist_ok=True)
+    return lib
 
 
 def road_tree(tmp_path, monkeypatch, structure=None, *,
@@ -231,10 +246,10 @@ def road_tree(tmp_path, monkeypatch, structure=None, *,
     `support.real_runs.road_at`, the engine on the road."""
     from conftest import point_the_one_door_at, write_pseudos
     tree = point_the_one_door_at(tmp_path, monkeypatch.setenv)
-    (tree / "pseudopotential").mkdir(exist_ok=True)
+    library = library_of(tree)
     structure_saved(tree, structure, frames=frames)
     if engine == "siesta":
-        write_pseudos(tree / "pseudopotential", sorted(set(road_structure(
+        write_pseudos(library, sorted(set(road_structure(
             H2 if structure is None else structure).elements)))
     monkeypatch.chdir(tree.parent)
     return tree
@@ -258,7 +273,7 @@ def described(tree: Path, bundle: "str | None" = None, *, name: str = "H2",
     the projects tree ``tree`` the one door already points at, of the
     structure saved there (``structure``, the path from the projects root
     `describe` takes, :func:`structure_saved`'s by default) -- its folder
-    ``bundle`` from the projects root, ``P/<calculation>/<name>`` unless
+    ``bundle`` from the projects root, ``P/<its kind's topic>/<name>`` unless
     given (a second calculation in one tree takes a name or a folder of its
     own); for SIESTA, the pseudopotentials from the library ``psml_lib``
     names under the projects root -- the tree's own unless told another,
@@ -287,7 +302,10 @@ def described(tree: Path, bundle: "str | None" = None, *, name: str = "H2",
                 else "publishable"
                 if calculation == "optimization" and engine == "siesta"
                 else "")
-    where = bundle or f"P/{calculation}/{name}"
+    # THE KIND'S OWN TOPIC (the kind table's `topic`, `job-contracts.md`
+    # § 2.5), where a person describes it.
+    from molbuilder.kind_table import kind as _kind
+    where = bundle or f"P/{_kind(calculation).topic}/{name}"
     r = molbuilder("describe", *told, "--bundle", where, "--engine", engine,
                    "--name", name, "--calculation", calculation,
                    *(("--stage-strategy", strategy) if strategy else ()),
@@ -327,14 +345,20 @@ def a_new_folder(tree: Path, under: str) -> str:
 
 def fresh_calc_dir(root: Path, *, species=()) -> Path:
     """An empty folder for a calculation under the projects root ``root``
-    -- the picker refuses anything outside it -- made:
-    ``<root>/handover/optimization/probe_calc``, for a hand-over or a Save
-    to write into.  ``species``: the pseudopotentials a SIESTA calculation
+    -- the picker refuses anything outside it -- made as a person makes
+    one: the project ``handover`` whole, as New project makes it
+    (`projects.populate_project_skeleton`), then
+    ``handover/optimization/probe_calc`` in its topic, for a hand-over or a
+    Save to write into.  ``species``: the pseudopotentials a SIESTA calculation
     of them needs, beside it as a person leaves them
     (`conftest.write_pseudos`) -- the hand-over checks the folder it writes
     into (`web/handover-procedure.md` § 2.2)."""
-    d = root / "handover/optimization/probe_calc"
-    d.mkdir(parents=True, exist_ok=True)
+    from molbuilder.projects import populate_project_skeleton
+    project = root / "handover"
+    if not project.exists():
+        populate_project_skeleton(project, project_name=project.name)
+    d = project / "optimization" / "probe_calc"
+    d.mkdir(exist_ok=True)
     if species:
         from conftest import write_pseudos
         write_pseudos(d, list(species))
@@ -376,9 +400,11 @@ def described_and_prepared(tmp_path, monkeypatch, struct, engine, *,
     # AS A PAIR, through the codec: the cell, the vacuum and the frozen set
     # live in the sidecar, and a bare `.xyz` would hand prep a molecule in the
     # default box -- a different structure from the one described.
+    from molbuilder.kind_table import kind as _kind
     tree = road_tree(tmp_path, monkeypatch, struct, engine=engine)
     dest = described(
-        tree, a_new_folder(tree, calculation), name="JOB", engine=engine,
+        tree, a_new_folder(tree, _kind(calculation).topic), name="JOB",
+        engine=engine,
         calculation=calculation,
         stage_strategy="publishable" if calculation == "optimization" else None)
     stage = task_of(dest).stages[0].name

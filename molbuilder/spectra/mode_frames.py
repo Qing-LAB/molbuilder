@@ -67,7 +67,8 @@ class ModeFrames:
     def to_wire(self, root: Optional[Path] = None) -> Dict[str, Any]:
         """As a page is answered: the pair's path from ``root`` (the tree),
         each frame, and what is said."""
-        path = (str(self.path.relative_to(root)) if root is not None
+        from ..projects import address
+        path = (address(self.path, root) if root is not None
                 else str(self.path))
         return {"path": path, "frames": [dict(f) for f in self.frames],
                 "said": list(self.said)}
@@ -183,18 +184,6 @@ def at_temperature(mode: Dict[str, Any],
                                    for n in NODES}}
 
 
-def _relative(path: Path, root: Optional[Path]) -> str:
-    """``path`` from the projects tree ``root`` where it lies in it, else
-    as it is -- where a person finds the run again."""
-    path = Path(path).resolve()
-    if root is not None:
-        try:
-            return str(path.relative_to(Path(root).resolve()))
-        except ValueError:
-            pass
-    return str(path)
-
-
 def frameset_from_mode(run_folder, *, mode: int, temperature_k: float,
                        nodes: int = NODES[0], out,
                        root: Optional[Path] = None) -> ModeFrames:
@@ -212,6 +201,7 @@ def frameset_from_mode(run_folder, *, mode: int, temperature_k: float,
     than :data:`NODES`, a pair already at ``out``."""
     from ..chemistry import MASS_SOURCE
     from ..frame_average import INFO_KEY, MASS_CHANNEL, ROWS
+    from ..projects import address
     from ..runfiles import ROLE_SPECTRA
     from ..runs import on_label_at, place_of, run_of
     from ..siesta.vibration_phases import force_constants_call
@@ -358,7 +348,8 @@ def frameset_from_mode(run_folder, *, mode: int, temperature_k: float,
             if r.where == "frame":
                 write(r.name, measured[r.name], frame=f)
     built.set_info(INFO_KEY, {
-        "run": _relative(Path(run_folder), root),
+        "run": (address(run_folder, root) if root is not None
+                else str(Path(run_folder).resolve())),
         "result_sha256": sha256_of(result)})
 
     # AN ELECTRODE ATOM THE FRAMES MOVE -- written, and said in the words

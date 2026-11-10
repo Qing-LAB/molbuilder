@@ -32,7 +32,6 @@ Contract: docs/web/workspace.md § 9.
 from __future__ import annotations
 
 import logging
-import re
 
 from flask import Blueprint, jsonify, request
 from ._shared import err
@@ -46,7 +45,6 @@ _log = logging.getLogger(__name__)
 # Opaque session snapshots filed under ``<workspace_id>.<state_index>.wc.json``.
 # NEVER parsed as structure; the server just moves JSON bytes.  Validate the id
 # (no path traversal) + index.
-_WS_ID_RE = re.compile(r"^[A-Za-z0-9_-]+$")   # no dots -> unambiguous index parse
 _STATE_SUFFIX = ".wc.json"
 #: HOW DEEP A SAVED SEQUENCE GOES.  A contract term, not a capacity accident
 #: (workspace.md § 9.1): saved state exists so you can step back through recent
@@ -92,7 +90,9 @@ def _state_dir():
 
 
 def _valid_ws_id(ws_id) -> bool:
-    return isinstance(ws_id, str) and bool(_WS_ID_RE.fullmatch(ws_id))
+    # THE NAME TOKEN: no dots, so the index after it parses one way.
+    from molbuilder.runfiles import NAME_TOKEN
+    return isinstance(ws_id, str) and bool(NAME_TOKEN.fullmatch(ws_id))
 
 
 def _state_index(v):

@@ -131,13 +131,15 @@ button) listens to `onChange`.
 
 **Making and organizing files.** The sidebar drives the create/rename/move/copy/
 upload/delete operations against the server (`/api/files/*` and
-`/api/projects/create`). Folder names are checked by depth: a **new project**
-lays down `projects/<name>/` with a README and its topic folders — the
+`/api/projects/create`). Folder names are checked by depth, made or renamed
+(`projects.validate_folder_name`): a **new project** — the one way a folder is
+made at the root — lays down `projects/<name>/` with a README and its topic
+folders — the
 storage topics `structure` and `pseudopotential`, one for each calculation
 kind (`optimization`, `spectrum`, `transport`, from the kind table), and
 `user`, the free-form escape hatch ([`job-contracts.md`](?doc=execution/job-contracts.md)
 § 2.5) — and a new folder at that top topic level must take one of those
-names. The server marks which folders of a project are topics (a listing
+names; any other folder, made or renamed, takes a `[A-Za-z0-9_-]` token. The server marks which folders of a project are topics (a listing
 entry's `topic`); deleting a project or a topic folder needs a type-the-name
 confirmation, and a topic folder is not renamed from here.
 

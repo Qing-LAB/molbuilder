@@ -19,7 +19,7 @@ def test_a_pyscf_vibration_has_no_displacement_to_sweep(tmp_path, monkeypatch):
     AGAINST: the pair given a `sum` again in the kind table."""
     from support.road import WATER, described, jobset, road_tree
     bundle = described(road_tree(tmp_path, monkeypatch, WATER, engine="pyscf"),
-                       "P/frequency/V", name="W", calculation="vibration",
+                       "P/spectrum/V", name="W", calculation="vibration",
                        engine="pyscf")
     r = jobset("summarize", "task", "--bundle", bundle)
     from molbuilder.engine_table import engine

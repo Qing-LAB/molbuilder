@@ -25,11 +25,11 @@ organic-or-inorganic system that's about to be relaxed:
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 from ..identity import RestartGroup
+from ..runfiles import NAME_CHARS, NAME_TOKEN
 from ..issues import Issue
 
 # Job-layout v1 protocol (docs/execution/job-contracts.md): the basename
@@ -38,13 +38,8 @@ from ..issues import Issue
 # must be safe to embed in a filesystem path without quoting AND
 # play nicely with ``<basename>.molwatch.log`` stem/extension
 # parsing -- so we BAN dots in addition to slashes / whitespace.
-# Allowed: letters, digits, hyphens, underscores.  The HTML form's
-# ``pattern=`` attribute and the spec list the same rule; this is
-# the single Python source of truth.
-#
-# The same regex is re-used by PySCFConfig.job_name (see
-# molbuilder/config/pyscf.py) so the two configs share one rule.
-_BASENAME_RE = re.compile(r"^[A-Za-z0-9_\-]+$")
+# Allowed: letters, digits, hyphens, underscores -- the name token
+# (`runfiles.NAME_TOKEN`), which PySCFConfig.job_name's validator asks too.
 
 
 def _validate_parallel_over_k(value, cfg):
@@ -97,12 +92,12 @@ def _validate_basename(label: str):
     there*.  Prefer that shape.
     """
     def _check(value, _cfg=None):
-        if not isinstance(value, str) or not _BASENAME_RE.fullmatch(value):
+        if not isinstance(value, str) or not NAME_TOKEN.fullmatch(value):
             return Issue(
                 severity="error",
                 message=(
                     f"{label}={value!r} is not a valid job basename. "
-                    "Must match [A-Za-z0-9_-]+ (letters, digits, hyphens, "
+                    f"Must match [{NAME_CHARS}]+ (letters, digits, hyphens, "
                     "underscores).  No dots / slashes / spaces."
                 ),
                 where=f"config.{label}",

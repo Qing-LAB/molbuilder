@@ -197,7 +197,7 @@ class TestDescribeRefuses:
                        "P/transport/R", "--reuses", rel] + extra)
         assert r.exit_code != 0, r.output
         assert words in r.output, r.output
-        assert not (tmp_path / "projects" / "P" / "transport").exists()
+        assert not (tmp_path / "projects" / "P" / "transport" / "R").exists()
 
     def test_slot_on_another_kinds_description_is_refused(
             self, isolated_projects_root):

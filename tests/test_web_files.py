@@ -779,11 +779,20 @@ class TestFilesMkdir:
     """POST /api/files/mkdir creates a subdirectory inside an allowed
     root, validated against molbuilder.projects naming rules.
 
-    Depth-aware validation:
-      * directly under projects/   -> project name; ^[A-Za-z0-9_-]+$
+    Depth-aware validation (`projects.validate_folder_name`):
+      * directly under projects/   -> none: a project is made whole, by
+                                      /api/projects/create
       * under projects/<project>/  -> topic; must be in CANONICAL_TOPICS
-      * deeper                     -> structure / ad-hoc subdir; same regex
+      * deeper                     -> calculation / folder; ^[A-Za-z0-9_-]+$
     """
+
+    @staticmethod
+    def _topic(web, picker_root):
+        """A project's topic folder, where a calculation's folder is made --
+        the project made as a person makes one, New project's door."""
+        r = web.post("/api/projects/create", json={"name": "myproj"})
+        assert r.status_code == 200, r.get_json()
+        return picker_root / "myproj" / "optimization"
 
     def test_mkdir_creates_subdir_inside_root(self, web, picker_root):
         """`mkdir` reporting success without creating the directory, or
@@ -793,34 +802,50 @@ class TestFilesMkdir:
         `web-api.md` § 4 (`POST /api/files/mkdir`); `job-contracts.md` § 2.5
         for the name grammar.
         """
-        # picker_root is wired as projects/ for these tests.
+        topic = self._topic(web, picker_root)
         r = web.post(
             "/api/files/mkdir",
-            json={"parent": str(picker_root), "name": "new_project"},
+            json={"parent": str(topic), "name": "new_calc"},
         )
         assert r.status_code == 200
         j = r.get_json()
         assert j["ok"] is True
-        assert j["path"] == str((picker_root / "new_project").resolve())
-        assert (picker_root / "new_project").is_dir()
+        assert j["path"] == str((topic / "new_calc").resolve())
+        assert (topic / "new_calc").is_dir()
 
-    def test_mkdir_rejects_bad_name_at_root_level(self, web, picker_root):
-        """A project directory with a space or a dot in its name breaks
+    def test_mkdir_refuses_a_project_at_the_root(self, web, picker_root):
+        """A folder at the projects root is a project, which lays down its
+        topic folders (`web/projects.md` § 3: *a new project lays down
+        projects/<name>/ with a README and its topic folders*) -- New
+        project's door; the sidebar offers no New folder there.  THE SILENT
+        FAILURE (to 2.69.13): a bare project with no topics, made by a
+        request the page never sends."""
+        r = web.post(
+            "/api/files/mkdir",
+            json={"parent": str(picker_root), "name": "new_project"},
+        )
+        assert r.status_code == 400
+        assert "use New project" in r.get_json()["error"]
+        assert not (picker_root / "new_project").exists()
+
+    def test_mkdir_rejects_bad_name_at_calculation_level(self, web,
+                                                         picker_root):
+        """A calculation's folder with a space or a dot in its name breaks
         SIESTA's basename-based file discovery downstream -- the run fails much
         later, inside the engine, with nothing pointing back at the folder
         name.
 
         `job-contracts.md` § 2.5 (each path segment matches `[A-Za-z0-9_-]+`);
-        `projects.validate_name` is the door.
+        `projects.validate_folder_name` is the door.
         """
-        # ^[A-Za-z0-9_-]+$ disallows spaces, dots, slashes.
+        topic = self._topic(web, picker_root)
         r = web.post(
             "/api/files/mkdir",
-            json={"parent": str(picker_root), "name": "bad name"},
+            json={"parent": str(topic), "name": "bad name"},
         )
         assert r.status_code == 400
         assert "outside [A-Za-z0-9_-]" in r.get_json()["error"]
-        assert not (picker_root / "bad name").exists()
+        assert not (topic / "bad name").exists()
 
     def test_mkdir_rejects_non_canonical_topic_at_topic_depth(
         self, web, picker_root,
@@ -831,9 +856,10 @@ class TestFilesMkdir:
 
         `job-contracts.md` § 2.5 (the fixed topic vocabulary).
         """
-        # Set up projects/<project>/ then try to create a non-canonical
-        # topic underneath.  The picker_root acts as projects/.
-        (picker_root / "myproj").mkdir()
+        # A project made as a person makes one, then a non-canonical topic
+        # asked for beside its topics.
+        assert web.post("/api/projects/create",
+                        json={"name": "myproj"}).status_code == 200
         r = web.post(
             "/api/files/mkdir",
             json={
@@ -858,9 +884,16 @@ class TestFilesMkdir:
         the canonical layout uncreatable through the UI, and only a positive
         case separates an over-tight guard from a correct one.
 
-        `job-contracts.md` § 2.5.
+        `job-contracts.md` § 2.5.  The project is made as a person makes one
+        and its `spectrum/` deleted as the sidebar's topic kebab deletes it
+        (`force`), as an older project may lack a topic.
         """
-        (picker_root / "myproj").mkdir()
+        assert web.post("/api/projects/create",
+                        json={"name": "myproj"}).status_code == 200
+        gone = web.delete("/api/files/delete", json={
+            "path": str(picker_root / "myproj" / "spectrum"),
+            "recursive": True, "force": True})
+        assert gone.status_code == 200, gone.get_json()
         r = web.post(
             "/api/files/mkdir",
             json={
@@ -878,10 +911,11 @@ class TestFilesMkdir:
 
         `web-api.md` § 1 status table (409 = the destination exists).
         """
-        (picker_root / "preexisting").mkdir()
+        topic = self._topic(web, picker_root)
+        (topic / "preexisting").mkdir()
         r = web.post(
             "/api/files/mkdir",
-            json={"parent": str(picker_root), "name": "preexisting"},
+            json={"parent": str(topic), "name": "preexisting"},
         )
         assert r.status_code == 409
         assert "already exists" in r.get_json()["error"]
@@ -978,12 +1012,13 @@ class TestProjectsCreate:
     def test_create_includes_user_freeform_topic(self, web, picker_root):
         """`user/` disappearing, or the depth rule tightening so nothing may be
         created inside it -- the user loses the one place in the tree with no
-        naming rules.
+        layout of molbuilder's.
 
         `job-contracts.md` § 2.5 (`user` is free-form: a workspace with no
-        rules inside it). The second half proves the topic vocabulary binds at
-        depth 1 ONLY -- `free_subdir` is legal inside `user/` and would be
-        refused as a topic.
+        molbuilder layout inside it, its folders named as every folder is).
+        The second half proves the topic vocabulary binds at depth 1 ONLY --
+        `free_subdir` is legal inside `user/` and would be refused as a
+        topic.
         """
         # 'user' lands at depth 1 alongside the other canonical topics.
         # Free-form: any subdir name (regex-valid) is accepted inside.
@@ -1372,6 +1407,50 @@ class TestFilesDeleteSidecarPairing:
 # --------------------------------------------------------------------- #
 #  POST /api/files/rename  (sidecar pairing)                            #
 # --------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize("folder, made_by, new_name, refused", [
+    # A project and a calculation's folder renamed take the name one made
+    # there takes (`job-contracts.md` § 2.5; `project-layout.md` § 7,
+    # invariant 1).  PREVENTS (to 2.69.13): a renamed folder the project
+    # list then skips.
+    ("old_proj", "New project", "my proj", "outside [A-Za-z0-9_-]"),
+    ("old_proj/optimization/old_calc", "New folder", "my calc",
+     "outside [A-Za-z0-9_-]"),
+    # A folder at the topic level that is no topic -- an older project's
+    # `frequency/` -- is an ordinary folder, renamed like any other (§ 2.5):
+    # only a NEW one there takes a topic's name; an ordinary name it takes.
+    ("old_proj/frequency", "an older molbuilder", "frequency2", None),
+    ("old_proj/frequency", "an older molbuilder", "freq uency",
+     "outside [A-Za-z0-9_-]"),
+], ids=["a project", "a calculation's folder",
+        "an ordinary folder at the topic level",
+        "an ordinary folder at the topic level, a name no folder takes"])
+def test_a_folder_renamed_takes_its_depths_name(web, picker_root, folder,
+                                                made_by, new_name, refused):
+    """`projects.validate_folder_name`, the rule a folder made at that depth
+    is held to, asked of a folder renamed there -- each folder made as it
+    comes to be (``made_by``): a project by New project, a calculation's
+    folder by New folder in its topic, an older project's folder as an
+    older molbuilder left it, by hand."""
+    r = web.post("/api/projects/create", json={"name": "old_proj"})
+    assert r.status_code == 200, r.get_json()
+    folder = picker_root / folder
+    if made_by == "New folder":
+        r = web.post("/api/files/mkdir", json={"parent": str(folder.parent),
+                                               "name": folder.name})
+        assert r.status_code == 200, r.get_json()
+    elif made_by == "an older molbuilder":
+        folder.mkdir()
+    r = web.post("/api/files/rename",
+                 json={"path": str(folder), "new_name": new_name})
+    if refused:
+        assert r.status_code == 400 and refused in r.get_json()["error"], (
+            r.get_json())
+        assert folder.is_dir()
+    else:
+        assert r.status_code == 200, r.get_json()
+        assert (folder.parent / new_name).is_dir()
 
 
 class TestFilesRenameSidecarPairing:

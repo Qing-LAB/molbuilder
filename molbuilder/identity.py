@@ -31,14 +31,12 @@ description that disagrees with itself (``Task._check_id``).  That is what makes
 
 **On the character set.** § 3 is explicit that the set *"is not a new
 decision"* — `job-contracts.md § 2.1` Rule 2 fixes it, and this module does not
-get to widen it. Four validators in the tree spell it
-(``projects._NAME_PATTERN``, ``checkpoint._CALC_NAME_RE``,
-``config/siesta._validate_basename``, which PySCF's configuration uses too,
-and the file grammar's ``runfiles._LABEL``).
+get to widen it. It has one home, ``runfiles.NAME_CHARS``, which every
+validator in the tree asks (``projects.validate_name``,
+``checkpoint.check_calculation_name``, ``config/siesta._validate_basename``,
+which PySCF's configuration uses too, and the file grammar).
 **None of them normalises**; they all reject. This is the
-one transform. What the tests do instead is assert that every id this
-produces is accepted by the shipped validators, so the agreement is checked
-rather than assumed.
+one transform.
 """
 from __future__ import annotations
 
@@ -116,7 +114,11 @@ def continues(cfg) -> bool:
 #: One character of the id's alphabet.  Deliberately a character class rather
 #: than a whole-string pattern: this module *builds* names, and the shipped
 #: patterns all *validate* them.
-_ALLOWED_CHAR = re.compile(r"[A-Za-z0-9_-]")
+try:                                        # inside molbuilder
+    from .runfiles import NAME_CHARS
+except ImportError:                         # beside the job (mb_vibration.pyz)
+    from runfiles import NAME_CHARS  # type: ignore[no-redef]
+_ALLOWED_CHAR = re.compile(f"[{NAME_CHARS}]")
 
 #: A run of two or more separators.  § 3: *"runs of two or more separators
 #: collapsed to a single `_`, and a lone separator does not"* — which is what
@@ -603,7 +605,7 @@ def normalise_id(raw: str, *, stage_names: Sequence[str] = (),
             continue
         raise ValueError(
             f"{raw!r} is not a usable {what}: {ch!r} is a letter or a digit "
-            f"outside [A-Za-z0-9_-], and dropping it would silently make a "
+            f"outside [{NAME_CHARS}], and dropping it would silently make a "
             f"different name. Rename it using unaccented ASCII")
 
     # -- the transform, in § 3's order -------------------------------------

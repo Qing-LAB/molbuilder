@@ -425,11 +425,7 @@ def api_spectra_frameset():
             out=out, root=root, **rule)
     except FrameSetError as exc:
         return err(str(exc), 400)
-    try:
-        wire = got.to_wire(root)
-    except ValueError:
-        wire = got.to_wire()
-    return jsonify({"ok": True, **wire})
+    return jsonify({"ok": True, **got.to_wire(root)})
 
 
 @bp.route("/api/spectra/export", methods=["GET"])

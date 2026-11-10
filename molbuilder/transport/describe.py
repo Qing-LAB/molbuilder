@@ -182,7 +182,8 @@ def describe(*, calculation: str, engine: Optional[str],
     refused here (the Transport tab's), or left to be said (the command
     line's).  NotDescribed, :class:`NotDescribed`; a write that fails,
     `describe.DescribeError` or :class:`OSError`."""
-    from ..describe import Description, refuse_described, write_description
+    from ..describe import (Description, refuse_place, refuse_described,
+                            write_description)
     from ..describe import DescribeError
     from ..issues import Issue, ValidationError
     from ..kind_table import kind
@@ -198,9 +199,18 @@ def describe(*, calculation: str, engine: Optional[str],
     from .stages import resolvable_override_names, stages_for_transport
     from .window import window_rung
     from ..jobset.rung import citation_of
+    from ..projects import address
     rec = kind(calculation)
     root = Path(tree_root).resolve()
     shared = dict(shared or {})
+
+    # A CALCULATION LIVES UNDER A TOPIC -- the place asked first, as the
+    # fence is (`job-contracts.md` § 2.5).
+    if dest is not None:
+        try:
+            refuse_place(dest)
+        except DescribeError as exc:
+            raise NotDescribed(str(exc)) from None
 
     # THE FINISHED CALCULATION IT EXTENDS, and its engine: an extension runs
     # on the engine its finished calculation ran (§ 2a.16; the user,
@@ -243,7 +253,7 @@ def describe(*, calculation: str, engine: Optional[str],
             refuse_failed_citation(cited, junction)
         except ComposeError as exc:
             raise NotDescribed(str(exc)) from None
-        junction = str(Path(resolved).relative_to(root))
+        junction = address(resolved, root)
 
     # THE FOLDER: one calculation per folder, never inside another --
     # what it cites or extends among them (`project-layout.md` § 7,

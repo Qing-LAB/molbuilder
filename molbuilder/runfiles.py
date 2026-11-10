@@ -135,13 +135,15 @@ PYSCF_CUBE         = ".cube"               # a grid `cubegen` writes
 PYSCF_OPTIMIZED    = "_optimized.xyz"      # a PySCF relaxation's geometry
 GEOMETRIC_SCRATCH  = GEOMETRIC_PREFIX + ".tmp"  # geomeTRIC's scratch folder
 
-#: The basename rule, restated from `config/siesta.py::_validate_basename`
-#: (job-contracts.md § 2.1: "a single token matching [A-Za-z0-9_-]+").  It is
-#: restated rather than imported because THIS module must not depend on an
-#: engine config to know what a label may look like -- the dependency runs the
-#: other way.  A label carrying a dot would make `parse` ambiguous, which is
-#: the one thing the pattern is load-bearing for.
-_LABEL = re.compile(r"[A-Za-z0-9_-]+")
+#: THE NAME TOKEN'S CHARACTERS (job-contracts.md § 2.1: "a single token
+#: matching [A-Za-z0-9_-]+") -- the one home of the set every name in the tree
+#: is read by: a label, each folder from the projects root to a calculation
+#: (§ 2.5), a calculation's name in its history, an id's alphabet, a
+#: workspace's id.  Here, at the lowest floor, because a label carrying a dot
+#: would make `parse` ambiguous, and every reader above takes it from below.
+NAME_CHARS = "A-Za-z0-9_-"
+#: One whole token of :data:`NAME_CHARS` -- asked with ``fullmatch``.
+NAME_TOKEN = re.compile(f"[{NAME_CHARS}]+")
 
 
 #: TBTRANS'S CHANNELS, each with the tag its files carry after the label
@@ -389,9 +391,9 @@ def stem(label: str, stage: Optional[str] = None) -> str:
     (`job-contracts.md` § 2.2a), and a silent coercion is how a name with no
     stage reaches a staged file.
     """
-    if not _LABEL.fullmatch(label or ""):
+    if not NAME_TOKEN.fullmatch(label or ""):
         raise RunFileError(
-            f"label {label!r} is not a single [A-Za-z0-9_-]+ token"
+            f"label {label!r} is not a single [{NAME_CHARS}]+ token"
             f".  A label carrying a dot or a space "
             f"cannot be read back out of a filename.")
     if stage is None:
@@ -775,7 +777,7 @@ def older_named(directory, stage: str) -> "list[OlderName]":
     that cannot be listed.  Read by `jobset migrate`, which names them once,
     and by the run door, which says a run holding them is not read until
     then."""
-    label = _LABEL.pattern
+    label = NAME_TOKEN.pattern
     tried = re.compile(rf"^(?P<label>{label})_" + re.escape(stage)
                        + r"-run(?P<n>[0-9]+)(?P<role>\..+)$")
     # THE CLOCK THOSE RUN SCRIPTS STAMPED, `date +%Y%m%d-%H%M%S`.
@@ -875,7 +877,7 @@ def named_beside(name, role: str) -> Optional[str]:
             at = m.start() if m else 0
         else:
             at = len(base) - len(own) if base.endswith(own) else 0
-        if at > 0 and _LABEL.fullmatch(split_stem(base[:at])[0]) \
+        if at > 0 and NAME_TOKEN.fullmatch(split_stem(base[:at])[0]) \
                 and (cut is None or at < cut):
             cut = at
     if cut is None:

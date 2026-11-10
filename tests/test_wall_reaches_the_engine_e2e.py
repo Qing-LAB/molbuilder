@@ -46,7 +46,7 @@ def walled(tmp_path_factory):
         # THE WALL ITS RUN CARD STATES (`architecture.md` § 5.2's
         # ladder), 20 s, one rank, so the engine, told what is left and the
         # 600 s slack, stops at its first check.
-        bundle = h2_optimization(tree, "P/opt/H2wall",
+        bundle = h2_optimization(tree, "P/optimization/H2wall",
                                  execution={"mpi_np": 1, "omp_threads": 1,
                                             "time": "00:00:20"})
         r = jobset("prep", "task", *group_words(bundle, "coarse"),

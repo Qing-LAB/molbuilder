@@ -408,12 +408,22 @@ A calculation is a folder at the third level of the projects tree:
 `projects/<project>/<topic>/<calculation>/`, or below it in folders of your
 own — never inside another calculation's folder
 ([`project-layout.md`](?doc=execution/project-layout.md) § 7, invariant 2a).
+Every door that describes refuses a folder above that place — the root, a
+project, a bare topic — naming it, measured from the tree the folder lies in,
+and holds each folder it makes on the way to the name one made there takes
+(`describe.refuse_place`); a project not there yet is made whole, as New
+project makes one (`projects.populate_project_skeleton`, the one way a project
+comes to be).
 The three upper levels are organisational only; what is inside a calculation,
 and who creates each level, is
 [`project-layout.md`](?doc=execution/project-layout.md) § 1.1 and § 1.4a.
 
-**Each path segment is one token of `[A-Za-z0-9_-]`.** `<project>` and
-`<calculation>` are what you type; `<topic>` is one of the canonical topics.
+**Each path segment is one token of `[A-Za-z0-9_-]`** (its one home
+`runfiles.NAME_CHARS`). `<project>` and `<calculation>` are what you type;
+`<topic>` is one of the canonical topics. A folder is named by its depth
+(`projects.validate_folder_name`), made or renamed: none at the root, where a
+project is made whole with its topic folders; a new one under a project takes
+a topic's name; below, a token.
 
 **The canonical topics** (`projects.CANONICAL_TOPICS`): the two storage
 topics, **one run topic per calculation kind** — the kind's `topic` in the
@@ -427,7 +437,7 @@ the free-form `user`, in that order:
 | `optimization` | the optimization kind | geometry relaxation |
 | `spectrum` | the vibration kind | vibrational modes, thermochemistry, infrared and Raman |
 | `transport` | the transport kind | TranSIESTA junctions: the leads, the device, the transmission |
-| `user` | free-form | a workspace with no molbuilder rule inside it |
+| `user` | free-form | a workspace with no molbuilder layout inside it; its folders are named as every folder is |
 
 So every kind has its folder in every new project, and a kind added to the
 table brings its own. A closed list is on purpose: an open one would
@@ -464,8 +474,11 @@ calculation moved to a cluster where you may install nothing still runs
 *(user, 2026-08-22)*.
 
 The tree's API is `molbuilder/projects.py`: `validate_name`,
-`validate_topic`, `project_dir` / `topic_dir` / `structure_dir`,
-`ensure_structure_dir`, `projects_root` / `find_projects_root`, `contain`,
+`validate_topic`, `validate_folder_name`, `project_dir` / `topic_dir` /
+`structure_dir`, `ensure_structure_dir`, `projects_root` /
+`find_projects_root`, `contain`, `at` (a tree address through the fence),
+`segments` and `address` (a folder's place in the tree, as segments and as an
+address),
 `populate_project_skeleton`, and `list_projects` / `list_topics` /
 `list_structures` (the `structure_*` names mean the calculation level).
 

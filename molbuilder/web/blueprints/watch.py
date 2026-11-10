@@ -422,8 +422,7 @@ def api_load():
         return err("Empty path.", 400)
     # The JSON-path mode routes through the canonical
     # ``_resolve_within_roots`` helper like every other path-taking
-    # endpoint, per web-api.md § 2.1: it constrains to the picker roots
-    # (Capabilities.file_picker_roots()).
+    # endpoint, per web-api.md § 2.1: it constrains to the projects tree.
     from .files import _resolve_within_roots
     raw_path = str(_resolve_within_roots(raw_path))
 

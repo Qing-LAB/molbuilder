@@ -96,9 +96,10 @@ def live_siesta(tree: Path, tmp_path_factory):
         bin_ = env_bin("molbuilder-siesta")
         assert (bin_ / "siesta").is_file(), bin_
         mp.setenv("PATH", f"{bin_}{os.pathsep}{os.environ['PATH']}")
-        (tree / "pseudopotential").mkdir(exist_ok=True)
+        from support.road import library_of
+        library = library_of(tree)
         for psml in sorted(PSML_DIR.glob("*.psml")):
-            shutil.copy(psml, tree / "pseudopotential" / psml.name)
+            shutil.copy(psml, library / psml.name)
         yield mp
 
 

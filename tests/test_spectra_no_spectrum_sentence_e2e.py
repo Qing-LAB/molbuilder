@@ -68,7 +68,7 @@ def _h2_with_compute_ir_off(tmp_path_factory, name: str, **settings):
     from support.real_runs import CO2_SETTINGS, RealRun, on_the_road, taken
     from support.road import H2, described, set_by_the_person, structure_saved
     with on_the_road(tmp_path_factory, name) as tree:
-        bundle = described(tree, f"P/freq/{name}",
+        bundle = described(tree, f"P/spectrum/{name}",
                            structure=structure_saved(tree, H2), name="H2",
                            calculation="vibration",
                            execution={"mpi_np": 1, "omp_threads": 1})

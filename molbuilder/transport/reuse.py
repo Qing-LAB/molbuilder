@@ -77,14 +77,13 @@ def reused(raw, *, tree_root):
     described calculation, in the door's words; one whose description does
     not read, in its reader's; another kind of calculation."""
     from .. import calculation
-    from ..projects import OutsideRoot, contain
+    from ..projects import OutsideRoot, address, at
     if tree_root is None:
         raise ReuseError(f"{raw} cannot be found: the calculation that "
                          f"reuses it is not inside a projects tree")
     root = Path(tree_root).expanduser().resolve()
-    path = Path(raw).expanduser()
     try:
-        folder = contain(path if path.is_absolute() else root / path, root)
+        folder = at(raw, root)
     except OutsideRoot as exc:
         raise ReuseError(f"{raw}: {exc}") from exc
     try:
@@ -97,7 +96,7 @@ def reused(raw, *, tree_root):
             f"description says {calc.task.calculation!r}) -- a calculation "
             f"reuses a finished transport calculation"
             f".")
-    return calc, str(calc.base.relative_to(root))
+    return calc, address(calc.base, root)
 
 
 def frame_set_refusal(junction, frame_set, *, name: str,
@@ -280,12 +279,15 @@ def carry_pseudos(struct, base: Path, reuses: str, *, plan,
     still wins.  ``say`` false plans them silently (:func:`decide`'s view,
     which copies nothing)."""
     from ..chemistry import species_order
-    from ..projects import find_projects_root
+    from ..projects import OutsideRoot, at, find_projects_root
     from ..pseudos import (PSEUDO_DIRNAME, copy_pseudopotentials,
                            psml_sources)
     from ..siesta.seam import pseudo_dir
     root = find_projects_root(Path(base))
-    lib = (Path(root) / reuses / PSEUDO_DIRNAME) if root is not None else None
+    try:
+        lib = (at(reuses, root) / PSEUDO_DIRNAME) if root is not None else None
+    except OutsideRoot:
+        lib = None
     if lib is None or not lib.is_dir():
         return
     want = [s for s, d in psml_sources(species_order(struct.elements),
@@ -730,7 +732,12 @@ def finished_of(calc):
         root = tree_of(calc.base)
     except ReuseError as exc:
         return None, str(exc)
-    if not (root / calc.task.reuses).is_dir():
+    from ..projects import OutsideRoot, at
+    try:
+        there = at(calc.task.reuses, root).is_dir()
+    except OutsideRoot as exc:
+        return None, f"{calc.task.reuses}: {exc.reason}"
+    if not there:
         return None, f"{calc.task.reuses} is not there"
     try:
         return reused(calc.task.reuses, tree_root=root)[0], None
@@ -749,7 +756,8 @@ def origin(base, folder) -> str:
     said = copied_of(base, folder)
     if said:
         return said
-    return Path(folder).resolve().relative_to(tree_of(base)).as_posix()
+    from ..projects import address
+    return address(folder, tree_of(base))
 
 
 def point_key(pt) -> Tuple[int, float]:
@@ -1054,7 +1062,8 @@ def _shared_size(calc, contours) -> int:
     files (:func:`_shared_files`) and its own ``shared/``
     (:func:`shared_into`)."""
     from .energies import SHARED_DIR
-    src = tree_of(calc.base) / contours.source
+    from ..projects import at
+    src = at(contours.source, tree_of(calc.base))
     files = (_shared_files(src, calc.task.label)
              + (_files(src / SHARED_DIR) if (src / SHARED_DIR).is_dir()
                 else []))
@@ -1143,8 +1152,9 @@ def _share(calc, finished, pt, once, mine) -> Tuple[object, str]:
     window = deck_window(now)
     theirs = held(src, calc.task.label)
     tree = tree_of(fbase)
+    from ..projects import address
     c = shared_contours(grid(*window), theirs, window=window,
-                        source=src.resolve().relative_to(tree).as_posix())
+                        source=address(src, tree))
     asked = (f"{window[0]:g}…{window[1]:g} eV at {window[2]} points")
 
     def offer() -> str:
@@ -1790,7 +1800,8 @@ def shared_into(calc, pdir: Path, pt, deck: Path, held: Optional[Path],
     dest = Path(pdir) / SHARED_DIR
     if held is not None and carry_shared(held, pdir, plan, root=calc.base):
         return
-    src = tree_of(calc.base) / contours.source
+    from ..projects import at
+    src = at(contours.source, tree_of(calc.base))
     files = _shared_files(src, calc.task.label)
     if not files:
         raise ValueError(

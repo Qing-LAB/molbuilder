@@ -394,9 +394,9 @@ def resolve_citation(citation: str, tree_root: Path
     condition (`engines/transport.md` § 3.1).  Public: the kind's describe,
     the Transport tab's pick and its schema route resolve a citation through
     the SAME door prep composes through."""
-    from ..projects import OutsideRoot, contain
+    from ..projects import OutsideRoot, at
     try:
-        cited = contain(tree_root / citation, tree_root)
+        cited = at(citation, tree_root)
     except OutsideRoot as exc:
         raise ComposeError(
             f"the junction citation {citation!r} leaves the projects "

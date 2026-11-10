@@ -970,21 +970,19 @@ def api_task_setup_handover():
     # to put beside the field.  The sender names the folder (`dest`).
     # THE FOLDER'S RULES ARE THE SERVER'S, as the transport describe door's
     # are (`engines/transport.md` § 3.8.2a): a calculation lives under a
-    # topic -- project / topic / its folder, three levels inside the picker's
-    # root (`job-contracts.md` § 2.5; the file layer's one depth door,
-    # `files._depth_inside_root`) -- and one calculation per folder
-    # (`describe.refuse_described`, the rule `molbuilder describe` asks).
+    # topic -- project / topic / its folder, three levels inside the tree
+    # (`job-contracts.md` § 2.5; `describe.refuse_place`) -- and one
+    # calculation per folder (`describe.refuse_described`), the two rules
+    # every door that describes asks, `molbuilder describe` among them.
     # THE FOLDER IS WHERE IT WRITES, so one is named or nothing is done.
     if not body.get("dest"):
         return err("dest: a hand-over is written into a calculation's "
                    "folder -- name it", 400)
-    from molbuilder.describe import DescribeError, refuse_described
-    from .files import calculation_folder_refusal
+    from molbuilder.describe import (DescribeError, refuse_place,
+                                     refuse_described)
     dest_dir = _resolve_within_roots(str(body["dest"]))
-    too_high = calculation_folder_refusal(dest_dir)
-    if too_high:
-        return err(too_high, 400)
     try:
+        refuse_place(dest_dir)
         refuse_described(dest_dir)
     except DescribeError as exc:
         return err(str(exc), 400)

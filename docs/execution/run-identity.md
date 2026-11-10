@@ -251,7 +251,8 @@ sanitiser for a calculation's or a stage's name.
 
 1. **It happens once, in one function, and the result is checked on every
    read.** `identity.normalise_id` is the only transform: the validators that
-   spell the set — `projects._NAME_PATTERN`, `checkpoint._CALC_NAME_RE`,
+   ask the set — its one home `runfiles.NAME_CHARS`, asked by
+   `projects.validate_name`, `checkpoint.check_calculation_name`,
    `config/siesta.py::_validate_basename` (both engines' configs) and the
    `runfiles` grammar — refuse, they never normalise. The id
    it makes is stored in `task.json`; every read derives the label again from

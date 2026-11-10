@@ -98,9 +98,10 @@ findings and 14 contract disagreements settled by the user's word
 review*), two of them withdrawn the same day as crossing the sealed modules'
 wall (VibrationView's export is its own, `web/vibrationview.md` § 4).
 **2.69.13**: the science and correctness defects, each through its owning
-door (V-VAC, V-RELAX, V-HYD, V-LAT, V-PSML, V-TYPE, V-REC). Next, in order,
-each taking the next number when it ships: the path defects with the path
-door (V-PATH, X-PATH); record reading and the panels (V-READ, V-PANEL); the
+door (V-VAC, V-RELAX, V-HYD, V-LAT, V-PSML, V-TYPE, V-REC). **2.69.14**: the
+tree's names and places (V-PATH, X-PATH, the server's `projects` half). Next,
+in order, each taking the next number when it ships: the files layer's checks
+(the rest of V-PATH and X-PATH's server half); the browser's path helpers; record reading and the panels (V-READ, V-PANEL); the
 duplicates by owning door — X-STRUCT, X-PERSIST, X-PARSE, X-TMPL, X-EXEC,
 X-ENG — and the earlier plan's rows with the page doors they share (O-STATUS,
 O-FIND, O-STATE, O-WORDS, O-KEYS with X-UI and X-PLOT; O-TESTS); then the tabs following the sidebar's folder

@@ -54,7 +54,8 @@ from typing import Dict, List, Optional, Sequence, Tuple
 from .calcdirs import calculation_above, described
 from .persist import sha256_of
 from .task import FILENAME as _TASK_FILENAME
-from .runfiles import GITIGNORE_FILE, HISTORY_DIR, SNAPSHOT_DIR
+from .runfiles import (GITIGNORE_FILE, HISTORY_DIR, NAME_CHARS, NAME_TOKEN,
+                       SNAPSHOT_DIR)
 from .warmfiles import never_carried
 
 
@@ -1082,17 +1083,15 @@ TRAILER = "Manifest-SHA256"
 CALC_TRAILER = "Calculation"
 _TRAILERS = (TRAILER, CALC_TRAILER)
 
-#: L3: used verbatim in every state's message and never rewritten, so a name
-#: needing repair is refused rather than quietly fixed -- silently normalising
-#: an id would decouple the history's name from the folder's.
-_CALC_NAME_RE = re.compile(r"^[A-Za-z0-9_-]+$")
-
-
 def check_calculation_name(name: str) -> str:
-    """L3: refuse a name that would have to be repaired to be used."""
-    if not _CALC_NAME_RE.fullmatch(name or ""):
+    """L3: refuse a name that would have to be repaired to be used -- it is
+    written verbatim in every state's message and never rewritten, so a
+    name needing repair is refused rather than quietly fixed: silently
+    normalising an id would decouple the history's name from the
+    folder's."""
+    if not NAME_TOKEN.fullmatch(name or ""):
         raise CalculationNameError(
-            f"calculation name {name!r} is not [A-Za-z0-9_-]+.  It is written "
+            f"calculation name {name!r} is not [{NAME_CHARS}]+.  It is written "
             f"verbatim into every state and never rewritten, so a name that "
             f"needs repair is refused rather than quietly changed -- fixing it "
             f"silently would decouple this history's name from the folder's"

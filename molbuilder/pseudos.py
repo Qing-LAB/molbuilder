@@ -168,12 +168,12 @@ def resolve_psml_lib(raw: str, *,
         adopts them).
 
     Raises :class:`PsmlLibError` for a spelling the rule cannot answer.
-    Returns an absolute, **not-resolved** Path whether or not it
-    exists: this function answers *"which folder does this name?"* and
+    Returns the absolute path the fence resolved (`projects.at`), whether
+    or not it exists: this function answers *"which folder does this name?"* and
     the caller reports a miss (``.is_dir()``) with
     :func:`describe_psml_anchor`.
     """
-    from .projects import (OutsideRoot, PROJECTS_ROOT_NAME, contain,
+    from .projects import (OutsideRoot, PROJECTS_ROOT_NAME, at,
                            find_projects_root, projects_root)
     p = Path(raw).expanduser()
 
@@ -194,15 +194,13 @@ def resolve_psml_lib(raw: str, *,
     # INSIDE THE TREE, either spelling -- an absolute one, or a relative one
     # measured from the root -- and no `..` in either: the one fence decides
     # (`projects.contain`).
-    named = p if p.is_absolute() else tree / p
     try:
-        contain(named, tree)
+        named = at(p, tree)
     except OutsideRoot as exc:
         # The fence refuses a `..` in any spelling, before it resolves one,
         # so a `..` that stays inside is refused too -- said as what it is.
-        said = (f"{raw!r} is refused: {exc.reason}"
-                if ".." in p.parts else
-                f"{raw!r} is outside the {PROJECTS_ROOT_NAME}/ tree ({tree})")
+        said = (f"{raw!r} is outside the {PROJECTS_ROOT_NAME}/ tree ({tree})"
+                if exc.outside else f"{raw!r} is refused: {exc.reason}")
         raise PsmlLibError(
             f"{said}.  `psml_lib` always lives inside the tree -- "
             f"copy the library in (e.g. {tree}/pseudopotential) and "

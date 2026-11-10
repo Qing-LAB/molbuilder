@@ -41,11 +41,9 @@ import shutil
 import subprocess
 import collections.abc as _abc
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Tuple
 
 from .runtime_config import get_envs, read_config
-from .projects import projects_root
 
 
 # --------------------------------------------------------------------- #
@@ -192,34 +190,6 @@ class Capabilities:
         if self.routed_env(tool) is not None:
             return True
         return shutil.which(tool) is not None
-
-    # ----- file-picker root (projects/ only) ----------------------- #
-
-    def file_picker_roots(self) -> Tuple[Tuple[Path, str], ...]:
-        """Resolved root the ``/api/files`` picker is allowed to browse.
-
-        Returns a single-element tuple ``((projects_root(), "projects"),)``.
-        The picker is **deliberately scoped to** ``projects/`` -- that
-        is molbuilder's single source of truth for run-state on disk.
-        Files outside ``projects/`` (laptop downloads, scratch dirs)
-        must be moved/copied into ``projects/<project>/<topic>/<structure>/``
-        first; molbuilder's generators + the future derive-job flow
-        keep that hierarchy honest.
-
-        The projects/ path is always returned even if it doesn't exist
-        yet, so the UI can show a "no projects yet" empty state.
-        Plural return shape (a tuple) is preserved so a future single-
-        line change can reintroduce multi-root if it earns its
-        complexity -- but the contract today is single-root.
-        """
-        try:
-            resolved = projects_root().expanduser().resolve()
-        except (OSError, RuntimeError):
-            # A folder that does not resolve -- a mount loop -- shouldn't
-            # crash the picker: no roots, and the user gets a clear error.
-            return ()
-        return ((resolved, "projects"),)
-
 
 # --------------------------------------------------------------------- #
 #  Probe                                                                #

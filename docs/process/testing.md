@@ -185,7 +185,7 @@ happens to hold something, and it fails on a machine where it does not.
 
 The rule is one door, the same one production uses. `projects_root()` is the
 single definition and the only reader of `$MOLBUILDER_PROJECTS`; it feeds
-`Capabilities.file_picker_roots()` → `GET /api/files/roots` →
+the files layer's root (`files._root`) → `GET /api/files/roots` →
 `setProjectsRoot()` → `projects.getProjectsRoot()`. A test points that door
 somewhere temporary and builds inside it:
 
@@ -204,8 +204,8 @@ somewhere temporary and builds inside it:
   with the same call, `conftest.point_the_one_door_at(run.tree.parent,
   monkeypatch.setenv)`. Both fixtures and `road_tree` are that call too.
 
-Nothing is cached: `file_picker_roots()` calls `projects_root()` at CALL
-time, so pointing the door is enough and the live server serves the tmp tree.
+Nothing is cached: the files layer asks `projects_root()` at CALL time, so
+pointing the door is enough and the live server serves the tmp tree.
 
 **Your shell's `$MOLBUILDER_PROJECTS` never reaches a test**: `conftest.py`
 clears it before anything is collected (§ 2b), and a test that sets it sets it through

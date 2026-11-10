@@ -540,8 +540,13 @@ def test_setup_asks_for_a_name_only_when_a_name_is_what_is_missing(
     """
     from molbuilder.checkpoint import Repo
     from support.road import described, road_tree
-    folder = described(road_tree(tmp_path, monkeypatch),
-                       "P/optimization/H2.v2")
+    # A FOLDER NAMED AS A PERSON'S SHELL, OR A TREE DESCRIBED BEFORE
+    # 2.69.14, LEAVES ONE: every door that names a folder now holds it to a
+    # token (`project-layout.md` § 7, invariant 1), so the calculation is
+    # described under one and renamed in place, by hand.
+    made = described(road_tree(tmp_path, monkeypatch), "P/optimization/H2")
+    folder = made.with_name("H2.v2")
+    made.rename(folder)
     out = _set_up_by_the_panel(app_at, folder, [{"name": "H2_v2"}])
     inits = out["inits"]
     assert len(inits) == 2, "the panel did not retry after the refusal"

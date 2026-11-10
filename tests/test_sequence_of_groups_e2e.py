@@ -57,7 +57,7 @@ def road(tmp_path_factory):
     # One rank a run: an H2 needs no more.
     one_rank = {"mpi_np": 1, "omp_threads": 1}
     with on_the_road(tmp_path_factory, "sequence") as tree:
-        whole = h2_optimization(tree, "P/opt/H2seq", execution=one_rank)
+        whole = h2_optimization(tree, "P/optimization/H2seq", execution=one_rank)
         groups = _groups(whole)
         words = [w for n, _ in groups for w in ("--group", str(n))]
         said["prep"] = jobset("prep", "task", *words, "--one-job",
@@ -67,7 +67,7 @@ def road(tmp_path_factory):
                                 "--mode", "direct", "--foreground", "--yes")
         said["status"] = jobset("status", "--bundle", whole)
 
-        left = h2_optimization(tree, "P/opt/H2stop", execution=one_rank)
+        left = h2_optimization(tree, "P/optimization/H2stop", execution=one_rank)
         r = jobset("prep", "task", *words, "--one-job", "--bundle", left,
                    "--target", "this")
         assert r.exit_code == 0, r.output

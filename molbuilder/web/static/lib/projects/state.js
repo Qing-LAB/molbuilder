@@ -689,7 +689,7 @@ export function tell(level, message) {
 export const projects = {
   getCurrentDir:       () => readSelectionSlot(SS_DIR),
   getCurrentFile:      () => readSelectionSlot(SS_FILE),
-  // The resolved projects/ root path (Capabilities.file_picker_roots[0]).
+  // The resolved projects/ root path (GET /api/files/roots, its one root).
   // Used by the Build form's psml_lib live-resolution caption so the
   // user sees that ``pseudopotential`` resolves to
   // ``<root>/pseudopotential`` -- the projects/ anchor isn't visible

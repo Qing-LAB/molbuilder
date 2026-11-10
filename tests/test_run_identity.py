@@ -17,7 +17,7 @@ import pytest
 
 from molbuilder.checkpoint import check_calculation_name
 from molbuilder.identity import MAX_LABEL_BYTES, normalise_id, run_id
-from molbuilder.projects import _NAME_PATTERN
+from molbuilder.projects import validate_name
 
 
 ROWS = tomllib.loads((Path(__file__).resolve().parent / "data"
@@ -130,16 +130,12 @@ def test_the_timestamp_is_not_part_of_it():
 def test_every_id_this_makes_is_accepted_by_every_shipped_validator(raw):
     """§ 3: the set *"is not a new decision"*.
 
-    This is the reuse obligation, asserted the only way that actually holds:
-    not by sharing a constant — ``projects`` is L2 and this module is L1, so
-    it cannot import it — but by checking the output against both shipped
-    patterns. If any of the three spellings drifts apart, this fails."""
+    The set has one home (``runfiles.NAME_CHARS``); what is asserted is the
+    transform's half of the obligation -- every id it makes is accepted by
+    the shipped gates, each its PUBLIC one (a private name lets a rename stop
+    this module importing), each raising rather than returning a match."""
     out = normalise_id(raw)
-    assert _NAME_PATTERN.match(out), f"{out!r} fails projects._NAME_PATTERN"
-    # The PUBLIC gate, not the private regex behind it: a private name lets a
-    # rename stop this module importing.  ``check_calculation_name`` is the
-    # seam checkpoint actually offers, and it raises rather than returning a
-    # match.
+    validate_name(out)
     check_calculation_name(out)
 
 

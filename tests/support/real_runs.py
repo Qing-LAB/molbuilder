@@ -421,7 +421,7 @@ def _header_under_a_slurm_grant(run: RealRun, tree: Path,
             "node_types": [{"cores": 64, "nodes": 1}]})]), sol)
     try:
         bundle = h2_optimization(
-            tree, "P/opt/H2-on-sol",
+            tree, "P/optimization/H2-on-sol",
             execution={"mpi_np": 1, "omp_threads": 1},
             allocation={"domain": "cpu", "time": "01:00:00", "mem": "1G"})
         on_sol = RealRun(tree=tree, bundle=bundle)
@@ -460,8 +460,9 @@ def _relaxed_pair(tmp_path_factory, name: str, structure, **settings) -> RealRun
     from support.road import group_words, road_structure, set_by_the_person
     with on_the_road(tmp_path_factory, name) as tree:
         s = road_structure(structure)
-        write_pseudos(tree / "pseudopotential", sorted(set(s.elements)))
-        bundle = described(tree, "P/opt/J",
+        from support.road import library_of
+        write_pseudos(library_of(tree), sorted(set(s.elements)))
+        bundle = described(tree, "P/optimization/J",
                            structure=structure_saved(tree, s), name="J",
                            calculation="optimization", stage_strategy="",
                            execution={"mpi_np": 1, "omp_threads": 1})
@@ -515,7 +516,7 @@ def held_water_pyscf(tmp_path_factory) -> RealRun:
              "regions": {"frozen_atoms": [0]},
              "cell": [10.0, 10.0, 10.0]}
     with on_the_road(tmp_path_factory, "held-water", engine="pyscf") as tree:
-        bundle = described(tree, "P/opt/W",
+        bundle = described(tree, "P/optimization/W",
                            structure=structure_saved(tree, water), name="W",
                            calculation="optimization", engine="pyscf",
                            stage_strategy="publishable",
@@ -545,7 +546,7 @@ def h2_optimization(tree: Path, where: str, **blocks) -> Path:
 def layered(tmp_path_factory) -> RealRun:
     """Run A of plan § 5y -- see the module's note."""
     with on_the_road(tmp_path_factory, "layered") as tree:
-        bundle = h2_optimization(tree, "P/opt/H2",
+        bundle = h2_optimization(tree, "P/optimization/H2",
                                  execution={"mpi_np": 1, "omp_threads": 1})
         run = RealRun(tree=tree, bundle=bundle)
         taken(run, "prep coarse", "prep", "task", "--group", "1",
@@ -589,7 +590,7 @@ def one_group(tmp_path_factory) -> RealRun:
     from support.road import (description_with_overrides, read_request,
                               save_both, set_by_the_person)
     with on_the_road(tmp_path_factory, "one-group") as tree:
-        bundle = h2_optimization(tree, "P/opt/H2",
+        bundle = h2_optimization(tree, "P/optimization/H2",
                                  execution={"mpi_np": 1, "omp_threads": 1})
         set_by_the_person(bundle, QUICK)
         request = read_request(bundle)
@@ -624,7 +625,7 @@ def stopped(tmp_path_factory) -> RealRun:
     (``launch medium``), and `status` (``status``)."""
     from support.road import group_words, set_by_the_person
     with on_the_road(tmp_path_factory, "stopped") as tree:
-        bundle = h2_optimization(tree, "P/opt/H2",
+        bundle = h2_optimization(tree, "P/optimization/H2",
                                  execution={"mpi_np": 1, "omp_threads": 1})
         set_by_the_person(bundle, CANNOT_CONVERGE)
         run = RealRun(tree=tree, bundle=bundle)
@@ -657,7 +658,7 @@ def gpu(tmp_path_factory) -> RealRun:
             topology=Topology(sockets=2, cores_per_socket=8, gpus_per_node=1),
             env_init={"activation": "conda activate",
                       "preamble": f"source {conda_hook()}"})
-        bundle = h2_optimization(tree, "P/opt/H2gpu", execution={
+        bundle = h2_optimization(tree, "P/optimization/H2gpu", execution={
             "mpi_np": 1, "omp_threads": 1, "use_gpu": True, "gpu_count": 1})
         run = RealRun(tree=tree, bundle=bundle)
         taken(run, "prep coarse", "prep", "task", "--group", "1",
@@ -673,7 +674,7 @@ def gpu(tmp_path_factory) -> RealRun:
 def bench(tmp_path_factory) -> RealRun:
     """The benchmark of plan § 5y -- see the module's note."""
     with on_the_road(tmp_path_factory, "bench") as tree:
-        bundle = h2_optimization(tree, "P/opt/H2bench", execution=None,
+        bundle = h2_optimization(tree, "P/optimization/H2bench", execution=None,
                                  bench={"mpi_np": [1, 2],
                                         "omp_threads": [1]})
         run = RealRun(tree=tree, bundle=bundle)
@@ -705,7 +706,7 @@ CO2_OPTICAL = {"compute_raman": True, "raman_modes": "range",
                "raman_freq_min_cm1": 1000.0, "optical_mesh": [1, 1, 1]}
 
 
-def co2_vibration(tree: Path, where: str = "P/freq/CO2", *,
+def co2_vibration(tree: Path, where: str = "P/spectrum/CO2", *,
                   optical: bool = False) -> Path:
     """The road's CO2 (`support.road.CO2`) described as a SIESTA vibration
     in ``tree`` at ``where``: the kind's one stage, `freq`, one rank, one
@@ -833,7 +834,7 @@ def sweep(tmp_path_factory) -> RealRun:
     one thread; `freq` prepared and launched, waited on, then the sweep."""
     from support.road import H2, set_by_the_person
     with on_the_road(tmp_path_factory, "sweep") as tree:
-        bundle = described(tree, "P/freq/H2",
+        bundle = described(tree, "P/spectrum/H2",
                            structure=structure_saved(tree, H2), name="H2",
                            calculation="vibration",
                            execution={"mpi_np": 1, "omp_threads": 1})
@@ -883,7 +884,7 @@ def pyscf(tmp_path_factory, label: str = "H2") -> RealRun:
     stretched = {**H2, "positions": [[5.0, 5.0, 5.0], [5.0, 5.0, 5.80]]}
     with on_the_road(tmp_path_factory, f"pyscf-{label}",
                      engine="pyscf") as tree:
-        bundle = described(tree, f"P/opt/{label}",
+        bundle = described(tree, f"P/optimization/{label}",
                            structure=structure_saved(tree, stretched),
                            name=label, calculation="optimization",
                            engine="pyscf", execution={"threads": 1})
@@ -906,7 +907,7 @@ def water_vibration(tmp_path_factory, name: str, *, structure=None,
     from support.road import WATER, set_by_the_person
     with on_the_road(tmp_path_factory, name, engine="pyscf") as tree:
         saved = structure_saved(tree, WATER if structure is None else structure)
-        bundle = described(tree, f"P/frequency/{name}", structure=saved,
+        bundle = described(tree, f"P/spectrum/{name}", structure=saved,
                            name="W", calculation="vibration", engine="pyscf",
                            execution={"threads": 1}, **blocks)
         if settings:

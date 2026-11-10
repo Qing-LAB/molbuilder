@@ -243,7 +243,7 @@ def point_the_one_door_at(root, setenv) -> "Path":
     whose subject is how the root is resolved sets ``PROJECTS_ROOT_ENV``
     itself: `test_projects.py` and `test_psml_anchor.py`.
 
-    ``file_picker_roots()`` calls ``projects_root()`` at CALL time and nothing
+    The files layer asks ``projects_root()`` at CALL time and nothing
     caches the answer, so setting the variable is all it takes -- a live
     server started before this still serves the new tree.
     """

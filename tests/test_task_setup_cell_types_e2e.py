@@ -49,9 +49,10 @@ def _described_h2(root, name, *, calculation="optimization"):
     projects tree: `molbuilder describe` (`support.road`), its one stage --
     `coarse` for an optimization, `freq` for a vibration.  The tree is the
     module's, so describing moves nothing for the test."""
+    from molbuilder.kind_table import kind
     with pytest.MonkeyPatch.context() as local:
         return described(road_tree(root.parents[1], local),
-                         f"{root.name}/{calculation}/{name}",
+                         f"{root.name}/{kind(calculation).topic}/{name}",
                          name=name, calculation=calculation,
                          stage_strategy="")
 

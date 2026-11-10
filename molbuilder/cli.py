@@ -1896,11 +1896,9 @@ def _in_the_tree(ctx, param, value):
     """A path of the projects tree, as ``--bundle`` and ``--structure``
     read one (`job-contracts.md` § 2.5b): a relative one from the tree's
     root, and every one inside it -- the one fence, `projects.contain`."""
-    from .projects import OutsideRoot, contain, projects_root
-    root = Path(projects_root()).expanduser()
-    p = Path(str(value)).expanduser()
+    from .projects import OutsideRoot, at
     try:
-        return contain(p if p.is_absolute() else root / p, root)
+        return at(value)
     except OutsideRoot as exc:
         raise click.BadParameter(
             f"{value!r} is not inside the projects tree ({exc.root}): "

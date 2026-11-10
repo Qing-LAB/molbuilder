@@ -32,12 +32,11 @@ from __future__ import annotations
 
 
 import logging
-import re
 from pathlib import Path
 from typing import List, Mapping, NamedTuple, Optional, Tuple
 
 from . import kind_table
-from .runfiles import PSEUDO_FILE, TASK_FILE, fixed_name
+from .runfiles import NAME_CHARS, NAME_TOKEN, PSEUDO_FILE, TASK_FILE, fixed_name
 
 _log = logging.getLogger(__name__)
 
@@ -48,18 +47,13 @@ PROJECTS_ROOT_NAME = "projects"
 # (`job-contracts.md` § 2.5): the storage topics -- the structures a
 # project curates and its SIESTA pseudopotentials -- a run topic for each
 # calculation kind, its ``topic`` in the kind table in the table's order,
-# then ``user``, the free-form workspace with no molbuilder rule inside it.
+# then ``user``, the free-form workspace with no molbuilder layout inside it.
 # Ad-hoc names at depth 1 are rejected to keep the vocabulary one across
 # projects; a kind added to the table brings its topic.
 CANONICAL_TOPICS: Tuple[str, ...] = (
     ("structure", "pseudopotential")
     + tuple(kind_table.kind(k).topic for k in kind_table.kinds())
     + ("user",))
-
-
-# Name-validation regex.  The label grammar's character set
-# (`job-contracts.md` § 2.1): no dots, no slashes, no spaces.
-_NAME_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
 
 
 class InvalidName(ValueError):
@@ -75,9 +69,9 @@ def validate_name(name: str, *, kind: str = "name") -> str:
     """
     if not isinstance(name, str) or not name:
         raise InvalidName(f"{kind} must be a non-empty string")
-    if not _NAME_PATTERN.fullmatch(name):
+    if not NAME_TOKEN.fullmatch(name):
         raise InvalidName(
-            f"{kind} {name!r} contains characters outside [A-Za-z0-9_-]; "
+            f"{kind} {name!r} contains characters outside [{NAME_CHARS}]; "
             f"these would clash with SIESTA's basename-based file "
             f"discovery."
         )
@@ -95,6 +89,27 @@ def validate_topic(topic: str) -> str:
             f"{', '.join(CANONICAL_TOPICS)}.  Pick the closest match."
         )
     return topic
+
+
+def validate_folder_name(name: str, inside: int, *, new: bool) -> str:
+    """A FOLDER'S NAME BY ITS DEPTH -- the one rule every door that names a
+    folder asks (`job-contracts.md` § 2.5; `project-layout.md` § 7,
+    invariant 1: every segment from the root to a calculation is one token),
+    ``inside`` the depth of the folder that holds it (1: a project's, so the
+    name is its topic's; 2: a topic's, a calculation's; deeper: a folder of
+    the person's own).  A NEW topic folder takes a topic's name; one renamed
+    is an ordinary folder there, as an older project's are.  A project
+    (``inside`` 0) is made whole by :func:`populate_project_skeleton` --
+    never by naming a new folder at the tree's root, which is refused here;
+    one renamed takes a project's name.  Raises :class:`InvalidName`;
+    returns the name."""
+    if inside < 1 and new:
+        raise InvalidName(
+            "a folder at the projects root is a project, which is made with "
+            "its topic folders -- use New project")
+    if inside == 1 and new:
+        return validate_topic(name)
+    return validate_name(name, kind="project" if inside < 1 else "folder")
 
 
 # ---------------------------------------------------------------- #
@@ -227,15 +242,19 @@ def named_projects(path: Path, said_by: str) -> Path:
 class OutsideRoot(ValueError):
     """A path that resolves outside the root it was required to stay in.
 
-    Carries the resolved candidate and the root so a caller can compose its
-    own message -- the CLI wants a sentence about the projects tree, the
-    web layer wants an HTTP 400 naming every allowed root.
+    Carries the candidate, the root and the fence's reason so a caller can
+    compose its own message -- the CLI wants a sentence about the projects
+    tree, the web layer an HTTP 400 naming the root -- and ``outside``:
+    whether it resolved outside the root, rather than being refused before
+    it resolved (a ``..``, a path that does not resolve).
     """
 
-    def __init__(self, candidate, root, reason: str):
+    def __init__(self, candidate, root, reason: str, *,
+                 outside: bool = False):
         self.candidate = candidate
         self.root = root
         self.reason = reason
+        self.outside = outside
         super().__init__(f"{candidate} is outside {root}: {reason}")
 
 
@@ -271,7 +290,8 @@ def contain(candidate, root) -> Path:
     except (OSError, RuntimeError) as exc:
         raise OutsideRoot(raw, root, f"could not resolve: {exc}")
     if resolved != real_root and real_root not in resolved.parents:
-        raise OutsideRoot(resolved, real_root, "outside the root")
+        raise OutsideRoot(resolved, real_root, "outside the root",
+                          outside=True)
     return resolved
 
 
@@ -305,15 +325,42 @@ def find_projects_root(start: Path) -> Optional[Path]:
     return None
 
 
-def address(folder) -> str:
-    """``folder``'s address from the projects root -- what ``--bundle``
-    takes, and what a line or a refusal names it by -- or its full path
-    when it lies outside the tree."""
+def at(address, root=None) -> Path:
+    """THE TREE ADDRESS READ THROUGH THE FENCE (`job-contracts.md` § 2.5b):
+    ``address`` -- a path from the tree's root, or an absolute one inside
+    it -- resolved and held inside ``root`` (:func:`projects_root` unless
+    given: the tree a calculation lives in, for a name it holds) by
+    :func:`contain`.  Raises :class:`OutsideRoot`, which each caller says in
+    its own words."""
+    # THE ROOT RESOLVED FIRST: a setting that spells it with `..` names a
+    # folder, and the fence's `..` rule is about the address.
+    base = Path(root if root is not None
+                else projects_root()).expanduser().resolve()
+    return contain(base / Path(str(address)).expanduser(), base)
+
+
+def segments(folder, root=None) -> Optional[Tuple[str, ...]]:
+    """``folder``'s place in the tree as its segments from ``root``
+    (:func:`projects_root` unless given: the tree a calculation lives in)
+    -- ``()`` for the root itself, its length the folder's depth -- or
+    ``None`` when it lies outside.  The reverse of :func:`at`."""
     here = Path(folder).resolve()
+    base = Path(root if root is not None else projects_root()).resolve()
     try:
-        return str(here.relative_to(Path(projects_root()).resolve()))
+        return here.relative_to(base).parts
     except (ValueError, OSError):
-        return str(here)
+        return None
+
+
+def address(folder, root=None) -> str:
+    """``folder``'s TREE ADDRESS -- its :func:`segments`, ``/``-separated
+    (``.`` for the root) -- what ``--bundle`` takes and what a line, a
+    record or a refusal names it by; its full path when it lies outside
+    the tree."""
+    parts = segments(folder, root)
+    if parts is None:
+        return str(Path(folder).resolve())
+    return "/".join(parts) or "."
 
 
 def project_dir(project: str, *, base: Optional[Path] = None) -> Path:
@@ -342,8 +389,12 @@ def structure_dir(project: str, topic: str, structure: str, *,
 def ensure_structure_dir(project: str, topic: str, structure: str, *,
                           base: Optional[Path] = None) -> Path:
     """Create ``<project>/<topic>/<structure>/`` under :func:`projects_root`
-    and return its path.  Idempotent (existing dirs OK)."""
+    and return its path -- the project, when not there yet, made whole
+    (:func:`populate_project_skeleton`).  Idempotent (existing dirs OK)."""
     d = structure_dir(project, topic, structure, base=base)
+    proj = project_dir(project, base=base)
+    if not proj.exists():
+        populate_project_skeleton(proj, project_name=project)
     d.mkdir(parents=True, exist_ok=True)
     return d
 
@@ -373,12 +424,12 @@ _TOPIC_READMES: Mapping[str, str] = {
     ),
     "user": (
         "# user/\n\n"
-        "Free-form workspace -- no molbuilder rules apply inside this\n"
+        "Free-form workspace -- no molbuilder layout applies inside this\n"
         "directory.  Use it for notes, scratch files, organising\n"
         "experiments that don't fit the other canonical topics, or\n"
         "any non-canonical directory structure you need.  The sidebar's\n"
-        "*New folder* button lets you create arbitrary names here at\n"
-        "any depth.\n"
+        "*New folder* button makes folders here at any depth, each named\n"
+        "with letters, digits, `-` and `_`, as every folder in the tree.\n"
     ),
 }
 
@@ -416,24 +467,29 @@ def _project_root_readme(project: str) -> str:
 
 
 def populate_project_skeleton(proj: Path, *, project_name: str) -> None:
-    """Populate an empty ``proj`` directory with the canonical skeleton.
-
-    Writes the project-level ``README.md`` then creates every
-    :data:`CANONICAL_TOPICS` subdir with its own ``README.md``.
-
-    Caller-supplied ``proj`` MUST already exist and be empty: the web
-    blueprint resolves the path against the picker root, creates the empty
-    dir, then calls this.  It does NOT roll back on partial failure -- that's
-    the caller's (it knows whether the dir pre-existed).
+    """MAKE A PROJECT, WHOLE -- the one way a project comes to be
+    (`project-layout.md` § 1.1: its README *"made with the project, as is
+    every topic"*): the folder ``proj`` (:func:`project_dir` names it), the
+    project's ``README.md``, and every :data:`CANONICAL_TOPICS` folder with
+    its own.  Asked by New project, by `molbuilder describe` for a project
+    not there yet, and by :func:`ensure_structure_dir`.  A folder already
+    there is refused (:class:`FileExistsError`); anything failing after the
+    folder is made removes it, so a project is there whole or not at all.
     """
-    # Plain writes, deliberately (`configuration.md` § 2.3's list): every one of
-    # these lands in a directory its caller just made and removes if anything
-    # fails.  There is no previous content to protect and no credential in them.
-    (proj / "README.md").write_text(_project_root_readme(project_name))
-    for topic in CANONICAL_TOPICS:
-        sub = proj / topic
-        sub.mkdir(parents=False, exist_ok=False)
-        (sub / "README.md").write_text(_topic_readme(topic))
+    import shutil
+    proj.mkdir(parents=True, exist_ok=False)
+    try:
+        # Plain writes, deliberately (`configuration.md` § 2.3's list): every
+        # one lands in the folder just made, removed if anything fails.
+        # There is no previous content to protect and no credential in them.
+        (proj / "README.md").write_text(_project_root_readme(project_name))
+        for topic in CANONICAL_TOPICS:
+            sub = proj / topic
+            sub.mkdir(parents=False, exist_ok=False)
+            (sub / "README.md").write_text(_topic_readme(topic))
+    except BaseException:
+        shutil.rmtree(proj, ignore_errors=True)
+        raise
 
 
 # ---------------------------------------------------------------- #
@@ -460,13 +516,13 @@ def list_projects(*, base: Optional[Path] = None) -> List[str]:
         if (not p.is_dir() or p.name.startswith(".")
                 or p.name == CONVENTIONAL_LIBRARY):
             continue
-        if _NAME_PATTERN.fullmatch(p.name):
+        if NAME_TOKEN.fullmatch(p.name):
             valid.append(p.name)
         else:
             _log.warning(
-                "skipping %s: name fails the [A-Za-z0-9_-]+ rule "
+                "skipping %s: name fails the [%s]+ rule "
                 "and won't work with SIESTA's basename discipline",
-                p,
+                p, NAME_CHARS,
             )
     return sorted(valid)
 
@@ -494,7 +550,7 @@ def list_structures(project: str, topic: str, *,
     if not td.is_dir():
         return []
     return sorted(p.name for p in td.iterdir()
-                   if p.is_dir() and _NAME_PATTERN.fullmatch(p.name))
+                   if p.is_dir() and NAME_TOKEN.fullmatch(p.name))
 
 
 __all__ = [
@@ -503,7 +559,12 @@ __all__ = [
     "InvalidName",
     "validate_name",
     "validate_topic",
+    "validate_folder_name",
     "projects_root",
+    "contain",
+    "at",
+    "segments",
+    "address",
     "project_dir",
     "topic_dir",
     "structure_dir",
