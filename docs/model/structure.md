@@ -41,7 +41,7 @@ flowchart LR
     PY["molbuilder.Structure<br/>(Python dataclass — SSOT)"]
     JSON["JSON envelope<br/>(the wire dict)"]
     JS["molview.data<br/>(browser model)"]
-    PY -- "to_wire() / to_dict()" --> JSON
+    PY -- "to_dict() + to_wire()" --> JSON
     JSON -- "installMolecule()" --> JS
     JS -- "exportFile(range) → the structure" --> JSON
     JSON -- "from_dict() / StructureCodec" --> PY
@@ -114,7 +114,7 @@ Three methods on `Structure` (`structure.py`), all shipped:
 |---|---|---|
 | `to_dict()` → `dict` (`:1008`) | The ONE canonical serializer: coordinates + per-atom columns + the full metadata block (via `metadata_to_dict()`). | **Yes** — `from_dict(s.to_dict())` reproduces `s` exactly. |
 | `from_dict(d)` → `Structure` (`:1034`) | The ONE canonical deserializer: builds the object, then `apply_metadata_dict` (the same validator a fresh Structure runs). | inverse of `to_dict` |
-| `to_wire()` → `dict` (`:1077`) | A read-only view the web layer builds on: identity columns + a **flattened** `periodicity` block (raw `cell`/`engine_offset`/`offset_by`/`axis_kind`/`vacuum` **plus** the server-resolved `resolved_cell`/`box_corner` the client must not recompute — `structure-periodicity.md` § 6.0) + `annotations`. It carries **no** `positions` and **no** flat `atoms` render list. | No — a different, flatter view (not a superset of `to_dict`) |
+| `to_wire()` → `dict` | What the server works out about the structure that `to_dict` does not carry, sent beside it in every structure answer (`web-api.md` § 1): `resolved_box` — `resolved_cell`, `box_corner`, `resolved_vacuum`, the box as it will be used, through the one resolver and placement rule, which the client must not recompute (`structure-periodicity.md` § 6.0) — and `atom_order_said`, the order the atoms are in, in words. Nothing `to_dict` carries | No — derived, read-only |
 
 ```python
 # to_dict() — the loss-free round-trip unit; NOBODY else assembles this dict
@@ -129,23 +129,15 @@ Three methods on `Structure` (`structure.py`), all shipped:
 ```
 
 **Why two methods, not one flag.** `to_dict()` is the loss-free round-trip
-unit (persistence, sidecar, CLI); `from_dict` inverts it. `to_wire()` is a
-**separate** read-only view for the browser — identity columns + the
-flattened, server-resolved periodicity + annotations — that `from_dict` never
-has to invert. It is **not** a superset of `to_dict` (it drops `positions` and
-the nested `metadata` shape); the flat `atoms` render list and the legacy
-top-level aliases are added on top by the web layer (below). The resolved
-cell/origin is computed **once**, inside `to_wire()`, so it can never drift or
-drop.
-
-> **Verified against code (2026-07-26):** `_shared.structure_to_dict`
-> (`web/blueprints/_shared.py:329`) was **not** deleted (as an earlier draft
-> of this contract claimed). It is the web layer's **composer**: it combines
-> `workspace_payload(struct)` (the render `atoms` list, `text`, `issues`,
-> `extra`) with `struct.to_wire()` (identity columns + periodicity +
-> annotations).
-> `ok_structure_response` (`:417`) wraps it. Code that needs only the metadata
-> view calls `to_wire()` directly.
+unit (persistence, sidecar, CLI, the wire); `from_dict` inverts it.
+`to_wire()` is what is **derived** from it — the box resolved and the order in
+words — which `from_dict` never has to invert, and which no field of
+`to_dict` repeats. The resolved box is computed **once**, inside `to_wire()`,
+so it can never drift or drop. The web layer's one composer,
+`_shared.structure_answer`, sends the two side by side, and the kind table's
+labels beside them; `ok_structure_response` wraps it with what the call says
+(`web-api.md` § 1) — one copy of the structure per answer *(the user,
+2026-11-10: "one shape, sent once")*.
 
 ### 2.2 The metadata authority — `metadata_to_dict` / `apply_metadata_dict`
 
@@ -379,8 +371,8 @@ all**. The silence the row prevents is the safety net for row 1.
 
 **STATUS: SETTLED 2026-09-23 — `title` belongs to the GEOMETRY FILE**
 *(user)*. It is the `.xyz` comment line and the PDB `TITLE` record, and that
-is its only home. It remains a `Structure` FIELD and still rides `to_dict`,
-`to_wire` and `replace`; what it stopped being is a column of the **sidecar**.
+is its only home. It remains a `Structure` FIELD and still rides `to_dict`
+and `replace`; what it stopped being is a column of the **sidecar**.
 Written because § 2.2b needed a `title` row and the field turned out to have
 no rule anywhere.
 
@@ -1249,9 +1241,11 @@ structure}` — ONE envelope, the range's frames and their rows inside it
 (§ 2.2e) — and `markSaved(path)`. Named-key reads of the wire dict happen
 in **one** place — the model's accessors (`getUnitCell`,
 `getUnitCellOrigin`, `getVacuum`, `getAxisKind`, …), the JS analogue of
-Structure's codec. Everywhere else the browser carries `periodicity` /
-`annotations` / `atoms` as **opaque blobs** (verbatim deep-clone, no field
-whitelist), so a server-added field survives persistence untouched. The one
+Structure's codec. The inbound translator composes `periodicity` from the
+box keys of the structure's metadata (`BOX_METADATA_KEYS`, Python's
+`BOX_FIELDS`) and the resolved box beside them; every other metadata key rides
+whole in `otherMetadata`, so a server-added field survives persistence
+untouched — a box key the list does not name among them. The one
 deliberate write accessor, `setPeriodicity`, names only the lattice keys it
 *manages* (it is an editor, not a carry) and is spread-based, so it cannot
 drop an unlisted field.
@@ -1385,8 +1379,8 @@ def _fully_populated_structure():
     })
     return s
 
-# to_dict → from_dict preserves every field; to_wire carries the stated offset
-# and the box_corner it puts the box at; StructureCodec.write → read preserves
+# to_dict → from_dict preserves every field; to_dict carries the stated offset
+# and to_wire the box_corner it puts the box at; StructureCodec.write → read preserves
 # metadata and writes the .molstruct.json pair.
 ```
 
@@ -1406,7 +1400,8 @@ drives the origin through the real periodicity route in a page.
 
 **Anti-patterns (rejected by reference to this doc):** hand-rolled structure
 repacks; raw-dict metadata access (`d["engine_offset"]`, `d.get("axis_kind")`) outside
-the two codecs; a JS field whitelist for periodicity; a second file stack or a
+the two codecs; a JS field whitelist that drops an unlisted key (a key the
+translators do not shape rides whole, `otherMetadata`); a second file stack or a
 browser-authored sidecar. Named-key access lives in exactly one place per
 language.
 
@@ -1419,9 +1414,8 @@ language.
 (`/api/build/load`, `/api/structure/save`, `/api/structure/export`); the JS doors
 (`parser.js`) with every consumer above repointed; the JS periodicity
 field-whitelist replaced by verbatim deep-clone; the old `molview.data` file
-stack + `/api/workingcopy/*` door path removed. `_shared.structure_to_dict`
-retained as the web composer (`workspace_payload` + `to_wire`),
-not deleted.
+stack + `/api/workingcopy/*` door path removed. The web composer is
+`_shared.structure_answer` (`to_dict` + `to_wire`, 2.69.21).
 
 **Consolidated 2026-07-31.** Every adapter now has exactly one door: `write` →
 `/api/structure/save`, `files` → `/api/structure/export`, `read` →

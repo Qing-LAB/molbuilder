@@ -98,7 +98,10 @@
                                 + "to be drawn -- the panel's findings list "
                                 + "or the renderer is missing" };
                         }
-                        return { ok: true, n_atoms: body.n_atoms,
+                        // The count is the structure's own (`structure`,
+                        // `web-api.md` § 1), one shape for every answer.
+                        return { ok: true,
+                                 n_atoms: body.structure.elements.length,
                                  backend_used: body.backend_used };
                     });
                 })

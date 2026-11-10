@@ -419,7 +419,7 @@ RETIRED_METADATA_KEYS = ("pbc", "cell_origin")
 #: ``title`` qualifies under the rule above because its fact lives in the
 #: PAIRED GEOMETRY FILE -- it is the `.xyz` comment line and the PDB TITLE
 #: record (``model/structure.md`` § 2.2c).  It remains a ``Structure`` field
-#: and still rides ``to_dict`` / ``to_wire`` / ``replace``; what it is not is
+#: and still rides ``to_dict`` / ``replace``; what it is not is
 #: a column of the sidecar.
 RETIRED_IDENTITY_KEYS = ("title",)
 
@@ -1443,18 +1443,23 @@ class Structure:
         return s
 
     def to_wire(self) -> dict:
-        """The read-only server->client view (``model/structure.md`` § 2.1 + § 4):
-        the metadata-bearing portion of the wire response, assembled by
-        Structure so no blueprint enumerates a field.  It is the identity
-        columns + the FULL ``periodicity`` block (the raw cell and stated
-        offset PLUS the server-resolved ``resolved_cell`` and ``box_corner``,
-        computed HERE through the one resolver and the one placement rule, so
-        they can never drift or drop) + ``annotations``.
+        """WHAT THE SERVER WORKS OUT ABOUT THIS STRUCTURE that its own dict
+        (:meth:`to_dict`) does not carry -- sent beside it in every answer
+        that carries a structure (``web/web-api.md`` § 1), so the structure
+        crosses once and the derived facts once.  Read-only, never sent
+        back, never round-tripped by :meth:`from_dict`:
 
-        The web layer composes this with its own render/validation concerns
-        (the flat ``atoms`` list, ``issues``, ``text``, ``extra``); it must NOT
-        re-list any periodicity / metadata field.  Not round-tripped by
-        :meth:`from_dict` -- ``resolved_*`` are derived, read-only fields."""
+        * ``resolved_box`` -- the box as it will be used, through the one
+          resolver and the one placement rule (``model/structure.md``
+          § 2.1, ``structure-periodicity.md`` § 6.0): ``resolved_cell``,
+          the cell with the defaults filled in; ``box_corner``, where it is
+          drawn; ``resolved_vacuum``, the vacuum each axis gets.  The raw
+          values a person set are the dict's ``metadata``.
+        * ``atom_order_said`` -- the order the atoms are in, in words
+          (``model/overview.md`` § 2.2a; ``web/results.md`` § 4): *in the
+          engine's order (held atoms first)* for a structure carrying an
+          order record, none in the user order.  The record itself rides
+          the dict's ``metadata``."""
         # The ONE resolver (structure-periodicity.md §§ 4, 6), run once, here.
         # A periodic axis without a lattice raises -> no resolved box (None).
         try:
@@ -1479,48 +1484,11 @@ class Structure:
             except Exception:  # noqa: BLE001
                 box_corner = None
         return {
-            "title":         self.title or "",
-            "elements":      list(self.elements),
-            "atom_names":    list(self.atom_names)    if self.atom_names    else [],
-            "residue_ids":   list(self.residue_ids)   if self.residue_ids   else [],
-            "residue_names": list(self.residue_names) if self.residue_names else [],
-            "chain_ids":     list(self.chain_ids)     if self.chain_ids     else [],
-            "n_residues":    self.n_residues,
-            "periodicity": {
-                "cell":                 self.cell.tolist() if self.cell is not None else None,
-                # The offset the structure STATES, as stored -- None means the
-                # rule places it.  Raw, so a client echoes it back unchanged.
-                "engine_offset":        (self.engine_offset.tolist()
-                                         if self.engine_offset is not None else None),
-                # ...and whose it is, echoed back unchanged with it.
-                "offset_by":            (self.offset_by
-                                         if self.engine_offset is not None else None),
-                "resolved_cell":        resolved_cell,
-                "box_corner":           box_corner,
-                "axis_kind":            list(self.axis_kind),
-                "vacuum":               ([float(x) for x in self.vacuum]
-                                         if self.vacuum is not None else None),
-                # The vacuum the derived box ACTUALLY uses: identical to
-                # ``vacuum`` unless it is UNSET, when the § 6.1 default gap
-                # supplies one.  Sent so the Cell page can show the
-                # effective number -- a box thicker than the vacuum on screen
-                # must never be a surprise (it is a VIEW, like resolved_cell:
-                # the stored vacuum keeps what the user typed).
-                "resolved_vacuum":      [float(x) for x in
-                                         self.effective_vacuum()],
-                # (No "kgrid": a sampling knob on the config, not geometry --
-                # structure-periodicity.md.)
+            "resolved_box": {
+                "resolved_cell":   resolved_cell,
+                "box_corner":      box_corner,
+                "resolved_vacuum": [float(x) for x in self.effective_vacuum()],
             },
-            "annotations":   annotations_to_json(self.annotations),
-            # The `info` store (``model/structure.md`` § 2.2a): sent whole
-            # so the viewer's Metadata pane shows exactly what the pair
-            # will carry.
-            "info":          dict(self.info),
-            # THE ORDER THE ATOMS ARE IN, in words, worked out HERE like the
-            # resolved box (`model/overview.md` § 2.2a; `web/results.md`
-            # § 4): *in the engine's order (held atoms first)* for a
-            # structure carrying an order record, none in the user order.  The record
-            # itself rides the structure's own dict.
             "atom_order_said": (self.atom_order.said
                                 if self.atom_order is not None else None),
         }

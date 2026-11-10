@@ -1020,9 +1020,10 @@ thin. On a typed box `cell.image_distance` is the check that means anything.
 Cell-page button; one module (`molbuilder/periodicity_gate.py`) owns
 `apply_edit(struct, op, payload) → (struct′, notices)` and the
 `validate_periodicity` core shared with `StructureCodec`. Uniform response:
-`{ok, periodicity, info, notices[]}`, the periodicity block exactly as
-`/api/build/load` sends it — the client adopts it and renders the views; it
-never computes. `molbuilder describe --vacuum` is the `vacuum` op through the
+the structure in the one shape every door answers with (`web/web-api.md` § 1)
+— its box in its `metadata`, the box resolved beside it (`resolved_box`), its
+`info` — and `notices[]`; the client reads it through the one translator a
+load's answer goes through and renders the views; it never computes. `molbuilder describe --vacuum` is the `vacuum` op through the
 same door: it prints the receipt and refuses where the Cell page refuses.
 
 **Two regimes, explicit transitions.** In the **derived** regime,

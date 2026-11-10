@@ -139,7 +139,8 @@ class TestBackendSelection:
         ''', app_at)
         answer = out["answer"]
         assert answer["ok"] is True and answer["notices"], answer
-        assert out["r"] == {"ok": True, "n_atoms": answer["n_atoms"],
+        assert out["r"] == {"ok": True,
+                            "n_atoms": len(answer["structure"]["elements"]),
                             "backend_used": answer["backend_used"]}, out["r"]
         assert out["drawn"] == [
             {"rows": [], "under": True},

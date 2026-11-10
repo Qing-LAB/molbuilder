@@ -271,26 +271,42 @@ def served(isolated_projects_root):
     return create_app(config={}).test_client(), str(xyz.resolve())
 
 
+def _atoms_as_loaded(client, path):
+    """The atoms the load door answers, each with the labels it carries --
+    read from the one label store the answer's structure holds (label ->
+    its atoms), as MolView reads them (`model-jobs.js`)."""
+    answer = client.post("/api/build/load", json={"path": path}).get_json()
+    assert answer.get("ok"), answer
+    structure = answer["structure"]
+    labels = [[] for _ in structure["elements"]]
+    for name, idxs in structure["metadata"]["regions"].items():
+        for i in idxs:
+            labels[i].append(name)
+    return [{"index": i, "element": el, "labels": labels[i]}
+            for i, el in enumerate(structure["elements"])]
+
+
 def test_an_atom_carries_the_reserved_label_once_and_only_as_a_label(served):
     """THE regression this closes. The atom list used to carry the fact twice --
     a `frozen_atoms` tag AND an `is_frozen` flag -- which double-rendered in the
     panel, and the workaround was to withhold the tag on this route only.
 
-    One representation: the label, in the list of labels.
+    One representation: the label, in the one label store the answer's
+    structure carries -- no key of its own beside it.
     """
     client, path = served
-    # Through /api/build/load -- the door the browser actually uses; its ROWS
-    # are `_shared.atoms_list`, used by every response that carries a
-    # structure.
+    # Through /api/build/load -- the door the browser actually uses; its
+    # structure is `_shared.structure_answer`'s, the one shape every response
+    # that carries a structure answers.
     answer = client.post("/api/build/load", json={"path": path}).get_json()
-    assert answer.get("atoms"), answer
-    rows = answer["atoms"]
+    assert answer.get("ok"), answer
+    structure = answer["structure"]
 
-    assert "is_frozen" not in rows[1], (
-        f"the fact is on the atom twice: {sorted(rows[1])}"
-    )
-    assert rows[1]["regions"] == [FROZEN_LABEL]
-    assert rows[0]["regions"] == ["L-electrode"]
+    for where in (answer, structure, structure["metadata"]):
+        assert "is_frozen" not in where and "frozen_atoms" not in where, (
+            f"the fact is kept twice: {sorted(where)}")
+    assert structure["metadata"]["regions"] == {
+        "L-electrode": [0], FROZEN_LABEL: [1, 2]}
 
 
 def test_filtering_by_the_reserved_label_needs_no_case_of_its_own(served):
@@ -300,9 +316,7 @@ def test_filtering_by_the_reserved_label_needs_no_case_of_its_own(served):
     client, path = served
     # The atoms come from the load door, as they do in the browser: MolView
     # holds the structure and hands the filter the atoms it is showing.
-    rows = client.post("/api/build/load", json={"path": path}).get_json()["atoms"]
-    atoms = [{"index": r["index"], "element": r["element"],
-              "labels": r["regions"]} for r in rows]
+    atoms = _atoms_as_loaded(client, path)
 
     def by_label(name):
         answer = client.post("/api/selection/eval", json={
@@ -314,28 +328,6 @@ def test_filtering_by_the_reserved_label_needs_no_case_of_its_own(served):
 
     assert by_label(FROZEN_LABEL) == [1, 2]
     assert by_label("L-electrode") == [0]
-
-
-def test_the_list_and_the_filter_cannot_disagree(served):
-    """What the atom list says an atom carries, and what filtering by that
-    name selects, are the same set.
-
-    The filter is answered against the atoms the caller holds; the property is
-    worth asserting because the two halves are computed by different code.
-    """
-    client, path = served
-
-    rows = client.post("/api/build/load",
-                       json={"path": path}).get_json()["atoms"]
-    from_rows = [r["index"] for r in rows if FROZEN_LABEL in r["regions"]]
-
-    from_rule = client.post("/api/selection/eval", json={
-        "atoms": [{"index": r["index"], "element": r["element"],
-                   "labels": r["regions"]} for r in rows],
-        "rule": {"op": "by_region", "name": FROZEN_LABEL},
-    }).get_json()["selected_indices"]
-
-    assert from_rows == from_rule == [1, 2]
 
 
 # --------------------------------------------------------------------- #
@@ -431,24 +423,6 @@ def test_the_sidecar_payload_has_exactly_these_members(tmp_path):
                        match=r"\['frozen_atoms'\], which this version does "
                              r"not read"):
         StructureCodec().load(target)
-
-
-def test_an_atom_on_the_wire_has_exactly_these_members(served):
-    """The shape the browser receives, pinned by membership. `regions` carries
-    every label the atom holds; there is no second member for any one of them."""
-    client, path = served
-    rows = client.post("/api/build/load",
-                       json={"path": path}).get_json()["atoms"]
-
-    assert set(rows[1]) == {"index", "element", "x", "y", "z", "regions"}, (
-        f"the atom row's members drifted: {sorted(rows[1])}"
-    )
-    # AND THE IDENTITY COLUMNS ARE AT THE TOP LEVEL, which is where the design
-    # puts them (`structure.py::IDENTITY_FIELDS`: carried "beside `metadata`")
-    # and where the browser reads them.
-    body = client.post("/api/build/load", json={"path": path}).get_json()
-    assert "atom_names" in body and "residue_names" in body, sorted(body)
-    assert rows[1]["regions"] == [FROZEN_LABEL]
 
 
 def test_a_deck_label_block_is_validated_like_a_sidecar_one():

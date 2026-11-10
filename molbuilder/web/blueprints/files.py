@@ -1278,7 +1278,7 @@ def api_files_upload():
                 f"does not read as a structure",
                 400)
         try:
-            whole, said, _fmt = structure_from_text(text, filename)
+            whole, said = structure_from_text(text, filename)
         except ValueError as exc:
             return err(
                 f"{filename} does not read as a "

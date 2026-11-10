@@ -216,6 +216,33 @@ class TestTheWarningReachesTheUser:
         assert [n["where"] for n in notices
                 if n["where"].startswith("slab.seam_")] == [said], notices
 
+    def test_the_cell_page_says_what_it_did_then_what_is_now_true(self, client):
+        """The Cell page's answer comes in one order (`_shared.
+        ok_structure_response`; molview.md § 6.8): what the edit did (the
+        receipt, `cell.edit`), then what is now true of the box (its
+        conditions), then what the boundary does to the crystal (the seam
+        verdict, `science/junction-cell.md` § 6.1), then the geometry's
+        advice (`science/overview.md` § 3).
+
+        The road's structure: the six-layer slab the Slab panel builds over
+        its seed atom, committed whole on the Cell page with a vacuum typed
+        beside the cell -- a condition (the vacuum no longer sets the box),
+        the collision of a `c` left at the extent, and a slab atom landed
+        closer than any bond to the seed atom.  THE SILENT FAILURE: the page
+        lists a condition or a verdict before the receipt of the edit that
+        caused it, or the seam verdict lands among the box's conditions."""
+        slab = self._slab(client)["structure"]
+        meta = slab["metadata"]
+        r = client.post("/api/structure/periodicity", json={
+            "structure": slab, "op": "block",
+            "payload": {"cell": meta["cell"], "box_corner": None,
+                        "axis_kind": meta["axis_kind"],
+                        "vacuum": [0.0, 0.0, 5.0]}})
+        assert r.status_code == 200, r.get_json()
+        assert [n["where"] for n in r.get_json()["notices"]] == [
+            "cell.edit", "cell.vacuum_ignored", "slab.seam_collision",
+            "geometry.min_distance"], r.get_json()["notices"]
+
     def test_the_cell_page_says_no_seam_with_no_fcc_metal(self, client):
         """A box committed around no metal the slab builder makes has no
         crystal to continue: nothing is said about a seam."""
@@ -287,10 +314,18 @@ class TestTheWarningReachesTheUser:
     def test_it_says_the_same_thing_whatever_the_layer_count(self, client):
         """The layer-count question belongs to the seam, and there is no seam
         until `c` is set.  A good layer count does not buy a quiet build --
-        it cannot, because nothing has been decided about the box yet."""
+        it cannot, because nothing has been decided about the box yet.
+
+        Asked of the slab's own verdict (`about: "slab"`): the answer also
+        carries the geometry's advice on the structure it built (`science/
+        overview.md` § 3), and the six-layer slab here lands an atom closer
+        than any bond to the seed atom it grows over -- a finding about those
+        atoms, not about the boundary."""
         for layers in (4, 6):
             j = self._slab(client, layers=layers)
-            assert [n["severity"] for n in j["notices"]] == ["warn"], layers
+            assert [(n["severity"], n["where"]) for n in j["notices"]
+                    if n["about"] == "slab"] == [
+                ("warn", "slab.seam_collision")], (layers, j["notices"])
 
     def test_it_uses_the_one_channel_and_not_a_second_door(self, client):
         j = self._slab(client, layers=4)

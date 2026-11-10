@@ -28,6 +28,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from molbuilder.structure import Structure
+from support.envelope import answer
 from tests._node_esm import run_node
 
 REPO = Path(__file__).resolve().parents[1]
@@ -41,20 +43,19 @@ STORE_PRELUDE = f"""
 const S = await import({json.dumps(STORES.resolve().as_uri())});
 """
 
+#: The server's answer for four carbons in a row, 1 Å apart
+#: (`support.envelope.answer`), so the stand-in speaks the server's one
+#: shape.  No box stated: nothing here is about the cell (molview.md § 6.2).
+FOUR_CARBONS = json.dumps(answer(Structure(
+    elements=["C"] * 4,
+    positions=[[float(i), 0.0, 0.0] for i in range(4)])))
+
 SERVER = """
 globalThis.fetch = async function (route, init) {
     const body = JSON.parse(init.body);
     // As a browser hands it, for the page's one reader (`lib/server.js`).
-    return new Response(JSON.stringify({
-        ok: true,
-        atoms: [0, 1, 2, 3].map((i) => ({
-            index: i, element: "C", x: i, y: 0, z: 0, regions: [] })),
-        n_atoms: 4,
-        // No box: nothing here is about the cell (molview.md § 6.2, `null`
-        // when the structure has none).  This carried a retired origin key and
-        // an axis kind ("free") that is not one.
-        periodicity: null,
-    }), { status: 200 });
+    return new Response(JSON.stringify(""" + FOUR_CARBONS + """),
+                        { status: 200 });
 };
 """
 
@@ -389,16 +390,8 @@ globalThis.__sent = [];
 globalThis.fetch = async function (route, init) {
     globalThis.__sent.push({ route, body: JSON.parse(init.body) });
     // As a browser hands it, for the page's one reader (`lib/server.js`).
-    return new Response(JSON.stringify({
-        ok: true,
-        atoms: [0, 1, 2, 3].map((i) => ({
-            index: i, element: "C", x: i, y: 0, z: 0, regions: [] })),
-        n_atoms: 4,
-        // No box: nothing here is about the cell (molview.md § 6.2, `null`
-        // when the structure has none).  This carried a retired origin key and
-        // an axis kind ("free") that is not one.
-        periodicity: null,
-    }), { status: 200 });
+    return new Response(JSON.stringify(""" + FOUR_CARBONS + """),
+                        { status: 200 });
 };
 """
 

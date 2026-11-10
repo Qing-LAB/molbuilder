@@ -5,13 +5,14 @@ no per-endpoint shortcuts.
 
 What it pins (in order):
 
-  1.  /api/build/load reads the PDB and returns the per-atom rows.
+  1.  /api/build/load reads the PDB and returns its structure, the residue
+      names among it.
   2.  The structure with ``frozen_atoms`` + a region is saved through
       /api/structure/save, as the Molbuilder tab saves it: a `.pdb` is read,
       never written (`model/structure.md` § 2.4), so the save writes
       ``<stem>.xyz`` and its sidecar, the PDB's residue identity riding the
-      sidecar -- and /api/build/load re-read picks it up (atoms carry the
-      labels in ``regions``).
+      sidecar -- and /api/build/load re-read picks it up (the labels in the
+      structure's ``regions``).
 
 Run::
 
@@ -112,22 +113,23 @@ class TestPdbWorkflowEndToEnd:
     def test_step_1_the_load_door_reads_pdb(
         self, web, pdb_under_root,
     ):
-        """`/api/build/load` is the door; its rows are `_shared.atoms_list`."""
+        """`/api/build/load` is the door; its structure is
+        `_shared.structure_answer`'s."""
         pdb_path, n_atoms, n_residues = pdb_under_root
         r = web.post("/api/build/load", json={"path": self._path(pdb_path)})
         assert r.status_code == 200, r.data
-        body = r.get_json()
-        assert len(body["atoms"]) == n_atoms, (
-            f"the load door sees {len(body['atoms'])} atoms; "
+        structure = r.get_json()["structure"]
+        assert len(structure["elements"]) == n_atoms, (
+            f"the load door sees {len(structure['elements'])} atoms; "
             f"Structure.from_pdb sees {n_atoms}.  Wire format mismatch."
         )
-        assert "element" in body["atoms"][0]
-        # THE PDB's IDENTITY COLUMNS SURVIVE THE LOAD, at the top level --
-        # `structure.py::IDENTITY_FIELDS` carries them "beside `metadata`",
-        # not on the atom row.
-        assert body.get("residue_names"), f"PDB residue names lost: {sorted(body)}"
-        assert body["residue_names"][0], body["residue_names"][:3]
-        assert len(body["residue_names"]) == n_atoms
+        assert structure["elements"][0]
+        # THE PDB's IDENTITY COLUMNS SURVIVE THE LOAD, in the structure --
+        # `structure.py::IDENTITY_FIELDS` carries them "beside `metadata`".
+        names = structure.get("residue_names")
+        assert names, f"PDB residue names lost: {sorted(structure)}"
+        assert names[0], names[:3]
+        assert len(names) == n_atoms
 
     # ----- Step 2: assign frozen_atoms + a region, save, re-read ---- #
 
@@ -173,16 +175,15 @@ class TestPdbWorkflowEndToEnd:
         assert not StructureCodec().load(pdb_path).regions, (
             "the .pdb took the .xyz's sidecar for its own")
 
-        body = web.post("/api/build/load",
-                        json={"path": self._path(saved)}).get_json()
+        meta = web.post("/api/build/load", json={"path": self._path(saved)}
+                        ).get_json()["structure"]["metadata"]
         # ONE representation: every label an atom carries is in `regions`,
         # the reserved `frozen_atoms` among them.  There is no second member.
-        atom0 = body["atoms"][0]
-        atom3 = body["atoms"][3]
-        assert "frozen_atoms" in atom0["regions"], atom0
-        assert "is_frozen" not in atom0, atom0
-        assert "L-electrode" in atom3["regions"], atom3
+        regions = meta["regions"]
+        assert "frozen_atoms" not in meta and "is_frozen" not in meta, \
+            sorted(meta)
+        assert 0 in regions["frozen_atoms"], regions
+        assert 3 in regions["L-electrode"], regions
         # An untagged atom should NOT carry these:
-        atom10 = body["atoms"][10]
-        assert "frozen_atoms" not in atom10["regions"], atom10
-        assert "L-electrode" not in atom10["regions"], atom10
+        assert 10 not in regions["frozen_atoms"], regions
+        assert 10 not in regions["L-electrode"], regions

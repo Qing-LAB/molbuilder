@@ -598,7 +598,7 @@ loads, and a name with no record is refused naming the file and the key.
   ([`engines/transport.md`](?doc=engines/transport.md) § 4). `transport/sort.py`
   reads the leads' and these names here, and the server hands them, each with
   its sentence, beside every structure MolView holds (`labels`,
-  `_shared.workspace_payload`): the label palette offers them, keeping no copy
+  `_shared.structure_answer`): the label palette offers them, keeping no copy
   ([`web/molview.md`](?doc=web/molview.md));
 - whether its deck relaxes the structure (`relaxes`), which the progress log
   seeded for its run reads as its targets;

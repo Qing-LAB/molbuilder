@@ -72,6 +72,7 @@ def test_changing_what_a_read_returned_leaves_the_viewer_untouched():
         """
         const m = await loaded();
         const s = m.getStructure();
+        const periodicityBefore = JSON.stringify(s.periodicity);
         s.elements[0] = "XX";
         s.annotations[0].labels.push("smuggled");
         s.periodicity = { cell: [[9,0,0],[0,9,0],[0,0,9]] };
@@ -86,14 +87,14 @@ def test_changing_what_a_read_returned_leaves_the_viewer_untouched():
         console.log(JSON.stringify({
             element: after.elements[0],
             labels: after.annotations[0].labels,
-            cell: after.periodicity,
+            periodicityKept: JSON.stringify(after.periodicity) === periodicityBefore,
             x: m.getFrameAllAtoms(0)[0][0],
         }));
         """
     )
     assert out["element"] == "C", "a read handed out the model's own array"
     assert out["labels"] == [], "a read handed out the model's own labels"
-    assert out["cell"] is None, "a read handed out a writable structure"
+    assert out["periodicityKept"], "a read handed out a writable structure"
     assert out["x"] == 0, "a read handed out the model's own coordinates"
 
 
@@ -116,10 +117,11 @@ def test_no_read_at_all_can_be_written_through():
         // the test proves nothing.
         globalThis.__nextPayload = globalThis.__payload(
             [atomRow(0, "C", 0), atomRow(1, "O", 1)],
-            { periodicity: { cell: [[8,0,0],[0,8,0],[0,0,8]], engine_offset: [1,1,1],
-                             box_corner: [-1,-1,-1],
-                             axis_kind: ["periodic","periodic","isolated"],
-                             vacuum: [0,0,12] } });
+            { structure: { metadata: {
+                  cell: [[8,0,0],[0,8,0],[0,0,8]], engine_offset: [1,1,1],
+                  axis_kind: ["periodic","periodic","isolated"],
+                  vacuum: [0,0,12] } },
+              resolved_box: { box_corner: [-1,-1,-1] } });
         const m = createModel({});
         await m.installMolecule({ text: "x", filename: "x.xyz" });
         if (!m.getUnitCellInfo().cell) throw new Error("the fixture has no cell");
@@ -215,9 +217,11 @@ def test_a_narrower_cut_cannot_disagree_with_the_main_way_in():
         """
         globalThis.__nextPayload = globalThis.__payload([
             globalThis.__atomRow(0, "C", 0, { regions: ["anchor"] }),
-            globalThis.__atomRow(1, "O", 1, { regions: ["frozen_atoms"], residue_name: "ALA" }),
-        ], { periodicity: { cell: [[4,0,0],[0,4,0],[0,0,4]], engine_offset: [1,1,1],
-                            box_corner: [-1,-1,-1] } });
+            globalThis.__atomRow(1, "O", 1, { regions: ["frozen_atoms"] }),
+        ], { structure: { residue_names: ["MOL", "ALA"],
+                          metadata: { cell: [[4,0,0],[0,4,0],[0,0,4]],
+                                      engine_offset: [1,1,1] } },
+             resolved_box: { box_corner: [-1,-1,-1] } });
         const m = createModel({});
         await m.installMolecule({ text: "x", filename: "x.xyz" });
 
@@ -279,20 +283,23 @@ def test_the_cell_page_and_the_drawing_cannot_describe_different_structures():
     the Cell page listed a lattice while the drawing had none and "Show unit
     cell" drew nothing. Two readers of one fact, disagreeing, with no error
     anywhere.
+
+    The answer is the server's own (`support.envelope.answer`) for a
+    structure nobody gave a cell or an origin to (Automatic): its raw fields
+    are empty and the box the server worked out sits beside them.
     """
+    from molbuilder.structure import Structure
+    from support.envelope import answer
+    served = answer(Structure(elements=["O", "H"],
+                              positions=[[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]]))
+    meta, box = served["structure"]["metadata"], served["resolved_box"]
+    assert meta["cell"] is None and meta["engine_offset"] is None, \
+        "the fixture states a box: it is not Automatic"
+    assert box["resolved_cell"] and box["box_corner"], \
+        "Automatic resolves a box for atoms (§ 9.3: it always has an answer)"
     out = _run(
+        "globalThis.__nextPayload = " + json.dumps(served) + ";\n"
         """
-        // The server's own block for a structure nobody gave a cell or an
-        // origin to (Automatic): the raw fields are empty and the box it worked
-        // out sits beside them.
-        globalThis.__nextPayload = globalThis.__payload(
-            [globalThis.__atomRow(0, "O", 0), globalThis.__atomRow(1, "H", 1)],
-            { periodicity: {
-                axis_kind: ["isolated","isolated","isolated"],
-                cell: null, engine_offset: null, vacuum: [0,0,0],
-                resolved_cell: [[7,0,0],[0,7,0],[0,0,6]],
-                box_corner: [-3,-3,-3],
-                resolved_vacuum: [3,3,3] } });
         const m = createModel({});
         await m.installMolecule({ text: "x", filename: "x.xyz" });
 
@@ -311,14 +318,14 @@ def test_the_cell_page_and_the_drawing_cannot_describe_different_structures():
         }));
         """
     )
-    assert out["panelCell"] == [[7, 0, 0], [0, 7, 0], [0, 0, 6]], (
+    assert out["panelCell"] == box["resolved_cell"], (
         "the Cell page lost the cell the structure actually uses"
     )
     assert out["drawnCell"] == out["panelCell"], (
         f"the drawing and the Cell page describe different cells: drawn "
         f"{out['drawnCell']} vs panel {out['panelCell']}"
     )
-    assert out["drawnOrigin"] == out["panelOrigin"] == [-3, -3, -3], (
+    assert out["drawnOrigin"] == out["panelOrigin"] == box["box_corner"], (
         f"the box is not anchored where the panel says it is: {out}"
     )
     assert out["rawCell"] is None, (
@@ -1458,10 +1465,11 @@ def test_one_read_of_the_structure_holds_everything_a_request_needs():
         globalThis.__nextPayload = globalThis.__payload([
             globalThis.__atomRow(0, "C", 0, { regions: ["anchor", "frozen_atoms"] }),
             globalThis.__atomRow(1, "O", 1, { regions: [] }),
-        ], { periodicity: { cell: [[6,0,0],[0,6,0],[0,0,6]], engine_offset: [1,1,1],
-                            box_corner: [-1,-1,-1],
-                            axis_kind: ["periodic","periodic","isolated"],
-                            vacuum: [0,0,10] } });
+        ], { structure: { metadata: {
+                  cell: [[6,0,0],[0,6,0],[0,0,6]], engine_offset: [1,1,1],
+                  axis_kind: ["periodic","periodic","isolated"],
+                  vacuum: [0,0,10] } },
+             resolved_box: { box_corner: [-1,-1,-1] } });
         const m = createModel({});
         await m.installMolecule({ text: "x", filename: "x.xyz" });
         m.addFrames([[[0,0,1],[1,0,1]]], { forces: [[[0,0,-1],[0,0,-2]]] });
@@ -1521,7 +1529,7 @@ def test_the_facts_a_request_carries_all_came_from_one_read():
         """
         globalThis.__nextPayload = globalThis.__payload([
             globalThis.__atomRow(0, "C", 5, { regions: ["edited"] }),
-        ], { periodicity: { cell: [[7,0,0],[0,7,0],[0,0,7]] } });
+        ], { structure: { metadata: { cell: [[7,0,0],[0,7,0],[0,0,7]] } } });
         const m = createModel({});
         await m.installMolecule({ text: "x", filename: "x.xyz" });
 
@@ -1933,39 +1941,41 @@ def test_a_count_changing_edit_clears_the_selection():
 def test_identity_columns_and_channels_ride_the_two_doors_whole():
     """§ 11.3: an export of the truth carries everything the structure says —
     identity columns and per-atom channels included.  Both translations run
-    REAL: the payload a server sends goes through ``structureFromServer``
-    (the per-atom fold) and back out through ``structureForServer`` (the
-    envelope unfold).  The silent failure: a fold that reads fewer fields
-    than the unfold rebuilds, so channels die at adoption and the first edit
-    round-trip replaces every real residue name with the server's
-    re-synthesized placeholder.  A metadata key the module does not shape --
-    the order record of a structure in an engine's order (`model/overview.md`
-    § 2.2a) -- goes back as it came; a key the doors listed by hand would
-    be dropped on every save."""
+    REAL: the answer the server sends (`support.envelope.answer`, of a real
+    Structure) goes through ``structureFromServer`` (the per-atom fold) and
+    back out through ``structureForServer`` (the envelope unfold).  The
+    silent failure: a fold that reads fewer fields than the unfold rebuilds,
+    so channels die at adoption and the first edit round-trip replaces every
+    real residue name with the server's re-synthesized placeholder.  A
+    metadata key the module does not shape -- the order record of a
+    structure in an engine's order (`model/overview.md` § 2.2a) -- goes back
+    as it came; a key the doors listed by hand would be dropped on every
+    save."""
+    from molbuilder.structure import Structure
+    from support.envelope import answer
     from support.road import CO2_HELD_FIRST
     jobs_url = (MODULE_DIR / "model-jobs.js").resolve().as_uri()
     order = CO2_HELD_FIRST
-    payload = {
+    payload = answer(Structure.from_dict({
         "title": "hemeC junction",
-        "atoms": [
-            {"element": "Au", "x": 0, "y": 0, "z": 0,
-             "regions": ["L-electrode"]},
-            {"element": "S", "x": 1, "y": 0, "z": 0, "regions": []},
-            {"element": "C", "x": 2, "y": 0, "z": 0, "regions": []},
-        ],
+        "elements": ["Au", "S", "C"],
+        "positions": [[0, 0, 0], [1, 0, 0], [2, 0, 0]],
         "atom_names": ["AU1", "SG", "CA"],
         "residue_ids": [1, 2, 2],
         "residue_names": ["AUX", "CYS", "CYS"],
         "chain_ids": ["A", "B", "B"],
-        "periodicity": {"cell": [[10, 0, 0], [0, 10, 0], [0, 0, 10]],
-                        "axis_kind": ["periodic", "periodic", "isolated"]},
-        "annotations": {
-            "spin_up": {"kind": "tag", "data": [0, 2], "color": "#f00"},
-            "charge": {"kind": "value", "data": {"1": -0.4, "2": 0.1},
-                       "fdf": "some-strategy"},
+        "metadata": {
+            "regions": {"L-electrode": [0]},
+            "cell": [[10, 0, 0], [0, 10, 0], [0, 0, 10]],
+            "axis_kind": ["periodic", "periodic", "isolated"],
+            "annotations": {
+                "spin_up": {"kind": "tag", "data": [0, 2], "color": "#f00"},
+                "charge": {"kind": "value", "data": {"1": -0.4, "2": 0.1},
+                           "fdf": "some-strategy"},
+            },
+            "atom_order": order,
         },
-        "structure": {"metadata": {"atom_order": order}},
-    }
+    }))
     snippet = (
         "const m = await import(" + json.dumps(jobs_url) + ");\n"
         "const adopted = m.structureFromServer("
@@ -2445,17 +2455,20 @@ def test_a_cell_edit_flags_the_structure_and_not_the_labels():
     behaviour.
     """
     out = _run(_with_a_recorded_contract("""
-        // The cell op round-trips too, so the stand-in must answer WITH a
-        // cell -- in the server's own names (`cell`, `engine_offset`,
-        // `axis_kind`), not the module's -- AND with the record, because
+        // The cell op round-trips too, so the stand-in must answer as the
+        // cell door does -- the structure in its one shape, its cell in the
+        // server's own names (`cell`, `engine_offset`, `axis_kind`), not the
+        // module's -- AND with the record in its `info`, because
         // `periodicity_gate.apply_edit` is what marks it outdated now and
         // this answer is the only thing the browser adopts.
-        globalThis.__nextPayload = {ok: true, periodicity: {
-            cell: [[9,0,0],[0,9,0],[0,0,9]], engine_offset: null,
-            axis_kind: ["periodic","periodic","periodic"]},
-            info: {calculation: {engine: "siesta", source: "Relax.fdf",
-                                 contract: {mesh_cutoff: 275},
-                                 structure_modified: true}}};
+        globalThis.__nextPayload = globalThis.__payload(
+            [__atomRow(0, "C", 0), __atomRow(1, "O", 1)],
+            {structure: {
+                metadata: {cell: [[9,0,0],[0,9,0],[0,0,9]], engine_offset: null,
+                           axis_kind: ["periodic","periodic","periodic"]},
+                info: {calculation: {engine: "siesta", source: "Relax.fdf",
+                                     contract: {mesh_cutoff: 275},
+                                     structure_modified: true}}}});
         await m.commitPeriodicityOp("cell", [[9,0,0],[0,9,0],[0,0,9]]);
     """))
     assert out["structure"] is True, "the browser did not adopt the server's mark"

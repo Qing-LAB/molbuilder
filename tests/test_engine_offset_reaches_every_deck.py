@@ -76,7 +76,7 @@ def _assert_placed(design, written, text):
     np.testing.assert_allclose(record["applied_offset"], offset, atol=1e-7)
     # And the viewer draws what the deck says (plan § 5q.8 D4): the structure's
     # own view puts the box at minus the offset this deck applied.
-    np.testing.assert_allclose(design.to_wire()["periodicity"]["box_corner"],
+    np.testing.assert_allclose(design.to_wire()["resolved_box"]["box_corner"],
                                -np.asarray(record["applied_offset"]), atol=1e-7)
     cell = np.asarray(record["cell"], dtype=float)
     np.testing.assert_allclose(cell, design.resolve_cell(), atol=1e-7)
@@ -176,7 +176,7 @@ def test_an_assigned_origin_places_the_deck_at_design_minus_it(
     np.testing.assert_allclose(record["applied_offset"], -P, atol=1e-7)
     # The kinds as the structure had them (D5) -- what the Results tab reads.
     assert record["axis_kind"] == list(design.axis_kind), record
-    np.testing.assert_allclose(design.to_wire()["periodicity"]["box_corner"],
+    np.testing.assert_allclose(design.to_wire()["resolved_box"]["box_corner"],
                                P, atol=1e-7)          # the viewer's box is there
     if engine == "pyscf":
         # The pair the run saves beside its geometry states the engine's

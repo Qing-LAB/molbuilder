@@ -65,7 +65,8 @@ round-trip of all of them to and from disk. § 6 draws the full pipeline.
 ## 2. Data management
 
 **Job:** own every representation of structure / trajectory / config data and
-its serialization — in memory (the dataclasses), on the wire (`to_wire`), and on
+its serialization — in memory (the dataclasses), on the wire (`to_dict`, and
+`to_wire` for what the server derives beside it), and on
 disk (the codecs). No domain logic: a data module never validates chemistry,
 builds geometry, or runs a job.
 
@@ -98,16 +99,6 @@ The CLI's load/save path goes through `StructureCodec` too — the residual gap
 this named (task #73) closed 2026-09-22, when `xv2xyz`, the last converter
 writing a lone geometry, moved onto it and the writers stopped taking a path
 (`plans/plan.md` W15).
-
-*This also called `web/blueprints/_shared.py::structure_to_dict` a "vestigial
-wrapper … not yet deleted" until 2026-09-06. It is not vestigial and is not
-pending deletion: it is the composer for the documented response shape, and
-[`web/web-api.md`](?doc=web/web-api.md) — which owns the HTTP API — lists the
-per-atom columns it serves at the root (`atom_names`, `residue_ids`,
-`residue_names`, `chain_ids`) as part of that shape. `model/structure.md` said
-the same. This page was the one out of
-step, and being out of step with the contract that owns a surface is how a
-reader gets opposite instructions from two documents.*
 
 ---
 

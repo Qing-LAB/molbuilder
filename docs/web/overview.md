@@ -88,7 +88,7 @@ Two conventions recur in every module, so learn them once:
 - **The `{ok, …}` envelope.** Every server call returns `{ok: true, …}` or
   `{ok: false, error}`, and every answer is read by the one reader, `ask` in
   `lib/server.js` ([`ui-contract.md`](?doc=web/ui-contract.md) § 12). A
-  molecule always crosses the wire in the same `workspace_payload` shape. Details
+  molecule always crosses the wire in the one shape `_shared.structure_answer` builds, the structure sent once. Details
   in [`web-api.md`](?doc=web/web-api.md).
 - **The runtime registry.** Classic `<script>`s and `type="module"` scripts load
   in an unpredictable order, so a module never *grabs* another module — it

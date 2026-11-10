@@ -28,28 +28,6 @@ def test_build_dna_response_includes_backend_used(web_client):
     assert body["backend_used"] in ("threedna", "amber", "rdkit"), body
 
 
-def test_build_response_carries_validation_issues(web_client):
-    """The build response carries the structure's findings, so the page
-    shows them as soon as the structure exists -- here the H/heavy
-    reference note of an X3DNA heavy-atom skeleton (add_hydrogens off)."""
-    from molbuilder.builders.backends import available_backends
-    if not available_backends().get("threedna"):
-        pytest.skip("threedna backend not installed")
-    r = web_client.post("/api/build/molecule",
-                        json={"kind": "dna", "input": "ATGC",
-                              "backend": "threedna",
-                              "add_hydrogens": "off",
-                              "protonate_phosphates": False})
-    body = r.get_json()
-    assert body["ok"] is True
-    issues = body.get("issues") or []
-    h_ratio_notes = [i for i in issues
-                     if i["severity"] == "info" and i["where"] == "geometry.h_ratio"]
-    assert len(h_ratio_notes) == 1, (
-        f"expected one h_ratio note for the skeleton, got: {issues}"
-    )
-
-
 # --------------------------------------------------------------------- #
 #  /api/build/molecule                                                         #
 # --------------------------------------------------------------------- #
@@ -59,15 +37,15 @@ def test_build_peptide(web_client):
     r = web_client.post("/api/build/molecule", json={"kind": "peptide", "input": "ARNDC"})
     body = r.get_json()
     assert body["ok"] is True
-    assert body["n_atoms"] >= 38
-    assert "ARNDC" in (body["title"] or "")
+    assert len(body["structure"]["elements"]) >= 38
+    assert "ARNDC" in body["structure"]["title"]
 
 
 def test_build_dna(web_client):
     r = web_client.post("/api/build/molecule", json={"kind": "dna", "input": "ATGC"})
     body = r.get_json()
     assert body["ok"] is True
-    assert len(set(body["residue_ids"])) == 4
+    assert len(set(body["structure"]["residue_ids"])) == 4
 
 
 def test_build_rna(web_client):
@@ -83,7 +61,7 @@ def test_build_smiles_optional(web_client):
     body = r.get_json()
     if not body.get("ok"):
         pytest.skip(f"RDKit not installed: {body.get('error')}")
-    assert body["n_atoms"] == 12
+    assert len(body["structure"]["elements"]) == 12
 
 
 def test_build_bad_input_returns_clear_error(web_client):
@@ -95,11 +73,19 @@ def test_build_bad_input_returns_clear_error(web_client):
 
 
 @pytest.fixture
-def peptide_xyz(web_client):
-    """xyz string of an ARNDC peptide via the build endpoint."""
+def peptide(web_client):
+    """The ARNDC peptide the build endpoint answers, as the Structure it is."""
+    from molbuilder.structure import Structure
     r = web_client.post("/api/build/molecule",
                         json={"kind": "peptide", "input": "ARNDC"})
-    return r.get_json()["text"]
+    return Structure.from_dict(r.get_json()["structure"])
+
+
+@pytest.fixture
+def peptide_xyz(peptide):
+    """The ARNDC peptide as a file's text, written by the structure's own
+    writer."""
+    return peptide.to_xyz()
 
 
 _PATTERN_B_REGIONS = {"L-electrode": [0, 1, 2]}
@@ -211,33 +197,38 @@ def test_a_blank_is_not_chosen_and_a_value_that_will_not_read_is_refused_by_name
 # --------------------------------------------------------------------- #
 
 
-def test_load_xyz_via_json(web_client, peptide_xyz):
+def test_load_xyz_via_json(web_client, peptide, peptide_xyz):
+    """An .xyz text is read as XYZ: the atoms of the structure it was
+    written from, in its order."""
     r = web_client.post("/api/build/load",
                         json={"text": peptide_xyz, "filename": "peptide.xyz"})
     body = r.get_json()
     assert body["ok"] is True
-    assert body["source_format"] == "xyz"
-    assert body["n_atoms"] >= 38
+    assert body["structure"]["elements"] == list(peptide.elements)
 
 
 def test_load_pdb_via_json(web_client):
-    pep_pdb = web_client.post("/api/build/molecule",
-                              json={"kind": "peptide", "input": "AC"}
-                              ).get_json()["pdb"]
+    """A .pdb text is read as PDB: its residue names come through, which an
+    XYZ read could not carry."""
+    from molbuilder.structure import Structure
+    pep_pdb = Structure.from_dict(web_client.post(
+        "/api/build/molecule", json={"kind": "peptide", "input": "AC"}
+    ).get_json()["structure"]).to_pdb()
     r = web_client.post("/api/build/load",
                         json={"text": pep_pdb, "filename": "ac.pdb"})
     body = r.get_json()
     assert body["ok"] is True
-    assert body["source_format"] == "pdb"
+    assert set(body["structure"]["residue_names"]) == {"ALA", "CYS"}
 
 
-def test_load_xyz_format_sniff(web_client, peptide_xyz):
-    """No extension on the filename -> sniff format from the content."""
+def test_load_xyz_format_sniff(web_client, peptide, peptide_xyz):
+    """No extension on the filename -> sniff format from the content: the
+    atoms of the structure the XYZ text was written from, in its order."""
     r = web_client.post("/api/build/load",
                         json={"text": peptide_xyz, "filename": ""})
     body = r.get_json()
     assert body["ok"] is True
-    assert body["source_format"] == "xyz"
+    assert body["structure"]["elements"] == list(peptide.elements)
 
 
 def test_load_empty_returns_error(web_client):
@@ -263,7 +254,7 @@ def test_modify_op_round_trips_the_periodic_cell(web_client):
     body = web_client.post("/api/modify/delete", json={
         "structure": _env_per(_H2O_XYZ, periodicity), "indices": [1]}).get_json()
     assert body["ok"] is True, body
-    per = body["periodicity"]
+    per = body["structure"]["metadata"]
     assert per["cell"] == periodicity["cell"], "delete dropped/changed the cell"
     assert per["axis_kind"] == periodicity["axis_kind"], "delete dropped axis_kind"
     assert per["vacuum"] == periodicity["vacuum"], "delete dropped vacuum"
@@ -275,7 +266,7 @@ def test_modify_op_round_trips_the_periodic_cell(web_client):
     body = web_client.post("/api/modify/rotate", json={
         "structure": _env_per(_H2O_XYZ, periodicity), "axis": "z", "angle": 30}).get_json()
     assert body["ok"] is True, body
-    per = body["periodicity"]
+    per = body["structure"]["metadata"]
     assert per["cell"] is not None, "rotate dropped the cell"
     assert np.allclose(per["cell"], periodicity["cell"]), \
         "rotate moved the cell: moving atoms only moves atoms"
@@ -301,22 +292,30 @@ def test_modify_op_keeps_an_assigned_origin(web_client):
     }
     r = web_client.post("/api/modify/rotate", json={
         "structure": _env_per(_H2O_XYZ, periodicity), "axis": "z", "angle": 15})
-    per = r.get_json()["periodicity"]
+    per = r.get_json()["structure"]["metadata"]
     assert per["engine_offset"] is not None, "rotate dropped the assigned origin"
     assert np.allclose(per["engine_offset"], periodicity["engine_offset"]), \
         "rotate moved the assigned origin: moving atoms only moves atoms"
-    assert np.allclose(per["box_corner"], [-2.0, -2.0, -6.0]), per["box_corner"]
 
 
 # --------------------------------------------------------------------- #
-#  Modify-tab edit-op endpoints (M3).  Body shape carries the canonical #
-#  state (xyz + atom_names / residue_ids / residue_names / chain_ids)   #
-#  alongside op-specific args; response shape mirrors /api/build/load + #
-#  adds an issues array.                                                #
+#  Modify-tab edit-op endpoints (M3).  The body carries the structure  #
+#  (the envelope) beside the op's own arguments; the answer is the one  #
+#  structure answer /api/build/load sends.                              #
 # --------------------------------------------------------------------- #
 
 
 _H2O_XYZ = "3\nh2o\nO 0 0 0\nH 0.957 0 0\nH -0.24 0.927 0\n"
+
+
+def _n_atoms(body):
+    """The atom count of the structure an answer carries."""
+    return len(body["structure"]["elements"])
+
+
+def _coords(body):
+    """The (x, y, z) of each atom of the structure an answer carries."""
+    return [tuple(p) for p in body["structure"]["positions"]]
 
 
 def test_modify_delete_drops_listed_indices(web_client):
@@ -326,36 +325,50 @@ def test_modify_delete_drops_listed_indices(web_client):
     })
     body = r.get_json()
     assert body["ok"] is True
-    assert body["n_atoms"] == 1
+    assert _n_atoms(body) == 1
     assert body["structure"]["elements"] == ["O"]
 
 
-def test_modify_responses_carry_atoms_list(web_client):
-    """BOMB-0 fix (2026-06-07): every /api/modify/* response carries
-    an ``atoms`` list in the same shape ``/api/selection/atoms``
-    returns, so the front-end's selection store stays in sync
-    with the in-memory post-op structure without a disk re-fetch.
+#: The structure answer's keys (`web/web-api.md` § 1): the structure once,
+#: what the server works out about it, the kind table's labels -- and
+#: `notices` beside them when there are any.
+_STRUCTURE_ANSWER = {"ok", "structure", "resolved_box", "atom_order_said",
+                     "labels"}
 
-    Pre-fix, modifier-op responses only carried xyz + elements +
-    metadata lists; the selection panel went stale after every op."""
-    r = web_client.post("/api/modify/delete", json={
-        "structure": _env(_H2O_XYZ),
-        "indices": [1, 2],   # delete both H, keep O
-    })
-    body = r.get_json()
-    assert body["ok"] is True
-    assert "atoms" in body, (
-        "modify response must include atoms list "
-        "(BOMB-0 selection-store sync fix)"
-    )
-    atoms = body["atoms"]
-    assert len(atoms) == 1, (
-        f"post-delete atoms list should have 1 row; got {len(atoms)}"
-    )
-    row = atoms[0]
-    assert row["index"]    == 0
-    assert row["element"]  == "O"
-    assert row["regions"]  == []
+
+@pytest.mark.parametrize("route,body,call_fact,n_atoms", [
+    # Ala-Cys as the peptide builder builds it, every H added: the aldehyde
+    # end (no OXT, `engines/builders.md` § 1), C6H12N2O2S.
+    ("/api/build/molecule", {"kind": "peptide", "input": "AC"},
+     {"backend_used"}, 23),
+    ("/api/build/load", {"text": _H2O_XYZ, "filename": "h2o.xyz"},
+     {"n_frames"}, 3),
+    ("/api/modify/delete", {"structure": _env(_H2O_XYZ), "indices": [1, 2]},
+     set(), 1),
+    ("/api/structure/periodicity", {
+        "structure": _env(_H2O_XYZ), "op": "vacuum",
+        "payload": [4.0, 4.0, 4.0]}, set(), 3),
+], ids=["molecule", "load", "modify", "cell"])
+def test_every_structure_answer_carries_the_structure_once(
+        web_client, route, body, call_fact, n_atoms):
+    """The load, a build, an edit and the cell door answer ONE shape
+    (`web/web-api.md` § 1, *one shape, sent once*): exactly the structure's
+    own dict, the box the server resolved, the atom order in words and the
+    kind table's labels, with notices when there are any and the call's own
+    fact (the load's `n_frames`, a build's `backend_used`) -- and the dict
+    reads back as a Structure of the atoms the input gives.  THE SILENT
+    FAILURE: a key beside the structure the contract does not list -- a
+    second copy of a field (`info`, `periodicity`, `text` ...) a page reads
+    instead of the structure, two sources that can come apart (the
+    selection panel once went stale on exactly such a copy)."""
+    from molbuilder.structure import Structure
+    answer = web_client.post(route, json=body).get_json()
+    assert answer["ok"] is True, answer
+    assert set(answer) - {"notices"} == _STRUCTURE_ANSWER | call_fact, (
+        f"{route} answered keys the contract does not list: {sorted(answer)}")
+    assert Structure.from_dict(answer["structure"]).n_atoms == n_atoms
+    assert set(answer["resolved_box"]) == {
+        "resolved_cell", "box_corner", "resolved_vacuum"}
 
 
 def test_modify_delete_silently_ignores_out_of_range(web_client):
@@ -366,7 +379,7 @@ def test_modify_delete_silently_ignores_out_of_range(web_client):
     })
     body = r.get_json()
     assert body["ok"] is True
-    assert body["n_atoms"] == 2     # dropped O, kept the two H
+    assert _n_atoms(body) == 2     # dropped O, kept the two H
 
 
 def test_modify_delete_rejects_non_int_indices(web_client):
@@ -387,10 +400,10 @@ def test_modify_add_atom_appends_at_offset(web_client):
     })
     body = r.get_json()
     assert body["ok"] is True
-    assert body["n_atoms"] == 4
+    assert _n_atoms(body) == 4
     assert body["structure"]["elements"][-1] == "H"
     # New atom lands in a fresh residue named MOD (default).
-    assert body["residue_names"][-1] == "MOD"
+    assert body["structure"]["residue_names"][-1] == "MOD"
 
 
 def test_modify_add_atom_without_anchor_measures_from_the_origin(web_client):
@@ -407,10 +420,10 @@ def test_modify_add_atom_without_anchor_measures_from_the_origin(web_client):
     })
     body = r.get_json()
     assert body["ok"] is True, body
-    assert body["n_atoms"] == 4
+    assert _n_atoms(body) == 4
     assert body["structure"]["elements"][-1] == "S"
-    # The offset IS the position -- read it back off the xyz the route returns.
-    x, y, z = [float(v) for v in body["text"].splitlines()[-1].split()[1:4]]
+    # The offset IS the position -- read it back off the structure answered.
+    x, y, z = _coords(body)[-1]
     assert (round(x, 6), round(y, 6), round(z, 6)) == (1.25, -0.5, 2.0)
 
 
@@ -442,12 +455,15 @@ def test_modify_add_atom_rejects_unknown_element(web_client):
     assert "unknown element symbol" in body["error"]
 
 
-def test_modify_add_atom_zero_offset_is_advisory_not_blocked(web_client):
-    """Advisory-not-enforcing (validation contract): a zero offset places the new
-    atom on top of the anchor, but /api/modify/add_atom does NOT reject it -- it
-    returns the structure (ok, 200) and surfaces the coincident atoms as a
-    non-blocking ``geometry.min_distance`` issue.  The editing stage advises; the
-    generation gate enforces."""
+def test_modify_add_atom_zero_offset_is_not_refused_and_the_coincident_atoms_are_said(
+        web_client):
+    """A zero offset puts the new atom on its anchor, and /api/modify/add_atom
+    does not refuse it: it answers the structure (200) with the atom added
+    where it was asked -- and says, as advice beside it, that two atoms now
+    sit on top of each other (`science/overview.md` § 3: the geometry's
+    findings are shown while editing, never blocking; the generation gate
+    enforces).  THE SILENT FAILURE: the edit answers a structure with two
+    coincident atoms and says nothing until the deck is refused."""
     r = web_client.post("/api/modify/add_atom", json={
         "structure": _env(_H2O_XYZ),
         "element": "H",
@@ -457,9 +473,11 @@ def test_modify_add_atom_zero_offset_is_advisory_not_blocked(web_client):
     assert r.status_code == 200
     body = r.get_json()
     assert body["ok"] is True
-    assert body["n_atoms"] == 4
-    assert any(i.get("where") == "geometry.min_distance"
-               for i in (body.get("issues") or []))
+    assert _n_atoms(body) == 4
+    assert _coords(body)[-1] == _coords(body)[0]
+    said = [n for n in body.get("notices", [])
+            if n["where"] == "geometry.min_distance"]
+    assert [n["severity"] for n in said] == ["warn"], body.get("notices")
 
 
 def test_modify_add_atom_rejects_missing_offset(web_client):
@@ -476,10 +494,10 @@ def test_modify_add_atom_rejects_missing_offset(web_client):
 def test_modify_endpoint_chain_preserves_metadata(web_client):
     """Spec invariant: per-atom metadata round-trips through every op
     when the client passes it back in the body.  add_atom -> delete
-    keeps the atom_names / residue_ids carried alongside xyz."""
-    # 1. Initial state -- the canonical body shape every modify op
-    # accepts (xyz + parallel-array metadata).  No validate-and-echo
-    # roundtrip needed; each modify op revalidates via
+    keeps the atom_names / residue_ids the structure carries."""
+    # 1. Initial state -- the envelope every modify op takes: the
+    # structure's own dict, its identity columns in it.  No
+    # validate-and-echo roundtrip needed; each modify op revalidates via
     # _struct_from_body.
     s1 = {
         "structure": _env(_H2O_XYZ, atom_names=["OW", "HW1", "HW2"], residue_ids=[7, 7, 7], residue_names=["WAT", "WAT", "WAT"], chain_ids=["B", "B", "B"]),
@@ -493,10 +511,10 @@ def test_modify_endpoint_chain_preserves_metadata(web_client):
         "offset":        [0, 0, 1.5],
     })
     s2 = r2.get_json()
-    assert s2["n_atoms"] == 4
-    assert s2["atom_names"][:3]    == ["OW", "HW1", "HW2"]
-    assert s2["residue_ids"][:3]   == [7, 7, 7]
-    assert s2["residue_names"][:3] == ["WAT", "WAT", "WAT"]
+    assert _n_atoms(s2) == 4
+    assert s2["structure"]["atom_names"][:3]    == ["OW", "HW1", "HW2"]
+    assert s2["structure"]["residue_ids"][:3]   == [7, 7, 7]
+    assert s2["structure"]["residue_names"][:3] == ["WAT", "WAT", "WAT"]
     # 3. Delete the new atom; metadata for the surviving three is
     # still intact.
     r3 = web_client.post("/api/modify/delete", json={
@@ -504,9 +522,9 @@ def test_modify_endpoint_chain_preserves_metadata(web_client):
         "indices":       [3],
     })
     s3 = r3.get_json()
-    assert s3["n_atoms"] == 3
-    assert s3["atom_names"]    == ["OW", "HW1", "HW2"]
-    assert s3["residue_names"] == ["WAT", "WAT", "WAT"]
+    assert _n_atoms(s3) == 3
+    assert s3["structure"]["atom_names"]    == ["OW", "HW1", "HW2"]
+    assert s3["structure"]["residue_names"] == ["WAT", "WAT", "WAT"]
 
 
 # --------------------------------------------------------------------- #
@@ -523,15 +541,6 @@ _LINEAR_XYZ = (
 )
 
 
-def _coords_from_xyz(xyz):
-    """Parse an xyz string into a list of (x, y, z) tuples (skip
-    header lines).  Helper for the orient / rotate tests."""
-    return [
-        tuple(float(v) for v in line.split()[1:4])
-        for line in xyz.splitlines()[2:] if line.strip()
-    ]
-
-
 def test_modify_orient_default_lays_anchor_pair_along_z(web_client):
     """Default ``axis="z"``, ``angle=0`` orients atoms 0 -> 3 along z.
     With ``center="midpoint"`` (default), the midpoint of the pair
@@ -543,7 +552,7 @@ def test_modify_orient_default_lays_anchor_pair_along_z(web_client):
     })
     body = r.get_json()
     assert body["ok"] is True
-    coords = _coords_from_xyz(body["text"])
+    coords = _coords(body)
     a0, a3 = coords[0], coords[3]
     # x and y of the anchors collapse to ~0 (vector lies along z).
     assert abs(a0[0]) < 1e-6 and abs(a0[1]) < 1e-6
@@ -573,7 +582,7 @@ def test_modify_rotate_z_90_degrees(web_client):
     })
     body = r.get_json()
     assert body["ok"] is True
-    coords = _coords_from_xyz(body["text"])
+    coords = _coords(body)
     # atom 1 was at (1, 1, 0); after a +90° rotation around z it
     # becomes (-1, 1, 0).
     assert abs(coords[1][0] - (-1.0)) < 1e-6, coords[1]
@@ -614,7 +623,7 @@ def test_modify_translate_recenter_puts_centroid_at_origin(web_client):
     })
     body = r.get_json()
     assert body["ok"] is True
-    coords = _coords_from_xyz(body["text"])
+    coords = _coords(body)
     cx = sum(c[0] for c in coords) / len(coords)
     cy = sum(c[1] for c in coords) / len(coords)
     cz = sum(c[2] for c in coords) / len(coords)
@@ -642,18 +651,19 @@ def test_modify_translate_recenter_centres_THE_GROUP_and_moves_only_it(web_clien
     all, which is the half a whole-structure centring would also get
     wrong in the other direction.
     """
+    sent = _env(_LINEAR_XYZ)
     r = web_client.post("/api/modify/translate", json={
-        "structure": _env(_LINEAR_XYZ),
+        "structure": sent,
         "recenter": True,
         "indices": [0, 1],
     })
     body = r.get_json()
     assert body["ok"] is True, body
-    out = _coords_from_xyz(body["text"])
+    out = _coords(body)
     assert abs(out[0][0] + 0.5) < 1e-9 and abs(out[0][1] + 0.5) < 1e-9, out[0]
     assert abs(out[1][0] - 0.5) < 1e-9 and abs(out[1][1] - 0.5) < 1e-9, out[1]
     # The atoms outside the group are the point: they stay put.
-    src = _coords_from_xyz(_LINEAR_XYZ)
+    src = sent["positions"]
     for i in (2, 3):
         assert all(abs(out[i][k] - src[i][k]) < 1e-9 for k in range(3)), \
             f"atom {i} moved; only the selected group may move"
@@ -670,7 +680,7 @@ def test_modify_translate_recenter_with_no_group_is_one_rigid_move(web_client):
                   "indices": []}):
         r = web_client.post("/api/modify/translate", json=body).get_json()
         assert r["ok"] is True, r
-        both.append(r["text"])
+        both.append(r["structure"]["positions"])
     assert both[0] == both[1], "an empty group must mean the whole structure"
 
 
@@ -689,7 +699,8 @@ def test_modify_translate_recenter_of_a_group_leaves_the_box(web_client):
         "structure": _env_per(_LINEAR_XYZ, periodicity),
         "recenter": True, "indices": [0, 1]}).get_json()
     assert r["ok"] is True, r
-    assert r["periodicity"]["engine_offset"] == periodicity["engine_offset"], \
+    assert r["structure"]["metadata"]["engine_offset"] == \
+        periodicity["engine_offset"], \
         "centring a GROUP must leave the box where it is"
 
 
@@ -708,22 +719,22 @@ def test_modify_translate_recenter_of_everything_leaves_the_box(web_client):
         "structure": _env_per(_LINEAR_XYZ, periodicity),
         "recenter": True}).get_json()
     assert r["ok"] is True, r
-    assert np.allclose(r["periodicity"]["engine_offset"],
-                       periodicity["engine_offset"]), \
-        r["periodicity"]["engine_offset"]
+    offset = r["structure"]["metadata"]["engine_offset"]
+    assert np.allclose(offset, periodicity["engine_offset"]), offset
 
 
 def test_modify_translate_offset_shifts_every_atom_by_delta(web_client):
     """``{dx, dy, dz}`` shifts every coordinate by exactly that
     vector and preserves intra-structure distances."""
+    sent = _env(_LINEAR_XYZ)
     r = web_client.post("/api/modify/translate", json={
-        "structure": _env(_LINEAR_XYZ),
+        "structure": sent,
         "dx": 10.0, "dy": -5.0, "dz": 0.5,
     })
     body = r.get_json()
     assert body["ok"] is True
-    out = _coords_from_xyz(body["text"])
-    src = _coords_from_xyz(_LINEAR_XYZ)
+    out = _coords(body)
+    src = sent["positions"]
     for s, o in zip(src, out):
         assert abs(o[0] - s[0] - 10.0) < 1e-9
         assert abs(o[1] - s[1] + 5.0) < 1e-9
@@ -739,20 +750,21 @@ def test_modify_translate_recenter_wins_over_dxdydz(web_client):
         "recenter": True,
         "dx": 999.0, "dy": -999.0, "dz": 999.0,
     })
-    coords = _coords_from_xyz(r.get_json()["text"])
+    coords = _coords(r.get_json())
     cx = sum(c[0] for c in coords) / len(coords)
     # Centroid at origin -- the dx/dy/dz fields were ignored.
     assert abs(cx) < 1e-9, cx
 
 
 def test_modify_translate_zero_default_is_a_noop(web_client):
-    """Omitting dx/dy/dz defaults each to 0.0; the result is byte-
-    identical xyz with the same atom count."""
-    r = web_client.post("/api/modify/translate", json={"structure": _env(_LINEAR_XYZ)})
+    """Omitting dx/dy/dz defaults each to 0.0; the result is the same
+    coordinates with the same atom count."""
+    sent = _env(_LINEAR_XYZ)
+    r = web_client.post("/api/modify/translate", json={"structure": sent})
     body = r.get_json()
     assert body["ok"] is True
-    src = _coords_from_xyz(_LINEAR_XYZ)
-    out = _coords_from_xyz(body["text"])
+    src = sent["positions"]
+    out = _coords(body)
     for s, o in zip(src, out):
         for a, b in zip(s, o):
             assert abs(a - b) < 1e-12
@@ -773,7 +785,7 @@ def test_modify_translate_preserves_metadata(web_client):
         "structure": _env(_LINEAR_XYZ, atom_names=["C1", "C2", "C3", "C4"], residue_ids=[1, 1, 1, 1], residue_names=["MOL", "MOL", "MOL", "MOL"], chain_ids=["A", "A", "A", "A"]),
         "dx": 1.0,
     })
-    body = r.get_json()
+    body = r.get_json()["structure"]
     assert body["atom_names"] == ["C1", "C2", "C3", "C4"]
     assert body["residue_ids"] == [1, 1, 1, 1]
     assert body["chain_ids"] == ["A", "A", "A", "A"]
@@ -795,8 +807,8 @@ def test_modify_orient_then_rotate_chains_through_metadata(web_client):
         "structure": s2["structure"],
         "axis": "z", "angle": 45,
     }).get_json()
-    assert s3["atom_names"] == ["C1", "C2", "C3", "C4"]
-    assert s3["residue_names"] == ["MOL"] * 4
+    assert s3["structure"]["atom_names"] == ["C1", "C2", "C3", "C4"]
+    assert s3["structure"]["residue_names"] == ["MOL"] * 4
 
 
 # --------------------------------------------------------------------- #

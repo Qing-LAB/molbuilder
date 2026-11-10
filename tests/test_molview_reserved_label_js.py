@@ -18,9 +18,10 @@ the absence directly: the label crosses BOTH boundaries as a label, untouched.
 THE SERVER IS THE APP'S OWN (`_node_esm.served`): the structure is a pair on
 disk, written as the road writes one (`StructureCodec`) with an ordinary label
 on one atom and the reserved one on the other, opened by `/api/build/load` and
-edited by `/api/modify/*`.  Its atom rows carry `regions` and nothing else — no
-`is_frozen` — because that is what the routes send; asked of them, not of a
-stand-in that could still offer the flag.
+edited by `/api/modify/*`.  The structure they answer keeps every label in its
+one label store (`metadata.regions`), the reserved one included, with no
+`is_frozen` beside it — because that is what the routes send; asked of them,
+not of a stand-in that could still offer the flag.
 """
 from __future__ import annotations
 

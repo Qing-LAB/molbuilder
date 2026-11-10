@@ -35,38 +35,48 @@ SUPPORT = Path(__file__).parent / "support"
 
 def _served_labels() -> str:
     """THE LABELS THE SERVER SERVES beside every structure -- its own door's
-    answer (`workspace_payload`, the kind table's labels), so the stand-in
+    answer (`structure_answer`, the kind table's labels), so the stand-in
     answers as the server does (`web/molview.md`)."""
     import numpy as np
     from molbuilder.structure import Structure
-    from molbuilder.web.blueprints._shared import workspace_payload
-    return json.dumps(workspace_payload(
+    from molbuilder.web.blueprints._shared import structure_answer
+    return json.dumps(structure_answer(
         Structure(elements=["H"], positions=np.zeros((1, 3))))["labels"])
 
 
 # ORDER MATTERS: both stand-ins offer a host element, and the DOM one must win —
 # mount builds real elements inside it, which the embed's minimal host cannot do.
-GLOBALS = (SUPPORT / "molview_3dmol_standin.js").read_text() + """
+# The server stand-in comes first for its one composer of the server's answer
+# (`__payload`); the `fetch` below is this harness's own.
+GLOBALS = (SUPPORT / "molview_server_standin.js").read_text() + (
+    SUPPORT / "molview_3dmol_standin.js").read_text() + """
 // The DOM, loaded after so its richer host element is the one in play.
 """ + (SUPPORT / "molview_dom_standin.js").read_text() + """
 globalThis.__requests = [];
 /* The atom identity the stand-in server hands back. A test that needs a
  * different one sets it BEFORE installing — because § 10.8 fixes the atoms at
  * load and every frame after that has to match, so a test cannot reach a
- * three-atom trajectory by loading two atoms and reloading three frames. */
+ * three-atom trajectory by loading two atoms and reloading three frames.
+ * `__nextStructure` is the rest of the structure, in the server's names
+ * (its identity columns, its metadata). */
 globalThis.__nextAtoms = null;
+globalThis.__nextStructure = null;
 globalThis.fetch = async function (route, init) {
     globalThis.__requests.push({ route, body: JSON.parse(init.body) });
     const atoms = globalThis.__nextAtoms || [
         { index: 0, element: "C", x: 0, y: 0, z: 0, regions: [] },
         { index: 1, element: "O", x: 1, y: 0, z: 0, regions: [] },
     ];
-    const extra = globalThis.__nextNotices
-        ? { notices: globalThis.__nextNotices } : {};
     // THE KINDS' LABELS ride every structure answer, as the server's do --
-    // handed as a browser hands it, for the page's one reader (`lib/server.js`).
-    return new Response(JSON.stringify(Object.assign(
-        { atoms, labels: globalThis.__servedLabels }, extra)), { status: 200 });
+    // the server's one shape (`__payload`), handed as a browser hands it,
+    // for the page's one reader (`lib/server.js`).
+    const extra = Object.assign(
+        { labels: globalThis.__servedLabels },
+        globalThis.__nextNotices ? { notices: globalThis.__nextNotices } : {},
+        globalThis.__nextStructure
+            ? { structure: globalThis.__nextStructure } : {});
+    return new Response(JSON.stringify(globalThis.__payload(atoms, extra)),
+                        { status: 200 });
 };
 globalThis.__nextNotices = null;
 globalThis.__servedLabels = __SERVED_LABELS__;
@@ -1435,10 +1445,10 @@ def test_an_atom_row_ticks_shows_its_labels_and_lets_one_be_taken_off():
         """
         globalThis.__nextAtoms = [
             { index: 0, element: "C", x: 0, y: 0, z: 0,
-              regions: ["bridge", "frozen_atoms"], residue_name: "ALA" },
-            { index: 1, element: "O", x: 1, y: 0, z: 0,
-              regions: [], residue_name: "ALA" },
+              regions: ["bridge", "frozen_atoms"] },
+            { index: 1, element: "O", x: 1, y: 0, z: 0, regions: [] },
         ];
+        globalThis.__nextStructure = { residue_names: ["ALA", "ALA"] };
         const { host, viewer } = await mounted();
         await viewer.data.installMolecule({ text: "x", filename: "x.xyz" });
         const card = host.querySelector(".molviewer-card");

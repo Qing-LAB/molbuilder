@@ -45,24 +45,35 @@ There is exactly one error builder and one structure-success builder, both in
   way out, it is the one place that can be done once, and what the check finds
   arrives in `notices` (`?doc=model/structure-periodicity.md` § 8.1 seam 2).
 
-**The canonical structure shape.** A molecule crosses the wire in one shape,
-built by `workspace_payload()` (the single serializer):
+**The structure answer — one shape, the structure sent once** *(2.69.21; the
+user, 2026-11-10: "one shape, sent once")*. Every answer that carries a
+molecule — the load, the builds, every edit and the cell door — is built by
+`structure_answer()`:
 
 ```json
-{ "text": "<xyz/pdb bytes>", "source_format": "xyz",
-  "title": "…", "n_atoms": 42,
-  "atoms": [ { "…per-atom row…" } ],
+{ "ok": true,
   "structure": { "…the structure's own dict, to_dict (model/structure.md § 2.1):
-                  positions — or frames for a frame set — and metadata,
-                  customized included…" },
-  "lattice": null,
-  "periodicity": { "…cell / engine_offset / axis_kind / vacuum…" },
-  "annotations": { "…regions / frozen / channels…" },
-  "issues": [ "…" ],
-  "notices": [ { "severity": "info|warn", "message": "…", "about": "cell" } ],
+                  title, elements, positions — or frames for a frame set — the
+                  identity columns, metadata (labels, box, channels, customized,
+                  order record) and info…" },
+  "resolved_box": { "resolved_cell": [[…]], "box_corner": […],
+                    "resolved_vacuum": […] },
+  "atom_order_said": null,
   "labels": [ { "name": "L-electrode", "description": "…what it is for…" } ],
-  "extra": { "…endpoint add-ons…" } }
+  "notices": [ { "severity": "info|warn", "message": "…", "about": "cell" } ],
+  "…": "a fact of the call no structure holds: n_frames (the load), backend_used (a build)" }
 ```
+
+`structure` is the one copy; beside it is only what the server works out
+about it that the dict cannot carry (`Structure.to_wire`): the box as it will
+be used, `resolved_box`, and the order the atoms are in, in words,
+`atom_order_said`. Nothing about the structure is said twice: no per-atom
+rows, box block, channels or identity columns beside it, and no file text, PDB
+copy or format name — a copy beside the structure is a second source of it.
+MolView's translator reads the structure (`molview.md` § 6.2). `notices` carry
+what the server says of it: the box's conditions and the geometry's advice
+(two atoms closer than they should be, an unusual hydrogen count — shown while
+editing, never blocking; `science/overview.md` § 3).
 
 `labels` are the labels a calculation kind reads on a structure's atoms, each
 with what it is for, read from the kind table (`kind_table.labels`,
@@ -71,8 +82,9 @@ label palette MolView offers beside its own two (`web/molview.md`), served with
 every structure so no page spells them (2.65.0).
 
 `notices` and `issues` are different channels and do not overlap. An **issue**
-is a validation finding about a calculation you are about to run — it is what
-the Generate panel lists, and it carries a `where` naming the field to fix. A
+is a validation finding about a calculation you are about to run — what the
+settings check answers and the Generate panel lists, with a `where` naming the
+field to fix; a structure answer carries none. A
 **notice** is what the server says about the structure in this answer — the
 periodicity gate on its box, a merge on what it did not carry, a load on how it
 read the file (`structure.lone_file`, `cell.origin_retired`); it is absent when
@@ -91,12 +103,9 @@ for**, and that rule lives in one place:
 something you would run refuses (400); a door that loads or modifies reports and
 carries on, so the user can see the problem and fix it.
 
-Two notes that matter for a reader of the code: `lattice` is now **always
-`null`** (the geometry moved into `periodicity`), and `structure_to_dict` also
-serves the per-atom columns a viewer folds into its atoms at the root:
-`atom_names`, `residue_ids`, `residue_names`, `chain_ids`. The inverse, rebuilding a
-`Structure` from a request body, is `struct_from_body()`; metadata arrays are
-honored only when their length matches the atom count.
+The inverse, rebuilding a `Structure` from a request body, is
+`struct_from_body()`; metadata arrays are honored only when their length
+matches the atom count.
 
 ### The request envelope — one shape at every door that carries a structure
 
@@ -214,12 +223,8 @@ never a list with holes. The server takes `[]` as "absent" and applies its own
 default; a list containing `null` poisons comparisons like `max(residue_ids)`,
 which is a bug this project has already shipped once.
 
-**Responses** are the same envelope plus whatever the call has to say:
-
-```json
-{ "ok": true, "structure": { "geometry": …, "metadata": …, "document": … },
-  "notices": [ { "severity": "info|warn", "message": "…", "about": "cell" } ] }
-```
+**Responses** are the same envelope plus what the server works out about it
+and whatever the call has to say — the structure answer above.
 
 **What this replaces, door by door.**
 
@@ -262,14 +267,11 @@ entirely. Not merged: a caller that sends both is a caller mid-migration, and
 merging would let a stale field silently override a fresh one. Nothing is
 inferred from the pair.
 
-**Responses always carry both.** A response is `structure` **plus** `text` /
-`atoms` / `periodicity` / `annotations` and the per-atom columns, derived from
-the same Structure, so the two can never disagree — they are two views of one object, not two objects.
+**Responses carry the structure once** — the structure answer above.
 
-**What ends the legacy.** Not a date: the condition is *no reader left*. A key
-goes when nothing reads it, which is a question the code can answer — and until
-then a browser tab that was loaded before a deploy keeps working, which is the
-actual risk this rule exists for.
+**What ends a legacy key.** Not a date: the condition is *no reader left*. A key
+goes when nothing reads it, which is a question the code can answer. A browser
+tab loaded before such a deploy still runs the old page, and is reloaded.
 
 ### What the envelope must be able to carry
 
@@ -596,7 +598,7 @@ owned by [`molview.md`](?doc=web/molview.md):
 | POST `/api/modify/slab` | `{structure, element, plane, m, n, layers, start_registry, sequence, grow, start_z, orthogonal, dx, dy, lattice_constant?}` → the structure with one fcc slab appended. **Placed absolutely** — `dx`, `dy` and `start_z` are from the world origin — so it reads **no selection** at all, which is what it was built to change: it replaced `electrode`, which centred on one (`?doc=archive/2026-09-01-modify-redesign-plan.md` § 3, removed § 3.4a). `start_registry` picks which stacking registry the layer at `start_z` sits on (A/B/C, taken mod the surface's period); `sequence` (`"ABC"` / `"ACB"`) says which way the registry cycle is walked, **read along the growth direction**; `grow` says which side of `start_z` the slab occupies. `sequence` replaced `stacking`, which named downward behaviour only and did nothing at all growing `+z` |
 | GET `/api/modify/spacings` | `?element&plane&reference` → `{ok, element, plane, system, reference, a, d_interlayer, nearest_neighbour}`. **The layer spacing and bond length of one surface**, derived from the lattice constant by `cell.interplanar_spacing` — one rule (the first *allowed* reflection for the lattice's centring), not a table of surfaces (`?doc=science/junction-cell.md` § 2.1). It exists because the Slab panel computed these in JavaScript and was **missing `d(110)`** entirely, so an fcc(110) build displayed two spacings and not the one the Cell page asks for. `reference` is **required** — `experimental`, `pbe`, or a number in Å; there is no default, because the two differ ~2% for gold and a silent choice cannot be checked without reading the source (user, 2026-09-22). Refuses a surface this builder does not make, and an element the table does not carry |
 | POST `/api/modify/lattice-from-run` | `{path, element?}` → `{ok, a, d_nn, coordination, second_shell_ratio, n_atoms, element, source, notes}`. **A lattice constant read back out of the user's own relaxed bulk result** (`?doc=archive/2026-09-01-modify-redesign-plan.md` § 3.3). It measures the **atoms**, not the cell: a relaxed result's box may be conventional cubic, primitive rhombohedral, or the user's own m×n×N lead cell — three relations to `a`, and the file does not say which — so `a = √2·d_nn` under minimum image, which assumes nothing. The path is fenced at the route (§ 2.1); **a run of ours is read through the run door** — its last geometry step in the box the run had (`runs.openable`, `runs.steps_of`, as the transport citation reads a run) — and a structure pair through `StructureCodec`; a run's file picked by name (an `.XV`) is not read: a run is its directory *(it was, until 2026-10-18)*. **Two refusals**: a file with no cell, and more than one element with none named. Everything else is a `note` — coordination away from 12, a second shell away from √2·d, and the offset from each literature reference — because the setup is the user's to own |
-| ~~POST `/api/selection/atoms`~~ — **retired 2026-09-07**: no caller since MolView took ownership of the structure, and it had drifted to a private reader that applied only the sidecar's `regions`, so `by_residue_name`, `by_chain_id` and `by_atom_name` returned nothing through it. The rows it returned are `_shared.atoms_list`, which every structure-carrying response already sends.
+| ~~POST `/api/selection/atoms`~~ — **retired 2026-09-07**: no caller since MolView took ownership of the structure, and it had drifted to a private reader that applied only the sidecar's `regions`, so `by_residue_name`, `by_chain_id` and `by_atom_name` returned nothing through it. What it returned, every structure-carrying answer holds in its structure (§ 1).
 | POST `/api/selection/eval` | Evaluate a selection expression |
 | POST `/api/structure/periodicity` | The Cell page's edits — four single-field ops and `block`, the whole cell — through the frame-contract gate |
 | POST `/api/structure/export` | The pair a save would write, **named and returned** instead of written |
@@ -699,7 +701,7 @@ behind the same 404 and 403, **502** when no notebook answers
 | ~~POST `/api/build/pyscf`~~ | **deleted 2026-08-17** — same, and it had no caller at all |
 | POST `/api/build/preflight` | `{ structure, params, engine, calculation }` → the pre-run validation report (pseudos + config gates), the kind's own science composed in |
 | POST `/api/structure/analyze` | **In:** the envelope `{structure}` the page would hand over — the one its viewer holds, the preflight and the hand-over send — with `kind` (`optimization` · `vibration` · `transport`, stated by every tab; a request with none is refused) and `forms`, `{<engine>: {net_charge, spin_treatment, unpaired_electrons, method}}` as each form says them. **Out:** the facts — `n_atoms`, `metals`, `metal_hints` — `engine_words`, each engine's name as the card heads its state (the engine table's `words`), and `state.<engine>`, the `ElectronicState` the one class resolves for that form's own items (`science/chemistry-correctness.md` § 2a): each item `{value, source, why, said}`, with `n_electrons`, `finite` and `recommended` — a method the form leaves blank (as the config door reads a blank, `stated_params`) is the catalogue's, its source `default`, said *not chosen* (`template.SOURCE_WORDS`), never `stated` (`form-schema.md` § 1.1). With no `forms`, every engine the kind has a part on in the kind table is answered with every item blank; a form for an engine that does not run the kind is a 400 naming who does. The chemistry card (`lib/chemistry.js`) and each form's chip (`lib/detection-chip.js`) read `state.<engine>`. *(Until 2026-09-28 it answered `suggested.<engine>` per registered adapter, for an Auto-detect button to copy into the forms; a `structure_path` door, which re-read the file from disk, left in the M6 review, and `structure_text` on 2026-09-02.)* |
-| POST `/api/structure/periodicity` | `{structure, op, payload}` → `{ok, periodicity, notices}`. The unified periodicity door (`?doc=model/structure-periodicity.md` § 6.2): **four** ops — `vacuum` · `axis_kind` · `cell` · `box_corner` (the origin the person assigns, on a typed cell; `null` is *Automatic*) — plus `block`, the whole cell at once, through the frame-contract gate. The answer is the cell block in the same shape `/api/build/load` sends it — raw values with the resolved views (`resolved_cell`, `box_corner`, `resolved_vacuum`) beside them — so a client adopts it verbatim through the path a load already takes, and `notices` carries `{severity, message, where, about}` rows — first what the edit did (RECEIPTS, `where: "cell.edit"`), then what is now true of the result (CONDITIONS, each with its own `cell.*` id) |
+| POST `/api/structure/periodicity` | `{structure, op, payload}` → the structure answer (§ 1) and its `notices`. The unified periodicity door (`?doc=model/structure-periodicity.md` § 6.2): **four** ops — `vacuum` · `axis_kind` · `cell` · `box_corner` (the origin the person assigns, on a typed cell; `null` is *Automatic*) — plus `block`, the whole cell at once, through the frame-contract gate. The answer is the structure in the one shape `/api/build/load` answers with — the box the edit set in its `metadata`, the box resolved beside it (`resolved_box`), its `info` with the mark the edit set — read by the one translator, which takes the cell block from it through the path a load already takes, and `notices` carries `{severity, message, where, about}` rows — first what the edit did (RECEIPTS, `where: "cell.edit"`), then what is now true of the result (CONDITIONS, each with its own `cell.*` id) |
 | ~~POST `/api/run/install-wrapper`~~ · ~~POST `/api/siesta/install-pseudos`~~ | **retired 2026-08-21** — zero browser callers; the described route owns both (`prep` writes the wrapper beside every deck and installs the pseudopotentials itself) |
 
 **Checkpoint** — the run-history panel's six routes
@@ -796,10 +798,8 @@ its paired `.molstruct.json` through `StructureCodec.load` (the one authority),
 and returns the canonical envelope:
 
 ```json
-{ "ok": true, "text": "<xyz bytes>", "source_format": "xyz",
-  "title": "final.xyz", "n_atoms": 42, "atoms": [ … ], "lattice": null,
-  "periodicity": { … }, "annotations": { … }, "issues": [ … ],
-  "structure": { … }, "extra": { … } }
+{ "ok": true, "structure": { … }, "resolved_box": { … },
+  "atom_order_said": null, "labels": [ … ], "n_frames": 1 }
 ```
 
 Failures come back in the envelope: a path escaping the roots → **400**

@@ -24,6 +24,7 @@ import json
 from pathlib import Path
 
 from tests._node_esm import run_node
+from support.envelope import answer as _answer
 
 REPO = Path(__file__).resolve().parents[1]
 MODULE_DIR = REPO / "molbuilder" / "web" / "static" / "lib" / "molview"
@@ -465,10 +466,12 @@ def test_the_cell_box_and_axes_are_not_per_frame_data():
     )
 
 
-def _wire_periodicity(struct) -> str:
-    """The periodicity block `/api/build/load` sends for ``struct`` -- produced by
-    `Structure.to_wire`, not typed here -- as JSON for the node snippet."""
-    return json.dumps(struct.to_wire()["periodicity"])
+def _held_periodicity(struct) -> str:
+    """The periodicity block the viewer holds for ``struct``: the server's
+    answer read through the one translator (`structureFromServer`, § 6.2) --
+    a JS expression for the node snippet."""
+    return ("JOBS.structureFromServer(" + json.dumps(_answer(struct))
+            + ").structure.periodicity")
 
 
 def test_the_box_drawn_is_the_cell_the_structure_actually_uses():
@@ -480,13 +483,13 @@ def test_the_box_drawn_is_the_cell_the_structure_actually_uses():
     viewer holds (`model/structure-periodicity.md` § 6.0) -- never worked out
     in the browser.
 
-    THE FIXTURE IS THE SERVER'S OWN BLOCK, from `Structure.to_wire`, for two
-    waters: one nobody gave a cell or an origin (Automatic -- the box the rule
-    puts around the atoms), and one with a typed 10 Å cell and an assigned
-    origin.  Hand-typed blocks here once carried names the server had stopped
-    sending, and every box was then drawn at the world origin with nothing
-    failing.  What is asserted is the scene handed to the drawing (§ 4), not
-    pixels.
+    THE FIXTURE IS THE SERVER'S OWN ANSWER (`structure_answer`), read through
+    the one translator, for two waters: one nobody gave a cell or an origin
+    (Automatic -- the box the rule puts around the atoms), and one with a
+    typed 10 Å cell and an assigned origin.  Hand-typed blocks here once
+    carried names the server had stopped sending, and every box was then
+    drawn at the world origin with nothing failing.  What is asserted is the
+    scene handed to the drawing (§ 4), not pixels.
     """
     import numpy as np
     from molbuilder import cell as _cell
@@ -498,11 +501,13 @@ def test_the_box_drawn_is_the_cell_the_structure_actually_uses():
     assigned = Structure(**water, cell=np.eye(3) * 10.0,
                          engine_offset=[1.5, 2.0, 2.5])
     for s in (automatic, assigned):
-        block = json.loads(_wire_periodicity(s))
-        assert "cell_origin" not in block, "the wire still sends a retired name"
+        answer = _answer(s)
+        block = answer["resolved_box"]
+        assert "cell_origin" not in answer["structure"]["metadata"] \
+            and "cell_origin" not in block, "the wire still sends a retired name"
         out = _run(
             f"""
-            const scene = ENGINE.sceneFor({_wire_periodicity(s)});
+            const scene = ENGINE.sceneFor({_held_periodicity(s)});
             console.log(JSON.stringify({{
                 box:        scene.cellBox,
                 axisStarts: scene.cellAxes.map(a => a.start),
@@ -525,7 +530,7 @@ def test_the_box_drawn_is_the_cell_the_structure_actually_uses():
         # The world triad stays at the world origin beside it: the two answer
         # different questions and a cell appearing does not retire one.
         assert all(p == [0, 0, 0] for p in out["worldStarts"]), out["worldStarts"]
-    assert np.allclose(json.loads(_wire_periodicity(assigned))["box_corner"],
+    assert np.allclose(_answer(assigned)["resolved_box"]["box_corner"],
                        [-1.5, -2.0, -2.5])
 
 
@@ -547,7 +552,7 @@ def test_the_two_triads_are_told_apart_by_colour_as_well_as_by_label():
         f"""
         // ONE structure with a cell, so both triads are in play at once — which
         // is the situation the colours exist for.
-        const scene = ENGINE.sceneFor({_wire_periodicity(celled)});
+        const scene = ENGINE.sceneFor({_held_periodicity(celled)});
         console.log(JSON.stringify({{
             abc: scene.cellAxes.map(a => a.color),
             xyz: scene.axes.map(a => a.color),
@@ -583,12 +588,12 @@ def test_with_no_cell_or_no_corner_there_is_no_box_and_the_triad_is_cartesian():
     empty = Structure(elements=[], positions=np.zeros((0, 3)),
                       cell=np.eye(3) * 5.0,
                       axis_kind=("periodic", "periodic", "periodic"))
-    block = json.loads(_wire_periodicity(empty))
+    block = _answer(empty)["resolved_box"]
     assert block["box_corner"] is None and block["resolved_cell"] is not None
     out = _run(
         f"""
         const scene = ENGINE.sceneFor(null);
-        const cornerless = ENGINE.sceneFor({_wire_periodicity(empty)});
+        const cornerless = ENGINE.sceneFor({_held_periodicity(empty)});
         console.log(JSON.stringify({{
             box: scene.cellBox,
             labels: scene.axes.map(a => a.label),
@@ -684,12 +689,13 @@ def test_the_effective_cell_prefers_the_resolved_answer_over_the_raw_one():
     sized_by_vacuum = Structure(elements=["H", "H"],
                                 positions=np.array([[0., 0, 0], [0, 0, 0.74]]),
                                 vacuum=(5.0, 5.0, 5.0))
-    block = json.loads(_wire_periodicity(sized_by_vacuum))
-    assert block["cell"] is None
+    answer = _answer(sized_by_vacuum)
+    block = answer["resolved_box"]
+    assert answer["structure"]["metadata"]["cell"] is None
     out = _run(
         f"""
         console.log(JSON.stringify({{
-            derived: JOBS.effectiveCell({_wire_periodicity(sized_by_vacuum)}),
+            derived: JOBS.effectiveCell({_held_periodicity(sized_by_vacuum)}),
             nothing: JOBS.effectiveCell(null),
         }}));
         """

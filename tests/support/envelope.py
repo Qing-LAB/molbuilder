@@ -14,6 +14,10 @@ A structure a test can post should be CONSTRUCTED, not parsed out of a string:
 `Structure(elements=[...], positions=[[...]])` states what it is, and
 `to_dict()` puts it in the shape the door takes.  If the envelope grows a
 field, it appears here for free -- there is nowhere for it to be forgotten.
+
+The other direction too: :func:`answer` is a structure's answer as the
+server's own composer builds it, for a test that hands a page what the server
+would send -- without the notices a door adds beside it.
 """
 from __future__ import annotations
 
@@ -55,6 +59,20 @@ def structure(elements: Sequence[str],
 def envelope(elements, positions, **kw) -> dict:
     """The same, as the dict a request body carries under ``structure``."""
     return structure(elements, positions, **kw).to_dict()
+
+
+def answer(struct: Structure, *, n_frames: Optional[int] = None) -> dict:
+    """``struct``'s answer as the SERVER'S COMPOSER builds it: ``ok`` and the
+    structure in its one shape (`_shared.structure_answer`, `web/web-api.md`
+    § 1), never typed here.  Not everything a door answers: the notices a
+    door adds beside it -- the box's conditions, the geometry's advice
+    (`_shared.ok_structure_response`) -- are not in it.  ``n_frames`` makes
+    it the load's answer, which says how many frames the file holds."""
+    from molbuilder.web.blueprints._shared import structure_answer
+    out = {"ok": True, **structure_answer(struct)}
+    if n_frames is not None:
+        out["n_frames"] = n_frames
+    return out
 
 
 def from_xyz_with_periodicity(text: str, periodicity=None, **kw) -> dict:

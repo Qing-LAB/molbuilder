@@ -21,6 +21,8 @@ from pathlib import Path
 
 import pytest
 
+from molbuilder.structure import Structure
+from support.envelope import answer
 from tests._node_esm import run_node
 
 REPO = Path(__file__).resolve().parents[1]
@@ -68,16 +70,16 @@ globalThis.fetch = async (route, init) => {
 };
 """
 
-# The load route answers with a one-atom molecule; the storage routes go to
-# the stand-in server above. Used by the two round-trip tests at the end.
+# The load route answers with a one-atom molecule, as the server builds it
+# (`support.envelope.answer`, the load's: one frame); the storage routes go
+# to the stand-in server above. Used by the two round-trip tests at the end.
 WITH_A_SERVER = BROWSER + """
 const _files = globalThis.fetch;
 globalThis.fetch = async (route, init) => {
     if (route.indexOf("workspace-storage") !== -1) return _files(route, init);
-    return answered({
-        ok: true,
-        atoms: [{ index: 0, element: "H", x: 0, y: 0, z: 0, regions: [] }],
-    });
+    return answered(""" + json.dumps(answer(
+        Structure(elements=["H"], positions=[[0.0, 0.0, 0.0]]),
+        n_frames=1)) + """);
 };
 """
 

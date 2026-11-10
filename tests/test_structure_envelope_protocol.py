@@ -1,14 +1,14 @@
 """The structure envelope — one shape, both directions, added not swapped.
 
 `web-api.md` § 1 defines it: a structure crosses in one envelope — the atoms as
-**numbers**, the facts beside them, and (outbound only) the coordinate document
-the server would write — and the server is the only thing that turns a structure
-into a file.
+**numbers** and the facts beside them, no coordinate document — and the server
+is the only thing that turns a structure into a file.
 
 These tests pin the **mechanics**:
 
   * that a body is the envelope and nothing else;
-  * that responses carry both views, derived from one Structure;
+  * that a response carries the structure once, with the box the server
+    resolved beside it;
   * that the envelope can express what the current designs need.
 """
 from __future__ import annotations
@@ -156,19 +156,16 @@ def test_a_subset_envelope_is_accepted_and_its_map_back_is_the_callers():
 
 
 # --------------------------------------------------------------------- #
-#  Responses carry both views, from one Structure                       #
+#  A response carries the structure once, the resolved box beside it    #
 # --------------------------------------------------------------------- #
 
 
-def test_the_two_views_cannot_disagree_because_they_come_from_one_structure(client):
-    """They are two views of one object, not two objects. Anything a reader can
-    compare between them must match.
-
-    The offset is where they could part. The envelope carries the STATED
-    `engine_offset`, and the periodicity block echoes it raw beside
-    `box_corner`, the corner the server RESOLVED from it (`web-api.md`,
-    plan § 5q.3). The resolved corner belongs to the block alone: sent back in
-    an envelope it would read as an assigned origin, and a structure under
+def test_the_stated_offset_and_the_resolved_corner_ride_apart(client):
+    """The structure crosses once (`web-api.md` § 1): the envelope carries the
+    STATED `engine_offset` and the cell as sent, and `resolved_box` beside it
+    carries `box_corner`, the corner the server RESOLVED from them (plan
+    § 5q.3).  The resolved corner belongs beside the envelope alone: sent back
+    in an envelope it would read as an assigned origin, and a structure under
     Automatic would come back pinned to the rule's corner
     (`structure-periodicity.md` § 6.0).
     """
@@ -176,20 +173,20 @@ def test_the_two_views_cannot_disagree_because_they_come_from_one_structure(clie
         cell=[[8.0, 0, 0], [0, 8.0, 0], [0, 0, 8.0]],
         engine_offset=[1.0, 1.0, 1.0])).get_json()
     assert answer["ok"] is True, answer
-    envelope, per = answer["structure"], answer["periodicity"]
+    envelope, box = answer["structure"], answer["resolved_box"]
 
-    assert envelope["elements"] == [a["element"] for a in answer["atoms"]]
-    assert envelope["metadata"]["cell"] == per["cell"]
-    assert envelope["metadata"]["engine_offset"] == per["engine_offset"] == [1.0, 1.0, 1.0]
-    assert per["box_corner"] == [-1.0, -1.0, -1.0]
+    assert envelope["elements"] == ["C", "O", "H"]
+    assert envelope["metadata"]["cell"] == [[8.0, 0, 0], [0, 8.0, 0], [0, 0, 8.0]]
+    assert envelope["metadata"]["engine_offset"] == [1.0, 1.0, 1.0]
+    assert box["box_corner"] == [-1.0, -1.0, -1.0]
     assert "box_corner" not in envelope["metadata"], (
         "the resolved corner rode the envelope, where it reads as an assigned origin")
-    assert len(envelope["positions"]) == answer["n_atoms"]
 
 
 def test_a_document_in_a_REQUEST_is_ignored(client):
-    """"`document` travels one way on purpose … a request that contains one is a
-    request from something that wrote a file it should not have."""
+    """"A request that does contain a `document` is a request from something
+    that wrote a file it should not have; the reader ignores it"
+    (`web-api.md` § 1)."""
     body = _envelope()
     body["structure"]["document"] = "9\nnonsense\nXx 1 2 3\n"
 
@@ -341,7 +338,8 @@ def test_an_edit_returns_the_structure_it_was_sent_labels_and_cell_included(clie
     assert answer["structure"]["metadata"]["regions"] == {
         "L-electrode": [0], "frozen_atoms": [1]
     }, f"the edit dropped the labels it was given: {answer['structure']['metadata']}"
-    assert answer["periodicity"]["cell"] == [[8.0, 0, 0], [0, 8.0, 0], [0, 0, 8.0]]
+    assert answer["structure"]["metadata"]["cell"] == [
+        [8.0, 0, 0], [0, 8.0, 0], [0, 0, 8.0]]
     # and it really did the edit
     assert answer["structure"]["positions"][0][0] == 1.0
 

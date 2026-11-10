@@ -357,7 +357,7 @@ import { ask } from "../lib/server.js";
             /* SAY WHAT LANDED, and say which of the two things happened. The
              * count comes from the viewer, which is the thing that holds it. */
             const n = (_mounted.data.getElements() || []).length;
-            const added = body.n_atoms;
+            const added = body.structure.elements.length;
             const which = body.n_frames > 1
                 ? ` (frame ${chosen} of ${body.n_frames})` : "";
             /* AND WHAT THE READ SAID about the file -- a lone .xyz read as

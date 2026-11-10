@@ -73,7 +73,7 @@ def test_a_saved_browser_payload_reads_back_whole(web):
     back = StructureCodec().load(path)
     assert back.frozen_atoms == [1] and back.regions["anchor"] == [0]
     assert np.allclose(back.engine_offset, [3.0, 4.0, 5.0])
-    assert back.to_wire()["periodicity"]["box_corner"] == [-3.0, -4.0, -5.0]
+    assert back.to_wire()["resolved_box"]["box_corner"] == [-3.0, -4.0, -5.0]
 
 
 

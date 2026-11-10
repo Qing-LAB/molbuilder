@@ -48,15 +48,13 @@ def _gate_sentence() -> str:
 
 GATE_SENTENCE = _gate_sentence()
 
-SERVER = """
+# The server stand-in's composer of the server's one answer (`__payload`,
+# `__atomRow`); the `fetch` below is this file's own, which can also refuse.
+SERVER = (HOST.parent / "molview_server_standin.js").read_text() + """
 globalThis.__requests   = [];
 globalThis.__refuse     = null;   // {status, body} -> the server says no
 globalThis.__unreachable = false; // fetch itself rejects
 globalThis.__nextPayload = null;
-
-function atomRow(i, element, x) {
-    return { index: i, element, x, y: 0, z: 0, regions: [] };
-}
 
 globalThis.fetch = async function (route, init) {
     globalThis.__requests.push({ route, body: JSON.parse(init.body) });
@@ -71,9 +69,8 @@ globalThis.fetch = async function (route, init) {
                                       : JSON.stringify(r.body),
                             { status: r.status });
     }
-    const payload = globalThis.__nextPayload || {
-        atoms: [atomRow(0, "C", 0), atomRow(1, "O", 1)],
-    };
+    const payload = globalThis.__nextPayload || globalThis.__payload(
+        [atomRow(0, "C", 0), atomRow(1, "O", 1)]);
     return new Response(JSON.stringify(payload), { status: 200 });
 };
 """
@@ -364,11 +361,10 @@ def test_a_refused_edit_leaves_the_earlier_warnings_standing():
     out = _run(
         """
         const m = createModel({});
-        globalThis.__nextPayload = {
-            atoms: [{ index: 0, element: "C", x: 0, y: 0, z: 0, regions: [] }],
-            notices: [{ level: "warn",
-                        message: "the box does NOT contain the structure" }],
-        };
+        globalThis.__nextPayload = __payload(
+            [__atomRow(0, "C", 0)],
+            { notices: [{ level: "warn",
+                          message: "the box does NOT contain the structure" }] });
         await m.installMolecule({ text: "1\\n\\nC 0 0 0\\n", filename: "x.xyz" });
         const before = m.getNotices();
 

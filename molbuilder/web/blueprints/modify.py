@@ -26,22 +26,10 @@ Routes (no url_prefix; each carries its own full path):
 JSON body shape (shared by every op): the structure envelope
 (`web-api.md` § 1) plus the op-specific args.
 
-JSON response shape (shared):
-
-    {
-      "ok":            True,
-      "text":          "...",
-      "structure":     {...},
-      "atom_names":    [...],
-      "residue_ids":   [...],
-      "residue_names": [...],
-      "chain_ids":     [...],
-      "n_atoms":       N,
-      "title":         "...",
-      "issues":        [{severity, message, where}, ...],
-    }
-
-This matches `/api/build/load`, so a viewer reads an initial load and a
+JSON response shape (shared): the structure in its one shape
+(`_shared.structure_answer`, `web-api.md` § 1) -- ``{ok, structure,
+resolved_box, atom_order_said, labels}`` and the call's ``notices`` -- the
+shape `/api/build/load` answers with, so a viewer reads an initial load and a
 modify-op's response one way.
 
 Body parsing, response building, validation, and the error

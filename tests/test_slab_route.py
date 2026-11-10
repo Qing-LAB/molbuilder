@@ -32,9 +32,9 @@ def _post(client, **kw):
     return client.post("/api/modify/slab", json=body)
 
 
-def _coords(xyz_text):
-    rows = [ln.split() for ln in xyz_text.strip().splitlines()[2:] if ln.strip()]
-    return np.array([[float(v) for v in r[1:4]] for r in rows])
+def _coords(answer):
+    """The coordinates of the structure an answer carries."""
+    return np.array(answer["structure"]["positions"], dtype=float)
 
 
 class TestItBuildsWhatItWasTold:
@@ -42,17 +42,18 @@ class TestItBuildsWhatItWasTold:
     def test_a_slab_is_appended_and_the_molecule_survives(self, client):
         d = _post(client).get_json()
         assert d["ok"] is True, d
-        assert d["n_atoms"] == 2 + 2 * 2 * 3, d["n_atoms"]
+        n = len(d["structure"]["elements"])
+        assert n == 2 + 2 * 2 * 3, n
         assert d["structure"]["elements"][:2] == ["H", "H"], "the molecule was disturbed"
         assert set(d["structure"]["elements"][2:]) == {"Au"}
 
     def test_the_starting_layer_lands_on_start_z(self, client):
-        z = _coords(_post(client, start_z=7.5).get_json()["text"])[2:, 2]
+        z = _coords(_post(client, start_z=7.5).get_json())[2:, 2]
         assert abs(z.min() - 7.5) < 1e-6, z.min()
 
     def test_growth_direction_puts_the_slab_on_the_stated_side(self, client):
-        up = _coords(_post(client, grow="+z", start_z=0.0).get_json()["text"])[2:, 2]
-        down = _coords(_post(client, grow="-z", start_z=0.0).get_json()["text"])[2:, 2]
+        up = _coords(_post(client, grow="+z", start_z=0.0).get_json())[2:, 2]
+        down = _coords(_post(client, grow="-z", start_z=0.0).get_json())[2:, 2]
         assert up.max() > 0 and abs(up.min()) < 1e-6
         assert down.min() < 0 and abs(down.max()) < 1e-6
 
@@ -63,13 +64,13 @@ class TestItBuildsWhatItWasTold:
         the placement is the builder's business; that the numbers translate
         it rigidly is the contract.
         """
-        here = _coords(_post(client, dx=0.0, dy=0.0).get_json()["text"])[2:, :2]
-        there = _coords(_post(client, dx=3.0, dy=-2.0).get_json()["text"])[2:, :2]
+        here = _coords(_post(client, dx=0.0, dy=0.0).get_json())[2:, :2]
+        there = _coords(_post(client, dx=3.0, dy=-2.0).get_json())[2:, :2]
         assert np.allclose(there - here, [3.0, -2.0], atol=1e-6)
 
     def test_a_lattice_constant_override_reaches_the_builder(self, client):
-        a = _coords(_post(client, lattice_constant=4.0).get_json()["text"])[2:]
-        b = _coords(_post(client, lattice_constant=4.4).get_json()["text"])[2:]
+        a = _coords(_post(client, lattice_constant=4.0).get_json())[2:]
+        b = _coords(_post(client, lattice_constant=4.4).get_json())[2:]
         span = lambda p: float(p[:, 2].max() - p[:, 2].min())
         assert span(b) > span(a) * 1.05, (span(a), span(b))
 
@@ -79,8 +80,8 @@ class TestItReadsNoSelection:
     def test_sending_indices_changes_nothing(self, client):
         """Asserted as behaviour: placement is absolute, so a selection is not merely ignored by the
         client — it cannot reach the answer even if sent."""
-        plain = _post(client).get_json()["text"]
-        with_sel = _post(client, indices=[0], center_indices=[0, 1]).get_json()["text"]
+        plain = _post(client).get_json()["structure"]
+        with_sel = _post(client, indices=[0], center_indices=[0, 1]).get_json()["structure"]
         assert plain == with_sel
 
 
@@ -119,5 +120,5 @@ class TestWhatItRefuses:
 
     def test_zero_layers_is_a_no_op_not_an_error(self, client):
         d = _post(client, layers=0).get_json()
-        assert d["ok"] is True and d["n_atoms"] == 2
+        assert d["ok"] is True and len(d["structure"]["elements"]) == 2
 

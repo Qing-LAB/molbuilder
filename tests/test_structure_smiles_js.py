@@ -92,7 +92,8 @@ class TestLazyResolve:
         assert answer["ok"] is True, answer
         # Without the lazy-resolve fix generate() rejects: "smiles:
         # structurePage not configured".
-        assert out["r"] == {"ok": True, "n_atoms": answer["n_atoms"],
+        assert out["r"] == {"ok": True,
+                            "n_atoms": len(answer["structure"]["elements"]),
                             "backend_used": answer["backend_used"]}
         assert out["drawn"] == [[], answer["notices"]]
 
@@ -118,15 +119,14 @@ class TestHappyPath:
         """The build's answer reaches the load door WHOLE.
 
         ``/api/build/molecule`` already built a Structure; it returns it
-        under ``structure`` and, beside it, an ``xyz`` rendering of the
-        same atoms.  This panel used to install the ``xyz`` string, so
-        the server parsed back a flattened copy of what it had just
-        built -- and XYZ has no slots for ``residue_names`` or
-        ``atom_names``, so a generated peptide arrived with every
-        residue named MOL and CA/CB collapsed to C.  The load door must
-        receive the server's envelope as it came, the document beside it
-        left out: identity columns survive an envelope, never a
-        document."""
+        under ``structure``, once (`web/web-api.md` § 1).  This panel used
+        to install an ``xyz`` rendering of the same atoms, sent beside it
+        then, so the server parsed back a flattened copy of what it had
+        just built -- and XYZ has no slots for ``residue_names`` or
+        ``atom_names``, so a generated peptide arrived with every residue
+        named MOL and CA/CB collapsed to C.  The load door must receive
+        the server's envelope as it came, and no document: identity
+        columns survive an envelope, never a document."""
         out = _run('''
             let canvasArgs = null;
             let loadCalls = 0;
@@ -155,8 +155,9 @@ class TestHappyPath:
             }));
         ''', app_at)
         answer = out["answer"]
-        assert answer["ok"] is True and "text" in answer, answer
-        assert out["envelope"] == {"ok": True, "n_atoms": answer["n_atoms"],
+        assert answer["ok"] is True, answer
+        assert out["envelope"] == {"ok": True,
+                                   "n_atoms": len(answer["structure"]["elements"]),
                                    "backend_used": answer["backend_used"]}
         # the panel's earlier findings cleared as the build starts, then what
         # the build said of what it built, drawn under the panel
@@ -165,7 +166,7 @@ class TestHappyPath:
         assert out["call"]["body"] == {"kind": "smiles", "input": "CCO"}
         # The load door receives the ENVELOPE, whole, as the server sent it
         assert out["canvas"]["struct"]["structure"] == answer["structure"]
-        # ...and NOT the document sitting beside it in the same response.
+        # ...and no coordinate document beside it.
         assert "text" not in out["canvas"]["struct"]
         assert out["canvas"]["src"]["kind"] == "smiles"
         assert out["canvas"]["src"]["generator_input"]["smiles"] == "CCO"

@@ -199,7 +199,6 @@ def api_build_molecule():
     if not text:
         return err("empty input", 400)
     takes = GENERATORS[kind].asks
-    h_mode_used: str | None = None
     # WHAT THE PERSON ASKED, each a value the kind takes (`builders.
     # GENERATORS`); one left out keeps the builder's own default.
     asked: Dict[str, Any] = {name: body[name]
@@ -284,33 +283,16 @@ def api_build_molecule():
         struct.regions = dict(struct.regions or {},
                               **{f"{text}#": list(range(struct.n_atoms))})
 
-    # Route through the canonical ``ok_structure_response`` helper.
-    # Endpoint-specific keys (pdb, summary, backend_used,
-    # add_hydrogens_mode) land BOTH at the top level (for every JS
-    # consumer that reads them off the response root) AND in the
-    # canonical ``extra`` sub-dict.  Issues + canonical atoms
-    # come from the helper — one validate_geometry pass.
+    # The structure in its one shape (``ok_structure_response``).
     # WHAT THE BUILD SAYS OF WHAT IT BUILT -- the structure's own findings
     # and what the backend does not build (`science/validation.md` § 4.1
     # R5) -- answered as notices beside the structure.
     from molbuilder.periodicity_gate import notices_for_report
     found = notices_for_report(made.findings)
     return ok_structure_response(struct, extra={
-        # build/molecule's legacy contract: title defaults to the
-        # build kind ("smiles" / "dna" / …) when the Structure
-        # itself carries no title (most builders don't set one).
-        # Override via extra rather than mutating struct.title so
-        # downstream code that reuses the Structure sees the
-        # canonical (empty) title.
-        "title":             struct.title or kind,
-        "pdb":               struct.to_pdb(),
-        "summary":           struct.summary(),
+        # WHICH BACKEND BUILT IT -- a fact of the build, which the
+        # generator's status line says (`modify/structure/panel-deps.js`).
         "backend_used":      backend_used,
-        # Tri-state H-add decision actually used (echoes the
-        # request, or "auto" when not explicitly requested).  None
-        # for non-nucleic builds (peptide/SMILES/name) where the
-        # kwarg doesn't apply.
-        "add_hydrogens_mode": h_mode_used,
         **({"notices": found} if found else {}),
     })
 
@@ -329,11 +311,11 @@ def api_periodicity():
     ``null``) for ``cell`` / ``box_corner``, where ``null`` means "clear it" --
     omitting the key is an error rather than a silent clear.
 
-    Response: ``{ok, periodicity, notices}`` -- ``periodicity`` is the cell block
-    exactly as ``/api/build/load`` sends it (``cell`` / ``engine_offset`` /
-    ``axis_kind`` / ``vacuum`` plus the resolved views beside them), so the
-    client adopts it verbatim through the same path a load takes and there is one
-    shape for the block rather than two.  ``notices`` is a list of
+    Response: the structure in its one shape (``_shared.structure_answer``,
+    ``web-api.md`` § 1) and ``notices`` -- the box the edit set in the
+    structure's ``metadata``, the box resolved beside it, so the client reads it
+    through the same translator a load's answer goes through and there is one
+    shape rather than two.  ``notices`` is a list of
     ``{severity, message, where, about}`` for the Cell page (molview.md
     § 6.8).  There is no
     "the gate changed this" marker and there should not be: clause 1 forbids the
@@ -375,34 +357,31 @@ def api_periodicity():
         # unfixable.  The RESULT is gated below, which is what
         # molview.md § 6.8 actually asks for.
         new_struct, receipts = apply_edit(struct, op, body.get("payload"))
-        # The CONDITIONS are re-derived on the RESULT, so "the box does not
-        # contain the structure" is answered about the box that now exists.
-        new_struct, conditions = validate_periodicity(new_struct)
-        # Receipts first (what the edit did), then conditions (what is now
-        # true), then WHAT THE BOUNDARY DOES TO THE CRYSTAL -- the verdict the
-        # slab build gives, on the box just set (`science/junction-cell.md`
-        # § 6.1: the loop closes where `c` is set).
+        # THE RESULT IS GATED: a box nothing can be done with -- left-handed,
+        # or one no origin could make contain the structure -- is refused
+        # (`ValueError`, 400).  What is otherwise true of the box that now
+        # exists, its conditions, the one answer builder says.
+        new_struct, _conditions = validate_periodicity(new_struct)
+        # WHAT THE BOUNDARY DOES TO THE CRYSTAL -- the verdict the slab
+        # build gives, on the box just set (`science/junction-cell.md` § 6.1:
+        # the loop closes where `c` is set).
         from .modify import box_seam_notices
-        notices = (list(receipts) + list(conditions)
-                   + box_seam_notices(new_struct))
+        seam = box_seam_notices(new_struct)
     except ValueError as exc:
         return err(str(exc), 400)
     except Exception as exc:  # noqa: BLE001 -- malformed envelope -> 400
         return err(str(exc), 400)
-    # The block the structure itself assembles -- raw values and the resolved
-    # views together -- so a field added to it reaches this door with no edit
-    # here, and the client cannot be handed a block missing the resolved half.
-    return jsonify({
-        "ok": True,
-        "periodicity": new_struct.to_wire()["periodicity"],
-        # THE RECORD RIDES WITH THE BLOCK.  `apply_edit` marks the recorded
-        # contract outdated (a box edit is an edit), and this is the only
-        # answer the caller adopts -- so without `info` here the mark would
-        # be decided in Python and then set a second time in the browser.
-        # One decider; `model-jobs.js` takes it from here.
-        "info": new_struct.info,
-        "notices": notices,
-    })
+    # THE STRUCTURE IN ITS ONE SHAPE, through the one builder every door
+    # answers a structure with (`_shared.ok_structure_response`): the box the
+    # edit set in its `metadata` and the box resolved beside it; its `info`
+    # with the mark `apply_edit` set -- a box edit outdates the recorded
+    # contract, decided here once, which `model-jobs.js` takes from this
+    # answer.  Receipts first (what the edit did), then what is now true:
+    # the box's conditions, the seam's verdict, the geometry's advice.
+    from ._shared import ok_structure_response
+    return ok_structure_response(new_struct,
+                                 extra={"notices": list(receipts)},
+                                 found=seam)
 
 
 @bp.route("/api/structure/save", methods=["POST"])
@@ -554,8 +533,8 @@ def api_build_load():
     # ``path`` means the SERVER reads the .xyz + paired .molstruct.json via
     # StructureCodec.load -- Python owns the file access + the .xyz<->.molstruct
     # pairing, so there is NO raw-text hand-crafting and NO browser-side sidecar
-    # derivation.  ``to_wire`` (via ok_structure_response) emits the enriched atoms
-    # + periodicity + annotations in one response.
+    # derivation.  The answer is the structure in its one shape
+    # (``ok_structure_response``, ``web-api.md`` § 1).
     from molbuilder.workingcopy_structure import (GEOMETRY_CHANGED,
                                                   ORDER_UNSTATED,
                                                   StructureCodec)
@@ -608,8 +587,6 @@ def api_build_load():
                 f"there, set the origin again on the Cell page.",
                 "cell.origin_retired")])
         return ok_structure_response(struct, extra={
-            "source_format": StructureCodec.format_named(resolved),
-            "title": struct.title or resolved.name,
             "n_frames": whole.n_frames,
             **({"notices": said} if said else {}),
         })
@@ -635,8 +612,6 @@ def api_build_load():
         # it in the Cell page; refusing would make it unopenable, and so
         # unfixable.
         return ok_structure_response(struct, extra={
-            "source_format": "xyz",
-            "title": struct.title or "restored structure",
             "n_frames": whole.n_frames,
         })
 
@@ -653,7 +628,7 @@ def api_build_load():
     # (`model/structure.md` § 2.3).
     from ._shared import structure_from_text
     try:
-        whole, said, fmt = structure_from_text(text, filename)
+        whole, said = structure_from_text(text, filename)
     except ValueError as exc:
         return err(str(exc), 400)
     try:
@@ -662,13 +637,6 @@ def api_build_load():
         return err(str(exc), 400)
 
     return ok_structure_response(struct, extra={
-        # The title shown defaults to the filename (or format name) when the
-        # input carries none; the Structure keeps its own.
-        "title":         struct.title or (filename or fmt),
-        "pdb":           struct.to_pdb(),
-        "summary":       struct.summary(),
-        # The format actually parsed, over the helper's default.
-        "source_format": fmt,
         "n_frames":      whole.n_frames,
         **({"notices": said} if said else {}),
     })

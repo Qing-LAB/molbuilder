@@ -529,10 +529,11 @@ class TestPeriodicityDoor:
 
     def test_vacuum_op_round_trips_the_truth(self, client):
         """The door's happy path: the op is applied, the manual state resets, and the
-        answer carries BOTH the raw values and the § 3 resolved views.
+        answer carries BOTH the raw values (the structure's ``metadata``) and
+        the § 3 resolved views (``resolved_box`` beside it).
 
-        Catches the client being handed a cell block whose "as it will actually be
-        used" half is missing -- MolView adopts this block verbatim, so a missing
+        Catches the client being handed a box whose "as it will actually be
+        used" half is missing -- MolView adopts it, so a missing
         `resolved_cell` draws no box at all, and a missing warn level loses the
         only notice that says the user's typed cell was just discarded.
 
@@ -549,14 +550,15 @@ class TestPeriodicityDoor:
         assert r.status_code == 200, r.get_json()
         j = r.get_json()
         assert j["ok"] is True
-        per = j["periodicity"]
+        per = j["structure"]["metadata"]
         assert per["cell"] is None                   # ...reset to derived
         assert per["vacuum"] == [3.0, 3.0, 3.0]
-        # The RESOLVED views ride in the same block, so the client cannot be
-        # handed a cell block whose "as it will actually be used" half is
-        # missing (molview.md § 9.3).
-        assert per["resolved_cell"] is not None
-        assert per["box_corner"] is not None and "resolved_vacuum" in per
+        # The RESOLVED views ride in the same answer, so the client cannot be
+        # handed a box whose "as it will actually be used" half is missing
+        # (molview.md § 9.3).
+        box = j["resolved_box"]
+        assert box["resolved_cell"] is not None
+        assert box["box_corner"] is not None and "resolved_vacuum" in box
         # The reset takes the assigned origin with the typed cell (§ 6.0).
         assert per["engine_offset"] is None
         assert any(n["severity"] == "warn" for n in j["notices"])
@@ -588,7 +590,8 @@ class TestPeriodicityDoor:
             "dx": 50.0, "dy": 0.0, "dz": 0.0, "indices": [0]})
         assert r.status_code == 200
         body = r.get_json()
-        assert body["periodicity"]["cell"][0][0] == 4.0, "the typed box is kept"
+        assert body["structure"]["metadata"]["cell"][0][0] == 4.0, \
+            "the typed box is kept"
         # THE SHARPER OF THE TWO containment findings, and the right one here:
         # atom 0 went from 0 to 50 while the others stayed, so the structure is
         # now 49 Å across in a 4 Å box.  No corner can make that fit, and
@@ -618,11 +621,12 @@ class TestPeriodicityDoor:
             "structure": self._envelope(s),
             "dx": 20.0, "dy": 0.0, "dz": 0.0, "indices": [2]}).get_json()
 
-        span_before = before["periodicity"]["resolved_cell"][0][0]
-        span_after = after["periodicity"]["resolved_cell"][0][0]
+        span_before = before["resolved_box"]["resolved_cell"][0][0]
+        span_after = after["resolved_box"]["resolved_cell"][0][0]
         assert span_after > span_before + 15.0, (
             f"the derived box did not follow the atom: {span_before} -> {span_after}")
-        assert after["periodicity"]["cell"] is None, "still nothing stored"
+        assert after["structure"]["metadata"]["cell"] is None, \
+            "still nothing stored"
         assert not _said(after.get("notices"), "cell.atoms_outside"), (
             f"a derived box cannot fail to contain: {_wheres(after.get('notices'))}")
 
@@ -640,9 +644,9 @@ class TestPeriodicityDoor:
             "structure": self._envelope(s), "dx": 50.0, "dy": 0.0, "dz": 0.0})
         assert r.status_code == 200
         body = r.get_json()
-        per = body["periodicity"]
-        assert per["engine_offset"] == [0.0, 0.0, 0.0] and \
-            per["box_corner"] == [0.0, 0.0, 0.0], "the box moved with the atoms"
+        assert body["structure"]["metadata"]["engine_offset"] == [0.0, 0.0, 0.0] \
+            and body["resolved_box"]["box_corner"] == [0.0, 0.0, 0.0], \
+            "the box moved with the atoms"
         said = [n for n in body.get("notices") or []
                 if n.get("where") == "cell.atoms_outside"]
         assert said, (f"atoms left the box and nothing said so: "
@@ -733,8 +737,8 @@ class TestPeriodicityDoor:
             "structure": env, "op": "cell",
             "payload": [[9, 0, 0], [0, 9, 0], [0, 0, 9]]})
         assert r.status_code == 200, r.get_json()
-        assert r.get_json()["periodicity"]["cell"] == [[9, 0, 0], [0, 9, 0],
-                                                       [0, 0, 9]]
+        assert r.get_json()["structure"]["metadata"]["cell"] == [
+            [9, 0, 0], [0, 9, 0], [0, 0, 9]]
 
     def test_a_missing_envelope_is_a_400(self, client):
         """A request with no `structure` is a 400 that names the missing key.
@@ -835,12 +839,12 @@ class TestLoaderGate:
         client = create_app(config={}).test_client()
         r = client.post("/api/build/load", json={"path": str(xyz)})
         assert r.status_code == 200, r.get_json()
-        per = r.get_json()["periodicity"]
-        assert per["engine_offset"] is None
+        j = r.get_json()
+        assert j["structure"]["metadata"]["engine_offset"] is None
         # Centred on the atoms (x 10..12, y and z at 10), stated as the
         # atoms' own middle rather than as a literal corner.
         np.testing.assert_allclose(
-            np.asarray(per["box_corner"]) + 3.5, [11.0, 10.0, 10.0])
+            np.asarray(j["resolved_box"]["box_corner"]) + 3.5, [11.0, 10.0, 10.0])
 
 
 # ------------------------------------------------------------------ #
@@ -1066,9 +1070,10 @@ class TestTheLoadAnswerIsNotSilent:
         assert all(n["about"] == "cell" for n in notices), notices
         # The served model: the origin as stored through the v10 pair,
         # nothing corrected.
-        per = j["periodicity"]
-        assert per["engine_offset"] == [-50.0] * 3, per["engine_offset"]
-        assert per["box_corner"] == [50.0] * 3, per["box_corner"]
+        offset = j["structure"]["metadata"]["engine_offset"]
+        corner = j["resolved_box"]["box_corner"]
+        assert offset == [-50.0] * 3, offset
+        assert corner == [50.0] * 3, corner
 
 
 class TestDoorHygieneAndRemainingOps:
@@ -1170,7 +1175,7 @@ class TestDoorHygieneAndRemainingOps:
             "structure": self._envelope(s), "op": "axis_kind",
             "payload": ["isolated"] * 3})
         assert r.status_code == 200, r.get_json()
-        assert r.get_json()["periodicity"]["cell"] is None
+        assert r.get_json()["structure"]["metadata"]["cell"] is None
 
     def test_origin_reset_null_payload_through_the_door(self, client):
         """A JSON `null` payload reaches the gate as *Automatic*, and a MISSING
@@ -1194,7 +1199,7 @@ class TestDoorHygieneAndRemainingOps:
             "structure": self._envelope(s), "op": "box_corner",
             "payload": None})
         assert r.status_code == 200, r.get_json()
-        assert r.get_json()["periodicity"]["engine_offset"] is None
+        assert r.get_json()["structure"]["metadata"]["engine_offset"] is None
         missing = client.post("/api/structure/periodicity", json={
             "structure": self._envelope(s), "op": "box_corner"})
         assert missing.status_code == 400, missing.get_json()
@@ -1405,30 +1410,23 @@ class TestTheDefaultVacuumGap:
 
     def test_the_wire_carries_unset_and_the_resolved_view(self):
         """Clause 1 on the wire: `vacuum` is the truth the user typed -- or
-        `null` -- and `resolved_vacuum` is the view the box was built from.  The
-        Cell page needs both so a box built from a number nobody typed is never
-        a surprise.
+        `null` -- in the structure's ``metadata`` (`to_dict`), and
+        `resolved_vacuum` the view the box was built from, in ``resolved_box``
+        beside it (`to_wire`).  The Cell page needs both so a box built from a
+        number nobody typed is never a surprise.
 
-        And the same for WHERE the box sits (plan § 5q.3, D4): `engine_offset`
-        is what the structure states -- `null` under Automatic -- and
-        `box_corner` is where the box is drawn, `-offset` of these coordinates:
-        centred on the atoms by the rule, or at the origin a person assigned."""
+        And the same for WHERE the box sits (plan § 5q.3, D4): under
+        Automatic `engine_offset` travels as `null`, and `box_corner`, where
+        the box is drawn, is the rule's -- centred on the atoms."""
         s = self._planar()
-        per = s.to_wire()["periodicity"]
-        assert per["vacuum"] is None, "unset must travel as null, not [0,0,0]"
-        assert per["resolved_vacuum"] == [3.0, 3.0, 3.0]
-        assert per["engine_offset"] is None
+        meta, box = s.to_dict()["metadata"], s.to_wire()["resolved_box"]
+        assert meta["vacuum"] is None, "unset must travel as null, not [0,0,0]"
+        assert box["resolved_vacuum"] == [3.0, 3.0, 3.0]
+        assert meta["engine_offset"] is None
         lo, hi = s.positions.min(axis=0), s.positions.max(axis=0)
         np.testing.assert_allclose(
-            np.asarray(per["box_corner"]) + np.diag(per["resolved_cell"]) / 2.0,
+            np.asarray(box["box_corner"]) + np.diag(box["resolved_cell"]) / 2.0,
             (lo + hi) / 2.0, err_msg="the rule's box is not centred on the atoms")
-
-        assigned = Structure(elements=["H"], positions=np.zeros((1, 3)),
-                             cell=np.eye(3) * 10.0, axis_kind=("isolated",) * 3,
-                             engine_offset=np.array([1.0, 2.0, 3.0]))
-        tp = assigned.to_wire()["periodicity"]
-        assert tp["engine_offset"] == [1.0, 2.0, 3.0]
-        assert tp["box_corner"] == [-1.0, -2.0, -3.0]
 
     def test_a_stored_zero_means_a_deliberate_zero(self):
         """`None` and `[0,0,0]` are DIFFERENT and both are honoured.

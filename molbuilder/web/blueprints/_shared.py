@@ -3,8 +3,8 @@
 This module is the SINGLE source of truth for:
 
 * the ``Issue`` -> JSON wire shape
-* JSON -> Structure body parsing (xyz + per-atom metadata lists)
-* Structure -> JSON response body construction
+* JSON -> Structure body parsing (the structure envelope, ``to_dict``'s shape)
+* Structure -> JSON response body construction (the structure sent once)
 * JSON -> dataclass coercion (used by Build for SiestaConfig /
   PySCFConfig form values)
 
@@ -28,8 +28,8 @@ from flask import jsonify
 from molbuilder.structure import (
     Structure,
 )
-from molbuilder.validation import validate_geometry
 from molbuilder.cell import resolve_and_check
+from molbuilder.validation import validate_geometry
 from molbuilder.periodicity_gate import (notices_for_report,
                                          validate_periodicity)
 
@@ -183,204 +183,31 @@ def struct_from_body(body: Dict[str, Any], key: str = "structure") -> Structure:
     return _struct_from_envelope(envelope)
 
 
-def atoms_list(struct: Structure) -> List[Dict[str, Any]]:
-    """Build the per-atom payload list.
+def structure_answer(struct: Structure) -> Dict[str, Any]:
+    """THE ONE SHAPE A STRUCTURE IS ANSWERED IN (`web-api.md` § 1; the user,
+    2026-11-10: *one shape, sent once*) -- the load, the builds, every edit
+    and the cell door alike:
 
-    Used by every response that carries a Structure so the front-end's
-    selection store stays in sync with the in-memory geometry without
-    a separate fetch.
+    * ``structure`` -- the structure's own dict (``Structure.to_dict``), the
+      one serialiser the sidecar, the persistence layer and the CLI round-trip
+      through, so a field added to the structure reaches the wire with no edit
+      here, and it crosses once;
+    * what the server works out about it that the dict does not carry
+      (``Structure.to_wire``): ``resolved_box``, the box as it will be used,
+      and ``atom_order_said``, the order its atoms are in, in words;
+    * ``labels`` -- the labels a calculation kind reads on a structure's
+      atoms, each with what it is for (`kind_table.labels`), the label
+      palette's, so MolView spells none of them (`web/molview.md` § 6.2).
 
-    Each row:
-
-        {
-            "index":         int,
-            "element":       "C" | "H" | ...,
-            "x": float, "y": float, "z": float,   # COORDS -- the atom carries its
-                                                  # own geometry (web-api.md § 1: the
-                                                  # atoms as NUMBERS); no re-parse
-            "regions":       [str, ...],     # EVERY label the atom carries,
-                                             # reserved ones (`frozen`) included --
-                                             # one representation, so the panel
-                                             # cannot render the same fact twice
-            # NO IDENTITY COLUMNS.  atom_names / residue_names / chain_ids
-            # travel at the TOP level of the payload, beside `metadata` --
-            # `structure.py::IDENTITY_FIELDS`.
-        }
-    """
-    n = len(struct.elements)
-    atom_to_regions: Dict[int, list] = {}
-    regions = getattr(struct, "regions", {}) or {}
-    for label, idxs in regions.items():
-        for idx in idxs:
-            atom_to_regions.setdefault(idx, []).append(label)
-
-    positions = struct.positions
-
-    rows: List[Dict[str, Any]] = []
-    for i in range(n):
-        # Coordinates ride ON the atom (`web-api.md` § 1 -- the atoms as
-        # numbers, so nobody has to write a coordinate document to ask a
-        # question about them; the atom is the geometric truth, not a
-        # re-parsed xyz string).
-        pos = positions[i]
-        row: Dict[str, Any] = {
-            "index":     i,
-            "element":   struct.elements[i],
-            "x":         float(pos[0]),
-            "y":         float(pos[1]),
-            "z":         float(pos[2]),
-            "regions":   atom_to_regions.get(i, []),
-        }
-        rows.append(row)
-    return rows
-
-
-def workspace_payload(
-    struct: Structure,
-    *,
-    extra: Optional[Dict[str, Any]] = None,
-) -> Dict[str, Any]:
-    """The canonical wire shape for every endpoint that returns a
-    ``Structure``.
-
-    Adding a new field that every
-    consumer should see (``bonds``, ``dipole``, …) is a one-line
-    change here, applied to every endpoint at once.
-
-    The shape (always present):
-
-    .. code-block:: python
-
-        {
-            "text":          "<xyz/pdb bytes>",
-            "source_format": "xyz" | "pdb",
-            "title":         "<title or empty string>",
-            "n_atoms":       <int>,
-            "atoms":         [<per-atom row>, ...],   # per atoms_list
-            "lattice":       [[...3...], [...3...], [...3...]] | None,
-            "issues":        [<Issue JSON>, ...],
-            "labels":        [{"name", "description"}, ...],
-            "extra":         { ... endpoint-specific add-ons ... },
-        }
-
-    Endpoint-specific add-ons (``backend_used``,
-    ``add_hydrogens_mode``, ``pdb``, ``summary``, …) belong in
-    ``extra``.  The dispatcher
-    on the client reads the canonical keys and treats ``extra`` as
-    opaque metadata — extending ``extra`` does not break any
-    consumer.
-
-    Notes
-    -----
-    * ``source_format`` defaults to ``"xyz"`` because
-      :class:`molbuilder.structure.Structure` round-trips through
-      :meth:`Structure.to_xyz`.  PDB-emitting endpoints set
-      ``source_format="pdb"`` via ``extra`` plus a ``"text"``
-      override at the callsite.
-    * ``lattice`` is always ``None`` here, and NOT because the structure
-      has no cell -- it has one: ``cell`` / ``engine_offset`` /
-      ``axis_kind`` / ``vacuum`` travel in the ``periodicity`` block that
-      :func:`structure_to_dict` takes from ``struct.to_wire()``, together
-      with the resolved views -- one block, so a cell cannot half-arrive.
-      ``lattice`` is a single-field spelling that no consumer reads; it
-      stays for the wire shape's sake.
-    * ``issues`` is populated via :func:`validate_geometry`.
-    * ``labels`` are the labels a calculation kind reads on a structure's
-      atoms, each with what it is for (`kind_table.labels`) -- the label
-      palette's, served beside every structure so MolView spells none of
-      them (`web/molview.md`).
-    """
+    A door adds what the call says beside it -- its notices, and a fact of
+    the call no structure holds (the frames a file holds, the backend that
+    built it)."""
     from molbuilder.kind_table import labels as _kind_labels
     return {
-        "text":          struct.to_xyz(),
-        "source_format": "xyz",
-        "title":         struct.title or "",
-        "n_atoms":       struct.n_atoms,
-        "atoms":         atoms_list(struct),
-        "lattice":       None,
-        # ``cfg=None`` explicit: ``validate_geometry`` emits only
-        # ``where="struct.*"`` findings, which no card holds -- the
-        # residual panel's.
-        "issues":        issues_to_json(
-            validate_geometry(struct), cfg=None),
-        "labels":        [{"name": name, "description": about}
-                          for name, about in _kind_labels()],
-        "extra":         dict(extra) if extra else {},
-    }
-
-
-def structure_to_dict(
-    struct: Structure,
-    *,
-    extra: Optional[Dict[str, Any]] = None,
-) -> Dict[str, Any]:
-    """The serialised shape for any Structure-returning endpoint.
-
-    Routes through :func:`workspace_payload` for the canonical
-    keys (every key it serves) and adds the per-atom columns a viewer folds
-    into its atoms (`molview/model-jobs.js`).
-
-    The optional ``extra`` dict threads endpoint-specific keys (``pdb``, ``summary``,
-    ``backend_used``, ``add_hydrogens_mode``) into BOTH places at
-    once:
-
-    * At the top level of the returned dict, for every JS consumer
-      that reads them off the response root.
-    * In the canonical ``extra`` sub-dict.
-
-    Top-level ``extra`` keys override the canonical defaults — a
-    caller emitting ``source_format="pdb"`` from a PDB-parsing
-    endpoint replaces the canonical default of ``"xyz"`` at both
-    the root level and inside ``extra``.
-
-    One :func:`validate_geometry` pass per call (issues are read
-    from the workspace payload; not recomputed in this helper).
-    """
-    extras = dict(extra) if extra else {}
-    base = workspace_payload(struct, extra=extras)
-    # The drift-prone block -- the full `periodicity` (the raw cell and offset
-    # + the server-resolved cell and box corner) + `annotations` + the identity
-    # columns -- is assembled by the Structure itself (`struct.to_wire()`,
-    # `model/structure.md` § 2.1 + § 4).  This helper hand-lists no metadata
-    # field and re-runs no resolver, so a field added to `metadata_to_dict`
-    # rides onto every endpoint automatically.  The web layer only adds its
-    # OWN concerns (render `atoms`, `issues`, `text`, `extra`).
-    wire = struct.to_wire()
-    return {
-        # THE ENVELOPE (web-api.md § 1) is the structure's OWN canonical dict --
-        # not a wire shape assembled here. `to_dict` is the one serialiser the
-        # sidecar, the persistence layer and the CLI already round-trip through,
-        # and its rule is that nobody outside the class picks a structure apart,
-        # because that is where a field goes missing. So a
-        # field added to the structure reaches the wire with no edit in this file.
-        #
-        # It sits BESIDE the keys below rather than replacing them, and both are
-        # derived from this one Structure, so they cannot come to disagree.
-        "structure":     struct.to_dict(),
-        # THE CANONICAL KEYS, every one `workspace_payload` serves, whole --
-        # the labels among them -- so a key added there reaches every
-        # endpoint with no edit here.
-        **base,
-        # Structure-owned: full periodicity (incl. resolved_cell, box_corner) +
-        # annotations ride with the geometry into the store so a captured
-        # electrode cell survives the modify op (`web-api.md` § 1, what
-        # the envelope must be able to carry).
-        "periodicity":   wire["periodicity"],
-        "annotations":   wire["annotations"],
-        # The order the atoms are in, in words, worked out by the structure
-        # like the resolved box (`model/overview.md` § 2.2a): what a viewer
-        # holding an engine's order marks itself with; none in the user order.
-        "atom_order_said": wire["atom_order_said"],
-        # THE PER-ATOM COLUMNS A VIEWER FOLDS INTO ITS ATOMS
-        # (`molview/model-jobs.js`), sourced from the ONE view so they can't
-        # diverge.
-        "atom_names":    wire["atom_names"],
-        "residue_ids":   wire["residue_ids"],
-        "residue_names": wire["residue_names"],
-        "chain_ids":     wire["chain_ids"],
-        # Endpoint-specific keys at the top level for the JS consumers
-        # that read them off the response root.
-        **extras,
+        "structure": struct.to_dict(),
+        **struct.to_wire(),
+        "labels":    [{"name": name, "description": about}
+                      for name, about in _kind_labels()],
     }
 
 
@@ -388,25 +215,23 @@ def ok_structure_response(
     struct: Structure,
     *,
     extra: Optional[Dict[str, Any]] = None,
+    found: Sequence[Dict[str, Any]] = (),
 ):
     """Build a Flask jsonify response for any Structure-returning
-    endpoint.
+    endpoint: ``{"ok": True}``, the structure in its one shape
+    (:func:`structure_answer`), and what the call says beside it.
 
-    ``/api/build/load`` + ``/api/build/molecule`` + every
-    ``/api/modify/*`` op route through this helper.  The optional ``extra``
-    dict carries per-endpoint add-ons:
-
-    * ``/api/build/load``: ``{"pdb", "summary", "source_format"}``
-      (``source_format`` overrides the canonical XYZ default with
-      the actually-parsed format).
-    * ``/api/build/molecule``: ``{"pdb", "summary",
-      "backend_used", "add_hydrogens_mode"}``.
-    * ``/api/modify/<op>``: no ``extra`` keys — the client CLEARS
-      the selection on any atom-count change (molview.md § 11.1,
-      "Effect on atom count"), so no per-op selection remap is emitted.
-
-    Wraps :func:`structure_to_dict` (which routes through
-    :func:`workspace_payload`) in ``{"ok": True, ...}``.
+    ``/api/build/load`` + ``/api/build/molecule`` + every ``/api/modify/*`` op
+    + the cell door route through this helper.  ``found``: what the door finds
+    about the result beyond the box's conditions, said after them -- the cell
+    door's verdict of what the boundary does to the crystal (``science/
+    junction-cell.md`` § 6.1).  ``extra`` carries what the call adds: its
+    receipts under ``notices``, and a fact of the call no structure holds --
+    ``n_frames`` (``/api/build/load``: the frames the file holds, when one
+    was taken) and ``backend_used`` (``/api/build/molecule``).  The
+    ``/api/modify/<op>`` routes add none -- the client CLEARS the selection on
+    any atom-count change (molview.md § 11.1, "Effect on atom count"), so no
+    per-op selection remap is emitted.
 
     EVERY STRUCTURE LEAVING FOR THE BROWSER IS CHECKED HERE, and this is the
     only place it can be done once (structure-periodicity.md § 8.1).
@@ -434,10 +259,16 @@ def ok_structure_response(
     # raising gate and reconstructing a notice from the exception.
     _rc, issues = resolve_and_check(struct)
     said.extend(notices_for_report(issues))
+    said.extend(found)
+    # THE GEOMETRY'S ADVICE, WHILE EDITING (`science/overview.md` § 3; the
+    # user, 2026-11-10: "show them while editing") -- atoms closer than they
+    # should be, an unusual hydrogen count -- said beside every structure a
+    # person loads, builds or edits, never blocking; generation enforces.
+    said.extend(notices_for_report(validate_geometry(struct)))
     merged = dict(extra or {})
-    if said:
-        merged["notices"] = said
-    return jsonify({"ok": True, **structure_to_dict(struct, extra=merged or None)})
+    merged.pop("notices", None)
+    return jsonify({"ok": True, **structure_answer(struct), **merged,
+                    **({"notices": said} if said else {})})
 
 
 def err(msg: str, code: int = 400, **fields):
@@ -985,8 +816,8 @@ def structure_from_text(text: str, filename: str = ""):
     codec's one text read
     (`StructureCodec.read_document`: every frame, the title the file's own,
     never an engine record's words); atoms only, an XYZ text a lone file,
-    said (`structure.lone_file`).  Returns ``(whole, said, fmt)``; a text
-    that does not read raises ``ValueError`` in the reader's words."""
+    said (`structure.lone_file`).  Returns ``(whole, said)``; a text that
+    does not read raises ``ValueError`` in the reader's words."""
     from molbuilder.workingcopy_structure import (LONE_FILE, StructureCodec,
                                                   lone_xyz_said, read_notice)
     fmt = StructureCodec.format_of_text(text, filename)
@@ -997,7 +828,7 @@ def structure_from_text(text: str, filename: str = ""):
     said = (notices_for_report([read_notice(
                 LONE_FILE, lone_xyz_said(filename or "The pasted text", text))])
             if fmt == "xyz" else [])
-    return whole, said, fmt
+    return whole, said
 
 
 def write_structure(struct: Structure, path, *, overwrite: bool, said=()):
@@ -1033,12 +864,10 @@ def write_structure(struct: Structure, path, *, overwrite: bool, said=()):
                     "notices": list(said) + list(notices)})
 
 __all__ = [
-    "atoms_list",
     "issues_to_json",
     "struct_from_body",
-    "structure_to_dict",
     "ok_structure_response",
-    "workspace_payload",
+    "structure_answer",
     "err",
     "sent_export",
     "finite_float",

@@ -7,9 +7,11 @@ hop of the ONE codec unchanged:
 
   * ``Structure.from_dict(s.to_dict())``      -- the pure Python round-trip unit
   * ``StructureCodec`` write, then read        -- the paired .xyz + .json file unit
-  * ``s.to_wire()``                           -- the server->client view carries
-                                                 the stated offset and the
+  * ``s.to_dict()`` + ``s.to_wire()``         -- the server->client answer
+                                                 carries the stated offset (the
+                                                 dict's metadata) and the
                                                  box_corner the server resolved
+                                                 (``resolved_box`` beside it)
 
 Nobody outside ``Structure`` names a metadata field, so pinning it here pins it
 everywhere the codec is used.
@@ -125,18 +127,19 @@ def test_read_write_pair_round_trip_preserves_all_metadata(tmp_path):
 # --------------------------------------------------------------------------- #
 
 def test_to_wire_carries_the_stated_offset_and_the_box_corner():
-    """The wire sends the offset AS STATED -- raw, so a client echoes it back --
-    and where the box is drawn, resolved by the server: ``box_corner`` =
+    """The wire sends the offset AS STATED -- raw, in the structure's own
+    ``metadata``, so a client echoes it back -- and where the box is drawn,
+    resolved by the server in ``resolved_box``: ``box_corner`` =
     ``-engine_offset`` of these coordinates (`structure-periodicity.md` § 6.0;
     plan § 5q.3, *the browser never computes a corner*)."""
     s = _fully_populated_structure()
-    per = s.to_wire()["periodicity"]
-    assert per["engine_offset"] == [-0.5, -1.5, -2.5]
-    assert per["box_corner"] == [0.5, 1.5, 2.5]
-    assert "cell_origin" not in per and "resolved_cell_origin" not in per
-    assert per["resolved_cell"] == _META["cell"]
-    assert per["axis_kind"] == ["periodic", "periodic", "isolated"]
-    assert per["vacuum"] == [0.0, 0.0, 2.0]
+    meta, box = s.to_dict()["metadata"], s.to_wire()["resolved_box"]
+    assert meta["engine_offset"] == [-0.5, -1.5, -2.5]
+    assert box["box_corner"] == [0.5, 1.5, 2.5]
+    assert "cell_origin" not in meta and "resolved_cell_origin" not in box
+    assert box["resolved_cell"] == _META["cell"]
+    assert meta["axis_kind"] == ["periodic", "periodic", "isolated"]
+    assert meta["vacuum"] == [0.0, 0.0, 2.0]
 
 
 def test_to_wire_places_a_crystal_by_the_rule_not_at_the_world_origin():
@@ -148,9 +151,9 @@ def test_to_wire_places_a_crystal_by_the_rule_not_at_the_world_origin():
     s.apply_metadata_dict({
         "cell": [[5.0, 0, 0], [0, 5.0, 0], [0, 0, 5.0]],
     })
-    per = s.to_wire()["periodicity"]
-    assert per["engine_offset"] is None
-    assert np.allclose(per["box_corner"], [-2.0, -2.0, -2.0])
+    assert s.to_dict()["metadata"]["engine_offset"] is None
+    assert np.allclose(s.to_wire()["resolved_box"]["box_corner"],
+                       [-2.0, -2.0, -2.0])
 
 
 def test_an_assigned_origin_survives_deleting_every_atom():
@@ -169,9 +172,8 @@ def test_an_assigned_origin_survives_deleting_every_atom():
                   engine_offset=np.array([2.0, 3.0, 4.0]))
     empty = delete_atoms(s, [0, 1])
     assert empty.n_atoms == 0
-    per = empty.to_wire()["periodicity"]
-    assert per["engine_offset"] == [2.0, 3.0, 4.0]
-    assert per["box_corner"] == [-2.0, -3.0, -4.0]
+    assert empty.to_dict()["metadata"]["engine_offset"] == [2.0, 3.0, 4.0]
+    assert empty.to_wire()["resolved_box"]["box_corner"] == [-2.0, -3.0, -4.0]
 
 
 def test_derived_structure_round_trips_with_cell_still_null(tmp_path):
@@ -223,7 +225,7 @@ def test_save_endpoint_gates_a_corrupted_blob_without_inventing_an_origin(
     assert "cell_origin" not in side
     assert side["engine_offset"] is None
     back = StructureCodec().load(sdir / "m.xyz")
-    assert np.allclose(back.to_wire()["periodicity"]["box_corner"],
+    assert np.allclose(back.to_wire()["resolved_box"]["box_corner"],
                        [7.5, 6.5, 6.5])
 
 

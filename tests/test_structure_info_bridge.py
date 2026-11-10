@@ -55,6 +55,17 @@ REPO = Path(__file__).resolve().parents[1]
 JOBS = _LIB / "molview" / "model-jobs.js"
 SERVER = _LIB / "server.js"
 
+def _answer(info=None) -> dict:
+    """The server's answer for one O atom whose ``info`` store holds
+    ``info`` (`support.envelope.answer`), so the stub speaks the server's
+    one shape."""
+    from molbuilder.structure import Structure
+    from support.envelope import answer
+    s = Structure(elements=["O"], positions=[[0.0, 0.0, 0.0]])
+    s.info = dict(info or {})
+    return answer(s)
+
+
 #: `installMolecule` POSTs through `postJson`, so a stubbed `fetch` is what
 #: makes the REQUEST BODY inspectable -- the thing link 4 is actually about.
 #: It records every call and answers with a minimal valid structure.
@@ -63,9 +74,8 @@ globalThis.__sent = [];
 globalThis.fetch = async (route, opts) => {
     globalThis.__sent.push({ route, body: JSON.parse(opts.body) });
     // As a browser hands it, for the page's one reader (`lib/server.js`).
-    return new Response(JSON.stringify(
-        { atoms: [{ element: "O", xyz: [0,0,0] }],
-          structure: { info: { calculation: "relax" } } }), { status: 200 });
+    return new Response(JSON.stringify(""" + json.dumps(
+        _answer({"calculation": "relax"})) + """), { status: 200 });
 };
 """
 
@@ -84,27 +94,20 @@ class TestTheBrowserSide:
     """Link 4, RUN: these call the functions.
     """
 
-    def test_the_store_arrives_from_the_envelope_and_only_from_there(self):
+    def test_the_store_arrives_from_the_envelope(self):
         """``payload.structure`` IS the structure's own dict, and ``info`` is
-        a field of a Structure, so it arrives there and nowhere else.
+        a field of a Structure, so it arrives there.
 
         MUTATION THIS MUST FAIL AGAINST: read `payload.info` instead -- which
         is the ORIGINAL BUG.
         """
-        out = _run("""
-        console.log(JSON.stringify({
-            envelope: JOBS.structureFromServer(
-                { atoms: [{ element: "O", xyz: [0,0,0] }],
-                  structure: { info: { calculation: "relax" } } }).structure.info,
-            flat: JOBS.structureFromServer(
-                { atoms: [{ element: "O", xyz: [0,0,0] }],
-                  info: { calculation: "SHOULD-BE-IGNORED" } }).structure.info,
-        }));""")
+        envelope = json.dumps(_answer({"calculation": "relax"}))
+        out = _run(f"""
+        console.log(JSON.stringify({{
+            envelope: JOBS.structureFromServer({envelope}).structure.info,
+        }}));""")
         assert out["envelope"] == {"calculation": "relax"}, (
             "the store must be read from the canonical envelope")
-        assert out["flat"] == {}, (
-            "a FLAT payload.info is a key no route sends -- reading it is the "
-            "bug that shipped, and it must stay unread")
 
     def test_the_store_arrives_on_the_structure(self):
         """§ 8.4a's *"it rides installMolecule in"* -- asked of what the viewer

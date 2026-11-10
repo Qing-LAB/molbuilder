@@ -387,7 +387,7 @@ a meaning — no calculation reads a mass off a structure.
 **Open work** (`plans/plan.md` **W15**): **`value`-channel filtering and
 display** — the server must resolve a `by_value` rule, and MolView must show a
 value channel. The channels already reach the browser on the load door
-(`/api/build/load`, `structure_to_dict`) and travel in MolView's model and back
+(`/api/build/load`, inside the structure's own dict, `structure_answer`) and travel in MolView's model and back
 (this said they must still be brought there). *(This named
 `/api/selection/atoms` until 2026-09-07. That route is deleted — it read a file
 the browser had already loaded, which is the opposite of where this feature

@@ -157,10 +157,10 @@ def add_atom(
     offset_arr = np.asarray(offset, dtype=float).reshape(3)
     # ADVISORY-NOT-ENFORCING (validation contract): a (near-)zero offset places
     # the new atom on top of the anchor.  We do NOT block it -- close / coincident
-    # atoms are surfaced non-blockingly by ``validate_geometry`` (the
-    # ``geometry.min_distance`` finding) while editing, and the GENERATION gate
-    # (``report(validate(...))`` in the SIESTA/PySCF emitters) enforces at emit
-    # time.  So the user can build an intermediate structure and fix it later.
+    # atoms are ``validate_geometry``'s ``geometry.min_distance`` finding, said
+    # by the settings check before a run and enforced by the GENERATION gate
+    # (``report(validate(...))`` in the SIESTA/PySCF emitters) at emit time.
+    # So the user can build an intermediate structure and fix it later.
     # Only genuinely-invalid input (a non-element symbol, above) is rejected here.
     # NO ANCHOR MEANS THE ORIGIN, and the origin is a point, not a stand-in
     # for an atom -- so the two facts an anchor would have supplied are taken

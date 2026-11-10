@@ -109,7 +109,7 @@ class TestHappyPath:
         with CA/CB collapsed to C.  ``by_residue_name "ALA"`` then
         matched nothing on a peptide the user had just generated.  The
         server's build of ACD names its residues; the load door receives
-        that envelope as it came, the document beside it left out."""
+        that envelope as it came, and no document."""
         out = _run('''
             let canvasArgs = null;
             pep.configure({
@@ -129,10 +129,11 @@ class TestHappyPath:
             }));
         ''', app_at)
         answer = out["answer"]
-        assert answer["ok"] is True and "text" in answer, answer
+        assert answer["ok"] is True, answer
         assert set(answer["structure"]["residue_names"]) >= {"ALA", "CYS",
                                                              "ASP"}
-        assert out["envelope"] == {"ok": True, "n_atoms": answer["n_atoms"],
+        assert out["envelope"] == {"ok": True,
+                                   "n_atoms": len(answer["structure"]["elements"]),
                                    "backend_used": answer["backend_used"]}
         assert out["body"] == {"kind": "peptide", "input": "ACD"}
         # The residues survive, because an envelope has a slot for them

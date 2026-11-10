@@ -107,6 +107,13 @@ export function offeredLabels(served) {
     return out;
 }
 
+
+/* A carried value, deep-copied, so the model never shares an object with
+ * the answer it came from or the request it goes out in. */
+function clone(v) {
+    return v == null ? null : JSON.parse(JSON.stringify(v));
+}
+
 /* THE METADATA KEYS THIS MODULE HOLDS IN SHAPES OF ITS OWN (§ 6.2): the
  * labels, folded onto the atoms (`regions`); each channel's two halves
  * (`annotations`); the named values and each frame's (`customized`); and the
@@ -115,9 +122,14 @@ export function offeredLabels(served) {
  * § 2.2a) -- rides whole in `otherMetadata`, carried and never opened, so a
  * key the server adds reaches every road with no edit here.  The one list
  * both translators read. */
+/* The box half of that list: Python's `structure.BOX_FIELDS`, the keys of the
+ * structure's metadata that make its box.  A box key the server adds and this
+ * list does not name is carried whole in `otherMetadata` -- never dropped --
+ * and reaches the Cell page when it is named here. */
+const BOX_METADATA_KEYS = ["cell", "engine_offset", "offset_by",
+                           "axis_kind", "vacuum"];
 const SHAPED_METADATA_KEYS = ["regions", "annotations", "customized",
-                              "cell", "engine_offset", "offset_by",
-                              "axis_kind", "vacuum"];
+                              ...BOX_METADATA_KEYS];
 
 /**
  * The server's structure payload, in the shapes of § 6.2.
@@ -127,34 +139,63 @@ const SHAPED_METADATA_KEYS = ["regions", "annotations", "customized",
  * nothing here" and "here is a structure with no atoms" are different answers.
  */
 export function structureFromServer(payload) {
-    /* An answer with no atoms is a structure with no atoms, and that is the
-     * caller's business. The module does not second-guess what was loaded — it
-     * carries what it is given (§ 6.2). A viewer holding one is not stuck
-     * either: an install can be enforced (§ 9.4). */
-    if (!payload || !Array.isArray(payload.atoms)) return null;
-    const atoms = payload.atoms;
+    /* THE STRUCTURE, ONCE (`web-api.md` § 1; the user, 2026-11-10: *one
+     * shape, sent once*): the structure's own dict -- its atoms, their
+     * identity columns, its metadata, a frame set's `frames` in place of
+     * `positions` (`model/structure.md` § 2.1, § 2.2e) -- beside what the
+     * server works out about it that the dict does not carry
+     * (`resolved_box`, `atom_order_said`).  An answer with no structure is
+     * nothing (§ 9.3); one with no atoms is a structure with no atoms, and
+     * that is the caller's business -- the module carries what it is given
+     * (§ 6.2), and a viewer holding one is not stuck: an install can be
+     * enforced (§ 9.4). */
+    const env = (payload && payload.structure
+                 && typeof payload.structure === "object")
+        ? payload.structure : null;
+    if (!env || !Array.isArray(env.elements)) return null;
+    const n = env.elements.length;
+    const meta = (env.metadata && typeof env.metadata === "object")
+        ? env.metadata : {};
 
-    // Some per-atom facts arrive as parallel top-level arrays rather than on the
-    // atom. Folding them in here is what lets one read of the structure hold
-    // everything (§ 9.3) instead of callers keeping a second, parallel copy.
-    const parallel = (name) => (Array.isArray(payload[name])
-        && payload[name].length === atoms.length) ? payload[name] : null;
-    const residueNames = parallel("residue_names");
-    const atomNames    = parallel("atom_names");
-    const residueIds   = parallel("residue_ids");
-    const chainIds     = parallel("chain_ids");
+    /* THE IDENTITY COLUMNS, folded onto each atom so one read of the
+     * structure holds everything (§ 9.3): full-length, or `[]` for absent
+     * (`web-api.md` § 1). */
+    const column = (name) => (Array.isArray(env[name])
+        && env[name].length === n) ? env[name] : null;
+    const residueNames = column("residue_names");
+    const atomNames    = column("atom_names");
+    const residueIds   = column("residue_ids");
+    const chainIds     = column("chain_ids");
 
-    /* THE PER-ATOM CHANNELS (the sidecar's `annotations` block;
+    /* THE LABELS EACH ATOM CARRIES, from the one label store
+     * (`metadata.regions`, label -> its atoms), in the order the answer
+     * lists the store's labels.  A SET
+     * per atom (§ 6.2): an index a label lists twice is one membership,
+     * dropped HERE -- at the one place the server's answer becomes this
+     * module's shape (§ 11.1) -- because `groupByLabel` would send it back
+     * listed twice, into the sidecar and a generated input: a
+     * `frozen_atoms: [0, 0]` is the same atom held still twice. */
+    const labelsOf = Array.from({ length: n }, () => []);
+    const regions = (meta.regions && typeof meta.regions === "object")
+        ? meta.regions : {};
+    for (const name of Object.keys(regions)) {
+        for (const i of (Array.isArray(regions[name]) ? regions[name] : [])) {
+            if (i >= 0 && i < n && !labelsOf[i].includes(name)) {
+                labelsOf[i].push(name);
+            }
+        }
+    }
+
+    /* THE PER-ATOM CHANNELS (the metadata's `annotations` block;
      * structure.py `AtomChannel`).  Two halves that live in two places:
      * kind/color/fdf are CHANNEL-level facts and ride verbatim under
      * `channelDefs` (like periodicity — the viewer edits none of it);
      * the atom-indexed half folds onto each atom's facts, so an edit
      * remaps it with its atom instead of leaving a stale index list. */
-    const chanIn = (payload.annotations
-        && typeof payload.annotations === "object")
-        ? payload.annotations : null;
+    const chanIn = (meta.annotations && typeof meta.annotations === "object")
+        ? meta.annotations : null;
     const channelDefs = {};
-    const perAtomChannels = atoms.map(() => null);
+    const perAtomChannels = Array.from({ length: n }, () => null);
     if (chanIn) {
         for (const name of Object.keys(chanIn)) {
             const c = chanIn[name];
@@ -166,14 +207,14 @@ export function structureFromServer(payload) {
             if (c.kind === "value") {
                 for (const k of Object.keys(c.data || {})) {
                     const i = Number(k);
-                    if (i >= 0 && i < atoms.length) {
+                    if (i >= 0 && i < n) {
                         (perAtomChannels[i] = perAtomChannels[i] || {})
                             [name] = c.data[k];
                     }
                 }
             } else {            // tag | flag: a membership index list
                 for (const i of (Array.isArray(c.data) ? c.data : [])) {
-                    if (i >= 0 && i < atoms.length) {
+                    if (i >= 0 && i < n) {
                         (perAtomChannels[i] = perAtomChannels[i] || {})
                             [name] = true;
                     }
@@ -182,54 +223,31 @@ export function structureFromServer(payload) {
         }
     }
 
-    /* THE STRUCTURE'S OWN DICT -- the canonical envelope the server sends
-     * beside the flat keys (`model/structure.md` § 2.1).  A frame set's
-     * frames ride in it, `frames` in place of `positions`, and the named
-     * values in its `metadata.customized` (§ 2.2d-2.2e); both are read from
-     * here and nowhere else. */
-    const env = (payload.structure && typeof payload.structure === "object")
-        ? payload.structure : null;
-    const custom = (env && env.metadata && env.metadata.customized
-                    && typeof env.metadata.customized === "object")
-        ? env.metadata.customized : null;
+    /* The named values (§ 2.2d) and every other metadata key, whole
+     * (`SHAPED_METADATA_KEYS`). */
+    const custom = (meta.customized && typeof meta.customized === "object")
+        ? meta.customized : null;
     const rowsCopy = (rows) => (Array.isArray(rows)
         ? rows.map((r) => Object.assign({}, r)) : []);
-    // Every other metadata key, whole (`SHAPED_METADATA_KEYS`).
-    const meta = (env && env.metadata && typeof env.metadata === "object")
-        ? env.metadata : {};
     const otherMetadata = {};
     for (const key of Object.keys(meta)) {
         if (!SHAPED_METADATA_KEYS.includes(key)) {
-            otherMetadata[key] = JSON.parse(JSON.stringify(meta[key]));
+            otherMetadata[key] = clone(meta[key]);
         }
     }
 
-    const elements = atoms.map((a) => a.element);
-    const annotations = atoms.map((a, i) => {
-        /* THE LABELS AN ATOM CARRIES ARE A SET (§ 6.2). Carrying the same name
-         * twice is not a state the model may hold, so the duplicate is dropped
-         * HERE — at the one place the server's payload becomes this module's
-         * shape (§ 11.1) — rather than left for every reader to cope with.
-         *
-         * It matters because the count travels: `groupByLabel` turns a label an
-         * atom carries twice into that atom's index listed twice, which goes
-         * out in `regions`, into the sidecar, and into the generated input. A
-         * `frozen_atoms: [0, 0]` reaching a constraints block is the same atom
-         * held still twice. The writing side cannot produce this — it strips
-         * every occurrence before adding one back — so the only way in is a
-         * payload that already had it. */
-        const labels = Array.isArray(a.regions)
-            ? Array.from(new Set(a.regions)) : [];
-        const residue = a.residue_name != null
-            ? a.residue_name
-            : (residueNames ? residueNames[i] : null);
-        const facts = { labels: labels };
-        if (residue != null && residue !== "") facts.residue = residue;
-        // The other identity columns, folded the same way residue is —
-        // per atom, so an edit carries them with their atom.  The server
-        // synthesizes defaults when a format has none (structure.py
-        // __post_init__: names = elements, resid 1, chain "A"), so these
-        // are simply what the structure says, placeholders included.
+    const elements = env.elements.slice();
+    const annotations = elements.map((_element, i) => {
+        const facts = { labels: labelsOf[i] };
+        // The identity columns, per atom, so an edit carries them with their
+        // atom.  The server synthesizes defaults when a format has none
+        // (structure.py __post_init__: names = elements, resid 1, chain
+        // "A"), so these are simply what the structure says, placeholders
+        // included.
+        if (residueNames && residueNames[i] != null
+                && residueNames[i] !== "") {
+            facts.residue = residueNames[i];
+        }
         if (atomNames && atomNames[i] != null && atomNames[i] !== "") {
             facts.name = atomNames[i];
         }
@@ -241,41 +259,32 @@ export function structureFromServer(payload) {
         return facts;
     });
 
+    /* THE PERIODICITY BLOCK (§ 6.2): the box keys of the structure's
+     * metadata, as the person set them, and the box resolved beside them,
+     * the server's (`resolved_box`) -- under the server's own field names,
+     * which stay the server's the whole way through this module. */
+    const periodicity = {};
+    for (const key of BOX_METADATA_KEYS) {
+        periodicity[key] = (key in meta) ? clone(meta[key]) : null;
+    }
+    Object.assign(periodicity, clone(
+        (payload.resolved_box && typeof payload.resolved_box === "object")
+            ? payload.resolved_box : {}));
+
     return {
         structure: {
             elements:    elements,
             annotations: annotations,
-            /* THE PERIODICITY BLOCK, CARRIED VERBATIM (§ 6.2). Its field
-             * names are the server's — `cell`, `engine_offset`, `axis_kind`,
-             * `vacuum`, and the resolved answers beside them — and they stay
-             * the server's the whole way through this module. */
-            periodicity: payload.periodicity || null,
+            periodicity: periodicity,
             /* Structure-level identity + the channel definitions, carried
-             * verbatim (§ 6.2 — the viewer interprets none of it).  The
-             * title comes from the CANONICAL envelope (payload.structure —
-             * the structure's own dict), never the flat display key: the
-             * load door decorates that one with a filename fallback
-             * (build.py: "override via extra rather than mutating
-             * struct.title"), and adopting the decoration would manufacture
-             * a title the user never stated. */
-            title: (payload.structure
-                    && typeof payload.structure.title === "string")
-                ? payload.structure.title
-                : (typeof payload.title === "string" ? payload.title : ""),
+             * verbatim (§ 6.2 — the viewer interprets none of it). */
+            title: typeof env.title === "string" ? env.title : "",
             channelDefs: Object.keys(channelDefs).length
                 ? channelDefs : null,
             /* The `info` store, carried verbatim (§ 6.2 -- the viewer
              * interprets none of it; the Metadata pane displays it and
-             * the host's `data.info` doors mutate it).
-             *
-             * FROM THE CANONICAL ENVELOPE, for the same reason `title`
-             * is: `payload.structure` IS the structure's own dict, and
-             * `info` is a field of a Structure, so it arrives there and
-             * nowhere else. */
-            info: (payload.structure
-                    && payload.structure.info
-                    && typeof payload.structure.info === "object")
-                ? payload.structure.info : {},
+             * the host's `data.info` doors mutate it). */
+            info: (env.info && typeof env.info === "object") ? env.info : {},
             /* The structure's named values (§ 2.2d) -- part of the
              * structure, written only through `data.customized`. */
             customized: rowsCopy(custom && custom.rows),
@@ -303,11 +312,12 @@ export function structureFromServer(payload) {
          * entry per frame in every list.  One frame is the atoms' own
          * coordinates; a frame set's are the envelope's `frames`. */
         coordinates: {
-            frames: (env && Array.isArray(env.frames) && env.frames.length)
-                ? env.frames.map((f) => f.map((p) => [p[0], p[1], p[2]]))
-                : [atoms.map((a) => [Number(a.x) || 0,
-                                     Number(a.y) || 0,
-                                     Number(a.z) || 0])],
+            frames: (Array.isArray(env.frames) && env.frames.length
+                     ? env.frames
+                     : [Array.isArray(env.positions) ? env.positions : []])
+                .map((f) => f.map((p) => [Number(p[0]) || 0,
+                                          Number(p[1]) || 0,
+                                          Number(p[2]) || 0])),
             forcesPerFrame: null,
             rowsPerFrame: (custom && Array.isArray(custom.frames)
                            && custom.frames.some((r) => r && r.length))
@@ -401,10 +411,9 @@ export function structureForServer(structure, coordinates) {
         return null;
     }
 
-    /* COPIED, not referenced: this is handed to a caller (§ 9.3), and a body
-     * holding the master copy's own arrays is a write into the structure
-     * disguised as a read. */
-    const clone = (v) => (v == null ? null : JSON.parse(JSON.stringify(v)));
+    /* Every value below leaves COPIED (`clone`), not referenced: this is
+     * handed to a caller (§ 9.3), and a body holding the master copy's own
+     * arrays is a write into the structure disguised as a read. */
     const per = structure.periodicity || {};
 
     /* THE IDENTITY COLUMNS, unfolded from the per-atom facts back into the
@@ -477,13 +486,11 @@ export function structureForServer(structure, coordinates) {
         metadata: {
             ...clone(structure.otherMetadata || {}),
             regions:     groupByLabel(structure.annotations),
-            cell:        clone(per.cell),
-            engine_offset: clone(per.engine_offset),
-            // ...AND WHOSE IT IS (structure-periodicity.md § 6.0), carried
-            // back as the server stated it.
-            offset_by:   clone(per.offset_by),
-            axis_kind:   clone(per.axis_kind),
-            vacuum:      clone(per.vacuum),
+            // THE BOX, back under the keys it came in by (`BOX_METADATA_KEYS`)
+            // -- the stated offset with whose it is among them
+            // (structure-periodicity.md § 6.0), as the server stated it.
+            ...Object.fromEntries(BOX_METADATA_KEYS.map(
+                (key) => [key, clone(per[key])])),
         },
     };
     if (structure.title) out.title = structure.title;
@@ -968,20 +975,20 @@ export function createCellEdit(handed) {
             op:        op,
             payload:   payload === undefined ? null : payload,
         });
-        /* ADOPTED VERBATIM. The block comes back in the shape § 6.2 carries —
-         * the server's own field names, with the `resolved_*` answers beside the
-         * raw ones — which is the same shape `/api/build/load` sends, so there
-         * is nothing to translate and nothing to pick out. */
-        const block = answer && answer.periodicity;
-        if (!block) {
+        /* READ AS EVERY ANSWER IS READ: the structure in its one shape,
+         * through the one translator (`structureFromServer`), which composes
+         * the block § 6.2 carries -- the box the edit set and the box
+         * resolved beside it -- and the `info` the edit marked; this door
+         * adopts those two and nothing else of it. */
+        const read = structureFromServer(answer);
+        if (!read) {
             throw new Error("The server answered, but not with a cell.");
         }
+        const block = read.structure.periodicity;
         /* The answer's notices ride WITH the block it describes (§ 6.8). They
          * are passed on verbatim -- the server's own words, its own levels --
          * because rewording a warning here would put a second author on it. */
-        handed.applyCell(block,
-                         Array.isArray(answer.notices) ? answer.notices : [],
-                         answer.info);
+        handed.applyCell(block, read.notices || [], read.structure.info);
         return block;
     };
 }

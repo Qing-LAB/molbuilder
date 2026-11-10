@@ -185,7 +185,7 @@ These are load-bearing. Don't violate one without updating this document.
    HTML form are *generated* from the dataclass, not maintained in lockstep. A
    previous custom registry framework was deleted because `dataclasses.fields()`
    + click is the right tool. This extends to the client and wire: **one**
-   workspace store, **one** server response shape (`_shared.workspace_payload`),
+   workspace store, **one** server response shape (`_shared.structure_answer`),
    **one** sessionStorage key — no code path may update part of the workspace
    and not the rest. See [`web/form-schema.md`](?doc=web/form-schema.md),
    [`web/workspace.md`](?doc=web/workspace.md), [`web/web-api.md`](?doc=web/web-api.md).
@@ -263,7 +263,7 @@ Considered and rejected; do not reintroduce.
   extend the one workspace dispatcher instead.
 - **Hand-rolled per-endpoint response shapes** for Structure-returning
   endpoints — four drifted (the missing `atoms` key was the costliest); every
-  such endpoint uses `_shared.workspace_payload`.
+  such endpoint uses `_shared.structure_answer`, the structure sent once.
 - **Retyping a table a dependency already ships** — atomic masses, atomic
   numbers, covalent radii, isotope data. Before writing one, look: this program
   already depends on ASE, and `ase.data` carries all four. `chemistry.py` names

@@ -70,9 +70,9 @@ the contract for *when a finding blocks*:
 ```mermaid
 flowchart LR
     subgraph EDIT["While editing — advisory"]
-        E1["Modify / /api/modify/* / /api/build/*"]
-        E2["validate_geometry(struct)<br/>validation/geometry.py:24"]
-        E3["issues surfaced, NEVER block"]
+        E1["a load, a build, an edit<br/>/api/build/* · /api/modify/* · the cell door"]
+        E2["validate_geometry(struct)<br/>validation/geometry.py"]
+        E3["notices beside the structure, NEVER block"]
         E1 --> E2 --> E3
     end
     subgraph GEN["At generation — enforcing"]
@@ -83,9 +83,13 @@ flowchart LR
     end
 ```
 
-- **While editing** — `validate_geometry(struct)` runs on every editing response
-  (Modify, `/api/modify/*`, `/api/build/*`). Its issues are shown in the UI but
-  **never block**, so a half-built structure isn't nagged into a dead end.
+- **While editing** — `validate_geometry(struct)` runs on every answer that
+  carries a structure a person loads, builds or edits (`ok_structure_response`:
+  `/api/build/*`, `/api/modify/*`, the cell door), and its findings — two atoms
+  closer than they should be, an unusual hydrogen count — arrive as `notices`
+  beside the structure, shown on the page, and **never block**, so a
+  half-built structure isn't nagged into a dead end *(the user, 2026-11-10:
+  "show them while editing")*.
 - **At generation** — `report(validate(struct, cfg))` is the first step of
   `script_emit.render_deck`, before a line of any deck exists. `validate`
   (`validation/__init__.py::validate`) aggregates every applicable check via
