@@ -91,7 +91,7 @@ class TestParseFortranFloat:
 
 
 # --------------------------------------------------------------------- #
-#  JSON-safety guard on the trajectory_to_legacy_dict adapter            #
+#  JSON-safety guard on the trajectory_result_to_legacy_dict adapter     #
 #                                                                       #
 #  The 2026-06-14 follow-up BLOCKER: parser fix emitted NaN in the      #
 #  scf_history dict; Python's json.dumps writes the literal ``NaN``     #
@@ -102,12 +102,11 @@ class TestParseFortranFloat:
 
 
 class TestTrajectoryDictNanSafe:
-    """End-to-end pin on the parser -> adapter -> browser pipeline.
-
-    The adapter is the single boundary every /api/watch/* and
-    /api/results/* endpoint flows through, so sanitising NaN here
-    covers both the SIESTA overflow case AND any future numeric
-    path that legitimately produces NaN.
+    """The adapter -> browser boundary: the one converter the trajectory
+    route and the command line's ``watch`` verbs turn a parser's result
+    into the viewer's dict with, so sanitising NaN here covers both the
+    SIESTA overflow case AND any future numeric path that legitimately
+    produces NaN.
     """
 
     def test_json_safe_pure_helper(self):
@@ -169,7 +168,7 @@ class TestTrajectoryDictNanSafe:
     def test_json_safe_handles_numpy_ndarray(self):
         """A numpy ndarray that contains NaN must serialise to a
         nested list with None in place of NaN.  Catches the
-        ``trajectory_to_legacy_dict.lattice`` path if a parser
+        ``trajectory_result_to_legacy_dict`` lattice path if a parser
         ever forgets to call ``.tolist()`` before assigning."""
         import json
         import numpy as np
@@ -187,9 +186,11 @@ class TestTrajectoryDictNanSafe:
         not raise; the round-tripped dHmax must be ``null``."""
         import json
         import numpy as np
-        from molbuilder.frame import Frame, Trajectory
+        from molbuilder.frame import Frame
         from molbuilder.structure import Structure
-        from molbuilder.parse.engines._helpers import trajectory_to_legacy_dict
+        from molbuilder.parse.engines._helpers import (
+            trajectory_result_to_legacy_dict)
+        from molbuilder.parse.types import ParseResult, TrajectoryResult
 
         struct = Structure(
             elements=["H"],
@@ -202,8 +203,9 @@ class TestTrajectoryDictNanSafe:
         ]
         f = Frame(structure=struct, step_index=0,
                   energy=-2.0, scf_history=scf)
-        traj = Trajectory(source_format="siesta", frames=[f])
-        d = trajectory_to_legacy_dict(traj)
+        d = trajectory_result_to_legacy_dict(TrajectoryResult(
+            **ParseResult.envelope("siesta"), frames=[f],
+            source_format="siesta"))
         # Strict JSON: pre-fix this raised "Out of range float
         # values are not JSON compliant: nan".
         payload = json.dumps(d, allow_nan=False)
@@ -218,12 +220,14 @@ class TestTrajectoryDictNanSafe:
 
     def test_adapter_does_not_mutate_input(self):
         """Adapter must produce a new dict tree, not mutate the
-        Trajectory it was given (callers might reuse it)."""
+        result it was given (callers might reuse it)."""
         import math
         import numpy as np
-        from molbuilder.frame import Frame, Trajectory
+        from molbuilder.frame import Frame
         from molbuilder.structure import Structure
-        from molbuilder.parse.engines._helpers import trajectory_to_legacy_dict
+        from molbuilder.parse.engines._helpers import (
+            trajectory_result_to_legacy_dict)
+        from molbuilder.parse.types import ParseResult, TrajectoryResult
 
         struct = Structure(
             elements=["H"],
@@ -233,7 +237,8 @@ class TestTrajectoryDictNanSafe:
                 "dHmax": float("nan")}]
         f = Frame(structure=struct, step_index=0,
                   energy=-2.0, scf_history=scf)
-        traj = Trajectory(source_format="siesta", frames=[f])
-        _ = trajectory_to_legacy_dict(traj)
+        _ = trajectory_result_to_legacy_dict(TrajectoryResult(
+            **ParseResult.envelope("siesta"), frames=[f],
+            source_format="siesta"))
         # Source trajectory still holds NaN -- we copied, not mutated.
-        assert math.isnan(traj.frames[0].scf_history[0]["dHmax"])
+        assert math.isnan(f.scf_history[0]["dHmax"])

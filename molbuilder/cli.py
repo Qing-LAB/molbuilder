@@ -3602,7 +3602,7 @@ def cmd_watch_parse(input_path, frames_only, pretty):
     """
     from .parse import ParseError
     detect_parser = _trajectory_parser_for
-    from .parse.engines._helpers import trajectory_to_legacy_dict
+    from .parse.engines._helpers import trajectory_result_to_legacy_dict
 
     with _resolve_input_path(input_path) as resolved:
         try:
@@ -3616,7 +3616,7 @@ def cmd_watch_parse(input_path, frames_only, pretty):
             sys.exit(2)
     _say_a_file_is_not_its_run(input_path)
 
-    payload = trajectory_to_legacy_dict(traj)
+    payload = trajectory_result_to_legacy_dict(traj)
     # WHICH INDEX ITS ATOMS ARE LISTED BY (`model/overview.md` § 2.2b).
     atoms = _file_atoms(input_path, traj)
     if atoms is not None:
@@ -3668,7 +3668,7 @@ def cmd_watch_tail(input_path, poll_ms, max_frames):
     import time
     from .parse import ParseError
     detect_parser = _trajectory_parser_for
-    from .parse.engines._helpers import trajectory_to_legacy_dict
+    from .parse.engines._helpers import trajectory_result_to_legacy_dict
     from .parse.engines._run_ending import CONCLUDED
 
     if input_path == "-":
@@ -3709,7 +3709,7 @@ def cmd_watch_tail(input_path, poll_ms, max_frames):
                 time.sleep(poll_s)
                 continue
 
-            payload = trajectory_to_legacy_dict(traj)
+            payload = trajectory_result_to_legacy_dict(traj)
             n = len(payload["frames"])
             for i in range(last_n, n):
                 line = {

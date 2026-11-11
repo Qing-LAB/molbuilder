@@ -32,28 +32,25 @@ def claimed(path: str) -> bool:
 
 def _search_roles() -> "List[str]":
     """The dotted roles to try, in order, when nothing says what a folder's
-    calculation produces: the PROGRESS channel and every calculation's
-    product first, then the engine's stdout -- which for SIESTA IS a
-    trajectory source, and for PySCF is refused by the registry and so drops
-    out on its own.  Built from the catalogue, not listed here."""
-    from molbuilder.runfiles import ON_THE_LABEL, result_roles, stdout_roles
+    calculation produces: the catalogue's order of what a viewer opens
+    (`runfiles.result_roles`) -- the engine's stdout first, which for SIESTA
+    IS a trajectory source and for PySCF is refused by the registry and so
+    drops out on its own, then the progress channel, then every
+    calculation's product.  Built from the catalogue, not listed here."""
+    from molbuilder.runfiles import ON_THE_LABEL, result_roles
     out = list(result_roles(None))
     out += [a.role for a in ON_THE_LABEL if a.calculation and a.role not in out]
-    out += [r for r in stdout_roles() if r not in out]
     return [r for r in out if r.startswith(".")]
 
 
-def openable_in(directory: str, calculation: Optional[str] = None
-                ) -> Tuple[Optional[str], List[str]]:
+def openable_in(directory: str) -> Tuple[Optional[str], List[str]]:
     """*What should a viewer load here?* — and the trail of what was tried —
     for a folder read WITHOUT its run: by the catalogue's roles alone,
     newest first, each vetted by the registry (`model/parse.md` § 5.2).
 
-    ``calculation`` is the kind, when the caller knows it from the
-    description (`runs.place_of`); the roles a calculation produces come
-    first then (`runfiles.result_roles`).  A run of OURS is opened by the
-    run door instead (`runs.folder_answer`): its run's own file,
-    read back with its label -- this floor knows no label, so it can only
+    A run of OURS is opened by the run door instead (`runs.folder_answer`):
+    its run's own file, read back with its label -- this floor knows no
+    label, so it can only
     ask by a dotted role, and among one role's files it can only take the
     newest.
 
@@ -61,7 +58,7 @@ def openable_in(directory: str, calculation: Optional[str] = None
     reads when nothing matched, and it moves with the search so the message
     cannot drift from it.
     """
-    from molbuilder.runfiles import find_by_role, result_roles
+    from molbuilder.runfiles import find_by_role
 
     attempts: List[str] = []
 
@@ -76,12 +73,7 @@ def openable_in(directory: str, calculation: Optional[str] = None
                             f"no parser claims it, not offered")
         return None
 
-    tried = []
-    for role in [r for r in result_roles(calculation) if r.startswith(".")] \
-            + _search_roles():
-        if role in tried:
-            continue
-        tried.append(role)
+    for role in _search_roles():
         hits = [str(p) for p in find_by_role(directory, role)]
         if not hits:
             continue

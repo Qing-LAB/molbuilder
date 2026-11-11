@@ -302,13 +302,13 @@ def test_a_stated_atom_index_map_that_does_not_read_is_refused(
     SILENT FAILURE (to 2.69.18): the trajectory read dropped such a line
     while the atom index door refused it -- one log, two answers."""
     from molbuilder.atom_index import AtomIndexError, atom_index_map
-    from molbuilder.parse.engines.molwatch import MolwatchLogFileParser
+    from molbuilder.parse import parse
     p = tmp_path / "h2.molwatch.log"
     _a_log_whose_atom_index_line_does_not_read(p, h2_mol)
     if reader == "the trajectory read":
         with pytest.raises(ValueError,
                            match="atom_index_map line does not read"):
-            MolwatchLogFileParser.parse(p)
+            parse(p)
     else:
         with pytest.raises(AtomIndexError,
                            match="atom_index_map line does not read"):
@@ -366,11 +366,11 @@ def test_a_run_stopped_inside_a_step_s_scf_table_ends_as_its_footer_says(
     2.69.30): stopped while it wrote a step's SCF table, the pass took the
     footer for an SCF row it could not read -- the log read *running* for
     ever, its error unsaid, while the ending reader said *stopped*."""
-    from molbuilder.parse.engines.molwatch import MolwatchLogFileParser
+    from molbuilder.parse import parse
     from molbuilder.parse.engines.molwatch_grammar import read_conclusion
     p = tmp_path / "h2.molwatch.log"
     _a_log_stopped_inside_a_step_s_scf_table(p, h2_mol, monkeypatch)
-    read = MolwatchLogFileParser.parse(p)
+    read = parse(p)
     ending = read_conclusion(p)
     assert ((read.run_state, read.error_message)
             == (ending["run_state"], ending["error_message"])

@@ -334,9 +334,9 @@ def test_the_convergence_targets_are_the_decks_read_from_its_echo(opt):
     """What the run was asked to reach, from SIESTA's own echo of the deck --
     never a default reproduced: the force tolerance and the SCF cap the
     coarse deck states."""
-    from molbuilder.parse.engines.siesta import SiestaParser
+    from molbuilder.parse import parse
     deck = _run(opt).deck
-    ct = SiestaParser.parse(str(_run(opt).stdout)).runtime_info.get(
+    ct = parse(_run(opt).stdout).runtime_info.get(
         "convergence_targets")
     assert ct is not None and ct.get("source") == "siesta_input_echo", ct
     assert ct.get("max_force_tol_eV_per_A") == pytest.approx(
@@ -351,11 +351,11 @@ def test_the_run_states_the_build_it_ran_and_its_solver(opt):
     the MPI build the env's recipe pins (`envs/recipes.py`,
     ``siesta=5.4.2=mpi_openmpi_*``), and no token SIESTA does not write."""
     from molbuilder.envs.recipes import _SIESTA
-    from molbuilder.parse.engines.siesta import SiestaParser
+    from molbuilder.parse import parse
     spec = next(p.spec for p in _SIESTA.conda_packages
                 if p.spec.startswith("siesta="))
     _, version, build = spec.split("=")
-    traj = SiestaParser.parse(str(_run(opt).stdout))
+    traj = parse(_run(opt).stdout)
     got = traj.runtime_info["siesta_build"]
     assert got["version"].startswith(version), got
     assert build.startswith("mpi") and "MPI" in got["parallelisations"], got

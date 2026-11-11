@@ -266,8 +266,9 @@ def api_transport_describe_attempt() -> Any:
 # the thing it is about.
 #
     # The composition answers both when it succeeds (`relaxed` IS the
-    # labeled citation structure), so the happy path reads the .XV once
-    # and only the refusal path pays for a second look.
+    # labeled citation structure), so the happy path reads the citation's
+    # labelled structure once, inside the composition, and only the refusal
+    # path reads it again (`labeled_citation_structure`).
     structure_wire = None
     fix = None
     # WHAT THE COMPOSITION MEASURED, as findings with the severity each

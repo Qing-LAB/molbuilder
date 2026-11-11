@@ -17,13 +17,11 @@ back, so a rename changes nothing and a broken alignment fails.
 """
 from __future__ import annotations
 
-from pathlib import Path
-
-from molbuilder.frame import Frame, Trajectory
+from molbuilder.frame import Frame
 from molbuilder.parse.engines._helpers import (
     trajectory_result_to_legacy_dict as to_legacy,
-    wrap_trajectory,
 )
+from molbuilder.parse.types import ParseResult, TrajectoryResult
 from molbuilder.structure import Structure
 
 import numpy as np
@@ -39,11 +37,12 @@ def _frame(step, *, partial):
 
 
 def _legacy(*partials):
-    traj = Trajectory(source_format="molwatch",
-                      frames=[_frame(i, partial=p) for i, p in enumerate(partials)],
-                      lattice=None, run_state="running", scf_converged=None,
-                      error_message=None, runtime_info={}, parse_warnings=[])
-    return to_legacy(wrap_trajectory(traj, "molwatch", Path("/tmp/x.molwatch.log")))
+    """The viewer's dict of a running log's frames -- a result as a parser
+    answers it, with no file behind it (`ParseResult.envelope`)."""
+    return to_legacy(TrajectoryResult(
+        **ParseResult.envelope("molwatch"),
+        frames=[_frame(i, partial=p) for i, p in enumerate(partials)],
+        source_format="molwatch", run_state="running"))
 
 
 def test_the_adapter_reports_which_frames_are_mid_write():

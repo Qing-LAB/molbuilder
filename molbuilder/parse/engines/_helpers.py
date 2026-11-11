@@ -7,12 +7,12 @@ frontend consumes. "Legacy" names the WIRE SHAPE, not this code.
 Public surface:
 
 * :func:`wrap_trajectory` — legacy ``Trajectory`` → typed
-  :class:`TrajectoryResult`.  Used by the absorbed engine bodies in
-  this directory.
+  :class:`TrajectoryResult`.  Used by the registered parsers' ``parse``
+  in this directory.
 * :func:`trajectory_result_to_legacy_dict` — typed
   :class:`TrajectoryResult` → 3Dmol.js JSON dict.  Used by the web
-  layer (watch / results blueprints) to keep returning the same
-  shape the existing client code consumes.
+  layer (the trajectory route) and the command line's ``watch`` verbs,
+  each handed a registered parser's result.
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 from molbuilder.frame import Trajectory
-from molbuilder.parse.types import (SCHEMA_VERSION, ParseResult, ParseWarning,
+from molbuilder.parse.types import (ParseResult, ParseWarning,
                                     TrajectoryResult)
 from molbuilder.persist import json_safe
 
@@ -79,9 +79,9 @@ def trajectory_result_to_legacy_dict(
     """Adapter: build the molwatch v1 JSON dict from a
     :class:`TrajectoryResult`.
 
-    The watch web layer (``molbuilder/web/blueprints/watch.py``)
-    calls this to keep returning the same JSON shape the existing
-    3Dmol.js client consumes.  This is the adapter's one home.
+    The trajectory route and the command line's ``watch`` verbs call
+    this to answer the JSON shape the 3Dmol.js client consumes.  This is
+    the adapter's one home.
 
     Output shape::
 
@@ -270,38 +270,7 @@ def trajectory_result_to_legacy_dict(
     }
 
 
-def trajectory_to_legacy_dict(traj) -> Dict[str, Any]:
-    """Adapter overload for the legacy :class:`Trajectory` shape.
-
-    Convenience wrapper that lifts a legacy ``Trajectory`` into a
-    minimal :class:`TrajectoryResult` envelope and routes through
-    :func:`trajectory_result_to_legacy_dict`.  Used where a
-    :class:`Trajectory` is built directly (via
-    a family's body parsers) and needs the JSON-friendly dict shape without
-    materialising a full :class:`TrajectoryResult`.
-    """
-    return trajectory_result_to_legacy_dict(TrajectoryResult(
-        # DELIBERATELY NOT `ParseResult.envelope`: this is a shim that
-        # never parsed a file, so it must not stamp a real timestamp or
-        # resolve a path.  The empty strings say "there was no parse".
-        schema_version=SCHEMA_VERSION,
-        parsed_at="",
-        parser_name="legacy-adapter",
-        source="",
-        frames=list(traj.frames),
-        lattice=traj.lattice,
-        source_format=traj.source_format,
-        run_state=traj.run_state or "unknown",
-        scf_converged=getattr(traj, "scf_converged", None),
-        error_message=traj.error_message,
-        cause=getattr(traj, "cause", None),
-        runtime_info=dict(getattr(traj, "runtime_info", None) or {}),
-        parse_warnings=list(getattr(traj, "parse_warnings", None) or []),
-    ))
-
-
 __all__ = [
     "wrap_trajectory",
     "trajectory_result_to_legacy_dict",
-    "trajectory_to_legacy_dict",
 ]

@@ -13,22 +13,22 @@ from __future__ import annotations
 import numpy as np
 
 from molbuilder.trajectory_log import write_initial_preview
-from molbuilder.parse.engines._helpers import trajectory_to_legacy_dict
+from molbuilder.parse.engines._helpers import trajectory_result_to_legacy_dict
 from molbuilder.structure import Structure
 
 
 # --------------------------------------------------------------------- #
-#  Cross-repo round-trip: molwatch parser reads the preview block       #
+#  Round-trip: the progress log's parser reads the preview block       #
 # --------------------------------------------------------------------- #
 
 
 def test_molwatch_can_parse_siesta_preview(tmp_path):
     """The .molwatch.log emitted by molbuilder must be loadable by
-    molwatch's MolwatchLogParser, exposing the initial geometry as
-    frame 0 with null energy and empty forces.  This is the cross-repo
-    contract: molbuilder writes, molwatch reads."""
+    the registry's progress-log parser, exposing the initial geometry as
+    frame 0 with null energy and empty forces: the log's writer and its
+    registered reader agree."""
     from molbuilder.cell import to_engine
-    from molbuilder.parse.engines.molwatch import MolwatchLogParser
+    from molbuilder.parse import detect
 
     s = Structure(
         elements=["H", "H"],
@@ -37,8 +37,9 @@ def test_molwatch_can_parse_siesta_preview(tmp_path):
     )
     p = tmp_path / "preview.molwatch.log"
     write_initial_preview(s, p, job="h2", engine="siesta")
-    assert MolwatchLogParser.can_parse(str(p))
-    result = trajectory_to_legacy_dict(MolwatchLogParser.parse(str(p)))
+    parser = detect(p)
+    assert parser.name == "molwatch"
+    result = trajectory_result_to_legacy_dict(parser.parse(p))
     assert len(result["frames"]) == 1
     # What was written is the ENGINE's frame, like every step after it
     # (`model/structure-periodicity.md` § 6.0), at the log's 8 decimals.

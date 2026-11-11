@@ -89,10 +89,107 @@ from .siesta_reader import read_output
 # judgement -- is `siesta_reader`'s, and this parser builds Frames from what it
 # reads (`model/parse.md` § 5d.5).
 
-class SiestaParser:
-    name  = "siesta"
-    label = f"SIESTA {ROLE_SIESTA_OUT}"
-    hint  = f"a SIESTA run's output, <label>_<stage>{ROLE_SIESTA_OUT}"
+def _parse_siesta_out(path: str) -> Trajectory:
+    """A SIESTA output read into a Trajectory -- logged as it is read."""
+    from molbuilder.parse._log import ParseLogger
+    with ParseLogger(path, parser_name=SiestaOutFileParser.name) as _scan_log:
+        return _parse_siesta_out_impl(path, _scan_log)
+
+
+def _parse_siesta_out_impl(path: str, _scan_log) -> Trajectory:
+    """The output through the one reading pass (`siesta_reader`), and a
+    Frame per step it read -- the arrays are this module's alone.
+
+    Level-3 fail-soft: every line the reader could not read becomes a
+    :class:`ParseWarning` here, logged, and the parse carries on."""
+    parse_warnings: List[ParseWarning] = []
+
+    def _warn(line_no: int, line: str, error: str,
+              category: str = "scf") -> None:
+        parse_warnings.append(ParseWarning(
+            line_no=line_no, snippet=line.rstrip()[:120],
+            error=error, category=category))
+        _scan_log.warn(error, line_no=line_no,
+                       snippet=line.rstrip()[:120], category=category)
+
+    # THE ONE READ (`siesta_reader.read_output`), and the version it read
+    # -- an output that states how it ended has the ending no other file
+    # changes, so the ending reader keeps this reading's rather than
+    # reading the file again (`_run_ending.keep_reading`).
+    from . import _run_ending
+    before = _run_ending.version_of(path)
+    read = read_output(path, warn=_warn).finish()
+    _run_ending.keep_reading(path, before, read)
+    runtime_info = read["runtime_info"]
+
+    frames: List[Frame] = []
+    for step in read["steps"]:
+        coords = step["coords"]
+        struct = Structure(
+            elements=[row[0] for row in coords],
+            positions=np.array([row[1:4] for row in coords], dtype=float))
+        frames.append(Frame(
+            structure   = struct,
+            step_index  = len(frames),
+            energy      = step["energy"],
+            forces      = (np.asarray(step["forces"], dtype=float)
+                           if step["forces"] else None),
+            max_force   = step["max_force"],
+            max_force_constrained = step["max_force_constrained"],
+            charges     = step["charges"],
+            stress_voigt_kbar = step["stress_voigt_kbar"],
+            scf_history = step["scf_history"],
+            in_progress = step["in_progress"],
+            cut_short   = step["cut_short"],
+        ))
+    # In-progress SCF visibility: a run still going with SCF cycles and no
+    # coordinates to attach them to yet gets a synthetic Frame, FLAGGED
+    # in_progress, so the Results tab draws the SCF chart at once.  Its
+    # geometry is the last committed frame's (SIESTA holds geometry
+    # constant within an SCF cycle), or a 1-atom placeholder the
+    # inspector never renders.
+    live = read["live_scf"]
+    if live is not None:
+        frames.append(Frame(
+            structure   = (frames[-1].structure if frames else Structure(
+                elements=["X"], positions=np.zeros((1, 3), dtype=float))),
+            step_index  = len(frames),
+            energy      = live["energy"],
+            scf_history = live["scf_history"],
+            in_progress = True,
+        ))
+
+    # THE ATOMS THE RUN HELD are the pass's to state
+    # (`runtime_info["frozen_atoms"]`, `siesta_reader`).
+
+    _scan_log.info(
+        f"parsed {len(frames)} frames, run_state={read['run_state']}, "
+        f"{len(parse_warnings)} warnings")
+    if read["error_message"]:
+        _scan_log.error(read["error_message"])
+    return Trajectory(
+        source_format  = SiestaOutFileParser.name,
+        frames         = frames,
+        lattice        = read["lattice"],
+        run_state      = read["run_state"],
+        # P-S2: reported, never a verdict.  `None` when no SCF block was
+        # seen at all -- a correct final answer, not a hole.
+        scf_converged  = read["scf_converged"],
+        error_message  = read["error_message"],
+        cause          = read["cause"],
+        runtime_info   = runtime_info,
+        parse_warnings = parse_warnings,
+    )
+
+
+class SiestaOutFileParser(FileParser):
+    """Parse a SIESTA stdout-redirected output file.  Returns a :class:`TrajectoryResult` with one Frame
+    per geometry step + per-step SCF history."""
+
+    name   = "siesta"
+    label  = f"SIESTA {ROLE_SIESTA_OUT}"
+    hint   = f"a SIESTA run's output, <label>_<stage>{ROLE_SIESTA_OUT}"
+    output = TrajectoryResult
 
     # `can_parse` is content-based, not banner-based.  SIESTA reshuffles
     # its header text across versions (v4.x had `Welcome to SIESTA`, v5
@@ -123,10 +220,9 @@ class SiestaParser:
     _PREFIX_THRESHOLD = 3
 
     @classmethod
-    def can_parse(cls, path: str) -> bool:
+    def can_parse(cls, path: Path) -> bool:
         # A DECLARED FILE THAT IS NOT SIESTA'S STDOUT IS NOT THIS PARSER'S
-        # -- the progress log (its own parser's: it carries the engine's
-        # ``siesta:`` lines inside its step blocks), a PySCF script or log
+        # -- the progress log (its own parser's), a PySCF script or log
         # (whose sources quote SIESTA's own lines): asked of the catalogue
         # (`runfiles.role_of`, `stdout_roles`), never of a suffix spelled
         # here, so the registry's dispatch stays one parser per file.  A name
@@ -164,107 +260,6 @@ class SiestaParser:
         return prefix_hits >= cls._PREFIX_THRESHOLD
 
     @classmethod
-    def parse(cls, path: str) -> Trajectory:
-        from molbuilder.parse._log import ParseLogger
-        with ParseLogger(path, parser_name="siesta") as _scan_log:
-            return cls._parse_impl(path, _scan_log)
-
-    @classmethod
-    def _parse_impl(cls, path: str, _scan_log) -> Trajectory:
-        """The output through the one reading pass (`siesta_reader`), and a
-        Frame per step it read -- the arrays are this module's alone.
-
-        Level-3 fail-soft: every line the reader could not read becomes a
-        :class:`ParseWarning` here, logged, and the parse carries on."""
-        parse_warnings: List[ParseWarning] = []
-
-        def _warn(line_no: int, line: str, error: str,
-                  category: str = "scf") -> None:
-            parse_warnings.append(ParseWarning(
-                line_no=line_no, snippet=line.rstrip()[:120],
-                error=error, category=category))
-            _scan_log.warn(error, line_no=line_no,
-                           snippet=line.rstrip()[:120], category=category)
-
-        # THE ONE READ (`siesta_reader.read_output`), and the version it read
-        # -- an output that states how it ended has the ending no other file
-        # changes, so the ending reader keeps this reading's rather than
-        # reading the file again (`_run_ending.keep_reading`).
-        from . import _run_ending
-        before = _run_ending.version_of(path)
-        read = read_output(path, warn=_warn).finish()
-        _run_ending.keep_reading(path, before, read)
-        runtime_info = read["runtime_info"]
-
-        frames: List[Frame] = []
-        for step in read["steps"]:
-            coords = step["coords"]
-            struct = Structure(
-                elements=[row[0] for row in coords],
-                positions=np.array([row[1:4] for row in coords], dtype=float))
-            frames.append(Frame(
-                structure   = struct,
-                step_index  = len(frames),
-                energy      = step["energy"],
-                forces      = (np.asarray(step["forces"], dtype=float)
-                               if step["forces"] else None),
-                max_force   = step["max_force"],
-                max_force_constrained = step["max_force_constrained"],
-                charges     = step["charges"],
-                stress_voigt_kbar = step["stress_voigt_kbar"],
-                scf_history = step["scf_history"],
-                in_progress = step["in_progress"],
-                cut_short   = step["cut_short"],
-            ))
-        # In-progress SCF visibility: a run still going with SCF cycles and no
-        # coordinates to attach them to yet gets a synthetic Frame, FLAGGED
-        # in_progress, so the Results tab draws the SCF chart at once.  Its
-        # geometry is the last committed frame's (SIESTA holds geometry
-        # constant within an SCF cycle), or a 1-atom placeholder the
-        # inspector never renders.
-        live = read["live_scf"]
-        if live is not None:
-            frames.append(Frame(
-                structure   = (frames[-1].structure if frames else Structure(
-                    elements=["X"], positions=np.zeros((1, 3), dtype=float))),
-                step_index  = len(frames),
-                energy      = live["energy"],
-                scf_history = live["scf_history"],
-                in_progress = True,
-            ))
-
-        # THE ATOMS THE RUN HELD are the pass's to state
-        # (`runtime_info["frozen_atoms"]`, `siesta_reader`).
-
-        _scan_log.info(
-            f"parsed {len(frames)} frames, run_state={read['run_state']}, "
-            f"{len(parse_warnings)} warnings")
-        if read["error_message"]:
-            _scan_log.error(read["error_message"])
-        return Trajectory(
-            source_format  = cls.name,
-            frames         = frames,
-            lattice        = read["lattice"],
-            run_state      = read["run_state"],
-            # P-S2: reported, never a verdict.  `None` when no SCF block was
-            # seen at all -- a correct final answer, not a hole.
-            scf_converged  = read["scf_converged"],
-            error_message  = read["error_message"],
-            cause          = read["cause"],
-            runtime_info   = runtime_info,
-            parse_warnings = parse_warnings,
-        )
-
-
-class SiestaOutFileParser(FileParser):
-    """Parse a SIESTA stdout-redirected output file.  Returns a :class:`TrajectoryResult` with one Frame
-    per geometry step + per-step SCF history."""
-
-    name   = "siesta"
-    label  = SiestaParser.label
-    hint   = SiestaParser.hint
-
-    @classmethod
     def footgun_hint_for(cls, filename: str):
         if role_of(filename) != deck_role("siesta"):
             return None
@@ -277,15 +272,10 @@ class SiestaOutFileParser(FileParser):
             + (f", {out}," if out else f" ({ROLE_SIESTA_OUT})")
             + f" or at the {ROLE_MOLWATCH} progress log beside it."
         )
-    output = TrajectoryResult
-
-    @classmethod
-    def can_parse(cls, path: Path) -> bool:
-        return SiestaParser.can_parse(str(path))
 
     @classmethod
     def parse(cls, path: Path) -> TrajectoryResult:
-        traj = SiestaParser.parse(str(path))
+        traj = _parse_siesta_out(str(path))
         # THE .out STAYS THE TRAJECTORY; the netCDF only sharpens it.
         #
         # A run's own history, SIESTA's <SystemLabel>.MD.nc, lies beside its
@@ -294,8 +284,8 @@ class SiestaOutFileParser(FileParser):
         # It holds the same geometries and
         # energies WITHOUT having gone through a Fortran text formatter --
         # full double precision instead of the .out's four decimals, and
-        # none of the fixed-width column collisions this module carries a
-        # regex and a structural slicer to survive.
+        # none of the fixed-width column collisions the text's reading has
+        # to survive.
         #
         # Everything the netCDF does NOT have -- run state, errors, forces,
         # per-SCF-cycle history -- still comes from the text above, because

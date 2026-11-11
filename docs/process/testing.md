@@ -474,9 +474,9 @@ pass; if it is wrong they all fail together — **four tests carrying one bit**.
 > **The first one stopped being an example on 2026-09-18, and the reason is
 > this section's own rule.** `openable_in` still calls `find_by_role`, so the
 > claim above is still literally true of it — but it is no longer THIN: it
-> asks `runfiles.result_roles` what the calculation its caller names produces,
-> and the registry whether anything can open the answer (`model/parse.md`
-> § 5.2). Rules the door cannot know, so by the rule below it earns its own
+> asks the catalogue which dotted roles to try (`_search_roles`, over
+> `runfiles.result_roles`), and the registry whether anything can open the
+> answer (`model/parse.md` § 5.2). Rules the door cannot know, so by the rule below it earns its own
 > tests. Left in place rather than swapped, because a caller *becoming* a
 > decider is the transition worth showing.
 

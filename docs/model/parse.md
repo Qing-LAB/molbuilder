@@ -177,8 +177,7 @@ classDiagram
 byte-identical copies of the timestamp helper; `instruments/` added a
 fifth without noticing, and `engines/siesta_mdnc.py` a sixth that bypassed
 even its own package's builder. They agreed, which is the only reason
-nothing had broken. The one exception is deliberate and says so in place:
-the legacy-dict shim stamps empty strings, because it never parsed a file.
+nothing had broken.
 
 Plus **`ParseWarning`** (`types.py:36`) — a fail-soft warning (`source`,
 `line_no`, `snippet`, `error`, `category`) any parser can attach to its result
@@ -625,7 +624,7 @@ molbuilder/parse/
 │   ├── siesta_epsimg.py       # registered: an optical calculation's spectrum → DielectricResult (§ 5f)
 │   ├── transiesta.py          # where a run is, in words (§ 2b `doing`) — not registered; travels
 │   ├── siesta_fc.py           # SIESTA's .FC force constants, for the vibration kind
-│   └── _helpers.py            # Trajectory → TrajectoryResult adapters
+│   └── _helpers.py            # Trajectory → TrajectoryResult · TrajectoryResult → the viewer's dict
 │
 ├── coords/        # geometry files → StructureResult (FileParsers)
 │   ├── siesta_xv.py           # .XV / .STRUCT_OUT (+ cell)

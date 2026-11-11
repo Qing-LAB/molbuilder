@@ -49,7 +49,7 @@ from molbuilder.parse.contract import engine_of
 from molbuilder.jobset.runstatus import run_answer
 from molbuilder.runs import openable, run_of, view_of
 from molbuilder.parse.engines._helpers import (
-    trajectory_result_to_legacy_dict as trajectory_to_legacy_dict,
+    trajectory_result_to_legacy_dict,
 )
 
 
@@ -299,11 +299,11 @@ def _refresh_if_changed() -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
             return dict(_state), None
 
     # ---- Parse OUTSIDE the lock ---------------------------------
-    # Parsers return a Trajectory; the JS client consumes the legacy
+    # Parsers return a TrajectoryResult; the JS client consumes the legacy
     # molwatch v1 dict shape, so we adapt at the boundary.
     try:
         traj = parser_cls.parse(path)
-        new_data = trajectory_to_legacy_dict(traj)
+        new_data = trajectory_result_to_legacy_dict(traj)
     except Exception as exc:  # pragma: no cover - defensive
         return None, f"Parse error: {exc}"
     new_data["stop_reason"] = _stop_reason(traj, path)
