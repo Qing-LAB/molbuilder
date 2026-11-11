@@ -68,12 +68,7 @@ def write_initial_preview(
         frozen_atoms=frozen_atoms or (),
         convergence_targets=convergence_targets,
         atom_index_map=atom_index_map)
-    if plan is not None:
-        plan.text(path, text)
-        return
-    p = Path(path)
-    p.parent.mkdir(parents=True, exist_ok=True)
-    write_bytes(p, text.encode("utf-8"))
+    write_bytes(Path(path), text.encode("utf-8"), plan=plan)
 
 
 __all__ = ["write_initial_preview"]

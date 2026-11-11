@@ -130,14 +130,31 @@ def read_json(path) -> Any:
     return json_of(Path(path).read_bytes())
 
 
-def read_object(path) -> dict:
-    """A RECORD FILE: one JSON object, read by :func:`read_json`; a file
-    holding any other JSON value is refused, a :class:`ValueError` saying
-    so -- never a reader's crash on the value it did not expect."""
-    obj = read_json(path)
+def object_of(data: bytes, *, schema: Optional[str] = None) -> dict:
+    """A RECORD's bytes: one JSON object (:func:`json_of`) -- any other
+    value refused, never a reader's crash on the value it did not expect --
+    and, given ``schema``, the artifact it names at that major
+    (:func:`check_schema`).  Every way it does not read is a
+    :class:`ValueError` in words -- text that is not UTF-8 or not JSON as
+    :func:`unread_words` says it; the reader that asked names the file and
+    the way out.  The core of :func:`read_object`
+    and of a prep plan's (`jobset.planned.Plan.read_object`), so a record
+    reads one way from the disk and through a plan."""
+    try:
+        obj = json_of(data)
+    except ValueError as exc:
+        raise ValueError(unread_words(exc)) from exc
     if not isinstance(obj, dict):
         raise ValueError("not a JSON object")
+    if schema is not None:
+        check_schema(obj.get("schema"), schema)
     return obj
+
+
+def read_object(path, *, schema: Optional[str] = None) -> dict:
+    """A RECORD FILE, read by :func:`object_of`: one JSON object, of
+    ``schema`` when one is named."""
+    return object_of(Path(path).read_bytes(), schema=schema)
 
 
 def stage_bytes(target, data: bytes, *, mode: Optional[int] = None,
@@ -178,7 +195,8 @@ def stage_bytes(target, data: bytes, *, mode: Optional[int] = None,
 
 
 def write_bytes(target, data: bytes, *, mode: Optional[int] = None,
-                exclusive: bool = False, sync: bool = False) -> Path:
+                exclusive: bool = False, sync: bool = False,
+                plan=None) -> Path:
     """Write via a **unique** temp + ``os.replace`` — the one writer
     (`checkpoint._atomic_write_bytes` delegates here).
 
@@ -223,7 +241,17 @@ def write_bytes(target, data: bytes, *, mode: Optional[int] = None,
     ``sync`` flushes the bytes to the disk before the rename
     (:func:`stage_bytes`) -- a structure's files, which a crash must not
     leave holding nothing.
+
+    ``plan`` -- a `jobset.planned.Plan`: a prep's, or launch's writes --
+    takes the bytes instead of the disk: held there, and written by this function when the plan is
+    carried out (`job-contracts.md` § 6.1).  ``exclusive`` and ``sync`` are
+    the disk's: asked with a plan, which can hold neither, they are refused.
     """
+    if plan is not None:
+        if exclusive or sync:
+            raise TypeError("exclusive and sync are the disk's; a plan "
+                            "holds neither")
+        return plan.bytes(target, data, mode=mode)
     target = Path(target)
     tmp = stage_bytes(target, data, mode=mode, sync=sync)
     try:
@@ -309,7 +337,8 @@ def json_text(obj: Any, *, refuse_non_finite: bool = False) -> str:
         return dumped(json_safe(obj))
 
 
-def write_json(path, obj: Any, *, mode: Optional[int] = None) -> Path:
+def write_json(path, obj: Any, *, mode: Optional[int] = None,
+               plan=None) -> Path:
     """Write ``obj`` as pretty JSON (:func:`json_text`), atomically and
     collision-safely via :func:`write_bytes`.  Serialisation happens
     BEFORE the temp file exists, so an unserialisable object fails
@@ -318,10 +347,11 @@ def write_json(path, obj: Any, *, mode: Optional[int] = None) -> Path:
     ``mode`` is :func:`write_bytes`'s own: how a JSON file that carries a
     credential is written ``0600`` from its first byte (`configuration.md`
     § 2.3, *"privacy is a PARAMETER of the one writer"*).  A parameter the
-    rule names has to exist on every door.
+    rule names has to exist on every door; so does ``plan``, which holds the
+    same bytes until the plan is carried out.
     """
     data = json_text(obj).encode("utf-8")
-    return write_bytes(path, data, mode=mode)
+    return write_bytes(path, data, mode=mode, plan=plan)
 
 
 def sha256_of(path) -> str:
@@ -347,6 +377,7 @@ def sha256_of_bytes(data: bytes) -> str:
 
 
 __all__ = ["schema_major", "schema_name", "check_schema", "check_keys",
-           "read_json", "unread_words", "unknown_key_words",
+           "read_json", "object_of", "read_object", "unread_words",
+           "unknown_key_words",
            "json_text", "write_json", "stage_bytes", "write_bytes",
            "sha256_of", "sha256_of_bytes"]

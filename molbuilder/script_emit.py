@@ -1401,12 +1401,9 @@ def write_validation_report(deck_path, findings, *, plan=None) -> "Path":
             f"{deck.name}: a deck prep writes is named by its stage's names "
             f"(`runfiles.RunNames`), and this name is none of the catalogue's")
     out = deck.with_name(name)
-    text = validation_report_text(deck.name, findings)
-    if plan is not None:
-        plan.text(out, text)
-    else:
-        from .persist import write_bytes
-        write_bytes(out, text.encode("utf-8"))
+    from .persist import write_bytes
+    write_bytes(out, validation_report_text(deck.name, findings)
+                .encode("utf-8"), plan=plan)
     return out
 
 
@@ -1703,21 +1700,20 @@ def write_script(path, text: str, *, plan=None,
     in its own words, *"Your own additions go here.  molbuilder will preserve
     this section verbatim across regenerations."*
 
-    The merge itself is :func:`merge_user_custom_from_target`.  It is safe in
-    every degenerate case — no target, no block on either side, unreadable
-    target — so a first write behaves exactly like ``write_text``.
+    The merge itself is :func:`merge_user_custom`, from the text the plan
+    holds, or -- with no plan -- from the file on disk
+    (:func:`merge_user_custom_from_target`, safe in every degenerate case:
+    no target, no block on either side, an unreadable target).
     """
     from pathlib import Path as _P
     p = _P(path)
-    if plan is not None:
-        plan.text(p, merge_user_custom(
-            text, plan.read_text(p) if plan.is_file(p) else None), mode=mode)
-        return p
+    merged = (merge_user_custom(
+                  text, plan.read_text(p) if plan.is_file(p) else None)
+              if plan is not None else merge_user_custom_from_target(text, p))
     # THE ONE WRITER (`persist.write_bytes`): whole or not at all, so a
     # deck holding the person's USER-CUSTOM block is never left cut short.
     from .persist import write_bytes
-    write_bytes(p, merge_user_custom_from_target(text, p).encode("utf-8"),
-                mode=mode)
+    write_bytes(p, merged.encode("utf-8"), mode=mode, plan=plan)
     return p
 
 

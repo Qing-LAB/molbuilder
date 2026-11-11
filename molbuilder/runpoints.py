@@ -99,9 +99,7 @@ def read_index(path) -> Dict[str, Any]:
     is shown, never the whole status."""
     p = Path(path)
     try:
-        d = _persist.read_json(p)
-        _persist.check_schema((d.get("schema") if isinstance(d, dict)
-                               else None) or "", SCHEMA, label=p.name)
+        d = _persist.read_object(p, schema=SCHEMA)
     except (OSError, ValueError) as exc:
         raise LaunchRecordError(f"{p}: {exc}") from exc
     return d
@@ -111,9 +109,7 @@ def write_index(path, index: Dict[str, Any], *, plan=None) -> Path:
     """The index written whole, atomically (`persist.write_json`) -- or,
     given ``plan`` (`jobset.planned.Plan`, launch's), into the plan
     instead of the disk, the same text (`persist.json_text`)."""
-    if plan is not None:
-        return plan.text(path, _persist.json_text(index))
-    return _persist.write_json(path, index)
+    return _persist.write_json(path, index, plan=plan)
 
 
 def index_at(run_dir, names) -> Optional[Dict[str, Any]]:

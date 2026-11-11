@@ -640,11 +640,8 @@ class JobSet:
         the path the owner forms (:meth:`path_of`, A16).  Pretty JSON so a
         human can read/diff the plan in the bundle.  ``plan``
         (`jobset.planned.Plan`) receives it instead of the disk."""
-        from ..persist import json_text, write_json
-        path = self.path_of(folder)
-        if plan is not None:
-            return plan.text(path, json_text(self.to_dict()))
-        return write_json(path, self.to_dict())
+        from ..persist import write_json
+        return write_json(self.path_of(folder), self.to_dict(), plan=plan)
 
     @staticmethod
     def path_of(folder) -> Path:
@@ -668,18 +665,15 @@ class JobSet:
         rewrites it, its calculation by its folder --
         the root, or the one a benchmark's folder lies in
         (`calcdirs.root_of`)."""
-        from ..persist import read_json
         from .commands import command
+        from .planned import Plan
         path = cls.path_of(folder)
-        if plan is not None:
-            if not plan.is_file(path):
-                return None
-        elif not path.is_file():
+        # THE FOLDER AS IT WILL BE: an empty plan is the disk (`planned`).
+        held = plan if plan is not None else Plan()
+        if not held.is_file(path):
             return None
-        body = (plan.read_json(path) if plan is not None
-                else read_json(path))
         try:
-            return cls.from_dict(body)
+            return cls.from_dict(held.read_object(path))
         except WrittenBefore as exc:
             # THE CALCULATION ROOT through its one door (`calcdirs.root_of`).
             from ..calcdirs import root_of

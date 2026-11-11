@@ -3332,7 +3332,7 @@ def _plan_sequence(calc, jobset: JobSet, numbers: Sequence[int], *,
     from .commands import block, prep_sequence_lines
     from .group import sequence_names
     from .ready import held_by_sequence
-    from .sequence import Record, record_path, record_text
+    from .sequence import Record, record_path, write_record
     base, task = Path(calc.base), calc.task
     if jobset.kind != KIND_LADDER:
         raise SubmitError("several groups go as one job in a task, and this "
@@ -3426,7 +3426,7 @@ def _plan_sequence(calc, jobset: JobSet, numbers: Sequence[int], *,
             scheduler={"kind": machine.kind.name,
                        "outputs_in": sub.outputs_in or "."})
     if mode != "ask":
-        plan.writes.text(rec_path, record_text(rec))
+        write_record(rec_path, rec, plan=plan.writes)
     plan.engine = jobset.engine
     return plan
 

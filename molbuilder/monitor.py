@@ -1409,10 +1409,8 @@ def read_notify_keys():
     misconfiguration here removes a capability; it never grants one.
     """
     try:
-        obj = _persist.read_json(notify_keys_path())
+        obj = _persist.read_object(notify_keys_path())
     except (OSError, ValueError):
-        return None, {}
-    if not isinstance(obj, dict):
         return None, {}
     route = obj.get("route")
     keys = obj.get("keys")
@@ -1727,16 +1725,17 @@ def webhook_request(dest: Dict[str, Any],
     return body, head
 
 
-def read_channels_file() -> Any:
+def read_channels_file() -> Dict[str, Any]:
     """The channels file as it stands (:func:`default_notify_path`), through
-    `persist`'s one JSON reader -- THE ONE READ of it: :func:`load_channels`
+    `persist`'s one record reader -- THE ONE READ of it: :func:`load_channels`
     judges what it holds, and the This machine tab merges a save over it and
     says what is wrong with it (`web/blueprints/notify_setup.py`).  The
     person's own file, kept by hand as well as by the tab: a byte-order mark
-    an editor adds is read past (`persist.read_json`).  Raises what that reader
-    raises: `OSError` where there is no file to read, `ValueError` for one
-    that does not read -- not UTF-8 text, not JSON."""
-    return _persist.read_json(default_notify_path())
+    an editor adds is read past (`persist.read_object`).  Raises what that
+    reader raises: `OSError` where there is no file to read, `ValueError`
+    for one that does not read, in words -- not UTF-8 text, not JSON, not
+    one object."""
+    return _persist.read_object(default_notify_path())
 
 
 def load_channels(log: Optional[Path] = None) -> Dict[str, Dict[str, Any]]:
@@ -1810,10 +1809,7 @@ def load_channels(log: Optional[Path] = None) -> Dict[str, Dict[str, Any]]:
              f"machine tab), where the monitor reads them")
         return {}
     except ValueError as exc:
-        _say(f"{p}: {_persist.unread_words(exc)}; not notifying")
-        return {}
-    if not isinstance(obj, dict):
-        _say(f"{p}: needs a JSON object; not notifying")
+        _say(f"{p}: {exc}; not notifying")
         return {}
     chans = obj.get("channels")
     if not isinstance(chans, dict):

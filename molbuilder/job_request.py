@@ -24,7 +24,6 @@ shape is checked here.
 from __future__ import annotations
 
 import contextvars
-import json
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Mapping, NoReturn, Optional, Tuple
@@ -32,8 +31,8 @@ from typing import TYPE_CHECKING, Any, Dict, List, Mapping, NoReturn, Optional, 
 from . import report_fields as _report_fields
 from .config_dir import CHANNEL_NAME_RULE, is_channel_name
 from .identity import stage_key
-from .persist import (check_schema, json_text, read_json, unknown_key_words,
-                      unread_words, write_json)
+from .persist import (check_schema, object_of, read_object,
+                      unknown_key_words, write_json)
 from .scheduler.quantities import canonical_mem, canonical_time
 
 if TYPE_CHECKING:
@@ -638,9 +637,9 @@ def of(base, description: "Task") -> Optional[JobRequest]:
     token = _SOURCE.set(str(path))
     try:
         try:
-            obj = read_json(path)
+            obj = read_object(path)
         except ValueError as exc:
-            _refuse(unread_words(exc))
+            _refuse(str(exc))
         return from_dict(obj, description)
     finally:
         _SOURCE.reset(token)
@@ -654,9 +653,9 @@ def from_text(text: str, description: "Task",
     token = _SOURCE.set(said_as)
     try:
         try:
-            obj = json.loads(text)
+            obj = object_of(text.encode("utf-8"))
         except ValueError as exc:
-            _refuse(unread_words(exc))
+            _refuse(str(exc))
         return from_dict(obj, description)
     finally:
         _SOURCE.reset(token)
@@ -677,9 +676,7 @@ def write(base, request: JobRequest, *, plan=None):
     """Write the folder's ``job-request.json`` atomically
     (``persist.write_json``), whole -- or into ``plan``
     (`jobset.planned.Plan`), which writes it when it is carried out."""
-    if plan is not None:
-        return plan.text(path_of(base), json_text(request.to_dict()))
-    return write_json(path_of(base), request.to_dict())
+    return write_json(path_of(base), request.to_dict(), plan=plan)
 
 
 __all__ = ["SCHEMA", "FILENAME", "LANE_ASKS", "LANE_ASK_ROWS",

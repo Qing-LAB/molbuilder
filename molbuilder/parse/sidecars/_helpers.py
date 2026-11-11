@@ -13,24 +13,16 @@ from molbuilder.parse.types import ParseResult, SidecarResult
 
 
 def read_record(path, *, schema: str, refused, what: str) -> Dict[str, Any]:
-    """A record of ours, read for its parser: through `persist.read_json`, a
-    JSON object, its schema checked (`persist.check_schema`) -- else
+    """A record of ours, read for its parser by the one record reader
+    (`persist.read_object`: one JSON object, of ``schema``) -- else
     ``refused`` (the parser's error class) naming the file; ``what`` is the
     record in words (*a transport record*)."""
-    from molbuilder.persist import check_schema, read_json
+    from molbuilder.persist import read_object
     try:
-        payload = read_json(path)
+        return read_object(path, schema=schema)
     except (OSError, ValueError) as exc:
-        raise refused(f"{Path(path).name}: {exc}") from exc
-    if not isinstance(payload, dict):
-        raise refused(f"{Path(path).name}: {what} is a JSON object, got "
-                      f"{type(payload).__name__}")
-    try:
-        check_schema(str(payload.get("schema", "")), schema,
-                     label=Path(path).name)
-    except ValueError as exc:
-        raise refused(str(exc)) from exc
-    return payload
+        raise refused(f"{Path(path).name} does not read as {what}: "
+                      f"{exc}") from exc
 
 
 def build_sidecar_result(payload: Dict[str, Any], kind: str,

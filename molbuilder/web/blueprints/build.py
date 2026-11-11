@@ -65,7 +65,6 @@ from ._shared import (
 )
 
 from molbuilder.builders import GENERATORS, build
-from molbuilder.persist import json_text
 from molbuilder.engine_table import (EngineTableError, config_class,
                                      engine as _engine)
 from molbuilder.structure import Structure
@@ -1148,10 +1147,10 @@ def api_task_setup_handover():
 
     # EVERY FILE OR NONE, through the one transaction (`describe.publish`):
     # the pair as the codec rendered it, the template under its door's name
-    # (`template_file.template_path`), and the hand-over in every JSON file's
-    # one shape (`persist.json_text`).
+    # (`template_file.template_path`), and the hand-over by the one JSON
+    # writer (`persist.write_json`).
     from molbuilder.describe import publish
-    from molbuilder.persist import write_bytes
+    from molbuilder.persist import write_bytes, write_json
     from molbuilder.template_file import template_path
 
     def _fill(staging) -> None:
@@ -1159,8 +1158,7 @@ def api_task_setup_handover():
             write_bytes(staging / path.name, blob)
         write_bytes(template_path(staging, label),
                     template_text.encode("utf-8"))
-        write_bytes(staging / TASK_HANDOVER_NAME,
-                    json_text(handover).encode("utf-8"))
+        write_json(staging / TASK_HANDOVER_NAME, handover)
     try:
         written = publish(dest_dir, _fill)
     except OSError as exc:
@@ -2303,20 +2301,19 @@ def api_task_setup_folder():
     folder = _existing(_resolve_within_roots(dir_raw), "dir")
 
     def _read_handover():
-        """The hand-over file through its one reader: `persist.read_json`,
-        the schema this module writes it with (`TASK_HANDOVER_SCHEMA`) and
-        what its proposal is built from (:func:`_proposal_refused`) checked
+        """The hand-over file through its one reader: `persist.read_object`,
+        of the schema this module writes it with (`TASK_HANDOVER_SCHEMA`),
+        and what its proposal is built from (:func:`_proposal_refused`)
+        checked
         -- a file of another major, one that does not read, or one the page
         cannot finish is said in the reader's words, never read as this
         one's; the page refuses it as it opens."""
-        from molbuilder.persist import check_schema, read_json
+        from molbuilder.persist import read_object
         f = folder / TASK_HANDOVER_NAME
         if not f.is_file():
             return None
         try:
-            obj = read_json(f)
-            check_schema(obj.get("schema") if isinstance(obj, dict) else None,
-                         TASK_HANDOVER_SCHEMA, label=f.name)
+            obj = read_object(f, schema=TASK_HANDOVER_SCHEMA)
             _proposal_refused(obj)
             return obj
         except Exception as exc:                  # noqa: BLE001

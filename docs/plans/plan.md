@@ -53,9 +53,13 @@ each release is its changelog row and its ledger section
   2026-11-10: *read the pair whole*, *one shape, sent once*, *show them while
   editing*); 2.69.22, the trajectory route's copies; 2.69.23, the run's
   record worked out once (the user, 2026-11-10: *build it*); 2.69.24, a
-  continued PySCF run keeps its labels. **Left, in order**:
-  X-STRUCT's last (a PySCF run's kept geometry written with the record of
-  the structure before it moved), X-PERSIST, X-PARSE, X-TMPL, X-EXEC, X-ENG; then the page doors and
+  continued PySCF run keeps its labels — X-STRUCT closed; 2.69.25, every
+  record through one reader and one writer (X-PERSIST's first rows). **Left,
+  in order**: X-PERSIST's rest — for the user to settle: the one-slot
+  workspace note, the four ways several files go into a calculation, where
+  display preferences live, which module owns the storage keys, the contact
+  table's one home; then the pair's moves and the low rows — X-PARSE,
+  X-TMPL, X-EXEC, X-ENG; then the page doors and
   the copies they share (O-STATUS, O-FIND, O-STATE, O-WORDS, O-KEYS's rest
   with X-UI and X-PLOT; O-TESTS).
 

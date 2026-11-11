@@ -52,7 +52,7 @@ Two habits make the reuse rule work:
 | Check an env is present / has the right GPU · CUDA · ELPA codepath | `molbuilder envs {bootstrap,clean,doctor,init-config,install,list,repair,validate}` (`envs/`); `scripts/install-env.sh bootstrap` is the shell wrapper that hands off to `envs bootstrap` | write a new doctor / checker | [`ops/installation.md`](?doc=ops/installation.md) |
 | Read `molbuilder.json` (launch mode · env names · paths · the server's sections) — and a machine's facts (its queues, its activation) from its record | `runtime_config.get_launch_mode` / `get_envs` / `get_paths` / `write_config_scope`; the record through `scheduler.machine_for` (a calculation's own copy alone, `scheduler.record.calculation_environment`), its queues through `runtime_config.get_routing` | re-parse the JSON yourself | [`configuration.md`](?doc=configuration.md) § 4–5 |
 | Emit a run wrapper / `.sbatch` for a job | `runwrap.render_wrappers` / `write_run_wrapper` / `render_sbatch` | hand-write shell / sbatch | [`execution/running-a-job.md`](?doc=execution/running-a-job.md), [`execution/job-system.md`](?doc=execution/job-system.md) |
-| Persist a versioned JSON artifact (`molbuilder/<name>@<major>`) | `persist.schema_major` / `check_schema` / `read_json` / `write_json` (atomic) | hand-roll the schema check + IO | [`execution/job-contracts.md`](?doc=execution/job-contracts.md) (data vocabulary) |
+| Persist a versioned JSON artifact (`molbuilder/<name>@<major>`) | `persist.read_object` (one object, its schema checked) / `read_json` / `write_json` (atomic; into a prep's plan with `plan=`) | hand-roll the schema check + IO | [`execution/job-contracts.md`](?doc=execution/job-contracts.md) (data vocabulary) |
 | Persist the user's *unsaved* browser edits across tab switches / reload | the **workspace's byte storage** (`lib/workspace/` → `/api/workspace-storage/*`) — format-blind opaque snapshots | auto-save to, or directly bond an edit to, the project `.xyz` / `.json` | [`web/workspace.md`](?doc=web/workspace.md) |
 | Save the edited structure to a project file (choose a folder, then a name) | **`projects.molviewFiles.save("project", …)`** → `/api/structure/save` (server writes the `.xyz`+sidecar pair) | a bespoke second file stack | [`web/tabs.md` § 6](?doc=web/tabs.md) |
 | Write ANY structure file or its sidecar to disk — a `.xyz` and its sidecar, the one geometry molbuilder writes (a `.pdb` is read, never written) | **`StructureCodec.write`** / `files` / `source_files` — from the web: the save, the upload (a structure file written as a pair, a `.pdb` as `<stem>.xyz`), the hand-over (every file or none, `describe.publish`) | write its bytes through `/api/files/write` or a raw upload, or write the two halves separately | [`model/structure.md`](?doc=model/structure.md) § 2.4 |
@@ -227,7 +227,7 @@ current → target status matrix.
 
 | Module | L | Role | Public API entry points | Doc |
 |---|---|---|---|---|
-| `persist` | L1 | shared **versioned-doc** schema check + atomic JSON IO | `schema_major`, `check_schema`, `read_json`, `write_json` | [`execution/job-contracts.md`](?doc=execution/job-contracts.md) |
+| `persist` | L1 | shared **versioned-doc** schema check + atomic JSON IO | `schema_major`, `check_schema`, `read_object`, `read_json`, `write_json` | [`execution/job-contracts.md`](?doc=execution/job-contracts.md) |
 | `parse/` | L2 | unified **read stack**: FileParsers → typed `ParseResult`; under the engine parsers, stdlib grammar tables and reading passes that travel with the monitor | `parse.{detect,parse}`; `parse.dirs.job.run_status`; `parse.engines._run_ending.ending_of` | [`model/parse.md`](?doc=model/parse.md) |
 | `runs` | L2 | **the run a file belongs to, and its files** — what a folder is in its calculation, the run it speaks for, what each file is (the catalogue's row, read back with the run's label), and the directory door the Results tab asks | `runs.{place_of,run_of,state_of,record_of,about,openable,folder_answer}` — one folder each (floor 2) | [`execution/architecture.md`](?doc=execution/architecture.md) § 3.2; [`model/parse.md`](?doc=model/parse.md) § 5 |
 | `sidecars/`, `script_emit` | L2 | write-side JSON sidecars + the reserved-block emitter | `sidecars.{to_dict,load,apply_to_structure}`; `script_emit.emit_*` | sidecar → [`model/structure-molstruct.md`](?doc=model/structure-molstruct.md); blocks → [`execution/job-contracts.md`](?doc=execution/job-contracts.md) |
@@ -271,8 +271,9 @@ current → target status matrix.
 The concentrated registry of on-disk names + the `molbuilder/<name>@<major>`
 schema strings + the config↔scheduler parameter vocabulary is the **data
 vocabulary** in [`execution/job-contracts.md`](?doc=execution/job-contracts.md).
-New persisted artifacts MUST use `persist.check_schema` and be registered
-there. The structure save file itself (`.molstruct.json`, its envelope and
+New persisted artifacts MUST be read through `persist` — a JSON record by
+`read_object(path, schema=…)`, a TOML one by `check_schema` — and be
+registered there. The structure save file itself (`.molstruct.json`, its envelope and
 schema versions v3–v6) is [`model/structure-molstruct.md`](?doc=model/structure-molstruct.md).
 
 ---

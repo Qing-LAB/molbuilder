@@ -17,7 +17,7 @@ from molbuilder import calculation as C
 from molbuilder import task as T
 from molbuilder import template_file as TP
 from molbuilder.jobset.model import JobSet
-from support.road import described, road_tree
+from support.road import described, prep_groups, road_tree
 
 
 def test_a_described_calculation_opens_once_with_its_records(
@@ -58,7 +58,8 @@ def test_a_folder_that_is_not_a_calculation_is_refused_as_one_thing(
     assert way in str(err.value), str(err.value)
 
 
-@pytest.mark.parametrize("record", ["task.json", "job-request.json"])
+@pytest.mark.parametrize("record", ["task.json", "job-request.json",
+                                    "job-set.json"])
 @pytest.mark.parametrize("ending, encoding, says", [
     (",}", "utf-8", "invalid JSON"),
     (', "note": "café"}', "cp1252", "save it as UTF-8"),
@@ -70,8 +71,11 @@ def test_a_record_a_person_broke_is_refused_naming_it(
     a slip of the hand in one of them answered as `Expecting value: line 1
     column 12`, with no word of which file to open; a file an editor saved in
     its own code page was called *not JSON*, sending the person to look for a
-    comma, with no word of the way out."""
+    comma, with no word of the way out.  The prep's plan is such a record
+    too (`job-contracts.md` § 6.1): read as one object, refused naming it."""
     bundle = described(road_tree(tmp_path, monkeypatch))
+    if record == "job-set.json":
+        prep_groups(bundle, "1")
     broken = bundle / record
     kept = broken.read_text(encoding="utf-8").rstrip().rstrip("}")
     broken.write_bytes((kept + ending).encode(encoding))

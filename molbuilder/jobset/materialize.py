@@ -310,7 +310,7 @@ def open_run(base, run_dir, plan) -> Path:
     base, run_dir = Path(base), Path(run_dir)
     plan.folder(run_dir)
     stamp_containers(base, run_dir.parents, plan)
-    plan.text(*calcdirs.record(run_dir, role=calcdirs.RUN, root=base))
+    calcdirs.record(run_dir, role=calcdirs.RUN, root=base, plan=plan)
     return run_dir
 
 
@@ -322,7 +322,7 @@ def open_scratch(base, folder, plan) -> Path:
     restore brings the folder back empty.  Returns ``folder``."""
     base, folder = Path(base), Path(folder)
     plan.folder(folder)
-    plan.text(*calcdirs.record(folder, role=calcdirs.SCRATCH, root=base))
+    calcdirs.record(folder, role=calcdirs.SCRATCH, root=base, plan=plan)
     return folder
 
 

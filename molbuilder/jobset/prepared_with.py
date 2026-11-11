@@ -78,14 +78,12 @@ def values_of(calc, stage: str, *, read=None) -> Dict[str, Any]:
 
 def _stages_in(load, path: Path) -> Dict[str, Dict[str, Any]]:
     """The record's stages, by stage name, from what ``load`` reads of it
-    -- or ``ValueError`` naming ``path`` when it does not read as this
-    record: not text, not JSON, or another file's schema -- with the way
-    back."""
-    from ..persist import check_schema
+    (`persist.read_object`, or a prep plan's) -- or ``ValueError`` naming
+    ``path`` when it does not read as this record: not text, not JSON, not
+    one object, or another file's schema -- with the way back."""
     try:
-        d = load(path)
-        check_schema(str(d.get("schema", "")), SCHEMA, label=str(path))
-    except (ValueError, AttributeError) as exc:
+        d = load(path, schema=SCHEMA)
+    except ValueError as exc:
         from ..identity import checkpoint_words
         raise ValueError(
             f"{path} does not read ({exc}) -- prep's record of what each "
@@ -106,11 +104,11 @@ def read(base) -> Dict[str, Dict[str, Any]]:
     """Every stage's recorded values, by stage name -- ``{}`` before any prep
     recorded one; ``ValueError`` naming the file when it does not read
     (:func:`_stages_in`)."""
-    from ..persist import read_json
+    from ..persist import read_object
     path = path_of(base)
     if not path.is_file():
         return {}
-    return _stages_in(read_json, path)
+    return _stages_in(read_object, path)
 
 
 def record(calc, stages, *, plan) -> Path:
@@ -118,15 +116,15 @@ def record(calc, stages, *, plan) -> Path:
     as this prep read them, merged over what the file holds, written
     through ``plan`` (nothing is written until the plan is carried out);
     ``ValueError`` naming the file when what it holds does not read."""
-    from ..persist import json_text
+    from ..persist import write_json
     from ..identity import stage_key
     path = path_of(calc.base)
-    held = (_stages_in(plan.read_json, path)
+    held = (_stages_in(plan.read_object, path)
             if plan.is_file(path) else {})
     for st in stages:
         held = {k: v for k, v in held.items() if stage_key(k) != stage_key(st)}
         held[st] = values_of(calc, st, read=plan.read_text)
-    return plan.text(path, json_text({"schema": SCHEMA, "stages": held}))
+    return write_json(path, {"schema": SCHEMA, "stages": held}, plan=plan)
 
 
 def _words(value: Any) -> str:

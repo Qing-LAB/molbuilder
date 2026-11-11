@@ -48,7 +48,7 @@ from typing import Dict, List, Optional, Sequence, Tuple
 import numpy as np
 
 from . import cell as _cell, data_dir
-from .persist import read_json
+from .persist import read_object
 from .structure import FROZEN_LABEL, Structure, atom_words, copy_annotations
 
 
@@ -506,16 +506,16 @@ def load_fcc_lattice_full() -> dict:
     /api/modify/lattice-from-run``).
 
     The table is the package's own (`molbuilder.data_dir`, A10: one place,
-    never a search), read through `persist`'s one JSON reader.  One that
+    never a search), read through `persist`'s one record reader.  One that
     does not read is refused with its path.
     """
     path = data_dir() / "fcc_lattice.json"
     try:
-        data = read_json(path)
+        data = read_object(path)
     except (ValueError, OSError) as exc:
         raise RuntimeError(
             f"failed to read FCC lattice table at {path!s}: {exc}") from exc
-    if not isinstance(data, dict) or "metals" not in data:
+    if "metals" not in data:
         raise RuntimeError(
             f"FCC lattice table at {path!s} missing required 'metals' key")
     fmt = data.get("_format", "")

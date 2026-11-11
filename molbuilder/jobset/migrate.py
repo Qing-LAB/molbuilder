@@ -360,11 +360,12 @@ _UNDECIDED = object()
 
 def _read_raw(path: Path) -> dict:
     """A record's JSON as it lies, for a rewrite -- one that does not read
-    as JSON at all is no older molbuilder's, and is the migration's refusal,
-    never a traceback."""
-    from ..persist import read_json
+    as one JSON object is no older molbuilder's, and is the migration's
+    refusal, never a traceback.  No schema is asked: an older major is what
+    a migration reads."""
+    from ..persist import read_object
     try:
-        return read_json(path)
+        return read_object(path)
     except (OSError, ValueError) as exc:
         raise MigrateError(f"{path} does not read ({exc}); nothing was "
                            f"written.") from None

@@ -275,11 +275,12 @@ class TestTheConfigFileIsRefusedAtTheDoor:
     owns `molbuilder.json` auth validation); `access-control.md` § 3.1.
     """
 
-    # (bad file contents, fragments the refusal must contain)
+    # (bad file contents, fragments the refusal must contain -- the record
+    # reader's words, `job-contracts.md` § 6.1: one JSON object)
     BAD = [
         ('{"auth": {"providers": [', ["invalid JSON", "line"]),
-        ('[]', ["top-level", "object"]),
-        ('"a string"', ["top-level", "object"]),
+        ('[]', ["not a JSON object"]),
+        ('"a string"', ["not a JSON object"]),
     ]
 
     @pytest.mark.parametrize("text,must_say", BAD,

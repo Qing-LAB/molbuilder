@@ -21,7 +21,6 @@ plan (`jobset.model`, import-light by design) loads no parser.
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 from ..parse.base import FileParser
@@ -60,10 +59,6 @@ def _load_sweep(path: Path) -> dict:
             raise FileNotFoundError(p)
     except OSError as exc:
         raise JobSetReadError(f"{p.name} could not be read: {exc}") from exc
-    except json.JSONDecodeError as exc:
-        raise JobSetReadError(
-            f"{p.name} is not valid JSON -- a killed write leaves this "
-            f"shape: {exc}") from exc
     except (ValueError, KeyError, TypeError) as exc:
         raise JobSetReadError(
             f"{p.name} does not read as a job set: {exc}") from exc

@@ -226,7 +226,7 @@ def test_the_layouts_limit_cuts_the_grid_and_the_web_has_none(tmp_path, monkeypa
     there; the web receiver, `0`, shows every field the run stated."""
     monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path))
     from molbuilder import report_cards as C
-    doc = json.loads(C.shipped_text())
+    doc = json.loads(C.shipped_bytes())
     doc["receivers"]["slack"]["limit"] = 2
     C.layout_path().write_text(json.dumps(doc))
     rec = {**_EVERY, "event": "finish"}
@@ -263,7 +263,7 @@ def test_a_copy_that_does_not_read_is_refused_by_its_reason(
     monitor stops at its start and the Test button answers the refusal."""
     monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path))
     from molbuilder import report_cards as C
-    doc = json.loads(C.shipped_text())
+    doc = json.loads(C.shipped_bytes())
     change(doc)
     C.layout_path().write_text(json.dumps(doc))
     with pytest.raises(C.LayoutError) as err:
@@ -279,7 +279,7 @@ def test_a_copy_in_the_config_dir_lays_the_card_out(tmp_path, monkeypatch):
     resolver (`report_cards.layout_path`)."""
     monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path))
     from molbuilder import report_cards as C
-    doc = json.loads(C.shipped_text())
+    doc = json.loads(C.shipped_bytes())
     disc = doc["receivers"]["discord"]
     disc["order"]["finish"] = list(reversed(disc["order"]["finish"]))
     disc["inline"] = False

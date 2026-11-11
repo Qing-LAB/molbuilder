@@ -385,10 +385,9 @@ def write(job: Job) -> Path:
 
 def read(path: Path) -> Job:
     """One job's file, read; :class:`JobFileError` when it does not."""
-    from .persist import check_schema, read_json
+    from .persist import read_object
     try:
-        d = read_json(path)
-        check_schema(d.get("schema", ""), JOB_SCHEMA, label=str(path))
+        d = read_object(path, schema=JOB_SCHEMA)
         here = d["how"] == "here"
         return Job(id=d["id"], how=d["how"], host=d["host"],
                    calculation=d["calculation"],

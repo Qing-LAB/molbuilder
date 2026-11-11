@@ -51,7 +51,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Mapping, Optional, Tuple
 
 from .config_dir import PRIVATE_FILE_MODE, config_dir
-from .persist import read_json, unread_words, write_json
+from .persist import read_object, write_json
 from .runfiles import (JOB_REQUEST_FILE, PYSCF_CHK, PYSCF_CUBE, SIESTA_DM,
                        SIESTA_HSX, SIESTA_TSHS, TBTRANS_AVTRANS, TBTRANS_CC,
                        TBTRANS_DOS, family)
@@ -173,17 +173,12 @@ def _load_raw(path: Path) -> Dict[str, Any]:
     if not path.is_file():
         return {}
     try:
-        raw = read_json(path)
+        return read_object(path)
     except OSError as exc:
         raise RuntimeConfigError(
             f"{path}: cannot be read ({exc.strerror})") from None
     except ValueError as exc:
-        raise RuntimeConfigError(f"{path}: {unread_words(exc)}") from None
-    if not isinstance(raw, dict):
-        raise RuntimeConfigError(
-            f"{path}: top-level value must be an object, "
-            f"got {type(raw).__name__}")
-    return raw
+        raise RuntimeConfigError(f"{path}: {exc}") from None
 
 
 # --------------------------------------------------------------------- #

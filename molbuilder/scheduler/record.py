@@ -1230,9 +1230,9 @@ def read_environment(path) -> Optional["Environment"]:
     The narrowness of the second ``except`` is deliberate: a bad file earns
     tolerance; a bug does not.
     """
-    from ..persist import read_json
+    from ..persist import read_object
     try:
-        raw = read_json(path)
+        raw = read_object(path)
     except (OSError, ValueError):
         return None
     try:
@@ -1257,25 +1257,28 @@ def _unread(path) -> Tuple[Optional[str], bool]:
     """``(why it does not read, whether an older molbuilder wrote it)`` --
     :func:`why_unread`'s answer, and whether its way out is `jobset
     migrate`, read once."""
-    from ..persist import read_json, schema_major, schema_name
+    from ..persist import check_schema, read_object
     p = Path(path)
     if not p.exists():
         return None, False
+    # NO SCHEMA ASKED OF THE READ: an older molbuilder's record is named as
+    # that below, with its way out.
     try:
-        raw = read_json(p)
+        raw = read_object(p)
     except OSError:
         return "it cannot be read here (permissions)", False
-    except ValueError:
-        return "it is not JSON", False
-    got = str(raw.get("schema", "")) if isinstance(raw, dict) else ""
+    except ValueError as exc:
+        return str(exc), False
+    got = str(raw.get("schema", ""))
     if older_record(raw):
         return (f"an older molbuilder wrote it ({got}; this one reads "
                 f"{SCHEMA})"), True
     try:
         Environment.from_dict(raw)
     except (ValueError, TypeError, KeyError) as exc:
-        if schema_name(got) != schema_name(SCHEMA) or (
-                schema_major(got) != schema_major(SCHEMA)):
+        try:
+            check_schema(got, SCHEMA)
+        except ValueError:
             return (f"it is not a machine record this molbuilder reads "
                     f"({got})"), False
         return str(exc), False
@@ -1304,10 +1307,8 @@ def write_environment(env: "Environment", path, *, plan=None) -> Path:
 
     Takes the **file** for the same reason the reader does.
     """
-    from ..persist import json_text, write_json
-    if plan is not None:
-        return plan.text(Path(path), json_text(env.to_dict()))
-    return write_json(Path(path), env.to_dict())
+    from ..persist import write_json
+    return write_json(Path(path), env.to_dict(), plan=plan)
 
 
 class UnknownTarget(Exception):

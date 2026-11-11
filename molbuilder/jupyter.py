@@ -251,12 +251,11 @@ def read_runtime(serve_port: int) -> Dict[str, object]:
     handed to the page (`web/jupyter.md` § 2).
     """
     from .config_dir import jupyter_runtime
-    from .persist import read_json
+    from .persist import read_object
     try:
-        doc = read_json(jupyter_runtime(serve_port))
+        return read_object(jupyter_runtime(serve_port))
     except (OSError, ValueError):
         return {}
-    return doc if isinstance(doc, dict) else {}
 
 
 def answering(serve_port: int, *, timeout: float = 1.5) -> bool:

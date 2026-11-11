@@ -66,8 +66,8 @@ from typing import (Any, Dict, List, Mapping, NoReturn, Optional, Sequence,
                     Tuple)
 
 from .identity import normalise_id, run_id, stage_key
-from .persist import (check_schema, json_text, read_json, unknown_key_words,
-                      unread_words, write_json)
+from .persist import (check_schema, object_of, read_object,
+                      unknown_key_words, write_json)
 
 
 SCHEMA = "molbuilder/task@2"
@@ -894,9 +894,9 @@ def of(base) -> Optional[Task]:
     if not path.is_file():
         return None
     try:
-        obj = read_json(path)
+        obj = read_object(path)
     except ValueError as exc:
-        raise ValueError(f"{path}: {unread_words(exc)}") from None
+        raise ValueError(f"{path}: {exc}") from None
     return _from_obj(obj, said_as=str(path), base=Path(base))
 
 
@@ -904,8 +904,11 @@ def from_text(text: str, said_as: str = FILENAME) -> Task:
     """A description that is not yet a file -- the Task setup tab's save
     (`task-setup.md`) -- read by the one reader; ``said_as`` names it in a
     refusal."""
-    import json
-    return _from_obj(json.loads(text), said_as=said_as, base=None)
+    try:
+        obj = object_of(text.encode("utf-8"))
+    except ValueError as exc:
+        raise ValueError(f"{said_as}: {exc}") from None
+    return _from_obj(obj, said_as=said_as, base=None)
 
 
 def _from_obj(obj, *, said_as: str, base: Optional[Path]) -> Task:
@@ -1024,9 +1027,7 @@ def write_task(base, task: Task, *, plan=None):
     """Write the folder's ``task.json`` atomically (``persist.write_json``)
     -- the path the owner forms (:func:`path_of`) -- or into ``plan``
     (`jobset.planned.Plan`), which writes it when it is carried out."""
-    if plan is not None:
-        return plan.text(path_of(base), json_text(task.to_dict()))
-    return write_json(path_of(base), task.to_dict())
+    return write_json(path_of(base), task.to_dict(), plan=plan)
 
 
 __all__ = ["SCHEMA", "FILENAME", "STAGE_FIELDS",

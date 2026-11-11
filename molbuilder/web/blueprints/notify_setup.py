@@ -86,10 +86,9 @@ def _document() -> Dict[str, Any]:
     """
     from ...monitor import read_channels_file
     try:
-        obj = read_channels_file()
+        return read_channels_file()
     except (OSError, ValueError):
         return {}
-    return dict(obj) if isinstance(obj, dict) else {}
 
 
 def _stored() -> Dict[str, Any]:
@@ -230,15 +229,12 @@ def _file_note(usable: Optional[Set[str]] = None) -> str:
     from outside.  Saying which is most of what this page is worth.
     """
     from ...monitor import read_channels_file
-    from ...persist import unread_words
     try:
         obj = read_channels_file()
     except OSError:
         return ""
     except ValueError as exc:
-        return f"{default_notify_path().name}: {unread_words(exc)}"
-    if not isinstance(obj, dict):
-        return "needs a JSON object"
+        return f"{default_notify_path().name}: {exc}"
     if not isinstance(obj.get("channels"), dict):
         if isinstance(obj.get("url"), str):
             return ("this is the old single-destination file — save a "

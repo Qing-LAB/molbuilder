@@ -46,12 +46,12 @@ from typing import Optional, Tuple
 try:                                       # inside molbuilder
     from .identity import parse_token
     from .paths import BENCH_DIRNAME, attempt_index, trial_point
-    from .persist import json_text, read_json
+    from .persist import read_object, write_json
     from .runfiles import LAUNCH_DIR
 except ImportError:                        # beside a job
     from identity import parse_token
     from paths import BENCH_DIRNAME, attempt_index, trial_point
-    from persist import json_text, read_json
+    from persist import read_object, write_json
     from runfiles import LAUNCH_DIR
 
 #: The record's filename.  VISIBLE, not dotted: it sits beside `task.json`,
@@ -106,11 +106,11 @@ class Placement:
     of: str
 
 
-def record(directory, *, role: str, root) -> Tuple[Path, str]:
-    """``(path, text)`` of the stamp that says what *directory* is, recording
-    the calculation *root* it belongs to -- what `prep` puts in its plan
-    before anything is written (`jobset.planned`), and `launch` with the
-    attempt it opens.
+def record(directory, *, role: str, root, plan) -> Path:
+    """The stamp that says what *directory* is, recording the calculation
+    *root* it belongs to, written by the one writer (`persist.write_json`)
+    into ``plan`` -- what `prep` puts in its plan before anything is written
+    (`jobset.planned`), and `launch` with the attempt it opens.
 
     ``of`` is stored RELATIVE, which is what survives renaming or moving a
     whole calculation — the convention `.gathered-from` already uses.  The
@@ -123,8 +123,8 @@ def record(directory, *, role: str, root) -> Tuple[Path, str]:
             f"off its place, not a role")
     directory = Path(directory)
     of = os.path.relpath(Path(root).resolve(), directory.resolve())
-    return (directory / FILENAME,
-            json_text({"schema": SCHEMA, "role": role, "of": of}))
+    return write_json(directory / FILENAME,
+                      {"schema": SCHEMA, "role": role, "of": of}, plan=plan)
 
 
 def read(directory) -> Optional[Placement]:
@@ -135,10 +135,8 @@ def read(directory) -> Optional[Placement]:
     unreadable record answers the same way rather than raising into a viewer.
     """
     try:
-        said = read_json(Path(directory) / FILENAME)
+        said = read_object(Path(directory) / FILENAME, schema=SCHEMA)
     except (OSError, ValueError, TypeError):
-        return None
-    if not isinstance(said, dict):
         return None
     role, of = said.get("role"), said.get("of")
     if role not in ROLES or not isinstance(of, str):

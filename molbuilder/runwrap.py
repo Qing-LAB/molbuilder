@@ -3670,12 +3670,9 @@ def write_run_wrapper(script_path: Path, *,
         _sc_write.write_script(
             parent / name, text, plan=plan,
             mode=0o755 if name in rendered.executable else 0o644)
+    from .persist import write_bytes
     for name, data in rendered.blobs:
-        if plan is not None:
-            plan.bytes(parent / name, data, mode=0o644)
-        else:
-            from .persist import write_bytes
-            write_bytes(parent / name, data, mode=0o644)
+        write_bytes(parent / name, data, mode=0o644, plan=plan)
     return parent / rendered.wrapper_name
 
 

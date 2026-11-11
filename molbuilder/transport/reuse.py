@@ -1602,9 +1602,9 @@ def _copy_relaid(calc, c: Copy, record: Path, plan) -> None:
     records = {CALCDIR_FILE,
                *(r.name for r in RUN_RECORDS if r.copy != COPY_CARRIED)}
     of_points = any(rel for _src, rel, _made in c.points)
-    plan.text(*calcdirs.record(
+    calcdirs.record(
         c.run, role=calcdirs.CONTAINER if of_points else calcdirs.RUN,
-        root=base))
+        root=base, plan=plan)
     for d in _scratch_folders(c.source):
         open_scratch(base, RunPlace.of(c.run).scratch(d.name), plan)
     if of_points:
@@ -1615,7 +1615,7 @@ def _copy_relaid(calc, c: Copy, record: Path, plan) -> None:
     for src, rel, made in c.points:
         dest = RunPlace.of(c.run).point(rel)
         if rel:
-            plan.text(*calcdirs.record(dest, role=calcdirs.RUN, root=base))
+            calcdirs.record(dest, role=calcdirs.RUN, root=base, plan=plan)
         for f in sorted(src.iterdir()):
             if (f.is_file() and f.name not in records
                     and not never_carried(f.name)):
@@ -1772,8 +1772,8 @@ def carry_shared(src: Path, dest: Path, plan, *, root) -> bool:
         return False
     for f in _files(src):
         if f.name == CALCDIR_FILE:
-            plan.text(*calcdirs.record(dest / f.parent.relative_to(src),
-                                       role=calcdirs.SHARED, root=root))
+            calcdirs.record(dest / f.parent.relative_to(src),
+                            role=calcdirs.SHARED, root=root, plan=plan)
         elif f != record:
             plan.copy(f, dest / f.relative_to(src))
     plan.copy(record, copied_from_path(dest))
@@ -1808,7 +1808,7 @@ def shared_into(calc, pdir: Path, pt, deck: Path, held: Optional[Path],
             f"{_words(pt)} shares energies with {contours.source}, which "
             f"holds none now, and no run of this calculation holds them -- "
             f"prepare the transmission again: it decides on what is there")
-    plan.text(*calcdirs.record(dest, role=calcdirs.SHARED, root=calc.base))
+    calcdirs.record(dest, role=calcdirs.SHARED, root=calc.base, plan=plan)
     for f in files:
         plan.copy(f, dest / f.name)
     carry_shared(src, dest, plan, root=calc.base)

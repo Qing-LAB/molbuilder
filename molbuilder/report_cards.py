@@ -19,7 +19,6 @@ the shipped file whole on that machine.  A file that does not read is refused
 """
 from __future__ import annotations
 
-import json
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -28,12 +27,12 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 try:                                        # inside molbuilder
     from . import data_dir as _data_dir, report_fields as _fields
     from .config_dir import config_dir as _config_dir
-    from .persist import check_schema, unread_words
+    from .persist import object_of
     _HERE = _data_dir()
 except ImportError:                         # beside the job
     import report_fields as _fields
     from config_dir import config_dir as _config_dir
-    from persist import check_schema, unread_words
+    from persist import object_of
     _HERE = Path(__file__).parent
 
 #: The file's name -- spelled here, in the module that owns it
@@ -140,10 +139,10 @@ def layout_path() -> Path:
     return _config_dir() / FILENAME
 
 
-def shipped_text() -> str:
-    """The shipped file's text, through the loader that brought this module
+def shipped_bytes() -> bytes:
+    """The shipped file's bytes, through the loader that brought this module
     -- a zip member in the bundle, a file in the package."""
-    return __loader__.get_data(str(SHIPPED)).decode("utf-8")  # type: ignore[name-defined]
+    return __loader__.get_data(str(SHIPPED))  # type: ignore[name-defined]
 
 
 def load(path: Optional[Path] = None) -> Layout:
@@ -155,33 +154,25 @@ def load(path: Optional[Path] = None) -> Layout:
         if copy.is_file():
             path = copy
     if path is not None:
-        # READ AS EVERY JSON FILE IS (`persist.read_json`): UTF-8, the
-        # byte-order mark an editor adds read past; one that is not UTF-8
-        # refused by its path, as the monitor says a copy that does not read.
         try:
-            text = path.read_text(encoding="utf-8-sig")
+            data = path.read_bytes()
         except OSError as exc:
             raise LayoutError(f"{path}: cannot be read -- {exc}") from None
-        except UnicodeDecodeError as exc:
-            raise LayoutError(f"{path}: {unread_words(exc)}") from None
-        return parse(text, str(path))
-    return parse(shipped_text(), str(SHIPPED))
+        return parse(data, str(path))
+    return parse(shipped_bytes(), str(SHIPPED))
 
 
-def parse(text: str, source: str) -> Layout:
-    """``text`` as a :class:`Layout`, every rule of `run-reports.md` § 4.1c
-    checked; ``source`` names the file in a refusal."""
+def parse(data: bytes, source: str) -> Layout:
+    """A layout file's bytes as a :class:`Layout`: read as every record is
+    (`persist.object_of` -- UTF-8, the byte-order mark an editor adds read
+    past, one JSON object of this schema), then every rule of
+    `run-reports.md` § 4.1c checked; ``source`` names the file in a
+    refusal, as the monitor says a copy that does not read."""
     def refuse(why: str) -> LayoutError:
         return LayoutError(f"{source}: {why}")
 
     try:
-        doc = json.loads(text)
-    except ValueError as exc:
-        raise refuse(unread_words(exc)) from None
-    if not isinstance(doc, dict):
-        raise refuse("the file is not a JSON object")
-    try:
-        check_schema(doc.get("schema"), SCHEMA)
+        doc = object_of(data, schema=SCHEMA)
     except ValueError as exc:
         raise refuse(str(exc)) from None
 

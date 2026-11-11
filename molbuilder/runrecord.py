@@ -110,11 +110,8 @@ def write_continued_from(where, source: RunRef, *, plan=None) -> Path:
     :meth:`RunRef.read` reads back, through `persist`, or into ``plan``
     (`jobset.planned.Plan`).  The record's one writer."""
     marker = continued_from_marker(where)
-    data = (str(source) + "\n").encode("utf-8")
-    if plan is not None:
-        plan.bytes(marker, data)
-        return marker
-    _persist().write_bytes(marker, data)
+    _persist().write_bytes(marker, (str(source) + "\n").encode("utf-8"),
+                           plan=plan)
     return marker
 
 
@@ -290,11 +287,7 @@ def read_notified_file(path) -> List[dict]:
     when it does not read as one."""
     p = Path(path)
     try:
-        body = _persist().read_json(p)
-        if not isinstance(body, dict):
-            raise ValueError("not a JSON object")
-        _persist().check_schema(body.get("schema"), NOTIFIED_SCHEMA,
-                                label=p.name)
+        body = _persist().read_object(p, schema=NOTIFIED_SCHEMA)
         return [dict(e) for e in body.get("sent") or []]
     except (OSError, ValueError) as e:
         raise LaunchRecordError(
@@ -329,9 +322,7 @@ def note_notified(where, event: str, at: float,
         if reason is not None:
             entry["reason"] = str(reason)
         sent.append(entry)
-        _persist().write_bytes(
-            p, _persist().json_text({"schema": NOTIFIED_SCHEMA,
-                                     "sent": sent}).encode("utf-8"))
+        _persist().write_json(p, {"schema": NOTIFIED_SCHEMA, "sent": sent})
     finally:
         os.close(fd)
     return p
@@ -461,11 +452,7 @@ def launch_record(where) -> Optional[dict]:
     if not p.is_file():
         return None
     try:
-        body = _persist().read_json(p)
-        if not isinstance(body, dict):
-            raise ValueError("not a JSON object")
-        _persist().check_schema(body.get("schema"), RUN_LAUNCH_SCHEMA,
-                                label=p.name)
+        body = _persist().read_object(p, schema=RUN_LAUNCH_SCHEMA)
     except (OSError, ValueError) as e:
         raise LaunchRecordError(
             f"{p} does not read as a launch record ({e}) -- whether this run "
@@ -522,10 +509,7 @@ def write_gathered_from(attempt_dir, gathered: "List[Tuple[RunRef, str]]",
     ``.gathered-from``, through `persist`, or into ``plan``
     (`jobset.planned.Plan`)."""
     data = "".join(f"{fn} <- {src}\n" for src, fn in gathered).encode("utf-8")
-    if plan is not None:
-        plan.bytes(gathered_from_path(attempt_dir), data)
-        return
-    _persist().write_bytes(gathered_from_path(attempt_dir), data)
+    _persist().write_bytes(gathered_from_path(attempt_dir), data, plan=plan)
 
 
 def read_gathered_from(attempt_dir) -> "List[Tuple[RunRef, str]]":

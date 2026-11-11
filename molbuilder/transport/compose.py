@@ -894,16 +894,21 @@ def read_provenance(base_dir, *, read=None) -> Optional[Dict]:
     anything was composed.  The one reader of that file: the record's own
     check below, the transport record, and the frame count
     (`transport.stages.frames_of`).  ``read`` reads a path's text where the
-    record is a prep's plan's, not yet on disk (`prepared_with.record`)."""
-    import json
-    from ..persist import read_json
+    record is a prep's plan's, not yet on disk (`prepared_with.record`).
+    Read by the one record reader at ANY major (`job-contracts.md` § 6.1,
+    *Older versions still read*): what it holds is asked of its files; one
+    that does not read is refused naming it."""
+    from ..persist import object_of, read_object
     path = Path(base_dir) / PROVENANCE_FILE
-    if read is not None:
-        try:
-            return json.loads(read(path))
-        except FileNotFoundError:
-            return None
-    return read_json(path) if path.is_file() else None
+    try:
+        if read is not None:
+            # THE PLAN'S TEXT, read as the disk's bytes are.
+            return object_of(read(path).encode("utf-8"))
+        return read_object(path) if path.is_file() else None
+    except FileNotFoundError:
+        return None
+    except ValueError as exc:
+        raise ValueError(f"{path}: {exc}") from None
 
 
 @dataclass(frozen=True)

@@ -83,30 +83,23 @@ def record_path(base, names) -> Path:
     return names.path(base, GROUP_LAUNCH_RECORD)
 
 
-def record_text(rec: Record) -> str:
-    """The record as written -- for a plan's writes, which carry text
-    (`jobset.planned.Plan`); the same bytes :func:`write_record` writes
-    (`persist.json_text`)."""
-    from ..persist import json_text
-    return json_text(rec.to_dict())
-
-
-def write_record(path, rec: Record) -> Path:
-    """The record, whole or absent (`persist`)."""
+def write_record(path, rec: Record, *, plan=None) -> Path:
+    """The record, whole or absent (`persist.write_json`) -- or into
+    ``plan`` (launch's writes, `jobset.planned.Plan`), which writes it when
+    it is carried out."""
     from ..persist import write_json
-    return write_json(Path(path), rec.to_dict())
+    return write_json(Path(path), rec.to_dict(), plan=plan)
 
 
 def read_record(path) -> Record:
     """The record at ``path``; :class:`SequenceError` naming it when it is
     not there or does not read."""
-    from ..persist import check_schema, read_object
+    from ..persist import read_object
     path = Path(path)
     if not path.is_file():
         raise SequenceError(f"{path}: no sequence's launch record is there")
     try:
-        d = read_object(path)
-        check_schema(d.get("schema", ""), SEQUENCE_SCHEMA, label=str(path))
+        d = read_object(path, schema=SEQUENCE_SCHEMA)
         return Record(
             groups=[{"number": int(g["number"]),
                      "stages": [str(s) for s in g["stages"]]}
@@ -130,4 +123,4 @@ def sent(path, *, job_id: Optional[str]) -> Path:
 
 
 __all__ = ["Record", "SEQUENCE_SCHEMA", "SequenceError", "read_record",
-           "record_path", "record_text", "sent", "write_record"]
+           "record_path", "sent", "write_record"]

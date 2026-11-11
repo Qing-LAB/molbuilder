@@ -1469,11 +1469,12 @@ machine or of a named target is refused naming the probe that writes it again
 ([`configuration.md`](?doc=configuration.md) § 5); an older transport data
 file is refused naming the
 command that writes it again; an older transmission digest is not a kept
-reading, and the point's data file is read again. These four read older
+reading, and the point's data file is read again. These five read older
 versions as they are:
 
 | file | also reads |
 |---|---|
+| `slot-provenance.json` | `@1` — what a record holds is known by what its junction's files state; one whose junction, composed again, is the recorded one is written again at `@2` by the prep ([`engines/transport.md`](?doc=engines/transport.md) § 1.1, *The first prep*) |
 | `.molstruct.json` | every `schema_version` in `sidecars/molstruct.READABLE_VERSIONS` |
 | `.spectra.json` | every `schema_version` in `spectra/results.READABLE_SCHEMA_VERSIONS` |
 | `.spectra.nc` | `@1`–`@7` (`spectra/datafile.READABLE_DATA_SCHEMAS`) |
@@ -1484,7 +1485,7 @@ What each version changed is the [changelog](?doc=process/changelog.md).
 **The schema-string convention: `molbuilder/<name>@<major>`.** A reader checks
 the **name and the major** — a same-major addition passes, a different major
 is refused, and so is the wrong artifact by name — through the one helper
-`molbuilder/persist.py` (`schema_major`, `check_schema`, `read_json`,
+`molbuilder/persist.py` (`schema_major`, `check_schema`, `read_object`,
 `write_json`). New persisted files use it. The two bare-integer versions,
 `.molstruct.json` and `.spectra.json`, keep their number in their module and
 never in a document.
@@ -1505,12 +1506,17 @@ character beyond ASCII written as itself (`Å`, a region label's `α`). Read by
 `persist.read_json`: UTF-8, a byte-order mark read past, since it says nothing
 of what a file holds and an editor may add one to a file a person keeps
 (`molbuilder.json`, [`job-request.md`](?doc=execution/job-request.md)'s two
-records); text that is not UTF-8, or not JSON, does not read. A prep reads a
-record through its plan (`Plan.read_json`, `Plan.read_text`: what the prep
-has written so far, otherwise the file, its bytes decoded as the disk's are,
-`persist.text_of`). A record read as one JSON object
-(`persist.read_object`) refuses any other value as not reading, never a
-reader's crash.
+records); text that is not UTF-8, or not JSON, does not read. A record is read
+as one JSON object of its schema (`persist.read_object(path, schema=…)`; a
+record read at any major, below, as one object): any other value, or another
+artifact or major, is refused as not reading — in words, never a reader's
+crash — and the reader that asked names the file and the way out. What a prep
+writes, and what launch writes at its send, goes through their plan: the one
+writer takes the plan (`write_json(…, plan=…)`, `write_bytes(…, plan=…)`),
+which holds the same bytes until it is carried out, and the plan reads as the
+disk's reader does (`Plan.read_object`, `Plan.read_text`: what has been
+written into it so far, otherwise the file, its bytes decoded by
+`persist.text_of`).
 
 **A run's status is not a file.** `run_status(run_dir)` answers it in memory
 (`parse/dirs/job.py`; its fields,

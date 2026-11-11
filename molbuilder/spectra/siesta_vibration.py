@@ -880,7 +880,7 @@ def _plan_optical(here: _CallHere, run: ForceConstantRun, res: SpectraResults,
         bring(plan, files, into=folder, from_dir=stage_optical)
         bring(plan, shared, into=folder, from_dir=stage_optical,
               also=(here.root,))
-        plan.text(*calcdirs.record(folder, role=calcdirs.RUN, root=here.root))
+        calcdirs.record(folder, role=calcdirs.RUN, root=here.root, plan=plan)
         plan.text(folder / COORDINATES_FILE,
                   coordinates_text(run.elements, positions, species))
         write_continued_from(folder, source, plan=plan)

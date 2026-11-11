@@ -484,20 +484,25 @@ def test_save_refuses_rather_than_repairs(web_client, isolated_projects_root,
                                          tmp_path, monkeypatch):
     """The text goes through `task.from_text` — the same door `prep` uses — so
     a browser cannot become a second, drifting writer of descriptions."""
-    d = fresh_calc_dir(isolated_projects_root)
     from support.road import described, read_as, road_tree
-    r = web_client.post("/api/task-setup/save",
-                        json={"dest": str(d), "text": "{ not json",
-                              "request_text": "{}",
-                              "read_as": read_as(d, web_client)})
+    calc = described(road_tree(tmp_path, monkeypatch))
+    was = (calc / "task.json").read_bytes()
+    # the description `molbuilder describe` wrote, cut short in the page's
+    # editor, as a slip of the hand leaves it.
+    r = web_client.post("/api/task-setup/save", json={
+        "dest": str(calc), "text": was.decode("utf-8")[:-3],
+        "request_text": (calc / "job-request.json").read_text(),
+        "read_as": read_as(calc, web_client)})
     assert r.status_code == 400
-    assert not (d / "task.json").exists(), "a bad description was written"
+    assert "task.json: invalid JSON" in r.get_json()["error"], (
+        "a description that is not JSON is refused naming it, in the one "
+        "sentence every record's reader says")
+    assert (calc / "task.json").read_bytes() == was, (
+        "a bad description was written")
 
     # complete but for `stages`, so the STAGES refusal is what fires: the
     # description `molbuilder describe` wrote, its ladder taken out in
     # the page's editor, as a person may.
-    calc = described(road_tree(tmp_path, monkeypatch))
-    was = (calc / "task.json").read_bytes()
     no_stages = _json.loads(was)
     del no_stages["stages"]
     r2 = web_client.post("/api/task-setup/save", json={

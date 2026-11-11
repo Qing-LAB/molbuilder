@@ -186,11 +186,9 @@ def _read_claim(cp: Path) -> Optional[Dict[str, Any]]:
     """The claim at ``cp`` -- ``{host, pid, started, started_at,
     updated_at, k, n}``, and ``alive`` -- or ``None`` when there is none.
     One that does not read is a claim nonetheless, its fields unknown."""
-    from molbuilder.persist import read_json
+    from molbuilder.persist import read_object
     try:
-        claim = read_json(cp)
-        if not isinstance(claim, dict):
-            raise ValueError
+        claim = read_object(cp)
     except FileNotFoundError:
         return None
     except (OSError, ValueError):

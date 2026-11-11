@@ -281,7 +281,7 @@ def stamp_containers(base: Path, dirs, plan) -> None:
     for c in reversed(list(dirs)):
         if c == base or base not in c.parents:
             continue
-        plan.text(*calcdirs.record(c, role=calcdirs.CONTAINER, root=base))
+        calcdirs.record(c, role=calcdirs.CONTAINER, root=base, plan=plan)
 
 
 __all__ = ["NamingError", "StageHome", "described_refs", "job_dir_names",
