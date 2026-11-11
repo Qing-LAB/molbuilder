@@ -1364,8 +1364,8 @@ is `None`, never a guess.
 
 **Read once per load.** The trajectory viewer's load hands the file it opened
 and its parse on (`run_info(deck=…, output=path, traj=parse)`, which asks
-`relaxation_of(path, traj=parse)`) and composes the run's metadata
-once, for the structure envelope and the answer alike; the record parses the
+`relaxation_of(path, traj=parse)`) and composes the run's view once, for
+the structure envelope it answers with; the record parses the
 file itself only for a caller that has not (the structure inspector's
 `/api/results/contract`, which hands the run door's choice for the structure's
 folder). So the two doors answer one record of one file.

@@ -194,11 +194,11 @@ def test_both_doors_answer_one_record_of_the_run(relaxed, web_client,
     asked = client.get("/api/results/contract",
                        query_string={"path": str(run / "CO2.XV")}).get_json()
     assert asked["ok"] is True, asked
-    record = loaded["info"]["relaxation"]
+    record = loaded["structure"]["info"]["relaxation"]
     assert record["source"] == Path(loaded["path"]).name, record
     assert record["converged"] is True
     assert asked["relaxation"] == record
-    assert (asked["calculation"] == loaded["info"]["calculation"]
+    assert (asked["calculation"] == loaded["structure"]["info"]["calculation"]
             == contract_of(_deck(relaxed)))
 
 

@@ -38,8 +38,7 @@ class TestTheComposer:
 
 
     def test_nothing_to_say_is_none_not_an_empty_dict(self, tmp_path):
-        """``None`` reads like its two siblings on the same response
-        (``atom_metadata``, ``periodicity``): absent when there is nothing
+        """``None`` when the run says nothing: absent when there is nothing
         to say.  An empty dict would be a store the viewer then holds."""
         from molbuilder.parse.dirs.run_info import run_info
         assert run_info() is None

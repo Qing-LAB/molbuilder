@@ -286,17 +286,18 @@ is kept, not cleared** — `undefined` means *no news*. Clearing something takes
 an explicit `null`.
 
 That is what lets the two calls carry different amounts. The **load** always
-sends the run's metadata block — the region labels from the input script, the
-cell from the output logs, and `info` from the deck's stated parameters. A
-**poll** always omits it, because those three answer *what does this directory
-say about the structure it ran on?*, and that does not change while frames
-arrive. A poll that sent the block anyway would rewrite it on every tick; a
-poll that sent it as `null` would erase what the load recovered.
+sends frame 0's envelope, `structure` — the structure once, with what the run
+says about it: the labels its deck declared, its box (the output's lattice,
+else the deck's record) and its `info` — composed by the server from the run's
+one view (`web-api.md` § 1, *the structure sent once*). A **poll** always
+omits it, because that answers *what does this directory say about the
+structure it ran on?*, and that does not change while frames arrive. A poll
+that sent it anyway would rewrite it on every tick; a poll that sent it as
+`null` would erase what the load recovered.
 
-The one caller with no run directory to search — an uploaded file — answers
-**deliberately**: `null` in every field, which reads as *nothing available*.
-Saying nothing would have meant *unchanged*, and there is nothing to be
-unchanged from.
+An uploaded file has no run directory to search: its envelope is its own
+frames and the lattice the file states, and its `notices` say nothing of a
+run.
 
 ## 6. Export
 

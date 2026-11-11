@@ -60,7 +60,7 @@ def _transition(target, *, machine="WATCHING", path="/p/run.molwatch.log",
         const state = {{
             machine: {json.dumps(machine)},
             fileState: {{ path: {json.dumps(path)}, mtime: 1, format: "siesta",
-                         label: "l", data: {{}}, atomMetadata: {{}},
+                         label: "l", data: {{}}, structure: null,
                          run: {{ state: "running", live: true }} }},
             viewState: {{}},
             uiPrefs: {{}},

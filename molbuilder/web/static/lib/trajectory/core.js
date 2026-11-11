@@ -206,44 +206,26 @@ import { ask } from "../server.js";
             //   scf_history, wall_clock_s, elapsed_s, in_progress, run_state,
             //   error_message, runtime_info, parse_warnings, ...}
             data:   null,
-            // Per-atom metadata (region labels / frozen tags / annotation
-            // channels) the Build tab embedded in this run's input script,
-            // recovered by /api/watch/load as the trusted ATOM-METADATA
-            // block (a JSON STRING).  The server folds it into the envelope
-            // the tab installs; this copy is kept per file (survives polls
-            // of the same file; cleared on a fresh load like path/label).
-            // null = run had no ATOM-METADATA block.
-            atomMetadata: null,
-            // The run's periodicity, COMPOSED ON THE SERVER (watch.py: the
-            // run's cell, the axis kinds from the run deck's ENGINE-OFFSET
-            // record, the engine's origin stated).  The structure arrives in
-            // the server's envelope, periodicity included; this copy is read
-            // only to say where the box came from (`_cellCameFromTheRun`).
-            // null = the run knows nothing.  Same per-file lifecycle as
-            // atomMetadata.
-            periodicity: null,
-            // What this run says ABOUT itself: the free `info` store
-            // (molview.md § 8.4a), composed by the server from the run
-            // directory -- today the contract its deck records, as
-            // `info.calculation`.  THE TAB PROVIDES IT (user, 2026-08-30):
-            // MolView has no idea what describes a run.  HELD here, beside
-            // its two neighbours, because a poll that cannot append
-            // REBUILDS this viewer -- the store is re-supplied to each
-            // installMolecule or it is lost with the rebuild.  null = the
-            // run said nothing.
-            info: null,
+            // FRAME 0 AS AN ENVELOPE (`/api/watch/load`'s `structure`, the
+            // structure's own dict): what the viewer installs, with what the
+            // run says about it -- the labels its deck declared, its box,
+            // its `info` (molview.md § 8.4a) -- composed once by the server
+            // from the run's one view.  Only the load sends it; a poll keeps
+            // it (`trajectory.md` § 5.1), and a rebuild re-installs it.
+            // null = no frames yet.
+            structure: null,
             // HOW THE RUN THIS FILE BELONGS TO IS DOING -- `{state, detail,
             // live, engine_elapsed_s}`, the one door's answer, which the
             // server sends with the file (web/results.md § 4.1).  The viewer
             // follows while `live`, and the badge reads it -- an ended run's
             // *total* its `engine_elapsed_s`.  null = the file belongs to no run (an
-            // upload).  Keep-on-undefined, like the three above: a poll with
-            // new content leaves it out.
+            // upload).  Keep-on-undefined, like the envelope above: a poll
+            // with new content leaves it out.
             run: null,
             // WHAT THE LOAD SAID OF THE RUN -- today a deck prepared before
             // the order its atoms are in was recorded (`model/overview.md`
             // § 2.2a, I9) -- the server's own notices.  Kept per file, like
-            // the metadata, and carried on every summary line the tab
+            // the envelope, and carried on every summary line the tab
             // writes (`_withRunNotes`), so a poll does not wipe it.
             notices: null,
             // THE RUN'S TARGETS, as the server says them (`targets`: the rows
@@ -312,9 +294,6 @@ import { ask } from "../server.js";
         alias("format",       "fileState");
         alias("label",        "fileState");
         alias("data",         "fileState");
-        alias("atomMetadata", "fileState");
-        alias("periodicity",  "fileState");
-        alias("info",         "fileState");
         alias("structure",    "fileState");
         alias("notices",      "fileState");
         alias("firstFit",     "viewState");
@@ -368,9 +347,6 @@ import { ask } from "../server.js";
             state.fileState.format = null;
             state.fileState.label  = null;
             state.fileState.data   = null;
-            state.fileState.atomMetadata = null;
-            state.fileState.periodicity  = null;
-            state.fileState.info         = null;
             state.fileState.structure    = null;
             state.fileState.run          = null;
             state.fileState.notices      = null;
@@ -400,9 +376,6 @@ import { ask } from "../server.js";
             state.fileState.format = null;
             state.fileState.label  = null;
             state.fileState.data   = null;
-            state.fileState.atomMetadata = null;
-            state.fileState.periodicity  = null;
-            state.fileState.info         = null;
             state.fileState.structure    = null;
             state.fileState.run          = null;
             state.fileState.notices      = null;
@@ -501,18 +474,10 @@ import { ask } from "../server.js";
             if (payload.format !== undefined) state.fileState.format = payload.format;
             if (payload.label  !== undefined) state.fileState.label  = payload.label;
             if (payload.path   !== undefined) state.fileState.path   = payload.path;
-            // Per-file: only the LOAD carries it (undefined on watch ticks →
-            // keep existing, so live polls of the same file don't drop the
-            // metadata the initial load recovered).
-            if (payload.atomMetadata !== undefined)
-                state.fileState.atomMetadata = payload.atomMetadata;
-            if (payload.periodicity !== undefined)
-                state.fileState.periodicity = payload.periodicity;
-            if (payload.info !== undefined)
-                state.fileState.info = payload.info;
-            // Frame 0 as an ENVELOPE -- what the viewer installs.  Same
-            // keep-on-undefined rule as the three above, so a watch tick that
-            // re-sends frames does not drop it.
+            // Frame 0 as an ENVELOPE -- what the viewer installs, the run's
+            // labels, box and `info` in it.  Only the LOAD carries it
+            // (undefined on watch ticks → keep existing, so a tick that
+            // re-sends frames does not drop it; `trajectory.md` § 5.1).
             if (payload.structure !== undefined)
                 state.fileState.structure = payload.structure;
             // How the run is doing: on the load, and on a poll whose file
@@ -892,8 +857,8 @@ import { ask } from "../server.js";
     // Optional ``seekIdx`` jumps to a frame afterwards (used to keep the
     // playhead near the tail when a live poll forces a full rebuild).
     //
-    // THE LATTICE THE RUN REPORTED is handed over as `periodicity` (user
-    // decision, 2026-08-03: show the box, mark it as the run's).
+    // THE LATTICE THE RUN REPORTED is the envelope's box, its metadata's
+    // `cell` (user decision, 2026-08-03: show the box, mark it as the run's).
     //
     // The cost the user accepted: an isolated molecule that ran in a large
     // SIESTA box gets a box drawn round it -- so the tab says where the box
@@ -903,8 +868,11 @@ import { ask } from "../server.js";
      * (molview.md § 6.7: the viewer tracks contents, not where they came from).
      * Read by the status line after a load. */
     function _cellCameFromTheRun() {
-        const per = state.periodicity;
-        return !!(per && Array.isArray(per.cell) && per.cell.length === 3);
+        // The box the run stated, in frame 0's envelope -- its metadata's
+        // `cell` (the run's view: its output's lattice, else its deck's
+        // record).
+        const meta = state.structure && state.structure.metadata;
+        return !!(meta && Array.isArray(meta.cell) && meta.cell.length === 3);
     }
 
     async function rebuildModel(seekIdx) {
@@ -917,7 +885,8 @@ import { ask } from "../server.js";
         /* FRAME 0 ARRIVES AS AN ENVELOPE, assembled by the server
          * (`watch.py::_frame0_structure`) out of the pieces it already had:
          * the frames from the parsed logs, the labels from the run's input
-         * script, the box from its output logs.  `web-api.md` § 1: the
+         * script, the box from its output's lattice, else its deck's record.
+         * `web-api.md` § 1: the
          * browser sends what it holds, and never a document it wrote. */
         const frame0 = state.structure || null;
         if (!frame0) {
@@ -2166,13 +2135,9 @@ import { ask } from "../server.js";
             format: resolvedFormat,
             label:  r.label || resolvedFormat,
             path:   r.path,
-            // undefined on watch-data polls → keep existing (metadata is
-            // per-file and doesn't change mid-run); set on a fresh load.
-            atomMetadata: r.atomMetadata,
-            periodicity:  r.periodicity,
-            info:         r.info,
-            // Same rule, same reason: frame 0's envelope rides with the load
-            // and a poll that re-sends frames must not drop it.
+            // Frame 0's envelope rides with the load; undefined on a
+            // watch-data poll → keep existing, so a poll that re-sends frames
+            // does not drop it.
             structure:    r.structure,
             // How the run is doing -- on the load always, on a poll only when
             // the run ended with this write (web/results.md § 4.1).
@@ -2353,20 +2318,10 @@ import { ask } from "../server.js";
                 path:   r.path,
                 // THE RUN'S TARGETS, as the door says them (`targets`).
                 targets: r.targets !== undefined ? r.targets : null,
-                // Per-atom metadata recovered from the run's input script
-                // (region labels / frozen / annotations); handed to MolView
-                // below.  Only the LOAD response carries it -- watch-data
-                // polls omit it and keep the value (APPLY keep-existing).
-                atomMetadata: r.atom_metadata || null,
-                periodicity:  r.periodicity || null,
-                // What the run says about itself (the deck's recorded
-                // contract), composed by the same server-side answer as
-                // the two above -- see watch.py::_run_metadata.
-                info:         r.info || null,
                 // FRAME 0 AS AN ENVELOPE -- what the viewer installs
-                // (watch.py::_frame0_structure).  Forwarded here beside the
-                // three above because it arrives the same way and for the same
-                // reason: only the LOAD response carries it.
+                // (watch.py::_frame0_structure): the run's labels, box and
+                // `info` in it, the structure once.  Only the LOAD response
+                // carries it; watch-data polls omit it and keep the value.
                 structure:    r.structure || null,
                 // How the run this file belongs to is doing -- the one door's
                 // answer, which `_settlePostLoad` follows and the badge reads;

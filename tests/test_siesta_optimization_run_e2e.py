@@ -23,7 +23,6 @@ every file of ours is asked of the run door (`runs.run_of`).
 """
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 import numpy as np
@@ -166,9 +165,11 @@ def test_the_run_reads_its_own_deck(opt, real_h2_layered, monkeypatch):
     d = create_app(config={}).test_client().post(
         "/api/watch/load", json={"path": str(opt)}).get_json()
     assert d["ok"] is True, d
-    held = json.loads(d["atom_metadata"])["regions"]["frozen_atoms"]
-    assert held == [0], d["atom_metadata"]
-    box = d["periodicity"]
+    # WHAT THE RUN SAYS OF ITS STRUCTURE rides frame 0's envelope, the
+    # structure once (`web-api.md` § 1): its deck's labels, its box.
+    box = d["structure"]["metadata"]
+    held = box["regions"]["frozen_atoms"]
+    assert held == [0], box["regions"]
     assert box["axis_kind"] == ["isolated"] * 3, box
     assert box["engine_offset"] == [0.0, 0.0, 0.0], box
     np.testing.assert_allclose(box["cell"], np.eye(3) * _BOX, atol=1e-4)
@@ -177,7 +178,7 @@ def test_the_run_reads_its_own_deck(opt, real_h2_layered, monkeypatch):
     assert rt.get("mdnc_source") == "H2.MD.nc", rt
     assert rt.get("frozen_atoms") == [0], rt
     # ITS OWN DECK STATES ITS CONTRACT.
-    calc = d["info"]["calculation"]
+    calc = d["structure"]["info"]["calculation"]
     assert calc["source"] == "H2_01_coarse.fdf", calc
     assert calc["contract"]["basis_size"] == _template_value(
         bundle, "basis_size"), calc

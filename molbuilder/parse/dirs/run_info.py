@@ -60,10 +60,8 @@ def run_info(*, deck: Union[str, Path, None] = None,
     not parsed again; ``engine``, the run's -- its description's -- where
     the caller holds the run (`running-a-job.md` § 4.2).
 
-    ``None`` rather than ``{}`` when the run says nothing, so this reads
-    exactly like its two siblings on the same load response
-    (``atom_metadata``, ``periodicity``): a field that is absent when there
-    is nothing to say.  A caller that wants a dict either way writes
+    ``None`` rather than ``{}`` when the run says nothing: a field that is
+    absent when there is nothing to say.  A caller that wants a dict either way writes
     ``or {}``; one that hands the answer to the viewer passes it through,
     and the viewer's own load door substitutes ``{}``.
 

@@ -79,6 +79,27 @@ def test_load_by_multipart_unrecognised_format(client):
     assert body["ok"] is False
 
 
+def test_an_upload_answers_the_structure_once(client):
+    """`web-api.md` § 1 and the `/api/watch/*` row: a load answers frame 0
+    as the structure's envelope, the one carrier of what is said about it --
+    no `atom_metadata`, `periodicity` or `info` beside it; an upload, of no
+    run, says nothing of one.  THE SILENT FAILURE (to 2.69.21): the load
+    sent the run's labels, box and record twice, in the envelope and in
+    three blocks beside it."""
+    from molbuilder.structure import Structure
+    from support.road import H2, road_structure
+    made = road_structure(H2)
+    r = client.post("/api/watch/load", data={
+        "file": (io.BytesIO(made.to_xyz().encode()), "h2_steps.xyz")},
+        content_type="multipart/form-data")
+    answer = r.get_json()
+    assert r.status_code == 200, answer
+    assert not {"atom_metadata", "periodicity", "info"} & set(answer), (
+        sorted(answer))
+    assert Structure.from_dict(answer["structure"]).elements == made.elements
+    assert answer["notices"] == [], answer["notices"]
+
+
 # --------------------------------------------------------------------- #
 #  Directory mode (a folder molbuilder lays out)                        #
 #                                                                       #

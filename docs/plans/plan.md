@@ -12,7 +12,9 @@ under `docs/archive/2026-09-01-*.md` as records of what was decided and built.
 **Consolidations** — each moved what was done or settled, verbatim under its
 verdict, to its archive (the list at the end): 2026-09-10, 2026-10-09,
 2026-10-13, 2026-10-14, 2026-10-18, 2026-10-20, 2026-10-27, 2026-10-28,
-2026-11-07 (the handover and the closed rows, at 2.67.10), and
+2026-11-07 (the handover and the closed rows, at 2.67.10), 2026-11-10 (the
+handover's release-by-release history, 2.68.0–2.69.21, left to the changelog
+and the ledger, at 2.69.21), and
 **2026-10-31** *(the user, 2026-10-30: "consolidate with previous review
 results to unify a single plan to finish"; "go ahead, science after the
 finish line")*: a fresh review of the documents, the pages and the backend at
@@ -26,107 +28,46 @@ as they stood.
 
 ---
 
-## ▶ HANDOVER — where we are, and where to start *(2026-11-08)*
+## ▶ HANDOVER — where we are, and where to start *(2026-11-10)*
 
-**Where we are: 2.67.11.** F0–F8 and F7a are closed; F9, the tests through
+**Where we are: 2.69.22.** F0–F8 and F7a are closed; F9, the tests through
 the road, has eight releases out (2.67.4–2.67.11) and four steps left (its
-row below). Each release is its changelog row and its ledger section
+row below). Since 2.67.11 three bodies of work the user put first have run;
+each release is its changelog row and its ledger section
 ([`archive/2026-10-31-finish-line-review.md`](?doc=archive/2026-10-31-finish-line-review.md),
-*Found by …*); the handover's history and the closed rows as they stood are
-in [`archive/2026-10-31-plan-consolidation.md`](?doc=archive/2026-10-31-plan-consolidation.md).
+*Found by …*):
 
-**Last checked** (2.67.11): the fast batch, 5,829 passed, none failed; the
-27 browser and real-run files the release edited, 538 passed, none failed, on
-real SIESTA and PySCF runs and a real junction, headless — the other 20 run at
-the next full pass *(the user, 2026-11-08: "Only the 27 edited files")*; every
-changed test seen red when its guarded line was broken; two discipline rounds
-over every touched file, each finding read again in the code.
+- **The UI review** *(the user, 2026-11-08: "Right after 2.67.11")* —
+  2.68.0–2.69.9: groups A, B and D done; group C's Task setup, Send and
+  after-an-action items done. **Left**: the tabs following the sidebar's
+  folder (where the Send writes, the live check of it — the user's yes,
+  2026-11-09) and the ladder's layout.
+- **The overlap audit** *(the user, 2026-11-09)* — 2.69.10–2.69.12: a
+  structure file through the one writer, every answer through the one reader,
+  every failure through the one builder.
+- **The codebase overlap review** *(the user, 2026-11-09: "Accept all,
+  defects first"; about 170 findings by owning door, the ledger's *Found by
+  the codebase overlap review*)* — 2.69.13–2.69.21: every science and
+  correctness defect (V-*), the path door (X-PATH), record reading (V-READ,
+  V-PANEL), the structure's reads and its wire (X-STRUCT; the user,
+  2026-11-10: *read the pair whole*, *one shape, sent once*, *show them while
+  editing*); 2.69.22, the trajectory route's copies. **Left, in order**:
+  X-STRUCT's rest (the run's `info` worked out once; the PySCF continuation's
+  read), X-PERSIST, X-PARSE, X-TMPL, X-EXEC, X-ENG; then the page doors and
+  the copies they share (O-STATUS, O-FIND, O-STATE, O-WORDS, O-KEYS's rest
+  with X-UI and X-PLOT; O-TESTS).
 
-**2.68.0** *(2026-11-08, during the UI review)*: TranSIESTA's charge
-correction, `TS.dQ`, a device setting written as chosen (the ledger's *Found
-by 2.68.0*; `engines/transport.md` § 2a.12) — found on the walk's transport
-road. **2.68.1**: a blank setting's default said by where it comes from —
-*recommended for a vibration*, *SIESTA's own default*, *default* — and Task
-setup in the forms' words (the ledger's *Found by 2.68.1*). **2.68.2**: the
-UI review's group A — the Molbuilder page's *Unsaved* from its own note, a
-reload keeping it, the viewer's Export save recorded, the slab box never
-blank (the ledger's *Found by … 2.68.2*). **2.68.3**: group B's first item
-— in Task setup a value typed and Tab or a click land where they go, the
-page-wide cover giving focus back where the person left it (the ledger's
-*Found by … 2.68.3*). **2.68.4**: group B's keyboard items — one list of
-choices for every list (`lib/one-stop-list.js`), one plain button, every
-action a click performs reached by the keys (the ledger's *Found by … 2.68.4*);
-**2.68.5**: group B's folder item — every file door and every page's own
-save announces the folder it changed, whoever shows it follows, Task setup
-keeping what it holds unsaved (the ledger's *Found by … 2.68.5*);
-**2.69.0**: group B's answer items — one reader for every answer the server
-gives (`lib/server.js`, `web/ui-contract.md` § 12), *signed out* said once
-for the page with a way back, MolView handed the reader at mount with the
-app's other doors as one bundle (the ledger's *Found by … 2.69.0*);
-**2.69.1**: group B's last two items — the Spectrum card's frozen atoms and
-the MolView demo's calls in true words (the ledger's *Found by … 2.69.1*);
-**2.69.2**: group D's Task setup words — every setting named by its label
-through one door, *time limit* and *stage* as the one words (the ledger's
-*Found by … 2.69.2*); **2.69.3**: the server's sentences — *stage* and
-*time limit* wherever molbuilder speaks (the ledger's *Found by … 2.69.3*);
-**2.69.4**: the server's words drawn as words on every page — one
-renderer, the terminal's dash a dash, no capitals as emphasis, the file card
-in a person's words (the ledger's *Found by … 2.69.4*); **2.69.5**: every
-page in its own plain words, the notebook tab *JupyterLab* (the ledger's
-*Found by … 2.69.5*); **2.69.6**: the settings' own words — group D done
-(the ledger's *Found by … 2.69.6*); next, group C (organization and flow,
-with design questions for the user), then the launch-from-the-page design.
-**2.69.7**: group C's Task setup items — a count that says what it counts, a
-plan's refusal said, a queue unchosen, the run's counts named (the ledger's
-*Found by … 2.69.7*); **2.69.8**: group C's Send — the name as typed, the box
-advice by engine, the pseudopotential folder not drawn missing, the frame on
-screen said (the ledger's *Found by … sending a structure*); **2.69.9**: what
-a page says after an action — an upload asks to replace, the benchmark page
-keeps looking, a label spelled as stored, the Save's notices, a channel's kind
-kept (the ledger's *Found by … after an action*). **The overlap audit**
-*(the user, 2026-11-09)*: four readers over 2.68.0–2.69.9 found about seventy
-places the releases re-made a door that existed; the plan the user agreed to
-is one release per owning door, the contract first, the copies deleted, a
-discipline reader before each commit (the ledger's *Found by the overlap
-audit*). **2.69.10**: structure files through the one writer. **2.69.11**:
-reading answers (the browser half; the files layer keeps its results, the
-user's word). **2.69.12**: every failure answer through the one builder
-(298 written by hand beside it, measured). **The codebase overlap review**
-*(the user, 2026-11-09)*: ten readers over the whole codebase, about 170
-findings and 14 contract disagreements settled by the user's word
-("Accept all, defects first"; the ledger's *Found by the codebase overlap
-review*), two of them withdrawn the same day as crossing the sealed modules'
-wall (VibrationView's export is its own, `web/vibrationview.md` § 4).
-**2.69.13**: the science and correctness defects, each through its owning
-door (V-VAC, V-RELAX, V-HYD, V-LAT, V-PSML, V-TYPE, V-REC). **2.69.14**: the
-tree's names and places (V-PATH, X-PATH, the server's `projects` half).
-**2.69.15**: the files layer's checks (the rest of V-PATH and X-PATH's server
-half). **2.69.16**: the browser's path door (V-PATH and X-PATH's browser
-half, O-KEYS's folder of a path). **2.69.17**: a `.pdb` is read, never
-written (the user, 2026-11-09). **2.69.18**: the sidebar's upload says what
-landed. **2.69.19**: record reading and the panels (V-READ, V-PANEL).
-**2.69.20**: X-STRUCT's reads — the codec's one text read, a saved pair read
-whole by the registry (the user, 2026-11-10). **2.69.21**: the structure
-sent once in every answer (the user, 2026-11-10). Next,
-in order, each taking the next number when it ships: the
-duplicates by owning door — X-STRUCT's rest (the trajectory route's side-blocks and the run's `info` worked out once; the PySCF continuation's read), X-PERSIST, X-PARSE, X-TMPL, X-EXEC,
-X-ENG — and the earlier plan's rows with the page doors they share (O-STATUS,
-O-FIND, O-STATE, O-WORDS, O-KEYS with X-UI and X-PLOT; O-TESTS); then the tabs following the sidebar's folder
-(where the Send writes, the live check of it — the user's yes, 2026-11-09),
-the ladder's layout.
+**Last checked** (2.69.21): the fast batch, 5,959 passed; every e2e test,
+744 passed, on the release's final code (a change every road passes through,
+said first).
 
-**What runs next**: **the UI review** *(the user, 2026-11-08: "Right after
-2.67.11")* — every tab walked in Chrome on the dev server through an
-optimization, a vibration (SIESTA and PySCF) and a transport calculation on
-small real runs, in a scratch project; each element's text, layout and
-organization, and each control mapped to what it sends and where it lands in
-the generated script; the findings to the user before any fix, the fixes
-releases of their own (the ledger's I1-112, I1-115). Then 2.67.12, the
-page-side test doors; then 2.67.13, the
-tests owed; then the dead-code release, then F9's closing review rounds; then
-F10, F11, F12. **Waiting on the user**: nothing now. The
-first full e2e pass (from F10) and F12's walk of the three roads in the
-browser start only on the user's word, said to them first.
+**What runs next**: the overlap review's left rows, in that order; then the
+UI review's two left items; then F9's four steps — 2.67.12, the page-side test
+doors (the JS stand-ins fed from the server's own composer among them),
+2.67.13, the tests owed, the dead-code release, F9's closing review rounds;
+then F10, F11, F12. **Waiting on the user**: nothing now. F10's first full
+e2e pass and F12's walk of the three roads in the browser start only on the
+user's word, said to them first.
 
 **The test suite's guards** keep every test off the person's machine
 ([`process/testing.md`](?doc=process/testing.md) § 2b): test code loads only

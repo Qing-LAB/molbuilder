@@ -1787,8 +1787,7 @@ does — and for a run directory that is ONE server-side composer,
 `parse.dirs.run_info.run_info`, so the doors that ask cannot
 come to disagree.  **A new metadata category is a new KEY in the block
 there, and nowhere else.**  That is the whole reason `info` is a free
-dict rather than a field per category: `atomMetadata` and
-`periodicity` earn load parameters of their own because they BECOME
+dict rather than a field per category: the labels and the box BECOME
 the structure, while `info` only describes it.
 
 **The store arrives in the CANONICAL envelope.**  It is a field of a

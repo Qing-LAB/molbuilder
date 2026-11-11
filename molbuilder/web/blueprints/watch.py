@@ -36,7 +36,7 @@ import os
 import sys
 import tempfile
 from threading import Lock
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from flask import Blueprint, jsonify, request
 from ._shared import err
@@ -196,13 +196,14 @@ def _frame0_structure(
 ) -> "Optional[Dict[str, Any]]":
     """Frame 0 as a STRUCTURE ENVELOPE, with what the run says about it --
     ``view``, the run's view the same load answers with (:func:`_load_view`,
-    :func:`_run_metadata`), so the directory is read once per load, not once
+    :func:`_run_notices`), so the directory is read once per load, not once
     per consumer.
 
     `web-api.md` § 1: *"the browser sends what it holds; it never sends a
     document it wrote"*. The pieces are all here --
     the frames from the parsed logs, the labels from the run's input script,
-    the box from its output logs -- so the assembly belongs here too.
+    the box from its output's lattice, else its deck's record -- so the
+    assembly belongs here too.
 
     Returns ``None`` when there are no frames.  A field the run's deck states
     that the structure refuses is REFUSED, the structure's own
@@ -233,55 +234,23 @@ def _load_view(data: Optional[Dict[str, Any]], *,
                    lattice=(data or {}).get("lattice"))
 
 
-def _run_metadata(view) -> Dict[str, Any]:
-    """The metadata block EVERY ``/api/watch/load`` answer carries -- the
-    load's one run view (:func:`_load_view`), serialised.
+def _run_notices(view) -> List[Dict[str, Any]]:
+    """WHAT THE LOAD SAYS OF THE RUN its file belongs to -- a deck written
+    before the order its atoms are in was recorded (`model/overview.md`
+    § 2.2a, I9) -- the load's one run view (:func:`_load_view`) asked; none
+    for an upload, which has no run.
 
-    One composer for every builder of a load answer: a builder spreads
-    it, and the upload branch (which has no run directory) answers
-    "nothing available" DELIBERATELY -- ``None`` in every field --
-    rather than by omission.
-
-    Omission means something else on this route.  The browser's APPLY
-    rule is keep-on-``undefined`` (`web/trajectory.md` § 5.1), which is
-    what lets a poll re-send the frames without re-sending the metadata.
-    So the POLL omits this block on purpose and the LOAD always sends
-    it; a poll that carried it would rewrite a run's metadata on every
-    tick.
-
-    The three fields are three sources, not one: the labels come from the
-    run's input script, the cell from its output logs, and ``info`` from
-    the deck's stated parameters.  They travel together because they
-    answer one question -- *what does this run directory say about the
-    structure it ran on?* -- and a new metadata category joins them as a
-    KEY inside ``info`` (``parse.dirs.run_info``), not as a fourth field.
-    """
-    import json as _json
+    What the run says about the structure it ran on -- the labels its deck
+    declared, its box, its ``info`` -- rides frame 0's envelope
+    (:func:`_frame0_structure`), built by the same view: the structure,
+    once, and nothing beside it saying it again (`web-api.md` § 1).  Only
+    the LOAD sends either; a POLL omits both, which the browser reads as
+    *keep* (`web/trajectory.md` § 5.1)."""
     from molbuilder.periodicity_gate import notices_for_report
     from molbuilder.workingcopy_structure import ORDER_UNSTATED, read_notice
-    return {
-        # WHAT THE LOAD SAYS OF THE RUN: a deck written before the order was
-        # recorded, said (`model/overview.md` § 2.2a, I9); none for an
-        # upload, which has no run.
-        "notices":       notices_for_report(
-            [read_notice(ORDER_UNSTATED, view.order_unstated)]
-            if view.order_unstated else []),
-        # Per-atom metadata (region labels / frozen tags / annotation
-        # channels) the Build tab embedded in the run's input script, as a
-        # JSON string the viewer applies; None when the run carries no block.
-        "atom_metadata": (_json.dumps(view.atom_metadata)
-                          if view.atom_metadata else None),
-        # The run's box (the cell from the output logs, the axis kinds
-        # from the deck's ENGINE-OFFSET record, and the engine's origin,
-        # 0).  The viewer passes it through verbatim -- guessing
-        # periodicity in the browser is the one thing the Cell rules
-        # refuse.
-        "periodicity":   view.periodicity,
-        # What the run says ABOUT itself (`info.calculation`,
-        # `info.relaxation`).  Rides installMolecule in and exportFile out
-        # (molview.md § 8.4a), so an export from a results view carries it.
-        "info":          view.info,
-    }
+    return notices_for_report(
+        [read_notice(ORDER_UNSTATED, view.order_unstated)]
+        if view.order_unstated else [])
 
 
 def _refresh_if_changed() -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
@@ -361,8 +330,8 @@ def _refresh_if_changed() -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
             _state["data"]  = new_data
             _state["mtime"] = mtime
         # THE PARSE ITSELF rides the answer, not the state: a load hands it
-        # to the directory's metadata so the same file is not parsed again
-        # for it (`_run_metadata`), and nothing holds it past the request.
+        # to the run's view so the same file is not parsed again for it
+        # (`_load_view`), and nothing holds it past the request.
         out = dict(_state)
         out["parsed"] = (path, traj)
         return out, None
@@ -490,15 +459,14 @@ def api_load():
     run, state, fault = _with_the_run(state)
     if fault:
         return err(fault, 500)
-    # The run's metadata, ONCE per load, for the structure envelope and the
-    # answer alike, with the file this load opened and its parse handed on:
+    # The run's view, ONCE per load, for the structure envelope and the
+    # notice alike, with the file this load opened and its parse handed on:
     # the relaxation record is of the file on screen.  The parse rides only when it is of that file -- a load racing this
     # one can swap the state between the parse and here.
     _parsed = state.get("parsed")
     view = _load_view(state["data"], output=path,
                       traj=(_parsed[1] if _parsed and _parsed[0] == path
                             else None))
-    meta = _run_metadata(view)
     try:
         frame0 = _frame0_structure(state["data"], view)
     except ValueError as exc:
@@ -524,10 +492,10 @@ def api_load():
         # HOW THE RUN THIS FILE BELONGS TO IS DOING -- the one door's answer,
         # which the viewer follows (`web/results.md` § 4.1).
         "run":              run,
-        # FRAME 0 AS AN ENVELOPE -- what the viewer installs.  The parcels below
-        # stay because the Cell page reads them directly.
+        # FRAME 0 AS AN ENVELOPE -- what the viewer installs, the run's
+        # labels, box and `info` in it (`_frame0_structure`).
         "structure":        frame0,
-        **meta,
+        "notices":          _run_notices(view),
     })
 
 
@@ -600,7 +568,6 @@ def _api_load_multipart(uploaded_file):
     if fault:
         return err(fault, 500)
     view = _load_view(state["data"])
-    meta = _run_metadata(view)
     return jsonify({
         "ok":               True,
         "path":             tmp_path,
@@ -617,15 +584,12 @@ def _api_load_multipart(uploaded_file):
         # said, in the field the path load answers (`web/results.md` § 4.1).
         "run":              None,
         # Frame 0 as an envelope, same as the path branch -- an upload has no
-        # run directory, so it carries the geometry and nothing more.
+        # run directory: its frames, and the lattice the file states, nothing
+        # of a run.
         "structure":        _frame0_structure(state["data"], view),
-        # An upload is one file with no run directory behind it, so it
-        # has nothing to say about itself -- and it SAYS so, in the same
-        # fields the path builder answers.  One route, one response
-        # shape: a reader learns what a load answers from one place, and
-        # "nothing available" is a stated answer rather than a field a
-        # caller has to notice is missing.
-        **meta,
+        # The same field the path builder answers, stated empty: an upload
+        # belongs to no run, so the load says nothing of one.
+        "notices":          _run_notices(view),
     })
 
 
@@ -675,7 +639,7 @@ def _with_the_run(state: Dict[str, Any]
     again, fault = _refresh_if_changed()
     if fault or again is None or again["mtime"] == state["mtime"]:
         # Nothing new: the state in hand, with the parse it carries -- the
-        # load hands that parse on (`_run_metadata`), and a refresh that
+        # load hands that parse on (`_load_view`), and a refresh that
         # found nothing has none to hand.
         return run, state, fault
     return run, again, None

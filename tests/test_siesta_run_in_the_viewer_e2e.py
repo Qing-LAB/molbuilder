@@ -97,6 +97,20 @@ def test_in_its_folder_the_viewer_states_the_runs_rate_and_end(
         detail, time)
 
 
+def test_the_status_line_says_the_box_is_the_runs(
+        finished, real_h2_layered, page, flask_server, monkeypatch):
+    """`web/trajectory.md` § 4: on an ordinary load the panel's status line
+    says where the unit cell came from when the run supplied it -- the box
+    frame 0's envelope states, the structure sent once (`web-api.md` § 1).
+
+    THE SILENT FAILURE: the line read a copy of the box beside the
+    envelope, and with the copy gone said nothing of a box drawn round the
+    molecule that the person never set."""
+    _open(page, flask_server, finished, real_h2_layered.tree, monkeypatch)
+    status = page.locator("#trajectory-status").inner_text()
+    assert "Unit cell from the run" in status, status
+
+
 def test_the_scf_plot_draws_both_tests_siesta_requires(
         finished, real_h2_layered, page, flask_server, monkeypatch):
     """A SIESTA SCF is converged when dDmax is under `DM.Tolerance` AND dHmax

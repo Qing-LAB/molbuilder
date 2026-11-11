@@ -176,8 +176,9 @@ the input script's block). So `/api/watch/load` asks the run the opened file
 belongs to what ITS OWN deck declared (`runs.declared(run).atom_metadata_for(n_atoms)`
 — never the first deck a search of the folder meets), guards the block against
 the trajectory's atom count (mismatch → `None`, never breaks the load), and
-surfaces it as `atom_metadata`, and the same load applies it to the structure
-it answers with, through the block's one reader (`Structure.apply_atom_metadata`).
+applies it to the structure it answers with — frame 0's envelope, the one
+carrier of the run's labels — through the block's one reader
+(`Structure.apply_atom_metadata`).
 **Trusted fragment ≠ sidecar file:** the block omits the sidecar envelope's
 `geometry_hash`, so it is applied by that reader and never through
 `parse.sidecars.molstruct.load_text`, the validator for untrusted standalone files, which
