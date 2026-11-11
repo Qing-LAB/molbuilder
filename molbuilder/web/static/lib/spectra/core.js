@@ -261,16 +261,15 @@
     /* ── How you were looking, kept where everything else is kept ──────────
      *
      * Contract: `spectra.md` § 7 (what a reload restores), `workspace.md` § 4
-     *           (the tag) and § 5 (the only two calls), `molview.md` § 11.2b
+     *           (the tag) and § 5 (its calls), `molview.md` § 11.2b
      *           (the lane this copies -- "looking is not changing").
-     * Owns:     one workspace slot, tag `results:spectra:ui`, state_index 0,
+     * Owns:     one workspace slot, the draft of the tag `results:spectra:ui`,
      *           holding the view knobs in `state.uiPrefs`.
      *
-     * NOT sessionStorage.  `workspace.md` § 4 promises "there is one way to
-     * save and one way to load", and the browser-storage half underneath the
-     * workspace is deliberately not part of its surface.  A second store in
-     * the Results tab would be a second home for tab state -- the thing the
-     * tag exists to prevent.  `lib/molview/ui-context.js` already keeps a
+     * NOT sessionStorage.  How you look at a spectrum is kept beside the
+     * work, as a viewer's look is, through the workspace's one way to save
+     * and load (`workspace.md` § 4); a second store in the Results tab would
+     * be a second home for tab state.  `lib/molview/ui-context.js` already keeps a
      * viewer's camera, frame and switches in exactly this shape, so this is
      * that lane for the knobs MolView does not own.
      */
@@ -285,14 +284,9 @@
 
     function _ws() {
         var w = root.molbuilder && root.molbuilder.workspace;
-        if (!w || typeof w.workspaceId !== "function"
-               || typeof w.persist !== "function"
-               || typeof w.readState !== "function") return null;
+        if (!w || typeof w.persistDraft !== "function"
+               || typeof w.readDraft !== "function") return null;
         return w;
-    }
-
-    function _prefsIdentity(w) {
-        return { workspace_id: w.workspaceId(PREFS_TAG), state_index: 0 };
     }
 
     function _prefsFlush() {
@@ -300,11 +294,13 @@
         if (!_prefsArmed || _prefsApplying) return;
         var w = _ws();
         if (!w) return;
-        // persist() does not wait: true means sent, not saved.  A failure
-        // arrives later on onPersistError, and a lost preference is not worth
-        // interrupting anyone over -- the knobs still work for this session.
-        try { w.persist(PREFS_TAG, { v: PREFS_VERSION, prefs: state.uiPrefs },
-                        _prefsIdentity(w)); } catch (_) {}
+        // THE TAG'S DRAFT (workspace.md § 2), sent without waiting: true
+        // means sent, not saved.  A failure arrives later on onPersistError,
+        // and a lost preference is not worth interrupting anyone over -- the
+        // knobs still work for this session.
+        try { w.persistDraft(PREFS_TAG,
+                             { v: PREFS_VERSION, prefs: state.uiPrefs }); }
+        catch (_) {}
     }
 
     function _prefsSchedule() {
@@ -368,8 +364,8 @@
         var w = _ws();
         if (!w) { _prefsArmed = true; return; }
         var saved = null;
-        try { saved = await w.readState(_prefsIdentity(w)); }
-        catch (_) { /* readState already answers null for any failure */ }
+        try { saved = await w.readDraft(PREFS_TAG); }
+        catch (_) { /* readDraft already answers null for any failure */ }
         if (!saved || saved.v !== PREFS_VERSION
                 || !saved.prefs || typeof saved.prefs !== "object") {
             _prefsArmed = true;

@@ -62,9 +62,8 @@ _STATE_SUFFIX = ".wc.json"
 _STATE_WINDOW = 30
 
 # Residue accounting (`workspace.md` § 9.1).  The rolling window bounds each
-# LIVE workspace to <= _STATE_WINDOW files, but a crashed / closed tab leaves its
-# whole timeline behind: a new tab mints a fresh workspace_id, so the old id's files
-# are never touched again.  Crash RECOVERY is deliberately out of scope, and the
+# LIVE workspace to <= _STATE_WINDOW files, but a tag no longer used leaves its
+# files behind: nothing asks for its id again, so they are never touched again.  Crash RECOVERY is deliberately out of scope, and the
 # files are harmless (hidden dot-dir, never listed by the sidebar, globs are per-id
 # so they never slow anything).  We do NOT garbage-collect them -- but we WARN once
 # per process when the pile crosses this many files so an operator can wipe

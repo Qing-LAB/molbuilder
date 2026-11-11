@@ -319,17 +319,13 @@ const WORKSPACE_TAG = "transport";
     var _formNoteRead = null;      // its one read, a promise
     var _restoring = false;        // a restore is writing the fields back
 
-    function _formIdentity(ws) {
-        return { workspace_id: ws.workspaceId(FORM_TAG), state_index: 0 };
-    }
-
     /** The stored note, read once per page -- every restore and every save
      *  waits for it, so a save never writes over values not yet read. */
     function _readFormNote() {
         if (_formNoteRead) return _formNoteRead;
         var ws = root.molbuilder && root.molbuilder.workspace;
-        _formNoteRead = (ws && typeof ws.readState === "function")
-            ? Promise.resolve(ws.readState(_formIdentity(ws)))
+        _formNoteRead = (ws && typeof ws.readDraft === "function")
+            ? Promise.resolve(ws.readDraft(FORM_TAG))
                 .catch(function () { return null; })
             : Promise.resolve(null);
         _formNoteRead = _formNoteRead.then(function (note) {
@@ -443,7 +439,7 @@ const WORKSPACE_TAG = "transport";
      * later edit on the surface being kept. */
     function _saveSurface(container, schema, formSchema, surface) {
         var ws = root.molbuilder && root.molbuilder.workspace;
-        if (!ws || typeof ws.persist !== "function") return;
+        if (!ws || typeof ws.persistDraft !== "function") return;
         // A RESTORE IS NOT AN EDIT, and values typed with NO JUNCTION cited
         // belong to no calculation -- nor are they kept: a reload draws the
         // forms before it re-cites, and a save then would write over the
@@ -461,7 +457,7 @@ const WORKSPACE_TAG = "transport";
             if (surface === "shared") note.shared = values;
             else (note.rungs = note.rungs || {})[surface] = values;
             _formNote = note;
-            ws.persist(FORM_TAG, note, _formIdentity(ws));
+            ws.persistDraft(FORM_TAG, note);
         });
     }
 
@@ -529,24 +525,19 @@ const WORKSPACE_TAG = "transport";
     // operation the TAB performed, so the tab remembers it (molview.md § 6.7).
     var PANEL_TAG = WORKSPACE_TAG + ":panel";
 
-    function _panelIdentity(ws) {
-        return { workspace_id: ws.workspaceId(PANEL_TAG), state_index: 0 };
-    }
-
     function _writePanelNote(keep) {
         var ws = root.molbuilder && root.molbuilder.workspace;
-        if (!ws || typeof ws.persist !== "function") return;
+        if (!ws || typeof ws.persistDraft !== "function") return;
         /* The tab's ONE fact is the CITATION.  A reload
          * re-describes it through the same seam a pick uses, so the
          * structure, the meta line and both surfaces always come back
          * fresh from the server, never from a stale copy. */
         // ``keep``: a frame set the page could not ask about, kept for the
         // next reload to ask again.
-        ws.persist(PANEL_TAG, { v: 3, junction: _noteKey(),
-                               frame_set: keep !== undefined ? keep
-                                          : (_citesFrameSet() ? _junction
-                                                              : null) },
-                   _panelIdentity(ws));
+        ws.persistDraft(PANEL_TAG, { v: 3, junction: _noteKey(),
+                                     frame_set: keep !== undefined ? keep
+                                                : (_citesFrameSet() ? _junction
+                                                                    : null) });
     }
 
     /**
@@ -612,7 +603,7 @@ const WORKSPACE_TAG = "transport";
         // restore that mounts before the sidebar module ran would capture an
         // undefined door for the life of the viewer.
         runtime.whenReady("projects").then(function () {
-            return Promise.resolve(ws.readState(_panelIdentity(ws)));
+            return Promise.resolve(ws.readDraft(PANEL_TAG));
         }).then(function (note) {
             if (!note || note.v !== 3 || !note.junction) return;
             // The SAME flow a pick takes: re-describe, then adopt --
@@ -1037,14 +1028,14 @@ const WORKSPACE_TAG = "transport";
         var before = _formNote;
         function putBack() {
             _formNote = before;
-            if (before && ws && typeof ws.persist === "function") {
-                ws.persist(FORM_TAG, before, _formIdentity(ws));
+            if (before && ws && typeof ws.persistDraft === "function") {
+                ws.persistDraft(FORM_TAG, before);
             }
         }
         _formNote = { v: 1, junction: citation, shared: shared,
                       rungs: rungs };
-        if (ws && typeof ws.persist === "function") {
-            ws.persist(FORM_TAG, _formNote, _formIdentity(ws));
+        if (ws && typeof ws.persistDraft === "function") {
+            ws.persistDraft(FORM_TAG, _formNote);
         }
         var mine = ++_citeSeq;
         _describeAttempt(citation, _swapElectrodesChoice)

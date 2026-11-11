@@ -229,11 +229,11 @@
 
     function _rememberPanel() {
         var ws = _ws();
-        if (ws && typeof ws.persist === "function") {
-            ws.persist(PANEL_TAG,
-                       { v: 1, loadedFrom: _loadedFrom, lastSavedTo: _lastSavedTo,
-                         edited: _edited },
-                       { workspace_id: ws.workspaceId(PANEL_TAG), state_index: 0 });
+        if (ws && typeof ws.persistDraft === "function") {
+            // THE PAGE'S DRAFT (workspace.md § 2), under its own tag.
+            ws.persistDraft(PANEL_TAG,
+                            { v: 1, loadedFrom: _loadedFrom,
+                              lastSavedTo: _lastSavedTo, edited: _edited });
         }
         _tellPanelReaders();
     }
@@ -264,16 +264,14 @@
      * has never seen are not something to guess at. */
     async function restorePanelNote() {
         var ws = _ws();
-        if (!ws || typeof ws.readState !== "function") {
+        if (!ws || typeof ws.readDraft !== "function") {
             _noteReady = true;          // nothing to read back: follow from here
             _writtenAs = _edited ? null : _heldNow();
             return null;
         }
         var saved;
         try {
-            saved = await ws.readState({
-                workspace_id: ws.workspaceId(PANEL_TAG), state_index: 0,
-            });
+            saved = await ws.readDraft(PANEL_TAG);
         } catch (_) {
             _noteReady = true;
             return null;

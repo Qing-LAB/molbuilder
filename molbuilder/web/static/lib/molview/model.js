@@ -250,7 +250,8 @@ export function createModel(opts) {
             persist:           () => null,
             readState:         async () => null,
             pruneStatesAbove:  () => {},
-            workspaceId:       () => "no-workspace",
+            persistDraft:      () => null,
+            readDraft:         async () => null,
         },
         /* NO DEFAULT. A viewer that saves must have been given an owner, and
          * `mount` refuses to build one without it — so the only way here with

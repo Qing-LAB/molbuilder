@@ -42,24 +42,23 @@ const {{ attachUiContext }} =
     await import({json.dumps(UICTX.resolve().as_uri())});
 
 // A workspace that STORES (the real front door's shape, workspace.md § 5),
-// with every write visible to the test.
+// with every write visible to the test: a point as "<tag>:<step>", a draft as
+// "draft <tag>".
 function makeStore() {{
     const files = new Map();
     const writes = [];
+    const keep = (key, bytes) => {{
+        files.set(key, JSON.parse(JSON.stringify(bytes)));
+        writes.push(key);
+        return true;
+    }};
     return {{
         files, writes,
-        workspaceId: (tag) => "id-" + tag,
-        persist(tag, bytes, identity) {{
-            const key = identity.workspace_id + ":" + identity.state_index;
-            files.set(key, JSON.parse(JSON.stringify(bytes)));
-            writes.push(key);
-            return true;
-        }},
-        readState: async (identity) => {{
-            const key = identity.workspace_id + ":" + identity.state_index;
-            return files.has(key) ? files.get(key) : null;
-        }},
+        persist: (tag, bytes, step) => keep(tag + ":" + step, bytes),
+        readState: async (tag, step) => files.get(tag + ":" + step) ?? null,
         pruneStatesAbove: () => {{}},
+        persistDraft: (tag, bytes) => keep("draft " + tag, bytes),
+        readDraft: async (tag) => files.get("draft " + tag) ?? null,
     }};
 }}
 
@@ -121,7 +120,7 @@ def test_looking_is_never_changing():
         }));
         """
     )
-    assert out["newWrites"] == ["id-s:ui:0"], (
+    assert out["newWrites"] == ["draft s:ui"], (
         f"a look change wrote outside the lane: {out['newWrites']} — the "
         f"draft and the points are the truth's, and looking is not changing"
     )
@@ -218,7 +217,7 @@ def test_selection_rides_the_lane_only_where_no_truth_lane_exists():
         ed1.model.selection.add([0, 1]);
         await WAIT_FLUSH();
         ed1.off();
-        const uiSlot = edStore.files.get("id-s:ui:0");
+        const uiSlot = edStore.files.get("draft s:ui");
 
         console.log(JSON.stringify({
             roSelection: ro2.model.selection.get(),

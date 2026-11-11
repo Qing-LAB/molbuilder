@@ -107,13 +107,9 @@ import { ask } from "../lib/server.js";
      * replace what you had; the structure comes back as you left it, and the
      * Load button is what goes and gets the new bytes.
      */
-    /* Under the tab's OWN tag (the modify:panel pattern, workspace.md § 4):
-     * the bare-tag identity at state_index 0 is the exact key MolView's
-     * history writes point 0 to, and two writers on one file is how one
-     * drops the other's. */
+    /* Under the tab's OWN tag, as its draft (workspace.md § 2, § 4): one
+     * saver, one tag. */
     const PANEL_TAG = WORKSPACE_TAG + ":panel";
-    const _SAVED = () => ({ workspace_id: _ws().workspaceId(PANEL_TAG),
-                            state_index:  0 });
 
     function _rememberStructure() {
         const ws = _ws();
@@ -123,9 +119,8 @@ import { ask } from "../lib/server.js";
         // exactly what it can be handed back (molview.md § 9.3).
         const out = d.exportFile();
         if (!out || !out.structure) return;
-        ws.persist(PANEL_TAG,
-                   { v: 1, structure: out.structure, loadedFrom: _sidebarLastFile || "" },
-                   _SAVED());
+        ws.persistDraft(PANEL_TAG, { v: 1, structure: out.structure,
+                                     loadedFrom: _sidebarLastFile || "" });
     }
 
     /* Put it back, or answer null when there is nothing to put back.
@@ -139,7 +134,7 @@ import { ask } from "../lib/server.js";
         if (!ws || !d) return null;
         let saved;
         try {
-            saved = await ws.readState(_SAVED());
+            saved = await ws.readDraft(PANEL_TAG);
         } catch (_e) {
             return null;          // unreachable storage reads as "nothing saved"
         }

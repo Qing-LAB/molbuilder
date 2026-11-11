@@ -9,37 +9,36 @@
  * ROLE: session state + concealed file access ONLY.  Holds NO in-memory data model and never
  *   interprets what it stores.  The MolView data model (lib/molview/) owns the
  *   structure/selection/periodicity/frames + their format, serialises itself, and hands the BYTES
- *   here to persist; this layer writes them format-blind.  The suspend/resume + the
- *   "when the data changed" decision (PUSH-ONLY, no debounce) live in the data model —
- *   persist() here is a synchronous write of the bytes it is handed.
+ *   here to persist; this layer writes them format-blind.  WHEN to save is the
+ *   caller's; a save here is sent without waiting.
  *
- * EVERY SAVE AND LOAD NAMES ITS TAG (docs/web/workspace.md § 4). The tag is who the
- * bytes belong to -- "modify", "results:structure", "results:trajectory" -- and it
- * becomes the workspace_id the state files are named after. Two tags are two ids
- * and two sets of files, so one saver cannot reach another's work.
+ * EVERY CALL NAMES ITS TAG, AND ONLY ITS TAG (docs/web/workspace.md § 4). The tag
+ * is who the bytes belong to -- "modify", "results:structure", "transport:form" --
+ * and the files are named from it HERE, never by a caller: two tags are two sets
+ * of files, so one saver cannot reach another's work, whatever it passes.
  *
  * It is an ARGUMENT, not something set beforehand: one value set beforehand and
  * used by every later write would let the second of two savers on a page silently
  * take the first one's writes. A tag passed with each call has no such window.
  *
  * USED BY (callers of window.molbuilder.workspace):
- *   - lib/molview/history.js — the state save/retract TIMELINE: persist(), readState(),
- *     pruneStatesAbove(), workspaceId(). The primary consumer; it owns WHEN to write.
- *   - tabs that mount a molview hand window.molbuilder.workspace to molview.mount:
- *     modify/, spectra/viewer.js, transport/core.js, structure-optimization/viewer.js,
- *     molview/demo.js, lib/inspectors/structure.js.
- *   - a UI notification layer subscribes to onPersistError() to warn on a failed write or read.
+ *   - lib/molview/history.js -- a viewer's points and its draft (MolView owns
+ *     WHEN to write); lib/molview/ui-context.js -- a viewer's look, the draft
+ *     of `<owner>:ui`.  Every page that mounts MolView hands this object in.
+ *   - the pages' own drafts: lib/spectra/core.js (the spectrum knobs),
+ *     lib/transport/core.js (the form and the panel), modify/structure/page.js
+ *     (the panel), structure-optimization/viewer.js (the panel).
+ *   - lib/app-notifications.js, through onPersistError().
  *
  * Public surface (window.molbuilder.workspace) -- THE ONLY WAY IN. There is no
- * layer under it to reach past (workspace.md § 4).
- *   - persist(tag, bytes, identity)  -- send the consumer's serialised state to its
- *                                 state file. Does not wait; `true` means sent.
- *   - readState(identity)      -- read the opaque snapshot bytes at {workspace_id, state_index}
- *                                 from disk (a history index popState navigates to), or null.
- *   - pruneStatesAbove(workspace_id, index)  -- tail-delete on-disk state files above ``index``
- *                                 (index === -1 clears the whole timeline).
- *   - workspaceId(tag)         -- the stable id this tag's draft is keyed under.
- *   - onPersistError(fn)       -- subscribe to the store's failures: a write, a prune, a read.
+ * layer under it to reach past (workspace.md § 5).
+ *   - persist(tag, bytes, step)      -- a numbered point. Does not wait; `true` means sent.
+ *   - readState(tag, step)           -- a numbered point back, or null.
+ *   - pruneStatesAbove(tag, step)    -- drop the tag's points above ``step``
+ *                                       (-1: every point).
+ *   - persistDraft(tag, bytes)       -- the tag's draft: one file, rewritten each time.
+ *   - readDraft(tag)                 -- the tag's draft back, or null.
+ *   - onPersistError(fn)             -- subscribe to the store's failures: a write, a prune, a read.
  */
 "use strict";
 
@@ -55,7 +54,7 @@ const root = (typeof window !== "undefined") ? window : globalThis;
 
     // ─── Session identity, per tag (workspace.md § 4, § 9) ─────────── //
     //
-    // A stable id for a tag's draft, so repeated updates hit the SAME state files
+    // A stable id for a tag's files, so repeated updates hit the SAME state files
     // and a same-tab reload keeps them (not a fresh orphan each time).
     /* THE ID IS THE TAG, MADE SAFE FOR A FILE NAME.
      *
@@ -92,12 +91,29 @@ const root = (typeof window !== "undefined") ? window : globalThis;
     /* EVERY CALL NAMES ITS TAG (workspace.md § 4), and a missing one is an error
      * rather than a default. A default would be a shared slot wearing the look of
      * an isolated one — the failure the tag exists to prevent, arrived at by
-     * omission instead of by collision. */
+     * omission instead of by collision.  NOR DOES A TAG END IN ``:draft``: a
+     * tag's draft is its id with ``-draft``, which ``:draft`` would spell the
+     * same, so that tag's points would be another tag's draft. */
     function _requireTag(tag) {
         if (!tag || typeof tag !== "string") {
             throw new Error(
                 "workspace: every save and load names its tag");
         }
+        if (/:draft$/.test(tag)) {
+            throw new Error(
+                "workspace: a tag never ends in ':draft' -- that is the name "
+                + "of another tag's draft");
+        }
+    }
+
+    /* WHERE A TAG'S BYTES LIVE -- the one place a file is named
+     * (`<workspace_id>.<state_index>.wc.json`, workspace.md § 9): a numbered
+     * point under the tag's id, its draft under the id with ``-draft`` at 0. */
+    function _point(tag, step) {
+        return { workspace_id: workspaceId(tag), state_index: step };
+    }
+    function _draft(tag) {
+        return { workspace_id: workspaceId(tag) + "-draft", state_index: 0 };
     }
 
     // ─── The write (format-blind) ─────────────────────────────────── //
@@ -203,33 +219,43 @@ const root = (typeof window !== "undefined") ? window : globalThis;
         });
     }
 
-    /**
-     * Send the consumer's serialised state to its state file.  The consumer owns
-     * WHEN to call this; here it is only bytes, moved without being read:
-     *   bytes    -> ``<workspace_id>.<state_index>.wc.json``, keyed by ``identity``
-     *               ({workspace_id, state_index}).
-     */
-    function persist(tag, bytes, identity) {
-        _requireTag(tag);
+    /* ONE PLACE -- the server -- and the call does not wait for it.
+     *
+     * NOTHING USEFUL CAN COME BACK FROM HERE. The write is sent without
+     * waiting, so a slow disk never stalls an edit, and whether it arrived is
+     * not known yet. A failure turns up afterwards on `onPersistError`.
+     * `true` means "sent", never "saved". */
+    function _send(bytes, identity) {
         if (!root.fetch) return false;
-        /* ONE PLACE -- the server -- and the call does not wait for it.
-         *
-         * NOTHING USEFUL CAN COME BACK FROM HERE. The write is sent without
-         * waiting, so a slow disk never stalls an edit, and whether it arrived is
-         * not known yet. A failure turns up afterwards on `onPersistError`.
-         * `true` means "sent", never "saved". */
         _persistState(bytes, identity);
         return true;
     }
 
-    /**
-     * Read the OPAQUE snapshot bytes on disk at {workspace_id, state_index} (§4.7 read-by-index),
-     * what the history calls to fetch a saved index.  Resolves
-     * the parsed JSON, or null when nothing is saved there or the read failed.  Format-blind —
-     * the data model interprets what comes back.
-     */
-    function readState(identity) {
-        if (!root.fetch || !identity) return Promise.resolve(null);
+    /** A numbered point of ``tag``'s: ``bytes`` as its point ``step``. */
+    function persist(tag, bytes, step) {
+        return _send(bytes, _point(tag, step));
+    }
+
+    /** ``tag``'s draft: ``bytes`` as its one file, rewritten each time. */
+    function persistDraft(tag, bytes) {
+        return _send(bytes, _draft(tag));
+    }
+
+    /** ``tag``'s point ``step`` back -- the parsed JSON, or null. */
+    function readState(tag, step) {
+        return _read(_point(tag, step));
+    }
+
+    /** ``tag``'s draft back -- the parsed JSON, or null. */
+    function readDraft(tag) {
+        return _read(_draft(tag));
+    }
+
+    /* Read the OPAQUE bytes at one file.  Resolves the parsed JSON, or null
+     * when nothing is saved there or the read failed.  Format-blind -- the
+     * caller interprets what comes back. */
+    function _read(identity) {
+        if (!root.fetch) return Promise.resolve(null);
         return ask("/api/workspace-storage/read", {
             method:  "POST",
             body:    identity,
@@ -252,32 +278,42 @@ const root = (typeof window !== "undefined") ? window : globalThis;
     }
 
     /**
-     * Tail-delete the on-disk state files whose index > ``index`` (§4.7 pruning: a pushState after
-     * a popState drops the abandoned tail).  ``index === -1`` clears the whole ``<workspace_id>.*``
-     * timeline.  Best-effort; resolves when the server has acted.
+     * Drop ``tag``'s points above ``step`` (a save after a retract drops the
+     * abandoned tail); ``step === -1`` drops every point.  Its draft is a file
+     * of its own and stays.  Best-effort; resolves when the server has acted.
+     *
+     * IN THE WRITE QUEUE (workspace.md § 9.2, *clear the tail before
+     * re-anchoring*): the delete finishes before any write asked after it is
+     * sent, so a slow delete never erases the point written next.
      */
-    function pruneStatesAbove(workspace_id, index) {
-        if (!root.fetch || !workspace_id) return Promise.resolve();
-        _trace("http:prune-states:issue", { above: index });
-        return ask("/api/workspace-storage/prune", {
-            method:  "POST",
-            body:    { workspace_id: workspace_id, above_index: index },
+    function pruneStatesAbove(tag, step) {
+        const workspace_id = _point(tag, step).workspace_id;
+        if (!root.fetch) return Promise.resolve();
+        const done = _stateWriteChain.then(function () {
+            _trace("http:prune-states:issue", { above: step });
+            return ask("/api/workspace-storage/prune", {
+                method:  "POST",
+                body:    { workspace_id: workspace_id, above_index: step },
+            });
         }).then(function (res) {
-            _trace("http:prune-states:done", { above: index, status: res.status });
+            _trace("http:prune-states:done", { above: step, status: res.status });
             if (!res.ok) {
                 // A failed prune leaves a stale tail, not a lost save.
-                _saveFailed({ op: "prune-states", above_index: index,
+                _saveFailed({ op: "prune-states", above_index: step,
                               status: res.status, error: res.error });
             }
             return res;   // resolve either way: the anchor write still proceeds
         });
+        _stateWriteChain = done;
+        return done;
     }
 
     var api = {
         persist:               persist,
         readState:             readState,
         pruneStatesAbove:      pruneStatesAbove,
-        workspaceId:           workspaceId,
+        persistDraft:          persistDraft,
+        readDraft:             readDraft,
         onPersistError:        onPersistError,   // subscribe to the store's failures
     };
 

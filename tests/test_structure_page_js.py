@@ -506,9 +506,8 @@ def test_a_note_read_back_after_a_reload_reaches_its_readers():
         const root = (typeof window !== "undefined") ? window : globalThis;
         root.molbuilder = root.molbuilder || {};
         root.molbuilder.workspace = {
-            workspaceId: (tag) => "ws-" + tag,
-            persist: () => {},
-            readState: async () => ({ v: 1, loadedFrom: null,
+            persistDraft: () => true,
+            readDraft: async () => ({ v: 1, loadedFrom: null,
                                       lastSavedTo: "/p/x.xyz", edited: true }),
         };
         const heard = [];
@@ -535,10 +534,12 @@ def test_the_note_survives_a_reload_through_what_was_stored():
         const store = new Map();
         root.molbuilder = root.molbuilder || {};
         root.molbuilder.workspace = {
-            workspaceId: (tag) => "ws-" + tag,
-            persist: (tag, bytes) => { store.set(tag, JSON.stringify(bytes)); },
-            readState: async () => {
-                const b = store.get("modify:panel");
+            persistDraft: (tag, bytes) => {
+                store.set(tag, JSON.stringify(bytes));
+                return true;
+            },
+            readDraft: async (tag) => {
+                const b = store.get(tag);
                 return b ? JSON.parse(b) : null;
             },
         };

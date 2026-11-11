@@ -2,8 +2,9 @@
  *
  * Contract: docs/web/molview.md § 11.2b (the lane), § 9.6 (the camera's
  *           place), § 9.7 (the bounded pose read).
- * Owns:     one workspace slot per viewer — tag `<owner>:ui`, one file at
- *           state_index 0 — holding view settings, switches, the camera
+ * Owns:     one workspace slot per viewer — the draft of the tag
+ *           `<owner>:ui`, one file, never the owner's own — holding view
+ *           settings, switches, the camera
  *           pose, the displayed frame, the ruler's on/off, and (for
  *           viewers with no truth lane) the selection.
  * Called by: mount.js, once per viewer, after the model and engine exist.
@@ -35,15 +36,12 @@ export function attachUiContext(deps) {
     const { model, engine, workspace, owner, canvasEl } = deps;
     const hasTruthLane = !!deps.hasTruthLane;
     if (!model || !engine || !workspace || !owner) return () => {};
-    if (typeof workspace.workspaceId !== "function"
-            || typeof workspace.persist !== "function"
-            || typeof workspace.readState !== "function") return () => {};
+    if (typeof workspace.persistDraft !== "function"
+            || typeof workspace.readDraft !== "function") return () => {};
 
+    /* THE VIEWER'S LOOK IS ITS OWN TAG'S DRAFT (workspace.md § 2): one file,
+     * rewritten each time, beside the owner's states and never one of them. */
     const TAG = owner + ":ui";
-    const identity = () => ({
-        workspace_id: workspace.workspaceId(TAG),
-        state_index: 0,
-    });
 
     /* Writes are DISARMED until the first restore attempt has finished:
      * the stores announce their defaults the moment they are subscribed to,
@@ -93,7 +91,7 @@ export function attachUiContext(deps) {
     function flush() {
         timer = null;
         if (disposed || !armed || applying) return;
-        workspace.persist(TAG, payload(), identity());
+        workspace.persistDraft(TAG, payload());
     }
 
     function schedule() {
@@ -105,7 +103,7 @@ export function attachUiContext(deps) {
     async function restore() {
         let saved = null;
         try {
-            saved = await workspace.readState(identity());
+            saved = await workspace.readDraft(TAG);
         } catch (_) { /* unreachable storage reads as "nothing saved" */ }
         if (disposed) return;
         if (!saved || saved.v !== VERSION) { armed = true; return; }

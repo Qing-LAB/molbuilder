@@ -41,7 +41,8 @@ export const WRITING  = "writing";    // a write is on its way to storage
  *                `restoreState(s)`— put a state back
  *                `workspace`      — the workspace's front door (workspace.md § 5):
  *                                   `persist` · `readState` · `pruneStatesAbove` ·
- *                                   `workspaceId`. Handed in at mount; MolView
+ *                                   `persistDraft` · `readDraft`, each naming
+ *                                   `tag`. Handed in at mount; MolView
  *                                   never learns where the bytes end up, only
  *                                   which calls to make.
  *                `tag`            — whose bytes these are (workspace.md § 4). The
@@ -99,9 +100,8 @@ export function createHistory(handed) {
             // request time would land the halfway structure the bracket exists
             // to keep out of storage.
             const bytes = handed.recordState();
-            /* ONE CALL, BOTH COPIES (§ 11.3). The session copy goes to the browser
-             * straight away so a reload finds it; the numbered point is sent to
-             * the server without waiting, so a slow disk never stalls an edit.
+            /* SENT WITHOUT WAITING (workspace.md § 2), so a slow disk never
+             * stalls an edit.
              *
              * A ROUTINE WRITE SENDS NO POINT, and that is still two rules
              * rather than one: every change refreshes what would be lost, and
@@ -126,13 +126,10 @@ export function createHistory(handed) {
              * them. Someone upgrades molbuilder, opens a tab, and the reader is
              * new while the file on disk is old; without a stamp there is no way
              * to tell that apart from bytes it understands. */
-            const id = handed.workspace.workspaceId(handed.tag);
-            landed = handed.workspace.persist(
-                handed.tag,
-                { v: 1, state: bytes },
-                isSave ? { workspace_id: id, state_index: step }
-                       : { workspace_id: id + "-draft", state_index: 0 },
-            ) !== false;
+            const ws = handed.workspace;
+            landed = (isSave
+                ? ws.persist(handed.tag, { v: 1, state: bytes }, step)
+                : ws.persistDraft(handed.tag, { v: 1, state: bytes })) !== false;
 
             // "it landed: the position moves" / "it failed: the position does
             // not move". Two writes in flight is how the position comes to
@@ -149,8 +146,7 @@ export function createHistory(handed) {
                  * written, so the history never briefly holds both
                  * (workspace.md § 9). */
                 try {
-                    handed.workspace.pruneStatesAbove(
-                        handed.workspace.workspaceId(handed.tag), step);
+                    ws.pruneStatesAbove(handed.tag, step);
                 } catch (_) { /* a stale tail, not a lost save */ }
                 setBadge(false);
             }
@@ -178,12 +174,10 @@ export function createHistory(handed) {
              */
             if (landed) {
                 try {
-                    handed.workspace.persist(
+                    ws.persistDraft(
                         handed.tag,
                         { v: 1, state: bytes, at: position,
-                          highest: highest, dirty: uncommitted },
-                        { workspace_id: id + "-draft", state_index: 0 },
-                    );
+                          highest: highest, dirty: uncommitted });
                 } catch (_) { /* the point stands; only the return path is lost */ }
             }
         } catch (_) {
@@ -257,10 +251,7 @@ export function createHistory(handed) {
     async function adopt() {
         let saved;
         try {
-            saved = await handed.workspace.readState({
-                workspace_id: handed.workspace.workspaceId(handed.tag) + "-draft",
-                state_index:  0,
-            });
+            saved = await handed.workspace.readDraft(handed.tag);
         } catch (_) {
             return null;              // unreachable storage reads as "nothing"
         }
@@ -321,10 +312,10 @@ export function createHistory(handed) {
         /* NO POINT is laid down on a timer: the sequence grows from opening a
          * structure, an edit that lays its point, an explicit save, and a load.
          *
-         * THE SESSION COPY IS A DIFFERENT WRITE, and it follows every change
+         * THE DRAFT IS A DIFFERENT WRITE, and it follows every change
          * (§ 11.3). An edit changes what would be lost if the tab closed, so an
-         * edit refreshes it — `request` with `isSave` false, which sends the
-         * bytes to the browser and lays down no point.
+         * edit refreshes it — `request` with `isSave` false, which rewrites the
+         * tag's draft (`persistDraft`) and lays down no point.
          *
          * Persistence is about the accident, the timeline about going back: the
          * draft keeps work no point holds over a reload, the points are what a
@@ -414,15 +405,12 @@ export function createHistory(handed) {
             }
             if (target < 0 || target > highest) return null;
 
-            /* THE POINT COMES BACK BY ITS NUMBER, from the id this tag's drafts
-             * are kept under. `readState` answers null for a miss and for any
+            /* THE POINT COMES BACK BY ITS NUMBER, under this tag.
+             * `readState` answers null for a miss and for any
              * failure alike, deliberately (workspace.md § 5) — so "there is no
              * such point" and "the server could not be reached" arrive the same
              * way, and the only safe reading of null is "nothing to put back". */
-            const saved = await handed.workspace.readState({
-                workspace_id: handed.workspace.workspaceId(handed.tag),
-                state_index:  target,
-            });
+            const saved = await handed.workspace.readState(handed.tag, target);
             if (saved == null) return null;
             // Written by this module, so unwrapped by it. A file from a layout
             // this code does not know is not something to guess at.

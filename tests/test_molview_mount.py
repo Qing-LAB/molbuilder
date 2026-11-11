@@ -379,17 +379,16 @@ def test_a_movie_saves_the_frame_it_stops_on_and_none_it_passes():
     out = _run(
         """
         const writes = [];
-        const files = new Map();
+        const record = (tag, bytes) => {
+            writes.push({ tag, frame: bytes && bytes.frame });
+            return true;
+        };
         const door = {
-            read: async () => null, write: async () => {},
-            workspaceId: (tag) => "id-" + tag,
-            persist(tag, bytes, identity) {
-                files.set(identity.workspace_id, bytes);
-                writes.push({ tag, frame: bytes && bytes.frame });
-                return true;
-            },
+            persist: (tag, bytes) => record(tag, bytes),
             readState: async () => null,
             pruneStatesAbove: () => {},
+            persistDraft: (tag, bytes) => record(tag, bytes),
+            readDraft: async () => null,
         };
         const host = globalThis.__makeHost();
         const viewer = await mount(host, door, { owner: "test" });

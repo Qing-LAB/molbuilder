@@ -53,6 +53,29 @@ async function loaded(opts) {{
     await m.installMolecule({{ text: "2\\n\\nC 0 0 0\\nO 1 0 0\\n", filename: "x.xyz" }});
     return m;
 }}
+
+// A workspace that STORES, on the real front door's calls (workspace.md § 5):
+// a point as "<tag>:<step>", a draft as "<tag>-draft", both in `files`.
+function makeStore() {{
+    const files = new Map();
+    const keep = (key, bytes) => {{
+        files.set(key, JSON.parse(JSON.stringify(bytes)));
+        return true;
+    }};
+    return {{
+        files,
+        persist: (tag, bytes, step) => keep(tag + ":" + step, bytes),
+        readState: async (tag, step) => files.get(tag + ":" + step) ?? null,
+        pruneStatesAbove: (tag, step) => {{
+            for (const key of Array.from(files.keys())) {{
+                const at = Number(key.slice(key.lastIndexOf(":") + 1));
+                if (key.startsWith(tag + ":") && at > step) files.delete(key);
+            }}
+        }},
+        persistDraft: (tag, bytes) => keep(tag + "-draft", bytes),
+        readDraft: async (tag) => files.get(tag + "-draft") ?? null,
+    }};
+}}
 """
 
 
@@ -630,26 +653,18 @@ def test_a_trajectory_arrives_whole_in_one_install():
     """
     out = _run(
         """
-        /* The real front door (workspace.md § 5), answered from a Map.
-         *
-         * `persist(tag, bytes, identity)` -- THREE arguments.  This stub took
-         * four (`tag, session, point, identity`) until 2026-09-07, so `point`
-         * held the identity, `identity` was undefined, and reading
-         * `.state_index` off it threw on every write.  history.js catches that
-         * and answers "the write did not land", which meant nothing was ever
-         * stored and `readState` always answered null -- so the retract below
-         * was landing on nothing and the assertion about it could not fail. */
+        /* The real front door (workspace.md § 5), answered from a Map: a
+         * point by its tag and step, the draft by its own call.  A stub with
+         * another signature than the door's is how, until 2026-09-07, nothing
+         * was ever stored here and the retract below landed on nothing. */
         const slots = new Map();
-        const isDraft = (id) => /-draft$/.test(id.workspace_id);
         const m = createModel({ workspace: {
-            workspaceId: () => "id",
-            persist: (tag, bytes, identity) => {
-                if (!isDraft(identity)) slots.set(identity.state_index, bytes);
-                return true;
-            },
-            readState: async (identity) => (slots.has(identity.state_index)
-                ? slots.get(identity.state_index) : null),
+            persist: (tag, bytes, step) => { slots.set(step, bytes); return true; },
+            readState: async (tag, step) => (slots.has(step)
+                ? slots.get(step) : null),
             pruneStatesAbove: () => {},
+            persistDraft: () => true,
+            readDraft: async () => null,
         } });
         const seen = [];
         m.subscribe(() => seen.push(m.frameCount()));
@@ -736,20 +751,16 @@ def test_an_edit_lays_down_a_point_so_retract_steps_back_one_edit():
     """
     out = _run(
         """
-        /* The real front door (workspace.md § 5): persist(tag, bytes, identity),
-           where a DRAFT is told apart from a numbered point by its
-           workspace_id suffix -- not by an extra argument. */
+        /* The real front door (workspace.md § 5): a numbered point by
+           `persist(tag, bytes, step)`, the draft by `persistDraft`. */
         const points = new Map();
-        const isDraft = (id) => /-draft$/.test(id.workspace_id);
         const m = createModel({ workspace: {
-            workspaceId: () => "id",
-            persist: (tag, bytes, identity) => {
-                if (!isDraft(identity)) points.set(identity.state_index, bytes);
-                return true;
-            },
-            readState: async (identity) => (points.has(identity.state_index)
-                ? points.get(identity.state_index) : null),
+            persist: (tag, bytes, step) => { points.set(step, bytes); return true; },
+            readState: async (tag, step) => (points.has(step)
+                ? points.get(step) : null),
             pruneStatesAbove: () => {},
+            persistDraft: () => true,
+            readDraft: async () => null,
         } });
         await m.installMolecule({ text: "x", filename: "x.xyz" });
         await new Promise((r) => setTimeout(r, 0));
@@ -802,20 +813,7 @@ def test_a_load_fits_the_camera_and_an_operation_keeps_it():
     """
     out = _run(
         """
-        const files = new Map();
-        const store = {
-            workspaceId: (tag) => "id-" + tag,
-            persist: (tag, bytes, identity) => {
-                files.set(identity.workspace_id + ":" + identity.state_index,
-                          JSON.parse(JSON.stringify(bytes)));
-                return true;
-            },
-            readState: async (identity) => {
-                const key = identity.workspace_id + ":" + identity.state_index;
-                return files.has(key) ? files.get(key) : null;
-            },
-            pruneStatesAbove: () => {},
-        };
+        const store = makeStore(), files = store.files;
         const told = [];
         const drawing = () => ({
             setDataSource() {}, switchesChanged() {}, showFrame() {},
@@ -1269,15 +1267,14 @@ def test_a_read_only_seed_anchors_no_history():
         const writes = [];
         function spy(label) {
             return {
-                workspaceId: (tag) => "id-" + tag,
-                persist: (tag, bytes, identity) => {
-                    if (!/-draft$/.test(identity.workspace_id)) {
-                        writes.push(label + ":" + identity.state_index);
-                    }
+                persist: (tag, bytes, step) => {
+                    writes.push(label + ":" + step);
                     return true;
                 },
                 readState: async () => null,
                 pruneStatesAbove: () => {},
+                persistDraft: () => true,
+                readDraft: async () => null,
             };
         }
         const ro = createModel({ mode: "readonly", owner: "ro",
@@ -1314,20 +1311,7 @@ def test_a_restored_session_still_receives_frames():
         """
         // A workspace stand-in that actually STORES, so session two has
         // something to adopt (the real front door's shape, workspace.md § 5).
-        const files = new Map();
-        const store = {
-            workspaceId: (tag) => "id-" + tag,
-            persist: (tag, bytes, identity) => {
-                files.set(identity.workspace_id + ":" + identity.state_index,
-                          JSON.parse(JSON.stringify(bytes)));
-                return true;
-            },
-            readState: async (identity) => {
-                const key = identity.workspace_id + ":" + identity.state_index;
-                return files.has(key) ? files.get(key) : null;
-            },
-            pruneStatesAbove: () => {},
-        };
+        const store = makeStore(), files = store.files;
 
         // Session one: open a structure (anchors point 0 + the draft).
         const one = createModel({ owner: "s", workspace: store });
@@ -2128,20 +2112,7 @@ def test_a_persons_metadata_edit_is_an_edit_and_a_hosts_write_is_not():
     MUTATIONS THIS MUST FAIL AGAINST: the person's doors ungated; an edit
     not recorded; no stamp on a sourced block."""
     out = _run("""
-        const files = new Map();
-        const store = {
-            workspaceId: (tag) => "id-" + tag,
-            persist: (tag, bytes, identity) => {
-                files.set(identity.workspace_id + ":" + identity.state_index,
-                          JSON.parse(JSON.stringify(bytes)));
-                return true;
-            },
-            readState: async (identity) => {
-                const key = identity.workspace_id + ":" + identity.state_index;
-                return files.has(key) ? files.get(key) : null;
-            },
-            pruneStatesAbove: () => {},
-        };
+        const store = makeStore(), files = store.files;
         const settle = () => new Promise((r) => setTimeout(r, 0));
         const m = createModel({ owner: "s", workspace: store });
         await m.installMolecule({ text: "2\\n\\nC 0 0 0\\nO 1 0 0\\n",
@@ -2250,25 +2221,7 @@ def test_clear_restarts_the_timeline_and_IS_the_state_it_starts_from():
     """
     out = _run(
         """
-        const files = new Map();
-        const store = {
-            workspaceId: (tag) => "id-" + tag,
-            persist: (tag, bytes, identity) => {
-                files.set(identity.workspace_id + ":" + identity.state_index,
-                          JSON.parse(JSON.stringify(bytes)));
-                return true;
-            },
-            readState: async (identity) => {
-                const key = identity.workspace_id + ":" + identity.state_index;
-                return files.has(key) ? files.get(key) : null;
-            },
-            pruneStatesAbove: (id, index) => {
-                for (const key of Array.from(files.keys())) {
-                    const at = Number(key.slice(key.lastIndexOf(":") + 1));
-                    if (key.startsWith(id + ":") && at > index) files.delete(key);
-                }
-            },
-        };
+        const store = makeStore(), files = store.files;
 
         // A structure, an edit, and a saved point above 0 -- so there is a
         // real sequence for `clear` to have to end.
@@ -2282,7 +2235,7 @@ def test_clear_restarts_the_timeline_and_IS_the_state_it_starts_from():
         await m.applyOp("delete", {});        // point 2 -- an edit records one
         await new Promise((r) => setTimeout(r, 0));
         const wasAt = m.state_index, wasDirty = m.uncommitted;
-        const wasAbove0 = files.has("id-s:1") && files.has("id-s:2");
+        const wasAbove0 = files.has("s:1") && files.has("s:2");
 
         m.clear();
         await new Promise((r) => setTimeout(r, 0));
@@ -2290,8 +2243,8 @@ def test_clear_restarts_the_timeline_and_IS_the_state_it_starts_from():
         /* WHAT IS ON DISK, both files.  `state.structure` is null for an
          * empty canvas; anything else means the discarded molecule is still
          * the thing a reload would find. */
-        const point0 = files.get("id-s:0");
-        const draft  = files.get("id-s-draft:0");
+        const point0 = files.get("s:0");
+        const draft  = files.get("s-draft");
         const held = (f) => !f ? "missing"
             : (f.state && f.state.structure ? "a structure" : "empty");
 
@@ -2307,7 +2260,7 @@ def test_clear_restarts_the_timeline_and_IS_the_state_it_starts_from():
             draftAt: draft ? draft.at : null,
             reopenedAtoms: two.getElements(),
             wasAbove0,
-            aboveIsGone: !files.has("id-s:1") && !files.has("id-s:2"),
+            aboveIsGone: !files.has("s:1") && !files.has("s:2"),
         }));
         """
     )
@@ -2353,20 +2306,7 @@ def test_reopening_a_cleared_page_still_shows_the_triad():
     """
     out = _run(
         """
-        const files = new Map();
-        const store = {
-            workspaceId: (tag) => "id-" + tag,
-            persist: (tag, bytes, identity) => {
-                files.set(identity.workspace_id + ":" + identity.state_index,
-                          JSON.parse(JSON.stringify(bytes)));
-                return true;
-            },
-            readState: async (identity) => {
-                const key = identity.workspace_id + ":" + identity.state_index;
-                return files.has(key) ? files.get(key) : null;
-            },
-            pruneStatesAbove: () => {},
-        };
+        const store = makeStore(), files = store.files;
 
         const one = createModel({ owner: "s", workspace: store });
         await one.installMolecule({ text: "2\\n\\nC 0 0 0\\nO 1 0 0\\n",

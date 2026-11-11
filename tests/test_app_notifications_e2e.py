@@ -31,14 +31,15 @@ from support.sidebar import WAIT_MS, walk_to  # noqa: E402
 _WRITES = re.compile(r"/api/workspace-storage/(write|prune)$")
 
 #: The Molbuilder tab's saves an act ENDS with, by the workspace id they are
-#: written under (`dispatcher.js` ``workspaceId``: ``ws-`` and the tag; the
-#: tab's viewer is ``modify``, `selection-bootstrap.js`): the view's own lane,
-#: written 400 ms after the structure, the selection or the ruler changed
-#: (`lib/molview/ui-context.js`), and the draft, written after a Save state's
-#: point (`lib/molview/history.js`).  The dispatcher sends its writes one
-#: after another, in the order asked, so the act's last one answered is
-#: every earlier one answered.
-_VIEW_LANE, _DRAFT = "ws-modify-ui", "ws-modify-draft"
+#: written under (`workspace.md` § 9: ``ws-`` and the tag, a draft's with
+#: ``-draft``; the tab's viewer is ``modify``, `selection-bootstrap.js`): the
+#: view's own lane, the draft of ``modify:ui``, written 400 ms after the
+#: structure, the selection or the ruler changed (`lib/molview/ui-context.js`),
+#: and the viewer's draft, written after a Save state's point
+#: (`lib/molview/history.js`).  The dispatcher sends its writes one after
+#: another, in the order asked, so the act's last one answered is every
+#: earlier one answered.
+_VIEW_LANE, _DRAFT = "ws-modify-ui-draft", "ws-modify-draft"
 
 
 @pytest.fixture(scope="module")

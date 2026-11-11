@@ -65,33 +65,25 @@ const FORCES = FRAMES.map((_, f) => ([
  * place — so a second viewer on this page would be isolated here too.
  */
 function memoryWorkspace() {
-    const sessions = new Map();   // tag  -> the session copy
-    const points   = new Map();   // "id:step" -> a numbered point
-    const ids      = new Map();   // tag  -> this tag's id
+    const drafts = new Map();   // tag -> its draft
+    const points = new Map();   // tag -> (step -> a numbered point)
+    const of = (tag) => {
+        if (!points.has(tag)) points.set(tag, new Map());
+        return points.get(tag);
+    };
+    // THE REAL SIGNATURES (dispatcher.js): every call names its tag.
     return {
-        workspaceId(tag) {
-            if (!ids.has(tag)) ids.set(tag, "demo-" + tag);
-            return ids.get(tag);
+        persist(tag, bytes, step) { of(tag).set(step, bytes); return true; },
+        async readState(tag, step) {
+            return of(tag).has(step) ? of(tag).get(step) : null;
         },
-        // THE REAL SIGNATURE (dispatcher.js): persist(tag, bytes, identity).
-        persist(tag, bytes, identity) {
-            if (bytes) sessions.set(tag, bytes);
-            if (identity) {
-                points.set(identity.workspace_id + ":" + identity.state_index,
-                           bytes);
-            }
-            return true;
-        },
-        async readState(identity) {
-            const key = identity.workspace_id + ":" + identity.state_index;
-            return points.has(key) ? points.get(key) : null;
-        },
-        pruneStatesAbove(id, index) {
-            for (const key of Array.from(points.keys())) {
-                const [owner, step] = key.split(":");
-                if (owner === id && Number(step) > index) points.delete(key);
+        pruneStatesAbove(tag, index) {
+            for (const step of Array.from(of(tag).keys())) {
+                if (step > index) of(tag).delete(step);
             }
         },
+        persistDraft(tag, bytes) { drafts.set(tag, bytes); return true; },
+        async readDraft(tag) { return drafts.has(tag) ? drafts.get(tag) : null; },
         onPersistError() { return () => {}; },
     };
 }

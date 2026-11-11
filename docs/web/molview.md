@@ -1511,7 +1511,8 @@ and the bar appears once a structure with more than one frame is loaded into it.
 The **workspace** is handed in when the viewer is created; MolView never goes
 looking for one. What it expects is the set of calls
 [`workspace.md`](?doc=web/workspace.md) § 5 lists — `persist`, `readState`,
-`pruneStatesAbove`, `workspaceId` — and a test page standing in for it has to
+`pruneStatesAbove`, `persistDraft`, `readDraft`, each naming its tag —
+and a test page standing in for it has to
 provide those same calls. That is § 4's "nothing it needs comes from a global",
 and it is why swapping in a stand-in is a test's business rather than a change
 here.

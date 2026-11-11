@@ -43,28 +43,23 @@ def molview_server(isolated_projects_root_module):
 #: JavaScript expression (`molview.md` § 8: a stand-in provides those same
 #: calls, or the viewer's view context goes quietly off).
 _MEMORY_WORKSPACE = """(() => {
-    const sessions = new Map(), points = new Map(), ids = new Map();
+    const drafts = new Map(), points = new Map();
+    const of = (tag) => {
+        if (!points.has(tag)) points.set(tag, new Map());
+        return points.get(tag);
+    };
     return {
-        workspaceId(tag) {
-            if (!ids.has(tag)) ids.set(tag, "test-" + tag);
-            return ids.get(tag);
+        persist(tag, bytes, step) { of(tag).set(step, bytes); return true; },
+        async readState(tag, step) {
+            return of(tag).has(step) ? of(tag).get(step) : null;
         },
-        persist(tag, bytes, identity) {
-            if (bytes) sessions.set(tag, bytes);
-            if (identity) points.set(
-                identity.workspace_id + ":" + identity.state_index, bytes);
-            return true;
-        },
-        async readState(identity) {
-            const key = identity.workspace_id + ":" + identity.state_index;
-            return points.has(key) ? points.get(key) : null;
-        },
-        pruneStatesAbove(id, index) {
-            for (const key of Array.from(points.keys())) {
-                const [owner, step] = key.split(":");
-                if (owner === id && Number(step) > index) points.delete(key);
+        pruneStatesAbove(tag, index) {
+            for (const step of Array.from(of(tag).keys())) {
+                if (step > index) of(tag).delete(step);
             }
         },
+        persistDraft(tag, bytes) { drafts.set(tag, bytes); return true; },
+        async readDraft(tag) { return drafts.has(tag) ? drafts.get(tag) : null; },
         onPersistError() { return () => {}; },
     };
 })()"""

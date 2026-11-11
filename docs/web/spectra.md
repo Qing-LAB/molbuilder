@@ -960,8 +960,8 @@ the select's options, a temperature of 0 K or more — so a value the door
 would refuse never turns every load into a refusal.
 
 **They are kept where everything else is kept** — the workspace
-([`workspace.md`](?doc=web/workspace.md)), under the tag
-`results:spectra:ui`, one slot at step 0. That is the same lane MolView uses
+([`workspace.md`](?doc=web/workspace.md)), as the draft of the tag
+`results:spectra:ui`. That is the same lane MolView uses
 for a viewer's camera, frame and switches
 ([`molview.md`](?doc=web/molview.md) § 11.2b, "looking is not changing"), and
 it matters that it is not a second store of its own: `workspace.md` § 4

@@ -43,40 +43,38 @@ const H = await import({json.dumps(HISTORY.resolve().as_uri())});
  * nothing on any page could save. A stand-in has to obey the level it stands in
  * for (§ 13.1); one shaped like the caller's wish only ever confirms the wish.
  *
- * `slots` is the numbered points, `sessions` the browser copy — the two things
- * § 11.3 keeps apart, kept apart here so a test can ask about either.
+ * `slots` is the numbered points, `drafts` each tag's draft — the two kinds of
+ * file workspace.md § 2 keeps apart, kept apart here so a test can ask about
+ * either.
  */
 function makeStore() {{
     const slots  = {{}};       // step -> a milestone, as it was written
-    const drafts = {{}};       // id   -> the latest draft, replaced each time
+    const drafts = {{}};       // tag  -> the latest draft, replaced each time
     const log = [];           // every write, in order
     const pruned = [];        // every tail-drop asked for
     let failNext = false;
-    const isDraft = (identity) => /-draft$/.test(identity.workspace_id);
+    function write(tag, bytes, draft, step) {{
+        if (failNext) {{ failNext = false; return false; }}
+        log.push({{ tag, bytes, draft, step,
+                   // what the caller actually saved, unwrapped
+                   state: bytes && bytes.state }});
+        if (draft) drafts[tag] = bytes;
+        else slots[step] = bytes;
+        return true;
+    }}
     return {{
         slots, drafts, log, pruned,
         failWrite() {{ failNext = true; }},
-        workspaceId(tag) {{ return "id-" + tag; }},
-        persist(tag, bytes, identity) {{
-            if (failNext) {{ failNext = false; return false; }}
-            const draft = isDraft(identity);
-            log.push({{ tag, bytes, draft, step: identity.state_index,
-                       // what the caller actually saved, unwrapped
-                       state: bytes && bytes.state }});
-            if (draft) drafts[identity.workspace_id] = bytes;
-            else slots[identity.state_index] = bytes;
-            return true;
-        }},
-        async readState(identity) {{
-            if (isDraft(identity)) {{
-                return identity.workspace_id in drafts
-                    ? drafts[identity.workspace_id] : null;
-            }}
-            const step = identity.state_index;
+        persist(tag, bytes, step) {{ return write(tag, bytes, false, step); }},
+        persistDraft(tag, bytes) {{ return write(tag, bytes, true, 0); }},
+        async readState(tag, step) {{
             return step in slots ? slots[step] : null;
         }},
-        pruneStatesAbove(id, index) {{
-            pruned.push({{ id, index }});
+        async readDraft(tag) {{
+            return tag in drafts ? drafts[tag] : null;
+        }},
+        pruneStatesAbove(tag, index) {{
+            pruned.push({{ tag, index }});
             Object.keys(slots).forEach((step) => {{
                 if (Number(step) > index) delete slots[step];
             }});
@@ -528,7 +526,7 @@ def test_an_edit_refreshes_the_session_copy_and_lays_down_no_point():
         console.log(JSON.stringify({
             pointsAfterOpen,
             points:  Object.keys(store.slots).sort(),
-            draft:   store.drafts["id-test-viewer-draft"],
+            draft:   store.drafts["test-viewer"],
             badge:   h.uncommitted,
             at:      h.state_index,
         }));
@@ -1113,7 +1111,7 @@ def test_a_draft_this_build_cannot_read_is_not_guessed_at():
     out = _run(
         """
         const store = makeStore();
-        store.drafts["id-test-viewer-draft"] =
+        store.drafts["test-viewer"] =
             { v: 99, state: "from-a-later-molbuilder", at: 3, highest: 3 };
         const fresh = makeHistory(store);
         const answer = await fresh.h.load(0);

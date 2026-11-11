@@ -41,9 +41,8 @@ in `workspace_storage.py` — described in § 9.
 > prune. None of that is on the server. That is `lib/molview/history.js`, and
 > nothing in these routes knows a sequence exists: no order, no position, no
 > notion that index 3 follows index 2. They store one opaque blob per
-> `{workspace_id, state_index}` for **any** tag — `lib/inspectors/structure.js`
-> keeps `{showing: "<path>"}` in them, which is a file path and not a history.
-> Renamed 2026-08-02 (§ 2a).
+> `{workspace_id, state_index}` for **any** tag — a page's settings as well as
+> a viewer's history. Renamed 2026-08-02 (§ 2a).
 
 ## 2. Where your work is kept
 
@@ -78,8 +77,12 @@ it.
 When MolView decides something is worth keeping, it calls:
 
 ```js
-window.molbuilder.workspace.persist(tag, bytes, identity);
+window.molbuilder.workspace.persist(tag, bytes, step);   // a numbered point
+window.molbuilder.workspace.persistDraft(tag, bytes);    // the draft
 ```
+
+**The caller names its tag and, for a point, its step — never a file.** The
+workspace names the file from them (§ 9), so no saver can write into another's.
 
 **It does not wait.** The write is sent and the call returns, so a slow disk
 never freezes the editor — which means "it worked" cannot come back from here. A
@@ -95,7 +98,7 @@ had.
 | Not | Whose job it is | Why the boundary is there |
 |---|---|---|
 | the **timeline** — the sequence of saved points, where you are on it, what a save records, what to prune, how far a step goes | **MolView**, in `lib/molview/history.js` (molview.md § 11.2) | The workspace stores numbered *states*; the **timeline is the sequence MolView makes of them**. The workspace has no idea one exists — it never compares two indices, and index 3 means nothing more to it than "a different file from index 2". A server that knew the order would be a second opinion about a history it cannot see the contents of |
-| a **reader** of what it stores | nobody — the bytes are opaque | It moves bytes and never parses them. That is what lets a trajectory become restorable with no change here (molview.md § 11.2), and it is why the same routes serve a molecule, a history point and one inspector's `{showing: "<path>"}` without knowing the difference |
+| a **reader** of what it stores | nobody — the bytes are opaque | It moves bytes and never parses them. That is what lets a trajectory become restorable with no change here (molview.md § 11.2), and it is why the same routes serve a molecule, a history point and a page's settings without knowing the difference |
 | a **file** save | the Modify tab's Save panel + the projects doors (§ 8) | Saving to a project is a decision a user makes about a name and a place. The workspace saves what you did not ask it to save |
 | the **owner** of where `projects/` is | the app, through `Capabilities` | The root is resolved once for the whole app. Answering it separately here is exactly how the storage came to write somewhere the file picker was not looking |
 
@@ -138,9 +141,9 @@ reload, and none of them should be able to tread on another.
 **The tag is what separates them.** Every save and every load names who it belongs
 to — `"results:structure"`, `"results:trajectory"`, `"modify:panel"`, a
 viewer's `"<owner>:ui"` view context (molview.md § 11.2b) — and the
-workspace folds that name into both the browser key and the server id. Two tags
-are two slots. Nothing is merged, so there is no moment where one writer's copy
-sits half over another's.
+workspace names the files from that name alone. Two tags are two slots. Nothing
+is merged, so there is no moment where one writer's copy sits half over
+another's.
 
 **And the tag is ALL that separates them** *(said plainly, 2026-08-20)*: the
 workspace id is a pure function of the tag — no page, no pathname, no window
@@ -152,9 +155,8 @@ warning. Picking a new owner string means checking it against the ones in use.
 name, one spelling per character and none shared — a letter or a digit as it
 is, a `:` as `-`, a `-` as `_d`, a `_` as `_u`, any other character as `_x` and
 its six hex digits, so a tag of letters, digits and `:` keeps the id it has
-always had. A tag never ends in `:draft`: a viewer's draft is its tag's id
-with `-draft` ([`molview.md`](?doc=web/molview.md) § 11.2), which `:draft`
-would spell the same.
+always had. **A tag never ends in `:draft`** — refused, as a missing tag is: a
+tag's draft is its id with `-draft`, which `:draft` would spell the same.
 
 **Two things the workspace promises:**
 
@@ -185,7 +187,8 @@ set first, so there is nothing to change underneath anyone.
 > **This is how the code works now** (changed 2026-08-02). Until then the tag was
 > that one variable, `persist` took no tag at all, and the browser-storage half
 > was published as a second door anyone could write through. All three are gone,
-> and `tests/test_workspace_tag_isolation.py` fails if any of them comes back.
+> and `tests/test_workspace_tag_isolation.py` fails if a call stops taking its
+> tag.
 
 ## 5. The public surface
 
@@ -196,19 +199,18 @@ two callers can disagree about whose slot they are in.
 
 | Member | What it does |
 |---|---|
-| `persist(tag, bytes, identity)` | Send these bytes to their file. Does not wait; `true` means sent, not saved. |
-| `readState(identity)` | Read one file back — a numbered point, or the draft. `identity` is `{workspace_id, state_index}`, and the id is the tag's own. `null` for a file that is not there **and** for any failure, deliberately: the only safe reading of it is "nothing to put back". A failure is still said — through `onPersistError`, as a read — never passed off as nothing saved. |
-| `pruneStatesAbove(id, index)` | Drop server steps above `index` (used when Undo-then-a-new-edit throws away the redo tail); `-1` clears the whole history. |
-| `workspaceId(tag)` | The stable id this tag's draft is saved under (survives a same-tab reload). |
+| `persist(tag, bytes, step)` | Send these bytes as the tag's numbered point `step`. Does not wait; `true` means sent, not saved. |
+| `readState(tag, step)` | Read the tag's point `step` back. `null` for a file that is not there **and** for any failure, deliberately: the only safe reading of it is "nothing to put back". A failure is still said — through `onPersistError`, as a read — never passed off as nothing saved. |
+| `pruneStatesAbove(tag, step)` | Drop the tag's points above `step` (used when Undo-then-a-new-edit throws away the redo tail); `-1` drops every point. The draft stays. |
+| `persistDraft(tag, bytes)` | Send these bytes as the tag's draft — its one file, rewritten each time. Does not wait, as `persist`. |
+| `readDraft(tag)` | Read the tag's draft back; `null` as `readState`. |
 | `onPersistError(fn)` | Be told when the store fails — a background save, or a read back — never silent. Returns an unsubscribe. |
 
-**This is the whole of it.** There is no second way to save or load, and the
-browser-storage helper underneath is not part of the surface — reaching it
-directly is what § 4's first guarantee rules out.
+**No call takes a file name or an id.** The tag, and for a point its step, are
+all a caller says; where the bytes go is worked out here, from them alone.
 
-> *(Task #44 landed: `useNamespace` is gone, every call takes its tag, and
-> the browser-storage helper is no longer published.  The box that stood here
-> described the pre-2026-08-02 code and outlived its truth by two weeks.)*
+**This is the whole of it.** There is no second way to save or load (§ 4's
+first guarantee).
 
 ## 6. What the workspace does, and what you have to do
 
@@ -217,9 +219,9 @@ read them, so everything that needs to *understand* what was saved is yours.
 
 **What it does**
 
-- Puts your bytes in two places: the browser, right away, and a numbered file on
-  the server, sent without waiting.
-- Gives them back when you ask, by tag or by step number.
+- Puts your bytes in a file on the server — the tag's draft, or one of its
+  numbered points — sent without waiting.
+- Gives them back when you ask, by tag, and by step number for a point.
 - Keeps one tag's bytes away from another's.
 - Tells you when a save to the server failed.
 
@@ -254,9 +256,9 @@ do not want to lose.
 three steps and then start working again, the points above are now abandoned and
 they are yours to delete — call `pruneStatesAbove`.
 
-**Know that only half the save is finished when the call returns.** `persist`
-tells you whether the *browser* copy was written. Whether the *server* copy made
-it is not known yet — that is the point, so a slow disk never freezes your
+**Know that the save is not finished when the call returns.** `persist` and
+`persistDraft` say only that the bytes were sent. Whether they reached the
+server is not known yet — that is the point, so a slow disk never freezes your
 editor. If it fails you find out afterwards, through `onPersistError`. If your
 user should be told, subscribe to it.
 
@@ -275,7 +277,7 @@ The tab has to show one of them. Load the highlighted file and yesterday's work
 is gone; bring back yesterday's work and the highlighted file is ignored.
 
 **The tab decides, and it decides by reading its own saved bytes.** It reads
-its draft back (`readState` on the tag's own draft identity — or, for a
+its draft back (`readDraft(tag)` — or, for a
 MolView-held structure, `load(0)`), looks at what comes back, and asks itself whether
 there is work in there worth keeping. If there is, that wins and the highlighted
 file is left alone — opening a file is something you do on purpose, by clicking
@@ -305,9 +307,9 @@ all. (The details live in the Modify-tab and projects docs.)
 
 For the record: the server keeps each tab's history as small JSON files at
 `<projects_root>/.molbuilder_workspace/states/<workspace_id>.<step>.wc.json`. It
-never parses them as molecules — it just moves JSON bytes. A crashed or closed
-tab leaves its files behind (a new tab starts a fresh id); these are **not**
-auto-cleaned — crash recovery is out of scope by design — but once the pile
+never parses them as molecules — it just moves JSON bytes. A tag no longer
+used leaves its files behind, since nothing asks for its id again; these are
+**not** auto-cleaned — crash recovery is out of scope by design — but once the pile
 passes 300 files the server logs a one-time warning so an operator can clear the
 folder by hand.
 
@@ -330,7 +332,7 @@ What it means where you can feel it:
   nothing older to return to. That is the designed answer, and the viewer says
   so rather than pretending it moved (§ 9.2).
 - **Your unsaved work is never at risk.** The draft is a *different* workspace —
-  `<id>-draft`, a single file pinned at step 0 (`history.js:132`) — so a
+  `<id>-draft`, a single file pinned at step 0 (`persistDraft`) — so a
   one-entry history has nothing to trim. The window bounds *how far back you can
   step*, never *whether your latest work survives*.
 - **The bound is per tag.** Each tag has its own id and therefore its own
@@ -361,21 +363,12 @@ is worse than silence.
 > is nothing further back" at the floor instead of a move that did not
 > happen.)*
 
-**An id belongs to a tag, and is remembered per tag.** `workspaceId(tag)` works
-the answer out once and keeps it, because it has to be the same across a reload.
-That memory is **per tag**: one shared memory would hand the first tag's id to
-every tag that asked afterwards, and since the id is what the state files are
-named after (`<workspace_id>.<step>.wc.json`), two savers would write over each
-other's numbered history while their browser copies stayed properly apart.
-
-Worth stating plainly because it is easy to get half right: **isolation has to
-hold for the identity as well as for the content.** Separate slots in the browser
-and a shared id on the server is not "mostly isolated" — it is broken in the half
-that survives a crash, which is the half the timeline exists for.
-
-> *(Resolved with task #44: the id is DERIVED from the tag —
-> `"ws-" + tag`, sanitised — so there is no memory to share and nothing to
-> clear.  Per-tag isolation of the identity holds by construction.)*
+**An id belongs to a tag, worked out from it.** The id the state files are
+named after (`<workspace_id>.<step>.wc.json`) is `"ws-"` and the tag, spelled
+for a file name (§ 4) — the same every time the tag comes back, so a reload
+finds its work, and never another tag's, since no caller names a file.
+**Isolation holds for the identity as well as for the content**, by
+construction: there is nothing remembered to share.
 
 Two small ordering rules keep the history consistent:
 
@@ -388,8 +381,10 @@ Two small ordering rules keep the history consistent:
 
 ## 10. Test map
 
-- `test_workspace_tag_isolation.py` — the front-door surface (tag as an
-  argument, `useNamespace` stays dead) + two tags stay two slots.
+- `test_workspace_tag_isolation.py` — the front-door surface (a missing,
+  empty or `:draft` tag refused on all five calls) + two tags stay two slots,
+  their points and their drafts; the tail delete finishes before the next
+  point is written.
 - `test_workspace_storage_api.py` — the server `/api/workspace-storage/*` routes.
 - `test_molview_model.py` / `test_molview_stores_history.py` — restore-at-mount
   through the real model (`load(0)` adopts; a restored session still receives

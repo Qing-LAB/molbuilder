@@ -34,12 +34,6 @@ globalThis.dispatchEvent = __bus.dispatchEvent.bind(__bus);
 globalThis.document = { getElementById: () => null, addEventListener() {} };
 """
 
-#: The Molbuilder tab's draft, as its history keeps it (`lib/molview/
-#: history.js`): point 0 under the tab's draft id.
-_DRAFT = ('{ workspace_id: window.molbuilder.workspace.workspaceId("modify")'
-          ' + "-draft", state_index: 0 }')
-
-
 @pytest.fixture
 def app_at(isolated_projects_root):
     """The app, serving: what answers the store's requests."""
@@ -53,32 +47,29 @@ def _page(base, snippet):
 
 
 def test_a_state_that_cannot_be_read_back_is_said_and_a_miss_is_not(app_at):
-    from molbuilder.web.blueprints.workspace_storage import _state_path
-    saved = _page(app_at, f"""
+    from molbuilder.web.blueprints.workspace_storage import _state_dir
+    states = _state_dir()
+    saved = _page(app_at, """
         const ws = window.molbuilder.workspace;
-        const draft = {_DRAFT};
-        ws.persist("modify", {{ v: 1, state: {{ atoms: 3 }} }}, draft);
+        ws.persistDraft("modify", { v: 1, state: { atoms: 3 } });
         await __quiet();
-        console.log(JSON.stringify({{ draft,
-                                      back: await ws.readState(draft) }}));
+        console.log(JSON.stringify({ back: await ws.readDraft("modify") }));
     """)
     assert saved["back"] == {"v": 1, "state": {"atoms": 3}}, saved
-    kept = _state_path(saved["draft"]["workspace_id"],
-                       saved["draft"]["state_index"])
+    # THE ONE FILE the draft was written to, as the server keeps it.
+    (kept,) = states.glob("*.wc.json")
     kept.chmod(0)
     try:
-        out = _page(app_at, f"""
+        out = _page(app_at, """
             const ws = window.molbuilder.workspace;
             const heard = [];
             ws.onPersistError((d) => heard.push(d));
-            const draft = {_DRAFT};
             // A point never saved: nothing to put back, and nothing to say.
-            const missed = await ws.readState(
-                Object.assign({{}}, draft, {{ state_index: 7 }}));
-            const back = await ws.readState(draft);
-            console.log(JSON.stringify({{
+            const missed = await ws.readState("modify", 7);
+            const back = await ws.readDraft("modify");
+            console.log(JSON.stringify({
                 missed, back, heard, rows: window.molbuilder.notify.list(),
-            }}));
+            }));
         """)
     finally:
         kept.chmod(0o600)
