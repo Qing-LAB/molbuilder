@@ -30,16 +30,16 @@ from support.sidebar import WAIT_MS, walk_to  # noqa: E402
 #: The workspace's two routes that write (`lib/workspace/dispatcher.js`).
 _WRITES = re.compile(r"/api/workspace-storage/(write|prune)$")
 
-#: The Molbuilder tab's saves an act ENDS with, by the workspace id they are
-#: written under (`workspace.md` § 9: ``ws-`` and the tag, a draft's with
-#: ``-draft``; the tab's viewer is ``modify``, `selection-bootstrap.js`): the
-#: view's own lane, the draft of ``modify:ui``, written 400 ms after the
-#: structure, the selection or the ruler changed (`lib/molview/ui-context.js`),
-#: and the viewer's draft, written after a Save state's point
-#: (`lib/molview/history.js`).  The dispatcher sends its writes one after
-#: another, in the order asked, so the act's last one answered is every
-#: earlier one answered.
-_VIEW_LANE, _DRAFT = "ws-modify-ui-draft", "ws-modify-draft"
+#: The Molbuilder tab's saves an act ENDS with, by how the workspace id they
+#: are written under ends (`workspace.md` § 4, § 9: ``ws-``, the browser
+#: tab's own id, and the tag, a draft's with ``-draft``; the tab's viewer is
+#: ``modify``, `selection-bootstrap.js`): the view's own lane, the draft of
+#: ``modify:ui``, written 400 ms after the structure, the selection or the
+#: ruler changed (`lib/molview/ui-context.js`), and the viewer's draft,
+#: written after a Save state's point (`lib/molview/history.js`).  The
+#: dispatcher sends its writes one after another, in the order asked, so the
+#: act's last one answered is every earlier one answered.
+_VIEW_LANE, _DRAFT = "-modify-ui-draft", "-modify-draft"
 
 
 @pytest.fixture(scope="module")
@@ -74,8 +74,9 @@ def _ending_with(page, lane, act) -> None:
     answered."""
     with page.expect_response(
             lambda r: (_WRITES.search(r.url) is not None
-                       and (r.request.post_data_json or {})
-                       .get("workspace_id") == lane), timeout=WAIT_MS):
+                       and str((r.request.post_data_json or {})
+                               .get("workspace_id")).endswith(lane)),
+            timeout=WAIT_MS):
         act()
 
 

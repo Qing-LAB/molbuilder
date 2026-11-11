@@ -2,7 +2,7 @@
  *
  * MODULE: workspace persistence  (lib/workspace/; contract: docs/web/workspace.md).
  *   ONE file: this one. It is the whole module -- the transport to the state
- *   files, the per-tag identity, and the non-blocking error surface.
+ *   files, the per-tab and per-tag identity, and the non-blocking error surface.
  *   Server backend: POST /api/workspace-storage/{write,read,prune}
  *   the on-disk indexed STATE TIMELINE (`workspace.md` § 9).
  *
@@ -52,34 +52,46 @@ const root = (typeof window !== "undefined") ? window : globalThis;
     }
 
 
-    // ─── Session identity, per tag (workspace.md § 4, § 9) ─────────── //
+    // ─── Session identity, per browser tab and tag (workspace.md § 4, § 9) ─ //
     //
-    // A stable id for a tag's files, so repeated updates hit the SAME state files
-    // and a same-tab reload keeps them (not a fresh orphan each time).
-    /* THE ID IS THE TAG, MADE SAFE FOR A FILE NAME.
+    /* EACH BROWSER TAB ITS OWN FILES (the user, 2026-11-11: "same module,
+     * one set per tab").  A tab's id is made once and kept IN that tab
+     * (`pagePrefs`, a value of the tab's session, runtime.md § 3), so a
+     * reload, or another page in the same tab, finds the same files; a new
+     * tab makes its own, and a tab the browser duplicates starts with the
+     * original's.  Twelve lowercase letters and digits, so `ws-<tab>-<tag>`
+     * spells one tab and one tag.  A browser that refuses to keep it makes a
+     * new one per load: the work is kept for the page, not across its
+     * reload.  A closed tab's files stay in the folder, unread (workspace.md
+     * § 9: the server warns once the folder passes 300 files). */
+    const TAB_PREF = "workspace_tab";
+    let _tab = null;
+
+    function _tabId() {
+        if (_tab) return _tab;
+        const prefs = root.molbuilder.pagePrefs;
+        const kept = prefs.read(TAB_PREF);
+        if (kept) return (_tab = kept);
+        const letters = "abcdefghijklmnopqrstuvwxyz0123456789";
+        const bytes = new Uint8Array(12);
+        root.crypto.getRandomValues(bytes);
+        _tab = Array.from(bytes, (b) => letters[b % letters.length]).join("");
+        prefs.write(TAB_PREF, _tab);
+        return _tab;
+    }
+
+    /* THE ID IS THE TAB'S AND THE TAG'S, MADE SAFE FOR A FILE NAME.
      *
-     * The state files are `<workspace_id>.<step>.wc.json`, and the id has to be
-     * the same every time this tag comes back — otherwise a reopened page looks
-     * for its work under a name it has never used and finds nothing. Working it
-     * out from the tag makes that true by construction, with nothing remembered
-     * anywhere.
-     *
-     * TWO CONSEQUENCES, both deliberate. Two browser windows open on the same
-     * page share one saved workspace, because they are two windows onto the
-     * same work rather than two workspaces that happen to look alike. And the
-     * file pile is bounded: no closed tab abandons its timeline under an id
-     * nothing would ever use again.
-     *
-     * The server allows letters, digits, `_` and `-` in an id — no dots, so the
-     * index stays unambiguous.  TWO TAGS ARE NEVER ONE ID (workspace.md § 4):
-     * each character has one spelling and no two share one -- a letter or a
-     * digit as it is, a `:` as the `-` it has always been (so a tag of
-     * letters, digits and `:` keeps its id, and its saved state), a `-` as
-     * `_d`, a `_` as `_u`, any other as `_x` and its six hex digits.
+     * The state files are `<workspace_id>.<step>.wc.json`.  The server allows
+     * letters, digits, `_` and `-` in an id — no dots, so the index stays
+     * unambiguous.  TWO TAGS ARE NEVER ONE ID (workspace.md § 4): each
+     * character of the tag has one spelling and no two share one -- a letter
+     * or a digit as it is, a `:` as `-`, a `-` as `_d`, a `_` as `_u`, any
+     * other as `_x` and its six hex digits.
      */
     function workspaceId(tag) {
         _requireTag(tag);
-        return "ws-" + Array.from(tag).map((c) => {
+        return "ws-" + _tabId() + "-" + Array.from(tag).map((c) => {
             if (/[A-Za-z0-9]/.test(c)) return c;
             if (c === ":") return "-";
             if (c === "-") return "_d";
@@ -190,19 +202,28 @@ const root = (typeof window !== "undefined") ? window : globalThis;
         } catch (_) { /* event dispatch is best-effort surfacing */ }
     }
 
-    // Serialise state writes in ISSUE ORDER.  The writes are fire-and-forget, so two
-    // POSTs to the SAME <workspace_id>.<state_index> file (a rapid
-    // save(1) -> load(-1) -> save(1)) could otherwise land out of order on a threaded
-    // server -- the STALE bytes winning, so a later Retract restores an abandoned
-    // state.  Chaining each write on the previous one guarantees the last-issued write
-    // is the last-written.  Each link ALWAYS resolves (errors are handled, never
-    // re-thrown) so one failed write can't stall the chain.  (Same-class fix as the
-    // anchor's prune-before-write ordering.)
-    var _stateWriteChain = Promise.resolve();
+    // Serialise state writes in ISSUE ORDER, ONE QUEUE PER WORKSPACE ID
+    // (workspace.md § 9.2).  The writes are fire-and-forget, so two POSTs to
+    // the SAME <workspace_id>.<state_index> file (a rapid save(1) -> load(-1)
+    // -> save(1)) could otherwise land out of order on a threaded server -- the
+    // STALE bytes winning, so a later Retract restores an abandoned state; and
+    // the delete of a tag's abandoned points must finish before its next point
+    // is written.  Both are about ONE id's files, so each id has its queue:
+    // a tag's draft (an id of its own, `-draft`) never waits behind its
+    // points' writes or their delete -- an edit's draft held there was lost
+    // to a reload that came first (2.69.26-2.69.28: the Molbuilder tab showed
+    // the file, not the edit).  Each link ALWAYS resolves (errors are handled,
+    // never re-thrown) so one failed write can't stall its queue.
+    var _queues = new Map();      // workspace_id -> its last queued request
+    function _queued(workspace_id, send) {
+        var done = (_queues.get(workspace_id) || Promise.resolve()).then(send);
+        _queues.set(workspace_id, done);
+        return done;
+    }
     function _persistState(snapshotBlob, identity) {
         if (!root.fetch || !snapshotBlob) return;
         var idx = identity && identity.state_index;
-        _stateWriteChain = _stateWriteChain.then(function () {
+        _queued(identity.workspace_id, function () {
             _trace("http:write-state:issue", { idx: idx });
             return ask("/api/workspace-storage/write", {
                 method:  "POST",
@@ -289,7 +310,7 @@ const root = (typeof window !== "undefined") ? window : globalThis;
     function pruneStatesAbove(tag, step) {
         const workspace_id = _point(tag, step).workspace_id;
         if (!root.fetch) return Promise.resolve();
-        const done = _stateWriteChain.then(function () {
+        return _queued(workspace_id, function () {
             _trace("http:prune-states:issue", { above: step });
             return ask("/api/workspace-storage/prune", {
                 method:  "POST",
@@ -304,8 +325,6 @@ const root = (typeof window !== "undefined") ? window : globalThis;
             }
             return res;   // resolve either way: the anchor write still proceeds
         });
-        _stateWriteChain = done;
-        return done;
     }
 
     var api = {

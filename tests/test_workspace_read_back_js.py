@@ -15,6 +15,7 @@ what they saved was there and could not be read.
 """
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -24,10 +25,22 @@ from tests._node_esm import run_node, served
 _LIB = Path(__file__).resolve().parents[1] / "molbuilder" / "web" / "static" / "lib"
 _STORE = _LIB / "workspace" / "dispatcher.js"
 _BAR = _LIB / "app-notifications.js"
+#: What a page keeps in this browser tab -- where the tab's own id lives
+#: (`runtime.md` § 3), loaded by the page header before any page's own script.
+_KEPT = _LIB / "page-prefs.js"
 
-#: The page around the store and the bar: its event bus, and a document with
-#: no bar drawn in it -- the bar keeps its rows (``notify.list()``) either way.
+#: The page around the store and the bar: its event bus, a document with no
+#: bar drawn in it -- the bar keeps its rows (``notify.list()``) either way --
+#: and ONE browser tab's storage, the same tab's on every opening, so a second
+#: opening is that tab reloaded and finds its files (`workspace.md` § 4).
 _PAGE = """
+const __tabStore = new Map(Object.entries(globalThis.__tabStorage || {}));
+globalThis.tabStorage = () => Object.fromEntries(__tabStore);
+globalThis.sessionStorage = {
+    getItem: (k) => (__tabStore.has(k) ? __tabStore.get(k) : null),
+    setItem: (k, v) => { __tabStore.set(k, String(v)); },
+    removeItem: (k) => { __tabStore.delete(k); },
+};
 const __bus = new EventTarget();
 globalThis.addEventListener = __bus.addEventListener.bind(__bus);
 globalThis.dispatchEvent = __bus.dispatchEvent.bind(__bus);
@@ -42,8 +55,12 @@ def app_at(isolated_projects_root):
         yield base
 
 
-def _page(base, snippet):
-    return run_node([_BAR, _STORE], snippet, globals_js=_PAGE + served(base))
+def _page(base, snippet, tab_storage=None):
+    """``snippet`` on the page in one browser tab -- ``tab_storage`` what the
+    tab kept in an earlier opening, so this one is that tab reloaded."""
+    seed = f"globalThis.__tabStorage = {json.dumps(tab_storage or {})};\n"
+    return run_node([_KEPT, _BAR, _STORE], snippet,
+                    globals_js=seed + _PAGE + served(base))
 
 
 def test_a_state_that_cannot_be_read_back_is_said_and_a_miss_is_not(app_at):
@@ -53,7 +70,8 @@ def test_a_state_that_cannot_be_read_back_is_said_and_a_miss_is_not(app_at):
         const ws = window.molbuilder.workspace;
         ws.persistDraft("modify", { v: 1, state: { atoms: 3 } });
         await __quiet();
-        console.log(JSON.stringify({ back: await ws.readDraft("modify") }));
+        console.log(JSON.stringify({ back: await ws.readDraft("modify"),
+                                     tab: tabStorage() }));
     """)
     assert saved["back"] == {"v": 1, "state": {"atoms": 3}}, saved
     # THE ONE FILE the draft was written to, as the server keeps it.
@@ -70,7 +88,7 @@ def test_a_state_that_cannot_be_read_back_is_said_and_a_miss_is_not(app_at):
             console.log(JSON.stringify({
                 missed, back, heard, rows: window.molbuilder.notify.list(),
             }));
-        """)
+        """, tab_storage=saved["tab"])
     finally:
         kept.chmod(0o600)
     assert out["missed"] is None and out["back"] is None, out

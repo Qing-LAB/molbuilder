@@ -1363,8 +1363,8 @@ So it answers, and never throws:
 **A failure turns up afterwards, not here.** The workspace is non-blocking but
 *error-explicit*: a write that does not arrive reaches its own error channel, and
 the app-wide notification bar shows it — *"Couldn't save state to disk (the
-reason). Your edits are kept in this page, but Retract and a reopened tab may
-not bring back everything."*
+reason). Your edits are kept in this page, but Retract and a reload of this tab
+may not bring back everything."*
 
 **And the app-wide bar is the right place for it**, which is worth saying because
 § 6.8 keeps notices *out* of it. The rule there is that the bar is for what
@@ -3498,8 +3498,8 @@ point (§ 1.1, § 11.2), an explicit save, and a load.
 
 **That rule is about the sequence, and only about it.** The draft — the other
 file, § 11.3 — is rewritten by *every* change, because that is what it is for: an
-edit changes what would be lost if the tab closed. Nobody asks for it and nobody
-should have to.
+edit changes what would be lost if the tab reloaded. Nobody asks for it and
+nobody should have to.
 
 **The two together are the whole promise.** Persistence means *you do not lose
 work you did* — automatic, and about the accident: the draft. The timeline means
@@ -3929,13 +3929,13 @@ flowchart LR
 
 | | Produces | Reads from | Which frames | Undoable |
 |---|---|---|---|:--:|
-| **Save state** (and Retract) | one point in an ordered, numbered sequence of files kept on the server — undo that survives a browser crash | **the truth** — the structure with its cell and labels, and the selection (§ 11.2) | all of them | **yes** — going back is the whole point of it |
-| **The draft** | one file beside those points, replaced each time rather than added to — what makes a reopened tab find the work you never saved | the same bytes a point is made of | all of them | no — it is not a place on the sequence, it is *where you were* |
+| **Save state** (and Retract) | one point in an ordered, numbered sequence of files kept on the server, the browser tab's own ([`workspace.md`](?doc=web/workspace.md) § 4) — undo that survives a reload of the tab | **the truth** — the structure with its cell and labels, and the selection (§ 11.2) | all of them | **yes** — going back is the whole point of it |
+| **The draft** | one file beside those points, replaced each time rather than added to — what makes a reloaded tab find the work you never saved | the same bytes a point is made of | all of them | no — it is not a place on the sequence, it is *where you were* |
 | **Export → Data** | the structure as data — a coordinate document and the metadata beside it (§ 11.7). One frame writes an `.xyz`; a range writes one `.xyz`, a block per frame. The `.json` is written once either way | **the truth** — the master copy | **the range asked for**, defaulting to the displayed frame | no |
 | **Export → Image** | a picture of the molecule as it is drawn. One frame is a `.png`; a range is a `.webm` or `.gif`, rendered frame by frame with the view as it is set | **the drawing** | **the range asked for**, defaulting to the displayed frame | no |
 
-**When each is written.** An edit changes what would be lost if the tab closed,
-so **an edit rewrites the draft**. And **an edit lays down its own point** (§ 1.1,
+**When each is written.** An edit changes what would be lost if the tab
+reloaded, so **an edit rewrites the draft**. And **an edit lays down its own point** (§ 1.1,
 § 11.2), so Retract always steps back one edit; an operation that declares no
 point leaves its work in the draft alone, the badge saying so.
 

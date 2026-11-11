@@ -61,7 +61,10 @@ each release is its changelog row and its ledger section
   X-PERSIST's last — everything a page keeps in the browser through the one
   door (the user, 2026-11-11: *unified API, no handcrafted reinvention*;
   each tab its own), then X-PERSIST closed (what no failure was measured for
-  taken out: the user, 2026-11-11, *detect any invented problem*) — X-PARSE,
+  taken out: the user, 2026-11-11, *detect any invented problem*);
+  2.69.29, each browser tab its own saved work (the user, 2026-11-11:
+  *same module, one set per tab*), and an edit lost on a reload since
+  2.69.26 fixed — X-PARSE,
   X-TMPL, X-EXEC, X-ENG; then the page doors and
   the copies they share (O-STATUS, O-FIND, O-STATE, O-WORDS, O-KEYS's rest
   with X-UI and X-PLOT; O-TESTS).

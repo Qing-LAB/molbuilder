@@ -27,6 +27,9 @@ from tests._node_esm import run_node
 
 REPO = Path(__file__).resolve().parents[1]
 WS = REPO / "molbuilder" / "web" / "static" / "lib" / "workspace" / "dispatcher.js"
+#: What a page keeps in this browser tab -- where the tab's own id lives
+#: (`runtime.md` § 3), loaded by the page header before any page's own script.
+KEPT = REPO / "molbuilder" / "web" / "static" / "lib" / "page-prefs.js"
 #: The page that hosts MolView, as a test plays it: it hands the viewer the
 #: one reader of a server's answer (`support/molview_host.mjs`).
 HOST = Path(__file__).resolve().parent / "support" / "molview_host.mjs"
@@ -41,7 +44,19 @@ globalThis.addEventListener = () => {};
 globalThis.dispatchEvent = () => {};
 globalThis.CustomEvent = class { constructor(t, o) { this.detail = o && o.detail; } };
 
-globalThis.files = {};          // "<workspace_id>.<state_index>" -> what was saved
+// The browser tab's own storage, as a page has it -- carried whole from an
+// earlier run when a test plays that tab reloaded, empty for a new tab.
+const _tabStore = new Map(Object.entries(globalThis.__tabStorage || {}));
+globalThis.sessionStorage = {
+    getItem: (k) => (_tabStore.has(k) ? _tabStore.get(k) : null),
+    setItem: (k, v) => { _tabStore.set(k, String(v)); },
+    removeItem: (k) => { _tabStore.delete(k); },
+};
+globalThis.tabStorage = () => Object.fromEntries(_tabStore);
+
+// "<workspace_id>.<state_index>" -> what was saved: the server's folder,
+// carried from an earlier run when a test plays a second visit to it.
+globalThis.files = Object.assign({}, globalThis.__files || {});
 // Each answer as a browser hands it, for the page's one reader (`lib/server.js`).
 const answered = (body) => new Response(JSON.stringify(body), { status: 200 });
 globalThis.fetch = async (route, init) => {
@@ -86,6 +101,7 @@ globalThis.fetch = async (route, init) => {
 """
 
 PRELUDE = f"""
+await import({json.dumps(KEPT.resolve().as_uri())});
 await import({json.dumps(WS.resolve().as_uri())});
 const ws = globalThis.molbuilder.workspace;
 
@@ -96,8 +112,13 @@ async function readBack(tag, step) {{ return ws.readState(tag, step); }}
 """
 
 
-def _run(snippet: str):
-    return run_node([], PRELUDE + snippet, globals_js=BROWSER)
+def _run(snippet: str, *, tab_storage=None, files=None):
+    """``snippet`` on a page in one browser tab -- ``tab_storage`` what that
+    tab kept in an earlier run (none: a tab opened fresh), ``files`` the
+    server's folder as an earlier run left it (none: an empty one)."""
+    seed = (f"globalThis.__tabStorage = {json.dumps(tab_storage or {})};\n"
+            f"globalThis.__files = {json.dumps(files or {})};\n")
+    return run_node([], PRELUDE + snippet, globals_js=seed + BROWSER)
 
 
 # ---------------------------------------------------------------------------
@@ -216,6 +237,25 @@ def test_a_dropped_tail_is_gone_before_the_next_point_is_written():
         f"the tail delete landed after the next point and erased it: {out}")
 
 
+def test_an_edits_draft_never_waits_behind_the_points_delete():
+    """`workspace.md` § 9.2: the delete of abandoned points is ordered before
+    the tag's next POINT -- and the draft, a file of its own, waits for
+    nothing.  THE SILENT FAILURE (2.69.26-2.69.28): one queue for every write
+    held an edit's draft behind its point and the delete, and a reload that
+    came first found the draft from before the edit -- the Molbuilder tab
+    showed the file, not the edit."""
+    out = _run("""
+        globalThis.pruneDelay = 300;
+        ws.persist("modify", "point 1", 1);
+        ws.pruneStatesAbove("modify", 1);
+        ws.persistDraft("modify", "the edit");
+        await new Promise((r) => setTimeout(r, 60));
+        console.log(JSON.stringify({ draft: await ws.readDraft("modify") }));
+    """)
+    assert out == {"draft": "the edit"}, (
+        f"the edit's draft was still queued behind the delete: {out}")
+
+
 @pytest.mark.parametrize("one, other", [
     ("modify", "results:structure"),
     ("results:structure", "results-structure"),
@@ -260,15 +300,34 @@ def test_a_tags_file_is_stable_and_differs_from_the_next_tags(one, other):
             f"letters, digits, _ and - in an id: {got}")
 
 
-def test_a_pages_saved_state_is_found_after_the_upgrade():
-    """A tag of letters, digits and `:` keeps the id it had before 2.69.19
-    (`workspace.md` § 4), so the points a page kept are where it looks for
-    them."""
-    out = _run("""
-        ws.persist("results:structure", "kept", 3);
+@pytest.mark.parametrize("same_tab, finds", [
+    (True, "one's"), (False, None)],
+    ids=["the same tab reloaded finds its work",
+         "another tab finds nothing and leaves the first tab's alone"])
+def test_each_browser_tab_has_its_own_saved_work(same_tab, finds):
+    """`workspace.md` § 4 (the user, 2026-11-11: one set per tab): a tab
+    keeps its own id, so a reload of it finds the work it saved, and another
+    tab, opening on the same folder, finds none of it and changes none of
+    it.  THE SILENT FAILURE (to 2.69.28): every tab read and wrote one file
+    per page, so a second tab opened on the Molbuilder tab showed the first
+    tab's unsaved molecule, and its saves overwrote the first tab's."""
+    first = _run("""
+        ws.persist("modify", "one's", 1);
         await settle();
-        console.log(JSON.stringify(fileNames()));""")
-    assert out == ["ws-results-structure.3"], out
+        console.log(JSON.stringify({ files: globalThis.files,
+                                     tab: tabStorage() }));""")
+    second = _run("""
+        const found = await readBack("modify", 1);
+        ws.persist("modify", "two's", 1);
+        await settle();
+        console.log(JSON.stringify({ found, files: globalThis.files }));""",
+        tab_storage=first["tab"] if same_tab else None,
+        files=first["files"])
+    assert second["found"] == finds, second
+    if not same_tab:
+        assert "one's" in second["files"].values(), (
+            "the second tab's save changed the first tab's work: "
+            f"{second['files']}")
 
 
 # ---------------------------------------------------------------------------
@@ -314,6 +373,7 @@ def test_what_molview_saves_can_be_read_back():
         [],
         f"""
         const {{ createModel }} = await import({json.dumps(HOST.as_uri())});
+        await import({json.dumps(KEPT.resolve().as_uri())});
         await import({json.dumps(WS.resolve().as_uri())});
         const ws = globalThis.molbuilder.workspace;
 
@@ -369,6 +429,7 @@ def test_an_edit_and_a_saved_point_go_to_different_files():
         [],
         f"""
         const {{ createModel }} = await import({json.dumps(HOST.as_uri())});
+        await import({json.dumps(KEPT.resolve().as_uri())});
         await import({json.dumps(WS.resolve().as_uri())});
         const ws = globalThis.molbuilder.workspace;
 

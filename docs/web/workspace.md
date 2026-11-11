@@ -59,16 +59,16 @@ flowchart LR
     F["one file per step, on the server<br/>under the project directory"]
     MV -->|"here are the bytes, and my tag"| WS
     WS -->|"sent, not waited for"| F
-    F -.->|"reopen the tab, or Retract"| MV
+    F -.->|"reload the tab, or Retract"| MV
 ```
 
 Two kinds of file, both here:
 
 - **A numbered point for each save.** That is what Undo walks back through, and
-  it survives a browser crash. The server keeps the most recent **30** per tag
-  and drops older ones on its own.
+  it survives a reload. The server keeps the most recent **30** per browser tab
+  and tag, and drops older ones on its own.
 - **A draft**, one file, rewritten every time you change something. That is what
-  makes reopening a tab find the work you never got round to saving.
+  makes a reload of the tab find the work you never got round to saving.
 
 They are separate files on purpose: an edit rewriting the point you last saved
 would mean Retract took you back to something that had changed since you chose
@@ -112,7 +112,7 @@ hidden. It is neither: it is this module's storage, and this module is public.
 
 ---
 
-## 3. A worked example — close the tab, reopen, undo
+## 3. A worked example — reload the tab, undo
 
 Say you open a molecule in the Modify tab, delete an atom, then move another:
 
@@ -121,8 +121,10 @@ Say you open a molecule in the Modify tab, delete an atom, then move another:
    above it: two edits, two points.
 2. You pick out a few atoms and press **Save state**: a point for a state no
    edit produced.
-3. You **close the tab and reopen it.** The tab reads its draft back and your
-   edited molecule is there, with the atoms you picked out.
+3. You **reload the tab**, or go to another page and come back in the same
+   tab. The tab reads its draft back and your edited molecule is there, with
+   the atoms you picked out. **Closing the tab ends its set**: a new tab starts
+   with none, and the closed tab's files stay in the folder, unread (§ 4, § 9).
 4. You click **Retract**. Each press steps back one point, read back from its
    own numbered file — the selection, then the move, then the delete. Work no
    point holds yet (the badge says when) is what the first press throws away.
@@ -141,22 +143,29 @@ reload, and none of them should be able to tread on another.
 **The tag is what separates them.** Every save and every load names who it belongs
 to — `"results:structure"`, `"results:trajectory"`, `"modify:panel"`, a
 viewer's `"<owner>:ui"` view context (molview.md § 11.2b) — and the
-workspace names the files from that name alone. Two tags are two slots. Nothing
+workspace names the files from that name and the browser tab (below). Two tags
+are two slots. Nothing
 is merged, so there is no moment where one writer's copy sits half over
 another's.
 
-**And the tag is ALL that separates them** *(said plainly, 2026-08-20)*: the
-workspace id is a pure function of the tag — no page, no pathname, no window
-enters it — so isolation between pages rests entirely on the owner literals
-staying distinct. Seven owners exist today and all differ; a future page that
-reuses one shares that page's saved state (camera, frame, switches) with zero
-warning. Picking a new owner string means checking it against the ones in use.
-**Two different tags are never one id**: the id is the tag spelled for a file
-name, one spelling per character and none shared — a letter or a digit as it
-is, a `:` as `-`, a `-` as `_d`, a `_` as `_u`, any other character as `_x` and
-its six hex digits, so a tag of letters, digits and `:` keeps the id it has
-always had. **A tag never ends in `:draft`** — refused, as a missing tag is: a
-tag's draft is its id with `-draft`, which `:draft` would spell the same.
+**Each browser tab has its own files** *(the user, 2026-11-11: "same module,
+one set per tab")*: the workspace id is the browser tab's own id and the tag —
+`ws-<tab>-<tag>` — so two tabs on the same page never share a file (but a
+tab the browser **duplicates** starts with the original's id, and shares its
+files), and
+within a tab the tag is all that separates two savers: isolation between pages
+rests on the owner literals staying distinct. Picking a new owner string means
+checking it against the ones in use. **A tab's id** is made once, twelve
+lowercase letters and digits, and kept in that tab (`pagePrefs`,
+[`runtime.md`](?doc=web/runtime.md) § 3), so a reload of the tab finds its
+files and no other tab ever does; a browser that refuses to keep it makes a
+new one per load, and the work is kept for the page but not across its reload.
+**Two different tags are never one id**: the tag is spelled for a file name,
+one spelling per character and none shared — a letter or a digit as it is, a
+`:` as `-`, a `-` as `_d`, a `_` as `_u`, any other character as `_x` and its
+six hex digits. **A tag never ends in `:draft`** — refused, as a missing tag
+is: a tag's draft is its id with `-draft`, which `:draft` would spell the
+same.
 
 **Two things the workspace promises:**
 
@@ -207,7 +216,8 @@ two callers can disagree about whose slot they are in.
 | `onPersistError(fn)` | Be told when the store fails — a background save, or a read back — never silent. Returns an unsubscribe. |
 
 **No call takes a file name or an id.** The tag, and for a point its step, are
-all a caller says; where the bytes go is worked out here, from them alone.
+all a caller says; where the bytes go is worked out here, from them and the
+browser tab's own id.
 
 **This is the whole of it.** There is no second way to save or load (§ 4's
 first guarantee).
@@ -238,7 +248,7 @@ a molecule someone had just built (§ 7). Both are gone.
 
 ### What you have to do
 
-**Say your tag on every call.** Nothing is remembered between calls. Use the same
+**Say your tag on every call.** No tag is remembered between calls. Use the same
 word every time for the same thing: the viewer on the Modify tab always says
 `"modify"`, the structure inspector on Results always says `"results:structure"`.
 Miss it and the call fails; use a different word by accident and you are reading
@@ -271,10 +281,11 @@ can land on each other.
 You open the Molbuilder tab. Two things can be true at the same time:
 
 - a file is highlighted in the sidebar, because you clicked it before you left;
-- you were working on a molecule here yesterday and never saved it to a file.
+- you were working on a molecule in this tab before a reload and never saved it
+  to a file.
 
-The tab has to show one of them. Load the highlighted file and yesterday's work
-is gone; bring back yesterday's work and the highlighted file is ignored.
+The tab has to show one of them. Load the highlighted file and that work is
+gone; bring back that work and the highlighted file is ignored.
 
 **The tab decides, and it decides by reading its own saved bytes.** It reads
 its draft back (`readDraft(tag)` — or, for a
@@ -307,9 +318,9 @@ all. (The details live in the Modify-tab and projects docs.)
 
 For the record: the server keeps each tab's history as small JSON files at
 `<projects_root>/.molbuilder_workspace/states/<workspace_id>.<step>.wc.json`. It
-never parses them as molecules — it just moves JSON bytes. A tag no longer
-used leaves its files behind, since nothing asks for its id again; these are
-**not** auto-cleaned — crash recovery is out of scope by design — but once the pile
+never parses them as molecules — it just moves JSON bytes. A closed browser
+tab, or a tag no longer used, leaves its files behind, since nothing asks for
+its id again; these are **not** auto-cleaned — crash recovery is out of scope by design — but once the pile
 passes 300 files the server logs a one-time warning so an operator can clear the
 folder by hand.
 
@@ -335,8 +346,9 @@ What it means where you can feel it:
   `<id>-draft`, a single file pinned at step 0 (`persistDraft`) — so a
   one-entry history has nothing to trim. The window bounds *how far back you can
   step*, never *whether your latest work survives*.
-- **The bound is per tag.** Each tag has its own id and therefore its own
-  thirty; two savers on a page do not share the allowance.
+- **The bound is per browser tab and tag.** Each has its own id and therefore
+  its own thirty; two savers on a page, or two tabs, do not share the
+  allowance.
 
 ### 9.2 Who prunes which end
 
@@ -363,12 +375,13 @@ is worse than silence.
 > is nothing further back" at the floor instead of a move that did not
 > happen.)*
 
-**An id belongs to a tag, worked out from it.** The id the state files are
-named after (`<workspace_id>.<step>.wc.json`) is `"ws-"` and the tag, spelled
-for a file name (§ 4) — the same every time the tag comes back, so a reload
-finds its work, and never another tag's, since no caller names a file.
-**Isolation holds for the identity as well as for the content**, by
-construction: there is nothing remembered to share.
+**An id belongs to a browser tab and a tag, worked out from them.** The id the
+state files are named after (`<workspace_id>.<step>.wc.json`) is `"ws-"`, the
+tab's own id and the tag, spelled for a file name (§ 4) — the same every time
+the tag comes back in that tab, so a reload finds its work, and never another
+tab's (a duplicated tab excepted, § 4) or another tag's, since no caller names
+a file. **Isolation holds for the
+identity as well as for the content**, by construction.
 
 Two small ordering rules keep the history consistent:
 
@@ -379,12 +392,19 @@ Two small ordering rules keep the history consistent:
   redo tail, that delete (`pruneStatesAbove`) finishes before the new baseline
   snapshot is written, so the history can't briefly contain both.
 
+Both rules are about one workspace id's files, so **each id has its own
+queue**: a tag's draft, an id of its own, never waits behind its points'
+writes or their delete — an edit's draft goes out at once, so a reload right
+after the edit finds it.
+
 ## 10. Test map
 
 - `test_workspace_tag_isolation.py` — the front-door surface (a missing,
   empty or `:draft` tag refused on all five calls) + two tags stay two slots,
-  their points and their drafts; the tail delete finishes before the next
-  point is written.
+  their points and their drafts; each browser tab its own (the same tab
+  reloaded finds its work, another finds none and changes none); the tail
+  delete finishes before the next point is written, and an edit's draft never
+  waits behind it.
 - `test_workspace_storage_api.py` — the server `/api/workspace-storage/*` routes.
 - `test_molview_model.py` / `test_molview_stores_history.py` — restore-at-mount
   through the real model (`load(0)` adopts; a restored session still receives

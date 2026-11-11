@@ -159,7 +159,7 @@
             message: "Couldn't save state to disk ("
                    + ((detail && detail.error) || "no reason given")
                    + "). Your edits are kept in this page, but Retract and "
-                   + "a reopened tab may not bring back everything.",
+                   + "a reload of this tab may not bring back everything.",
             detail:  detail,
         });
     }
