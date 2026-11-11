@@ -159,8 +159,8 @@ class CitedRun:
     path: Path
     run: "Run"                    # the run the folder speaks for
     #: the run record's concluded line -- ``rc=0 at <date>`` -- or ``None``
-    #: for a run still going (or force-stopped: no file tells those apart);
-    #: classification RECORDS that, compose refuses it (§ 3.1).
+    #: for a run with no conclusion; classification RECORDS that, compose
+    #: refuses it (§ 3.1).
     concluded: Optional[str] = None
     #: the exit code that line states, when it concluded.
     exit_code: Optional[int] = None
@@ -170,6 +170,12 @@ class CitedRun:
     #: reader decides on, ``("geometry", ok)`` (`RunStatus.verdict`).
     converged: Optional[str] = None
     verdict: Optional[Tuple[str, bool]] = None
+    #: HOW THE RUN STANDS, the run door's state and its words
+    #: (`runs.state_of`, `execution/running-a-job.md` § 4.2) -- for a run
+    #: with no conclusion, whether it is still going or its job has ended
+    #: without one.
+    state: Optional[str] = None
+    detail: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -235,10 +241,9 @@ def _classify_run(cite_dir: Path) -> CitedRun:
     """A cited folder, read through the run door (`runs.run_of`,
     `execution/architecture.md` § 3.2): the run in it, its one stage; its
     launch record and how it ended, the run record's doors."""
-    from molbuilder.runrecord import (LaunchRecordError, ending,
-                                      launch_record)
+    from molbuilder.runrecord import LaunchRecordError, ending, launch_record
     from .. import calcdirs
-    from ..runs import older_run, place_of, run_of
+    from ..runs import place_of, run_of, state_of
     place = place_of(cite_dir)
     if place.problem:
         raise ComposeError(place.problem)
@@ -255,17 +260,22 @@ def _classify_run(cite_dir: Path) -> CitedRun:
         raise ComposeError(
             f"{cite_dir} holds no run of molbuilder's: {where}.  "
             f"{CITATION_CONDITION}.")
-    # A RUN AN OLDER MOLBUILDER NAMED is not read until it is named anew
-    # (`runs.older_run`, naming the migration).
-    older = older_run(cite_dir, run.names.stage, place.root)
-    if older is not None:
-        raise ComposeError(f"{cite_dir}: {older}.  {CITATION_CONDITION}.")
+    # HOW THE RUN STANDS, asked of the run door (`runs.state_of`, over
+    # `runs.concluded`, its job asked once where this machine holds it):
+    # `unreadable` -- a run an older molbuilder named (`runs.older_run`), a
+    # launch record that does not read -- is refused in the door's words.
+    st = state_of(run)
+    if st.state == "unreadable":
+        raise ComposeError(f"{cite_dir}: {st.detail.rstrip('.')}.  "
+                           f"{CITATION_CONDITION}.")
     # ONE RUN, the one the run door settled, asked of each door: its launch
     # record -- in the folder the run door says it lies in
-    # (`Run.launched_in`: a point's is its run's) -- how it ended, its state.
+    # (`Run.launched_in`: a point's is its run's), which the state above
+    # read -- and how it ended.
     try:
         launched = launch_record(run.launched_in) is not None
     except LaunchRecordError as e:
+        # A RECORD REPLACED BETWEEN THE TWO READS (a restore's copy).
         raise ComposeError(str(e)) from e
     # HOW THE CITED RUN ENDED, asked of the one door (`runrecord.ending`,
     # `execution/architecture.md` § 3.2).
@@ -274,11 +284,6 @@ def _classify_run(cite_dir: Path) -> CitedRun:
         raise ComposeError(
             f"{cite_dir} holds the run {run.names.stem}, but nothing launched "
             f"it and nothing recorded how it ended.  {CITATION_CONDITION}.")
-    # WHAT IT CONVERGED, the run door's reading of its output (the same the
-    # status verb prints): carried into the provenance and said by the tab,
-    # so a geometry that did not converge is cited knowingly.
-    from ..parse.dirs.rundir import run_state_of
-    st = run_state_of(cite_dir, run.names, launched_in=run.launched_in)
     # A RUN THAT RELAXED NO GEOMETRY is not what transport cites (§ 3.1): a
     # vibration run, whose last geometry is a displacement, or a transport
     # rung -- its output reports an SCF alone.
@@ -288,9 +293,12 @@ def _classify_run(cite_dir: Path) -> CitedRun:
             f"geometry -- its output reports a self-consistent field alone, "
             f"so its last geometry is not a relaxed junction.  "
             f"{CITATION_CONDITION}.")
+    # WHAT IT CONVERGED, the state's own reading (the status verb prints
+    # it): carried into the provenance and said by the tab, so a geometry
+    # that did not converge is cited knowingly.
     return CitedRun(path=cite_dir, run=run, concluded=end.line,
                     exit_code=end.code, converged=st.converged_words,
-                    verdict=st.verdict)
+                    verdict=st.verdict, state=st.state, detail=st.detail)
 
 
 def _classify_pair(path: Path) -> CitedPair:
@@ -789,17 +797,31 @@ def _run_parts(cited: CitedRun, citation: str, swap_electrodes: bool):
     means unmoved*; its deck verbatim, the record's copy; the hashes of the
     output read and of the deck; and how the run ended."""
     if cited.concluded is None:
+        # HOW IT STANDS, in the run door's words (:attr:`CitedRun.detail`),
+        # with its way on (`engines/transport.md` § 3.1): a run still live
+        # is composed once it concludes; one whose job ended without a
+        # conclusion left no relaxed junction, and is cited anew from a new
+        # folder once a run of it finishes -- one calculation, one structure.
+        from molbuilder.parse.dirs.job import LIVE_STATES
+        said = cited.detail.rstrip(".")
+        if cited.state in LIVE_STATES:
+            raise ComposeError(
+                f"the cited relaxation {citation!r} has not concluded -- "
+                f"{said}.  A deck is built from a run that has concluded: "
+                f"this is composed once it does.")
         raise ComposeError(
-            f"the cited relaxation {citation!r} has not CONCLUDED -- it is "
-            f"still running, or it was force-stopped (the two look identical on disk).  Let it finish; "
-            f"transport never decides this over you.")
+            f"the cited relaxation {citation!r} ended without concluding -- "
+            f"{said}.  It left no relaxed junction: launch the relaxation "
+            f"again, and cite the run that finishes from a new transport "
+            f"calculation, or cite another relaxation.")
     if cited.exit_code != 0:
         raise ComposeError(
             f"the cited relaxation {citation!r} ended with exit code "
             f"{cited.exit_code} ({cited.concluded}) -- its last geometry is "
             f"whatever the engine left when it failed, not a relaxed "
-            f"junction.  Run the relaxation to its end, then cite it"
-            f".")
+            f"junction.  Launch the relaxation again and cite the run that "
+            f"finishes from a new transport calculation, or cite another "
+            f"relaxation.")
     struct, start, output = _run_geometry(cited, junction_axis_kind(cited))
     # A swap renames the labels on this calculation's copy
     # (`with_swapped_leads`) and never writes the cited run.

@@ -1343,7 +1343,7 @@ geometry it left**, from the run output a viewer has open — the
 
 | key | what it is |
 |---|---|
-| `engine` · `source` | which engine ran — the run's calculation's, from its description, where the caller holds the run; `engine_of` for a folder read on its own (`null` when it declares none) — and the output file the numbers were read from |
+| `engine` · `source` | which engine ran — the run door's answer for a view (`runs.engine_at`: a folder of a calculation, its description's; else what its files declare), `engine_of` of its folder for a file read on its own (`null` where neither is known) — and the output file the numbers were read from |
 | `n_steps` | the geometry steps the run took (the last frame's step index) |
 | `force_tolerance_ev_ang` | the run's **own** criterion, as the engine echoed it — `convergence_targets.max_force_tol_eV_per_A`, flat (SIESTA's `redata:` echo, a single-stage molwatch header) or nested one level by stage (a staged molwatch header; one stage is the run's, several is `None`) |
 | `max_force_ev_ang` · `max_force_free_ev_ang` | the last step that reported forces: the **largest absolute Cartesian component** over every atom, and over the atoms the run **moved** — the held set excluded, from that step's per-atom forces (the engine's own `Max` / `Max … constrained` lines, which are that same component, when the step carries no per-atom block). The component, not a per-atom norm: it is what SIESTA's `MD.MaxForceTol` tests and what both read-backs judge by (V1.30); a norm would call a run the engine converged "not converged" by up to √3 |

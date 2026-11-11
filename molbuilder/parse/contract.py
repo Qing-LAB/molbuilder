@@ -182,10 +182,10 @@ def relaxation_of(output, *, traj: Any = None,
     frame's :meth:`Structure.geometry_fingerprint` and ``held_atom_keys``
     the held atoms' :meth:`Structure.geometry_lines`, so a consumer can tell
     whether the coordinates in front of it are the ones this record is
-    about, whatever order it lists them in.  ``engine`` is the run's, its
-    description's, where the caller holds the run (`running-a-job.md`
-    § 4.2); else the output's folder's (`engine_of`), ``None`` when it
-    declares none.
+    about, whatever order it lists them in.  ``engine`` is which ran: the
+    caller's answer -- the run door's, `runs.engine_at`, for a view
+    (`running-a-job.md` § 4.2) -- else, for a file read on its own, its
+    folder's (`engine_of`); ``None`` where neither is known.
     """
     path = Path(output)
     if not path.is_file():

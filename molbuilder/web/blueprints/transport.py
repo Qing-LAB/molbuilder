@@ -157,7 +157,8 @@ def api_transport_describe_attempt() -> Any:
         return err("no path given", 400)
     # THE RENAME THE TAB HOLDS (`engines/transport.md` § 4): described WITH
     # it, so the viewer and the meta line show the junction as this
-    # calculation will compose it; the cited run is read, never written.
+    # calculation will compose it; the cited run's geometry and labels are
+    # never written.
     swap = str(request.args.get("swap_electrodes") or "").lower() in (
         "1", "true", "yes")
     citation, cited_path, root, refusal = _fence(raw)
@@ -225,12 +226,14 @@ def api_transport_describe_attempt() -> Any:
         # is cited knowingly -- what it hands over is then the last geometry
         # SIESTA wrote.
         if cited.concluded is None:
-            state = ("not concluded -- still running, or force-stopped "
-                     "(the two look identical on disk)")
+            # THE RUN DOOR'S WORDS for a run with no conclusion: still going,
+            # or its job ended without one (`running-a-job.md` § 4.2).
+            state = f"not concluded -- {cited.detail}"
         elif cited.exit_code != 0:
             state = (f"ended with exit code {cited.exit_code} "
-                     f"({cited.concluded.strip()}) -- not citable until the "
-                     f"relaxation runs to its end")
+                     f"({cited.concluded.strip()}) -- not citable: launch "
+                     f"the relaxation again and cite the run that finishes, "
+                     f"or cite another relaxation")
         else:
             state = f"concluded ({cited.concluded.strip()})"
             if cited.converged:

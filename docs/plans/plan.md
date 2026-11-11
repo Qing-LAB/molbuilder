@@ -30,7 +30,7 @@ as they stood.
 
 ## ▶ HANDOVER — where we are, and where to start *(2026-11-10)*
 
-**Where we are: 2.69.31.** F0–F8 and F7a are closed; F9, the tests through
+**Where we are: 2.69.32.** F0–F8 and F7a are closed; F9, the tests through
 the road, has eight releases out (2.67.4–2.67.11) and four steps left (its
 row below). Since 2.67.11 three bodies of work the user put first have run;
 each release is its changelog row and its ledger section
@@ -65,9 +65,10 @@ each release is its changelog row and its ledger section
   user, 2026-11-11: *same module, one set per tab*), and an edit lost on a
   reload since 2.69.26 fixed; 2.69.30, a run's progress log read through its
   one read (X-PARSE's first rows); 2.69.31, every engine file through its
-  registered parser. **Left, in order**: X-PARSE's rest — the run door asked
-  past, the engine and the run's end each composed twice, the call words
-  rebuilt on the page (measured 2026-11-11; the ledger's X-PARSE row) — then
+  registered parser; 2.69.32, a run's state and engine through the run
+  door. **Left, in order**: X-PARSE's rest — the run's end composed twice,
+  the call words rebuilt on the page (measured 2026-11-11; the ledger's
+  X-PARSE row) — then
   X-TMPL, X-EXEC, X-ENG; then the page doors and
   the copies they share (O-STATUS, O-FIND, O-STATE, O-WORDS, O-KEYS's rest
   with X-UI and X-PLOT; O-TESTS).

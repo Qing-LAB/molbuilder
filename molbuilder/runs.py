@@ -576,15 +576,20 @@ def view_of(run: Optional[Run], *, output=None, traj: Any = None,
     its deck and ``output``, the file read (``traj`` its parse, so it is not
     parsed again; ``said`` what the deck declared, where the caller holds it).
     ``run`` ``None`` -- a file no run of ours holds -- is a view of the output
-    alone: its lattice and its own record."""
+    alone: its lattice and its own record, the engine asked of its folder."""
     from molbuilder.parse.dirs.run_info import run_info
     said = said if said is not None else (
         declared(run) if run is not None else Declared())
     return RunView(atom_metadata=said.atom_metadata_for(n_atoms),
                    periodicity=said.frame(lattice),
+                   # WHICH ENGINE RAN, the run door's (:func:`engine_at`):
+                   # the run's folder, or the output's where no run of ours
+                   # holds it.
                    info=run_info(deck=said.deck, output=output, traj=traj,
-                                 engine=(run.place.task.engine
-                                         if run is not None else None)),
+                                 engine=(engine_at(run.folder, run.place)
+                                         if run is not None else
+                                         engine_at(Path(output).parent)
+                                         if output is not None else None)),
                    declared=said)
 
 
@@ -1323,6 +1328,21 @@ def _container_product(folder: Path, place: Place, label: str,
     return _openable(folder, label, stage, place.task.calculation, attempts)
 
 
+def engine_at(directory, place: Optional[Place] = None) -> str:
+    """WHICH ENGINE RAN in ``directory`` (`running-a-job.md` § 4.2, *Which
+    engine ran*): a folder of a calculation, its description's; a folder
+    read on its own, what its files declare, or failing that what they are
+    (`parse.contract.engine_of`) -- ``"unknown"`` where neither answers, or
+    two declarations disagree.  ``place`` is the folder's, when the caller
+    holds it."""
+    if place is None:
+        place = place_of(directory)
+    if place.ours:
+        return place.task.engine
+    from molbuilder.parse.contract import engine_of
+    return engine_of(str(directory))
+
+
 def file_row(entry, place: Optional[Place] = None) -> Dict[str, Any]:
     """What one file IS, for a viewer: its whole ``path``, its role, label
     and stage read back with the label it is named on (:func:`_label_of`),
@@ -1378,21 +1398,18 @@ def folder_answer(directory) -> Dict[str, Any]:
     are listed, the registry says what it can open, and none of them is
     claimed -- none opened, no label read off a deck, no state asked.
     """
-    from molbuilder.parse.contract import engine_of
-
     d = Path(directory)
     place = place_of(d)
+    engine = engine_at(d, place)
     attempts: List[str] = []
     status = record = None
     if not place.ours:
         # NOTHING CLAIMED, NOTHING OPENED (:func:`openable`) -- a
         # calculation's folder whose description does not read in its
         # reader's words, never *not marked*.
-        engine = engine_of(str(d))
         chosen, trail = _opens(d, place)
         attempts += trail
     else:
-        engine = place.task.engine
         # THE ONE RULE for what a folder opens (:func:`openable`), with the
         # place read once -- a `shared/` folder's, the point's it lies in.
         chosen, trail = (openable(d) if place.role == calcdirs.SHARED
@@ -1475,7 +1492,7 @@ __all__ = ["Place", "place_of", "Run", "run_of", "Declared",
            "OrderUnstated", "atom_index_map_of", "RunView",
            "view_of",
            "RunSteps", "RunStepsError", "steps_at", "steps_of", "about", "file_row",
-           "openable", "folder_answer", "concluded", "older_run",
+           "openable", "engine_at", "folder_answer", "concluded", "older_run",
            "ended_before_a_point",
            "state_of",
            "record_of", "on_label_at", "WALL"]

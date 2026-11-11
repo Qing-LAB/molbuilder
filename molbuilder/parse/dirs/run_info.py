@@ -55,8 +55,8 @@ def run_info(*, deck: Union[str, Path, None] = None,
     the run door's choice for a folder, or the file a person pointed at --
     whose record is ``relaxation`` (`contract.relaxation_of`), ``traj`` its
     parse when the caller holds one -- the viewer's load -- so the file is
-    not parsed again; ``engine``, the run's -- its description's -- where
-    the caller holds the run (`running-a-job.md` § 4.2).
+    not parsed again; ``engine``, which ran -- the run door's answer
+    (`runs.engine_at`, `running-a-job.md` § 4.2).
 
     ``None`` rather than ``{}`` when the run says nothing: a field that is
     absent when there is nothing to say.  A caller that wants a dict either way writes

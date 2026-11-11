@@ -700,7 +700,7 @@ decide.
 |---|---|---|
 | how is it going, right now? | the monitor, beside the job | [`run-reports.md`](?doc=execution/run-reports.md) § 2 |
 | how is it doing — how did it end? | `parse.dirs.job.run_status` | § 4.2 |
-| which engine ran? | for a run of a calculation, its description (the run door, `runs.run_of`); `parse.contract.engine_of` for a folder read on its own | § 4.2, *Which engine ran* |
+| which engine ran? | for a folder of a calculation, its description (the run door, `runs.engine_at`); `parse.contract.engine_of` for a folder read on its own | § 4.2, *Which engine ran* |
 | what ran, with what, and how did it go? | the run record, `runs.folder_answer(dir)["record"]` | [`model/parse.md`](?doc=model/parse.md) § 5d |
 | which file should a viewer open? | the run door, `runs.openable` — none in a folder no calculation claims | [`model/parse.md`](?doc=model/parse.md) § 5.2 |
 
@@ -908,7 +908,7 @@ does not have to be repeated; if not, just check time stamp".)*
 - **A sent job.** Where this machine sent the job — its address on this machine's jobs list
   ([`job-system.md`](?doc=execution/job-system.md) § 6.0a; `joblist.address_of`, `asked_here`, the one rule
   `molbuilder jobs` asks by) — every reader of a sent run that still reads live — `status`, a launch again, the
-  Results tab — asks the scheduler on the cluster it went to whether it still lists the job (the kind's
+  Results tab, a transport calculation citing the run — asks the scheduler on the cluster it went to whether it still lists the job (the kind's
   `listed` query, [`scheduler.md`](?doc=execution/scheduler.md) § 6a). A job it no longer lists, or lists
   ended, is **written into the run's launch record** by that first look (`ended`: the machine asked, when, and
   the scheduler's words — `runrecord.record_ended`,
@@ -1055,6 +1055,7 @@ run_status(run_dir, basename, *, launch=<not asked>, launched_in=None) -> RunSta
 |---|---|---|
 | `jobset/runstatus.py` — `jobset status`, the bench summary, the Results ladder | the run's, through `runs.concluded` (`state_of`: the run door, and its job asked once where this machine holds it) — a run's, each point's for a run of points, or a trial's | the stage's stem |
 | the run door, `runs.folder_answer` — `/api/results/dir`, the run record; `runstatus.run_answer` — the viewers | the run's, through the same door | the stem of the run the folder speaks for ([`architecture.md`](?doc=execution/architecture.md) § 3.2) |
+| a transport calculation's citation, `transport.compose` — the Transport tab, describe, prep | the cited run's, through the same door | the cited run's stem ([`engines/transport.md`](?doc=engines/transport.md) § 3.1) |
 | the monitor's closing line | not asked | its run's stem |
 
 `run_status` has no answer *there is no run here*: asked without `launch`, a folder with nothing written reads
@@ -1085,8 +1086,9 @@ not a precedence list:
   overrules a declaration: files outlive the run that wrote them, so a stale `.fdf` beside a freshly prepared
   PySCF deck is litter, not a second opinion. **It reads what ran — the outputs and the warm files — never a
   deck**: a deck alone says nothing of a run, so a folder holding only a hand-made deck answers `"unknown"`.
-- For a run of a calculation, the directory door answers the engine from its description
-  ([`model/parse.md`](?doc=model/parse.md) § 5.0); `engine_of` answers for a folder read on its own.
+- For a folder of a calculation, a run's or not, the run door answers the engine from its description
+  (`runs.engine_at`, which the directory door, [`model/parse.md`](?doc=model/parse.md) § 5.0, the trajectory
+  route and a run's view, its relaxation record's engine, ask); `engine_of` answers for a folder read on its own.
 
 ---
 

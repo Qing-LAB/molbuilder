@@ -45,9 +45,8 @@ from molbuilder.parse import (
     ParseError,
     detect as detect_parser,
 )
-from molbuilder.parse.contract import engine_of
 from molbuilder.jobset.runstatus import run_answer
-from molbuilder.runs import openable, run_of, view_of
+from molbuilder.runs import engine_at, openable, run_of, view_of
 from molbuilder.parse.engines._helpers import (
     trajectory_result_to_legacy_dict,
 )
@@ -164,10 +163,10 @@ def _engine_of(search_dir, payload, parser_cls) -> str:
     diverge for the canonical `.molwatch.log`, read by the parser called
     `molwatch` whatever wrote it.
 
-    NOTHING IS COMPUTED HERE.  `running-a-job.md` § 4.2 owns the
-    resolution order: a run of a calculation is its description's engine
-    (the run door, `runs.run_of`); a folder no run of ours is, read on its
-    own, the engine its files declare (`parse.contract.engine_of`).
+    NOTHING IS COMPUTED HERE.  `running-a-job.md` § 4.2 owns the rule, and
+    the run door answers it (`runs.engine_at`): a folder of a calculation
+    is its description's engine; a folder no calculation claims, read on
+    its own, the engine its files declare.
 
     **`source_format` is the fallback, reached whenever the engine is not
     declared** -- an upload, which has no run directory, and a run
@@ -182,10 +181,7 @@ def _engine_of(search_dir, payload, parser_cls) -> str:
     and it is the bug this signature exists to make impossible.
     """
     if search_dir:
-        run = run_of(search_dir)
-        if run is not None:
-            return run.place.task.engine
-        declared = engine_of(search_dir)
+        declared = engine_at(search_dir)
         if declared != "unknown":
             return declared
     return (payload or {}).get("source_format") or parser_cls.name

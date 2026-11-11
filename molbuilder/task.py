@@ -259,7 +259,8 @@ class Task:
     #: THE ELECTRODE RENAME IS THIS CALCULATION'S OWN (`engines/transport.md`
     #: § 4; user, 2026-10-04): ``True`` says the cited junction's
     #: ``L-electrode`` / ``R-electrode`` trade names in THIS calculation's
-    #: copy of it -- compose applies it, the cited run is never written, and
+    #: copy of it -- compose applies it, the cited run's geometry and labels
+    #: are never written, and
     #: another calculation citing the same run makes its own choice.  Only
     #: a transport description carries it; false writes no key.
     swap_electrodes: bool = False

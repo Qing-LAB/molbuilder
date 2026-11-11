@@ -4843,7 +4843,7 @@ built 2026-10-09, plan § 5z Q17-c)*.
 *(built 2026-10-14 — [`model/overview.md`](?doc=model/overview.md) § 2.2a,
 plan § 5ab R3)*. **A run whose verdict is not a geometry relaxation is
 refused**, as the condition above says — by name, as a run that *relaxed no
-geometry* — through the verdict `_classify_run` reads (`run_state_of`): a vibration run, whose last
+geometry* — through the verdict `_classify_run` reads (`runs.state_of`): a vibration run, whose last
 geometry is a displacement, and a transport rung, whose output reports a
 self-consistent field alone. **A cited run's geometry crosses back first** —
 its relaxed structure and its starting geometry (the leads' *unmoved* gate
@@ -4972,8 +4972,9 @@ structure carries the labels' block.
 line and what its output says it converged — *geometry yes* / *geometry NO*,
 the status verb's own reading (`RunStatus.converged_words`) — into the
 provenance (`slot-provenance.json`: `evidence`, `relaxation`) and onto the
-Transport tab's meta line, so a geometry that did not converge is cited
-knowingly: the geometry handed over is then the last step SIESTA wrote, not a
+Transport tab's meta line — a run with no conclusion said in the run door's
+words (`runs.state_of`): still going, or its job ended without one — so a
+geometry that did not converge is cited knowingly: the geometry handed over is then the last step SIESTA wrote, not a
 converged minimum. The record serves the verdict as data beside the words
 (`provenance.slot.relaxation.converged_ok`), the kept words read back by their
 writer (`_run_ending.verdict_read`), and the report decides on it, never on
@@ -5549,8 +5550,8 @@ what that record states:
 ```
 concluded (rc=0 at …) · geometry yes · SZP · 150 Ry · GGA/PBE · k 1x1x1 · 52 atoms
 concluded (rc=0 at …) · geometry NO -- its last geometry is the last one SIESTA wrote, not a converged minimum · …
-not concluded -- still running, or force-stopped (the two look identical on disk)
-ended with exit code 1 (…) -- not citable until the relaxation runs to its end
+not concluded -- running · last wrote 2 min ago
+ended with exit code 1 (…) -- not citable: launch the relaxation again and cite the run that finishes, or cite another relaxation
 a structure pair · 3 frames · optimized with J_01_coarse.fdf · SZ · 150 Ry · … · 22 atoms
 ```
 
@@ -6084,8 +6085,8 @@ as-is, no Bloch expansion in the shipped 2-terminal scope.)
 > can judge — so the sort notes it, the preflight warns, and the Transport tab
 > offers a one-click rename.  *(How that was settled: [`archive/2026-09-01-transport-design.md`](?doc=archive/2026-09-01-transport-design.md) § 4.1a.)*
 >
-> **The rename is the transport calculation's own, and a cited run is never
-> written** *(user, 2026-10-04, plan Q6; built 2026-10-08)*. Accepting it
+> **The rename is the transport calculation's own, and a cited run's geometry
+> and labels are never written** *(user, 2026-10-04, plan Q6; built 2026-10-08)*. Accepting it
 > states the swap in the calculation's description — `swap_electrodes: true`,
 > beside the junction slot (§ 2a.14) — and compose applies it to the
 > calculation's own copy of the junction (`junction.molstruct.json`; recorded
@@ -6111,7 +6112,7 @@ as-is, no Bloch expansion in the shipped 2-terminal scope.)
 > rigid shift of every atom, along every lattice vector as the rule always
 > does; along x and y, which repeat, it changes nothing. A cited pair is taken
 > the same way when its stated origin is the engine's, and keeps an origin a
-> person assigned. The cited run is read, never written. *(Measured
+> person assigned. The cited run's geometry and labels are never written. *(Measured
 > 2026-10-11: `AuBDTAu/optimization/min_force_relax/01_fine/run-0` left one
 > gold layer at z = −0.0005 Å — its input was saved from a run made before
 > the rule — and the junction cited from it was refused; centred, it sits
