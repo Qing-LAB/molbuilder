@@ -30,7 +30,7 @@ as they stood.
 
 ## ▶ HANDOVER — where we are, and where to start *(2026-11-10)*
 
-**Where we are: 2.69.23.** F0–F8 and F7a are closed; F9, the tests through
+**Where we are: 2.69.24.** F0–F8 and F7a are closed; F9, the tests through
 the road, has eight releases out (2.67.4–2.67.11) and four steps left (its
 row below). Since 2.67.11 three bodies of work the user put first have run;
 each release is its changelog row and its ledger section
@@ -52,8 +52,10 @@ each release is its changelog row and its ledger section
   V-PANEL), the structure's reads and its wire (X-STRUCT; the user,
   2026-11-10: *read the pair whole*, *one shape, sent once*, *show them while
   editing*); 2.69.22, the trajectory route's copies; 2.69.23, the run's
-  record worked out once (the user, 2026-11-10: *build it*). **Left, in
-  order**: X-STRUCT's rest (the PySCF continuation's read), X-PERSIST, X-PARSE, X-TMPL, X-EXEC, X-ENG; then the page doors and
+  record worked out once (the user, 2026-11-10: *build it*); 2.69.24, a
+  continued PySCF run keeps its labels. **Left, in order**:
+  X-STRUCT's last (a PySCF run's kept geometry written with the record of
+  the structure before it moved), X-PERSIST, X-PARSE, X-TMPL, X-EXEC, X-ENG; then the page doors and
   the copies they share (O-STATUS, O-FIND, O-STATE, O-WORDS, O-KEYS's rest
   with X-UI and X-PLOT; O-TESTS).
 

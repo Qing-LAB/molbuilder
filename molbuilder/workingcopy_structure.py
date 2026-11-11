@@ -56,14 +56,14 @@ try:                                        # inside molbuilder
     from .structure import REMAPPED_NOT_EDITED, Structure
     from .sidecars import molstruct
     from .structure_pair import GeometryChangedError
-    from .persist import stage_bytes
+    from .persist import stage_bytes, text_of
 except ImportError:                         # beside a job, in mb_pyscf.pyz
     from atom_permutation import (  # type: ignore[no-redef]
         LISTED_NOT_STATED, MAP_KEY, AtomIndexMap, Permutation)
     from structure import REMAPPED_NOT_EDITED, Structure
     import molstruct
     from structure_pair import GeometryChangedError
-    from persist import stage_bytes  # type: ignore[no-redef]
+    from persist import stage_bytes, text_of  # type: ignore[no-redef]
 
 
 class StructurePair(NamedTuple):
@@ -273,6 +273,17 @@ class StructureCodec:
     _REPLACEABLE_SUFFIXES = molstruct.GEOMETRY_SUFFIXES + (".extxyz",)
 
     # ---- load durable -> working Structure --------------------------- #
+    @classmethod
+    def geometry_of(cls, path) -> Structure:
+        """A FILE'S GEOMETRY ALONE: its text decoded as :meth:`load` decodes
+        it (`persist.text_of`) and read by the reader its name names
+        (:meth:`read_document`) -- atoms and coordinates, no sidecar
+        applied.  The read of a job that continues from the geometry its
+        previous start kept, which takes its labels from its own deck and
+        no decision on the pair (`engines/pyscf.md` § 3)."""
+        p = Path(path)
+        return cls.read_document(text_of(p.read_bytes()), cls.format_named(p))
+
     @staticmethod
     def read_document(text: str, fmt: str) -> Structure:
         """A GEOMETRY DOCUMENT READ, the one parse this door gives a text
@@ -366,12 +377,11 @@ class StructureCodec:
         # ``_require_text``), so there is one place a structure file is opened
         # and it is the same place the sidecar is picked up.
         #
-        # ``utf-8-sig`` accepts an optional UTF-8 BOM (some Windows editors
-        # emit one) -- without an explicit encoding Python falls back to the
-        # platform locale (cp1252 / latin-1 on some installs), which mojibakes
-        # any non-ASCII in the XYZ comment line or PDB residue names.  Same
-        # hardening molstruct_json / spectra_json / transport_json carry.
-        text = src.read_text(encoding="utf-8-sig")
+        # THE ONE DECODE of what molbuilder reads (`persist.text_of`): an
+        # optional UTF-8 BOM read past, never the platform locale's guess,
+        # which mojibakes any non-ASCII in the XYZ comment line or PDB
+        # residue names.
+        text = text_of(src.read_bytes())
         fmt = self.format_named(src)
         struct = self.read_document(text, fmt)
         if opened and said_out is None:

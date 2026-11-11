@@ -293,8 +293,11 @@ the progress-log writer (`MolwatchEmitter`, § 4), which also writes the log's
 end lines at exit; the structure codec — every geometry the run saves is a
 pair written by it (`StructureCodec.write_moved`,
 [`model/structure.md`](?doc=model/structure.md) § 2.4), and a run that continues
-reads the last one back through molbuilder's one XYZ reader
-(`Structure.from_xyz`); and the relaxation (`relax_policy.relax`, below). A
+takes the last one's coordinates back through the codec
+(`StructureCodec.geometry_of`, the file's geometry alone) and pairs them with
+its own deck's labels, one per atom in the order PySCF keeps — a label an
+ECP is keyed by stays the label ([`model/chemistry.md`](?doc=model/chemistry.md)
+§ 3); and the relaxation (`relax_policy.relax`, below). A
 vibration script imports, besides ([`vibration.md`](?doc=engines/vibration.md)
 § 4): the HOMO rule and its orbital window, the Hessian with $d\mu/dR$, the GPU
 array bridge and the structure the result states (`spectra/pyscf_vibration.py`,
@@ -645,7 +648,7 @@ in-script loop over stages, and no stage list in the engine config.
   at the next rung's first launch when its `restart` says `continue` — the same pair SIESTA
   carries as `.XV` and `.DM`, declared in
   [`job-contracts.md` § 4.2a](?doc=execution/job-contracts.md)'s warm-file rules.
-  The script reads that geometry with molbuilder's one XYZ reader (§ 3); a file
+  The script takes that geometry's coordinates through the codec, its own labels beside them (§ 3); a file
   it cannot read stops the run with the reader's words, rather than starting
   again from the input geometry *(until 2026-10-05 a hand-written reader warned
   and fell back to it)*.

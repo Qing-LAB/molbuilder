@@ -72,6 +72,26 @@ def run_file_expr(names, role: str) -> str:
     return f"JOB + {names.tail(role)!r}"
 
 
+def emit_continuation_read(names, labels) -> List[str]:
+    """THE LINES A CONTINUING RUN STARTS FROM THE GEOMETRY ITS PREVIOUS START
+    KEPT WITH -- the ``_optimized.xyz`` it left, when there is one -- into the
+    deck's ``_atom_block``: ``labels`` are the deck's own, from prep, one per
+    atom (`model/chemistry.md` § 3: where an engine is handed the label, it
+    is the label -- an ECP is keyed by it), and the coordinates the kept
+    file's, read by the codec (`StructureCodec.geometry_of`), paired one to
+    one in the atoms' order, which PySCF keeps; a file of another atom count
+    stops the run with that said."""
+    return [
+        f"_opt_path = _mb_outfile({run_file_expr(names, PYSCF_OPTIMIZED)})",
+        "if _os.path.exists(_opt_path):",
+        "    _mb_kept = _mb_StructureCodec.geometry_of(_opt_path)",
+        f"    _atom_block = [(_mb_label, tuple(_mb_xyz)) for _mb_label, _mb_xyz"
+        f" in zip({list(labels)!r}, _mb_kept.positions.tolist(), strict=True)]",
+        '    print(f"[molbuilder] continuation: loaded geometry from '
+        '{_opt_path} ({len(_atom_block)} atoms)")',
+    ]
+
+
 def geometric_prefix_expr(names) -> str:
     """The expression for geomeTRIC's PREFIX -- its trajectory's name, as
     the stage's names give it, less the tail geomeTRIC appends: the
@@ -321,18 +341,18 @@ def spec_for(struct: Structure,
         out.append(f'JOB = "{label}"')
         out.append("")
         # Every molbuilder function the script runs, from the bundle its head
-        # put on the path (`engines/pyscf.md` § 3): the pair writer's codec, the
-        # progress-log writer, the relaxation, the one XYZ reader a
-        # continuing run reads its last geometry with, and the move onto
-        # the GPU -- all of them, whatever this deck's settings call.
+        # put on the path (`engines/pyscf.md` § 3): the structure codec -- the
+        # pair writer, and the one text read a continuing run reads its last
+        # geometry with -- the progress-log writer, the relaxation, and the
+        # move onto the GPU -- all of them, whatever this deck's settings call.
         from ..atom_permutation import AtomIndexMap
         from ..runtime_info import to_gpu
         from ..trajectory_log.emitter import MolwatchEmitter
         from ..workingcopy_structure import StructureCodec
         from .relax_policy import past_wall, relax, wall_deadline
         out += emit_bundle_imports(StructureCodec, MolwatchEmitter, relax,
-                                   wall_deadline, past_wall, Structure,
-                                   to_gpu, AtomIndexMap)
+                                   wall_deadline, past_wall, to_gpu,
+                                   AtomIndexMap)
 
         # ---- _save_structure helper (the PAIR writer), defined EARLY
         #      so the initial-geometry snapshot can be
@@ -385,11 +405,11 @@ def spec_for(struct: Structure,
         # read -- the per-engine warm-file inventory,
         # `execution/job-contracts.md` § 4.2).
         #
-        # READ WITH MOLBUILDER'S ONE XYZ READER (`Structure.from_xyz`,
-        # imported from mb_pyscf.pyz -- `engines/pyscf.md` § 3): the file is
-        # the previous run's own pair, written atomically by the codec, so a
-        # file that cannot be read is not one molbuilder wrote, and the run
-        # stops with the reader's words.
+        # THE KEPT GEOMETRY'S COORDINATES, THIS DECK'S LABELS
+        # (`emit_continuation_read`; `engines/pyscf.md` § 3): the file is the
+        # previous run's own pair, written atomically by the codec, so a file
+        # that cannot be read is not one molbuilder wrote, and the run stops
+        # with the reader's words.
         out.append("_atom_block = '''")
         out.append(_atoms_block(struct, _frame.positions))
         out.append("'''")
@@ -399,14 +419,7 @@ def spec_for(struct: Structure,
         # run WRITES one, and not ``optimize``, which says whether this run relaxes
         # -- can answer whether to start from it.
         if continues(cfg):
-            out.append(f'_opt_path = _mb_outfile('
-                       f'{run_file_expr(names, PYSCF_OPTIMIZED)})')
-            out.append("if _os.path.exists(_opt_path):")
-            out.append("    with open(_opt_path) as _mb_xyz_fh:")
-            out.append("        _atom_block = _mb_Structure.from_xyz("
-                       "_mb_xyz_fh.read()).to_pyscf()")
-            out.append('    print(f"[molbuilder] continuation: loaded '
-                       'geometry from {_opt_path} ({len(_atom_block)} atoms)")')
+            out += emit_continuation_read(names, struct.elements)
         out.append("mol = gto.M(")
         out.append("    atom       = _atom_block,")
         out.append(f'    basis      = "{cfg.basis}",')

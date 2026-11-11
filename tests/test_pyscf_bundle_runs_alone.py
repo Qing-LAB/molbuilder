@@ -26,14 +26,22 @@ import numpy as np
 
 
 def test_the_bundle_loads_alone_and_writes_a_pair_the_codec_reads(tmp_path):
-    """MUTATION THIS MUST FAIL AGAINST: a member importing, at load, a
+    """And a run that continues takes the coordinates it kept back through
+    the same bundle's codec, beside its own deck's labels
+    (`emit_continuation_read`).  THE SILENT FAILURE (to 2.69.23): the
+    continuation took the file's bare elements for the deck's labels, so a
+    labelled species lost the ECP keyed by its label.
+
+    MUTATION THIS MUST FAIL AGAINST: a member importing, at load, a
     molbuilder module the bundle does not carry -- ``from .runfiles import
     compose`` at the top of `structure.py`, which fails in the bundle with
     *attempted relative import with no known parent package*."""
     from molbuilder.config.pyscf import PySCFConfig
     from molbuilder.pyscf.input import (_sidecar_for, emit_bundle_imports,
+                                        emit_continuation_read,
                                         emit_run_settings_block,
-                                        emit_script_head)
+                                        emit_script_head, run_file_expr)
+    from molbuilder.runfiles import PYSCF_OPTIMIZED, RunNames
     from molbuilder.runfiles import PYSCF_BUNDLE
     from molbuilder.runwrap import PYSCF_COMPANIONS, pyscf_bundle
     from molbuilder.spectra.selection import select_modes
@@ -62,6 +70,7 @@ def test_the_bundle_loads_alone_and_writes_a_pair_the_codec_reads(tmp_path):
     # on the path, its threads sized -- then every member the bundle holds,
     # each found where the script's imports find it.
     members = sorted(name[:-len(".py")] for name in PYSCF_COMPANIONS)
+    names = RunNames("w", "01_coarse")
     script = "\n".join([
         *emit_run_settings_block(PySCFConfig()),
         *emit_script_head(),
@@ -69,10 +78,18 @@ def test_the_bundle_loads_alone_and_writes_a_pair_the_codec_reads(tmp_path):
         "import importlib, json, os",
         f"_found = {{m: os.path.basename(os.path.dirname("
         f"importlib.import_module(m).__file__)) for m in {members!r}}}",
-        f"_mb_StructureCodec().write_moved(_mb_outfile('w_optimized.xyz'), "
+        "JOB = 'w'",
+        f"_mb_StructureCodec().write_moved(_mb_outfile("
+        f"{run_file_expr(names, PYSCF_OPTIMIZED)}), "
         f"['O', 'H', 'H'], {relaxed!r}, {_sidecar_for(water)!r}, "
         f"comment='Optimized geometry (PySCF)')",
+        # A RUN THAT CONTINUES reads that geometry back as the deck does,
+        # through the bundle's codec alone, beside its own deck's labels --
+        # a numbered species label among them, the one an ECP is keyed by.
+        "import os as _os",
+        *emit_continuation_read(names, ["O1", "H", "H"]),
         "print(json.dumps({",
+        "    'continued': _atom_block,",
         "    'from': sorted(set(_found.values())),",
         "    'threads': _MB_REQUESTED_THREADS >= 1,",
         "    'selected': _mb_select_modes([412.3, 1023.4, 3656.0], 'all',",
@@ -87,8 +104,15 @@ def test_the_bundle_loads_alone_and_writes_a_pair_the_codec_reads(tmp_path):
         f"the PySCF bundle cannot be imported, or cannot write, without "
         f"molbuilder:\n{done.stdout}{done.stderr}")
     got = json.loads(done.stdout.strip().splitlines()[-1])
+    continued = got.pop("continued")
     assert got == {"from": [PYSCF_BUNDLE], "threads": True,
                    "selected": [2, 3]}, got
+    # THE CONTINUATION'S READ (`engines/pyscf.md` § 3): the coordinates the
+    # run kept, read by the shipped codec, beside the deck's own labels --
+    # `O1` stays `O1`, never the file's bare element.
+    assert [a for a, _xyz in continued] == ["O1", "H", "H"], continued
+    assert np.allclose([xyz for _a, xyz in continued], relaxed,
+                       atol=1e-6), continued
 
     # THE PACKAGE'S CODEC READS WHAT THE SHIPPED ONE WROTE: the moved
     # coordinates, the held atom, and the engine's origin.
