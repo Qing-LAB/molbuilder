@@ -28,8 +28,6 @@ const WORKSPACE_TAG = "results:structure";
 import { molviewDoors } from "../projects/molview-doors.js";
 import { isStructureFile } from "../projects/state.js";
 import { basename, dirname } from "../path-utils.js";
-// THE ONE READER of the server's answers (ui-contract.md § 12).
-import { ask } from "../server.js";
 
 (function (root) {
     "use strict";
@@ -216,29 +214,6 @@ import { ask } from "../server.js";
                             return;
                         }
                     }
-                    /* RECORD WHAT THE RUN DIRECTORY SAYS ABOUT THIS
-                     * STRUCTURE (structure-info-plan.md I5; model/parse.md
-                     * 5b, 5b.1): the electronic contract its deck states
-                     * (`calculation`) and what the run did to the geometry
-                     * it left (`relaxation`).  Recorded through the info
-                     * door, each shows on the Metadata page and travels
-                     * with any export -- which is what lets a transport
-                     * citation of the pair run sealed (4.1b), and lets a
-                     * vibration calculation check a structure stated
-                     * relaxed against its own record (vibration.md 2.2).
-                     * Best-effort: the viewer works without either. */
-                    try {
-                        const contract = await ask("/api/results/contract?path="
-                            + encodeURIComponent(structPath));
-                        if (!disposed && contract.ok
-                                && handle.data && handle.data.info
-                                && typeof handle.data.info.set === "function") {
-                            const cb = contract.body;
-                            for (const key of ["calculation", "relaxation"]) {
-                                if (cb[key]) handle.data.info.set(key, cb[key]);
-                            }
-                        }
-                    } catch (_) { /* no record is a real answer */ }
                     if (disposed) return;
 
                     const elems = handle.data.getElements() || [];

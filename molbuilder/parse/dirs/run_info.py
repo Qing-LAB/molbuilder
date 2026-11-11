@@ -31,11 +31,9 @@ Two keys:
 Callers, each handing the output it has open:
   * ``runs.view_of`` — the view of a run every door that builds a structure
     from one asks: the Results tab's load (``/api/watch/load``, the file it
-    opened), ``xv2xyz --from-run`` (the run's own output), the transport
-    citation (the run door's choice, ``runs.openable``).
-  * ``web/blueprints/results.py::api_results_contract`` — the structure
-    inspector's door: the run door's choice for the structure's folder
-    (``runs.openable``).
+    opened), the codec's read of an engine's own structure file in a run
+    (the run door's choice, ``runs.openable``), ``xv2xyz --from-run`` (the
+    run's own output), the transport citation (the run door's choice).
 """
 
 from __future__ import annotations

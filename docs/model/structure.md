@@ -972,7 +972,9 @@ copy of any of them:
    cell and axis kinds its deck recorded and the engine's origin, a stated 0,
    because `structure-periodicity.md` § 6.0 asks it of every door that makes
    a structure from an engine's output — its deck's labels and order record,
-   and what it says about itself *(the frame 2026-09-27, plan § 0a M1, from
+   and what it says about itself, whole: its contract from its deck and its
+   relaxation record from the output a viewer opens in its folder
+   (`runs.openable`; `model/parse.md` § 5b.1) *(the frame 2026-09-27, plan § 0a M1, from
    the run's own deck since 2026-10-04, plan B12; through the view, with the
    labels and the order, 2026-10-14)*. A file molbuilder writes, or
    one in a folder no calculation marks, reads as before. **Not** a periodicity gate: reading does not judge

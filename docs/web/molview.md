@@ -1677,10 +1677,11 @@ dict of key → value — with an honest empty state when nothing is
 recorded.
 
 **Which keys exist is the host tabs' business**, through the host's
-doors (`viewer.data.info` — § 9.3): the Results tab records the finished
-run's electronic contract (`info.calculation`) and what the run did to
-the geometry it left (`info.relaxation`,
-[`model/parse.md` § 5b.1](?doc=model/parse.md)), a future tab records
+doors (`viewer.data.info` — § 9.3): a run's file opened on the Results tab
+arrives carrying the finished run's electronic contract
+(`info.calculation`) and what the run did to the geometry it left
+(`info.relaxation`), the server's one read of it
+([`model/parse.md` § 5b.1](?doc=model/parse.md)); a future tab records
 whatever describes its structure.
 
 **Read through, not scrolled past** *(user, 2026-10-03: "we need a good

@@ -1366,16 +1366,20 @@ is `None`, never a guess.
 and its parse on (`run_info(deck=…, output=path, traj=parse)`, which asks
 `relaxation_of(path, traj=parse)`) and composes the run's view once, for
 the structure envelope it answers with; the record parses the
-file itself only for a caller that has not (the structure inspector's
-`/api/results/contract`, which hands the run door's choice for the structure's
-folder). So the two doors answer one record of one file.
+file itself only for a caller that has not (the codec's read of an engine's
+own structure file in a run, which hands the run door's choice for the run's
+folder, `runs.openable`; `model/structure.md` § 2.4). So the two doors answer
+one record of one file.
 The stop reason the viewer shows is the parse's own `cause` (§ 2b), not a
 second read.
 
-The composer (`dirs/run_info.py`) puts it beside `calculation`; the Results
-tab's structure inspector records both into the viewer's `info` store, so a
-pair exported from a finished relaxation carries them
-([`web/molview.md` § 8.4a](?doc=web/molview.md)); `molbuilder xv2xyz
+The composer (`dirs/run_info.py`) puts it beside `calculation`; a run's file
+opened for a person carries both in its `info` — the trajectory viewer's
+envelope (its run's view), and an engine's own structure file read through
+its run's view (`model/structure.md` § 2.4) — so a pair exported from a
+finished relaxation carries them, and a pair a person saved keeps its own
+record, never its folder's run's ([`web/molview.md` § 8.4a](?doc=web/molview.md);
+the user, 2026-11-10: the run's record worked out once); `molbuilder xv2xyz
 --from-run` asks the same composer of the run that holds the `.XV` — its own
 deck, its own output (`Run.stdout`) — so a pair saved on the command line
 carries the same block (2026-10-09: the CLI's road to a citable pair,

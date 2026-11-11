@@ -165,10 +165,11 @@ def relaxation_and_its_bench(tmp_path, monkeypatch):
     return bundle
 
 
-class TestTheContractEndpoint:
-    """/api/results/contract: the
-    contract a run's own deck states (`model/parse.md` § 5b).  Isolated onto
-    a tmp projects root -- tests never touch the real tree."""
+class TestWhatAFolderAnswers:
+    """What a folder answers on the Results tab -- its run, its place and
+    the file opened for the person (`model/parse.md` § 5.0, § 5.2).
+    Isolated onto a tmp projects root -- tests never touch the real
+    tree."""
 
     def test_a_directory_with_no_run_reports_no_run_state(
             self, isolated_projects_root, web_client, relaxation_and_its_bench):
@@ -363,13 +364,3 @@ class TestTheContractEndpoint:
                 "trial": trial, "point": None}, (rel, place)
         assert answered == {r[0] for r in rows}, (
             "a row no folder answered", sorted({r[0] for r in rows} - answered))
-
-
-    def test_no_deck_answers_null(self, isolated_projects_root, web_client):
-        d = isolated_projects_root / "bare"
-        d.mkdir()
-        (d / "chain.xyz").write_text("1\n\nC 0 0 0\n")
-        r = web_client.get("/api/results/contract?path="
-                           + str(d / "chain.xyz"))
-        out = r.get_json()
-        assert out["ok"] is True and out["calculation"] is None

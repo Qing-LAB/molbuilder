@@ -435,9 +435,15 @@ class StructureCodec:
             # makes a structure from an engine's output states it"*); the
             # labels of its deck, and the order record of a reordered run --
             # the file is in its engine's order (`model/overview.md` § 2.2a,
-            # I5); what the run says about itself.
-            from .runs import run_of, view_of
-            view = view_of(run_of(src), n_atoms=struct.n_atoms)
+            # I5); what the run says about itself, whole -- its contract
+            # from its deck and its relaxation record from the output a
+            # viewer opens in its folder (`runs.openable`; `model/parse.md`
+            # § 5b.1), the one read of the run's record a person's view of
+            # this file carries.
+            from .runs import openable, run_of, view_of
+            run = run_of(src)
+            output, _trail = openable(run.folder)
+            view = view_of(run, output=output, n_atoms=struct.n_atoms)
             if in_user_order:
                 # AN EDITOR'S OR A BUILDER'S READ crosses back through the
                 # run's view, refused when nothing states its order (I9).

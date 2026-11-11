@@ -414,14 +414,6 @@ method = "POST"
 takes_no_path = "A project name (projects.validate_name: letters, digits, '_', '-'), created directly under the first picker root."
 
 [[route]]
-rule = "/api/results/contract"
-method = "GET"
-[[route.path]]
-where = "query"
-name = "path"
-request = { query = { path = "{outside_file}" } }
-
-[[route]]
 rule = "/api/results/dir"
 method = "GET"
 [[route.path]]

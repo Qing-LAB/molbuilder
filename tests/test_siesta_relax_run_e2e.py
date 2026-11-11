@@ -177,13 +177,14 @@ def test_the_run_record_states_the_forces_the_relaxation_judged(
 def test_both_doors_answer_one_record_of_the_run(relaxed, web_client,
                                                  monkeypatch):
     """The trajectory load, of the file it opened in the run's folder
-    (`runs.openable`), and the structure inspector's door, of the run's
-    `.XV` a person opens there: one record, and the level of theory its own
-    deck states (`model/parse.md` § 5b, § 5b.1: "the two doors answer one
-    record of one file").  THE SILENT FAILURE: the Results tab and the
-    structure inspector each reading the record or the level of theory of
-    another file, so the pair a person exports carries a record the tab
-    never showed."""
+    (`runs.openable`), and the load of the run's own structure file a person
+    opens there (`<label>.xyz`, read through its run's view): one record,
+    and the level of theory its own deck states (`model/parse.md` § 5b,
+    § 5b.1: "the two doors answer one record of one file"; the user,
+    2026-11-10: the run's record worked out once).  THE SILENT FAILURE: the
+    Results tab and the structure preview each reading the record or the
+    level of theory of another file, so the pair a person exports carries a
+    record the tab never showed."""
     from molbuilder.parse.contract import contract_of
     _at_the_runs_tree(relaxed, monkeypatch)
     run = _run(relaxed)
@@ -191,14 +192,21 @@ def test_both_doors_answer_one_record_of_the_run(relaxed, web_client,
     loaded = client.post("/api/watch/load",
                          json={"path": str(run)}).get_json()
     assert loaded["ok"] is True, loaded
-    asked = client.get("/api/results/contract",
-                       query_string={"path": str(run / "CO2.XV")}).get_json()
-    assert asked["ok"] is True, asked
+    opened = client.post("/api/build/load",
+                         json={"path": str(run / "CO2.xyz")}).get_json()
+    assert opened["ok"] is True, opened
     record = loaded["structure"]["info"]["relaxation"]
     assert record["source"] == Path(loaded["path"]).name, record
     assert record["converged"] is True
-    assert asked["relaxation"] == record
-    assert (asked["calculation"] == loaded["structure"]["info"]["calculation"]
+    said = opened["structure"]["info"]
+    assert said["relaxation"] == record
+    # THE RECORD VOUCHES FOR THE FILE IT TRAVELS ON (`model/parse.md`
+    # § 5b.1, `geometry_sha256`): the run's own `.xyz` is its last frame, so
+    # a calculation described from it is checked against its own record.
+    from molbuilder.structure import Structure
+    assert (Structure.from_dict(opened["structure"]).geometry_fingerprint()
+            == record["geometry_sha256"]), record
+    assert (said["calculation"] == loaded["structure"]["info"]["calculation"]
             == contract_of(_deck(relaxed)))
 
 

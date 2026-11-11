@@ -91,46 +91,6 @@ def partial_spectra_inspector():
     return resp
 
 
-@bp.route("/api/results/contract", methods=["GET"])
-def api_results_contract():
-    """What the run directory beside a structure records about it.
-
-    ``?path=`` names a structure file (or its directory), tree-relative;
-    the answer carries the two keys of the block that directory answers
-    for itself -- ``calculation``, the electronic contract its deck
-    states, and ``relaxation``, what the run did to the geometry it left
-    (`model/parse.md` § 5b, § 5b.1) -- each ``null`` when there is nothing
-    to say.  The Results tab's structure inspector calls this after a load
-    and records each answer through the viewer's ``data.info`` door, so an
-    export carries them.
-
-    It asks ``run_info`` -- the ONE composer of "what does this
-    directory say about itself" -- rather than the ``contract_of``
-    extractor beneath it, so this door and the trajectory load door
-    cannot come to disagree about what a directory records."""
-    from .files import _existing, _resolve_within_roots
-
-    raw = str(request.args.get("path") or "")
-    if not raw:
-        return err("no path given", 400)
-    p = _existing(_resolve_within_roots(raw))
-    directory = p if p.is_dir() else p.parent
-    # THE RUN THAT FOLDER SPEAKS FOR: its contract from its own deck, its
-    # record of the file the Results tab opens there -- both the run door's,
-    # handed down because `parse/` cannot ask it (`model/parse.md` § 5b,
-    # § 5b.1).
-    from molbuilder.deck_record import DeckRecordUnreadable
-    from molbuilder.runs import openable, run_of, view_of
-    output, _trail = openable(directory)
-    try:
-        info = view_of(run_of(directory), output=output).info or {}
-    except DeckRecordUnreadable as exc:
-        # A DECK WHOSE RECORD DOES NOT READ is said, never a crash.
-        return err(str(exc), 400)
-    return jsonify({"ok": True, "calculation": info.get("calculation"),
-                    "relaxation": info.get("relaxation")})
-
-
 @bp.route("/api/results/dir", methods=["GET"])
 def api_results_dir():
     """**What is in this run directory, and which file should open?**
