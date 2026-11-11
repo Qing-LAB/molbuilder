@@ -135,7 +135,8 @@ def parse_effective_run(out_text: str = "", wrapper_log: str = "") -> Dict:
                         the wrapper's resolved value, but the wrapper
                         exports it in the same script that runs the
                         engine, so it is what the process actually got.
-    ``blocksize``       the ScaLAPACK/ELPA block size SIESTA settled on.
+    ``blocksize``       the orbital distribution's block size SIESTA settled
+                        on (``ProcessorY, Blocksize``, `Src/initparallel.F`).
     ``diag_algorithm``  the eigensolver actually used (``ELPA-2stage``,
                         ``D&C``, ...) -- the fallback witness.
     ``elpa_gpu``        ELPA's GPU string key, printed only by an

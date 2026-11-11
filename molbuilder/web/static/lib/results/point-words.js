@@ -8,7 +8,8 @@
  *
  * The UI's own display, so a frame reads as the frame bar counts — through
  * MolView's one translation (`toDisplay`, model/overview.md § 2) — and the
- * voltage as the record states it.
+ * voltage as the record states it; a call as its wire form words it, the
+ * server's one wording of a call (`Call.words`).
  */
 import { toDisplay } from "/static/lib/molview/index.js";
 
@@ -32,25 +33,13 @@ export function pointWords(frame, of, biasV) {
 }
 
 /**
- * A SIESTA vibration's call, from its one wire form
- * (`vibration_phases.Call.to_wire`): *the relaxation*, *the force
- * constants*, *the equilibrium*, *mode 7 (4271 cm⁻¹), +δQ*.
- */
-export function callWords(c) {
-    if (c.phase === "relax") return "the relaxation";
-    if (c.phase === "fc") return "the force constants";
-    if (c.mode == null) return "the equilibrium";
-    const freq = c.frequency_cm1 != null
-        ? " (" + Math.round(Number(c.frequency_cm1)) + " cm\u207b\u00b9)" : "";
-    return "mode " + c.mode + freq + ", "
-        + (Number(c.side) > 0 ? "+\u03b4Q" : "\u2212\u03b4Q");
-}
-
-/**
- * Any point of a run, from its wire form: a vibration's call by its phase,
- * a transport point by its frame and voltage; ``""`` for a run of one.
+ * Any point of a run, from its wire form: a SIESTA vibration's call by the
+ * words its wire form carries (`vibration_phases.Call.to_wire`: *the
+ * relaxation*, *the force constants*, *the equilibrium*, *mode 7
+ * (4271 cm⁻¹), +δQ*), a transport point by its frame and voltage; ``""``
+ * for a run of one.
  */
 export function runPointWords(r) {
-    if (r.phase) return callWords(r);
+    if (r.phase) return r.words || "";
     return r.bias_v != null ? pointWords(r.frame, r.of, r.bias_v) : "";
 }

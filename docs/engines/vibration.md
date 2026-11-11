@@ -2724,11 +2724,11 @@ is its call's. **The Results tab** follows a call's folder by that call's
 state (`run_answer`) and the run's folder by the run's state (§ 7); the
 ladder lists the run's own row — *run-0*, its state and count, opening its
 result where its root holds one (`runs.openable`) — then every call under
-it, each row named by its run and the call in the page's words — *run-0 · the force constants*, *run-0 · mode 3
+it, each row named by its run and the call in its one wording, the words its
+wire form carries (`Call.words`) — *run-0 · the force constants*, *run-0 · mode 3
 (2548 cm⁻¹), +δQ* (`lib/results/point-words.js`, [`web/results.md`](?doc=web/results.md)
-§ 2.5). **Not built**: the Run panel naming the phase and the call that is
-running — the run's folder is served its state and no record, so the panel
-stays hidden there.
+§ 2.5); the Run panel names the call at work the same way
+([`web/results.md`](?doc=web/results.md) § 3a).
 
 #### 8. The result — the structure PySCF's has, SIESTA's values in it
 

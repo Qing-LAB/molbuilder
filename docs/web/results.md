@@ -67,7 +67,7 @@ answers its own question — *which rung is next*, *which setting is fastest*,
 | the Run panel | `lib/results/run-panel.js` (§ 3a) | the run the folder's files came from — its `record` — above whichever presenter is mounted; hidden for a container and a folder with no run |
 | the controller | `results/viewer.js` | picks the presenter for the announced file, disposes the old one, mounts the new one; with nothing to show, the card that says what the folder is, and its ladder |
 | the presenters | `lib/inspectors/*.js`, through `registry.js` ([`presenters.md`](?doc=web/presenters.md)) | one per kind of result; each loads its own data |
-| their data | trajectory: `/api/watch/load`, `/api/watch/data` (`watch.py`) · spectra: `/api/spectra/*` · bench: `/api/bench/summary` · transport: `/api/transport/record`, composed on read · the displacement sweep: `/api/files/*` | each reads its file through the registry — the readers the rest of molbuilder uses ([`model/parse.md`](?doc=model/parse.md)) |
+| their data | trajectory: `/api/watch/load`, `/api/watch/data` (`watch.py`) · spectra: `/api/spectra/*` · bench: `/api/bench/summary` · transport: `/api/transport/record`, composed on read · the displacement sweep: `/api/files/*` | each but the displacement sweep's reads its file through the registry — the readers the rest of molbuilder uses ([`model/parse.md`](?doc=model/parse.md)); the displacement sweep's page reads its record whole, the file the registry claimed by its role and schema (`fc-sweep-json`) before the picker offered it |
 
 ### 0.3 The rules that keep it right
 
@@ -866,10 +866,12 @@ one wording**: the frame is MolView's and the voltage the report's, a point is
 found by the pair of them and nothing else, and every place a point is named
 — the legend, the table, the ladder — says it as `lib/results/point-words.js`
 does, the frame bar's numbers through MolView's `toDisplay`; the ladder's row
-for a SIESTA vibration's call, by the same module, as its phase says it —
-*the relaxation*, *the force constants*, *the equilibrium*, *mode 3
-(2548 cm⁻¹), +δQ* (`callWords`; `runPointWords` names any run's point from
-its wire form). The device's
+for a SIESTA vibration's call, by the same module, in the words its wire
+form carries — *the relaxation*, *the force constants*, *the equilibrium*,
+*mode 3 (2548 cm⁻¹), +δQ*, a mode's frequency in whole wavenumbers, one a
+hair below zero 0 (`Call.words`, the one wording of a call, the run's index
+and `status` say it too; `runPointWords` names any run's point from its wire
+form). The device's
 *all frames* is the one SCF plot drawing several runs on one axis
 (`lib/scfplot/scfplot.js`, which takes a list of runs, one or many).
 

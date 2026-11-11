@@ -1213,8 +1213,8 @@ def test_the_ladder_names_each_call_of_the_run_in_its_words(
     """**The calculation's ladder, looked at** (`web/results.md` § 2.4, § 2.5
     *one wording*; `engines/vibration.md` § 5.11 § 7): opened at the
     calculation's root, the Results tab lists every call of the shared run
-    under its stage, each row named by its run and by the call in the page's
-    words -- *the relaxation*, *the force constants*, *the equilibrium*,
+    under its stage, each row named by its run and by the call in its one
+    wording -- *the relaxation*, *the force constants*, *the equilibrium*,
     each picked mode's two sides at its frequency
     (`lib/results/point-words.js`).
 
@@ -1232,7 +1232,8 @@ def test_the_ladder_names_each_call_of_the_run_in_its_words(
     point_the_one_door_at(run.tree.parent, monkeypatch.setenv)
 
     # WHAT EACH ROW IS NAMED BY, the contract's words for each call the
-    # run's index lists, read by its one reader.
+    # run's index lists, read by its one reader (`web/results.md` § 2.5: a
+    # mode's frequency in whole wavenumbers).
     def said(c):
         if c.phase == RELAX:
             return "the relaxation"
@@ -1240,7 +1241,8 @@ def test_the_ladder_names_each_call_of_the_run_in_its_words(
             return "the force constants"
         if c.mode is None:
             return "the equilibrium"
-        return (f"mode {c.mode} ({round(c.frequency_cm1)} cm\u207b\u00b9), "
+        return (f"mode {c.mode} ({int(round(c.frequency_cm1))} "
+                f"cm\u207b\u00b9), "
                 + ("+\u03b4Q" if c.side > 0 else "\u2212\u03b4Q"))
     calls = calls_of(_index_of(run))
     assert {c.phase for c in calls} >= {RELAX, FC, "optical"}, calls

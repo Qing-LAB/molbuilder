@@ -27,7 +27,7 @@ The load path is the file the Results tab's dropdown picked, ``{"path":
 """
 from __future__ import annotations
 
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional
 
 from flask import Blueprint, jsonify, render_template, request
 from ._shared import err
@@ -361,12 +361,14 @@ def api_spectra_load():
     # § 4.1): the run this file belongs to is asked after the file is
     # read, and when it is no longer live the file is read again if it
     # changed in between -- so the viewer stops on the file's last state.
+    # THE FILE'S VERSION by the ending reader's rule (`_run_ending.version_of`).
     from molbuilder.jobset.runstatus import run_answer
+    from molbuilder.parse.engines._run_ending import version_of
     try:
-        before = _version(path)
+        before = version_of(path)
         results = parse_spectra_json(path)
         run = run_answer(path)
-        if not (run and run["live"]) and _version(path) != before:
+        if not (run and run["live"]) and version_of(path) != before:
             results = parse_spectra_json(path)
     except SpectraJsonError as exc:
         return _err_load(exc)
@@ -375,20 +377,9 @@ def api_spectra_load():
                    frameset_temperature_k=frameset_temperature_k)
 
 
-# --------------------------------------------------------------------- #
-# Helpers                                                               #
-# --------------------------------------------------------------------- #
-
-
-def _version(path) -> Optional[Tuple[int, int]]:
-    """The file's size and modification time -- ``None`` when it is gone,
-    which the read that follows reports in its own words."""
-    import os
-    try:
-        st = os.stat(path)
-    except OSError:
-        return None
-    return (st.st_size, st.st_mtime_ns)
+# ===================================================================== #
+# /api/spectra/frameset · /api/spectra/export                           #
+# ===================================================================== #
 
 
 @bp.route("/api/spectra/frameset", methods=["POST"])
@@ -457,6 +448,11 @@ def api_spectra_export():
     except (NotACalculation, ExportError, ValueError, OSError) as exc:
         return err(str(exc), 400)
     return sent_export(got)
+
+
+# ===================================================================== #
+# Helpers                                                               #
+# ===================================================================== #
 
 
 def _err_load(exc: SpectraJsonError):

@@ -219,21 +219,25 @@ class Call:
         if self.mode is None:
             return "the equilibrium"
         side = "+δQ" if (self.side or 0) > 0 else "−δQ"
-        freq = (f" ({self.frequency_cm1:.0f} cm⁻¹)"
+        # A WHOLE NUMBER OF WAVENUMBERS: a mode a hair below zero reads 0,
+        # never "-0".
+        freq = (f" ({int(round(self.frequency_cm1))} cm⁻¹)"
                 if self.frequency_cm1 is not None else "")
         return f"mode {self.mode}{freq}, {side}"
 
     def to_wire(self) -> Dict[str, Any]:
         """The call on the wire -- one form for every answer that names a
-        point: ``{phase, call, mode, side, frequency_cm1, dq_amu12_ang}``;
-        ``frame``, ``of`` and ``bias_v`` beside them, as every point's wire
-        form carries them (`transport.stages.Point.to_wire`) -- a frame
-        index for an optical call, no voltage."""
+        point: ``{phase, call, mode, side, frequency_cm1, dq_amu12_ang,
+        words}``, ``words`` the call as :meth:`words` names it, which a page
+        shows as sent (`web/results.md` § 2.5: one wording); ``frame``,
+        ``of`` and ``bias_v`` beside them, as every point's wire form
+        carries them (`transport.stages.Point.to_wire`) -- a frame index for
+        an optical call, no voltage."""
         frame = (frame_index(self.name) if self.phase == OPTICAL and self.name
                  else None)
         return {"phase": self.phase, "call": self.name, "mode": self.mode,
                 "side": self.side, "frequency_cm1": self.frequency_cm1,
-                "dq_amu12_ang": self.dq_amu12_ang,
+                "dq_amu12_ang": self.dq_amu12_ang, "words": self.words(),
                 "frame": frame, "of": self.of, "bias_v": None}
 
     def facts(self) -> Dict[str, Any]:
