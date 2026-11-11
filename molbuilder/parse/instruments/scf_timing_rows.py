@@ -106,7 +106,12 @@ def progress_log_timing_metrics(text: str) -> Dict[str, Any]:
     grammar's one row reader (`molwatch_grammar.scf_history_row`) -- one
     ``scf_history`` block per SCF, its first row the one that begins it, in
     the run's one phase (`molwatch_grammar.SCF_PHASE`).  A row with no stamp
-    is not timed."""
+    is not timed.
+
+    THE ROWS ALONE, not the log's reading pass: the monitor asks this at
+    every wake, and the pass builds every step's coordinates and forces --
+    the same figures at three times the cost (38 ms against 116 ms on a
+    2.5 MB log of 300 steps)."""
     rows: List[Row] = []
     first = False
     for line in text.splitlines():

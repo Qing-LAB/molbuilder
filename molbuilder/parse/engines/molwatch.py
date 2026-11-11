@@ -58,12 +58,13 @@ from ._helpers import wrap_trajectory
 
 
 # THE GRAMMAR IS `molwatch_grammar`'s -- header, step block and footer, each
-# line with its one reader -- which this parser, the PySCF parser, the ending
-# scan and the monitor all read, so the monitor, which runs where numpy does
-# not, reads a PySCF run's progress with the same lines
-# (`execution/run-reports.md` § 2.3).
+# line with its one reader -- which the reading pass reads (this parser,
+# geomeTRIC's trajectory beside the log, the atom index door, and the
+# monitor, which runs where numpy does not, so it reads a PySCF run's
+# progress with the same lines, `execution/run-reports.md` § 2.3) and the
+# ending scan.
 from . import molwatch_grammar as _MG
-from .molwatch_reader import MolwatchReader
+from .molwatch_reader import read_log
 
 
 def _parse_molwatch_log(path: str) -> Trajectory:
@@ -79,11 +80,7 @@ def _parse_molwatch_log(path: str) -> Trajectory:
 def _parse_molwatch_log_impl(path: str, _scan_log) -> Trajectory:
     """The log through the one reading pass (`molwatch_reader`), and a Frame
     per step block it read -- the arrays are this module's alone."""
-    reader = MolwatchReader()
-    with open(path, "r", errors="replace") as fh:
-        for line_no, raw in enumerate(fh, start=1):
-            reader.feed(raw.rstrip("\n"), line_no)
-    read = reader.finish()
+    read = read_log(path).finish()
     runtime_info = read["runtime_info"]
     frames: List[Frame] = []
     for block in read["blocks"]:

@@ -43,6 +43,7 @@ from molbuilder.parse.types import TrajectoryResult
 from molbuilder.structure import Structure
 
 from ._helpers import wrap_trajectory
+from .molwatch_reader import read_log
 from .xyz import is_xyz, read_frames
 
 
@@ -83,102 +84,50 @@ def _run_stem_of(traj_path: str) -> Optional[str]:
     return _rf_stem_before(traj_path, _ROLE_GEOM_TRAJ)
 
 
-def _sibling_molwatch_log(traj_path: str) -> Optional[str]:
-    """The run's progress log, ``<stem>.molwatch.log`` beside the
-    trajectory (:func:`_run_stem_of`), or None when there is none.
-
-    Used by :func:`_read_molwatch_metadata` to surface
-    convergence_targets + run_state + error_message onto PySCF-parser
-    Trajectories — which the molwatch parser already extracts but is
-    otherwise lost when the user is viewing the trajectory file
-    instead of the .molwatch.log.
-    """
+def _companion(traj_path: str, role: str) -> Optional[str]:
+    """The run's file in ``role`` beside geomeTRIC's trajectory -- named on
+    the run's stem (:func:`_run_stem_of`) by the one composer
+    (`runfiles.compose`, which refuses a stem no label of ours is) -- or
+    ``None`` where it is not there, or for an XYZ that names no run, which
+    reads only itself (`model/parse.md` § 5.3)."""
     stem = _run_stem_of(traj_path)
     if stem is None:
         return None
-    base = os.path.dirname(traj_path) or "."
-    candidate = os.path.join(base, _rf_compose(stem, _ROLE_MOLWATCH))
-    return candidate if os.path.isfile(candidate) else None
+    path = os.path.join(os.path.dirname(traj_path) or ".",
+                        _rf_compose(stem, role))
+    return path if os.path.isfile(path) else None
 
 
-# Marker regexes scoped to the header / footer scan.  Header lines
-# all start with ``#`` and appear before the first ``==== molwatch
-# step N begin ====`` block; footer markers (``# concluded:`` /
-# ``# error:``) appear after the last ``==== ... end ====`` block.
-# The step-begin marker and the footer grammar belong to the molwatch
-# format, so they are read through its grammar, `molwatch_grammar`.
-from . import molwatch_grammar as _MG   # noqa: E402
-# The convergence-header grammar has ONE reader --
-# ``molwatch_grammar.parse_convergence_line``.
+#: THE RUN'S FACTS THE TRAJECTORY TAKES FROM ITS PROGRESS LOG (§ 5a) --
+#: what geomeTRIC's file does not state and the log does.  Not the log's
+#: atom index map, which is the log's own order record: on the trajectory's
+#: reading it would be taken as the trajectory's (`atom_index.of_reading`).
+_LOG_FACTS = ("convergence_targets", "frozen_atoms", "scf_criteria",
+              "scf_residuals")
 
 
 def _read_molwatch_metadata(traj_path: str) -> Dict[str, object]:
-    """Read the sibling ``.molwatch.log``'s header (for
-    ``convergence_targets``) and footer markers (``# concluded:`` /
-    ``# error:`` for run_state) without parsing the per-step blocks.
+    """What the run's progress log beside the trajectory states of the run,
+    read through the log's one read (`molwatch_reader.read_log`,
+    `model/parse.md` § 4a) as its own parser reads it: ``runtime_info`` --
+    the :data:`_LOG_FACTS` it states, as it states them -- ``run_state`` and
+    ``error_message`` (its footer, § 2b: ``running`` for a log that states
+    none).
 
-    Returns a dict that may contain:
-      * ``"convergence_targets"`` — dict with the molwatch-emitter
-        keys (max_force_tol_eV_per_A, scf_energy_tol, etc.) plus a
-        ``"source": "molwatch_header"`` stamp matching what the
-        molwatch parser surfaces.
-      * ``"frozen_atoms"``  — the atoms the run holds, as its log's
-        ``# frozen_atoms:`` line states them (`model/parse.md` § 5.3).
-      * ``"run_state"``     — "ended" | "stopped" when the
-        corresponding marker is present.
-      * ``"error_message"`` — when ``# error:`` is present.
-
-    Returns empty dict when there is no sibling .molwatch.log.
-    Header read is bounded to the lines before the first step
-    begin; the footer is read over the whole file in order.
-
-    Mirrors the molwatch parser semantics so the PySCF parser can
-    surface the same fields when the user is viewing the geomeTRIC
-    trajectory (which has no header) instead of the molwatch.log.
-    """
-    log_path = _sibling_molwatch_log(traj_path)
+    Empty for a trajectory with no progress log beside it, or one that does
+    not read -- a stated atom index map that does not, which the read
+    refuses: the trajectory then reads as itself alone (§ 5a, rule 2)."""
+    log_path = _companion(traj_path, _ROLE_MOLWATCH)
     if log_path is None:
         return {}
-    out: Dict[str, object] = {}
-    convergence: Dict[str, object] = {}
-    runtime: Dict[str, object] = {}
-
-    # Header scan: read until the first ``==== molwatch step N
-    # begin ====`` line (exclusive).  Header is normally <50 lines.
     try:
-        with open(log_path, "r", errors="replace") as fh:
-            for line in fh:
-                if _MG.BLOCK_BEGIN.search(line):
-                    break
-                held = _MG.parse_frozen_atoms_line(line.rstrip("\n"))
-                if held is not None:
-                    out["frozen_atoms"] = held
-                    continue
-                (_MG.parse_convergence_line(line.rstrip("\n"), convergence)
-                 or _MG.parse_runtime_line(line.rstrip("\n"), runtime))
-    except OSError:
+        read = read_log(log_path).finish()
+    except (OSError, ValueError):
         return {}
-    if len(convergence) > 1:      # more than the "source" stamp alone
-        out["convergence_targets"] = convergence
-    # THE SCF'S CRITERIA, as the molwatch parser states them for the same
-    # log (`molwatch_grammar.scf_criteria`, `web/trajectory.md` § 3).
-    crit = _MG.scf_criteria(runtime)
-    if crit:
-        out["scf_criteria"] = crit
-    out["scf_residuals"] = [dict(r) for r in _MG.SCF_RESIDUALS]
-
-    # THE FOOTER, through its one reader, over the whole file in order: a
-    # log is appended across attempts, and an earlier attempt's error
-    # outranks a later `# concluded:`.
-    try:
-        out.update(_MG.read_conclusion(log_path))
-    except OSError:
-        pass
-    else:
-        # A LOG THAT IS THERE AND STATES NO FOOTER IS RUNNING -- as the ending
-        # reader says of the same file (`model/parse.md` § 2b), never "unknown".
-        out.setdefault("run_state", "running")
-    return out
+    info = read["runtime_info"]
+    return {"runtime_info": {k: info[k] for k in _LOG_FACTS if k in info},
+            "run_state": read["run_state"],
+            "error_message": read["error_message"]}
 
 
 def _read_scf_history(
@@ -187,14 +136,8 @@ def _read_scf_history(
     """Parse ``<prefix>.log`` for per-cycle SCF data.  Returns a list
     of runs (one per geom-opt step); each run is a list of per-cycle
     dicts.  Empty list when no log is present."""
-    base = os.path.dirname(traj_path) or "."
-    # ``<stem>.log`` -- the run's own log, named as the catalogue names it
-    # (`runfiles`: the `.log` row).
-    stem = _run_stem_of(traj_path)
-    if stem is None:
-        return []
-    log_path = os.path.join(base, _rf_compose(stem, _ROLE_PYSCF_LOG))
-    if not os.path.isfile(log_path):
+    log_path = _companion(traj_path, _ROLE_PYSCF_LOG)
+    if log_path is None:
         return []
 
     runs: List[List[Dict[str, float]]] = []
@@ -259,8 +202,8 @@ def _parse_pyscf_xyz(path: str) -> Trajectory:
         iterations.append(int(m.group(1)) if m else len(iterations))
         energies.append(float(m.group(2)) * _HARTREE_TO_EV if m else None)
 
-    # THE RUN'S OWN PROGRESS LOG, read once: its targets and ending enrich
-    # the frames.
+    # THE RUN'S OWN PROGRESS LOG beside it (§ 5a): geomeTRIC's file states
+    # no targets, no atoms held, no SCF criteria and no ending; the log does.
     mw_meta = _read_molwatch_metadata(path)
     scf_history = _read_scf_history(path)
 
@@ -280,36 +223,13 @@ def _parse_pyscf_xyz(path: str) -> Trajectory:
             scf_history = scf_for_step,
         ))
 
-    # THE ATOMS THE RUN HOLDS, as its own progress log states them -- the
-    # field the SIESTA and molwatch parsers fill from their own files
-    # (`model/parse.md` § 5.3).
-    runtime_info: Dict[str, object] = {}
-    if mw_meta.get("frozen_atoms"):
-        runtime_info["frozen_atoms"] = list(mw_meta["frozen_atoms"])
-
-    # Sibling-log enrichment.  The user may load the geomeTRIC
-    # ``_geom_optim.xyz`` directly; that file carries no convergence
-    # targets and no run-state markers.  When the molbuilder-generated
-    # ``<stem>.molwatch.log`` is present next to it, pull
-    # convergence_targets (for the threshold lines on the Results-tab
-    # force/energy plots) and run_state (so the badge says "Finished"
-    # / "Error" instead of "Ongoing").  Symmetric with how the
-    # molwatch parser surfaces these when the user loads the .log
-    # directly — same data, same field names, just sourced via the
-    # sibling file (read once, above).
-    for key in ("convergence_targets", "scf_criteria", "scf_residuals"):
-        if key in mw_meta:
-            runtime_info[key] = mw_meta[key]
-    run_state = mw_meta.get("run_state", "unknown")
-    error_message = mw_meta.get("error_message")
-
     return Trajectory(
         source_format = "pyscf",
         frames        = frames,
         lattice       = None,           # geomeTRIC traj has no cell
-        run_state     = run_state,
-        error_message = error_message,
-        runtime_info  = runtime_info,
+        run_state     = mw_meta.get("run_state", "unknown"),
+        error_message = mw_meta.get("error_message"),
+        runtime_info  = mw_meta.get("runtime_info", {}),
     )
 
 

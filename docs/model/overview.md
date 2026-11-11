@@ -363,9 +363,12 @@ from**, by the door that knows which columns are known (F2):
 - **A text log** (the trajectory log a run writes) — the block as its header
   line (`# atom_index_map: {…}`), from the map, read back through the same
   reader — the format's one reader of the line
-  (`molwatch_grammar.parse_atom_index_map_line`), asked by the trajectory read
-  and the atom index door alike: a stated map that does not read is refused,
-  never taken as a log that states none.
+  (`molwatch_grammar.parse_atom_index_map_line`), in the log's one read
+  (`molwatch_reader.read_log`, [`parse.md`](?doc=model/parse.md) § 4a),
+  which the trajectory read and the atom index door both read it through: a
+  stated map that does not read is refused, never taken as a log that states
+  none — and geomeTRIC's trajectory beside such a log reads as itself alone
+  (`parse.md` § 5a, rule 2).
 - **A deck** states it in the engine's own input: **every deck writes its
   ATOM-METADATA block** — its atom count (`n_atoms_total`) and its order
   record, `null` in the user order (I5) — the source every map of its run is

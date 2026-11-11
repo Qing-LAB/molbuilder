@@ -385,21 +385,17 @@ def _of_nc(p: Path) -> Optional[AtomIndexMap]:
 
 def _of_log(p: Path) -> Optional[AtomIndexMap]:
     """A trajectory log's map, from its header line (``# atom_index_map:``)
-    -- read through the format's grammar; ``None`` where the header states
-    none."""
-    from .parse.engines import molwatch_grammar as _MG
-    with p.open(encoding="utf-8", errors="replace") as fh:
-        for line in fh:
-            if _MG.BLOCK_BEGIN.search(line):
-                break
-            try:
-                block = _MG.parse_atom_index_map_line(line)
-            except ValueError as exc:
-                raise AtomIndexError(f"{p.name}: {exc}") from exc
-            if block is not None:
-                return replace(map_of_block(block, p.name),
-                               stated_by=str(p))
-    return None
+    -- read through the log's one read (`molwatch_reader.read_log`,
+    `model/parse.md` § 4a); ``None`` where the log states none, and a stated
+    map that does not read refused."""
+    from .parse.engines.molwatch_reader import read_log
+    try:
+        block = read_log(p).finish()["runtime_info"].get(MAP_KEY)
+    except ValueError as exc:
+        raise AtomIndexError(f"{p.name}: {exc}") from exc
+    if block is None:
+        return None
+    return replace(map_of_block(block, p.name), stated_by=str(p))
 
 
 __all__ = ["AtomIndexUnknown", "atom_index_map", "map_of_block", "of_reading"]

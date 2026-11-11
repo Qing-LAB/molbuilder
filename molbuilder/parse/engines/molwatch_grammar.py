@@ -3,9 +3,10 @@
 The ``.molwatch.log v1`` format is molbuilder's own: `trajectory_log`
 writes it (the PySCF deck imports its writer), and this is the grammar every
 reader reads it with -- the reading pass (`molwatch_reader`, which the
-registered parser builds Frames from and the monitor reads a running job
-with), the PySCF parser's sibling-log enrichment, and the cheap ending scan
-(`_run_ending`).
+registered parser builds Frames from, geomeTRIC's trajectory beside the log
+and the atom index door read through, and the monitor reads a running job
+with), the cheap ending scan (`_run_ending`) and the timing rows
+(`scf_timing_rows`).
 
 **Stdlib only, and travels** (`configuration.md`'s rule for the monitor's
 modules): it goes beside every job (`runwrap.monitor_companions`), so the
@@ -159,10 +160,10 @@ def parse_convergence_line(line: str, targets: Dict[str, Any]) -> bool:
     """Apply one ``# convergence.<key>: <value>`` header line to
     ``targets`` and return whether the line matched.
 
-    THE one reader of the convergence-header grammar.  The molwatch parser's
-    reading pass (`molwatch_reader`) delegates here, and so does the PySCF
-    trajectory parser's sibling-log enrichment.  Coupling to the format's
-    owner is the point.
+    THE one reader of the convergence-header grammar.  The log's reading
+    pass (`molwatch_reader`) delegates here -- every reader of the log's
+    targets reads through that pass.  Coupling to the format's owner is the
+    point.
 
     Both header shapes land as the callers expect (#534):
 

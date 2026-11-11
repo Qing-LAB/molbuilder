@@ -122,3 +122,37 @@ def test_the_export_holds_the_steps_and_says_why_a_run_holds_none(
     assert np.allclose(got["applied_offset_ang"][0], steps.applied_offset_ang)
     assert [i for i, h in enumerate(got["held"][0]) if h] == [0]
     assert got["force_within_tolerance"][0] is steps.relaxation["converged"]
+
+
+def test_the_trajectory_beside_a_run_s_progress_log_and_the_atom_index_door_read_it(
+        real_held_water_pyscf):
+    """`model/parse.md` § 5a: geomeTRIC's trajectory states no targets, no
+    atoms held, no SCF criteria and no ending; the run's progress log beside
+    it does, and the trajectory carries them as the log's own parser states
+    them -- the plots' threshold lines, the held atoms and the run's ending
+    the same whichever of the two files a person opens.  The atom index door
+    answers the log by the map its header states (`model/overview.md`
+    § 2.2b), not by its run's deck.
+
+    THE SILENT FAILURE: the two files of one run telling a person two
+    things -- the held oxygen moving in one, the run still going in one, a
+    threshold line missing from one; the log's map passed over for its
+    run's deck."""
+    from molbuilder.atom_index import atom_index_map
+    from molbuilder.parse import parse
+    from molbuilder.runfiles import ROLE_GEOM_TRAJ, ROLE_MOLWATCH
+    from molbuilder.runs import run_of
+    run = run_of(real_held_water_pyscf.attempt("coarse"))
+    traj, log = run.file(ROLE_GEOM_TRAJ), run.file(ROLE_MOLWATCH)
+    of_traj, of_log = parse(traj), parse(log)
+    assert of_traj.source_format == "pyscf"
+    assert of_log.runtime_info["frozen_atoms"] == [0]
+    assert of_log.runtime_info["convergence_targets"]
+    assert of_log.run_state == "ended"
+    for fact in ("frozen_atoms", "convergence_targets", "scf_criteria",
+                 "scf_residuals"):
+        assert of_traj.runtime_info.get(fact) == of_log.runtime_info[fact], (
+            f"{traj.name} and {log.name} state {fact} two ways")
+    assert ((of_traj.run_state, of_traj.error_message)
+            == (of_log.run_state, of_log.error_message))
+    assert atom_index_map(log).stated_by == str(log)

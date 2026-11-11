@@ -211,6 +211,10 @@ class MolwatchReader:
         stripped = line.strip()
         if stripped.startswith(_MG.SCF_HISTORY_END):
             return END_SECTION
+        if _MG.ERROR.match(line) or _MG.CONCLUDED.match(line):
+            # A RUN STOPPED WHILE ITS STEP'S TABLE WAS BEING WRITTEN: the
+            # footer its exit hook wrote ends the table, and is read.
+            return END_BUBBLE
         if stripped.startswith("#") and _MG.OLD_GNORM_HEADER in stripped:
             # A log written before the orbital-gradient norm was converted
             # as an energy: its values are norm x Hartree/Bohr->eV/Ang.
@@ -382,6 +386,24 @@ class MolwatchReader:
                 "run_state": self.run_state,
                 "error_message": self.error_message,
                 "runtime_info": self.runtime_info}
+
+
+def read_log(path) -> MolwatchReader:
+    """THE ONE WAY A PROGRESS LOG IS READ: line by line, as the file holds it,
+    each line fed with its number -- a reader fed and not yet finished, as
+    `siesta_reader.read_output` reads a SIESTA output.  Every reader of the
+    whole log reads through it -- the registered parser, geomeTRIC's
+    trajectory beside the log (its run's facts, `model/parse.md` § 5a), the
+    atom index door -- so they read one version of a log one way; the ending
+    reader scans its footer alone (`molwatch_grammar.read_conclusion`), the
+    timing figures its stamped SCF rows alone (§ 5c).  A stated line that
+    does not read is refused here
+    (`molwatch_grammar.parse_atom_index_map_line`)."""
+    reader = MolwatchReader()
+    with open(path, "r", encoding="utf-8", errors="replace") as fh:
+        for line_no, raw in enumerate(fh, start=1):
+            reader.feed(raw.rstrip("\n"), line_no)
+    return reader
 
 
 def live_pass(stage: "Optional[str]" = None) -> MolwatchReader:

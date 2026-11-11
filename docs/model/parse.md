@@ -704,6 +704,8 @@ flowchart LR
     TEE -->|"<stem>.scf-timing.log"| TR
     SR -->|"finish()"| PA["the registered parsers → TrajectoryResult"]
     MR -->|"finish()"| PA
+    MR -->|"read_log(path).finish()"| SIB["geomeTRIC's trajectory beside the log (§ 5a) · the atom index door"]
+    MG -->|"the stamped SCF rows"| TR
     SR -->|"now(), fed as the file grows"| MON["the monitor"]
     SR -->|"now(): TBtrans's loop, said by tbtrans.loop_words"| REC
     MR -->|"now()"| MON
@@ -746,6 +748,7 @@ flowchart LR
 |---|---|---|
 | reads | a SIESTA-family `.out` | a `.molwatch.log`; `stage` picks a staged header's targets |
 | `feed(line, line_no=None)` · `feed_text(text)` | one line without its newline · a whole text | the same |
+| the file | `siesta_reader.read_output(path, *, warn=None)` | `molwatch_reader.read_log(path)` — each THE ONE WAY its whole file is read: line by line, each line fed with its number, as UTF-8; a reader fed and not yet finished, so every reader of the whole file reads one version of it one way — a progress log's footer alone is scanned by the ending reader (`read_conclusion`), its stamped SCF rows alone by the timing figures (§ 5c) |
 | `now()` | where the run is, as read so far; commits nothing | the last finished step block |
 | `finish()` | `{steps, live_scf, lattice, run_state, scf_converged, error_message, runtime_info, held, warnings}` — `held`, the 1-based atoms the output says the run held, and `runtime_info.frozen_atoms` the same atoms 0-based through the engine index API (`engine_atom_index`), stated here once for every reader of the pass; `runtime_info.system_label`, the label the run read; `runtime_info.scf_criteria` and `.scf_residuals` among them, and `.forces_not_computed` for a run that computes none — with the last forces and stress as `now()` states them (`max_force` · `max_force_all` · `stress_voigt_kbar`, or `forces_not_computed`, below); each step's `forces`, `max_force` (every atom's), `max_force_constrained` (the free atoms'), `stress_voigt_kbar`, and `charges` — `{hirshfeld, voronoi}`, every atom's partial charge in the deck's order, for each block the step printed (`Charge.Hirshfeld` / `Charge.Voronoi`), `None` where it printed none | `{blocks, engine, run_state, error_message, runtime_info}` — `runtime_info.scf_criteria` and `.scf_residuals` among them |
 | also | `criteria(negf=None)` — each phase's `{column: {tolerance, unit, required}}` | `targets()` — the rung's convergence targets; its criteria are `molwatch_grammar.scf_criteria(runtime_info)` — `{"scf": {dE, \|g\|: {tolerance, unit, required}}}`, PySCF's `conv_tol` and `conv_tol_grad` as the deck read them back, in eV |
@@ -1404,7 +1407,7 @@ Two parsers do this today:
 
 | primary | sibling | what the sibling supplies |
 |---|---|---|
-| `engines/pyscf.py` | `<base>.molwatch.log` | convergence targets, run state, the atoms the run holds (§ 5.3) |
+| `engines/pyscf.py` | `<base>.molwatch.log` | convergence targets, the SCF's criteria and what each SCF row measures, run state, the atoms the run holds (§ 5.3) — the log read through its one read, `molwatch_reader.read_log` (§ 4a), so the two files of one run state them alike |
 | `engines/siesta.py` | the run's own `<SystemLabel>.MD.nc` | coordinates + per-step energy, in full precision |
 
 **The rules, which are what keep this from becoming a second source of truth:**
