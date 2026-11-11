@@ -101,7 +101,17 @@ a `window.molbuilder.*` global (a couple also register with the runtime).
 | The one confirm | `molbuilder.warningModal` | Every yes/no question the app asks (`ui-contract.md` § 11), loaded by the page header on every page. `confirmDiscardUnsaved()` is the "you have unsaved changes — discard them?" dialog, its wording fixed below; `confirm({title, body, confirmLabel})` asks any other — the sidebar's overwrite and delete (`projects/dialogs.js`'s `confirmDestructive` delegates to it), the preview editor's unsaved edits, the server restart. Each returns a yes/no promise. (`modify/structure/save-dialog.js` held a second overwrite confirm until it was retired on 2026-09-02.) |
 | Markdown renderer | `molbuilder.markdownRender` | The **one** place markdown becomes safe HTML (marked → DOMPurify; then lazy KaTeX for `$...$` and `$$...$$` math, set aside before the markdown pass and never read inside code, and lazy mermaid). The Documents tab and the Results markdown viewer both go through it. |
 | Path helpers | `import { … } from "lib/path-utils.js"`, or `molbuilder.path` from a classic script, read when called | **The browser's one path door**: what a page works out of a path, by one rule each — `basename` (its name), `dirname` (its folder), `stem` and `suffix` (its name without its extension, and the extension — Python's `Path.stem` / `Path.suffix`), `join(folder, name)` (one separator, however the folder ends), `relative(path, root)` (where it lies under a folder: `""` for the folder itself, the parts below it, `null` outside) and `isInside(path, root)`. Inside is the folder or below it, never a name that merely starts the same: `/a/projects2` is not inside `/a/projects`. Path strings only — no file system, no DOM, no server. An ES module the page header loads, mirrored on the global for a classic script (the pattern of `lib/server.js`). Which files are structures is the server's pairing rule, asked of the projects door (`projects.isStructureFile`, [`projects.md`](?doc=web/projects.md) § 5), never a suffix test of a page's own. MolView keeps its own: it is sealed ([`molview.md`](?doc=web/molview.md)). |
-| Shared constants | `molbuilder.constants` | The single source of truth for the `sessionStorage` keys + custom-event names the modules agree on — a frozen object. (Today it's *partly* duplicated: `projects/state.js` re-declares `SS_FILE`/`SS_DIR` as ES exports, held in lock-step by a test; the ESM pass makes this the one source and drops the copy — see § 4.) |
+| Shared constants | `molbuilder.constants` | The single source of truth for the custom-event names the modules agree on — a frozen object. The sidebar's selection keys are `projects/state.js`'s, read through its own door ([`projects.md`](?doc=web/projects.md) § 2). |
+| A page's own layout | `molbuilder.pagePrefs` (`lib/page-prefs.js`, a classic script the page header loads before any page's own) | `read(name, {lasting})` / `write(name, value, {lasting})` — every key `molbuilder.` and its name; a preference lasts the browser session, `{lasting: true}` keeps it after the browser closes; storage the browser refuses reads as nothing kept. The sidebar's width and collapsed state, its filter, the checkpoint panel's view and open state, the load monitor's collapsed state, the documents' reading theme, the reports last seen. |
+
+**Where a page's state lives, by what it is** *(the user, 2026-11-10)*: how
+you look at a structure or a spectrum lives **beside the work**, in the
+workspace ([`workspace.md`](?doc=web/workspace.md); a viewer's look,
+[`molview.md`](?doc=web/molview.md) § 11.2b; the spectrum's knobs,
+[`spectra.md`](?doc=web/spectra.md) § 7); **a page's own layout** — a width, a
+panel open or collapsed, a filter, a reading theme — lives **in this
+browser**, through `pagePrefs` and nowhere else. Where you are in the projects
+tree is the sidebar's selection ([`projects.md`](?doc=web/projects.md) § 2).
 
 ### The discard-unsaved modal's wording is a contract
 
@@ -170,9 +180,7 @@ Converting the registry and these primitives to ES modules is a planned pass
   preview and the markdown presenter) → one concealed ESM module + de-dup.
 - the **registry itself**, the `results` module, and the pure helper
   `constants`, which stays a small standalone
-  ESM (not folded into the registry), as `path-utils` is. `constants` becomes the **one
-  ESM source** — `projects/state.js` imports `SS_FILE`/`SS_DIR` from it instead of
-  re-declaring them, and the lock-step consistency test is then dropped. The
+  ESM (not folded into the registry), as `path-utils` is. The
   registry's own load-order role shrinks once everything is a module.
 
 As each one is converted, its "current → target" note here is dropped.

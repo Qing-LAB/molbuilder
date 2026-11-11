@@ -21,20 +21,10 @@
 
     /* THE APP IS DARK, so the isolated `docs-render.css` theme starts dark;
      * the toggle offers a light reading surface (some people print from this
-     * pane), and the choice is a reading preference kept in localStorage,
-     * with a sessionStorage fallback where storage is blocked. */
-    function _store(key, value) {
-        try { localStorage.setItem(key, value); return; } catch (_) {}
-        try { sessionStorage.setItem(key, value); } catch (_) {}
-    }
-    function _read(key) {
-        try {
-            var v = localStorage.getItem(key);
-            if (v !== null) return v;
-        } catch (_) {}
-        try { return sessionStorage.getItem(key); } catch (_) {}
-        return null;
-    }
+     * pane), and the choice is a reading preference kept in this browser
+     * after it closes (`lib/page-prefs.js`). */
+    var THEME = "docs_theme";
+    var prefs = window.molbuilder.pagePrefs;
 
     function _applyTheme(dark) {
         renderEl.classList.toggle("docs-render-dark", dark);
@@ -43,11 +33,11 @@
             themeBtn.title = dark ? "Read on a light background"
                                   : "Read on a dark background";
         }
-        _store("docs-theme", dark ? "dark" : "light");
+        prefs.write(THEME, dark ? "dark" : "light", { lasting: true });
     }
     if (themeBtn) {
         // Dark unless the reader has said otherwise -- matching the app.
-        _applyTheme(_read("docs-theme") !== "light");
+        _applyTheme(prefs.read(THEME, { lasting: true }) !== "light");
         themeBtn.addEventListener("click", function () {
             _applyTheme(!renderEl.classList.contains("docs-render-dark"));
         });

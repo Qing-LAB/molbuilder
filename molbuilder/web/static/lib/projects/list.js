@@ -796,7 +796,7 @@ function _cssEscape(s) {
 // so the user can still navigate.  Case-insensitive substring; a
 // leading "." is a shortcut for extension match (".xyz" matches
 // files whose name ends in ".xyz" only, not "water.xyz.bak").
-const FILTER_KEY = "molbuilder.projects_sidebar_filter";
+const FILTER = "projects_sidebar_filter";   // kept by `lib/page-prefs.js`
 let _filterQuery = "";
 
 function _filterMatches(name, kind) {
@@ -851,15 +851,12 @@ function _initFilter() {
   const input = document.getElementById("ps-filter-input");
   if (!input || input.dataset.psFilterWired === "1") return;
   input.dataset.psFilterWired = "1";
-  try { _filterQuery = (sessionStorage.getItem(FILTER_KEY) || "").toLowerCase(); }
-  catch (_) { _filterQuery = ""; }
+  const prefs = window.molbuilder.pagePrefs;
+  _filterQuery = (prefs.read(FILTER) || "").toLowerCase();
   if (_filterQuery) input.value = _filterQuery;
   input.addEventListener("input", () => {
     _filterQuery = input.value.trim().toLowerCase();
-    try {
-      if (_filterQuery) sessionStorage.setItem(FILTER_KEY, _filterQuery);
-      else              sessionStorage.removeItem(FILTER_KEY);
-    } catch (_) { /* swallow quota / private-mode throws */ }
+    prefs.write(FILTER, _filterQuery);
     _applyFilter();
   });
   const clearBtn = document.getElementById("ps-filter-clear");
@@ -867,7 +864,7 @@ function _initFilter() {
     clearBtn.addEventListener("click", () => {
       input.value = "";
       _filterQuery = "";
-      try { sessionStorage.removeItem(FILTER_KEY); } catch (_) {}
+      prefs.write(FILTER, null);
       _applyFilter();
       input.focus();
     });

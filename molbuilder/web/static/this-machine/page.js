@@ -391,15 +391,17 @@
 
     var REPORTS = "/api/notify/reports";
     var reports = [];          // what the server last answered, newest first
-    var SEEN_KEY = "molbuilder.reports.seen";   // a per-browser convenience
+    // A PER-BROWSER CONVENIENCE, kept after the browser closes
+    // (`lib/page-prefs.js`).
+    var SEEN = "reports.seen";
 
     function _seen() {
-        try { return parseFloat(localStorage.getItem(SEEN_KEY) || "0") || 0; }
-        catch (e) { return 0; }
+        return parseFloat(window.molbuilder.pagePrefs.read(
+            SEEN, { lasting: true }) || "0") || 0;
     }
 
     function _markSeen(t) {
-        try { localStorage.setItem(SEEN_KEY, String(t)); } catch (e) { /* none */ }
+        window.molbuilder.pagePrefs.write(SEEN, String(t), { lasting: true });
     }
 
     function _when(epoch) {

@@ -131,7 +131,9 @@ if (window.molbuilder.runtime
  * partial revisions, future templates that don't include the
  * collapse scaffolding).
  */
-const COLLAPSED_KEY = "molbuilder.projects_sidebar_collapsed";
+/* A PAGE'S OWN LAYOUT, kept in this browser (`lib/page-prefs.js`). */
+function _prefs() { return window.molbuilder.pagePrefs; }
+const COLLAPSED = "projects_sidebar_collapsed";
 function initDesktopCollapse() {
   const toggle = document.getElementById("ps-collapse-toggle");
   const handle = document.getElementById("ps-collapsed-handle");
@@ -143,14 +145,7 @@ function initDesktopCollapse() {
     document.body.classList.toggle(CLASS, collapsed);
     toggle.setAttribute("aria-expanded", String(!collapsed));
     handle.setAttribute("aria-expanded", String(!collapsed));
-    try {
-      if (collapsed) sessionStorage.setItem(COLLAPSED_KEY, "1");
-      else           sessionStorage.removeItem(COLLAPSED_KEY);
-    } catch (_) {
-      // sessionStorage may throw on quota / private-mode; the
-      // collapse state still applies to the current page —
-      // it just won't survive a refresh.
-    }
+    _prefs().write(COLLAPSED, collapsed ? "1" : null);
   }
   toggle.addEventListener("click",
     () => setCollapsed(true));
@@ -165,9 +160,7 @@ function initDesktopCollapse() {
  * (Plotly, 3Dmol, CSS-grid auto-fit) takes its first measurement.
  */
 function _restoreCollapsedState() {
-  let collapsed = false;
-  try { collapsed = sessionStorage.getItem(COLLAPSED_KEY) === "1"; }
-  catch (_) { /* swallow */ }
+  const collapsed = _prefs().read(COLLAPSED) === "1";
   if (collapsed) {
     document.body.classList.add("is-projects-sidebar-collapsed");
     const toggle = document.getElementById("ps-collapse-toggle");
@@ -196,7 +189,7 @@ function _restoreCollapsedState() {
  * default 18rem geometry and then mis-layout when the saved width
  * gets applied later.
  */
-const WIDTH_KEY = "molbuilder.projects_sidebar_width";
+const WIDTH = "projects_sidebar_width";   // lasting: kept after the browser closes
 const WIDTH_MIN_PX = 14 * 16;   // 14rem at the 16px default font
 const WIDTH_MAX_PX = 40 * 16;   // 40rem
 
@@ -213,9 +206,7 @@ function _setWidth(px) {
 }
 
 function _restoreWidth() {
-  let saved = null;
-  try { saved = parseFloat(localStorage.getItem(WIDTH_KEY)); }
-  catch (_) { /* localStorage may throw in private mode */ }
+  const saved = parseFloat(_prefs().read(WIDTH, { lasting: true }));
   if (Number.isFinite(saved)) _setWidth(saved);
 }
 
@@ -261,8 +252,7 @@ function initWidthResize() {
     // value matches what's actually applied (post-clamp).
     const computed = getComputedStyle(document.documentElement)
       .getPropertyValue("--ps-w").trim();
-    try { localStorage.setItem(WIDTH_KEY, computed); }
-    catch (_) { /* swallow */ }
+    _prefs().write(WIDTH, computed, { lasting: true });
   }
 
   handle.addEventListener("mousedown", onDown);
@@ -271,8 +261,7 @@ function initWidthResize() {
   // Double-click resets to the default 18rem.  Quick out for users
   // who dragged too far + can't find the handle's intended size.
   handle.addEventListener("dblclick", () => {
-    try { localStorage.removeItem(WIDTH_KEY); }
-    catch (_) { /* swallow */ }
+    _prefs().write(WIDTH, null, { lasting: true });
     document.documentElement.style.removeProperty("--ps-w");
   });
 }
@@ -328,8 +317,8 @@ async function init() {
   const sidebar = document.getElementById("projects-sidebar");
   if (!sidebar) return;                  // page didn't include the partial
 
-  // Restore the desktop-collapse state from sessionStorage AND the
-  // persisted width from localStorage BEFORE any further wiring so
+  // Restore the desktop-collapse state and the width this browser
+  // keeps (`lib/page-prefs.js`) BEFORE any further wiring so
   // layout-sensitive widgets (Plotly, 3Dmol, CSS-grid) measure the
   // correct geometry on their first paint.  The body class controls
   // padding-left + sidebar visibility; --ps-w controls width.

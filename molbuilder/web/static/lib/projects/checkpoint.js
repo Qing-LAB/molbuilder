@@ -70,9 +70,13 @@ let elPanel, elSensor, elToggle, elEmpty, elInitBtn, elActions,
     elCommitBtn, elTagBtn, elRefreshBtn, elList, elGraph, elAdvisory,
     elFileList, elFilterInput;
 
-// Current view mode: "list" (default) or "graph".  Persisted in
-// sessionStorage so a refresh keeps the user's preference.
+// Current view mode: "list" (default) or "graph".
 let _viewMode = "list";
+
+/* THE PANEL'S OWN LAYOUT, kept in this browser (`lib/page-prefs.js`). */
+const VIEW_PREF = "checkpoint_view";
+const OPEN_PREF = "checkpoint_open";
+function _prefs() { return window.molbuilder.pagePrefs; }
 let _viewStrip = null;       // the List / Graph strip's handle
 
 // Lazy-loaded @gitgraph/js global.  Loaded on first switch to graph
@@ -109,21 +113,11 @@ function _attach() {
     }
     if (elPanel.dataset) elPanel.dataset.psCheckpointWired = "1";
 
-    // Restore view-mode preference from sessionStorage.
-    try {
-        const saved = sessionStorage.getItem("ws.ui.checkpoint.view");
-        if (saved === "graph" || saved === "list") _viewMode = saved;
-    } catch (_) { /* sessionStorage disabled — fall through to default */ }
+    // The view mode and whether the panel is open, as this browser kept them.
+    const saved = _prefs().read(VIEW_PREF);
+    if (saved === "graph" || saved === "list") _viewMode = saved;
     _updateViewButtons();
-
-    // Restore the open-view preference -- the SAME mechanism as the
-    // view-mode pref above.  A UI pref is per-origin sessionStorage, owned
-    // here, never smuggled through the workspace.
-    try {
-        if (sessionStorage.getItem("ps.checkpoint.open") === "1") {
-            _state.open = true;
-        }
-    } catch (_) { /* sessionStorage disabled -- default to files */ }
+    if (_prefs().read(OPEN_PREF) === "1") _state.open = true;
 
     if (elToggle) elToggle.addEventListener("click",
         () => _setOpen(!_state.open));
@@ -210,10 +204,7 @@ function _hide() {
 
 function _setOpen(open) {
     _state.open = !!open;
-    try {
-        if (_state.open) sessionStorage.setItem("ps.checkpoint.open", "1");
-        else sessionStorage.removeItem("ps.checkpoint.open");
-    } catch (_) { /* sessionStorage disabled -- pref just won't persist */ }
+    _prefs().write(OPEN_PREF, _state.open ? "1" : null);
     _applyOpen();
     if (_state.open) _refresh();
 }
@@ -397,8 +388,7 @@ function _updateViewButtons() {
 function _setViewMode(mode) {
     if (mode !== "list" && mode !== "graph") return;
     _viewMode = mode;
-    try { sessionStorage.setItem("ws.ui.checkpoint.view", mode); }
-    catch (_) { /* sessionStorage disabled */ }
+    _prefs().write(VIEW_PREF, mode);
     _updateViewButtons();
     _renderActiveView(_state.states);
 }

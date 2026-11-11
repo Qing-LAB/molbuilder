@@ -1,6 +1,5 @@
-/* Shared string constants — single source of truth for the
- * sessionStorage keys + custom event names that span multiple
- * classic-script modules.
+/* Shared string constants — single source of truth for the custom
+ * event names that span multiple classic-script modules.
  *
  * Centralising them here means a typo is a compile-error
  * (ReferenceError on the missing constant), not a silent listener
@@ -8,12 +7,9 @@
  *
  * Loaded FIRST in every page template that consumes these
  * strings so ``window.molbuilder.constants`` is available when
- * later scripts run.  ES-module consumers
- * (lib/projects/state.js, lib/projects/list.js) keep their own
- * named exports for direct ``import { SS_FILE } from
- * "./state.js"``; this module is the classic-script equivalent.
- * Both surfaces hold the same literal values — the convention
- * here is "if you change a string, change it in BOTH places".
+ * later scripts run.  The sidebar's selection keys are not here: they
+ * are `lib/projects/state.js`'s, read through its own door
+ * (`projects.md` § 2).
  */
 (function (root) {
     "use strict";
@@ -21,14 +17,9 @@
     root.molbuilder = root.molbuilder || {};
     // Single source of truth for the string constants.  Frozen
     // so a downstream module that accidentally writes to it
-    // (e.g. ``molbuilder.constants.SS_FILE = "foo"``) throws
+    // (e.g. ``molbuilder.constants.EVENT_FILE_SELECTED = "foo"``) throws
     // instead of silently changing every consumer.
     root.molbuilder.constants = Object.freeze({
-        // ---- sessionStorage keys ---------------------------- //
-        SS_FILE:      "molbuilder.current_file",
-        SS_DIR:       "molbuilder.current_dir",
-        SS_WORKSPACE: "molbuilder.workspace.v1",
-
         // ---- Custom event names ----------------------------- //
         EVENT_FILE_SELECTED:   "molbuilder:results:fileSelected",
         EVENT_INSPECTOR_READY: "molbuilder:inspector:ready",

@@ -355,7 +355,9 @@ touch it. The parts:
   *(Until 2026-08-19 this was a separate fixed-width panel to the right of
   the sidebar, with no way to reclaim its space.)*
 - **Layout** — a drag handle resizes the sidebar (double-click resets), a toggle
-  collapses it on desktop, and on a narrow screen it becomes a drawer. A lock
+  collapses it on desktop, and on a narrow screen it becomes a drawer. The
+  width is kept in this browser after it closes, the collapse and the filter
+  for the session (`pagePrefs`, [`runtime.md`](?doc=web/runtime.md) § 3). A lock
   banner covers the sidebar while an operation is in flight.
 
 ### 4.1 Four rules the file operations follow, and why

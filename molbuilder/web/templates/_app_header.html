@@ -69,6 +69,9 @@
     terminal's dash as a dash -- and the one element builder; loaded once
     here, where every page includes it. -#}
 <script src="{{ url_for('static', filename='lib/dom.js') }}"></script>
+{#- A PAGE'S OWN LAYOUT, KEPT IN THIS BROWSER (`lib/page-prefs.js`,
+    `runtime.md` § 3): loaded here, before any page's own script reads one. -#}
+<script src="{{ url_for('static', filename='lib/page-prefs.js') }}"></script>
 {#- THE ONE TAB STRIP every page's strips are mounted with (`lib/tab-strip.js`,
     § 4.1), loaded once here, where every page includes it. -#}
 <script src="{{ url_for('static', filename='lib/tab-strip.js') }}"></script>

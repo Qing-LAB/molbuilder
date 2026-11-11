@@ -267,6 +267,13 @@ restore and edit) → ~~**Generate**~~ *(the two emit routes were **deleted**
 engines' were deleted with the same rule (a deck is rendered by `prep`).
 Live validation runs against `/api/build/preflight` as you edit.
 
+**A reload keeps the structure and what the forms hold**: the structure the
+viewer shows as the tab's own draft in the workspace (`structure-opt:panel`,
+[`workspace.md`](?doc=web/workspace.md) § 2, saved when the tab loads one), and
+both engines' forms in this tab's own browser session, saved as the page is
+left and put back after the forms draw (a field that will not read keeps what
+it was last saved with).
+
 What the tab writes today is the DESCRIPTION, via Send to Task setup: the
 parameter template, the structure pair and the hand-over — written by the
 server, every file or none, the pair through the codec
@@ -539,8 +546,9 @@ the tree.
 The app is dark, so the reader starts dark too — a document opening white
 inside a dark app was the 2026-08-23 defect. The bar's ◑/◐ button offers a
 light reading surface (some people print from this pane), and that choice is a
-reading preference kept in the browser's own storage: a page opened later in
-the same browser starts on the surface last chosen.
+reading preference kept in this browser after it closes (`pagePrefs`,
+[`runtime.md`](?doc=web/runtime.md) § 3): a page opened later in the same
+browser starts on the surface last chosen.
 
 ## 6. Save flow — the out-gate
 

@@ -185,9 +185,9 @@ These are load-bearing. Don't violate one without updating this document.
    HTML form are *generated* from the dataclass, not maintained in lockstep. A
    previous custom registry framework was deleted because `dataclasses.fields()`
    + click is the right tool. This extends to the client and wire: **one**
-   workspace store, **one** server response shape (`_shared.structure_answer`),
-   **one** sessionStorage key — no code path may update part of the workspace
-   and not the rest. See [`web/form-schema.md`](?doc=web/form-schema.md),
+   workspace store and **one** server response shape
+   (`_shared.structure_answer`) — no code path may update part of the
+   workspace and not the rest. See [`web/form-schema.md`](?doc=web/form-schema.md),
    [`web/workspace.md`](?doc=web/workspace.md), [`web/web-api.md`](?doc=web/web-api.md).
 2. **CLI scripts are small, focused, composable.** Each subcommand does one
    job and chains through files / stdin / stdout (`-` = stdin/stdout);

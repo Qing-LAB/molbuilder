@@ -467,8 +467,8 @@
         const proj      = (root.molbuilder || {}).projects;
         const inspReg   = (root.molbuilder || {}).inspectors;
         // Shared string-constant namespace.  Centralised in
-        // lib/constants.js so the picker's event + storage key
-        // strings can't drift from the dispatcher's.
+        // lib/constants.js so the picker's event strings can't drift
+        // from the dispatcher's.
         const C         = (root.molbuilder || {}).constants;
         if (!proj || typeof proj.onChange !== "function"
             || !inspReg || typeof inspReg.pickResult !== "function") {

@@ -45,7 +45,9 @@
     // with CSS scaling the element.  This file only reads canvas.width /
     // canvas.height when drawing.
 
-    var STORAGE_KEY_COLLAPSED = "mb.system-load.collapsed";
+    // A PAGE'S OWN LAYOUT, kept in this browser (`lib/page-prefs.js`).
+    var COLLAPSED = "system_load_collapsed";
+    function _prefs() { return window.molbuilder.pagePrefs; }
 
     function $$(sel, root) { return (root || document).querySelector(sel); }
 
@@ -422,10 +424,10 @@
             else                 startTimer();
         });
 
-        // Collapse toggle.  Persisted in sessionStorage so navigation
-        // between tabs preserves the user's choice; cleared on
-        // browser close (this is a transient UI preference, not a
-        // user setting).
+        // Collapse toggle.  Kept in this browser for the session
+        // (`lib/page-prefs.js`) so navigation between tabs preserves the
+        // user's choice; cleared on browser close (a page's own layout,
+        // not a user setting).
         //
         // Collapsing ALSO stops polling (and aborts any in-flight
         // request) -- with the widget hidden the snapshots are wasted
@@ -451,18 +453,14 @@
         if (toggle) {
             toggle.addEventListener("click", function() {
                 var next = !root.classList.contains("is-collapsed");
-                try { sessionStorage.setItem(STORAGE_KEY_COLLAPSED,
-                                             next ? "1" : "0"); }
-                catch (_) { /* private mode; ignore */ }
+                _prefs().write(COLLAPSED, next ? "1" : "0");
                 applyCollapsed(next);
             });
             // web/results.md § 6: COLLAPSED BY DEFAULT
             // on first visit.  Users opt in to the expanded strip;
             // it doesn't opt them in.  ``saved === "0"`` is explicit-opt-in to
             // expanded; missing key OR explicit "1" -> collapsed.
-            var saved = null;
-            try { saved = sessionStorage.getItem(STORAGE_KEY_COLLAPSED); }
-            catch (_) { /* ignore */ }
+            var saved = _prefs().read(COLLAPSED);
             var startCollapsed = (saved === null) ? true : (saved !== "0");
             applyCollapsed(startCollapsed);
             // Expanded already polls, and its first sample carries the

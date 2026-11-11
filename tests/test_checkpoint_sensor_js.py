@@ -228,6 +228,9 @@ _PANEL = (Path(__file__).resolve().parent.parent / "molbuilder" / "web"
 #: THE SERVER'S WORDS, DRAWN -- the renderer every page's header loads
 #: (`lib/dom.js`, `ui-contract.md` § 12.1).
 _WORDS = _PANEL.parent.parent / "dom.js"
+#: A page's own layout, kept in this browser -- loaded by the page header
+#: before any page's own script (`runtime.md` § 3).
+_PREFS = _PANEL.parent.parent / "page-prefs.js"
 
 
 @pytest.fixture(scope="module")
@@ -257,7 +260,7 @@ def _set_up(folder):
 
 def _drive(app_at, script):
     """``script`` run against the panel, its requests answered by the app."""
-    return run_node([_WORDS, _PANEL], script, globals_js=(
+    return run_node([_WORDS, _PREFS, _PANEL], script, globals_js=(
         _DOM + served(app_at)
         + f"\nprocess.env.PANEL_URL = {_PANEL.resolve().as_uri()!r};"))
 
@@ -316,7 +319,7 @@ def test_the_toggle_swaps_the_space_and_only_then_reads_the_list(
         filesHidden: __els["ps-list"].hidden,
         filterDisabled: __els["ps-filter-input"].disabled === true,
         rows: __els["ps-checkpoint-list"].children.length,
-        pref: sessionStorage.getItem("ps.checkpoint.open"),
+        pref: window.molbuilder.pagePrefs.read("checkpoint_open"),
       };
       __els["ps-checkpoint-toggle"].click();
       await __quiet();
@@ -324,7 +327,7 @@ def test_the_toggle_swaps_the_space_and_only_then_reads_the_list(
         panelHidden: __els["ps-checkpoint"].hidden,
         filesHidden: __els["ps-list"].hidden,
         filterDisabled: __els["ps-filter-input"].disabled === true,
-        pref: sessionStorage.getItem("ps.checkpoint.open"),
+        pref: window.molbuilder.pagePrefs.read("checkpoint_open"),
       };
       console.log(JSON.stringify({open, closed}));
     """ % (json.dumps(str(described)), _calls()))
@@ -392,7 +395,7 @@ def test_leaving_the_run_dir_hides_the_toggle_and_restores_the_files(
         panelHidden:  __els["ps-checkpoint"].hidden,
         filesHidden:  __els["ps-list"].hidden,
         filterDisabled: __els["ps-filter-input"].disabled === true,
-        pref: sessionStorage.getItem("ps.checkpoint.open"),
+        pref: window.molbuilder.pagePrefs.read("checkpoint_open"),
       }));
     """ % (json.dumps(str(described)), json.dumps(str(described.parent))))
     assert out["toggleHidden"] is True
