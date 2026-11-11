@@ -1,7 +1,8 @@
 /* projects/state.js -- shared selection state + the Inquire API.
  *
  * Owns:
- *   * sessionStorage slots (current_dir / current_file)
+ *   * the selection's slots (current_dir / current_file), kept in this tab
+ *     through `lib/page-prefs.js`
  *   * the public ``window.molbuilder.projects.*`` API
  *   * the writeFile primitive
  *   * the subscriber pattern (onChange) for selection mutations
@@ -33,8 +34,11 @@ import {
 import { pageBusy } from "../page-busy.js";
 import { confirmOverwrite } from "./dialogs.js";
 
-export const SS_DIR  = "molbuilder.current_dir";
-export const SS_FILE = "molbuilder.current_file";
+/* The selection's two names in what this tab keeps (`lib/page-prefs.js`,
+ * `runtime.md` § 3), which keys them `molbuilder.<name>`. */
+export const SS_DIR  = "current_dir";
+export const SS_FILE = "current_file";
+function _prefs() { return window.molbuilder.pagePrefs; }
 
 /* ── The per-tab keying (docs/web/projects.md § 2, 2026-08-19) ─────────
  *
@@ -70,29 +74,27 @@ function _routeKey(route) {
  */
 export function handOffSelection(route, dir, file) {
   const key = _routeKey(route);
-  try {
-    sessionStorage.setItem(SS_DIR + "." + key, dir || "");
-    sessionStorage.setItem(SS_FILE + "." + key, file || "");
-    // The shared most-recent follows, as with any deliberate move.
-    sessionStorage.setItem(SS_DIR, dir || "");
-    sessionStorage.setItem(SS_FILE, file || "");
-    return { ok: true };
-  } catch (e) {
-    return { ok: false, error: String((e && e.message) || e) };
-  }
+  const kept = _prefs();
+  const all = [kept.write(SS_DIR + "." + key, dir || ""),
+               kept.write(SS_FILE + "." + key, file || ""),
+               // The shared most-recent follows, as with any deliberate move.
+               kept.write(SS_DIR, dir || ""),
+               kept.write(SS_FILE, file || "")];
+  return all.every(Boolean)
+    ? { ok: true }
+    : { ok: false, error: "this browser refused to keep the selection" };
 }
 
 export function readSelectionSlot(base) {
-  try {
-    const own = sessionStorage.getItem(base + "." + _pageKey());
-    if (own !== null) return own;
-    return sessionStorage.getItem(base) || "";
-  } catch (_) { return ""; }
+  const own = _prefs().read(base + "." + _pageKey());
+  if (own !== null) return own;
+  return _prefs().read(base) || "";
 }
 
+/* True when both the page's own slot and the shared most-recent were kept. */
 function _writeSelectionSlot(base, value) {
-  sessionStorage.setItem(base + "." + _pageKey(), value);
-  sessionStorage.setItem(base, value);          // the shared most-recent
+  const own = _prefs().write(base + "." + _pageKey(), value);
+  return _prefs().write(base, value) && own;     // the shared most-recent
 }
 
 // Module-private state.
@@ -170,9 +172,9 @@ function _publishToSet(set, payload) {
 // ----- internal: publish loops ----------------------------------- //
 
 function publishSelectionChange(payload) {
-  // Caller may supply the payload explicitly when sessionStorage
-  // can't be relied on (e.g. setShared in private-mode where setItem
-  // threw).  When omitted, read live from sessionStorage.
+  // Caller may supply the payload explicitly when what the tab keeps
+  // can't be relied on (e.g. setShared in a private window, where the
+  // browser refused to keep it).  When omitted, read live from it.
   if (!payload) {
     payload = {
       dir:  readSelectionSlot(SS_DIR),
@@ -235,7 +237,7 @@ function _parentOf(path) {
 // docs/web/tabs.md.
 //
 // Also updates the global pick (``setShared``) so cross-tab
-// handoff via sessionStorage works without the publisher
+// handoff through what the tab keeps works without the publisher
 // having to call both.  This mirrors the real-user flow: a
 // dblclick fires setShared on the first click, then publishCommit
 // from the dblclick; programmatic callers shouldn't have to know
@@ -249,7 +251,7 @@ function _parentOf(path) {
 // (`path-utils.basename`).
 export function publishCommit(dir, path) {
   const file = path;
-  // Update sessionStorage + onChange subscribers FIRST so a
+  // Update the kept selection + onChange subscribers FIRST so a
   // subscriber that gates on getCurrentFile() inside its
   // onCommit handler sees the new pick already in place.
   //
@@ -260,12 +262,8 @@ export function publishCommit(dir, path) {
   // for nothing.
   const dirSafe  = dir  || "";
   const fileSafe = file || "";
-  let currentDir  = "";
-  let currentFile = "";
-  try {
-    currentDir  = readSelectionSlot(SS_DIR);
-    currentFile = readSelectionSlot(SS_FILE);
-  } catch (_) { /* private-mode SecurityError; treat as mismatch */ }
+  const currentDir  = readSelectionSlot(SS_DIR);
+  const currentFile = readSelectionSlot(SS_FILE);
   if (currentDir !== dirSafe || currentFile !== fileSafe) {
     setShared(dirSafe, fileSafe);
   }
@@ -291,23 +289,17 @@ export function setShared(dir, file) {
       error: "page is busy: " + (pageBusy.reason() || "operation in progress"),
     };
   }
-  // sessionStorage may throw on quota / private-mode SecurityError /
-  // explicit storage-denied.  Per design § 11.4, and as every file call
-  // never throws (`projects.md` § 5), we MUST NOT propagate the throw --
-  // publish the new state regardless so
-  // subscribers still update; the cursor just won't survive a reload.
+  // The browser may refuse to keep it (a full quota, a private window).
+  // Per design § 11.4, and as every file call never throws (`projects.md`
+  // § 5), the new state is published regardless so subscribers still
+  // update; the cursor just won't survive a reload.
   const payload = { dir: dir || "", file: file || "" };
-  try {
-    _writeSelectionSlot(SS_DIR,  payload.dir);
-    _writeSelectionSlot(SS_FILE, payload.file);
-  } catch (e) {
+  const keptDir = _writeSelectionSlot(SS_DIR, payload.dir);
+  if (!(_writeSelectionSlot(SS_FILE, payload.file) && keptDir)) {
     // Logged loud-but-non-fatal so a developer notices in DevTools.
     // No user-facing error -- the page keeps working.
-    console.warn(
-      "molbuilder.projects.setShared: sessionStorage write failed; "
-      + "cursor won't survive reload",
-      e && e.message ? e.message : e
-    );
+    console.warn("molbuilder.projects.setShared: this browser refused to "
+                 + "keep the selection; it won't survive a reload");
   }
   publishSelectionChange(payload);
   return { ok: true };

@@ -385,7 +385,7 @@ async function saveEdit() {
 
 /**
  * Open the preview modal showing the contents of the currently-
- * selected file (sessionStorage.molbuilder.current_file).
+ * selected file (the tab's kept pick, `projects.getCurrentFile()`).
  *
  * Two read paths (branch on the server's BULK ceiling, not the edit cap):
  *   * Size ≤ BULK_READ_MAX_BYTES (16 MB) → bulk /api/files/read in one shot.
@@ -405,10 +405,8 @@ export async function showPreview(wanted) {
     /* THE CALLER'S FILE WINS, and the pick is only the fallback.
      *
      * A commit subscriber is HANDED `{dir, file}`: `setShared` publishes
-     * that payload even when the sessionStorage write throws, on
-     * purpose (`state.js`: *"we MUST NOT propagate the throw -- publish
-     * the new state regardless so subscribers still update"*), and
-     * `readSelectionSlot` answers "" for the same failure.  So in a
+     * that payload even when the browser refuses to keep it (`state.js`),
+     * and `readSelectionSlot` answers "" for the same refusal.  So in a
      * private window, or with site data blocked, the pick is empty
      * while the payload is correct: every other tab still loads the
      * file and this modal alone would refuse to open. */

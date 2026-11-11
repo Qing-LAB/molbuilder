@@ -34,6 +34,7 @@ def _run_node(snippet: str) -> object:
     if node is None:
         pytest.skip("node not available")
     module_url = MODULE.resolve().as_uri()
+    kept_url = (ROOT / "molbuilder/web/static/lib/page-prefs.js").resolve().as_uri()
     # state.js touches sessionStorage + window.molbuilder + a bunch of
     # other modules; we stub the minimum it needs to import without
     # erroring.  api.js is imported but its functions aren't called
@@ -60,7 +61,10 @@ def _run_node(snippet: str) -> object:
         // (`lib/server.js`); what is asked is not what these tests read.
         global.fetch = async () => new Response(
             JSON.stringify({{ ok: true }}), {{ status: 200 }});
-        const statePromise = import("{module_url}");
+        // What a page keeps in this browser, loaded first as the page
+        // header loads it (`runtime.md` § 3).
+        const statePromise = import("{kept_url}").then(
+            () => import("{module_url}"));
         statePromise.then(async (state) => {{
             const pageBusy = (await import("{(ROOT / 'molbuilder/web/static/lib/page-busy.js').resolve().as_uri()}")).pageBusy;
             {snippet}
@@ -226,3 +230,26 @@ def test_a_handoff_lands_in_the_target_tabs_own_slot():
     assert out["ok"] is True
     assert out["dir"] == "/p/proj/optimization/run-1"
     assert out["file"] == "/p/proj/optimization/run-1/out.xyz"
+
+
+def test_a_tab_that_cleared_its_file_keeps_it_cleared():
+    """`projects.md` § 2: picking a new folder clears the tab's file, and
+    the tab's own empty slot shadows the shared most-recent.  THE SILENT
+    FAILURE: a store that dropped an empty value (the one door before
+    2.69.28) let a tab that cleared its file fall back to the file another
+    tab picked last."""
+    out = _run_node(
+        """
+        global.location = { pathname: "/molbuilder" };
+        state.projects.setShared("/m", "");
+        global.location = { pathname: "/results" };
+        state.projects.setShared("/r", "/r/x.xyz");
+        global.location = { pathname: "/molbuilder" };
+        console.log(JSON.stringify({
+            dir: state.projects.getCurrentDir(),
+            file: state.projects.getCurrentFile(),
+        }));
+        """
+    )
+    assert out == {"dir": "/m", "file": ""}, (
+        f"a tab that cleared its file picked up another tab's: {out}")

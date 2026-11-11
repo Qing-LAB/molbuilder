@@ -241,8 +241,8 @@ import { basename } from "../lib/path-utils.js";
             : Promise.resolve((window.molbuilder || {}).projects);
         projP.then((proj) => {
             if (!proj) return;
-            // Initial mount-time auto-load (cross-tab handoff via
-            // sessionStorage.molbuilder.current_file).
+            // Initial mount-time auto-load (cross-tab handoff through
+            // the tab's kept pick).
             const initialFile = (typeof proj.getCurrentFile === "function")
                 ? proj.getCurrentFile() : "";
             if (initialFile) {

@@ -266,10 +266,10 @@
      * Owns:     one workspace slot, the draft of the tag `results:spectra:ui`,
      *           holding the view knobs in `state.uiPrefs`.
      *
-     * NOT sessionStorage.  How you look at a spectrum is kept beside the
-     * work, as a viewer's look is, through the workspace's one way to save
-     * and load (`workspace.md` § 4); a second store in the Results tab would
-     * be a second home for tab state.  `lib/molview/ui-context.js` already keeps a
+     * NOT the browser.  How you look at a spectrum is kept in the workspace,
+     * as a viewer's look is, through its one way to save and load
+     * (`workspace.md` § 4); a second store in the Results tab would be a
+     * second home for tab state.  `lib/molview/ui-context.js` already keeps a
      * viewer's camera, frame and switches in exactly this shape, so this is
      * that lane for the knobs MolView does not own.
      */

@@ -688,12 +688,12 @@ function _renderList(entries, currentPath) {
  * registration below.
  */
 export async function openDir(absPath) {
-  // Read the current file selection BEFORE we clobber sessionStorage.
+  // Read the current file selection BEFORE we overwrite the kept one.
   // A folder the file doors announce re-runs this function, through
   // refresh(), when it is the one shown -- every save into it and every
   // project-tree change -- with absPath = that folder.
-  // Always blanking the selection here would wipe it out of
-  // sessionStorage on every save, silently breaking every
+  // Always blanking the selection here would wipe the kept one
+  // on every save, silently breaking every
   // load-from-selection downstream.
   //
   // Preservation rule: if the previously-selected file STILL appears in

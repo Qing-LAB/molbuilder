@@ -323,7 +323,7 @@ import { ask } from "../lib/server.js";
     // Module-level cache of the form schemas, populated once on
     // page load by initFormsFromSchema().  collectParams() reads from
     // this; getFormIds() walks both
-    // schemas to build the persistence ID list.
+    // schemas for the ids the preflight listeners are wired to.
     const formSchemas = { siesta: null, pyscf: null };
 
     // THE CHEMISTRY CARD (`lib/chemistry.js`): the charge and spin each
@@ -543,8 +543,8 @@ import { ask } from "../lib/server.js";
         window.molbuilder.runtime.whenReady("projects").then((_proj) => {
         // The "use this file in Build" handler.  Defined once and
         // wired to both the universal commit channel AND the page-
-        // mount cross-tab handoff (a structure file already in
-        // sessionStorage when /structure-optimization mounts should
+        // mount cross-tab handoff (a structure file already the tab's
+        // kept selection when /structure-optimization mounts should
         // be treated as a commit; the user picked it on another tab
         // and navigated here to configure SIESTA / PySCF for it).
         async function _commitStructure(sel) {
@@ -931,12 +931,8 @@ import { ask } from "../lib/server.js";
         return fs.collectForm($(engine + "-form-container"), schema);
     }
 
-    // ----- Session state: persist Generate-input form values across tab navigation -----
-    // Navigating to another tab and back is a full page reload;
-    // sessionStorage survives same-tab navigations so the user's
-    // typed parameter values aren't lost.
-
-    // Every persistent ID is derived at save/restore time by walking
+    // ----- The forms' ids -----
+    // The ids the preflight listeners are wired to, derived by walking
     // the rendered schemas.
     function getFormIds() {
         const ids = [];
@@ -947,7 +943,7 @@ import { ask } from "../lib/server.js";
                     if (f.kind === "int-triple"
                             || f.kind === "float-triple") {
                         // Tuple field renders as three sub-inputs;
-                        // each has its own id and needs persistence.
+                        // each has its own id.
                         for (const lab of f.labels) {
                             ids.push(f.id + "-" + lab);
                         }
@@ -960,6 +956,12 @@ import { ask } from "../lib/server.js";
         return ids;
     }
 
+    /* KEPT IN THIS BROWSER TAB, through what a page keeps in this browser
+     * (`lib/page-prefs.js`, `runtime.md` § 3): each browser tab its own
+     * forms (the user, 2026-11-11), saved as the page is left. */
+    const FORMS = "structure_optimization_forms";
+    const _prefs = () => window.molbuilder.pagePrefs;
+
     /* What each engine's form HOLDS, through the form's own reader and
      * writer (`heldValues` / `setValues`): a blank stays blank -- a box
      * nobody answered stays unanswered.  Field by field: a field that
@@ -969,7 +971,7 @@ import { ask } from "../lib/server.js";
         const fs = (window.molbuilder || {}).formSchema;
         if (!fs) return;
         let before = null;
-        try { before = JSON.parse(sessionStorage.getItem("builder-form") || "null"); }
+        try { before = JSON.parse(_prefs().read(FORMS) || "null"); }
         catch (_) { before = null; }
         const saved = {};
         for (const engine of ["siesta", "pyscf"]) {
@@ -979,13 +981,13 @@ import { ask } from "../lib/server.js";
             saved[engine] = fs.heldValues(host, sch,
                                           before && before[engine]);
         }
-        sessionStorage.setItem("builder-form", JSON.stringify(saved));
+        _prefs().write(FORMS, JSON.stringify(saved));
     }
 
     function restoreFormState() {
         const fs = (window.molbuilder || {}).formSchema;
         let saved;
-        try { saved = JSON.parse(sessionStorage.getItem("builder-form") || "null"); }
+        try { saved = JSON.parse(_prefs().read(FORMS) || "null"); }
         catch (_) { return; }
         if (!saved || !fs) return;
         for (const engine of ["siesta", "pyscf"]) {
@@ -997,10 +999,9 @@ import { ask } from "../lib/server.js";
         }
     }
 
-    // No synchronous first restore: every persistent id is
-    // schema-derived, and before the schemas load getFormIds() is
-    // empty.  The real restore runs inside initFormsFromSchema()
-    // after the renderer fills the containers.
+    // No synchronous first restore: the forms are drawn from the
+    // schemas, which are not loaded yet.  The real restore runs inside
+    // initFormsFromSchema() after the renderer fills the containers.
     window.addEventListener("pagehide", saveFormState);
 
     // Kick off the async schema fetch + form render.  Everything

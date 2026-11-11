@@ -45,8 +45,8 @@
 <div class="sidebar-rail">
 <aside class="projects-sidebar dock-panel" id="projects-sidebar" aria-label="Projects file explorer">
   {#- Width-resize handle.  Thin strip on the right edge;
-      drag to resize the sidebar.  Width persists to localStorage so
-      it survives reloads.  CSS-hidden when the sidebar is collapsed
+      drag to resize the sidebar.  The width is kept in this browser
+      (`lib/page-prefs.js`) so it survives reloads.  CSS-hidden when the sidebar is collapsed
       or on narrow viewports (drawer mode). -#}
   <div id="ps-resize-handle" class="ps-resize-handle"
        role="separator" aria-orientation="vertical"
@@ -58,7 +58,8 @@
       (moving) edge, so it slides off WITH the sidebar; clicking hides the
       sidebar and the reopen ▶ appears at the left edge at the same height.
       ◀ = "push the panel out".  Visible only >= 786 px (the mobile drawer
-      toggle handles narrow viewports).  State persists in sessionStorage. -#}
+      toggle handles narrow viewports).  State is kept in this tab
+      (`lib/page-prefs.js`). -#}
   <button type="button" id="ps-collapse-toggle"
           class="ps-edge-tab ps-edge-tab--collapse"
           aria-label="Hide projects sidebar"
@@ -116,8 +117,8 @@
   {#- Filter input (B.5.5).  Case-insensitive substring match
       against filenames + a leading-dot shortcut for extensions
       (".xyz" matches files whose name ends in ".xyz").  Folders
-      always stay visible (navigation).  State persists per
-      origin in sessionStorage so a refresh keeps the filter. -#}
+      always stay visible (navigation).  The filter is kept in this
+      browser tab (`lib/page-prefs.js`) so a refresh keeps it. -#}
   <div class="ps-filter-bar">
     <span class="ps-filter-input-wrap">
       <input type="search" id="ps-filter-input"

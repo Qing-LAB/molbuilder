@@ -13,7 +13,8 @@
  *     ALONE -- mounting it app-wide would charge every page a 1 Hz
  *     hardware probe nobody reads.
  *   * Starts COLLAPSED on a first visit; the choice persists in
- *     sessionStorage so it survives navigation between tabs.
+ *     this browser tab (`lib/page-prefs.js`) so it survives navigation
+ *     between tabs.
  *   * Pauses polling when document.hidden (browser-tab-backgrounded);
  *     resumes on visibilitychange.  Collapsing stops it outright.
  *   * Hides GPU + VRAM cells when the API returns gpus=[] (CPU-only

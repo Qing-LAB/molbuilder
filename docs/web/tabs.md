@@ -270,7 +270,8 @@ Live validation runs against `/api/build/preflight` as you edit.
 **A reload keeps the structure and what the forms hold**: the structure the
 viewer shows as the tab's own draft in the workspace (`structure-opt:panel`,
 [`workspace.md`](?doc=web/workspace.md) § 2, saved when the tab loads one), and
-both engines' forms in this tab's own browser session, saved as the page is
+both engines' forms in this browser tab, each tab its own (`pagePrefs`,
+[`runtime.md`](?doc=web/runtime.md) § 3; the user, 2026-11-11), saved as the page is
 left and put back after the forms draw (a field that will not read keeps what
 it was last saved with).
 

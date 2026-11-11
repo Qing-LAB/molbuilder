@@ -37,6 +37,7 @@ def _run_node(snippet: str) -> object:
     if node is None:
         pytest.skip("node not available")
     list_url = LIST_MODULE.resolve().as_uri()
+    kept_url = (ROOT / "molbuilder/web/static/lib/page-prefs.js").resolve().as_uri()
     bootstrap = f"""
         // --- Minimal DOM stub --------------------------------- //
         // Each <li> has: classList (with add/remove/contains),
@@ -187,7 +188,10 @@ def _run_node(snippet: str) -> object:
         // check returns "object" but CSS.escape is missing.
         global.CSS = undefined;
         // Import + run.
-        const listPromise = import("{list_url}");
+        // What a page keeps in this browser, loaded first as the page
+        // header loads it (`runtime.md` § 3).
+        const listPromise = import("{kept_url}").then(
+            () => import("{list_url}"));
         listPromise.then(async (list) => {{
             // We need access to state.js too for setShared.
             // list.js re-exports nothing useful; instead we import

@@ -51,7 +51,7 @@ const _state = {
     /** The states this folder has, newest first. */
     states:        [],
     /** True while the checkpoint view occupies the list space.  The
-     *  preference survives dir changes and reloads (sessionStorage), so
+     *  preference survives dir changes and reloads (`lib/page-prefs.js`), so
      *  stepping out of a run dir and back returns the view you had. */
     open:          false,
     /** The states whose actions are shown, by id: a redraw keeps them

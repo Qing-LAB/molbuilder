@@ -58,10 +58,10 @@ each release is its changelog row and its ledger section
   2.69.26, the workspace's calls name only their owner (the user,
   2026-11-10: *a draft call*); 2.69.27, a page's own layout through one
   door (the user, 2026-11-10: *split by what it is*). **Left, in order**:
-  X-PERSIST's rest — 2.69.28, the contact table's one home the viewer's (the
-  user, 2026-11-10) and Save's failure naming its saved state; a workspace
-  write still queued when the page is left is never sent (against
-  `workspace.md` § 9.1); then the pair's moves and the low rows — X-PARSE,
+  X-PERSIST's last — everything a page keeps in the browser through the one
+  door (the user, 2026-11-11: *unified API, no handcrafted reinvention*;
+  each tab its own), then X-PERSIST closed (what no failure was measured for
+  taken out: the user, 2026-11-11, *detect any invented problem*) — X-PARSE,
   X-TMPL, X-EXEC, X-ENG; then the page doors and
   the copies they share (O-STATUS, O-FIND, O-STATE, O-WORDS, O-KEYS's rest
   with X-UI and X-PLOT; O-TESTS).
@@ -74,7 +74,7 @@ said first).
 UI review's two left items; then F9's four steps — 2.67.12, the page-side test
 doors (the JS stand-ins fed from the server's own composer among them),
 2.67.13, the tests owed, the dead-code release, F9's closing review rounds;
-then F10, F11, F12. **Waiting on the user**: where the Structure-optimization tab's forms live (2.69.27's review). F10's first full
+then F10, F11, F12. **Waiting on the user**: nothing now. F10's first full
 e2e pass and F12's walk of the three roads in the browser start only on the
 user's word, said to them first.
 

@@ -1,17 +1,15 @@
-/* lib/page-prefs.js -- A PAGE'S OWN LAYOUT, KEPT IN THIS BROWSER
+/* lib/page-prefs.js -- WHAT A PAGE KEEPS IN THIS BROWSER: THE ONE DOOR
  * (`web/runtime.md` § 3).
  *
- * WHERE A PAGE'S STATE LIVES, by what it is (the user, 2026-11-10):
- *   - how you look at a structure or a spectrum lives beside the work, in the
- *     workspace (`workspace.md`; `molview.md` § 11.2b, `spectra.md` § 7);
- *   - a page's own layout -- a width, a panel open or collapsed, a filter, a
- *     reading theme -- lives in this browser, through here: every key
- *     `molbuilder.` and its name, nowhere a key of a page's own.
+ * Every value a page keeps in the browser goes through here, nowhere else:
+ * its layout (a width, a panel open or collapsed, a filter, a reading
+ * theme), the sidebar's place, the Structure-optimization tab's forms.  Every
+ * key `molbuilder.` and its name.
  *
- * A preference lasts this browser session; `{lasting: true}` keeps it after
- * the browser closes.  Storage the browser refuses (a private window, a full
- * quota) reads as nothing kept and writes nothing: a preference is a
- * convenience, and the page works without it.
+ * A value lasts this browser tab's session -- its own, beside no other
+ * browser tab's; `{lasting: true}` keeps it in this browser after it closes.  Storage the browser
+ * refuses (a private window, a full quota) reads as nothing kept, and `write`
+ * answers false: the page works without it.
  *
  * A CLASSIC SCRIPT, loaded early by the page header (`_app_header.html`), so
  * a page's own classic script can read its preference as it starts; an ES
@@ -26,23 +24,24 @@
         return (opts && opts.lasting) ? root.localStorage : root.sessionStorage;
     }
 
-    /** The preference ``name`` as last written, or null when none is kept. */
+    /** ``name`` as last written, or null when nothing is kept. */
     function read(name, opts) {
         try { return _store(opts).getItem(PREFIX + name); }
         catch (_) { return null; }
     }
 
-    /** Keep ``value`` (a string) as the preference ``name``; null or "" drops
-     *  it. */
+    /** Keep ``value`` (a string, "" among them) as ``name``; null drops
+     *  it.  True when the browser kept it, false when it refused. */
     function write(name, value, opts) {
         try {
             var store = _store(opts);
-            if (value === null || value === undefined || value === "") {
+            if (value === null || value === undefined) {
                 store.removeItem(PREFIX + name);
             } else {
                 store.setItem(PREFIX + name, String(value));
             }
-        } catch (_) { /* refused by the browser: kept for this page only */ }
+            return true;
+        } catch (_) { return false; }
     }
 
     root.molbuilder = root.molbuilder || {};

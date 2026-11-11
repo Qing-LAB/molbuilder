@@ -30,6 +30,9 @@ from tests._node_esm import run_node, served
 ROOT = Path(__file__).resolve().parents[1]
 MODULE = ROOT / "molbuilder/web/static/lib/projects/state.js"
 PAGE_BUSY = ROOT / "molbuilder/web/static/lib/page-busy.js"
+#: What a page keeps in this browser -- loaded by the page header before
+#: any page's own script (`runtime.md` § 3).
+KEPT = ROOT / "molbuilder/web/static/lib/page-prefs.js"
 
 #: What a browser has and node lacks, as a page starts: an empty
 #: ``sessionStorage``, a document with nothing on it.
@@ -54,7 +57,7 @@ def _run(snippet: str, app_at: "str | None" = None) -> object:
     there (`_node_esm.served`: each request kept as it left in ``__calls``,
     its options as ``init``, and each answer, read, in ``__answered``)."""
     return run_node(
-        [], f"const state = await import({json.dumps(MODULE.as_uri())});\n"
+        [KEPT], f"const state = await import({json.dumps(MODULE.as_uri())});\n"
             f"const {{ pageBusy }} = await import("
             f"{json.dumps(PAGE_BUSY.as_uri())});\n"
             f"{snippet}",

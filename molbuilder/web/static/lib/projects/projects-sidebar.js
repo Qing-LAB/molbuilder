@@ -4,7 +4,7 @@
  * under projects/ for clarity and independent testability:
  *
  *   api.js       -- HTTP wrappers (no DOM, no state)
- *   state.js     -- sessionStorage + the public Inquire API
+ *   state.js     -- the kept selection + the public Inquire API
  *                   (window.molbuilder.projects.*)
  *   list.js      -- breadcrumb + entry list + per-entry buttons +
  *                   openDir
@@ -121,7 +121,7 @@ if (window.molbuilder.runtime
  *   - #ps-collapsed-handle (edge tab at the screen's left edge) → click to show
  *     (symmetric twins: both ``.ps-edge-tab`` at the same mid-height)
  *
- * State persists per origin in sessionStorage under
+ * State is kept in this browser tab (`lib/page-prefs.js`) under
  * ``molbuilder.projects_sidebar_collapsed`` so a refresh keeps the
  * preference within a tab.  Initial state is read on mount BEFORE
  * any layout-sensitive widget paints so 3Dmol / Plotly measure the

@@ -1,5 +1,6 @@
-"""A page's own layout, kept in this browser (`web/runtime.md` § 3,
-`lib/page-prefs.js`) -- run in node with the two storages a browser has."""
+"""What a page keeps in this browser, through its one door (`web/runtime.md`
+§ 3, `lib/page-prefs.js`) -- run in node with the two storages a browser
+has."""
 from __future__ import annotations
 
 import json
@@ -62,12 +63,27 @@ def test_a_preference_reads_back_under_the_one_prefix(lasting, kept_in):
                    "elsewhere": [], "dropped": None}, out
 
 
+def test_an_empty_value_is_kept():
+    """`runtime.md` § 3: `null` drops a value, "" is one.  THE SILENT
+    FAILURE: an empty value read as nothing kept -- the sidebar's cleared
+    file falling back to another browser tab's pick, which
+    `test_projects_state_busy_guard_js.py` asks of the selection itself."""
+    out = _run("""
+        prefs.write("current_file.results", "");
+        const kept = prefs.read("current_file.results");
+        prefs.write("current_file.results", null);
+        console.log(JSON.stringify({ kept,
+            dropped: prefs.read("current_file.results") }));
+    """)
+    assert out == {"kept": "", "dropped": None}, out
+
+
 def test_storage_the_browser_refuses_reads_as_nothing_kept():
     """`runtime.md` § 3: a private window or a full quota refuses the
-    storage; a preference is a convenience, so the page goes on -- nothing
-    read, nothing written, nothing thrown."""
+    storage; the page goes on -- nothing read, nothing thrown -- and `write`
+    answers false, so a caller can tell the value was not kept."""
     out = _run("""
-        prefs.write("panel_open", "1");
-        console.log(JSON.stringify({ back: prefs.read("panel_open") }));
+        const wrote = prefs.write("panel_open", "1");
+        console.log(JSON.stringify({ wrote, back: prefs.read("panel_open") }));
     """, refuses=True)
-    assert out == {"back": None}, out
+    assert out == {"wrote": False, "back": None}, out

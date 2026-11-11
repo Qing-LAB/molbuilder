@@ -248,8 +248,8 @@ import { ask } from "../server.js";
         // trajectory-only pref appears (e.g. a
         // plot tab selection that isn't a viewer concern), populate
         // this bucket and keep it where `runtime.md` § 3 says: a view
-        // setting beside the work (the workspace, as the spectrum's
-        // knobs are), the page's own layout through `pagePrefs`.  Keeping
+        // setting in the workspace (as the spectrum's knobs are),
+        // anything else through `pagePrefs`.  Keeping
         // the bucket present-but-empty matches the five-bucket
         // contract shape so tests can pin it; the alternative
         // (omit the bucket) would force inspector-specific test

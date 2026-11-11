@@ -52,8 +52,8 @@ byte layer writes no structure file (§ 4.1).
 
 ## 2. Where you are and what you picked — the selection
 
-The sidebar remembers your place in **two slots** in the browser's short-term
-storage (`state.js`):
+The sidebar remembers your place in **two slots**, kept in this browser tab
+(`state.js`, through `pagePrefs` — [`runtime.md`](?doc=web/runtime.md) § 3):
 
 - **`current_dir`** — the folder you are looking at (always inside your projects
   folder).
@@ -437,7 +437,7 @@ with nothing selected). The rule beside it is [`ui-contract.md`](?doc=web/ui-con
 | `onCommit(cb)` | a file was committed (double-clicked) — does not fire on subscribe |
 | `publishCommit(dir, path)` | commit a file from code (also moves the selection). **`path` is the file's FULL path**, not its name — subscribers use it as one |
 | `setShared(dir, file)` | move the selection without re-listing |
-| `showPreview(path?)` | open the preview pop-up on `path`, or on the current pick when it is omitted. A tab binding this to `onCommit` **passes `sel.file`**: `setShared` publishes its payload even when the sessionStorage write throws, so the pick can be empty while the payload is right |
+| `showPreview(path?)` | open the preview pop-up on `path`, or on the current pick when it is omitted. A tab binding this to `onCommit` **passes `sel.file`**: `setShared` publishes its payload even when the browser refuses to keep it, so the pick can be empty while the payload is right |
 | `handOffSelection(route, dir, file)` | write ANOTHER tab's per-tab slots (§ 2), so "Open in Molbuilder"-style links land the target where they point |
 | `navigateTo(path)` / `refresh()` | list a folder + move there / re-list the current folder |
 | `whenProjectsRoot()` | the projects root's answer, once the sidebar's start has one: `{ok: true, root}`, or `{ok: false, error}` in the words the sidebar's list shows (asked after, answered at once) |
