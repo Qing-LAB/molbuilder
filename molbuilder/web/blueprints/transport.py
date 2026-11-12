@@ -119,8 +119,10 @@ def api_transport_describe_attempt() -> Any:
     ``?path=`` is tree-relative: a finished relaxation run's folder, or a
     structure pair's ``.xyz`` (§ 3.1).  A path that is neither answers
     ``citation: null`` with the refusal as the summary, naming what is
-    missing (the condition stated).  A citation's ``summary`` is one
-    line: how a run ended (CONCLUDED / not / exit code), or a pair's
+    missing (the condition stated), and so does a relaxation that ended
+    without finishing, in the refusal describe gives.  A citation's
+    ``summary`` is one line: how a run ended (concluded, or still going in
+    the run door's words), or a pair's
     frames and the deck its record names, then what its recorded
     contract states.  What its composition
     MEASURED rides ``findings`` -- rows of the one finding vocabulary
@@ -146,7 +148,8 @@ def api_transport_describe_attempt() -> Any:
     from molbuilder.transport.compose import (CitedPair, ComposeError,
                                               classify_citation,
                                               compose_junction,
-                                              labeled_citation_structure)
+                                              labeled_citation_structure,
+                                              refuse_failed_citation)
     from molbuilder.frame_average import answer_said
     from molbuilder.issues import Issue
     from molbuilder.transport.sort import (ORDER_INVERTED,
@@ -200,9 +203,12 @@ def api_transport_describe_attempt() -> Any:
             return _describe_reused(citation, root)
     try:
         cited = classify_citation(cited_path)
+        # A RELAXATION THAT ENDED WITHOUT FINISHING is not citable either,
+        # by the rule describe refuses it by (§ 3.1).
+        refuse_failed_citation(cited, citation)
     except ComposeError as exc:
-        # Not citable -- the refusal IS the answer (it names what is
-        # missing and states the whole condition).
+        # Not citable -- the refusal IS the answer (it names why, and the
+        # way on), and the citation held stays held (`web/tabs.md`).
         return jsonify({"ok": True, "citation": None,
                         "summary": str(exc), "findings": []}), 200
 
@@ -226,14 +232,9 @@ def api_transport_describe_attempt() -> Any:
         # is cited knowingly -- what it hands over is then the last geometry
         # SIESTA wrote.
         if cited.concluded is None:
-            # THE RUN DOOR'S WORDS for a run with no conclusion: still going,
-            # or its job ended without one (`running-a-job.md` § 4.2).
+            # THE RUN DOOR'S WORDS for a run still going
+            # (`running-a-job.md` § 4.2).
             state = f"not concluded -- {cited.detail}"
-        elif cited.exit_code != 0:
-            state = (f"ended with exit code {cited.exit_code} "
-                     f"({cited.concluded.strip()}) -- not citable: launch "
-                     f"the relaxation again and cite the run that finishes, "
-                     f"or cite another relaxation")
         else:
             state = f"concluded ({cited.concluded.strip()})"
             if cited.converged:

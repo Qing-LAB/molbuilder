@@ -171,9 +171,9 @@ class CitedRun:
     converged: Optional[str] = None
     verdict: Optional[Tuple[str, bool]] = None
     #: HOW THE RUN STANDS, the run door's state and its words
-    #: (`runs.state_of`, `execution/running-a-job.md` § 4.2) -- for a run
-    #: with no conclusion, whether it is still going or its job has ended
-    #: without one.
+    #: (`runs.state_of`, `execution/running-a-job.md` § 4.2) -- what decides
+    #: whether it can be cited (finished), waited for (still going) or not
+    #: at all (:func:`refuse_failed_citation`).
     state: Optional[str] = None
     detail: Optional[str] = None
 
@@ -225,11 +225,11 @@ def classify_citation(cited: Path) -> "CitedRun | CitedPair":
     file a structure pair (:func:`_classify_pair`).  Raises
     :class:`ComposeError` naming what is missing.
 
-    CLASSIFYING IS NOT COMPOSING: a run still going, or one that ended with
-    an error, is RECORDED here -- describing a transport calculation ahead
-    of its relaxation is legal -- and refused by :func:`compose_junction`;
-    the kind's describe refuses one that ended with an error first
-    (:func:`refuse_failed_citation`).
+    CLASSIFYING IS NOT COMPOSING: a run still going, or one that ended
+    without finishing, is RECORDED here -- describing a transport
+    calculation ahead of its relaxation is legal -- and refused by
+    :func:`compose_junction`; the kind's describe refuses one that ended
+    without finishing first (:func:`refuse_failed_citation`).
     """
     cited = Path(cited)
     if cited.is_file():
@@ -418,22 +418,35 @@ def resolve_citation(citation: str, tree_root: Path
 
 
 def refuse_failed_citation(cited, citation: str) -> None:
-    """A CITATION NO PREP COULD EVER TAKE, refused when the calculation is
-    described, before anything is written (`engines/transport.md` § 3.1;
-    the user, 2026-10-25): a relaxation run that ended with an error.  Its
-    last geometry is whatever the engine left when it failed, and a folder
-    citing it could not be pointed at another run -- one calculation is one
-    structure.  A run still going is legal: a person may plan against a run
-    in flight, and prep refuses it should it fail."""
-    if (isinstance(cited, CitedRun) and cited.concluded is not None
-            and cited.exit_code not in (None, 0)):
-        raise ComposeError(
-            f"the cited relaxation {citation!r} ended with exit code "
-            f"{cited.exit_code} ({cited.concluded}) -- its last geometry is "
-            f"whatever the engine left when it failed, and a calculation "
-            f"citing it could never be prepared.  Launch the relaxation "
-            f"again and cite the run that finishes, or cite another "
-            f"relaxation.")
+    """A CITATION NO PREP COULD EVER TAKE -- a cited relaxation that has
+    ended without finishing, as the run door reads it (`runs.state_of`):
+    neither *finished* nor still going.  One that ended with an error (the
+    user, 2026-10-25); one whose job ended without concluding -- killed,
+    cancelled, its process gone, a point its walk never started (the user,
+    2026-11-11: *refuse at describe too*).  THE ONE RULE, which describe
+    asks before anything is written and prep before it composes
+    (`engines/transport.md` § 3.1): the run left no relaxed junction, and a
+    folder citing it could not be pointed at another run -- one calculation
+    is one structure.  A run still going is legal here: a person may plan
+    against a run in flight, and prep refuses it until it concludes."""
+    from molbuilder.parse.dirs.job import LIVE_STATES
+    if (not isinstance(cited, CitedRun) or cited.state == "finished"
+            or cited.state in LIVE_STATES):
+        return
+    if cited.concluded is None:
+        how = f"ended without concluding -- {cited.detail.rstrip('.')}"
+    elif cited.exit_code != 0:
+        how = (f"ended with exit code "
+               f"{'?' if cited.exit_code is None else cited.exit_code} "
+               f"({cited.concluded.strip()})")
+    else:
+        how = f"did not finish -- {cited.detail.rstrip('.')}"
+    raise ComposeError(
+        f"the cited relaxation {citation!r} {how}.  It left no relaxed "
+        f"junction, and a calculation citing it could never be prepared.  "
+        f"Launch the relaxation again and cite the run that finishes -- "
+        f"from a new transport calculation where one already cites this "
+        f"run -- or cite another relaxation.")
 
 
 def _with_transport(across, where: str) -> Tuple[str, str, str]:
@@ -796,32 +809,14 @@ def _run_parts(cited: CitedRun, citation: str, swap_electrodes: bool):
     record, and its first step's coordinates for the lead gate's *frozen
     means unmoved*; its deck verbatim, the record's copy; the hashes of the
     output read and of the deck; and how the run ended."""
-    if cited.concluded is None:
-        # HOW IT STANDS, in the run door's words (:attr:`CitedRun.detail`),
-        # with its way on (`engines/transport.md` § 3.1): a run still live
-        # is composed once it concludes; one whose job ended without a
-        # conclusion left no relaxed junction, and is cited anew from a new
-        # folder once a run of it finishes -- one calculation, one structure.
-        from molbuilder.parse.dirs.job import LIVE_STATES
-        said = cited.detail.rstrip(".")
-        if cited.state in LIVE_STATES:
-            raise ComposeError(
-                f"the cited relaxation {citation!r} has not concluded -- "
-                f"{said}.  A deck is built from a run that has concluded: "
-                f"this is composed once it does.")
+    # A RUN THAT ENDED WITHOUT FINISHING, by the one rule describe asks
+    # too; one still going is composed once it concludes (§ 3.1).
+    refuse_failed_citation(cited, citation)
+    if cited.state != "finished":
         raise ComposeError(
-            f"the cited relaxation {citation!r} ended without concluding -- "
-            f"{said}.  It left no relaxed junction: launch the relaxation "
-            f"again, and cite the run that finishes from a new transport "
-            f"calculation, or cite another relaxation.")
-    if cited.exit_code != 0:
-        raise ComposeError(
-            f"the cited relaxation {citation!r} ended with exit code "
-            f"{cited.exit_code} ({cited.concluded}) -- its last geometry is "
-            f"whatever the engine left when it failed, not a relaxed "
-            f"junction.  Launch the relaxation again and cite the run that "
-            f"finishes from a new transport calculation, or cite another "
-            f"relaxation.")
+            f"the cited relaxation {citation!r} has not concluded -- "
+            f"{cited.detail.rstrip('.')}.  A deck is built from a run that "
+            f"has concluded: this is composed once it does.")
     struct, start, output = _run_geometry(cited, junction_axis_kind(cited))
     # A swap renames the labels on this calculation's copy
     # (`with_swapped_leads`) and never writes the cited run.

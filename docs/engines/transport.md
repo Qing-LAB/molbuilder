@@ -4972,9 +4972,8 @@ structure carries the labels' block.
 line and what its output says it converged — *geometry yes* / *geometry NO*,
 the status verb's own reading (`RunStatus.converged_words`) — into the
 provenance (`slot-provenance.json`: `evidence`, `relaxation`) and onto the
-Transport tab's meta line — a run with no conclusion said in the run door's
-words (`runs.state_of`): still going, or its job ended without one — so a
-geometry that did not converge is cited knowingly: the geometry handed over is then the last step SIESTA wrote, not a
+Transport tab's meta line — a run still going said in the run door's words
+(`runs.state_of`) — so a geometry that did not converge is cited knowingly: the geometry handed over is then the last step SIESTA wrote, not a
 converged minimum. The record serves the verdict as data beside the words
 (`provenance.slot.relaxation.converged_ok`), the kept words read back by their
 writer (`_run_ending.verdict_read`), and the report decides on it, never on
@@ -4986,9 +4985,16 @@ transport calculation ahead of a finishing relax is legal. Composing from it
 refuses — you may plan against a run in flight, but you may not build a deck
 from a geometry that is still moving. **A run that ended with an error (exit
 code ≠ 0) is refused when the calculation is described**, before anything is
-written *(the user, 2026-10-25)*: its last geometry is whatever the engine left
-when it failed, and a folder citing it could never be prepared — nor pointed at
-another run, one calculation being one structure. The refusal names the way
+written *(the user, 2026-10-25)*, **and so is a run whose job ended without
+concluding** — killed outright, cancelled, its process gone, a point its walk
+never started *(the user, 2026-11-11: "refuse at describe too")*: whatever the
+run door reads neither finished nor still going (`runs.state_of`) left no
+relaxed junction, and a folder citing it could never be prepared — nor
+pointed at another run, one calculation being one structure. One rule,
+`compose.refuse_failed_citation`, which describe asks and prep asks before
+it composes; the Transport tab answers such a citation *not citable*, in
+that refusal's words, the citation it holds staying held
+([`web/tabs.md`](?doc=web/tabs.md)). The refusal names the way
 on: launch the relaxation again and cite the run that finishes, or cite another
 relaxation. A run cited while still going that then fails is refused at prep
 the same way, its way on a new folder citing the run that finishes.
@@ -5551,9 +5557,11 @@ what that record states:
 concluded (rc=0 at …) · geometry yes · SZP · 150 Ry · GGA/PBE · k 1x1x1 · 52 atoms
 concluded (rc=0 at …) · geometry NO -- its last geometry is the last one SIESTA wrote, not a converged minimum · …
 not concluded -- running · last wrote 2 min ago
-ended with exit code 1 (…) -- not citable: launch the relaxation again and cite the run that finishes, or cite another relaxation
 a structure pair · 3 frames · optimized with J_01_coarse.fdf · SZ · 150 Ry · … · 22 atoms
 ```
+
+A run that ended without finishing is not citable (§ 3.1): the status line
+says the refusal describe gives, and the citation held stays held.
 
 **A frame set says what each frame is** *(Q17-f2)* — under the meta line,
 the frame-set card, one renderer for every page that shows a citation's

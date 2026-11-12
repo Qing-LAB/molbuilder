@@ -10,7 +10,7 @@ composed and written is decided here, once.
 
 In order, every refusal before anything is written: the engine (an
 extension's is the finished calculation's); the citation, resolved and
-classified once, a run that ended with an error refused; the folder -- one
+classified once, a run that ended without finishing refused; the folder -- one
 calculation per folder, never inside another's nor holding one; the voltages and their
 treatment; each rung's values and the shared ones, by name; the task, by its
 codec; an extension's limits, where the road holds them (the tab's; the
@@ -237,7 +237,7 @@ def describe(*, calculation: str, engine: Optional[str],
         raise NotDescribed(f"engine {engine!r}: {no}.")
 
     # THE CITATION, resolved and classified once through the door prep
-    # composes through; a run that ended with an error refused before
+    # composes through; a run that ended without finishing refused before
     # anything is written (§ 3.1).  An extension cites the finished
     # junction, or a frame set of it in its place (§ 2a.16).
     if finished is not None and not junction:

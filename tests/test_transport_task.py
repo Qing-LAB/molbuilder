@@ -6,8 +6,10 @@ person meets it, `molbuilder describe`.
   a second one, a citation that is not tree-relative, and an option whose
   answer arrives via the citation; beside `--reuses`, an option naming what
   the extension keeps (the kind's `describe.not_taken`), a window flag
-  spelled wrong, and a folder that is not a transport calculation; and
-  `--slot` on any other kind.  Each refusal is
+  spelled wrong, and a folder that is not a transport calculation; a cited
+  relaxation that ended without finishing (a run still going taken, and
+  refused at prep should it end so); and `--slot` on any other kind.  Each
+  refusal is
   the door's own -- the codec's where the codec owns the rule (`task.py`),
   surfaced by name.
 * the codec round-trips slots + bias and carries NO structure block for the
@@ -211,3 +213,85 @@ class TestDescribeRefuses:
             "--slot", f"junction={_CITE}"])
         assert r.exit_code != 0
         assert "transport" in r.output
+
+    @pytest.mark.parametrize("activation, refused", [
+        ("false", "ended with exit code 1"),
+        ("kill -KILL $$;", "ended without concluding"),
+        ("sleep 60;", None),
+    ], ids=["it concluded with an error", "its job ended without concluding",
+            "it is still going"])
+    def test_a_cited_relaxation_is_refused_when_it_ended_without_finishing(
+            self, tmp_path, monkeypatch, activation, refused):
+        """THE SILENT FAILURES: a transport calculation described on a
+        relaxation that can never be prepared from, found only at prep, its
+        folder to be made again; a run in flight refused, a person unable to
+        plan against it.  `engines/transport.md` § 3.1: a cited relaxation
+        that ended with an error, or whose job ended without concluding --
+        killed outright, its process gone -- is refused when the calculation
+        is described, naming the way on, before anything is written, and the
+        Transport tab answers it *not citable* in the same words, holding
+        nothing; a run still going is legal -- described, and the tab says
+        how it stands.  The relaxations are the road's
+        (`support.road.prepared_here`), launched here: one ending in its
+        activation (the run script concludes, exit code 1), one killed
+        outright before its engine (no conclusion; the launch reads it
+        ended as the run door asks it), one left running in the
+        background."""
+        from contextlib import ExitStack
+        from molbuilder.projects import address
+        from molbuilder.web.app import create_app
+        from support.road import jobset, left_in_the_background, prepared_here
+        bundle, run, _names = prepared_here(tmp_path, monkeypatch, activation)
+        launch = ("task", "--stage", "coarse", "--bundle", bundle)
+        with ExitStack() as going:
+            if refused is None:
+                going.enter_context(left_in_the_background(*launch))
+            else:
+                done = jobset("launch", *launch, "--mode", "direct",
+                              "--foreground", "--yes")
+                assert done.exit_code == 1, done.output
+            r = _describe(["--calculation", "transport", "--bundle",
+                           "P/transport/T",
+                           "--slot", f"junction={address(run)}"])
+            tab = create_app(config={}).test_client().get(
+                f"/api/transport/describe_attempt?path={address(run)}"
+                f"&engine=siesta").get_json()
+        if refused is None:
+            assert r.exit_code == 0, r.output
+            assert tab["citation"] == address(run), tab
+            assert tab["summary"].startswith("not concluded -- "), tab
+        else:
+            assert r.exit_code != 0, r.output
+            assert refused in r.output, r.output
+            assert "launch the relaxation again" in r.output.lower(), r.output
+            assert not (bundle.parents[1] / "transport" / "T").exists()
+            assert tab["citation"] is None, tab
+            assert refused in tab["summary"], tab["summary"]
+
+
+def test_a_relaxation_cited_while_going_that_then_ends_is_refused_at_prep(
+        tmp_path, monkeypatch):
+    """THE SILENT FAILURE: prep telling a person to wait for a relaxation
+    that has ended -- cited while it was going, its job then killed -- where
+    it can never be prepared from.  `engines/transport.md` § 3.1: a run
+    cited while still going that then fails is refused at prep, by the rule
+    describe refuses one by, naming the way on -- a new transport
+    calculation, one calculation being one structure.  The relaxation is
+    the road's (`support.road.prepared_here`), launched here and left
+    running, then killed outright (`support.road.killed_outright`)."""
+    from molbuilder.projects import address, projects_root
+    from support.road import (described, jobset, killed_outright,
+                              left_in_the_background, prepared_here)
+    bundle, run, _names = prepared_here(tmp_path, monkeypatch, "sleep 60;")
+    with left_in_the_background("task", "--stage", "coarse", "--bundle",
+                                bundle) as job:
+        transport = described(projects_root(), calculation="transport",
+                              name="T", structure=address(run),
+                              psml_lib=None)
+        killed_outright(job)
+    prep = jobset("prep", "task", "--group", "1", "--bundle", transport,
+                  "--target", "this")
+    assert prep.exit_code != 0, prep.output
+    assert "ended without concluding" in prep.output, prep.output
+    assert "launch the relaxation again" in prep.output.lower(), prep.output
+    assert "new transport calculation" in prep.output, prep.output

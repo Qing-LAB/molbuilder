@@ -1144,11 +1144,11 @@ const WORKSPACE_TAG = "transport";
     }
 
     function _swapElectrodes(citation, btn) {
-        function _failed(why) {
+        function _failed(why, kind) {
             btn.disabled = false;
             btn.textContent = _swapElectrodesChoice ? WITHDRAW_LABEL
                                                     : _swapLabel();
-            _setStatus(why, "error");
+            _setStatus(why, kind || "error");
         }
         /* The choice is made HERE and read back through the SAME door the
          * picker uses: the citation is unchanged, this calculation's
@@ -1160,6 +1160,13 @@ const WORKSPACE_TAG = "transport";
         _describeAttempt(citation, want)
             .then(function (d) {
                 if (mine !== _citeSeq) return;     // a citation made since
+                // NO LONGER CITABLE -- a run that ended since it was cited:
+                // the refusal said, the button back, the citation held.
+                if (!d || !d.citation) {
+                    _failed((d && d.summary) || "That is not citable.",
+                            "warn");
+                    return;
+                }
                 _adoptCitation(d, (want
                     ? _leads() + " trade names in this "
                       + "calculation (swap_electrodes: true).  Re-cited: "
