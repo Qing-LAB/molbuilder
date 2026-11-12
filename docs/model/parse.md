@@ -1033,8 +1033,8 @@ companion is named from something the file itself states — a SIESTA run's
 history, `<SystemLabel>.MD.nc` beside it, named by the label the `.out` prints
 on its `reinit: System Label:` line (§ 5a); a geomeTRIC trajectory's run files,
 named on the stem its own name begins with (`<stem>_geom_optim.xyz`:
-`<stem>.molwatch.log`, `<stem>.log`, `<stem>.pyscf.log`). A file that names no run reads only
-itself. That is reading, not searching, and it stays in the parser:
+`<stem>.molwatch.log` and PySCF's own `<stem>.log`). A file that names no run
+reads only itself. That is reading, not searching, and it stays in the parser:
 a FileParser never depends on the directory composer.
 
 **What a run DECLARED is not a companion, and no parser looks for it.** The held
@@ -1402,11 +1402,12 @@ once into a structured sidecar. When they do, the parser for the log reads the
 sidecar and **replaces values in frames it already built** — it does not build
 a second trajectory.
 
-Two parsers do this today:
+Two parsers do this today, PySCF's from two siblings:
 
 | primary | sibling | what the sibling supplies |
 |---|---|---|
 | `engines/pyscf.py` | `<base>.molwatch.log` | convergence targets, the SCF's criteria and what each SCF row measures, run state, the atoms the run holds (§ 5.3) — the log read through its one read, `molwatch_reader.read_log` (§ 4a), so the two files of one run state them alike |
+| `engines/pyscf.py` | `<base>.log`, PySCF's own (§ 5.5) | each step's SCF history |
 | `engines/siesta.py` | the run's own `<SystemLabel>.MD.nc` | coordinates + per-step energy, in full precision |
 
 **The rules, which are what keep this from becoming a second source of truth:**
@@ -1422,7 +1423,13 @@ Two parsers do this today:
    (or stays `None`); it is never back-filled from a neighbouring step.
 4. **Say what happened.** Record the upgrade in `runtime_info` — which file,
    how many frames changed — so a surprising number in the UI can be traced to
-   a file rather than to a guess.
+   a file rather than to a guess; and a sibling there that did not read, by
+   name and why. SIESTA's history: `mdnc_source`, `mdnc_frames_matched`,
+   `mdnc_coords_upgraded`, `mdnc_energies_upgraded`, or `mdnc_error`. A
+   geomeTRIC trajectory's progress log: `molwatch_source` or `molwatch_error`;
+   PySCF's own log, `<stem>.log` — not its stdout capture, `<stem>.pyscf.log` —
+   `pyscf_log_source` with `pyscf_log_scf_upgraded`, the steps it gave an SCF
+   history, or `pyscf_log_error`. No sibling, no key.
 
 ### The SIESTA case, and the trap in it
 

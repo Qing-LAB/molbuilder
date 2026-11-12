@@ -35,7 +35,7 @@ from ...runfiles import (ROLE_GEOM_TRAJ as _ROLE_GEOM_TRAJ,
                          ROLE_PYSCF_LOG as _ROLE_PYSCF_LOG)
 import re
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from molbuilder.frame import Frame, Trajectory
 from molbuilder.parse.base import FileParser
@@ -114,31 +114,41 @@ def _read_molwatch_metadata(traj_path: str) -> Dict[str, object]:
     ``error_message`` (its footer, § 2b: ``running`` for a log that states
     none).
 
-    Empty for a trajectory with no progress log beside it, or one that does
-    not read -- a stated atom index map that does not, which the read
-    refuses: the trajectory then reads as itself alone (§ 5a, rule 2)."""
+    Empty for a trajectory with no progress log beside it; for one that
+    does not read -- a file the system will not read, or a stated atom
+    index map that does not, which the read refuses -- the trajectory reads
+    as itself alone (§ 5a, rule 2).  WHICH
+    LOG, OR WHY NONE (§ 5a, rule 4): ``molwatch_source`` names the log the
+    facts came from, ``molwatch_error`` the log that did not read and why."""
     log_path = _companion(traj_path, _ROLE_MOLWATCH)
     if log_path is None:
         return {}
+    name = os.path.basename(log_path)
     try:
         read = read_log(log_path).finish()
-    except (OSError, ValueError):
-        return {}
+    except (OSError, ValueError) as exc:
+        return {"runtime_info": {"molwatch_error": f"{name}: {exc}"}}
     info = read["runtime_info"]
-    return {"runtime_info": {k: info[k] for k in _LOG_FACTS if k in info},
+    facts = {k: info[k] for k in _LOG_FACTS if k in info}
+    facts["molwatch_source"] = name
+    return {"runtime_info": facts,
             "run_state": read["run_state"],
             "error_message": read["error_message"]}
 
 
 def _read_scf_history(
     traj_path: str,
-) -> List[List[Dict[str, float]]]:
-    """Parse ``<prefix>.log`` for per-cycle SCF data.  Returns a list
-    of runs (one per geom-opt step); each run is a list of per-cycle
-    dicts.  Empty list when no log is present."""
+) -> Tuple[List[List[Dict[str, float]]], Dict[str, str]]:
+    """``(runs, said)``: the per-cycle SCF data of ``<stem>.log``, PySCF's
+    own log -- a list of runs, one per geom-opt step, each a list of
+    per-cycle dicts; none for a trajectory with no log beside it, or one
+    that does not read -- and WHICH LOG, OR WHY NONE (`model/parse.md` § 5a,
+    rule 4): ``pyscf_log_source`` the log read, ``pyscf_log_error`` the log
+    that did not read and why."""
     log_path = _companion(traj_path, _ROLE_PYSCF_LOG)
     if log_path is None:
-        return []
+        return [], {}
+    name = os.path.basename(log_path)
 
     runs: List[List[Dict[str, float]]] = []
     current: List[Dict[str, float]] = []
@@ -184,9 +194,9 @@ def _read_scf_history(
                         prev_cycle = None
             if current:
                 runs.append(current)
-    except OSError:
-        return []
-    return runs
+    except OSError as exc:
+        return [], {"pyscf_log_error": f"{name}: {exc}"}
+    return runs, {"pyscf_log_source": name}
 
 
 def _parse_pyscf_xyz(path: str) -> Trajectory:
@@ -202,10 +212,11 @@ def _parse_pyscf_xyz(path: str) -> Trajectory:
         iterations.append(int(m.group(1)) if m else len(iterations))
         energies.append(float(m.group(2)) * _HARTREE_TO_EV if m else None)
 
-    # THE RUN'S OWN PROGRESS LOG beside it (§ 5a): geomeTRIC's file states
-    # no targets, no atoms held, no SCF criteria and no ending; the log does.
+    # THE RUN'S TWO LOGS beside it (§ 5a): geomeTRIC's file states no
+    # targets, no atoms held, no SCF criteria and no ending -- the progress
+    # log does -- and no step's SCF -- PySCF's own log does.
     mw_meta = _read_molwatch_metadata(path)
-    scf_history = _read_scf_history(path)
+    scf_history, scf_said = _read_scf_history(path)
 
     frames: List[Frame] = []
     for i, (_comment, elements, positions) in enumerate(frames_raw):
@@ -223,13 +234,19 @@ def _parse_pyscf_xyz(path: str) -> Trajectory:
             scf_history = scf_for_step,
         ))
 
+    runtime_info = dict(mw_meta.get("runtime_info", {}), **scf_said)
+    if "pyscf_log_source" in scf_said:
+        # HOW MANY FRAMES THE LOG CHANGED (§ 5a, rule 4): the steps it gave
+        # an SCF history.
+        runtime_info["pyscf_log_scf_upgraded"] = sum(
+            1 for f in frames if f.scf_history is not None)
     return Trajectory(
         source_format = "pyscf",
         frames        = frames,
         lattice       = None,           # geomeTRIC traj has no cell
         run_state     = mw_meta.get("run_state", "unknown"),
         error_message = mw_meta.get("error_message"),
-        runtime_info  = mw_meta.get("runtime_info", {}),
+        runtime_info  = runtime_info,
     )
 
 
@@ -334,11 +351,11 @@ class PySCFOutFileParser(FileParser):
         # A PARSER RAISES `ParseError`, and this is the one place that can
         # promise it for every name-composing site inside.
         #
-        # The body looks for companions -- the geomeTRIC log, the molwatch
-        # log, the pyscf stdout -- by COMPOSING their names from this file's
-        # stem, and `runfiles` refuses a stem that is not a legal label
-        # (§ 2.1: a dotted label cannot be read back out of a filename) with
-        # a `RunFileError` -- a `ValueError`, not a `ParseError`.
+        # The body looks for companions -- the progress log and PySCF's own
+        # log -- by COMPOSING their names from this file's stem, and
+        # `runfiles` refuses a stem that is not a legal label (§ 2.1: a
+        # dotted label cannot be read back out of a filename) with a
+        # `RunFileError` -- a `ValueError`, not a `ParseError`.
         #
         # Wrapped HERE rather than at each compose site: the boundary is the
         # one place the promise can be kept.

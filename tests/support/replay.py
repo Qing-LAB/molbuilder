@@ -1,16 +1,18 @@
 """A REAL RUN'S OUTPUT, SHOWN AS IT GREW (`process/testing.md` § 6).
 
 The monitor and the viewers read a run while it runs, so a test of either
-needs the run's output as it stood at a line and then a little later.  This copies a run made on the
-road (`support/real_runs.py`) into a folder of its own, its output written up
-to a line, with ``grow(to)`` writing on as the engine would.  What the monitor
-itself writes -- its log and its samples -- and the timing tee, which grows
-with the output, are left for the replay to write.
+needs the run's output as it stood at a line and then a little later.  This
+copies a run made on the road (`support/real_runs.py`) into a folder of its
+own, its output written up to a line, with ``grow(to)`` writing on as the
+engine would.  What the monitor itself writes -- its log and its samples --
+and the timing tee, which grows with the output, are left for the replay to
+write.
 
 Used by ``tests/test_monitor_watches_a_live_run_e2e.py`` (a relaxation),
 ``tests/test_the_viewers_follow_a_real_run_e2e.py`` (a relaxation, as the
-viewer reads it) and ``tests/test_transport_on_a_real_junction_e2e.py`` (a
-transmission, a device).
+viewer reads it), ``tests/test_transport_on_a_real_junction_e2e.py`` (a
+transmission, a device) and ``tests/test_a_person_reads_a_pyscf_run_e2e.py``
+(a PySCF relaxation's files whole, one of its logs made unreadable there).
 """
 from __future__ import annotations
 

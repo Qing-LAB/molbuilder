@@ -9,7 +9,14 @@ import numpy as np
 import pytest
 
 from _road import conda_hook, env_available
+from molbuilder.runfiles import ROLE_MOLWATCH, ROLE_PYSCF_LOG
 from support.road import molbuilder
+
+#: The run's facts geomeTRIC's trajectory takes from its progress log
+#: (`model/parse.md` § 5a's table): the convergence targets, the SCF's
+#: criteria and what each SCF row measures, the atoms the run holds.
+LOG_FACTS = ("frozen_atoms", "convergence_targets", "scf_criteria",
+             "scf_residuals")
 
 pytestmark = [
     pytest.mark.engine,
@@ -130,17 +137,19 @@ def test_the_trajectory_beside_a_run_s_progress_log_and_the_atom_index_door_read
     atoms held, no SCF criteria and no ending; the run's progress log beside
     it does, and the trajectory carries them as the log's own parser states
     them -- the plots' threshold lines, the held atoms and the run's ending
-    the same whichever of the two files a person opens.  The atom index door
-    answers the log by the map its header states (`model/overview.md`
-    § 2.2b), not by its run's deck.
+    the same whichever of the two files a person opens -- and it says which
+    files it took them from (rule 4): the progress log, and PySCF's own log,
+    counting the steps it gave an SCF history.  The atom index door answers the
+    log by the map its header states (`model/overview.md` § 2.2b), not by
+    its run's deck.
 
     THE SILENT FAILURE: the two files of one run telling a person two
     things -- the held oxygen moving in one, the run still going in one, a
-    threshold line missing from one; the log's map passed over for its
-    run's deck."""
+    threshold line missing from one; a number on the trajectory's plots no
+    file can be traced to; the log's map passed over for its run's deck."""
     from molbuilder.atom_index import atom_index_map
     from molbuilder.parse import parse
-    from molbuilder.runfiles import ROLE_GEOM_TRAJ, ROLE_MOLWATCH
+    from molbuilder.runfiles import ROLE_GEOM_TRAJ
     from molbuilder.runs import run_of
     run = run_of(real_held_water_pyscf.attempt("coarse"))
     traj, log = run.file(ROLE_GEOM_TRAJ), run.file(ROLE_MOLWATCH)
@@ -149,10 +158,56 @@ def test_the_trajectory_beside_a_run_s_progress_log_and_the_atom_index_door_read
     assert of_log.runtime_info["frozen_atoms"] == [0]
     assert of_log.runtime_info["convergence_targets"]
     assert of_log.run_state == "ended"
-    for fact in ("frozen_atoms", "convergence_targets", "scf_criteria",
-                 "scf_residuals"):
+    for fact in LOG_FACTS:
         assert of_traj.runtime_info.get(fact) == of_log.runtime_info[fact], (
             f"{traj.name} and {log.name} state {fact} two ways")
     assert ((of_traj.run_state, of_traj.error_message)
             == (of_log.run_state, of_log.error_message))
+    said = of_traj.runtime_info
+    # The count is the observable the key names: the steps carrying an SCF
+    # history, which none does without PySCF's log.
+    stepped = sum(1 for f in of_traj.frames if f.scf_history is not None)
+    assert (said["molwatch_source"], said["pyscf_log_source"]) == (
+        log.name, run.file(ROLE_PYSCF_LOG).name), said
+    assert said["pyscf_log_scf_upgraded"] == stepped > 0, (said, stepped)
     assert atom_index_map(log).stated_by == str(log)
+
+
+@pytest.mark.parametrize("role, keys, alone", [
+    (ROLE_MOLWATCH, "molwatch_",
+     lambda r: (r.run_state, r.error_message) == ("unknown", None)
+     and not any(k in r.runtime_info for k in LOG_FACTS)),
+    (ROLE_PYSCF_LOG, "pyscf_log_",
+     lambda r: all(f.scf_history is None for f in r.frames)),
+], ids=["the progress log", "PySCF's own log"])
+def test_a_file_beside_the_trajectory_that_does_not_read_is_said(
+        real_held_water_pyscf, tmp_path, role, keys, alone):
+    """`model/parse.md` § 5a: a companion that does not read leaves the
+    trajectory read as itself alone (rule 2), and the trajectory says which
+    file gave it nothing, and why (rule 4).  The run's own files, replayed
+    in a folder of their own (`support.replay`), the companion made
+    unreadable there -- a real read failure, as a disk or a permission
+    gives one.
+
+    THE SILENT FAILURE: the plots' threshold lines, the held atoms, the
+    run's ending or the SCF chart gone with no word of which file or why."""
+    import errno
+    import os
+    if os.geteuid() == 0:
+        pytest.skip("root reads a file whose mode lets no one read it")
+    from molbuilder.parse import parse
+    from molbuilder.runfiles import ROLE_GEOM_TRAJ
+    from molbuilder.runs import run_of
+    from support.replay import output_lines, replay
+    run = real_held_water_pyscf.attempt("coarse")
+    ran = run_of(run)
+    there, _watched, _grow = replay(run, tmp_path, len(output_lines(run)))
+    companion = there / ran.file(role).name
+    companion.chmod(0)
+    got = parse(there / ran.file(ROLE_GEOM_TRAJ).name)
+    said = {k: v for k, v in got.runtime_info.items() if k.startswith(keys)}
+    assert list(said) == [keys + "error"], said
+    why = said[keys + "error"]
+    assert (why.startswith(companion.name)
+            and os.strerror(errno.EACCES) in why), why
+    assert alone(got), (got.run_state, got.error_message, got.runtime_info)
