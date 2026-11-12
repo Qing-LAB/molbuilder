@@ -88,25 +88,6 @@ WHAT IT CANNOT DO, and each of these was hit in the first run:
 
 import ast, json, os, subprocess, sys, pathlib, shutil, tempfile
 
-# Scratch for the coverage plug-in and the mutated copies.  It honoured only
-# `CLAUDE_JOB_DIR` until 2026-09-09 and raised `KeyError` without it -- so the
-# tool ran in exactly the session that wrote it and nowhere else, which is the
-# opposite of what a verification tool is for.  `--tmp` first, then the
-# environment, then a temp directory it makes itself.
-def _scratch() -> str:
-    for i, a in enumerate(sys.argv):
-        if a == "--tmp" and i + 1 < len(sys.argv):
-            d = sys.argv[i + 1]
-            sys.argv[i:i + 2] = []
-            return d
-    for var in ("SUBSUMPTION_TMP", "CLAUDE_JOB_DIR"):
-        if os.environ.get(var):
-            return os.environ[var].rstrip("/") + "/tmp"
-    return tempfile.mkdtemp(prefix="verify_subsumption.")
-
-
-TMP = _scratch()
-os.makedirs(TMP, exist_ok=True)
 PY  = sys.executable
 
 
@@ -122,27 +103,36 @@ _TOOLS_DIR = str(pathlib.Path(__file__).resolve().parent)
 
 
 def covered_lines(nodeid):
-    out = f"{TMP}/cov_one.json"
-    if os.path.exists(out):
-        os.unlink(out)
-    env = dict(os.environ,
-               PYTHONPATH=os.pathsep.join([TMP, _TOOLS_DIR,
-                                           os.environ.get("PYTHONPATH", "")]),
-               MB_COV_OUT=out)
-    r = subprocess.run([PY, "-m", "pytest", "-q", "-p", "no:randomly",
-                        "-p", _COV_PLUGIN, nodeid],
-                       env=env, capture_output=True, timeout=900, text=True)
-    if not os.path.exists(out):
-        # LOUD.  An empty coverage set is indistinguishable from "this test
-        # touches no molbuilder code", and reporting the second when the first
-        # happened is how a broken instrument reads as a verdict.
-        raise SystemExit(
-            f"the coverage plug-in produced no output for {nodeid}.\n"
-            f"  plug-in: {_COV_PLUGIN} (from {_TOOLS_DIR})\n"
-            f"  pytest exit {r.returncode}\n"
-            f"  --- stdout ---\n{(r.stdout or '')[-1500:]}\n"
-            f"  --- stderr ---\n{(r.stderr or '')[-800:]}")
-    d = json.load(open(out))
+    """The molbuilder lines ``nodeid`` executes, as the plug-in records them.
+
+    THE COVERAGE FILE GOES IN THE SYSTEM'S TEMP FOLDER
+    (`tempfile.gettempdir()`), in a folder of its own: the run inherits that
+    folder from here, and the suite's write guard lets a run write it
+    (`process/testing.md` § 2b).  The plug-in writes from inside the run, so
+    a place off the guard's list gives no file."""
+    with tempfile.TemporaryDirectory(prefix="cov_one.") as here:
+        out = os.path.join(here, "coverage.json")
+        env = dict(os.environ,
+                   PYTHONPATH=os.pathsep.join(
+                       [_TOOLS_DIR, os.environ.get("PYTHONPATH", "")]),
+                   MB_COV_OUT=out)
+        r = subprocess.run([PY, "-m", "pytest", "-q", "-p", "no:randomly",
+                            "-p", _COV_PLUGIN, nodeid],
+                           env=env, capture_output=True, timeout=900,
+                           text=True)
+        if not os.path.exists(out):
+            # LOUD.  An empty coverage set is indistinguishable from "this
+            # test touches no molbuilder code", and reporting the second when
+            # the first happened is how a broken instrument reads as a
+            # verdict.
+            raise SystemExit(
+                f"the coverage plug-in produced no output for {nodeid}.\n"
+                f"  plug-in: {_COV_PLUGIN} (from {_TOOLS_DIR})\n"
+                f"  pytest exit {r.returncode}\n"
+                f"  --- stdout ---\n{(r.stdout or '')[-1500:]}\n"
+                f"  --- stderr ---\n{(r.stderr or '')[-800:]}")
+        with open(out) as fh:
+            d = json.load(fh)
     hits = set()
     for k, v in d.items():          # a parametrized id expands to several
         for s in v:
