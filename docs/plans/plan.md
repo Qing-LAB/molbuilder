@@ -30,7 +30,7 @@ as they stood.
 
 ## ▶ HANDOVER — where we are, and where to start *(2026-11-10)*
 
-**Where we are: 2.69.42.** F0–F8 and F7a are closed; F9, the tests through
+**Where we are: 2.69.43.** F0–F8 and F7a are closed; F9, the tests through
 the road, has eight releases out (2.67.4–2.67.11) and four steps left (its
 row below). Since 2.67.11 three bodies of work the user put first have run;
 each release is its changelog row and its ledger section
@@ -82,7 +82,8 @@ each release is its changelog row and its ledger section
   defect; what is left of it, said there); 2.69.41, the sidebar's row
   menu closed only by a scroll that moves its row (found by 2.69.40's e2e
   run); 2.69.42, what a stage may override asked of its one door
-  (X-TMPL). **Left, in order**: X-TMPL's duplicates,
+  (X-TMPL); 2.69.43, a setting nobody stated at the one default wherever
+  a calculation is described, judged or recorded (X-TMPL). **Left, in order**: X-TMPL's duplicates,
   X-EXEC, X-ENG; then the page doors and
   the copies they share (O-STATUS, O-FIND, O-STATE, O-WORDS, O-KEYS's rest
   with X-UI and X-PLOT; O-TESTS).

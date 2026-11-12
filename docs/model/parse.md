@@ -1795,7 +1795,7 @@ recomputed from today's catalogue:
 
 | column | SIESTA · TranSIESTA · TBtrans | PySCF |
 |---|---|---|
-| default | the wrapper's parameters fence (§ 5d.3a), which lists the catalogue default of every item the rung reads, at launch; a run from before the fence has none, and the column is empty | the deck's fence |
+| default | the wrapper's parameters fence (§ 5d.3a), which lists the catalogue's default of every item the rung reads, at launch — the one default for the calculation (`template.default_of`, [`engines/template.md`](?doc=engines/template.md) § 5.4: a vibration's relaxation at the tight values the kind recommends); a run from before the fence has none, and the column is empty | the deck's fence |
 | asked | the deck, per keyword and with its unit (`script_emit.parameter(..., deck_text=)`) | the deck's fence |
 | used | SIESTA's `fdf.<stamp>.log`, through the `siesta-fdf-log` parser: the value it read, or every reading of a key read to several values | the deck's fence, read off the live objects |
 | echo | what SIESTA says it RAN where it says so: the `redata:` / `ts:` echo and the `diag:` lines — `Number of poles = 42` beside the pole energy's two readings | — |

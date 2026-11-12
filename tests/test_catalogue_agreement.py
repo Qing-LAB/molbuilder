@@ -123,18 +123,24 @@ def test_the_declared_TYPE_agrees_with_the_annotation(engine, cls):
 
 @pytest.mark.parametrize("engine,cls", ENGINES, ids=lambda x: getattr(x, "__name__", x))
 def test_the_DEFAULT_agrees(engine, cls):
-    """The default has two homes as well, read by two roads: the catalogue's
-    is what a form offers, and the class's is what a new transport template
-    is written with (`transport_template_text` builds it from a config).  Two
-    homes that disagree give a person a different starting value by the road
-    that described the calculation.  Measured 2026-09-29, zero disagreements
+    """The default has two homes as well: the catalogue's, the one default
+    every road that describes a calculation writes, and the class's, what a
+    template is read with for an item it leaves unset or does not carry
+    (`config_from_template`).  Two homes that disagree give a person a
+    different value by the road that read the calculation.  Measured 2026-09-29, zero disagreements
     across both engines -- the day M5 step 2 changed six defaults in both
-    places (plan W48 records the facts still unguarded)."""
+    places (plan W48 records the facts still unguarded).
+
+    A BLANK IS A DEFAULT TOO: `stated_config` writes every value nobody
+    stated at the catalogue's one default (`template.default_of`), so a
+    catalogue that states none where the class holds one blanks that value
+    on every road that describes a calculation -- `ecp_atoms`, the class's
+    ``[]`` against no catalogue default, until 2.69.43."""
     cat = _catalogue()
     bad = []
     for f in dataclasses.fields(cls):
         item = cat.get(f.name)
-        if item is None or item.default is None:
+        if item is None:
             continue
         if f.default is not dataclasses.MISSING:
             mine = f.default

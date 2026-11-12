@@ -1004,7 +1004,7 @@ added in 2.27.0, the run card, got none of it. The 2.27.0 review measured each
 |---|---|---|
 | **may this value stand here?** | `accepts(item, value, home, *, engine, kind, stage=None)` → the one refusal clause, or none | in order, the first that holds: whether `home` may hold this item at all (`home_of`, below); `null` — *unset* — taken on a run card or an override only by an item whose unset is an answer (`optional`: the launch shape, `block_size`, `parallel_over_k`, an optional parameter of the description) and refused for any other, and **never a benchmark row's point** — a point is a value to try, and a setting left off the row runs at its own; the item's `type`, the **catalogue's** — the config class's annotation judges nothing; then § 5.3's door: a component the kind fixes, a choice the kind does not offer (`offered`), a limit (`above`, `at_least`) |
 | **what is it, spelled?** | `spell(item, value)` → the value in its declared type | lossless only — a whole float for a count is the count, a list of three a triple (`as_declared`); **what a page sends** — a cell's or a card row's text, a form's value — is read by the same door, `read_text(item, text)` → `(value, refusal)`, its type judged, so no page keeps a reader of its own: a number as JSON writes one — decimal, with an exponent if any (`1e3` is 1000), never `0x10` or `1_000` — `true` / `false`, an enum's member by its spelling, a grid as `4,4,1`, `4x4x1`, `4 4 1` or the list `[4, 4, 1]`, a list by commas or spaces; and a refusal quotes a value through `shown(value)` — `null` for unset, `true` / `false`, a triple as the list it is written as |
-| **what does nobody's statement mean?** | `default_of(item, kind)` → the value, or none | the kind's `recommended`, else the item's `default` — **the one default**: `resolve` lays it for a run setting no card states, Task setup shows it in a blank row, migrate asks it whether a value was the default; for an item with neither, its `not_set` line says what applies (§ 6.6, obligation 4). A run setting states no `value` in the catalogue — no template starts from one — which the catalogue's reader checks |
+| **what does nobody's statement mean?** | `default_of(item, kind)` → the value, or none | the kind's `recommended`, else the item's `default` — **the one default**: `resolve` lays it for a run setting no card states, every door that writes a template from what was stated writes it for a value nobody stated (`stated_config`, § 6.3a) — and `molbuilder validate` judges a kind on that config, nothing stated — a form and Task setup show it beside a blank field or row, a run's record of its parameters states it as each setting's catalogue default ([`model/parse.md`](?doc=model/parse.md) § 5d.3a), migrate asks it whether a value was the default; for an item with neither, its `not_set` line says what applies (§ 6.6, obligation 4). A run setting states no `value` in the catalogue — no template starts from one — which the catalogue's reader checks |
 | **where may a value of it live?** | `home_of(item, kind)` → its homes; `why_not_in(item, home, *, engine, kind, stage=None)` → the clause for a home that may not hold it — `accepts`' first question, and asked alone where a name stands without a value (a `varies` column, a benchmark row's name) | read off the item's own markers: **a stage's overrides** — what is computed (not a run setting, not `role`, not `shared`), on a rung that reads it (`stages`); **a run card** — a run setting (`execution`); **a benchmark row** — a run setting a trial may vary (what every trial fixes, `TRIAL_PINS` — capped SCFs, no geometry step, a clean start, [`job-request.md`](?doc=execution/job-request.md) § 3.4 — says what is computed, so it is no run setting and that clause keeps it off a row), and of the launch shape only the grid's axes (`GRID_AXES` — ranks, cores per rank, devices; [`generator.md`](?doc=execution/generator.md) § 4.3a), a memory cap being no axis it sweeps; **a prep flag** — the launch shape (`allocation = true`). The scheduler's asks — `allocation`'s `domain`, `time`, `mem`, `gpu_binding`, a card's `time` and `domain` — are not catalogue items; the job request's reader judges and spells them, the allocation's and a card's alike ([`job-request.md`](?doc=execution/job-request.md) § 3.1, § 3.2a) |
 | **who set it?** | `SAID` — one vocabulary | *the template* with its own source words (*from the junction you cited · you set this · not chosen · not recorded*, § 6.6), *this stage's override*, *the stage's run card*, *the calculation's run card*, *a prep flag*, *the run card* (the launch fold's, which records a card as one — the placement line), *the job request's allocation*, *the catalogue's default · not chosen* (*not chosen* alone, beside who answers it, for an item with no default), *a sweep point*, *a pin*, *the rung* — composed once by `resolve` for every value of a rung (`ResolvedConfig.said`, the deck's table its own items' rows) and read by the deck's PROVENANCE rows, the pipeline log, prep's printed lines and its placement, and the page; none words its own |
 
@@ -1603,17 +1603,23 @@ recommended = { vibration = 0.01 }   # a frequency deserves a real stationary po
 help = "The largest force allowed on any free atom when the relaxation stops."
 ```
 
-Three readers, one rule: the form-schema door narrowed to a kind
-(`/api/build/schema/<engine>?calculation=<kind>`) presents the recommended
-value as the field's `default` — the hint beside a blank field, *not chosen*
-(`form-schema.md` § 1.1, K7); every door that writes a template from what was
-stated lays it under what was given and says who gave each value —
+One door — the one default, `default_of(item, kind)`, whose readers § 5.4
+names — and three of them here: the form-schema door narrowed to a kind
+(`/api/build/schema/<engine>?calculation=<kind>`) presents it as the field's
+`default` — the hint beside a blank field, *not chosen* (`form-schema.md`
+§ 1.1, K7); every door that writes a template from what was stated lays it
+under what was given, for every item the catalogue carries for the engine and
+the kind, and says who gave each value —
 `template.stated_config(cls, kind, (values, who), …)` → `(config, sources)`,
 asked by `molbuilder describe`, the form doors and the hand-over, and by a
 transport describe with its citation's answers under the person's — so a
-field nobody chose is written as the kind's recommendation and recorded as
-nobody's (`source = "default"`, § 6.6); and `template_with_values(..., calculation=)`
-writes it as the `default` beside whatever value the config holds. After that
+field nobody chose is written at the one default, the kind's recommendation
+where it states one, and recorded as nobody's (`source = "default"`, § 6.6);
+and `template_with_values(..., calculation=)` writes it as the `default`
+beside whatever value the config holds. The config class's own default is
+the item's own — a test holds the two equal, a blank included — never a
+kind's recommendation: it is what a template is read with for an item it
+leaves unset or does not carry (`config_from_template`, § 8). After that
 the template is the answer and the person changes it like any other value —
 the recommendation is where the number starts, never a lock. A test compares every `recommended` value of a
 tier field against the engine's tier table, so the two homes of that number

@@ -65,7 +65,7 @@ is where the *data* comes from.
 |---|---|
 | `name` | the item's own name |
 | `label` · `help` · `unit` | the keys of the same name |
-| `default` | the item's default **for this kind** (`template.recommended_for`) — or, on a surface drawn from a calculation's template, the value it holds for an item nobody chose (the row below) — a HINT beside a field with no value, never a value |
+| `default` | the item's default **for this kind** — the one default, `template.default_of` — or, on a surface drawn from a calculation's template, the value it holds for an item nobody chose (the row below) — a HINT beside a field with no value, never a value |
 | `default_words` | where that default comes from, in the words a blank field's caption leads it with — *recommended for a vibration*, *SIESTA's own default*, *default* (`template.default_words`, *(2.68.1)*); absent where the item has no default |
 | `value` · `source` | **the calculation's template**, when the surface is drawn from one (`catalogue_to_form_schema(template=)`): the item's value and where it came from (`engines/template.md` § 6.6 obligation 2). A value nobody chose (`default`) is not carried — that field is blank, its `default` the value the template holds, which is what runs. With no template, no field has a value. The words a source is said in ride once, as the schema's `source_words` (`template.SOURCE_WORDS`: *from the junction you cited* · *you set this* · *not chosen* · *not recorded*), and every surface says them from there |
 | `locked` | derived from the kind: an item the RUNG fixes (`role`, `engines/template.md` § 6.4), echoed read-only — `{value, why}`, the rung's answer (`template.role_answers`; on a form for the whole calculation, the answers every rung gives alike, `fixed_on_every_rung`) and the reason (`why_role`). Drawn disabled at its value with the reason beside it, never collected (§ 6.6 obligation 3: shown, never a control). The bias carries no value — each point of the description's list is its own (the item's `per_point_from`, `template.per_point_items`) *(2026-09-30, K7)* — and says so: `{value: null, why, per_point: true}`, and the page that holds the points shows them in the locked box (`showPoints`; the Transport tab's bias list, *0, 0.1, 0.2 V — one run per point*, kept current with it) *(2026-10-13)* |
@@ -98,7 +98,8 @@ value is, and follows each edit: the source, *you set this*, or —
 * **blank is not chosen**, for every field, and the caption and the box's own
   hint say what then applies: on a surface of overrides the template's value
   and whose it is; an optional item's own blank (its `null_label`); else the
-  kind's `default`, **said by where it comes from** *(2.68.1; the user,
+  kind's `default` — the one default, `template.default_of` —
+  **said by where it comes from** *(2.68.1; the user,
   2026-11-08: a default the engine applies is not molbuilder's advice)* —
   *recommended for a vibration* where the catalogue states a recommendation
   for the kind (`recommended`, [`template.md`](?doc=engines/template.md)
@@ -113,7 +114,7 @@ value is, and follows each edit: the source, *you set this*, or —
 `collectForm` reads what the form holds, **a blank as `null`**, and every
 door that takes a form reads a `null` as not chosen: the template is written
 with what then applies and records it as nobody's choice — the kind's
-default (`template.stated_config`, [`engines/template.md`](?doc=engines/template.md) § 6.3a; on a rung's tab, the template's
+one default (`template.default_of`, laid by `template.stated_config`, [`engines/template.md`](?doc=engines/template.md) § 5.4, § 6.3a; on a rung's tab, the template's
 own value, since the rung sets nothing), or on transport's shared panel no
 value at all for a cited row the person emptied, which `prep` fills with the
 documented default ([`engines/transport.md`](?doc=engines/transport.md)
@@ -491,7 +492,8 @@ Two comparison rules, each earned by a way the naive version misleads:
 
 **The consumer is the defaults panel** on the structure-optimization
 forms — *"2 settings are not at their defaults"*: it lists
-what differs and resets only what is ticked. One "reset
+what differs, each row the value and the default — an empty default, a
+list's as a string's, said *(empty)* — and resets only what is ticked. One "reset
 everything" button cannot tell a deliberate 4×4×1 k-grid from a value that
 arrived with an older session, and both live in the same form.
 

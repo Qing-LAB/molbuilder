@@ -162,8 +162,8 @@ def _analyze_response(struct, body):
         # use -- so a blank means exactly what it means there.
         # WHAT THE PERSON STATED, read by the one reader: a blank the
         # config fills with the catalogue's value is not chosen, and said
-        # so (`web/form-schema.md` § 1.1) -- laid over the kind's
-        # recommendations by the one door (`template.stated_config`).
+        # so (`web/form-schema.md` § 1.1) -- laid over the one default by
+        # the one door (`template.stated_config`).
         try:
             chosen = _stated_params(config_class(engine), items or {})
         except (TypeError, ValueError) as exc:
@@ -918,7 +918,7 @@ def api_task_setup_handover():
         return err(str(exc), 400)
 
     params: Dict[str, Any] = body.get("params") or {}
-    # WHAT THE PERSON'S FORM STATED, over the kind's recommendations, and
+    # WHAT THE PERSON'S FORM STATED, over the one default, and
     # who set each value (`template.md` § 6.3a, § 6.6 obligation 2): the
     # one door, which reads a blank -- spaces too -- as not chosen.
     try:
@@ -1682,8 +1682,9 @@ def api_task_setup_sweepable():
             "type":            it.type or "",
             "choices":         (list(_T.offered(it, engine, kind))
                                 if it.choices else None),
-            # THE ONE DEFAULT (`template.default_of`): the kind's own, never
-            # the general one -- led in the hover by where it comes from,
+            # THE ONE DEFAULT (`template.default_of`): the kind's
+            # recommendation, else the item's -- led in the hover by where
+            # it comes from,
             # and each value in its words, as on the columns route
             # (`template.default_words`, `template.value_labels`).
             "default":         _T.default_of(it, kind),
@@ -1765,7 +1766,7 @@ def api_task_setup_columns():
             "label":   it.label or it.name,
             "help":    it.help or "",
             "unit":    it.unit or "",
-            # THE KIND'S OWN DEFAULT (`template.recommended_for`), and where
+            # THE KIND'S OWN DEFAULT (`template.default_of`), and where
             # it comes from in the words every form uses
             # (`template.default_words`, `form-schema.md` § 1.1).
             "default": _T.default_of(it, _calc_kind),

@@ -666,12 +666,6 @@ class Parameter:
             return tuple(self.declaration.expands)
         return (self.declaration.anchor,) if self.declaration.anchor else ()
 
-    @property
-    def default(self):
-        """The catalogue's recommended value — what the item declares, never
-        what this calculation chose. :attr:`value` is that."""
-        return self.declaration.default if self.known else None
-
     def note(self, *lead, extra=()) -> List[str]:
         """This parameter's own note, as deck comment lines.
 
@@ -730,8 +724,10 @@ def parameter(name: str, engine: str, *, config=None,
     about what a parameter is; they can only differ about what it says, which
     is the real question and the one worth being able to ask.
 
-    Neither given, the Parameter still answers :attr:`writes`, :attr:`default`
-    and :meth:`note` — the declaration alone.
+    Neither given, the Parameter still answers :attr:`writes` and
+    :meth:`note` — the declaration alone.  What nobody's statement means for
+    a calculation is the one default, `template.default_of`, asked with its
+    kind.
     """
     from . import template as _T
     try:

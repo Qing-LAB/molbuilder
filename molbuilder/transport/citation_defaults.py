@@ -189,8 +189,8 @@ def siesta_config_from_citation(answers: CitationAnswers, *, label: str,
             f"the leads set the electron number, so the junction must be "
             f"neutral.  Relax the junction "
             f"neutral and cite that run, or the pair saved from it.")
-    # UNDER BOTH, the kind's own recommendations (`engines/template.md`
-    # § 6.3a), and WHO SET EACH (§ 6.6 obligation 2), by the one door every
+    # UNDER BOTH, the one default (`engines/template.md` § 5.4, § 6.3a),
+    # and WHO SET EACH (§ 6.6 obligation 2), by the one door every
     # road asks: the citation's answers -- its recorded contract -- then
     # what the person chose on the shared panel over them, and the
     # calculation's own name.  A value the panel holds as the citation

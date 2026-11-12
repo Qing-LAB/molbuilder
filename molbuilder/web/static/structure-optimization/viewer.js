@@ -370,7 +370,8 @@ import { ask } from "../lib/server.js";
         if (!listEl || !fs || typeof fs.diffFromDefaults !== "function") return;
 
         function show(v) {
-            if (Array.isArray(v)) return v.join(", ");
+            // An EMPTY list is empty, as an empty string is.
+            if (Array.isArray(v)) return v.length ? v.join(", ") : "(empty)";
             if (v === true) return "on";
             if (v === false) return "off";
             if (v === null || v === undefined || v === "") return "(empty)";

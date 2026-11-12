@@ -277,6 +277,31 @@ def test_validate_refuses_a_kind_its_engine_does_not_run(capsys, tmp_path):
     assert "transport" in err and "siesta" in err, err
 
 
+def test_validate_judges_a_kind_on_what_its_description_starts_from(
+        capsys, tmp_path):
+    """`molbuilder validate --engine siesta --calculation vibration` judges
+    the config a description of that kind starts from with nothing stated --
+    the one default (`engines/template.md` § 5.4, § 6.3a) -- so the
+    relaxation it says runs first runs to the tolerance the kind recommends.
+    THE SILENT FAILURE: the config class's general default judged instead --
+    through 2.69.42 the finding named 0.02 eV/Å for a vibration that runs
+    at 0.01.  The structure is the road's: a peptide built by the command
+    line."""
+    import json
+    from molbuilder.template import catalogue, default_of, one
+    pair = tmp_path / "ala.xyz"
+    assert cli.main(["peptide", "A", "--out", str(pair)]) == 0
+    capsys.readouterr()
+    assert cli.main(["validate", str(pair), "--engine", "siesta",
+                     "--calculation", "vibration"]) == 0
+    issues = json.loads(capsys.readouterr().out)["issues"]
+    (said,) = [i["message"] for i in issues
+               if i["where"] == "config.already_relaxed"]
+    tol = default_of(one(catalogue(), "relax_force_tol", engine="siesta"),
+                     "vibration")
+    assert f"{tol:g} eV/Å" in said, said
+
+
 def test_validate_exit_on_error_returns_2(monkeypatch, capsys, tmp_path):
     """--exit-on-error makes the command non-zero when any error-severity
     issue fires.  Synthesise a structure with two atoms < 0.3 A apart,

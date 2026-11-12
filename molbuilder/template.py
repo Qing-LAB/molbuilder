@@ -1111,15 +1111,13 @@ def catalogue() -> "Template":
                         f"the kind table does not hold "
                         f"({', '.join(_kinds.kinds())})", where=it.name)
     # A KIND IS NEVER STARTED ON A CHOICE IT REFUSES (§ 6.3a): the value a
-    # kind's template starts at -- its recommendation, else the default --
-    # is among what that kind is offered.  Asked of the MASTER FILE, once:
-    # an item derived for one kind's form (`with_recommended`) carries that
-    # kind's start as its default, which other kinds' sets need not hold.
+    # kind's template starts at -- the one default, its recommendation,
+    # else the item's (`default_of`) -- is among what that kind is offered.
+    # Asked of the MASTER FILE, once.
     for it in parsed.items:
-        rec = dict(it.recommended)
         for key, members in it.offered:
             kind = key.rpartition(".")[2]
-            start = rec.get(kind, it.default)
+            start = default_of(it, kind)
             if start is not None and not is_member(start, members):
                 _refuse(f"a {kind} starts at {start!r}, which offered.{key} "
                         f"does not let it take", where=it.name)
@@ -1262,12 +1260,11 @@ def template_with_values(config, *, engine: str = "", catalogue: str = "",
                    else getattr(config, it.name, it.value)),
             source=(None if calculation in it.role
                     else told.get(it.name, "default")),
-            # THE KIND'S RECOMMENDATION IS THE TEMPLATE'S DEFAULT (§ 6.3a);
-            # the table itself does not travel -- a per-kind template has
-            # already answered which kind it serves.
-            default=(recommended_for(it, calculation)
-                     if recommended_for(it, calculation) is not None
-                     else it.default),
+            # THE ONE DEFAULT IS THE TEMPLATE'S (§ 5.4, § 6.3a): the kind's
+            # recommendation, else the item's; the table itself does not
+            # travel -- a per-kind template has already answered which kind
+            # it serves.
+            default=default_of(it, calculation),
             recommended=(),
             # ...nor the rungs' own role answers: `resolve` reads them from
             # the catalogue, and the template holds no value for a role item.
@@ -1864,47 +1861,27 @@ def recommended_for(item: "Item", calculation: str) -> Any:
     return None
 
 
-def with_recommended(item: "Item", calculation: str) -> "Item":
-    """``item`` with the kind's recommendation as its value and default --
-    what a surface built for that kind shows (§ 6.3a); the item unchanged
-    when the kind recommends nothing."""
-    rec = recommended_for(item, calculation)
-    if rec is None:
-        return item
-    return dataclasses.replace(item, value=rec, default=rec)
-
-
-def apply_recommended(config, calculation: str):
-    """A copy of ``config`` carrying every recommendation the catalogue makes
-    for ``calculation`` on its engine (§ 6.3a) -- what :func:`stated_config`
-    lays under what was stated, so a template starts where the kind says it
-    should."""
-    updates = {}
-    for it in select(catalogue(), engine=engine_of_config(config),
-                     calculation=calculation):
-        rec = recommended_for(it, calculation)
-        if rec is not None and hasattr(config, it.name):
-            updates[it.name] = rec
-    return dataclasses.replace(config, **updates) if updates else config
-
-
 def stated_config(cls, calculation: str, *layers):
     """THE ONE DOOR FROM WHAT WAS STATED TO A CONFIG (§ 6.3a; § 6.6
-    obligation 2) -- ``(config, sources)``: ``cls``'s defaults, the kind's
-    own recommendations over them (:func:`apply_recommended`, for
-    ``calculation`` -- none for ``""``), then each layer ``(values, who)``
-    laid over the one before -- a citation's answers, then the person's --
-    and ``sources`` who set each value, the last layer that stated it.  A
-    value nobody stated is the recommendation or the default, nobody's
-    choice, and has no source.  Every door that writes a template from
-    what was stated asks this -- the form doors, the hand-over,
-    `molbuilder describe`, a transport describe's citation -- so the
-    recommendations lie UNDER what was stated on every road.  ``values``
+    obligation 2) -- ``(config, sources)``: every item the catalogue carries
+    for ``cls``'s engine and ``calculation`` at the one default
+    (:func:`default_of` -- the kind's recommendation, else the item's; for
+    ``""``, the item's), then each layer ``(values, who)`` laid over the
+    one before -- a citation's answers, then the person's -- and
+    ``sources`` who set each value, the last layer that stated it.  A value
+    nobody stated is the one default, nobody's choice, and has no source.
+    Every door that writes a template from what was stated asks this -- the
+    form doors, the hand-over, `molbuilder describe`, a transport describe's
+    citation -- so the one default lies UNDER what was stated on every
+    road.  ``values``
     are each of its item's type already: a form's read by
     :func:`read_text`, a citation's from its record."""
     base = cls()
-    if calculation:
-        base = apply_recommended(base, calculation)
+    unstated = {it.name: default_of(it, calculation)
+                for it in select(catalogue(), engine=engine_of_config(base),
+                                 calculation=calculation or None)
+                if hasattr(base, it.name)}
+    base = dataclasses.replace(base, **unstated)
     values: Dict[str, Any] = {}
     sources: Dict[str, str] = {}
     for given, who in layers:
@@ -2930,9 +2907,8 @@ def default_words(item: "Item", *, engine: Optional[str],
 def default_of(item: "Item", kind: str) -> Any:
     """THE ONE DEFAULT (§ 5.4): ``kind``'s `recommended` value for ``item``,
     else the item's `default` -- ``None`` for an item with neither, whose
-    not-set line says what applies (§ 6.6, obligation 4).  What `resolve`
-    lays for a run setting no card states, what Task setup shows in a blank
-    row and what migrate asks whether a value was the default."""
+    not-set line says what applies (§ 6.6, obligation 4).  Every reader is
+    named in § 5.4."""
     rec = recommended_for(item, kind)
     return rec if rec is not None else item.default
 

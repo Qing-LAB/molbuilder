@@ -173,7 +173,8 @@ def test_every_select_has_something_to_select_from(engine):
 
 #: WHERE A BLANK FIELD'S DEFAULT COMES FROM, said in the words its caption
 #: leads it with (`form-schema.md` § 1.1, 2.68.1): a kind's recommendation,
-#: the engine's own value, or molbuilder's plain default -- one row each.
+#: the engine's own value, or molbuilder's plain default -- one row each --
+#: and the default the words are said of.
 _DEFAULT_SAID = [
     ("siesta", "vibration", None, None, "relax_type",
      "recommended for a vibration"),
@@ -194,12 +195,16 @@ def test_a_default_is_said_by_where_it_comes_from(engine, kind, surface, rung,
     """A default the engine applies is not molbuilder's advice (the user,
     2026-11-08): *"not chosen · recommended No correction"* called
     TranSIESTA's own `none` a recommendation.  The field carries the words,
-    the server's (`default_words`), and the page leads the value with them.
+    the server's (`default_words`), and the page leads the value with them
+    -- the one default for the kind (`template.default_of`, § 5.4 there).
 
     MUTATION THIS MUST FAIL AGAINST: every default called *recommended*;
-    the engine's own value not told from molbuilder's."""
+    the engine's own value not told from molbuilder's; the item's general
+    default served under *recommended for a vibration*."""
     schema = catalogue_to_form_schema(engine, "t", kind, surface=surface,
                                       rung=rung)
     field = next(f for s in schema["sections"] for f in s["fields"]
                  if f["name"] == name)
     assert field.get("default_words") == said, field
+    assert field["default"] == T.default_of(
+        T.one(T.catalogue(), name, engine=engine), kind), field

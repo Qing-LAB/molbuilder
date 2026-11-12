@@ -686,9 +686,9 @@ def describe_cmd(structure, bundle: str,
         if psml_lib and any(it.name == "psml_lib" for it in
                             _select(_catalogue(), engine=engine)):
             _own["psml_lib"] = psml_lib
-        # WHAT THE PERSON STATED here, over the kind's own recommendations
-        # (`template.md` § 6.3a: a vibration's relaxation settings start
-        # tight), and who set each value (§ 6.6 obligation 2) -- the one
+        # WHAT THE PERSON STATED here, over the one default (`template.md`
+        # § 6.3a: a vibration's relaxation settings start tight), and who
+        # set each value (§ 6.6 obligation 2) -- the one
         # door every road that writes a template asks.
         from ..template import stated_config
         cfg, _said = stated_config(config_class(engine), calculation,

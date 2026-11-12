@@ -409,8 +409,9 @@ def rung_notes() -> Dict[str, str]:
     (`kmesh.TRANSMISSION_PER_SCF`).  The index a surface shows is the
     rung's position in TRANSPORT_STAGES, one-based."""
     from ..kmesh import TRANSMISSION_PER_SCF as _TBT_FACTOR
-    from ..template import catalogue, one
-    _LEAD_KZ = one(catalogue(), "electrode_kz", engine="siesta").default
+    from ..template import catalogue, default_of, one
+    _LEAD_KZ = default_of(one(catalogue(), "electrode_kz", engine="siesta"),
+                          "transport")
     return {
         "seed": ("A closed periodic SCF of the whole junction.  It writes the "
                  "density the device starts from -- a starting guess only: it "

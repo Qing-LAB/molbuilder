@@ -1445,7 +1445,8 @@ def _effective_parameters_block(script_name: str, engine: str,
     ``[item, default, asked, used]``,
     `script_emit`'s format and its reader -- then the deck as the engine
     will read it.  The engine is a separate process that has not started
-    when this runs, so the rows carry the item's catalogue DEFAULT only:
+    when this runs, so the rows carry the catalogue's DEFAULT only -- for
+    this calculation, the one default (`template.default_of`):
     what the deck asks for is the deck itself, which the record reads from
     the attempt, and what the engine used is its own record of it (SIESTA's
     ``fdf.<stamp>.log``).  The default is baked here because it is a fact of
@@ -1469,13 +1470,17 @@ def _effective_parameters_block(script_name: str, engine: str,
         "echo " + _shlex.quote(_sc.PARAMETER_COLUMNS_LINE),
     ]
     from .engine_table import engine as _engine_rec
+    from .template import default_of
     reader = _engine_rec(engine).keyword_reader
     for item in _sc.declarations(engine=engine, calculation=calculation,
                                  stage=stage, role=role):
-        param = _sc.parameter(item.name, engine)
-        if param.writes:
+        # THE CATALOGUE'S DEFAULT FOR THIS CALCULATION, the one default
+        # (`template.default_of`): a vibration's relaxation at the tight
+        # values the kind recommends, as its template and Task setup say.
+        if _sc.parameter(item.name, engine).writes:
             lines.append("echo " + _shlex.quote(
-                _sc.parameter_row(item.name, param.default)))
+                _sc.parameter_row(item.name,
+                                  default_of(item, calculation))))
     lines += [
         f'if [ -f {MONITOR_BUNDLE} ]; then',
         f'    "$_mb_py" {MONITOR_BUNDLE} deck "{reader}" "{script_name}" '

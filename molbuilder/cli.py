@@ -434,12 +434,18 @@ def cmd_validate(input_path, engine, calculation, exit_on_error, pretty):
             _kind(calculation).on(engine)
         except KindTableError as exc:
             raise click.UsageError(str(exc)) from exc
-        # THE ENGINE'S CONFIG CHECKS on its config class's defaults, the
-        # file's box handed over where the engine computes in the
+        # THE ENGINE'S CONFIG CHECKS on the config a description of this
+        # kind starts from, nothing stated (`template.stated_config`): every
+        # value at the one default (`template.default_of`) -- a vibration's
+        # relaxation at the tight
+        # tolerance the kind recommends, never the class's general one --
+        # the file's box handed over where the engine computes in the
         # structure's cell (the engine table's ``computes_in``); one
         # computing in free space is judged on the structure's own.
         from .engine_table import config_class, engine as _engine
-        issues = validate(struct, config_class(engine)(),
+        from .template import stated_config
+        cfg, _ = stated_config(config_class(engine), calculation)
+        issues = validate(struct, cfg,
                           calculation=calculation,
                           cell=(_cell if _engine(engine).computes_in == "cell"
                                 else None))

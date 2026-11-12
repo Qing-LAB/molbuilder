@@ -833,7 +833,7 @@ def _emit_effective_parameters(cfg: PySCFConfig,
     # WHAT ENTERS NOTHING HERE has no object to read back: a setting whose
     # `active_when` the others do not meet (`template.inactive_why`) -- a
     # solvent model with no solvent, the gas phase.
-    from ..template import inactive_settings
+    from ..template import default_of, inactive_settings
     _off = inactive_settings(cfg, engine="pyscf", calculation=calculation)
     for name in _layout.recorded_items(calculation):
         param = (_sc.parameter(name, "pyscf", value=_resolved[name])
@@ -851,7 +851,10 @@ def _emit_effective_parameters(cfg: PySCFConfig,
         # § 3.1): the one line that states it.
         said = (block[name] if name in block
                 else repr(_layout.as_written(name, param.value)))
-        out.append(f"_MB_PARAMS[{name!r}] = ({param.default!r}, "
+        # The catalogue's default FOR THIS CALCULATION, the one default
+        # (`template.default_of`).
+        out.append(f"_MB_PARAMS[{name!r}] = "
+                   f"({default_of(param.declaration, calculation)!r}, "
                    f"{said}, {third})")
     out.append("")
     out.append("import json as _mb_json")

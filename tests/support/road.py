@@ -1661,8 +1661,9 @@ def stage_file(bundle: Path, stage: str, role: str) -> Path:
 def the_fence_holds(bundle, folder, listed, never) -> None:
     """THE PARAMETERS BLOCK OF ``folder``'S RUN SCRIPT, run and read back
     (`deck_record.BLOCK_PARAMETERS`, its reader `read_parameters_fence`):
-    its rows name the item ``listed`` and not ``never``, ``listed`` with its
-    catalogue default and nothing asked or used; the deck's own lines echoed
+    its rows name the item ``listed`` and not ``never``, ``listed`` with the
+    catalogue's default for the calculation -- the one default,
+    `template.default_of` -- and nothing asked or used; the deck's own lines echoed
     after them, none blank or a comment, ``SystemLabel`` the calculation's
     -- and a deck edited after prep echoed as edited, since what the engine
     reads is what is echoed."""
@@ -1671,7 +1672,8 @@ def the_fence_holds(bundle, folder, listed, never) -> None:
     import sys
     from molbuilder.deck_record import (BLOCK_PARAMETERS, begin_marker,
                                         end_marker, read_parameters_fence)
-    from molbuilder.script_emit import parameter
+    from molbuilder.task import of as task_of
+    from molbuilder.template import catalogue, default_of, one
     (script,) = (bundle / folder).glob("*.run.sh")
     text = script.read_text()
     begin = f'echo "{begin_marker(BLOCK_PARAMETERS)}"'
@@ -1689,7 +1691,8 @@ def the_fence_holds(bundle, folder, listed, never) -> None:
     out = run()
     rows = {r["item"]: r for r in read_parameters_fence(out)}
     assert listed in rows and never not in rows, sorted(rows)
-    assert rows[listed]["default"] == parameter(listed, "siesta").default
+    assert rows[listed]["default"] == default_of(
+        one(catalogue(), listed, engine="siesta"), task_of(bundle).calculation)
     assert {(r["asked"], r["used"]) for r in rows.values()} == {(None, None)}
     echoed = [ln for ln in out.splitlines() if ln.startswith("#   ")
               and not ln.startswith(("#   [", "#   each row"))]

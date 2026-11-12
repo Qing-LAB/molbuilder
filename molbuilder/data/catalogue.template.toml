@@ -1429,6 +1429,7 @@ engine_key = "gto.M(ecp={<element>: ...})"
 manual = "PySCF 2.13 pyscf.gto.mole.MoleBase 'ecp'"
 type = "strlist"
 value = []
+default = []
 group = "profile"
 label = "ECP atoms"
 help = """

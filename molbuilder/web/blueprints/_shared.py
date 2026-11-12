@@ -443,11 +443,6 @@ def catalogue_to_form_schema(engine: Optional[str], id_prefix: str,
     # The vibration form is the same renderer over the same catalogue.
     items = [it for it in items
              if not it.calculations or calculation in it.calculations]
-    # THE KIND'S OWN RECOMMENDATION stands in for the general default on a
-    # form built for that kind (template.md § 6.3a): the hint a blank field
-    # shows, and what it is written at when nobody chose (form-schema.md
-    # § 1.1).
-    items = [_T.with_recommended(it, calculation) for it in items]
     # A ROLE ITEM IS NOT A FORM FIELD (`template.md` § 6.4, ruled
     # 2026-09-16): "offering any of these presents a choice with exactly one
     # correct answer, and a person who changed it would not be tuning the
@@ -620,13 +615,17 @@ def _item_to_field(item, id_prefix: str, calculation: str, *,
     ``calculation`` of that kind -- which components of a triple the kind
     fixes is a fact about the kind (`engines/siesta.md` § 6.1); ``engine``
     the form's, whose own default a default may be (``default_words``)."""
+    from molbuilder.template import default_of, default_words
+    # THE ONE DEFAULT for this kind (`template.default_of`): the kind's
+    # recommendation, else the item's -- the hint a blank field shows, and
+    # what it is written at when nobody chose (form-schema.md § 1.1).
+    one = default_of(item, calculation)
     out: Dict[str, Any] = {
         "name":     item.name,
         "id":       f"{id_prefix}-{item.name.replace('_', '-')}",
         "label":    item.label or item.name.replace("_", " ").capitalize(),
         "help":     item.help,
-        "default":  (list(item.default) if isinstance(item.default, tuple)
-                     else item.default),
+        "default":  _jsonable(one),
         "optional": item.optional,
         "tier":     item.tier or "basic",
         "kind":     _control_for(item),
@@ -634,7 +633,6 @@ def _item_to_field(item, id_prefix: str, calculation: str, *,
     # WHERE THE DEFAULT COMES FROM, in the words a blank field leads it
     # with -- the kind's recommendation, the engine's own value, or a plain
     # default (`form-schema.md` § 1.1, `template.default_words`).
-    from molbuilder.template import default_words
     said = default_words(item, engine=engine, calculation=calculation)
     if said:
         out["default_words"] = said
