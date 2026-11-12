@@ -84,6 +84,8 @@ from .end_lines import SPECTRUM_END_MARKER   # noqa: E402
 from ..envs.hints import fix_cmd as _fix_cmd   # noqa: E402
 
 from ..deck_record import BUILD_NAME
+from .script_input import (BIBLIOGRAPHY_NAME, CONFIG_NAME, METHODS_NAME,
+                           RESULT_VERSION_NAME, RUNTIME_NAME, WORDS_NAME)
 from ..runfiles import PYSCF_BUNDLE
 from ..spectra.methods import frequency_range_words
 from ..spectra.results import (PHASE_COMPLETE, PHASE_EMPTY,
@@ -257,7 +259,7 @@ def _emit_constants(struct: Structure,
     out.append("# ============================================================")
     out.append("#  Constants  (mirrored from VibrationConfigView at render time)")
     out.append("# ============================================================")
-    out.append(f"SCHEMA_VERSION = {int(SCHEMA_VERSION)}")
+    out.append(f"{RESULT_VERSION_NAME} = {int(SCHEMA_VERSION)}")
     out.append(f"JOB            = {cfg.job_name!r}")
     # _mb_outfile is emitted ONCE, by the deck's own block from the one
     # definition every PySCF deck carries (`input.emit_outfile_helper`,
@@ -349,7 +351,7 @@ def _emit_constants(struct: Structure,
 
     out.append("# Bibliography keys used in the Methods text + inline comments.")
     out.append("# Verified entries live in docs/science/references.bib.")
-    out.append(f"BIBLIOGRAPHY_KEYS          = {list(bibliography_keys)!r}")
+    out.append(f"{BIBLIOGRAPHY_NAME}          = {list(bibliography_keys)!r}")
     out.append("")
     out.append("# A snapshot of the VibrationConfigView that produced this script,")
     out.append("# round-tripped through plain dict + JSON-safe primitives so")
@@ -363,12 +365,12 @@ def _emit_constants(struct: Structure,
         _config_to_jsonable_dict(cfg),
         indent=4, width=80, sort_dicts=False,
     )
-    out.append("CONFIG = " + _cfg_repr)
+    out.append(f"{CONFIG_NAME} = " + _cfg_repr)
     out.append("")
     out.append("# Methods text, verbatim as composed at render time.")
     # Build the triple-quoted string carefully; escape any """ inside.
     escaped = methods_md.replace('"""', "'''")
-    out.append("METHODS_TEXT = \"\"\"" + escaped + "\"\"\"")
+    out.append(f"{METHODS_NAME} = " + '"""' + escaped + '"""')
     out.append("")
     # Pull the actual molbuilder version from the package metadata so
     # the JSON's provenance.molbuilder_version reflects reality, not
@@ -551,7 +553,7 @@ def _emit_initial_state() -> List[str]:
     # finish builds too, so the file reads from its first write, during the
     # relaxation, as § 4.2 promises.  The script fills it phase by phase.
     out.append("state = _mb_SpectraResults(")
-    out.append("    schema_version=SCHEMA_VERSION,")
+    out.append(f"    schema_version={RESULT_VERSION_NAME},")
     out.append("    engine='pyscf',")
     out.append("    engine_version=ENGINE_VERSION,")
     out.append(f"    molbuilder_version={BUILD_NAME},")
@@ -572,9 +574,9 @@ def _emit_initial_state() -> List[str]:
     out.append("    equilibrium_homo_idx=None,")
     out.append("    modes=[],")
     out.append("    selected_mode_idxs_1based=[],")
-    out.append("    config=CONFIG,")
-    out.append("    methods_text=METHODS_TEXT,")
-    out.append("    bibliography_keys=BIBLIOGRAPHY_KEYS,")
+    out.append(f"    config={CONFIG_NAME},")
+    out.append(f"    methods_text={METHODS_NAME},")
+    out.append(f"    bibliography_keys={BIBLIOGRAPHY_NAME},")
     out.append("    phase_frequencies=PHASE_EMPTY,")
     # THE RELAXATION IS A TRACKED PHASE; one the description never asked for
     # -- the structure stated relaxed -- is `not requested` from the first
@@ -595,7 +597,7 @@ def _emit_initial_state() -> List[str]:
     out.append("    # and GPU-probe blocks (n_threads, gpu name, etc.).  Visible")
     out.append("    # on the /results page so users can verify the run")
     out.append("    # actually used the resources they expected.")
-    out.append("    runtime_info=dict(_RUNTIME_INFO),")
+    out.append(f"    runtime_info=dict({RUNTIME_NAME}),")
     out.append(").to_dict()")
     out.append("_mb_write_spectra_payload(state, JSON_PATH)")
     out.append("")
@@ -816,9 +818,13 @@ def _emit_hessian_block(cfg: "VibrationConfigView") -> List[str]:
     out.append("    print('  rebuilding mf without density fitting for the free-atom Hessian')")
     out.append("    _mf_for_hess = _build_mf_at(COORDS_EQ_ANG, density_fit=False,")
     out.append("                                force_cpu=(not _GPU_HAS_HESSIAN))")
+    # THE INSTALL HINT the route is handed, held in the deck's words
+    # (`script_input.WORDS_NAME`), one key.
+    hint = f"{WORDS_NAME}['ir_repair']"
+    out.append(f"{hint} = {ir_repair_command()!r}")
     out.append("_HESS_RAW, DMU_DR, IR_ROUTE = _mb_dipole_derivatives(")
     out.append("    _mf_for_hess, FREE_ATOM_IDXS, _WANT_ANALYTIC_IR,")
-    out.append(f"    repair={ir_repair_command()!r})")
+    out.append(f"    repair={hint})")
     out.append("HESS = _mb_as_numpy(_HESS_RAW)")
     out.append("# What the Hessian covered, recorded for the reader and the Methods text:")
     out.append("# 'free' -- second derivatives for the free atoms only (atoms are held);")

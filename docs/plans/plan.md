@@ -30,7 +30,7 @@ as they stood.
 
 ## ▶ HANDOVER — where we are, and where to start *(2026-11-10)*
 
-**Where we are: 2.69.44.** F0–F8 and F7a are closed; F9, the tests through
+**Where we are: 2.69.45.** F0–F8 and F7a are closed; F9, the tests through
 the road, has eight releases out (2.67.4–2.67.11) and four steps left (its
 row below). Since 2.67.11 three bodies of work the user put first have run;
 each release is its changelog row and its ledger section
@@ -85,7 +85,9 @@ each release is its changelog row and its ledger section
   (X-TMPL); 2.69.43, a setting nobody stated at the one default wherever
   a calculation is described, judged or recorded (X-TMPL); 2.69.44, a
   launched PySCF stage prepared again whatever its deck only reports, and
-  for any job request (2.69.43's regression, widened by the user). **Left, in order**: X-TMPL's duplicates,
+  for any job request (2.69.43's regression, widened by the user); 2.69.45,
+  a PySCF deck's messages held in its words, the names it reports under
+  spelled once. **Left, in order**: X-TMPL's duplicates,
   X-EXEC, X-ENG; then the page doors and
   the copies they share (O-STATUS, O-FIND, O-STATE, O-WORDS, O-KEYS's rest
   with X-UI and X-PLOT; O-TESTS).

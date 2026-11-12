@@ -12,9 +12,11 @@ and WHAT IT ONLY REPORTS (the user, 2026-11-12: "ignore the report-only
 text"): a statement filling one of the names it reports under
 (:data:`REPORTS`) -- its parameters record, its runtime facts, the
 convergence targets its progress log shows, a vibration's settings copy,
-Methods text, bibliography and result-record version -- a message it
-prints, a string standing alone (its docstrings), and the message a
-``raise`` carries, the raise itself compared.  A later release may word or
+Methods text, bibliography and result-record version, and its words: each
+message it records in its result, hands a call or writes on a saved
+geometry -- a message it prints, a string standing alone (its
+docstrings), and the message a ``raise`` carries, the raise itself
+compared.  A later release may word or
 record any of them otherwise (2.69.43 recorded another default), and nothing
 PySCF computes reads them; every value that changes what PySCF computes is
 stated by statements that are compared (`test_every_form_field_reaches_
@@ -48,19 +50,30 @@ from ..deck_record import (BLOCK_RUN_SETTINGS, begin_marker, end_marker,
                            without_stamps)
 
 
-#: THE NAME the parameters record fills in a PySCF deck, one line per
-#: setting -- written by `pyscf.input._emit_effective_parameters`.
-PARAMS_NAME = "_MB_PARAMS"
-
 #: THE NAMES A PySCF DECK ONLY REPORTS UNDER, which nothing PySCF computes
-#: reads: its parameters record; its runtime facts, filled for the record
-#: and the progress log; the convergence targets the progress log shows;
-#: and, for a vibration's result (`engines/vibration.md` § 6.2), its
-#: settings copy, Methods text, bibliography and the result record's version
-#: number.  What fills them is set aside by the same-calculation reading
-#: (:func:`script_lines`).
-REPORTS = (PARAMS_NAME, "_RUNTIME_INFO", "_CONVERGENCE_TARGETS", "CONFIG",
-           "METHODS_TEXT", "BIBLIOGRAPHY_KEYS", "SCHEMA_VERSION")
+#: reads -- one spelling, which the deck's writers write with
+#: (`pyscf.input`, `pyscf.vibration_emitters`, `pyscf.vibration_deck`) and
+#: the same-calculation
+#: reading sets aside (:func:`script_lines`): the parameters record, a line
+#: per setting (`pyscf.input._emit_effective_parameters`); the runtime facts,
+#: filled for the record and the progress log; the convergence targets the
+#: progress log shows; and, for a vibration's result
+#: (`engines/vibration.md` § 6.2), its settings copy, Methods text,
+#: bibliography and the result record's version number; and its WORDS --
+#: each message it records in its result, hands a call or writes on a saved
+#: geometry, put there where it is composed and read from there where it is
+#: used (`pyscf.input.emit_words`), so a release that words it otherwise
+#: changes no statement that is compared.
+PARAMS_NAME = "_MB_PARAMS"
+RUNTIME_NAME = "_RUNTIME_INFO"
+TARGETS_NAME = "_CONVERGENCE_TARGETS"
+CONFIG_NAME = "CONFIG"
+METHODS_NAME = "METHODS_TEXT"
+BIBLIOGRAPHY_NAME = "BIBLIOGRAPHY_KEYS"
+RESULT_VERSION_NAME = "SCHEMA_VERSION"
+WORDS_NAME = "_MB_WORDS"
+REPORTS = (PARAMS_NAME, RUNTIME_NAME, TARGETS_NAME, CONFIG_NAME,
+           METHODS_NAME, BIBLIOGRAPHY_NAME, RESULT_VERSION_NAME, WORDS_NAME)
 
 #: THE NAME the run's structure line binds in a PySCF deck -- written by
 #: `pyscf.input.emit_sidecar_constant`, read back by the same-calculation
@@ -228,4 +241,7 @@ def script_differences(ran: str, now: str) -> List[str]:
     return out
 
 
-__all__ = ["PARAMS_NAME", "REPORTS", "script_differences", "script_lines"]
+__all__ = ["BIBLIOGRAPHY_NAME", "CONFIG_NAME", "METHODS_NAME", "PARAMS_NAME",
+           "REPORTS", "RESULT_VERSION_NAME", "RUNTIME_NAME", "SIDECAR_NAME",
+           "TARGETS_NAME", "WORDS_NAME",
+           "script_differences", "script_lines"]

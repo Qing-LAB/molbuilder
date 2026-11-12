@@ -100,10 +100,12 @@ def geometric_prefix_expr(names) -> str:
     return f"JOB + {tail!r}"
 
 
-# ONE name for each of the two doors this writer opens, imported once at
-# module scope -- as `siesta/input.py` does.
+# ONE name for each door this writer opens -- the deck's own names among
+# them, spelled once in the same-calculation reading (`script_input`) --
+# imported once at module scope, as `siesta/input.py` does.
 from .. import script_emit as _sc
-from .script_input import PARAMS_NAME, SIDECAR_NAME
+from .script_input import (PARAMS_NAME, RUNTIME_NAME, SIDECAR_NAME,
+                           TARGETS_NAME, WORDS_NAME)
 from ..envs.hints import fix_cmd as _fix_cmd
 from . import layout as _layout
 
@@ -290,10 +292,12 @@ def spec_for(struct: Structure,
         # Its run settings first, in their block (`job-contracts.md` § 3.1),
         # then the deck's anchor and the bundle, its threads -- sized, and
         # BLAS capped, before numpy loads -- and what it records about
-        # itself (`runtime_info`, `engines/pyscf.md` § 3).
+        # itself (`runtime_info`, `engines/pyscf.md` § 3), then its words,
+        # before anything that says one (:func:`emit_words`).
         out += emit_run_settings_block(cfg)
         out += emit_script_head()
         out += emit_runtime_facts()
+        out += emit_words()
         out.append("import time")
         # ``_os`` is used by the warm-restart blocks (geometry override
         # at gto.M() time + chkfile SCF init-guess after mf is built).
@@ -313,7 +317,7 @@ def spec_for(struct: Structure,
         # an already-imported module (PySCF docs).
         out += emit_pyscf_threads()
         out.append("print(f'molbuilder: pyscf.lib.num_threads() "
-                   "= {_RUNTIME_INFO[\"n_threads_pyscf\"]}')")
+                   f"= {{{RUNTIME_NAME}[\"n_threads_pyscf\"]}}')")
         out.append("")
 
         # THE GPU, when this run asks for it -- probed now, on the node that
@@ -580,13 +584,13 @@ def spec_for(struct: Structure,
         # "we chose 3.2e-5" and "PySCF derived 3.2e-5" are different facts.
         out.append("")
         out += emit_scf_criteria_readback("mf")
-        out.append(f"_RUNTIME_INFO['scf_soscf'] = {bool(cfg.scf_soscf)!r}")
-        out.append("_RUNTIME_INFO['scf_solver_class'] = type(mf).__name__")
+        out.append(f"{RUNTIME_NAME}['scf_soscf'] = {bool(cfg.scf_soscf)!r}")
+        out.append(f"{RUNTIME_NAME}['scf_solver_class'] = type(mf).__name__")
         out.append("print(f\"[molbuilder] SCF convergence: energy "
-                   "{_RUNTIME_INFO['scf_conv_tol']:.1e} Hartree, orbital "
-                   "gradient {_RUNTIME_INFO['scf_conv_tol_grad']:.1e} \"\n"
-                   "      f\"({_RUNTIME_INFO['scf_conv_tol_grad_source']}); "
-                   "solver {_RUNTIME_INFO['scf_solver_class']}.\")")
+                   f"{{{RUNTIME_NAME}['scf_conv_tol']:.1e}} Hartree, orbital "
+                   f"gradient {{{RUNTIME_NAME}['scf_conv_tol_grad']:.1e}} \"\n"
+                   f"      f\"({{{RUNTIME_NAME}['scf_conv_tol_grad_source']}}); "
+                   f"solver {{{RUNTIME_NAME}['scf_solver_class']}}.\")")
 
         out += _emit_effective_parameters(cfg,
                                           calculation=calculation,
@@ -879,10 +883,10 @@ def emit_scf_criteria_readback(mf: str) -> List[str]:
     different facts.  Both decks call it, so the progress log states the
     same criteria for either (`molwatch_grammar.scf_criteria`)."""
     return [
-        f"_RUNTIME_INFO['scf_conv_tol'] = float({mf}.conv_tol)",
-        f"_RUNTIME_INFO['scf_conv_tol_grad'] = float({mf}.conv_tol_grad "
+        f"{RUNTIME_NAME}['scf_conv_tol'] = float({mf}.conv_tol)",
+        f"{RUNTIME_NAME}['scf_conv_tol_grad'] = float({mf}.conv_tol_grad "
         f"if {mf}.conv_tol_grad is not None else {mf}.conv_tol ** 0.5)",
-        f"_RUNTIME_INFO['scf_conv_tol_grad_source'] = ('explicit' "
+        f"{RUNTIME_NAME}['scf_conv_tol_grad_source'] = ('explicit' "
         f"if {mf}.conv_tol_grad is not None else 'derived: sqrt(conv_tol)')",
     ]
 
@@ -901,9 +905,9 @@ def _emit_runtime_from_parameters() -> List[str]:
     value PySCF will use, sqrt(conv_tol)."""
     return ["# the effective value where there is one, the request otherwise;",
             "# what the deck read off the solver above stands",
-            "_RUNTIME_INFO.update({_k: (_r if _e is None else _e)",
+            f"{RUNTIME_NAME}.update({{_k: (_r if _e is None else _e)",
             f"                      for _k, (_d, _r, _e) in {PARAMS_NAME}.items()",
-            "                      if _k not in _RUNTIME_INFO})"]
+            f"                      if _k not in {RUNTIME_NAME}}})"]
 
 
 def _emit_stability_block(cfg: PySCFConfig, v: bool) -> List[str]:
@@ -1108,7 +1112,7 @@ def _emit_optimization(cfg: PySCFConfig,
         # (`job-system.md` § 5.4).
         out.append("        keep = lambda _m: _save_structure("
                    f"_m, _mb_outfile({run_file_expr(names, PYSCF_OPTIMIZED)}), "
-                   "'Geometry reached (PySCF, relaxing)'),")
+                   f"{WORDS_NAME}[{_REACHED_AS[0]!r}]),")
     # WHETHER THE RUN RESUMES IS `restart`'S ANSWER (`identity.continues`,
     # `run-identity.md` § 4), whatever is kept per step: a produce item
     # decided it until 2026-10-18.
@@ -1248,7 +1252,7 @@ def _emit_molwatch_emitter(v: bool, cfg: "PySCFConfig", names,
                (_K.ENERGY_STEP_TOL, _energy_tol_eV),
                (_K.MAX_SCF_ITER, int(cfg.scf_max_cycle)),
                (_K.MAX_GEOM_ITER, int(cfg.geom_max_steps)))
-    out.append("_CONVERGENCE_TARGETS = {")
+    out.append(f"{TARGETS_NAME} = {{")
     out.append(f"    {names.stage!r}: {{")
     for _k, _v in _leaves:
         out.append(f"        {_k!r}: {_v!r},")
@@ -1259,8 +1263,8 @@ def _emit_molwatch_emitter(v: bool, cfg: "PySCFConfig", names,
     out.append(f'_molwatch = _mb_MolwatchEmitter('
                f'_mb_outfile({run_file_expr(names, ROLE_MOLWATCH)}), '
                f'JOB, mol, '
-               f'runtime_info=_RUNTIME_INFO, '
-               f'convergence_targets=_CONVERGENCE_TARGETS, '
+               f'runtime_info={RUNTIME_NAME}, '
+               f'convergence_targets={TARGETS_NAME}, '
                f'frozen_atoms={sorted(int(i) for i in frozen_atoms)!r}, '
                # ITS ATOMS' INDICES (`model/overview.md` § 2.2b): PySCF
                # sorts nothing, so its run lists them as the user did.
@@ -1407,7 +1411,7 @@ def emit_runtime_facts() -> List[str]:
     (`runtime_info.runtime_facts`), which the result writers copy out and
     the steps after add to.  After :func:`emit_script_head`, whose thread
     count it reports; its memory cap and GPU ask the block's."""
-    return ["_RUNTIME_INFO = _mb_runtime_facts(",
+    return [f"{RUNTIME_NAME} = _mb_runtime_facts(",
             "    _MB_REQUESTED_THREADS, _MB_PHYS_CORES,",
             "    max_memory_mb=MAX_MEMORY_MB, gpu_requested=bool(USE_GPU))",
             ""]
@@ -1422,7 +1426,7 @@ def emit_pyscf_threads() -> List[str]:
             "# read when a module loads; lib.num_threads(N) is the setter after.",
             "from pyscf import lib as _pyscf_lib",
             "_pyscf_lib.num_threads(_MB_REQUESTED_THREADS)",
-            "_RUNTIME_INFO['n_threads_pyscf'] = int(_pyscf_lib.num_threads())",
+            f"{RUNTIME_NAME}['n_threads_pyscf'] = int(_pyscf_lib.num_threads())",
             ""]
 
 
@@ -1433,7 +1437,7 @@ def emit_gpu_probe() -> List[str]:
     fallback (`engines/overview.md` § 3a)."""
     return ["# The GPU, when this run asks for it: found, or the run stops --",
             "# no CPU fallback (`runtime_info.probe_gpu`).",
-            "_USING_GPU = _mb_probe_gpu(_RUNTIME_INFO) if USE_GPU else False",
+            f"_USING_GPU = _mb_probe_gpu({RUNTIME_NAME}) if USE_GPU else False",
             ""]
 
 
@@ -1580,9 +1584,28 @@ def emit_constraints_file(frozen, names, indent: str = "") -> List[str]:
 
 
 #: What each geometry a script saves says of itself on its ``.xyz`` comment
-#: line, by role: both decks save these two.
-_SAVED_AS = {ROLE_INITIAL:    "Initial geometry (input)",
-             PYSCF_OPTIMIZED: "Optimized geometry (PySCF)"}
+#: line, by role -- the key the script's words hold it under
+#: (:func:`emit_words`), and the words: both decks save these two.
+_SAVED_AS = {ROLE_INITIAL:    ("initial_geometry", "Initial geometry (input)"),
+             PYSCF_OPTIMIZED: ("optimized_geometry",
+                               "Optimized geometry (PySCF)")}
+
+#: ...and what the optimized geometry says while the relaxation goes on.
+_REACHED_AS = ("reached_geometry", "Geometry reached (PySCF, relaxing)")
+
+
+def emit_words() -> List[str]:
+    """``_MB_WORDS`` (`pyscf.script_input.WORDS_NAME`) -- the words the run
+    says, in its result, to a call and on the geometries it saves: each
+    message put there where it is composed and read from there where it is
+    used, so a release that words it otherwise changes no statement that
+    computes (`execution/job-request.md` § 6).  It opens with the comment
+    line of each geometry a PySCF deck may save (:data:`_SAVED_AS`,
+    :data:`_REACHED_AS`), whichever this one saves."""
+    said = [*_SAVED_AS.values(), _REACHED_AS]
+    return [f"{WORDS_NAME} = {{",
+            *(f"    {key!r}: {words!r}," for key, words in said),
+            "}", ""]
 
 
 def emit_save_call(mol: str, role: str, names, indent: str = "") -> str:
@@ -1592,7 +1615,7 @@ def emit_save_call(mol: str, role: str, names, indent: str = "") -> str:
     :func:`run_file_expr`) and its comment line for both decks."""
     return (f'{indent}_save_structure({mol}, '
             f'_mb_outfile({run_file_expr(names, role)}), '
-            f'"{_SAVED_AS[role]}")')
+            f'{WORDS_NAME}[{_SAVED_AS[role][0]!r}])')
 
 
 def emit_sidecar_constant(sidecar: dict) -> List[str]:
@@ -1633,7 +1656,7 @@ def emit_save_helper(v: bool) -> List[str]:
         out.append("# so the next calculation can read them back.  The codec")
         out.append("# writes the pair, re-pinning the hash to the document it")
         out.append("# writes.")
-    out.append("def _save_structure(mol_obj, path, comment='generated by molbuilder'):")
+    out.append("def _save_structure(mol_obj, path, comment):")
     out.append("    _mb_StructureCodec().write_moved(")
     out.append("        path, [mol_obj.atom_symbol(i) for i in range(mol_obj.natm)],")
     out.append(f"        mol_obj.atom_coords(unit='Ang'), {SIDECAR_NAME}, "

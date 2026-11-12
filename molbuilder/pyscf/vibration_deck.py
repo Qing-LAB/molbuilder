@@ -43,8 +43,9 @@ from ..structure import Structure
 from .input import (GEOMETRIC_APPENDS, emit_bundle_imports,
                     emit_constraints_file, emit_gpu_probe, emit_pyscf_threads,
                     emit_run_settings_block, emit_runtime_facts,
-                    emit_save_call, emit_script_head,
+                    emit_save_call, emit_script_head, emit_words,
                     run_file_expr, ROLE_INITIAL, PYSCF_OPTIMIZED, ROLE_SPECTRA)
+from .script_input import WORDS_NAME
 
 # The science emitters, composed here.
 from .vibration_emitters import (
@@ -311,7 +312,9 @@ def _vib_relax_block(cfg, names) -> List[str]:
     # on_nonconvergence to the answer -- halt stops the run here, before
     # the Hessian; continue re-enters from the geometry reached; proceed
     # returns it with False.  The recorded verdict is the judged force at
-    # that geometry (R5), the key's one meaning on every route.
+    # that geometry (R5), the key's one meaning on every route.  ITS WARNING
+    # is held in the deck's words (`script_input.WORDS_NAME`), one key.
+    unmet = f"{WORDS_NAME}['relaxation_unmet']"
     out += [
         "    mol, _geometric_converged = _mb_relax(",
         "        _mf_relax, ON_NONCONVERGENCE, GEOM_CONTINUE_RETRIES,",
@@ -330,11 +333,12 @@ def _vib_relax_block(cfg, names) -> List[str]:
         "    state['relaxation']['converged'] = (",
         "        None if _judged is None else bool(_judged <= GEOM_GMAX))",
         "    if not _geometric_converged:",
-        "        state['relaxation']['warning'] = (",
+        f"        {unmet} = (",
         '            f"the relaxation did not meet geomeTRIC\'s criteria in "',
         '            f"{GEOM_MAX_STEPS} steps; on_nonconvergence = proceed kept "',
         '            f"the geometry it reached, so the frequencies below are the "',
         '            f"curvature there, not at the minimum")',
+        f"        state['relaxation']['warning'] = {unmet}",
     ]
     if getattr(cfg, "save_optimized_xyz", False):
         out.append(emit_save_call("mol", PYSCF_OPTIMIZED, names, indent="    "))
@@ -355,9 +359,11 @@ def _vib_gradient_check() -> List[str]:
     never refuses: skipping was a deliberate choice.  Its remedy is THE one
     text the SIESTA finish and `prep` write too
     (`vibrational_analysis.nonstationary_remedy`, `engines/vibration.md`
-    § 5.5), written into the deck as a literal at render time."""
+    § 5.5), written into the deck's words (`script_input.WORDS_NAME`) as a
+    literal at render time."""
     from ..spectra.vibrational_analysis import nonstationary_remedy
     _remedy = nonstationary_remedy(None)
+    warned = f"{WORDS_NAME}['not_stationary']"
     return [
         "",
         "if ALREADY_RELAXED:",
@@ -375,17 +381,18 @@ def _vib_gradient_check() -> List[str]:
         "        state['relaxation']['max_force_all_atoms_eh_bohr'] = _maxf_all",
         "        state['relaxation']['converged'] = bool(_maxf <= GEOM_GMAX)",
         "        if _maxf > GEOM_GMAX:",
-        "            _w = (f'the input geometry is not a stationary point '",
-        "                  f'at this level of theory: the largest force on '",
-        "                  f'the free atoms is {_maxf:.2e} Eh/Bohr against '",
-        "                  f'the geom_gmax of this calculation, {GEOM_GMAX:.1e}. '",
-        "                  f'The frequencies are the curvature at this point, '",
-        "                  f'not at the minimum, and will be off -- the low '",
-        "                  f'ones most.  already_relaxed was stated, so this '",
-        "                  f'run carries on.  '",
-        f"                  + {_remedy!r})",
-        "            print('WARNING: ' + _w)",
-        "            state['relaxation']['warning'] = _w",
+        f"            {warned} = (",
+        "                f'the input geometry is not a stationary point '",
+        "                f'at this level of theory: the largest force on '",
+        "                f'the free atoms is {_maxf:.2e} Eh/Bohr against '",
+        "                f'the geom_gmax of this calculation, {GEOM_GMAX:.1e}. '",
+        "                f'The frequencies are the curvature at this point, '",
+        "                f'not at the minimum, and will be off -- the low '",
+        "                f'ones most.  already_relaxed was stated, so this '",
+        "                f'run carries on.  '",
+        f"                + {_remedy!r})",
+        f"            print('WARNING: ' + {warned})",
+        f"            state['relaxation']['warning'] = {warned}",
         "        _mb_write_spectra_payload(state, JSON_PATH)",
         "    except Exception as _e:  # the check must never kill the run",
         "        print(f'gradient check skipped: {_e}')",
@@ -403,7 +410,11 @@ def _vib_thermo_block() -> List[str]:
     contributions only, stated -- there is no gas-phase translational or
     rotational partition function to add.  ONE quantity under one label
     (engines/vibration.md § 4.7): the headline and every point of the grid are the
-    same sum, and the headline temperature is on the grid."""
+    same sum, and the headline temperature is on the grid.  ITS NOTES -- why
+    a block is vibrational only, what the full one is -- are held in the
+    deck's words (`script_input.WORDS_NAME`), one key each."""
+    held, full, failed = (f"{WORDS_NAME}[{key!r}]" for key in (
+        "vibrational_only_held", "full_rrho", "rrho_failed"))
     return [
         "",
         "# ============================================================",
@@ -422,9 +433,10 @@ def _vib_thermo_block() -> List[str]:
         "# its one home (spectra/normal_modes, imported above), its note",
         "# saying why.",
         "_T_GRID = _mb_thermo_temperatures(THERMO_T_K)",
-        "_why_vib_only = (None if not FROZEN_ATOM_IDXS else",
-        "                 'atoms are held, so the whole has no gas-phase '",
-        "                 'translation or rotation to add')",
+        f"{held} = (",
+        "    'atoms are held, so the whole has no gas-phase '",
+        "    'translation or rotation to add')",
+        f"_why_vib_only = None if not FROZEN_ATOM_IDXS else {held}",
         "if _why_vib_only is None:",
         "    try:",
         "        def _rrho_at(_T):",
@@ -446,25 +458,28 @@ def _vib_thermo_block() -> List[str]:
         "            _grid['h_eh'].append(_h)",
         "            _grid['s_eh_k'].append(_s)",
         "            _grid['g_eh'].append(_g)",
+        f"        {full} = (",
+        "            'Full rigid-rotor harmonic-oscillator (RRHO) thermochemistry of '",
+        "            'the free molecule as an ideal gas at this temperature and '",
+        "            'pressure -- electronic, translational, rotational and '",
+        "            'vibrational -- via PySCF thermo, the headline and the grid '",
+        "            'alike.  Good for gas-phase reaction and binding free energies '",
+        "            'against species computed the same way; the vibrations are '",
+        "            'harmonic, so modes below about 100 cm-1 (torsions, hindered '",
+        "            'rotations) make the entropy the least reliable number')",
         "        state['thermo'] = _mb_thermo_block(",
         "            'rrho', THERMO_T_K, THERMO_P_ATM, _grid,",
         "            n_modes=len(state['modes']),",
         "            n_imag_excluded=sum(1 for m in state['modes'] if m['has_imag']),",
         "            n_rigid=N_RIGID,",
-        "            note=(",
-        "                'Full rigid-rotor harmonic-oscillator (RRHO) thermochemistry of '",
-        "                'the free molecule as an ideal gas at this temperature and '",
-        "                'pressure -- electronic, translational, rotational and '",
-        "                'vibrational -- via PySCF thermo, the headline and the grid '",
-        "                'alike.  Good for gas-phase reaction and binding free energies '",
-        "                'against species computed the same way; the vibrations are '",
-        "                'harmonic, so modes below about 100 cm-1 (torsions, hindered '",
-        "                'rotations) make the entropy the least reliable number'))",
+        f"            note={full})",
         "    except Exception as _e:",
         "        print(f'full-RRHO thermo unavailable ({_e}); '",
         "              'vibrational-only values recorded')",
-        "        _why_vib_only = (f'PySCF thermo could not give the full RRHO '",
-        "                         f'for this free molecule ({_e})')",
+        f"        {failed} = (",
+        "            f'PySCF thermo could not give the full RRHO '",
+        "            f'for this free molecule ({_e})')",
+        f"        _why_vib_only = {failed}",
         "if _why_vib_only is not None:",
         "    state['thermo'] = _mb_vibrational_only_thermo(",
         "        [m['frequency_cm1'] for m in state['modes']],",
@@ -570,10 +585,12 @@ def vibration_spec(struct: Structure, cfg, *, names) -> "_sc.DeckSpec":
         # Its run settings first, in their block (`job-contracts.md` § 3.1),
         # then the deck's anchor and the bundle, its threads and what it
         # records about itself -- the run's own set-up, from the bundle
-        # (`input.emit_script_head`, `engines/pyscf.md` § 3).
+        # (`input.emit_script_head`, `engines/pyscf.md` § 3) -- then its
+        # words, before anything that says one (`input.emit_words`).
         out += emit_run_settings_block(view)
         out += emit_script_head()
         out += emit_runtime_facts()
+        out += emit_words()
         out += _emit_imports(view)
         out += emit_pyscf_threads()
         out += _emit_constants(struct, view, methods_md=methods_md,

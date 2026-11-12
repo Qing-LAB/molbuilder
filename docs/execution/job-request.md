@@ -819,7 +819,10 @@ record names (`same_calculation`, [`architecture.md`](?doc=execution/architectur
   (`pyscf.script_input.REPORTS` — its parameters record,
   [`model/parse.md`](?doc=model/parse.md) § 5d.3a, its runtime facts, the
   convergence targets its progress log shows, a vibration's settings copy,
-  Methods text, bibliography and result-record version), a message it prints,
+  Methods text, bibliography and result-record version, and its words: each
+  message it records in its result, hands a call or writes on a saved
+  geometry, put there where it is composed and read from there where it is
+  used), a message it prints,
   a string standing alone (its docstrings), and the message a `raise` carries,
   the raise itself compared — none of which PySCF's computation reads, another
   release free to word or record them otherwise, and every value that changes

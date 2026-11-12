@@ -106,8 +106,8 @@ def _reports():
     list the same-calculation reading sets aside (`pyscf.script_input.REPORTS`:
     its parameters record, its runtime facts, the targets its progress log
     draws, the echo of the config, the manuscript's paragraph, its
-    bibliography and the result record's version) -- and the structure's
-    sidecar, with the time it was written."""
+    bibliography, the result record's version and its words) -- and the
+    structure's sidecar, with the time it was written."""
     from molbuilder.pyscf.script_input import REPORTS, SIDECAR_NAME
     return {*REPORTS, SIDECAR_NAME}
 

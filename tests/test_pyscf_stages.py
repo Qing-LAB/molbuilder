@@ -195,6 +195,14 @@ def _another_release_worded_why_the_charge():
             {}, "# detected: worded otherwise")
 
 
+def _another_release_worded_the_way_back():
+    from molbuilder.spectra import vibrational_analysis
+    return (lambda moved: moved.setattr(
+                vibrational_analysis, "nonstationary_remedy",
+                lambda *a, **k: "Worded otherwise, the way back."),
+            {}, "Worded otherwise, the way back.")
+
+
 def _another_job_request():
     from support.road import RUN_CARD
     threads = RUN_CARD["pyscf"]["threads"] + 1
@@ -205,17 +213,21 @@ def _another_job_request():
 
 #: WHAT A PySCF DECK SAYS BESIDE WHAT IT COMPUTES (`execution/job-request.md`
 #: § 5–6), each the way another release or another job request writes it:
-#: the release that wrote it (`deck_record.BUILD_NAME`); what it only reports
-#: (the user, 2026-11-12: "ignore the report-only text") -- its parameters
-#: record (`model/parse.md` § 5d.3a), whose default column held each
-#: setting's own default until 2.69.43 and holds the kind's since (for a
-#: vibration, `geom_gmax` 0.00045 then, 0.0002 now), its Methods text, which
-#: its docstring holds too, a message it prints, and a comment beside a
-#: statement -- the charge's reason, which a release worded otherwise before;
-#: and the job request, which its settings copy echoes (§ 5: a launched
-#: stage's request may change).  Each row: how the other release is made
-#: while prep writes the deck, the request the other calculation is
-#: described with, and the words its deck holds that say so.
+#: the release that wrote it (`deck_record.BUILD_NAME`); a comment beside a
+#: statement -- the charge's reason, which a release worded otherwise before
+#: -- which Python does not read; what it only reports (the user,
+#: 2026-11-12: "ignore the report-only text") -- its parameters record
+#: (`model/parse.md` § 5d.3a), whose default column held each setting's own
+#: default until 2.69.43 and holds the kind's since (for a vibration,
+#: `geom_gmax` 0.00045 then, 0.0002 now), its Methods text, which its
+#: docstring holds too, a message it prints, and a message it records in
+#: its result, the way back an unrelaxed structure's warning gives
+#: (`engines/vibration.md` § 5.5), held in its words
+#: (`pyscf.script_input.WORDS_NAME`); and the job request, which its
+#: settings copy echoes (§ 5: a launched stage's request may change).  Each
+#: row: how the other release is made while prep writes the deck, the
+#: request the other calculation is described with, and the words its deck
+#: holds that say so.
 _BESIDE_THE_CALCULATION = [
     pytest.param(_an_older_release_numbered, id="the-release"),
     pytest.param(_an_older_release_recorded_each_settings_own_default,
@@ -224,6 +236,8 @@ _BESIDE_THE_CALCULATION = [
     pytest.param(_another_release_printed_otherwise, id="a-printed-message"),
     pytest.param(_another_release_worded_why_the_charge,
                  id="a-comment-beside-a-statement"),
+    pytest.param(_another_release_worded_the_way_back,
+                 id="a-message-it-records"),
     pytest.param(_another_job_request, id="the-job-request"),
 ]
 
