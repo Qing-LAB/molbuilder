@@ -809,11 +809,23 @@ record names (`same_calculation`, [`architecture.md`](?doc=execution/architectur
   input*), every run setting's keyword aside — the keywords the catalogue's run
   settings write (their `anchor`, or their `expands`). It reads keywords by
   name, so it holds of any deck molbuilder wrote.
-- **PySCF** — `pyscf.script_input`: the script with its run-settings block, its
-  comments and molbuilder's stamps aside — when it was written and by which
-  release (`deck_record.without_stamps`)
-  ([`job-contracts.md`](?doc=execution/job-contracts.md) § 3.1, § 3.2), and its
-  structure line (`pyscf.script_input.SIDECAR_NAME`) compared by what it holds — a field
+- **PySCF** — `pyscf.script_input`: the script's statements as Python reads
+  them — its comments, its layout and how a value is spelled saying nothing of
+  what it computes — with its run-settings block and molbuilder's stamps aside
+  — when it was written and by which release (`deck_record.without_stamps`)
+  ([`job-contracts.md`](?doc=execution/job-contracts.md) § 3.1, § 3.2) — and
+  what it only reports aside *(the user, 2026-11-12: "ignore the report-only
+  text")*: a statement filling one of the names it reports under
+  (`pyscf.script_input.REPORTS` — its parameters record,
+  [`model/parse.md`](?doc=model/parse.md) § 5d.3a, its runtime facts, the
+  convergence targets its progress log shows, a vibration's settings copy,
+  Methods text, bibliography and result-record version), a message it prints,
+  a string standing alone (its docstrings), and the message a `raise` carries,
+  the raise itself compared — none of which PySCF's computation reads, another
+  release free to word or record them otherwise, and every value that changes
+  what PySCF computes stated by statements that are compared; a script that
+  does not read as Python is compared line by line as written, its comment
+  lines aside — and its structure line (`pyscf.script_input.SIDECAR_NAME`) compared by what it holds — a field
   the structure reader retires and the record's version number set aside, since
   neither says what PySCF computes *(the user, 2026-11-03: "Compare by meaning")*.
 

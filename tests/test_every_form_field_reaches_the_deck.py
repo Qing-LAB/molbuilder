@@ -26,6 +26,12 @@ comment, a report of what was asked or a stamp is not honoured
 (:func:`_what_the_engine_reads`).  Comparing a deck's text passed by accident
 until 2026-11-06: the text carries the time it was written, so once the sweep
 crossed a second every field "changed the deck".
+
+**And what the engine reads is another calculation**: a change it reads is
+never called the same by the door a launched stage is prepared again through
+(`deck_record.same_calculation`, `execution/job-request.md` § 6) -- which
+sets aside what a deck only reports, so a field that reached nothing but a
+report would pass a launched stage unseen.
 """
 from __future__ import annotations
 
@@ -34,6 +40,7 @@ import ast
 import pytest
 
 import molbuilder.template as T
+from molbuilder.deck_record import same_calculation
 from molbuilder.calculation import open as open_calculation
 from molbuilder.parse.fdf import read_fdf
 from molbuilder.web.blueprints._shared import catalogue_to_form_schema
@@ -79,28 +86,37 @@ _ENABLING = {
 #: on water -- a closed shell, so ``restricted`` and a count of 0 are what a
 #: blank already resolves to (the electronic state,
 #: `science/chemistry-correctness.md` § 2a), an even charge keeps it closed --
-#: and what a list-typed or name-typed item takes.
+#: and what a list-typed or name-typed item takes -- and, for an optional
+#: setting left unwritten, a value other than the engine's own: SIESTA stops
+#: on an SCF that does not converge unasked (`SCF.MustConverge`, default
+#: true), so stating true is the input it already had (`execution/
+#: job-request.md` § 6).
 _PROBE = {"spin_treatment": "unrestricted", "unpaired_electrons": 2,
           "net_charge": 2, "solvent": "water", "ecp_atoms": ["O"],
           "ecp": "lanl2dz", "species_order": ["O", "H"],
-          "es_explicit_indices": "1,2"}
+          "es_explicit_indices": "1,2", "scf_must_converge": False}
 
 #: A refusal is filed under the field it names, and a count of unpaired
 #: electrons a kind cannot hold under the treatment that count implies.
 _REFUSED_UNDER = {"unpaired_electrons": "spin_treatment"}
 
-#: What a PySCF deck REPORTS of what it was asked, each changing with a value
-#: nothing obeys: the echo of the config, the structure's sidecar with the time
-#: it was written, the manuscript's paragraph and its bibliography, the targets
-#: its progress log draws.
-_REPORTS = {"CONFIG", "_MB_SIDECAR", "METHODS_TEXT", "BIBLIOGRAPHY_KEYS",
-            "_CONVERGENCE_TARGETS"}
+def _reports():
+    """What a PySCF deck REPORTS of what it was asked, each changing with a
+    value nothing obeys: the names the deck only reports under -- the one
+    list the same-calculation reading sets aside (`pyscf.script_input.REPORTS`:
+    its parameters record, its runtime facts, the targets its progress log
+    draws, the echo of the config, the manuscript's paragraph, its
+    bibliography and the result record's version) -- and the structure's
+    sidecar, with the time it was written."""
+    from molbuilder.pyscf.script_input import REPORTS, SIDECAR_NAME
+    return {*REPORTS, SIDECAR_NAME}
 
 
 def _what_python_runs(text) -> list:
     """A PySCF deck as Python runs it, statement by statement: no comment and
-    no docstring, none of what it only reports (:data:`_REPORTS`, and
-    `_MB_PARAMS[name] = (default, asked, read)`, the parameters record), and no
+    no docstring, none of what it only reports (:func:`_reports`, a name or
+    an entry of one: `_MB_PARAMS[name] = (default, asked, read)`, the
+    parameters record), and no
     constant no line reads -- a value mirrored into a name nobody reads
     is the same echo."""
     tree = ast.parse(text)
@@ -110,15 +126,16 @@ def _what_python_runs(text) -> list:
             scope.body = scope.body[1:] or [ast.Pass()]
     read = {n.id for n in ast.walk(tree)
             if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Load)}
+    reports = _reports()
 
     def runs(stmt) -> bool:
         if not isinstance(stmt, ast.Assign):
             return True
         target = stmt.targets[0]
         if isinstance(target, ast.Subscript):
-            return ast.unparse(target.value) != "_MB_PARAMS"
+            return ast.unparse(target.value) not in reports
         return not (isinstance(target, ast.Name)
-                    and (target.id in _REPORTS or target.id not in read))
+                    and (target.id in reports or target.id not in read))
 
     return [ast.unparse(s) for s in tree.body if runs(s)]
 
@@ -165,14 +182,17 @@ def test_every_field_the_form_offers_changes_what_the_engine_reads(
 
     def prepared(values):
         """The group prepared again with ``values`` set and nothing else
-        changed: what the engine would read, or the refusal's words."""
+        changed: what the engine would read and the deck as written, or the
+        refusal's words."""
         template.write_text(as_described)
         if values:
             set_by_the_person(bundle, values)
         r = jobset("prep", "task", *group_words(bundle, stage),
                    "--bundle", bundle, "--target", "this")
-        return ((r.output, None) if r.exit_code else (None, _what_the_engine_reads(
-            engine, stage_file(bundle, stage, suffix).read_text())))
+        if r.exit_code:
+            return r.output, None, None
+        deck = stage_file(bundle, stage, suffix).read_text()
+        return None, _what_the_engine_reads(engine, deck), deck
 
     def value_of(item, context):
         current = (context[item.name] if item.name in context else
@@ -185,14 +205,15 @@ def test_every_field_the_form_offers_changes_what_the_engine_reads(
     baselines = {}
 
     def baseline(context):
-        """What the engine reads under ``context`` alone, prepared once."""
+        """What the engine reads under ``context`` alone, and the deck,
+        prepared once."""
         key = repr(sorted(context.items()))
         if key not in baselines:
-            said, baselines[key] = prepared(context)
+            said, *baselines[key] = prepared(context)
             assert said is None, (context, said)
         return baselines[key]
 
-    dead, refused, unprobed = [], {}, []
+    dead, refused, unprobed, unseen = [], {}, [], []
     for name, item in sorted(_form_fields(engine, prefix, calculation).items()):
         if (engine, name) in NOT_IN_THE_DECK:
             continue
@@ -201,7 +222,7 @@ def test_every_field_the_form_offers_changes_what_the_engine_reads(
             if value is None:
                 unprobed.append(name)
                 break
-            said, reads = prepared({**context, name: value})
+            said, reads, deck = prepared({**context, name: value})
             if said is not None:
                 # REFUSED BY NAME is the setting heard (`engines/vibration.md`
                 # I10); any other refusal is the probe not being correct input.
@@ -209,7 +230,13 @@ def test_every_field_the_form_offers_changes_what_the_engine_reads(
                     break
                 refused.setdefault(name, []).append(said[-400:])
                 continue
-            if reads != baseline(context):
+            base_reads, base_deck = baseline(context)
+            if reads != base_reads:
+                # ...AND IS ANOTHER CALCULATION by the one door a launched
+                # stage is prepared again through (`execution/job-request.md`
+                # § 6): a change the engine reads is never passed as the same.
+                if not same_calculation(engine, base_deck, deck):
+                    unseen.append(name)
                 break
         else:
             dead.append(name)
@@ -219,6 +246,10 @@ def test_every_field_the_form_offers_changes_what_the_engine_reads(
     assert not unprobed, (
         f"{engine} {calculation}: no other value to try for {unprobed}: give "
         f"it one in _PROBE, or say why one legal value is all it has.")
+    assert not unseen, (
+        f"{engine} {calculation}: a change the engine reads called the same "
+        f"calculation, so a launched stage prepared again would take it "
+        f"unseen: {unseen}")
     assert not dead, (
         f"{engine} {calculation}: {len(dead)} field(s) the form offers change "
         f"NOTHING the engine reads: {dead}.\n"

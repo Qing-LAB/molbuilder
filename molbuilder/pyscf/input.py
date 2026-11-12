@@ -103,7 +103,7 @@ def geometric_prefix_expr(names) -> str:
 # ONE name for each of the two doors this writer opens, imported once at
 # module scope -- as `siesta/input.py` does.
 from .. import script_emit as _sc
-from .script_input import SIDECAR_NAME
+from .script_input import PARAMS_NAME, SIDECAR_NAME
 from ..envs.hints import fix_cmd as _fix_cmd
 from . import layout as _layout
 
@@ -824,7 +824,7 @@ def _emit_effective_parameters(cfg: PySCFConfig,
     out.append("    except Exception:")
     out.append("        return '(absent)'")
     out.append("")
-    out.append("_MB_PARAMS = {}")
+    out.append(f"{PARAMS_NAME} = {{}}")
     block = run_settings_block_names()
     _resolved = {"net_charge": state.net_charge.value,
                  "spin_treatment": state.spin_treatment.value,
@@ -853,7 +853,7 @@ def _emit_effective_parameters(cfg: PySCFConfig,
                 else repr(_layout.as_written(name, param.value)))
         # The catalogue's default FOR THIS CALCULATION, the one default
         # (`template.default_of`).
-        out.append(f"_MB_PARAMS[{name!r}] = "
+        out.append(f"{PARAMS_NAME}[{name!r}] = "
                    f"({default_of(param.declaration, calculation)!r}, "
                    f"{said}, {third})")
     out.append("")
@@ -862,7 +862,7 @@ def _emit_effective_parameters(cfg: PySCFConfig,
                                begin_marker, end_marker)
     out.append('print("' + begin_marker(BLOCK_PARAMETERS) + '")')
     out.append(f"print({_sc.PARAMETER_COLUMNS_LINE!r})")
-    out.append("for _k, (_d, _r, _e) in _MB_PARAMS.items():")
+    out.append(f"for _k, (_d, _r, _e) in {PARAMS_NAME}.items():")
     out.append(f"    print({PARAMETER_ROW_PREFIX!r} + _mb_json.dumps("
                f"[_k, _d, _r, _e], default=repr))")
     out.append('print("' + end_marker(BLOCK_PARAMETERS) + '")')
@@ -902,7 +902,7 @@ def _emit_runtime_from_parameters() -> List[str]:
     return ["# the effective value where there is one, the request otherwise;",
             "# what the deck read off the solver above stands",
             "_RUNTIME_INFO.update({_k: (_r if _e is None else _e)",
-            "                      for _k, (_d, _r, _e) in _MB_PARAMS.items()",
+            f"                      for _k, (_d, _r, _e) in {PARAMS_NAME}.items()",
             "                      if _k not in _RUNTIME_INFO})"]
 
 

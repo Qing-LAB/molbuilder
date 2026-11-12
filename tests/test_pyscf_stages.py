@@ -149,25 +149,112 @@ def test_each_call_returns_independent_stages():
 
 
 
-def test_the_release_that_wrote_a_deck_is_no_difference(tmp_path, monkeypatch):
-    """`execution/job-request.md` § 5–6: *the test is the engine's input*.  A
-    PySCF vibration's deck names the release that wrote it, for its result
-    (`deck_record.BUILD_NAME`), and that says nothing of what PySCF computes.
-    THE FAILURE: every vibration refused when prepared again for its job
-    request, at every version move, over a line that changed nothing."""
-    import molbuilder
-    from molbuilder.deck_record import BUILD_NAME, same_calculation
-    from molbuilder.runfiles import deck_role
-    from support.road import prepared_here
+_UNCHANGED = lambda moved: None
 
-    def deck(where):
-        _bundle, run, names = prepared_here(
-            tmp_path / where, monkeypatch, "conda activate",
-            calculation="vibration", stage="freq", engine="pyscf")
-        return (run / names.name(deck_role("pyscf"))).read_text()
-    now = deck("now")
-    with monkeypatch.context() as moved:
-        moved.setattr(molbuilder, "__version__", "0.0.0")
-        ran = deck("then")
-    assert f"{BUILD_NAME} = '0.0.0'" in ran and ran != now
+
+def _an_older_release_numbered():
+    import molbuilder
+    from molbuilder.deck_record import BUILD_NAME
+    return (lambda moved: moved.setattr(molbuilder, "__version__", "0.0.0"),
+            {}, f"{BUILD_NAME} = '0.0.0'")
+
+
+def _an_older_release_recorded_each_settings_own_default():
+    from molbuilder import template as T
+    from molbuilder.pyscf.script_input import PARAMS_NAME
+    gmax = T.one(T.catalogue(), "geom_gmax", engine="pyscf")
+    return (lambda moved: moved.setattr(T, "default_of",
+                                        lambda item, kind: item.default),
+            {}, f"{PARAMS_NAME}['geom_gmax'] = ({gmax.default!r}, ")
+
+
+def _another_release_worded_the_methods():
+    from molbuilder.spectra import methods
+    worded = methods.render_methods_md
+    return (lambda moved: moved.setattr(
+                methods, "render_methods_md",
+                lambda *a, **k: worded(*a, **k) + "\n\nWorded otherwise."),
+            {}, "Worded otherwise.")
+
+
+def _another_release_printed_otherwise():
+    from molbuilder import script_emit
+    return (lambda moved: moved.setattr(script_emit, "PARAMETER_COLUMNS_LINE",
+                                        "#   printed otherwise"),
+            {}, "#   printed otherwise")
+
+
+def _another_release_worded_why_the_charge():
+    import dataclasses
+    from molbuilder import electronic_state
+    resolved = electronic_state._charge
+    return (lambda moved: moved.setattr(
+                electronic_state, "_charge",
+                lambda *a, **k: dataclasses.replace(
+                    resolved(*a, **k), why="worded otherwise")),
+            {}, "# detected: worded otherwise")
+
+
+def _another_job_request():
+    from support.road import RUN_CARD
+    threads = RUN_CARD["pyscf"]["threads"] + 1
+    return (_UNCHANGED, {"execution": {**RUN_CARD["pyscf"],
+                                       "threads": threads}},
+            f"'threads': {threads},")
+
+
+#: WHAT A PySCF DECK SAYS BESIDE WHAT IT COMPUTES (`execution/job-request.md`
+#: § 5–6), each the way another release or another job request writes it:
+#: the release that wrote it (`deck_record.BUILD_NAME`); what it only reports
+#: (the user, 2026-11-12: "ignore the report-only text") -- its parameters
+#: record (`model/parse.md` § 5d.3a), whose default column held each
+#: setting's own default until 2.69.43 and holds the kind's since (for a
+#: vibration, `geom_gmax` 0.00045 then, 0.0002 now), its Methods text, which
+#: its docstring holds too, a message it prints, and a comment beside a
+#: statement -- the charge's reason, which a release worded otherwise before;
+#: and the job request, which its settings copy echoes (§ 5: a launched
+#: stage's request may change).  Each row: how the other release is made
+#: while prep writes the deck, the request the other calculation is
+#: described with, and the words its deck holds that say so.
+_BESIDE_THE_CALCULATION = [
+    pytest.param(_an_older_release_numbered, id="the-release"),
+    pytest.param(_an_older_release_recorded_each_settings_own_default,
+                 id="the-parameters-record"),
+    pytest.param(_another_release_worded_the_methods, id="the-methods-text"),
+    pytest.param(_another_release_printed_otherwise, id="a-printed-message"),
+    pytest.param(_another_release_worded_why_the_charge,
+                 id="a-comment-beside-a-statement"),
+    pytest.param(_another_job_request, id="the-job-request"),
+]
+
+
+@pytest.mark.parametrize("other", _BESIDE_THE_CALCULATION)
+def test_what_a_deck_says_beside_the_calculation_is_no_difference(
+        tmp_path, monkeypatch, other):
+    """`execution/job-request.md` § 5–6: *the test is the engine's input*.  A
+    PySCF vibration described in two trees, one deck made as the row says and
+    the other as this release makes it with the road's request -- two trees,
+    since a prep keeps a deck that differs from the one it holds in stamps
+    alone: the two decks differ in what the row names, and are the same
+    calculation.  THE FAILURE: a launched PySCF stage refused when prepared
+    again for its job request -- at every version move, over the release's
+    name; since 2.69.43, over the record of each setting's default; at any
+    rewording of what the deck reports; at any change of the request, which
+    its settings copy echoes -- over lines that change nothing PySCF
+    computes."""
+    from molbuilder.deck_record import same_calculation
+    from molbuilder.runfiles import deck_role
+    from support.road import described, prep_groups, road_tree, stage_file
+
+    def deck(where, make=_UNCHANGED, request=None):
+        bundle = described(
+            road_tree(tmp_path / where, monkeypatch, engine="pyscf"),
+            calculation="vibration", engine="pyscf", **(request or {}))
+        with monkeypatch.context() as moved:
+            make(moved)
+            prep_groups(bundle, "1")
+        return stage_file(bundle, "freq", deck_role("pyscf")).read_text()
+    make, request, said = other()
+    ran, now = deck("then", make, request), deck("now")
+    assert said in ran and said not in now, said
     assert same_calculation("pyscf", ran, now) == []

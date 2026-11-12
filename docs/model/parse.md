@@ -1870,7 +1870,7 @@ deck writes its own fence, its items narrowed by calculation (`pyscf/layout.py`)
 after `#   `, so a blank value or one with spaces cannot shift a column; `null`
 is *this writer cannot know*. The block's first line says what the columns
 are (`script_emit.PARAMETER_COLUMNS_LINE`) — prose, which the reader skips,
-as it skips every line that is not a row. **PySCF's deck** prints it after setup with all
+as it skips every line that is not a row. **PySCF's deck** fills it line by line (`pyscf.script_input.PARAMS_NAME`) — a report, set aside with the deck's others when two decks are asked whether they are the same calculation ([`execution/job-request.md`](?doc=execution/job-request.md) § 6) — and prints it after setup with all
 three columns, `used` read off the live objects; the vibration deck prints it
 after its SCF is dressed and before the equilibrium SCF runs. **SIESTA's
 wrapper** prints it at launch, in its log beside the deck it is about to run,
