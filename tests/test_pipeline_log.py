@@ -122,10 +122,16 @@ def test_every_resolved_value_carries_its_source(tmp_path, monkeypatch):
     assert re.search(rf"⊕\s+block_size\s+None\s+<- "
                      rf"{re.escape(who['block_size'])}\n", text), text
     # an optional item nobody set says who answers it: the electronic state
-    # for a blank spin, the k-point mesh for the ranks' split
+    # for a blank spin -- and every other its blank in the catalogue's own
+    # words (`null_label`, `engines/template.md` § 5): the ranks' split,
+    # chosen from the k-point grid and the solver
     from molbuilder.resolve import BLANK_ANSWERED_BY
-    for name in ("spin_treatment", "parallel_over_k"):
-        assert who[name].endswith(BLANK_ANSWERED_BY[name]), who
+    from molbuilder.template import catalogue, one
+    assert who["spin_treatment"].endswith(
+        BLANK_ANSWERED_BY["spin_treatment"]), who
+    split = one(catalogue(), "parallel_over_k", engine="siesta").null_label
+    assert split and who["parallel_over_k"].endswith(split.strip("()")), (
+        split, who)
     # the scheduler's answers are the run's, reported beside, never as rows
     assert "mpi_np" not in who, who
 

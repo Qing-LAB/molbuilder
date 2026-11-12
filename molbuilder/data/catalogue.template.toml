@@ -921,6 +921,7 @@ type = "bool"
 engine_default = { value = false, source = "SIESTA 5.4.2 diag_option.F90:119: ParallelOverK = fdf_get('Diag.ParallelOverK', .false.)" }
 group = "staging"
 label = "Parallel over k-points"
+null_label = "(worked out from the k-point grid and the solver)"
 optional = true
 not_set = "SIESTA's own default, false: the ranks split the orbitals, not the k-points (diag_option.F90); a blank one is chosen from the k-point grid and the solver before the deck is written"
 help = """
@@ -1034,7 +1035,7 @@ engine_key = "(molbuilder: copies the .psml files beside the deck; SIESTA finds 
 type = "str"
 group = "setup"
 label = "Pseudopotential directory (.psml)"
-null_label = "(none)"
+null_label = "(the .psml files in the calculation's folder)"
 optional = true
 help = """
 Path to a directory of .psml pseudopotential files, one per element.  A pseudopotential stands in for an atom's core electrons, and SIESTA needs one for every element in your structure.
@@ -1058,6 +1059,7 @@ engine_key = "(molbuilder: the order of the ChemicalSpeciesLabel block)"
 type = "strlist"
 group = "profile"
 label = "Species order"
+null_label = "(by atomic number; carbon and hydrogen placed as formulas write them)"
 optional = true
 help = """
 The order the species are listed in, comma-separated (e.g. 'C,H,S,Au').  It fixes which species index each element gets in the deck's ChemicalSpeciesLabel block, so runs you want to compare use the same numbering.  Leave it blank to let the builder choose the order.
@@ -1349,6 +1351,7 @@ manual = "PySCF 2.13 pyscf.df.addons / scf.hf.SCF.density_fit 'auxbasis' (an arg
 type = "str"
 group = "profile"
 label = "Auxiliary fitting basis"
+null_label = "(matched to the orbital basis when density fitting is on)"
 optional = true
 not_set = "PySCF picks the fitting basis matched to the orbital basis when density fitting is on (pyscf.df.addons.make_auxbasis)"
 help = """
@@ -1412,7 +1415,6 @@ value = ""
 default = ""
 group = "profile"
 label = "Effective core potential"
-null_label = "(none)"
 help = """
 Replaces the inert core electrons of heavy atoms with a potential, so fewer electrons are treated explicitly -- an effective core potential, named like a basis, e.g. 'lanl2dz'. Empty means no ECP.
 It applies only to the atoms named by ECP atoms; with no atoms selected it does nothing.
@@ -1429,7 +1431,6 @@ type = "strlist"
 value = []
 group = "profile"
 label = "ECP atoms"
-null_label = "(none)"
 help = """
 Which elements get an effective core potential (ECP) -- the core electrons replaced by a fitted potential instead of being treated explicitly.
 
@@ -2416,7 +2417,7 @@ group = "stage"
 label = "Transmission k-point grid (x, y)"
 tier = "basic"
 optional = true
-null_label = "(3 x the shared k-point grid)"
+null_label = "(three times the shared k-point grid in the electrode plane)"
 not_set = "worked out before the deck is written: three times the shared k-point grid's count along each direction in the electrode plane (x, y) that it samples with more than one point, and one k-point along z (kmesh.transmission_start) -- so it follows the shared grid whenever that changes"
 help = """
 The k-points the transmission samples in the plane of the electrodes (x and y) when it computes T(E), the chance that an electron of energy E crosses the junction.  The electrodes are infinite surfaces, so the cell repeats sideways in that plane, and these k-points sample the bands of the metal surface.  The third count, along the transport direction (z), is always 1: tbtrans forces it (m_tbt_kpoint.F90).

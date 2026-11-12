@@ -194,7 +194,7 @@
     function blankWords(f, st, ctx) {
         const then = st.hintKind === "template"
                 ? show(st.hint, f) + " " + said(ctx, f.source)
-            : st.hintKind === "optional" ? (f.null_label || "")
+            : st.hintKind === "optional" ? f.null_label
             : st.hintKind === "default" && show(st.hint, f)
                 // ...said by where it comes from, the server's words
                 // (`default_words`, `form-schema.md` § 1.1).
@@ -207,7 +207,7 @@
     function placeholderOf(f, st) {
         if (Array.isArray(st.hint)) return st.hint.join(", ");
         if (st.hint !== null) return String(st.hint);
-        return f.optional ? (f.null_label || "") : "";
+        return f.optional ? f.null_label : "";
     }
 
     function makeNumber(f, isInt, st) {
@@ -228,11 +228,10 @@
     function makeSelect(f, st, ctx) {
         const sel = el("select", { id: f.id });
         // THE BLANK OPTION, first and always: not chosen.  An optional
-        // item's blank is its own answer and says so (`null_label`); any
-        // other says what then applies.
+        // item's blank is its own answer and says so (`null_label`, which
+        // every optional item states); any other says what then applies.
         sel.appendChild(el("option", { value: "" },
-            (f.optional || f.null_option) ? (f.null_label || "(default)")
-                                           : "(" + blankWords(f, st, ctx) + ")"));
+            f.optional ? f.null_label : "(" + blankWords(f, st, ctx) + ")"));
         let picked = false;
         // A CHOICE READS AS ITS WORDS where the catalogue gives them
         // (`choice_labels`); its value is the choice itself.
@@ -261,11 +260,11 @@
 
     function makeTriSelect(f, st) {
         // Optional[bool] tri-state: auto/true/false, where "auto" is the
-        // item's own blank (None).
+        // item's own blank (None), said in its own words (`null_label`).
         const sel = el("select", { id: f.id });
         const now = st.drawn === true ? "true"
                   : st.drawn === false ? "false" : "auto";
-        const said = { auto: "(default)", true: "yes", false: "no" };
+        const said = { auto: f.null_label, true: "yes", false: "no" };
         for (const c of f.choices) {       // ["auto", "true", "false"]
             const opt = el("option", { value: c }, said[c]);
             if (c === now) opt.selected = true;

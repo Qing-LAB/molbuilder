@@ -978,7 +978,7 @@ Task setup card, the `job-request.json` key that card writes, and the prep flag.
 | kind | examples | weakest → strongest | stated nowhere |
 |---|---|---|---|
 | **physics**, and a stage's restart policy | `mesh_cutoff` · basis · k-grid · `restart` | the catalogue's default → the **template**'s value → that stage's `overrides` | cannot happen: the template holds a value for every one |
-| **run setting** (deck and speed) | `diag_algorithm` · `block_size` · `use_gpu` · `parallel_over_k` · `wall_slack` | the catalogue's default → the calculation's **`execution`** → the rung's `execution` | the catalogue's default, recorded *not chosen*; an item with no default writes what its not-set line says (`block_size`: no keyword, SIESTA's own) |
+| **run setting** (deck and speed) | `diag_algorithm` · `block_size` · `use_gpu` · `parallel_over_k` · `wall_slack` | the catalogue's default → the calculation's **`execution`** → the rung's `execution` | the catalogue's default, recorded *not chosen*; an item with no default writes what its not-set line says (`block_size`: no keyword, SIESTA's own), or what molbuilder works out from the run (`parallel_over_k`: from the k-point grid and the solver) |
 | **launch shape** | SIESTA's `mpi_np` and `omp_threads` · PySCF's `threads` | **`execution`** (the calculation's, then the rung's) → a prep **flag** (`--np`, `--cpus-per-task`) | **refused at prep**, on every target |
 | **GPU count**, for a run that uses the GPU | `gpu_count` | **`execution`** → `--gpus` | **refused at prep**: a GPU run with no count, or a count for a run that uses no GPU ([`gpu.md`](?doc=execution/gpu.md) G5) |
 | **memory cap** | `max_memory_mb` | **`execution`** → `--max-memory-mb` | no cap — the run script writes no limit |

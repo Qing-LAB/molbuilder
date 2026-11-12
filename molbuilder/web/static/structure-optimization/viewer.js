@@ -854,7 +854,7 @@ import { ask } from "../lib/server.js";
      * one-liner directly below the input that shows the user the
      * absolute path the server will resolve their entry to:
      *
-     *   ""                    -> "(set a path)"
+     *   ""                    -> ""  (the field's own caption says the blank)
      *   "pseudopotential"     -> "→ /home/.../projects/pseudopotential"
      *   "../../../pseudo"     -> "→ /home/.../projects/../../../pseudo"
      *   "/abs/path"           -> "→ /abs/path"  (absolute, no change)
@@ -882,8 +882,10 @@ import { ask } from "../lib/server.js";
         parent.appendChild(cap);
         function render() {
             const v = (input.value || "").trim();
+            // A BLANK ONE IS SAID BY THE FIELD'S OWN CAPTION, in the item's
+            // words (`null_label`); this one says where a typed path goes.
             if (!v) {
-                cap.textContent = "not set \u2014 the .psml files in the calculation's folder are taken";
+                cap.textContent = "";
                 return;
             }
             // Absolute or ~/ -> echo (no anchor applied).

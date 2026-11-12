@@ -623,6 +623,16 @@ def test_a_folder_opens_showing_what_it_already_states(
     # (`task-setup.md` § 5.2, 2.68.1).
     assert rows["use_gpu"]["placeholder"] == "\u2014 off (default)", (
         rows["use_gpu"])
+    # AN UNSTATED ROW SAYS ITS BLANK in the setting's own words (`null_label`,
+    # `task-setup.md` § 6.2b): the memory cap's, no cap -- never "not
+    # stated", which says prep will refuse it -- the row still unstated.
+    # ...a select's blank option as a text box's placeholder: the ranks'
+    # split, worked out from the run.
+    from molbuilder.template import catalogue, one
+    for name in ("max_memory_mb", "parallel_over_k"):
+        said = one(catalogue(), name, engine="siesta").null_label
+        assert (rows[name]["kind"], rows[name]["placeholder"]) == (
+            "unstated", "\u2014 " + said), rows[name]
 
     # A LANE ASK is an ordinary chosen row -- `time` is the RUN's own, and
     # `allocation.time` beside it is the calculation's and the bench's

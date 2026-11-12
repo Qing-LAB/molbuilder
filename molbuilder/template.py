@@ -675,10 +675,9 @@ class Item:
     stages: Tuple[str, ...] = ()
 
     #: Whether *unset* is a state this item has at all — and it IS written
-    #: to the file.  A surface must offer *(auto)* / *(no cap)*, and it
-    #: cannot be inferred from ``null_label``: some optional items carry
-    #: none, and would silently lose the option.  (How many is stated once,
-    #: in ``engines/template.md`` § 5 and ``web/form-schema.md`` § 1.2.)
+    #: to the file.  A surface must offer it, in the item's own words
+    #: (``null_label``, which every optional item states and no other item
+    #: carries — the catalogue refuses either way, `engines/template.md` § 5).
     optional: bool = False
 
     #: ``basic`` or ``advanced`` — a judgement about the PARAMETER, so a
@@ -1132,6 +1131,16 @@ def catalogue() -> "Template":
                 and not it.allocation and not it.not_set):
             _refuse("an optional item the deck may leave out declares no "
                     "not_set -- what the engine does when it writes nothing", where=it.name)
+        # AN OPTIONAL ITEM NAMES ITS BLANK, AND ONLY ONE DOES (§ 5,
+        # `web/form-schema.md` § 1.1): every surface offers unset in the
+        # item's own words, so none may be missing -- a surface would coin
+        # one -- and on an item with no unset state they name nothing.
+        if it.optional and not it.null_label:
+            _refuse("an optional item declares no null_label -- what its "
+                    "blank is called on every surface", where=it.name)
+        if it.null_label and not it.optional:
+            _refuse("null_label on an item that is not optional -- it has "
+                    "no unset state to name", where=it.name)
         # THE ENGINE'S OWN VALUE IS STATED, OR WHAT IT FOLLOWS (§ 5): every
         # item whose anchor is a keyword of a deck its engine reads as
         # keywords (the engine record names its ``keyword_reader`` --

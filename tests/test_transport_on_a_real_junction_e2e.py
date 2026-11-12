@@ -1429,13 +1429,10 @@ def _another_than_runs(probe, rung: str, name: str, task: dict):
     """``(item, was, value)``: what ``rung`` runs for ``name`` with nothing
     set on it, and a value one step from it among what a transport
     calculation offers (`support.form_fields`, `template.offered`).  WHAT
-    RUNS for a blank item is what answers it: a rule's answer the rung's
-    deck states (`resolve.BLANK_ANSWERED_BY` -- a lead's many k-points turn
-    `parallel_over_k` on), read by the one fdf reader; else the engine's
-    own default the catalogue states (`engine_default`); else the item's
-    documented default."""
-    from molbuilder.parse.fdf import fdf_key, fdf_true, read_fdf
-    from molbuilder.resolve import BLANK_ANSWERED_BY, resolved_ladder
+    RUNS for a blank item is what answers it: the engine's own default the
+    catalogue states (`engine_default`); else the item's documented
+    default."""
+    from molbuilder.resolve import resolved_ladder
     from molbuilder.task import Task
     from molbuilder.template import catalogue, offered, one
     from support.form_fields import another_value
@@ -1443,10 +1440,6 @@ def _another_than_runs(probe, rung: str, name: str, task: dict):
     item = one(catalogue(), name, engine="siesta")
     was = getattr(dict(resolved_ladder(template, Task.from_dict(task)))[rung],
                   name)
-    if was is None and item.type == "bool" and name in BLANK_ANSWERED_BY:
-        stated = read_fdf(probe.unset[rung][0])[0].get(
-            fdf_key(item.engine_key))
-        was = fdf_true(stated) if stated else None
     if was is None:
         was = item.engine_default[0] if item.engine_default else item.default
     return item, was, another_value(

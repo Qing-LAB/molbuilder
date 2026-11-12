@@ -82,7 +82,7 @@ is where the *data* comes from.
 | `step` | derived from `type`: `int` steps by 1, `float` by any |
 | `labels` (a triple's x/y/z) | derived from `type` — the k-point mesh's axis names (`kmesh.AXES`) |
 | `fixed` (a triple's locked components) | derived from the kind: the components it fixes, `{z: {value: 1, why: "…"}}` (`kmesh.fixed`, [`engines/siesta.md`](?doc=engines/siesta.md) § 6.1) — a transport calculation's third k component, which no rung reads. The triple draws each locked at its value with the reason beside it, and the value still travels, so the template states it *(2026-09-30)* |
-| `null_option` | derived: the item is optional |
+| `null_label` | on an optional item, the item's own words for its blank (`engines/template.md` § 5) — the blank option of a select and a tri-select, a blank box's hint and its caption |
 | `required` | derived from the kind — the item's `required` kinds ([`engines/template.md`](?doc=engines/template.md) § 5; no item declares one today) — or from what a transport citation asks of the person (a pair's pseudopotential directory, `citation_defaults.asked_of_the_person`): the control is drawn required, and red while it is empty. Only for a value the Send or the describe refuses blank whatever else the calculation holds; the refusal is theirs, beside the field *(2026-09-30; the SIESTA pseudopotential directory left it at 2.69.8, [`science/pseudopotentials.md`](?doc=science/pseudopotentials.md) § 1)* |
 | `tier` · `pattern` · `optional` | **item keys added for this** — § 1.2 |
 
@@ -133,7 +133,7 @@ field it names ([`engines/template.md`](?doc=engines/template.md) § 5.3).
 
 | key | why the form cannot derive it |
 |---|---|
-| `optional` | *unset* is a real state and the control must offer it. It is **not** inferable from `null_label`: of **21** optional items only **18** carry one, so three would silently lose their *(auto)* option |
+| `optional` | *unset* is a real state and the control must offer it, in the item's own words — its `null_label`, which every optional item states and no other item carries (`template.md` § 5) |
 | `tier` | `basic` / `advanced`. A judgement about the parameter, not about the widget — the form dims advanced fields |
 | `pattern` | a regex the value must match. Two items have one (`system_label`, `job_name`) and nothing else can express it |
 
@@ -304,7 +304,7 @@ carried copies of them until 2026-10-18; it carries none now.*
 | **`choices`** | the legal values of an enum → a dropdown | the dropdown; the settings gate; the description check; the setting door's reader (`template.read_text`, [`engines/template.md`](?doc=engines/template.md) § 5.4) |
 | **`unit`** | the unit shown beside the control (`Ry`, `eV/Å`). **Display only** — it never converts anything | beside the control; the settings gate's messages |
 | **`pattern`** | a regex the value must match | the control's `pattern` |
-| **`null_label`** | what the *unset* option is called on an optional field — `"(default)"`, `"(auto)"` | the tri-select's blank |
+| **`null_label`** | what the *unset* option is called on an optional field — `"(auto)"`, `"(no cap)"` | the blank option of a select and a tri-select, a blank box's hint, and the caption under a blank field |
 
 **Group 2 — the catalogue's axes**, owned by
 [`engines/template.md`](?doc=engines/template.md): `category` (§ 6.2),
@@ -507,7 +507,7 @@ module draws the matching control. The eight kinds:
 | `float` | a number input |
 | `str`, and a list | a text box — a list typed comma-separated, which the server reads back |
 | a fixed set of choices | a dropdown — and a choice is read back as **the member itself, with its own type**: `unpaired_electrons`' `2` comes back the number 2 and `free` the word, never the text `"2"` ([`engines/template.md`](?doc=engines/template.md) § 5); its blank reads back `null`, not chosen (§ 1.1) |
-| `Optional[bool]` | a three-way select (yes / no / leave default) |
+| `Optional[bool]` | a three-way select — yes / no / its blank, in the item's own words (`null_label`) |
 | three integers (e.g. a k-grid) | three linked integer inputs |
 | three numbers (e.g. the k-grid's offset) | three linked number inputs — `0.5` survives |
 

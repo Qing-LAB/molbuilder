@@ -942,9 +942,11 @@ def test_the_form_holds_only_what_the_person_gave_and_keeps_it_over_a_reload(
     Structure-optimization page: a new calculation's form holds nothing
     until the person gives it something -- a field is blank, not chosen,
     the kind's recommendation its hint, and a box nobody answered is
-    indeterminate.  What the person gave survives a reload, and so does
-    what they did not: the restore writes through the form's own writer,
-    so a box nobody answered does not come back "off".
+    indeterminate, and a yes / no / unset select nobody answered says its
+    blank in the item's own words (`null_label`, `engines/template.md` § 5),
+    never a word the page coins.  What the person gave survives a reload,
+    and so does what they did not: the restore writes through the form's
+    own writer, so a box nobody answered does not come back "off".
 
     The words are the served schema's -- a source said in `source_words`,
     the recommendation the kind's `default` in its unit (§ 1.1) -- read off
@@ -954,22 +956,27 @@ def test_the_form_holds_only_what_the_person_gave_and_keeps_it_over_a_reload(
         _open_build(page, flask_server)
     schema = served.value.json()["schema"]
     words = schema["source_words"]
-    mesh = next(f for section in schema["sections"]
-                for f in section["fields"] if f["name"] == "mesh_cutoff")
+    fields = {f["name"]: f for section in schema["sections"]
+              for f in section["fields"]}
+    mesh, must = fields["mesh_cutoff"], fields["scf_must_converge"]
     page.wait_for_selector("#p-mesh-cutoff", timeout=WAIT_MS)
 
     def state():
         return page.evaluate("""() => {
             const m = document.getElementById("p-mesh-cutoff");
             const b = document.getElementById("p-write-hs");
+            const t = document.getElementById("p-scf-must-converge");
             return {mesh: m.value, hint: m.placeholder, box: b.indeterminate,
+                    must: t.options[t.selectedIndex].text,
                     said: m.closest(".schema-field")
                            .querySelector(".schema-source").textContent};
         }""")
 
     recommended = f"{mesh['default']:g}"
+    assert must["kind"] == "tri-select" and must["null_label"], must
     assert state() == {
         "mesh": "", "hint": recommended, "box": True,
+        "must": must["null_label"],
         # ...led by where the default comes from, the served words
         # (`form-schema.md` § 1.1, 2.68.1).
         "said": f"{words['default']} \u00b7 {mesh['default_words']}: "

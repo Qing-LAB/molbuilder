@@ -696,8 +696,9 @@ def _item_to_field(item, id_prefix: str, calculation: str, *,
             out["fixed"] = {AXES[i]: {"value": v, "why": why}
                             for i, (v, why) in held.items()}
     if item.optional:
-        out["null_option"] = True
-        out["null_label"] = item.null_label or "(auto)"
+        # ITS BLANK, IN ITS OWN WORDS -- every optional item names it, the
+        # catalogue refuses one that does not (`template.md` § 5).
+        out["null_label"] = item.null_label
     # DRAWN REQUIRED ON THE KINDS THAT DECLARE IT (`template.Item.required`,
     # plan § 5w K20): the value may still be blank, and the Send refuses
     # until it is answered -- the pseudopotential folder on SIESTA.

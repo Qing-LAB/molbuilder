@@ -371,7 +371,8 @@ function renderStages(task) {
                     el("input", {
                         class: "ts-cell", disabled: "yes",
                         value: has ? valueWords(col, ov[col]) : "",
-                        placeholder: defaultText(col) || "template",
+                        placeholder: defaultText(col) || nullLabel(col)
+                                     || "template",
                         title: extensionSays(name),
                         "aria-label": name + " " + labelOf(col) + " (fixed)" })));
                 continue;
@@ -398,7 +399,8 @@ function renderStages(task) {
                     "data-template": has ? null : "yes",
                 });
                 cell.appendChild(el("option", { value: "" },
-                    "(" + (fallback || "template") + ")"));
+                    fallback ? "(" + fallback + ")"
+                             : nullLabel(col) || "(template)"));
                 for (const v of legal) {
                     cell.appendChild(el("option", { value: String(v) },
                                         valueWords(col, v)));
@@ -415,7 +417,7 @@ function renderStages(task) {
             } else {
                 cell = el("input", {
                     class: "ts-cell", value: has ? String(ov[col]) : "",
-                    placeholder: fallback || "template",
+                    placeholder: fallback || nullLabel(col) || "template",
                     title: helpText(col),
                     id: _rowId(i, col),
                     "aria-label": name + " " + labelOf(col),
@@ -1037,6 +1039,12 @@ function runRow(task, name, members, opts) {
         : (fallback ? "\u2014 " + fallback + " ("
                       + ((_meta[name] && _meta[name].default_words)
                          || "default") + ")" : "");
+    // AN UNSTATED ROW SAYS ITS BLANK IN THE SETTING'S OWN WORDS
+    // (`null_label`: *(no cap)*, *(not stated: prep refuses)*), the row
+    // still unstated -- whether prep refuses it is the setting's, said in
+    // those words (`architecture.md` § 5.2).
+    const unstated = nullLabel(name) ? "\u2014 " + nullLabel(name)
+                                     : "\u2014 not stated";
     const legal = legalValues(name);
     // THE FIELD'S NAME, the row's own where it has one (a member's time
     // limit), else the setting's label: the name it is told apart by, and
@@ -1045,8 +1053,7 @@ function runRow(task, name, members, opts) {
     let input;
     if (legal) {
         input = el("select", { class: "ts-runval", "aria-label": fieldName });
-        input.appendChild(el("option", { value: "" },
-                             behind || "\u2014 not stated"));
+        input.appendChild(el("option", { value: "" }, behind || unstated));
         for (const v of legal) {
             const opt = el("option", { value: String(v) }, valueWords(name, v));
             if (value !== undefined && String(value) === String(v)) {
@@ -1061,7 +1068,7 @@ function runRow(task, name, members, opts) {
         input = el("input", { type: "text", class: "ts-runval",
                               placeholder: behind
                                   || (lane ? "e.g. " + lane.placeholder
-                                           : "\u2014 not stated"),
+                                           : unstated),
                               "aria-label": fieldName });
         input.value = value === undefined ? "" : String(value);
     }
@@ -2350,7 +2357,8 @@ function _fillSweepMeta(items) {
                               type: i.type, choices: i.choices,
                               default: i.default, stages: i.stages,
                               unit: i.unit, default_words: i.default_words,
-                              choice_labels: i.choice_labels };
+                              choice_labels: i.choice_labels,
+                              null_label: i.null_label };
         }
     }
 }
@@ -2543,6 +2551,13 @@ function defaultText(name) {
     if (name in _tmpl.values) return valueWords(name, _tmpl.values[name]);
     if (!m) return "";
     return valueWords(name, m.default);
+}
+
+/** What an optional parameter's blank is, in its own words (`null_label`,
+ *  *(no cap)*), else "" -- the catalogue's, as every form says it. */
+function nullLabel(name) {
+    const m = _meta[name];
+    return (m && m.null_label) || "";
 }
 
 /** The parameter's own note, for a hover. */

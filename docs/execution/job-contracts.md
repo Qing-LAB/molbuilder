@@ -832,8 +832,9 @@ script:
   [`job-request.md`](?doc=execution/job-request.md) § 4), or the template's
   own record (*the template · from the junction you cited · you set this · not
   chosen · not recorded*). *Not chosen* marks a value nobody chose; for an
-  optional item nobody set, the row says who answers instead
-  (`resolve.BLANK_ANSWERED_BY`). A value set after `resolve` is said as that
+  optional item nobody set, the row says who answers instead — the
+  electronic state (`resolve.BLANK_ANSWERED_BY`), else the item's own blank
+  in the catalogue's words (`null_label`). A value set after `resolve` is said as that
   step's (`resolve.SET_AFTER`) — a transport rung's `SystemLabel`, a trial's.
   Every road that renders a deck hands the rows over, the gather's comparison
   render included (`gather.rung_deck_now`); a deck rendered without them says

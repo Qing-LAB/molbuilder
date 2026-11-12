@@ -119,17 +119,27 @@ def test_the_displacement_gets_a_control_that_can_carry_its_value():
     assert f["kgrid_displacement"]["default"] == [0.0, 0.0, 0.0]
 
 
-def test_an_optional_item_offers_its_unset_state():
-    """§ 1.2: `optional` is written to the catalogue precisely so a surface can
-    offer *(auto)* / *(no cap)*.  It cannot be inferred from `null_label`."""
-    f = {x["name"]: x for s in catalogue_to_form_schema("siesta", "p", "optimization")["sections"]
-         for x in s["fields"]}
-    # ``net_charge``: optional, worked out from the structure when unset,
-    # and its *(auto)* state is the whole reason `optional` is written down.
-    assert f["net_charge"]["optional"] is True
-    assert f["net_charge"]["null_option"] is True
-    assert f["net_charge"]["null_label"]
-    assert f["mesh_cutoff"]["optional"] is False
+@pytest.mark.parametrize("engine", ["siesta", "pyscf"])
+def test_an_optional_item_offers_its_unset_state_in_its_own_words(engine):
+    """§ 1.2, `engines/template.md` § 5: an optional item's unset state is
+    offered on the form, in the item's own words -- its `null_label`, which
+    every optional item states -- and an item with no unset state offers
+    none.  THE SILENT FAILURE: a blank called by words the server coined --
+    *(auto)* -- for an item whose blank is something else (`species_order`'s
+    is a chemical formula's order, `auxbasis`'s the fitting basis matched to
+    the orbital basis)."""
+    items = {i.name: i for i in T.select(T.catalogue(), engine=engine)}
+    kinds = {"optimization"} | {
+        k for i in items.values() for k in i.calculations}
+    for kind in sorted(kinds):
+        schema = catalogue_to_form_schema(engine, "p", calculation=kind)
+        for f in (x for s in schema["sections"] for x in s["fields"]):
+            item = items[f["name"]]
+            if item.optional:
+                assert f["null_label"] == item.null_label and (
+                    item.null_label), (kind, f)
+            else:
+                assert "null_label" not in f, (kind, f)
 
 
 @pytest.mark.parametrize("engine", ["siesta", "pyscf"])

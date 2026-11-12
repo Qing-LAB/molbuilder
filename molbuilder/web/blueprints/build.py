@@ -1690,6 +1690,10 @@ def api_task_setup_sweepable():
             "default_words":   _T.default_words(it, engine=engine,
                                                 calculation=kind),
             "choice_labels":   _T.value_labels(it),
+            # ...AND WHAT A BLANK ONE IS, in the item's own words, on an
+            # optional one -- *(no cap)*, *(not stated: prep refuses)* --
+            # which say what a blank then does (`task-setup.md` § 6.2b).
+            "null_label":      it.null_label,
             # The unit rides too: the machine card's default/help text
             # reads m.unit, and max_memory_mb rendered unitless without
             # it (allocation items never pass through the columns door,
@@ -1770,6 +1774,9 @@ def api_task_setup_columns():
             # ...EACH VALUE IN ITS WORDS, as the forms show them
             # (`template.value_labels`, `task-setup.md` § 5.2).
             "choice_labels": _T.value_labels(it),
+            # ...AND WHAT A BLANK CELL IS on an optional one, in its own
+            # words (`null_label`): what the stage then runs.
+            "null_label": it.null_label,
             "group":   it.group or "",
             # THE VALUE SHAPE (user, 2026-08-20): the stage table's cell
             # editor renders a dropdown for an enum or a bool, and it can

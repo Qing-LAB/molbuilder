@@ -387,6 +387,7 @@ and it is one way round:
 |---|---|
 | the folder's template value | the template answers this parameter |
 | the catalogue's `default` | it does not — nothing was sent, or the sender left it alone |
+| an optional item's own blank, in its words (`null_label`, *(every band)*) | it has no default either: unset is what the stage runs |
 
 The folder answer (`GET /api/task-setup/folder`, its `template`) reads it, because TOML is a format and
 [`projects.md § 3`](?doc=web/projects.md) keeps a format's correctness on the
@@ -819,7 +820,7 @@ styling: the row carries the state and the CSS reads it.
 |---|---|---|---|
 | **chosen** | this rung's own value, from the job request's `stages.<name>.execution` | ordinary | you decided it here |
 | **inherited** | *empty*, with what a blank uses as the placeholder: the calculation-wide value, marked *(every stage)*, else the item's default, marked *(default)* ([`job-request.md`](?doc=execution/job-request.md) § 4); for `time` and `domain`, the allocation's, marked *(the queue card)* (§ 3.2a there) | quieter, never struck | the row is **answered, just not here** — blank on this rung means *no disagreement*, and filling the field with the merged value would make blank unreachable |
-| **unstated** | *empty*, placeholder *— not stated* (or a format example for `time` / `domain`) | quieter | **not an error in the card** — a launch value, which no template holds: stated nowhere, it is refused at prep, and the card says so |
+| **unstated** | *empty*, placeholder the setting's own blank in its words (`null_label`: *— (not stated: prep refuses)* for the ranks, *— (no cap)* for the memory cap), else *— not stated* (or a format example for `time` / `domain`) | quieter | **not an error in the card** — a run value no template holds: stated nowhere, what then applies is the setting's, in its words — refused at prep, no cap, or worked out from the run ([`architecture.md`](?doc=execution/architecture.md) § 5.2) |
 
 That the field is left EMPTY for an inherited row is the load-bearing half: an
 inherited value shown as text is indistinguishable from one you typed, and

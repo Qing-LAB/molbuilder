@@ -197,12 +197,6 @@ def test_every_item_carries_what_a_surface_needs_to_render_it():
         assert item.help, f"{item.name} has no help text"
 
 
-def test_an_optional_item_says_what_unset_is_called():
-    """``optional`` says *unset* is a real state; ``null_label`` is what says
-    how to show it.  Without it a tri-select has no third label."""
-    assert T.one(T.catalogue(), "block_size", engine="siesta").null_label
-
-
 def test_the_three_surface_keys_survive_the_round_trip():
     text = T.template_with_values(SiestaConfig(system_label="JOB"), calculation="optimization")
     item = T.one(T.read_template(text), "mesh_cutoff")

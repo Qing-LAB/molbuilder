@@ -351,20 +351,15 @@ SET_AFTER = {
 }
 
 #: WHO ANSWERS AN OPTIONAL ITEM NOBODY SET -- the table's words after *not
-#: chosen*.  For these the deck writes a value molbuilder works out: the
-#: electronic state's (ES1, `science/chemistry-correctness.md` § 2a; the
-#: deck's own note says from what), the k-point split from the mesh, the
-#: transmission's mesh from the SCF's (`kmesh.mesh_for`).  Every other says
-#: what its blank means in the catalogue's words for it, the form's
-#: (`null_label`: *no lower end*, *the stage's k-point grid*), else the
-#: engine's own default, which the deck's not-set line names
-#: (`engines/template.md` § 6.6 obligation 4).
+#: chosen*, where they are not the item's own: the electronic state's (ES1,
+#: `science/chemistry-correctness.md` § 2a; the deck's own note says from
+#: what), its form's *(auto)* standing in the electronic-state card that
+#: says what decides it.  Every other says what its blank means in the
+#: catalogue's words for it, the form's (`null_label`: *no lower end*,
+#: *worked out from the k-point grid and the solver*), which every optional
+#: item states (`engines/template.md` § 5).
 BLANK_ANSWERED_BY = {
-    **{name: "the electronic state decides it" for name in STATE_ITEMS},
-    "parallel_over_k": "worked out from the k-point grid",
-    "tbt_k_grid": "three times the shared k-point grid in the electrode plane",
-}
-BLANK_ENGINE = "the engine's own default"
+    name: "the electronic state decides it" for name in STATE_ITEMS}
 
 
 def _blank_words(item) -> Optional[str]:
@@ -374,7 +369,7 @@ def _blank_words(item) -> Optional[str]:
     if item is None or not item.optional:
         return None
     return (BLANK_ANSWERED_BY.get(item.name)
-            or (item.null_label or "").strip().strip("()") or BLANK_ENGINE)
+            or item.null_label.strip().strip("()"))
 
 
 def _deck_items(engine: str, kind: str, stage: str) -> Mapping[str, bool]:
@@ -1147,4 +1142,4 @@ def card_settings(request, stage=None):
 __all__ = ["card_settings", "card_values", "declared_run_shape",
            "ParameterSet", "ResolvedConfig", "ResolveError", "ALLOCATION_FIELDS",
            "MachineTranslation", "resolve", "point_token",
-           "SET_AFTER", "BLANK_ANSWERED_BY", "BLANK_ENGINE", "said_by"]
+           "SET_AFTER", "BLANK_ANSWERED_BY", "said_by"]
