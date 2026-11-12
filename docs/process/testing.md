@@ -712,8 +712,13 @@ requests go to the real routes of a live app (`served(base)`, the app started by
 run's folder (§ 6); a reply typed in the test is not an input. The answer is
 read whole before the page is handed it, so `await __quiet()` waits on the
 page's own work, not on time. Each request is kept, in order, in `__calls`,
-each answer in `__answered`. The page's own arithmetic on analytic numbers (a
-unit conversion, a layout rule) needs no server and is tested as it is.
+each answer in `__answered`. An order a test needs is held, never timed
+(§ 5): `__hold(match)` keeps the requests it matches off the wire —
+`__quiet()` does not wait for them — and `__release()` issues them to the real
+route. One never released, or a `match` that throws, fails the run; a held
+request the page aborted fails when released, not at once as in a browser.
+The page's own arithmetic on analytic numbers (a unit conversion, a layout
+rule) needs no server and is tested as it is.
 
 > **It is the harness to use, not the harness in use.** Measured 2026-11-07,
 > after 2.67.9 moved the page tests onto it: of the **31** `*_js.py` files,

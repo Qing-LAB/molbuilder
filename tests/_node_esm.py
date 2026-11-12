@@ -78,7 +78,16 @@ def served(base: str) -> str:
     turn.  The body is handed over as a browser's is: the page's abort,
     until the page has read it, makes the read fail with the runtime's own
     ``AbortError``; an abort while the answer is still coming makes the
-    request fail with it (node's ``fetch`` honours the signal)."""
+    request fail with it (node's ``fetch`` honours the signal).
+
+    AN ORDER IS HELD, NEVER TIMED (`process/testing.md` § 5):
+    ``__hold(match)`` keeps each request ``match(call)`` accepts -- ``call``
+    as ``__calls`` keeps it -- off the wire, so ``__quiet()`` does not wait
+    for it; ``__release()`` issues what it held, in the order the page made
+    it, to the real route, and holds no more.  A held request the page
+    aborted fails when it is released (node's ``fetch`` honours the
+    signal) -- not at once, as a browser's would; one never released, or a
+    ``match`` that throws, fails the run, never dropped unsaid."""
     return (
         "globalThis.__calls = [];\n"
         "globalThis.__answered = [];\n"
@@ -93,6 +102,19 @@ def served(base: str) -> str:
         f"  const __served = {json.dumps(base)};\n"
         "  const __fetch = globalThis.fetch;\n"
         "  const __noBody = [101, 103, 204, 205, 304];\n"
+        "  let __holding = null;\n"
+        "  const __parked = [];\n"
+        "  globalThis.__hold = (match) => { __holding = match; };\n"
+        "  globalThis.__release = () => {\n"
+        "    __holding = null;\n"
+        "    __parked.splice(0).forEach((go) => go());\n"
+        "  };\n"
+        "  process.on('beforeExit', () => {\n"
+        "    if (!__parked.length) return;\n"
+        "    console.error('served: ' + __parked.length\n"
+        "                  + ' request(s) held and never released');\n"
+        "    process.exitCode = 1;\n"
+        "  });\n"
         "  globalThis.fetch = async (url, opts = {}) => {\n"
         "    let body = null;\n"
         "    try { body = opts.body ? JSON.parse(opts.body) : null; }\n"
@@ -100,6 +122,14 @@ def served(base: str) -> str:
         "    globalThis.__calls.push({ url: String(url),\n"
         "                              method: opts.method || 'GET', body,\n"
         "                              init: opts });\n"
+        "    const __call = globalThis.__calls[globalThis.__calls.length - 1];\n"
+        "    let __isHeld = false;\n"
+        "    try { __isHeld = Boolean(__holding && __holding(__call)); }\n"
+        "    catch (e) {\n"
+        "      console.error('served: the hold\\'s match threw: ' + e);\n"
+        "      process.exitCode = 1;\n"
+        "    }\n"
+        "    if (__isHeld) await new Promise((go) => __parked.push(go));\n"
         "    globalThis.__inflight++;\n"
         "    try {\n"
         "      const r = await __fetch(new URL(String(url), __served), opts);\n"

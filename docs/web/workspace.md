@@ -399,12 +399,16 @@ after the edit finds it.
 
 ## 10. Test map
 
-- `test_workspace_tag_isolation.py` — a missing tag and a `:draft` one
-  refused (one example of each clause of the one rule) + two tags stay two slots,
-  their points and their drafts; each browser tab its own (the same tab
-  reloaded finds its work, another finds none and changes none); the tail
-  delete finishes before the next point is written, and an edit's draft never
-  waits behind it.
+- `test_workspace_tag_isolation.py` — against the real storage routes
+  (`served`), read back through the calls of § 5: a missing tag and a `:draft`
+  one refused (one example of each clause of the one rule) + two tags stay two
+  slots, their points and their drafts; each browser tab its own (the same tab
+  reloaded finds its work, another finds none and changes none); the two
+  ordering rules of § 9.2, each with a request held — the later of two writes
+  to one file, a point's or the draft's, is what stays; the tail delete
+  finishes before the next point is written — and an edit's draft never waits
+  behind the delete; MolView's
+  save and edit, its molecule loaded by the real load route.
 - `test_workspace_storage_api.py` — the server `/api/workspace-storage/*` routes.
 - `test_molview_model.py` / `test_molview_stores_history.py` — restore-at-mount
   through the real model (`load(0)` adopts; a restored session still receives
