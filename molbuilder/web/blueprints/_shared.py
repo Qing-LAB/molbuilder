@@ -441,8 +441,7 @@ def catalogue_to_form_schema(engine: Optional[str], id_prefix: str,
     # The form serves ONE calculation kind (`template.md` § 6.3's sibling
     # rule): an item another kind owns stays out by its own declaration.
     # The vibration form is the same renderer over the same catalogue.
-    items = [it for it in items
-             if not it.calculations or calculation in it.calculations]
+    items = [it for it in items if it.carried_by(calculation)]
     # A ROLE ITEM IS NOT A FORM FIELD (`template.md` § 6.4, ruled
     # 2026-09-16): "offering any of these presents a choice with exactly one
     # correct answer, and a person who changed it would not be tuning the
@@ -466,11 +465,12 @@ def catalogue_to_form_schema(engine: Optional[str], id_prefix: str,
         echoed = _T.role_answers(engine, calculation, rung)
     else:
         echoed = _T.fixed_on_every_rung(engine, calculation)
-    items = [it for it in items
-             if calculation not in it.role or it.name in echoed]
+    fixed = _T.fixed_by_role(engine, calculation)
+    items = [it for it in items if it.name not in fixed or it.name in echoed]
     if surface == "shared":
+        binding = _T.shared_by_every_stage(engine, calculation)
         items = [it for it in items
-                 if calculation in it.shared
+                 if it.name in binding
                  and (it.group != "setup" or it.name in asks)]
     elif surface == "rung":
         # A RUNG'S TAB OFFERS WHAT A STAGE'S OVERRIDES MAY HOLD -- the one

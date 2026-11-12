@@ -1712,7 +1712,9 @@ later step in the workflow fills it, or the engine's own default applies.
 rung's `role`, the third, 2026-09-16 — below)*.
 `allocation` marks an item the **scheduler** answers; `citation` marks one a
 **cited run** answers. `select(t, allocation=True)` / `select(t, citation=True)`
-are how a layer asks which is which instead of carrying its own list of names.
+are how a layer asks which is which instead of carrying its own list of names
+— and `select(t, citation="transport")` which a transport calculation's cited
+run answers, since the marker names kinds (§ 8.0).
 
 **But their STATES differ, and that is the 2026-09-16 correction.**
 
@@ -2218,9 +2220,22 @@ it*. The § 8 table above is then a table of **calls**, not of bespoke code:
 > and the same is true of `category` and `read_by`. This is stated because it
 > was not: `read_by` accepted a single name only until 2026-08-14, so
 > `read_by=("wrapper",)` — the same request written as a sequence — matched
-> nothing and returned an **empty list rather than a refusal**. `engine` is the
-> one exception and stays scalar: a template either serves an engine or does
-> not, so asking about two at once is not a filter but a different question.
+> nothing and returned an **empty list rather than a refusal**. `engine` and
+> `calculation` are the exceptions and stay scalar: a template either serves an
+> engine or does not, and a calculation is one kind, so asking about two at
+> once is not a filter but a different question — refused, an engine the
+> template does not serve and a calculation given as several kinds alike.
+
+> **A kind's marker is asked yes or no, or of a kind.** `citation`, `role` and
+> `shared` each name the kinds they hold for (§ 6.4), so `True` / `False` asks
+> whether the marker names some kind, and a kind — or several — whether it
+> names that one: `select(t, role="transport")` is what a transport
+> calculation's rungs fix, `select(t, shared="vibration")` what binds every
+> stage of a vibration. `calculation` asks whether a kind carries the item —
+> its `calculations` names the kind, or names none (§ 6.3) — one answer,
+> `Item.carried_by`, which every reader of a single item asks too. No layer
+> filters the catalogue by a marker's kinds by hand; asking one item whether
+> its marker names a kind is the marker's own list, read as it is.
 
 | the reader | the call |
 |---|---|
@@ -2229,6 +2244,7 @@ it*. The § 8 table above is then a table of **calls**, not of bespoke code:
 | the deck writer | `select(t, kind=("engine", "deck"), engine=e)` |
 | the wrapper writer | `select(t, kind="wrapper", engine=e)` + `select(t, read_by="wrapper", engine=e)` |
 | a benchmark | `select(t, category="execution", engine=e)` |
+| what a kind's rungs fix, what binds its stages | `select(t, engine=e, role=kind)`, `select(t, engine=e, shared=kind)` |
 
 **Asking for one item is the same function.** `one(t, "mesh_cutoff",
 engine="pyscf")` returns `None` — the item declares `engines = ["siesta"]`, so

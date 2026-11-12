@@ -5251,8 +5251,9 @@ result inherits it. Both refusal doors then read one declaration.
 
 The narrowing is the framework's own: `template_with_values(cfg,
 engine="siesta", calculation="transport")` runs `select(parsed,
-engine="siesta")` and then keeps an item when `not it.calculations or
-"transport" in it.calculations`. Tagging the 9 relaxation rows is what makes the
+engine="siesta", calculation="transport")`, which keeps an item a transport
+calculation carries (`Item.carried_by`: its `calculations` names transport, or
+names none). Tagging the 9 relaxation rows is what makes the
 subtraction happen; every other shared item comes along because it genuinely
 applies.
 

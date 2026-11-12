@@ -13,15 +13,18 @@ it belongs to. A wrong-answerer message is the whole cost of not having the
 marker — *"the scheduler answers it"* over a basis set sends a reader to the
 queue configuration.
 
-These run on a synthetic config class, not on `SiestaConfig`: the rule is the
-framework's and must hold before any engine adopts it -- all but the reading of
-a template into a config, which is an engine's: a config is an engine's when
-its record names its class (`engine_table.engine_of_config`), so that test
-reads into `SiestaConfig` from the catalogue's own item.
+The marker's own rule runs on items written for the test: the rule is the
+framework's and must hold before any engine adopts it.  What reads a config
+from a template reads into `SiestaConfig` from the catalogue's own item -- a
+config is an engine's when its record names its class
+(`engine_table.engine_of_config`) -- and what the catalogue answers is asked
+of the catalogue itself.
 """
 from __future__ import annotations
 
 import dataclasses
+
+import pytest
 
 
 from molbuilder import template as T
@@ -143,9 +146,44 @@ def test_what_a_citation_takes_is_read_back():
         "add each to RECORDED_FIELDS, SCF_RECORD_KEYS or K_MESH_RECORD_KEYS")
 
 
-def test_select_can_ask_which_items_the_citation_answers():
-    """So `prep` asks the template instead of carrying its own name list."""
-    items = [_decl(n) for n in ("mesh", "basis", "ranks")]
-    t = T.read_template(T._emit(items, engines=("siesta",)))
-    assert [i.name for i in T.select(t, citation=True)] == ["basis"]
-    assert [i.name for i in T.select(t, citation=False)] == ["mesh", "ranks"]
+#: WHAT A KIND'S MARKER IS ASKED (`engines/template.md` § 8.0): yes or no --
+#: whether it names some kind; a kind, or several -- whether it names one of
+#: them.
+_ASKED = [("citation", True), ("citation", False), ("citation", "transport"),
+          ("role", True), ("role", False), ("role", "transport"),
+          ("role", "optimization"), ("shared", True), ("shared", "transport"),
+          ("shared", "vibration"), ("shared", "optimization"),
+          ("shared", ("vibration", "transport"))]
+
+
+@pytest.mark.parametrize("engine", ["siesta", "pyscf"])
+@pytest.mark.parametrize("marker, asked", _ASKED, ids=[
+    f"{m}={a if isinstance(a, (bool, str)) else '+'.join(a)}"
+    for m, a in _ASKED])
+def test_select_asks_a_kinds_marker_of_some_kind_or_of_one(engine, marker,
+                                                            asked):
+    """`engines/template.md` § 6.4, § 8.0: `citation`, `role` and `shared`
+    each name the kinds they hold for, and `select` asks one of them yes or
+    no -- whether it names some kind -- or of one kind, so a layer asks the
+    catalogue instead of carrying its own name list or its own test.  THE
+    SILENT FAILURE: a kind read as a yes -- `role="optimization"` answered
+    with the transport rung's own items too."""
+    cat = T.catalogue()
+    got = {i.name for i in T.select(cat, engine=engine, **{marker: asked})}
+    kinds = (asked,) if isinstance(asked, str) else asked
+    want = {i.name for i in T.select(cat, engine=engine)
+            if (bool(getattr(i, marker)) is asked if isinstance(asked, bool)
+                else any(k in getattr(i, marker) for k in kinds))}
+    assert got == want, (sorted(got - want), sorted(want - got))
+
+
+def test_select_refuses_several_kinds_asked_as_one_calculation():
+    """`engines/template.md` § 8.0: a calculation is one kind, so `select`
+    refuses several, as it refuses an engine the template does not serve --
+    *an absence and a refusal must never return the same value*.  THE SILENT
+    FAILURE: the items every kind carries, answered as though no other item
+    matched."""
+    with pytest.raises(ValueError, match="a calculation is one kind"):
+        T.select(T.catalogue(), engine="siesta",
+                 calculation=("vibration", "transport"))
+

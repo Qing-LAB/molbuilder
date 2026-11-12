@@ -1120,19 +1120,17 @@ def _render_sections(spec: "DeckSpec", cfg, *, verbose: bool = True,
             # `WriteMDhistory` and `WriteMDXmol` into a single-point NEGF
             # warm-up that has no trajectory to write.
             #
-            # An untagged row belongs to every kind, which is why the guard
-            # tests for a non-empty declaration first; every spec names its
-            # kind (`DeckSpec.calculation`, no default).
+            # An untagged row belongs to every kind (`Item.carried_by`);
+            # every spec names its kind (`DeckSpec.calculation`, no default).
             _decl = param.declaration
-            _kinds = tuple(getattr(_decl, "calculations", ()) or ())
-            if _kinds and spec.calculation not in _kinds:
+            if param.known and not _decl.carried_by(spec.calculation):
                 other_kind.append(name)
                 continue
             # ...and a ROLE item is written like any other: its value in the
             # config IS the rung's own answer, laid on last by `resolve`
             # (`engines/template.md` § 6.4), so the note says it is fixed
             # and nothing else differs.
-            fixed = spec.calculation in tuple(getattr(_decl, "role", ()) or ())
+            fixed = param.known and spec.calculation in _decl.role
             # EVERY ENGINE HOOK IS CALLED THROUGH THE BOUNDARY
             # (`script-preparation.md` § 4.5).  This walk is a walk over the
             # engine's functions, so an exception with no owner on it is the

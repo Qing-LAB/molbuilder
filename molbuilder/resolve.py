@@ -541,8 +541,7 @@ def resolve(template_text: str, task, *,
     every_item = {f.name: _blank_words(_items.get(f.name))
                   for f in dataclasses.fields(config_cls)
                   if _items.get(f.name) is None
-                  or not _items[f.name].calculations
-                  or _kind in _items[f.name].calculations}
+                  or _items[f.name].carried_by(_kind)}
 
     if stage_obj.overrides:
         # EVERY OVERRIDE MAY STAND ON ITS RUNG -- the setting door, asked in

@@ -126,9 +126,8 @@ def citation_answers(cited) -> CitationAnswers:
         # name.
         return CitationAnswers(values={}, source="none", source_name="")
     taken = [it.name for it in _T.select(_T.catalogue(), engine="siesta",
-                                         citation=True)
-             if "transport" in it.citation
-             and it.name not in K_MESH_RECORD_KEYS]
+                                         citation="transport")
+             if it.name not in K_MESH_RECORD_KEYS]
     kw: Dict[str, Any] = {k: contract[k] for k in taken
                           if contract.get(k) is not None}
     if contract.get("kgrid"):
@@ -281,8 +280,8 @@ def transport_template_text(answers: CitationAnswers, *, label: str,
                                                blank=blank, **chosen)
     unanswered = sorted(
         it.name for it in _T.select(_T.catalogue(), engine="siesta",
-                                    citation=True)
-        if "transport" in it.citation and it.name not in sources)
+                                    citation="transport")
+        if it.name not in sources)
     # A CITED RUN'S PSEUDOPOTENTIALS TRAVEL WITH IT (`asked_of_the_person`):
     # the citation answers the directory, so no surface says it is nobody's.
     if cited.source == "deck":

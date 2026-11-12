@@ -561,7 +561,8 @@ class Item:
     #: them.  Only for the transport kind does the citation.  So the item
     #: says *for which kinds*, and absence means *never*.
     #:
-    #: Ask it directly, or filter for it: ``select(t, citation=True)``.
+    #: Ask it directly, or filter for it: ``select(t, citation=True)``, or
+    #: for one kind, ``select(t, citation="transport")``.
     citation: Tuple[str, ...] = ()
 
     #: **NOBODY IS ASKED: THE RUNG FIXES IT** — the third answerer on
@@ -587,7 +588,8 @@ class Item:
     #: kind, and no door may set it; each rung's answer
     #: (:func:`role_answers`) is put into the rung's config by `resolve`.
     #:
-    #: Ask it directly, or filter for it: ``select(t, role=True)``.
+    #: Ask it directly, or filter for it: ``select(t, role=True)``, or for
+    #: one kind, ``select(t, role="transport")``.
     role: Tuple[str, ...] = ()
     #: **A RUNG WHOSE ROLE ANSWERS OTHERWISE**, as ``(rung, value)`` pairs:
     #: every other rung of a `role` kind answers ``value``.  The device's
@@ -627,12 +629,14 @@ class Item:
     #: (`science/chemistry-correctness.md` § 2a, ES1) -- every rung's warm
     #: files are a density for one electronic state.
     #:
-    #: Three readers ask this one declaration: the shared panel (which shows
-    #: these and nothing else), the per-rung form (which never offers them)
-    #: and `prep` (which refuses a stage override naming one).  A list of
+    #: Its readers ask this one declaration -- the shared panel (which shows
+    #: these and nothing else), the per-rung form (which never offers them),
+    #: `prep` and the describe door (which refuse a stage override naming
+    #: one), Task setup's list of shared settings.  A list of
     #: CALCULATION KINDS, like `citation`; absence means *never*.
     #:
-    #: Ask it directly, or filter for it: ``select(t, shared=True)``.
+    #: Ask it directly, or filter for it: ``select(t, shared=True)``, or
+    #: for one kind, ``select(t, shared="transport")``.
     shared: Tuple[str, ...] = ()
     #: **WHY THE STAGES IT BINDS HOLD ONE VALUE**, in the sentence a refusal
     #: of one stage's own says -- on a `shared` item whose reason is its own
@@ -690,6 +694,12 @@ class Item:
     #: digits, hyphens, underscores; no dots"*.
     pattern: str = ""
 
+    def carried_by(self, kind: str) -> bool:
+        """Whether a calculation of ``kind`` carries this item: its
+        `calculations` names the kind, or it names none -- every kind
+        (§ 6.3).  The one answer; ``select(calculation=)`` asks it."""
+        return not self.calculations or kind in self.calculations
+
     def __post_init__(self) -> None:
         if self.kind not in KINDS:
             _refuse(f"kind {self.kind!r} is not one of {', '.join(KINDS)}",
@@ -745,8 +755,8 @@ class Item:
         # kind and states no `calculations`; its names are held to every
         # kind's roles.)
         if self.stages:
-            _with = [k for k in (self.calculations or _kinds.kinds())
-                     if _roles_of(k)]
+            _with = [k for k in _kinds.kinds()
+                     if self.carried_by(k) and _roles_of(k)]
             _known = {r for k in _with for r in _roles_of(k)}
             for _s in self.stages:
                 if _s not in _known:
@@ -1172,8 +1182,8 @@ def catalogue() -> "Template":
             if other is None or any(
                     other.engines and e not in other.engines
                     for e in engines_here) or any(
-                    other.calculations and k not in other.calculations
-                    for k in (it.calculations or _kinds.kinds())):
+                    it.carried_by(k) and not other.carried_by(k)
+                    for k in _kinds.kinds()):
                 _refuse(f"active_when names {other_name!r}, which is not an "
                         f"item of every engine and kind this one serves", where=it.name)
             if values == ACTIVE_WHEN_SET:
@@ -2109,6 +2119,15 @@ def _as_tuple(v) -> Tuple[str, ...]:
     return (v,) if isinstance(v, str) else tuple(v)
 
 
+def _names(kinds: Tuple[str, ...], asked) -> bool:
+    """Whether a per-kind marker naming ``kinds`` answers ``asked`` -- a
+    yes / no: whether it names some kind; a kind, or several: whether it
+    names one of them (:func:`select`)."""
+    if isinstance(asked, bool):
+        return bool(kinds) is asked
+    return bool(set(_as_tuple(asked)) & set(kinds))
+
+
 def _check_engine(t: "Template", engine) -> None:
     """Refuse an engine this template does not serve (§ 3).
 
@@ -2129,13 +2148,14 @@ def _check_engine(t: "Template", engine) -> None:
 STATE_ITEMS = ("net_charge", "spin_treatment", "unpaired_electrons", "method")
 
 
-def shared_by_every_stage(engine: str, kind: str) -> frozenset:
+def shared_by_every_stage(engine: Optional[str], kind: str) -> frozenset:
     """The items that bind every stage of a ``kind`` calculation -- the
     catalogue's `shared` (§ 6.4), asked rather than listed.  A stage override
     naming one is refused (:func:`why_shared` says why), and the Task setup
-    table offers none of them as a column."""
-    return frozenset(it.name for it in select(catalogue(), engine=engine)
-                     if kind in it.shared)
+    table offers none of them as a column.  ``engine`` ``None``: every
+    engine's, for a surface drawn before the engine is chosen."""
+    return frozenset(it.name for it in select(catalogue(), engine=engine,
+                                              shared=kind))
 
 
 def run_settings(engine: str) -> frozenset:
@@ -2272,7 +2292,7 @@ def reads(item: "Item", engine: str, kind: str, stage: Optional[str], *,
     vibration's phase)?  Not when the kind does not carry it
     (`calculations`); on a kind without roles, always; else when its
     ``stages`` names one of the rung's roles, or names none (§ 6.4)."""
-    if item.calculations and kind not in item.calculations:
+    if not item.carried_by(kind):
         return False
     roles = (role,) if role is not None else stage_roles(engine, kind, stage)
     return (roles is None or not item.stages
@@ -2286,7 +2306,7 @@ def why_unread(name: str, engine: str, kind: str, stage: str, *,
     ``then``: an override is set on a rung that reads it, a run-card value
     removed from the card it is stated on."""
     it = one(catalogue(), name, engine=engine)
-    if it.calculations and kind not in it.calculations:
+    if not it.carried_by(kind):
         return (f"which {_kinds.kind(kind).with_article} does not carry -- no stage of it reads "
                 f"it, so the value would change nothing")
     roles = stage_roles(engine, kind, stage) or (stage,)
@@ -2300,13 +2320,15 @@ def why_unread(name: str, engine: str, kind: str, stage: str, *,
             f"{rung} -- {then}")
 
 
-def fixed_by_role(engine: str, kind: str) -> frozenset:
+def fixed_by_role(engine: Optional[str], kind: str) -> frozenset:
     """The items the rungs of a ``kind`` calculation fix -- the catalogue's
     `role` (§ 6.4), asked rather than listed.  No stage override, pin, sweep
     axis or template value may set one (:func:`why_role` says why);
-    :func:`role_answers` is what each rung's config holds instead."""
-    return frozenset(it.name for it in select(catalogue(), engine=engine)
-                     if kind in it.role)
+    :func:`role_answers` is what each rung's config holds instead.
+    ``engine`` ``None``: every engine's, for a surface drawn before the
+    engine is chosen."""
+    return frozenset(it.name for it in select(catalogue(), engine=engine,
+                                              role=kind))
 
 
 def role_answers(engine: str, kind: str,
@@ -2323,10 +2345,8 @@ def role_answers(engine: str, kind: str,
     """
     out: Dict[str, Any] = {}
     # ...by the rung's ROLES (`stage_roles`), on transport its name.
-    for it in select(catalogue(), engine=engine,
+    for it in select(catalogue(), engine=engine, role=kind,
                      stages=stage_roles(engine, kind, stage)):
-        if kind not in it.role:
-            continue
         if stage is None and it.stages:
             continue                  # some rungs' only -- no rung was named
         answer = dict(it.role_values).get(stage, it.value)
@@ -2350,9 +2370,8 @@ def fixed_answers(engine: str, kind: str) -> Dict[str, Any]:
     it equals it -- what a template written before 2026-09-29 states for
     SIESTA's per-step forces and coordinates -- and refuses any other."""
     return {it.name: it.value
-            for it in select(catalogue(), engine=engine)
-            if kind in it.role and not it.role_values
-            and not it.per_point_from}
+            for it in select(catalogue(), engine=engine, role=kind)
+            if not it.role_values and not it.per_point_from}
 
 
 def fixed_on_every_rung(engine: str, kind: str) -> Dict[str, Any]:
@@ -2680,7 +2699,7 @@ def why_not_in(item: "Item", home: str, *, engine: str, kind: str,
         raise ValueError(f"no home {home!r} -- a setting's homes are "
                          f"{', '.join(HOMES)}")
     name, run = item.name, is_run_setting(item)
-    if item.calculations and kind not in item.calculations:
+    if not item.carried_by(kind):
         return (f", which {_kinds.kind(kind).with_article} does not carry -- no stage of it "
                 f"reads it, so the value would change nothing")
     if home == "flag" and not item.allocation:
@@ -2942,6 +2961,11 @@ def select(t: "Template", *, category=None, engine=None,
     things.
     """
     _check_engine(t, engine)
+    if calculation is not None and not isinstance(calculation, str):
+        raise ValueError(
+            f"a calculation is one kind, not {calculation!r}: asking for "
+            f"several at once would answer with only the items every kind "
+            f"carries, read as 'no other items matched'.")
     want_cat = _as_tuple(category)
     want_kind = _as_tuple(kind)
     # ``read_by`` filters the same way its siblings do -- any-of, scalar or
@@ -2963,15 +2987,17 @@ def select(t: "Template", *, category=None, engine=None,
         # one API for *"which settings does the scheduler answer?"*.
         if allocation is not None and bool(it.allocation) is not bool(allocation):
             continue
-        # THE citation-answered filter -- the one API for *"which settings
-        # does the cited run answer?"*, so `prep` asks the template rather
-        # than carrying its own list of field names.
-        if citation is not None and bool(it.citation) is not bool(citation):
-            continue  # `True` = some kind's citation answers it
-        if role is not None and bool(it.role) is not bool(role):
-            continue  # `True` = some kind's stage role answers it
-        if shared is not None and bool(it.shared) is not bool(shared):
-            continue  # `True` = binds every rung of some kind
+        # A KIND'S MARKERS (§ 6.4), the one API for *"which settings does a
+        # cited run answer, a rung fix, every stage share?"*, so no layer
+        # carries its own list of names: `True` / `False` -- whether the
+        # marker names some kind; a kind, or several -- whether it names one
+        # of them.
+        if citation is not None and not _names(it.citation, citation):
+            continue
+        if role is not None and not _names(it.role, role):
+            continue
+        if shared is not None and not _names(it.shared, shared):
+            continue
         if stages is not None:
             # A RUNG'S ROLES (`stage_roles`) -- one, or a SIESTA vibration
             # stage's three -- not a boolean: "does this rung read this
@@ -2980,9 +3006,8 @@ def select(t: "Template", *, category=None, engine=None,
             if it.stages and not (set(_as_tuple(stages)) & set(it.stages)):
                 continue
         # A CALCULATION KIND, read as the stage is: "does this item apply to
-        # it?".  An item declaring no calculations applies to every kind.
-        if (calculation is not None and it.calculations
-                and calculation not in it.calculations):
+        # it?" (:meth:`Item.carried_by`).
+        if calculation is not None and not it.carried_by(calculation):
             continue
         out.append(it)
 

@@ -1858,9 +1858,7 @@ def _folder_template(folder, label, *, found=None, task=None) -> dict:
         from molbuilder.template import catalogue
         mine = {it.name: it for it in select(tmpl)}
         for it in select(catalogue(), engine=engine, calculation=kind,
-                         shared=True):
-            if kind not in it.shared:
-                continue
+                         shared=kind):
             own = mine.get(it.name)
             shared.append({
                 "name": it.name, "label": it.label or it.name,
