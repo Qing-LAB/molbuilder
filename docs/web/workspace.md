@@ -399,8 +399,8 @@ after the edit finds it.
 
 ## 10. Test map
 
-- `test_workspace_tag_isolation.py` — the front-door surface (a missing,
-  empty or `:draft` tag refused on all five calls) + two tags stay two slots,
+- `test_workspace_tag_isolation.py` — a missing tag and a `:draft` one
+  refused (one example of each clause of the one rule) + two tags stay two slots,
   their points and their drafts; each browser tab its own (the same tab
   reloaded finds its work, another finds none and changes none); the tail
   delete finishes before the next point is written, and an edit's draft never

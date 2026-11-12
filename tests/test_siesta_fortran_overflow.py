@@ -91,22 +91,21 @@ class TestParseFortranFloat:
 
 
 # --------------------------------------------------------------------- #
-#  JSON-safety guard on the trajectory_result_to_legacy_dict adapter     #
+#  The one sanitiser, `persist.json_safe` (`job-contracts.md` § 6.1)    #
 #                                                                       #
 #  The 2026-06-14 follow-up BLOCKER: parser fix emitted NaN in the      #
 #  scf_history dict; Python's json.dumps writes the literal ``NaN``     #
 #  token (out-of-spec for JSON); browser's r.json() rejects it,         #
-#  trajectory plot renders blank.  Fix: convert NaN -> None in the     #
-#  adapter so the wire payload is strict-spec.                          #
+#  trajectory plot renders blank.  Fix: NaN -> None by one rule.        #
 # --------------------------------------------------------------------- #
 
 
-class TestTrajectoryDictNanSafe:
-    """The adapter -> browser boundary: the one converter the trajectory
-    route and the command line's ``watch`` verbs turn a parser's result
-    into the viewer's dict with, so sanitising NaN here covers both the
-    SIESTA overflow case AND any future numeric path that legitimately
-    produces NaN.
+class TestJsonSafe:
+    """`persist.json_safe`, the one sanitiser the viewer's dict goes
+    through on its way to the browser (the trajectory route and the command
+    line's ``watch`` verbs): a NaN or an infinity -- the SIESTA overflow case
+    and any numeric path that legitimately produces one -- is null on the
+    wire, so the browser's strict JSON reads the answer.
     """
 
     def test_json_safe_pure_helper(self):
@@ -178,67 +177,3 @@ class TestTrajectoryDictNanSafe:
         cleaned = json_safe(arr)
         assert cleaned == [[1.0, None], [None, 3.0]]
         json.dumps(cleaned, allow_nan=False)   # must not raise
-
-    def test_overflow_cycle_serialises_as_strict_json(self):
-        """End-to-end: build a one-frame trajectory with a NaN in
-        scf_history (mirroring the user's BDT case), run through
-        the adapter, dump as STRICT JSON (allow_nan=False).  Must
-        not raise; the round-tripped dHmax must be ``null``."""
-        import json
-        import numpy as np
-        from molbuilder.frame import Frame
-        from molbuilder.structure import Structure
-        from molbuilder.parse.engines._helpers import (
-            trajectory_result_to_legacy_dict)
-        from molbuilder.parse.types import ParseResult, TrajectoryResult
-
-        struct = Structure(
-            elements=["H"],
-            positions=np.array([[0.0, 0.0, 0.0]]),
-        )
-        scf = [
-            {"cycle": 1, "energy": -1.0, "dDmax": 0.5, "dHmax": 0.1},
-            {"cycle": 2, "energy": -2.0, "dDmax": 999.0,
-             "dHmax": float("nan")},
-        ]
-        f = Frame(structure=struct, step_index=0,
-                  energy=-2.0, scf_history=scf)
-        d = trajectory_result_to_legacy_dict(TrajectoryResult(
-            **ParseResult.envelope("siesta"), frames=[f],
-            source_format="siesta"))
-        # Strict JSON: pre-fix this raised "Out of range float
-        # values are not JSON compliant: nan".
-        payload = json.dumps(d, allow_nan=False)
-        rt = json.loads(payload)
-        cycle2 = rt["scf_history"][0][1]
-        assert cycle2["cycle"] == 2
-        assert cycle2["dHmax"] is None, (
-            f"overflowed dHmax must be null on the wire; got "
-            f"{cycle2['dHmax']!r}.  If you see NaN here the "
-            f"adapter regressed."
-        )
-
-    def test_adapter_does_not_mutate_input(self):
-        """Adapter must produce a new dict tree, not mutate the
-        result it was given (callers might reuse it)."""
-        import math
-        import numpy as np
-        from molbuilder.frame import Frame
-        from molbuilder.structure import Structure
-        from molbuilder.parse.engines._helpers import (
-            trajectory_result_to_legacy_dict)
-        from molbuilder.parse.types import ParseResult, TrajectoryResult
-
-        struct = Structure(
-            elements=["H"],
-            positions=np.array([[0.0, 0.0, 0.0]]),
-        )
-        scf = [{"cycle": 2, "energy": -2.0, "dDmax": 999.0,
-                "dHmax": float("nan")}]
-        f = Frame(structure=struct, step_index=0,
-                  energy=-2.0, scf_history=scf)
-        _ = trajectory_result_to_legacy_dict(TrajectoryResult(
-            **ParseResult.envelope("siesta"), frames=[f],
-            source_format="siesta"))
-        # Source trajectory still holds NaN -- we copied, not mutated.
-        assert math.isnan(f.scf_history[0]["dHmax"])

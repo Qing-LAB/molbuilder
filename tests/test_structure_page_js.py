@@ -492,43 +492,17 @@ def test_the_page_knows_whether_the_view_was_edited_since_written(
     assert out["isDirty"] is edited, (road, out)
 
 
-def test_a_note_read_back_after_a_reload_reaches_its_readers():
-    """After a reload the page reads its note back (where the structure was
-    saved, whether it was edited since), and the readout painted before that
-    must hear it -- else it says "Not saved yet" over a structure saved before
-    the reload, as it did through 2.68.1 (tabs.md § 6).
-
-    MUTATION THIS MUST FAIL AGAINST: `restorePanelNote` setting the note
-    without telling the page's own channel."""
-    out = _run_node('''
-        const canvas = _mkFakeCanvas({ empty: false, dirty: false });
-        page._bind(canvas, _mkFakeModal(false));
-        const root = (typeof window !== "undefined") ? window : globalThis;
-        root.molbuilder = root.molbuilder || {};
-        root.molbuilder.workspace = {
-            persistDraft: () => true,
-            readDraft: async () => ({ v: 1, loadedFrom: null,
-                                      lastSavedTo: "/p/x.xyz", edited: true }),
-        };
-        const heard = [];
-        page.onPanelChange((note) => heard.push(note));
-        await page.restorePanelNote();
-        console.log(JSON.stringify({ heard: heard,
-            snap: page.getCanvasSnapshot().lastSaveTo }));
-    ''')
-    assert out["snap"] == "/p/x.xyz", out
-    assert out["heard"] == [{"loadedFrom": None, "lastSavedTo": "/p/x.xyz",
-                             "edited": True}], out
-
-
-
 def test_the_note_survives_a_reload_through_what_was_stored():
     """What the page wrote is what it reads back: a save, an edit, then a
     fresh page over the same workspace says Unsaved with its target -- the
-    round trip through a store that returns what was stored (tabs.md § 6).
+    round trip through a store that returns what was stored (tabs.md § 6) --
+    and the readout painted before the note is read back hears it, else it
+    says "Not saved yet" over a structure saved before the reload, as it did
+    through 2.68.1.
 
-    MUTATION THIS MUST FAIL AGAINST: the note persisted without its
-    edited fact."""
+    MUTATIONS THIS MUST FAIL AGAINST: the note persisted without its edited
+    fact; `restorePanelNote` setting the note without telling the page's own
+    channel."""
     out = _run_node('''
         const root = (typeof window !== "undefined") ? window : globalThis;
         const store = new Map();
@@ -553,12 +527,17 @@ def test_the_note_survives_a_reload_through_what_was_stored():
         delete require.cache[MOD];
         const again = require(MOD);
         again._bind(canvas, _mkFakeModal(false));
+        const heard = [];
+        again.onPanelChange((note) => heard.push(note));
         await again.restorePanelNote();
         const s = again.getCanvasSnapshot();
         console.log(JSON.stringify({ isDirty: s.isDirty,
-                                     lastSaveTo: s.lastSaveTo }));
+                                     lastSaveTo: s.lastSaveTo,
+                                     heard: heard }));
     '''.replace("MODULE_PATH_FOR_RELOAD", json.dumps(str(MODULE.resolve()))))
-    assert out == {"isDirty": True, "lastSaveTo": "/p/x.xyz"}, out
+    assert (out["isDirty"], out["lastSaveTo"]) == (True, "/p/x.xyz"), out
+    assert [(n.get("lastSavedTo"), n.get("edited")) for n in out["heard"]] \
+        == [("/p/x.xyz", True)], out
 
 
 def test_the_viewers_own_export_to_the_project_is_a_save():

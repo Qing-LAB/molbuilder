@@ -37,8 +37,10 @@ _WRITES = re.compile(r"/api/workspace-storage/(write|prune)$")
 #: ``modify:ui``, written 400 ms after the structure, the selection or the
 #: ruler changed (`lib/molview/ui-context.js`), and the viewer's draft,
 #: written after a Save state's point (`lib/molview/history.js`).  The
-#: dispatcher sends its writes one after another, in the order asked, so the
-#: act's last one answered is every earlier one answered.
+#: dispatcher sends each workspace id's writes in the order asked -- a tag's
+#: draft an id of its own (`workspace.md` § 9.2) -- so the act's last save
+#: answered says only its own id's are: every save the page sent is counted
+#: answered before the row is read (`_counted`).
 _VIEW_LANE, _DRAFT = "-modify-ui-draft", "-modify-draft"
 
 

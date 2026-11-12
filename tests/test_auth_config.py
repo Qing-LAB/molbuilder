@@ -262,9 +262,8 @@ class TestTheConfigFileIsRefusedAtTheDoor:
     WHY THROUGH THE FILE, not `_normalise(dict)`.  `web/app.py:254` reads the
     config at startup and refuses to start on any failure -- *"Bad config is
     loud, not silent: refuse to start."*  `read_config` is the whole of that
-    validator: it finds the file, refuses invalid JSON, refuses a non-object
-    top level, runs the schema checks, and **re-raises naming WHICH FILE
-    refused**.
+    validator: it finds the file, refuses what does not read, runs the
+    schema checks, and **re-raises naming WHICH FILE refused**.
 
     `_normalise` with a hand-built dict is the middle step only, and the file
     step carries a RECORDED DEFECT: *"a malformed file used to refuse naming
@@ -275,12 +274,11 @@ class TestTheConfigFileIsRefusedAtTheDoor:
     owns `molbuilder.json` auth validation); `access-control.md` § 3.1.
     """
 
-    # (bad file contents, fragments the refusal must contain -- the record
-    # reader's words, `job-contracts.md` § 6.1: one JSON object)
+    # (bad file contents, fragments the refusal must contain -- the
+    # contract's words for a malformed file, `configuration.md` § 2.2:
+    # `<path>: invalid JSON (…)`)
     BAD = [
-        ('{"auth": {"providers": [', ["invalid JSON", "line"]),
-        ('[]', ["not a JSON object"]),
-        ('"a string"', ["not a JSON object"]),
+        ('{"auth": {"providers": [', ["invalid JSON"]),
     ]
 
     @pytest.mark.parametrize("text,must_say", BAD,
@@ -290,9 +288,11 @@ class TestTheConfigFileIsRefusedAtTheDoor:
         """A hand-edited `molbuilder.json` that is wrong is refused, and the
         refusal says BOTH what is wrong and which file it was.
 
-        Every row is a slip somebody makes editing JSON by hand: a truncated
-        file, and a top level that is not an object at all. Each must stop
-        startup rather than configure the server wrongly.
+        A slip somebody makes editing JSON by hand -- a truncated file --
+        must stop startup rather than configure the server wrongly; the
+        reader has one rule for a file that does not read, so one example of
+        a malformed file shows it (`process/testing.md` § 3b) -- an editor's
+        encoding is the next test's.
         """
         cfg = tmp_path / "molbuilder.json"
         cfg.write_text(text, encoding="utf-8")

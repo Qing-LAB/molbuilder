@@ -1903,6 +1903,35 @@ before it was fixed. Docs only — the code text the review found is 2.62.1's.
 | X-UI | with O-STATUS … O-KEYS | the describe-a-structure page built twice (optimization and Spectrum: the Inspect card, the load controller, the live check, the Send) — one partial and one module, as the chemistry card is; Task setup's own message severities; ~20 hand wrappers around the status writer while `status.writer` has no caller; the element builder copied seven times and a second shape four; the five generator panels' wiring five times; four cached loaders; the next step drawn twice; a second token set; the card look and the action row restated six times each; every page's head repeating the header's assets | the partials; `lib/status.js`; `lib/dom.js`; `panel-deps`; `tokens.css`, `page-shell.css` |
 | X-PLOT | with O-FIND | the bench and spectra charts re-setting the theme, the transport legends placed by hand; five behaviours for "Plotly is not loaded"; the read-only viewer's mount and its failure written six times; the data export: the kind table's for the terminal, a route per kind for the web, the browser's own CSV for a trajectory | `plot-theme`; `plot-box`; the viewer's handle; `kind_table.export_of` behind one route |
 
+## Found by the test audit of 2.69.25–2.69.33 (2026-11-11), by the release that owns each
+
+*(the user, 2026-11-11: "are you handcrafting tests again?", "how did you
+execute the test?", "use agent to review and discipline your tests", "i
+don't trust your memory": every test changed since 2.69.24 judged by a fresh
+reader against `process/testing.md` alone, its scope taken from git, the
+changelog's test claims checked against the code)*
+
+| id | where | finding | door |
+|---|---|---|---|
+| TA-1 | **closed 2.69.34** | `test_calculation_door`'s two `job-set.json` rows cut prep's own file by hand — no person edits it | retired |
+| TA-2 | **closed 2.69.34** | `test_auth_config`'s two non-object rows edited to the code's words | retired; the malformed file's one row asks `configuration.md` § 2.2's words |
+| TA-3 | **closed 2.69.34** | `test_persist`'s TypeError loop over argument mixes no caller passes | retired |
+| TA-4 | **closed 2.69.34** | the record reader's table on invented schemas | rewritten on the description `describe` writes, a plan falling through to the disk added |
+| TA-5, TA-6 | **owed: the workspace tests onto the live server** | `test_workspace_tag_isolation`'s nine tests answered by a server written in the test (seven through `_run`, two MolView round trips), every one waiting on time (`process/testing.md` § 4, § 5) | `served(base)` under `support.live_server.serve`, the real prune held, never timed |
+| TA-7 | **closed 2.69.34** | the workspace's tag-refusal table: three wrong tags on five calls | one example per clause of the one rule kept (`process/testing.md` § 3b): a missing tag and a `:draft` one (`workspace.md` § 4), each refused |
+| TA-8 | **the typed note closed 2.69.34; its store owed to 2.67.12** | a typed note read back on the structure page; the round trip's workspace a hand-made store | folded into the round trip, the page writing its own note; the store with TA-16 |
+| TA-9 | **2.67.12** | the sidebar busy-guard test on its own node start and a typed answer | `run_node` with `served(base)` |
+| TA-10 | **owed: an e2e on a real run's replay, then the retirement** | `test_in_progress_frames_stay_out_of_plots`'s typed frames (`process/testing.md` § 0, § 6: a run is made on the road) — no other test of the adapter's `in_progress` | `support.replay` through the trajectory route; the e2e written, then the typed tests retired (§ 3a.1's order) |
+| TA-11 | **closed 2.69.34** | the two strict-JSON adapter tests on a typed NaN history | retired; `persist.json_safe`'s own tests stay |
+| TA-12 | **closed 2.69.34** | two tests on a progress log cut mid-JSON (2.69.19's) | retired with their helper |
+| TA-13 | **closed 2.69.34** | the preview test on a typed structure handed to the writer | rewritten on the log prep seeds, read by the registry |
+| TA-14 | **closed 2.69.33** | the vibration ladder test compared the page with the server's composer | the contract's words again |
+| TA-15 | **closed 2.69.34** | `test_app_notifications_e2e`'s comment on the one queue | each workspace id's queue |
+| TA-16 | **2.67.12** | eight hand-made workspace stand-ins in five files (`test_molview_model`, `test_molview_mount`, `test_molview_stores_history`, `test_molview_ui_context`, `test_structure_page_js`) | the real `dispatcher.js` under `served(base)`, as TA-5 and TA-6 |
+| TA-17 | **closed 2.69.34** | false test claims in the changelog's 2.69.25, 2.69.26, 2.69.28 and 2.69.31 rows | corrected in place, each marked |
+| TA-18 | **the plan's** | `tools/verify_subsumption.py`'s coverage plug-in writes outside the test sandbox, and the suite's machine guard refuses it — the tool `process/testing.md` § 3b names for a subsumption verdict cannot run | the tool's coverage file in the run's own temp folder |
+| TA-19 | **left, found** | rows older than this session pin a reader's words where `job-contracts.md` § 6.1 states the condition (*text that is not UTF-8 … does not read*) and no refusal words: `test_calculation_door`'s *save it as UTF-8*, `test_auth_config`'s *not UTF-8* | the contract's: refused as not reading, the file named, a way out |
+
 ## Found by 2.69.14's work (2026-11-09)
 
 | id | where | finding | door |

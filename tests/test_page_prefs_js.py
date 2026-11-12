@@ -66,7 +66,7 @@ def test_a_preference_reads_back_under_the_one_prefix(lasting, kept_in):
 def test_an_empty_value_is_kept():
     """`runtime.md` § 3: `null` drops a value, "" is one.  THE SILENT
     FAILURE: an empty value read as nothing kept -- the sidebar's cleared
-    file falling back to another browser tab's pick, which
+    file falling back to the pick another page made, which
     `test_projects_state_busy_guard_js.py` asks of the selection itself."""
     out = _run("""
         prefs.write("current_file.results", "");

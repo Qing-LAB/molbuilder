@@ -331,31 +331,26 @@ def test_each_browser_tab_has_its_own_saved_work(same_tab, finds):
 
 
 # ---------------------------------------------------------------------------
-# One way in, and it does not read what it stores
+# One way in: a call names its own tag
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize("tag", ["undefined", '""', '"modify:draft"'],
-                         ids=["no tag", "an empty tag", "another tag's draft"])
-def test_a_call_without_its_own_tag_is_refused_rather_than_defaulted(tag):
-    """A default would be worse than an error: every untagged caller would land
-    in one shared place that looks exactly like a private one.  And a tag
-    ending in `:draft` names another tag's draft (`workspace.md` § 4), so it is
-    refused as a missing one is — on every call.
-    """
+@pytest.mark.parametrize("tag", ['""', '"modify:draft"'],
+                         ids=["no tag", "a tag ending in :draft"])
+def test_a_tag_that_is_not_one_of_its_own_is_refused(tag):
+    """`workspace.md` § 4: every call names its tag -- *a tag never ends in
+    `:draft` -- refused, as a missing tag is*.  THE SILENT FAILURES: a call
+    with no tag writing into one shared slot that looks exactly like a
+    private one; a tag ending in `:draft` writing its points into the id of
+    another tag's draft.  One example per clause of the one rule
+    (`process/testing.md` § 3b)."""
     out = _run(
         f"""
-        function refused(fn) {{ try {{ fn(); return false; }} catch (_) {{ return true; }} }}
-        console.log(JSON.stringify({{
-            persist:      refused(() => ws.persist({tag}, "x", 1)),
-            readState:    refused(() => ws.readState({tag}, 1)),
-            prune:        refused(() => ws.pruneStatesAbove({tag}, 1)),
-            persistDraft: refused(() => ws.persistDraft({tag}, "x")),
-            readDraft:    refused(() => ws.readDraft({tag})),
-        }}));
+        let refused = false;
+        try {{ ws.persist({tag}, "x", 0); }} catch (_) {{ refused = true; }}
+        console.log(JSON.stringify(refused));
         """
     )
-    for call, was_refused in out.items():
-        assert was_refused is True, f"{call} accepted {tag} as its tag"
+    assert out is True, f"{tag} was taken as a tag of its own"
 
 
 # ---------------------------------------------------------------------------

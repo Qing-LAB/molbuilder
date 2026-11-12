@@ -81,76 +81,79 @@ def test_write_json_roundtrips_and_is_pretty(tmp_path):
     assert persist.read_json(p) == obj    # lossless
 
 
-_RECORD = "molbuilder/x@1"
-
-
 def _saved_with_a_byte_order_mark(p):
     """An editor's save: a byte-order mark put first."""
     p.write_bytes(b"\xef\xbb\xbf" + p.read_bytes())
 
 
-@pytest.mark.parametrize("road", ["the disk", "a plan holding the file"])
-@pytest.mark.parametrize("value, damage, words", [
-    # (what the one writer writes, what an editor did to it, the refusal's
-    # words -- None: it reads)
-    ({"schema": _RECORD, "label": "α-helix"}, None, None),
-    ({"schema": _RECORD, "label": "α-helix"}, _saved_with_a_byte_order_mark,
-     None),
-    (["molbuilder/x@1"], None, "not a JSON object"),
-    ({"schema": "molbuilder/y@1"}, None, "schema mismatch"),
-], ids=["a record", "a record an editor saved", "a list",
-        "another artifact"])
+@pytest.mark.parametrize("road", ["the disk", "a plan holding the file",
+                                  "a plan that does not hold it"])
+@pytest.mark.parametrize("edited, schema, reads", [
+    # (what a person did to the description, the schema it is read as,
+    # whether it reads)
+    (None, "task", True),
+    (_saved_with_a_byte_order_mark, "task", True),
+    (None, "job-request", False),
+], ids=["as describe wrote it", "saved by an editor", "read as another record"])
 def test_a_record_reads_as_one_object_of_its_schema(
-        tmp_path, road, value, damage, words):
+        tmp_path, monkeypatch, road, edited, schema, reads):
     """`job-contracts.md` § 6.1: a record is read as one JSON object of its
     schema (`persist.read_object(path, schema=...)`), a byte-order mark an
-    editor put first read past (`persist.text_of`) -- the same from the disk
-    and from a plan holding the file (`Plan.read_object`).  THE SILENT
-    FAILURES: a reader composing the steps by hand that reads past another
-    artifact's schema, or crashes on a list (a sequence's launch record, to
-    2.69.18); a prep refusing a record the disk's reader reads (the plan
-    decoded plain UTF-8, to 2.69.18)."""
+    editor put first read past (`persist.text_of`) -- the same from the disk,
+    from a plan holding the file and through a plan to the disk where it
+    holds none (`Plan.read_object`).  The record is the description
+    `molbuilder describe` wrote, a file a person may edit
+    (`execution/job-request.md` § 7).  THE SILENT FAILURES: a reader
+    composing the steps by hand that reads past another record's schema; a
+    prep refusing a record the disk's reader reads (the plan decoded plain
+    UTF-8, to 2.69.18)."""
+    from molbuilder import job_request, task
     from molbuilder.jobset.planned import Plan
-    p = persist.write_json(tmp_path / "r.json", value)
-    if damage is not None:
-        damage(p)
+    from support.road import described, road_tree
+    record = described(road_tree(tmp_path, monkeypatch)) / "task.json"
+    as_written = json.loads(record.read_text(encoding="utf-8"))
+    if edited is not None:
+        edited(record)
+    asked = {"task": task.SCHEMA, "job-request": job_request.SCHEMA}[schema]
     if road == "the disk":
         def read():
-            return persist.read_object(p, schema=_RECORD)
-    else:
+            return persist.read_object(record, schema=asked)
+    elif road == "a plan holding the file":
         held, at = Plan(), tmp_path / "held.json"
-        held.bytes(at, p.read_bytes())
+        held.bytes(at, record.read_bytes())
 
         def read():
-            return held.read_object(at, schema=_RECORD)
-    if words is None:
-        assert read() == value
+            return held.read_object(at, schema=asked)
     else:
-        with pytest.raises(ValueError, match=words):
+        def read():
+            return Plan().read_object(record, schema=asked)
+    if reads:
+        assert read() == as_written
+    else:
+        # REFUSED AS NOT READING, in words, never a reader's crash (§ 6.1).
+        with pytest.raises(ValueError):
             read()
 
 
-def test_a_prep_plan_holds_what_the_one_writer_writes(tmp_path):
+def test_a_prep_plan_holds_what_the_one_writer_writes(tmp_path, monkeypatch):
     """`job-contracts.md` § 6.1: the one writer takes a prep's plan
     (`write_json(..., plan=...)`) -- nothing on the disk until the plan is
-    carried out, then the same bytes the disk's write gives; and what only
-    the disk can do -- create a file never replaced, sync it -- is refused
-    with a plan.  THE SILENT FAILURES: a preview writing into the
-    calculation (a plan's write reaching the disk before it is carried out),
-    a prep writing other bytes than the disk's writer, a session key a plan
-    would replace."""
+    carried out, then the same bytes the disk's write gives.  THE SILENT
+    FAILURES: a preview writing into the calculation (a plan's write reaching
+    the disk before it is carried out), a prep writing other bytes than the
+    disk's writer."""
+    from molbuilder import task
     from molbuilder.jobset.planned import Plan
-    obj = {"schema": _RECORD, "label": "α-helix"}
+    from support.road import described, road_tree
+    obj = persist.read_object(described(road_tree(tmp_path, monkeypatch))
+                              / "task.json", schema=task.SCHEMA)
     plan = Plan()
     p = persist.write_json(tmp_path / "planned.json", obj, plan=plan)
     assert not p.exists(), "a plan writes nothing until it is carried out"
-    assert plan.read_object(p, schema=_RECORD) == obj
+    assert plan.read_object(p, schema=task.SCHEMA) == obj
     plan.carry_out()
     disk = persist.write_json(tmp_path / "disk.json", obj)
     assert p.read_bytes() == disk.read_bytes()
-    for disk_only in ({"exclusive": True}, {"sync": True}):
-        with pytest.raises(TypeError):
-            persist.write_bytes(tmp_path / "k", b"x", plan=Plan(), **disk_only)
 
 
 # --------------------------------------------------------------------- #
