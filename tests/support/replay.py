@@ -1,17 +1,20 @@
 """A REAL RUN'S OUTPUT, SHOWN AS IT GREW (`process/testing.md` § 6).
 
-The monitor reads a run while it runs, so a test of it needs the run's output
-as it stood at a line and then a little later.  This copies a run made on the
+The monitor and the viewers read a run while it runs, so a test of either
+needs the run's output as it stood at a line and then a little later.  This copies a run made on the
 road (`support/real_runs.py`) into a folder of its own, its output written up
 to a line, with ``grow(to)`` writing on as the engine would.  What the monitor
 itself writes -- its log and its samples -- and the timing tee, which grows
 with the output, are left for the replay to write.
 
-Used by ``tests/test_monitor_watches_a_live_run_e2e.py`` (a relaxation) and
-``tests/test_transport_on_a_real_junction_e2e.py`` (a transmission, a device).
+Used by ``tests/test_monitor_watches_a_live_run_e2e.py`` (a relaxation),
+``tests/test_the_viewers_follow_a_real_run_e2e.py`` (a relaxation, as the
+viewer reads it) and ``tests/test_transport_on_a_real_junction_e2e.py`` (a
+transmission, a device).
 """
 from __future__ import annotations
 
+import re
 import shutil
 from pathlib import Path
 from typing import Callable, List, Tuple
@@ -47,6 +50,42 @@ def replay(run: Path, tmp_path: Path, upto: int
         at["n"] = to
     return there, monitor.WatchedRun(names=ran.names,
                                      directory=there), grow
+
+
+class Output:
+    """A SIESTA run's own output, and where its lines fall: the SCF rows,
+    and the geometry moves SIESTA began (``Begin <kind> opt. move = N``) --
+    where a test cuts a replay (:func:`replay`) to show a run as it stood."""
+
+    def __init__(self, run: Path):
+        self.lines = output_lines(run)
+        self.rows = [i for i, ln in enumerate(self.lines)
+                     if ln.lstrip().startswith("scf:")]
+        self.moves = [i for i, ln in enumerate(self.lines)
+                      if re.match(r"\s*Begin \w+ opt\. move", ln)]
+
+    def rows_of(self, k: int):
+        """The SCF rows of move ``k``."""
+        end = (self.moves[k + 1] if k + 1 < len(self.moves)
+               else len(self.lines))
+        return [r for r in self.rows if self.moves[k] < r < end]
+
+    def through(self, line: int) -> int:
+        """The ``upto`` that writes line ``line`` and everything before it."""
+        return line + 1
+
+    def end_of_move(self, k: int) -> int:
+        return self.through(self.rows_of(k)[-1])
+
+    def criterion(self, name: str) -> float:
+        """A criterion as the run's own ``redata:`` line states it --
+        ``name`` a pattern for SIESTA's words before ``tolerance``."""
+        for ln in self.lines:
+            m = re.match(rf"\s*redata:\s*(?:{name})\s+tolerance\b[^=]*=\s*(\S+)",
+                         ln)
+            if m:
+                return float(m.group(1))
+        raise AssertionError(f"no redata line states the {name} tolerance")
 
 
 def status_lines(log: Path) -> List[str]:

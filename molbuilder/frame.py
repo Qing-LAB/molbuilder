@@ -146,18 +146,13 @@ class Frame:
                       [...]}``); None where it printed none.
       stress_voigt_kbar -- The step's stress as printed,
                       ``Voigt[x,y,z,yz,xz,xy]`` in kbar; None where none.
-      in_progress  -- True when this Frame represents a calculation
-                      mid-flight rather than a completed geometry step
-                      with a real outcoor block.  Set by parsers when
-                      they emit a synthetic frame for the very first
-                      SCF cycle (so the user can watch the residual
-                      drop in real time instead of waiting for the
-                      first outcoor block to land 5-30 min later).
-                      Consumers should hide trajectory animation
-                      controls and show a "SCF in progress" banner
-                      when True; the SCF convergence chart is the
-                      only meaningful display.  Always False after a
-                      real outcoor block has been committed.
+      in_progress  -- True for the step still being computed: the output
+                      ends inside it -- a geometry and SCF rows, no step
+                      end -- the run still going; or the reader's stand-in
+                      for an SCF with no geometry yet.  Its energy is its
+                      last SCF row's, no result of the step's: a viewer
+                      lists it and keeps it out of the plots
+                      (`web/results.md` § 4).
       cut_short    -- True when the output ends inside this step for good: a
                       geometry and SCF rows, no step end, the run no longer
                       going.  Its energy is its last SCF row's, a number the

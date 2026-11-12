@@ -27,6 +27,13 @@ and :func:`stage_shaped`, an H2 optimization on PySCF made by the shared
 run's maker under the label `au_2_bdt` (`support.real_runs.pyscf`), whose
 folder's listing the Results tab's picker is asked of.
 
+Beside them, the relaxation of the shared CO2 vibration
+(``real_co2_vibration``), replayed as its output stood inside a move's SCF
+(`support.replay`) and read through the registry into the answer the
+trajectory routes send (`trajectory_result_to_legacy_dict`, which the
+routes add nothing to the flags of): the step still being computed, which
+no follow here is sure to catch at a poll.
+
 Beside them, no engine: an H2 calculation prepared and never launched, whose
 folder the viewer opens (prep writes the run's log) and the server answers
 not launched.
@@ -52,7 +59,12 @@ listing holding a broken link -- a file with no time, listed last and labelled
 by its name alone -- two folders' files or two rungs' files, or a run whose
 master was deleted; two files of a listing with one time, which the picker
 orders by name -- the listing states each file's time as the filesystem keeps
-it, to the fraction of a second, and no run here is sure to write two at once.
+it, to the fraction of a second, and no run here is sure to write two at once;
+the reader's stand-in frame for an SCF with no coordinates yet, which no
+output of the SIESTA here (5.4.2) reaches -- it prints a move's coordinates
+before its SCF;
+the answer's ``[]`` for no frame in progress, told from a list of falses by
+nothing here (the page reads the two alike).
 """
 from __future__ import annotations
 
@@ -1277,3 +1289,62 @@ def test_the_heading_is_built_from_the_folders_answer(followed, monkeypatch):
                                    .map(g => g.label)));
     """)
     assert out == [answer["engine_words"] + " " + answer["noun"]]
+
+
+@pytest.mark.parametrize("cut, move", [("inside the first step's SCF", 0),
+                                       ("inside a later step's SCF", 1)])
+def test_the_step_still_being_computed_is_listed_and_flagged(
+        real_co2_vibration, tmp_path, cut, move):
+    """THE SILENT FAILURE: a half-computed step drawn on the energy and force
+    plots as if the run had reached it -- unflagged, or listed twice -- or
+    listed with another step's geometry in its place.  `web/trajectory.md`
+    § 5, `web/results.md` § 4: partial (mid-write) frames are listed but
+    kept out of the plots, the parser flagging the step still being
+    computed (`frames[-1].in_progress`,
+    `engines/optimization-postprocessing.md` § 5), and the viewer's answer
+    (`/api/watch/*`'s ``data``, `trajectory_result_to_legacy_dict`) saying
+    which of its frames that is.  The run is the road's -- the relaxation
+    of the shared CO2 vibration, made by the real SIESTA in this pass --
+    replayed as its output stood inside a move's SCF (`support.replay`):
+    its frames the whole output's up to that move, the last -- the move's
+    own -- flagged, alone."""
+    from molbuilder.parse import parse
+    from molbuilder.parse.engines._helpers import (
+        trajectory_result_to_legacy_dict)
+    from molbuilder.runs import run_of
+    from molbuilder.siesta.vibration_phases import RELAX
+    from support.replay import Output, replay
+    run = real_co2_vibration.call("freq", RELAX)
+    o = Output(run)
+    assert len(o.moves) >= 2, "the relaxation made fewer than two moves"
+    there, _watched, _grow = replay(run, tmp_path,
+                                    o.through(o.rows_of(move)[1]))
+    said = trajectory_result_to_legacy_dict(
+        parse(there / run_of(run).stdout.name))
+    whole = trajectory_result_to_legacy_dict(parse(run_of(run).stdout))
+    flagged = [i for i, f in enumerate(said["in_progress"]) if f]
+    assert said["frames"] == whole["frames"][:move + 1], (
+        cut, said["frames"], whole["frames"][:move + 1])
+    assert flagged == [move], (cut, said["in_progress"])
+
+
+@pytest.mark.parametrize("case, answer_of, stopped_inside", [
+    ("a run that finished", lambda f, s: f.final, False),
+    ("a run SIESTA stopped inside a step", lambda f, s: s.final, True)])
+def test_a_run_that_ended_has_no_step_still_being_computed(
+        followed, stopped, case, answer_of, stopped_inside):
+    """THE SILENT FAILURE: an ended run's last step said to be still being
+    computed, on a run that will write no more -- the step SIESTA stopped
+    inside, or the final geometry a finished relaxation writes, which states
+    no energy of its own.  `engines/optimization-postprocessing.md` § 3 and
+    § 5: a step still being computed and one the run stopped inside are two
+    things, `parse` showing each as it stands; `web/results.md` § 4: the
+    viewer's flag is the parser's in-progress mark.  Asked of the viewer's
+    last load of the followed H2, which finished, and of the stopped H2,
+    which SIESTA stopped inside a step (its `Frame.cut_short`)."""
+    from molbuilder.parse import parse
+    answer = answer_of(followed, stopped)
+    assert parse(Path(answer["path"])).frames[-1].cut_short is stopped_inside, (
+        case, answer["path"])
+    assert not any(answer["data"]["in_progress"]), (
+        case, answer["data"]["in_progress"])

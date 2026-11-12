@@ -529,10 +529,9 @@ import { ask } from "../server.js";
     // emits a per-frame bool array; collapses
     // to [] when no frame is in-progress).  Plot trace builders
     // call plottableFrames() to omit partial frames -- the energy
-    // / max_force values for those frames are placeholders (the
-    // siesta parser's step_initial_etot fallback) and don't belong
-    // in the user-facing plot.  The frame still ships and shows
-    // in the inspect list with a "computing..." badge.
+    // of a step still being computed is its last SCF row's, no
+    // result yet, and doesn't belong in the user-facing plot.  The
+    // frame still ships and is listed.
     function plottableFrames(data) {
         if (!data || !Array.isArray(data.frames)) return [];
         var inProg = (data.in_progress && data.in_progress.length)
@@ -1215,15 +1214,14 @@ import { ask } from "../server.js";
     function makePlots() {
         if (!state.data) return;
         // Contract § 4 Invariant 2 (in-progress frame filter):
-        // ``data.in_progress[i]`` flags a partial frame whose
-        // energy / max_force values are placeholders (the parser
-        // emits these at EOF when the engine is still writing the
-        // step).  Plot trace builders use ``_plottableIdx`` to
-        // omit those frames from x / y arrays -- avoids the "odd
-        // value disappears on full refresh" bug class.  The frame
-        // still ships and shows in the inspect list with a
-        // "computing..." badge; only the user-facing plot omits
-        // its placeholder y-value.
+        // ``data.in_progress[i]`` flags the step still being
+        // computed, whose energy is no result yet (the parser marks
+        // it at EOF while the engine is still writing the step).
+        // Plot trace builders use ``_plottableIdx`` to omit those
+        // frames from x / y arrays -- avoids the "odd value
+        // disappears on full refresh" bug class.  The frame still
+        // ships and is listed; only the user-facing plot omits its
+        // y-value.
         const _plottableIdx = plottableFrames(state.data);
         // Derive filtered x / energy / max_force / max_force_C
         // arrays once -- all three plot traces below consume them.

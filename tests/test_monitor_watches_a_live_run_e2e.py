@@ -29,7 +29,7 @@ import pytest
 from _road import conda_hook, env_available
 from molbuilder import monitor
 from molbuilder.monitor import NotifyPolicy
-from support.replay import output_lines, replay, statuses
+from support.replay import Output, output_lines, replay, statuses
 
 pytestmark = [
     pytest.mark.engine,
@@ -74,41 +74,6 @@ def _fake_clock(values):
     return _c
 
 
-class _Output:
-    """The run's own output, and where its lines fall: the SCF rows, and the
-    geometry moves SIESTA began (``Begin <kind> opt. move = N``)."""
-
-    def __init__(self, run: Path):
-        self.lines = output_lines(run)
-        self.rows = [i for i, ln in enumerate(self.lines)
-                     if ln.lstrip().startswith("scf:")]
-        self.moves = [i for i, ln in enumerate(self.lines)
-                      if re.match(r"\s*Begin \w+ opt\. move", ln)]
-
-    def rows_of(self, k: int):
-        """The SCF rows of move ``k``."""
-        end = (self.moves[k + 1] if k + 1 < len(self.moves)
-               else len(self.lines))
-        return [r for r in self.rows if self.moves[k] < r < end]
-
-    def through(self, line: int) -> int:
-        """The ``upto`` that writes line ``line`` and everything before it."""
-        return line + 1
-
-    def end_of_move(self, k: int) -> int:
-        return self.through(self.rows_of(k)[-1])
-
-    def criterion(self, name: str) -> float:
-        """A criterion as the run's own ``redata:`` line states it --
-        ``name`` a pattern for SIESTA's words before ``tolerance``."""
-        for ln in self.lines:
-            m = re.match(rf"\s*redata:\s*(?:{name})\s+tolerance\b[^=]*=\s*(\S+)",
-                         ln)
-            if m:
-                return float(m.group(1))
-        raise AssertionError(f"no redata line states the {name} tolerance")
-
-
 def _forces_stated(out: Path):
     """``(free, every)``: the largest force on the free atoms -- those the run does not hold,
     what a relaxation's tolerance is judged against (`run-reports.md`
@@ -122,7 +87,7 @@ def _forces_stated(out: Path):
 
 
 def _whole(run: Path) -> int:
-    return len(_Output(run).lines)
+    return len(Output(run).lines)
 
 
 # --------------------------------------------------------------------- #
@@ -180,7 +145,7 @@ def test_each_advance_is_a_status_line_stating_where_the_run_is(run,
     run states for it, the step SIESTA began in its own words and number,
     and the force against its tolerance -- and the held carbon's after it,
     being the larger."""
-    o = _Output(run)
+    o = Output(run)
     assert len(o.moves) >= 3, "the relaxation made fewer than three moves"
     first = o.rows_of(0)
     k = min(7, len(first))
@@ -211,7 +176,7 @@ def test_a_run_that_does_not_advance_writes_and_sends_nothing(run, tmp_path):
     """A live run that does not advance -- for over an hour here, as a heavy
     SCF step does -- adds no status line and tells no channel anything: the
     monitor judges no stall (`run-reports.md` § 2)."""
-    o = _Output(run)
+    o = Output(run)
     there, watched, _grow = replay(run, tmp_path,
                                     o.through(o.rows_of(0)[1]))
     seen = []
@@ -314,12 +279,12 @@ def _events(run, tmp_path, *, upto, chunks=(), notify_on_scf=False,
     return seen
 
 
-def _rows_of_the_first_move(o: _Output):
+def _rows_of_the_first_move(o: Output):
     """Each wake adds one more SCF row of the first move."""
     return [o.through(r) for r in o.rows_of(0)[1:]]
 
 
-def _the_next_moves(o: _Output):
+def _the_next_moves(o: Output):
     """Each wake completes one more move's SCF, up to three."""
     assert len(o.moves) >= 3, "the relaxation made fewer than three moves"
     return [o.end_of_move(k) for k in range(1, min(4, len(o.moves)))]
@@ -328,7 +293,7 @@ def _the_next_moves(o: _Output):
 def test_an_advancing_job_notifies_nothing_by_default(run, tmp_path):
     """THE REGRESSION.  With no policy set, a job actively progressing
     produces no notification beyond its start and end."""
-    o = _Output(run)
+    o = Output(run)
     seen = _events(run, tmp_path, upto=o.through(o.rows_of(0)[0]),
                    chunks=_rows_of_the_first_move(o), watch_pid=0,
                    max_ticks=6, clock=_fake_clock([0, 1, 2, 3, 4, 5, 6, 7]))
@@ -339,7 +304,7 @@ def test_one_message_per_geometry_step(run, tmp_path):
     """A geometry step advancing means the previous SCF reached its
     criterion -- SIESTA begins the next move -- so each move begun is one
     message."""
-    o = _Output(run)
+    o = Output(run)
     moves = _the_next_moves(o)
     seen = _events(run, tmp_path, upto=o.end_of_move(0), chunks=moves,
                    watch_pid=0, max_ticks=len(moves), notify_on_scf=True,
@@ -350,7 +315,7 @@ def test_one_message_per_geometry_step(run, tmp_path):
 def test_periodic_counts_hours_not_wakes(run, tmp_path):
     """Eight wakes an hour apart, a two-hour period: four messages at most,
     not eight.  The wake interval and the reporting period are independent."""
-    o = _Output(run)
+    o = Output(run)
     seen = _events(run, tmp_path, upto=o.through(o.rows_of(0)[0]),
                    chunks=_rows_of_the_first_move(o), watch_pid=0,
                    max_ticks=8, notify_every_hours=2,
@@ -361,7 +326,7 @@ def test_periodic_counts_hours_not_wakes(run, tmp_path):
 def test_the_first_period_is_a_full_period_in(run, tmp_path):
     """"Every 6 hours" must not mean "now, and then every 6 hours": the clock
     starts at the job's start, so nothing is due on the first wake."""
-    o = _Output(run)
+    o = Output(run)
     seen = _events(run, tmp_path, upto=o.through(o.rows_of(0)[0]),
                    watch_pid=0, max_ticks=2, notify_every_hours=6,
                    clock=_fake_clock([0.0, 60.0, 120.0]))
@@ -371,7 +336,7 @@ def test_the_first_period_is_a_full_period_in(run, tmp_path):
 def test_a_step_and_a_period_on_one_wake_is_one_message(run, tmp_path):
     """Both triggers coming due together is one thing worth saying: the step
     is the more informative, so it wins and resets the clock."""
-    o = _Output(run)
+    o = Output(run)
     moves = _the_next_moves(o)
     seen = _events(run, tmp_path, upto=o.end_of_move(0), chunks=moves,
                    watch_pid=0, max_ticks=len(moves), notify_on_scf=True,
@@ -385,7 +350,7 @@ def test_a_step_and_a_period_on_one_wake_is_one_message(run, tmp_path):
 def test_a_relaxation_with_the_trigger_OFF_reports_no_steps(run, tmp_path):
     """The steps genuinely advance and the trigger is off, so a message
     would be one the person did not ask for."""
-    o = _Output(run)
+    o = Output(run)
     moves = _the_next_moves(o)
     seen = _events(run, tmp_path, upto=o.end_of_move(0), chunks=moves,
                    watch_pid=0, max_ticks=len(moves), notify_on_scf=False,

@@ -150,8 +150,10 @@ def test_a_mid_write_frame_is_kept_out_of_the_plots():
 
 
 def test_an_empty_flag_array_means_every_frame_plots():
-    """`[]` is the adapter's *nothing is partial* (see
-    `test_in_progress_frames_stay_out_of_plots.py`), not *nothing plots*.
+    """`[]` is the adapter's *nothing is partial*
+    (`trajectory_result_to_legacy_dict`'s own convention, which no test asks
+    of a real run: the viewers' e2e asks only that no frame is flagged), not
+    *nothing plots*.
 
     Reading it the other way would blank every plot on every healthy run,
     which is the whole reason the collapse convention needs a reader that

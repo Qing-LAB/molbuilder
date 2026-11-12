@@ -30,7 +30,7 @@ as they stood.
 
 ## ▶ HANDOVER — where we are, and where to start *(2026-11-10)*
 
-**Where we are: 2.69.35.** F0–F8 and F7a are closed; F9, the tests through
+**Where we are: 2.69.36.** F0–F8 and F7a are closed; F9, the tests through
 the road, has eight releases out (2.67.4–2.67.11) and four steps left (its
 row below). Since 2.67.11 three bodies of work the user put first have run;
 each release is its changelog row and its ledger section
@@ -72,10 +72,9 @@ each release is its changelog row and its ledger section
   2026-11-11: *use agent to review and discipline your tests*); 2.69.35,
   a transport calculation refusing, when it is described, a cited run whose
   job ended without concluding (the user, 2026-11-11: *refuse at describe
-  too*). **Left, in order**: the test audit's owed — the
-  in-progress frames' e2e on a real run's replay, then their typed tests
-  retired (the ledger's TA-10); the workspace tests onto the live server
-  (TA-5, TA-6); the subsumption tool run inside the test sandbox (TA-18); geomeTRIC's trajectory saying which
+  too*); 2.69.36, the step still being computed asked of a real run's
+  replay, and of runs that ended, its typed tests retired (TA-10). **Left, in order**: the test
+  audit's owed — the workspace tests onto the live server (TA-5, TA-6); the subsumption tool run inside the test sandbox (TA-18); geomeTRIC's trajectory saying which
   log beside it its facts came from (`model/parse.md` § 5a, rule 4: *say
   what happened*); X-TMPL, X-EXEC, X-ENG; then the page doors and
   the copies they share (O-STATUS, O-FIND, O-STATE, O-WORDS, O-KEYS's rest

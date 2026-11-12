@@ -134,13 +134,10 @@ def trajectory_result_to_legacy_dict(
     # its one source (P-T3).
     out_wall_clock: List[Any] = []
     out_elapsed:    List[Any] = []
-    # Per-frame "this frame is still being written" flag.  Set True
-    # on the synthetic EOF-flush frame the SIESTA parser appends
-    # when the file ends mid-step so the JS plottableFrames filter can
-    # omit it from plots (`web/results.md` § 4).  The frame still
-    # ships — the inspector still shows it with a "computing..." badge
-    # in the inspect list — but its energy/forces aren't real numbers
-    # yet and don't belong in the energy/force plot.
+    # Per-frame "this step is still being computed" flag
+    # (`Frame.in_progress`), so the page's plottableFrames keeps the
+    # frame out of the plots (`web/results.md` § 4).  The frame still
+    # ships and is listed; its energy is no result yet.
     out_in_progress: List[bool] = []
 
     for f in result.frames:
