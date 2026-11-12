@@ -67,32 +67,6 @@ TRANSPORT_STAGES = _kind("transport").role_names
 STAGE_FACT = {r.name: r.computes for r in _kind("transport").roles}
 
 
-def resolvable_override_names(engine: str) -> frozenset:
-    """The names a per-stage override may carry on ``engine`` — **asked,
-    never listed.**
-
-    `prep` resolves a rung's config through
-    :func:`molbuilder.resolve.resolve` against the engine's config class
-    (`engine_table.config_class`), so a name that is not one of its fields
-    is refused there by name, and a RUN SETTING -- the
-    catalogue's ``execution`` items, the machine's answers among them -- is
-    refused as an override: it is the rung's run card's (`engines/stages.md`
-    § 6.8d, plan § 5w K5). Those two facts are the whole vocabulary, and
-    this is where they are turned into one question both doors ask.
-
-    Which names are run settings is the catalogue's own answer
-    (``template.run_settings``), rather than a fourth frozenset.
-    """
-    import dataclasses
-
-    from ..engine_table import config_class
-    from ..template import run_settings
-
-    on_the_card = run_settings(engine)
-    return frozenset(f.name for f in dataclasses.fields(config_class(engine))
-                     if f.name not in on_the_card)
-
-
 #: How close two voltages are when they are one point's, in V: a voltage is
 #: typed to a few decimals and read back as written, so any difference
 #: beyond float noise is another voltage.

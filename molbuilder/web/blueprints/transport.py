@@ -805,10 +805,12 @@ def api_transport_schema() -> Any:
     the kind (`engines/transport.md` § 3.8.2; the markers decide which
     value lands where, `catalogue_to_form_schema(surface=)`).
 
-    ``?surface=rung`` (the default) is the per-rung form -- every transport
-    item that is not `shared`, `role`, `allocation` or staging; its values
-    are override bags, routed to the rung that owns each by the `stages`
-    marker.  ``?surface=shared`` is the panel that edits the TEMPLATE:
+    ``?surface=rung`` (the default) is the per-rung form -- what a stage's
+    overrides may hold (`template.why_not_in`: never a run setting, a
+    `shared` item or one the rung fixes), staging aside; its values are a
+    rung's override bag, the rung the tab's -- nothing routes -- and with
+    ``&rung=`` what that rung fixes is echoed locked.  ``?surface=shared``
+    is the panel that edits the TEMPLATE:
     every item marked `shared` for transport, outside the `setup` group --
     save what the citation asks of the person, drawn required
     (`citation_defaults.asked_of_the_person`: a pair's pseudopotential

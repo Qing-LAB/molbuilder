@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import pytest
 
+from molbuilder.transport.stages import TRANSPORT_STAGES
+
 
 @pytest.fixture
 def web():
@@ -91,7 +93,9 @@ class TestTransportSchemaEndpoint:
         r = web.get("/api/transport/schema?engine=siesta&surface=rung&rung=lead")
         assert r.status_code == 400 and "rung must name" in r.get_json()["error"]
 
-    def test_the_rung_surface_never_offers_a_shared_value(self, web):
+    @pytest.mark.parametrize("rung", (None, *TRANSPORT_STAGES))
+    def test_a_rung_tab_offers_what_its_rung_may_set_and_echoes_what_it_fixes(
+            self, web, rung):
         """`engines/transport.md` § 3.8.2: the per-rung form edits a rung's
         override bag and never offers a value that binds every rung -- the
         catalogue's `shared` marker (§ 3.8.6, decided 2026-09-24), nor a
@@ -99,8 +103,10 @@ class TestTransportSchemaEndpoint:
         describe door refuses by name (the trap of 2026-08-29 and the
         revert of 2026-09-23).  A role-fixed one is SHOWN, read-only at the
         rung's answer (`locked`, K7: § 6.6 obligation 3) -- never a
-        control."""
-        from molbuilder.template import catalogue, select
+        control: each rung's tab echoes every answer its rung gives, the
+        whole calculation's form those every rung gives alike."""
+        from molbuilder.template import (catalogue, fixed_on_every_rung,
+                                         role_answers, select)
         cat = catalogue()
         shared = {it.name for it in select(cat, engine="siesta", shared=True)
                   if "transport" in it.shared}
@@ -108,8 +114,12 @@ class TestTransportSchemaEndpoint:
                 if "transport" in it.role}
         machine = {it.name for it in select(cat, engine="siesta",
                                              allocation=True)}
+        answers = (fixed_on_every_rung("siesta", "transport") if rung is None
+                   else role_answers("siesta", "transport", rung))
         for lane in ("", "&surface=rung"):
-            body = web.get(f"/api/transport/schema?engine=siesta{lane}").get_json()
+            asked = lane + (f"&rung={rung}" if rung else "")
+            body = web.get(f"/api/transport/schema?engine=siesta{asked}"
+                           ).get_json()
             assert body["ok"] is True and body["surface"] == "rung"
             fields = [f for s in body["schema"]["sections"]
                       for f in s["fields"]]
@@ -120,12 +130,8 @@ class TestTransportSchemaEndpoint:
             assert not (offered & role), sorted(offered & role)
             assert not (offered & machine), sorted(offered & machine)
             assert echoed <= role, sorted(echoed - role)
-            from molbuilder.transport.stages import resolvable_override_names
-            unresolvable = offered - resolvable_override_names("siesta")
-            assert not unresolvable, (
-                f"the form offers {sorted(unresolvable)}, which `prep` "
-                f"refuses by name -- a control the door is guaranteed to "
-                f"reject is not a control")
+            assert echoed == set(answers), (rung, sorted(echoed),
+                                            sorted(answers))
 
     def test_the_shared_surface_offers_every_shared_value_outside_setup(self, web):
         """The other surface: every item the catalogue marks `shared` for

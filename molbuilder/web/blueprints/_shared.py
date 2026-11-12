@@ -371,10 +371,11 @@ def catalogue_to_form_schema(engine: Optional[str], id_prefix: str,
     its ``default`` the hint.
 
     ``rung`` narrows the ``"rung"`` surface to ONE rung's tab
-    (`engines/transport.md` § 3.8.2a): the items whose `stages` declaration
-    names that rung, plus the items declaring no rung, which any rung may
-    set for itself.  Every field carries its ``stages`` so a surface can
-    tell the rung's own items from the ones it merely may set.
+    (`engines/transport.md` § 3.8.2a): what that rung's overrides may hold
+    (`template.why_not_in` -- an item it reads, its own or one any rung may
+    set for itself), and the answers it fixes, echoed.  Every field carries
+    its ``stages`` so a surface can tell the rung's own items from the ones
+    it merely may set.
 
     ``surface`` says which part of the kind's settings this form draws, on
     a page that draws them in parts.  Across a composite kind's rungs
@@ -477,23 +478,22 @@ def catalogue_to_form_schema(engine: Optional[str], id_prefix: str,
                  if calculation in it.shared
                  and (it.group != "setup" or it.name in asks)]
     elif surface == "rung":
-        # A RUNG'S TAB OFFERS NO RUN SETTING: those are the rung's run card's
-        # (`engines/stages.md` § 6.8d, `template.run_settings`, the marker);
-        # a locked echo of one stays, as every echo does (§ 6.6 obligation
-        # 3).  Asked here, so no blueprint keeps a second filter (2026-10-18).
-        _run = _T.run_settings(engine)
-        items = [it for it in items if calculation not in it.shared
-                 and (it.name not in _run or it.name in echoed)]
+        # A RUNG'S TAB OFFERS WHAT A STAGE'S OVERRIDES MAY HOLD -- the one
+        # rule of where a value lives (`template.why_not_in`, `template.md`
+        # § 5.4): never a run setting (the rung's run card's), never what
+        # every stage shares (the panel above), never what the rung fixes,
+        # and on a rung's own tab only what that rung reads -- never another
+        # rung's.  A locked echo stays, as every echo does (§ 6.6
+        # obligation 3).
+        items = [it for it in items
+                 if it.name in echoed or _T.why_not_in(
+                     it, "override", engine=engine, kind=calculation,
+                     stage=rung) is None]
     elif surface not in (None, "state", "common", "own"):
         raise ValueError(f"surface must be 'shared', 'rung', 'state', "
                          f"'common', 'own' or None, not {surface!r}")
-    if rung is not None:
-        if surface != "rung":
-            raise ValueError("a rung narrows the 'rung' surface only")
-        # THE RUNG'S TAB: its own items, and the ones any rung may set --
-        # never another rung's (those are on that rung's tab) and never a
-        # shared one (the panel above).
-        items = [it for it in items if not it.stages or rung in it.stages]
+    if rung is not None and surface != "rung":
+        raise ValueError("a rung narrows the 'rung' surface only")
     held = ({h.name: h for h in template.items}
             if template is not None else {})
     by_category: Dict[str, List[Dict[str, Any]]] = {}

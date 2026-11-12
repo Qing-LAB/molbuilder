@@ -10,16 +10,18 @@ composed and written is decided here, once.
 
 In order, every refusal before anything is written: the engine (an
 extension's is the finished calculation's); the citation, resolved and
-classified once, a run that ended without finishing refused; the folder -- one
-calculation per folder, never inside another's nor holding one; the voltages and their
-treatment; each rung's values and the shared ones, by name; the task, by its
+classified once, a run that ended without finishing refused; the folder --
+one calculation per folder, never inside another's nor holding one; the
+voltages and their treatment; the shared values, by name; the task, by its
 codec; an extension's limits, where the road holds them (the tab's; the
 command line says what it reuses, never refusing); the pseudopotentials'
 rule and the template, its values defaulted from the citation (§ 2a.7); the
-description's own check.  Then the files, every one or none -- through the
-one writer (`describe.write_description`, `reuse.write_reusing`) -- or, the
-plan alone, nothing the person sees; and an extension's manifest, the
-answer prep composes (`reuse.decide`).
+description's own check, each rung's values among it -- a name no setting
+carries, one its rung may not hold (`template.why_not_in`).  Then the
+files, every one or none -- through the one writer
+(`describe.write_description`, `reuse.write_reusing`) -- or, the plan
+alone, nothing the person sees; and an extension's manifest, the answer
+prep composes (`reuse.decide`).
 
 A door on floor 4: it reads the citation and the finished calculation
 through their doors and writes through the description's writer.
@@ -196,7 +198,7 @@ def describe(*, calculation: str, engine: Optional[str],
                           resolve_citation)
     from .deck import describe_findings
     from .reuse import Extension, ReuseError, citing, reused, write_reusing
-    from .stages import resolvable_override_names, stages_for_transport
+    from .stages import stages_for_transport
     from .window import window_rung
     from ..jobset.rung import citation_of
     from ..projects import address
@@ -281,19 +283,11 @@ def describe(*, calculation: str, engine: Optional[str],
         elif low_bias_approximation is None and len(bias) > 1:
             low_bias_approximation = finished.task.low_bias_approximation
 
-    # EACH RUNG'S VALUES AND THE SHARED ONES, by name: what prep can
-    # resolve, and what the catalogue marks shared for the kind
-    # (`engines/template.md` § 7).
-    resolvable = resolvable_override_names(engine)
-    for rung, bag in (stages or {}).items():
-        for item in bag:
-            if item not in resolvable:
-                raise NotDescribed(
-                    f"{item!r} is not a parameter this calculation can "
-                    f"carry: `prep` resolves each stage against the {engine} "
-                    f"schema, and either no field of it has that name or it "
-                    f"is a machine fact the description must never carry"
-                    f".")
+    # EACH RUNG'S VALUES are judged with the description, where every
+    # description's are (`describe_findings` below: a name no item carries,
+    # one its rung may not hold -- `template.why_not_in`); THE SHARED ONES
+    # by what the catalogue marks shared for the kind (`engines/template.md`
+    # § 7).
     chosen, blank = shared_of(shared, engine=engine, calculation=rec.name)
     if finished is None and not name:
         raise NotDescribed("name: the calculation has no name -- send its "
