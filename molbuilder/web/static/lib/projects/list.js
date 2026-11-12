@@ -254,7 +254,8 @@ function _renderSelectionStatus(filename, fullPath) {
 //
 // A single ⋯ trigger drops a small per-entry context menu.  The
 // menu is built lazily on first click to keep the entry-list render
-// cheap; menus auto-dismiss on outside click + ESC + scroll.  Only
+// cheap; menus auto-dismiss on outside click + ESC + a scroll that
+// moves their row (the list, or anything around it).  Only
 // one menu is open at a time (the global ``_kebabActive`` reference
 // tears down a prior menu before showing a new one).
 
@@ -300,9 +301,20 @@ function _ensureKebabGlobalsWired() {
       }
     });
   }
+  // A SCROLL THAT MOVES THE ROW closes its menu: the menu stands fixed
+  // where the row was, so only a scroll of the list or of anything around
+  // it -- the sidebar, the window, whose event names the document --
+  // leaves it behind.  Asked of the list, which a re-list never replaces,
+  // not of the row's button, which it does.  Another pane's scroll -- the
+  // tab's own pane, moved after a run-card edit -- leaves the row, and the
+  // menu, where they are; closed by it, the menu vanished under a person's
+  // pointer for a scroll they did not make.  (Below the drawer's width the
+  // rail and the body, scrolled only by script, close it too.)
   if (typeof window !== "undefined"
       && typeof window.addEventListener === "function") {
-    window.addEventListener("scroll", _dismissKebab, true);
+    window.addEventListener("scroll", (ev) => {
+      if (ev.target.contains(elList)) _dismissKebab();
+    }, true);
   }
 }
 

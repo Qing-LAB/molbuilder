@@ -29,14 +29,6 @@ pytest.importorskip("flask")
 
 
 @pytest.fixture
-def calc_dir(tmp_path, monkeypatch):
-    """A described calculation (`support.road`), its one stage `coarse`."""
-    from support.road import described, road_tree
-    return described(road_tree(tmp_path, monkeypatch), name="probe",
-                     stage_strategy="")
-
-
-@pytest.fixture
 def flask_server(isolated_projects_root):
     from support.live_server import serve
     with serve() as base_url:

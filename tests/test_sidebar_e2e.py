@@ -2,6 +2,8 @@
 
 * THE PLACE EACH TAB KEEPS (`web/projects.md` § 2): its folder and the file
   picked in it, come back to as left, whatever another tab picked meanwhile.
+* A ROW'S MENU stays over its row: a scroll that moves the row closes it, one
+  of the tab's own pane does not (`web/projects.md` § 4).
 * ITS COSTLIEST QUESTION.  Deleting a whole project removes every file under
   it, and nothing brings it back.  `ui-contract.md` § 11: such a question is
   answered by TYPING the project's name (`projects/dialogs.js`
@@ -226,3 +228,53 @@ def test_the_create_bar_makes_a_project_a_folder_and_an_upload(
     until(lambda: StructureCodec().load(notes / "water.xyz")
           .positions[0][2] == 1.0, within=WAIT_MS / 1000,
           what="the yes replaced the pair")
+
+
+@pytest.mark.parametrize("scrolled, stays", [
+    (".app-content", True), ("#ps-list", False)],
+    ids=["the tab's own pane", "the sidebar's list"])
+def test_a_rows_menu_closes_only_when_its_row_moves(page, flask_server,
+                                                    calc_dir, scrolled,
+                                                    stays):
+    """The per-row ``⋯`` menu (`web/projects.md` § 4) stands over its row,
+    fixed where the row was: a scroll that moves the row -- the sidebar's
+    own list -- closes it, and one that does not -- the pane that holds the
+    tab (`ui-contract.md` § 3.1) -- leaves it where it belongs, *Rename…*
+    still answering.  THE SILENT FAILURE: the menu shut under the person's
+    pointer by a scroll they did not make -- Task setup's pane moves after
+    a run-card edit (one probe, 2026-11-12) -- so the click on *Rename…* met
+    nothing (`test_task_setup_follows_its_folder_e2e`'s unsaved edit).  The
+    viewport is short so that both panes can scroll once the folder is open
+    (`process/testing.md` § 5)."""
+    from support.task_setup_page import task_setup_on
+    task_setup_on(page, flask_server, calc_dir)
+    page.set_viewport_size(dict(page.viewport_size, height=600))
+    pane = page.locator(scrolled)
+    assert pane.evaluate(
+        "e => e.scrollTop + e.clientHeight < e.scrollHeight"), (
+        f"{scrolled} cannot scroll down, so this row asks nothing")
+    # THE ROW'S BUTTON IN VIEW, so opening its menu scrolls nothing.
+    kebab = page.locator('button[aria-label="Actions for job-request.json"]')
+    shown, there = (page.locator("#ps-list").bounding_box(),
+                    kebab.bounding_box())
+    top, bottom = shown["y"], shown["y"] + shown["height"]
+    assert top <= there["y"] and there["y"] + there["height"] <= bottom, (
+        "the row is out of the list's view: opening its menu would scroll")
+    kebab.click()
+    rename = page.get_by_role("menuitem", name="Rename…")
+    expect(rename).to_be_visible(timeout=WAIT_MS)
+    # THE SCROLL ARRIVES BEFORE ANYTHING IS ASKED: its event, delivered to
+    # the pane, has passed every listener the page holds for it.
+    page.evaluate("""(s) => { window.__scrolled = false;
+        document.querySelector(s).addEventListener(
+            "scroll", () => { window.__scrolled = true; },
+            { once: true }); }""", scrolled)
+    box = pane.bounding_box()
+    page.mouse.move(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+    page.mouse.wheel(0, 200)
+    page.wait_for_function("() => window.__scrolled", timeout=WAIT_MS)
+    expect(rename).to_have_count(1 if stays else 0)
+    if stays:
+        rename.click()
+        expect(page.locator("dialog.mb-dialog[open]")).to_be_visible(
+            timeout=WAIT_MS)

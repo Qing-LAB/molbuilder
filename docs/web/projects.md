@@ -311,7 +311,12 @@ touch it. The parts:
   outputs the far machine needs.)*
 - **The per-row `⋯` menu** — View, Download, Rename, Move, Copy, Delete, with
   only the items that apply shown (a project or topic folder shows just its
-  type-to-confirm Delete). No menu appears when nothing applies.
+  type-to-confirm Delete). No menu appears when nothing applies. It stands
+  where its row is, and closes on a click outside it, on Escape, or on a
+  scroll that moves its row — the sidebar's list, or anything around it —
+  never on another pane's: the tab's content scrolling leaves the row and its
+  menu where they are *(2.69.41: any scroll closed it, so a person's click
+  met nothing)*.
 - **Dialogs** — the modal pop-ups for naming a file, choosing a destination
   folder, picking an upload, and confirming a delete, all the app's one dialog
   component ([`ui-contract.md`](?doc=web/ui-contract.md) § 11). Only one is
@@ -579,7 +584,9 @@ into the Documents tab). These are tracked as known gaps.
 - `test_projects_state_busy_guard_js.py` — the selection state's busy guard, and a
   hand-off landing in the other tab's own slot.
 - `test_sidebar_e2e.py` — in the browser: each tab back to its own folder and file
-  (§ 2), and a project deleted only once its name is typed.
+  (§ 2), a project deleted only once its name is typed, the create bar's
+  project, folder and upload, and a row's `⋯` menu closed by a scroll that
+  moves its row and by no other (§ 4).
 - `test_projects_public_surface_js.py` — what the public calls do, fed the real
   files routes: a change that landed announces the folders it changed, a
   refused one announces nothing, a commit names the whole path and moves the

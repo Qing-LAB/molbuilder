@@ -315,6 +315,16 @@ def prepared(tmp_path, monkeypatch):
     return partial(described_and_prepared, tmp_path, monkeypatch)
 
 
+@pytest.fixture
+def calc_dir(tmp_path, monkeypatch):
+    """A calculation as `molbuilder describe` leaves one, in this test's own
+    tree (`support.road.described`): an optimization named ``probe``, its
+    one stage ``coarse``."""
+    from support.road import described, road_tree
+    return described(road_tree(tmp_path, monkeypatch), name="probe",
+                     stage_strategy="")
+
+
 # --------------------------------------------------------------------- #
 #  No test resolves the PRODUCT's toolchain from the host              #
 # --------------------------------------------------------------------- #

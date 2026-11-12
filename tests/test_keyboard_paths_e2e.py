@@ -94,15 +94,6 @@ def test_the_modes_table_is_worked_by_the_keys(page, real_water_vibration,
 
 
 @pytest.fixture
-def calc_dir(tmp_path, monkeypatch):
-    """A described calculation (`support.road`), put under the run history
-    through the page."""
-    from support.road import described, road_tree
-    return described(road_tree(tmp_path, monkeypatch), name="probe",
-                     stage_strategy="")
-
-
-@pytest.fixture
 def flask_server(isolated_projects_root):
     from support.live_server import serve
     with serve() as base_url:

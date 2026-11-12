@@ -31,16 +31,6 @@ pytest.importorskip("flask")
 
 
 @pytest.fixture
-def calc_dir(tmp_path, monkeypatch):
-    """A described calculation, as `molbuilder describe` leaves one
-    (`support.road`), its one stage `coarse`; the test puts it under checkpoint
-    control through the page."""
-    from support.road import described, road_tree
-    return described(road_tree(tmp_path, monkeypatch), name="probe",
-                     stage_strategy="")
-
-
-@pytest.fixture
 def flask_server(isolated_projects_root):
     """A server for this test, on the test's own projects tree -- the one
     its calculation is described in (`support.live_server.serve`)."""
