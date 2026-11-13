@@ -3517,12 +3517,18 @@ def cmd_checkpoint_restore(state, force, path):
         # answer, so it does not re-hash the working tree to re-ask a question
         # this branch has already had answered.
         click.echo(str(e), err=True)
-        from .envs.hints import stdin_can_answer
-        if not stdin_can_answer():
-            # No terminal, no --force: nothing may be assumed either way.
-            sys.exit(2)
-        if not click.confirm("\nGo ahead and lose it?", default=False):
-            click.echo("nothing was changed.")
+        # THE ONE INTERFACE (`jobset.ask.confirm`): asked at a terminal, No
+        # by default -- its yes cannot be taken back, as `jobs stop`'s
+        # cannot; no terminal and no --force, nothing is assumed either way,
+        # and it says so beside the refusal above (`checkpointing.md` A5).
+        from .jobset.ask import confirm
+        said = confirm("", question="Go ahead and lose it?", default=False,
+                       unanswered="nothing was changed")
+        if not said.yes:
+            if said.asked:
+                click.echo("nothing was changed.")
+            else:
+                click.echo(said.words, err=True)
             sys.exit(2)
         try:
             target = repo.restore(state, force=True)

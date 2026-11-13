@@ -277,6 +277,10 @@ def test_restore_names_what_will_be_lost_and_refuses(mb, calc):
     assert "job.XV" in combined and "new.bin" in combined, (
         "a count tells nobody anything; the files must be named")
     assert "--force" in combined, "the way through must be in the message"
+    # NO TERMINAL, NO --force: nothing assumed -- the restore stops, nothing
+    # changes, and it says so beside the refusal (`checkpointing.md` A5).
+    assert "nothing was changed" in combined, combined
+    assert (calc / "job.XV").read_text() == "unsaved\n"
 
 
 def test_at_a_terminal_the_question_is_asked_and_yes_is_an_answer(
