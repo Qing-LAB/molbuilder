@@ -305,13 +305,15 @@ def _load(engine: str, base_dir=None) -> WarmFilesDoc:
     scratch_dir: List[Tuple[str, str]] = []
     seen_suffixes: Dict[str, str] = {}
     for name, body in raw.items():
-        if (not isinstance(body, dict)
-                or set(body) - {"file", "resumes", "along", "scratch",
-                                "scratch_dir"}):
+        if not isinstance(body, dict):
             raise WarmFilesError(
                 f"{path}: section [{name}] must hold only [[{name}.file]] "
                 f"rows and the section-level facts, `resumes`, `along`, "
                 f"`scratch` and `scratch_dir`.")
+        said = unknown_keys(body, ("file", "resumes", "along", "scratch",
+                                   "scratch_dir"))
+        if said:
+            raise WarmFilesError(f"{path}: [{name}]: {said}.")
         if "scratch_dir" in body and "scratch" not in body:
             raise WarmFilesError(
                 f"{path}: [{name}] states scratch_dir without scratch -- a "

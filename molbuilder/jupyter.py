@@ -464,7 +464,7 @@ def load_rules() -> JupyterRules:
     """
     import tomllib
 
-    from .persist import check_schema
+    from .persist import check_schema, unknown_keys
     path = rules_path()
     try:
         with open(path, "rb") as fh:
@@ -479,19 +479,15 @@ def load_rules() -> JupyterRules:
         raise JupyterRulesError(f"{path}: not valid TOML -- {exc}") from exc
 
     check_schema(str(raw.get("schema", "")), SCHEMA, label=str(path))
-    unknown = [k for k in raw if k not in _SECTIONS]
-    if unknown:
-        raise JupyterRulesError(
-            f"{path}: unknown section(s) {', '.join(sorted(unknown))} -- this "
-            f"file carries {', '.join(_SECTIONS)} and nothing else.")
+    said = unknown_keys(raw, _SECTIONS)
+    if said:
+        raise JupyterRulesError(f"{path}: {said}.")
     lab = raw.get("lab") or {}
     if not isinstance(lab, dict):
         raise JupyterRulesError(f"{path}: [lab] must be a table.")
-    unknown = [k for k in lab if k not in _LAB_SECTIONS]
-    if unknown:
-        raise JupyterRulesError(
-            f"{path}: unknown [lab.{unknown[0]}] -- [lab] carries "
-            f"{', '.join('lab.' + s for s in _LAB_SECTIONS)} and nothing else.")
+    said = unknown_keys(lab, _LAB_SECTIONS)
+    if said:
+        raise JupyterRulesError(f"{path}: [lab]: {said}.")
 
     def _flat(section: str, body: object) -> Dict[str, object]:
         if body is None:

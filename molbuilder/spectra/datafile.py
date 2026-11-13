@@ -50,7 +50,7 @@ try:                                        # inside molbuilder
                           json_attr, number_attr, read_atom_index_map,
                           read_variables, reading, state, unflag,
                           unjson_attr, unnumber_attr, write_group)
-    from ..persist import write_bytes
+    from ..persist import unknown_keys, write_bytes
     from ..structure import Structure as _Structure
 except ImportError:                         # beside a job, in a bundle
     from atom_permutation import MAP_KEY, AtomIndexMap  # type: ignore[no-redef]
@@ -59,7 +59,12 @@ except ImportError:                         # beside a job, in a bundle
                         in_memory, json_attr, number_attr,
                         read_atom_index_map, read_variables, reading, state,
                         unflag, unjson_attr, unnumber_attr, write_group)
-    from persist import write_bytes
+    from persist import unknown_keys, write_bytes  # type: ignore[no-redef]
+
+#: Why a key a data file does not state is refused at its write -- this
+#: one's and the optical calls' (`spectra.optical_data`).
+UNSTATED = (".  A key this data file does not know how to state is refused "
+            "rather than dropped")
 
 DATA_SCHEMA = "molbuilder/spectra-data@8"
 #: The schemas the reader reads: a file written before 2.32.0 (``@1``) holds
@@ -250,11 +255,9 @@ def _block_attrs(block: Mapping[str, Any], table: Mapping[str, Any],
                  prefix: str, where: str) -> Dict[str, Any]:
     """``block``'s keys but its numbers as typed attributes, ``prefix +
     key``; a key the table does not know is refused by name."""
-    unknown = sorted(k for k in block if k not in table)
-    if unknown:
-        raise SpectraDataError(
-            f"{where} carries {unknown}, which this data file does not "
-            f"know how to state; refused rather than dropped")
+    said = unknown_keys(block, table, note=UNSTATED)
+    if said:
+        raise SpectraDataError(f"{where}: {said}")
     return {prefix + k: _encode(table[k], block[k]) for k in block
             if not isinstance(table[k], Var)}
 
@@ -529,16 +532,12 @@ def write_spectra_data(payload: Mapping[str, Any], path, *,
     the one atomic writer (`persist.write_bytes`); returns the path.
     ``json_sha256`` ties the file to the JSON written with it."""
     p = Path(path)
-    unknown = sorted(k for k in payload
-                     if k not in _ROOT and k not in (
-                         "schema_version", "free_atom_idxs",
-                         "frozen_atom_idxs", "structure", "equilibrium",
-                         "modes", "relaxation", "thermo", "removed_motions",
-                         MAP_KEY, "partial_charges"))
-    if unknown:
-        raise SpectraDataError(
-            f"the result carries {unknown}, which this data file does not "
-            f"know how to state; refused rather than dropped")
+    said = unknown_keys(payload, (
+        *_ROOT, "schema_version", "free_atom_idxs", "frozen_atom_idxs",
+        "structure", "equilibrium", "modes", "relaxation", "thermo",
+        "removed_motions", MAP_KEY, "partial_charges"), note=UNSTATED)
+    if said:
+        raise SpectraDataError(f"the result: {said}")
     structure = payload.get("structure")
     n_atoms = int(payload["n_atoms_total"])
     free = [int(i) for i in payload["free_atom_idxs"]]
@@ -682,12 +681,11 @@ def write_spectra_data(payload: Mapping[str, Any], path, *,
                     title="the harmonic thermochemistry at one temperature, "
                           "as its regime defines it")
         gg = g.createGroup("grid")
-        unknown = sorted(k for k in grid if k != "temperatures_K"
-                         and k not in {n for n, *_ in _GRID_CURVES})
-        if unknown:
-            raise SpectraDataError(
-                f"the thermo grid carries {unknown}, which this data file "
-                f"does not know how to state; refused rather than dropped")
+        said = unknown_keys(grid, ("temperatures_K",
+                                   *(n for n, *_ in _GRID_CURVES)),
+                            note=UNSTATED)
+        if said:
+            raise SpectraDataError(f"the thermo grid: {said}")
         temps = [float(t) for t in grid.get("temperatures_K") or ()]
         vars_ = _grid_vars()
         values = _fill(vars_, {"temperature_k": len(temps)})
@@ -885,6 +883,6 @@ def read_spectra_data(path, *, data=None) -> Dict[str, Any]:
     return out
 
 
-__all__ = ["DATA_SCHEMA", "SpectraDataError", "write_spectra_data",
+__all__ = ["DATA_SCHEMA", "SpectraDataError", "UNSTATED", "write_spectra_data",
            "read_spectra_data", "structure_vars", "write_structure_group",
            "read_structure_group"]

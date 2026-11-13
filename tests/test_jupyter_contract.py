@@ -66,23 +66,32 @@ def test_a_wrong_schema_stamp_is_refused(rules_file):
     assert "molbuilder/jupyter" in str(exc.value)
 
 
+@pytest.mark.parametrize("added, named", [
+    # a section the file does not hold, and the ones it does
+    ('\n[kernels]\nfoo = 1\n', ["kernels", "server", "lab"]),
+    # two typos under [lab]: both named, each with the one it is close to
+    ('\n[lab.hom]\nx = 1\n[lab.cnfig]\ny = 1\n',
+     ["cnfig", "'hom' (did you mean 'home'?)",
+      "'cnfig' (did you mean 'config'?)"]),
+])
 def test_an_unknown_section_is_refused_by_naming_the_ones_that_exist(
-        rules_file):
+        rules_file, added, named):
     """A typo must not disable a setting in silence.
 
     That is the whole reason this table exists -- `port_retries` went
     missing for a week inside a list literal -- so the refusal names the
     sections a person can choose from rather than only the one they got
-    wrong (`warmfiles`' own refusal style).
+    wrong, every unknown one at once, each with the one it is close to
+    (`execution/job-contracts.md` § 6.1).  THE SILENT FAILURE: [lab]'s
+    first unknown section alone named, so a person fixed one typo to be
+    refused for the next.
     """
-    rules_file(J.rules_path().read_text(encoding="utf-8")
-               + '\n[kernels]\nfoo = 1\n')
+    rules_file(J.rules_path().read_text(encoding="utf-8") + added)
     with pytest.raises(J.JupyterRulesError) as exc:
         J.load_rules()
     said = str(exc.value)
-    assert "kernels" in said
-    for legal in ("server", "lab"):
-        assert legal in said, f"the refusal does not name [{legal}]"
+    for words in named:
+        assert words in said, f"the refusal does not name {words}: {said}"
 
 
 # --------------------------------------------------------------------- #

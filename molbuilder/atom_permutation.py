@@ -1,6 +1,7 @@
 """The order record -- a sorted deck's order, and the way back to the user order.
 
-MODULE  atom_permutation (L1, the job as described; stdlib + numpy only)
+MODULE  atom_permutation (L1, the job as described; stdlib + numpy, and
+        `persist`, which travels with it)
 ROLE    the order record -- the class every reader crosses with, its one dict
         reader, the sort keys' names (`model/overview.md` § 2.2a)
 USED-BY structure.py (the type of ``Structure.atom_order``), transport/sort.py
@@ -32,6 +33,11 @@ from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
 import numpy as np
+
+try:                                        # inside molbuilder
+    from .persist import unknown_keys
+except ImportError:                         # beside a job, in a bundle
+    from persist import unknown_keys  # type: ignore[no-redef]
 
 #: THE SORT KEYS, by name -- what a calculation needs done to the atom order:
 #: TranSIESTA's electrode blocks, or a SIESTA force-constant run's held atoms
@@ -159,14 +165,10 @@ class Permutation:
                     f"{source}: an order record is an object {{key, "
                     f"sorted_to_original, original_to_sorted}}; got "
                     f"{type(d).__name__}")
-            stray = sorted(k for k in d
-                           if k not in ("key", "sorted_to_original",
-                                        "original_to_sorted"))
-            if stray:
-                raise PermutationError(
-                    f"{source}: an order record holds key, "
-                    f"sorted_to_original and original_to_sorted; it also "
-                    f"carries {stray!r}")
+            said = unknown_keys(d, ("key", "sorted_to_original",
+                                    "original_to_sorted"))
+            if said:
+                raise PermutationError(f"{source}: the order record: {said}")
             o2s, s2o = _two_lists(d.get("original_to_sorted"),
                                   d.get("sorted_to_original"), source)
             perm = cls(original_to_sorted=o2s, sorted_to_original=s2o,
@@ -407,11 +409,9 @@ class AtomIndexMap:
                                  f"object; got {type(d).__name__}")
         fields = (FIELD_LISTED_BY, FIELD_BASE, FIELD_USER, FIELD_ENGINE,
                   FIELD_WHY)
-        stray = sorted(set(d) - set(fields))
-        if stray:
-            raise AtomIndexError(f"{source}: the atom index map holds "
-                                 f"{', '.join(fields)}; it also carries "
-                                 f"{stray!r}")
+        unknown = unknown_keys(d, fields)
+        if unknown:
+            raise AtomIndexError(f"{source}: the atom index map: {unknown}")
         # WHY A COLUMN IS NOT WRITTEN, as the file states it -- unless the
         # reader has a sentence of its own (F4's warning names the file).
         said = said or str(d.get(FIELD_WHY) or "")

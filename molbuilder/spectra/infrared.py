@@ -303,10 +303,14 @@ def read_ask(raw: Any) -> Dict[str, Any]:
     Refused by name when it is not one -- another key, a value of another
     kind: a malformed ask, which no result could answer (the load door's
     400, `web/web-api.md`)."""
-    if not isinstance(raw, dict) or any(k not in ASK_KEYS for k in raw):
+    if not isinstance(raw, dict):
         raise InfraredError(f"infrared is {{direction: x, y, z or three "
                             f"numbers, partition: {' or '.join(PARTITIONS)}}}"
                             f" -- not {raw!r}")
+    from ..persist import unknown_keys
+    said = unknown_keys(raw, ASK_KEYS)
+    if said:
+        raise InfraredError(f"infrared: {said}")
     direction = raw.get("direction")
     direction = DEFAULT_DIRECTION if direction is None else direction
     _unit(direction)

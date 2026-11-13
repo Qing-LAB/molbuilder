@@ -500,10 +500,10 @@ def read_ask(raw: Any) -> Dict[str, Any]:
     if not isinstance(raw, Mapping):
         raise RamanError(f"raman is an object {{laser_nm, broaden_ev?}}, not "
                          f"{raw!r}")
-    extra = sorted(k for k in raw if k not in ASK_KEYS)
-    if extra:
-        raise RamanError(f"raman asks {', '.join(ASK_KEYS)}; not "
-                         f"{', '.join(extra)}")
+    from ..persist import unknown_keys
+    said = unknown_keys(raw, ASK_KEYS)
+    if said:
+        raise RamanError(f"raman: {said}")
     if raw.get("laser_nm") is None:
         raise RamanError("raman asks laser_nm: the laser's wavelength in nm")
     return {"laser_nm": _positive("laser_nm", raw["laser_nm"],

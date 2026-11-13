@@ -101,7 +101,8 @@ each release is its changelog row and its ledger section
   a benchmark's trials are compared (X-EXEC); 2.69.55, a restore over
   unsaved work asks through the one interface (X-EXEC); 2.69.56, a record's
   unknown keys refused in one sentence (X-EXEC); 2.69.57, a SIESTA
-  vibration builds its result again (2.69.56's regression).
+  vibration builds its result again (2.69.56's regression); 2.69.58, the
+  other readers' unknown keys refused in the one sentence (X-EXEC).
   **Left, in order**: X-EXEC's rest, X-ENG; then the page doors and
   the copies they share (O-STATUS, O-FIND, O-STATE, O-WORDS, O-KEYS's rest
   with X-UI and X-PLOT; O-TESTS).

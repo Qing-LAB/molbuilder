@@ -125,9 +125,9 @@ machine_config = { notify_keys_file = "~/.mb/notify_keys" }
 refused = ["'notify_keys_file' is no longer read", "molbuilder notify-token"]
 
 [[case]]
-name = "an unknown section is refused, naming the live ones and no retired one"
-machine_config = { queue = "cpu" }
-refused = "key(s) 'queue'.  Known sections: tls, envs, auth, launch, env_init, checkpoint, admin, rate_limit, paths."
+name = "unknown sections are refused all at once, each with the live section it is close to, naming the live ones and no retired one"
+machine_config = { queue = "cpu", aut = {} }
+refused = "molbuilder.json: unknown keys 'queue', 'aut' (did you mean 'auth'?) -- known keys: tls, envs, auth, launch, env_init, checkpoint, admin, rate_limit, paths."
 
 [[case]]
 name = "env_init's activation is one of the two forms -- no default, no third"

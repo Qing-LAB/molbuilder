@@ -1638,10 +1638,9 @@ def _not_offered_from(name: str, raw, type_: str, choices, engines,
     out = []
     for i, row in enumerate(raw):
         at = f"not_offered[{i}]"
-        unknown = sorted(set(row) - {"on", "values", "why"})
-        if unknown:
-            _refuse(f"`{at}` has unknown key(s) {', '.join(unknown)} -- a "
-                    f"row states on, values and why", where=name)
+        said = unknown_keys(row, ("on", "values", "why"))
+        if said:
+            _refuse(f"`{at}`: {said}", where=name)
         why = row.get("why")
         if not isinstance(why, str) or not why.strip():
             _refuse(f"`{at}` states no why -- the reason, read from the "

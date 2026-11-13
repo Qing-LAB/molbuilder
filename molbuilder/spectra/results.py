@@ -339,18 +339,9 @@ def checked_optical(block: Mapping[str, Any]) -> Dict[str, Any]:
     not three numbers, no ``δ`` or a state not one of
     :data:`OPTICAL_STATES` is refused by name."""
     where = "SpectraResults.optical"
-    unknown = sorted(k for k in block if k not in _OPTICAL_KEYS)
-    missing = sorted(_OPTICAL_KEYS - set(block))
-    if unknown or missing:
-        raise ValueError(f"{where} carries {unknown} and lacks {missing}; "
-                         f"its keys are {sorted(_OPTICAL_KEYS)}")
+    check_keys(where, block, sorted(_OPTICAL_KEYS))
     for m in block.get("modes") or ():
-        extra = sorted(k for k in m if k not in _OPTICAL_MODE_KEYS)
-        lacks = sorted(_OPTICAL_MODE_KEYS - set(m))
-        if extra or lacks:
-            raise ValueError(f"{where}.modes carries {extra} and lacks "
-                             f"{lacks}; a mode row's keys are "
-                             f"{sorted(_OPTICAL_MODE_KEYS)}")
+        check_keys(f"{where}.modes", m, sorted(_OPTICAL_MODE_KEYS))
     if block.get("displacement_ang") is None:
         raise ValueError(f"{where} states no displacement_ang -- the "
                          f"force constants' step the frames were moved by")

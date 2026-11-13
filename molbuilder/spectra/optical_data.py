@@ -43,22 +43,23 @@ try:                                        # inside molbuilder
     from ..ncdata import (NC_LOCK, Var, as_bytes, empty, in_memory,
                           json_attr, number_attr, read_variables, reading,
                           state, unjson_attr, unnumber_attr, write_group)
-    from ..persist import write_bytes
+    from ..persist import unknown_keys, write_bytes
     from ..runfiles import ROLE_SIESTA_OUT, SIESTA_EPSIMG, compose
     from ..structure import Structure as _Structure
-    from .datafile import read_structure_group, write_structure_group
+    from .datafile import (UNSTATED, read_structure_group,
+                           write_structure_group)
 except ImportError:                         # beside a job, in mb_vibration.pyz
     from atom_permutation import AtomIndexMap  # type: ignore[no-redef]
     from ncdata import (NC_LOCK, Var, as_bytes, empty,  # type: ignore[no-redef]
                         in_memory, json_attr, number_attr, read_variables,
                         reading, state, unjson_attr, unnumber_attr,
                         write_group)
-    from persist import write_bytes  # type: ignore[no-redef]
+    from persist import unknown_keys, write_bytes  # type: ignore[no-redef]
     from runfiles import (  # type: ignore[no-redef]
         ROLE_SIESTA_OUT, SIESTA_EPSIMG, compose)
     from structure import Structure as _Structure  # type: ignore[no-redef]
     from spectra_datafile import (  # type: ignore[no-redef]
-        read_structure_group, write_structure_group)
+        UNSTATED, read_structure_group, write_structure_group)
 
 DATA_SCHEMA = "molbuilder/optical-data@3"
 #: ``@1`` kept ``δ`` as an attribute of ``/settings``, read as it is; ``@1``
@@ -190,17 +191,13 @@ def _checked(payload: Mapping[str, Any]) -> None:
     for keys, block, where in (
             (_PAYLOAD_KEYS, payload, "the optical payload"),
             (_SETTINGS_KEYS, payload.get("settings") or {}, "its settings")):
-        unknown = sorted(k for k in block if k not in keys)
-        if unknown:
-            raise OpticalDataError(
-                f"{where} carries {unknown}, which this data file does not "
-                f"know how to state; refused rather than dropped")
+        said = unknown_keys(block, keys, note=UNSTATED)
+        if said:
+            raise OpticalDataError(f"{where}: {said}")
     for i, f in enumerate(payload.get("frames") or ()):
-        unknown = sorted(k for k in f if k not in _FRAME_KEYS)
-        if unknown:
-            raise OpticalDataError(
-                f"frame {i} carries {unknown}, which this data file does not "
-                f"know how to state; refused rather than dropped")
+        said = unknown_keys(f, _FRAME_KEYS, note=UNSTATED)
+        if said:
+            raise OpticalDataError(f"frame {i}: {said}")
 
 
 def write_optical_data(payload: Mapping[str, Any], path) -> Path:

@@ -69,6 +69,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 
 from .issues import Issue
+from .persist import unknown_keys
 from .structure import AXIS_KINDS, Structure
 
 
@@ -267,11 +268,9 @@ def _apply_block(s: Structure, payload: Any,
             f"op 'block' takes the whole cell as an object with "
             f"{list(BLOCK_KEYS)} -- a partial block is what this op exists to "
             f"replace")
-    unknown = sorted(set(payload) - set(BLOCK_KEYS))
-    if unknown:
-        raise ValueError(
-            f"op 'block' got unknown key(s) {unknown}; expected "
-            f"{list(BLOCK_KEYS)}")
+    said = unknown_keys(payload, BLOCK_KEYS)
+    if said:
+        raise ValueError(f"op 'block': {said}")
 
     kinds = tuple(str(k) for k in (payload.get("axis_kind") or []))
     if len(kinds) != 3 or any(k not in AXIS_KINDS for k in kinds):

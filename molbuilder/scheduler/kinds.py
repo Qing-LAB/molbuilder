@@ -40,6 +40,7 @@ from typing import Dict, List, Mapping, Optional, Sequence, Tuple
 #: environment when its card states one -- by its one name
 #: (`runtime_info.WALL_VAR`), from which the run script counts what is left
 #: and hands it to the engine (`running-a-job.md` § 3.6).
+from ..persist import unknown_keys
 from ..runtime_info import WALL_VAR
 
 #: The file, beside this module.
@@ -270,13 +271,12 @@ def _fill(words: Sequence[str], values: Mapping[str, object]) -> List[str]:
 def _keys(kind: str, block: str, got: Mapping, want: Sequence[str], *,
           all_of: bool = True) -> None:
     """``got``'s keys are ``want`` (all of them, or some of them)."""
-    extra = sorted(set(got) - set(want))
+    said = unknown_keys(got, want)
     missing = [k for k in want if k not in got] if all_of else []
-    if extra or missing:
+    if said or missing:
         raise KindError(
-            f"{KINDS_FILE.name}: [{kind}{'.' + block if block else ''}] "
-            + "; ".join(([f"names {', '.join(extra)}, which no kind states"]
-                         if extra else [])
+            f"{KINDS_FILE.name}: [{kind}{'.' + block if block else ''}]: "
+            + "; ".join(([said] if said else [])
                         + ([f"leaves out {', '.join(missing)}"]
                            if missing else [])))
 

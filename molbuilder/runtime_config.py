@@ -111,7 +111,7 @@ _EXECUTION_RENAMED = (
 
 
 #: Same shape as `_SCHEDULER_RETIRED`: a retired key gets its own sentence,
-#: not the generic "unknown top-level key".
+#: not the one sentence for an unknown key.
 _SECRET_KEY_MOVED = (
     "{path}: 'secret_key_file' is no longer configured.  The session key has "
     "ONE home -- <config dir>/secrets/secret_key -- and is created "
@@ -986,7 +986,7 @@ def _normalise(raw: Mapping[str, Any]) -> Dict[str, Any]:
 
     ``tls`` is a SECTION.  The flat top-level ``cert``/``key`` spelling is
     refused BY NAME, showing the section to write, rather than as an
-    "unknown top-level key".
+    unknown key.
 
     **An unknown top-level key is an ERROR, not tolerance**
     (`configuration.md` § 4): ignoring one would swallow every typo'd section
@@ -997,31 +997,30 @@ def _normalise(raw: Mapping[str, Any]) -> Dict[str, Any]:
     ``_SECTIONS``) so the ``get_*`` accessors stay trivial and callers
     never see a section whose entries aren't the documented types.
     """
-    # A leading underscore marks a COMMENT key ("_comment_tls": ...) --
-    # JSON has no comments and the committed templates lean on this idiom.
-    # An explicit marker is not the typo class the refusal exists for.
-    unknown = sorted(k for k in raw
-                     if k not in _SECTIONS and not _is_comment(k))
-    if "secret_key_file" in unknown:
+    if "secret_key_file" in raw:
         raise RuntimeConfigError(_SECRET_KEY_MOVED.format(path=CONFIG_FILENAME))
     # NAMED BEFORE THE GENERIC LIST: whoever wrote them is owed the
-    # section's spelling, not "unknown top-level key(s) 'cert'".
+    # section's spelling, not "unknown key 'cert'".
     flat = [k for k in _RETIRED_FLAT_TLS if k in raw]
     if flat:
         raise RuntimeConfigError(_FLAT_TLS_RETIRED.format(
             path=CONFIG_FILENAME,
             found=", ".join(repr(k) for k in flat)))
-    if unknown:
-        raise RuntimeConfigError(
-            f"{CONFIG_FILENAME}: unknown top-level "
-            f"key(s) {', '.join(map(repr, unknown))}.  Known sections: "
-            f"{', '.join(n for n, s in _SECTIONS.items() if not s.get('retired'))}"
-            f".  A key this loader does not "
-            f"know would be silently ineffective -- refused instead, so a "
-            f"typo cannot masquerade as configuration"
-            f".  A key starting with '_' is a "
-            f"comment and is ignored by design."
-        )
+    # A leading underscore marks a COMMENT key ("_comment_tls": ...) --
+    # JSON has no comments and the committed templates lean on this idiom.
+    # An explicit marker is not the typo class the refusal exists for.  A
+    # RETIRED SECTION is refused by its own row, below, naming what
+    # replaced it; the known keys named are the live sections.
+    said = unknown_keys(
+        [k for k in raw if not _is_comment(k)
+         and not _SECTIONS.get(k, {}).get("retired")],
+        [n for n, s in _SECTIONS.items() if not s.get("retired")],
+        note=(".  A key this loader does not know would be silently "
+              "ineffective -- refused instead, so a typo cannot masquerade "
+              "as configuration.  A key starting with '_' is a comment and "
+              "is ignored by design"))
+    if said:
+        raise RuntimeConfigError(f"{CONFIG_FILENAME}: {said}.")
     out: Dict[str, Any] = {}
     for name, spec in _SECTIONS.items():
         value = spec["read"](raw)

@@ -635,11 +635,14 @@ def _kind(name: str, body: object, engines: Tuple[str, ...]
         if twice:
             _refuse(where, f"{key} names {', '.join(twice)} twice")
     desc = body.get("description", {})
-    if not isinstance(desc, dict) or set(desc) - {
-            "cites", "carries", "cited_kind", *DESCRIPTION_PARTS}:
+    if not isinstance(desc, dict):
         _refuse(where, f"description is a table of cites, carries, "
                        f"cited_kind and its parts "
                        f"({', '.join(DESCRIPTION_PARTS)})")
+    said = unknown_keys(desc, ("cites", "carries", "cited_kind",
+                               *DESCRIPTION_PARTS))
+    if said:
+        _refuse(where, f"description: {said}")
     carries = desc.get("carries", [])
     if (not isinstance(carries, list)
             or set(carries) - set(DESCRIPTION_FIELDS)):

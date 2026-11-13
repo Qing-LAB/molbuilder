@@ -24,10 +24,10 @@ from molbuilder.parse.types import SidecarResult
 from molbuilder.sidecars.molstruct import (
     READABLE_VERSIONS,
     SCHEMA_VERSION,
-    known_keys,
     is_sidecar,
     load,
     to_dict,
+    unread_keys,
 )
 from molbuilder.atom_permutation import MAP_KEY
 from molbuilder.structure_pair import MolstructJsonError
@@ -104,21 +104,15 @@ def load_text(text: str, *, source: str = "<sidecar>",
     # HERE, where the payload is still whole: this function reads the keys it
     # NAMES, so a stray one would be dropped before ``apply_to_structure``
     # could refuse it.
-    # The one list (`sidecars.molstruct.known_keys`): the retired keys are
-    # accepted and ignored rather than refused -- a key this project used to
-    # write is not a key nobody reads, and the files carrying it are the
-    # user's (`structure.RETIRED_METADATA_KEYS`).
+    # Refused by the list's owner (`sidecars.molstruct.unread_keys`): the
+    # retired keys are accepted and ignored rather than refused -- a key
+    # this project used to write is not a key nobody reads, and the files
+    # carrying it are the user's (`structure.RETIRED_METADATA_KEYS`).
     from molbuilder.structure import (ATOM_COLUMNS, FILE_FIELDS,
                                       RETIRED_METADATA_KEYS)
-    known = known_keys()
-    stray = sorted(k for k in data if k not in known)
-    if stray:
-        raise MolstructJsonError(
-            f"sidecar {source} carries {stray!r}, which this version does not "
-            f"read. Refused rather than ignored -- a key nobody reads is "
-            f"metadata the writer thinks it saved. Known keys: "
-            f"{sorted(known)!r}"
-        )
+    said = unread_keys(data)
+    if said:
+        raise MolstructJsonError(f"sidecar {source}: {said}.")
     if retired_out is not None:
         retired_out.update({k: data[k] for k in RETIRED_METADATA_KEYS
                             if data.get(k) is not None})

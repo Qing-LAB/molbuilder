@@ -369,9 +369,11 @@ def test_the_gate_refuses_a_key_it_cannot_honour():
     afternoon while it was still being sent."""
     s = Structure.from_xyz("2\n\nC 0 0 0\nO 1 0 0\n")
 
-    with pytest.raises(ValueError, match=r"unknown metadata.*frozen_atoms"):
+    with pytest.raises(ValueError, match=r"unknown key 'frozen_atoms'"):
         s.apply_metadata_dict({"regions": {}, "frozen_atoms": [0]})
-    with pytest.raises(ValueError, match=r"unknown metadata"):
+    # A typo is named with the key it is close to (`job-contracts.md` § 6.1).
+    with pytest.raises(ValueError, match=r"unknown key 'regoins' "
+                                         r"\(did you mean 'regions'\?\)"):
         s.apply_metadata_dict({"regoins": {"typo": [0]}})
 
 
@@ -419,9 +421,7 @@ def test_the_sidecar_payload_has_exactly_these_members(tmp_path):
     # drop atoms the person believes are held.
     molstruct.sidecar_path_for(target).write_text(
         json.dumps(dict(saved, frozen_atoms=[0])), "utf-8")
-    with pytest.raises(MolstructJsonError,
-                       match=r"\['frozen_atoms'\], which this version does "
-                             r"not read"):
+    with pytest.raises(MolstructJsonError, match=r"unknown key 'frozen_atoms'"):
         StructureCodec().load(target)
 
 

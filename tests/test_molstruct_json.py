@@ -604,7 +604,7 @@ class TestAnUnknownKeyIsRefused:
         from molbuilder.workingcopy_structure import StructureCodec
 
         s = Structure(elements=["C"], positions=np.zeros((1, 3)))
-        with pytest.raises(ValueError, match="unknown metadata"):
+        with pytest.raises(ValueError, match="invented_by_nobody"):
             s.apply_metadata_dict({"invented_by_nobody": [1, 2, 3]})
 
         xyz = tmp_path / "j.xyz"
@@ -615,3 +615,22 @@ class TestAnUnknownKeyIsRefused:
         side.write_text(json.dumps(payload))
         with pytest.raises(MolstructJsonError, match="invented_by_nobody"):
             StructureCodec().load(xyz)
+
+    def test_a_typo_is_never_steered_to_a_retired_key(self, tmp_path):
+        """A RETIRED key is read and never applied, so the refusal of a typo
+        names the keys a sidecar carries without it (`job-contracts.md`
+        § 6.1: each with the known key it is close to).  THE SILENT FAILURE:
+        the refusal named `title` among the keys a sidecar carries, and the
+        one sentence would offer it as the typo's match -- so a person writes
+        a title the structure then drops without a word."""
+        from molbuilder.workingcopy_structure import StructureCodec
+
+        xyz = tmp_path / "j.xyz"
+        StructureCodec().write(self._current(), xyz)
+        side = tmp_path / "j.molstruct.json"
+        payload = _json.loads(side.read_text())
+        payload["titel"] = "water"
+        side.write_text(_json.dumps(payload))
+        with pytest.raises(MolstructJsonError, match="titel") as said:
+            StructureCodec().load(xyz)
+        assert not re.search(r"\btitle\b", str(said.value)), str(said.value)

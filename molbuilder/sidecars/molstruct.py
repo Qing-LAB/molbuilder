@@ -50,10 +50,10 @@ from typing import Any, Dict, List, Optional, Union
 # travels beside a job with the map's module.
 try:                                        # inside molbuilder
     from ..atom_permutation import MAP_KEY
-    from ..persist import json_text
+    from ..persist import json_text, unknown_keys
 except ImportError:                         # beside a job, in a bundle
     from atom_permutation import MAP_KEY  # type: ignore[no-redef]
-    from persist import json_text  # type: ignore[no-redef]
+    from persist import json_text, unknown_keys  # type: ignore[no-redef]
 
 
 #: The on-disk sidecar schema, READ STRICTLY (:data:`READABLE_VERSIONS`).
@@ -170,24 +170,32 @@ ENVELOPE_KEYS = ("schema_version", "n_atoms_total", "n_frames_total",
 RETIRED_ENVELOPE_KEYS = ("structure_hash", "selection_rules")
 
 
-def known_keys() -> frozenset:
-    """EVERY KEY A SIDECAR MAY CARRY -- the structure's metadata fields and
-    per-atom columns (`structure.ATOM_COLUMNS`), the envelope, the free-form ``info`` block, and the
-    retired keys an older sidecar still opens with (accepted, not applied):
-    the one list each gate refuses a stray key against, the read door's
-    (`parse.sidecars.molstruct.load_text`) and :func:`apply_to_structure`'s
-    alike.  A key nobody reads is metadata the writer thinks it saved."""
+def unread_keys(data) -> Optional[str]:
+    """Every key of a sidecar's ``data`` no sidecar carries, in the one
+    sentence (`persist.unknown_keys`) -- or ``None``.  A sidecar carries the
+    structure's metadata fields and per-atom columns
+    (`structure.ATOM_COLUMNS`), the envelope and the free-form ``info``
+    block; the retired keys an older sidecar still opens with are accepted,
+    not applied, and never offered as known, so a typo is not steered to a
+    key nothing applies.  Asked by each gate that reads a sidecar, the read
+    door's (`parse.sidecars.molstruct.load_text`) and
+    :func:`apply_to_structure`'s.  A key nobody reads is metadata the writer
+    thinks it saved."""
     try:                                        # inside molbuilder
         from molbuilder.structure import (ATOM_COLUMNS, FILE_FIELDS,
                                           RETIRED_IDENTITY_KEYS,
                                           RETIRED_METADATA_KEYS)
     except ImportError:                         # beside a job, in a bundle
-        from structure import (ATOM_COLUMNS, FILE_FIELDS,
+        from structure import (ATOM_COLUMNS, FILE_FIELDS,  # type: ignore
                                RETIRED_IDENTITY_KEYS, RETIRED_METADATA_KEYS)
-    return frozenset(set(FILE_FIELDS) | set(ATOM_COLUMNS)
-                     | set(ENVELOPE_KEYS) | {"info"}
-                     | set(RETIRED_METADATA_KEYS) | set(RETIRED_IDENTITY_KEYS)
-                     | set(RETIRED_ENVELOPE_KEYS))
+    retired = {*RETIRED_METADATA_KEYS, *RETIRED_IDENTITY_KEYS,
+               *RETIRED_ENVELOPE_KEYS}
+    return unknown_keys([k for k in data if k not in retired],
+                        frozenset({*FILE_FIELDS, *ATOM_COLUMNS,
+                                   *ENVELOPE_KEYS, "info"}),
+                        note=(".  Refused rather than ignored -- a key nobody "
+                              "reads is metadata the writer thinks it saved"))
+
 
 # Canonical sidecar suffix.  ``<job>.xyz`` -> ``<job>.molstruct.json``.
 #: PUBLIC: a suffix with a composer (:func:`sidecar_path_for`) has a public
@@ -400,12 +408,10 @@ def atom_columns_via_dataclass(n_atoms_total: int,
         from structure import (ATOM_COLUMNS, RETIRED_IDENTITY_KEYS,
                                SPECIES_LABELS, Structure)
     columns = dict(columns or {})
-    stray = [k for k in columns
-             if k not in ATOM_COLUMNS and k not in RETIRED_IDENTITY_KEYS]
-    if stray:
-        raise MolstructJsonError(
-            f"identity carries {sorted(stray)!r}; the per-atom columns are "
-            f"{list(ATOM_COLUMNS)!r}")
+    said = unknown_keys([k for k in columns
+                         if k not in RETIRED_IDENTITY_KEYS], ATOM_COLUMNS)
+    if said:
+        raise MolstructJsonError(f"identity: {said}")
     n = int(n_atoms_total)
     labels = columns.get(SPECIES_LABELS)
     if labels is not None and not (
@@ -664,19 +670,15 @@ def apply_to_structure(struct, sidecar_data: Dict[str, Any]) -> None:
         from structure import (FILE_FIELDS, IDENTITY_FIELDS, SPECIES_LABELS,
                                split_species_label)
     # A RETIRED KEY IS NOT A STRAY ONE -- the gates ask that question of
-    # one list (:func:`known_keys`), so they give the same answer
+    # one door (:func:`unread_keys`), so they give the same answer
     # (`structure.RETIRED_METADATA_KEYS` says which and why).
     #
     # `StructureCodec.load` never reaches here with a stray key, because
     # `parse.sidecars.molstruct.load_text` answers first.  This gate takes a
     # payload DIRECTLY, so a caller that builds one in code does reach it.
-    stray = [k for k in sidecar_data if k not in known_keys()]
-    if stray:
-        raise MolstructJsonError(
-            f"sidecar carries {sorted(stray)!r}, which is neither a structure "
-            f"metadata field {list(FILE_FIELDS)!r} nor an envelope key "
-            f"{list(ENVELOPE_KEYS)!r}.  Refused rather than ignored: a key "
-            f"nobody reads is metadata the writer thinks it saved.")
+    said = unread_keys(sidecar_data)
+    if said:
+        raise MolstructJsonError(f"sidecar: {said}.")
     # Identity first (schema 8), FULL-REPLACE -- the same semantics
     # apply_metadata_dict documents for the metadata block: an absent key
     # resets the field to its default (post_init refills the placeholders).
@@ -801,6 +803,7 @@ def load(sidecar_path: Union[str, Path], *,
 
 __all__ = [
     "SCHEMA_VERSION",
+    "unread_keys",
     "READABLE_VERSIONS",
     "frozen_atoms",
     "dumps",

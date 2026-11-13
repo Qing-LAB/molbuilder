@@ -125,11 +125,10 @@ def _struct_from_envelope(env: Dict[str, Any]) -> Structure:
                                   # (from_dict reads it)
              "source_index",      # the CALLER's map back onto a larger structure
              "document"}          # outbound only; a request's is ignored
-    stray = sorted(k for k in env if k not in known)
-    if stray:
-        raise ValueError(
-            f"structure carries {stray!r}, which the envelope does not define "
-            f"(known: {sorted(known)!r}).  Metadata belongs under 'metadata'.")
+    from molbuilder.persist import unknown_keys
+    said = unknown_keys(env, known, note=".  Metadata belongs under 'metadata'")
+    if said:
+        raise ValueError(f"structure: {said}.")
     # AN EMPTY STRUCTURE IS A STRUCTURE: the slab op places from ABSOLUTE
     # coordinates -- dx, dy and start_z from the world origin -- so it needs
     # no atoms to build onto.

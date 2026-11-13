@@ -247,6 +247,16 @@ def _checked_indices():
     return checked_indices
 
 
+def _persist():
+    """The record helpers (`persist`), imported both ways: this module
+    travels in the job bundles beside ``persist``."""
+    try:                                    # inside molbuilder
+        from . import persist
+    except ImportError:                     # beside a job
+        import persist  # type: ignore[no-redef]
+    return persist
+
+
 def _order_record_type():
     """The order record's class, imported both ways: this module travels in
     ``mb_pyscf.pyz`` beside ``atom_permutation``."""
@@ -269,11 +279,7 @@ def _customized_row(raw: Any, where: str) -> Dict[str, Any]:
         raise ValueError(
             f"{where}: a row is an object {{name, value, unit?, note?}}; got "
             f"{type(raw).__name__}")
-    stray = sorted(k for k in raw if k not in _ROW_KEYS)
-    if stray:
-        raise ValueError(
-            f"{where}: a row carries {stray!r}; its keys are "
-            f"{list(_ROW_KEYS)!r}")
+    _persist().check_keys(where, raw, _ROW_KEYS, needed=())
     name = raw.get("name")
     if not isinstance(name, str) or not name:
         raise ValueError(f"{where}: a row's name is a non-empty string; got "
@@ -330,10 +336,7 @@ def normalise_customized(raw: Any, n_frames: int,
     if not isinstance(raw, dict):
         raise ValueError(f"{where} is an object {{rows, frames}}; got "
                          f"{type(raw).__name__}")
-    stray = sorted(k for k in raw if k not in ("rows", "frames"))
-    if stray:
-        raise ValueError(f"{where} carries {stray!r}; its keys are "
-                         f"['rows', 'frames']")
+    _persist().check_keys(where, raw, ("rows", "frames"), needed=())
     rows_raw = raw.get("rows")
     rows_raw = [] if rows_raw is None else rows_raw
     if not isinstance(rows_raw, list):
@@ -1278,17 +1281,15 @@ class Structure:
         A key whose fact lives nowhere else cannot be retired this way -- it
         needs a schema bump and a reader that migrates it."""
         data = data or {}
-        unknown = [k for k in data
-                   if k not in METADATA_FIELDS
-                   and k not in RETIRED_METADATA_KEYS]
-        if unknown:
-            raise ValueError(
-                f"Structure.apply_metadata_dict: unknown metadata "
-                f"{sorted(unknown)!r}; known fields are "
-                f"{list(METADATA_FIELDS)!r}.  A key this does not know is a "
-                f"fact you believe you stored -- it is refused rather than "
-                f"dropped.  (The reserved `frozen_atoms` label lives in "
-                f"`regions` with every other label.)")
+        said = _persist().unknown_keys(
+            [k for k in data if k not in RETIRED_METADATA_KEYS],
+            METADATA_FIELDS,
+            note=(".  A key this does not know is a fact you believe you "
+                  "stored -- it is refused rather than dropped.  (The "
+                  "reserved `frozen_atoms` label lives in `regions` with "
+                  "every other label.)"))
+        if said:
+            raise ValueError(f"Structure.apply_metadata_dict: {said}")
         self.regions      = dict(data.get("regions") or {})
         self.cell         = (np.asarray(data["cell"], dtype=float)
                              if data.get("cell") is not None else None)
