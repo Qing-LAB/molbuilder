@@ -789,7 +789,7 @@ button.danger:disabled {
  * type scale for its dense panel) and may never re-pick the severity. */
 /* ---- Validation issues panel ----
  * Structured per-issue list; each <li> carries data-severity picking the
- * left-bar accent + leading glyph.  Populated by renderIssues(). */
+ * left-bar accent + leading glyph.  Populated by the findings renderer (lib/validation-findings.js). */
 .issues-panel[hidden] { display: none; }
 .issues-panel {
     list-style: none;

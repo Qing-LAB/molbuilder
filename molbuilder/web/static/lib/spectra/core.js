@@ -1027,12 +1027,8 @@
          * residual.  emptyText keeps the panel's no-findings copy alive:
          * the template's static row is destroyed by the first render. */
         const parts = _formParts(engine);
-        const ids = {};
-        for (const p of parts) {
-            for (const s of (p.schema.sections || [])) {
-                for (const f of (s.fields || [])) ids[f.name] = f.id;
-            }
-        }
+        const ids = window.molbuilder.formSchema.fieldIds(
+            parts.map((p) => p.schema));
         // Both engines' own parts stay mounted (one is shown), so the OTHER
         // engine's field rows are cleared before this engine's are drawn.
         for (const e of ["pyscf", "siesta"]) {

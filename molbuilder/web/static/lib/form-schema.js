@@ -8,7 +8,9 @@
  * values back into a flat object whose keys match the dataclass
  * field names.
  *
- * Public API (via window.molbuilder.formSchema):
+ * Public API (via window.molbuilder.formSchema) -- nine calls, the whole
+ * list and what each guarantees in form-schema.md § 3; showPoints,
+ * heldValues and setValues are described there:
  *
  *   * renderForm(container, schema) -- replaces container's
  *     contents with a stack of <fieldset> sections holding the
@@ -33,6 +35,15 @@
  *   * fetchSchema(engine, {calculation}) -- thin wrapper around
  *     GET /api/build/schema/<engine> that throws on error and
  *     returns the schema body.
+ *
+ *   * fields(schemas) -- every field of one schema or several, in the
+ *     order they are drawn: the one walk of a schema's sections, which a
+ *     page asks for a field's label, id or locked value.
+ *
+ *   * fieldIds(schemas) -- ``{field name: the id it is drawn under}``
+ *     over one schema or several: the map a page places a finding by and
+ *     knows a field by.  The id is the server's (form-schema.md § 1), read
+ *     from the schema and never derived.
  *
  * Kinds handled (the server's are `_shared.py::control_for`'s):
  *
@@ -727,16 +738,12 @@
         const off = _activeWhenWiring.get(container);
         if (off) off();
         _activeWhenWiring.delete(container);
-        const fields = [];
-        for (const sect of schema.sections) fields.push(...sect.fields);
-        const waiting = fields.filter((f) => f.active_when && !f.locked);
+        const waiting = fields(schema).filter((f) => f.active_when && !f.locked);
         if (!waiting.length) return;
         const parts = [{ host: container, schema: schema }].concat(alongside);
         const where = {};
         for (const p of parts.slice().reverse()) {
-            for (const sect of p.schema.sections) {
-                for (const f of sect.fields) where[f.name] = { f: f, host: p.host };
-            }
+            for (const f of fields(p.schema)) where[f.name] = { f: f, host: p.host };
         }
         for (const f of waiting) {
             for (const name of Object.keys(f.active_when)) {
@@ -920,15 +927,13 @@
         }
         const out = {};
         let refused = null;
-        for (const sect of schema.sections) {
-            for (const f of sect.fields) {
-                if (f.locked) continue;      // the rung's, never collected
-                if (names && names.indexOf(f.name) === -1) continue;
-                try {
-                    out[f.name] = collectField(f, container);
-                } catch (e) {
-                    if (!refused) refused = e;
-                }
+        for (const f of fields(schema)) {
+            if (f.locked) continue;          // the rung's, never collected
+            if (names && names.indexOf(f.name) === -1) continue;
+            try {
+                out[f.name] = collectField(f, container);
+            } catch (e) {
+                if (!refused) refused = e;
             }
         }
         // The first refusal, naming its field; each field's own caption
@@ -947,15 +952,13 @@
             throw new Error("form-schema.heldValues: bad container/schema");
         }
         const out = {};
-        for (const sect of schema.sections) {
-            for (const f of sect.fields) {
-                if (f.locked) continue;      // the rung's, never collected
-                try {
-                    out[f.name] = collectField(f, container);
-                } catch (_) {
-                    if (kept && typeof kept === "object" && f.name in kept) {
-                        out[f.name] = kept[f.name];
-                    }
+        for (const f of fields(schema)) {
+            if (f.locked) continue;          // the rung's, never collected
+            try {
+                out[f.name] = collectField(f, container);
+            } catch (_) {
+                if (kept && typeof kept === "object" && f.name in kept) {
+                    out[f.name] = kept[f.name];
                 }
             }
         }
@@ -1011,65 +1014,63 @@
         }
         if (!values || typeof values !== "object"
             || Array.isArray(values)) return;
-        for (const sect of schema.sections) {
-            for (const f of sect.fields) {
-                if (!(f.name in values) || f.locked) continue;
-                const v = values[f.name];
-                const blank = v === null || v === undefined;
-                // A triple is written through its sub-ids
-                // ``<f.id>-<label>``: the element with ``f.id`` is the
-                // <span> wrapping the three (where a finding about the
-                // field lands), and it has no ``.value`` -- so the standard
-                // ``#f.id`` write below would skip the field.
-                if (isTriple(f.kind)) {
-                    // `null` blanks it -- not chosen; otherwise three values.
-                    if (!blank && (!Array.isArray(v) || v.length !== 3)) {
-                        continue;
-                    }
-                    const labs = (Array.isArray(f.labels)
-                        && f.labels.length === 3)
-                        ? f.labels
-                        : ["x", "y", "z"];
-                    for (let i = 0; i < 3; i++) {
-                        const sub = container.querySelector(
-                            "#" + cssEsc(f.id + "-" + labs[i]));
-                        if (!sub) continue;
-                        // A fixed component keeps the kind's value: the
-                        // form collects what will be written, and another
-                        // value is refused on every door.
-                        if (f.fixed && f.fixed[labs[i]]) continue;
-                        sub.value = blank ? "" : String(v[i]);
-                        try {
-                            sub.dispatchEvent(new Event("input",
-                                { bubbles: true }));
-                            sub.dispatchEvent(new Event("change",
-                                { bubbles: true }));
-                        } catch (_) { /* legacy browser */ }
-                    }
+        for (const f of fields(schema)) {
+            if (!(f.name in values) || f.locked) continue;
+            const v = values[f.name];
+            const blank = v === null || v === undefined;
+            // A triple is written through its sub-ids
+            // ``<f.id>-<label>``: the element with ``f.id`` is the
+            // <span> wrapping the three (where a finding about the
+            // field lands), and it has no ``.value`` -- so the standard
+            // ``#f.id`` write below would skip the field.
+            if (isTriple(f.kind)) {
+                // `null` blanks it -- not chosen; otherwise three values.
+                if (!blank && (!Array.isArray(v) || v.length !== 3)) {
                     continue;
                 }
-                const elx = container.querySelector("#" + cssEsc(f.id));
-                if (!elx) continue;
-                if (f.kind === "checkbox") {
-                    // `null` is the box's blank: indeterminate.
-                    elx.indeterminate = blank;
-                    elx.checked = !blank && Boolean(v);
-                } else if (f.kind === "tri-select") {
-                    elx.value = v === true ? "true"
-                              : v === false ? "false"
-                              : blank ? "auto" : String(v);
-                } else {
-                    // Numbers, selects, text -- `.value` is the writer, and
-                    // "" the blank every one of them has.
-                    elx.value = blank ? ""
-                              : Array.isArray(v) ? v.join(", ") : String(v);
+                const labs = (Array.isArray(f.labels)
+                    && f.labels.length === 3)
+                    ? f.labels
+                    : ["x", "y", "z"];
+                for (let i = 0; i < 3; i++) {
+                    const sub = container.querySelector(
+                        "#" + cssEsc(f.id + "-" + labs[i]));
+                    if (!sub) continue;
+                    // A fixed component keeps the kind's value: the
+                    // form collects what will be written, and another
+                    // value is refused on every door.
+                    if (f.fixed && f.fixed[labs[i]]) continue;
+                    sub.value = blank ? "" : String(v[i]);
+                    try {
+                        sub.dispatchEvent(new Event("input",
+                            { bubbles: true }));
+                        sub.dispatchEvent(new Event("change",
+                            { bubbles: true }));
+                    } catch (_) { /* legacy browser */ }
                 }
-                // Notify dirty-trackers / live-preview consumers.
-                try {
-                    elx.dispatchEvent(new Event("input", { bubbles: true }));
-                    elx.dispatchEvent(new Event("change", { bubbles: true }));
-                } catch (_) { /* old browsers without Event ctor */ }
+                continue;
             }
+            const elx = container.querySelector("#" + cssEsc(f.id));
+            if (!elx) continue;
+            if (f.kind === "checkbox") {
+                // `null` is the box's blank: indeterminate.
+                elx.indeterminate = blank;
+                elx.checked = !blank && Boolean(v);
+            } else if (f.kind === "tri-select") {
+                elx.value = v === true ? "true"
+                          : v === false ? "false"
+                          : blank ? "auto" : String(v);
+            } else {
+                // Numbers, selects, text -- `.value` is the writer, and
+                // "" the blank every one of them has.
+                elx.value = blank ? ""
+                          : Array.isArray(v) ? v.join(", ") : String(v);
+            }
+            // Notify dirty-trackers / live-preview consumers.
+            try {
+                elx.dispatchEvent(new Event("input", { bubbles: true }));
+                elx.dispatchEvent(new Event("change", { bubbles: true }));
+            } catch (_) { /* old browsers without Event ctor */ }
         }
     }
 
@@ -1092,22 +1093,20 @@
     function diffFromDefaults(container, schema) {
         const current = collectForm(container, schema);
         const out = [];
-        for (const sec of (schema.sections || [])) {
-            for (const f of (sec.fields || [])) {
-                if (f.locked) continue;
-                if (f.default === undefined || f.default === null) continue;
-                const now = current[f.name];
-                if (now === null || now === undefined) continue;
-                if (same(now, f.default)) continue;
-                out.push({
-                    name: f.name,
-                    label: f.label || f.name,
-                    current: now,
-                    recommended: f.default,
-                    unit: f.unit || "",
-                    help: f.help || "",
-                });
-            }
+        for (const f of fields(schema)) {
+            if (f.locked) continue;
+            if (f.default === undefined || f.default === null) continue;
+            const now = current[f.name];
+            if (now === null || now === undefined) continue;
+            if (same(now, f.default)) continue;
+            out.push({
+                name: f.name,
+                label: f.label || f.name,
+                current: now,
+                recommended: f.default,
+                unit: f.unit || "",
+                help: f.help || "",
+            });
         }
         return out;
     }
@@ -1123,12 +1122,11 @@
         return JSON.stringify(a) === JSON.stringify(b);
     }
 
-    /* THE POINTS OF A FIELD ANSWERED POINT BY POINT (`locked.per_point`),
-     * shown in its locked box as ``text`` -- the page holds them (the
-     * Transport tab's bias list), the form only the place to say them.
-     * Never collected: the box stays locked and blank. */
-    /* THE FIELDS ANSWERED POINT BY POINT are the schema's own marks
-     * (`data-per-point`): every one in `container` shows `text`. */
+    /* THE POINTS OF THE FIELDS ANSWERED POINT BY POINT (`locked.per_point`,
+     * marked `data-per-point`), every one in ``container`` showing ``text``
+     * in its locked box -- the page holds the points (the Transport tab's
+     * bias list), the form only the place to say them.  Never collected:
+     * the box stays locked and blank. */
     function showPoints(container, text) {
         if (!container) return;
         for (const lab of container.querySelectorAll("[data-per-point]")) {
@@ -1139,9 +1137,30 @@
         }
     }
 
+    /** Every field of one schema or several, in the order drawn. */
+    function fields(schemas) {
+        const out = [];
+        for (const schema of [].concat(schemas || [])) {
+            for (const sec of ((schema && schema.sections) || [])) {
+                for (const f of (sec.fields || [])) out.push(f);
+            }
+        }
+        return out;
+    }
+
+    /** ``{field name: id}`` over one schema or several (`form-schema.md`
+     *  § 1: the id is the server's, the container's prefix and the name). */
+    function fieldIds(schemas) {
+        const out = {};
+        for (const f of fields(schemas)) out[f.name] = f.id;
+        return out;
+    }
+
     root.molbuilder = root.molbuilder || {};
     root.molbuilder.formSchema = {
         renderForm:  renderForm,
+        fields:      fields,
+        fieldIds:    fieldIds,
         showPoints:  showPoints,
         collectForm: collectForm,
         heldValues:  heldValues,

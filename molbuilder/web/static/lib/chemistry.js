@@ -89,13 +89,11 @@
          * extension's, the finished calculation's (`locked`) -- is still
          * what the panel says, and the card speaks for it: collecting
          * leaves it out, since no description is sent it. */
-        (schema.sections || []).forEach(function (sec) {
-            (sec.fields || []).forEach(function (f) {
-                if (f.locked && STATE_ITEMS.indexOf(f.name) !== -1
-                        && !(f.name in got)) {
-                    got[f.name] = f.locked.value;
-                }
-            });
+        fs.fields(schema).forEach(function (f) {
+            if (f.locked && STATE_ITEMS.indexOf(f.name) !== -1
+                    && !(f.name in got)) {
+                got[f.name] = f.locked.value;
+            }
         });
         return got;
     }
@@ -316,14 +314,13 @@
                 var id = e.target && e.target.id;
                 if (!id) return;
                 var fs = forms();
+                var ids = root.molbuilder.formSchema.fieldIds;
                 var hit = Object.keys(fs).some(function (engine) {
                     return (fs[engine] || []).some(function (p) {
                         if (!p || p.host !== host || !p.schema) return false;
-                        return (p.schema.sections || []).some(function (sec) {
-                            return (sec.fields || []).some(function (fd) {
-                                return fd.id === id
-                                    && STATE_ITEMS.indexOf(fd.name) !== -1;
-                            });
+                        var drawn = ids(p.schema);
+                        return STATE_ITEMS.some(function (name) {
+                            return drawn[name] === id;
                         });
                     });
                 });

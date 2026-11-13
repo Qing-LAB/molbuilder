@@ -388,13 +388,10 @@ const WORKSPACE_TAG = "transport";
                         container: container, schema: schema, held: own,
                         values: saved, names: names,
                         label: function (n) {
-                            var found = null;
-                            (schema.sections || []).forEach(function (sec) {
-                                (sec.fields || []).forEach(function (f) {
-                                    if (f.name === n) found = f.label || n;
-                                });
-                            });
-                            return found || n;
+                            var f = formSchema.fields(schema)
+                                .filter(function (x) { return x.name === n; })
+                                .pop();
+                            return (f && f.label) || n;
                         },
                     };
                 } else {
@@ -888,15 +885,13 @@ const WORKSPACE_TAG = "transport";
             }));
         parts.forEach(function (part) {
             var items = [];
-            ((part[1] || {}).sections || []).forEach(function (sec) {
-                (sec.fields || []).forEach(function (f) {
-                    if (f.locked) {
-                        var v = _said(f.locked.value);
-                        items.push((f.label || f.name) + ": " + v
-                                   + (f.unit && v !== "\u2014"
-                                      ? " " + f.unit : ""));
-                    }
-                });
+            root.molbuilder.formSchema.fields(part[1]).forEach(function (f) {
+                if (f.locked) {
+                    var v = _said(f.locked.value);
+                    items.push((f.label || f.name) + ": " + v
+                               + (f.unit && v !== "\u2014"
+                                  ? " " + f.unit : ""));
+                }
             });
             if (items.length) {
                 list.appendChild(_el("p", null,
@@ -1004,16 +999,14 @@ const WORKSPACE_TAG = "transport";
         // ONLY WHAT A PERSON CHOSE travels (the lock's `chosen`): a value
         // cited from the junction is cited again, and a default stays
         // not chosen.
-        ((_sharedSchema || {}).sections || []).forEach(function (sec) {
-            sec.fields.forEach(function (f) {
-                if (f.locked && f.locked.chosen) {
-                    shared[f.name] = f.locked.value;
-                } else if (f.locked && f.locked.blank) {
-                    // A VALUE NOBODY CHOSE -- a default, or a cited value
-                    // the person emptied -- stays blank, not cited anew.
-                    shared[f.name] = null;
-                }
-            });
+        formSchema.fields(_sharedSchema).forEach(function (f) {
+            if (f.locked && f.locked.chosen) {
+                shared[f.name] = f.locked.value;
+            } else if (f.locked && f.locked.blank) {
+                // A VALUE NOBODY CHOSE -- a default, or a cited value the
+                // person emptied -- stays blank, not cited anew.
+                shared[f.name] = null;
+            }
         });
         var rungs = {};
         Object.keys(_rungSchemas).forEach(function (r) {
@@ -1697,19 +1690,13 @@ const WORKSPACE_TAG = "transport";
      * bind every rung and so name no stage.  The map the findings renderer
      * places by. */
     function _fieldIds() {
-        var out = {
+        var ids = window.molbuilder.formSchema.fieldIds;
+        var out = Object.assign({
             "task.bias": "transport-bias-row",
             "task.bias.low_bias_approximation": "transport-bias-treatment",
-        };
-        ((_sharedSchema || {}).sections || []).forEach(function (s) {
-            (s.fields || []).forEach(function (f) { out[f.name] = f.id; });
-        });
+        }, ids(_sharedSchema));
         Object.keys(_rungSchemas).forEach(function (rung) {
-            var m = {};
-            ((_rungSchemas[rung] || {}).sections || []).forEach(function (s) {
-                (s.fields || []).forEach(function (f) { m[f.name] = f.id; });
-            });
-            out[rung] = m;
+            out[rung] = ids(_rungSchemas[rung]);
         });
         return out;
     }

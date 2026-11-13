@@ -148,8 +148,8 @@
 
 
       <!-- Validation issues panel (live preflight + post-Generate).
-           Hidden when there are no issues; populated by viewer.js's
-           renderIssues() helper.  Each <li> carries a `data-severity`
+           Hidden when there are no issues; populated by the findings
+           renderer (lib/validation-findings.js).  Each <li> carries a `data-severity`
            attribute that drives the colour + icon. -->
       <ul id="fdf-issues" class="issues-panel" hidden
           aria-label="SIESTA configuration validation issues"></ul>

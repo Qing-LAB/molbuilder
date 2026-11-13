@@ -77,7 +77,7 @@ is where the *data* comes from.
 | `active_when` | the item's `active_when`, as declared (§ 1.3) |
 | `active_words` | what it waits on, in words — *It takes effect only while Compute Raman intensities is on.* (`template.active_words`, the settings gate's own words) — shown beside the field while it is greyed out (§ 1.3) |
 | `choice_labels` | the item's `choice_labels`: each choice's words, which the list shows — the value sent stays the choice |
-| `id` | derived: the container's prefix + the name |
+| `id` | derived: the container's prefix + the name — the server's alone: a page reads it from the schema through the renderer's one map (`formSchema.fieldIds`), never derives it, nor works an engine back from it |
 | `kind` (which control) | `_shared.control_for` (§ 4) — a fixed set of choices→select whatever its type, an optional `bool`→a three-way select, `bool`→checkbox, `int3`/`float3`→a triple, … |
 | `step` | derived from `type`: `int` steps by 1, `float` by any |
 | `labels` (a triple's x/y/z) | derived from `type` — the k-point mesh's axis names (`kmesh.AXES`) |
@@ -432,7 +432,7 @@ flowchart LR
 Because both directions start from the one catalogue, the form a user fills in
 and the config the server rebuilds can't drift apart.
 
-## 3. The seven calls
+## 3. The nine calls
 
 Everything is on `window.molbuilder.formSchema` (a plain global — it does not
 register with the runtime):
@@ -441,11 +441,13 @@ register with the runtime):
 |---|---|
 | `fetchSchema(engine, opts)` | Ask the server for a form's shape (`GET /api/build/schema/<engine>?calculation=<kind>`) — `engine` an engine's form or `"common"`, the settings every engine of the kind shares; `opts.surface` `"own"` narrows an engine's form to its own, and `"state"` the shared settings to their electronic state (§ 1.3). `opts.calculation` is required: every caller states its kind, and the server refuses a request that states none rather than giving it one (2026-10-06, plan W57 R10). |
 | `renderForm(host, schema, opts)` | Draw the form from that shape into a host element. `opts.holds = "overrides"` draws a surface of overrides over the template — its fields blank, the template's value their hint (§ 1.1); `opts.foldable` folds the cards (§ 1.3); `opts.alongside` names the parts drawn with this one, where a field's `active_when` finds the fields it waits on (§ 1.3). |
-| `showPoints(host, name, text)` | Show `text` in the locked box of the field `name` answered point by point (`locked.per_point`) — the page holds the points, the form only the place to say them; the box stays locked and is never collected *(2026-10-13)* |
+| `showPoints(host, text)` | Show `text` in the locked box of every field answered point by point (`locked.per_point`) — the page holds the points, the form only the place to say them; the box stays locked and is never collected *(2026-10-13)* |
 | `collectForm(host, schema, names?)` | Read what the form holds back into a plain values object (the schema tells it how to read each kind): **every field, a blank as `null`** — not chosen — each value read as its type. A value that will not read is refused: it throws an `Error` naming the field (`err.field`) (§ 1.1). A `locked` field is never read. `names` reads those fields alone. |
 | `heldValues(host, schema, kept)` | What the form holds, **for saving**: `collectForm` field by field, a field that will not read keeping its value in `kept` (the previous save) — one half-typed field never costs the rest of the form its save. The Send reads through `collectForm`, which refuses. |
 | `setValues(host, schema, values)` | Push a set of values into an already-drawn form (e.g. to restore a saved config). |
 | `diffFromDefaults(host, schema)` | Which fields hold a value that is **not** the kind's default (its `default`, § 1.1), as `[{name, label, current, recommended, unit, help}]`. A blank field is not listed: the default already applies, and resetting a listed one blanks it (§ 1.1). |
+| `fields(schemas)` | Every field of one schema or several, in the order drawn — the one walk of a schema's sections, which a page asks for a field's label or the value it is locked at, never walking the sections itself. |
+| `fieldIds(schemas)` | `{field name: id}` over one schema or several — the map a page places a finding by and knows a field by; the id is the server's (§ 1), read from the schema, never derived from a prefix. |
 
 ### 3.0a What `setValues` guarantees, and the two ways it can fail quietly
 

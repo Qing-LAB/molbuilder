@@ -718,12 +718,10 @@ export function tell(level, message) {
 export const projects = {
   getCurrentDir:       () => readSelectionSlot(SS_DIR),
   getCurrentFile:      () => readSelectionSlot(SS_FILE),
-  // The resolved projects/ root path (GET /api/files/roots, its one root).
-  // Used by the Build form's psml_lib live-resolution caption so the
-  // user sees that ``pseudopotential`` resolves to
-  // ``<root>/pseudopotential`` -- the projects/ anchor isn't visible
-  // in the input itself.  Returns "" until the sidebar's bootstrap
-  // has resolved /api/files/roots.
+  // The resolved projects/ root path (GET /api/files/roots, its one root)
+  // -- read by a page that names a folder relative to it (the JupyterLab
+  // tab's selected folder).  Returns "" until the sidebar's bootstrap has
+  // resolved /api/files/roots.
   getProjectsRoot:     () => getProjectsRoot() || "",
   // True when ``current_dir`` is unset or equals the projects/ root.
   // Consumers (the Save buttons) use this to gate "is there a folder to

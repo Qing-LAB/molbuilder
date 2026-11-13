@@ -156,32 +156,11 @@ import { ask } from "../lib/server.js";
     // docs/science/validation.md 4.1).  These two
     // thin wrappers keep the call sites readable.
     /* {field name -> the DOM id the form gave it}, from the schema this page
-     * actually rendered.  Read from the schema rather than derived, because
-     * the schema is where that rule lives; a copy of it here would be a
-     * second answer to a question with one. */
+     * actually rendered, by the renderer's one map (`formSchema.fieldIds`). */
     function _fieldIds(engine) {
         const sch = formSchemas[engine];
-        if (!sch || !Array.isArray(sch.sections)) return null;
-        const out = {};
-        for (const sect of sch.sections) {
-            for (const fld of sect.fields) out[fld.name] = fld.id;
-        }
-        return out;
-    }
-
-    function renderIssues(panelId, issues, formContainerId, reveal) {
-        const f = (window.molbuilder || {}).validationFindings;
-        if (!f) return { total: 0, residual: 0, byCard: {}, byField: {},
-                         counts: { error: 0, warn: 0, info: 0 } };
-        // The engine is the container's own name -- the two are one choice.
-        const engine = (formContainerId || "").startsWith("pyscf")
-            ? "pyscf" : "siesta";
-        return f.render(issues, {
-            panel:     $(panelId),
-            formScope: formContainerId ? $(formContainerId) : null,
-            fieldIds:  _fieldIds(engine),
-            reveal:    !!reveal,
-        });
+        const fs = (window.molbuilder || {}).formSchema;
+        return sch && fs ? fs.fieldIds(sch) : null;
     }
 
     function clearIssues(panelId, formContainerId) {
@@ -213,10 +192,15 @@ import { ask } from "../lib/server.js";
      * and the hand-over's (the cell gate's notices) -- through the one
      * renderer, in that engine's panel beside its form. */
     function _showFindings(engine, issues, reveal) {
-        return renderIssues(
-            (engine === "siesta") ? "fdf-issues" : "pyscf-issues", issues,
-            (engine === "siesta") ? "siesta-form-container"
-                                  : "pyscf-form-container", reveal);
+        const f = (window.molbuilder || {}).validationFindings;
+        if (!f) return { total: 0, residual: 0, byCard: {}, byField: {},
+                         counts: { error: 0, warn: 0, info: 0 } };
+        return f.render(issues, {
+            panel:     $((engine === "siesta") ? "fdf-issues" : "pyscf-issues"),
+            formScope: $(engine + "-form-container"),
+            fieldIds:  _fieldIds(engine),
+            reveal:    !!reveal,
+        });
     }
 
     // What the live preflight said last, per engine -- the findings a Send
@@ -322,8 +306,7 @@ import { ask } from "../lib/server.js";
 
     // Module-level cache of the form schemas, populated once on
     // page load by initFormsFromSchema().  collectParams() reads from
-    // this; getFormIds() walks both
-    // schemas for the ids the preflight listeners are wired to.
+    // this, and the findings are placed by its ids (`_fieldIds`).
     const formSchemas = { siesta: null, pyscf: null };
 
     // THE CHEMISTRY CARD (`lib/chemistry.js`): the charge and spin each
@@ -500,6 +483,7 @@ import { ask } from "../lib/server.js";
         // the renderer's greying follows the restored values.
         restoreFormState();
         wirePreflightListeners();
+        installPsmlLibLiveCaption();
         // AFTER the restore: mounted here, the panel's first reading is the
         // form as restored.  (The restore writes through `setValues`, which
         // fires `input`, so each field's caption follows it.)
@@ -851,25 +835,25 @@ import { ask } from "../lib/server.js";
     }
 
     /**
-     * Live caption for the SIESTA psml_lib field.  Drops a small
-     * one-liner directly below the input that shows the user the
-     * absolute path the server will resolve their entry to:
+     * Live caption for the SIESTA psml_lib field: a one-liner below the
+     * input saying where a typed folder is looked for, since the
+     * projects folder it is read in is not visible in the field itself:
      *
      *   ""                    -> ""  (the field's own caption says the blank)
-     *   "pseudopotential"     -> "→ /home/.../projects/pseudopotential"
-     *   "../../../pseudo"     -> "→ /home/.../projects/../../../pseudo"
-     *   "/abs/path"           -> "→ /abs/path"  (absolute, no change)
-     *   "~/pseudos"           -> "→ ~/pseudos"  (expanded server-side)
+     *   "pseudopotential"     -> "→ pseudopotential, in the projects folder"
+     *   "/abs/path", "~/x"    -> "→ /abs/path", "→ ~/x"  (as typed)
      *
-     * Addresses the UX gap that the implicit ``projects/`` anchor
-     * isn't visible in the field itself.  Mirrors the server's
-     * pseudos.resolve_psml_lib() rule (minus the dest_dir hop,
-     * which only kicks in at Save time and isn't relevant here).
+     * It says no more than that: whether the server takes the path
+     * (`pseudos.resolve_psml_lib`, which refuses one that climbs out with
+     * `..`) is said where the description is checked.  Installed once,
+     * from initFormsFromSchema's tail, after the forms are drawn and
+     * restored; the field is found by the schema's own id (`_fieldIds`),
+     * never by a prefix.
      */
     function installPsmlLibLiveCaption() {
-        const input = $("p-psml-lib");
-        if (!input || input.dataset.captionInstalled === "1") return;
-        input.dataset.captionInstalled = "1";
+        const id = (_fieldIds("siesta") || {}).psml_lib;
+        const input = id ? $(id) : null;
+        if (!input) return;
         // Caption element rendered immediately after the input.  The
         // form-schema renderer wraps each field in a <label>; we
         // append into that label so the caption rides along with
@@ -878,7 +862,6 @@ import { ask } from "../lib/server.js";
         // .schema-field-hint is styled in lib/form-schema.css using the
         // --text-muted token.
         cap.className = "schema-field-hint";
-        cap.id = "p-psml-lib-resolved";
         const parent = input.parentElement || input;
         parent.appendChild(cap);
         function render() {
@@ -902,20 +885,6 @@ import { ask } from "../lib/server.js";
         input.addEventListener("input", render);
         render();
     }
-    // Form fields render asynchronously (form-schema fetches the
-    // schema from /api/build/schema/siesta then renders).  Retry the
-    // installation a few times so we hit the post-render DOM.
-    // KNOWN GAP (audit 2026-07): polling is the anti-pattern -- form-schema
-    // exposes no render-complete callback today, so this is the documented
-    // interim.  If form-schema grows an onRendered seam, replace this loop.
-    (function pollForField(tries) {
-        if (tries <= 0) return;
-        if ($("p-psml-lib")) {
-            installPsmlLibLiveCaption();
-        } else {
-            setTimeout(() => pollForField(tries - 1), 150);
-        }
-    }(40));   // ~6s budget
 
     /* ONE collector, both engines.
      *
@@ -934,30 +903,6 @@ import { ask } from "../lib/server.js";
         return fs.collectForm($(engine + "-form-container"), schema);
     }
 
-    // ----- The forms' ids -----
-    // The ids the preflight listeners are wired to, derived by walking
-    // the rendered schemas.
-    function getFormIds() {
-        const ids = [];
-        for (const sch of [formSchemas.siesta, formSchemas.pyscf]) {
-            if (!sch) continue;
-            for (const sect of sch.sections) {
-                for (const f of sect.fields) {
-                    if (f.kind === "int-triple"
-                            || f.kind === "float-triple") {
-                        // Tuple field renders as three sub-inputs;
-                        // each has its own id.
-                        for (const lab of f.labels) {
-                            ids.push(f.id + "-" + lab);
-                        }
-                    } else {
-                        ids.push(f.id);
-                    }
-                }
-            }
-        }
-        return ids;
-    }
 
     /* KEPT IN THIS BROWSER TAB, through what a page keeps in this browser
      * (`lib/page-prefs.js`, `runtime.md` § 3): each browser tab its own
@@ -1007,35 +952,28 @@ import { ask } from "../lib/server.js";
     // initFormsFromSchema() after the renderer fills the containers.
     window.addEventListener("pagehide", saveFormState);
 
-    // Kick off the async schema fetch + form render.  Everything
-    // that depends on the form's inputs (change listeners, the full
-    // restoreFormState walk) happens inside this function once the
-    // renderer has populated the DOM.
+    // Kick off the async schema fetch + form render.  Everything that
+    // needs the drawn forms -- the restore, the live check's listeners on
+    // their containers, the pseudopotential caption -- happens inside this
+    // function once the renderer has populated the DOM.
     initFormsFromSchema();
 
-    // Wire each engine-scoped form input to the debounced preflight
-    // refresh so the issues panel updates live as the user adjusts
-    // settings.  p-* IDs feed SIESTA's panel; py-* IDs feed PySCF's.
-    // No-op until the user has built a structure (the model is non-empty) --
-    // see refreshPreflight().
-    //
-    // CRITICAL: must run AFTER initFormsFromSchema renders the form,
-    // because the schema-driven inputs don't exist at module load.
-    // wirePreflightListeners is called from initFormsFromSchema's
-    // tail.  It also walks getFormIds() rather than a hard-coded
-    // list so adding a new dataclass field auto-wires preflight.
+    // EACH ENGINE'S FORM refreshes its own preflight as the person adjusts
+    // it -- its container listens for `input` and `change` from any field
+    // there, the renderer's own writes included (they bubble), so the page
+    // keeps no list of ids nor the server's prefixes.  No-op until the user
+    // has built a structure (the model is non-empty) -- see
+    // refreshPreflight().  Called from initFormsFromSchema's tail, after
+    // the restore, so the restored values do not each ask again.
     function wirePreflightListeners() {
-        getFormIds().forEach(id => {
-            const el = $(id);
-            if (!el) return;
-            const which = id.startsWith("p-")  ? "siesta"
-                        : id.startsWith("py-") ? "pyscf"
-                                               : null;
-            if (!which) return;
-            const event = (el.type === "checkbox" || el.tagName === "SELECT")
-                ? "change" : "input";
-            el.addEventListener(event, () => refreshPreflightDebounced[which]());
-        });
+        for (const engine of ["siesta", "pyscf"]) {
+            const host = $(engine + "-form-container");
+            if (!host) continue;
+            for (const event of ["input", "change"]) {
+                host.addEventListener(event,
+                    () => refreshPreflightDebounced[engine]());
+            }
+        }
     }
     /* ---------------------------------------------------------------- *
      *  Send to Task setup — the hand-off                                *

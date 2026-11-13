@@ -30,7 +30,7 @@ as they stood.
 
 ## ▶ HANDOVER — where we are, and where to start *(2026-11-10)*
 
-**Where we are: 2.69.47.** F0–F8 and F7a are closed; F9, the tests through
+**Where we are: 2.69.48.** F0–F8 and F7a are closed; F9, the tests through
 the road, has eight releases out (2.67.4–2.67.11) and four steps left (its
 row below). Since 2.67.11 three bodies of work the user put first have run;
 each release is its changelog row and its ledger section
@@ -89,7 +89,8 @@ each release is its changelog row and its ledger section
   a PySCF deck's messages held in its words, the names it reports under
   spelled once; 2.69.46, a kind's marker asked of the catalogue by the
   kind (X-TMPL); 2.69.47, which control edits a setting decided once
-  (X-TMPL). **Left, in order**: X-TMPL's duplicates,
+  (X-TMPL); 2.69.48, a form's fields read through the renderer, one walk and
+  one map of ids (X-TMPL). **Left, in order**: X-TMPL's duplicates,
   X-EXEC, X-ENG; then the page doors and
   the copies they share (O-STATUS, O-FIND, O-STATE, O-WORDS, O-KEYS's rest
   with X-UI and X-PLOT; O-TESTS).
