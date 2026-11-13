@@ -78,7 +78,7 @@ is where the *data* comes from.
 | `active_words` | what it waits on, in words — *It takes effect only while Compute Raman intensities is on.* (`template.active_words`, the settings gate's own words) — shown beside the field while it is greyed out (§ 1.3) |
 | `choice_labels` | the item's `choice_labels`: each choice's words, which the list shows — the value sent stays the choice |
 | `id` | derived: the container's prefix + the name |
-| `kind` (which control) | derived from `type` — `enum`→select, `bool`→checkbox, `int3`/`float3`→a triple, … |
+| `kind` (which control) | `_shared.control_for` (§ 4) — a fixed set of choices→select whatever its type, an optional `bool`→a three-way select, `bool`→checkbox, `int3`/`float3`→a triple, … |
 | `step` | derived from `type`: `int` steps by 1, `float` by any |
 | `labels` (a triple's x/y/z) | derived from `type` — the k-point mesh's axis names (`kmesh.AXES`) |
 | `fixed` (a triple's locked components) | derived from the kind: the components it fixes, `{z: {value: 1, why: "…"}}` (`kmesh.fixed`, [`engines/siesta.md`](?doc=engines/siesta.md) § 6.1) — a transport calculation's third k component, which no rung reads. The triple draws each locked at its value with the reason beside it, and the value still travels, so the template states it *(2026-09-30)* |
@@ -302,7 +302,7 @@ carried copies of them until 2026-10-18; it carries none now.*
 | **`engine_key`** | the deck keyword it becomes (`MeshCutoff`) — **or a parenthesised note when the field is not a deck line at all**, e.g. `mpi_np`'s | the control's badge; the settings gate's messages |
 | **`tier`** | `basic` / `advanced` — a judgement about the parameter; the form dims an advanced field (§ 1.2) | `form-schema.js` |
 | **`range`** | `(min, max)`, inclusive — a recommendation, warned and never refused ([`engines/template.md`](?doc=engines/template.md) § 5.3) | the control's bounds; the settings gate; the description check |
-| **`choices`** | the legal values of an enum → a dropdown | the dropdown; the settings gate; the description check; the setting door's reader (`template.read_text`, [`engines/template.md`](?doc=engines/template.md) § 5.4) |
+| **`choices`** | the legal values of a fixed set of choices, whatever its type → a dropdown, on the form and in Task setup alike (§ 4) | the dropdown; the settings gate; the description check; the setting door's reader (`template.read_text`, [`engines/template.md`](?doc=engines/template.md) § 5.4) |
 | **`unit`** | the unit shown beside the control (`Ry`, `eV/Å`). **Display only** — it never converts anything | beside the control; the settings gate's messages |
 | **`pattern`** | a regex the value must match | the control's `pattern` |
 | **`null_label`** | what the *unset* option is called on an optional field — `"(auto)"`, `"(no cap)"` | the blank option of a select and a tri-select, a blank box's hint, and the caption under a blank field |
@@ -499,8 +499,11 @@ arrived with an older session, and both live in the same form.
 
 ## 4. What each field type becomes
 
-The server tags each field with a *kind* (`_shared.py::_control_for`), and this
-module draws the matching control. The eight kinds:
+The server tags each field with a *kind* (`_shared.py::control_for`), and this
+module draws the matching control — the one rule of which control edits a
+setting: Task setup's two routes carry the same tag, as `control`, and its
+stage cells, run card rows and Measure adder draw it each in their way
+([`task-setup.md`](?doc=web/task-setup.md) § 5.2). The eight kinds:
 
 | The item | The control you get |
 |---|---|

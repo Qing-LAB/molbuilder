@@ -993,17 +993,19 @@ def test_the_run_card_offers_only_what_the_kind_carries(web_client):
 
 
 def test_both_pickers_payloads_carry_the_value_shape(web_client):
-    """A bool or enum parameter edits through a dropdown of its legal
-    values, and the tab can only build one by asking the catalogue -- so
-    BOTH payloads carry `type`/`choices` (+ the sweepable's `default`,
-    which births a row at its value in force).  Until 2026-08-20 the
-    sweepable payload had no type at all, and every added setting was born
-    as the number 1 -- `use_gpu` included."""
+    """A switch or a choice edits through a dropdown of its legal values,
+    and the tab can only build one by asking the server -- so BOTH payloads
+    carry the control every form is drawn by (`form-schema.md` § 4: a
+    switch a checkbox, one that may stand unanswered a three-way select, a
+    fixed set of choices a select) and the
+    choices (+ the sweepable's `default`, which births a row at its value
+    in force).  Until 2026-08-20 the sweepable payload had no shape at all,
+    and every added setting was born as the number 1 -- `use_gpu` included."""
     sw = web_client.get("/api/task-setup/sweepable?engine=siesta"
                         "&calculation=optimization").get_json()
     items = {i["name"]: i for i in sw["items"]}
-    assert items["use_gpu"]["type"] == "bool"
-    assert items["diag_algorithm"]["type"] == "enum"
+    assert items["use_gpu"]["control"] == "checkbox"
+    assert items["diag_algorithm"]["control"] == "select"
     assert items["diag_algorithm"]["choices"] == [
         "ScaLAPACK", "ELPA-1STAGE", "ELPA-2STAGE"]
     assert items["diag_algorithm"]["default"] == "ELPA-1STAGE"
@@ -1012,7 +1014,8 @@ def test_both_pickers_payloads_carry_the_value_shape(web_client):
     cols = web_client.get("/api/task-setup/columns?engine=siesta"
                           "&calculation=optimization").get_json()
     citems = {i["name"]: i for i in cols["items"]}
-    assert citems["relax_type"]["type"] == "enum"
+    assert citems["relax_type"]["control"] == "select"
+    assert citems["scf_must_converge"]["control"] == "tri-select"
     assert citems["relax_type"]["choices"] == list(
         one(catalogue(), "relax_type", engine="siesta").choices)
 

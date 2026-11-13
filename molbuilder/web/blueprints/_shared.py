@@ -345,9 +345,13 @@ _CONTROL_FOR_TYPE = {
 }
 
 
-def _control_for(item) -> str:
-    """Which widget renders this item.  `choices` wins: an enum is a select
-    whatever its underlying type, and a tri-select is an OPTIONAL bool."""
+def control_for(item) -> str:
+    """Which control edits this item -- THE ONE RULE (`form-schema.md`
+    § 4): every Build form field is tagged by it (its ``kind``), and Task
+    setup's two routes carry it (their ``control``) for the page's cells,
+    run card rows and Measure adder (`task-setup.md` § 5.2).  A fixed set of
+    choices is a select whatever the setting's type; an optional switch a
+    three-way select; anything else by its type."""
     if item.choices:
         return "select"
     if item.type == "bool" and item.optional:
@@ -628,7 +632,7 @@ def _item_to_field(item, id_prefix: str, calculation: str, *,
         "default":  _jsonable(one),
         "optional": item.optional,
         "tier":     item.tier or "basic",
-        "kind":     _control_for(item),
+        "kind":     control_for(item),
     }
     # WHERE THE DEFAULT COMES FROM, in the words a blank field leads it
     # with -- the kind's recommendation, the engine's own value, or a plain

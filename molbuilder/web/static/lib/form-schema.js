@@ -34,7 +34,7 @@
  *     GET /api/build/schema/<engine> that throws on error and
  *     returns the schema body.
  *
- * Kinds handled (the server's are `_shared.py::_control_for`'s):
+ * Kinds handled (the server's are `_shared.py::control_for`'s):
  *
  *   checkbox    : <input type=checkbox>
  *   int         : <input type=number step=1>          (with null option if optional)

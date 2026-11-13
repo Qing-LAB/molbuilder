@@ -382,12 +382,13 @@ function renderStages(task) {
             // the word "template" is what makes "adding a column changes
             // nothing on screen" (§ 9) visible instead of merely true.
             const fallback = defaultText(col);
-            // The cell follows the value SHAPE (user, 2026-08-20): an
-            // enum or bool column edits through a dropdown of its legal
+            // The cell follows the value SHAPE (user, 2026-08-20): a
+            // choice or switch column edits through a dropdown of its legal
             // values -- the empty option IS the template state, labeled
             // with the value it means -- and every other column keeps the
-            // free input.  One rule with the machine card's adder
-            // (`legalValues`); a value's look never picks the widget.
+            // free input.  One rule with the run card's rows and the
+            // machine card's adder (`legalValues`); a value's look never
+            // picks the widget.
             const legal = legalValues(col);
             let cell;
             if (legal) {
@@ -1213,8 +1214,8 @@ function renderMachine(task) {
             return el("span", { class: "ts-pt" }, valueWords(name, p), drop);
         });
 
-        // The adder follows the value SHAPE (user, 2026-08-20): a bool or
-        // an enum offers exactly the legal values not already listed -- a
+        // The adder follows the value SHAPE (user, 2026-08-20): a switch
+        // or a choice offers exactly the legal values not already listed -- a
         // dropdown, never a number box -- and a numeric axis keeps the
         // free input.
         const legal = legalValues(name);
@@ -2354,7 +2355,7 @@ function _fillSweepMeta(items) {
     for (const i of (items || [])) {
         if (i && i.name && !_meta[i.name]) {
             _meta[i.name] = { name: i.name, label: i.label, help: i.help,
-                              type: i.type, choices: i.choices,
+                              control: i.control, choices: i.choices,
                               default: i.default, stages: i.stages,
                               unit: i.unit, default_words: i.default_words,
                               choice_labels: i.choice_labels,
@@ -2363,14 +2364,19 @@ function _fillSweepMeta(items) {
     }
 }
 
-/* The LEGAL VALUES of a bool/enum parameter, from the catalogue meta --
- * null for a free-typed (numeric) one.  The one place the widget question
- * is answered (user, 2026-08-20): a value's look must never pick the
- * widget, which is how use_gpu became a number box. */
+/* The LEGAL VALUES of a switch or a choice, from the catalogue meta --
+ * null for a free-typed one.  The widget question is the SERVER'S, the one
+ * control every form is drawn by (`_shared.control_for`, `form-schema.md`
+ * § 4), read here as a cell draws it: a switch, required or optional, its
+ * two values; a choice, the members this kind offers; anything else a text
+ * box.  A value's look never picks the widget (user, 2026-08-20), which is
+ * how use_gpu became a number box. */
 function legalValues(name) {
     const m = _meta[name] || {};
-    if (m.type === "bool") return [true, false];
-    if (m.type === "enum" && Array.isArray(m.choices)) return m.choices;
+    if (m.control === "checkbox" || m.control === "tri-select") {
+        return [true, false];
+    }
+    if (m.control === "select" && Array.isArray(m.choices)) return m.choices;
     return null;
 }
 

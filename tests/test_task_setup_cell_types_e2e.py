@@ -149,35 +149,38 @@ def test_text_that_is_not_a_k_grid_is_kept_as_typed(page, flask_server,
 # --------------------------------------------------------------------- #
 
 
-@pytest.fixture(scope="module")
-def bool_column_dir(isolated_projects_root_module):
-    """The same calculation, but the column that varies is a **bool**.
-
-    Separate from `calc_dir` rather than added to it: that fixture is
-    module-scoped and shared by the three tests above, and widening its
-    `varies` would change what they open.
-    """
-    return _varying(_described_h2(isolated_projects_root_module
-                                  / "cell_bool", "probe"), "write_coor_xmol")
+#: A SWITCH IS A CHOOSER, one that must hold a value and one that may stand
+#: unanswered alike (`form-schema.md` § 4: a checkbox and a three-way
+#: select, the server's control a cell reads -- `task-setup.md` § 5.2).
+_SWITCHES = [pytest.param("write_coor_xmol", id="a-switch"),
+             pytest.param("scf_must_converge", id="an-optional-switch")]
 
 
+@pytest.mark.parametrize("name", _SWITCHES)
 def test_a_bool_column_is_a_chooser_not_a_box(page, flask_server,
-                                              bool_column_dir):
+                                              isolated_projects_root_module,
+                                              name):
     """**A value's look must never pick the widget** *(user, 2026-08-20)*.
 
     The tests above are the READING half of that rule — text typed into a
     cell is parsed by the column's declared type.  This is the OFFERING half:
-    `write_coor_xmol` is declared `bool`, so the catalogue already knows its
-    only two answers and the cell must present them rather than invite a
-    person to spell one.
+    a switch's answers are known -- its two values, and for one that may
+    stand unanswered its blank too -- so its cell must present them
+    rather than invite a person to spell one.  The calculation is the one
+    the tests above open, its varying column the row's -- a folder of its
+    own, since widening their `varies` would change what they open.
     """
-    task_setup_on(page, flask_server, bool_column_dir)
-    cell = page.locator('[aria-label="coarse Write XMOL .xyz"]').evaluate(
+    from molbuilder.template import catalogue, one
+    folder = _varying(_described_h2(isolated_projects_root_module
+                                    / f"cell_{name}", "probe"), name)
+    label = one(catalogue(), name, engine="siesta").label
+    task_setup_on(page, flask_server, folder)
+    cell = page.locator(f'[aria-label="coarse {label}"]').evaluate(
         "n => ({tag: n.tagName,"
         "       options: [...(n.options || [])].map(o => o.value)})")
     assert cell["tag"] == "SELECT", (
-        f"`write_coor_xmol` is declared bool, and its cell came up as a "
-        f"<{cell['tag']}>.  The catalogue knows the only two "
+        f"`{name}` is a switch, and its cell came up as a "
+        f"<{cell['tag']}>.  The catalogue knows its "
         f"answers, so the cell must offer them: a text box invites 'True', "
         f"'yes', '1' and each is a different kind of wrong, discovered at "
         f"run time.")

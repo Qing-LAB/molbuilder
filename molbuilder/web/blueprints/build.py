@@ -56,6 +56,7 @@ from ...issues import Issue
 from flask import Blueprint, jsonify, request
 from ._shared import (
     err,
+    control_for as _control_for,
     stated_params as _stated_params,
     catalogue_to_form_schema as _catalogue_to_form_schema,
     engine_key_for as _engine_key_for,
@@ -1676,10 +1677,11 @@ def api_task_setup_sweepable():
             # Measure card offers what a benchmark row may hold.
             "homes":           sorted(_T.home_of(it, kind)),
             # THE VALUE SHAPE (user, 2026-08-20): the machine card births
-            # a row at its value in force and offers an enum's choices or
-            # a bool's two values from a dropdown -- it can only do either
-            # by asking the catalogue.
-            "type":            it.type or "",
+            # a row at its value in force and offers a choice's members or
+            # a switch's two values from a dropdown -- by the one control
+            # every form is drawn by (`_shared.control_for`,
+            # `form-schema.md` § 4), never a rule of the page's own.
+            "control":         _control_for(it),
             "choices":         (list(_T.offered(it, engine, kind))
                                 if it.choices else None),
             # THE ONE DEFAULT (`template.default_of`): the kind's
@@ -1780,9 +1782,10 @@ def api_task_setup_columns():
             "null_label": it.null_label,
             "group":   it.group or "",
             # THE VALUE SHAPE (user, 2026-08-20): the stage table's cell
-            # editor renders a dropdown for an enum or a bool, and it can
-            # only ask the catalogue.
-            "type":    it.type or "",
+            # editor renders a dropdown for a choice or a switch -- by the
+            # one control every form is drawn by (`_shared.control_for`,
+            # `form-schema.md` § 4), never a rule of the page's own.
+            "control": _control_for(it),
             # ...OF THE CHOICES THIS KIND MAY TAKE on this engine (the
             # catalogue's `offered`, template.md § 6.3a): a vibration's
             # relaxation cell offers three relaxers, never dynamics.

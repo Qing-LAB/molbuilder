@@ -404,14 +404,15 @@ every form says it (`default_words`, [`form-schema.md`](?doc=web/form-schema.md)
 *(2.68.1)*. Somebody checking a description
 before a week of compute should be able to see that the two are not the same.
 
-### 5.2 The declared type decides the cell — both the widget and the value
+### 5.2 The declaration decides the cell — both the widget and the value
 
-A parameter's `type` comes from the catalogue and answers **two** questions, and
-neither may be answered by looking at the value instead:
+A parameter's declaration in the catalogue answers **two** questions — its
+control, the server's, and its `type` — and neither may be answered by looking
+at the value instead:
 
 | | asked by | answered by |
 |---|---|---|
-| which control edits this cell | `legalValues` | `bool` / `enum` → a dropdown of the choices **this folder's kind offers** (the columns payload's `choices`, narrowed by `template.offered` — [`engines/template.md`](?doc=engines/template.md) § 6.3a, 2026-09-30: a vibration's relaxation cell offers three relaxers), each **in the words every form uses** — the columns payload's `choice_labels`, the catalogue's own (*No correction*, *Correct the Fermi level*), a switch *on* or *off* — the value written the choice itself *(2.68.1)*; everything else a text box |
+| which control edits this cell | `legalValues` — for the stage cells, the run card's rows and the Measure adder alike | the server's control, the one every form is drawn by (`_shared.control_for`, [`form-schema.md`](?doc=web/form-schema.md) § 4), carried by both routes as `control`: a switch, whether or not it may stand unanswered, or a fixed set of choices → a dropdown of the choices **this folder's kind offers** (the columns payload's `choices`, narrowed by `template.offered` — [`engines/template.md`](?doc=engines/template.md) § 6.3a, 2026-09-30: a vibration's relaxation cell offers three relaxers), each **in the words every form uses** — the columns payload's `choice_labels`, the catalogue's own (*No correction*, *Correct the Fermi level*), a switch *on* or *off* — the value written the choice itself *(2.68.1)*; everything else a text box |
 | what the typed text **means** | the setting door, on the server — `POST /api/task-setup/value` (`template.read_text`, [`engines/template.md`](?doc=engines/template.md) § 5.4) | one reader per member of `template.TYPES`, the one every home reads with; the page keeps none *(2.28.0, plan § 1w: the page's own readers took `"0x10"` for a number and any text but `"true"` for `false`)* |
 
 **A stored value this kind does not offer is shown as itself, marked** —
