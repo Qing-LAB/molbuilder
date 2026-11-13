@@ -538,7 +538,7 @@ run card states what theirs do on what a job shares (`group.may_join`):
 | | in a group |
 |---|---|
 | queue | one — each member's placement on the same domain |
-| ranks, cores per rank, GPUs, GPU use, GPU binding | the same for every member |
+| ranks, cores per rank, the GPUs asked (none, 0 — `model.gpu_request`), GPU binding | the same for every member |
 | wall | the sum of the members' walls — they run one after another |
 | memory | the largest of the members' asks (`0`, the whole node's, if any states it) |
 | the whole node | asked when any member asks it (nothing molbuilder writes asks it) |

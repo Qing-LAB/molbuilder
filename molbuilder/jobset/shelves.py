@@ -29,12 +29,12 @@ class ShelfError(ValueError):
     says which trial and why."""
 
 
-def _uses_gpu(job) -> bool:
-    """Whether ``job`` runs on the GPU -- its request, by the one door every
-    reader asks (`model.gpu_request`)."""
+def _gpus(job):
+    """Whether ``job`` runs on the GPU and how many it asks for -- its
+    request, by the one door every reader asks (`model.gpu_request`)."""
     from .model import GpuRequestError, gpu_request
     try:
-        return gpu_request(job.resources).uses
+        return gpu_request(job.resources)
     except GpuRequestError as exc:
         raise ShelfError(f"trial {job.name!r}: {exc}") from None
 
@@ -45,7 +45,7 @@ def sides_of(jobs) -> Dict[str, list]:
     sweep's order kept within each."""
     sides: Dict[str, list] = {"cpu": [], "gpu": []}
     for j in jobs:
-        sides["gpu" if _uses_gpu(j) else "cpu"].append(j)
+        sides["gpu" if _gpus(j).uses else "cpu"].append(j)
     return sides
 
 
@@ -53,9 +53,8 @@ def _ask(job) -> tuple:
     """The exact resource ask that makes a shelf: trials on one shelf fit
     ONE allocation with nothing idle, so the key is everything its request
     would widen over -- ranks, cores per rank, GPUs."""
-    from .model import gpu_request
     r = job.resources
-    return (r.mpi_np, r.cpus_per_task, gpu_request(r).count or 0)
+    return (r.mpi_np, r.cpus_per_task, _gpus(job).count or 0)
 
 
 def _width(key) -> tuple:
@@ -118,15 +117,15 @@ def shelf_request(trials) -> "Resources":
     from .model import Resources
     asks = {_ask(j) for j in trials}
     shared = {(j.resources.mem, j.resources.time, j.resources.gpu_binding,
-               _uses_gpu(j), j.resources.gres or "") for j in trials}
+               _gpus(j)) for j in trials}
     if len(asks) > 1 or len(shared) > 1:
         raise ShelfError(
             f"the shelf's trials ({', '.join(j.name for j in trials)}) do "
             f"not share one request -- prep states one allocation over a "
             f"sweep; prepare the benchmark again.")
-    r = trials[0].resources
+    r, gpus = trials[0].resources, _gpus(trials[0])
     return Resources(mpi_np=r.mpi_np, cpus_per_task=r.cpus_per_task,
-                     gres=r.gres, use_gpu=_uses_gpu(trials[0]),
+                     gres=gpus.gres, use_gpu=gpus.uses,
                      exclusive=any(j.resources.exclusive for j in trials),
                      gpu_binding=r.gpu_binding, mem=r.mem, time=r.time,
                      domain=r.domain)

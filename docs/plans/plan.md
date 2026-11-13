@@ -96,8 +96,10 @@ each release is its changelog row and its ledger section
   group's lines on Task setup asked of the doors that answer them (X-EXEC);
   2.69.52, a launch that names no group sends none changed since its prep
   (the user's ruling on 2.69.51's question); 2.69.53, a held group's refusal
-  said once, its stop a line of its own (X-EXEC). **Left, in order**:
-  X-EXEC's rest, X-ENG; then the page doors and
+  said once, its stop a line of its own (X-EXEC); 2.69.54, a job's GPUs
+  read by the one door wherever a group's members, a sequence's groups or
+  a benchmark's trials are compared (X-EXEC).
+  **Left, in order**: X-EXEC's rest, X-ENG; then the page doors and
   the copies they share (O-STATUS, O-FIND, O-STATE, O-WORDS, O-KEYS's rest
   with X-UI and X-PLOT; O-TESTS).
 

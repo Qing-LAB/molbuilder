@@ -268,6 +268,11 @@ class GpuRequest:
         return f"gpu:{self.count}" if self.uses else None
 
 
+#: THE FIELDS THE DOOR READS TOGETHER -- a reader comparing a job's
+#: request field by field compares these as the door's one answer.
+GPU_FIELDS = ("use_gpu", "gres")
+
+
 def gpu_request(resources) -> GpuRequest:
     """**Does this job use a GPU, and how many does it ask for** -- the one
     door every reader asks (`execution/architecture.md` § 3.2): the header,

@@ -206,15 +206,22 @@ def envelope(jobs: Sequence) -> "Resources":
     ranks, cores per rank and GPUs, one GPU binding; the wall the sum of the
     members' walls (they run one after another), the memory the largest."""
     from ..scheduler.quantities import parse_memory, parse_walltime, slurm_time
+    from .model import GPU_FIELDS, GpuRequestError, gpu_request
     first = jobs[0]
 
     def shape(j):
-        # the queue the placement bound, else the one stated; no GPU
-        # and GPU use off are one answer each
+        # the queue the placement bound, else the one stated; and the GPUs
+        # it asks for, by the one door (`model.gpu_request`) -- none, 0 --
+        # in place of the fields the door reads together (`GPU_FIELDS`)
         r = j.resources
-        got = {w: getattr(r, f) for f, w in SHARED.items()}
+        got = {w: getattr(r, f) for f, w in SHARED.items()
+               if f not in GPU_FIELDS}
+        try:
+            gpus = gpu_request(r)
+        except GpuRequestError as exc:
+            raise GroupError(f"`{j.name}`: {exc}") from None
         got.update({"queue": (j.placement or {}).get("domain") or r.domain,
-                    "GPUs": r.gres or None, "GPU use": bool(r.use_gpu)})
+                    SHARED["gres"]: gpus.count if gpus.uses else 0})
         return got
 
     want = shape(first)
@@ -272,16 +279,21 @@ def sequence_request(requests: Sequence[Tuple[int, "Resources"]]
     alike -- one count, one binding.  A group asking less runs with its own
     card inside it; one using no GPU runs on its cores."""
     import dataclasses
-    from ..scheduler.quantities import (parse_gres_flag, parse_memory,
-                                        parse_walltime, slurm_time)
-    from .model import gpu_request
+    from ..scheduler.quantities import parse_memory, parse_walltime, slurm_time
+    from .model import GpuRequest, GpuRequestError, gpu_request
     queues = {n: r.domain for n, r in requests}
     if len(set(queues.values())) > 1:
         raise GroupError(
             "one job sits in one queue, and these groups name "
             + ", ".join(f"group {n} {q!r}" for n, q in queues.items())
             + " -- state one queue on their run cards, or send each alone")
-    gpu = [(n, r) for n, r in requests if gpu_request(r).uses]
+    def asks(n, r):
+        # THE DOOR'S ANSWER, its refusal the sequence's, naming the group
+        try:
+            return gpu_request(r)
+        except GpuRequestError as exc:
+            raise GroupError(f"group {n}: {exc}") from None
+    gpu = [(n, r) for n, r in requests if asks(n, r).uses]
     # UNSTATED IS THE RULE'S, ON (`model.Resources.gpu_binding`): only an
     # explicit off differs.
     bindings = {n: r.gpu_binding is not False for n, r in gpu}
@@ -294,7 +306,7 @@ def sequence_request(requests: Sequence[Tuple[int, "Resources"]]
     # ONE SET OF GPUS: a group that uses GPUs runs its ranks over every GPU
     # the job holds (the run script's rank helper spreads them over what the
     # scheduler gives), so the groups that use them ask the same count.
-    counts = {n: parse_gres_flag(r.gres) for n, r in gpu}
+    counts = {n: asks(n, r).count for n, r in gpu}
     if len(set(counts.values())) > 1:
         raise GroupError(
             "one job holds one set of GPUs, which every group using GPUs "
@@ -306,8 +318,8 @@ def sequence_request(requests: Sequence[Tuple[int, "Resources"]]
     def largest(field: str):
         got = [getattr(r, field) for r in rs]
         return None if any(v is None for v in got) else max(got)
-    gres = max((r.gres for _n, r in gpu),
-               key=lambda g: parse_gres_flag(g) or 0, default=None)
+    gres = max((asks(n, r) for n, r in gpu),
+               key=lambda g: g.count, default=GpuRequest()).gres
     walls = [r.time for r in rs]
     mems = [str(r.mem) for r in rs if r.mem]
     return dataclasses.replace(

@@ -362,13 +362,10 @@ def recommendation_text(res: BenchResult, *, stage: Optional[str] = None
     if knobs.get("cpus_per_task") is not None:
         block["omp_threads"] = int(knobs["cpus_per_task"])
     if knobs["gres"]:
-        # The trial's own request, written by prep (`gpu:<n>`): it parses,
-        # or the record is not ours -- a parse error is said, never passed
-        # over.
-        from ..scheduler.quantities import parse_gres
-        n = sum(parse_gres(str(knobs["gres"])).values())
-        if n:
-            block["gpu_count"] = int(n)
+        # The trial's own request, the door's answer (`model.gpu_request`,
+        # `gpu:<n>`), its count read by the door's own parser.
+        from ..scheduler.quantities import parse_gres_flag
+        block["gpu_count"] = parse_gres_flag(str(knobs["gres"]))
     # THE VALUE AXES TOO, from the winner's own POINT -- not only from
     # `mechanism`.  `mechanism` is HOW the winner computed (the eigensolver,
     # the device); a value axis like `block_size` is a coordinate of the

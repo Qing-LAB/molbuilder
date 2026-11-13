@@ -571,6 +571,14 @@ refused = ["`medium` is in group 1 with `coarse`, which it builds on", "Give `me
 made_lacks = ["job-set.json", "01_coarse"]
 
 [[case]]
+name = "a group's members share one job's GPUs -- a member asking none beside one asking a GPU is refused at prep, each count said, before anything is written"
+groups = [1, 1]
+stage_run = { coarse = { use_gpu = true, gpu_count = 1 }, medium = { restart = "clean" } }
+stage = ["coarse", "medium"]
+refused = ["`medium` cannot share `coarse`'s job", "GPUs 0 against 1"]
+made_lacks = ["job-set.json", "01_coarse"]
+
+[[case]]
 name = "a group goes whole the first time -- a member launched alone before its group has run is refused, naming the group's launch"
 groups = [1, 1]
 stage_run = { medium = { restart = "clean" } }
