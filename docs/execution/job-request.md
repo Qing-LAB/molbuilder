@@ -782,8 +782,9 @@ setup's run card shows each default in its place before anyone fills it.
   launch's, `status`'s next step and Task setup's boxes all read it — and every
   way on is one composer's (`commands.way_back`).
 - **A launch sends what prep wrote.** A job request changed since its prep
-  reaches a run when its group is prepared again; until then `status` and Task
-  setup say the group is *changed since prepared*, each value that differs
+  reaches a run when its group is prepared again; until then `status` and
+  Task setup say the group is *changed since prepared*, each value that
+  differs, and a launch that names no group does not send it
   ([`job-system.md`](?doc=execution/job-system.md), *Changed since prepared*). In a sequence
   (`--one-job`), a launched group is read as its last prep wrote it
   ([`job-system.md`](?doc=execution/job-system.md) § 5.0).

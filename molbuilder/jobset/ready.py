@@ -230,9 +230,13 @@ class GroupAnswer:
 
     @property
     def launchable(self) -> bool:
-        """Its first launch may go now: prepared as described, never
-        launched, and what each member takes is there."""
+        """A launch that names no group may send it now, its first:
+        prepared as described, never launched, needing no prep -- nothing
+        changed since its prep (the user, 2026-11-12: such a launch sends no
+        files a change has left behind; named, `--group N`, it goes as
+        asked) -- and what each member takes is there."""
         return (self.prepared and not self.launched and self.held is None
+                and not self.needs_prep
                 and all(a.ready for a in self.answers))
 
     @property
@@ -907,8 +911,9 @@ def prep_offer(gs: List[GroupAnswer]) -> List[int]:
 
 
 def launch_offer(gs: List[GroupAnswer]) -> List[int]:
-    """The groups `launch task` sends with nothing named (`job-system.md`, *The task*): prepared as
-    described, never launched, and what each member takes is there."""
+    """The groups `launch task` sends with nothing named (`job-system.md`,
+    *The task*): prepared as described, never launched, needing no prep,
+    and what each member takes is there (:attr:`GroupAnswer.launchable`)."""
     return [g.number for g in gs if g.launchable]
 
 

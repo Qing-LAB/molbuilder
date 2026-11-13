@@ -104,6 +104,32 @@ listing = ["no scheduler on this machine"]
 
 # ---- A BENCHMARK'S WALK (job-system.md § 6.0, *A benchmark's walk*)
 
+# A LAUNCH THAT NAMES NO GROUP SENDS NONE CHANGED SINCE ITS PREP (the user,
+# 2026-11-12; `job-system.md`, *Changed since prepared*): group 1 prepared,
+# its template then changed by the person, group 2 prepared after -- nothing
+# can go, and the changed stage says beside the refusal *prepare it again*.
+[[case]]
+name = "a launch naming no group sends none changed since its prep, the changed stage saying prepare it again -- nothing written (the user, 2026-11-12)"
+before = [["prep", "task", "--group", "1"]]
+changed = { template = { mesh_cutoff = 350.0 } }
+stage = "medium"
+launch = []
+launch_stage = ""
+launch_mode = "direct"
+launch_refused = ["changed since prepared", "prepare it again", "no prepared group can go yet"]
+launch_writes_nothing = true
+
+[[case]]
+name = "...and named, the changed group goes as asked -- a dry run, which writes nothing (the user, 2026-11-12)"
+before = [["prep", "task", "--group", "1"]]
+changed = { template = { mesh_cutoff = 350.0 } }
+stage = "medium"
+launch = ["--group", "1"]
+launch_stage = ""
+launch_mode = "direct"
+listing = ["WOULD start", "bash H2_01_coarse.run.sh"]
+launch_writes_nothing = true
+
 # THE DRY RUN SHOWS THE PLAN THE LAUNCH WOULD SEND (`job-system.md` § 6.0):
 # what a launch writes as its run starts is read off real runs (plan § 5y).
 [[case]]

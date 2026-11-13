@@ -247,7 +247,11 @@ writes nothing — and name each that differs: `mesh_cutoff: 300 → 400`.
 - **A stage whose prep recorded nothing** says so in one spelling on every
   surface (`prepared_with.UNRECORDED_SAID`) and is compared with nothing;
   prepared again, it is recorded.
-- **Launch compares nothing**: it sends what prep wrote (§ 6.0).
+- **A launch compares nothing**: it sends what prep wrote (§ 6.0). **But a
+  launch that names no group offers none changed since its prep**, never
+  launched: it is passed by — said *prepare it again*, as `status` says it,
+  wherever the launch lists the groups — and named, `--group N`, it goes as
+  asked *(the user, 2026-11-12)*.
 
 The way on:
 
@@ -316,7 +320,7 @@ stateDiagram-v2
 - whether it **may be prepared now** (`preparable`) and, when not, why
   (`why`; a launched group whose members changed says so in the one rule's
   words, `members_changed` — `ready.launched_without`, `ready.joined_launched`);
-- whether it **may be launched now** (`launchable`);
+- whether a launch that names no group **may send it now** (`launchable`);
 - a stage's **way on**, composed once (`commands.way_back`): a stage never
   launched, its group's prep; a launched one, its group's prep for how it
   runs, the state saved before its group's first launch for what it computes.
@@ -327,8 +331,9 @@ next step and Task setup's boxes all read it — **none decides a group's state,
 or words its way on, itself**. `prep task` offers every group that may be
 prepared now and needs a prep — not prepared as described, a member's run not
 on disk, or never launched and changed since its prep (`GroupAnswer.needs_prep`);
-`launch task` offers every group prepared as described, never launched, each
-member's upstream finished.
+`launch task` offers every group prepared as described, never launched,
+needing no prep — nothing changed since its prep — each member's upstream
+finished.
 
 **A launched group's members are fixed.** Task setup's Save refuses a stage put
 into it, or a member moved to another group, in the answer's words. A group
@@ -495,7 +500,7 @@ name no refusal.
 | **R-P22** | `--one-job` that cannot make one job (below) | the groups' run cards alike on what differs, or each group sent alone | `prep.sequence_header` (`group.sequence_request`), `prep._prep_groups`, `_cli.prep_cmd` |
 | **R-P23** | a group a sequence still going holds (§ 6.0): its job is about to launch the files it was prepared with | the prep once that job has ended, or `molbuilder jobs stop` of the job first | `prep._prep_groups` (`ready.held_by_sequence`) |
 | **R-L1** | nothing is prepared | `prep task` for the first group | `_cli._nothing_prepared`, asked by `_cli._launch` and `_cli._launch_unit` |
-| **R-L2** | no prepared group can go, and no stage was launched | each group says what it waits for | `_cli._launch_unit` |
+| **R-L2** | no prepared group can go, and no stage was launched | each group says what it waits for, or *prepare it again* (*Changed since prepared*) | `_cli._launch_unit` |
 | **R-L3** | nobody to ask which — several groups could go, or none can and stages launched before are offered | one line for each | `_cli._launch_unit` |
 | **R-L4** | no `--mode` and no `launch.mode`, or a `launch` block that does not read; a flag the mode or the launch does not take (below) | the launch with each mode | `_cli._launch` (`_refuse_flags_without_effect`, `commands.LAUNCH_FLAGS`) |
 | **R-L5** | the stage named is described and not prepared | its group's prep, then its launch | `_cli._refuse_unprepared` |
@@ -1868,8 +1873,9 @@ anything is sent, and the send decides nothing** — `submit.plan_launch`, then
   upstream it takes from has finished; a trial starts cold (R-L29).
 - **What prep wrote is sent as it is** — nothing planned again, nothing
   compared *(the user, 2026-10-17, 2026-10-25)*. A stage whose records changed
-  since its prep is said so by `status` and Task setup (*Changed since
-  prepared*). The placement is the job's own, recorded at prep (*The
+  since its prep is said so by `status` and Task setup; a launch that names no
+  group sends no such group never launched, and says so wherever it lists
+  the groups (*Changed since prepared*). The placement is the job's own, recorded at prep (*The
   placement*, below).
 
 **4 — the send.** The folder is checked against the one the plan was made from:
@@ -1900,8 +1906,10 @@ a dry run writes none.
 
 **What `launch task` sends**:
 
-- **the next group** — one prepared as described and never launched, whose
-  every member's upstream has finished. When several can go it asks which
+- **the next group** — one prepared as described and never launched,
+  needing no prep (nothing changed since its prep — named, `--group N`, it
+  goes as asked, the user 2026-11-12), whose every member's upstream has
+  finished. When several can go it asks which
   (`--group N` answers): one job per invocation. A group goes whole the first
   time; a member is launched alone only again.
 - **When no prepared group can go, it offers the stages launched before**, to
@@ -1919,7 +1927,7 @@ flowchart TD
     L0 -- yes --> M{"its mode, and every flag<br/>the mode and the launch take?<br/>commands.LAUNCH_FLAGS"}
     M -- no --> R4["R-L4 · R-L46 — --in-sequence / --in-job, the walk's alone"]
     M -- yes --> B{"named?"}
-    B -- nothing --> O{"ready.task_state: groups prepared as described,<br/>never launched, upstream finished"}
+    B -- nothing --> O{"ready.task_state: groups prepared as described,<br/>never launched, needing no prep, upstream finished"}
     O -- one --> MR
     O -- several --> Q["asked which — one job a launch"] --> MR
     O -- none --> RL{"stages launched before?"}

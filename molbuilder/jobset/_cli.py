@@ -1180,8 +1180,9 @@ def prep_cmd(kind: str, words, groups, bundle: str, env,
 
 def _launch_unit(calc, *, told: dict, dry_run: bool = False):
     """``(what, asked)`` -- what `launch task` sends with nothing named
-    (`job-system.md`, *The task*): the groups prepared and never launched
-    whose upstream has finished, by the ready door (`ready.launch_offer`)
+    (`job-system.md`, *The task*): the groups prepared and never launched,
+    needing no prep, whose upstream has finished, by the ready door
+    (`ready.launch_offer`)
     -- one is sent (its number); several, the question which; none, the
     stages launched before, offered to launch again (a stage's name),
     beside what each waiting group waits for -- and the question put, with
@@ -1217,7 +1218,7 @@ def _launch_unit(calc, *, told: dict, dry_run: bool = False):
                 raise click.ClickException(_nothing_prepared(calc))
             raise click.ClickException(
                 text + "\nno prepared group can go yet -- each one above "
-                "waits for what it says.")
+                "says why.")
         text += ("\nno prepared group can go; launched before, and "
                  "launched again warm or --cold:")
         offered = again
