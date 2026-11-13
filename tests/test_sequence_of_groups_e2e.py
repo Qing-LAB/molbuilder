@@ -214,6 +214,19 @@ def test_the_sequence_record_and_the_ledger_say_it(road):
         assert sum(note.endswith(said) for note in notes) == 1, (said, notes)
 
 
+def _stops_alone(output: str) -> bool:
+    """The stop a refusal names is a line of its own -- the command for the
+    job the refusal says the group goes in, and nothing before it, any
+    prose after `#` (`job-system.md` § 5.3, *one command a line*) -- so a
+    line pasted from it stops that job."""
+    import re
+    from molbuilder.identity import jobs_as_typed
+    job = re.search(r"goes in job (\S+)", output)
+    return job is not None and any(
+        ln.split("#")[0].strip() == jobs_as_typed("stop", job.group(1))
+        for ln in output.splitlines())
+
+
 def test_a_group_the_job_holds_goes_in_it(road):
     """While the job runs, a group it has not launched yet is the job's:
     `status` says *goes in job N*, and launching it alone is refused,
@@ -231,7 +244,7 @@ def test_a_group_the_job_holds_goes_in_it(road):
         held.output
     alone = road["said"]["alone"]
     assert alone.exit_code != 0, alone.output
-    assert "goes in job" in alone.output and "jobs stop" in alone.output, \
+    assert "goes in job" in alone.output and _stops_alone(alone.output), \
         alone.output
 
 
@@ -244,12 +257,21 @@ def test_a_group_the_job_holds_goes_in_it(road):
 def test_what_the_job_holds_is_not_taken_from_it(road, verb, says):
     """While the job runs, its groups are its own: nothing else launches
     them, and no prep rewrites the files it is about to launch
-    (`job-system.md` § 6.0, R-L45, R-P23)."""
+    (`job-system.md` § 6.0, R-L45, R-P23) -- a refusal naming the stop
+    prints it as a line of its own (§ 5.3).  THE SILENT FAILURE: prep's
+    refusal ending its prose with the stop, a pasted line running the
+    prose."""
     assert not road["said"]["reached_last"], (
         "the job launched the last group before these reads were taken")
     r = road["said"][verb]
     assert r.exit_code != 0, r.output
     assert all(w in r.output for w in says), r.output
+    if "jobs stop" in says:
+        assert _stops_alone(r.output), r.output
+    else:
+        from molbuilder.identity import jobs_as_typed
+        assert any(ln.split("#")[0].strip() == jobs_as_typed("status")
+                   for ln in r.output.splitlines()), r.output
 
 
 def test_jobs_status_lists_the_sequence_and_a_stop_ends_it(road):

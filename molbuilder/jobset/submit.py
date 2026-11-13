@@ -1499,10 +1499,10 @@ def _planned(calc, jobset: JobSet, *, machine, mode, only, side, time_s,
     if number is not None:
         # A GROUP A SEQUENCE STILL GOING HOLDS is that job's to launch
         # (`job-system.md` § 6.0, R-L45) -- but by its own walk.
-        from .ready import held_by_sequence
+        from .ready import held_by_sequence, held_why
         held = held_by_sequence(calc, number)
         if held is not None and (inside is None or inside.job != held[0].id):
-            raise SubmitError(_held_by(held, number))
+            raise SubmitError(held_why(number, held, launching=True))
     if members is not None and len(members) == 1:
         only, members = members[0], None
 
@@ -3261,19 +3261,6 @@ def _plan_group(calc, names: List[str], *, machine, mode: str, told,
     return plan
 
 
-def _held_by(held, number: int) -> str:
-    """The refusal of a group a sequence still going holds (R-L45): its job,
-    what it is doing, and the line that stops it."""
-    job, after, said = held
-    return (f"group {number} goes in job {job.id} -- a sequence of groups "
-            f"still going ({said}) launches it "
-            + (f"after group {after}" if after is not None else "first")
-            + "; launch it alone or in another sequence once that job has "
-              "ended, or stop the job first:\n"
-            + block([jobs_as_typed("stop", job.id)])
-            + "\n")
-
-
 def _molbuilder_env_entry(machine) -> str:
     """MOLBUILDER'S OWN ENVIRONMENT, entered by a walk whose steps run
     molbuilder -- a sequence of groups' (`job-system.md` § 6.0, *The walk*):
@@ -3331,7 +3318,7 @@ def _plan_sequence(calc, jobset: JobSet, numbers: Sequence[int], *,
     import shlex
     from .commands import block, prep_sequence_lines
     from .group import sequence_names
-    from .ready import held_by_sequence
+    from .ready import held_by_sequence, held_why
     from .sequence import Record, record_path, write_record
     base, task = Path(calc.base), calc.task
     if jobset.kind != KIND_LADDER:
@@ -3349,7 +3336,7 @@ def _plan_sequence(calc, jobset: JobSet, numbers: Sequence[int], *,
         _the_group(calc, group=n, only=None, one=False)
         held = held_by_sequence(calc, n)
         if held is not None:
-            raise SubmitError(_held_by(held, n))
+            raise SubmitError(held_why(n, held, launching=True))
     groups = [{"number": n, "stages": list(calc.request.members(n))}
               for n in numbers]
     names = sequence_names(base, task, calc.request, numbers)

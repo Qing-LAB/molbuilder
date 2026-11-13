@@ -95,8 +95,9 @@ each release is its changelog row and its ledger section
   proposes to write, written by the server's writers (X-EXEC); 2.69.51, a
   group's lines on Task setup asked of the doors that answer them (X-EXEC);
   2.69.52, a launch that names no group sends none changed since its prep
-  (the user's ruling on 2.69.51's question). **Left, in order**: X-EXEC's
-  rest, X-ENG; then the page doors and
+  (the user's ruling on 2.69.51's question); 2.69.53, a held group's refusal
+  said once, its stop a line of its own (X-EXEC). **Left, in order**:
+  X-EXEC's rest, X-ENG; then the page doors and
   the copies they share (O-STATUS, O-FIND, O-STATE, O-WORDS, O-KEYS's rest
   with X-UI and X-PLOT; O-TESTS).
 

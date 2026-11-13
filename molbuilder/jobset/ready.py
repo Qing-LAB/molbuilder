@@ -262,17 +262,25 @@ class GroupAnswer:
                 "not prepared")
 
 
-def held_why(number: int, held: tuple) -> str:
-    """Why group ``number`` is not prepared while the sequence ``held``
-    (:func:`held_by_sequence`'s answer) is going, and the way on -- the one
-    sentence prep refuses with and the group answer says (R-P23)."""
+def held_why(number: int, held: tuple, *, launching: bool = False) -> str:
+    """Why group ``number`` is not prepared -- or, ``launching``, not
+    launched -- while the sequence ``held`` (:func:`held_by_sequence`'s
+    answer) is going, and the way on: the one sentence prep refuses with
+    and the group answer says (R-P23), and launch refuses with (R-L45) --
+    where the group goes, what the act would do, and the stop, its command
+    on a line of its own under the sentence (`job-system.md` § 5.3, *one
+    command a line*)."""
     from ..identity import jobs_as_typed
-    job, _after, state = held
-    return (f"group {number} goes in job {job.id} -- a sequence of groups "
-            f"still going ({state}) launches it with the files it was "
-            f"prepared with, and preparing it again would rewrite them under "
-            f"the job.  Prepare it once that job has ended, or stop the job "
-            f"first: {jobs_as_typed('stop', job.id)}")
+    from .commands import block
+    job, after, state = held
+    goes = (f"group {number} goes in job {job.id} -- a sequence of groups "
+            f"still going ({state}) launches it "
+            + (f"after group {after}" if after is not None else "first"))
+    act = (".  Launch it alone or in another sequence" if launching else
+           ", with the files it was prepared with, and preparing it again "
+           "would rewrite them under the job.  Prepare it")
+    return (goes + act + " once that job has ended, or stop the job "
+            "first:\n" + block([jobs_as_typed("stop", job.id)]))
 
 
 def held_by_sequence(calc, number: int, *, asked=None
@@ -922,16 +930,25 @@ def groups_text(gs: List[GroupAnswer]) -> str:
     number, then each member, where it stands, and what it takes or waits
     for."""
     from ..identity import jobs_as_typed
+    from .commands import block
     width = max([len(a.stage) for g in gs for a in g.answers] + [5])
     out = []
     for g in gs:
-        # A GROUP A SEQUENCE HOLDS names where to follow it, as `status`'s
-        # step does (`job-system.md`, *The next step*).
-        out.append(f"  group {g.number}  ({g.said}"
-                   + (f"; {jobs_as_typed('status')}" if g.held else "")
-                   + ")")
+        out.append(f"  group {g.number}  ({g.said})")
         for a in g.answers:
             out.append(f"    {a.stage:<{width}}  {a.state:<9}  {a.detail}")
+    # A GROUP A SEQUENCE HOLDS names where to follow it, as `status`'s step
+    # does (`job-system.md`, *The next step*) -- its command a line of its
+    # own (§ 5.3).
+    held = [g for g in gs if g.held]
+    if held:
+        one = len({g.held[0].id for g in held}) == 1
+        named = ("group " if len(held) == 1 else "groups ") + ", ".join(
+            str(g.number) for g in held)
+        out.append(("  a sequence still going holds " if one else
+                    "  sequences still going hold ") + named
+                   + (" -- follow it:\n" if one else " -- follow them:\n")
+                   + block([jobs_as_typed("status")]))
     return "\n".join(out)
 
 
