@@ -1085,8 +1085,9 @@ def prep_cmd(kind: str, words, groups, bundle: str, env,
     launch's to take.  **Prep printing what it resolved is what
     makes the launch a plain yes.**
 
-    Bare ``prep task`` shows the groups and asks which, every one not
-    prepared and preparable offered; ``--group`` answers without a terminal.
+    Bare ``prep task`` shows the groups and asks which, every one that
+    needs a prep and is preparable offered (`ready.prep_offer`);
+    ``--group`` answers without a terminal.
     """
     # THE ONE ENTRY (`job-system.md` § 5.0, plan W38 F7): the Task setup
     # tab's Prep buttons call it too.  This verb collects what the person
@@ -1252,7 +1253,7 @@ def _launch_unit(calc, *, told: dict, dry_run: bool = False):
 def _ask_which_groups(calc, named) -> tuple:
     """``(groups, asked)`` -- the groups `prep task` prepares: the groups
     shown every time (`ready.groups_text`); the ones --group ``named``, or
-    else the question -- every group not prepared and preparable offered,
+    else the question -- every group needing a prep and preparable offered,
     Enter's answer (`ready.prep_offer`), the question and its answer
     ``asked``, which the entry writes down after its save.  With
     nobody to ask, refused, naming the line that picks them; with none to

@@ -3213,10 +3213,11 @@ function renderNext(task) {
  *  every group with its stages, as the folder's answer gives them -- not
  *  prepared; prepared and never launched, then prepared again whole;
  *  launched; a group not preparable yet, what it waits for -- each
- *  stage's ready-door words beside it.  Every group not prepared,
- *  and every prepared one whose members changed, is ticked when the folder
- *  opens; under them the command for the pick and the Preview / Prep that
- *  do what it does.  Each ticked group is one job. */
+ *  stage's ready-door words beside it.  Every group `prep task` offers --
+ *  one that needs a prep and may be prepared now (`ready.prep_offer`) --
+ *  is ticked when the folder opens; under them the command for the pick
+ *  and the Preview / Prep that do what it does.  Each ticked group is one
+ *  job. */
 function taskPrepCard(task) {
     const wrap = el("div", { class: "ts-task-prep" });
     const gs = _fs.groups || {};
@@ -3237,8 +3238,8 @@ function taskPrepCard(task) {
      * (`job-request.md` § 5). */
     const pickable = (g) => g.preparable;
     /* TICKED WHEN THE FOLDER OPENS: the groups `prep task` offers -- every
-     * one not prepared as described, a prepared one whose members changed
-     * among them (`ready.prep_offer`). */
+     * one that needs a prep and may be prepared now, a prepared one whose
+     * members changed among them (`ready.prep_offer`). */
     if (_fs.prepPick === null) _fs.prepPick = (lad.offer || []).slice();
     _fs.prepPick = _fs.prepPick.filter(
         (n) => groups.some((g) => g.number === n && pickable(g)));

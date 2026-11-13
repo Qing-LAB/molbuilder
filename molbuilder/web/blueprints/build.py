@@ -2671,8 +2671,8 @@ def api_task_setup_commands():
 
     POST ``{dest, kind, groups | stages, from?, cold?, target?, prep?}``
     -> ``{ok, lines}`` -- ``groups`` one, or several picked for one prep
-    (its line alone); ``stages`` one.  A group prepared as described has no
-    prep line, as `jobset status` prints it -- unless ``prep`` asks for a
+    (its line alone); ``stages`` one.  A group that needs no prep has no
+    prep line (`ready.GroupAnswer.needs_prep`) -- unless ``prep`` asks for a
     Prep's lines, which prepare it again.  Writes nothing.
     """
     from molbuilder.jobset.commands import stage_lines
@@ -2699,25 +2699,28 @@ def api_task_setup_commands():
     if picked and kind == "task":
         from molbuilder.calculation import open as open_calc
         from molbuilder.jobset.ready import task_state
+        from molbuilder.jobset.runstatus import jobset_status
         try:
             calc = open_calc(dest)
             state = task_state(calc)
+            gs = [g for g in state.groups if g.number in groups]
+            # A GROUP NO VERB TAKES -- its launched members changed, or a
+            # sequence still going holds it -- has its next step for lines,
+            # as `status` prints it (`runstatus.GroupStep`): its words, then
+            # the lines that move it.
+            stuck = next((g for g in gs if g.no_verb_takes), None)
+            if stuck is not None:
+                step = next(s for s in jobset_status(calc, state=state).steps
+                            if s.group == stuck.number)
+                return jsonify({"ok": True,
+                                "lines": [step.words, *step.lines]})
         except (OSError, ValueError) as exc:
             return err(str(exc), 400)
-        # PREPARED AS DESCRIBED, the ready door's answer (`GroupAnswer`):
-        # its prepared jobs hold its members.
-        gs = [g for g in state.groups if g.number in groups]
-        # A GROUP NO VERB TAKES -- its launched members changed, or a
-        # sequence still going holds it -- has its way on for lines, the
-        # answer's own words, as `status` prints them.
-        stuck = next((g for g in gs if g.members_changed or g.held), None)
-        if stuck is not None:
-            from molbuilder.jobset.commands import said_lines
-            return jsonify({"ok": True, "lines": said_lines(stuck.why)})
-        # A PREPARED GROUP'S LINES are its launch alone -- unless the lines
-        # asked for are a Prep's (`prep`), which prepares it again.
-        prepared = (len(groups) == 1 and len(gs) == 1 and gs[0].prepared
-                    and gs[0].missing is None and not body.get("prep"))
+        # A GROUP THAT NEEDS NO PREP -- the ready door's one answer -- has
+        # its launch alone for lines, unless the lines asked for are a Prep's
+        # (`prep`), which prepares it again.
+        prepared = (len(groups) == 1 and len(gs) == 1
+                    and not gs[0].needs_prep and not body.get("prep"))
         # ...AND A PREP NAMES EVERY GROUP IT FORMS (`GroupAnswer.prep_with`).
         if not prepared:
             groups = sorted({n for g in gs for n in g.prep_with})

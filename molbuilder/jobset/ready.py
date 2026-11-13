@@ -167,6 +167,27 @@ class GroupAnswer:
                    for a in self.answers)
 
     @property
+    def needs_prep(self) -> bool:
+        """IT NEEDS A PREP, as `prep task` offers one: a member not prepared
+        in the one job these members make (:attr:`prepared`), a member's run
+        not on disk, or -- never launched -- a value changed since its prep
+        (`job-system.md`, *Changed since prepared*: nothing ran, so it is
+        prepared again).  A launched group changed since its prep is not
+        among them: its way on is its next step's (`runstatus._steps`).  The
+        one answer `prep task` offers by (:func:`prep_offer`) and a group's
+        lines on Task setup lead with its prep by."""
+        return (not self.prepared or self.missing is not None
+                or bool(self.since_prepared and not self.launched))
+
+    @property
+    def no_verb_takes(self) -> bool:
+        """NO VERB TAKES IT as it stands: a launched member's job no longer
+        its members' (:attr:`members_changed`), or a sequence still going
+        holds it (:attr:`held`) -- its way on is its own
+        (`job-system.md`, *The next step*)."""
+        return self.members_changed is not None or self.held is not None
+
+    @property
     def changed(self) -> bool:
         """A member was prepared in a job these members no longer make: its
         prep forms the group again (`web/task-setup.md` § 11)."""
@@ -180,8 +201,7 @@ class GroupAnswer:
         """It may be prepared now: every member preparable, and no sequence
         still going holding it -- a launched member prepared again for its
         job request (`execution/job-request.md` § 5)."""
-        return (self.members_changed is None
-                and self.held is None
+        return (not self.no_verb_takes
                 and all(a.prepared or a.ready for a in self.answers))
 
     @property
@@ -881,13 +901,9 @@ def groups(request, answers: List[Readiness]) -> List[GroupAnswer]:
 
 def prep_offer(gs: List[GroupAnswer]) -> List[int]:
     """The groups `prep task` offers pre-selected (`job-system.md`, *The
-    task*): every one not prepared as described, or never launched and
-    changed since prepared, or with a member whose run is not on disk, and
-    preparable."""
-    return [g.number for g in gs
-            if (not g.prepared or g.missing is not None
-                or (g.since_prepared and not g.launched))
-            and g.preparable]
+    task*): every one that needs a prep (:attr:`GroupAnswer.needs_prep`),
+    and preparable."""
+    return [g.number for g in gs if g.needs_prep and g.preparable]
 
 
 def launch_offer(gs: List[GroupAnswer]) -> List[int]:

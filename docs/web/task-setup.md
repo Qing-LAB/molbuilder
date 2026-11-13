@@ -1520,7 +1520,7 @@ a box, and the box is the group answer's** (`ready.GroupAnswer`,
 [`job-system.md`](?doc=execution/job-system.md), *The task*): enabled when the
 answer says the group may be prepared now, and when it may not, the answer's
 why beside it — a launched group whose members changed among them, never
-offered. A group `prep task` offers — not prepared as described, and
+offered. A group `prep task` offers — one that needs a prep, and
 preparable ([`job-system.md`](?doc=execution/job-system.md), § 5.0,
 checkpoint 2a) — is **ticked when the folder opens**. A group **prepared and never launched**
 has a box you can tick: Prep prepares it again, whole — the way a change made

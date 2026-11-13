@@ -27,7 +27,7 @@ nothing.  Nothing here launches an engine.
 from __future__ import annotations
 
 from support.road import (described, each_is_taken, jobset, printed_commands,
-                          road_tree)
+                          road_tree, set_by_the_person)
 
 
 def _described(tmp_path, monkeypatch, **blocks):
@@ -48,7 +48,9 @@ def test_the_lines_task_setup_shows_are_the_terminals_and_are_taken(
     sets none -- and each, typed back from outside the calculation, is
     taken.  Prepared, the folder answer names the machine the calculation is
     set to; the group's lines are its launch alone (the ready door's
-    *prepared*), and the next group's prep line needs
+    *needs no prep*) -- until a value of it changes, never launched,
+    when its prep leads them again (`job-system.md`, *Changed since
+    prepared*); and the next group's prep line needs
     no `--target` -- the calculation's copy answers -- and carries no
     `--cold`, which is its launch's (`job-system.md` § 5.4).
 
@@ -57,7 +59,8 @@ def test_the_lines_task_setup_shows_are_the_terminals_and_are_taken(
 
     MUTATIONS THIS MUST FAIL AGAINST: a launch line with no mode; a folder
     answer without the set machine; a
-    prepared stage still offered its prep."""
+    prepared stage still offered its prep; a stage changed since its prep
+    offered its launch alone, which sends what was prepared."""
     from molbuilder.web.app import create_app
     bundle = _described(tmp_path, monkeypatch)
     client = create_app(config={}).test_client()
@@ -78,6 +81,16 @@ def test_the_lines_task_setup_shows_are_the_terminals_and_are_taken(
     assert folder["set_to"] == "(this machine)", folder
     again = lines(1)
     assert again and all(" launch " in l for l in again), again
+    # ...A VALUE OF IT CHANGED BY THE PERSON, never launched: its prep again.
+    from molbuilder.calculation import open as open_calculation
+    from molbuilder.template import one, read_template
+    was = one(read_template(open_calculation(bundle).template_text),
+              "mesh_cutoff").value
+    set_by_the_person(bundle, {"mesh_cutoff": was + 50})
+    changed = lines(1)
+    assert changed[0].split(" --bundle ")[0] == \
+        "molbuilder jobset prep task --group 1", changed
+    assert each_is_taken("\n".join(changed)) == len(changed), changed
     medium = lines(2, cold=True)
     assert medium[0].split(" --bundle ")[0] == \
         "molbuilder jobset prep task --group 2", medium

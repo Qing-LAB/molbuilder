@@ -339,7 +339,7 @@ Three ways in, and they all end at the same files:
 |---|---|---|
 | working in a browser | the parameter tab, then the **Task setup** tab | the template, the description and the structure pair, in a folder you chose |
 | working at a terminal | `molbuilder describe` | the same files |
-| already have a folder | `molbuilder jobset prep task` | the runnable directories of the groups you pick — `--group N`, or its question, which offers every group not prepared and preparable |
+| already have a folder | `molbuilder jobset prep task` | the runnable directories of the groups you pick — `--group N`, or its question, which offers every group that needs a prep and is preparable |
 
 The browser never writes an engine input. It renders the *form* from the
 catalogue and asks the server to produce the files, because getting a format

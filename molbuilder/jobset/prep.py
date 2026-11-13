@@ -2754,7 +2754,7 @@ def _prep_groups(calc, numbers: List[int], *, target, allocation,
             if got is not None:
                 return [got]
         # THE GROUPS IT OFFERS, the one offer (`ready.prep_offer`: every one
-        # not prepared as described that may be prepared now), and why each
+        # that needs a prep and may be prepared now), and why each
         # other may not; none offered, each group's next step says how it is
         # prepared again (`status`).
         from .commands import block, command, prep_group_lines

@@ -212,8 +212,9 @@ class JobSetStatus:
     stages:          List[StageStatus]
     first_incomplete: Optional[str]   # name of the first non-finished stage (resume here)
     complete:        bool             # every described stage finished
-    #: The groups `prep task` offers (`ready.prep_offer`): every one not
-    #: prepared and preparable -- the next step when the first incomplete
+    #: The groups `prep task` offers (`ready.prep_offer`): every one that
+    #: needs a prep and is preparable -- the next step when the first
+    #: incomplete
     #: stage is not prepared.
     offer: List[int] = field(default_factory=list)
     #: The calculation's folder, so the commands the renderers print name it

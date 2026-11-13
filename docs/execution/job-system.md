@@ -325,8 +325,10 @@ stateDiagram-v2
 offer and its refusals (R-L6–R-L10), the command line's question, `status`'s
 next step and Task setup's boxes all read it — **none decides a group's state,
 or words its way on, itself**. `prep task` offers every group that may be
-prepared now and is not prepared as described; `launch task` offers every
-group prepared as described, never launched, each member's upstream finished.
+prepared now and needs a prep — not prepared as described, a member's run not
+on disk, or never launched and changed since its prep (`GroupAnswer.needs_prep`);
+`launch task` offers every group prepared as described, never launched, each
+member's upstream finished.
 
 **A launched group's members are fixed.** Task setup's Save refuses a stage put
 into it, or a member moved to another group, in the answer's words. A group
@@ -1185,7 +1187,7 @@ flowchart TD
     B -- no --> R1["R-P1 · R-P2"]
     B -- yes --> C["the groups shown, each stage's state<br/>ready.task_state"]
     C --> D{"groups named?"}
-    D -- "no — a terminal" --> Q["asked which: every group not prepared<br/>as described, and preparable, offered"]
+    D -- "no — a terminal" --> Q["asked which: every group that needs<br/>a prep, and preparable, offered"]
     D -- "no — nobody to ask, or none to offer" --> R3["R-P3"]
     D -- "no — none to offer, a junction's order to record" --> O["the junction composed again in memory, compared;<br/>its order record written, the state saved first — nothing else<br/>prep._prep_groups"]
     O -- "a refusal" --> R21["R-P15 · R-P21"]
@@ -1419,7 +1421,7 @@ molbuilder jobset <verb> bench <stage> [<trial>]  [options]
 | verb | what it does | key flags | it writes | where |
 |---|---|---|---|---|
 | `molbuilder describe` | the description and its job request | `--structure`, `--bundle`, `--engine`, `--calculation`, `--stage-strategy`, `--psml-lib` | the template, `task.json`, `job-request.json`, the data files | § 5.1 |
-| `jobset prep task` | the groups shown; the ones picked prepared — every one not prepared as described offered | `--group N`, `--one-job`, `--target`, `--domain`, `--np`, `--cpus-per-task`, `--gpus`, `--time`, `--mem`, `--max-memory-mb`, `--env`, `--no-sbatch` | a saved state; each member's deck, scripts and `run-0`; `job-set.json`; `prepared-with.json`; `STAGE-PLAN.md`; the ledger | § 5.0 |
+| `jobset prep task` | the groups shown; the ones picked prepared — every one that needs a prep offered | `--group N`, `--one-job`, `--target`, `--domain`, `--np`, `--cpus-per-task`, `--gpus`, `--time`, `--mem`, `--max-memory-mb`, `--env`, `--no-sbatch` | a saved state; each member's deck, scripts and `run-0`; `job-set.json`; `prepared-with.json`; `STAGE-PLAN.md`; the ledger | § 5.0 |
 | `jobset prep bench <stage>` | the machine's record read, the grid enumerated, the trials rendered into the stage's `bench/` | `--target`, `--domain`, `--time`, `--mem` | a saved state; the sweep's trials, their shelves' headers, its `job-set.json` and `STAGE-PLAN.md` in `bench/` | § 7 |
 | `jobset launch task` | one group; several as one job launching each in turn; or one stage again | `--group N`, `--stage NAME`, `--mode direct\|submit\|ask`, `--from`, `--cold`, `--gather`, `--foreground`, `--time`, `--yes`, `--dry-run` | at a group's first launch, a saved state; each run filled; `run.json`; the job's address; the ledger | § 6.0, § 5.4 |
 | `jobset launch bench <stage> [<trial>]` | under `submit`, the trials not yet launched as one job per resource shelf; under `direct`, each here in turn, in one walk; a named trial alone | `--mode`, `--only cpu\|gpu`, `--trial-timeout`, `--time`, `--yes`, `--dry-run` | each trial's `run.json`; the walk's script and log | § 6.0, § 7 |
