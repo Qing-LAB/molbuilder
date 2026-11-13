@@ -176,7 +176,7 @@ MALFORMED_AUTH = [
     # A key the kind does not hold: a typo in `hosted_domain` would drop that
     # restriction in silence.
     ("provider-unknown-key",  _wrap(_google_entry(hosted_domains=["asu.edu"])),
-                                              "got 'hosted_domains'"),
+                                              "unknown key 'hosted_domains'"),
 
     # ---- per-kind fields -- `access-control.md` § 3.1, `deployment.md` § 3.4
     # KEEP: the routing of `hosted_domain` through the str-list helper is not
@@ -214,7 +214,7 @@ MALFORMED_AUTH = [
                                               "no longer configured"),
     ("auth-unknown-key",      {"auth": {"providers": [_google_entry()],
                                        "trusted_proxy": True}},
-                                              "got 'trusted_proxy'"),
+                                              "unknown key 'trusted_proxy'"),
 
     # ---- trust_proxy -- it decides whether forwarded client IPs are believed
     *[(f"trust_proxy-{b!r}", {"auth": {"providers": [_google_entry()],

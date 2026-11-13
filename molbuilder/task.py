@@ -67,7 +67,7 @@ from typing import (Any, Dict, List, Mapping, NoReturn, Optional, Sequence,
 
 from .identity import normalise_id, run_id, stage_key
 from .persist import (check_schema, object_of, read_object,
-                      unknown_key_words, write_json)
+                      unknown_keys, write_json)
 
 
 SCHEMA = "molbuilder/task@2"
@@ -605,7 +605,7 @@ def _check_keys(obj: Mapping[str, Any], allowed: Tuple[str, ...], *,
     and sending a person to look for a typo they did not make is worse than
     saying nothing.
     """
-    said = unknown_key_words(obj, allowed, note)
+    said = unknown_keys(obj, allowed, note)
     if said:
         _refuse(said, where=where)
 

@@ -43,6 +43,7 @@ from typing import Any, Dict, Mapping, Optional, Tuple
 
 from . import data_dir
 from .identity import electrode_hs_stem
+from .persist import unknown_keys
 
 #: The file, beside the parameter catalogue.
 TABLE_FILE = data_dir() / "kind_table.toml"
@@ -450,10 +451,9 @@ def _run_of_points(where: str, body: object) -> RunOfPoints:
     resolving is the floor's that asks it."""
     if not isinstance(body, dict):
         _refuse(where, "is not a table")
-    unknown = sorted(set(body) - set(_POINTS_KEYS))
-    if unknown:
-        _refuse(where, f"unknown key(s) {', '.join(unknown)} -- a run of "
-                       f"points states {', '.join(_POINTS_KEYS)}")
+    said = unknown_keys(body, _POINTS_KEYS)
+    if said:
+        _refuse(where, said)
     missing = [k for k in _POINTS_KEYS if k != "steps" and k not in body]
     if missing:
         _refuse(where, f"no {', '.join(missing)} -- a run of points states "
@@ -486,10 +486,9 @@ def _part(kind: str, engine: str, body: object,
     where = f"[{kind}.on.{engine}]"
     if not isinstance(body, dict):
         _refuse(where, "is not a table")
-    unknown = sorted(set(body) - set(_PART_KEYS))
-    if unknown:
-        _refuse(where, f"unknown key(s) {', '.join(unknown)} -- a part "
-                       f"states {', '.join(_PART_KEYS)}")
+    said = unknown_keys(body, _PART_KEYS)
+    if said:
+        _refuse(where, said)
     sr = body.get("stage_roles")
     if roles and sr is None:
         _refuse(where, "no stage_roles -- how its stages play the kind's "
@@ -579,10 +578,9 @@ def _kind(name: str, body: object, engines: Tuple[str, ...]
     where = f"[{name}]"
     if not isinstance(body, dict):
         _refuse(where, "is not a table")
-    unknown = sorted(set(body) - set(_KIND_KEYS))
-    if unknown:
-        _refuse(where, f"unknown key(s) {', '.join(unknown)} -- a kind "
-                       f"states {', '.join(_KIND_KEYS)}")
+    said = unknown_keys(body, _KIND_KEYS)
+    if said:
+        _refuse(where, said)
     if not body.get("noun"):
         _refuse(where, "no noun -- its name as a person reads it")
     if not (isinstance(body.get("topic"), str) and body["topic"]):

@@ -119,7 +119,7 @@ def test_every_part_an_engine_names_resolves(engine):
 # A record, broken one way each -- the refusal names the record and the key.
 _KIND_ROWS = [
     ("an unknown key",
-     '[k]\nnoun = "k"\ntopic = "k"\ncolour = "red"\n[k.on.siesta]\n', "unknown key(s) colour"),
+     '[k]\nnoun = "k"\ntopic = "k"\ncolour = "red"\n[k.on.siesta]\n', "unknown key 'colour'"),
     ("no part on any engine",
      '[k]\nnoun = "k"\ntopic = "k"\n', "no part on any engine"),
     ("a part on an engine the engine table does not hold",

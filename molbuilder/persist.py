@@ -64,20 +64,32 @@ def check_schema(got: str, want: str, *, label: str = "") -> None:
               f"{schema_name(want)}@{schema_major(want)}.")
 
 
-def unknown_key_words(obj, allowed, note: str = "") -> Optional[str]:
-    """The first key of a hand-edited ``obj`` not in ``allowed``, in words:
-    the near-miss named, or the keys it may hold and where it belongs
-    (``note``); ``None`` when every key is known.  An unknown key is refused,
-    not ignored: an ignored key is a file quietly different from the one
-    written."""
-    for key in obj:
-        if key in allowed:
-            continue
-        near = difflib.get_close_matches(key, allowed, n=1, cutoff=0.7)
-        hint = (f" -- did you mean {near[0]!r}?" if near else
-                f" (known keys: {', '.join(allowed)}){note}")
-        return f"unknown key {key!r}{hint}"
-    return None
+def unknown_keys(obj, allowed, note: str = "") -> Optional[str]:
+    """THE ONE REFUSAL OF A RECORD'S UNKNOWN KEYS, in words
+    (`execution/job-contracts.md` § 6.1) -- every key of ``obj`` not in
+    ``allowed``, as the file holds them, each with the known key it is close
+    to, then the keys it may hold -- an unordered set of them sorted, so the
+    words are the same each run -- and, when one is close to none, where it
+    belongs (``note``); ``None`` when every key is known.  For a reader that
+    refuses an unknown key rather than ignoring it: an ignored key is a file
+    quietly different from the one written."""
+    unknown = [k for k in obj if k not in allowed]
+    if not unknown:
+        return None
+    names = (sorted(map(str, allowed))
+             if isinstance(allowed, (set, frozenset)) else
+             [str(a) for a in allowed])
+
+    def near(key):
+        got = difflib.get_close_matches(str(key), names, n=1, cutoff=0.7)
+        return got[0] if got else None
+
+    said = [(k, near(k)) for k in unknown]
+    return (f"unknown key{'s' if len(unknown) > 1 else ''} "
+            + ", ".join(f"{k!r}" + (f" (did you mean {n!r}?)" if n else "")
+                        for k, n in said)
+            + f" -- known keys: {', '.join(names)}"
+            + (note if any(n is None for _, n in said) else ""))
 
 
 def check_keys(what: str, d, known, *, needed=None) -> None:
@@ -87,12 +99,9 @@ def check_keys(what: str, d, known, *, needed=None) -> None:
     :class:`ValueError` prefixed ``what``: a record that does not read,
     never read past.  Asked beside :func:`check_schema` by a reader that
     holds every key it reads (`jobset.model`, `bench.result`)."""
-    unknown = [k for k in d if k not in known]
-    if unknown:
-        raise ValueError(
-            f"{what}: unknown key(s) "
-            + ", ".join(repr(k) for k in sorted(unknown))
-            + f" (known keys: {', '.join(known)})")
+    said = unknown_keys(d, known)
+    if said:
+        raise ValueError(f"{what}: {said}")
     gaps = [k for k in (known if needed is None else needed) if k not in d]
     if gaps:
         raise ValueError(f"{what}: no {', '.join(repr(k) for k in gaps)}")
@@ -378,6 +387,6 @@ def sha256_of_bytes(data: bytes) -> str:
 
 __all__ = ["schema_major", "schema_name", "check_schema", "check_keys",
            "read_json", "object_of", "read_object", "unread_words",
-           "unknown_key_words",
+           "unknown_keys",
            "json_text", "write_json", "stage_bytes", "write_bytes",
            "sha256_of", "sha256_of_bytes"]

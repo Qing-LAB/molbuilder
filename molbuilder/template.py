@@ -55,7 +55,7 @@ from typing import (Any, Dict, List, Mapping, NamedTuple, NoReturn,
 from .engine_table import engine_of_config
 from .identity import migrate_as_typed, stage_key
 from . import data_dir, kind_table as _kinds
-from .persist import check_schema
+from .persist import check_schema, unknown_keys
 from .runfiles import (JOB_REQUEST_FILE, PSEUDO_FILE, ROLE_PYSCF_LOG,
                        SIESTA_XV, TASK_FILE, deck_role, fixed_name)
 
@@ -1448,8 +1448,6 @@ def _source_from(name: str, raw) -> Optional[str]:
             f"{', '.join(SOURCES)}")
     return str(raw)
 
-_KNOWN_ITEM_KEYS = frozenset(_ITEM_KEY_ORDER)
-
 
 def read_template(text: str) -> Template:
     """Parse a template, refusing rather than guessing.
@@ -1997,10 +1995,9 @@ def _shape(v: Any, type_: str) -> Any:
 def _item_from(name: str, body: Any) -> Item:
     if not isinstance(body, Mapping):
         _refuse(f"expected a table, got {type(body).__name__}", where=name)
-    unknown = sorted(set(body) - _KNOWN_ITEM_KEYS)
-    if unknown:
-        _refuse(f"unknown key(s) {', '.join(repr(k) for k in unknown)} "
-                f"(known: {', '.join(_ITEM_KEY_ORDER)})", where=name)
+    said = unknown_keys(body, _ITEM_KEY_ORDER)
+    if said:
+        _refuse(said, where=name)
     for key in _REQUIRED_ITEM_KEYS:
         if key not in body:
             _refuse(f"missing required key {key!r}", where=name)

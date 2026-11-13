@@ -32,7 +32,7 @@ from . import report_fields as _report_fields
 from .config_dir import CHANNEL_NAME_RULE, is_channel_name
 from .identity import stage_key
 from .persist import (check_schema, object_of, read_object,
-                      unknown_key_words, write_json)
+                      unknown_keys, write_json)
 from .scheduler.quantities import canonical_mem, canonical_time
 
 if TYPE_CHECKING:
@@ -329,7 +329,7 @@ def _check_keys(obj: Mapping[str, Any], allowed: Tuple[str, ...], *,
     """An unknown key is refused, not ignored -- an ignored key is a request
     quietly different from the one written -- with the near-miss named, or
     where the key belongs (``note``)."""
-    said = unknown_key_words(obj, allowed, note)
+    said = unknown_keys(obj, allowed, note)
     if said:
         _refuse(said, where=where)
 

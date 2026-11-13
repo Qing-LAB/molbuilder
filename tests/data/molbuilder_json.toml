@@ -61,7 +61,7 @@ refused = 'launch.mode must be "direct" or "submit"'
 [[case]]
 name = "launch holds one key -- a queue is not a preference"
 machine_config = { launch = { mode = "submit", domain = "cpu" } }
-refused = "'launch' holds one key, 'mode'; got 'domain'"
+refused = "'launch': unknown key 'domain' -- known keys: mode"
 
 [[case]]
 name = "a comment key is ignored, at the top and inside a section"
@@ -137,7 +137,7 @@ refused = "'env_init.activation' must be one of 'source activate', 'conda activa
 [[case]]
 name = "env_init holds the activation and the preamble, and nothing else"
 machine_config = { env_init = { activation = "conda activate", shell = "bash" } }
-refused = "'env_init' holds 'activation' and 'preamble'; got 'shell'"
+refused = "'env_init': unknown key 'shell' -- known keys: activation, preamble"
 
 # ===================================================================== #
 #  Inside every section, a key the contract does not list is refused    #
@@ -147,17 +147,17 @@ refused = "'env_init' holds 'activation' and 'preamble'; got 'shell'"
 [[case]]
 name = "a misspelled admin key is refused -- it read as nobody named, so everyone signed in was an admin"
 machine_config = { admin = { email = ["operator@example.edu"] } }
-refused = "'admin' holds one key, 'emails'; got 'email'"
+refused = "'admin': unknown key 'email' (did you mean 'emails'?) -- known keys: emails"
 
 [[case]]
 name = "an envs key that is no category is refused"
 machine_config = { envs = { siseta = "molbuilder-siesta" } }
-refused = "got 'siseta'"
+refused = "unknown key 'siseta'"
 
 [[case]]
 name = "a checkpoint key it does not hold is refused"
 machine_config = { checkpoint = { size_limit = 1000000 } }
-refused = "'checkpoint' holds 'size_limit_bytes' and 'engines'; got 'size_limit'"
+refused = "'checkpoint': unknown key 'size_limit' (did you mean 'size_limit_bytes'?) -- known keys: size_limit_bytes, engines"
 
 # ===================================================================== #
 #  rate_limit -- read typed where the config is read, before a server   #

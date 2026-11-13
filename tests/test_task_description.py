@@ -82,6 +82,21 @@ def test_unknown_key_suggests_the_obvious_near_miss(example):
     assert "structur" in msg and "structure" in msg
 
 
+def test_every_unknown_key_is_named_at_once(example):
+    """`execution/job-contracts.md` § 6.1: a key its reader does not know is
+    refused, every unknown key at once, each with the known key it is close
+    to -- a hand edit with two keys the description does not hold names
+    both.  THE SILENT FAILURE: the first alone named, so a person fixed one
+    typo to be refused for the next."""
+    example["structur"] = {}
+    example["mesh_cutof"] = 300
+    with pytest.raises(ValueError) as e:
+        Task.from_dict(example)
+    msg = str(e.value)
+    assert "'mesh_cutof'" in msg, msg
+    assert "'structur' (did you mean 'structure'?)" in msg, msg
+
+
 def test_unknown_stage_key_is_refused_by_name(example):
     example["stages"][1]["enabledd"] = True
     with pytest.raises(ValueError) as e:

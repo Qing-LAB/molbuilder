@@ -139,14 +139,15 @@ def _engine(name: str, body: object) -> Engine:
     where = f"{TABLE_FILE.name} [{name}]"
     if not isinstance(body, dict):
         raise EngineTableError(f"{where} is not a table")
-    unknown = sorted(set(body) - set(_KEYS) - set(_OPTIONAL))
+    from .persist import unknown_keys
+    said = unknown_keys(body, (*_KEYS, *_OPTIONAL))
     missing = [k for k in _KEYS if k not in body]
-    if unknown or missing:
+    if said or missing:
         raise EngineTableError(
             f"{where}: " + "; ".join(
-                ([f"unknown key(s) {', '.join(unknown)}"] if unknown else [])
+                ([said] if said else [])
                 + ([f"missing {', '.join(missing)}"] if missing else []))
-            + f" -- an engine states {', '.join(_KEYS)}")
+            + ("" if said else f" -- an engine states {', '.join(_KEYS)}"))
     if body["computes_in"] not in COMPUTES_IN:
         raise EngineTableError(
             f"{where}: computes_in {body['computes_in']!r} is not one of "

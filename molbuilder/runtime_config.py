@@ -51,7 +51,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Mapping, Optional, Tuple
 
 from .config_dir import PRIVATE_FILE_MODE, config_dir
-from .persist import read_object, write_json
+from .persist import read_object, unknown_keys, write_json
 from .runfiles import (JOB_REQUEST_FILE, PYSCF_CHK, PYSCF_CUBE, SIESTA_DM,
                        SIESTA_HSX, SIESTA_TSHS, TBTRANS_AVTRANS, TBTRANS_CC,
                        TBTRANS_DOS, family)
@@ -761,19 +761,13 @@ def _refuse_unknown(section: Mapping[str, Any], allowed, where: str,
     ignored"* -- inside a section as at the top level, because a key nothing
     reads looks effective and is not: a misspelled ``admin.emails`` made every
     signed-in user an admin, and ``rate_limit``'s typos were dropped.  A
-    ``_``-prefixed key is a comment, as at the top level.  ONE sentence for
-    every section.
+    ``_``-prefixed key is a comment, as at the top level.  Said in the one
+    refusal's words (`persist.unknown_keys`), every section alike.
     """
-    unknown = sorted(str(k) for k in section
-                     if k not in allowed and not _is_comment(k))
-    if not unknown:
-        return
-    keys = [repr(k) for k in allowed]
-    holds = (f"one key, {keys[0]}" if len(keys) == 1
-             else f"{', '.join(keys[:-1])} and {keys[-1]}")
-    raise RuntimeConfigError(
-        f"{CONFIG_FILENAME}: '{where}' holds {holds}; got "
-        f"{', '.join(map(repr, unknown))}." + (f"  {hint}" if hint else ""))
+    said = unknown_keys([k for k in section if not _is_comment(k)], allowed)
+    if said:
+        raise RuntimeConfigError(f"{CONFIG_FILENAME}: '{where}': {said}."
+                                 + (f"  {hint}" if hint else ""))
 
 
 def _read_admin(raw: Mapping[str, Any]):

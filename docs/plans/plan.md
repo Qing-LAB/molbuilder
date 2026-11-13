@@ -99,7 +99,8 @@ each release is its changelog row and its ledger section
   said once, its stop a line of its own (X-EXEC); 2.69.54, a job's GPUs
   read by the one door wherever a group's members, a sequence's groups or
   a benchmark's trials are compared (X-EXEC); 2.69.55, a restore over
-  unsaved work asks through the one interface (X-EXEC).
+  unsaved work asks through the one interface (X-EXEC); 2.69.56, a record's
+  unknown keys refused in one sentence (X-EXEC).
   **Left, in order**: X-EXEC's rest, X-ENG; then the page doors and
   the copies they share (O-STATUS, O-FIND, O-STATE, O-WORDS, O-KEYS's rest
   with X-UI and X-PLOT; O-TESTS).

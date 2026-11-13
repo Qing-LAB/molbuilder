@@ -1385,6 +1385,12 @@ where it lies, its schema, the module that owns it, and where its fields are
 described.** Which files exist, by name and level, is the manifest
 ([`project-layout.md`](?doc=execution/project-layout.md) § 5).
 
+**A reader refusing a key it does not know** — an ignored key is a file
+quietly different from the one written — **names every unknown key at once**,
+each with the known key it is close to, then the keys the record holds: one
+sentence, `persist.unknown_keys`, for every such reader to say it in
+*(2.69.56)*.
+
 **Configuration and machine**
 
 | artifact | file | schema | owner module | fields |

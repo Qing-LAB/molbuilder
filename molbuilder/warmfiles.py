@@ -42,7 +42,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-from .persist import check_schema
+from .persist import check_schema, unknown_keys
 from .runfiles import WARM_FILES_FILE as FILENAME  # the catalogue's name (B13)
 
 SCHEMA = "molbuilder/warm-files@1"
@@ -112,13 +112,11 @@ def path_of(base) -> Path:
 
 
 def _parse_row(obj: dict, *, where: str) -> WarmRule:
-    unknown = sorted(set(obj) - set(_ROW_KEYS))
-    if unknown:
-        raise WarmFilesError(
-            f"{where}: unknown key(s) {', '.join(map(repr, unknown))}. "
-            f"The vocabulary is closed: "
-            f"{', '.join(_ROW_KEYS)}.  A rule it cannot express belongs "
-            f"in warm_carry, not in a new key.")
+    said = unknown_keys(obj, _ROW_KEYS, note=".  The vocabulary is closed: "
+                        "a rule it cannot express belongs in warm_carry, not "
+                        "in a new key")
+    if said:
+        raise WarmFilesError(f"{where}: {said}.")
     suffix = obj.get("suffix")
     if not isinstance(suffix, str) or not suffix:
         raise WarmFilesError(f"{where}: 'suffix' must be a non-empty string.")

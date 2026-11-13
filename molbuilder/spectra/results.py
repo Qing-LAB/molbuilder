@@ -414,11 +414,13 @@ def _partial_charges_read(d: Mapping[str, Any]) -> Optional[Dict[str, Any]]:
 
 
 def _refuse_unknown_keys(d, known, where: str) -> None:
-    unknown = sorted(str(k) for k in d if k not in known)
-    if unknown:
-        raise ValueError(
-            f"{where}: unknown key(s) {unknown} -- a key this reader does "
-            f"not know is a number it would throw away in silence")
+    """A key this reader does not know is refused, in the one refusal's
+    words (`persist.unknown_keys`): a number it would throw away in
+    silence."""
+    from ..persist import unknown_keys
+    said = unknown_keys(d, known)
+    if said:
+        raise ValueError(f"{where}: {said}")
 
 
 @dataclass(eq=False)
