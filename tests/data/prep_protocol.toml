@@ -474,7 +474,17 @@ deck = ["MeshCutoff 275.0"]
 [[case]]
 name = "a run card naming the warm-retry budget is refused, told it is retired -- a run is one start, and to continue is to launch again (execution/project-layout.md 1.6.1)"
 run = { continue_retries = 2 }
-refused = ["continue_retries was retired from the schema", "a run is one start", "jobset migrate"]
+refused = ["continue_retries was retired from the schema", "a run is one start", "jobset migrate", "takes it off the run card"]
+
+[[case]]
+name = "a run card's misspelt setting is refused, named with the run setting it is close to (engines/template.md 3)"
+run = { mpi_nps = 2 }
+refused = ["execution: unknown key 'mpi_nps' (did you mean 'mpi_np'?)"]
+
+[[case]]
+name = "a benchmark row's misspelt setting is refused, named with the one it is close to (engines/template.md 3)"
+bench = { omp_thread = [1, 2] }
+refused = ["bench: unknown key 'omp_thread' (did you mean 'omp_threads'?)"]
 
 [[case]]
 name = "the description's reporting policy reaches the run script -- when, how often, and where, by name"

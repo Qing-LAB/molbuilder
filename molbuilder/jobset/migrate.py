@@ -1659,13 +1659,13 @@ def _decide_template(rec: "_Records", task):
     ours = _T.run_settings(engine)
     run_items = sorted(it.name for it in mine if it.name in ours)
     vals = {k: v for k, v in vals.items() if k not in run_items}
-    unknown = sorted(k for k in vals if k not in known
-                     and k not in old_names and not _gone(k))
-    if unknown:
+    said = _T.why_not_items([k for k in vals if k not in old_names
+                             and not _gone(k)], known,
+                            among=_T.template_settings(config_cls))
+    if said:
         raise MigrateError(
-            f"{tmpl.name} names {', '.join(map(repr, unknown))}, which no "
-            f"item holds -- a misspelling; prep refuses it too.  Correct "
-            f"it, then run the migration again; nothing was written.")
+            f"{tmpl.name}: {said}.  Prep refuses it too: correct it, then "
+            f"run the migration again -- nothing was written.")
     from_card = dict(rec.from_card or {})
     if not (old_items or old_values or zeros or renamed or retired
             or stage_retired or varies_retired or run_items or from_card):

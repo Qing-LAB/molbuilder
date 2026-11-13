@@ -68,6 +68,22 @@ _NOTIFY_KEYS = ("on_scf_converged", "every_hours", "channels", "report")
 #: look and no new answer.
 LANE_ASKS = ("time", "domain")
 
+
+def why_not_on_card(given, *, engine: str, kind: str) -> Optional[str]:
+    """THE ONE SENTENCE for a run card's names that are no execution
+    setting -- asked by the description's check and, for a direct caller,
+    by prep (`resolve.card_values`), so the two say one thing: retired or
+    renamed told so, misspelt with the run setting it is close to, the
+    run settings and :data:`LANE_ASKS` listed, a card holding few
+    (`template.why_not_items`, `engines/template.md` § 3)."""
+    from .template import settings_in, why_not_items
+    return why_not_items(
+        given, [*settings_in("run_card", engine=engine, kind=kind),
+                *LANE_ASKS],
+        is_set=True, list_known=True, on_card=True,
+        note=(".  It is not an execution setting: a run card says what the "
+              "run uses -- ranks, threads, the device, the solver"))
+
 #: THE LANE ASKS AS A PAGE OFFERS THEM -- each with its words, its help and
 #: an example -- served to the Task setup page (`/api/task-setup/sweepable`,
 #: `lane_asks`), which keeps no table of its own (`web/task-setup.md`
@@ -680,6 +696,7 @@ def write(base, request: JobRequest, *, plan=None):
 
 
 __all__ = ["SCHEMA", "FILENAME", "LANE_ASKS", "LANE_ASK_ROWS",
+           "why_not_on_card",
            "Allocation", "Notify", "StageRequest", "JobRequest",
            "bench_from_obj", "from_dict", "from_text", "fresh", "of",
            "path_of", "read_lane_ask", "write"]

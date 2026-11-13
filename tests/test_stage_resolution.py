@@ -161,6 +161,8 @@ def test_an_unknown_field_is_refused_by_name():
                          where="stage 'tight'")
     assert "mesh_cutof" in str(e.value)
     assert "tight" in str(e.value)
+    # ...and named with the field it is close to (`engines/template.md` § 3).
+    assert "(did you mean 'mesh_cutoff'?)" in str(e.value), str(e.value)
 
 
 def test_a_stage_field_name_in_overrides_is_refused():

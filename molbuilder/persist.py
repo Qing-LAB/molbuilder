@@ -64,15 +64,18 @@ def check_schema(got: str, want: str, *, label: str = "") -> None:
               f"{schema_name(want)}@{schema_major(want)}.")
 
 
-def unknown_keys(obj, allowed, note: str = "") -> Optional[str]:
+def unknown_keys(obj, allowed, note: str = "", *,
+                 list_known: bool = True) -> Optional[str]:
     """THE ONE REFUSAL OF A RECORD'S UNKNOWN KEYS, in words
     (`execution/job-contracts.md` § 6.1) -- every key of ``obj`` not in
     ``allowed``, as the file holds them, each with the known key it is close
     to, then the keys it may hold -- an unordered set of them sorted, so the
     words are the same each run -- and, when one is close to none, where it
-    belongs (``note``); ``None`` when every key is known.  For a reader that
-    refuses an unknown key rather than ignoring it: an ignored key is a file
-    quietly different from the one written."""
+    belongs (``note``); ``None`` when every key is known.  ``list_known``
+    false leaves the known keys out, for a vocabulary too long to read in a
+    refusal -- a calculation's settings (`template.why_not_items`).  For a
+    reader that refuses an unknown key rather than ignoring it: an ignored
+    key is a file quietly different from the one written."""
     unknown = [k for k in obj if k not in allowed]
     if not unknown:
         return None
@@ -88,7 +91,7 @@ def unknown_keys(obj, allowed, note: str = "") -> Optional[str]:
     return (f"unknown key{'s' if len(unknown) > 1 else ''} "
             + ", ".join(f"{k!r}" + (f" (did you mean {n!r}?)" if n else "")
                         for k, n in said)
-            + f" -- known keys: {', '.join(names)}"
+            + (f" -- known keys: {', '.join(names)}" if list_known else "")
             + (note if any(n is None for _, n in said) else ""))
 
 

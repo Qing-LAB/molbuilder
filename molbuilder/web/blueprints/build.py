@@ -1704,14 +1704,12 @@ def _column_items(engine: str, kind: str):
     hold may become a column. The ones it is not allowed to hold may not."*
     """
     from molbuilder import template as _T
-    for it in _T.select(_T.catalogue(), engine=engine):
-        # THE membership rule, asked of the setting door rather than
-        # restated here (`engines/template.md` § 5.4): a column is a home a
-        # stage's override may hold -- never a run setting (the run card's),
-        # an item this kind does not carry, one the rung fixes, or one every
-        # stage shares.
-        if _T.why_not_in(it, "override", engine=engine, kind=kind) is None:
-            yield it
+    # THE membership rule, asked of the setting door rather than restated
+    # here (`template.items_in`, `engines/template.md` § 5.4): a column is
+    # a home a stage's override may hold -- never a run setting (the run
+    # card's), an item this kind does not carry, one the rung fixes, or one
+    # every stage shares.
+    yield from _T.items_in("override", engine=engine, kind=kind)
 
 
 @bp.route("/api/task-setup/columns", methods=["GET"])

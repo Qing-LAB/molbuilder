@@ -388,8 +388,24 @@ start, and to continue is to launch again
 retired or renamed, asks nothing and is read as absent. **An item a release
 renamed** is refused under its old name, naming the new and `jobset migrate`
 (`template.RENAMED_ITEMS`). Every door that
-reads a name — the template reader, the description's check, a stage's
-overrides, a run card — says it in one sentence (`template.why_not_an_item`).
+reads a name where `jobset migrate` reaches — the template reader, the
+description's `varies` and a stage's overrides, a run card (the description's
+check and prep's alike, `job_request.why_not_on_card`), a migration — says it
+in one sentence (`template.why_not_items`): a retired or renamed name told
+so, with the way on (`template.why_not_an_item`) — on a run card, which
+`jobset migrate` takes a retired name off and renames nothing on, a retired
+one alone — and any other name with the setting it is close to when one is,
+among the settings its place may hold, never one it may not (a template's,
+`template.template_settings`; a stage's overrides', a run card's and a
+benchmark row's, `template.settings_in`, by the one membership rule the stage
+table's columns read too, `template.items_in`). The settings are not listed, too
+many to read in a refusal, but for a run card's few *(2.69.59; the user,
+2026-11-13: "suggest the closest")*. A benchmark row's names and
+its pins, which no migration reaches, are refused in the one sentence for
+unknown keys ([`execution/job-contracts.md`](?doc=execution/job-contracts.md)
+§ 6.1), named with the setting a benchmark row may sweep that they are close
+to — a row listing what it may sweep — never a retired setting's story,
+which would send a person to a migration that does not reach them.
 **`molbuilder jobset migrate` takes a retired item out** — of the template,
 of a stage's own values and of `varies`, blank or set — **when its value
 runs as before without it** (each item's `runs`: any value of `copy_psml`

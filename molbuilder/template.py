@@ -2154,6 +2154,15 @@ def shared_by_every_stage(engine: Optional[str], kind: str) -> frozenset:
                                               shared=kind))
 
 
+def template_settings(config_cls) -> set:
+    """The settings a TEMPLATE holds -- :func:`template_fields` without the
+    run settings, which the template file's door refuses (§ 2): what a
+    misspelt name in a template, a migration or a stage's override at prep
+    is matched against (:func:`why_not_items`)."""
+    return template_fields(config_cls) - run_settings(
+        engine_of_config(config_cls))
+
+
 def run_settings(engine: str) -> frozenset:
     """The settings a rung states on its RUN CARD -- the catalogue's
     `execution` items (§ 6.2), the machine's answers among them -- asked
@@ -2677,6 +2686,27 @@ def home_of(item: "Item", kind: str) -> frozenset:
                      if why_not_in(item, h, engine="", kind=kind) is None)
 
 
+def items_in(home: str, *, engine: str, kind: str,
+             stage: Optional[str] = None) -> Tuple["Item", ...]:
+    """The items ``home`` may hold on a ``kind`` calculation on ``engine``
+    -- on ``stage`` when given, which reads only its own (§ 5.4) -- in the
+    catalogue's order: THE ONE MEMBERSHIP RULE, asked of the setting door
+    (:func:`why_not_in`): the stage table's columns (`web/task-setup.md`
+    § 5) and every refusal that lists a place's settings or finds the one
+    a typo is close to (:func:`settings_in`)."""
+    return tuple(it for it in select(catalogue(), engine=engine)
+                 if why_not_in(it, home, engine=engine, kind=kind,
+                               stage=stage) is None)
+
+
+def settings_in(home: str, *, engine: str, kind: str,
+                stage: Optional[str] = None) -> List[str]:
+    """The names of :func:`items_in`, sorted: what a misspelt name in
+    ``home`` is close to, and what its refusal lists."""
+    return sorted(it.name for it in items_in(home, engine=engine, kind=kind,
+                                             stage=stage))
+
+
 def why_not_in(item: "Item", home: str, *, engine: str, kind: str,
                stage: Optional[str] = None) -> Optional[str]:
     """Why ``home`` may not hold a value of ``item`` -- the clause after
@@ -3155,7 +3185,7 @@ def config_from_template(text: str, config_cls):
     # because ONE value shared by every stage cannot disagree with itself,
     # and the value need not come from the cited run -- a template answering
     # `basis_size` for a transport calculation is the ordinary state.
-    unknown = sorted(k for k in vals if k not in known)
+    unknown = [k for k in vals if k not in known]
     if unknown:
         # Refused, never dropped (U16): this is a file people edit by
         # hand, and an item the schema does not know is a typo, a renamed
@@ -3164,10 +3194,6 @@ def config_from_template(text: str, config_cls):
         # retired item is named as retired, so a template written before
         # the retirement is not sent looking for a misspelling.
         migrated = [k for k in unknown if k in MIGRATED_ITEMS]
-        gone = [k for k in unknown if k not in MIGRATED_ITEMS
-                and why_not_an_item(k) is not None]
-        other = [k for k in unknown
-                 if k not in MIGRATED_ITEMS and k not in gone]
         why = []
         if migrated:
             why.append(
@@ -3175,20 +3201,18 @@ def config_from_template(text: str, config_cls):
                 "2026-09-28: "
                 + ", ".join(f"{k!r} ({MIGRATED_ITEMS[k]})" for k in migrated)
                 + ".  " + MIGRATE_HINT)
-        # A RETIRED OR RENAMED ITEM is named as such, in the one sentence
-        # every door says (:func:`why_not_an_item`): migrate takes out what
-        # runs as before without it and renames what was renamed; any other
-        # value is the person's to drop, since the run would change.
-        if gone:
-            why.append("template: " + "; ".join(
-                why_not_an_item(k, value=vals[k], is_set=True)
-                for k in gone) + ".")
-        if other:
-            why.append(
-                f"template names item(s) the {config_cls.__name__} schema "
-                f"does not declare: {', '.join(map(repr, other))}.  A "
-                f"template item is a schema field; "
-                f"check the spelling against the schema's own names.")
+        # A RETIRED, RENAMED OR MISSPELT ITEM, in the one sentence every
+        # door says (:func:`why_not_items`): migrate takes out what runs as
+        # before without it and renames what was renamed; any other value
+        # is the person's to drop, since the run would change.
+        said = why_not_items(
+            {k: vals[k] for k in unknown if k not in MIGRATED_ITEMS}, known,
+            among=template_settings(config_cls), is_set=True,
+            note=(f".  A template item is a field of the "
+                  f"{config_cls.__name__} schema; check the spelling "
+                  f"against its own names"))
+        if said:
+            why.append(f"template: {said}.")
         raise ValueError("  ".join(why))
     # A VALUE IS OF THE CATALOGUE'S TYPE -- today's, not the one the file
     # declares beside it (§ 5.4: the item's type is the catalogue's).  The
@@ -3347,14 +3371,16 @@ RENAMED_ITEMS = {
 }
 
 
-def why_not_an_item(name: str, *, value: Any = None,
-                    is_set: bool = False) -> Optional[str]:
+def why_not_an_item(name: str, *, value: Any = None, is_set: bool = False,
+                    on_card: bool = False) -> Optional[str]:
     """Why ``name`` names no item when a release made it so -- retired, and
     the way on: `jobset migrate` when its value runs as before without it,
     else deleting it; renamed, and its new name -- or ``None`` for a name no
-    release ever held (`engines/template.md` § 3).  The one sentence the
-    template reader, the description's check and a stage's overrides say,
-    ``value`` the one the name was given (``is_set``)."""
+    release ever held (`engines/template.md` § 3).  Every door says it
+    through :func:`why_not_items`, ``value`` the one the name was given
+    (``is_set``).  ``on_card``: the name is a run card's, where `jobset
+    migrate` takes a retired name off and renames nothing
+    (`migrate._retired_off`) -- so a renamed name is no answer there."""
     r = retired(name)
     if r is not None:
         if is_set and not r.runs_without(value):
@@ -3364,12 +3390,46 @@ def why_not_an_item(name: str, *, value: Any = None,
                     f"cannot be run again")
         return (f"{name} was retired from the schema ({r.why}) -- "
                 f"`{migrate_as_typed()}` in this calculation's folder "
-                f"{r.migrate_does}")
-    if name in RENAMED_ITEMS:
+                + ("takes it off the run card" if on_card else
+                   r.migrate_does))
+    if name in RENAMED_ITEMS and not on_card:
         new, why, _at = RENAMED_ITEMS[name]
         return (f"{name} is now {new} ({why}) -- `{migrate_as_typed()}` "
                 f"in this calculation's folder renames it, keeping its value")
     return None
+
+
+def why_not_items(given, fields, *, among=None, is_set: bool = False,
+                  note: str = "", list_known: bool = False,
+                  on_card: bool = False) -> Optional[str]:
+    """THE ONE SENTENCE FOR NAMES THAT ARE NOT SETTINGS (§ 3), which every
+    door that reads a setting's name where `jobset migrate` reaches says --
+    the template reader, the description's `varies` and a stage's
+    overrides, a run card (`job_request.why_not_on_card`), a migration:
+    each name of ``given`` not in ``fields``,
+    a retired or renamed one told so with the way on
+    (:func:`why_not_an_item`), every other one -- a name no release held, a
+    misspelling -- in the one sentence for unknown keys
+    (`persist.unknown_keys`), with the setting it is close to when one is
+    -- among ``among``, the settings its place may hold, never one it may
+    not (``fields`` when not given) -- and ``note`` where none is.  The
+    settings are not listed, too many to read in a refusal, unless
+    ``list_known`` -- a place that holds few, a run card.  ``on_card``: a
+    run card's names (:func:`why_not_an_item`).  ``given`` maps each name
+    to the value it was given (``is_set``), or lists the names; ``None``
+    when every one is in ``fields``."""
+    values = given if isinstance(given, Mapping) else dict.fromkeys(given)
+    names = [k for k in values if k not in fields]
+    if not names:
+        return None
+    gone = {k: why_not_an_item(k, value=values[k], is_set=is_set,
+                               on_card=on_card)
+            for k in names}
+    near = fields if among is None else [a for a in among if a in fields]
+    misspelt = unknown_keys([k for k in names if gone[k] is None], near,
+                            note=note, list_known=list_known)
+    return "; ".join([w for w in gone.values() if w]
+                     + ([misspelt] if misspelt else []))
 
 
 #: The module's public surface.
@@ -3385,7 +3445,8 @@ __all__ = ["SCHEMA", "KINDS", "TYPES", "CATEGORIES",
            "run_settings", "why_run_setting",
            "IDENTITY_ITEMS", "fixed_by_role", "role_answers",
            "fixed_answers", "fixed_on_every_rung", "why_role", "offered", "why_not_offered",
-           "as_declared", "why_not", "why_not_an_item", "retired",
+           "as_declared", "why_not", "why_not_an_item", "why_not_items",
+           "template_settings", "retired",
            "HOMES", "SAID", "TRIAL_PINS", "GRID_AXES", "is_run_setting",
-           "home_of", "why_not_in",
+           "home_of", "items_in", "settings_in", "why_not_in",
            "accepts", "spell", "shown", "read_text", "default_of"]

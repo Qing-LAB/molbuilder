@@ -373,7 +373,11 @@ def test_naming_a_stage_that_is_not_there_is_refused_with_the_options(template):
 
 
 def test_a_pin_naming_nothing_in_the_schema_is_refused(template):
-    with pytest.raises(ResolveError, match=r"nothing in the"):
+    """A pin is a benchmark row's one point, which no migration reaches: a
+    name nothing holds is refused in the one sentence for unknown keys,
+    named with the setting it is close to (`job-contracts.md` § 6.1)."""
+    with pytest.raises(ResolveError, match=r"unknown key 'blocksize' "
+                                           r"\(did you mean 'block_size'\?\)"):
         resolve(template, _task(), allocation=ALLOC,
                 pins={"blocksize": 16}, stage=STAGE)
 

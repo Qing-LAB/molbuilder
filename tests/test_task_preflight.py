@@ -103,11 +103,21 @@ def test_an_overrides_key_that_is_no_field_is_refused_by_name():
     assert issue.stage == "tight"
 
 
-def test_the_refusal_suggests_the_field_they_probably_meant():
+@pytest.mark.parametrize("typo, near", [
+    ("mesh_cutof", "mesh_cutoff"),
+    # a run setting is near, and an override may never hold one (§ 5.4):
+    # the person is not pointed at a name the next check refuses
+    ("mpi_nps", None),
+])
+def test_the_refusal_suggests_only_a_field_an_override_may_hold(typo, near):
     """A description is JSON people edit by hand, so a refusal owes them the
-    near miss when there is an obvious one."""
-    [issue] = _override_findings(preflight(_staged({"mesh_cutof": 300.0})))
-    assert "mesh_cutoff" in issue.message
+    near miss when there is an obvious one -- among the settings an
+    override may hold (`engines/template.md` § 3)."""
+    [issue] = _override_findings(preflight(_staged({typo: 300.0})))
+    if near:
+        assert repr(near) in issue.message, issue.message
+    else:
+        assert "did you mean" not in issue.message, issue.message
 
 
 def test_varies_is_checked_too_not_only_the_overrides():

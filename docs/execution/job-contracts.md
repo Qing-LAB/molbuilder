@@ -1389,7 +1389,11 @@ described.** Which files exist, by name and level, is the manifest
 quietly different from the one written — **names every unknown key at once**,
 each with the known key it is close to, then the keys the record holds: one
 sentence, `persist.unknown_keys`, for every such reader to say it in
-*(2.69.56)*.
+*(2.69.56)*. A calculation's settings are too many to read in a refusal: a
+name that is not one is named with the setting it is close to when one is,
+and the settings are not listed, but for a run card's and a benchmark row's
+few (`template.why_not_items`, [`engines/template.md`](?doc=engines/template.md)
+§ 3) *(2.69.59)*.
 
 **Configuration and machine**
 

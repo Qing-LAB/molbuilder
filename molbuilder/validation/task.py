@@ -217,16 +217,6 @@ def _items_of(request) -> Dict[str, Any]:
             for it in select(catalogue(), engine=str(request.engine))}
 
 
-def _run_settings_said(request, home: str) -> str:
-    """The settings ``home`` may hold on ``request``'s calculation, by the
-    door's homes (`template.home_of`), as a refusal lists what may be
-    stated instead."""
-    from ..template import home_of
-    kind = str(request.calculation)
-    return ", ".join(sorted(n for n, it in _items_of(request).items()
-                            if home in home_of(it, kind))) or "(none)"
-
-
 def _run_cards_may_stand(request) -> List[Issue]:
     """Every name on a run card -- the calculation's, a stage's -- is a run
     setting, and its value one its item takes there (`job-request.md`
@@ -237,8 +227,8 @@ def _run_cards_may_stand(request) -> List[Issue]:
     rung does not have (`web/task-setup.md` § 6.2b).  The run's own
     scheduler asks, `time` and `domain`, are the job request's reader's
     (§ 3.2a)."""
-    from ..job_request import LANE_ASKS
-    from ..template import accepts, shown, why_not_an_item
+    from ..job_request import LANE_ASKS, why_not_on_card
+    from ..template import accepts, shown
     blocks = [("execution", dict(request.execution or {}), None)]
     for name, entry in request.stages.items():
         if entry.execution:
@@ -254,23 +244,10 @@ def _run_cards_may_stand(request) -> List[Issue]:
             if name in LANE_ASKS:
                 continue
             it = items.get(name)
-            gone = (why_not_an_item(name, value=block[name], is_set=True)
-                    if it is None else None)
-            if gone is not None:
-                # A RETIRED OR RENAMED ITEM is named as such, with the way
-                # on (`engines/template.md` § 3) -- as a stage's override is.
-                out.append(Issue("error", f"{where} names {name!r}: {gone}",
-                                 where=f"job_request.{where}.{name}"))
-                continue
             if it is None:
-                out.append(Issue(
-                    "error",
-                    f"{where} names {name!r}, which is not an execution "
-                    f"setting of {engine}.  This block says what the RUN "
-                    f"uses -- "
-                    f"ranks, threads, the device, the solver.  Execution "
-                    f"settings here: {_run_settings_said(request, 'run_card')}, "
-                    f"{', '.join(LANE_ASKS)}",
+                # A NAME THAT IS NO SETTING, in the run card's one sentence.
+                out.append(Issue("error", f"{where}: " + why_not_on_card(
+                    {name: block[name]}, engine=engine, kind=kind) + ".",
                     where=f"job_request.{where}.{name}"))
                 continue
             clause = accepts(it, block[name], "run_card", engine=engine,
@@ -295,19 +272,24 @@ def bench_points_fit_their_items(request) -> List[Issue]:
     plan = request.bench
     if not plan:
         return []
-    from ..template import accepts, shown, why_not_in
+    from ..persist import unknown_keys
+    from ..template import accepts, settings_in, shown, why_not_in
     items = _items_of(request)
     engine, kind = str(request.engine), _kind_of(request)
+    # A NAME THAT IS NO SETTING is a key of the row the record does not
+    # hold, in the one sentence for unknown keys, the settings a row may
+    # sweep listed -- not a setting's retired story: no migration takes a
+    # benchmark row's names (`engines/template.md` § 3).
+    sweepable = settings_in("bench", engine=engine, kind=kind)
     out: List[Issue] = []
     for name in sorted(plan):
         where = f"job_request.bench.{name}"
         it = items.get(name)
         if it is None:
-            out.append(Issue(
-                "error",
-                f"bench names {name!r}, which is not a setting of {engine} "
-                f"-- a benchmark row sweeps a run setting.  Sweepable here: "
-                f"{_run_settings_said(request, 'bench')}", where=where))
+            out.append(Issue("error", "bench: " + unknown_keys(
+                [name], sweepable, list_known=bool(sweepable),
+                note=(f".  A benchmark row sweeps a run setting of "
+                      f"{engine}")) + ".", where=where))
             continue
         home = why_not_in(it, "bench", engine=engine, kind=kind)
         if home:
@@ -376,43 +358,36 @@ def _names_exist(task, cls, fields) -> List[Issue]:
     nobody's.  An override's own value is the door's in full
     (:func:`_overrides_may_stand`).
     """
-    from ..template import items_of, why_not_in
+    from ..template import items_of, settings_in, why_not_in, why_not_items
     items = items_of(cls)
     engine, kind = str(task.engine), _kind_of(task)
+    # A NAME THAT IS NO FIELD, in the one sentence every door says
+    # (`template.why_not_items`, `engines/template.md` § 3): retired or
+    # renamed, told so; misspelt, with the field it is close to.
+    no_field = f" -- not a field of {cls.__name__}"
 
     out: List[Issue] = []
+    said = why_not_items(list(task.varies or ()), fields,
+                         among=settings_in("override", engine=engine,
+                                           kind=kind), note=no_field)
+    if said:
+        out.append(Issue("error", f"'varies': {said}.", where="task.varies"))
     for name in (task.varies or ()):
         if name not in fields:
-            out.append(Issue("error", _no_such_field(
-                name, fields, cls, "'varies' names"), where="task.varies"))
             continue
         home = why_not_in(items[name], "override", engine=engine, kind=kind)
         if home:
             out.append(Issue("error", f"'varies' names {name!r}{home}.",
                              where="task.varies"))
     for st in (task.stages or ()):
-        for key in st.overrides:
-            if key not in fields:
-                out.append(Issue("error", _no_such_field(
-                    key, fields, cls, f"stage {st.name!r} overrides",
-                    value=st.overrides[key], is_set=True),
-                    where="task.stages.overrides", stage=st.name))
+        said = why_not_items(st.overrides, fields, is_set=True,
+                             among=settings_in("override", engine=engine,
+                                               kind=kind, stage=st.name),
+                             note=no_field)
+        if said:
+            out.append(Issue("error", f"stage {st.name!r} overrides: {said}.",
+                             where="task.stages.overrides", stage=st.name))
     return out
-
-
-def _no_such_field(name, fields, cls, lead, *, value=None,
-                   is_set: bool = False) -> str:
-    import difflib
-    from ..template import why_not_an_item
-    gone = why_not_an_item(name, value=value, is_set=is_set)
-    if gone is not None:
-        # A RETIRED OR RENAMED ITEM is named as such, with the way on -- not
-        # sent looking for a misspelling (`engines/template.md` § 3).
-        return f"{lead} {name!r}: {gone}"
-    near = difflib.get_close_matches(name, list(fields), n=1, cutoff=0.75)
-    hint = f" -- did you mean {near[0]!r}?" if near else ""
-    return (f"{lead} {name!r}, which is not a field of "
-            f"{cls.__name__}{hint}")
 
 
 def _kind_of(task) -> str:

@@ -102,7 +102,9 @@ each release is its changelog row and its ledger section
   unsaved work asks through the one interface (X-EXEC); 2.69.56, a record's
   unknown keys refused in one sentence (X-EXEC); 2.69.57, a SIESTA
   vibration builds its result again (2.69.56's regression); 2.69.58, the
-  other readers' unknown keys refused in the one sentence (X-EXEC).
+  other readers' unknown keys refused in the one sentence (X-EXEC);
+  2.69.59, a name that is not a setting said by one door, with the setting
+  it is close to (the user's word).
   **Left, in order**: X-EXEC's rest, X-ENG; then the page doors and
   the copies they share (O-STATUS, O-FIND, O-STATE, O-WORDS, O-KEYS's rest
   with X-UI and X-PLOT; O-TESTS).

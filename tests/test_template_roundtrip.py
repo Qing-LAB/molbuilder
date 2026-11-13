@@ -260,11 +260,16 @@ def test_a_per_name_table_survives_the_writer():
 def test_an_unknown_item_name_is_refused_not_dropped():
     """E4: this is a file people edit by hand; a typo'd item silently
     ignored renders a deck missing what the person believes they set.
-    Until U16 config_from_template filtered on `k in known` -- the drop."""
+    Until U16 config_from_template filtered on `k in known` -- the drop.
+    And the refusal names the setting the typo is close to, as every door
+    that reads a name says it (`engines/template.md` § 3, *suggest the
+    closest*): a refusal that names the typo alone leaves the person to
+    find the right one among 89 settings."""
     text = T.template_with_values(SiestaConfig(system_label="JOB"), calculation="optimization")
     assert "[item.mesh_cutoff]" in text
     broken = text.replace("[item.mesh_cutoff]", "[item.mesh_cutof]")
-    with pytest.raises(ValueError, match="mesh_cutof"):
+    with pytest.raises(ValueError, match=r"unknown key 'mesh_cutof' "
+                                         r"\(did you mean 'mesh_cutoff'\?\)"):
         T.config_from_template(broken, SiestaConfig)
 
 

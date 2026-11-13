@@ -48,7 +48,7 @@ from typing import (Any, Callable, List, Mapping, Optional, Sequence, Tuple,
                     Union)
 
 from .jobset.model import AS_RESOURCE, Resources
-from .template import STATE_ITEMS
+from .template import STATE_ITEMS, settings_in
 
 
 class ResolveError(Exception):
@@ -570,7 +570,10 @@ def resolve(template_text: str, task, *,
         if _zeros:
             raise ResolveError(why_zeros_written_before(_parsed, _zeros))
         try:
-            base = effective_config(base, stage_obj.overrides)
+            base = effective_config(
+                base, stage_obj.overrides,
+                among=settings_in("override", engine=_engine, kind=_kind,
+                                  stage=stage_obj.name))
         except ValueError as exc:
             # An override naming no field, or a value outside its declared
             # range -- a person's edit, said by name (the same translation).
@@ -606,12 +609,23 @@ def resolve(template_text: str, task, *,
             f". A pin overrides a template item "
             f"for this prep only; the machine's asks travel as the "
             f"allocation, never as items.")
-    unknown = sorted(set(pins) - known)
-    if unknown:
-        raise ResolveError(
-            f"pin(s) {', '.join(repr(k) for k in unknown)} name nothing in the "
-            f"{config_cls.__name__} schema. A pin overrides a template item for "
-            f"this prep only; it cannot invent one.")
+    # A PIN is a benchmark row's one point, which no migration reaches: a
+    # key nothing holds, in the one sentence for unknown keys -- never a
+    # retired setting's story (`engines/template.md` § 3).
+    from .persist import unknown_keys
+    # ...its near one among what a pin may name: a setting a benchmark row
+    # sweeps, never a machine fact or what the stage fixes, which the checks
+    # either side of this refuse.
+    said = unknown_keys([k for k in pins if k not in known],
+                        [s for s in settings_in("bench", engine=_engine,
+                                                kind=_kind)
+                         if s not in machine_facts and s not in fixed],
+                        list_known=False,
+                        note=(f".  A pin overrides a template item of the "
+                              f"{config_cls.__name__} schema for this prep "
+                              f"only; it cannot invent one"))
+    if said:
+        raise ResolveError(f"pins: {said}.")
     held = sorted(set(pins) & fixed)
     if held:
         raise ResolveError(
@@ -799,7 +813,11 @@ def resolved_ladder(template_text: str, task) -> List[Tuple[str, Any]]:
     kind = task.calculation
     out: List[Tuple[str, Any]] = []
     for s in (task.stages or ()):
-        values = effective_config(base, s.overrides) if s.overrides else base
+        values = (effective_config(
+            base, s.overrides,
+            among=settings_in("override", engine=engine, kind=kind,
+                              stage=s.name))
+            if s.overrides else base)
         # ...and the rung's own answers, last, as `resolve` lays them.
         answers = role_answers(engine, kind, s.name)
         out.append((s.name,
@@ -842,7 +860,7 @@ def _stage_of(task, stage: Optional[str]):
 
 
 def effective_config(template, overrides: Mapping[str, Any], *,
-                     where: str = ""):
+                     where: str = "", among=None):
     """Resolve one stage against the backbone: **the one place this happens.**
 
     ``engines/stages.md`` § 4::
@@ -892,22 +910,18 @@ def effective_config(template, overrides: Mapping[str, Any], *,
     known = {f.name for f in dataclasses.fields(type(template))}
     overrides = dict(overrides or {})
 
-    unknown = sorted(k for k in overrides if k not in known)
-    if unknown:
-        # A RETIRED OR RENAMED name is told so, with the way on -- the one
-        # sentence the template reader says (`template.why_not_an_item`),
-        # so a description and a template written before get one answer.
-        from .template import why_not_an_item
-        gone = [why_not_an_item(k, value=overrides[k], is_set=True)
-                for k in unknown]
-        raise ValueError(
-            f"{where + ': ' if where else ''}override(s) "
-            f"{', '.join(repr(k) for k in unknown)} name no field of "
-            f"{type(template).__name__}. A stage may override any field of "
-            f"the shared schema, but only a field of it"
-            f"."
-            + "".join(f"  {g}." for g in gone if g)
-        )
+    # A NAME THAT IS NO FIELD -- retired, renamed or misspelt -- in the one
+    # sentence every door says (`template.why_not_items`), so a description
+    # and a template written before get one answer.
+    from .template import template_settings, why_not_items
+    said = why_not_items(overrides, known, is_set=True,
+                         among=(template_settings(type(template))
+                                if among is None else among),
+                         note=(f".  A stage may override any field of "
+                               f"{type(template).__name__}, but only a field "
+                               f"of it"))
+    if said:
+        raise ValueError(f"{where + ': ' if where else ''}overrides: {said}.")
 
     # An override that arrived from JSON carries JSON's types, and JSON has
     # one number.  ``{"mesh_cutoff": 150}`` is an int where the field declares
@@ -1071,9 +1085,14 @@ def card_values(request, stage=None):
             out[name] = (None, val)
             continue
         it = items.get(name)
-        why = (f", which is not a setting of {engine}" if it is None else
-               _T.accepts(it, val, "run_card", engine=engine, kind=kind,
-                          stage=stage))
+        if it is None:
+            # A NAME THAT IS NO SETTING, in the run card's one sentence --
+            # the description's check says the same.
+            from .job_request import why_not_on_card
+            raise PrepError("the run card: " + why_not_on_card(
+                {name: val}, engine=engine, kind=kind) + ".")
+        why = _T.accepts(it, val, "run_card", engine=engine, kind=kind,
+                         stage=stage)
         if why:
             raise PrepError(f"the run card sets {name} = "
                             f"{_T.shown(val)}{why}.")
