@@ -97,8 +97,8 @@ def check_keys(what: str, d, known, *, needed=None) -> None:
     not there is refused naming the known ones, and one of ``needed``
     (every known key, unless said) left out is refused -- a
     :class:`ValueError` prefixed ``what``: a record that does not read,
-    never read past.  Asked beside :func:`check_schema` by a reader that
-    holds every key it reads (`jobset.model`, `bench.result`)."""
+    never read past.  Asked by the readers that hold every key they read
+    (`jobset.model`, `bench.result`, `spectra.results`)."""
     said = unknown_keys(d, known)
     if said:
         raise ValueError(f"{what}: {said}")

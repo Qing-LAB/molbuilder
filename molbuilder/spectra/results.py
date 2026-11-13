@@ -55,11 +55,13 @@ try:                                        # inside molbuilder
     from .derived import DERIVED_MODE_KEYS, disagreements, with_derived
     from .normal_modes import display_form
     from ..atom_permutation import MAP_KEY
+    from ..persist import check_keys
     from ..structure import FROZEN_LABEL, Structure as _Structure
 except ImportError:                         # beside a job, in a bundle
     from derived import DERIVED_MODE_KEYS, disagreements, with_derived
     from normal_modes import display_form  # type: ignore[no-redef]
     from atom_permutation import MAP_KEY  # type: ignore[no-redef]
+    from persist import check_keys  # type: ignore[no-redef]
     from structure import FROZEN_LABEL, Structure as _Structure
 
 
@@ -274,8 +276,8 @@ def checked_partial_charges(block: Mapping[str, Any], n_atoms: int,
     of :data:`PARTITIONS` with one finite charge per atom at every step.
     Refused by name otherwise (`engines/vibration.md` § 6.7)."""
     where = "SpectraResults.partial_charges"
-    _refuse_unknown_keys(block, {"displacement_ang", "steps", "charges_e"},
-                         where)
+    check_keys(where, block, {"displacement_ang", "steps", "charges_e"},
+               needed=())
     delta = float(block.get("displacement_ang", "nan"))
     if not (math.isfinite(delta) and delta > 0):
         raise ValueError(f"{where}: displacement_ang must be a positive "
@@ -287,7 +289,7 @@ def checked_partial_charges(block: Mapping[str, Any], n_atoms: int,
                          f"run over {len(free)} free atom(s) takes "
                          f"{1 + 6 * len(free)}")
     for s in steps:
-        _refuse_unknown_keys(s, {"atom", "axis", "side"}, f"{where}.steps")
+        check_keys(f"{where}.steps", s, {"atom", "axis", "side"}, needed=())
     if (steps[0].get("atom"), steps[0].get("axis"),
             steps[0].get("side")) != (None, None, 0):
         raise ValueError(f"{where}: step 0 is the reference geometry "
@@ -413,16 +415,6 @@ def _partial_charges_read(d: Mapping[str, Any]) -> Optional[Dict[str, Any]]:
     return dict(block)
 
 
-def _refuse_unknown_keys(d, known, where: str) -> None:
-    """A key this reader does not know is refused, in the one refusal's
-    words (`persist.unknown_keys`): a number it would throw away in
-    silence."""
-    from ..persist import unknown_keys
-    said = unknown_keys(d, known)
-    if said:
-        raise ValueError(f"{where}: {said}")
-
-
 @dataclass(eq=False)
 class ModeElectronicStructure:
     """Displaced-geometry SCF results for a single mode.
@@ -516,7 +508,7 @@ class ModeElectronicStructure:
         """Inverse of :meth:`to_dict`.  Coerces list-of-float arrays
         back to ``np.ndarray`` so the typed surface always carries
         numpy.  An unknown key is refused by name, never ignored."""
-        _refuse_unknown_keys(d, _ES_KEYS, "ModeElectronicStructure")
+        check_keys("ModeElectronicStructure", d, _ES_KEYS, needed=())
         return cls(
             amplitude_ang        = float(d["amplitude_ang"]),
             mo_energies_eq_eh    = np.asarray(d["mo_energies_eq_eh"],    dtype=float),
@@ -669,7 +661,7 @@ class ModeData:
 
     @classmethod
     def from_dict(cls, d: Dict[str, Any]) -> "ModeData":
-        _refuse_unknown_keys(d, _MODE_KEYS, "ModeData")
+        check_keys("ModeData", d, _MODE_KEYS, needed=())
         es = d.get("electronic_structure")
         # THE EIGENVECTOR PAIR: the canonical form as written; the display
         # form as written, else derived.
@@ -1386,14 +1378,15 @@ class SpectraResults:
                 f"derived values, so a v4 file reads whole; older versions "
                 f"do not)."
             )
-        _refuse_unknown_keys(d, _RESULTS_KEYS, "SpectraResults")
+        check_keys("SpectraResults", d, _RESULTS_KEYS, needed=())
         # A v4-v7 FILE NAMES THE SIESTA ROUTE'S RANGE BY ITS OLD NAME; it is
         # read under v8's, SIESTA's numbering said (engines/vibration.md 6.1).
         meta = dict(d.get("engine_metadata", {}))
         if int(sv) < 8 and "fc_range_1based" in meta:
             meta["fc_range_engine_1based"] = meta.pop("fc_range_1based")
         eq = d["equilibrium"]
-        _refuse_unknown_keys(eq, _EQUILIBRIUM_KEYS, "SpectraResults.equilibrium")
+        check_keys("SpectraResults.equilibrium", eq, _EQUILIBRIUM_KEYS,
+                   needed=())
         # THE HELD ATOMS: a v9 file states them in its structure's
         # `frozen_atoms` label, or -- written before any geometry exists
         # (§ 6.10.2) -- as `frozen_atom_idxs`, which is also where a file

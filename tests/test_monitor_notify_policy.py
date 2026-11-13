@@ -779,7 +779,12 @@ def test_the_shipped_vibration_finish_loads_its_readers_from_the_bundle_alone(
     finish die at import on the real-junction e2e (2026-10-19).  The
     readers are imported from the bundle on a python with no molbuilder
     on its path; numpy is left as the job env has it (the finish needs
-    it, I23)."""
+    it, I23).  And the job builds the result there, which checks its
+    charges as it is made (`results.checked_partial_charges`): a check
+    making a relative import inside itself (`from ..persist`) stopped
+    every SIESTA vibration recording its charges at its force-constant
+    call's record step, before any result was written (2.69.56) -- so the
+    check is called here, not only imported."""
     import subprocess
     import sys
     from molbuilder import runwrap
@@ -794,8 +799,15 @@ def test_the_shipped_vibration_finish_loads_its_readers_from_the_bundle_alone(
     proc = subprocess.run(
         [sys.executable, "-I", "-c",
          f"import sys; sys.path.insert(0, {VIBRATION_BUNDLE!r}); "
-         "import siesta_reader, siesta_fc, fdf; print('loaded')"],
+         "import siesta_reader, siesta_fc, fdf, results; "
+         "steps = [{'atom': None, 'axis': None, 'side': 0}] + "
+         "[{'atom': 1, 'axis': a, 'side': s} "
+         "for a, s in results.FC_STEP_PATTERN]; "
+         "results.checked_partial_charges({'displacement_ang': 0.04, "
+         "'steps': steps, "
+         "'charges_e': {'hirshfeld': [[0.1, -0.1]] * len(steps)}}, "
+         "2, [1]); print('loaded')"],
         cwd=str(ship), env=env, capture_output=True, text=True, timeout=60)
     assert proc.returncode == 0 and "loaded" in proc.stdout, (
-        f"the shipped finish's readers need a module the bundle does not "
-        f"carry:\n{proc.stderr[-2000:]}")
+        f"the shipped finish cannot import its readers, or run its charges "
+        f"check, from the bundle alone:\n{proc.stderr[-2000:]}")

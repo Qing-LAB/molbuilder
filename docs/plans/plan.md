@@ -30,7 +30,7 @@ as they stood.
 
 ## ▶ HANDOVER — where we are, and where to start *(2026-11-10)*
 
-**Where we are: 2.69.48.** F0–F8 and F7a are closed; F9, the tests through
+**Where we are: 2.69.57.** F0–F8 and F7a are closed; F9, the tests through
 the road, has eight releases out (2.67.4–2.67.11) and four steps left (its
 row below). Since 2.67.11 three bodies of work the user put first have run;
 each release is its changelog row and its ledger section
@@ -100,7 +100,8 @@ each release is its changelog row and its ledger section
   read by the one door wherever a group's members, a sequence's groups or
   a benchmark's trials are compared (X-EXEC); 2.69.55, a restore over
   unsaved work asks through the one interface (X-EXEC); 2.69.56, a record's
-  unknown keys refused in one sentence (X-EXEC).
+  unknown keys refused in one sentence (X-EXEC); 2.69.57, a SIESTA
+  vibration builds its result again (2.69.56's regression).
   **Left, in order**: X-EXEC's rest, X-ENG; then the page doors and
   the copies they share (O-STATUS, O-FIND, O-STATE, O-WORDS, O-KEYS's rest
   with X-UI and X-PLOT; O-TESTS).
