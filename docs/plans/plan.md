@@ -91,8 +91,9 @@ each release is its changelog row and its ledger section
   kind (X-TMPL); 2.69.47, which control edits a setting decided once
   (X-TMPL); 2.69.48, a form's fields read through the renderer, one walk and
   one map of ids (X-TMPL); 2.69.49, a setting named, worded and offered by
-  one record on every page (X-TMPL, closed). **Left, in order**:
-  X-EXEC, X-ENG; then the page doors and
+  one record on every page (X-TMPL, closed); 2.69.50, what Task setup
+  proposes to write, written by the server's writers (X-EXEC). **Left, in
+  order**: X-EXEC's rest, X-ENG; then the page doors and
   the copies they share (O-STATUS, O-FIND, O-STATE, O-WORDS, O-KEYS's rest
   with X-UI and X-PLOT; O-TESTS).
 

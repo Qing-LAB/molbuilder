@@ -205,7 +205,17 @@ stages.
 **Show what will be written, not what arrived.** Once the hand-over is opened,
 the editor shows the **proposed `task.json`**, not the hand-over file. A
 person checking a description before a week of compute should be reading the
-thing that lands.
+thing that lands. **The proposal is the server's**: the folder answer carries
+`proposed` — the description and the job request a Save would write: the
+hand-over completed with what Task setup adds (the schema, the one layout,
+the ladder it proposes and what that varies) and read by the description's
+one reader (`task.from_text`), and its job request, each stage in the group
+the hand-over proposes, read by the job request's — each in the one JSON
+spelling (`persist.json_text`), byte for byte what Save then writes. The
+page shows and saves that text and assembles no record; a hand-over
+proposing what those readers refuse is refused as it opens, in their words.
+A description whose job request is gone is proposed one the same way, its
+stages numbered by the one rule a new calculation's are.
 
 **Refuse rather than repair.** A description that does not parse, names a field
 the schema does not know, or carries no stage is refused in the reader's own
@@ -249,7 +259,7 @@ The three prerequisites named here landed with the spectra migration
    stage's group beside it by the one numbering rule
    (`jobset.group.fresh_groups`) — and Task setup shows it as what will be
    written, deriving nothing *(until 2.15.3 the page re-derived it in
-   JavaScript, a second copy of the rule)*. **And what those stages vary** (`proposed_varies`, `task.varies_for` over their overrides — nothing for a fresh one-stage ladder): the page copies it into `varies` and seeds no columns of its own, so the same hand-over makes the same description by either door (2026-10-18).
+   JavaScript, a second copy of the rule)*. **And what those stages vary** (`proposed_varies`, `task.varies_for` over their overrides — nothing for a fresh one-stage ladder): the proposal (§ 5) states it as its `varies`, and the page seeds no columns of its own, so the same hand-over makes the same description by either door (2026-10-18).
 
 **And the hand-over is now exactly what this section predicted**: a Send
 button on the same endpoint. One extension rode along — the body states

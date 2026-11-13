@@ -95,17 +95,27 @@ class Description:
         tab's -- the defaults repeating the number above wherever the
         ladder's links allow it."""
         if self.request is None:
-            from .job_request import fresh
-            from .jobset.group import default_groups
-            groups = default_groups(self.task, None, self.template)
-            object.__setattr__(self, "request", fresh(self.task, {
-                st.name: g for st, g in zip(self.task.stages, groups)}))
+            object.__setattr__(self, "request",
+                               new_request(self.task, self.template))
 
     @property
     def label(self) -> str:
         """The ``SystemLabel``, and the stem of every file. Derived by
         :class:`~molbuilder.task.Task` through the one normaliser."""
         return self.task.label
+
+
+def new_request(task: Task, template_text: Optional[str]) -> JobRequest:
+    """THE JOB REQUEST A NEW CALCULATION TAKES (`execution/job-request.md`
+    § 3.3, § 9): every stage of ``task`` in the group the one numbering rule
+    gives it (`group.default_groups`, asked against ``template_text``, the
+    template beside it, or ``None`` with none that reads) and nothing else
+    stated -- what `molbuilder describe` writes when no flag states more,
+    and what Task setup proposes for a description with none (§ 7)."""
+    from .job_request import fresh
+    from .jobset.group import default_groups
+    groups = default_groups(task, None, template_text)
+    return fresh(task, {st.name: g for st, g in zip(task.stages, groups)})
 
 
 # --------------------------------------------------------------------- #

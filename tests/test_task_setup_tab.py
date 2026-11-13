@@ -245,7 +245,7 @@ def test_the_page_loads_the_shared_stylesheet_layers(web_client):
 
 import json as _json
 
-from support.road import fresh_calc_dir, handed_over, save_both
+from support.road import as_the_page_saves, fresh_calc_dir, handed_over, save_both
 from support.machines import SLURM, WORKSTATION
 
 
@@ -262,24 +262,6 @@ def _envelope():
     from support.envelope import envelope
     return {"structure": envelope(["H", "H"],
                                   [[0, 0, 0], [0, 0, 0.74]])}
-
-
-def _as_the_page_saves(over):
-    """The description and the job request the page builds from the
-    hand-over ``over`` and sends to Save (`task-setup/viewer.js`,
-    `proposedFromHandover`): the hand-over's own fields, the ladder it
-    proposes, what that ladder varies, each stage's proposed group, and the
-    one layout it carries (`task-setup.md` § 4) -- every value the server's,
-    none typed here: ``(task, request)``."""
-    task = {"schema": over["task_schema"], "engine": over["engine"],
-            "calculation": over["calculation"], "shape": over["task_shape"],
-            "run": over["run"], "structure": over["structure"],
-            "varies": over["proposed_varies"],
-            "stages": over["proposed_stages"]}
-    request = {"schema": over["job_request_schema"],
-               "stages": {n: {"group": g}
-                          for n, g in over["proposed_groups"].items()}}
-    return task, request
 
 
 def test_the_handover_door_writes_every_file(web_client, isolated_projects_root):
@@ -304,10 +286,7 @@ def test_the_handover_door_writes_every_file(web_client, isolated_projects_root)
     assert StructureCodec().load(d / h["structure"]["source"]).n_atoms == 2
     assert h["schema"] == "molbuilder/task-handover@1"
     assert "shape" not in h and "stages" not in h
-    # THE ONE LAYOUT the description states, for the page to copy
-    # (`task.LAYOUT`, `web/web-api.md`); the hand-over waits on its
-    # stages alone (`engines/stages.md` § 6.5a).
-    assert h["task_shape"] == "hierarchical"
+    # The hand-over waits on its stages alone (`engines/stages.md` § 6.5a).
     assert h["awaiting"] == ["stages"]
     assert h["_what"], "the file does not say what it is"
 
@@ -360,7 +339,7 @@ def test_the_handover_names_its_calculation_as_its_save_reads_it(
         assert r.get_json()["error"].startswith("name:"), r.get_json()
 
 # THE PROPOSED LADDER RIDES THE HAND-OVER, numbered, made by the server's one
-# rule (`ladder.fresh_stages`, `jobset.group.numbered_fresh`): a vibration's
+# rule (`ladder.fresh_stages`, `jobset.group.fresh_groups`): a vibration's
 # one stage, whichever way the box is ticked -- on SIESTA the relaxation is
 # a phase of its run, not a stage (`engines/vibration.md` § 5.11 § 1) --
 # the ordinary one-stage start otherwise (`engines/stages.md` § 6.5).  Until
@@ -400,10 +379,10 @@ def test_save_writes_the_description_and_reports_the_handover(web_client, isolat
     browser removes it through `projects.deleteEntry`.
     """
     d = fresh_calc_dir(isolated_projects_root, species=["H"])
-    _out, over, _t = handed_over(web_client, d, dict(
+    _out, _over, _t = handed_over(web_client, d, dict(
         _envelope(), engine="siesta", calculation="optimization",
         name="probe", params={"system_label": "probe"}))
-    proposed, request = _as_the_page_saves(over)
+    proposed, request = as_the_page_saves(web_client, d)
     r = save_both(d, proposed, request, web_client)
     assert r.status_code == 200, r.get_json()
     out = r.get_json()
@@ -431,10 +410,10 @@ def test_save_never_writes_over_a_file_changed_since_it_was_read(
     import json
     from support.road import read_as
     d = fresh_calc_dir(isolated_projects_root, species=["H"])
-    _out, over, _t = handed_over(web_client, d, dict(
+    _out, _over, _t = handed_over(web_client, d, dict(
         _envelope(), engine="siesta", calculation="optimization",
         name="probe", params={"system_label": "probe"}))
-    task, request = _as_the_page_saves(over)
+    task, request = as_the_page_saves(web_client, d)
     assert save_both(d, task, request, web_client).status_code == 200
     seen = read_as(d, web_client)
     # ANOTHER WRITER, after the page read the folder:
@@ -462,10 +441,10 @@ def test_a_stage_stating_a_default_may_share_the_group_above(
     MUTATION THIS MUST FAIL AGAINST: the cards compared as stated, an
     unstated setting not its default."""
     d = fresh_calc_dir(isolated_projects_root, species=["H"])
-    _out, over, _t = handed_over(web_client, d, dict(
+    _out, _over, _t = handed_over(web_client, d, dict(
         _envelope(), engine="siesta", calculation="optimization",
         name="probe", params={"system_label": "probe"}))
-    task, request = _as_the_page_saves(over)
+    task, request = as_the_page_saves(web_client, d)
     # A STAGE THE PERSON ADDS below the proposed one, in a group of its own,
     # starting clean and its card stating the default (`use_gpu: false`) --
     # as the page's ladder and run card write them, in one Save.
@@ -664,7 +643,7 @@ def test_each_template_value_says_whose_it_is(web_client, isolated_projects_root
     it, so no template could tell the person's 450 Ry from nobody's 300."""
     from molbuilder.template import one, read_template
     d = fresh_calc_dir(isolated_projects_root, species=["H"])
-    _out, over, template = handed_over(web_client, d, dict(
+    _out, _over, template = handed_over(web_client, d, dict(
         _envelope(), engine="siesta", name="probe", calculation="vibration",
         params={"system_label": "probe", "mesh_cutoff": 450.0,
                 "relax_force_tol": None, "basis_size": None}))
@@ -687,7 +666,7 @@ def test_each_template_value_says_whose_it_is(web_client, isolated_projects_root
     # identity is one; a value a stage may set is none of them.  Saved as
     # the page saves the hand-over: its proposed ladder and groups, and the
     # one layout it carries (§ 4).
-    s = save_both(d, *_as_the_page_saves(over), web_client)
+    s = save_both(d, *as_the_page_saves(web_client, d), web_client)
     assert s.status_code == 200, s.get_json()
     shared = {r["name"]: r for r in _folder(web_client, d)["template"]["shared"]}
     assert (shared["system_label"]["value"],
@@ -757,7 +736,7 @@ def test_the_whole_chain_from_structure_to_rendered_deck(web_client, tmp_path, i
 
     # The run card states its launch shape, as a run's must
     # (`architecture.md` § 5.2) -- the person's, on the page.
-    described, request = _as_the_page_saves(over)
+    described, request = as_the_page_saves(web_client, d)
     request["execution"] = {"mpi_np": 1, "omp_threads": 1}
     s = save_both(d, described, request, web_client)
     assert s.status_code == 200, s.get_json()
@@ -837,13 +816,13 @@ def test_a_dispersion_turned_off_on_the_form_is_off_in_the_deck(
     env = {"structure": envelope(
         ["O", "H", "H"],
         [[0, 0, 0.117], [0, 0.757, -0.467], [0, -0.757, -0.467]])}
-    out, over, template = handed_over(web_client, d, dict(
+    out, _over, template = handed_over(web_client, d, dict(
         env, engine="pyscf", calculation="optimization", name="nodisp",
         params={"method": "DFT", "dispersion": "none"}))
     blk = template.split("[item.dispersion]", 1)[1].split("help", 1)[0]
     assert 'value = "none"' in blk, blk
 
-    described, request = _as_the_page_saves(over)
+    described, request = as_the_page_saves(web_client, d)
     request["execution"] = {"threads": 1}
     s = save_both(d, described, request, web_client)
     assert s.status_code == 200, s.get_json()
@@ -895,11 +874,11 @@ def test_a_cpu_description_gets_a_cpu_benchmark(web_client, tmp_path, isolated_p
     import json as _json, subprocess, sys
     d = fresh_calc_dir(isolated_projects_root, species=["H"])
     env = _envelope()
-    out, over, _t = handed_over(web_client, d, dict(
+    out, _over, _t = handed_over(web_client, d, dict(
         env, engine="siesta", calculation="optimization", name="grid",
         params={"system_label": "grid", "mesh_cutoff": 200.0,
                 "use_gpu": False}))
-    described, request = _as_the_page_saves(over)
+    described, request = as_the_page_saves(web_client, d)
     request["bench"] = {"mpi_np": [1, 2], "omp_threads": [1]}
     s = save_both(d, described, request, web_client)
     assert s.status_code == 200, s.get_json()
@@ -1407,10 +1386,10 @@ def test_every_surface_names_a_setting_by_one_record(
     columns = web_client.get(f"/api/task-setup/columns?engine={engine}"
                              f"&calculation={kind}").get_json()["items"]
     d = fresh_calc_dir(isolated_projects_root, species=["H"])
-    _out, over, _t = handed_over(web_client, d, dict(
+    _out, _over, _t = handed_over(web_client, d, dict(
         _envelope(), engine=engine, calculation=kind, name="probe",
         params={}))
-    s = save_both(d, *_as_the_page_saves(over), web_client)
+    s = save_both(d, *as_the_page_saves(web_client, d), web_client)
     assert s.status_code == 200, s.get_json()
     shared = _folder(web_client, d)["template"]["shared"]
     assert shared and columns, (shared, columns)
@@ -1429,3 +1408,84 @@ def test_every_surface_names_a_setting_by_one_record(
             assert said(record, "control") == said(f, "kind"), record["name"]
             compared += 1
     assert compared, "no setting served by two surfaces"
+
+
+#: The folders whose Save writes a record they do not hold yet, each made by
+#: the road: a hand-over, and a description whose job request the person
+#: removed from the sidebar -- with the records the proposal holds.
+_PROPOSED = [("a hand-over", False, ("task", "request")),
+             ("a description with no job request", True, ("request",))]
+
+
+@pytest.mark.parametrize("folder, request_removed, holds", _PROPOSED,
+                         ids=[r[0] for r in _PROPOSED])
+def test_what_the_page_shows_is_what_save_writes(
+        web_client, isolated_projects_root, folder, request_removed, holds):
+    """`web/handover-procedure.md` § 5: *show what will be written, not what
+    arrived* -- the folder answer proposes each record a Save would write
+    that the folder lacks, as its writer writes it, and the page shows and
+    saves that text.  THE SILENT FAILURE: the page assembled the description
+    and its job request key by key from the hand-over's pieces, so the
+    editor showed one text and Save wrote another (the kind's key in
+    another place), and every key the server's writer gains was one the
+    page did not know.
+
+    That the page shows this text, and saves it, is the hand-over's
+    end-to-end test's (`test_task_setup_one_folder_e2e`).
+
+    MUTATION THIS MUST FAIL AGAINST: a proposal not in its writer's
+    spelling."""
+    from support.road import read_as
+    d = fresh_calc_dir(isolated_projects_root, species=["H"])
+    handed_over(web_client, d, dict(
+        _envelope(), engine="siesta", calculation="optimization",
+        name="probe", params={"system_label": "probe"}))
+    if request_removed:
+        assert save_both(d, *as_the_page_saves(web_client, d),
+                         web_client).status_code == 200
+        r = web_client.delete("/api/files/delete",
+                              json={"path": str(d / "job-request.json")})
+        assert r.status_code == 200, r.get_json()
+    said = _folder(web_client, d)
+    proposed = said["proposed"]
+    assert tuple(k for k in ("task", "request") if proposed[k]) == holds
+    # THE PAGE SAVES WHAT IT SHOWS: the proposal, else the record as read.
+    text = proposed["task"] or (d / "task.json").read_text()
+    r = web_client.post("/api/task-setup/save", json={
+        "dest": str(d), "text": text, "request_text": proposed["request"],
+        "read_as": read_as(d, web_client)})
+    assert r.status_code == 200, r.get_json()
+    assert (d / "task.json").read_text() == text
+    assert (d / "job-request.json").read_text() == proposed["request"]
+
+
+def test_a_hand_over_its_readers_refuse_is_refused_as_it_opens(
+        web_client, isolated_projects_root):
+    """`task-setup.md` § 9a: a hand-over whose proposal the description's
+    or the job request's reader refuses is refused as its folder opens, in
+    their words -- the folder answer's `{error}`, which the page refuses the
+    folder with -- one rule for every proposal they refuse, one hand edit
+    standing for them.
+
+    MUTATION THIS MUST FAIL AGAINST: the proposal built outside the
+    hand-over reader's refusal (this release's first draft): the whole
+    folder answer failed, so the page could say only that the folder did not
+    read, the readers' words lost.  Here the job request's reader refuses."""
+    d = fresh_calc_dir(isolated_projects_root, species=["H"])
+    handed_over(web_client, d, dict(
+        _envelope(), engine="siesta", calculation="optimization",
+        name="probe", params={"system_label": "probe"}))
+    # THE PERSON'S EDIT, in the sidebar's file editor: the proposed stage
+    # renamed, its group left under the old name.
+    f = d / "task.1st.json"
+    over = _json.loads(f.read_text())
+    over["proposed_stages"][0]["name"] = "renamed"
+    r = web_client.post("/api/files/write", json={
+        "path": str(f), "text": _json.dumps(over, indent=2),
+        "overwrite": True})
+    assert r.status_code == 200, r.get_json()
+    said = _folder(web_client, d)
+    refused = said["handover"]["error"]
+    assert refused.startswith("task.1st.json:") and "renamed" in refused, \
+        refused
+    assert said["proposed"] is None, said["proposed"]

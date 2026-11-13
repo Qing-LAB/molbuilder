@@ -116,26 +116,23 @@ def test_the_task_setup_save_findings_carry_their_card(
     import dataclasses
     from molbuilder.template import card_of, items_of
     from support.envelope import envelope
-    from support.road import fresh_calc_dir, handed_over, save_both
+    from support.road import (as_the_page_saves, fresh_calc_dir,
+                              handed_over, save_both)
     items = items_of(SiestaConfig)
     key = next(f.name for f in dataclasses.fields(SiestaConfig)
                if f.name in items and items[f.name].group == "stage"
                and f.type in ("int", int))
     d = fresh_calc_dir(isolated_projects_root, species=["H"])
-    _out, h, _t = handed_over(web_client, d, dict(
+    handed_over(web_client, d, dict(
         structure=envelope(["H", "H"], [[0, 0, 0], [0, 0, 0.74]]),
         engine="siesta", calculation="optimization", name="probe",
         params={"system_label": "probe"}))
-    proposed = {"schema": h["task_schema"], "engine": h["engine"],
-                "calculation": h["calculation"],
-                "shape": h["task_shape"], "run": h["run"],
-                "structure": h["structure"],
-                "varies": [key],
-                "stages": [{"name": "coarse",
-                            "overrides": {key: "not-an-int"}}]}
-    r = save_both(d, proposed, {"schema": h["job_request_schema"],
-                                "stages": {"coarse": {"group": 1}}},
-                  web_client)
+    # WHAT THE PAGE SAVES, a stage's cell typed as text by the person.
+    proposed, request = as_the_page_saves(web_client, d)
+    proposed["varies"] = [key]
+    proposed["stages"] = [{"name": "coarse",
+                           "overrides": {key: "not-an-int"}}]
+    r = save_both(d, proposed, request, web_client)
     ours = [f for f in (r.get_json().get("findings") or [])
             if f.get("where") == f"config.{key}"]
     assert ours, r.get_json()

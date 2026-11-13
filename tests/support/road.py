@@ -540,12 +540,18 @@ def one_rank(bundle: Path, **card) -> None:
     write_request(bundle, request)
 
 
+def folder_answer(client, folder: Path) -> dict:
+    """Task setup's one answer about ``folder``, as the page reads it
+    (`/api/task-setup/folder`, `web/task-setup.md` § 2.1)."""
+    r = client.get("/api/task-setup/folder", query_string={"dir": str(folder)})
+    assert r.status_code == 200, r.get_json()
+    return r.get_json()
+
+
 def read_as(bundle: Path, client) -> dict:
     """What each record was when the page read the folder -- the folder
     answer's ``read_as``, which Save compares (`web/task-setup.md` § 8)."""
-    r = client.get("/api/task-setup/folder", query_string={"dir": str(bundle)})
-    assert r.status_code == 200, r.get_json()
-    return r.get_json()["read_as"]
+    return folder_answer(client, bundle)["read_as"]
 
 
 def declare_bench(calculation: Path, axes: dict) -> None:
@@ -575,6 +581,16 @@ def request_with(h2, **blocks):
     job request's reader (`job_request.from_dict`)."""
     from molbuilder.job_request import from_dict
     return from_dict({**h2.request, **blocks}, h2.task)
+
+
+def as_the_page_saves(client, folder: Path):
+    """What the page saves for the hand-over in ``folder``: the description
+    and the job request the folder answer proposes, each as its writer writes
+    it (`web/handover-procedure.md` § 5) -- ``(task, request)``, objects a
+    test edits as a person does before Save."""
+    import json
+    proposed = folder_answer(client, folder)["proposed"]
+    return json.loads(proposed["task"]), json.loads(proposed["request"])
 
 
 def save_both(bundle: Path, task: dict, request: dict, client=None):

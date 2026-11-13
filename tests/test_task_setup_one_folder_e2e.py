@@ -26,8 +26,9 @@ import pytest
 from support.road import (described, ladder_edited, read_request, road_tree,
                           write_request)
 from support.sidebar import WAIT_MS, committed, walk_to
-from support.task_setup_page import (every_card_text, picked_by_the_page,
-                                     task_setup_on, unfold, wait_for_file)
+from support.task_setup_page import (every_card_text, file_text,
+                                     picked_by_the_page, task_setup_on,
+                                     unfold, wait_for_file)
 
 
 def _describe(root, name, label, stage):
@@ -200,7 +201,9 @@ def test_a_hand_over_is_finished_on_the_page_and_saved_as_both_records(
 
     MUTATION THIS MUST FAIL AGAINST: the hand-over's text taken for a
     description (no stages proposed): no run card is drawn, and the
-    description written states no `shape`."""
+    description written states no `shape`; a description the page puts
+    together itself, which Save writes otherwise than the editor showed it
+    (`handover-procedure.md` § 5)."""
     d = (isolated_projects_root / "handover" / "optimization"
          / "finished_here")
     _hand_over(d, "handed")
@@ -219,6 +222,7 @@ def test_a_hand_over_is_finished_on_the_page_and_saved_as_both_records(
     # THE PROPOSAL, DRAWN AS THE HAND-OVER OPENED (§ 9a): the description
     # it becomes, stating the one layout.
     wait_for_file(page, "task", '"shape": "hierarchical"')
+    shown = file_text(page, "task")
     # THE GROUPS CARD APPEARS WITH THE PROPOSAL, folded as every card is:
     # opened as a person opens it.
     unfold(page, "ts-groups-card")
@@ -238,6 +242,9 @@ def test_a_hand_over_is_finished_on_the_page_and_saved_as_both_records(
     said = page.evaluate(
         "() => document.getElementById('ts-save-said').textContent")
     assert "task.json" in said and "job-request.json" in said, said
+    # ...THE DESCRIPTION AS THE EDITOR SHOWED IT, byte for byte -- the run
+    # card wrote into the job request alone.
+    assert (d / "task.json").read_text() == shown
     # BOTH RECORDS THROUGH THEIR READERS -- the description's refuses any
     # layout but the one (`task.LAYOUT`), by name.
     from molbuilder import job_request

@@ -819,8 +819,8 @@ def fresh_varies(stages) -> Tuple[str, ...]:
     """What a fresh ladder VARIES -- :func:`varies_for` over its stages'
     overrides: nothing for the one-stage start, each tier's keys for a
     `--stage-strategy` ladder.  The one rule both writers of a description
-    ask: `molbuilder describe` and the hand-over (`proposed_varies`, which the Task
-    setup page copies; 2026-10-19)."""
+    ask: `molbuilder describe` and the hand-over (`proposed_varies`, which
+    its proposal states; 2026-10-19)."""
     return varies_for(st.overrides for st in stages)
 
 
@@ -902,14 +902,19 @@ def of(base) -> Optional[Task]:
 
 
 def from_text(text: str, said_as: str = FILENAME) -> Task:
-    """A description that is not yet a file -- the Task setup tab's save
-    (`task-setup.md`) -- read by the one reader; ``said_as`` names it in a
-    refusal."""
+    """A description that is not yet a file -- the Task setup tab's save,
+    a hand-over's proposal (`task-setup.md`) -- read by the one reader;
+    ``said_as`` names it in a refusal, its content's included (`_refuse`),
+    as the job request's reader names its own."""
+    token = _SOURCE.set(said_as)
     try:
-        obj = object_of(text.encode("utf-8"))
-    except ValueError as exc:
-        raise ValueError(f"{said_as}: {exc}") from None
-    return _from_obj(obj, said_as=said_as, base=None)
+        try:
+            obj = object_of(text.encode("utf-8"))
+        except ValueError as exc:
+            raise ValueError(f"{said_as}: {exc}") from None
+        return _from_obj(obj, said_as=said_as, base=None)
+    finally:
+        _SOURCE.reset(token)
 
 
 def _from_obj(obj, *, said_as: str, base: Optional[Path]) -> Task:

@@ -1346,13 +1346,17 @@ card's next change starts from it and never writes an older value over it; a
 text the page put there itself — a load, a card's write — is not read back,
 its writer having drawn the cards (§ 7a), and a card's write landing inside
 the pause of a hand edit leaves that hand edit read back. **A hand-over's
-proposal is built once, from the hand-over as the page holds it**: opening the
+proposal is the server's, built once from the hand-over** — the folder
+answer's `proposed`, the description and its job request as their writers
+write them, which the page shows and saves
+([`handover-procedure.md`](?doc=web/handover-procedure.md) § 5): opening the
 hand-over proposes the records, the folder's read ending when they land, and
 Save is held, said, from the hand-over's open until they land. A hand-over
 its reader refuses is refused as it opens, in the reader's words — one that
 does not read, is of another schema, lacks a key its proposal is built from
-(an older molbuilder wrote it) or names a kind on an engine the kind table
-does not hold — the folder answer's `{error}`, as a `task.json` its reader
+(an older molbuilder wrote it), names a kind on an engine the kind table
+does not hold, or proposes a description or job request their readers
+refuse — the folder answer's `{error}`, as a `task.json` its reader
 refuses is (§ 2.1); the page checks none of it again.
 
 ### 9a.1 Every card folds — the page opens as a checklist

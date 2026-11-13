@@ -342,7 +342,7 @@ the five items that declare no `engines` list and therefore apply everywhere
 `use_gpu`)
 ([`template.md`](?doc=engines/template.md) § 4.2).
 
-> **So `varies` starts as what the proposed stages vary** (`task.varies_for` over their overrides — nothing for a fresh one-stage ladder; carried on the hand-over as `proposed_varies`, the one rule `molbuilder describe` and the Task setup page both write with, 2026-10-18), and the user adds to or
+> **So `varies` starts as what the proposed stages vary** (`task.varies_for` over their overrides — nothing for a fresh one-stage ladder; carried on the hand-over as `proposed_varies`, the one rule `molbuilder describe` and a hand-over's proposal both write with, 2026-10-18), and the user adds to or
 > removes from it — declared by each engine, beside the fields themselves, in the
 > one place that already knows what a field *is*. No engine needs code in the
 > shared machinery, and a new engine gets a working starting point by tagging its

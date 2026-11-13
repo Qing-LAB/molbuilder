@@ -826,25 +826,35 @@ from molbuilder.job_request import FILENAME as _JOB_REQUEST_FILENAME  # noqa: E4
 from molbuilder.job_request import path_of as _job_request_path_of  # noqa: E402
 from molbuilder.task import FILENAME as TASK_FILENAME  # noqa: E402
 from molbuilder.task import path_of as _task_path_of  # noqa: E402
-from molbuilder.job_request import SCHEMA as JOB_REQUEST_SCHEMA  # noqa: E402
 
-#: WHAT A HAND-OVER'S PROPOSAL IS BUILT FROM -- the keys the hand-over route
-#: writes beside the parameters, each with its type, which Task setup reads
-#: to draw the description and its job request (`task-setup.md` § 9a).  A
-#: file without one is one an older molbuilder wrote: its reader says so.
-_PROPOSAL_KEYS = (("task_schema", str), ("task_shape", str),
-                  ("job_request_schema", str), ("calculation", str),
-                  ("engine", dict), ("proposed_stages", list),
-                  ("proposed_varies", list), ("proposed_groups", dict))
+#: WHAT A HAND-OVER'S PROPOSAL IS BUILT FROM beside the run and the
+#: structure it names -- the keys the hand-over route writes, each with its
+#: type.  A file without one is one an older molbuilder wrote: its reader
+#: says so.
+_PROPOSAL_KEYS = (("calculation", str), ("engine", dict),
+                  ("proposed_stages", list), ("proposed_varies", list),
+                  ("proposed_groups", dict))
 
 
-def _proposal_refused(over) -> None:
-    """Refuse a hand-over the page cannot finish, in its reader's words
-    (`task-setup.md` § 9a): a key its proposal is built from missing
-    (:data:`_PROPOSAL_KEYS`), or a kind on an engine the kind table does not
-    hold (`kind_table.kind(...).on`, the description reader's own
-    refusal)."""
+def _proposal(over):
+    """WHAT A HAND-OVER PROPOSES (`handover-procedure.md` § 5,
+    `task-setup.md` § 9a) -- ``(the description, {task, request})``.  The
+    description is the hand-over completed with what Task setup adds -- the
+    schema, the one layout, the ladder it proposes and what that varies --
+    read by the description's one reader (`task.from_text`); its job request
+    puts each stage in the group the hand-over proposes, read by the job
+    request's (`job_request.from_text`); each is written in the one JSON
+    spelling (`persist.json_text`), byte for byte what Save writes.  The
+    two are completed here as their files state them and READ, rather than
+    built of their types, so a hand-over edited by hand into what those
+    readers refuse is refused as it opens, in their words -- as is one
+    lacking a key the proposal is built from (:data:`_PROPOSAL_KEYS`), or
+    naming a kind on an engine the kind table does not hold
+    (`kind_table.kind(...).on`)."""
+    from molbuilder import job_request as _jr
     from molbuilder.kind_table import kind
+    from molbuilder.persist import json_text
+    from molbuilder.task import LAYOUT, SCHEMA, from_text
     missing = [k for k, typ in _PROPOSAL_KEYS
                if not isinstance(over.get(k), typ)]
     if not missing and not over["engine"].get("name"):
@@ -853,6 +863,20 @@ def _proposal_refused(over) -> None:
         raise ValueError(f"it carries no {', '.join(missing)} -- an older "
                          f"molbuilder wrote it: send it again from its tab.")
     kind(over["calculation"]).on(over["engine"]["name"])
+    task = from_text(json_text({
+        "schema": SCHEMA, "engine": over["engine"], "shape": LAYOUT,
+        "run": over.get("run"), "calculation": over["calculation"],
+        "structure": over.get("structure"),
+        "varies": over["proposed_varies"],
+        "stages": over["proposed_stages"]}),
+        said_as=f"the {TASK_FILENAME} it proposes")
+    request = _jr.from_text(json_text({
+        "schema": _jr.SCHEMA,
+        "stages": {name: {"group": group}
+                   for name, group in over["proposed_groups"].items()}}),
+        task, said_as=f"the {_JOB_REQUEST_FILENAME} it proposes")
+    return task, {"task": json_text(task.to_dict()),
+                  "request": json_text(request.to_dict())}
 
 
 @bp.route("/api/task-setup/handover", methods=["POST"])
@@ -1072,18 +1096,8 @@ def api_task_setup_handover():
     awaiting = "stages"
     groups = fresh_groups(proposed, engine=engine, calculation=calculation,
                           template_text=template_text)
-    from molbuilder.task import LAYOUT as _TASK_LAYOUT
-    from molbuilder.task import SCHEMA as _TASK_SCHEMA
     handover = {
         "schema":    TASK_HANDOVER_SCHEMA,
-        # THE DESCRIPTION'S OWN SCHEMA STRING, for the page to write -- the
-        # page spells none (`task.SCHEMA`, one home; 2026-10-19) -- its job
-        # request's (`job_request.SCHEMA`), and the one layout the
-        # description states as its `shape` (`task.LAYOUT`, `web/task-setup.md`
-        # § 4).
-        "task_schema": _TASK_SCHEMA,
-        "task_shape": _TASK_LAYOUT,
-        "job_request_schema": JOB_REQUEST_SCHEMA,
         # JSON has no comments, so the file carries a line that says what it
         # is.  It IS read by a person -- Task setup shows it in the editor --
         # and a file whose whole job is to be handed between two surfaces
@@ -1137,9 +1151,10 @@ def api_task_setup_handover():
                                    for st, g in zip(proposed, groups)}
     # ...AND WHAT THOSE STAGES VARY, by the one rule `molbuilder describe` writes
     # with (`task.varies_for` over their overrides -- nothing, for a fresh
-    # one-stage ladder): the page copies it and seeds no columns of its own
-    # (2026-10-18; the page had seeded every stage-group item, so the same
-    # hand-over made two descriptions by the door it went through).
+    # one-stage ladder): its proposal's `varies` (:func:`_proposal`), the page
+    # seeding no columns of its own (2026-10-18; the page had seeded every
+    # stage-group item, so the same hand-over made two descriptions by the
+    # door it went through).
     handover["proposed_varies"] = list(fresh_varies(proposed))
 
     # A hand-over already in the folder is replaced by this one -- said, so
@@ -2244,21 +2259,20 @@ def api_task_setup_folder():
     def _read_handover():
         """The hand-over file through its one reader: `persist.read_object`,
         of the schema this module writes it with (`TASK_HANDOVER_SCHEMA`),
-        and what its proposal is built from (:func:`_proposal_refused`)
-        checked
-        -- a file of another major, one that does not read, or one the page
-        cannot finish is said in the reader's words, never read as this
+        and what it proposes (:func:`_proposal`) -- ``(hand-over,
+        description, {task, request})``, ``None`` each with none.  A file of
+        another major, one that does not read, or one whose proposal its
+        readers refuse is said in the reader's words, never read as this
         one's; the page refuses it as it opens."""
         from molbuilder.persist import read_object
         f = folder / TASK_HANDOVER_NAME
         if not f.is_file():
-            return None
+            return None, None, None
         try:
             obj = read_object(f, schema=TASK_HANDOVER_SCHEMA)
-            _proposal_refused(obj)
-            return obj
+            return (obj, *_proposal(obj))
         except Exception as exc:                  # noqa: BLE001
-            return {"error": f"{TASK_HANDOVER_NAME}: {exc}"}
+            return {"error": f"{TASK_HANDOVER_NAME}: {exc}"}, None, None
 
     def _described():
         """The description, through its one door (`task.of`,
@@ -2297,7 +2311,9 @@ def api_task_setup_folder():
     # THE DESCRIPTION, OR NONE: its reader's words stay in ``described``, and
     # every part below is handed a `Task` or ``None``.
     task = _task if isinstance(_task, Task) else None
-    handover = None if described is not None else _read_handover()
+    handover, proposing, offered = ((None, None, None)
+                                    if described is not None
+                                    else _read_handover())
 
     def _requested():
         """The job request beside a description that reads, through its
@@ -2315,29 +2331,37 @@ def api_task_setup_folder():
             return {"error": str(exc)}
         return None if found is None else found.to_dict()
     requested = _requested()
-    # THE LABEL THE TEMPLATE IS NAMED ON: the description's, else the
-    # hand-over's name through the normaliser the hand-over named it with.
-    if task is not None:
-        _label = task.label
-    elif isinstance(handover, dict) and (handover.get("run") or {}).get("name"):
-        # Its kind is there: a hand-over stating none is refused by its
-        # reader (`_proposal_refused`).
-        from molbuilder.task import label_of
-        _label = label_of(handover["run"]["name"],
-                          calculation=str(handover["calculation"]),
-                          stage_names=tuple(
-                              str(st.get("name") or "") for st in
-                              handover.get("proposed_stages") or ()))
+    # THE DESCRIPTION THE FOLDER HOLDS, or the one its hand-over proposes:
+    # the label its template is named on, and what the bench is asked of.
+    held = task if task is not None else proposing
+    _label = held.label if held is not None else None
+    # WHAT A SAVE WOULD WRITE that the folder does not hold yet, each in the
+    # one JSON spelling its writer writes (`persist.json_text`): a
+    # hand-over's description and job request (:func:`_proposal`); a
+    # description's job request when it has none, its stages numbered by the
+    # one rule a new calculation's are (`describe.new_request`, as
+    # `molbuilder describe` numbers them) -- `execution/job-request.md` § 7.
+    if proposing is not None:
+        proposed = offered
+    elif task is not None and requested is None:
+        from molbuilder.describe import new_request
+        from molbuilder.persist import json_text
+        from molbuilder.template_file import of as template_of
+        try:
+            beside = template_of(folder, task.label)
+        except ValueError:
+            beside = None
+        proposed = {"task": None, "request": json_text(new_request(
+            task, beside.text if beside is not None else None).to_dict())}
     else:
-        _label = None
+        proposed = None
     # THE STRUCTURE PAIR THE DESCRIPTION NAMES -- its geometry, and the
     # sidecar beside it by the pairing rule, which has one home
     # (`sidecars.molstruct.sidecar_path_for`, `model/structure.md` § 2.4):
     # the page names neither file itself.
     from molbuilder.sidecars.molstruct import sidecar_path_for
-    _doc = described if isinstance(described, dict) else (
-        handover if isinstance(handover, dict) else {})
-    _source = str((_doc.get("structure") or {}).get("source") or "")
+    _source = (held.structure.source
+               if held is not None and held.structure is not None else "")
     structure_pair = ({"geometry": pathlib.Path(_source).name,
                        "sidecar": sidecar_path_for(
                            pathlib.Path(_source).name).name}
@@ -2352,18 +2376,15 @@ def api_task_setup_folder():
                  else "handover" if handover is not None else "empty"),
         "description": described,
         # ITS JOB REQUEST, as its reader read it -- an object, `{error}`, or
-        # null with none (a description written by hand): then the groups
-        # a new one takes, by the one rule (`group.default_groups`), for
-        # the page to write with Save (`execution/job-request.md` § 7).
+        # null with none (a description written by hand).
         "request": requested,
-        "proposed_groups": (_default_groups_of(folder, task)
-                            if requested is None and task is not None
-                            else None),
         "handover": handover,
+        # ...AND WHAT A SAVE WOULD WRITE that the folder does not hold yet,
+        # each record's text as its writer writes it, or null.
+        "proposed": proposed,
         # THE FILES' NAMES, said here so the page spells none.
         "task_name": TASK_FILENAME,
         "request_name": _JOB_REQUEST_FILENAME,
-        "request_schema": JOB_REQUEST_SCHEMA,
         "handover_name": TASK_HANDOVER_NAME,
         # WHICH FILES ARE HERE -- names only.  The "what gets written" card
         # asks *is the file this description names actually present*, which
@@ -2373,7 +2394,8 @@ def api_task_setup_folder():
         # WHAT ITS KIND'S DESCRIPTION IS -- the slot it cites, the fields it
         # carries, its leads -- the kind table's entry (`web/task-setup.md`
         # § 3), so the page names no kind.
-        "kind": _folder_kind(_doc.get("calculation")),
+        "kind": _folder_kind(held.calculation if held is not None
+                             else None),
         "template": _folder_template(
             folder, _label,
             found=_calc.template if _calc is not None else None, task=task),
@@ -2394,7 +2416,7 @@ def api_task_setup_folder():
         # WHY THIS DESCRIPTION HAS NO BENCH, or null -- the prep entry's own
         # answer (`prep_inputs.bench_refusal`), so the page offers the
         # Measure step exactly where `prep bench` would take it.
-        "bench_refusal": _folder_bench_refusal(task, handover),
+        "bench_refusal": _folder_bench_refusal(held),
         # WHAT EACH RECORD WAS WHEN THIS ANSWER READ IT, for Save to compare
         # (`web/task-setup.md` § 8).
         "read_as": _read_as(folder),
@@ -2446,34 +2468,16 @@ def api_task_setup_folder():
     })
 
 
-def _default_groups_of(folder, task) -> dict:
-    """``{stage: group}`` -- the groups a description with no job request
-    takes, by the one rule a new calculation is numbered with
-    (`group.default_groups`), against the template beside it when it
-    reads."""
-    from molbuilder.jobset.group import default_groups
-    from molbuilder.template_file import of as template_of
-    try:
-        tf = template_of(folder, task.label)
-    except ValueError:
-        tf = None
-    groups = default_groups(task, None, tf.text if tf is not None else None)
-    return {st.name: g for st, g in zip(task.stages, groups)}
-
-
 def _folder_kind(calculation) -> Optional[dict]:
     """The kind's entry as the page draws a description by it: the slot it
     ``cites`` (or null), the fields it ``carries`` and its ``leads`` (the
-    regions its lead roles are cut from) -- ``None`` with no description or
-    hand-over, or a kind the table does not hold (its reader says so,
-    `refused`)."""
-    from molbuilder.kind_table import KindTableError, kind
-    if not calculation:
+    regions its lead roles are cut from) -- of the kind of the description
+    the folder holds or its hand-over proposes, which its reader has found
+    in the table; ``None`` with neither."""
+    from molbuilder.kind_table import kind
+    if calculation is None:
         return None
-    try:
-        rec = kind(str(calculation))
-    except KindTableError:
-        return None
+    rec = kind(calculation)
     return {"cites": rec.description.cites,
             "carries": list(rec.description.carries),
             "leads": list(rec.leads.values())}
@@ -2748,19 +2752,15 @@ def _read_as(folder) -> dict:
     return out
 
 
-def _folder_bench_refusal(task, handover):
+def _folder_bench_refusal(task):
     """The folder answer's ``bench_refusal``: the entry's reason this
-    calculation takes no bench -- a description's, or a hand-over's from
-    the engine and kind it carries (`web/task-setup.md` § 11.1), whose
-    reader has checked the pair (:func:`_proposal_refused`) -- or ``None``
-    when there is neither to ask."""
+    calculation takes no bench -- of the description the folder holds or
+    its hand-over proposes (`web/task-setup.md` § 11.1) -- or ``None`` when
+    there is none to ask."""
     from molbuilder.jobset.prep_inputs import bench_refusal
-    if task is not None:
-        return bench_refusal(str(task.engine), str(task.calculation))
-    if isinstance(handover, dict) and "error" not in handover:
-        return bench_refusal(handover["engine"]["name"],
-                             handover["calculation"])
-    return None
+    if task is None:
+        return None
+    return bench_refusal(str(task.engine), str(task.calculation))
 
 
 @bp.route("/api/task-setup/machines", methods=["GET"])

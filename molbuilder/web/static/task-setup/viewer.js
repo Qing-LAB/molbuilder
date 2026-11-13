@@ -1666,9 +1666,9 @@ async function readFolder(projects, dir, opts) {
         ? "" : JSON.stringify(said.description, null, 2) + "\n";
     /* ITS JOB REQUEST, as its reader read it -- an object, `{error}`, or
      * null when the folder holds none: then the request a Save writes
-     * beside it, each stage in the group the folder answer proposes
-     * (`proposed_groups`, the one numbering rule), shown as an edit not
-     * yet saved (`execution/job-request.md` § 7). */
+     * beside it, as the folder answer proposes it (`proposed`, its stages
+     * numbered by the one rule), shown as an edit not yet saved
+     * (`execution/job-request.md` § 7). */
     const requestText = (said.request && typeof said.request === "object")
         ? JSON.stringify(said.request, null, 2) + "\n" : "";
     /* THE BASELINE IS SET THE MOMENT IT IS KNOWN, not when the editor is
@@ -1798,7 +1798,7 @@ async function readFolder(projects, dir, opts) {
         // OPENING THE HAND-OVER PROPOSES THE RECORDS (§ 9a): its stages,
         // its job request, and the cards that write it -- awaited, so the
         // folder's read ends with the proposal landed (`aria-busy`).
-        await proposeHandover();
+        await proposeHandover(said.proposed);
         // THE PROPOSAL LANDED: nothing is still needed but Save.
         if (said.dir === _dir && _mode === "handover") {
             setState("handover", "Handed over \u2014 not a description yet",
@@ -1838,12 +1838,10 @@ async function readFolder(projects, dir, opts) {
                            task.error);
         return;
     }
-    // ...AND ITS JOB REQUEST, the same way (`job_request.of`).
-    const request = said.request
-        || { schema: said.request_schema,
-             stages: Object.fromEntries(
-                 Object.entries(said.proposed_groups || {})
-                       .map(([n, g]) => [n, { group: g }])) };
+    // ...AND ITS JOB REQUEST, the same way (`job_request.of`) -- or, with
+    // none, the one a Save writes, the folder answer's text (`proposed`):
+    // the page assembles no record (`handover-procedure.md` § 5).
+    const request = said.request || JSON.parse(said.proposed.request);
     if (readerRefused(request)) {
         await refuseFolder("job-request.json is here and its reader "
                            + "refuses it", request.error);
@@ -1933,11 +1931,9 @@ async function readFolder(projects, dir, opts) {
     renderQueues();
     await setBuffers({ task: taskText, request: requestText },
                      { fromDisk: true });
-    // NO JOB REQUEST ON DISK: the one the page proposes is an edit, said
-    // as one, which Save writes beside the description.
-    if (!requestText) {
-        await setBuffers({ request: JSON.stringify(request, null, 2) + "\n" });
-    }
+    // NO JOB REQUEST ON DISK: the one the folder answer proposes is an
+    // edit, said as one, which Save writes beside the description.
+    if (!requestText) await setBuffers({ request: said.proposed.request });
 }
 
 /* ---------- the table edits the description ---------- */
@@ -3976,52 +3972,6 @@ function removeSetting(name) {
 
 /* ---------- what a hand-over becomes ---------- */
 
-/** A description and its job request built from a hand-over --
- *  ``{task, request}``, each the text Save writes.
- *
- * The editor shows WHAT WILL BE WRITTEN, not the hand-over file — a person
- * checking a description before a week of compute should be reading the thing
- * that lands, not its input.  `varies: []` and one stage named `coarse` are the
- * ordinary starting ladder (`stages.md` § 6.5): one stage is not a special
- * shape, and empty `varies` is a real state.  Each stage's group is the
- * hand-over's proposal (`proposed_groups`), the job request's.
- */
-function proposedFromHandover(over) {
-    const run = (over && over.run) || {};
-    // THE KIND rides the hand-over, every kind, as task.json states it --
-    // and so does THE PROPOSED LADDER, its groups beside it, made by the
-    // server's one rule (`jobset.ladder.fresh_stages`,
-    // `jobset.group.fresh_groups`; `engines/vibration.md` § 2.2, § 5.2a;
-    // `engines/stages.md` § 6.5).  The page shows it and derives nothing:
-    // what it is built from, its reader has checked (`_read_handover`, the
-    // folder answer's `{error}` else) -- the one layout the description
-    // states among it (`task_shape`, `task.LAYOUT`, `task-setup.md` § 4).
-    const kind = over.calculation;
-    const stages = over.proposed_stages.map((s) => ({
-        name: s.name, overrides: s.overrides || {} }));
-    const out = {
-        schema:    over.task_schema,
-        engine:    over.engine,
-        shape:     over.task_shape,
-        run:       { name: run.name || "", id: run.id || "",
-                     created: run.created || "" },
-        structure: (over && over.structure) || {},
-        // WHAT VARIES is the hand-over's too (`proposed_varies`, the same
-        // rule `molbuilder describe` writes with): the page seeds nothing.
-        varies:    over.proposed_varies.slice(),
-        stages:    stages,
-    };
-    // EVERY KIND IS WRITTEN.
-    out.calculation = kind;
-    const request = {
-        schema: over.job_request_schema,
-        stages: Object.fromEntries(stages.map(
-            (s) => [s.name, { group: over.proposed_groups[s.name] }])),
-    };
-    return { task: JSON.stringify(out, null, 2) + "\n",
-             request: JSON.stringify(request, null, 2) + "\n" };
-}
-
 /* ---------- which machine this is prepared for ---------- */
 /* A choice with no default when several answers are possible.  It is the
  * user's because only they know it -- `preparing-for-another-machine.md`
@@ -4728,11 +4678,12 @@ async function loadMachines() {
 }
 
 /** WHAT A HAND-OVER BECOMES, proposed once, when it is opened (§ 9a): the
- *  stages, what varies and the job request, from the hand-over as the page
- *  holds it.  Save is held from the hand-over's open until it lands
- *  (`_fs.proposing`, set by the folder read) -- cleared on the folder it
- *  was opened for, never on one taken since. */
-async function proposeHandover() {
+ *  description and its job request ``proposed``, the folder answer's texts
+ *  for the read that opened it -- what Save writes, drawn into the cards.
+ *  Save is held from the hand-over's open until it lands (`_fs.proposing`,
+ *  set by the folder read) -- cleared on the folder it was opened for,
+ *  never on one taken since. */
+async function proposeHandover(proposed) {
     const fs = _fs;
     const engine = _handoverEngine(null);
     // NO BENCH IS PROPOSED (`task-setup.md` § 6.2a-b): a run needs no
@@ -4746,20 +4697,10 @@ async function proposeHandover() {
         await pageBusy.run("Proposing the stages\u2026", [], () =>
             Promise.all([loadColumnChoices(engine),
                          loadSweepChoices(engine)]).then(() => {
-                    let texts;
-                    try {
-                        texts = proposedFromHandover(_task);
-                    } catch (e) {
-                        // A PROPOSAL THAT THROWS is refused the one way a
-                        // folder is (`refuseFolder`): nothing is written
-                        // from half of it.
-                        return refuseFolder("This hand-over cannot be "
-                                            + "finished here",
-                                            String((e && e.message) || e));
-                    }
-                    _task = JSON.parse(texts.task);
-                    _request = JSON.parse(texts.request);
-                    return setBuffers(texts).then(() => {
+                    // THE SERVER'S PROPOSAL, as Save writes it.
+                    _task = JSON.parse(proposed.task);
+                    _request = JSON.parse(proposed.request);
+                    return setBuffers(proposed).then(() => {
                         renderStages(_task);
                         // THE CARDS THAT WRITE THE JOB REQUEST, drawn now
                         // that there is one (§ 6.2b).
