@@ -249,8 +249,10 @@ folder still opens.
 
 **Under them, every value shared by every stage** — *Shared by every
 stage*: each item the catalogue marks `shared` for this calculation's kind,
-by its label, with its value and whose it is (*from the junction you cited ·
-you set this · not chosen · not recorded*) — a blank one by what the
+by its label, with its value in its words, as the cells say it (a switch *on*
+or *off*, § 5.2), and whose it is (*from the junction you cited ·
+you set this · not chosen · not recorded*) — the setting's one record
+([`form-schema.md`](?doc=web/form-schema.md) § 1.1) — a blank one by what the
 catalogue calls unset (`null_label`, such as *(auto)*), what the engine then
 does (`not_set`) in its hover — read-only
 ([`engines/template.md`](?doc=engines/template.md) § 6.6 obligation 3,
@@ -333,7 +335,10 @@ row, a status line (*Writing MPI ranks (np)…*), a refusal, the plan's lines
 (§ 7.1), and every control's spoken name (*value for MPI ranks (np)*) — **by
 the same label**, the catalogue's or, for the run's own two
 asks, the sweepable door's (`lane_asks`); its name only where neither has one
-*(2.69.2)*. The payload carries each item's roles and, beside the columns, how the
+*(2.69.2)*. Each item a route sends — a column, a run setting — is the
+setting's one record, the one a form field is built on
+([`form-schema.md`](?doc=web/form-schema.md) § 1.1), with the route's own
+facts beside it. The payload carries each item's roles and, beside the columns, how the
 kind names its rungs' roles (`roles`, `template.stage_role_rule`), so the table
 maps each row to its role — the name matched in any case, as `stage_role`
 matches it (`stages.md` § 2) — and keeps no rule of its own; the description's own
@@ -412,7 +417,7 @@ at the value instead:
 
 | | asked by | answered by |
 |---|---|---|
-| which control edits this cell | `legalValues` — for the stage cells, the run card's rows and the Measure adder alike | the server's control, the one every form is drawn by (`_shared.control_for`, [`form-schema.md`](?doc=web/form-schema.md) § 4), carried by both routes as `control`: a switch, whether or not it may stand unanswered, or a fixed set of choices → a dropdown of the choices **this folder's kind offers** (the columns payload's `choices`, narrowed by `template.offered` — [`engines/template.md`](?doc=engines/template.md) § 6.3a, 2026-09-30: a vibration's relaxation cell offers three relaxers), each **in the words every form uses** — the columns payload's `choice_labels`, the catalogue's own (*No correction*, *Correct the Fermi level*), a switch *on* or *off* — the value written the choice itself *(2.68.1)*; everything else a text box |
+| which control edits this cell | `legalValues` — for the stage cells, the run card's rows and the Measure adder alike | the server's control, the one every form is drawn by (`_shared.control_for`, [`form-schema.md`](?doc=web/form-schema.md) § 4), carried by both routes as `control`: a switch, whether or not it may stand unanswered, or a fixed set of choices → a dropdown of the choices **this folder's kind offers** (the columns payload's `choices`, narrowed by the catalogue's `offered` on the folder's engine — [`engines/template.md`](?doc=engines/template.md) § 6.3a, 2026-09-30: a vibration's relaxation cell offers three relaxers), each **in the words every form uses** — the columns payload's `choice_labels`, the catalogue's own (*No correction*, *Correct the Fermi level*), a switch *on* or *off* — the value written the choice itself *(2.68.1)*; everything else a text box |
 | what the typed text **means** | the setting door, on the server — `POST /api/task-setup/value` (`template.read_text`, [`engines/template.md`](?doc=engines/template.md) § 5.4) | one reader per member of `template.TYPES`, the one every home reads with; the page keeps none *(2.28.0, plan § 1w: the page's own readers took `"0x10"` for a number and any text but `"true"` for `false`)* |
 
 **A stored value this kind does not offer is shown as itself, marked** —

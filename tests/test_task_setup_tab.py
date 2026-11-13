@@ -1370,3 +1370,62 @@ def test_the_stage_table_speaks_the_forms_words(web_client):
     ).get_json()["items"]}
     assert vib["relax_type"]["default_words"] == \
         "recommended for a vibration", vib["relax_type"]
+
+
+#: What every page names and offers a setting by (`_shared.item_record`,
+#: `form-schema.md` § 1.1) -- the facts a form field, a stage column and a
+#: value shared by every stage each say of it.  A form draws the control as
+#: its ``kind``, and a three-way select's ``choices`` are its own three
+#: states, the control's vocabulary rather than the item's (`form-schema.md`
+#: § 4).
+_ONE_RECORD = ("label", "help", "unit", "default", "default_words",
+               "choices", "choice_labels", "null_label", "stages")
+
+
+@pytest.mark.parametrize("engine, kind", [
+    ("siesta", "optimization"), ("pyscf", "optimization"),
+    ("siesta", "vibration"), ("pyscf", "vibration")])
+def test_every_surface_names_a_setting_by_one_record(
+        web_client, isolated_projects_root, engine, kind):
+    """A setting is named, worded and offered alike wherever a page draws
+    it (`task-setup.md` § 3, § 5, § 5.2): the Build form, the stage table's
+    column and the card of values shared by every stage serve one record
+    of it, on every kind a folder is described for without a run.  THE
+    SILENT FAILURE: a record built by hand per surface, each with its own
+    fallbacks, one of them missing a fact or spelling it another way --
+    found 2026-11-12 as a transport folder's shared card saying a switch's
+    value *true* where the cells say *on*, its record carrying no words.
+    These kinds share no switch, so a switch's words on the shared record
+    are not among what the rows compare.
+
+    MUTATION THIS MUST FAIL AGAINST: a surface's record built by hand,
+    without one fact or with another spelling of it (a column's missing
+    unit said ``""``)."""
+    form = {f["name"]: f for s in web_client.get(
+        f"/api/build/schema/{engine}?calculation={kind}").get_json()[
+            "schema"]["sections"] for f in s["fields"]}
+    columns = web_client.get(f"/api/task-setup/columns?engine={engine}"
+                             f"&calculation={kind}").get_json()["items"]
+    d = fresh_calc_dir(isolated_projects_root, species=["H"])
+    _out, over, _t = handed_over(web_client, d, dict(
+        _envelope(), engine=engine, calculation=kind, name="probe",
+        params={}))
+    s = save_both(d, *_as_the_page_saves(over), web_client)
+    assert s.status_code == 200, s.get_json()
+    shared = _folder(web_client, d)["template"]["shared"]
+    assert shared and columns, (shared, columns)
+
+    def said(record, control):
+        out = {k: record[k] for k in _ONE_RECORD}
+        out["control"] = record[control]
+        if out["control"] == "tri-select":
+            del out["choices"]
+        return out
+
+    compared = 0
+    for record in (*columns, *shared):
+        f = form.get(record["name"])
+        if f is not None:
+            assert said(record, "control") == said(f, "kind"), record["name"]
+            compared += 1
+    assert compared, "no setting served by two surfaces"

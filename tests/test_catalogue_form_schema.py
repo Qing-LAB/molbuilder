@@ -139,7 +139,9 @@ def test_an_optional_item_offers_its_unset_state_in_its_own_words(engine):
                 assert f["null_label"] == item.null_label and (
                     item.null_label), (kind, f)
             else:
-                assert "null_label" not in f, (kind, f)
+                # No words for a blank it does not have -- the key on every
+                # record (`_shared.item_record`), empty.
+                assert not f["null_label"], (kind, f)
 
 
 @pytest.mark.parametrize("engine", ["siesta", "pyscf"])

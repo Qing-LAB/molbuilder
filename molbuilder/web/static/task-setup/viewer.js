@@ -2182,9 +2182,11 @@ function renderShared(rows) {
                             extensionSays("shared") || _fs.extension.error));
     }
     for (const r of rows || []) {
-        // A BLANK ONE IS RESOLVED, never nothing: what the catalogue calls
-        // unset (`null_label`), and what the engine then does in the hover.
-        const value = renderValue(r.value, r.unit) || r.null_label || "\u2014";
+        // ITS VALUE IN ITS WORDS, as the stage cells say it (`wordsOf`)
+        // -- and A BLANK ONE IS RESOLVED, never nothing: what
+        // the catalogue calls unset (`null_label`), and what the engine
+        // then does in the hover.
+        const value = wordsOf(r, r.value) || r.null_label || "\u2014";
         host.appendChild(el("div", null,
             el("dt", null, r.label),
             el("dd", { title: (r.value == null && r.not_set) || null },
@@ -2195,7 +2197,7 @@ function renderShared(rows) {
 
 /* ---------- the pickers: what may be added, from the catalogue ---------- */
 
-let _cols = null;       // every parameter this engine has  {name,label,group}
+let _cols = null;       // the columns' records (`_shared.item_record`)
 let _colsKey = null;
 /* How this kind names its rungs' roles, handed with the columns
  * (`template.stage_role_rule`, plan § 5w K4): `{named, otherwise}`, or null
@@ -2299,9 +2301,11 @@ function readsHere(col, name) {
 }
 
 /** Publish a vocabulary's items into `_meta` -- the ONE place a cell's
- *  widget question (`legalValues`) gets its answer from.  A function, not
- *  a loop at each call site, because the column loader has a cached path
- *  and a fetching one. */
+ *  widget question (`legalValues`) gets its answer from: the columns' and
+ *  the run settings', each the setting's one record
+ *  (`_shared.item_record`), and never the same setting -- a run setting is
+ *  no column (`task-setup.md` § 5).  A function, not a loop at each call
+ *  site, because each loader has a cached path and a fetching one. */
 function _fillMeta(items) {
     for (const it of (items || [])) {
         if (it && it.name) _meta[it.name] = it;
@@ -2318,7 +2322,7 @@ async function loadSweepChoices(engine) {
     if (!engine || !kind) return [];
     const key = engine + ":" + kind;
     if (_sweep && _sweepKey === key) {
-        _fillSweepMeta(_sweep);      // same reason as the column cache above
+        _fillMeta(_sweep);      // same reason as the column cache above
         return _sweep;
     }
     if (_sweepInflight[key]) return _sweepInflight[key];   // one fetch per key (see loadColumnChoices)
@@ -2341,27 +2345,11 @@ async function loadSweepChoices(engine) {
         }
         if (_sweepKey !== key) return items;   // a newer load owns the slot
         _sweep = items;
-        _fillSweepMeta(_sweep);
+        _fillMeta(_sweep);
         return _sweep;
     })();
     _sweepInflight[key] = p;
     try { return await p; } finally { delete _sweepInflight[key]; }
-}
-
-/** Fold the sweepable items into `_meta` WITHOUT overwriting a column's
- *  richer record.  Called from both the
- *  cached and the fetching path, for the reason `_fillMeta` records. */
-function _fillSweepMeta(items) {
-    for (const i of (items || [])) {
-        if (i && i.name && !_meta[i.name]) {
-            _meta[i.name] = { name: i.name, label: i.label, help: i.help,
-                              control: i.control, choices: i.choices,
-                              default: i.default, stages: i.stages,
-                              unit: i.unit, default_words: i.default_words,
-                              choice_labels: i.choice_labels,
-                              null_label: i.null_label };
-        }
-    }
 }
 
 /* The LEGAL VALUES of a switch or a choice, from the catalogue meta --
@@ -2541,11 +2529,17 @@ function labelOf(name) {
     return (lane && lane.label) || name;
 }
 
-/** A value of ``name`` in the words a person reads it: a choice's words,
- *  as every form shows them (the columns payload's ``choice_labels``,
- *  `task-setup.md` § 5.2), else the value with its unit. */
+/** A value of ``name`` in the words a person reads it (`wordsOf`), by the
+ *  setting's record the page holds. */
 function valueWords(name, v) {
-    const m = _meta[name];
+    return wordsOf(_meta[name], v);
+}
+
+/** A value in the words a person reads it, by the setting's record
+ *  (`_shared.item_record`): a choice's words and a switch's *on* / *off*
+ *  (``choice_labels``), as the stage cells show them (`task-setup.md`
+ *  § 5.2), else the value with its unit. */
+function wordsOf(m, v) {
     if (v === undefined || v === null) return "";
     const words = m && m.choice_labels && m.choice_labels[String(v)];
     return words !== undefined ? words : renderValue(v, m && m.unit);

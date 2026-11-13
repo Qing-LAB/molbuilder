@@ -359,6 +359,49 @@ def control_for(item) -> str:
     return _CONTROL_FOR_TYPE.get(item.type, "text")
 
 
+def item_record(item, *, engine: Optional[str],
+                calculation: str) -> Dict[str, Any]:
+    """A setting AS EVERY PAGE NAMES AND OFFERS IT, for a ``calculation`` of
+    that kind on ``engine`` -- ``None`` on a part every engine of the kind
+    shares -- each fact from its one door: the record a form field
+    (`form-schema.md` § 1.1) and Task setup's run cards, stage columns and
+    shared values (`task-setup.md` § 3, § 5.2, § 6.2b) each start from, and
+    add to.  Every key on every record: what an item has none of is said
+    ``None``, an empty list or no words."""
+    from molbuilder import template as _T
+    from molbuilder.kind_table import kind as _kind
+    engines = _kind(calculation).engines if engine is None else (engine,)
+    return {
+        "name":  item.name,
+        # ITS LABEL, as every form names it -- its name where it has none
+        # (`form-schema.md` § 1a, `task-setup.md` § 5).
+        "label": item.label or item.name,
+        "help":  item.help,
+        "unit":  item.unit or None,
+        # THE ONE DEFAULT for this kind (`template.default_of`), and where it
+        # comes from in the words a blank leads it with (`default_words`).
+        "default":       _jsonable(_T.default_of(item, calculation)),
+        "default_words": _T.default_words(item, engine=engine,
+                                          calculation=calculation),
+        # WHICH CONTROL EDITS IT, the one rule (`control_for`).
+        "control": control_for(item),
+        # WHAT THIS KIND TAKES on these engines, and nothing else (the
+        # catalogue's `offered`, `template.md` § 6.3a): the one set `resolve`
+        # and the settings gate refuse by -- every choice either engine
+        # takes on a part they share (`offered_by_any`).
+        "choices": (list(_T.offered_by_any(item, engines, calculation))
+                    if item.choices else None),
+        # ...EACH VALUE IN ITS WORDS, a switch *on* / *off*
+        # (`template.value_labels`).
+        "choice_labels": _T.value_labels(item),
+        # WHAT A BLANK IS, in the item's own words, on an optional one
+        # (`template.md` § 5).
+        "null_label": item.null_label,
+        # WHICH RUNGS READ IT (`template.md` § 6.4; empty: every one).
+        "stages": list(item.stages),
+    }
+
+
 def catalogue_to_form_schema(engine: Optional[str], id_prefix: str,
                              calculation: str,
                              surface: Optional[str] = None,
@@ -413,7 +456,6 @@ def catalogue_to_form_schema(engine: Optional[str], id_prefix: str,
     happen to sit in the file.
     """
     from molbuilder import template as _T
-    from molbuilder.kind_table import kind as _kind
 
     parsed = _T.catalogue()
     if (surface in ("state", "common")) != (engine is None):
@@ -424,7 +466,6 @@ def catalogue_to_form_schema(engine: Optional[str], id_prefix: str,
     # chosen -- their electronic state in its own part, beside the answer
     # it is worked into -- and left out of each engine's own part.
     common = _T.shared_by_engines(calculation)
-    engines = _kind(calculation).engines if engine is None else (engine,)
     items = _T.select(parsed, engine=engine)
     if surface == "state":
         items = [it for it in items
@@ -525,21 +566,10 @@ def catalogue_to_form_schema(engine: Optional[str], id_prefix: str,
             # (`showPoints`).
             if it.per_point_from:
                 field["locked"]["per_point"] = True
-        # WHICH RUNGS OWN IT (template.md § 6.4's `stages`; empty = any):
-        # the fact a rung's tab folds its cards by, and the stage table
-        # disables cells by.
-        field["stages"] = list(it.stages)
         # ...AND ON THE SHARED PANEL, WHICH RUNGS ONE SHARED VALUE IS FOR,
         # in the template's words (`template.shared_scope_words`, TD11).
         if surface == "shared" and it.stages:
             field["scope"] = _T.shared_scope_words(it)
-        # WHAT THIS KIND CAN TAKE ON THIS ENGINE, and nothing else (the
-        # catalogue's `offered`, `template.md` § 6.3a): the one set `resolve`
-        # and the settings gate refuse by, so the form never offers what prep
-        # would refuse -- no dynamics for a vibration's relaxation, no
-        # restricted-open on SIESTA, no floating moment on PySCF.
-        if it.choices:
-            field["choices"] = list(_T.offered_by_any(it, engines, calculation))
         # THE CARD IT IS DRAWN IN (`template.card_of`, § 6.2a) -- the rule
         # a finding about it is placed by too.
         field["card"] = _T.card_of(it, calculation)
@@ -619,29 +649,16 @@ def _item_to_field(item, id_prefix: str, calculation: str, *,
     ``calculation`` of that kind -- which components of a triple the kind
     fixes is a fact about the kind (`engines/siesta.md` § 6.1); ``engine``
     the form's, whose own default a default may be (``default_words``)."""
-    from molbuilder.template import default_of, default_words
-    # THE ONE DEFAULT for this kind (`template.default_of`): the kind's
-    # recommendation, else the item's -- the hint a blank field shows, and
-    # what it is written at when nobody chose (form-schema.md § 1.1).
-    one = default_of(item, calculation)
-    out: Dict[str, Any] = {
-        "name":     item.name,
+    # THE SETTING'S ONE RECORD (`item_record`), its control under the name
+    # the renderer draws by, ``kind``, and the form's own keys.
+    out: Dict[str, Any] = item_record(item, engine=engine,
+                                      calculation=calculation)
+    out["kind"] = out.pop("control")
+    out.update({
         "id":       f"{id_prefix}-{item.name.replace('_', '-')}",
-        "label":    item.label or item.name.replace("_", " ").capitalize(),
-        "help":     item.help,
-        "default":  _jsonable(one),
         "optional": item.optional,
         "tier":     item.tier or "basic",
-        "kind":     control_for(item),
-    }
-    # WHERE THE DEFAULT COMES FROM, in the words a blank field leads it
-    # with -- the kind's recommendation, the engine's own value, or a plain
-    # default (`form-schema.md` § 1.1, `template.default_words`).
-    said = default_words(item, engine=engine, calculation=calculation)
-    if said:
-        out["default_words"] = said
-    if item.unit:
-        out["unit"] = item.unit
+    })
     if item.pattern:
         out["pattern"] = item.pattern
     # WHAT GREYS IT OUT (`engines/template.md` § 5): the renderer follows
@@ -659,15 +676,8 @@ def _item_to_field(item, id_prefix: str, calculation: str, *,
     # setting never reaches the deck, which `web/form-schema.md` § 1a requires
     # always be present.  `expands` is the fallback for a `deck` item whose
     # several keywords are the honest answer.
-    spelled = engine_key_for(item)
-    if spelled:
-        out["engine_key"] = spelled
-    if item.choices:
-        out["choices"] = list(item.choices)
-        # ...each with the words a person reads (`choice_labels`).
-        if item.choice_labels:
-            out["choice_labels"] = {str(c): w for c, w in item.choice_labels}
-    elif out["kind"] == "tri-select":
+    out["engine_key"] = engine_key_for(item)
+    if out["kind"] == "tri-select":
         # An Optional[bool] has three states and the renderer walks
         # ``f.choices`` to build them; they are the CONTROL's vocabulary, not
         # the item's, so the catalogue does not carry them (§ 5's `choices` is
@@ -697,10 +707,6 @@ def _item_to_field(item, id_prefix: str, calculation: str, *,
         if held:
             out["fixed"] = {AXES[i]: {"value": v, "why": why}
                             for i, (v, why) in held.items()}
-    if item.optional:
-        # ITS BLANK, IN ITS OWN WORDS -- every optional item names it, the
-        # catalogue refuses one that does not (`template.md` § 5).
-        out["null_label"] = item.null_label
     # DRAWN REQUIRED ON THE KINDS THAT DECLARE IT (`template.Item.required`,
     # plan § 5w K20): the value may still be blank, and the Send refuses
     # until it is answered -- the pseudopotential folder on SIESTA.

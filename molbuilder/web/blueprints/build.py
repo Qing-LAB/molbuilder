@@ -56,7 +56,7 @@ from ...issues import Issue
 from flask import Blueprint, jsonify, request
 from ._shared import (
     err,
-    control_for as _control_for,
+    item_record as _item_record,
     stated_params as _stated_params,
     catalogue_to_form_schema as _catalogue_to_form_schema,
     engine_key_for as _engine_key_for,
@@ -1665,44 +1665,13 @@ def api_task_setup_sweepable():
     for it in _T.select(parsed, engine=engine, calculation=kind):
         if not _T.is_run_setting(it):
             continue
-        out.append({
-            "name":            it.name,
-            "label":           it.label or it.name,
-            "help":            it.help or "",
-            "machine_answers": it.allocation,
-            # EACH A ROW ON EVERY RUN CARD FROM THE START, blank until stated
-            # (`web/task-setup.md` § 6.2b), on the rungs that read it.
-            "stages":          list(it.stages),
-            # WHERE A VALUE OF IT MAY LIVE (`template.home_of`): the
-            # Measure card offers what a benchmark row may hold.
-            "homes":           sorted(_T.home_of(it, kind)),
-            # THE VALUE SHAPE (user, 2026-08-20): the machine card births
-            # a row at its value in force and offers a choice's members or
-            # a switch's two values from a dropdown -- by the one control
-            # every form is drawn by (`_shared.control_for`,
-            # `form-schema.md` § 4), never a rule of the page's own.
-            "control":         _control_for(it),
-            "choices":         (list(_T.offered(it, engine, kind))
-                                if it.choices else None),
-            # THE ONE DEFAULT (`template.default_of`): the kind's
-            # recommendation, else the item's -- led in the hover by where
-            # it comes from,
-            # and each value in its words, as on the columns route
-            # (`template.default_words`, `template.value_labels`).
-            "default":         _T.default_of(it, kind),
-            "default_words":   _T.default_words(it, engine=engine,
-                                                calculation=kind),
-            "choice_labels":   _T.value_labels(it),
-            # ...AND WHAT A BLANK ONE IS, in the item's own words, on an
-            # optional one -- *(no cap)*, *(not stated: prep refuses)* --
-            # which say what a blank then does (`task-setup.md` § 6.2b).
-            "null_label":      it.null_label,
-            # The unit rides too: the machine card's default/help text
-            # reads m.unit, and max_memory_mb rendered unitless without
-            # it (allocation items never pass through the columns door,
-            # so this payload is their only source).
-            "unit":            it.unit or None,
-        })
+        # THE SETTING'S ONE RECORD (`item_record`), and of a run setting
+        # whether the machine answers it and where a value of it may live
+        # (`template.home_of`): the Measure card offers what a benchmark row
+        # may hold (`task-setup.md` § 6.2b).
+        out.append({**_item_record(it, engine=engine, calculation=kind),
+                    "machine_answers": it.allocation,
+                    "homes": sorted(_T.home_of(it, kind))})
     # THE RUN'S OWN TWO ASKS, with their words (`job_request.LANE_ASK_ROWS`): the
     # page offers them from here and keeps no table (`task-setup.md` § 6.2b).
     from molbuilder.job_request import LANE_ASK_ROWS
@@ -1748,9 +1717,6 @@ def api_task_setup_columns():
     does not ask a person how many ranks the scheduler granted
     (`form-schema.md` § 1.3).  Filtering a panel and limiting a table are
     different jobs.
-
-    `group` rides along because it is still the right answer to a different
-    question — which columns the table STARTS with (§ 1.3).
     """
     engine = str(request.args.get("engine") or "").lower()
     _calc_kind = str(request.args.get("calculation") or "")
@@ -1763,45 +1729,11 @@ def api_task_setup_columns():
     from molbuilder import template as _T
     out = []
     for it in _column_items(engine, _calc_kind):
-        out.append({
-            "name":    it.name,
-            "label":   it.label or it.name,
-            "help":    it.help or "",
-            "unit":    it.unit or "",
-            # THE KIND'S OWN DEFAULT (`template.default_of`), and where
-            # it comes from in the words every form uses
-            # (`template.default_words`, `form-schema.md` § 1.1).
-            "default": _T.default_of(it, _calc_kind),
-            "default_words": _T.default_words(it, engine=engine,
-                                              calculation=_calc_kind),
-            # ...EACH VALUE IN ITS WORDS, as the forms show them
-            # (`template.value_labels`, `task-setup.md` § 5.2).
-            "choice_labels": _T.value_labels(it),
-            # ...AND WHAT A BLANK CELL IS on an optional one, in its own
-            # words (`null_label`): what the stage then runs.
-            "null_label": it.null_label,
-            "group":   it.group or "",
-            # THE VALUE SHAPE (user, 2026-08-20): the stage table's cell
-            # editor renders a dropdown for a choice or a switch -- by the
-            # one control every form is drawn by (`_shared.control_for`,
-            # `form-schema.md` § 4), never a rule of the page's own.
-            "control": _control_for(it),
-            # ...OF THE CHOICES THIS KIND MAY TAKE on this engine (the
-            # catalogue's `offered`, template.md § 6.3a): a vibration's
-            # relaxation cell offers three relaxers, never dynamics.
-            "choices": (list(_T.offered(it, engine, _calc_kind))
-                        if it.choices else None),
-            # THE SAME WRITER THE FORM USES.
-            "engine_key": _engine_key_for(it),
-            # WHICH RUNGS may carry their own value (template.md § 6.4).
-            # Empty means any -- the ordinary case, and the optimization
-            # ladder's behaviour.  A composite kind's rungs are different
-            # programs on different cells, so a transmission window is the
-            # transmission's and an electrode's k-density an electrode's;
-            # without this the table has to guess which rung an override
-            # belongs to.
-            "stages": list(it.stages),
-        })
+        # THE SETTING'S ONE RECORD (`item_record`), and of a column the
+        # keyword it writes, by the form's own writer -- the hover's, for a
+        # reader of task.json (`task-setup.md` § 5).
+        out.append({**_item_record(it, engine=engine, calculation=_calc_kind),
+                    "engine_key": _engine_key_for(it)})
     # ...BY THE RUNG'S ROLE, and how this kind names its rungs' roles rides
     # with the columns as data (`template.stage_role_rule`, plan § 5w K4):
     # the table maps each row to its role with it and keeps no rule of its
@@ -1863,17 +1795,17 @@ def _folder_template(folder, label, *, found=None, task=None) -> dict:
         for it in select(catalogue(), engine=engine, calculation=kind,
                          shared=kind):
             own = mine.get(it.name)
+            # THE SETTING'S ONE RECORD (`item_record`) -- a value said in
+            # its words, a blank in the catalogue's (`null_label`) -- and its
+            # value, whose it is, what the engine does with a blank one
+            # (`not_set`): blank is resolved, never "nothing" -- and which
+            # rungs it is for, when not every one reads it.
             shared.append({
-                "name": it.name, "label": it.label or it.name,
-                "unit": it.unit,
+                **_item_record(it, engine=engine, calculation=kind),
                 "value": own.value if own is not None and own.is_set else None,
-                # ...AND WHAT A BLANK ONE IS, as the catalogue calls unset
-                # (`null_label`, *(auto)*) and what the engine then does
-                # (`not_set`): blank is resolved, never "nothing".
-                "null_label": it.null_label, "not_set": it.not_set,
+                "not_set": it.not_set,
                 "said": SOURCE_WORDS[(own.source if own is not None else None)
                                      or "unrecorded"],
-                # ...and which rungs it is for, when not every one reads it.
                 "scope": shared_scope_words(it)})
     return {"ok": True, "name": found.path.name, "values": values, "said": said,
             "shared": shared}
