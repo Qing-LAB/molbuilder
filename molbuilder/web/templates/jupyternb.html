@@ -13,11 +13,10 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='jupyternb/style.css') }}">
 {# molbuilder-runtime.js MUST load before any other molbuilder script. #}
 <script src="{{ url_for('static', filename='lib/molbuilder-runtime.js') }}"></script>
-{# NOT lib/status.js.  The shared writer sets `el.className = "status" +
-   severity`, which would wipe `nb-msg` (the class carrying the row's flex
-   basis), and it takes a STRING while this row inserts `<code>` element
-   nodes for notebook paths; `index.js`'s `say`/`sayError` are the local
-   writer. #}
+{# THE SHELL'S TONE (`lib/status.js` `tone`): this row inserts `<code>`
+   element nodes for notebook paths, so `index.js`'s `say` builds its parts and
+   takes only the tone from the shell -- as the sidebar's preview does. #}
+<script src="{{ url_for('static', filename='lib/status.js') }}"></script>
 </head>
 {# THE APP SHELL's own shape (page-shell.css "App shell", ui-contract.md):
    a tab with the projects sidebar opts in on <body> and wraps

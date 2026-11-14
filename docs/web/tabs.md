@@ -577,7 +577,10 @@ things and no more: **what** (the viewer's export) and **a suggested stem**.
    retries with `overwrite: true`. On success
    the sidebar refreshes and the periodicity gate's `notices` come back
    verbatim — and the panel's line says them after *Saved water.xyz.*, in the
-   tone that says *read this* *(2.69.9; the line said the outcome alone)*.
+   tone of the most severe — a warning's amber, a note the outcome's own
+   ([`science/validation.md`](?doc=science/validation.md) R4) — composed by the
+   one composer every save, load and upload line asks
+   (`validationFindings.outcome`) *(2.69.9; the line said the outcome alone)*.
 
 **What the tab keeps is the panel, not the pipeline**: the readout beside the
 button — *"Target: `<name>.xyz`"*, *"Unsaved — Target: …"* once you edit

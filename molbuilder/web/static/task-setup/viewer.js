@@ -3226,7 +3226,7 @@ function taskPrepCard(task) {
     if (err) {
         const p = el("p", { class: "hint", "data-attention": "" },
                      "The task's groups cannot be read: ", codeWords(err));
-        p.setAttribute("data-state", "bad");
+        tone(p, "error");
         wrap.appendChild(p);
         return wrap;
     }
@@ -3303,7 +3303,11 @@ function taskPrepCard(task) {
                 : !ready.length
                 ? "No group to prepare \u2014 each is launched, or waits "
                   + "for what it says."
-                : ready.every((g) => g.state === "prepared" && g.matches)
+                // NONE OFFERED: none needs a prep, by the one answer `prep
+                // task` offers by (`ready.prep_offer`) -- a member not
+                // prepared, its run gone, or changed since and never
+                // launched.
+                : !(lad.offer || []).length
                 ? "Every group is prepared \u2014 what is next is above, "
                   + "launched at the terminal; pick a group to prepare it "
                   + "again after a change."
@@ -3412,7 +3416,7 @@ function continueFromChoice(task, name, cf) {
         } else {
             // WHOLE, with the commands it names: they are the ways on.
             note.append(codeWords(cf.refused));
-            note.setAttribute("data-state", "warn");
+            tone(note, "warn");
             note.setAttribute("data-attention", "");
         }
     } else if (sel.value === "--cold") {
@@ -3562,7 +3566,7 @@ function prepButton(kind, picks) {
     function refuse(msg) {
         retire();
         say.replaceChildren(codeWords(msg));
-        say.setAttribute("data-state", "warn");
+        tone(say, "warn");
         btnWrite.disabled = true;
     }
 
@@ -3577,7 +3581,7 @@ function prepButton(kind, picks) {
         btnWrite.disabled = true;
         planned = null;
         say.textContent = "Previewing\u2026";
-        say.setAttribute("data-state", "ok");
+        tone(say, null);
         btnPreview.disabled = true;
         /* UNDER THE PAGE'S FENCE, as every write is (`task-setup.md` § 7a):
          * a Save, a stage tab or another folder taken mid-call would plan,
@@ -3679,7 +3683,7 @@ function prepButton(kind, picks) {
                             async () => {
             try {
                 say.textContent = "Preparing\u2026";
-                say.setAttribute("data-state", "ok");
+                tone(say, null);
                 const r = await _prepCall(kind, picks, false, planned);
                 if (!r.ok) retire();
                 _showPrepAnswers(wrap, say, r);
@@ -3735,7 +3739,7 @@ function prepButton(kind, picks) {
         btnPreview.disabled = true;
         say.textContent = "Which stages are prepared cannot be read: "
             + String(unread);
-        say.setAttribute("data-state", "bad");
+        tone(say, "error");
     }
     /* A BENCHMARK PREPARED is not prepared again (`job-system.md` § 5.0,
      * checkpoint 2a); a task's groups are the Prep box's to offer, each
@@ -3745,7 +3749,7 @@ function prepButton(kind, picks) {
     if (prepared) {
         btnPreview.disabled = true;
         say.textContent = String(prepared);
-        say.setAttribute("data-state", "warn");
+        tone(say, "warn");
     }
     /* ONLY THE PREVIEW IS REGISTERED.  `_syncPrepButtons` sets
      * `disabled = !machine` on everything it holds -- so registering the
@@ -3779,6 +3783,7 @@ function _syncPrepButtons() {
         if (!ready && !w.say.textContent) {
             w.say.textContent = "pick a machine above";
             w.say.setAttribute("data-state", "unset");
+            tone(w.say, null);
         }
         if (ready && w.say.getAttribute("data-state") === "unset") {
             w.say.textContent = "";
@@ -3836,7 +3841,7 @@ function _showPrepAnswers(wrap, say, answer) {
     if (!answer.ok) {
         say.textContent = "";
         say.append(codeWords(answer.error));
-        say.setAttribute("data-state", "bad");
+        tone(say, "error");
         _prepAnswerBox(wrap, { findings: [r.findings], lines: r.notes });
         return;
     }
@@ -3848,7 +3853,7 @@ function _showPrepAnswers(wrap, say, answer) {
                                findings: [a.findings, a.deck_findings],
                                lines: a.lines });
     }
-    say.setAttribute("data-state", "ok");
+    tone(say, "ok");
     const written = all.filter((a) => !a.unchanged);
     if (!written.length) {
         /* EVERY GROUP PICKED ALREADY AS THIS PREP PLANS IT: nothing to
@@ -4853,6 +4858,13 @@ function paintHeads() {
           .filter(Boolean).join(" \u00b7 "));
 }
 
+/** A NOTE'S OR AN ANSWER'S TONE, the shell's (`lib/status.js` `tone`,
+ *  page-shell.css): ``error``, ``warn``, ``ok``, or ``null`` the resting
+ *  look -- never a colour, or a word for one, of this page's. */
+function tone(node, kind) {
+    window.molbuilder.status.tone(node, kind);
+}
+
 /** What the last save did, beside the button that did it.
  *
  * Its own surface: `ts-save-why` belongs to `refreshSave` (it says why the
@@ -4865,7 +4877,10 @@ function saidSave(text, state) {
     // THE SERVER'S WORDS, DRAWN (`lib/dom.js`, ui-contract.md § 12.1).
     n.replaceChildren(codeWords(text || ""));
     n.hidden = !text;
+    // ITS STATE is what the save button reads (a save confirmed); its LOOK
+    // the shell's tone.
     if (text) n.setAttribute("data-state", state || "ok");
+    tone(n, text ? state || "ok" : null);
 }
 
 /** Write the description to disk -- **the whole window is blocked while it
@@ -4907,7 +4922,7 @@ async function _save() {
     });
     if (!answer.ok) {
         // Refused, not repaired — show the reader's own words.
-        saidSave("Not written — " + answer.error, "bad");
+        saidSave("Not written — " + answer.error, "error");
         setState("refuse", "Not written", answer.error);
         // EVERY FINDING THE REFUSAL CARRIES, its warnings too: nothing
         // is dropped (`ui-contract.md` § 5.1).
@@ -5357,16 +5372,16 @@ function paintChannelTicks(chosen) {
             sub.textContent = "asking this server about it\u2026";
         } else if (!known && _channelsWhy) {
             sub.textContent = "this server could not be asked about it";
-            sub.setAttribute("data-state", "bad");
+            tone(sub, "error");
         } else if (!known) {
             sub.textContent = "named here, but not set up on this machine — "
                 + "nothing is sent there from this box";
-            sub.setAttribute("data-state", "bad");
+            tone(sub, "error");
         } else if (known.tested_ok === true) {
             sub.textContent = known.kind + ", reached when last tested";
         } else if (known.tested_ok === false) {
             sub.textContent = known.kind + ", failed when last tested";
-            sub.setAttribute("data-state", "bad");
+            tone(sub, "error");
         } else {
             sub.textContent = known.kind + ", never tested";
         }
@@ -5395,8 +5410,7 @@ async function loadChannelNames() {
             note.textContent = _machineChannels.length ? "" :
                 "Nothing is set up on this machine — add a channel on the "
                 + "This machine tab and it appears here.";
-            note.setAttribute("data-state",
-                              _machineChannels.length ? "ok" : "bad");
+            tone(note, _machineChannels.length ? null : "error");
         }
     } else {
         // A REFUSAL IS NOT "NOTHING SET UP": said, in the server's words.
@@ -5405,7 +5419,7 @@ async function loadChannelNames() {
         if (note) {
             note.replaceChildren(codeWords("This machine's channels could "
                 + "not be read: " + answer.error));
-            note.setAttribute("data-state", "bad");
+            tone(note, "error");
         }
     }
     readNotifyFromRequest(currentRecord("request"), currentRecord("task"));

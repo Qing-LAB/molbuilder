@@ -1593,6 +1593,7 @@ const WORKSPACE_TAG = "transport";
         if (status) {
             status.hidden = false;
             status.textContent = "Working out the plan\u2026";
+            window.molbuilder.status.tone(status, null);
         }
         _planTimer = root.setTimeout(_askPlan, 600);
     }
@@ -1609,6 +1610,9 @@ const WORKSPACE_TAG = "transport";
             status.hidden = false;
             status.textContent = "The plan waits for the values above to "
                 + "read: " + (e && e.message ? e.message : String(e));
+            // EACH LINE IN THE SHELL'S TONE (`status.tone`): a hint's own
+            // look for what is said at rest, never for a refusal.
+            window.molbuilder.status.tone(status, "warn");
             return;
         }
         body.plan = true;
@@ -1616,6 +1620,7 @@ const WORKSPACE_TAG = "transport";
         var name = _extend ? _extend.name : _reuses;
         status.hidden = false;
         status.textContent = "Working out the plan\u2026";
+        window.molbuilder.status.tone(status, null);
         // THE ONE READER (ui-contract.md § 12).
         ask("/api/transport/describe", { method: "POST", body: body })
             .then(function (a) {
@@ -1625,6 +1630,7 @@ const WORKSPACE_TAG = "transport";
                     box.textContent = "";
                     status.replaceChildren(window.molbuilder.dom.codeWords("The plan could not "
                         + "be worked out: " + a.error));
+                    window.molbuilder.status.tone(status, "error");
                     return;
                 }
                 var lines = a.body.manifest || [];
@@ -1638,6 +1644,7 @@ const WORKSPACE_TAG = "transport";
                 if (mine !== _planSeq) return;
                 status.textContent = "The plan could not be worked out: "
                     + (e && e.message ? e.message : String(e));
+                window.molbuilder.status.tone(status, "error");
             });
     }
 

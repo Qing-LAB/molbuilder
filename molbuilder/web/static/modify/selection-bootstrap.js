@@ -25,6 +25,7 @@ import { isStructureFile } from "/static/lib/projects/state.js";
 import { basename } from "/static/lib/path-utils.js";
 import { chooseFrame } from "/static/lib/projects/dialogs.js";
 import { ask } from "../lib/server.js";
+import { outcome } from "/static/lib/validation-findings.js";
 
 /* THIS FILE IS THE MOLBUILDER TAB'S OWNER. It mounts the one viewer this page
  * has and hands it to everything else on the page.
@@ -369,12 +370,16 @@ import { ask } from "../lib/server.js";
             const shown = new Set((_mounted.data.getNotices() || [])
                 .map((x) => x.message));
             const notes = (Array.isArray(body.notices) ? body.notices : [])
-                .filter((x) => !shown.has(x.message))
-                .map((x) => x.message).join("  ");
-            say((n > added
-                ? `Added ${basename(path)}${which} — ${added} atoms, ${n} in total.`
-                : `Loaded ${basename(path)}${which} — ${n} atoms.`)
-                + (notes ? "  " + notes : ""), "ok");
+                .filter((x) => !shown.has(x.message));
+            // IN THE TONE OF THE MOST SEVERE, by the one composer
+            // (`validationFindings.outcome`, R4) -- a warning never in the
+            // all-fine colour.
+            const said = outcome(
+                n > added
+                    ? `Added ${basename(path)}${which} — ${added} atoms, ${n} in total.`
+                    : `Loaded ${basename(path)}${which} — ${n} atoms.`,
+                notes, "ok");
+            say(said.text, said.tone);
         }
         if (_loadBtn) {
             _loadBtn.addEventListener("click", () => _commitFile(_candidate));

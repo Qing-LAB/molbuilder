@@ -348,8 +348,8 @@ html, body { height: 100%; }
 
 /* Timeline dirty/target indicator next to Retract (viewer.js
  * refreshUndoButton): a passive flag showing whether there are unsaved edits
- * and which state Retract restores.  Amber (--warn-soft) when dirty, muted when
- * at a clean checkpoint. */
+ * and which state Retract restores -- unsaved in the shell's warning tone
+ * (`status.tone`), at rest at a clean checkpoint. */
 .modify-timeline-status {
     font: var(--text-2xs)/1.2 var(--font-sans);
     color: var(--text-muted);
@@ -357,7 +357,6 @@ html, body { height: 100%; }
     user-select: none;
     align-self: center;
 }
-.modify-timeline-status.is-dirty { color: var(--warn-soft); }
 .modify-timeline-status:empty    { display: none; }
 
 /* ---- Edit panel (right) ---- */

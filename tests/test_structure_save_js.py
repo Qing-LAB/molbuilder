@@ -316,23 +316,43 @@ def test_the_readout_follows_the_model_whichever_arrives_first():
             f"after an edit: {said!r} -- the panel is wired to nothing")
 
 
-def test_a_save_says_what_the_server_said_of_it():
-    """`tabs.md` § 6 step 4: on success the periodicity gate's `notices` come
-    back verbatim -- and the panel's line says them after the outcome, in the
-    tone that says *read this*.  The notices are the gate's own, for a water
-    molecule with no box (`periodicity_gate.validate_periodicity`, which the
-    save route asks).
+FINDINGS = ROOT / "molbuilder/web/static/lib/validation-findings.js"
 
-    THE SILENT FAILURE: through 2.69.8 the line said only *Saved water.xyz.*
-    and dropped what the server said of the box -- the viewer's own Export
-    said it, the tab's button did not."""
+
+def _gate_notices(stated_origin):
+    """What the periodicity gate the save route asks says of water --
+    with no box (the default vacuum's notes), or in a typed box whose
+    stated origin leaves the atoms outside (a warning)."""
     import numpy as np
     from molbuilder.periodicity_gate import validate_periodicity
     from molbuilder.structure import Structure
-    _s, notices = validate_periodicity(Structure(
-        elements=["O", "H", "H"],
-        positions=np.array([[0.0, 0.0, 0.0], [0.757, 0.586, 0.0],
-                            [-0.757, 0.586, 0.0]])))
+    s = Structure(elements=["O", "H", "H"],
+                  positions=np.array([[0.0, 0.0, 0.0], [0.757, 0.586, 0.0],
+                                      [-0.757, 0.586, 0.0]]))
+    if stated_origin:
+        s.cell = np.eye(3) * 7.0
+        s.axis_kind = ("isolated",) * 3
+        s.engine_offset = np.array([-50.0, -50.0, -50.0])
+        s.__post_init__()
+    return validate_periodicity(s)[1]
+
+
+@pytest.mark.parametrize("stated_origin, tone", [
+    (False, None),        # the default vacuum's notes: information alone
+    (True, "warn"),       # atoms outside the stated origin's box
+], ids=["notes-only", "a-warning"])
+def test_a_save_says_what_the_server_said_of_it(stated_origin, tone):
+    """`tabs.md` § 6 step 4: on success the periodicity gate's `notices` come
+    back verbatim -- and the panel's line says them after the outcome, in the
+    tone of the most severe (`science/validation.md` R4: severity means the
+    same everywhere -- a note never raised to a warning, a warning never
+    lowered).  The notices are the gate's own (`periodicity_gate.
+    validate_periodicity`, which the save route asks).
+
+    THE SILENT FAILURES: through 2.69.8 the line said only *Saved water.xyz.*
+    and dropped what the server said of the box; through 2.69.68 it said any
+    notice in the warning's tone, a note as loud as a box the atoms leave."""
+    notices = _gate_notices(stated_origin)
     assert notices, "this row must reach the branch where the gate speaks"
     out = _run_node(f"""
         const said = [];
@@ -348,9 +368,14 @@ def test_a_save_says_what_the_server_said_of_it():
                          structurePage: fakePage() }});
         mod.useViewer({{ ok: true, data: fakeModel() }});
         mod.wirePanel({{ doc: {{ getElementById: (id) => nodes[id] || null }} }});
-        click();
-        setTimeout(() => console.log(JSON.stringify(said[said.length - 1])), 20);
+        // THE PAGE'S ONE COMPOSER, the real module (what the page's
+        // `validation-findings-global.js` publishes).
+        import({json.dumps(FINDINGS.as_uri())}).then((vf) => {{
+            molbuilder.validationFindings = vf;
+            click();
+            setTimeout(() => console.log(JSON.stringify(said[said.length - 1])), 20);
+        }});
     """)
     assert out["msg"].startswith("Saved water.xyz."), out
     assert all(n["message"] in out["msg"] for n in notices), out
-    assert out["kind"] == "warn", out
+    assert out["kind"] == tone, (out, [n["severity"] for n in notices])

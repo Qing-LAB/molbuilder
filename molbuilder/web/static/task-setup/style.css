@@ -596,9 +596,9 @@
 .ts-ask-input:focus-visible { outline: 2px solid var(--accent); }
 .ts-ask-input[aria-invalid="true"] { border-color: var(--ts-refuse-fg); }
 .ts-ask-note { color: var(--text-secondary); font-size: var(--text-sm); }
-/* Three states, three readings -- and never colour alone: the words say
-   which it is, so the meaning survives a monochrome screen. */
-.ts-ask-note[data-state="bad"]   { color: var(--ts-refuse-fg); }
+/* An unset value reads in italics; a refusal or a warning takes the shell's
+   tone (`status.tone`) -- and never colour alone: the words say which it is,
+   so the meaning survives a monochrome screen. */
 .ts-ask-note[data-state="unset"] { font-style: italic; }
 /* THE MEASURED NEED sits in the note's column, on the line below the queue's
    own note (`job-request.md` § 3.1a); stacked, under it like every note. */
@@ -630,8 +630,6 @@
     color: var(--text-secondary);
     font-size: var(--text-sm);
 }
-.ts-prep-say[data-state="bad"]  { color: var(--ts-refuse-fg); }
-.ts-prep-say[data-state="warn"] { color: var(--warn-soft); }
 
 /* The one prep entry's answer (`task-setup.md` § 11.1): the command line's
    report, a line each, under the buttons that asked for it.  A full row of
@@ -667,11 +665,6 @@
     font-size: var(--text-sm);
     color: var(--text-secondary);
 }
-
-/* Continue from (plan W37, `task-setup.md` § 11): what a stage starts from,
-   and under it what that means -- prep's own line, or why prep refuses it,
-   whole, its commands on their own lines (`.ts-keeps-lines`). */
-.ts-continue-note[data-state="warn"] { color: var(--warn-soft); }
 
 /* ---- "Tell me how it is going" ------------------------------------- */
 /* A sibling of the queue card: this calculation's own asks, not the
@@ -860,11 +853,6 @@
     gap: var(--space-xs);
     margin: var(--space-sm) 0;
 }
-
-/* A ticked name this machine does not have is a WARNING, not a failure --
-   the description is fine and the box is not.  Reads as text first and
-   colour second, so the sentence carries the whole answer on its own. */
-.ts-notify-sub[data-state="bad"] { color: var(--error); }
 
 /* A disabled tick still has to be readable: "every channel" is ON and these
    show what that means, so greying them to illegibility would hide the

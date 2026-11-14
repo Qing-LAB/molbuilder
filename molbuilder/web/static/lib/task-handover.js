@@ -209,10 +209,11 @@
          * ends when the files are on disk; the road after it is the door's
          * own words (`door.next`), and which tab you open next is yours. */
         if (notices.length) {
-            // THE STATUS LINE says how many came back and to read them --
-            // the findings keep their own severities where they are drawn.
-            const worst = notices.some((n) => n && n.severity === "error")
-                ? "error" : "warn";
+            // THE STATUS LINE says how many came back and to read them, in
+            // the tone of the most severe (`validationFindings.toneOf`, R4)
+            // -- the findings keep their own severities where they are drawn.
+            const worst = window.molbuilder.validationFindings.toneOf(
+                notices, "ok");
             const count = (notices.length === 1 ? "one finding"
                            : notices.length + " findings");
             say(worst, wrote + "  " + door.checked + " " + count + " came back"

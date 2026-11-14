@@ -882,8 +882,6 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
   font-style: italic;
 }
 .ps-preview-status:empty { display: none; }
-.ps-preview-status.is-dirty { color: var(--warn-soft); }
-.ps-preview-status.is-ok    { color: var(--success); }
 
 .ps-preview-footer {
   flex: 0 0 auto;

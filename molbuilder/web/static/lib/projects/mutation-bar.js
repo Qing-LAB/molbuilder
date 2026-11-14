@@ -21,6 +21,7 @@
  */
 
 import { basename } from "../path-utils.js";
+import { outcome } from "../validation-findings.js";
 import {
   chooseName, chooseUploadFile,
 } from "./dialogs.js";
@@ -215,14 +216,12 @@ async function _doUpload() {
   }
   /* SAID WHERE IT LANDED (`projects.md` § 5, `upload`): the path the server
    * wrote -- a `.pdb` imported as its `.xyz` -- and what the server said of
-   * it, the gate's notices verbatim, a warning when there are any, as the
-   * Molbuilder save says them (`tabs.md` § 6 step 4). */
-  const heard = (Array.isArray(r.notices) ? r.notices : [])
-    .map((n) => n && n.message).filter(Boolean);
-  tell(heard.length ? "warn" : "info",
-       "Uploaded " + file.name + " as "
-       + projects.relativeToProjects(r.path) + "."
-       + (heard.length ? "  " + heard.join("  ") : ""));
+   * it, the gate's notices verbatim, in the tone of the most severe, as the
+   * Molbuilder save says them -- the one composer (`tabs.md` § 6 step 4). */
+  const said = outcome("Uploaded " + file.name + " as "
+                       + projects.relativeToProjects(r.path) + ".",
+                       r.notices, "info");
+  tell(said.tone, said.text);
 }
 
 export function initForms() {

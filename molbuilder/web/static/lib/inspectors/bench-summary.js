@@ -624,6 +624,9 @@
                     root.document.createTextNode(" \u00b7 the look at "
                         + new Date().toLocaleTimeString() + " failed: "),
                     root.molbuilder.dom.codeWords(error));
+                // IN THE SHELL'S ERROR TONE (`status.tone`), not the foot's
+                // grey: a failure is never a footnote.
+                root.molbuilder.status.tone(said, "error");
             }
 
             async function refresh() {

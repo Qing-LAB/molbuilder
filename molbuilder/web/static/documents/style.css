@@ -160,7 +160,6 @@ button.docs-tree-toggle {
 .docs-view-empty h1 { color: var(--text-primary); }
 
 .docs-loading { color: var(--text-muted); }
-.docs-error   { color: var(--error); }
 
 /* Rendered-doc colour system — docs-render.css (isolated). */
 

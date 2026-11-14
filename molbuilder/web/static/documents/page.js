@@ -49,14 +49,19 @@
     /* ---- rendering helpers -------------------------------------- */
 
     // THE SERVER'S WORDS, DRAWN (`lib/dom.js`, ui-contract.md § 12.1).
-    function _setStatus(msg) {
-        if (statusEl) statusEl.replaceChildren(window.molbuilder.dom.codeWords(msg));
+    // EACH IN THE SHELL'S TONE (`status.tone`): a failure is the shell's
+    // error, never a colour of this page's.
+    function _setStatus(msg, kind) {
+        if (!statusEl) return;
+        statusEl.replaceChildren(window.molbuilder.dom.codeWords(msg));
+        window.molbuilder.status.tone(statusEl, kind || null);
     }
 
-    function _showMessage(cls, msg) {
+    function _showMessage(cls, msg, kind) {
         renderEl.textContent = "";
         var p = document.createElement("p");
         p.className = cls;  p.appendChild(window.molbuilder.dom.codeWords(msg));
+        window.molbuilder.status.tone(p, kind || null);
         renderEl.appendChild(p);
     }
 
@@ -103,7 +108,7 @@
         var a = await window.molbuilder.server.ask(
             "/api/docs/read?path=" + encodeURIComponent(path));
         if (!a.ok) {
-            _showMessage("docs-error", a.error);
+            _showMessage("docs-error", a.error, "error");
             return;
         }
         var r = a.body;
@@ -111,7 +116,8 @@
             await window.molbuilder.markdownRender.loadRenderLibs();
             renderEl.innerHTML = window.molbuilder.markdownRender.render(r.text);
         } catch (e) {
-            _showMessage("docs-error", "Render failed: " + (e && e.message || ""));
+            _showMessage("docs-error", "Render failed: " + (e && e.message || ""),
+                         "error");
             return;
         }
         // Keep root-README links portable: GitHub resolves docs/<path>.md and
@@ -257,7 +263,8 @@
         var server = await window.molbuilder.runtime.whenReady("server");
         var a = await server.ask("/api/docs/toc");
         if (!a.ok) {
-            _setStatus("Failed to load the document list: " + a.error); return;
+            _setStatus("Failed to load the document list: " + a.error, "error");
+            return;
         }
         var r = a.body;
         if ((!r.tree || !r.tree.length) && !r.readme) {

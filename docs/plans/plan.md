@@ -30,7 +30,7 @@ as they stood.
 
 ## ▶ HANDOVER — where we are, and where to start *(2026-11-10)*
 
-**Where we are: 2.69.68.** F0–F8 and F7a are closed; F9, the tests through
+**Where we are: 2.69.69.** F0–F8 and F7a are closed; F9, the tests through
 the road, has eight releases out (2.67.4–2.67.11) and four steps left (its
 row below). Since 2.67.11 three bodies of work the user put first have run;
 each release is its changelog row and its ledger section
@@ -116,10 +116,15 @@ each release is its changelog row and its ledger section
   electronic state's answers read from it, not worked out again (X-ENG);
   2.69.68, the engine stretch's last unifications in one release: the bias
   list's range test, one writer of a SIESTA deck's geometry, three seam
-  members gone to the engine's record (X-ENG).
-  **Left, in order**: X-ENG; then the page doors and
-  the copies they share (O-STATUS, O-FIND, O-STATE, O-WORDS, O-KEYS's rest
-  with X-UI and X-PLOT; O-TESTS).
+  members gone to the engine's record (X-ENG); 2.69.69, the page doors'
+  first stretch -- a page says each state in the shell's one look, and the
+  Prep line answers by the one door (O-STATE, O-FIND, O-STATUS, X-UI 2).
+  X-ENG closed with 2.69.68 — its two items that change a generated
+  program placed by the user with F10's end-to-end pass.
+  **Left, in order**: the page doors and the copies they share (O-STATUS,
+  O-FIND, O-STATE, O-WORDS, O-KEYS's rest with X-UI and X-PLOT; O-TESTS),
+  worked as one stretch — each item checked by its own tests, the review,
+  the record and the push once for the stretch (the user, 2026-11-13).
 
 **Last checked** (2.69.21): the fast batch, 5,959 passed; every e2e test,
 744 passed, on the release's final code (a change every road passes through,

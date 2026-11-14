@@ -12,11 +12,11 @@
  *
  * A page loads THIS; a module imports the other.
  */
-import { render, clear } from "./validation-findings.js";
+import { render, clear, outcome, toneOf } from "./validation-findings.js";
 
 /* A PLAIN OBJECT, not the module namespace: the classic callers read
- * `{render, clear}`, and naming the two exports here means a
- * third one does not reach the namespace by accident. */
+ * `{render, clear, outcome, toneOf}`, and naming the exports here means another
+ * does not reach the namespace by accident. */
 const root = typeof window !== "undefined" ? window : globalThis;
 root.molbuilder = root.molbuilder || {};
-root.molbuilder.validationFindings = { render, clear };
+root.molbuilder.validationFindings = { render, clear, outcome, toneOf };

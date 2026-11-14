@@ -145,10 +145,11 @@ function _isDirty() {
 
 function _setStatus(message, kind /* "ok" | "dirty" | null */) {
     if (!elStatus) return;
-    elStatus.textContent = message || "";
-    elStatus.className = "ps-preview-status"
-        + (kind === "ok"    ? " is-ok"    : "")
-        + (kind === "dirty" ? " is-dirty" : "");
+    // THE SERVER'S WORDS, DRAWN (`lib/dom.js`, ui-contract.md § 12.1), in the
+    // shell's tone (`status.tone`): a save's success, unsaved edits a warning.
+    elStatus.replaceChildren(window.molbuilder.dom.codeWords(message || ""));
+    window.molbuilder.status.tone(
+        elStatus, kind === "ok" ? "ok" : kind === "dirty" ? "warn" : null);
 }
 
 /* ---------- CodeMirror mount ---------- */

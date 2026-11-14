@@ -277,18 +277,18 @@ export function init(viewer) {
              * on a page where nothing has ever been loaded. */
             if (dirty) {
                 statusEl.textContent = `● unsaved — Retract → #${idx}`;
-                statusEl.className = "modify-timeline-status is-dirty";
+                window.molbuilder.status.tone(statusEl, "warn");
                 statusEl.title =
                     `Unsaved edits since checkpoint #${idx}. `
                     + `Retract discards them and returns to #${idx}.`;
             } else if (idx > 0) {
                 statusEl.textContent = `✓ saved #${idx} — Retract → #${idx - 1}`;
-                statusEl.className = "modify-timeline-status is-clean";
+                window.molbuilder.status.tone(statusEl, null);
                 statusEl.title =
                     `At saved checkpoint #${idx}. Retract steps back to #${idx - 1}.`;
             } else {
                 statusEl.textContent = `✓ saved #0`;
-                statusEl.className = "modify-timeline-status is-clean";
+                window.molbuilder.status.tone(statusEl, null);
                 statusEl.title = "At the initial state (#0). Nothing to retract.";
             }
         }

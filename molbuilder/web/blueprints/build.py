@@ -2527,8 +2527,8 @@ def _folder_ladder(calc) -> dict:
     `prep task` offers (`ready.prep_offer`), the one `prep task` and
     `status` read; and the groups: each stage's number, why it may not join
     the group above, and whether it was launched (its group is then fixed);
-    each group's members, where it stands, and whether its prepared jobs
-    hold its members (`web-api.md`); and ``steps`` -- each group's next
+    each group's members, where it stands, whether it may be prepared and
+    what it waits for (`web-api.md`); and ``steps`` -- each group's next
     step, as `jobset status` prints it under *each group, and what is next*
     (`runstatus.jobset_status`), so the page says it whatever it last did
     (`task-setup.md` § 11).  Fail-soft, like the folder's other parts."""
@@ -2586,9 +2586,6 @@ def _folder_ladder(calc) -> dict:
                            else "not prepared"),
                  # ...IN THE WORDS EVERY SURFACE SHOWS (`GroupAnswer.said`).
                  "said": g.said,
-                 # A PREPARED JOB HOLDING OTHER MEMBERS: prepared again,
-                 # formed anew (`job-request.md` § 3.3).
-                 "matches": not (g.changed or g.members_changed),
                  "preparable": g.preparable, "why": g.why} for g in gs]},
             "steps": ladder["steps"]}
     except (OSError, ValueError, PrepError) as exc:

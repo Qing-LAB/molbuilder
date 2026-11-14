@@ -10,6 +10,8 @@
  *
  * Exports (on window.molbuilder.status):
  *   set(target, msg, kind)  → wrote it?  target is an element or an id
+ *   tone(target, kind)      → the severity's look alone, on a note or an
+ *                             answer with a layout of its own
  *   writer(target)          → a bound (msg, kind) for a fixed slot
  */
 (function () {
@@ -76,12 +78,35 @@
         return true;
     }
 
+    /**
+     * A severity's look on an element that is not a status line -- a note or
+     * an answer with a layout of its own (Task setup's): ``tone <kind>``,
+     * styled beside ``.status.<kind>`` in page-shell.css, its words and its
+     * other classes untouched.  ``null`` is the resting look.
+     */
+    function tone(target, kind) {
+        var el = _resolve(target);
+        if (!el) return false;
+        if (kind && KINDS.indexOf(kind) === -1) {
+            if (root.console && root.console.warn) {
+                root.console.warn("[status] unknown severity " + kind
+                    + " (known: " + KINDS.join(", ") + ")");
+            }
+            kind = null;
+        }
+        var classes = String(el.className || "").split(/\s+/).filter(
+            function (c) { return c && c !== "tone" && KINDS.indexOf(c) === -1; });
+        if (kind && KINDS.indexOf(kind) !== -1) classes.push("tone", kind);
+        el.className = classes.join(" ");
+        return true;
+    }
+
     /** A `(msg, kind)` bound to one slot. */
     function writer(target) {
         return function (msg, kind) { return set(target, msg, kind); };
     }
 
-    var api = { set: set, writer: writer, KINDS: KINDS };
+    var api = { set: set, tone: tone, writer: writer, KINDS: KINDS };
     if (typeof module !== "undefined" && module.exports) {
         module.exports = api;
     }

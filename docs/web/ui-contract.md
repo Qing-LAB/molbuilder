@@ -388,6 +388,16 @@ re-picks the color. Change `--error` once in `tokens.css` and every error on
 every tab moves together. That is the whole contract in one example: **one
 owner, one token, consistent everywhere.**
 
+**A message with a layout of its own takes the same look.** A Task setup note,
+a prep answer, the Transport plan line, the benchmark foot's failed look, the
+file preview's line, Modify's timeline status: each keeps its own classes and
+takes the severity as `tone <kind>`, set through `status.tone(el, kind)`
+(`lib/status.js`) and styled beside `.status.<kind>` in `page-shell.css` — so a
+page keeps no severity vocabulary of its own. A save's,
+a load's or an upload's line that carries the server's notices takes the tone
+of the most severe of them, by the one composer
+(`validationFindings.outcome`, [`science/validation.md`](?doc=science/validation.md) R2a).
+
 **That line is sharper than *"is this selector duplicated?"*, and the
 difference matters.** Four sheets declare `.status` and three of them are
 *fine*:

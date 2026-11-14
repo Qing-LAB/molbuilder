@@ -342,8 +342,42 @@ const _module = (function (root) {
         return summary;
     }
 
-    return { render: render, clear: clear };
+    /** AN OUTCOME AND THE NOTICES THAT CAME WITH IT, on one status line
+     *  (`tabs.md` § 6 step 4): ``{text, tone}`` -- the outcome's sentence,
+     *  then each notice's words verbatim, in the tone of the most severe
+     *  (R4: severity means the same everywhere -- an error's or a warning's
+     *  own, an ``info`` notice the outcome's ``tone``, never raised or
+     *  lowered).  The one composer every save, load and upload line asks. */
+    function outcome(sentence, notices, tone) {
+        var heard = (Array.isArray(notices) ? notices : []).filter(
+            function (n) { return n && n.message; });
+        return {
+            text: [sentence].concat(heard.map(function (n) {
+                return n.message; })).join("  "),
+            tone: toneOf(heard, tone),
+        };
+    }
+
+    /** THE TONE OF A LINE THAT CARRIES NOTICES: the most severe one's -- an
+     *  error's, a warning's -- else ``tone``, the line's own (R4: a notice
+     *  never raises or lowers a line past its own severity).  Asked by
+     *  :func:`outcome`, and by a line that says the notices in words of its
+     *  own (the hand-over's count). */
+    function toneOf(notices, tone) {
+        var worst = null;
+        (Array.isArray(notices) ? notices : []).forEach(function (n) {
+            if (!n) return;
+            if (n.severity === "error") worst = "error";
+            else if (n.severity === "warn" && worst !== "error") worst = "warn";
+        });
+        return worst || tone || null;
+    }
+
+    return { render: render, clear: clear, outcome: outcome,
+             toneOf: toneOf };
 })(typeof window !== "undefined" ? window : globalThis);
 
 export const render = _module.render;
 export const clear = _module.clear;
+export const outcome = _module.outcome;
+export const toneOf = _module.toneOf;

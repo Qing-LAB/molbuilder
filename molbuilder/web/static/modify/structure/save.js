@@ -238,15 +238,12 @@
                 _inFlight = false;
                 if (r && r.ok) {
                     /* WHAT THE SERVER SAID OF IT, beside the outcome
-                     * (`tabs.md` § 6 step 4): the gate's notices, verbatim.
-                     * The save stood, so a notice is no error -- the line's
-                     * warn tone says *go and read it*, as the hand-over's. */
-                    var heard = (Array.isArray(r.notices) ? r.notices : [])
-                        .map(function (n) { return n && n.message; })
-                        .filter(Boolean);
-                    setStatus("Saved " + _basename(r.path) + "."
-                              + (heard.length ? "  " + heard.join("  ") : ""),
-                              heard.length ? "warn" : null);
+                     * (`tabs.md` § 6 step 4): the gate's notices, verbatim,
+                     * in the tone of the most severe -- the one composer
+                     * (`validationFindings.outcome`). */
+                    var said = root.molbuilder.validationFindings.outcome(
+                        "Saved " + _basename(r.path) + ".", r.notices, null);
+                    setStatus(said.text, said.tone);
                 } else if (r && r.cancelled) {
                     setStatus("");
                 } else {

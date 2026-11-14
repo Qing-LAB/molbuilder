@@ -40,17 +40,17 @@ const frame   = $("nb-frame");
  *  `<img onerror=...>` would run through innerHTML. */
 function say(...parts) {
   state.className = "status nb-msg";
+  window.molbuilder.status.tone(state, null);
   // THE SERVER'S WORDS, DRAWN (`lib/dom.js`, ui-contract.md § 12.1).
   state.replaceChildren(...parts.map((p) =>
     typeof p === "string" ? window.molbuilder.dom.codeWords(p) : p));
 }
 
-/** The same message, in the shell's `status error` colour -- the ONE home for
- *  that severity is page-shell.css, and this page uses it rather than picking
- *  a red of its own (`ui-contract.md` 5). */
+/** The same message, in the shell's error tone (`status.tone`) -- the ONE
+ *  home for that severity is page-shell.css (`ui-contract.md` 5). */
 function sayError(...parts) {
   say(...parts);
-  state.className = "status nb-msg error";
+  window.molbuilder.status.tone(state, "error");
 }
 
 /** A `<code>` span for the message -- the only element it ever contains. */

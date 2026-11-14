@@ -28,6 +28,7 @@ import { mount } from "/static/lib/molview/index.js";
 import { molviewDoors } from "../projects/molview-doors.js";
 import { basename } from "../path-utils.js";
 import { ask } from "../server.js";
+import { outcome } from "../validation-findings.js";
 (function (root) {
     "use strict";
 
@@ -621,13 +622,11 @@ import { ask } from "../server.js";
     }
 
     /* A SUMMARY LINE, WITH WHAT THE LOAD SAID OF THE RUN after it: the
-     * kept notices (I9), each in the server's words -- the line then a
-     * warning, whatever it said on its own. */
+     * kept notices (I9), each in the server's words, in the tone of the
+     * most severe -- the one composer (`validationFindings.outcome`, R4). */
     function _withRunNotes(msg, kind) {
-        const said = (Array.isArray(state.notices) ? state.notices : [])
-            .map(function (n) { return n.message; });
-        if (!said.length) return setStatus(msg, kind);
-        setStatus((msg ? msg + "  " : "") + said.join("  "), "warn");
+        const said = outcome(msg || "", state.notices, kind);
+        setStatus(said.text.trim(), said.tone);
     }
 
     function setStatus(msg, kind) {
