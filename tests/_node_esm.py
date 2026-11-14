@@ -82,6 +82,10 @@ def served(base: str) -> str:
     options as the page passed them (its signal, its cache); each answer,
     read, in ``globalThis.__answered``, in the order the answers came.
 
+    THE ANSWER IS HANDED AS A BROWSER HANDS IT: its status, headers and body,
+    and whether a redirect was followed and the url it ended at
+    (``redirected``, ``url`` -- how a page tells a sign-in page from data).
+
     THE ANSWER IS READ WHOLE before the page is handed it, so a request is
     on the wire until its body is in hand: ``await __quiet()`` -- until no
     request is on the wire, twice in a row, a moment apart -- then waits on
@@ -158,9 +162,14 @@ def served(base: str) -> str:
         "            if (signal.aborted) cut();\n"
         "            else signal.addEventListener('abort', cut, { once: true });\n"
         "          } });\n"
-        "      return new Response(held, { status: r.status,\n"
+        "      const handed = new Response(held, { status: r.status,\n"
         "                                  statusText: r.statusText,\n"
         "                                  headers: r.headers });\n"
+        "      // AS A BROWSER HANDS IT: a followed redirect, and the url the\n"
+        "      // answer came from, ride on the answer.\n"
+        "      Object.defineProperties(handed, {\n"
+        "        redirected: { value: r.redirected }, url: { value: r.url } });\n"
+        "      return handed;\n"
         "    } finally {\n"
         "      globalThis.__inflight--;\n"
         "    }\n"

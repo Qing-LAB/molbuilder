@@ -26,12 +26,14 @@ from pathlib import Path
 
 
 @contextmanager
-def serve():
+def serve(config=None):
     """Run the app on an ephemeral port; yield its base URL.
 
-    The app is ``create_app(config={})``'s: the sections it reads at start
-    -- sign-in, admin, rate limit -- from no file, so no sign-in stands in
-    a page's way.  The port is chosen by the OS — 0 — so concurrent test
+    The app is ``create_app(config=config)``'s: the sections it reads at
+    start -- sign-in, admin, rate limit -- from no file; none given, no
+    sign-in stands in a page's way, and a test that is about signing in hands
+    its ``auth`` section in, or its rate limit (`process/testing.md` § 3b:
+    the real thing).  The port is chosen by the OS — 0 — so concurrent test
     modules never collide on a fixed number, and the thread is a daemon so a
     hung shutdown cannot keep the interpreter alive.
 
@@ -72,7 +74,7 @@ def serve():
     served_docs = shutil.copytree(the_docs(), os.path.join(own_docs, "docs"))
     docs_blueprint._docs_root = lambda: Path(served_docs)
 
-    server = make_server("127.0.0.1", 0, create_app(config={}),
+    server = make_server("127.0.0.1", 0, create_app(config=config or {}),
                          threaded=True)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()

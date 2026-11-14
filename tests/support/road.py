@@ -187,13 +187,15 @@ def water_with_an_assigned_origin(corner):
     return typed, out
 
 
-def co2_in_engine_order():
+def co2_in_engine_order(held=None):
     """The road's CO2 as a SIESTA vibration's decks hold it: sorted by its
     decks' order (`transport.sort.sort_by`, `kind_table.atom_order`), its
-    order record on it."""
+    order record on it -- its carbon held, or the atoms ``held`` names
+    (an oxygen held keeps the sequence O O C)."""
     from molbuilder.kind_table import atom_order
     from molbuilder.transport.sort import sort_by
-    return sort_by(road_structure(CO2),
+    spec = CO2 if held is None else {**CO2, "regions": {"frozen_atoms": held}}
+    return sort_by(road_structure(spec),
                    atom_order("vibration", "siesta")).structure
 
 

@@ -51,8 +51,9 @@ def pairs(isolated_projects_root_module):
     move a transport bridge, which these have none of), its CO2 (O O C), as
     a three-frame set too, and the same molecule listed C O O (the order
     `CO2_HELD_FIRST` names), saved as a molecule of its own in the user
-    order: the lane's match reads its elements and its frame count, not
-    which atom is held."""
+    order -- the lane's match reads its elements and its frame count, not
+    which atom is held -- and the same O O C as an engine's own copy, its
+    stated order the one thing apart."""
     import numpy as np
     from support.road import (CO2, CO2_HELD_FIRST, H2, WATER, road_structure,
                               structure_saved)
@@ -69,12 +70,25 @@ def pairs(isolated_projects_root_module):
     coo = {"elements": [CO2["elements"][i] for i in order],
            "positions": [CO2["positions"][i] for i in order],
            "cell": CO2["cell"]}
+    # THE SAME ELEMENTS IN THE SAME SEQUENCE, LISTED IN AN ENGINE'S ORDER: the
+    # road's CO2 with an oxygen held, sorted held-first as a vibration's decks
+    # are -- O O C still -- written as the product writes an engine's copy,
+    # its order record beside it (`StructureCodec.write(..., engine_record=
+    # True)`, `model/overview.md` § 2.2a; a pair in the user order is refused
+    # in an engine's order).
+    from molbuilder.workingcopy_structure import StructureCodec
+    from support.road import co2_in_engine_order
+    listed = co2_in_engine_order(held=[1])
+    assert list(listed.elements) == list(CO2["elements"]), listed.elements
+    engine = root / "P" / "structure" / "ooc-engine.xyz"
+    StructureCodec().write(listed, engine, engine_record=True)
     return {"two": saved("h2", H2), "three": saved("water", WATER),
             "two framed": saved("h2-frames", framed(H2)),
             "three framed": saved("water-frames", framed(WATER)),
             "O O C": saved("ooc", CO2),
             "O O C framed": saved("ooc-frames", framed(CO2)),
-            "C O O": saved("coo", coo)}
+            "C O O": saved("coo", coo),
+            "O O C, an engine's order": engine}
 
 
 def _run(app_at, pairs, snippet: str):
@@ -253,6 +267,8 @@ def test_the_context_applies_after_a_draft_restore_not_under_it(app_at,
                  id="the same molecule, its elements in another order"),
     pytest.param("O O C framed", [],
                  id="the same elements, as a frame set"),
+    pytest.param("O O C, an engine's order", [],
+                 id="the same elements in the same sequence, an engine's order"),
 ])
 def test_a_selection_is_put_back_only_on_the_structure_it_was_made_on(
         app_at, pairs, now, restored):
@@ -262,11 +278,9 @@ def test_a_selection_is_put_back_only_on_the_structure_it_was_made_on(
     the structure is listed in are the ones it was made on.  The silent
     failure: a selection made on the user's pair put back onto a run's own
     file of the same molecule, as many atoms listed in the engine's order --
-    other atoms selected, and the transport report asking their PDOS.  The
-    match on the stated order alone -- the same elements in the same sequence,
-    one listed in an engine's order -- needs a run's own file whose held-first
-    order keeps the sequence (the road's CO2 with an oxygen held, O O C); it
-    is owed (the finish-line review's O-TESTS)."""
+    other atoms selected, and the transport report asking their PDOS -- the
+    last row the match on the stated order alone, the elements' sequence the
+    same."""
     out = _run(app_at, pairs, f"""
         const one = await session({{ owner: "m", model: {{ mode: "readonly" }} }});
         await opened(one, "O O C");
