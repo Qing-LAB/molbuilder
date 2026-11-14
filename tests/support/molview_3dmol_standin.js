@@ -108,6 +108,12 @@ globalThis.$3Dmol = {
             },
             render:  function () { __rec("render", []); },
             zoomTo:  function () { __rec("zoomTo", []); },
+            // The library's turn of the camera (GLViewer.rotate): the fit
+            // turns to look along x or y before it zooms (molview.md § 9.6).
+            rotate:  function (angle, axis) { __rec("rotate", [angle, axis]); },
+            // ...and its zoom by a factor (GLViewer.zoom), which the fit
+            // calls only for a viewer that holds nothing.
+            zoom:    function (factor) { __rec("zoom", [factor]); },
 
             addSphere: function (s) {
                 __rec("addSphere", [s]);

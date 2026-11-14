@@ -173,15 +173,18 @@ def water_in_vacuum():
                      vacuum=(8.0, 8.0, 8.0))
 
 
-def water_with_an_assigned_origin(corner):
+def water_with_an_assigned_origin(corner, positions=None):
     """Water in a typed 10 Å box, and the same with its origin assigned at
     ``corner`` through the Cell page's own op (`periodicity_gate.apply_edit`,
-    ``box_corner``): ``(typed, assigned)``."""
+    ``box_corner``): ``(typed, assigned)``.  ``positions`` -- its atoms
+    placed otherwise, as a person may place them (one pressed against
+    another, say)."""
     from molbuilder.periodicity_gate import apply_edit
     from molbuilder.structure import Structure
+    at = (positions if positions is not None
+          else [[0.0, 0.0, 0.0], [0.757, 0.586, 0.0], [-0.757, 0.586, 0.0]])
     typed = Structure(elements=["O", "H", "H"],
-                      positions=np.array([[0.0, 0.0, 0.0], [0.757, 0.586, 0.0],
-                                          [-0.757, 0.586, 0.0]]),
+                      positions=np.array(at, dtype=float),
                       cell=np.eye(3) * 10.0, axis_kind=("isolated",) * 3)
     out, _ = apply_edit(typed, "box_corner", list(corner))
     return typed, out

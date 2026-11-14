@@ -1170,14 +1170,16 @@ deliberately not installed there.
   tab), `chemistry_card.py` (the chemistry card, read as a person reads
   it), `findings.py` (a page's findings, drawn row for row),
   `leftovers.py` (what opening again leaves on the page); and for
-  MolView's tests under node, the stand-ins for 3Dmol and the DOM
-  (`molview_3dmol_standin.js`, `molview_dom_standin.js`); the page around
-  the view lane on the real routes and the real workspace
-  (`molview_lane.py`); and a stand-in server, `molview_server_standin.js`,
-  which answers every route alike — still loaded by `test_molview_mount`,
-  and `test_molview_measurement` keeps a `fetch` of its own that answers
-  alike — each yet to move onto the server's own answers (§ 4; planned, the
-  finish-line review's O-TESTS).
+  MolView's tests under node, the stand-ins for what node cannot run, 3Dmol
+  (WebGL) and the DOM (`molview_3dmol_standin.js`, `molview_dom_standin.js`),
+  and the page around the view lane on the real routes and the real
+  workspace (`molview_lane.py`).  MolView's tests ask the app's own routes,
+  but for three that keep a `fetch` of their own -- answering every route
+  alike (`test_molview_measurement`, `test_structure_info_bridge`) or only
+  the load route (`test_frame_sets`) -- yet to move onto the server's own
+  answers (§ 4; planned, the finish-line review's O-TESTS).  One test holds
+  the real route's answer back, to have two edits in flight at once (a
+  timing, § 3b: `test_molview_reserved_label_js`, the one-mutation case).
 - `test_one_door_reads_a_structure.py` — the author's frozen atoms, regions
   and cell, saved as the `.xyz` + `.molstruct.json` pair, reach the deck
   through `molbuilder describe → prep`, because the pair is one file. Written

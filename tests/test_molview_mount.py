@@ -11,81 +11,124 @@ The rows of ``docs/web/molview.md`` § 13.3 guarded here:
     § 9.2  the handle refuses appearance
     § 5.6  a viewer is owned
 
-Level 2 of § 13.2: boundary behaviour, with stand-ins that obey this document —
-a DOM stand-in and the drawing-library stand-in. What a viewer LOOKS
-like is § 13.2's third level, in a real page, and nothing here pretends to check
-it.
+Level 2 of § 13.2: boundary behaviour, the real mount.  THE SERVER IS THE
+APP'S OWN (`_node_esm.served`, `molview.md` § 13.1): each structure a pair on
+disk, written as the road writes one (`support.road`), opened by path through
+`/api/build/load` -- its labels, the kinds' labels and its notices the
+route's own answer; the workspace a viewer is handed is the real one
+(`lib/workspace/dispatcher.js`), in one browser tab on Node's own storage
+(`tab_storage`), its writes read on the wire and back through its own door.
+
+TWO STAND-INS STAY, each for what node cannot run (`process/testing.md` § 3b):
+
+  * the drawing library (`support/molview_3dmol_standin.js`): 3Dmol needs
+    WebGL.  It records what it is told, so a test counts the work a change
+    cost.  Its record is the wire's too (`__calls`): a drawing call carries
+    a ``name``, a request a ``url``.
+  * a DOM (`support/molview_dom_standin.js`): node has none, and mount builds
+    the card in one.  It does no layout -- what a viewer LOOKS like is § 13.2's
+    third level, in a real page, and nothing here pretends to check it.
 """
 from __future__ import annotations
 
 import json
-
-import pytest
 from pathlib import Path
 
-from tests._node_esm import run_node
+import numpy as np
+import pytest
+
+from support.molview_lane import HOST, KEPT, LANE_DELAY, WS
+from support.road import CO2, H2, WATER
+from tests._node_esm import run_node, served, tab_storage
 
 REPO = Path(__file__).resolve().parents[1]
 MODULE_DIR = REPO / "molbuilder" / "web" / "static" / "lib" / "molview"
 INDEX = MODULE_DIR / "index.js"
-#: The page that hosts MolView, as a test plays it (`support/molview_host.mjs`).
-HOST = Path(__file__).resolve().parent / "support" / "molview_host.mjs"
 SUPPORT = Path(__file__).parent / "support"
 
+#: THE TWO STAND-INS, for what node cannot run (the module's docstring).
+#: ORDER MATTERS: both offer a host element, and the DOM one must win -- mount
+#: builds real elements inside it, which the drawing's minimal host cannot do.
+STAND_INS = ((SUPPORT / "molview_3dmol_standin.js").read_text()
+             + (SUPPORT / "molview_dom_standin.js").read_text())
 
-def _served_labels() -> str:
-    """THE LABELS THE SERVER SERVES beside every structure -- its own door's
-    answer (`structure_answer`, the kind table's labels), so the stand-in
-    answers as the server does (`web/molview.md`)."""
-    import numpy as np
-    from molbuilder.structure import Structure
-    from molbuilder.web.blueprints._shared import structure_answer
-    return json.dumps(structure_answer(
-        Structure(elements=["H"], positions=np.zeros((1, 3))))["labels"])
+#: A gold atom with a thiol sulfur on it and the carbon beyond -- the
+#: metal-anchor pair § 11.6's reference table holds, beside a pair it does
+#: not -- at the distances its test reads.
+AU_S_C = {"elements": ["Au", "S", "C"],
+          "positions": [[0.0, 0.0, 0.0], [0.0, 0.0, 2.412], [0.0, 0.0, 4.0]],
+          "cell": [10.0, 10.0, 10.0]}
 
 
-# ORDER MATTERS: both stand-ins offer a host element, and the DOM one must win —
-# mount builds real elements inside it, which the embed's minimal host cannot do.
-# The server stand-in comes first for its one composer of the server's answer
-# (`__payload`); the `fetch` below is this harness's own.
-GLOBALS = (SUPPORT / "molview_server_standin.js").read_text() + (
-    SUPPORT / "molview_3dmol_standin.js").read_text() + """
-// The DOM, loaded after so its richer host element is the one in play.
-""" + (SUPPORT / "molview_dom_standin.js").read_text() + """
-globalThis.__requests = [];
-/* The atom identity the stand-in server hands back. A test that needs a
- * different one sets it BEFORE installing — because § 10.8 fixes the atoms at
- * load and every frame after that has to match, so a test cannot reach a
- * three-atom trajectory by loading two atoms and reloading three frames.
- * `__nextStructure` is the rest of the structure, in the server's names
- * (its identity columns, its metadata). */
-globalThis.__nextAtoms = null;
-globalThis.__nextStructure = null;
-globalThis.fetch = async function (route, init) {
-    globalThis.__requests.push({ route, body: JSON.parse(init.body) });
-    const atoms = globalThis.__nextAtoms || [
-        { index: 0, element: "C", x: 0, y: 0, z: 0, regions: [] },
-        { index: 1, element: "O", x: 1, y: 0, z: 0, regions: [] },
-    ];
-    // THE KINDS' LABELS ride every structure answer, as the server's do --
-    // the server's one shape (`__payload`), handed as a browser hands it,
-    // for the page's one reader (`lib/server.js`).
-    const extra = Object.assign(
-        { labels: globalThis.__servedLabels },
-        globalThis.__nextNotices ? { notices: globalThis.__nextNotices } : {},
-        globalThis.__nextStructure
-            ? { structure: globalThis.__nextStructure } : {});
-    return new Response(JSON.stringify(globalThis.__payload(atoms, extra)),
-                        { status: 200 });
-};
-globalThis.__nextNotices = null;
-globalThis.__servedLabels = __SERVED_LABELS__;
-globalThis.setInterval = globalThis.setInterval;
+@pytest.fixture(scope="module")
+def app_at(isolated_projects_root_module):
+    """The app, serving: what answers the viewer and the workspace
+    (`support.live_server`)."""
+    from support.live_server import serve
+    with serve() as base:
+        yield base
+
+
+@pytest.fixture(scope="module")
+def pairs(isolated_projects_root_module):
+    """The structures the tests open, by name -- the road's own
+    (`support.road`), each saved as the road saves one (`structure_saved`)
+    and opened by path: its H2 (its first atom held), its water, its CO2;
+    H2 carrying the labels a test reads beside its held atom -- the names
+    MolView offers and one of the user's own, a label on both atoms, a
+    label no list offers; :data:`AU_S_C`; a peptide the one build door
+    builds (`builders.build`), its identity columns the builder's own, two
+    labels on its first atom; and crowded water whose box was put where it
+    does not hold it, by the Cell page's own op (:func:`_crowded_outside`),
+    so its load answers a warning about the box beside a warning and a remark
+    about the rest."""
+    from molbuilder.builders import build
+    from support.road import structure_saved
+    root = isolated_projects_root_module
+
+    def saved(name, s):
+        return str(root / structure_saved(root, s, at=f"P/structure/{name}.xyz"))
+
+    def labelled(spec, **more):
+        return dict(spec, regions={**spec.get("regions", {}), **more})
+    peptide = build("peptide", "GA").structure.replace(
+        regions={"bridge": [0], "frozen_atoms": [0]})
+    return {
+        "H2": saved("h2", H2),
+        "water": saved("water", WATER),
+        "CO2": saved("co2", CO2),
+        "H2, the offered names": saved("h2-offered", labelled(
+            H2, **{"L-electrode": [0], "bridge": [0], "my-notes": [0]})),
+        "H2, bridged": saved("h2-bridged", labelled(H2, bridge=[0, 1])),
+        "H2, a label of its own": saved("h2-own", labelled(
+            H2, **{"custom-tag": [0]})),
+        "peptide, labelled": saved("peptide-labelled", peptide),
+        "Au S C": saved("au-s-c", AU_S_C),
+        "water, outside its box": saved("water-outside", _crowded_outside()),
+    }
+
+
+def _globals(app_at) -> str:
+    return (tab_storage() + served(app_at) + STAND_INS + """
 // WHAT THE PAGE HOLDS before any module of the viewer or the page is loaded.
 globalThis.__pageHeld = Object.keys(globalThis.molbuilder);
-"""
+""")
 
-PRELUDE = f"""
+
+def _crowded_outside():
+    """Water with one hydrogen pressed 0.3 Å against its oxygen, its box put
+    where it does not hold it -- the corner set at the origin by the Cell
+    page's own op (`support.road.water_with_an_assigned_origin`): a load
+    answers a warning about the box, a warning about the atoms, and a remark
+    (§ 6.8)."""
+    from support.road import water_with_an_assigned_origin
+    return water_with_an_assigned_origin(
+        [0.0, 0.0, 0.0],
+        positions=[[0.0, 0.0, 0.0], [0.3, 0.0, 0.0], [-0.757, 0.586, 0.0]])[1]
+
+
+def _prelude(pairs) -> str:
+    return f"""
 const MV = await import({json.dumps(INDEX.resolve().as_uri())});
 // WHAT LOADING THE VIEWER PUT ON THE PAGE -- before the page's own modules.
 globalThis.__viewerPublished = Object.keys(globalThis.molbuilder)
@@ -93,8 +136,28 @@ globalThis.__viewerPublished = Object.keys(globalThis.molbuilder)
 // ...MOUNTED AS A PAGE MOUNTS IT: handed the one reader of a server's
 // answer (`support/molview_host.mjs`).
 const {{ mount, ask }} = await import({json.dumps(HOST.as_uri())});
+await import({json.dumps(KEPT.resolve().as_uri())});
+await import({json.dumps(WS.resolve().as_uri())});
+/* The workspace a page hands its viewer (workspace.md § 5): the real one,
+ * its files on the app's own routes, this run's browser tab its own. */
+const ws = globalThis.molbuilder.workspace;
+const PAIRS = {json.dumps(pairs)};
 
-const workspace = {{ read: async () => null, write: async () => {{}} }};
+/* A structure opened as a tab opens one -- by path, the server reading the
+ * pair -- and the wire quiet after it: the load answered and, in an editable
+ * viewer, point 0 written. */
+async function openIn(viewer, name) {{
+    await viewer.data.installMolecule({{ path: PAIRS[name] }});
+    await __quiet();
+}}
+
+/* The view lane's gathered write, then the wire quiet: written and answered
+ * (§ 11.2b; the lane's own delay, never a number of this file's). */
+{LANE_DELAY};
+async function settled() {{
+    await new Promise((r) => setTimeout(r, WRITE_DELAY_MS));
+    await __quiet();
+}}
 
 /* The drawing lands a TURN after the model does.
  *
@@ -116,32 +179,31 @@ async function waitForDrawing(check, why) {{
 
 async function mounted(opts) {{
     const host = globalThis.__makeHost(opts && opts.width, opts && opts.minWidth);
-    const viewer = await mount(host, workspace,
+    const viewer = await mount(host, ws,
         Object.assign({{ owner: "test" }}, (opts && opts.mount) || {{}}));
     return {{ host, viewer }};
 }}
 """
 
 
-def _run(snippet: str):
-    # The server's labels, asked when a test runs -- inside its isolation,
-    # never while the module is collected.
-    return run_node([], PRELUDE + snippet,
-                    globals_js=GLOBALS.replace("__SERVED_LABELS__",
-                                               _served_labels()))
+def _run(app_at, pairs, snippet: str):
+    """The test's script on the page, the app's routes answering and the
+    tab's own storage under it."""
+    return run_node([], _prelude(pairs) + snippet,
+                    globals_js=_globals(app_at), storage=True)
 
 
 # ---------------------------------------------------------------------------
 # § 4 — the module is self-contained
 # ---------------------------------------------------------------------------
 
-def test_the_entry_point_offers_its_four_names_and_no_others():
+def test_the_entry_point_offers_its_four_names_and_no_others(app_at, pairs):
     """§ 4, § 9.1: "`mount`, `formula`, `toDisplay` and `fromDisplay`. Nothing
     else in the module is importable, and this is the only import a consumer
     ever writes."  The two translations are the one place a number is made
     from an index (`model/overview.md` § 2): frame index 0 reads as 1, and
     back."""
-    out = _run(
+    out = _run(app_at, pairs,
         """
         console.log(JSON.stringify({
             exports: Object.keys(MV).sort(),
@@ -160,33 +222,58 @@ def test_the_entry_point_offers_its_four_names_and_no_others():
     assert out["empty"] == "—"
 
 
-def test_mounting_needs_only_what_it_is_handed():
+def test_mounting_needs_only_what_it_is_handed(app_at, pairs):
     """§ 13.3: "the module mounts given only a host element, something that
     satisfies the workspace door, and the server door".
 
-    § 8: "anything that can store and return bytes satisfies it. That is what
-    lets a viewer mount in a test page with a stand-in, and it is the whole of
-    § 4's 'nothing it needs comes from a global'."  And it publishes nothing:
+    § 8: "The workspace is handed in when the viewer is created; MolView
+    never goes looking for one" -- the calls `workspace.md` § 5 lists, and
+    that is § 4's "nothing it needs comes from a global".  And it publishes nothing:
     neither loading the viewer nor mounting one adds a name to the page's
     namespace -- one that did would be the viewer reaching onto the page.
     """
-    out = _run(
+    out = _run(app_at, pairs,
         """
         const host = globalThis.__makeHost();
-        // A door, not a module: two functions and nothing else.
-        const door = { read: async () => null, write: async () => {} };
+        // The workspace door a page hands in: the real one, taken by the
+        // page -- and then NOTHING LEFT ON THE PAGE TO REACH FOR: the doors'
+        // globals taken off, so a viewer that reached for one instead of
+        // what it was handed finds none.
+        const handed = ws;
+        delete globalThis.molbuilder.workspace;
+        delete globalThis.molbuilder.server;
         const before = Object.keys(globalThis.molbuilder);
-        const viewer = await MV.mount(host, door,
+        const viewer = await MV.mount(host, handed,
             { owner: "results-structure", server: { ask } });
+        // ...and it works with what it was handed: a structure opened, and
+        // an edit's point kept IN THE WORKSPACE HANDED IN, read back there.
+        await viewer.data.installMolecule({ path: PAIRS["H2"] });
+        await __quiet();
+        const opened = viewer.data.getStructure();
+        await viewer.data.applyOp("translate", { dx: 1 });
+        await __quiet();
+        const kept = await handed.readState("results-structure", 1);
+        // ...and the view lane's look, kept in the same workspace (§ 11.2b).
+        viewer.data.view.set("style", "sphere");
+        await settled();
+        const look = await handed.readDraft("results-structure:ui");
         console.log(JSON.stringify({
             ok: viewer.ok,
+            atoms: opened && opened.elements.length,
+            kept: kept !== null,
+            look: look && look.view && look.view.style,
             loaded: globalThis.__viewerPublished,
             mounted: Object.keys(globalThis.molbuilder)
                 .filter((k) => !before.includes(k)),
         }));
         """
     )
-    assert out["ok"] is True, "a viewer must mount with a stand-in workspace"
+    assert out["ok"] is True, "a viewer must mount with what it is handed"
+    assert out["atoms"] == 2, f"the viewer did not work with its doors: {out}"
+    assert out["kept"] is True, (
+        f"an edit's point did not reach the workspace handed in: {out}")
+    assert out["look"] == "sphere", (
+        f"the view lane's look did not reach the workspace handed in: {out}")
     assert (out["loaded"], out["mounted"]) == ([], []), (
         f"the viewer published into the app's global namespace: {out}")
 
@@ -196,24 +283,24 @@ def test_mounting_needs_only_what_it_is_handed():
 # ---------------------------------------------------------------------------
 
 
-def test_mount_always_resolves_with_a_working_dispose():
+def test_mount_always_resolves_with_a_working_dispose(app_at, pairs):
     """§ 13.3: "a mount that cannot fit still returns `ok === false` AND a working
     `dispose`; nothing rejects, nothing returns nothing."
 
     § 8: so a caller's teardown path needs no special case for the viewer that
     did not build.
     """
-    out = _run(
+    out = _run(app_at, pairs,
         """
         const results = [];
         for (const [name, run] of [
-            ["no host",  () => mount(null, workspace, { owner: "x" })],
-            ["no owner", () => mount(globalThis.__makeHost(), workspace, {})],
+            ["no host",  () => mount(null, ws, { owner: "x" })],
+            ["no owner", () => mount(globalThis.__makeHost(), ws, {})],
             // ...a viewer that could take nothing in (§ 4).
-            ["no server door", () => MV.mount(globalThis.__makeHost(), workspace,
+            ["no server door", () => MV.mount(globalThis.__makeHost(), ws,
                                               { owner: "x" })],
             ["too narrow", () => mount(
-                globalThis.__makeHost(200, 350), workspace, { owner: "x" })],
+                globalThis.__makeHost(200, 350), ws, { owner: "x" })],
         ]) {
             let v, threw = false, disposeThrew = false;
             try { v = await run(); } catch (e) { threw = true; }
@@ -234,7 +321,7 @@ def test_mount_always_resolves_with_a_working_dispose():
         assert row["disposeThrew"] is False, f"{row['name']}: dispose did not work"
 
 
-def test_the_floor_is_the_stacked_minimum_not_the_row_sum():
+def test_the_floor_is_the_stacked_minimum_not_the_row_sum(app_at, pairs):
     """§ 8.2: "below the sum the card does not break — it STACKS, window above
     panel, and both are still usable. So the floor a host has to respect is the
     stacked minimum."
@@ -246,12 +333,12 @@ def test_the_floor_is_the_stacked_minimum_not_the_row_sum():
     Getting this backwards makes MolView refuse hosts where it would have worked
     perfectly well by stacking — which is the failure this pins.
     """
-    out = _run(
+    out = _run(app_at, pairs,
         """
         // A card whose stacked floor is 350 and whose side-by-side sum is 692.
-        const narrow = await mount(globalThis.__makeHost(500, 350), workspace,
+        const narrow = await mount(globalThis.__makeHost(500, 350), ws,
                                       { owner: "x" });
-        const broken = await mount(globalThis.__makeHost(200, 350), workspace,
+        const broken = await mount(globalThis.__makeHost(200, 350), ws,
                                       { owner: "x" });
         console.log(JSON.stringify({
             betweenSumAndFloor: narrow.ok,
@@ -270,14 +357,14 @@ def test_the_floor_is_the_stacked_minimum_not_the_row_sum():
     )
 
 
-def test_a_viewer_that_cannot_fit_draws_a_blank_card_with_the_error_in_it():
+def test_a_viewer_that_cannot_fit_draws_a_blank_card_with_the_error_in_it(app_at, pairs):
     """§ 8: "renders a blank card with the error written in it, rather than a
     half-built viewer."
     """
-    out = _run(
+    out = _run(app_at, pairs,
         """
         const host = globalThis.__makeHost(200, 350);
-        const viewer = await mount(host, workspace, { owner: "x" });
+        const viewer = await mount(host, ws, { owner: "x" });
         const card = host.querySelector(".molviewer-card");
         console.log(JSON.stringify({
             ok: viewer.ok,
@@ -300,7 +387,7 @@ def test_a_viewer_that_cannot_fit_draws_a_blank_card_with_the_error_in_it():
 # § 9.2 — the handle
 # ---------------------------------------------------------------------------
 
-def test_the_handle_contains_the_model_and_does_not_mirror_it():
+def test_the_handle_contains_the_model_and_does_not_mirror_it(app_at, pairs):
     """§ 9.2: "The handle CONTAINS the model; it does not mirror it … Adding a
     read to the handle that the model already answers is the specific move this
     rule forbids."
@@ -308,7 +395,7 @@ def test_the_handle_contains_the_model_and_does_not_mirror_it():
     A mirrored read is a second surface over the same fact, and one of the two is
     the one somebody forgets to update.
     """
-    out = _run(
+    out = _run(app_at, pairs,
         """
         const { viewer } = await mounted();
         const handleNames = Object.keys(viewer);
@@ -325,17 +412,17 @@ def test_the_handle_contains_the_model_and_does_not_mirror_it():
     )
 
 
-def test_playback_moves_the_frame_through_the_same_write_everyone_uses():
+def test_playback_moves_the_frame_through_the_same_write_everyone_uses(app_at, pairs):
     """§ 9.2: the handle owns the timer, but "playback lives in the mount layer
     and moves the frame through the same write everyone else uses (§ 6.4)".
 
     § 6.4: the write "tells EVERY subscriber regardless of what did the moving",
     so a subscriber never has to know which.
     """
-    out = _run(
+    out = _run(app_at, pairs,
         """
         const { viewer } = await mounted();
-        await viewer.data.installMolecule({ text: "x", filename: "x.xyz" });
+        await openIn(viewer, "H2");
         viewer.data.reloadFrames([[[0,0,0],[1,0,0]], [[2,0,0],[3,0,0]]]);
 
         const heard = [];
@@ -365,7 +452,7 @@ def test_playback_moves_the_frame_through_the_same_write_everyone_uses():
     assert out["playing"] is False, "pause must stop the timer"
 
 
-def test_a_movie_saves_the_frame_it_stops_on_and_none_it_passes():
+def test_a_movie_saves_the_frame_it_stops_on_and_none_it_passes(app_at, pairs):
     """§ 9.2, § 11.2b: "a frame the movie passes through is not one being
     looked at" -- while it plays the view context writes nothing, and its stop
     writes once, the frame it stopped on; playback is announced once per start
@@ -374,29 +461,27 @@ def test_a_movie_saves_the_frame_it_stops_on_and_none_it_passes():
     THE SILENT FAILURE: a slow movie -- a frame each 450 ms, past the lane's
     400 ms wait -- saves the view to the server at every frame it passes; or a
     stopped movie saves nothing and the page comes back on the frame it started
-    from.  Through the real mount: its playback, its model, its lane.
+    from.  Through the real mount: its playback, its model, its lane -- and
+    the real workspace, the lane's writes read on the wire and its draft read
+    back through its own door.
     """
-    out = _run(
+    out = _run(app_at, pairs,
         """
-        const writes = [];
-        const record = (tag, bytes) => {
-            writes.push({ tag, frame: bytes && bytes.frame });
-            return true;
-        };
-        const door = {
-            persist: (tag, bytes) => record(tag, bytes),
-            readState: async () => null,
-            pruneStatesAbove: () => {},
-            persistDraft: (tag, bytes) => record(tag, bytes),
-            readDraft: async () => null,
-        };
         const host = globalThis.__makeHost();
-        const viewer = await mount(host, door, { owner: "test" });
-        await viewer.data.installMolecule({ text: "x", filename: "x.xyz" });
+        const viewer = await mount(host, ws, { owner: "test" });
+        await openIn(viewer, "H2");
         viewer.data.reloadFrames([[[0,0,0],[1,0,0]], [[2,0,0],[3,0,0]],
                                   [[4,0,0],[5,0,0]]]);
-        await new Promise(r => setTimeout(r, 600));    // the load's own write
-        const lane = () => writes.filter((w) => w.tag === "test:ui");
+        await settled();                               // the load's own write
+        // THE LANE'S OWN FILE, named by the workspace itself: the id its
+        // draft is read under (`<owner>:ui`, § 11.2b).
+        await ws.readDraft("test:ui");
+        const laneId = __calls.filter((c) => c.url
+            && c.url.endsWith("/api/workspace-storage/read"))
+            .at(-1).body.workspace_id;
+        const lane = () => __calls.filter((c) => c.url
+            && c.url.endsWith("/api/workspace-storage/write")
+            && c.body.workspace_id === laneId).map((c) => c.body.data.frame);
         const before = lane().length;
 
         const told = [];
@@ -411,10 +496,12 @@ def test_a_movie_saves_the_frame_it_stops_on_and_none_it_passes():
         const during = lane().slice(before);
         viewer.pause();
         const stoppedOn = viewer.data.currentFrame();
-        await new Promise(r => setTimeout(r, 600));
+        await settled();
+        const after = lane().slice(before + during.length);
+        const kept = await ws.readDraft("test:ui");
         console.log(JSON.stringify({
-            passed, during, told,
-            after: lane().slice(before + during.length), stoppedOn,
+            passed, during, told, after, stoppedOn,
+            keptFrame: kept && kept.frame,
         }));
         """
     )
@@ -422,10 +509,13 @@ def test_a_movie_saves_the_frame_it_stops_on_and_none_it_passes():
     assert out["during"] == [], (
         f"the playing movie saved the view at frames it passed: {out['during']}"
     )
-    assert out["after"] == [{"tag": "test:ui", "frame": out["stoppedOn"]}], (
+    assert out["after"] == [out["stoppedOn"]], (
         f"its stop must save once, the frame it stopped on "
         f"({out['stoppedOn']}): {out['after']}"
     )
+    assert out["keptFrame"] == out["stoppedOn"], (
+        f"the view the workspace keeps is not on the frame the movie stopped "
+        f"on, so the page comes back elsewhere: {out['keptFrame']}")
     assert out["told"] == [True, False], (
         f"playback is told once as it starts and once as it stops, the "
         f"restart at a new speed not at all: {out['told']}"
@@ -436,7 +526,7 @@ def test_a_movie_saves_the_frame_it_stops_on_and_none_it_passes():
 # § 8.3 / § 8.5 — the card's own controls
 # ---------------------------------------------------------------------------
 
-def test_the_arrow_turns_and_the_handle_does_not():
+def test_the_arrow_turns_and_the_handle_does_not(app_at, pairs):
     """§ 8.3: "Rotating the handle itself would swap its width and height, which
     in the stacked layout turns a small grip into a tall rail lying across the
     window. Only the glyph turns."
@@ -444,7 +534,7 @@ def test_the_arrow_turns_and_the_handle_does_not():
     So folding must change a class on the CARD (which the stylesheet keys both
     layouts off) and leave the button's own box alone.
     """
-    out = _run(
+    out = _run(app_at, pairs,
         """
         const { host } = await mounted();
         const card = host.querySelector(".molviewer-card");
@@ -474,18 +564,18 @@ def test_the_arrow_turns_and_the_handle_does_not():
     )
 
 
-def test_the_frame_bar_appears_only_once_there_is_more_than_one_frame():
+def test_the_frame_bar_appears_only_once_there_is_more_than_one_frame(app_at, pairs):
     """§ 8: "the frame bar is the one piece that is not decided at mount: a viewer
     mounts before it has a structure, and the bar appears once a structure with
     more than one frame is loaded into it."
     """
-    out = _run(
+    out = _run(app_at, pairs,
         """
         const { host, viewer } = await mounted();
         const bar = host.querySelector(".molviewer-frames-bar");
         const atMount = bar.hidden;
 
-        await viewer.data.installMolecule({ text: "x", filename: "x.xyz" });
+        await openIn(viewer, "H2");
         const oneFrame = bar.hidden;
 
         viewer.data.reloadFrames([[[0,0,0],[1,0,0]], [[2,0,0],[3,0,0]]]);
@@ -504,7 +594,7 @@ def test_the_frame_bar_appears_only_once_there_is_more_than_one_frame():
     )
 
 
-def test_a_switch_and_a_selection_reach_the_drawing():
+def test_a_switch_and_a_selection_reach_the_drawing(app_at, pairs):
     """§ 9.5: the switches live in the selection store, and the renderEngine
     reads them "when working out a processed frame" (§ 9.6's table). § 10.5: a
     switch flip costs an overlay refresh; a change to the set of drawn atoms
@@ -521,10 +611,10 @@ def test_a_switch_and_a_selection_reach_the_drawing():
     So this one asserts across the seam — a switch set through the model's own
     door, and what arrives at the drawing.
     """
-    out = _run(
+    out = _run(app_at, pairs,
         """
         const { viewer } = await mounted();
-        await viewer.data.installMolecule({ text: "x", filename: "x.xyz" });
+        await openIn(viewer, "H2");
         // The load's own rebuild has to FINISH first. While it is in flight the
         // engine is in its rebuild window, where a switch is deliberately not
         // held and not drawn -- "the rebuild reads the switches when it runs"
@@ -566,7 +656,7 @@ def test_a_switch_and_a_selection_reach_the_drawing():
     )
 
 
-def test_the_switches_are_a_rail_of_buttons_outside_the_window():
+def test_the_switches_are_a_rail_of_buttons_outside_the_window(app_at, pairs):
     """§ 1.1 / § 8.5: icon buttons down the left edge, "always outside the
     canvas, never on top of the molecule" — Reset view, axes, atom labels, force
     vectors, unit cell, show-selected-only, and **measure**, in
@@ -584,7 +674,7 @@ def test_the_switches_are_a_rail_of_buttons_outside_the_window():
     Each reads its lit state from the store (§ 5.2), so a switch flipped
     somewhere else lights the right button with nothing kept in step.
     """
-    out = _run(
+    out = _run(app_at, pairs,
         """
         const { host, viewer } = await mounted();
         const card = host.querySelector(".molviewer-card");
@@ -651,7 +741,7 @@ def test_the_switches_are_a_rail_of_buttons_outside_the_window():
     )
 
 
-def test_an_open_menu_is_placed_against_its_own_trigger():
+def test_an_open_menu_is_placed_against_its_own_trigger(app_at, pairs):
     """§ 8.5: MolView's menus are controls the module draws, and a control that
     opens onto nothing is not one.
 
@@ -665,7 +755,7 @@ def test_an_open_menu_is_placed_against_its_own_trigger():
     nothing: the stylesheet parks the panel off-screen until something places it,
     so it was on screen the whole time at -9999px.
     """
-    out = _run(
+    out = _run(app_at, pairs,
         """
         const { host } = await mounted();
         const card = host.querySelector(".molviewer-card");
@@ -714,7 +804,7 @@ def test_an_open_menu_is_placed_against_its_own_trigger():
     )
 
 
-def test_a_menu_closes_on_a_click_elsewhere_and_leaves_nothing_behind():
+def test_a_menu_closes_on_a_click_elsewhere_and_leaves_nothing_behind(app_at, pairs):
     """§ 8.5 again, and § 8's teardown: "dispose still works".
 
     An open popover is fixed to the VIEWPORT, so the module listens for the
@@ -722,7 +812,7 @@ def test_a_menu_closes_on_a_click_elsewhere_and_leaves_nothing_behind():
     window and the document — outside the card — so nothing removes them when the
     card goes. Disposing has to.
     """
-    out = _run(
+    out = _run(app_at, pairs,
         """
         const { host, viewer } = await mounted();
         const card = host.querySelector(".molviewer-card");
@@ -768,7 +858,7 @@ def test_a_menu_closes_on_a_click_elsewhere_and_leaves_nothing_behind():
     )
 
 
-def test_each_write_costs_what_the_cost_table_says_it_costs():
+def test_each_write_costs_what_the_cost_table_says_it_costs(app_at, pairs):
     """§ 10.5: the pipeline "does the least work that still produces the correct
     result", and the cost is chosen by WHAT CHANGED — a frame swap, an overlay
     refresh, an append, or a rebuild.
@@ -784,10 +874,10 @@ def test_each_write_costs_what_the_cost_table_says_it_costs():
     So this drives the MODEL's own doors and counts what the drawing was asked
     to do. `addModelsAsFrames` is a movie reload; nothing else is.
     """
-    out = _run(
+    out = _run(app_at, pairs,
         """
         const { viewer } = await mounted();
-        await viewer.data.installMolecule({ text: "x", filename: "x.xyz" });
+        await openIn(viewer, "H2");
         viewer.data.reloadFrames([[[0,0,0],[1,0,0]], [[0,1,0],[1,1,0]]]);
         await new Promise((r) => setTimeout(r, 0));
 
@@ -837,7 +927,7 @@ def test_each_write_costs_what_the_cost_table_says_it_costs():
     )
 
 
-def test_the_readout_measures_from_the_truth_in_pick_order():
+def test_the_readout_measures_from_the_truth_in_pick_order(app_at, pairs):
     """§ 11.6: the readout's atoms come from the MEASUREMENT TRACK in pick order
     — "which is why the vertex of a three-atom angle is the atom picked second,
     not the middle one by number" — and its coordinates from the master copy at
@@ -845,18 +935,15 @@ def test_the_readout_measures_from_the_truth_in_pick_order():
 
     A selection can arrive with no pick order (All, Invert, a filter), a track
     cannot, so no geometric-vertex guess is asserted here.
+
+    The road's CO2 -- THREE atoms, fixed at load (§ 10.8) -- and a run's two
+    frames of it bent, delivered through the frame door: the geometry the
+    angles below are worked out on.
     """
-    out = _run(
+    out = _run(app_at, pairs,
         """
         const { host, viewer } = await mounted();
-        // THREE atoms, fixed at load (§ 10.8) — the frames below must match the
-        // identity the structure was opened with.
-        globalThis.__nextAtoms = [
-            { index: 0, element: "C", x: -1, y: 0, z: 0, regions: [] },
-            { index: 1, element: "C", x:  0, y: 0, z: 0, regions: [] },
-            { index: 2, element: "C", x:  0, y: 1, z: 0, regions: [] },
-        ];
-        await viewer.data.installMolecule({ text: "x", filename: "x.xyz" });
+        await openIn(viewer, "CO2");
         // A bent three-atom frame: 1 is the geometric middle, 0 is not.
         viewer.data.reloadFrames([
             [[-1, 0, 0], [0, 0, 0], [0, 1, 0]],
@@ -930,21 +1017,23 @@ def test_the_readout_measures_from_the_truth_in_pick_order():
     )
     assert out["emptyTrack"] is True, "nothing picked is nothing to say"
 
-    # § 1.1's formats, WORD FOR WORD.
-    assert out["one"] == ["C #2 — (0.000, 0.000, 0.000) Å"], out["one"]
+    # § 1.1's formats, WORD FOR WORD -- each atom named by its own element.
+    e1, e2, e3 = CO2["elements"]
+    assert out["one"] == [f"{e2} #2 — (0.000, 0.000, 0.000) Å"], out["one"]
     # EVERY picked atom's coordinates, then the derived answers: the position is
     # what a reader checks the distance against (§ 11.6).
     assert out["two"] == [
-        "C #2 — (0.000, 0.000, 0.000) Å",
-        "C #3 — (0.000, 1.000, 0.000) Å",
-        "|C #2 – C #3| = 1.000 Å",
+        f"{e2} #2 — (0.000, 0.000, 0.000) Å",
+        f"{e3} #3 — (0.000, 1.000, 0.000) Å",
+        f"|{e2} #2 – {e3} #3| = 1.000 Å",
         "Δ = (0.000, 1.000, 0.000) Å",
     ], out["two"]
 
     # Picked 1→0→2, so the vertex is atom 0 — off to the side, giving 45°. By
     # number or by geometry the vertex would be atom 1, giving 90°: the two
     # answers differ, which is what makes this test able to tell them apart.
-    assert out["picked"] == ["∠C #2 – C #1 – C #3 = 45.0°"], out["picked"]
+    assert out["picked"] == [f"∠{e2} #2 – {e1} #1 – {e3} #3 = 45.0°"], (
+        out["picked"])
     assert out["afterBulk"] == out["picked"], (
         "a bulk SELECTION changed the measurement — the two tracks are joined"
     )
@@ -953,8 +1042,8 @@ def test_the_readout_measures_from_the_truth_in_pick_order():
     assert out["laterFrame"] == out["picked"], (
         "the angle is 45° in both frames; only the coordinates should move"
     )
-    assert out["laterLines"][0] == "C #2 — (0.000, 0.000, 0.000) Å"
-    assert out["laterLines"][1] == "C #1 — (-2.000, 0.000, 0.000) Å", (
+    assert out["laterLines"][0] == f"{e2} #2 — (0.000, 0.000, 0.000) Å"
+    assert out["laterLines"][1] == f"{e1} #1 — (-2.000, 0.000, 0.000) Å", (
         "the readout did not re-read the master copy at the new frame: "
         f"{out['laterLines']}"
     )
@@ -969,7 +1058,7 @@ def test_the_readout_measures_from_the_truth_in_pick_order():
     )
 
 
-def test_a_known_pair_shows_its_literature_distance():
+def test_a_known_pair_shows_its_literature_distance(app_at, pairs):
     """§ 11.6: measuring two atoms whose elements are a known metal-anchor pair
     adds the reference distance beside the measured one.
 
@@ -983,17 +1072,13 @@ def test_a_known_pair_shows_its_literature_distance():
     It shows at ANY distance.  Appearing only near the reference would make
     silence mean two different things -- "not a known pair" and "you are far
     off" -- and the second is the one worth seeing.
+
+    Gold, a thiol sulfur on it and the carbon beyond (:data:`AU_S_C`).
     """
-    out = _run(
+    out = _run(app_at, pairs,
         """
         const { host, viewer } = await mounted();
-        globalThis.__nextAtoms = [
-            { index: 0, element: "Au", x: 0, y: 0, z: 0, regions: [] },
-            { index: 1, element: "S",  x: 0, y: 0, z: 2.412, regions: [] },
-            { index: 2, element: "C",  x: 0, y: 0, z: 4.0, regions: [] },
-        ];
-        await viewer.data.installMolecule({ text: "x", filename: "x.xyz" });
-        viewer.data.reloadFrames([[[0,0,0], [0,0,2.412], [0,0,4.0]]]);
+        await openIn(viewer, "Au S C");
         const card = host.querySelector(".molviewer-card");
         const readout = card.querySelector(".molviewer-overlay--measure");
         const refs = () => Array.from(
@@ -1041,7 +1126,7 @@ def test_a_known_pair_shows_its_literature_distance():
     assert out["single"] == [], f"one atom is not a pair: {out['single']}"
 
 
-def test_two_viewers_on_one_page_share_no_name():
+def test_two_viewers_on_one_page_share_no_name(app_at, pairs):
     """§ 5.6 and § 12.6: two mounts are two viewers that share nothing — and a
     NAME is something they can share by accident, because ids and radio-group
     names are global to the document, not to the card.
@@ -1051,12 +1136,12 @@ def test_two_viewers_on_one_page_share_no_name():
     hooks stayed ids, so a second viewer still duplicated `panel-page-cell` and
     the two sections beneath it.
     """
-    out = _run(
+    out = _run(app_at, pairs,
         """
         const first = globalThis.__makeHost();
         const second = globalThis.__makeHost();
-        await mount(first, workspace, { owner: "left" });
-        await mount(second, workspace, { owner: "right" });
+        await mount(first, ws, { owner: "left" });
+        await mount(second, ws, { owner: "right" });
 
         const ids = [];
         (function walk(node) {
@@ -1092,7 +1177,10 @@ def test_two_viewers_on_one_page_share_no_name():
 # ---------------------------------------------------------------------------
 
 
-def test_the_structure_leaves_through_the_door_and_its_facts_go_with_it():
+@pytest.mark.parametrize("which", ["water", "peptide, labelled"],
+                         ids=["a box", "residues"])
+def test_the_structure_leaves_through_the_door_and_its_facts_go_with_it(
+        app_at, pairs, which):
     """§ 11.7: what leaves is "what the viewer holds — the atoms, their positions,
     and the facts about them". NOT bytes: a coordinate document is a format the
     server owns, and a second writer in the browser is a second answer to what a
@@ -1109,11 +1197,11 @@ def test_the_structure_leaves_through_the_door_and_its_facts_go_with_it():
     truth's, the payload is `{structure, frames}`, and a one-frame structure
     asks no range (the dialog exists for a quantity there is only one of).
     """
-    out = _run(
+    out = _run(app_at, pairs,
         """
         const saved = [];
         const host = globalThis.__makeHost();
-        const viewer = await mount(host, workspace, {
+        const viewer = await mount(host, ws, {
             owner: "x",
             files: {
                 save: async (destination, stem, payload) => {
@@ -1123,7 +1211,7 @@ def test_the_structure_leaves_through_the_door_and_its_facts_go_with_it():
                 saveBinary: async () => ({ ok: true }),
             },
         });
-        await viewer.data.installMolecule({ text: "x", filename: "x.xyz" });
+        await openIn(viewer, __WHICH__);
 
         // A label, so there is something for the export to lose.
         viewer.data.pickAtom(0);
@@ -1139,14 +1227,13 @@ def test_the_structure_leaves_through_the_door_and_its_facts_go_with_it():
             sections: sections.length,
             destinations: saved.map(s => s.destination),
             stems:        saved.map(s => s.stem),
-            keys:         Object.keys(saved[0].payload.structure).sort(),
-            regions:      saved[0].payload.structure.metadata.regions,
+            envelope:     saved[0].payload.structure,
             framesSent:   saved.map(s => s.payload.frames !== undefined),
             dialogOpen:   !!document.body.querySelector(".molviewer-export-dialog"),
             identical:    JSON.stringify(saved[0].payload.structure)
                           === JSON.stringify(saved[1].payload.structure),
         }));
-        """
+        """.replace("__WHICH__", json.dumps(which))
     )
     assert out["sections"] == 2, (
         f"§ 11.3's menu is Data and Image — {out['sections']} section(s) found"
@@ -1155,7 +1242,8 @@ def test_the_structure_leaves_through_the_door_and_its_facts_go_with_it():
         "both destinations must go through the same door, differing only in the "
         f"destination they name: {out['destinations']}"
     )
-    assert out["stems"] == ["x", "x"], (
+    came_in = Path(pairs[which]).stem
+    assert out["stems"] == [came_in, came_in], (
         f"the stem is the name the structure came in under (§ 11.4): {out['stems']}"
     )
     assert out["dialogOpen"] is False, (
@@ -1171,25 +1259,39 @@ def test_the_structure_leaves_through_the_door_and_its_facts_go_with_it():
     # WHAT LEAVES, not merely that something did. Asserting only that bytes went
     # out is what let this ship a server-request payload into a `.molstruct.json`
     # — a good .xyz paired with a .json the codec cannot read, losing every label
-    # at the next open.
-    assert out["keys"] == ["elements", "metadata", "positions"], (
-        f"what leaves is not the structure the envelope defines: {out['keys']}"
+    # at the next open.  So what leaves is read by the server's ONE reader of
+    # the envelope (`struct_from_body`, web-api.md § 1), which refuses a key
+    # the envelope does not define, and holds the atoms the pair holds and
+    # the label written here.
+    from molbuilder.web.blueprints._shared import struct_from_body
+    from support.road import road_structure
+    left = struct_from_body({"structure": out["envelope"]})
+    made = road_structure(Path(pairs[which]))
+    assert (left.elements, left.positions.tolist()) == (
+        made.elements, made.positions.tolist()), (
+        "what leaves is not the atoms the viewer holds")
+    assert left.regions == dict(made.regions, **{"L-electrode": [0]}), (
+        f"the labels did not leave with the atoms: {left.regions}"
     )
-    assert out["regions"] == {"L-electrode": [0]}, (
-        f"the labels did not leave with the atoms: {out['regions']}"
-    )
+    # ...AND EVERY OTHER FACT THE PAIR HOLDS (§ 11.3: "the atoms, their
+    # positions, and the facts about them"): its box, and its residues.
+    assert (left.cell is None) == (made.cell is None) and (
+        made.cell is None or np.allclose(left.cell, made.cell)), (
+        f"the box did not leave with the atoms: {left.cell}")
+    assert list(left.residue_names) == list(made.residue_names), (
+        f"the residues did not leave with the atoms: {left.residue_names}")
 
 
-def test_a_picture_is_the_view_and_leaves_through_saveBinary():
+def test_a_picture_is_the_view_and_leaves_through_saveBinary(app_at, pairs):
     """§ 11.3's Image, single frame: the dialog asks a RESOLUTION (the user's
     2026-08-19 addition; no range — one frame never asks one), the picture is
     asked of the drawing (§ 9.7's bounded asking), and the bytes leave
     through the door's binary half named `<stem>.png`."""
-    out = _run(
+    out = _run(app_at, pairs,
         """
         const saved = [];
         const host = globalThis.__makeHost();
-        const viewer = await mount(host, workspace, {
+        const viewer = await mount(host, ws, {
             owner: "x",
             files: {
                 save: async () => ({ ok: true }),
@@ -1200,7 +1302,7 @@ def test_a_picture_is_the_view_and_leaves_through_saveBinary():
                 },
             },
         });
-        await viewer.data.installMolecule({ text: "x", filename: "wire.xyz" });
+        await openIn(viewer, "H2");
 
         const card = host.querySelector(".molviewer-card");
         const imageRow = card.querySelectorAll(".molviewer-export-section")[1];
@@ -1218,23 +1320,24 @@ def test_a_picture_is_the_view_and_leaves_through_saveBinary():
         "a one-frame Image export asked a frame range (§ 11.3: it never asks)"
     )
     assert out["saved"] == [{"destination": "download",
-                             "filename": "wire.png", "isBlob": True}], (
+                             "filename": Path(pairs["H2"]).stem + ".png",
+                             "isBlob": True}], (
         f"the picture did not leave as <stem>.png through saveBinary: "
         f"{out['saved']}"
     )
 
 
-def test_a_trajectorys_data_export_asks_the_range_and_sends_it():
+def test_a_trajectorys_data_export_asks_the_range_and_sends_it(app_at, pairs):
     """§ 11.3: the dialog opens ON THE DISPLAYED FRAME (accepting it unchanged
     is the common case), widening it is what the dialog is for, and the range
     reaches `exportFile` — the frames ride inside the envelope (§ 11.7), and
     the stem names both ends (§ 11.4's `_frameA-B`).
     """
-    out = _run(
+    out = _run(app_at, pairs,
         """
         const saved = [];
         const host = globalThis.__makeHost();
-        const viewer = await mount(host, workspace, {
+        const viewer = await mount(host, ws, {
             owner: "x",
             files: {
                 save: async (destination, stem, payload) => {
@@ -1244,7 +1347,7 @@ def test_a_trajectorys_data_export_asks_the_range_and_sends_it():
                 saveBinary: async () => ({ ok: true }),
             },
         });
-        await viewer.data.installMolecule({ text: "x", filename: "wire.xyz" });
+        await openIn(viewer, "H2");
         viewer.data.addFrames([
             [[0,0,1],[1,0,1]], [[0,0,2],[1,0,2]], [[0,0,3],[1,0,3]],
         ]);
@@ -1283,7 +1386,7 @@ def test_a_trajectorys_data_export_asks_the_range_and_sends_it():
     assert out["opened"]["defaults"] == ["2", "2"], (
         f"the dialog must open on the DISPLAYED frame: {out['opened']['defaults']}"
     )
-    assert out["stem"] == "wire_frame1-3", (
+    assert out["stem"] == Path(pairs["H2"]).stem + "_frame1-3", (
         f"the stem names both ends by their index (§ 11.4): {out['stem']!r}"
     )
     assert out["frameCount"] == 3, (
@@ -1296,17 +1399,17 @@ def test_a_trajectorys_data_export_asks_the_range_and_sends_it():
 # § 8.4 / § 9.5 — the panel
 # ---------------------------------------------------------------------------
 
-def test_switching_editors_redraws_the_panel_and_moves_no_selection():
+def test_switching_editors_redraws_the_panel_and_moves_no_selection(app_at, pairs):
     """§ 9.5: "the selection is the truth; click and filter are two EDITORS of
     it. Switching between them does not touch what is selected."
 
     § 13.3: "moving between click and filter mode leaves the selection exactly as
     it was."
     """
-    out = _run(
+    out = _run(app_at, pairs,
         """
         const { host, viewer } = await mounted();
-        await viewer.data.installMolecule({ text: "x", filename: "x.xyz" });
+        await openIn(viewer, "H2");
         viewer.data.selection.add([0, 1]);
 
         const card = host.querySelector(".molviewer-card");
@@ -1327,7 +1430,7 @@ def test_switching_editors_redraws_the_panel_and_moves_no_selection():
     )
 
 
-def test_the_page_tabs_are_the_switch_the_stylesheet_draws():
+def test_the_page_tabs_are_the_switch_the_stylesheet_draws(app_at, pairs):
     """§ 8.1: the panel has two pages and a tab bar that switches them — and the
     carried stylesheet is what draws that bar, so the markup is as much its
     contract as the class name is.
@@ -1342,7 +1445,7 @@ def test_the_page_tabs_are_the_switch_the_stylesheet_draws():
     Two viewers on a page get two groups, because a radio group is named
     document-wide (§ 5.6: a viewer owns everything in it).
     """
-    out = _run(
+    out = _run(app_at, pairs,
         """
         const { host } = await mounted();
         const card = host.querySelector(".molviewer-card");
@@ -1362,7 +1465,7 @@ def test_the_page_tabs_are_the_switch_the_stylesheet_draws():
 
         // A second viewer on the same page: its tabs are its own.
         const otherHost = globalThis.__makeHost();
-        await mount(otherHost, workspace, { owner: "second-viewer" });
+        await mount(otherHost, ws, { owner: "second-viewer" });
         const otherOptions = otherHost.querySelector(".molviewer-panel-tab-switch").children;
 
         console.log(JSON.stringify({
@@ -1390,16 +1493,16 @@ def test_the_page_tabs_are_the_switch_the_stylesheet_draws():
     )
 
 
-def test_the_atom_list_reads_one_based_and_a_click_goes_through_the_store():
+def test_the_atom_list_reads_one_based_and_a_click_goes_through_the_store(app_at, pairs):
     """§ 11.5: the first atom reads as #1 everywhere even though the code sees 0.
 
     And the panel holds nothing: a click asks the STORE to change, and the list
     redraws from the snapshot that comes back (§ 8.4).
     """
-    out = _run(
+    out = _run(app_at, pairs,
         """
         const { host, viewer } = await mounted();
-        await viewer.data.installMolecule({ text: "x", filename: "x.xyz" });
+        await openIn(viewer, "H2");
         const card = host.querySelector(".molviewer-card");
         const rows = card.querySelectorAll(".molviewer-atoms-table")[0].children;
 
@@ -1422,7 +1525,7 @@ def test_the_atom_list_reads_one_based_and_a_click_goes_through_the_store():
     assert "1 of 2 selected" in out["count"]
 
 
-def test_an_atom_row_ticks_shows_its_labels_and_lets_one_be_taken_off():
+def test_an_atom_row_ticks_shows_its_labels_and_lets_one_be_taken_off(app_at, pairs):
     """The atom list is a list of things you TICK, and each row shows the labels
     that atom carries with a × to take one off.
 
@@ -1439,17 +1542,16 @@ def test_an_atom_row_ticks_shows_its_labels_and_lets_one_be_taken_off():
     A reserved label is an ordinary one (§ 6.6): it arrives in the same list,
     wears the same chip, and comes off the same way. There is no second kind of
     tag and no case for it here.
+
+    The peptide the build door builds, its residues the builder's own, its
+    first atom carrying ``bridge`` and the reserved label.
     """
-    out = _run(
+    from support.road import road_structure
+    pep = road_structure(Path(pairs["peptide, labelled"]))
+    out = _run(app_at, pairs,
         """
-        globalThis.__nextAtoms = [
-            { index: 0, element: "C", x: 0, y: 0, z: 0,
-              regions: ["bridge", "frozen_atoms"] },
-            { index: 1, element: "O", x: 1, y: 0, z: 0, regions: [] },
-        ];
-        globalThis.__nextStructure = { residue_names: ["ALA", "ALA"] };
         const { host, viewer } = await mounted();
-        await viewer.data.installMolecule({ text: "x", filename: "x.xyz" });
+        await openIn(viewer, "peptide, labelled");
         const card = host.querySelector(".molviewer-card");
         const rows = () => card.querySelectorAll(".molviewer-atoms-table")[0].children;
 
@@ -1461,6 +1563,9 @@ def test_an_atom_row_ticks_shows_its_labels_and_lets_one_be_taken_off():
             labels:  first.querySelectorAll(".molviewer-atoms-column-labels .molviewer-selection-tag")
                           .map(t => t.children[0].textContent),
         };
+        // THE ELEMENT, NOT THE ATOM'S NAME: on the second atom the two differ.
+        const secondElement = rows()[1]
+            .querySelectorAll(".molviewer-atoms-column-el")[0].textContent;
 
         // THE TICK. Driven as a change on the box itself, not a row click.
         const box = first.querySelectorAll(".molviewer-atoms-column-check input")[0];
@@ -1475,13 +1580,15 @@ def test_an_atom_row_ticks_shows_its_labels_and_lets_one_be_taken_off():
         // THE ×, on an atom nothing has selected — and on the RESERVED label,
         // because § 6.6 says it comes off exactly like any other.
         const selectionBefore = viewer.data.selection.get();
-        rows()[0].querySelectorAll(".molviewer-atoms-column-labels .molviewer-selection-tag-remove")[1]
+        rows()[0].querySelectorAll(".molviewer-atoms-column-labels .molviewer-selection-tag")
+                 .find((t) => t.children[0].textContent === "frozen_atoms")
+                 .querySelector(".molviewer-selection-tag-remove")
                  .dispatch("click", {});
         const left = rows()[0].querySelectorAll(".molviewer-atoms-column-labels .molviewer-selection-tag")
                               .map(t => t.children[0].textContent);
 
         console.log(JSON.stringify({
-            columns, tickedBefore, afterTick, afterClear,
+            columns, secondElement, tickedBefore, afterTick, afterClear,
             selectionBefore, left,
             selectionAfter: viewer.data.selection.get(),
             otherAtomUntouched: viewer.data.getAtoms()[1].labels,
@@ -1489,8 +1596,13 @@ def test_an_atom_row_ticks_shows_its_labels_and_lets_one_be_taken_off():
         """
     )
     assert out["columns"]["index"] == "1", "the row must read 1-based (§ 11.5)"
-    assert out["columns"]["element"] == "C"
-    assert out["columns"]["residue"] == "ALA", (
+    assert out["columns"]["element"] == pep.elements[0]
+    assert pep.atom_names[1] != pep.elements[1], pep.atom_names[:2]
+    assert out["secondElement"] == pep.elements[1], (
+        f"the element column shows something else -- the atom's name? "
+        f"{out['secondElement']!r} for {pep.elements[1]!r} "
+        f"(named {pep.atom_names[1]!r})")
+    assert out["columns"]["residue"] == pep.residue_names[0], (
         "§ 6.2 makes the residue one of the three facts an atom carries"
     )
     assert out["columns"]["labels"] == ["bridge", "frozen_atoms"], (
@@ -1517,21 +1629,7 @@ def test_an_atom_row_ticks_shows_its_labels_and_lets_one_be_taken_off():
     )
 
 
-def _wire(*rows):
-    """The notices a load really carries — built BY THE PRODUCER.
-
-    `periodicity_gate._wire` is *"THE ONLY PLACE the wire shape is written"*,
-    and a test that types the shape out again is a second place.
-
-    Each row is what `_notice` takes — `(severity, message, where)` — so what
-    reaches the stand-in server is a row the browser could actually receive,
-    `about` derived and all.
-    """
-    from molbuilder.periodicity_gate import _notice
-    return json.dumps([_notice(*row) for row in rows])
-
-
-def test_a_notice_is_drawn_where_its_subject_is_and_the_tab_says_so():
+def test_a_notice_is_drawn_where_its_subject_is_and_the_tab_says_so(app_at, pairs):
     """A message goes where it can be ACTED ON, not where it came from.
 
     A warning about the box names an axis and a clearance — those numbers are
@@ -1546,17 +1644,17 @@ def test_a_notice_is_drawn_where_its_subject_is_and_the_tab_says_so():
     warn into a page nobody is on. The TAB carries a mark — visible from either
     page — and the words stay where they are useful. Opening the page clears it,
     because by then it has been seen.
+
+    The notices are the load's own (§ 6.8): crowded water whose box was put
+    where it does not hold it answers a warning about the box, a warning about
+    its atoms and a remark -- so a warning not about the box must not land
+    beside it (routed by severity, it would).
     """
-    out = _run(
+    out = _run(app_at, pairs,
         """
-        globalThis.__nextNotices = """ + _wire(
-            ("warn", "the box does NOT contain the structure along z.",
-             "cell.atoms_outside"),
-            ("info", "something about the structure as a whole.",
-             "structure.note"),
-        ) + """;
         const { host, viewer } = await mounted();
-        await viewer.data.installMolecule({ text: "x", filename: "x.xyz" });
+        await openIn(viewer, "water, outside its box");
+        const said = __answered.find((a) => a && a.structure).notices || [];
         const card = host.querySelector(".molviewer-card");
 
         // The stand-in understands tags, classes and descendant chains -- no
@@ -1588,19 +1686,24 @@ def test_a_notice_is_drawn_where_its_subject_is_and_the_tab_says_so():
         // Open the Cell page: the mark has done its job.
         card.querySelectorAll(".molviewer-panel-tab-option input")[1]
             .dispatch("change", {});
-        console.log(JSON.stringify({ before, markedAfterOpening: marked() }));
+        console.log(JSON.stringify({ said, before,
+                                     markedAfterOpening: marked() }));
         """
     )
-    assert out["before"]["onCell"] == [
-        "the box does NOT contain the structure along z."
-    ], (
+    about_the_box = [n["message"] for n in out["said"] if n["about"] == "cell"]
+    the_rest = [n["message"] for n in out["said"] if n["about"] != "cell"]
+    assert about_the_box and the_rest, (
+        f"the load answered no notice of each kind to route: {out['said']}")
+    assert any(n["about"] != "cell" and n["severity"] == "warn"
+               for n in out["said"]), (
+        f"no warning about anything but the box, so a routing by severity "
+        f"could not be told from one by subject: {out['said']}")
+    assert out["before"]["onCell"] == about_the_box, (
         f"the box warning is not beside the box: {out['before']}. Routed by "
         f"where it came from, it lands above the atom list — nowhere near the "
         f"only control that can fix it"
     )
-    assert out["before"]["aboveTabs"] == [
-        "something about the structure as a whole."
-    ], (
+    assert out["before"]["aboveTabs"] == the_rest, (
         f"a notice about no particular part was hidden on the Cell page, or the "
         f"cell warning was drawn twice: {out['before']}"
     )
@@ -1613,7 +1716,7 @@ def test_a_notice_is_drawn_where_its_subject_is_and_the_tab_says_so():
     )
 
 
-def test_the_names_molview_offers_each_read_differently_and_frozen_stands_out():
+def test_the_names_molview_offers_each_read_differently_and_frozen_stands_out(app_at, pairs):
     """MolView offers names before anyone has used them — `L-electrode`,
     `R-electrode`, `bridge`, `interface`, `buffer` — because nearly every device structure
     needs them and typing one by hand is where `L-Electrode` comes from. They
@@ -1631,19 +1734,14 @@ def test_the_names_molview_offers_each_read_differently_and_frozen_stands_out():
     handed in at mount -- five pages would each have had to repeat them (the
     user, 2026-08-03) -- and MolView keeps its own two.
     """
-    out = _run(
+    out = _run(app_at, pairs,
         """
-        globalThis.__nextAtoms = [
-            { index: 0, element: "C", x: 0, y: 0, z: 0,
-              regions: ["frozen_atoms", "L-electrode", "bridge", "my-notes"] },
-            { index: 1, element: "O", x: 1, y: 0, z: 0, regions: [] },
-        ];
         const m = await mounted();
-        await m.viewer.data.installMolecule({ text: "x", filename: "x.xyz" });
+        await openIn(m.viewer, "H2, the offered names");
         const chips = m.host.querySelector(".molviewer-card")
             .querySelectorAll(".molviewer-atoms-column-labels .molviewer-selection-tag")
             .map(t => ({ name: t.children[0].textContent,
-                         classes: Array.from(t._classes).sort().join(" "),
+                         classes: t.className.split(" ").sort().join(" "),
                          title: t.title || null }));
         console.log(JSON.stringify({ chips }));
         """
@@ -1675,7 +1773,7 @@ def test_the_names_molview_offers_each_read_differently_and_frozen_stands_out():
     )
 
 
-def test_typing_a_reserved_name_says_what_it_does():
+def test_typing_a_reserved_name_says_what_it_does(app_at, pairs):
     """`web/molview.md`, *Typing a reserved name is allowed, and the viewer
     says so*: nothing refuses it, but the moment what is typed matches a
     reserved name, the line under the box says it is reserved and what it
@@ -1685,13 +1783,10 @@ def test_typing_a_reserved_name_says_what_it_does():
 
     MUTATION THIS MUST FAIL AGAINST: the box's input listener dropped (only
     the hover titles left, as before 2026-10-13)."""
-    out = _run(
+    out = _run(app_at, pairs,
         """
-        globalThis.__nextAtoms = [
-            { index: 0, element: "C", x: 0, y: 0, z: 0, regions: [] },
-        ];
         const { host, viewer } = await mounted();
-        await viewer.data.installMolecule({ text: "x", filename: "x.xyz" });
+        await openIn(viewer, "water");
         const card = host.querySelector(".molviewer-card");
         const chooser = card.querySelector(".molviewer-selection-assign-select");
         const box = card.querySelector(".molviewer-selection-new-label");
@@ -1714,7 +1809,7 @@ def test_typing_a_reserved_name_says_what_it_does():
     assert out["plain"] is True, out
 
 
-def test_the_labels_in_play_are_offered_so_none_has_to_be_retyped():
+def test_the_labels_in_play_are_offered_so_none_has_to_be_retyped(app_at, pairs):
     """A label is offered, never retyped — a typo while retyping makes a SECOND
     label that looks like the first, which is a whole extra region as far as
     anything downstream is concerned.
@@ -1729,15 +1824,10 @@ def test_the_labels_in_play_are_offered_so_none_has_to_be_retyped():
     step. A predefined name is a SPELLING, not a meaning: MolView assigns none of
     them (§ 6.6).
     """
-    out = _run(
+    out = _run(app_at, pairs,
         """
-        globalThis.__nextAtoms = [
-            { index: 0, element: "C", x: 0, y: 0, z: 0,
-              regions: ["bridge", "frozen_atoms"] },
-            { index: 1, element: "O", x: 1, y: 0, z: 0, regions: ["bridge"] },
-        ];
         const { host, viewer } = await mounted();
-        await viewer.data.installMolecule({ text: "x", filename: "x.xyz" });
+        await openIn(viewer, "H2, bridged");
         const card = host.querySelector(".molviewer-card");
         const chooser = card.querySelector(".molviewer-selection-assign-select");
         const box = card.querySelector(".molviewer-selection-new-label");
@@ -1806,7 +1896,7 @@ def test_the_labels_in_play_are_offered_so_none_has_to_be_retyped():
     )
 
 
-def test_typing_in_a_filter_row_does_not_replace_the_control_being_typed_in():
+def test_typing_in_a_filter_row_does_not_replace_the_control_being_typed_in(app_at, pairs):
     """§ 8.4: the filter "is edited a row at a time... A surface that only
     accepted the whole set of rows at once would make the panel rebuild and
     re-send state it was in the middle of editing."
@@ -1822,10 +1912,10 @@ def test_typing_in_a_filter_row_does_not_replace_the_control_being_typed_in():
     it is answerable here. What must survive is the node; what must change is
     only the store.
     """
-    out = _run(
+    out = _run(app_at, pairs,
         """
         const { host, viewer } = await mounted();
-        await viewer.data.installMolecule({ text: "x", filename: "x.xyz" });
+        await openIn(viewer, "H2");
         viewer.data.selection.setEditor("filter");
         viewer.data.selection.addFilter();
         const card = host.querySelector(".molviewer-card");
@@ -1882,7 +1972,7 @@ def test_typing_in_a_filter_row_does_not_replace_the_control_being_typed_in():
     )
 
 
-def test_by_label_offers_the_defined_names_and_nothing_else():
+def test_by_label_offers_the_defined_names_and_nothing_else(app_at, pairs):
     """§ 9.5: what is worth offering is read from the structure — and for a label
     rule, what is worth offering is the whole of what can match.
 
@@ -1892,14 +1982,10 @@ def test_by_label_offers_the_defined_names_and_nothing_else():
     chooser. So `by label` CHOOSES; the other three rules still type, because an
     element symbol, an index range and a residue name are typed, not chosen.
     """
-    out = _run(
+    out = _run(app_at, pairs,
         """
-        globalThis.__nextAtoms = [
-            { index: 0, element: "C", x: 0, y: 0, z: 0, regions: ["custom-tag"] },
-            { index: 1, element: "O", x: 1, y: 0, z: 0, regions: [] },
-        ];
         const { host, viewer } = await mounted();
-        await viewer.data.installMolecule({ text: "x", filename: "x.xyz" });
+        await openIn(viewer, "H2, a label of its own");
         viewer.data.selection.setEditor("filter");
         const card = host.querySelector(".molviewer-card");
         card.querySelector(".molviewer-selection-add-filter-row").click();
@@ -1983,14 +2069,14 @@ def test_by_label_offers_the_defined_names_and_nothing_else():
     )
 
 
-def test_a_filter_row_is_added_typed_and_removed_from_the_panel():
+def test_a_filter_row_is_added_typed_and_removed_from_the_panel(app_at, pairs):
     """§ 8.4: "a user adds a row, types in it, changes its kind, removes it" —
     each its own change, because that is what the controls are.
     """
-    out = _run(
+    out = _run(app_at, pairs,
         """
         const { host, viewer } = await mounted();
-        await viewer.data.installMolecule({ text: "x", filename: "x.xyz" });
+        await openIn(viewer, "H2");
         viewer.data.selection.setEditor("filter");
         const card = host.querySelector(".molviewer-card");
 
@@ -2018,7 +2104,7 @@ def test_a_filter_row_is_added_typed_and_removed_from_the_panel():
     assert out["afterRemove"] == []
 
 
-def test_the_view_menu_holds_all_four_drawing_settings():
+def test_the_view_menu_holds_all_four_drawing_settings(app_at, pairs):
     """§ 1.1: "The View menu holds style (stick, ball & stick, sphere, line), a
     radius slider from 0.2 to 2.5 that scales stick thickness / sphere size /
     line width, and a background colour with preset swatches plus a picker. One
@@ -2033,7 +2119,7 @@ def test_the_view_menu_holds_all_four_drawing_settings():
     write them: two of the four settings the menu promises were unreachable, and
     the stylesheet had been carrying their design the whole time.
     """
-    out = _run(
+    out = _run(app_at, pairs,
         """
         const { host, viewer } = await mounted();
         const card = host.querySelector(".molviewer-card");
@@ -2106,7 +2192,7 @@ def test_the_view_menu_holds_all_four_drawing_settings():
     assert out["litAfter"] == 1, "the chosen swatch must light, and only it"
 
 
-def test_the_view_menu_opens_showing_what_the_store_already_says():
+def test_the_view_menu_opens_showing_what_the_store_already_says(app_at, pairs):
     """§ 8.5: "None of them holds a fact of its own."
 
     `view.subscribe` hands nothing over when you subscribe — unlike
@@ -2120,7 +2206,7 @@ def test_the_view_menu_opens_showing_what_the_store_already_says():
     The menu opened claiming nothing was selected while the drawing was already
     drawing sticks.
     """
-    out = _run(
+    out = _run(app_at, pairs,
         """
         const { host, viewer } = await mounted();
         const card = host.querySelector(".molviewer-card");
@@ -2152,7 +2238,7 @@ def test_the_view_menu_opens_showing_what_the_store_already_says():
     )
 
 
-def test_the_projection_toggle_reads_the_store_not_its_own_attribute():
+def test_the_projection_toggle_reads_the_store_not_its_own_attribute(app_at, pairs):
     """§ 8.5: every control reads its state back from `view`, "never from what
     it last did".
 
@@ -2167,7 +2253,7 @@ def test_the_projection_toggle_reads_the_store_not_its_own_attribute():
     the test — if the DOM were where the setting lived, that write would matter,
     and it must not.
     """
-    out = _run(
+    out = _run(app_at, pairs,
         """
         const { host, viewer } = await mounted();
         const card = host.querySelector(".molviewer-card");
@@ -2208,7 +2294,7 @@ def test_the_projection_toggle_reads_the_store_not_its_own_attribute():
     )
 
 
-def test_the_speed_box_sets_playback_and_shows_what_playback_took():
+def test_the_speed_box_sets_playback_and_shows_what_playback_took(app_at, pairs):
     """§ 8.5: "None of them holds a fact of its own." § 9.2: the handle exposes
     what a viewer DOES, not the knobs it does it with.
 
@@ -2220,7 +2306,7 @@ def test_the_speed_box_sets_playback_and_shows_what_playback_took():
     Now the handle owns it in the module's own unit, and the box is a control
     over it like any other: it sets, then shows what was taken.
     """
-    out = _run(
+    out = _run(app_at, pairs,
         """
         const { host, viewer } = await mounted();
         const card = host.querySelector(".molviewer-card");
@@ -2275,7 +2361,7 @@ def test_the_speed_box_sets_playback_and_shows_what_playback_took():
     )
 
 
-def test_the_slowest_setting_really_is_the_slowest_setting():
+def test_the_slowest_setting_really_is_the_slowest_setting(app_at, pairs):
     """§ 1.1 offers 20–3000 ms per frame. The top of that range did not work.
 
     Speed was carried as frames per second, and the guard against a zero rate
@@ -2290,10 +2376,10 @@ def test_the_slowest_setting_really_is_the_slowest_setting():
     moves once. `setInterval` never fires early, so a loaded machine can only
     make the count lower — and it is already zero.
     """
-    out = _run(
+    out = _run(app_at, pairs,
         """
         const { viewer } = await mounted();
-        await viewer.data.installMolecule({ text: "x", filename: "x.xyz" });
+        await openIn(viewer, "H2");
         viewer.data.reloadFrames([[[0,0,0],[1,0,0]], [[2,0,0],[3,0,0]]]);
 
         let moved = 0;
@@ -2314,7 +2400,7 @@ def test_the_slowest_setting_really_is_the_slowest_setting():
     )
 
 
-def test_a_read_only_viewer_hides_the_control_the_gate_would_swallow():
+def test_a_read_only_viewer_hides_the_control_the_gate_would_swallow(app_at, pairs):
     """§ 9.4: "A control that would do nothing should not be offered … MolView
     hides the ones it draws — the label box, the edit operations."
 
@@ -2322,12 +2408,14 @@ def test_a_read_only_viewer_hides_the_control_the_gate_would_swallow():
     only thing standing between a read-only viewer and a changed structure" — so
     this test checks the hiding, and the model tests check the gate.
     """
-    out = _run(
+    out = _run(app_at, pairs,
         """
         async function panelFor(mode) {
             const host = globalThis.__makeHost();
-            const viewer = await mount(host, workspace, { owner: "x", mode });
-            await viewer.data.installMolecule({ text: "x", filename: "x.xyz" });
+            // Each its own owner, so neither reads the other's saved work.
+            const viewer = await mount(host, ws,
+                                       { owner: mode || "editable", mode });
+            await openIn(viewer, "H2");
             const card = host.querySelector(".molviewer-card");
             return {
                 assignHidden: card.querySelector(".molviewer-selection-assign").hidden,
@@ -2350,7 +2438,7 @@ def test_a_read_only_viewer_hides_the_control_the_gate_would_swallow():
     )
 
 
-def test_loading_a_structure_reaches_the_drawing():
+def test_loading_a_structure_reaches_the_drawing(app_at, pairs):
     """The first attempt's worst bug, guarded.
 
     A rename left `mount` asking for a factory the module no longer published,
@@ -2363,11 +2451,11 @@ def test_loading_a_structure_reaches_the_drawing():
     not replace the browser (§ 13.2's third level) — nothing here proves anything
     LOOKS right — but it does prove the chain is joined.
     """
-    out = _run(
+    out = _run(app_at, pairs,
         """
         globalThis.__resetCalls();
         const { viewer } = await mounted();
-        await viewer.data.installMolecule({ text: "x", filename: "x.xyz" });
+        await openIn(viewer, "H2");
         await waitForDrawing(() => globalThis.__callNames().includes("addModelsAsFrames"),
                     "addModelsAsFrames after a load");
         const afterLoad = globalThis.__callNames().slice();
@@ -2400,7 +2488,7 @@ def test_loading_a_structure_reaches_the_drawing():
 # § 9.2 — what leaves through the handle is narrower than the module
 # ---------------------------------------------------------------------------
 
-def test_the_handle_hands_out_surfaces_not_the_stores():
+def test_the_handle_hands_out_surfaces_not_the_stores(app_at, pairs):
     """User, 2026-08-31: *"why would you expose all internal when there is no
     need for outside user to have them?"*
 
@@ -2409,7 +2497,7 @@ def test_the_handle_hands_out_surfaces_not_the_stores():
     which decides measuring-vs-selecting, so `toggle` must not be reachable
     beside it.
     """
-    out = _run("""
+    out = _run(app_at, pairs, """
         const { viewer } = await mounted();
         console.log(JSON.stringify({
             selToggle:  typeof viewer.data.selection.toggle,
@@ -2443,18 +2531,18 @@ def test_the_handle_hands_out_surfaces_not_the_stores():
 # § 11.6 — the ruler's marks carry the ORDER
 # ---------------------------------------------------------------------------
 
-def test_a_pick_reaches_the_drawing_as_a_mark_then_an_arrow():
+def test_a_pick_reaches_the_drawing_as_a_mark_then_an_arrow(app_at, pairs):
     """The whole chain, end to end: a click goes through `pickAtom`, the engine
     derives the marks, and the sealed layer draws them — one pick a mark, two
     an arrow running first→second (§ 11.6).
 
-    Two atoms, because that is what this harness's server stand-in returns
-    whatever is installed; the three-pick chain is covered where the drawing
-    layer is driven directly (`test_molview_3dmol_embed.py`).
+    The road's H2: two atoms, and the three-pick chain is covered where the
+    drawing layer is driven directly (`test_molview_3dmol_embed.py`).  Its
+    atoms differ along z alone, so the arrow's ends are read whole.
     """
-    out = _run("""
+    out = _run(app_at, pairs, """
         const { viewer } = await mounted();
-        await viewer.data.installMolecule({ text: "x", filename: "x.xyz" });
+        await openIn(viewer, "H2");
         await waitForDrawing(() => globalThis.__lastCall("addModelsAsFrames"),
                              "the structure never reached the window");
         const frame = viewer.data.getFrameAllAtoms(viewer.data.currentFrame());
@@ -2468,20 +2556,22 @@ def test_a_pick_reaches_the_drawing_as_a_mark_then_an_arrow():
         globalThis.__resetCalls();
         viewer.data.pickAtom(0);
         const arrow = globalThis.__lastCall("addArrow");
+        const at = (p) => p ? [p.x, p.y, p.z] : null;
         console.log(JSON.stringify({
             one,
             twoArrows: globalThis.__countCalls("addArrow"),
-            start: arrow ? arrow.args[0].start.x : null,
-            end:   arrow ? arrow.args[0].end.x   : null,
-            atom1x: frame[1][0], atom0x: frame[0][0],
+            start: arrow ? at(arrow.args[0].start) : null,
+            end:   arrow ? at(arrow.args[0].end)   : null,
+            atom1: frame[1], atom0: frame[0],
         }));
     """)
     assert out["one"]["arrows"] == 0, "one pick has no direction to draw"
     assert out["one"]["marks"] >= 1, "...but it is marked, or the pick is invisible"
     assert out["twoArrows"] == 1, "the second pick makes it an arrow"
-    assert (out["start"], out["end"]) == (out["atom1x"], out["atom0x"]), (
+    assert out["atom1"] != out["atom0"], "two atoms in one place show no order"
+    assert (out["start"], out["end"]) == (out["atom1"], out["atom0"]), (
         f"the arrow runs {out['start']} -> {out['end']}, but atom 1 was picked "
-        f"FIRST (x={out['atom1x']}) and atom 0 second (x={out['atom0x']}) — the "
+        f"FIRST (at {out['atom1']}) and atom 0 second (at {out['atom0']}) — the "
         f"arrow must follow the click order, which is what it exists to show"
     )
 
@@ -2498,16 +2588,16 @@ CHOOSER_ROWS = [
 
 @pytest.mark.parametrize("picked, shown", CHOOSER_ROWS,
                          ids=["no-pick-follows", "a-pick-stays"])
-def test_both_choosers_follow_the_labels_a_structure_arrives_with(picked,
-                                                                  shown):
+def test_both_choosers_follow_the_labels_a_structure_arrives_with(
+        app_at, pairs, picked, shown):
     """THE SILENT FAILURE (2.65.0, the round reviews): the kind's labels
     arrive after the first draw at mount, and the Assign chooser kept
     MolView's first name as if someone had chosen it, while the filter's
     `by label` row, opened on an empty viewer, kept MolView's two -- two
     controls disagreeing about what exists.
 
-    Category: API -- the module in Node against its stand-ins."""
-    out = _run(
+    Category: API -- the module in Node, the app's own routes answering."""
+    out = _run(app_at, pairs,
         """
         const { host, viewer } = await mounted();
         viewer.data.selection.setEditor("filter");
@@ -2525,7 +2615,7 @@ def test_both_choosers_follow_the_labels_a_structure_arrives_with(picked,
         const filterOffered = () => card.querySelector(".molviewer-filter-text")
             .children.map(o => o.value).filter(Boolean);
         const before = filterOffered();
-        await viewer.data.installMolecule({ text: "x", filename: "x.xyz" });
+        await openIn(viewer, "H2");
         console.log(JSON.stringify({
             before, after: filterOffered(), shown: chooser.value,
             assignOffered: chooser.children.map(o => o.value).filter(Boolean),
