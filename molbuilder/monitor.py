@@ -113,7 +113,8 @@ try:                                        # inside molbuilder
     from .parse.engines import _run_ending as _ending
     from . import report_cards as _cards
     from . import report_fields as _fields
-    from .runtime_info import JOB_STARTED_VAR, mem_total_gb
+    from .runtime_info import (JOB_STARTED_VAR, gpu_models, gpu_reading,
+                               mem_total_gb)
     from . import runfiles as _rf
     from . import runrecord as _rr
     from . import monitor_log as _ML
@@ -128,7 +129,8 @@ except ImportError:                         # beside the job
     import _run_ending as _ending
     import report_cards as _cards
     import report_fields as _fields
-    from runtime_info import JOB_STARTED_VAR, mem_total_gb
+    from runtime_info import (  # type: ignore[no-redef]
+        JOB_STARTED_VAR, gpu_models, gpu_reading, mem_total_gb)
     import runfiles as _rf
     import runrecord as _rr
     import monitor_log as _ML
@@ -1102,12 +1104,9 @@ def _gpu_models() -> List[str]:
             return []
     except (OSError, subprocess.SubprocessError):
         return []
-    models: List[str] = []
-    for line in r.stdout.splitlines():
-        m = re.match(r"GPU \d+:\s*(.+?)\s*\(UUID", line)
-        if m and m.group(1) not in models:
-            models.append(m.group(1))
-    return models
+    # THE LISTING READ BY ITS ONE READER (`runtime_info.gpu_models`), the
+    # distinct models kept, first-seen.
+    return list(dict.fromkeys(m for m in gpu_models(r.stdout) if m))
 
 
 def _gpu_present() -> bool:
@@ -1157,9 +1156,12 @@ def machine_line() -> str:
     return " ".join(f"{k}={m[k]}" for k in _ML.MACHINE_FIELDS)
 
 
-def _sample_gpus() -> List[Tuple[int, float, float, float]]:
-    """Per-GPU ``(index, sm%, mem_util%, vram_gb)`` via nvidia-smi
-    (empty list on any failure -- best-effort)."""
+def _sample_gpus() -> List[Tuple[int, Optional[float], Optional[float],
+                                  Optional[float]]]:
+    """Per-GPU ``(index, sm%, mem_util%, vram_gb)`` via nvidia-smi -- each
+    field read by its one reader (`runtime_info.gpu_reading`), ``None`` for
+    one the card does not expose, its others kept; empty list on any
+    failure -- best-effort."""
     try:
         r = subprocess.run(_GPU_QUERY, capture_output=True, text=True,
                           timeout=10)
@@ -1169,8 +1171,10 @@ def _sample_gpus() -> List[Tuple[int, float, float, float]]:
         for line in r.stdout.strip().splitlines():
             f = [x.strip() for x in line.split(",")]
             if len(f) >= 4:
-                out.append((int(f[0]), float(f[1]), float(f[2]),
-                            round(float(f[3]) / 1024.0, 2)))   # MiB -> GB
+                vram = gpu_reading(f[3])
+                out.append((int(f[0]), gpu_reading(f[1]), gpu_reading(f[2]),
+                            None if vram is None
+                            else round(vram / 1024.0, 2)))     # MiB -> GB
         return out
     except (OSError, subprocess.SubprocessError, ValueError):
         return []
@@ -1189,7 +1193,8 @@ class UtilSample:
     epoch: float
     cpu_pct: Optional[float]
     mem_gb: Optional[float]
-    gpus: List[Tuple[int, float, float, float]] = field(default_factory=list)
+    gpus: List[Tuple[int, Optional[float], Optional[float],
+                     Optional[float]]] = field(default_factory=list)
 
     def changed_from(self, other: "UtilSample", frac: float) -> bool:
         if other is None:
@@ -1228,6 +1233,8 @@ class UtilAccum:
             self.cpu_min = min(self.cpu_min, s.cpu_pct)
             self.cpu_max = max(self.cpu_max, s.cpu_pct)
         for idx, sm, _mu, _vram in s.gpus:
+            if sm is None:          # a card that does not expose it
+                continue
             self.gpu_sum[idx] = self.gpu_sum.get(idx, 0.0) + sm
             self.gpu_n[idx] = self.gpu_n.get(idx, 0) + 1
             self.gpu_min[idx] = min(self.gpu_min.get(idx, 1e9), sm)

@@ -45,6 +45,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from flask import Blueprint, jsonify
 from ._shared import err
+from molbuilder.runtime_info import gpu_reading
 
 import psutil
 
@@ -86,26 +87,20 @@ _smi_lock = _threading.Lock()
 _smi_cache: Dict[str, Any] = {"t": 0.0, "gpus": [], "error": None}
 
 
-def _num(tok: str) -> Optional[float]:
-    """One csv token -> float, or ``None`` for the fields a card does not
-    expose (nvidia-smi prints ``[N/A]``, ``[Not Supported]``...)."""
-    try:
-        return float(tok.strip())
-    except ValueError:
-        return None
-
-
 def _parse_smi(text: str) -> List[Dict[str, Any]]:
+    """Each GPU's row, each field read by its one reader (`runtime_info.
+    gpu_reading`, ``None`` for one the card does not expose) -- as the
+    monitor beside a job reads it."""
     out: List[Dict[str, Any]] = []
     for i, line in enumerate(text.strip().splitlines()):
         f = [c.strip() for c in line.split(",")]
         if len(f) < 9:
             continue
-        used, total = _num(f[3]), _num(f[4])
+        used, total = gpu_reading(f[3]), gpu_reading(f[4])
         pct = (100.0 * used / total) if used is not None and total else None
-        util, util_m = _num(f[1]), _num(f[2])
-        power, temp = _num(f[5]), _num(f[6])
-        sm, mem = _num(f[7]), _num(f[8])
+        util, util_m = gpu_reading(f[1]), gpu_reading(f[2])
+        power, temp = gpu_reading(f[5]), gpu_reading(f[6])
+        sm, mem = gpu_reading(f[7]), gpu_reading(f[8])
         out.append({
             "index":         i,
             "name":          f[0] or "<unknown>",

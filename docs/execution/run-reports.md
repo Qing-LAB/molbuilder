@@ -428,7 +428,8 @@ A point's member monitor and its report step can write `notified.json` at one mo
 one node, so each read-and-append is one step under a lock on the folder (`runrecord.note_notified`); a filesystem
 that refuses locks gets the event written unlocked. `<stem>` is `<label>_<stage>`, every file of the run named
 once on it ([`job-contracts.md`](?doc=execution/job-contracts.md) § 2.2a). `util.csv`'s columns are `epoch, iso,
-cpu_pct, mem_gb`, then `gpu<i>_sm, gpu<i>_memutil, gpu<i>_vram_gb` per GPU sampled.
+cpu_pct, mem_gb`, then `gpu<i>_sm, gpu<i>_memutil, gpu<i>_vram_gb` per GPU sampled — a cell blank where the
+card does not expose that field (`nvidia-smi` prints `[N/A]`), the GPU's others kept (`runtime_info.gpu_reading`).
 
 **The monitor log**, one line per record, `[<time>] [<TAG>] …`:
 
@@ -440,7 +441,7 @@ cpu_pct, mem_gb`, then `gpu<i>_sm, gpu<i>_memutil, gpu<i>_vram_gb` per GPU sampl
 | `[WALL]` | once, when the warning of § 2.1b is due; or once, when the wall cannot be counted | the time left, and the points left with the time they need at the pace — or the longest step and how many have finished; or why nothing is counted |
 | `[NOTIFY]` | on each event, and on any channel problem | `(stub) <event>: <summary>`, the record of every event; or a channel's problem (below) |
 | `[MONITOR] job ended` | the first closing line | why it stopped: `stopped by SIGTERM` or `watched pid N gone` (below) |
-| `[UTIL-SUMMARY]` | at the end | the CPU mean (min–max) and each GPU's SM mean; for a GPU run, a verdict from the busiest GPU's mean: ≥ 85 % *GPU-bound*, ≤ 60 % *host/CPU-bound*, otherwise *mixed* |
+| `[UTIL-SUMMARY]` | at the end | the CPU mean (min–max) and the SM mean of each GPU whose card gives it; for a GPU run whose cards give one, a verdict from the busiest GPU's mean: ≥ 85 % *GPU-bound*, ≤ 60 % *host/CPU-bound*, otherwise *mixed* |
 | `[UTIL-BASIS]` | at the end | what every percentage is a fraction of (§ 2.1a) |
 
 - **A channel's problem** on a `[NOTIFY]` line: why a channel is skipped or not set up, or a send that failed, by the

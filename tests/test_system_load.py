@@ -59,10 +59,33 @@ def test_snapshot_returns_documented_shape():
     assert snap["cpu_count_logical"]  >= snap["cpu_count_physical"]
 
 
-def test_a_field_the_card_does_not_expose_reads_None():
-    """Consumer cards print ``[N/A]`` for what they do not expose: no number
-    made up."""
-    assert sl._num("[N/A]") is None
+def test_a_field_the_card_does_not_expose_reads_None(tmp_path, monkeypatch):
+    """A card prints ``[N/A]`` for what it does not expose -- a consumer
+    card's power, a MIG instance's utilization: no number made up, and its
+    other fields kept, by both samplers, the server's load widget and the
+    monitor beside a job (`runtime_info.gpu_reading`, the one reading).
+    THE SILENT FAILURE: the monitor read every field with float(), so one
+    `[N/A]` dropped the whole sample -- every GPU's -- for the run."""
+    from molbuilder import monitor
+    a_gpu_tool(tmp_path, monkeypatch,
+               "case \"$*\" in\n"
+               "  *index,*) echo '0, [N/A], [N/A], 2048' ;;\n"
+               "  *) echo 'Card, [N/A], [N/A], 2048, 8192, [N/A], 40, "
+               "[N/A], [N/A]' ;;\n"
+               "esac")
+    sample = monitor._sample_gpus()
+    assert sample == [(0, None, None, 2.0)]
+    # ...and the run's end-of-run average takes it -- the watch loop adds
+    # every tick's sample, and a utilization the card never gave is no
+    # number to add.
+    acc = monitor.UtilAccum()
+    acc.add(monitor.UtilSample(epoch=0.0, cpu_pct=50.0, mem_gb=1.0,
+                               gpus=sample))
+    from molbuilder.monitor_log import GPU_MEAN
+    assert f"gpu0{GPU_MEAN}" not in acc.summary(), acc.summary()
+    gpus, err = sl._gpu_snapshot()
+    assert err is None, err
+    assert (gpus[0]["util_pct"], gpus[0]["mem_used_mb"]) == (None, 2048.0)
 
 
 # ------------------------------------------- the no-block property itself

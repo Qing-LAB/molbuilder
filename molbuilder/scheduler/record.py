@@ -605,18 +605,16 @@ def _parse_lscpu(text: str) -> Topology:
 
 
 def _parse_nvidia_smi_l(text: str) -> Tuple[Optional[int], Optional[str]]:
-    """``nvidia-smi -L`` -> (gpu_count, normalized_type)."""
-    lines = [ln for ln in text.splitlines() if ln.strip().startswith("GPU ")]
-    if not lines:
+    """``nvidia-smi -L`` -> (gpu_count, normalized_type), the listing read
+    by its one reader (`runtime_info.gpu_models`): the model NAME only, its
+    "(UUID: GPU-a30...)" tail, whose hex can false-match type tokens like
+    a30/a40/a100, left off."""
+    from ..runtime_info import gpu_models
+    models = gpu_models(text)
+    if not models:
         return None, None
-    gtype = None
-    for ln in lines:
-        # Match the model NAME only -- strip the "(UUID: GPU-a30...)" tail,
-        # whose hex can false-match type tokens like a30/a40/a100.
-        gtype = _gpu_type_from_name(ln.split("(", 1)[0])
-        if gtype:
-            break
-    return len(lines), gtype
+    gtype = next((t for t in map(_gpu_type_from_name, models) if t), None)
+    return len(models), gtype
 
 
 # --------------------------------------------------------------------- #

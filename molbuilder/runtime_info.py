@@ -1,5 +1,9 @@
 """A PySCF run's own set-up: its threads, what it records about itself, and
-its GPU.
+its GPU -- and two of the things ``nvidia-smi`` says, each read once for
+the monitor beside a job, the server's load widget and the machine probe:
+the devices it lists and a sampled field (:func:`gpu_models`,
+:func:`gpu_reading`).  The environment builder's questions of it -- the
+driver, the compute capability, a card's name, CUDA -- are other ones.
 
 THE SCRIPT IMPORTS IT, from ``mb_pyscf.pyz`` beside the job
 (``runwrap.PYSCF_COMPANIONS``, `engines/pyscf.md` § 3), and calls it on its
@@ -30,7 +34,8 @@ from __future__ import annotations
 import importlib
 import os
 import socket
-from typing import Mapping, Optional, Tuple
+import re
+from typing import List, Mapping, Optional, Tuple
 
 
 # Canonical keys that every engine's runtime_info should populate.
@@ -306,7 +311,39 @@ def to_gpu(mf):
             "  and finishing on the CPU would make that announcement false.")
 
 
+# --------------------------------------------------------------------- #
+#  WHAT `nvidia-smi` SAYS -- read once, for every reader of it           #
+# --------------------------------------------------------------------- #
+
+def gpu_models(listing: str) -> List[str]:
+    """The model of each device ``nvidia-smi -L`` lists, in its order --
+    the text after ``GPU <n>:`` up to its ``(UUID: …)`` tail: THE ONE
+    PYTHON READING of the listing, the monitor's beside a job (its distinct
+    models) and the machine probe's (its count and type) alike.  (The run
+    script counts the listing's ``GPU`` lines in its own shell, twice --
+    for the job and for each rank -- before any python runs: `runwrap`.)"""
+    out: List[str] = []
+    for line in listing.splitlines():
+        m = re.match(r"GPU \d+:\s*(.*?)\s*(?:\(UUID.*)?$", line.strip())
+        if m:
+            out.append(m.group(1))
+    return out
+
+
+def gpu_reading(field: str) -> Optional[float]:
+    """One field of ``nvidia-smi --query-gpu=… --format=csv,noheader,
+    nounits``, as a number -- ``None`` for one the card does not expose
+    (``[N/A]``, ``[Not Supported]``): THE ONE READING of a sampled field,
+    the monitor's beside a job and the server's load widget alike.  A card
+    that leaves one field out keeps its others."""
+    try:
+        return float(field.strip())
+    except ValueError:
+        return None
+
+
 __all__ = [
+    "gpu_models", "gpu_reading",
     "mem_total_gb",
     "GPU4PYSCF_MIN_COMPUTE_CAPABILITY",
     "RUNTIME_INFO_KEYS",
