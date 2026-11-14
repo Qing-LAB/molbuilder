@@ -1171,12 +1171,13 @@ deliberately not installed there.
   it), `findings.py` (a page's findings, drawn row for row),
   `leftovers.py` (what opening again leaves on the page); and for
   MolView's tests under node, the stand-ins for 3Dmol and the DOM
-  (`molview_3dmol_standin.js`, `molview_dom_standin.js`), and a stand-in
-  server, `molview_server_standin.js`, which answers every route alike —
-  still loaded by three test files (`test_molview_model`, `_mount`,
-  `_ui_context`) — and `test_molview_measurement` keeps a `fetch` of its own
-  that answers every route alike — each yet to move onto the server's own
-  answers (§ 4; planned, the finish-line review's O-TESTS).
+  (`molview_3dmol_standin.js`, `molview_dom_standin.js`); the page around
+  the view lane on the real routes and the real workspace
+  (`molview_lane.py`); and a stand-in server, `molview_server_standin.js`,
+  which answers every route alike — still loaded by two test files
+  (`test_molview_model`, `_mount`), and `test_molview_measurement` keeps a
+  `fetch` of its own that answers alike — each yet to move onto the server's
+  own answers (§ 4; planned, the finish-line review's O-TESTS).
 - `test_one_door_reads_a_structure.py` — the author's frozen atoms, regions
   and cell, saved as the `.xyz` + `.molstruct.json` pair, reach the deck
   through `molbuilder describe → prep`, because the pair is one file. Written

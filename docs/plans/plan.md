@@ -30,7 +30,7 @@ as they stood.
 
 ## ▶ HANDOVER — where we are, and where to start *(2026-11-10)*
 
-**Where we are: 2.70.4.** F0–F8 and F7a are closed; F9, the tests through
+**Where we are: 2.70.5.** F0–F8 and F7a are closed; F9, the tests through
 the road, has eight releases out (2.67.4–2.67.11) and four steps left (its
 row below). Since 2.67.11 three bodies of work the user put first have run;
 each release is its changelog row and its ledger section
@@ -129,7 +129,8 @@ each release is its changelog row and its ledger section
   fakes with no reason retired or made the real thing (O-TESTS T0); 2.70.3,
   the rule for fakes in the test contract and the browser's own storage
   under the Node tests (O-TESTS T1, its storage part); 2.70.4, MolView's
-  test contract onto the real routes, its refusal tests first.
+  test contract onto the real routes, its refusal tests first; 2.70.5, the
+  view lane's tests on the real routes and the real workspace.
   X-ENG closed with 2.69.68 — its two items that change a generated
   program placed by the user with F10's end-to-end pass.
   **Left, in order**: the page doors and the copies they share (O-STATUS,

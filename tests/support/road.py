@@ -197,30 +197,32 @@ def co2_in_engine_order():
                    atom_order("vibration", "siesta")).structure
 
 
-def structure_saved(tree: Path, structure=None, *, frames: int = 1) -> str:
+def structure_saved(tree: Path, structure=None, *, frames: int = 1,
+                    at: str = STRUCTURE) -> str:
     """``structure`` -- :data:`H2` unless given (:func:`road_structure`) --
     saved in the projects tree ``tree`` as a pair, through the codec, at
-    :data:`STRUCTURE`: what `molbuilder describe` takes, and the path it
-    takes it by (returned).  ``frames`` > 1 saves it as a frame set, each
+    ``at`` -- :data:`STRUCTURE` unless a test keeps several structures: what
+    `molbuilder describe` takes, and the path it takes it by (returned).  ``frames`` > 1 saves it as a frame set, each
     frame moving its bridge (`transport.sort.REGION_BRIDGE`), as a frame set
-    a transport calculation cites must.  A tree's structure is the one its
-    last call saved; a calculation described from it holds its own copy."""
+    a transport calculation cites must.  The structure at a place is the one
+    the last call saved there; a calculation described from it holds its own
+    copy."""
     from molbuilder.projects import populate_project_skeleton
     from molbuilder.workingcopy_structure import StructureCodec
     s = road_structure(H2 if structure is None else structure)
     if frames > 1:
         from molbuilder.transport.sort import REGION_BRIDGE
         moved = [s.positions.copy() for _ in range(frames)]
-        for i, at in enumerate(moved):
-            at[s.regions[REGION_BRIDGE]] += 0.01 * i
+        for i, frame in enumerate(moved):
+            frame[s.regions[REGION_BRIDGE]] += 0.01 * i
         s = s.with_frames(moved)
     # THE ROAD'S PROJECT, MADE AS A PERSON MAKES ONE -- whole, by the
     # tree's one door -- the structure saved into its structure topic.
-    project = tree / Path(STRUCTURE).parts[0]
+    project = tree / Path(at).parts[0]
     if not project.exists():
         populate_project_skeleton(project, project_name=project.name)
-    StructureCodec().write(s, tree / STRUCTURE)
-    return STRUCTURE
+    StructureCodec().write(s, tree / at)
+    return at
 
 
 def library_of(tree: Path) -> Path:

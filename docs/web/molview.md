@@ -3624,12 +3624,12 @@ a viewer keeps what § 11.2 deliberately keeps out of the truth:
 | `camera` | the pose, read from the sealed layer at a gesture's end (§ 9.6) |
 | `frame` | the displayed frame |
 | `measuring` | whether the ruler is on — a standing preference, applied like a switch |
-| `measurement` | the ruler's picked atoms (§ 11.6) — applied under `match`, for **every** viewer: no truth lane restores this one, so `hasTruthLane` has nothing to say about it |
 | `selection` | the picked atoms — **read back only by a viewer with no truth lane** (read-only); where a draft exists it owns the selection, and two lanes restoring one fact is § 5.2's drift |
 | `match` | the structure this context belonged to: its atoms' elements in order, its atom and frame counts, and the order it is listed in (the server's words for an engine's order, none for the user order) — so a selection is never put back onto another structure that merely has as many atoms, the same molecule listed in an engine's order among them (`model/overview.md` § 2.1: an index holds only against the structure it was made on) |
 
 **Writing it is never an edit.** The lane's writer is MolView's own, debounced,
-triggered by view/switch/frame changes and by the end of a camera gesture — a
+triggered by view/switch/frame changes, the ruler and the selection changing,
+and by the end of a camera gesture — a
 frame the movie passes through excepted: while it plays nothing is written, and
 its stop writes the frame it stopped on (§ 9.2) — and
 it does not touch the timeline, does not rewrite the draft, and does not raise
