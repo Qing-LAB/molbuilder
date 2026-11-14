@@ -520,7 +520,13 @@ def transport_rung_of(calc, pset, *, seam, sweep, log, plan,
         # ``scratch_dir``), taken onto the job by `_job_for`.
         return dataclasses.replace(
             job, warm=warm_declaration(stage, task.label, base))
+    # WHAT THE JUNCTION SAYS OF ITSELF, said by prep as the Transport card
+    # says it (`sort.junction_notes`): every rung carries it, so a prep
+    # that writes several says it once, above them (`prep.prep_said`).
+    from .sort import junction_notes
     return Rung(struct=struct, render_kind=task.calculation, configure=configure,
+                said=junction_notes(composed.junction,
+                                    extending=bool(task.reuses)),
                 sources=lambda element: transport_sources(
                     element, engine=task.engine),
                 # THE DECK'S POINT reaches the spec: the device names its

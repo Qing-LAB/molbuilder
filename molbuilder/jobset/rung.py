@@ -164,7 +164,8 @@ class Rung:
     render_kind: str
     #: WHAT THE KIND SAYS OF THE RUN IT PREPARES, beside its request -- a
     #: SIESTA vibration's count and sizes (`engines/vibration.md` § 5.11
-    #: § 9); prep's notes carry them to both doors.  Nothing judges the
+    #: § 9), a transport junction's inverted pair (`transport.sort.
+    #: junction_notes`); prep's notes carry them to both doors.  Nothing judges the
     #: wall: it stays the person's.
     said: Tuple[str, ...] = ()
     #: ``cfg -> cfg``: the config an element renders from -- a lead's own

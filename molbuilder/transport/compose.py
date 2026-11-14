@@ -119,9 +119,6 @@ class ComposedJunction:
     #: the relaxed, LABELED junction in TranSIESTA's order, carrying its
     #: order record (`model/overview.md` § 2.2a)
     junction: Structure
-    #: what the sort said of it on the compose that made it (`sort_by`'s
-    #: notes) -- none on a record read back, which no sort made
-    notes: Tuple[str, ...]
     #: the same structure before the sort (relaxed positions, source
     #: order).  ``None`` on a record loaded back from the travelled
     #: copy: the original order lives in the citation and the sorted
@@ -774,7 +771,6 @@ def compose_junction(citation: str, *, tree_root, engine: str,
     }
     return ComposedJunction(
         junction=dev,
-        notes=sorted_res.notes,
         relaxed=relaxed,
         electrode_left=elec_l,
         electrode_right=elec_r,
@@ -1155,7 +1151,6 @@ def load_compose_record(base_dir, *, citation: str, engine: str,
     deck_text = read_deck(deck_path) if kind == "run" else None
     return ComposedJunction(
         junction=dev,
-        notes=(),
         relaxed=None,
         electrode_left=elec_l,
         electrode_right=elec_r,

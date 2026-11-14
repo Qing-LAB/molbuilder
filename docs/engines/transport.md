@@ -6091,8 +6091,13 @@ as-is, no Bloch expansion in the shipped 2-terminal scope.)
 > ([`ts-tbt-sisl-tutorial/TS_02`](https://github.com/zerothi/ts-tbt-sisl-tutorial/blob/main/TS_02/RUN.fdf):
 > `Left` = `electrode-position 1` + `-a1` + `mu V/2`). A junction labeled the other
 > way round is **not an error** — it biases the other end, which only its author
-> can judge — so the sort notes it, the preflight warns, and the Transport tab
-> offers a one-click rename.  *(How that was settled: [`archive/2026-09-01-transport-design.md`](?doc=archive/2026-09-01-transport-design.md) § 4.1a.)*
+> can judge — so the junction says it of itself, in the sort's one sentence
+> (`sort.junction_notes`, `sort.inverted_note`), on the Transport card and by
+> each prep that writes its rungs, once — read off the junction whether
+> composed or read back —
+> and not while extending, whose rename is the finished calculation's own
+> (§ 2a.16) *(2.69.62; the user, 2026-11-13: "prep says it, like the card")*;
+> and the Transport tab offers a one-click rename.  *(How that was settled: [`archive/2026-09-01-transport-design.md`](?doc=archive/2026-09-01-transport-design.md) § 4.1a.)*
 >
 > **The rename is the transport calculation's own, and a cited run's geometry
 > and labels are never written** *(user, 2026-10-04, plan Q6; built 2026-10-08)*. Accepting it

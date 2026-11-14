@@ -274,13 +274,13 @@ class TestRefusalsNameAtoms:
             sort_by(struct, SORT_TRANSPORT)
         assert REGION_RIGHT_ELECTRODE in str(e.value)
 
-    def test_swapped_names_sort_by_geometry_and_carry_a_note(self):
+    def test_swapped_names_sort_by_geometry_and_the_junction_says_so(self):
         """CHECK z, WARN, the author decides (user ruling, 2026-08-29).
         A junction labeled the other way round is not mislabeled -- it
         biases the other end -- so the sort must NOT refuse it.  What
         it must do is put the LOWER block first anyway (that block is
         the -A3 lead; the upper one first would aim a self-energy into
-        the bridge) and say what it saw."""
+        the bridge) -- and the junction says what it is (`junction_notes`)."""
         struct, _ = _junction(shuffle=False)
         low = list(struct.regions[REGION_LEFT_ELECTRODE])
         struct.regions[REGION_LEFT_ELECTRODE] = \
@@ -293,6 +293,32 @@ class TestRefusalsNameAtoms:
         n_low = len(low)
         assert sorted(res.structure.regions[REGION_RIGHT_ELECTRODE]) == \
             list(range(n_low)), "the LOWER block must lead, whatever it is called"
-        assert res.notes, "an inverted pair must be reported, not passed silently"
-        note = res.notes[0]
+        # ...AND THE JUNCTION SAYS WHAT IT SAW (`junction_notes`, the one
+        # sentence the card and prep say).
+        from molbuilder.transport.sort import junction_notes
+        [note] = junction_notes(res.structure)
         assert "HIGH-z" in note and "+V/2" in note
+
+    @pytest.mark.parametrize("inverted, extending, says", [
+        (True, False, True),
+        (True, True, False),     # the rename is the finished one's (§ 2a.16)
+        (False, False, False),
+    ])
+    def test_what_a_junction_says_of_itself(self, inverted, extending, says):
+        """`engines/transport.md`, *The label convention*: an inverted pair
+        is warned, in the sort's one sentence, by every surface that
+        composes the junction -- the Transport card and prep -- and not
+        while extending a finished calculation, whose rename is not
+        offered.  Read off the junction, so a record read back says it too
+        -- the reason prep, which reads one back, said nothing before
+        2.69.62.  The door's rows; the card's and prep's roads are not tested
+        here (a transport calculation cites a real relaxation)."""
+        from molbuilder.transport.sort import inverted_note, junction_notes
+        struct, _ = _junction(shuffle=False)
+        if inverted:
+            low = list(struct.regions[REGION_LEFT_ELECTRODE])
+            struct.regions[REGION_LEFT_ELECTRODE] = \
+                struct.regions[REGION_RIGHT_ELECTRODE]
+            struct.regions[REGION_RIGHT_ELECTRODE] = low
+        said = junction_notes(struct, extending=extending)
+        assert said == ((inverted_note(struct),) if says else ()), said

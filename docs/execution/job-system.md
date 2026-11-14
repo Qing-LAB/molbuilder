@@ -1258,7 +1258,7 @@ instead ([`task-setup.md`](?doc=web/task-setup.md) § 11).
 | in the answer | what it is |
 |---|---|
 | `findings` | the description's preflight notes ([`engines/stages.md`](?doc=engines/stages.md) § 6.6); an error refuses instead |
-| `notes` | what the inputs said: a bench's grid — enumerated, left out, kept; a run's GPUs over its ranks; what a rendering says and does not refuse |
+| `notes` | what the inputs said: a bench's grid — enumerated, left out, kept; a run's GPUs over its ranks; what a rendering says and does not refuse; what the kind says of the rung it prepares (`Rung.said`: a SIESTA vibration's count and sizes, a transport junction's inverted pair) |
 | `saved` | the folder's state saved before the writing (checkpoint 5), or the one it already stood at, and its note; none for a prep with nothing to write |
 | `unchanged` | a stage of a group prepared, never launched, and already as this prep plans it: the sentence both doors say |
 | `differs` | a stage prepared again: each file, its row and its group's header that differ from what this prep writes now; empty for a first prep |

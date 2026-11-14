@@ -13,12 +13,13 @@ Which block is which is GEOMETRY: the lower one leads, because it is
 the one whose self-energy extends to ``-A3``.  The ``L-electrode`` /
 ``R-electrode`` names do a different job — they carry the chemical
 potential (`transiesta.py`) — so a junction labeled the other way
-round is not an error, it is one that biases the other end, and the
-sort says so in a note rather than refusing it (user, 2026-08-29).
+round is not an error, it is one that biases the other end: the sort
+orders it anyway, and the junction says so of itself, never refused
+(:func:`junction_notes`; user, 2026-08-29).
 
 Pure by design: ``sort_by(structure, key) -> SortResult`` -- the sorted
-copy, carrying its order record (``atom_order``), and the sort's notes -- no
-I/O, no engine knowledge.  The physics is invariant under the
+copy, carrying its order record (``atom_order``) -- no I/O, no engine
+knowledge.  The physics is invariant under the
 permutation (a similarity transformation — § 4.1a records the proof
 sketch); what this module must get right is bookkeeping, so every
 index-carrying field (``regions``, ``frozen_atoms``, ``annotations``,
@@ -115,8 +116,9 @@ from ..kmesh import TRANSPORT_AXIS  # noqa: E402
 
 #: How the two electrode blocks sit along transport, as one word.
 #: ONE door for the fact, because three places need it and they must not
-#: disagree: the sort's note, the web describe (which offers the swap when
-#: the answer is ``inverted``), and the swap itself.
+#: disagree: what the junction says of itself (:func:`junction_notes`), the
+#: web describe (which offers the swap when the answer is ``inverted``), and
+#: the swap itself.
 ORDER_CANONICAL = "canonical"        # L below R -- the usual convention
 ORDER_INVERTED = "inverted"          # L above R -- runs; a swap flips it
 ORDER_INTERLEAVED = "interleaved"    # no two ends -- nothing to build
@@ -153,8 +155,8 @@ def electrode_orientation(struct: Structure) -> Optional[str]:
 
 
 def inverted_note(struct: Structure) -> str:
-    """The one sentence every surface says about an inverted pair —
-    the sort's note, the tab's offer.
+    """The one sentence every surface says about an inverted pair, through
+    :func:`junction_notes` -- the Transport card and prep.
 
     It states the measurement and the CONSEQUENCE, and stops: which
     end carries +V/2 is the author's call about their own experiment
@@ -175,6 +177,20 @@ def inverted_note(struct: Structure) -> str:
         f"the two labels if you meant the low-z lead to carry +V/2.")
 
 
+def junction_notes(junction: Structure, *,
+                   extending: bool = False) -> Tuple[str, ...]:
+    """WHAT A COMPOSED JUNCTION SAYS OF ITSELF, every surface alike -- the
+    Transport card and prep (`Rung.said`): an inverted pair
+    said in its one sentence (:func:`inverted_note`), checked and warned,
+    never refused (the user, 2026-08-29); nothing while ``extending`` a
+    finished calculation, whose rename is that calculation's own and not
+    offered (`engines/transport.md` § 2a.16).  Read off the junction
+    itself, so a record read back says what a fresh composition does."""
+    if extending or electrode_orientation(junction) != ORDER_INVERTED:
+        return ()
+    return (inverted_note(junction),)
+
+
 class SortError(ValueError):
     """A structure the canonical order cannot be built from — the
     message names the atoms and the rule, ready to surface verbatim."""
@@ -182,14 +198,10 @@ class SortError(ValueError):
 
 @dataclass(frozen=True)
 class SortResult:
-    """A sorted copy and what the sort said.  The copy carries its own order
-    record (``structure.atom_order``, `model/overview.md` § 2.2a) -- none
-    when the sort moved nothing."""
+    """A sorted copy.  It carries its own order record
+    (``structure.atom_order``, `model/overview.md` § 2.2a) -- none when the
+    sort moved nothing."""
     structure: Structure
-    #: what the sort observed but did not refuse — today the one
-    #: convention note.  Carried, never raised: the caller decides
-    #: where a warning belongs on its surface.
-    notes: Tuple[str, ...] = ()
 
 
 def _partition_of(struct: Structure) -> List[str]:
@@ -225,9 +237,9 @@ def _partition_of(struct: Structure) -> List[str]:
     return [membership[i][0] for i in range(n)]
 
 
-def _transport_order(struct: Structure) -> Tuple[List[int], Tuple[str, ...]]:
+def _transport_order(struct: Structure) -> List[int]:
     """The first key's order -- the canonical transport order, from labels,
-    § 4.1a -- and what it says: ``(order, notes)``, for :func:`sort_by`.
+    § 4.1a -- for :func:`sort_by`.
 
     * electrode blocks: the LOWER one first (geometry, not the label —
       it is the block that extends to ``-A3``), then layer-major along
@@ -285,9 +297,6 @@ def _transport_order(struct: Structure) -> Tuple[List[int], Tuple[str, ...]]:
     # block is lower, free to drift from the one every other surface
     # asks.
     lo, hi = (left, right) if shape == ORDER_CANONICAL else (right, left)
-    notes: List[str] = []
-    if shape == ORDER_INVERTED:
-        notes.append(inverted_note(struct))
 
     def _layer_major(idx: List[int]) -> List[int]:
         return sorted(idx, key=lambda i: (z[i], pos[i, 0], pos[i, 1]))
@@ -325,7 +334,7 @@ def _transport_order(struct: Structure) -> Tuple[List[int], Tuple[str, ...]]:
 
     order = (buf_lo + _layer_major(lo) + by[REGION_BRIDGE]
              + _layer_major(hi) + buf_hi)
-    return order, tuple(notes)
+    return order
 
 
 #: THE KEYS, by name -- what a calculation needs done to the atom order.
@@ -354,15 +363,13 @@ def sort_by(struct: Structure, key: str) -> SortResult:
                         f"{', '.join(sorted(SORT_KEYS))}") from None
     if struct.atom_order is not None:
         raise SortError(REMAPPED_NOT_EDITED)
-    order, notes = fn(struct)
-    return apply_order(struct, order, notes, key=key)
+    return apply_order(struct, fn(struct), key=key)
 
 
-def _held_first_order(struct: Structure
-                      ) -> Tuple[List[int], Tuple[str, ...]]:
+def _held_first_order(struct: Structure) -> List[int]:
     """The second key's order: held atoms first, free atoms last, each in the
-    user order among themselves -- `model/overview.md` § 2.2 -- and nothing to
-    say: ``(order, ())``, for :func:`sort_by`.
+    user order among themselves -- `model/overview.md` § 2.2 -- for
+    :func:`sort_by`.
 
     SIESTA's force-constant run nudges atoms *A through B* (`FC.First` /
     `FC.Last`) and cannot take a scattered free set; molbuilder's held set
@@ -376,11 +383,11 @@ def _held_first_order(struct: Structure
     held = sorted(int(i) for i in (struct.frozen_atoms or []))
     held_set = set(held)
     free = [i for i in range(n) if i not in held_set]
-    return held + free, ()
+    return held + free
 
 
-def apply_order(struct: Structure, order: List[int],
-                notes: Tuple[str, ...] = (), *, key: str) -> SortResult:
+def apply_order(struct: Structure, order: List[int], *,
+                key: str) -> SortResult:
     """The machinery every sort key shares: check the order is a bijection,
     move every per-atom field with its atom, record both directions.
 
@@ -406,4 +413,4 @@ def apply_order(struct: Structure, order: List[int],
                        sorted_to_original=tuple(int(i) for i in order),
                        key=key)
     sorted_struct = struct.take(order).replace(atom_order=perm.recorded)
-    return SortResult(structure=sorted_struct, notes=tuple(notes))
+    return SortResult(structure=sorted_struct)

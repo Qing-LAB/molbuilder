@@ -297,12 +297,14 @@ def api_transport_describe_attempt() -> Any:
         structure_wire = composed.relaxed.to_dict()
         # THE CONVENTION IS CHECKED AND REPORTED, NEVER ENFORCED (user
         # ruling, 2026-08-29).  An inverted junction composes and runs
-        # -- it biases the other end -- so the tab gets the observation
-        # (the sort's one note, with the numbers) plus `fix` as a WORD
-        # it can act on without matching prose.
-        # ...BUT NOT WHILE EXTENDING, where the rename is the finished
-        # calculation's own and not offered (§ 2a.16).
-        for note in (composed.notes if finished is None else ()):
+        # -- it biases the other end -- so the tab gets what the junction
+        # says of itself, as prep does (`sort.junction_notes`: nothing
+        # while extending, where the rename is the finished calculation's
+        # own, § 2a.16), plus `fix` as a WORD it can act on without
+        # matching prose.
+        from molbuilder.transport.sort import junction_notes
+        for note in junction_notes(composed.junction,
+                                   extending=finished is not None):
             findings.append(Issue("warn", note))
         # AND THE LEADS' OWN MEASUREMENTS.  `extract_electrode_model`
         # measures each lead's period and periodic seam into
