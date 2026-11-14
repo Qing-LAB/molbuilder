@@ -620,9 +620,8 @@ details.workflow-group > .workflow-group-body > fieldset.schema-section > legend
     margin-block: var(--space-md);
 }
 
-.rec-diff > summary {
+.rec-diff > summary {             /* its colour: tone warn, the shell's */
     cursor: pointer;
-    color: var(--rec-flag);
     font-weight: var(--weight-semibold);
 }
 

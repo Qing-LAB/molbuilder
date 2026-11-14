@@ -209,7 +209,6 @@ export function init(viewer) {
                 + Number(det.toPrecision(6))
                 + "), and the server will refuse them. Swap any two rows, or "
                 + "pick one axis's two atoms in the other order.";
-            note.classList.add("modify-op-hint--warn");
             note.hidden = false;
         } else {
             note.hidden = true;
@@ -387,7 +386,6 @@ export function init(viewer) {
                     + "continues the crystal the gap is one layer spacing -- "
                     + "measure it with the ruler.  The seam check reports on "
                     + "what you set.";
-                note.classList.remove("modify-op-hint--warn");
             }
         }
     }

@@ -16,7 +16,17 @@ screen sizes. This doc is those rules.
 ## 1. The five stylesheet layers
 
 Stylesheets load in a fixed order, lowest layer first, and **each layer owns a
-distinct thing**:
+distinct thing**. What must come first on every app page is loaded by one
+partial, `templates/_page_head.html`, which a page's head includes right after
+its title: the tokens, the shell, and two components every page has — the one
+dialog and the page links' sheet, which name only their own classes, so they
+sit with the shell ahead of `form-components.css` — then the runtime and the
+status writer *(2.70.1; each page listed them by hand until then)*. A page
+adds its own sheets and scripts after it; the rest every page uses (the
+element builder, the page's kept values, the tab strip, the one list, the
+server's reader, the path door, the notifications, the one confirm) the shared
+header loads (`_app_header.html`). MolView's demo page stands alone, outside
+the app, and lists its own.
 
 ```mermaid
 flowchart TD
@@ -84,14 +94,20 @@ Two naming tiers:
   `--text-2xs…xl`).
 - **Module-private (prefixed)** — a module's own tokens, kept out of the shared
   namespace: `--ps-*` (projects sidebar), `--ts-*` (task setup), and so on.
-  These live in the same one file, promoted out of scattered per-file blocks.
+  These live in the same one file, promoted out of scattered per-file blocks —
+  the Documents reader's two reading themes too (`--dr-light-*`,
+  `--dr-dark-*`; its sheet only points its `--dr-*` names at one set or the
+  other, *2.70.1*).
 
 > **`:root` is not component-scoped, and that is why there is no exception.**
 > A `:root` block matches the document wherever its sheet is loaded, so a
 > token defined in a component file is set for every page that loads it — and
 > two components setting the same name differently is decided by `<head>`
 > order. The rule as stated: **no token definition outside `tokens.css`,
-> prefixed or not** — held by review since 2026-09-10, when
+> prefixed or not**. A name a component sets on its own element is not a
+> token: a per-instance size or weight (a card's basis, a chart's height), or
+> a name pointed at a token (the Documents reader's `--dr-*` at its light or
+> dark set) — never a colour written there. The rule is held by review since 2026-09-10, when
 > `test_css_no_hex_literals` was retired with the other tests that read
 > source for where code lives (`082ba979`). It used to exempt any
 > name that was not already canonical, on the reasoning that a per-file
@@ -311,6 +327,17 @@ own `[hidden]` guard (§ 6).
   trajectory badge's *total* is a run's own length too, and takes it. **A benchmark's measured times keep the second** — its wall on the
   page, its monitored window in `summarize bench`'s table (*4m05s*): a
   measurement compared across trials, which a rounded length would hide.
+- **Focus: the glow and the ring are each one token** *(2.70.1)*. A text field
+  being typed in glows (`--focus-ring`, the shell's input rule, which no field
+  adds a ring to); the ring a control draws when the keys reach it is
+  `--focus-outline`, its offset its own — twelve rules wrote it by hand until
+  then. One ring keeps a colour of its own: the projects sidebar's edge tab,
+  drawn in the accent, where an accent ring would not show. *Not yet one look
+  for every control:* the sidebar's rows and its create buttons glow, its
+  drawer toggle and the load monitor's toggle change their ground and draw no
+  ring, and a plain button, the engine strip's tabs and the page links take
+  the browser's own ring — which look each control wears is a look still to
+  settle.
 - **Rhythm** — spacing, type sizes, and radii all come from the `--space-*` /
   `--text-*` / `--radius*` scales. **Spacing is a 4px grid** (2026-08-23):
   every step is a whole number of 4px units, so any two spacings are
@@ -390,10 +417,27 @@ owner, one token, consistent everywhere.**
 
 **A message with a layout of its own takes the same look.** A Task setup note,
 a prep answer, the Transport plan line, the benchmark foot's failed look, the
-file preview's line, Modify's timeline status: each keeps its own classes and
-takes the severity as `tone <kind>`, set through `status.tone(el, kind)`
-(`lib/status.js`) and styled beside `.status.<kind>` in `page-shell.css` — so a
-page keeps no severity vocabulary of its own. A save's,
+file preview's line, Modify's timeline status — and *(2.70.1)* This machine's
+channel test, Task setup's unsaved flag, Modify's warning hints and its
+selection layer's failure, Task setup's *already here* on a file, the
+recommended-values panel's summary, the Results readout when it warns, the
+dialog's refusal, the folder picker's failed listing, an inspector that
+failed, the Run panel's finding and its *differs* tag, the PDOS line, the load
+monitor's GPU notice, the benchmark's mismatch head, the projects sidebar's
+error lines: each keeps its own classes
+and takes the severity as `tone <kind>`, set through `status.tone(el, kind)`
+(`lib/status.js`), or written in the markup when the line is never anything
+else, and styled beside `.status.<kind>` in `page-shell.css` — so a page keeps
+no severity vocabulary of its own. A box whose words take the tone draws its
+edge in `currentColor`, the tone's. A box whose words stay plain and only its
+edge carries the severity — a notification's stripe, the trajectory's parse
+warnings (their box, and each warning's place in it), the one-time secret on
+This machine, a row the Run panel marks, Task setup's save bar while unsaved,
+the benchmark's mismatch box, the recommended-values panel — keeps that edge
+on the severity token the tone itself reads: an edge is not a message. A
+component's state mark is the component's own vocabulary, on the same tokens:
+a run-state chip, a run's state stripe, a field that will not read, a winning
+trial, the load monitor's fault marker. A save's,
 a load's or an upload's line that carries the server's notices takes the tone
 of the most severe of them, by the one composer
 (`validationFindings.outcome`, [`science/validation.md`](?doc=science/validation.md) R2a).

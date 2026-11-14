@@ -81,9 +81,7 @@
 .results-file-readout.is-diverged {
     white-space: normal;
     overflow-wrap: anywhere;
-    /* `--warn-soft` is the palette's PASSIVE FLAG tone (tokens.css: "--warning
-     * = call-to-action, --warn-soft = passive flag"), which is what this is. */
-    color: var(--warn-soft);
+    /* Its colour is the shell's warning tone (`status.tone`). */
     font-weight: var(--weight-semibold);
 }
 

@@ -732,7 +732,7 @@ export async function openDir(absPath) {
     elList.innerHTML = "";
     elList.classList.add("is-empty");
     const li = document.createElement("li");
-    li.className = "ps-list-error";   // token-styled in projects-sidebar.css (no inline hex)
+    li.className = "ps-list-error tone error";   // the shell's error tone
     li.appendChild(window.molbuilder.dom.codeWords(resp.error || "Failed to list directory."));
     elList.appendChild(li);
     // Listing failed -- we don't know the new state of resp.path's

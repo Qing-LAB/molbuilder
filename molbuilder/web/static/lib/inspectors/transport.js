@@ -516,6 +516,7 @@ const WORKSPACE_TAG = "results:transport";
             msg.textContent = unread
                 ? "This point's DOS per orbital is not read yet -- use "
                   + "Read the DOS per orbital above first." : "";
+            root.molbuilder.status.tone(msg, unread ? "warn" : null);
         };
         state.onSelection();
         add.addEventListener("click", () => {
@@ -565,7 +566,7 @@ const WORKSPACE_TAG = "results:transport";
             // THE PICK IS A BUTTON (ui-contract.md § 4.1): the first cell
             // names the point and takes the keyboard; the row's click is the
             // mouse's wider target for the same pick.
-            const pick = _el("button", "transport-iv-pick", words);
+            const pick = _el("button", "plain transport-iv-pick", words);
             pick.type = "button";
             // THE POINT IT PICKS, said as such -- under the low-bias
             // approximation a row's numbers come from its frame's 0 V slice.

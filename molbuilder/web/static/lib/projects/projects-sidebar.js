@@ -359,10 +359,9 @@ async function init() {
     if (list) {
       list.classList.add("is-empty");
       // The same row list.js draws when a listing fails: the envelope's
-      // error is text, and the colour is the palette's (ui-contract.md
-      // §§ 2, 7).
+      // error is text, in the shell's error tone (ui-contract.md § 5).
       const li = document.createElement("li");
-      li.className = "ps-list-error";
+      li.className = "ps-list-error tone error";
       li.textContent = reason;
       list.replaceChildren(li);
     }

@@ -139,7 +139,7 @@ export function dialogField(label, spec) {
 /** The refusal line -- it reserves its line (dialog.css), so a refusal
  *  appearing under the pointer never moves the buttons. */
 export function dialogError() {
-  const p = _node("p", "mb-dialog-error");
+  const p = _node("p", "mb-dialog-error tone error");
   p.setAttribute("data-role", "error");
   return p;
 }

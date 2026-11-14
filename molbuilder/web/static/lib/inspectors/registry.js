@@ -227,7 +227,7 @@
             showError(message) {
                 host.innerHTML = "";
                 const div = document.createElement("div");
-                div.className = "inspector-error";
+                div.className = "inspector-error tone error";
                 div.appendChild(root.molbuilder.dom.codeWords(message));
                 host.appendChild(div);
                 // The load has ended, in this error: say so, as a render

@@ -124,10 +124,10 @@
             function _renderStatus() {
                 if (state.error) {
                     status.textContent = "Error: " + state.error;
-                    status.classList.add("inspector-inline-error");
+                    root.molbuilder.status.tone(status, "error");
                     return;
                 }
-                status.classList.remove("inspector-inline-error");
+                root.molbuilder.status.tone(status, null);
                 if (state.fileSize === null) {
                     status.textContent = "Loading…";
                     return;

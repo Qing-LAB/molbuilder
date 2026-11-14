@@ -3,21 +3,15 @@
 <head>
 <meta charset="utf-8">
 <title>molbuilder &mdash; Task setup</title>
-<link rel="stylesheet" href="{{ url_for('static', filename='lib/tokens.css') }}">
-<link rel="stylesheet" href="{{ url_for('static', filename='lib/page-shell.css') }}">
+{% include "_page_head.html" %}
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/state-chip.css') }}">
-<link rel="stylesheet" href="{{ url_for('static', filename='lib/dialog.css') }}">
-<link rel="stylesheet" href="{{ url_for('static', filename='lib/tabs.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/projects/projects-sidebar.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/form-components.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/frameset/card.css') }}">
 {# Layer 5 last: the tab's own sheet composes, and every value in it is a
    token from lib/tokens.css (ui-contract.md § 1). #}
 <link rel="stylesheet" href="{{ url_for('static', filename='task-setup/style.css') }}">
-{# molbuilder-runtime.js MUST load before any other molbuilder script. #}
-<script src="{{ url_for('static', filename='lib/molbuilder-runtime.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/constants.js') }}"></script>
-<script src="{{ url_for('static', filename='lib/status.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/state-chip.js') }}"></script>
 </head>
 <body data-sidebars="projects">
@@ -312,7 +306,7 @@
          a save ends by reopening the folder, which repaints the others. -#}
       <div class="card ts-savebar" id="ts-savebar" data-dirty="false">
         <p class="ts-savebar-say">
-          <span class="ts-dirty" id="ts-dirty" hidden>Edited &mdash; not
+          <span class="ts-dirty tone warn" id="ts-dirty" hidden>Edited &mdash; not
             saved. Prep reads the files on disk: save before
             Preview.</span>
           <span class="ts-ask-note ts-keeps-lines" id="ts-save-said"

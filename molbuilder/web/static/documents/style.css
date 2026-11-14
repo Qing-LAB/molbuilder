@@ -161,7 +161,7 @@ button.docs-tree-toggle {
 
 .docs-loading { color: var(--text-muted); }
 
-/* Rendered-doc colour system — docs-render.css (isolated). */
+/* Rendered-doc colour system — docs-render.css, its palettes tokens. */
 
 /* ---- reflow: narrow -> stacked ---------------------------------- */
 

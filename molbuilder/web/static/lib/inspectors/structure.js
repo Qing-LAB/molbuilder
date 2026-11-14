@@ -127,7 +127,7 @@ import { basename, dirname } from "../path-utils.js";
             };
             const fail = (msg) => {
                 status.replaceChildren(root.molbuilder.dom.codeWords(msg));
-                status.classList.add("inspector-inline-error");
+                root.molbuilder.status.tone(status, "error");
                 signalReady({ error: msg });
             };
 

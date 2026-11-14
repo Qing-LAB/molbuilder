@@ -69,7 +69,9 @@ own microtask); still, attach your own `.catch()`.
 - **Consume with `whenReady`**, not `get` or polling.
 - **One name, one owner.**
 - The registry file (`lib/molbuilder-runtime.js`) must load **before any other
-  molbuilder script** — every page template loads it first, in the page head.
+  molbuilder script** — every app page loads it first, through the shell's head
+  (`templates/_page_head.html`, [`ui-contract.md`](?doc=web/ui-contract.md)
+  § 1).
 
 ### In practice
 

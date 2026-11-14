@@ -238,7 +238,7 @@ export async function pickPath(opts) {
     const sub = node.querySelector("ul");
     const r = await apiList(path);
     if (!r || !r.ok) {
-      sub.appendChild(_el("li", "tp-error",
+      sub.appendChild(_el("li", "tp-error tone error",
         r && r.error ? `Listing failed: ${r.error}` : "Listing failed."));
       return;
     }
@@ -270,7 +270,7 @@ export async function pickPath(opts) {
     rootUl.appendChild(rootNode);
     await _expand(rootNode);
   } else {
-    rootUl.appendChild(_el("li", "tp-error", known.error));
+    rootUl.appendChild(_el("li", "tp-error tone error", known.error));
   }
 
   const actions = dialogActions([

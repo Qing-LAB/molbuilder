@@ -193,6 +193,44 @@
     --ps-graph-lane-5:      #4a2d4a;   /* the run-history graph's fifth lane */
     --ps-code-fg:           #88aacc;
     --ps-on-accent:         #ffffff;
+    /* Its raised parts and its drawer: the edge tab, an entry's menu, the
+       filter box's well, the drawer and its toggle, the dim behind it. */
+    --ps-shadow-tab:        0 2px 8px rgba(0, 0, 0, 0.35);
+    --ps-shadow-menu:       0 6px 14px rgba(0, 0, 0, 0.5);
+    --ps-filter-bg:         rgba(0, 0, 0, 0.25);
+    --ps-shadow-drawer:     4px 0 12px rgba(0, 0, 0, 0.4);
+    --ps-shadow-toggle:     0 2px 6px rgba(0, 0, 0, 0.3);
+    --ps-backdrop:          rgba(0, 0, 0, 0.5);
+
+    /* --- Documents' reading themes (documents/docs-render.css) ---
+     * The render pane's two palettes, a reading theme each: the sheet
+     * points its ``--dr-*`` names at one set or the other. */
+    --dr-light-bg:              #ffffff;
+    --dr-light-text:            #1f2328;
+    --dr-light-heading:         #0d1117;
+    --dr-light-code-bg:         #f6f8fa;
+    --dr-light-code-text:       #1f2328;
+    --dr-light-pre-bg:          #f6f8fa;
+    --dr-light-pre-border:      #d0d7de;
+    --dr-light-blockquote:      #656d76;
+    --dr-light-blockquote-bd:   #d0d7de;
+    --dr-light-th-bg:           #f6f8fa;
+    --dr-light-table-border:    #d0d7de;
+    --dr-light-link:            #0969da;
+    --dr-light-mermaid-err:     #cf222e;
+    --dr-dark-bg:               #0d1117;
+    --dr-dark-text:             #c9d1d9;
+    --dr-dark-heading:          #e6edf3;
+    --dr-dark-code-bg:          #161b22;
+    --dr-dark-code-text:        #e6edf3;
+    --dr-dark-pre-bg:           #161b22;
+    --dr-dark-pre-border:       #30363d;
+    --dr-dark-blockquote:       #8b949e;
+    --dr-dark-blockquote-bd:    #30363d;
+    --dr-dark-th-bg:            #161b22;
+    --dr-dark-table-border:     #30363d;
+    --dr-dark-link:             #58a6ff;
+    --dr-dark-mermaid-err:      #ff7b72;
 
     /* --- Workflow-group accents (lib/form-schema.css) ---
      * Three roles used by stage-shaped multi-card forms (the
@@ -341,7 +379,12 @@
      * components could set one differently, with the last sheet loaded
      * winning -- the fragmentation § 2 forbids. */
     --page-max-width:   1680px;
+    /* THE FOCUS LOOKS, each one token (`ui-contract.md` § 4): a text field
+     * being typed in glows (--focus-ring, the shell's input rule); the ring
+     * a control draws when the keys reach it is --focus-outline, its offset
+     * its own. */
     --focus-ring:       0 0 0 3px var(--accent-glow);
+    --focus-outline:    2px solid var(--accent);
     --shadow-soft:      0 1px 0 rgba(255, 255, 255, 0.02) inset,
                         0 2px 6px rgba(0, 0, 0, 0.25);
 }

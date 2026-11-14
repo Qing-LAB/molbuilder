@@ -71,10 +71,9 @@
 }
 
 /* Evidence reads as TEXT first and colour second, so a person who cannot
-   distinguish these hues still gets the whole answer from the words. */
+   distinguish these hues still gets the whole answer from the words.  A
+   tested channel's line takes the shell's tone (`status.tone`). */
 .tm-row-test { font-size: var(--text-sm); color: var(--text-muted); }
-.tm-row-test[data-state="ok"]  { color: var(--success); }
-.tm-row-test[data-state="bad"] { color: var(--error); }
 
 .tm-row-actions { display: flex; gap: var(--space-xs); }
 

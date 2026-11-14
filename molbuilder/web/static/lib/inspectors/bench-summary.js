@@ -446,7 +446,7 @@
         const keys = Object.keys(mm);
         if (keys.length) {
             const box = el("div", "bench-mismatch");
-            box.appendChild(el("div", "bench-mismatch-head",
+            box.appendChild(el("div", "bench-mismatch-head tone warn",
                                "ran something else than it was asked to:"));
             for (const k of keys) {
                 box.appendChild(el(

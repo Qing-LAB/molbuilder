@@ -186,6 +186,7 @@ function markFile(id, exists, presentText) {
     const n = $(id);
     n.setAttribute("data-exists", exists ? "yes" : "no");
     n.textContent = exists ? presentText : "not there yet";
+    window.molbuilder.status.tone(n, exists ? "warn" : null);
 }
 
 /* ---------- rendering the description ---------- */

@@ -3,20 +3,12 @@
 <head>
 <meta charset="utf-8">
 <title>molbuilder &mdash; Molbuilder</title>
-<link rel="stylesheet" href="{{ url_for('static', filename='lib/tokens.css') }}">
-<link rel="stylesheet" href="{{ url_for('static', filename='lib/page-shell.css') }}">
-<link rel="stylesheet" href="{{ url_for('static', filename='lib/dialog.css') }}">
-<link rel="stylesheet" href="{{ url_for('static', filename='lib/tabs.css') }}">
+{% include "_page_head.html" %}
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/projects/projects-sidebar.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/form-components.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='modify/style.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/molview/molview.css') }}">
-{# molbuilder-runtime.js MUST load before any other molbuilder script.
-   Defines window.molbuilder.runtime (register/whenReady).  See
-   design.md "Module init contract". #}
-<script src="{{ url_for('static', filename='lib/molbuilder-runtime.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/constants.js') }}"></script>
-<script src="{{ url_for('static', filename='lib/status.js') }}"></script>
 </head>
 <body data-sidebars="projects">
 
@@ -880,7 +872,7 @@
           {#- § 7: the refusal this gesture will actually hit.  Advisory -- the
               gate still decides; this only says it before the request, with the
               way out the gate cannot know about. -#}
-          <p id="pv-cell-hand" class="modify-op-hint" hidden></p>
+          <p id="pv-cell-hand" class="modify-op-hint tone warn" hidden></p>
           {#- NO "Update cell" AND NO "Use default" HERE: the cell is a fact
               § 6.2 says travels together, and the way back to the derived
               regime is the switch at the top of the panel.  One Apply, at

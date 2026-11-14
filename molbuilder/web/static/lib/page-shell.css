@@ -322,7 +322,7 @@ body[data-sidebars][data-sidebars-hidden] .sidebar-rail {
 .fold > summary > h3 { margin: 0; }
 .fold > summary:hover > h2 { color: var(--accent); }
 .fold > summary:focus-visible {
-    outline: 2px solid var(--accent);
+    outline: var(--focus-outline);
     outline-offset: var(--space-xs);
 }
 .fold-sum {
@@ -369,7 +369,7 @@ body[data-content-links="accent"] main a:not([class]):hover {
     text-decoration: underline;
 }
 body[data-content-links="accent"] main a:focus-visible {
-    outline: 2px solid var(--accent);
+    outline: var(--focus-outline);
     outline-offset: 2px;
     border-radius: var(--radius-sm);
 }
@@ -456,7 +456,7 @@ button.plain:hover {
     text-align: inherit;
 }
 button.plain:focus-visible {
-    outline: 2px solid var(--accent);
+    outline: var(--focus-outline);
     outline-offset: 2px;
 }
 /* ---- The button's two variants -------------------------------------
@@ -623,7 +623,7 @@ button.danger:disabled {
     border-bottom: 1px solid var(--bg-card);
 }
 .panel-tab:focus-visible {
-    outline: 2px solid var(--accent);
+    outline: var(--focus-outline);
     outline-offset: -2px;
 }
 
@@ -771,7 +771,7 @@ button.danger:disabled {
     color: var(--warn-soft);
 }
 .page-busy-cancel:focus-visible {
-    outline: 2px solid var(--accent);
+    outline: var(--focus-outline);
     outline-offset: 1px;
 }
 

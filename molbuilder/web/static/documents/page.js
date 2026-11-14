@@ -19,7 +19,7 @@
 
     /* ---- theme toggle ------------------------------------------- */
 
-    /* THE APP IS DARK, so the isolated `docs-render.css` theme starts dark;
+    /* THE APP IS DARK, so the reader's `docs-render.css` theme starts dark;
      * the toggle offers a light reading surface (some people print from this
      * pane), and the choice is a reading preference kept in this browser
      * after it closes (`lib/page-prefs.js`). */

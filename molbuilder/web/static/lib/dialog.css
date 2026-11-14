@@ -97,8 +97,7 @@
  * moment a refusal appears under the user's cursor. */
 .mb-dialog-error {
     margin: 0 0 var(--space-sm);
-    font-size: var(--text-xs);
-    color: var(--error);
+    font-size: var(--text-xs);           /* its colour: tone error */
     min-height: 1lh;            /* one line, at its own line height */
 }
 
@@ -159,7 +158,7 @@
     background: var(--bg-card);
 }
 .tp-row:focus-visible {
-    outline: 2px solid var(--accent);
+    outline: var(--focus-outline);
     outline-offset: -2px;
 }
 .tp-row--inert {
@@ -202,6 +201,10 @@
 .tp-error {
     padding: var(--space-xs) var(--space-sm);
     font-size: var(--text-xs);
+}
+/* An empty folder is a remark; a listing that failed takes the shell's error
+ * tone (tone error, `ui-contract.md` § 5). */
+.tp-empty {
     color: var(--text-secondary);
     font-style: italic;
 }

@@ -1,9 +1,9 @@
 """The Documents pane reads in the app's theme, not against it.
 
-`docs-render.css` is a deliberately isolated theme: it does not consume the
-app's tokens, so a rendered document is a reading surface in its own right and
-a markdown palette can be tuned without touching the shell.  That isolation
-cut both ways.  The pane defaulted to its LIGHT palette while `tokens.css` has
+`docs-render.css` is the reader's own theme: its two palettes are tokens of
+their own (`--dr-light-*`, `--dr-dark-*`), apart from the app's surfaces, so a
+rendered document is a reading surface in its own right and a markdown palette
+can be tuned without touching the shell.  That separateness cut both ways.  The pane defaulted to its LIGHT palette while `tokens.css` has
 no light palette at all -- no ``prefers-color-scheme``, no ``data-theme`` --
 so every document, and every mermaid diagram in one, opened as a white sheet
 inside a dark shell until the reader found the toggle.

@@ -102,9 +102,9 @@
  * colour change alone: colour is not available to every reader, and it
  * also lands in the button's accessible name.  The full reason is in
  * the pill's title, and again in the notice once the card is open. */
-.system-load-toggle.has-gpu-fault {
-    color: var(--warn, #fbbf24);
-    border-color: var(--warn, #fbbf24);
+.system-load-toggle.has-gpu-fault {      /* the notice's amber, the same fault */
+    color: var(--warn-soft, #d8a64b);
+    border-color: var(--warn-soft, #d8a64b);
 }
 
 .system-load-toggle.has-gpu-fault::after {
@@ -139,9 +139,8 @@
     margin: 0;
     padding: var(--space-sm) var(--space-sm2);
     white-space: pre-line;
-    color: var(--warn, #fbbf24);
     background: var(--surface-deep, rgba(0, 0, 0, 0.18));
-    border: 1px solid var(--warn, #fbbf24);
+    border: 1px solid currentColor;      /* the tone's (tone warn) */
     border-radius: var(--radius);
     font-size: var(--text-2xs);
     line-height: 1.35;

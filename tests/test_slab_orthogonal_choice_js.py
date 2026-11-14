@@ -38,8 +38,7 @@ def _run(plane: str, meta: dict) -> dict:
     return run_node([], f"""
         const dom = {{
             "slab-orthogonal": {{ checked: false, disabled: false }},
-            "slab-orthogonal-note": {{ hidden: true, textContent: "",
-                classList: {{ remove() {{}}, add() {{}}, toggle() {{}} }} }},
+            "slab-orthogonal-note": {{ hidden: true, textContent: "" }},
         }};
         function $(id) {{ return dom[id] || null; }}
         function picked() {{ return {json.dumps(plane)}; }}

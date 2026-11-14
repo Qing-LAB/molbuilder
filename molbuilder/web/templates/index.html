@@ -3,10 +3,7 @@
 <head>
 <meta charset="utf-8">
 <title>molbuilder &mdash; Structure optimization</title>
-<link rel="stylesheet" href="{{ url_for('static', filename='lib/tokens.css') }}">
-<link rel="stylesheet" href="{{ url_for('static', filename='lib/page-shell.css') }}">
-<link rel="stylesheet" href="{{ url_for('static', filename='lib/dialog.css') }}">
-<link rel="stylesheet" href="{{ url_for('static', filename='lib/tabs.css') }}">
+{% include "_page_head.html" %}
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/projects/projects-sidebar.css') }}">
 {# lib/form-schema.css styles the .param-grid / .schema-int-triple
    classes that form-schema.js produces when it renders the SIESTA +
@@ -21,13 +18,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='structure-optimization/style.css') }}">
 {# 3Dmol + the mol-viewer stack load via _molview_scripts.html at the end of
    the body (self-hosted vendor; CSP blocks third-party sources). #}
-{# molbuilder-runtime.js MUST load before any other molbuilder script.
-   It defines window.molbuilder.runtime which other modules call to
-   register themselves + advertise readiness.  See design.md "Module
-   init contract" + the module's own docstring. #}
-<script src="{{ url_for('static', filename='lib/molbuilder-runtime.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/constants.js') }}"></script>
-<script src="{{ url_for('static', filename='lib/status.js') }}"></script>
 </head>
 <body data-sidebars="projects"><!--
  data-sidebars="projects" opts this tab into the app-shell flex layout
@@ -105,7 +96,7 @@
          value that came along from an older session, so this lists the
          differences and resets only what is ticked. #}
       <details id="siesta-recommend" class="rec-diff" hidden>
-        <summary><span class="rec-diff-count"></span></summary>
+        <summary class="tone warn"><span class="rec-diff-count"></span></summary>
         <div class="rec-diff-body">
           <ul class="rec-diff-list"></ul>
           <div class="rec-diff-actions">
@@ -146,7 +137,7 @@
          value that came along from an older session, so this lists the
          differences and resets only what is ticked. #}
       <details id="pyscf-recommend" class="rec-diff" hidden>
-        <summary><span class="rec-diff-count"></span></summary>
+        <summary class="tone warn"><span class="rec-diff-count"></span></summary>
         <div class="rec-diff-body">
           <ul class="rec-diff-list"></ul>
           <div class="rec-diff-actions">

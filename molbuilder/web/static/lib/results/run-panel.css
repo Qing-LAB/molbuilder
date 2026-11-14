@@ -90,7 +90,6 @@
     gap: var(--space-sm);
     margin: 0 0 var(--space-sm);
 }
-.rp-finding { color: var(--warning); }
 
 .rp-table {
     width: 100%;
@@ -115,16 +114,16 @@
     display: block;
     color: var(--text-muted);
 }
-/* ASKED IS NOT USED: listed first by the server, marked here. */
-.rp-setup tr.is-differs td:first-child { box-shadow: inset 3px 0 0 var(--warning); }
+/* ASKED IS NOT USED: listed first by the server, marked here -- in the passive
+   flag's amber, the shell's warning tone the finding and the tag take. */
+.rp-setup tr.is-differs td:first-child { box-shadow: inset 3px 0 0 var(--warn-soft); }
 .rp-tag {
     margin-left: var(--space-xs);
     padding: 0 var(--space-xs);
     font-size: var(--text-2xs);
     text-transform: uppercase;
     letter-spacing: 0.06em;
-    color: var(--warning);
-    border: 1px solid var(--warning);
+    border: 1px solid currentColor;      /* the tone's (tone warn) */
     border-radius: var(--radius-sm);
 }
 .rp-default { color: var(--text-muted); font-style: italic; }

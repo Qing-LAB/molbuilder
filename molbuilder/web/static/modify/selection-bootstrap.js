@@ -51,7 +51,7 @@ import { outcome } from "/static/lib/validation-findings.js";
         // silently-blank column.  textContent keeps user-visible
         // strings (and the URL) out of the HTML parser.
         const banner = document.createElement("div");
-        banner.className = "selection-bootstrap-error";
+        banner.className = "selection-bootstrap-error tone error";
         banner.setAttribute("role", "alert");
         banner.textContent = "Selection panel failed to load: " + message;
         host.innerHTML = "";

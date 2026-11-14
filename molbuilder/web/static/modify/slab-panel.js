@@ -234,7 +234,6 @@ export function init(viewer) {
                 `fcc(${plane}) is built with ${choices[0] ? "an orthogonal"
                 : "a non-orthogonal"} cell only -- there is no choice to make `
                 + `on this surface.`;
-            note.classList.remove("modify-op-hint--warn");
             note.hidden = false;
         }
     }
@@ -256,7 +255,7 @@ export function init(viewer) {
             : `${layers} layers is ${rem} past a whole ${period}-layer period `
               + `on fcc(${plane}) -- a seam here will not continue the `
               + `crystal. ${layers - rem} or ${layers + period - rem} would.`;
-        note.classList.toggle("modify-op-hint--warn", rem !== 0);
+        window.molbuilder.status.tone(note, rem !== 0 ? "warn" : null);
         note.hidden = false;
     }
 

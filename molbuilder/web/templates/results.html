@@ -3,15 +3,8 @@
 <head>
 <meta charset="utf-8">
 <title>molbuilder &mdash; Results</title>
-<link rel="stylesheet" href="{{ url_for('static', filename='lib/tokens.css') }}">
-{# Cross-tab page chrome -- body theme, header, main, .card, generic
-   form controls, .status, scrollbars.  Splits responsibility cleanly:
-   page-shell.css covers what every tab needs; per-tab + per-inspector
-   stylesheets layer their specifics on top. -#}
-<link rel="stylesheet" href="{{ url_for('static', filename='lib/page-shell.css') }}">
+{% include "_page_head.html" %}
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/state-chip.css') }}">
-<link rel="stylesheet" href="{{ url_for('static', filename='lib/dialog.css') }}">
-<link rel="stylesheet" href="{{ url_for('static', filename='lib/tabs.css') }}">
 {#- The box every Plotly chart here is drawn in (lib/plot-box.js): a shared
     sheet, so with the shared ones, before the presenters' (ui-contract.md § 1,
     lowest layer first). -#}
@@ -43,12 +36,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/inspectors/fc-sweep.css') }}">
 {# Plotly: trajectory inspector charts energy / force / SCF traces. #}
 <script src="{{ url_for('vendor_plotly_js') }}"></script>
-{# molbuilder-runtime.js MUST load before any other molbuilder script.
-   Defines window.molbuilder.runtime (register/whenReady).  See
-   design.md "Module init contract". #}
-<script src="{{ url_for('static', filename='lib/molbuilder-runtime.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/constants.js') }}"></script>
-<script src="{{ url_for('static', filename='lib/status.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/state-chip.js') }}"></script>
 </head>
 <body data-sidebars="projects" data-content-links="accent">

@@ -248,8 +248,10 @@
                 text += "  \u2014 the sidebar has moved on; Reload to follow";
             }
             els.fileReadout.textContent = text;
-            els.fileReadout.classList.toggle(
-                "is-diverged", !!sc.diverged || lies === "elsewhere");
+            const diverged = !!sc.diverged || lies === "elsewhere";
+            els.fileReadout.classList.toggle("is-diverged", diverged);
+            window.molbuilder.status.tone(els.fileReadout,
+                                          diverged ? "warn" : null);
             // the whole line, warning included -- the ellipsis may hide it
             els.fileReadout.title = text;
         }

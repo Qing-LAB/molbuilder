@@ -151,7 +151,7 @@ body.has-mobile-sidebar-open .ps-resize-handle {
   background: linear-gradient(180deg, var(--ps-accent) 0%, var(--ps-accent-strong) 100%);
   color: var(--ps-selected-fg);
   border: 1px solid var(--ps-accent-strong);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+  box-shadow: var(--ps-shadow-tab);
 }
 .ps-edge-tab-chevron {
   font-size: var(--text-sm);
@@ -300,10 +300,7 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
 
 /* Inline error row shown in the entry list when a directory listing fails
  * (lib/projects/list.js openDir error path). */
-.ps-list-error {
-    padding: var(--space-sm2);
-    color:   var(--ps-danger-fg, #e07a7a);
-}
+.ps-list-error { padding: var(--space-sm2); }   /* tone error: the shell's */
 
 /* ---- Per-entry kebab menu -------------------------------------
  *
@@ -328,7 +325,7 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
   background: var(--ps-bg-tile);
   border: 1px solid var(--ps-border, #2a2a2a);
   border-radius: var(--radius-sm);
-  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.5);
+  box-shadow: var(--ps-shadow-menu);
   padding: var(--space-xs) 0;
 }
 .ps-entry-menu-item {
@@ -446,16 +443,12 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
 }
 .ps-filter-input {
   width: 100%;
-  background: rgba(0, 0, 0, 0.25);
+  background: var(--ps-filter-bg);
   color: var(--ps-fg, #dddddd);
   border: 1px solid var(--ps-border, #2a2a2a);
   border-radius: var(--radius-sm);
   padding: var(--space-xs) var(--space-lg2) var(--space-xs) var(--space-sm);
   font: 0.85rem/1.4 var(--font-mono);
-}
-.ps-filter-input:focus {
-  outline: 1px solid var(--accent, #6ba6ff);
-  outline-offset: -1px;
 }
 .ps-filter-clear {
   position: absolute;
@@ -524,7 +517,7 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
   background: var(--ps-hover);
 }
 /* A row is the listbox's tab stop (ui-contract.md § 4.1): where focus is
- * shows, on the one ring every control wears. */
+ * shows, as the glow (--focus-ring), drawn inside the row. */
 .ps-entry:focus-visible {
   outline: none;
   box-shadow: inset var(--focus-ring);
@@ -864,8 +857,7 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
   flex: 0 0 auto;
   margin: 0;
   padding: var(--space-sm) var(--space-sm2);
-  color: var(--ps-danger-fg);
-  background: var(--ps-bg-tile);
+  background: var(--ps-bg-tile);         /* its colour: tone error */
   font-size: var(--text-sm);
 }
 .ps-preview-error:empty { display: none; }
@@ -981,7 +973,7 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
     transform:  translateX(-100%);
     transition: transform 180ms ease-out;
     z-index:    90;
-    box-shadow: 4px 0 12px rgba(0, 0, 0, 0.4);
+    box-shadow: var(--ps-shadow-drawer);
   }
 
   body.has-mobile-sidebar-open .projects-sidebar {
@@ -1009,7 +1001,7 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
     font-size: var(--text-xl);
     line-height:     1;
     cursor:          pointer;
-    box-shadow:      0 2px 6px rgba(0, 0, 0, 0.3);
+    box-shadow:      var(--ps-shadow-toggle);
   }
   .ps-mobile-toggle:hover,
   .ps-mobile-toggle:focus-visible {
@@ -1028,7 +1020,7 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
     position:   fixed;
     inset:      0;
     z-index:    85;
-    background: rgba(0, 0, 0, 0.5);
+    background: var(--ps-backdrop);
   }
 }
 

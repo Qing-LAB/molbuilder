@@ -55,7 +55,7 @@
 }
 .app-notification__dismiss:hover { color: var(--text-primary); }
 .app-notification__dismiss:focus-visible {
-    outline: 2px solid var(--accent);
+    outline: var(--focus-outline);
     outline-offset: 1px;
 }
 
@@ -72,7 +72,7 @@
 }
 .app-notification__clear-all:hover { color: var(--text-primary); }
 .app-notification__clear-all:focus-visible {
-    outline: 2px solid var(--accent);
+    outline: var(--focus-outline);
     outline-offset: 1px;
 }
 

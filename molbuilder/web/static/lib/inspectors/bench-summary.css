@@ -149,7 +149,6 @@
     padding-left: var(--space-sm);
     font-size: var(--text-sm);
 }
-.bench-mismatch-head { color: var(--warn-soft); }
 .bench-mismatch-row {
     color: var(--text-secondary);
     font-family: var(--font-mono);

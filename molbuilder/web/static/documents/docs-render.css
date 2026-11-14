@@ -1,25 +1,26 @@
-/* docs-render.css — isolated markdown renderer theme
+/* docs-render.css — the Documents reader's markdown theme
  *
- * A self-contained light/dark colour system for the Documents tab's
- * right-hand render pane.  Does NOT depend on the app's global design
- * tokens — the ``--dr-*`` custom properties are the only colours used.
- * Toggle dark mode by adding ``.docs-render-dark`` to the same element.
+ * The Documents tab's right-hand render pane, in a light or a dark reading
+ * theme -- its two palettes are tokens (`lib/tokens.css`, `--dr-light-*`
+ * and `--dr-dark-*`, `ui-contract.md` § 2); this sheet only says which set
+ * the ``--dr-*`` names take.  Toggle dark mode by adding
+ * ``.docs-render-dark`` to the same element.
  */
 
 .docs-render {
-    --dr-bg:            #ffffff;
-    --dr-text:          #1f2328;
-    --dr-heading:       #0d1117;
-    --dr-code-bg:       #f6f8fa;
-    --dr-code-text:     #1f2328;
-    --dr-pre-bg:        #f6f8fa;
-    --dr-pre-border:    #d0d7de;
-    --dr-blockquote:    #656d76;
-    --dr-blockquote-bd: #d0d7de;
-    --dr-th-bg:         #f6f8fa;
-    --dr-table-border:  #d0d7de;
-    --dr-link:          #0969da;
-    --dr-mermaid-err:   #cf222e;
+    --dr-bg: var(--dr-light-bg);
+    --dr-text: var(--dr-light-text);
+    --dr-heading: var(--dr-light-heading);
+    --dr-code-bg: var(--dr-light-code-bg);
+    --dr-code-text: var(--dr-light-code-text);
+    --dr-pre-bg: var(--dr-light-pre-bg);
+    --dr-pre-border: var(--dr-light-pre-border);
+    --dr-blockquote: var(--dr-light-blockquote);
+    --dr-blockquote-bd: var(--dr-light-blockquote-bd);
+    --dr-th-bg: var(--dr-light-th-bg);
+    --dr-table-border: var(--dr-light-table-border);
+    --dr-link: var(--dr-light-link);
+    --dr-mermaid-err: var(--dr-light-mermaid-err);
 
     min-height: 100%;
     background: var(--dr-bg);
@@ -34,19 +35,19 @@
 /* ---- dark palette ---------------------------------------------- */
 
 .docs-render-dark {
-    --dr-bg:            #0d1117;
-    --dr-text:          #c9d1d9;
-    --dr-heading:       #e6edf3;
-    --dr-code-bg:       #161b22;
-    --dr-code-text:     #e6edf3;
-    --dr-pre-bg:        #161b22;
-    --dr-pre-border:    #30363d;
-    --dr-blockquote:    #8b949e;
-    --dr-blockquote-bd: #30363d;
-    --dr-th-bg:         #161b22;
-    --dr-table-border:  #30363d;
-    --dr-link:          #58a6ff;
-    --dr-mermaid-err:   #ff7b72;
+    --dr-bg: var(--dr-dark-bg);
+    --dr-text: var(--dr-dark-text);
+    --dr-heading: var(--dr-dark-heading);
+    --dr-code-bg: var(--dr-dark-code-bg);
+    --dr-code-text: var(--dr-dark-code-text);
+    --dr-pre-bg: var(--dr-dark-pre-bg);
+    --dr-pre-border: var(--dr-dark-pre-border);
+    --dr-blockquote: var(--dr-dark-blockquote);
+    --dr-blockquote-bd: var(--dr-dark-blockquote-bd);
+    --dr-th-bg: var(--dr-dark-th-bg);
+    --dr-table-border: var(--dr-dark-table-border);
+    --dr-link: var(--dr-dark-link);
+    --dr-mermaid-err: var(--dr-dark-mermaid-err);
 }
 
 /* ---- headings -------------------------------------------------- */

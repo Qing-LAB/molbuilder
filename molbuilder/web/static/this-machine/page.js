@@ -68,10 +68,10 @@
         test.className = "tm-row-test";
         if (c.tested_ok === true) {
             test.textContent = "reached " + ago(c.tested_at);
-            test.setAttribute("data-state", "ok");
+            window.molbuilder.status.tone(test, "ok");
         } else if (c.tested_ok === false) {
             test.textContent = "failed " + ago(c.tested_at);
-            test.setAttribute("data-state", "bad");
+            window.molbuilder.status.tone(test, "error");
         } else {
             test.textContent = "never tested";
         }

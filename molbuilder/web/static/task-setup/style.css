@@ -135,7 +135,6 @@
     min-width: 0;
 }
 .ts-file-state { font-size: var(--text-xs); }
-.ts-file-state[data-exists="yes"] { color: var(--warn-soft); }
 .ts-file-state[data-exists="no"]  { color: var(--text-muted); }
 
 /* ---- Settings rows: one point is a choice, several is a measurement ---- */
@@ -288,10 +287,7 @@
     margin: 0;
     font-size: var(--text-sm);
 }
-.ts-dirty {
-    font-weight: var(--weight-semibold);
-    color: var(--warn-soft);
-}
+.ts-dirty { font-weight: var(--weight-semibold); }   /* tone warn: the shell's */
 .ts-dirty[hidden] { display: none; }
 
 /* ---- A choice with no default: the machine, the queue ---- */
@@ -593,7 +589,6 @@
     border-radius: var(--radius-sm);
     font-variant-numeric: tabular-nums;
 }
-.ts-ask-input:focus-visible { outline: 2px solid var(--accent); }
 .ts-ask-input[aria-invalid="true"] { border-color: var(--ts-refuse-fg); }
 .ts-ask-note { color: var(--text-secondary); font-size: var(--text-sm); }
 /* An unset value reads in italics; a refusal or a warning takes the shell's

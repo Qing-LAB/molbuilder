@@ -150,21 +150,17 @@
                               content.  Built by registry.js's
                               createDefaultContext.showError.
 
-   .inspector-inline-error    INLINE: a sub-area of an
-                              already-mounted inspector failed
-                              (source's pre, structure's status
-                              line).  Preserves the surrounding
-                              card chrome.
+   An inspector part that failed inline (source's status, structure's
+   status line) takes the shell's error tone on its own element
+   (`status.tone`), its card chrome kept.  The box's colour is its tone's.
    =========================================================== */
 
 .inspector-error {
     padding: var(--space-md) var(--space-lg);
-    /* The error colour at 8 %, from its token rather than a second spelling
-     * of it. */
-    background: color-mix(in srgb, var(--error) 8%, transparent);
-    border: 1px solid var(--error);
+    /* The tone's colour (tone error) at 8 %, and its edge. */
+    background: color-mix(in srgb, currentColor 8%, transparent);
+    border: 1px solid currentColor;
     border-radius: var(--radius);
-    color: var(--error);
     font-size: var(--text-sm);
     line-height: var(--line-normal);
     /* An error names a path more often than not, and a path has no space to
@@ -172,7 +168,6 @@
     overflow-wrap: anywhere;
 }
 
-.inspector-inline-error,
 .source-body-error,
 .structure-error {
     color: var(--error);
@@ -266,7 +261,8 @@
     position: relative;
 }
 
-.structure-card .structure-status {
+/* One class, so a failure's tone (tone error, (0,2,0)) wins over it. */
+.structure-status {
     margin-top: var(--space-sm);
     color: var(--text-secondary);
     font-size: var(--text-sm);

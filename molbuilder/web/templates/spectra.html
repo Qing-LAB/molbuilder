@@ -3,10 +3,7 @@
 <head>
 <meta charset="utf-8">
 <title>molbuilder &mdash; Spectrum calculation</title>
-<link rel="stylesheet" href="{{ url_for('static', filename='lib/tokens.css') }}">
-<link rel="stylesheet" href="{{ url_for('static', filename='lib/page-shell.css') }}">
-<link rel="stylesheet" href="{{ url_for('static', filename='lib/dialog.css') }}">
-<link rel="stylesheet" href="{{ url_for('static', filename='lib/tabs.css') }}">
+{% include "_page_head.html" %}
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/form-schema.css') }}">
 {# MolView component styles — card 1 mounts the read-only fused card. #}
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/molview/molview.css') }}">
@@ -16,12 +13,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/form-components.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/inspectors/spectra.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='spectra/style.css') }}">
-{# molbuilder-runtime.js MUST load before any other molbuilder script.
-   Defines window.molbuilder.runtime (register/whenReady).  See
-   design.md "Module init contract". #}
-<script src="{{ url_for('static', filename='lib/molbuilder-runtime.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/constants.js') }}"></script>
-<script src="{{ url_for('static', filename='lib/status.js') }}"></script>
 </head>
 <body data-sidebars="projects">
 

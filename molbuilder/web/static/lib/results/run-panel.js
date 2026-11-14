@@ -356,7 +356,7 @@ function verdictSection(rec) {
             .filter(Boolean).join("; "));
     }
     if (Array.isArray(v.stress_voigt_kbar)) line("Stress in the (x, y) plane", inPlane(v.stress_voigt_kbar));
-    (v.findings || []).forEach((f) => line("Finding", f.text || words(f), "rp-finding"));
+    (v.findings || []).forEach((f) => line("Finding", f.text || words(f), "tone warn"));
     if (box.childNodes.length) s.appendChild(box);
     return s;
 }
@@ -389,7 +389,7 @@ function setupSection(rec) {
             const tr = el("tr", r.differs ? "is-differs" : null);
             const p = el("td", "rp-param");
             p.appendChild(el("span", "rp-item", (r.items || [r.item]).join(" + ")));
-            if (r.differs) p.appendChild(el("span", "rp-tag", "differs"));
+            if (r.differs) p.appendChild(el("span", "rp-tag tone warn", "differs"));
             if (r.keys && r.keys.length) p.appendChild(el("span", "rp-keys rp-mono", r.keys.join(" ")));
             tr.appendChild(p);
             tr.appendChild(el("td", "rp-mono", cell(r.default)));
