@@ -54,14 +54,6 @@ def _run(snippet: str, app_at: "str | None" = None, *,
         globals_js=served(app_at) if app_at else "")
 
 
-@pytest.fixture(scope="module")
-def app_at(isolated_projects_root_module):
-    """The app, serving: what answers the panels (`support.live_server`)."""
-    from support.live_server import serve
-    with serve() as base:
-        yield base
-
-
 class TestLazyResolve:
     """LANDMINE-2 fix (2026-06-07): smiles.js (and the other four
     generator modules) used to capture window.molbuilder.* at IIFE

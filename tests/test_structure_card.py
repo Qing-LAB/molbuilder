@@ -42,28 +42,19 @@ TABS = ["structure-optimization", "spectrum-calculation"]
 @pytest.fixture(scope="module")
 def tree(isolated_projects_root_module):
     """The projects tree, the road's water saved in it as a pair, and its H2
-    beside it (:data:`SECOND`), through the same codec."""
-    from molbuilder.workingcopy_structure import StructureCodec
-    from support.road import H2, WATER, road_structure, structure_saved
+    beside it (:data:`SECOND`), each saved as the road saves one."""
+    from support.road import H2, WATER, structure_saved
     structure_saved(isolated_projects_root_module, WATER)
-    StructureCodec().write(road_structure(H2),
-                           isolated_projects_root_module / SECOND)
+    structure_saved(isolated_projects_root_module, H2, at=SECOND)
     return isolated_projects_root_module
-
-
-@pytest.fixture(scope="module")
-def flask_server(tree):
-    from support.live_server import serve
-    with serve() as base_url:
-        yield base_url
 
 
 @pytest.mark.parametrize("tab", TABS)
 def test_a_describing_tab_keeps_its_structure_and_forms_across_a_reload(
-        page, flask_server, tree, tab):
+        page, app_at, tree, tab):
     from playwright.sync_api import expect
     from support.road import STRUCTURE
-    picked(page, flask_server, tab, tree / STRUCTURE)
+    picked(page, app_at, tab, tree / STRUCTURE)
     page.click("#load-from-sidebar-btn")
     status = page.locator("#load-status")
     expect(status).to_have_text("Loaded structure.xyz — 3 atoms.",
@@ -81,7 +72,7 @@ def test_a_describing_tab_keeps_its_structure_and_forms_across_a_reload(
 
 @pytest.mark.parametrize("tab", TABS)
 def test_a_file_picked_while_another_loads_is_the_one_the_tab_holds(
-        page, flask_server, tree, tab):
+        page, app_at, tree, tab):
     """The water's load answered late; the H2 double-clicked meanwhile is
     what the tab holds once both have answered -- read off the electrons the
     chemistry card counts on the structure the tab would send, asked again
@@ -89,7 +80,7 @@ def test_a_file_picked_while_another_loads_is_the_one_the_tab_holds(
     from playwright.sync_api import expect
     from support.road import STRUCTURE
     from support.sidebar import walk_to
-    picked(page, flask_server, tab, tree / STRUCTURE)
+    picked(page, app_at, tab, tree / STRUCTURE)
     held = []
     page.route("**/api/build/load",
                lambda r: r.continue_() if held else held.append(r))

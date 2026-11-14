@@ -30,16 +30,8 @@ import json
 
 import pytest
 
-from support.molview_lane import prelude
-from tests._node_esm import run_node, served, tab_storage
-
-
-@pytest.fixture(scope="module")
-def app_at(isolated_projects_root_module):
-    """The app, serving: what answers the viewer and the workspace."""
-    from support.live_server import serve
-    with serve() as base:
-        yield base
+from support import molview_page
+from support.road import saved_by_name
 
 
 @pytest.fixture(scope="module")
@@ -55,12 +47,8 @@ def pairs(isolated_projects_root_module):
     which atom is held -- and the same O O C as an engine's own copy, its
     stated order the one thing apart."""
     import numpy as np
-    from support.road import (CO2, CO2_HELD_FIRST, H2, WATER, road_structure,
-                              structure_saved)
+    from support.road import CO2, CO2_HELD_FIRST, H2, WATER, road_structure
     root = isolated_projects_root_module
-
-    def saved(name, s):
-        return root / structure_saved(root, s, at=f"P/structure/{name}.xyz")
 
     def framed(spec):
         s = road_structure(spec)
@@ -82,18 +70,54 @@ def pairs(isolated_projects_root_module):
     assert list(listed.elements) == list(CO2["elements"]), listed.elements
     engine = root / "P" / "structure" / "ooc-engine.xyz"
     StructureCodec().write(listed, engine, engine_record=True)
-    return {"two": saved("h2", H2), "three": saved("water", WATER),
-            "two framed": saved("h2-frames", framed(H2)),
-            "three framed": saved("water-frames", framed(WATER)),
-            "O O C": saved("ooc", CO2),
-            "O O C framed": saved("ooc-frames", framed(CO2)),
-            "C O O": saved("coo", coo),
-            "O O C, an engine's order": engine}
+    return {**saved_by_name(root, {
+                "two": H2, "three": WATER,
+                "two framed": framed(H2), "three framed": framed(WATER),
+                "O O C": CO2, "O O C framed": framed(CO2), "C O O": coo}),
+            "O O C, an engine's order": str(engine)}
 
 
-def _run(app_at, pairs, snippet: str):
-    return run_node([], prelude(pairs) + snippet,
-                    globals_js=tab_storage() + served(app_at), storage=True)
+#: This file's own page script, after MolView's page with its workspace
+#: (`support.molview_page`): the view lane on a model alone, attached as
+#: `mount.js` attaches it -- its ``hasTruthLane`` rule, read-only viewers
+#: alone carrying a selection -- since the real mount needs a DOM.
+#: ``session(opts)`` answers ``{model, engine, off}``; the engine is the one
+#: stand-in, the pose pair at the drawing library's edge (§ 9.7's two
+#: bounded askings), which node cannot run.
+LANE = f"""
+const {{ attachUiContext }} =
+    await import({json.dumps(molview_page.UICTX.resolve().as_uri())});
+
+function makeEngine(pose) {{
+    return {{
+        pose: pose || null,
+        pointed: [],
+        getCamera() {{ return this.pose ? this.pose.slice() : null; }},
+        setCamera(p) {{ this.pointed.push(p.slice()); return true; }},
+    }};
+}}
+
+async function session(opts) {{
+    const owner = (opts && opts.owner) || "s";
+    const model = createModel(Object.assign({{ owner, workspace: ws }},
+                                            (opts && opts.model) || {{}}));
+    const engine = makeEngine((opts && opts.pose) || null);
+    const off = attachUiContext({{
+        model, engine, workspace: ws, owner,
+        canvasEl: null,
+        hasTruthLane: !(opts && opts.model && opts.model.mode === "readonly"),
+    }});
+    return {{ model, engine, off }};
+}}
+"""
+
+
+def _run(app_at, pairs, snippet: str, **given):
+    """The test's script on MolView's page with its workspace and the view
+    lane on a model (`support.molview_page`, :data:`LANE`); ``given`` --
+    values worked out here, as constants of the same names."""
+    return molview_page.run(app_at, pairs, LANE + snippet, workspace=True,
+                            given=given)
 
 
 def test_looking_is_never_changing(app_at, pairs):
@@ -103,7 +127,7 @@ def test_looking_is_never_changing(app_at, pairs):
     draft, which reads back as the look."""
     out = _run(app_at, pairs, """
         const one = await session();
-        await opened(one, "two");
+        await opened(one.model, "two");
         await settled();
         const before = writes().length;
 
@@ -134,7 +158,7 @@ def test_the_round_trip_restores_how_you_were_looking(app_at, pairs):
         // § 9.4) -- the Results tab's road, where a frame has somewhere to be.
         const RO = { mode: "readonly" };
         const one = await session({ pose: [1, 2, 3, 4], model: RO });
-        await opened(one, "three framed");
+        await opened(one.model, "three framed");
         await settled();
         one.model.view.set("style", "sphere");
         one.model.selection.setSwitch("showAxis", true);
@@ -145,7 +169,7 @@ def test_the_round_trip_restores_how_you_were_looking(app_at, pairs):
         one.off();
 
         const two = await session({ model: RO });
-        await opened(two, "three framed");
+        await opened(two.model, "three framed");
         console.log(JSON.stringify({
             style: two.model.view.get().style,
             axis: two.model.selection.switches().showAxis,
@@ -174,7 +198,7 @@ def test_a_different_structure_gets_the_preferences_never_the_pose(app_at,
     out = _run(app_at, pairs, """
         const RO = { mode: "readonly" };     // a frame set opens read-only
         const one = await session({ pose: [9, 9, 9], model: RO });
-        await opened(one, "two framed");
+        await opened(one.model, "two framed");
         await settled();
         one.model.view.set("style", "sphere");
         one.model.setCurrentFrame(2);
@@ -182,7 +206,7 @@ def test_a_different_structure_gets_the_preferences_never_the_pose(app_at,
         one.off();
 
         const two = await session({ model: RO });
-        await opened(two, "three framed");
+        await opened(two.model, "three framed");
         console.log(JSON.stringify({
             style: two.model.view.get().style,
             pointed: two.engine.pointed,
@@ -199,17 +223,17 @@ def test_selection_rides_the_lane_only_where_no_truth_lane_exists(app_at,
     out = _run(app_at, pairs, """
         // READ-ONLY: the lane carries the selection home.
         const ro1 = await session({ owner: "ro", model: { mode: "readonly" } });
-        await opened(ro1, "two");
+        await opened(ro1.model, "two");
         await settled();
         ro1.model.selection.add([1]);
         await settled();
         ro1.off();
         const ro2 = await session({ owner: "ro", model: { mode: "readonly" } });
-        await opened(ro2, "two");
+        await opened(ro2.model, "two");
 
         // EDITABLE: the draft owns the selection; the lane must not fight it.
         const ed1 = await session({ owner: "ed" });
-        await opened(ed1, "two");
+        await opened(ed1.model, "two");
         await settled();
         ed1.model.selection.add([0, 1]);
         await settled();
@@ -238,7 +262,7 @@ def test_the_context_applies_after_a_draft_restore_not_under_it(app_at,
     top of that, or the style comes back only to be reset."""
     out = _run(app_at, pairs, """
         const one = await session();
-        await opened(one, "two");
+        await opened(one.model, "two");
         await settled();
         one.model.view.set("style", "sphere");
         await settled();
@@ -281,15 +305,15 @@ def test_a_selection_is_put_back_only_on_the_structure_it_was_made_on(
     other atoms selected, and the transport report asking their PDOS -- the
     last row the match on the stated order alone, the elements' sequence the
     same."""
-    out = _run(app_at, pairs, f"""
-        const one = await session({{ owner: "m", model: {{ mode: "readonly" }} }});
-        await opened(one, "O O C");
+    out = _run(app_at, pairs, """
+        const one = await session({ owner: "m", model: { mode: "readonly" } });
+        await opened(one.model, "O O C");
         await settled();
         one.model.selection.add([2]);
         await settled();
         one.off();
-        const two = await session({{ owner: "m", model: {{ mode: "readonly" }} }});
-        await opened(two, {json.dumps(now)});
-        console.log(JSON.stringify({{ selection: two.model.selection.get() }}));
-        """)
+        const two = await session({ owner: "m", model: { mode: "readonly" } });
+        await opened(two.model, NOW);
+        console.log(JSON.stringify({ selection: two.model.selection.get() }));
+        """, NOW=now)
     assert out["selection"] == restored, out

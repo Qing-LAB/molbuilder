@@ -64,14 +64,6 @@ ROWS = [
 ]
 
 
-@pytest.fixture(scope="module")
-def app_at(isolated_projects_root_module):
-    """The app, serving: what answers the sender (`support.live_server`)."""
-    from support.live_server import serve
-    with serve() as base:
-        yield base
-
-
 @pytest.fixture
 def dest(isolated_projects_root):
     """The folder the tab names -- the sidebar's, so one that is there --

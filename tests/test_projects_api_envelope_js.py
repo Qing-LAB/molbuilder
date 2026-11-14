@@ -39,14 +39,6 @@ def _run(snippet: str, app_at: "str | None" = None) -> object:
         globals_js=served(app_at) if app_at else "")
 
 
-@pytest.fixture(scope="module")
-def app_at(isolated_projects_root_module):
-    """The app, serving: what answers api.js (`support.live_server`)."""
-    from support.live_server import serve
-    with serve() as base:
-        yield base
-
-
 @pytest.fixture
 def tree(isolated_projects_root):
     """This test's projects tree (`isolated_projects_root`): a project

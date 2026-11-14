@@ -22,12 +22,10 @@ opens one, and what the server answered is what the viewer must hold.
 """
 from __future__ import annotations
 
-import json
-from pathlib import Path
-
 import pytest
 
-from tests._node_esm import run_node, served
+from support import molview_page
+from support.road import saved_by_name
 
 
 # --------------------------------------------------------------------- #
@@ -49,47 +47,27 @@ class TestTheComposer:
 #  4. The browser -- the store rides in, and out                         #
 # --------------------------------------------------------------------- #
 
-#: The page that hosts MolView, as a test plays it: it hands the viewer the
-#: one reader of a server's answer (`support/molview_host.mjs`).
-HOST = Path(__file__).resolve().parent / "support" / "molview_host.mjs"
-
 #: What a person's script wrote into the store (`Structure.set_info`, the
 #: Python half of the host's `data.info.set`): one entry of its own.
 NOTE = ("note", {"drawn": "by hand", "relaxed": False})
 
 
 @pytest.fixture(scope="module")
-def app_at(isolated_projects_root_module):
-    """The app, serving: what answers the viewer (`support.live_server`)."""
-    from support.live_server import serve
-    with serve() as base:
-        yield base
-
-
-@pytest.fixture(scope="module")
 def pairs(isolated_projects_root_module):
     """The road's H2 saved as the road saves a structure
-    (`support.road.structure_saved`), twice: once with :data:`NOTE` in its
+    (`support.road.saved_by_name`), twice: once with :data:`NOTE` in its
     store -- the sidecar carries it -- and once never described."""
-    from support.road import H2, road_structure, structure_saved
-    root = isolated_projects_root_module
+    from support.road import H2, road_structure
     described = road_structure(H2)
     described.set_info(*NOTE)
-    return {
-        "described": str(root / structure_saved(
-            root, described, at="P/structure/described.xyz")),
-        "never described": str(root / structure_saved(
-            root, H2, at="P/structure/plain.xyz")),
-    }
+    return saved_by_name(isolated_projects_root_module, {
+        "described": described, "never described": H2})
 
 
-def _run(app_at, pairs, snippet: str):
-    """The test's script on the page, the app's own routes answering
-    (`_node_esm.served`), each request kept in ``__calls``."""
-    return run_node([], f"""
-const {{ createModel }} = await import({json.dumps(HOST.as_uri())});
-const PAIRS = {json.dumps(pairs)};
-""" + snippet, globals_js=served(app_at))
+def _run(app_at, pairs, snippet: str, **given):
+    """The test's script on MolView's page (`support.molview_page`);
+    ``given`` -- values worked out here, as constants of the same names."""
+    return molview_page.run(app_at, pairs, snippet, given=given)
 
 
 class TestTheBrowserSide:
@@ -111,13 +89,12 @@ class TestTheBrowserSide:
         (a flat ``payload.info``, which no route sends) -- the ORIGINAL BUG.
         """
         out = _run(app_at, pairs, """
-        const m = createModel({});
-        await m.installMolecule({ path: PAIRS[__WHICH__] });
+        const m = await loaded(WHICH);
         const file = m.exportFile();
         console.log(JSON.stringify({
             held: m.getStructure().info,
             exported: "info" in file.structure ? file.structure.info : "absent",
-        }));""".replace("__WHICH__", json.dumps(which)))
+        }));""", WHICH=which)
         if which == "described":
             assert out["held"] == dict([NOTE]), (
                 "the viewer must hold the store the server read from the "
@@ -136,8 +113,7 @@ class TestTheBrowserSide:
         its draft -- so its store comes back with it.  (That the envelope
         goes over alone is `test_molview_model`'s.)"""
         out = _run(app_at, pairs, """
-        const shown = createModel({});
-        await shown.installMolecule({ path: PAIRS.described });
+        const shown = await loaded("described");
         const file = shown.exportFile();
         const back = createModel({});
         await back.installMolecule({ structure: file.structure });

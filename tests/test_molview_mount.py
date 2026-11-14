@@ -37,9 +37,8 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from support.molview_lane import HOST, KEPT, LANE_DELAY, WS
-from support.road import CO2, H2, WATER
-from tests._node_esm import run_node, served, tab_storage
+from support import molview_page
+from support.road import CO2, H2, WATER, saved_by_name
 
 REPO = Path(__file__).resolve().parents[1]
 MODULE_DIR = REPO / "molbuilder" / "web" / "static" / "lib" / "molview"
@@ -61,15 +60,6 @@ AU_S_C = {"elements": ["Au", "S", "C"],
 
 
 @pytest.fixture(scope="module")
-def app_at(isolated_projects_root_module):
-    """The app, serving: what answers the viewer and the workspace
-    (`support.live_server`)."""
-    from support.live_server import serve
-    with serve() as base:
-        yield base
-
-
-@pytest.fixture(scope="module")
 def pairs(isolated_projects_root_module):
     """The structures the tests open, by name -- the road's own
     (`support.road`), each saved as the road saves one (`structure_saved`)
@@ -83,36 +73,34 @@ def pairs(isolated_projects_root_module):
     so its load answers a warning about the box beside a warning and a remark
     about the rest."""
     from molbuilder.builders import build
-    from support.road import structure_saved
     root = isolated_projects_root_module
-
-    def saved(name, s):
-        return str(root / structure_saved(root, s, at=f"P/structure/{name}.xyz"))
 
     def labelled(spec, **more):
         return dict(spec, regions={**spec.get("regions", {}), **more})
     peptide = build("peptide", "GA").structure.replace(
         regions={"bridge": [0], "frozen_atoms": [0]})
-    return {
-        "H2": saved("h2", H2),
-        "water": saved("water", WATER),
-        "CO2": saved("co2", CO2),
-        "H2, the offered names": saved("h2-offered", labelled(
-            H2, **{"L-electrode": [0], "bridge": [0], "my-notes": [0]})),
-        "H2, bridged": saved("h2-bridged", labelled(H2, bridge=[0, 1])),
-        "H2, a label of its own": saved("h2-own", labelled(
-            H2, **{"custom-tag": [0]})),
-        "peptide, labelled": saved("peptide-labelled", peptide),
-        "Au S C": saved("au-s-c", AU_S_C),
-        "water, outside its box": saved("water-outside", _crowded_outside()),
-    }
+    return saved_by_name(root, {
+        "H2": H2, "water": WATER, "CO2": CO2,
+        "H2, the offered names": labelled(
+            H2, **{"L-electrode": [0], "bridge": [0], "my-notes": [0]}),
+        "H2, bridged": labelled(H2, bridge=[0, 1]),
+        "H2, a label of its own": labelled(H2, **{"custom-tag": [0]}),
+        "peptide, labelled": peptide,
+        "Au S C": AU_S_C,
+        "water, outside its box": _crowded_outside(),
+    })
 
 
-def _globals(app_at) -> str:
-    return (tab_storage() + served(app_at) + STAND_INS + """
-// WHAT THE PAGE HOLDS before any module of the viewer or the page is loaded.
+#: What the mount puts on the page before any of its modules: the stand-ins
+#: for what node cannot run, what the page holds then, and the viewer loaded
+#: through its one public import -- what loading it put on the page read
+#: before the page's own modules load.
+BEFORE = STAND_INS + f"""
 globalThis.__pageHeld = Object.keys(globalThis.molbuilder);
-""")
+const MV = await import({json.dumps(INDEX.resolve().as_uri())});
+globalThis.__viewerPublished = Object.keys(globalThis.molbuilder)
+    .filter((k) => !globalThis.__pageHeld.includes(k));
+"""
 
 
 def _crowded_outside():
@@ -127,38 +115,10 @@ def _crowded_outside():
         positions=[[0.0, 0.0, 0.0], [0.3, 0.0, 0.0], [-0.757, 0.586, 0.0]])[1]
 
 
-def _prelude(pairs) -> str:
-    return f"""
-const MV = await import({json.dumps(INDEX.resolve().as_uri())});
-// WHAT LOADING THE VIEWER PUT ON THE PAGE -- before the page's own modules.
-globalThis.__viewerPublished = Object.keys(globalThis.molbuilder)
-    .filter((k) => !globalThis.__pageHeld.includes(k));
-// ...MOUNTED AS A PAGE MOUNTS IT: handed the one reader of a server's
-// answer (`support/molview_host.mjs`).
-const {{ mount, ask }} = await import({json.dumps(HOST.as_uri())});
-await import({json.dumps(KEPT.resolve().as_uri())});
-await import({json.dumps(WS.resolve().as_uri())});
-/* The workspace a page hands its viewer (workspace.md § 5): the real one,
- * its files on the app's own routes, this run's browser tab its own. */
-const ws = globalThis.molbuilder.workspace;
-const PAIRS = {json.dumps(pairs)};
-
-/* A structure opened as a tab opens one -- by path, the server reading the
- * pair -- and the wire quiet after it: the load answered and, in an editable
- * viewer, point 0 written. */
-async function openIn(viewer, name) {{
-    await viewer.data.installMolecule({{ path: PAIRS[name] }});
-    await __quiet();
-}}
-
-/* The view lane's gathered write, then the wire quiet: written and answered
- * (§ 11.2b; the lane's own delay, never a number of this file's). */
-{LANE_DELAY};
-async function settled() {{
-    await new Promise((r) => setTimeout(r, WRITE_DELAY_MS));
-    await __quiet();
-}}
-
+#: This file's own page script, after MolView's page (`support.
+#: molview_page`, its workspace on): a viewer mounted as a page mounts it,
+#: and its drawing waited for.
+MOUNT = """
 /* The drawing lands a TURN after the model does.
  *
  * `installMolecule` resolves when the MODEL has the structure; the rebuild that
@@ -169,28 +129,29 @@ async function settled() {{
  *
  * Waits for the CONDITION rather than a fixed delay: a sleep long enough to be
  * safe is long enough to be slow, and one that is neither is a flake. */
-async function waitForDrawing(check, why) {{
-    for (let i = 0; i < 200; i++) {{
+async function waitForDrawing(check, why) {
+    for (let i = 0; i < 200; i++) {
         if (check()) return true;
         await new Promise((r) => setTimeout(r, 5));
-    }}
+    }
     throw new Error("the drawing never received it: " + why);
-}}
+}
 
-async function mounted(opts) {{
+async function mounted(opts) {
     const host = globalThis.__makeHost(opts && opts.width, opts && opts.minWidth);
     const viewer = await mount(host, ws,
-        Object.assign({{ owner: "test" }}, (opts && opts.mount) || {{}}));
-    return {{ host, viewer }};
-}}
+        Object.assign({ owner: "test" }, (opts && opts.mount) || {}));
+    return { host, viewer };
+}
 """
 
 
-def _run(app_at, pairs, snippet: str):
-    """The test's script on the page, the app's routes answering and the
-    tab's own storage under it."""
-    return run_node([], _prelude(pairs) + snippet,
-                    globals_js=_globals(app_at), storage=True)
+def _run(app_at, pairs, snippet: str, **given):
+    """The test's script on MolView's page, the viewer mounted in the DOM
+    stand-in (`support.molview_page`); ``given`` -- values worked out here,
+    as constants of the same names."""
+    return molview_page.run(app_at, pairs, MOUNT + snippet, workspace=True,
+                            globals_js=BEFORE, given=given)
 
 
 # ---------------------------------------------------------------------------
@@ -247,9 +208,8 @@ def test_mounting_needs_only_what_it_is_handed(app_at, pairs):
             { owner: "results-structure", server: { ask } });
         // ...and it works with what it was handed: a structure opened, and
         // an edit's point kept IN THE WORKSPACE HANDED IN, read back there.
-        await viewer.data.installMolecule({ path: PAIRS["H2"] });
-        await __quiet();
-        const opened = viewer.data.getStructure();
+        await opened(viewer.data, "H2");
+        const held = viewer.data.getStructure();
         await viewer.data.applyOp("translate", { dx: 1 });
         await __quiet();
         const kept = await handed.readState("results-structure", 1);
@@ -259,7 +219,7 @@ def test_mounting_needs_only_what_it_is_handed(app_at, pairs):
         const look = await handed.readDraft("results-structure:ui");
         console.log(JSON.stringify({
             ok: viewer.ok,
-            atoms: opened && opened.elements.length,
+            atoms: held && held.elements.length,
             kept: kept !== null,
             look: look && look.view && look.view.style,
             loaded: globalThis.__viewerPublished,
@@ -422,7 +382,7 @@ def test_playback_moves_the_frame_through_the_same_write_everyone_uses(app_at, p
     out = _run(app_at, pairs,
         """
         const { viewer } = await mounted();
-        await openIn(viewer, "H2");
+        await opened(viewer.data, "H2");
         viewer.data.reloadFrames([[[0,0,0],[1,0,0]], [[2,0,0],[3,0,0]]]);
 
         const heard = [];
@@ -469,7 +429,7 @@ def test_a_movie_saves_the_frame_it_stops_on_and_none_it_passes(app_at, pairs):
         """
         const host = globalThis.__makeHost();
         const viewer = await mount(host, ws, { owner: "test" });
-        await openIn(viewer, "H2");
+        await opened(viewer.data, "H2");
         viewer.data.reloadFrames([[[0,0,0],[1,0,0]], [[2,0,0],[3,0,0]],
                                   [[4,0,0],[5,0,0]]]);
         await settled();                               // the load's own write
@@ -575,7 +535,7 @@ def test_the_frame_bar_appears_only_once_there_is_more_than_one_frame(app_at, pa
         const bar = host.querySelector(".molviewer-frames-bar");
         const atMount = bar.hidden;
 
-        await openIn(viewer, "H2");
+        await opened(viewer.data, "H2");
         const oneFrame = bar.hidden;
 
         viewer.data.reloadFrames([[[0,0,0],[1,0,0]], [[2,0,0],[3,0,0]]]);
@@ -614,7 +574,7 @@ def test_a_switch_and_a_selection_reach_the_drawing(app_at, pairs):
     out = _run(app_at, pairs,
         """
         const { viewer } = await mounted();
-        await openIn(viewer, "H2");
+        await opened(viewer.data, "H2");
         // The load's own rebuild has to FINISH first. While it is in flight the
         // engine is in its rebuild window, where a switch is deliberately not
         // held and not drawn -- "the rebuild reads the switches when it runs"
@@ -877,7 +837,7 @@ def test_each_write_costs_what_the_cost_table_says_it_costs(app_at, pairs):
     out = _run(app_at, pairs,
         """
         const { viewer } = await mounted();
-        await openIn(viewer, "H2");
+        await opened(viewer.data, "H2");
         viewer.data.reloadFrames([[[0,0,0],[1,0,0]], [[0,1,0],[1,1,0]]]);
         await new Promise((r) => setTimeout(r, 0));
 
@@ -943,7 +903,7 @@ def test_the_readout_measures_from_the_truth_in_pick_order(app_at, pairs):
     out = _run(app_at, pairs,
         """
         const { host, viewer } = await mounted();
-        await openIn(viewer, "CO2");
+        await opened(viewer.data, "CO2");
         // A bent three-atom frame: 1 is the geometric middle, 0 is not.
         viewer.data.reloadFrames([
             [[-1, 0, 0], [0, 0, 0], [0, 1, 0]],
@@ -1078,7 +1038,7 @@ def test_a_known_pair_shows_its_literature_distance(app_at, pairs):
     out = _run(app_at, pairs,
         """
         const { host, viewer } = await mounted();
-        await openIn(viewer, "Au S C");
+        await opened(viewer.data, "Au S C");
         const card = host.querySelector(".molviewer-card");
         const readout = card.querySelector(".molviewer-overlay--measure");
         const refs = () => Array.from(
@@ -1211,7 +1171,7 @@ def test_the_structure_leaves_through_the_door_and_its_facts_go_with_it(
                 saveBinary: async () => ({ ok: true }),
             },
         });
-        await openIn(viewer, __WHICH__);
+        await opened(viewer.data, WHICH);
 
         // A label, so there is something for the export to lose.
         viewer.data.pickAtom(0);
@@ -1233,7 +1193,7 @@ def test_the_structure_leaves_through_the_door_and_its_facts_go_with_it(
             identical:    JSON.stringify(saved[0].payload.structure)
                           === JSON.stringify(saved[1].payload.structure),
         }));
-        """.replace("__WHICH__", json.dumps(which))
+        """, WHICH=which
     )
     assert out["sections"] == 2, (
         f"§ 11.3's menu is Data and Image — {out['sections']} section(s) found"
@@ -1302,7 +1262,7 @@ def test_a_picture_is_the_view_and_leaves_through_saveBinary(app_at, pairs):
                 },
             },
         });
-        await openIn(viewer, "H2");
+        await opened(viewer.data, "H2");
 
         const card = host.querySelector(".molviewer-card");
         const imageRow = card.querySelectorAll(".molviewer-export-section")[1];
@@ -1347,7 +1307,7 @@ def test_a_trajectorys_data_export_asks_the_range_and_sends_it(app_at, pairs):
                 saveBinary: async () => ({ ok: true }),
             },
         });
-        await openIn(viewer, "H2");
+        await opened(viewer.data, "H2");
         viewer.data.addFrames([
             [[0,0,1],[1,0,1]], [[0,0,2],[1,0,2]], [[0,0,3],[1,0,3]],
         ]);
@@ -1359,7 +1319,7 @@ def test_a_trajectorys_data_export_asks_the_range_and_sends_it(app_at, pairs):
         await new Promise((r) => setTimeout(r, 10));
 
         const dialog = document.body.querySelector(".molviewer-export-dialog");
-        const opened = {
+        const onOpening = {
             exists: !!dialog,
             defaults: dialog
                 ? Array.from(dialog.querySelectorAll("input"))
@@ -1374,7 +1334,7 @@ def test_a_trajectorys_data_export_asks_the_range_and_sends_it(app_at, pairs):
         await new Promise((r) => setTimeout(r, 20));
 
         console.log(JSON.stringify({
-            opened,
+            onOpening,
             stem: saved[0] && saved[0].stem,
             frameCount: saved[0] && saved[0].payload.structure.frames
                 ? saved[0].payload.structure.frames.length : null,
@@ -1382,9 +1342,9 @@ def test_a_trajectorys_data_export_asks_the_range_and_sends_it(app_at, pairs):
         }));
         """
     )
-    assert out["opened"]["exists"] is True
-    assert out["opened"]["defaults"] == ["2", "2"], (
-        f"the dialog must open on the DISPLAYED frame: {out['opened']['defaults']}"
+    assert out["onOpening"]["exists"] is True
+    assert out["onOpening"]["defaults"] == ["2", "2"], (
+        f"the dialog must open on the DISPLAYED frame: {out['onOpening']['defaults']}"
     )
     assert out["stem"] == Path(pairs["H2"]).stem + "_frame1-3", (
         f"the stem names both ends by their index (§ 11.4): {out['stem']!r}"
@@ -1409,7 +1369,7 @@ def test_switching_editors_redraws_the_panel_and_moves_no_selection(app_at, pair
     out = _run(app_at, pairs,
         """
         const { host, viewer } = await mounted();
-        await openIn(viewer, "H2");
+        await opened(viewer.data, "H2");
         viewer.data.selection.add([0, 1]);
 
         const card = host.querySelector(".molviewer-card");
@@ -1502,7 +1462,7 @@ def test_the_atom_list_reads_one_based_and_a_click_goes_through_the_store(app_at
     out = _run(app_at, pairs,
         """
         const { host, viewer } = await mounted();
-        await openIn(viewer, "H2");
+        await opened(viewer.data, "H2");
         const card = host.querySelector(".molviewer-card");
         const rows = card.querySelectorAll(".molviewer-atoms-table")[0].children;
 
@@ -1551,7 +1511,7 @@ def test_an_atom_row_ticks_shows_its_labels_and_lets_one_be_taken_off(app_at, pa
     out = _run(app_at, pairs,
         """
         const { host, viewer } = await mounted();
-        await openIn(viewer, "peptide, labelled");
+        await opened(viewer.data, "peptide, labelled");
         const card = host.querySelector(".molviewer-card");
         const rows = () => card.querySelectorAll(".molviewer-atoms-table")[0].children;
 
@@ -1653,7 +1613,7 @@ def test_a_notice_is_drawn_where_its_subject_is_and_the_tab_says_so(app_at, pair
     out = _run(app_at, pairs,
         """
         const { host, viewer } = await mounted();
-        await openIn(viewer, "water, outside its box");
+        await opened(viewer.data, "water, outside its box");
         const said = __answered.find((a) => a && a.structure).notices || [];
         const card = host.querySelector(".molviewer-card");
 
@@ -1737,7 +1697,7 @@ def test_the_names_molview_offers_each_read_differently_and_frozen_stands_out(ap
     out = _run(app_at, pairs,
         """
         const m = await mounted();
-        await openIn(m.viewer, "H2, the offered names");
+        await opened(m.viewer.data, "H2, the offered names");
         const chips = m.host.querySelector(".molviewer-card")
             .querySelectorAll(".molviewer-atoms-column-labels .molviewer-selection-tag")
             .map(t => ({ name: t.children[0].textContent,
@@ -1786,7 +1746,7 @@ def test_typing_a_reserved_name_says_what_it_does(app_at, pairs):
     out = _run(app_at, pairs,
         """
         const { host, viewer } = await mounted();
-        await openIn(viewer, "water");
+        await opened(viewer.data, "water");
         const card = host.querySelector(".molviewer-card");
         const chooser = card.querySelector(".molviewer-selection-assign-select");
         const box = card.querySelector(".molviewer-selection-new-label");
@@ -1827,7 +1787,7 @@ def test_the_labels_in_play_are_offered_so_none_has_to_be_retyped(app_at, pairs)
     out = _run(app_at, pairs,
         """
         const { host, viewer } = await mounted();
-        await openIn(viewer, "H2, bridged");
+        await opened(viewer.data, "H2, bridged");
         const card = host.querySelector(".molviewer-card");
         const chooser = card.querySelector(".molviewer-selection-assign-select");
         const box = card.querySelector(".molviewer-selection-new-label");
@@ -1915,7 +1875,7 @@ def test_typing_in_a_filter_row_does_not_replace_the_control_being_typed_in(app_
     out = _run(app_at, pairs,
         """
         const { host, viewer } = await mounted();
-        await openIn(viewer, "H2");
+        await opened(viewer.data, "H2");
         viewer.data.selection.setEditor("filter");
         viewer.data.selection.addFilter();
         const card = host.querySelector(".molviewer-card");
@@ -1985,7 +1945,7 @@ def test_by_label_offers_the_defined_names_and_nothing_else(app_at, pairs):
     out = _run(app_at, pairs,
         """
         const { host, viewer } = await mounted();
-        await openIn(viewer, "H2, a label of its own");
+        await opened(viewer.data, "H2, a label of its own");
         viewer.data.selection.setEditor("filter");
         const card = host.querySelector(".molviewer-card");
         card.querySelector(".molviewer-selection-add-filter-row").click();
@@ -2076,7 +2036,7 @@ def test_a_filter_row_is_added_typed_and_removed_from_the_panel(app_at, pairs):
     out = _run(app_at, pairs,
         """
         const { host, viewer } = await mounted();
-        await openIn(viewer, "H2");
+        await opened(viewer.data, "H2");
         viewer.data.selection.setEditor("filter");
         const card = host.querySelector(".molviewer-card");
 
@@ -2313,7 +2273,7 @@ def test_the_speed_box_sets_playback_and_shows_what_playback_took(app_at, pairs)
         const box = card.querySelector(".molviewer-frames-speed-input");
         const type = (v) => { box.value = String(v); box.dispatch("change", { target: box }); };
 
-        const opened = { shown: box.value, held: viewer.getSpeed(),
+        const onOpening = { shown: box.value, held: viewer.getSpeed(),
                          min: box.min, max: box.max };
 
         type(500);
@@ -2334,13 +2294,13 @@ def test_the_speed_box_sets_playback_and_shows_what_playback_took(app_at, pairs)
         const playArity = viewer.play.length;
 
         console.log(JSON.stringify({
-            opened, afterTyping, clampedHigh, clampedLow, afterNonsense, playArity,
+            onOpening, afterTyping, clampedHigh, clampedLow, afterNonsense, playArity,
         }));
         """
     )
-    assert out["opened"] == {"shown": "150", "held": 150, "min": "20", "max": "3000"}, (
+    assert out["onOpening"] == {"shown": "150", "held": 150, "min": "20", "max": "3000"}, (
         "the box must open on what playback is set to, within § 1.1's range — "
-        f"not on a number written into the control: {out['opened']}"
+        f"not on a number written into the control: {out['onOpening']}"
     )
     assert out["afterTyping"] == {"shown": "500", "held": 500}, (
         f"typing a speed must reach the handle: {out['afterTyping']}"
@@ -2379,7 +2339,7 @@ def test_the_slowest_setting_really_is_the_slowest_setting(app_at, pairs):
     out = _run(app_at, pairs,
         """
         const { viewer } = await mounted();
-        await openIn(viewer, "H2");
+        await opened(viewer.data, "H2");
         viewer.data.reloadFrames([[[0,0,0],[1,0,0]], [[2,0,0],[3,0,0]]]);
 
         let moved = 0;
@@ -2415,7 +2375,7 @@ def test_a_read_only_viewer_hides_the_control_the_gate_would_swallow(app_at, pai
             // Each its own owner, so neither reads the other's saved work.
             const viewer = await mount(host, ws,
                                        { owner: mode || "editable", mode });
-            await openIn(viewer, "H2");
+            await opened(viewer.data, "H2");
             const card = host.querySelector(".molviewer-card");
             return {
                 assignHidden: card.querySelector(".molviewer-selection-assign").hidden,
@@ -2455,7 +2415,7 @@ def test_loading_a_structure_reaches_the_drawing(app_at, pairs):
         """
         globalThis.__resetCalls();
         const { viewer } = await mounted();
-        await openIn(viewer, "H2");
+        await opened(viewer.data, "H2");
         await waitForDrawing(() => globalThis.__callNames().includes("addModelsAsFrames"),
                     "addModelsAsFrames after a load");
         const afterLoad = globalThis.__callNames().slice();
@@ -2542,7 +2502,7 @@ def test_a_pick_reaches_the_drawing_as_a_mark_then_an_arrow(app_at, pairs):
     """
     out = _run(app_at, pairs, """
         const { viewer } = await mounted();
-        await openIn(viewer, "H2");
+        await opened(viewer.data, "H2");
         await waitForDrawing(() => globalThis.__lastCall("addModelsAsFrames"),
                              "the structure never reached the window");
         const frame = viewer.data.getFrameAllAtoms(viewer.data.currentFrame());
@@ -2603,7 +2563,7 @@ def test_both_choosers_follow_the_labels_a_structure_arrives_with(
         viewer.data.selection.setEditor("filter");
         const card = host.querySelector(".molviewer-card");
         const chooser = card.querySelector(".molviewer-selection-assign-select");
-        const picked = %s;
+        const picked = PICKED;
         if (picked) {
             chooser.value = picked;
             chooser.dispatch("change", { target: chooser });
@@ -2615,12 +2575,12 @@ def test_both_choosers_follow_the_labels_a_structure_arrives_with(
         const filterOffered = () => card.querySelector(".molviewer-filter-text")
             .children.map(o => o.value).filter(Boolean);
         const before = filterOffered();
-        await openIn(viewer, "H2");
+        await opened(viewer.data, "H2");
         console.log(JSON.stringify({
             before, after: filterOffered(), shown: chooser.value,
             assignOffered: chooser.children.map(o => o.value).filter(Boolean),
         }));
-        """ % json.dumps(picked)
+        """, PICKED=picked
     )
     assert out["before"] == ["interface", "frozen_atoms"], out
     assert out["after"] == out["assignOffered"], out

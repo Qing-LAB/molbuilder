@@ -171,7 +171,7 @@ globalThis.CodeMirror = Object.assign(
 
 
 def test_the_page_script_reads_a_calculation_on_the_page_as_served(
-        tmp_path, monkeypatch):
+        tmp_path, monkeypatch, app_at):
     """THE PAGE'S SCRIPT FINDS THE ELEMENTS IT NEEDS ON THE PAGE AS SERVED.
     `task-setup/viewer.js` is loaded under node as the page loads it --
     after the classic scripts the served page names, the sidebar's
@@ -189,38 +189,36 @@ def test_the_page_script_reads_a_calculation_on_the_page_as_served(
     import json
     import urllib.request
 
-    from support.live_server import serve
     from support.pages import ids_of
     from support.road import described, road_tree
     from tests._node_esm import run_node, served
     calc = described(road_tree(tmp_path, monkeypatch))
-    with serve() as base:
-        with urllib.request.urlopen(f"{base}/task-setup") as r:
-            page = r.read().decode()
-        classic = re.findall(r'<script src="([^"]+)"(?![^>]*\bdefer\b)', page)
-        got = run_node(
-            [STATIC / src.split("/static/", 1)[1].split("?")[0]
-             for src in classic],
-            """
-            const folder = %s;
-            window.molbuilder.runtime.register("projects", {
-              getCurrentDir: () => folder,
-              onChange: () => {}, onCommit: () => {},
-              onFolderChanged: () => {},
-            });
-            await import(%s);
-            await __quiet();
-            const $ = (id) => document.getElementById(id);
-            console.log(JSON.stringify({
-              state: $("ts-state").getAttribute("data-state"),
-              said: $("ts-state-title").textContent,
-              machine_card_shown: !$("ts-machine-card").hidden }));
-            """ % (json.dumps(str(calc)),
-                   json.dumps((STATIC / "task-setup" / "viewer.js").as_uri())),
-            globals_js=("globalThis.__held = new Set(%s);\n"
-                        % json.dumps(sorted(ids_of(page)))
-                        + _THE_SERVED_DOCUMENT + served(base)),
-            static_root=STATIC, storage=True)
+    with urllib.request.urlopen(f"{app_at}/task-setup") as r:
+        page = r.read().decode()
+    classic = re.findall(r'<script src="([^"]+)"(?![^>]*\bdefer\b)', page)
+    got = run_node(
+        [STATIC / src.split("/static/", 1)[1].split("?")[0]
+         for src in classic],
+        """
+        const folder = %s;
+        window.molbuilder.runtime.register("projects", {
+          getCurrentDir: () => folder,
+          onChange: () => {}, onCommit: () => {},
+          onFolderChanged: () => {},
+        });
+        await import(%s);
+        await __quiet();
+        const $ = (id) => document.getElementById(id);
+        console.log(JSON.stringify({
+          state: $("ts-state").getAttribute("data-state"),
+          said: $("ts-state-title").textContent,
+          machine_card_shown: !$("ts-machine-card").hidden }));
+        """ % (json.dumps(str(calc)),
+               json.dumps((STATIC / "task-setup" / "viewer.js").as_uri())),
+        globals_js=("globalThis.__held = new Set(%s);\n"
+                    % json.dumps(sorted(ids_of(page)))
+                    + _THE_SERVED_DOCUMENT + served(app_at)),
+        static_root=STATIC, storage=True)
     assert got == {"state": "loaded", "said": "Loaded — H2",
                    "machine_card_shown": True}, got
 

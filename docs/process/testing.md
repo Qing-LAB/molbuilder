@@ -195,6 +195,13 @@ somewhere temporary and builds inside it:
   fixture a whole file shares. It exists because a module-scoped fixture
   cannot ask for `tmp_path`; it uses `MonkeyPatch()` and `tmp_path_factory`
   directly.
+- **`app_at`** (`conftest.py`, module-scoped) — the app serving on a live
+  server (`support.live_server.serve`) over the module's tree, its base
+  URL: what a page test's requests go to (§ 4, `served`). One fixture, never
+  a copy per file. The projects root is read at each request, so a test that
+  points the door at a tree of its own (`isolated_projects_root`) is
+  answered from that tree. A test that needs a different app — sign-in on,
+  a rate limit — starts its own with `serve(config)` and says why.
 - **The road's tree, `support.road.road_tree`** — the tree a test
   describes in (§ 6): the door pointed at `tmp_path`'s tree, the structure
   saved there, its pseudopotentials beside it, and the test working from the
@@ -810,7 +817,8 @@ without one; an engine-less road test is tier 1 and named plainly *(2026-10-08,
 B8 S4: five such files lost the suffix)*. Each
 starts the app on a **live server** through `support.live_server.serve`, which
 stands on the test's own projects tree: a module's server asks
-`isolated_projects_root_module`, a server started per test asks
+`isolated_projects_root_module` (each e2e file's own fixture still, to be
+`app_at`, § 2a, when F10 runs them), a server started per test asks
 `isolated_projects_root`, a test serving a real run's tree points the door
 at it first (§ 2a), and with no tree pointed `serve` refuses. The test drives
 the `page` fixture (`page.goto(f"{base}/molbuilder")`, …).
@@ -1153,7 +1161,8 @@ deliberately not installed there.
   road a test drives — the verbs as typed, `jobset`; the tree a test
   describes in, `road_tree`; the one maker of a calculation, `described`,
   and the run card it states unless told another, `RUN_CARD`; the
-  contract tables' one runner, `run_road_case`),
+  contract tables' one runner, `run_road_case`; structures saved under
+  names, the paths a tab opens them by, `saved_by_name`),
   `real_runs.py` (the real runs a pass makes once, each made by one maker
   and asked for through its session fixture in `conftest.py`; a run's tree
   with the engine on the road, `road_at`; the one maker of the road's H2
@@ -1177,13 +1186,23 @@ deliberately not installed there.
   tab), `chemistry_card.py` (the chemistry card, read as a person reads
   it), `findings.py` (a page's findings, drawn row for row),
   `leftovers.py` (what opening again leaves on the page); and for
-  MolView's tests under node, the stand-ins for what node cannot run, 3Dmol
-  (WebGL) and the DOM (`molview_3dmol_standin.js`, `molview_dom_standin.js`),
-  and the page around the view lane on the real routes and the real
-  workspace (`molview_lane.py`).  A MolView test that asks the server asks
-  the app's own routes (`_node_esm.served`), and one that needs an edit
-  still on its way while it asks another holds it with `__hold` (§ 4),
-  never a `fetch` of its own.
+  MolView's tests under node, ONE page door, `molview_page.py`: the
+  viewer's model and mount through the page's host (`molview_host.mjs`),
+  the app's own routes answering (`_node_esm.served`), the structures a
+  test opens (`road.saved_by_name`) opened by path as a tab opens a file
+  (`opened`, `loaded`), the real workspace in one browser tab when a test
+  asks for it, and the view lane's write awaited by the lane's own delay
+  (`settled`) — `run` puts a test's script on that page, after the test
+  file's own page script (its helpers, a viewer mounted, the view lane
+  attached by hand), with values worked out in Python as constants
+  (`given`); it stands on a page's workspace in one browser tab,
+  `workspace_page.py` (what the page keeps, the header's scripts a test
+  names, then the workspace, on Node's own storage); and the stand-ins for what node cannot
+  run, 3Dmol (WebGL) and the DOM (`molview_3dmol_standin.js`,
+  `molview_dom_standin.js`), which a test adds to the page.  A MolView test
+  that asks the server asks the app's own routes, and one that needs an
+  edit still on its way while it asks another holds it with `__hold`
+  (§ 4), never a `fetch` of its own.
 - `test_one_door_reads_a_structure.py` — the author's frozen atoms, regions
   and cell, saved as the `.xyz` + `.molstruct.json` pair, reach the deck
   through `molbuilder describe → prep`, because the pair is one file. Written
@@ -1194,5 +1213,6 @@ deliberately not installed there.
   drops the sidecar anywhere on it shows up as the deck that relaxes every
   atom.
 - `conftest.py` — the `web_client` fixture (rate-limit-off) + the shared fixtures
-  (`isolated_projects_root` and its module-scoped sibling, `write_machine_record`);
-  each e2e file carries its own `flask_server`.
+  (`isolated_projects_root` and its module-scoped sibling, `app_at`,
+  `write_machine_record`); the e2e files still start their own servers,
+  to take `app_at` when F10 runs them.

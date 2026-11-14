@@ -230,6 +230,25 @@ def structure_saved(tree: Path, structure=None, *, frames: int = 1,
     return at
 
 
+def saved_by_name(tree: Path, structures: dict) -> dict:
+    """``structures`` -- a name to a road row or a ``Structure`` -- each
+    saved as :func:`structure_saved` saves one, at ``P/structure/<name>.xyz``
+    (the name made a file name): the name to the path a tab opens it by,
+    whole."""
+    import re
+    out, named = {}, {}
+    for name, structure in structures.items():
+        stem = re.sub(r"[^A-Za-z0-9]+", "-", name).strip("-").lower()
+        if stem in named:
+            raise ValueError(f"saved_by_name: {named[stem]!r} and {name!r} "
+                             f"would both be saved as {stem}.xyz -- name "
+                             "them apart")
+        named[stem] = name
+        out[name] = str(tree / structure_saved(
+            tree, structure, at=f"P/structure/{stem}.xyz"))
+    return out
+
+
 def library_of(tree: Path) -> Path:
     """THE TREE'S PSEUDOPOTENTIAL LIBRARY -- `pseudos.CONVENTIONAL_LIBRARY`
     at the tree's root, as a person keeps it (`job-contracts.md` § 2.5a) --

@@ -229,16 +229,6 @@ _WORDS = _PANEL.parent.parent / "dom.js"
 _PREFS = _PANEL.parent.parent / "page-prefs.js"
 
 
-@pytest.fixture(scope="module")
-def app_at(isolated_projects_root_module):
-    """The app, serving: what answers the panel's requests (`support.
-    live_server.serve`).  Each test's tree is its own -- the projects root
-    and the allowed roots are read as each request arrives."""
-    from support.live_server import serve
-    with serve() as base:
-        yield base
-
-
 @pytest.fixture
 def described(tmp_path, monkeypatch):
     """A calculation `molbuilder describe` made, in this test's tree."""

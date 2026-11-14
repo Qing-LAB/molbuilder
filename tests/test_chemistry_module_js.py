@@ -27,8 +27,6 @@ from __future__ import annotations
 import json
 import pathlib
 
-import pytest
-
 from tests._node_esm import run_node, served
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
@@ -90,14 +88,6 @@ async function release(i) {
 }
 function out(v) { console.log(JSON.stringify(v)); }
 """
-
-
-@pytest.fixture(scope="module")
-def app_at(isolated_projects_root_module):
-    """The app, serving: what answers the card (`support.live_server`)."""
-    from support.live_server import serve
-    with serve() as base:
-        yield base
 
 
 def _run(app_at, script: str):

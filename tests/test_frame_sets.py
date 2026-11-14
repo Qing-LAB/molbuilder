@@ -11,8 +11,8 @@ Keys of a ``[[case]]``:
     ``save_load`` -- ``StructureCodec.write`` then ``load(**load)``;
     ``route_load`` -- the pair saved into a project, then ``POST
     /api/build/load`` with ``{path, **body}``;
-    ``viewer`` -- the pair saved into a project and opened by its path in a
-    MolView model of ``mode`` under node, the app's own route answering,
+    ``viewer`` -- the set opened by its path in a MolView model of ``mode``
+    on MolView's page under node (`support.molview_page`),
     then -- unless refused -- its ``exportFile`` of every frame posted to
     ``/api/structure/export`` and the files read back with
     ``load(frames=True)``;
@@ -35,7 +35,6 @@ Keys of a ``[[case]]``:
 """
 from __future__ import annotations
 
-import json
 import re
 import tomllib
 from pathlib import Path
@@ -84,43 +83,26 @@ _EDITS = {
 }
 
 
-def _saved_in_a_project(tree, built) -> Path:
-    """``built`` saved in a project of this test's own tree
-    (``isolated_projects_root``) as the road saves a structure
-    (`support.road.structure_saved`): the path a tab opens it by."""
-    from support.road import structure_saved
-    return tree / structure_saved(tree, built)
-
-
 def _route_load(tree, built, body):
     from molbuilder.web.app import create_app
-    path = _saved_in_a_project(tree, built)
+    from support.road import saved_by_name
+    path = saved_by_name(tree, {"set": built})["set"]
     client = create_app(config={}).test_client()
-    answer = client.post("/api/build/load", json={"path": str(path), **body})
+    answer = client.post("/api/build/load", json={"path": path, **body})
     return answer.status_code, answer.get_json()
 
 
-#: The page that hosts MolView, as a test plays it: it hands the viewer the
-#: one reader of a server's answer (`support/molview_host.mjs`).
-_HOST = Path(__file__).resolve().parent / "support" / "molview_host.mjs"
-
-
-def _viewer(base, path, mode):
-    """The set opened by its path in a MolView model of ``mode`` under node,
-    as a tab opens a file -- the app serving at ``base`` answering
-    (`_node_esm.served`) -- and, unless refused, its ``exportFile`` of every
-    frame."""
-    from tests._node_esm import run_node, served
-    return run_node([], (
-        "const { createModel } = await import("
-        + json.dumps(_HOST.as_uri()) + ");\n"
-        "const v = createModel({ mode: " + json.dumps(mode) + " });\n"
-        "let out;\n"
-        "try {\n"
-        "  await v.installMolecule({ path: " + json.dumps(str(path)) + " });\n"
-        "  out = { export: v.exportFile({ from: 0, to: v.frameCount() - 1 }) };\n"
-        "} catch (e) { out = { refused: e.message }; }\n"
-        "console.log(JSON.stringify(out));\n"), globals_js=served(base))
+#: The set opened by its path in a MolView model of ``MODE``, as a tab
+#: opens a file, and -- unless refused -- its ``exportFile`` of every frame.
+_VIEWER = """
+const v = createModel({ mode: MODE });
+let out;
+try {
+    await opened(v, "set");
+    out = { export: v.exportFile({ from: 0, to: v.frameCount() - 1 }) };
+} catch (e) { out = { refused: e.message }; }
+console.log(JSON.stringify(out));
+"""
 
 
 def _check(expect, got: Structure, built: Structure, *, written=None,
@@ -178,7 +160,7 @@ def _check(expect, got: Structure, built: Structure, *, written=None,
 
 
 @pytest.mark.parametrize("case", _CASES, ids=[c["name"] for c in _CASES])
-def test_frame_set(case, tmp_path, isolated_projects_root):
+def test_frame_set(case, tmp_path, isolated_projects_root, app_at):
     built = _the_set(case.get("held"))
     door = case["door"]
     refused = case.get("refused")
@@ -186,10 +168,11 @@ def test_frame_set(case, tmp_path, isolated_projects_root):
 
     if door == "viewer":
         from molbuilder.web.app import create_app
-        from support.live_server import serve
-        path = _saved_in_a_project(isolated_projects_root, built)
-        with serve() as base:
-            out = _viewer(base, path, case["mode"])
+        from support import molview_page
+        from support.road import saved_by_name
+        pairs = saved_by_name(isolated_projects_root, {"set": built})
+        out = molview_page.run(app_at, pairs, _VIEWER,
+                               given={"MODE": case["mode"]})
         if refused:
             assert refused in out.get("refused", ""), out
             return

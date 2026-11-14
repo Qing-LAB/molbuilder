@@ -35,19 +35,6 @@ pytest.importorskip("flask")
 
 
 # --------------------------------------------------------------------- #
-#  Live Flask server fixture                                            #
-#  (module-scoped so all the pages share one app + port)                #
-# --------------------------------------------------------------------- #
-
-
-@pytest.fixture(scope="module")
-def flask_server(isolated_projects_root_module):
-    from support.live_server import serve
-    with serve() as base_url:
-        yield base_url
-
-
-# --------------------------------------------------------------------- #
 #  Per-page registry                                                    #
 #                                                                       #
 #  (route, ready_selector) -- ready_selector is an element rendered by  #
@@ -105,7 +92,7 @@ def _collect_js_errors(page):
 
 
 @pytest.mark.parametrize("path,ready_selector", _PAGES)
-def test_page_boots_without_js_errors(page, flask_server, path, ready_selector):
+def test_page_boots_without_js_errors(page, app_at, path, ready_selector):
     """Loading <path> must produce zero pageerror / console.error.
 
     Waiting on ``ready_selector`` proves the HTML rendered; waiting an
@@ -118,7 +105,7 @@ def test_page_boots_without_js_errors(page, flask_server, path, ready_selector):
     loading it into the viewer, the click doing nothing (measured 2.67.11).
     """
     errors = _collect_js_errors(page)
-    page.goto(f"{flask_server}{path}")
+    page.goto(f"{app_at}{path}")
     page.wait_for_selector(ready_selector, timeout=_PAGE_BOOT_TIMEOUT_MS)
     # Module-script bundles execute after the initial parse; wait long
     # enough for their top-level code (including parse errors) to fire.
@@ -140,13 +127,13 @@ def test_page_boots_without_js_errors(page, flask_server, path, ready_selector):
 # --------------------------------------------------------------------- #
 
 
-def test_spectra_form_populates_after_init(page, flask_server):
+def test_spectra_form_populates_after_init(page, app_at):
     """The Spectra parameter form must lose its 'Loading from
     schema...' placeholder and render at least one input.  This is the
     end-to-end proof that ``init()`` reached its post-schema-fetch
     rendering step (i.e. nothing silently swallowed the schema fetch)."""
     errors = _collect_js_errors(page)
-    page.goto(f"{flask_server}/spectrum-calculation")
+    page.goto(f"{app_at}/spectrum-calculation")
     page.wait_for_selector("#send-to-task-setup", timeout=_PAGE_BOOT_TIMEOUT_MS)
     # init() does:  fetch schema -> render fields into #spectra-form-container
     # Wait for ANY <input>/<select> to appear inside that container.

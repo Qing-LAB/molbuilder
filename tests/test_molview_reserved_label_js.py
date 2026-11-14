@@ -25,73 +25,44 @@ not of a stand-in that could still offer the flag.
 """
 from __future__ import annotations
 
-import json
-from pathlib import Path
-
 import pytest
 
-from tests._node_esm import run_node, served
-
-REPO = Path(__file__).resolve().parents[1]
-MODULE_DIR = REPO / "molbuilder" / "web" / "static" / "lib" / "molview"
-#: The page that hosts MolView, as a test plays it: it hands the viewer the
-#: one reader of a server's answer (`support/molview_host.mjs`).
-HOST = Path(__file__).resolve().parent / "support" / "molview_host.mjs"
+from support import molview_page
+from support.road import saved_by_name
 
 FROZEN = "frozen_atoms"          # the label's one name, on both sides
 
-@pytest.fixture(scope="module")
-def app_at(isolated_projects_root_module):
-    """The app, serving: what answers the viewer (`support.live_server`)."""
-    from support.live_server import serve
-    with serve() as base:
-        yield base
-
 
 @pytest.fixture
-def pair(isolated_projects_root):
+def pairs(isolated_projects_root):
     """Two atoms saved as the road saves a structure (`support.road.
-    structure_saved`) -- one with an ordinary label, one with the reserved
-    one -- in this test's own projects tree."""
-    from support.road import structure_saved
-    tree = isolated_projects_root
-    return tree / structure_saved(tree, {
+    saved_by_name`) -- one with an ordinary label, one with the reserved one -- in
+    this test's own projects tree."""
+    return saved_by_name(isolated_projects_root, {"CO labelled": {
         "elements": ["C", "O"],
         "positions": [[5.0, 5.0, 5.0], [5.0, 5.0, 6.13]],
         "regions": {"L-electrode": [0], FROZEN: [1]},
-        "cell": [10.0, 10.0, 10.0]})
+        "cell": [10.0, 10.0, 10.0]}})
 
 
-def _prelude(path) -> str:
-    return f"""
-const {{ createModel }} = await import({json.dumps(HOST.as_uri())});
-
-/* The pair, opened as a tab opens a project file: by its path. */
-async function labelled() {{
-    const m = createModel({{}});
-    await m.installMolecule({{ path: {json.dumps(str(path))} }});
-    globalThis.__calls.length = 0;
-    return m;
-}}
-"""
-
-
-def _run(app_at, path, snippet: str):
-    return run_node([], _prelude(path) + snippet, globals_js=served(app_at))
+def _run(app_at, pairs, snippet: str):
+    """The test's script on MolView's page (`support.molview_page`), the
+    reserved label's name given to it as ``FROZEN``."""
+    return molview_page.run(app_at, pairs, snippet, given={"FROZEN": FROZEN})
 
 
 # ---------------------------------------------------------------------------
 # It arrives as a label, and is one all the way down
 # ---------------------------------------------------------------------------
 
-def test_the_reserved_label_arrives_as_an_ordinary_label(app_at, pair):
+def test_the_reserved_label_arrives_as_an_ordinary_label(app_at, pairs):
     """§ 6.2: an atom's facts are its labels and its residue — there is no
     frozen field. The reserved name sits in the same list as any other, once,
     so nothing downstream needs to know it is special, and the panel has no
     rule about which of two representations to believe."""
-    out = _run(app_at, pair,
+    out = _run(app_at, pairs,
         """
-        const m = await labelled();
+        const m = await loaded("CO labelled");
         console.log(JSON.stringify({
             labels:  m.getAtoms().map(a => a.labels),
             regions: m.getRegions(),
@@ -106,42 +77,42 @@ def test_the_reserved_label_arrives_as_an_ordinary_label(app_at, pair):
     )
 
 
-def test_the_designated_read_is_a_cut_of_the_same_list(app_at, pair):
+def test_the_designated_read_is_a_cut_of_the_same_list(app_at, pairs):
     """§ 9.3: "exactly one is the main one and the rest are narrower cuts of it;
     a cut may disappear, but it must never grow into a rival."
 
     `getFrozen` is a cut of the labels — so it cannot disagree with `getRegions`,
     because there is nothing for it to disagree with.
     """
-    out = _run(app_at, pair,
+    out = _run(app_at, pairs,
         """
-        const m = await labelled();
+        const m = await loaded("CO labelled");
         console.log(JSON.stringify({
             frozen:      m.getFrozen(),
-            fromRegions: m.getRegions()["%s"],
+            fromRegions: m.getRegions()[FROZEN],
             fromLabels:  m.getAtoms()
-                          .map((a, i) => a.labels.indexOf("%s") >= 0 ? i : -1)
+                          .map((a, i) => a.labels.indexOf(FROZEN) >= 0 ? i : -1)
                           .filter(i => i >= 0),
         }));
-        """ % (FROZEN, FROZEN)
+        """
     )
     assert out["frozen"] == out["fromRegions"] == out["fromLabels"] == [1], (
         f"three ways of asking, three answers: {out}"
     )
 
 
-def test_the_designated_read_cannot_be_used_to_write(app_at, pair):
+def test_the_designated_read_cannot_be_used_to_write(app_at, pairs):
     """§ 9.4 / § 9.3: every read returns a copy, so changing what you were given
     can never change the viewer. That holds for the reserved label's read like
     any other — otherwise the one door that owns the name is also a way around
     it."""
-    out = _run(app_at, pair,
+    out = _run(app_at, pairs,
         """
-        const m = await labelled();
+        const m = await loaded("CO labelled");
         m.getFrozen().push(0);
-        m.getRegions()["%s"].push(0);
+        m.getRegions()[FROZEN].push(0);
         console.log(JSON.stringify({ frozen: m.getFrozen() }));
-        """ % FROZEN
+        """
     )
     assert out["frozen"] == [1], "a read wrote through to the master copy"
 
@@ -150,13 +121,13 @@ def test_the_designated_read_cannot_be_used_to_write(app_at, pair):
 # It leaves as a label too
 # ---------------------------------------------------------------------------
 
-def test_what_leaves_carries_the_reserved_label_in_the_label_field(app_at, pair):
+def test_what_leaves_carries_the_reserved_label_in_the_label_field(app_at, pairs):
     """The outbound half. There is no split at this boundary: the
     server's shape IS the label store, so what leaves is what was held -- in
     `metadata`, where the envelope keeps it (web-api.md § 1)."""
-    out = _run(app_at, pair,
+    out = _run(app_at, pairs,
         """
-        const m = await labelled();
+        const m = await loaded("CO labelled");
         await m.applyOp("translate", { dx: 1, dy: 0, dz: 0 });
         const sent = globalThis.__calls[globalThis.__calls.length - 1].body;
         console.log(JSON.stringify({
@@ -173,12 +144,12 @@ def test_what_leaves_carries_the_reserved_label_in_the_label_field(app_at, pair)
     )
 
 
-def test_a_structure_that_goes_out_and_comes_back_is_unchanged(app_at, pair):
+def test_a_structure_that_goes_out_and_comes_back_is_unchanged(app_at, pairs):
     """The round trip is the real test of "no translation": if either boundary
     still renamed or moved the fact, one of the two directions would show it."""
-    out = _run(app_at, pair,
+    out = _run(app_at, pairs,
         """
-        const m = await labelled();
+        const m = await loaded("CO labelled");
         const before = m.getRegions();
         await m.applyOp("translate", { dx: 1, dy: 0, dz: 0 });
 
@@ -196,14 +167,14 @@ def test_a_structure_that_goes_out_and_comes_back_is_unchanged(app_at, pair):
 # The edit actually reaches the route (§ 11.1)
 # ---------------------------------------------------------------------------
 
-def test_an_op_sends_its_arguments_where_the_route_reads_them(app_at, pair):
+def test_an_op_sends_its_arguments_where_the_route_reads_them(app_at, pairs):
     """§ 11.1: the table drives one generic piece of code. The route reads its
     own arguments off the BODY ROOT — `dx`, `indices`, `anchors` — so nesting
     them under a `params` object sends them where nothing looks. That shipped:
     `translate` answered 200 and moved the structure by (0, 0, 0)."""
-    out = _run(app_at, pair,
+    out = _run(app_at, pairs,
         """
-        const m = await labelled();
+        const m = await loaded("CO labelled");
         await m.applyOp("translate", { dx: 1.5, dy: 0, dz: 0 });
         const sent = globalThis.__calls[globalThis.__calls.length - 1];
         console.log(JSON.stringify({ route: sent.url, keys: Object.keys(sent.body).sort(),
@@ -217,12 +188,12 @@ def test_an_op_sends_its_arguments_where_the_route_reads_them(app_at, pair):
     )
 
 
-def test_a_second_edit_while_one_is_running_is_refused(app_at, pair):
+def test_a_second_edit_while_one_is_running_is_refused(app_at, pairs):
     """One mutation in flight. Two responses applying over each other produce a
     structure neither edit asked for, and a history state the user never saw."""
-    out = _run(app_at, pair,
+    out = _run(app_at, pairs,
         """
-        const m = await labelled();
+        const m = await loaded("CO labelled");
         // The first edit kept on its way (`_node_esm.served`'s hold): an
         // order held, never timed.
         __hold((call) => call.url.startsWith("/api/modify/"));

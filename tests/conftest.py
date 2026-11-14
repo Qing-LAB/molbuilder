@@ -281,6 +281,18 @@ def isolated_projects_root_module(tmp_path_factory):
         mp.undo()
 
 
+@pytest.fixture(scope="module")
+def app_at(isolated_projects_root_module):
+    """The app serving on a live server over the module's tree
+    (`support.live_server.serve`): its base URL, what a page test's requests
+    go to (`_node_esm.served`).  ONE fixture for every file (`process/
+    testing.md` § 2a); the projects root is read at each request, so a test
+    that points the door at a tree of its own is answered from that tree."""
+    from support.live_server import serve
+    with serve() as base:
+        yield base
+
+
 def outside_the_developers_folders(setenv, delenv, tmp_path_factory) -> None:
     """THE SUITE'S RULE FOR A MODULE'S OWN SETUP, which the autouse fixture
     (`config_root_is_never_the_developers`) applies per test and so not to a

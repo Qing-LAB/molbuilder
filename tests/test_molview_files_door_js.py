@@ -20,8 +20,6 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import pytest
-
 from tests._node_esm import run_node, served
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -44,15 +42,6 @@ globalThis.document = {
 };
 globalThis.window = globalThis;
 """
-
-
-@pytest.fixture(scope="module")
-def app_at(isolated_projects_root_module):
-    """The app, serving: what answers the door's export (`support.
-    live_server.serve`)."""
-    from support.live_server import serve
-    with serve() as base:
-        yield base
 
 
 def _run(app_at, snippet: str):

@@ -60,14 +60,6 @@ def _run(snippet: str, app_at: str) -> object:
         globals_js=served(app_at))
 
 
-@pytest.fixture(scope="module")
-def app_at(isolated_projects_root_module):
-    """The app, serving: what answers the panel (`support.live_server`)."""
-    from support.live_server import serve
-    with serve() as base:
-        yield base
-
-
 @pytest.mark.parametrize("seq, opts, said", [
     ("", {}, "DNA sequence"),
     ("AUGCAUGC", {}, "ACGT"),

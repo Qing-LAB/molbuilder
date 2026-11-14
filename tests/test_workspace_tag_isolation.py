@@ -21,44 +21,18 @@ a time (§ 5).
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
 import pytest
 
-from tests._node_esm import run_node, served, tab_storage as tab_storage_of
-
-REPO = Path(__file__).resolve().parents[1]
-WS = REPO / "molbuilder" / "web" / "static" / "lib" / "workspace" / "dispatcher.js"
-#: What a page keeps in this browser tab -- where the tab's own id lives
-#: (`runtime.md` § 3), loaded by the page header before any page's own script.
-KEPT = REPO / "molbuilder" / "web" / "static" / "lib" / "page-prefs.js"
-#: The page that hosts MolView, as a test plays it: it hands the viewer the
-#: one reader of a server's answer (`support/molview_host.mjs`).
-HOST = Path(__file__).resolve().parent / "support" / "molview_host.mjs"
+from support import molview_page, workspace_page
+from support.road import saved_by_name
 
 # The tab's own storage is Node's (`tab_storage`): carried whole from an
 # earlier run when a test plays that tab reloaded, empty for a new tab.  The
 # store needs nothing else of a browser: no event it sends has a listener here.
 
-PRELUDE = f"""
-await import({json.dumps(KEPT.resolve().as_uri())});
-await import({json.dumps(WS.resolve().as_uri())});
-const ws = globalThis.molbuilder.workspace;
-async function readBack(tag, step) {{ return ws.readState(tag, step); }}
-"""
-
 #: The prune request, held where a test needs it in an order.
 PRUNE = '(c) => c.url.endsWith("/api/workspace-storage/prune")'
-
-
-@pytest.fixture(scope="module")
-def app_at(isolated_projects_root_module):
-    """The app, serving: what answers the workspace's storage requests and
-    MolView's load (`support.live_server.serve`, standing on this module's
-    projects tree; the saves go to each test's own store)."""
-    from support.live_server import serve
-    with serve() as base:
-        yield base
 
 
 def _kept():
@@ -66,15 +40,6 @@ def _kept():
     folder (`workspace_storage._state_dir`, this test's own store)."""
     from molbuilder.web.blueprints.workspace_storage import _state_dir
     return sorted(p.name for p in _state_dir().glob("*.wc.json"))
-
-
-def _run(snippet: str, *, app_at=None, tab_storage=None):
-    """``snippet`` on a page in one browser tab -- ``tab_storage`` what that
-    tab kept in an earlier run (none: a tab opened fresh) -- its requests
-    answered by the app at ``app_at`` (none: a snippet that sends none)."""
-    return run_node([], PRELUDE + snippet, globals_js=(
-        tab_storage_of(tab_storage)
-        + (served(app_at) if app_at else "")), storage=True)
 
 
 # ---------------------------------------------------------------------------
@@ -89,23 +54,23 @@ def test_one_tag_cannot_overwrite_another_in_either_order(app_at):
     owned it — so a test that only saved A then B could pass while B then A lost
     everything.
     """
-    out = _run(
+    out = workspace_page.run(app_at,
         """
         ws.persist("modify", "A's molecule", 1);
         ws.persist("results:structure", "B's molecule", 1);
         await __quiet();
-        const afterAB = { a: await readBack("modify", 1),
-                          b: await readBack("results:structure", 1) };
+        const afterAB = { a: await ws.readState("modify", 1),
+                          b: await ws.readState("results:structure", 1) };
 
         // The same thing in the other order, under two more tags.
         ws.persist("second:b", "B again", 1);
         ws.persist("second:a", "A again", 1);
         await __quiet();
-        const afterBA = { a: await readBack("second:a", 1),
-                          b: await readBack("second:b", 1) };
+        const afterBA = { a: await ws.readState("second:a", 1),
+                          b: await ws.readState("second:b", 1) };
 
         console.log(JSON.stringify({ afterAB, afterBA }));
-        """, app_at=app_at)
+        """)
     assert out["afterAB"] == {"a": "A's molecule", "b": "B's molecule"}, (
         f"one tag's save changed another's: {out['afterAB']}"
     )
@@ -128,7 +93,7 @@ def test_reading_one_tag_never_returns_anothers(app_at, save, read):
     """
     mine = read.replace("TAG", '"modify"')
     stranger = read.replace("TAG", '"results:trajectory"')
-    out = _run(
+    out = workspace_page.run(app_at,
         f"""
         {save.replace("TAG", '"modify"')};
         await __quiet();
@@ -136,7 +101,7 @@ def test_reading_one_tag_never_returns_anothers(app_at, save, read):
             mine:     await {mine},
             stranger: await {stranger},
         }}));
-        """, app_at=app_at)
+        """)
     assert out["mine"] == "only mine"
     assert out["stranger"] is None, "a tag read back another tag's saved work"
 
@@ -147,7 +112,7 @@ def test_a_tags_draft_is_its_own_file_beside_its_points(app_at):
     leaves it.  THE SILENT FAILURES: a draft written as a point is erased when
     the tag's points are dropped, and one written as a new file each time
     leaves several drafts, none of them the one a reload reads."""
-    out = _run(
+    out = workspace_page.run(app_at,
         """
         ws.persist("modify", "point 0", 0);
         ws.persistDraft("modify", "first draft");
@@ -158,7 +123,7 @@ def test_a_tags_draft_is_its_own_file_beside_its_points(app_at):
             draft: await ws.readDraft("modify"),
             point: await ws.readState("modify", 0),
         }));
-        """, app_at=app_at)
+        """)
     assert out["draft"] == "the draft now", "the draft is not one file rewritten"
     assert out["point"] is None, "dropping every point left one"
     assert len(_kept()) == 1, (
@@ -173,7 +138,7 @@ def test_a_dropped_tail_is_gone_before_the_next_point_is_written(app_at):
     after the next point and erased it — Retract then stepped back past work
     that had been saved.  The delete is held until nothing else is on the
     wire, as a slow disk holds it."""
-    out = _run(
+    out = workspace_page.run(app_at,
         f"""
         __hold({PRUNE});
         ws.persist("modify", "one", 1);
@@ -183,9 +148,9 @@ def test_a_dropped_tail_is_gone_before_the_next_point_is_written(app_at):
         await __quiet();
         __release();
         await __quiet();
-        console.log(JSON.stringify({{ one: await readBack("modify", 1),
-                                      two: await readBack("modify", 2) }}));
-        """, app_at=app_at)
+        console.log(JSON.stringify({{ one: await ws.readState("modify", 1),
+                                      two: await ws.readState("modify", 2) }}));
+        """)
     assert out == {"one": "one", "two": "two again"}, (
         f"the tail delete landed after the next point and erased it: {out}")
 
@@ -198,7 +163,7 @@ def test_an_edits_draft_never_waits_behind_the_points_delete(app_at):
     came first found the draft from before the edit -- the Molbuilder tab
     showed the file, not the edit.  The delete is held while the draft is
     read back, as a reload reads it."""
-    out = _run(f"""
+    out = workspace_page.run(app_at, f"""
         __hold({PRUNE});
         ws.persist("modify", "point 1", 1);
         ws.pruneStatesAbove("modify", 1);
@@ -208,7 +173,7 @@ def test_an_edits_draft_never_waits_behind_the_points_delete(app_at):
         __release();
         await __quiet();
         console.log(JSON.stringify({{ draft }}));
-    """, app_at=app_at)
+    """)
     assert out == {"draft": "the edit"}, (
         f"the edit's draft was still queued behind the delete: {out}")
 
@@ -225,7 +190,7 @@ def test_two_saves_to_one_file_land_in_the_order_made(app_at, save, read):
     restores a state that was abandoned, or a reload adopts the draft from
     before its position was written.  The first write is held until nothing
     else is on the wire."""
-    out = _run(f"""
+    out = workspace_page.run(app_at, f"""
         __hold((c) => c.url.endsWith("/api/workspace-storage/write")
                       && c.body.data === "the abandoned");
         {save.replace("BYTES", '"the abandoned"')};
@@ -234,7 +199,7 @@ def test_two_saves_to_one_file_land_in_the_order_made(app_at, save, read):
         __release();
         await __quiet();
         console.log(JSON.stringify(await {read}));
-    """, app_at=app_at)
+    """)
     assert out == "the one kept", (
         f"the earlier write to the file landed last: {out!r}")
 
@@ -261,17 +226,17 @@ def test_a_tags_file_is_stable_and_differs_from_the_next_tags(app_at, one,
     outside the server's set became a dash, so `a-b` and `a:b` shared one
     slot.
     """
-    out = _run(
+    out = workspace_page.run(app_at,
         f"""
         ws.persist({json.dumps(one)}, "one, first", 1);
         ws.persist({json.dumps(one)}, "one, again", 1);
         ws.persist({json.dumps(other)}, "the other", 1);
         await __quiet();
         console.log(JSON.stringify({{
-            one: await readBack({json.dumps(one)}, 1),
-            other: await readBack({json.dumps(other)}, 1),
+            one: await ws.readState({json.dumps(one)}, 1),
+            other: await ws.readState({json.dumps(other)}, 1),
         }}));
-        """, app_at=app_at)
+        """)
     assert out == {"one": "one, again", "other": "the other"}, out
     assert len(_kept()) == 2, (
         f"a tag saving again made a second file, or two tags shared one: "
@@ -292,19 +257,19 @@ def test_each_browser_tab_has_its_own_saved_work(app_at, same_tab, finds,
     every tab read and wrote one file per page, so a second tab opened on
     the Molbuilder tab showed the first tab's unsaved molecule, and its saves
     overwrote the first tab's."""
-    first = _run("""
+    first = workspace_page.run(app_at, """
         ws.persist("modify", "one's", 1);
         await __quiet();
-        console.log(JSON.stringify({ tab: tabStorage() }));""", app_at=app_at)
-    second = _run("""
-        const found = await readBack("modify", 1);
+        console.log(JSON.stringify({ tab: tabStorage() }));""")
+    second = workspace_page.run(app_at, """
+        const found = await ws.readState("modify", 1);
         ws.persist("modify", "two's", 1);
         await __quiet();
-        console.log(JSON.stringify({ found }));""", app_at=app_at,
-        tab_storage=first["tab"] if same_tab else None)
-    again = _run("""
-        console.log(JSON.stringify(await readBack("modify", 1)));""",
-        app_at=app_at, tab_storage=first["tab"])
+        console.log(JSON.stringify({ found }));""",
+        tab=first["tab"] if same_tab else None)
+    again = workspace_page.run(app_at, """
+        console.log(JSON.stringify(await ws.readState("modify", 1)));""",
+        tab=first["tab"])
     assert (second["found"], again) == (finds, first_tab_then), (
         second, again)
 
@@ -322,7 +287,7 @@ def test_a_tag_that_is_not_one_of_its_own_is_refused(tag):
     private one; a tag ending in `:draft` writing its points into the id of
     another tag's draft.  One example per clause of the one rule
     (`process/testing.md` § 3b)."""
-    out = _run(
+    out = workspace_page.run(None,
         f"""
         let refused = false;
         try {{ ws.persist({tag}, "x", 0); }} catch (_) {{ refused = true; }}
@@ -336,29 +301,37 @@ def test_a_tag_that_is_not_one_of_its_own_is_refused(tag):
 # The round trip: what MolView saves is what comes back
 # ---------------------------------------------------------------------------
 
-def _with_molview(app_at, snippet: str):
-    """``snippet`` with the real MolView model on the page, built as a page
-    builds it, ``m``, its molecule loaded by the real load route."""
-    return run_node([], f"""
-        const {{ createModel }} = await import({json.dumps(HOST.as_uri())});
-        await import({json.dumps(KEPT.resolve().as_uri())});
-        await import({json.dumps(WS.resolve().as_uri())});
-        const ws = globalThis.molbuilder.workspace;
-        const m = createModel({{ workspace: ws, owner: "modify" }});
-        await m.installMolecule({{ text: "1\\n\\nH 0 0 0\\n",
-                                   filename: "/p/mine.xyz" }});
-        {snippet}
-        """, globals_js=served(app_at), storage=True)
+@pytest.fixture(scope="module")
+def pairs(isolated_projects_root_module):
+    """The road's H2, saved as the road saves a structure
+    (`support.road.saved_by_name`)."""
+    from support.road import H2
+    return saved_by_name(isolated_projects_root_module, {"H2": H2})
 
 
-def test_what_molview_saves_can_be_read_back(app_at):
+def _with_molview(app_at, pairs, snippet: str):
+    """``snippet`` with the real MolView model on the page with its
+    workspace (`support.molview_page`), built as the Molbuilder tab builds
+    it, ``m``, the road's H2 opened in it by path."""
+    return molview_page.run(app_at, pairs, """
+        const m = await loaded("H2", { workspace: ws, owner: "modify" });
+        """ + snippet, workspace=True)
+
+
+def test_what_molview_saves_can_be_read_back(app_at, pairs):
     """The real MolView model against the real workspace: open a molecule, press
     Save state, then ask for it back the way a reopening page does.  THE SILENT
     FAILURE: a workspace that opens what it stores to judge it -- one that once
     asked "which file did it come from?" answered "nothing saved" for a
     molecule built from SMILES, and the tab wiped work that was there.
     """
-    out = _with_molview(app_at, """
+    out = _with_molview(app_at, pairs, """
+        // ...and put back as the Molbuilder tab's generators put one, a
+        // structure and the file name it is shown under
+        // (`modify/structure/page.js`): the name the tab's, never the work's.
+        await m.installMolecule({ structure: m.exportFile().structure,
+                                  filename: PAIRS.H2 });
+        await __quiet();
         await m.save(1);
         await __quiet();
         const saved = await ws.readState("modify", 1);
@@ -379,10 +352,11 @@ def test_what_molview_saves_can_be_read_back(app_at):
         "that wrote them, and a later reader cannot tell an old layout apart "
         "from bytes it understands"
     )
-    assert out["atoms"] == ["H"], (
+    from support.road import H2
+    assert out["atoms"] == H2["elements"], (
         f"the structure did not survive the round trip: {out['atoms']}"
     )
-    assert "/p/mine.xyz" not in out["everything"], (
+    assert pairs["H2"] not in out["everything"], (
         "the saved state names the file it was read from. MolView tracks "
         "contents; which file they came out of is a fact about an operation the "
         "TAB performed, and a viewer holding a path is a second answer to a "
@@ -390,7 +364,7 @@ def test_what_molview_saves_can_be_read_back(app_at):
     )
 
 
-def test_an_edit_and_a_saved_point_go_to_different_files(app_at):
+def test_an_edit_and_a_saved_point_go_to_different_files(app_at, pairs):
     """Press Save state, then edit again.
 
     THE INVARIANT: the edit must not land ON the point you saved, or Retract
@@ -402,12 +376,14 @@ def test_an_edit_and_a_saved_point_go_to_different_files(app_at):
     somebody pressed the button.  The badge therefore goes back DOWN — the work
     is on the sequence.
     """
-    out = _with_molview(app_at, """
+    out = _with_molview(app_at, pairs, """
         await m.save(1);
         await __quiet();
         const point = await ws.readState("modify", 1);
 
-        m.selection.writeLabel("frozen_atoms", "add", [0]);   // an edit, no save
+        // An edit, no save: the second atom held too (the road's H2 holds
+        // its first).
+        m.selection.writeLabel("frozen_atoms", "add", [1]);
         await __quiet();
 
         const draft = await ws.readDraft("modify");

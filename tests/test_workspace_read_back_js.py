@@ -17,16 +17,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
-
-from tests._node_esm import run_node, served, tab_storage as _tab
+from support import workspace_page
 
 _LIB = Path(__file__).resolve().parents[1] / "molbuilder" / "web" / "static" / "lib"
-_STORE = _LIB / "workspace" / "dispatcher.js"
+#: The header's notification bar, which words a failed read.
 _BAR = _LIB / "app-notifications.js"
-#: What a page keeps in this browser tab -- where the tab's own id lives
-#: (`runtime.md` § 3), loaded by the page header before any page's own script.
-_KEPT = _LIB / "page-prefs.js"
 
 #: The page around the store and the bar: its event bus, Node's own
 #: `EventTarget`, which the bar listens on -- the bar keeps its rows
@@ -40,27 +35,18 @@ globalThis.addEventListener = __bus.addEventListener.bind(__bus);
 globalThis.dispatchEvent = __bus.dispatchEvent.bind(__bus);
 """
 
-@pytest.fixture
-def app_at(isolated_projects_root):
-    """The app, serving: what answers the store's requests."""
-    from support.live_server import serve
-    with serve() as base:
-        yield base
-
-
 def _page(base, snippet, tab_storage=None):
-    """``snippet`` on the page in one browser tab -- ``tab_storage`` what the
-    tab kept in an earlier opening, so this one is that tab reloaded."""
-    return run_node([_KEPT, _BAR, _STORE], snippet,
-                    globals_js=_tab(tab_storage) + _PAGE + served(base),
-                    storage=True)
+    """``snippet`` on the page's workspace in one browser tab, the bar in
+    its header (`support.workspace_page`) -- ``tab_storage`` what the tab
+    kept in an earlier opening, so this one is that tab reloaded."""
+    return workspace_page.run(base, snippet, tab=tab_storage,
+                              header=[_BAR], globals_js=_PAGE)
 
 
 def test_a_state_that_cannot_be_read_back_is_said_and_a_miss_is_not(app_at):
     from molbuilder.web.blueprints.workspace_storage import _state_dir
     states = _state_dir()
     saved = _page(app_at, """
-        const ws = window.molbuilder.workspace;
         ws.persistDraft("modify", { v: 1, state: { atoms: 3 } });
         await __quiet();
         console.log(JSON.stringify({ back: await ws.readDraft("modify"),
@@ -72,7 +58,6 @@ def test_a_state_that_cannot_be_read_back_is_said_and_a_miss_is_not(app_at):
     kept.chmod(0)
     try:
         out = _page(app_at, """
-            const ws = window.molbuilder.workspace;
             const heard = [];
             ws.onPersistError((d) => heard.push(d));
             // A point never saved: nothing to put back, and nothing to say.

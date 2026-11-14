@@ -1,19 +1,14 @@
 """THE way a test starts a real HTTP server for the app.
 
-**One implementation, and each module keeps its own fixture scope.**  The
-scopes are not uniform today — most are ``module``, a few are function — and a
-scope is a decision about how much state a file's tests share, not something a
-de-duplication gets to change on their behalf.  So this is a context manager
-rather than a fixture: a module writes
-
-    @pytest.fixture(scope="module")
-    def flask_server(isolated_projects_root_module):
-        with serve() as base_url:
-            yield base_url
-
--- a per-test server asks ``isolated_projects_root`` -- and the server
-itself is here, once; and the port a server started as a person starts it
-is given (:func:`free_serve_port`).
+A test that needs the app serving asks for ``app_at`` (`tests/conftest.py`,
+`process/testing.md` § 2a), the one fixture over :func:`serve`: module-scoped,
+standing on the module's tree, the projects root read at each request so a
+test pointing the door at a tree of its own is answered from it.  This module
+keeps the server itself, once, as a context manager: for a test that needs a
+DIFFERENT app -- sign-in on, a rate limit (``serve(config)``) -- for a test
+serving a real run's tree, which it points the door at first, and for the
+e2e files that still start their own until F10 runs them; and the port a
+server started as a person starts it (:func:`free_serve_port`).
 """
 from __future__ import annotations
 

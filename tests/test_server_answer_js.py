@@ -37,14 +37,6 @@ def _sign_in():
 
 
 @pytest.fixture(scope="module")
-def app_at(isolated_projects_root_module):
-    """The app, serving."""
-    from support.live_server import serve
-    with serve() as base:
-        yield base
-
-
-@pytest.fixture(scope="module")
 def signed_out_at(isolated_projects_root_module):
     """The app with sign-in on, asked by nobody signed in."""
     from support.live_server import serve

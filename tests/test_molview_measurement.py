@@ -31,26 +31,17 @@ from pathlib import Path
 
 import pytest
 
-from tests._node_esm import run_node, served
+from support import molview_page
+from support.road import saved_by_name
+from tests._node_esm import run_node
 
 REPO = Path(__file__).resolve().parents[1]
 MODULE_DIR = REPO / "molbuilder" / "web" / "static" / "lib" / "molview"
 STORES = MODULE_DIR / "stores.js"
-#: The page that hosts MolView, as a test plays it: it hands the viewer the
-#: one reader of a server's answer (`support/molview_host.mjs`).
-HOST = Path(__file__).resolve().parent / "support" / "molview_host.mjs"
 
 STORE_PRELUDE = f"""
 const S = await import({json.dumps(STORES.resolve().as_uri())});
 """
-
-
-@pytest.fixture(scope="module")
-def app_at(isolated_projects_root_module):
-    """The app, serving: what answers the viewer (`support.live_server`)."""
-    from support.live_server import serve
-    with serve() as base:
-        yield base
 
 
 @pytest.fixture(scope="module")
@@ -60,27 +51,8 @@ def pairs(isolated_projects_root_module):
     (`builders.build`) -- more atoms than the ruler's three and the one a
     fourth pick adds."""
     from molbuilder.builders import build
-    from support.road import structure_saved
-    root = isolated_projects_root_module
-    return {
-        "peptide": str(root / structure_saved(
-            root, build("peptide", "GA").structure,
-            at="P/structure/peptide.xyz")),
-    }
-
-
-def _model_prelude(pairs) -> str:
-    return f"""
-const {{ createModel }} = await import({json.dumps(HOST.as_uri())});
-const PAIRS = {json.dumps(pairs)};
-/* The structure opened as a tab opens one: by its path, the server
- * reading the pair. */
-async function loaded() {{
-    const m = createModel({{}});
-    await m.installMolecule({{ path: PAIRS.peptide }});
-    return m;
-}}
-"""
+    return saved_by_name(isolated_projects_root_module, {
+        "peptide": build("peptide", "GA").structure})
 
 
 def _store(snippet: str):
@@ -88,11 +60,9 @@ def _store(snippet: str):
 
 
 def _model(app_at, pairs, snippet: str):
-    """The test's script on the page, the app's own routes answering
-    (`_node_esm.served`) -- each request the page made kept, in order, in
-    ``__calls``."""
-    return run_node([], _model_prelude(pairs) + snippet,
-                    globals_js=served(app_at))
+    """The test's script on MolView's page (`support.molview_page`), each
+    request the page made kept, in order, in ``__calls``."""
+    return molview_page.run(app_at, pairs, snippet)
 
 
 # ---------------------------------------------------------------------------
@@ -204,7 +174,7 @@ def test_a_click_lands_in_exactly_one_track(app_at, pairs):
     it OFF the track must not.  Asserting only the first half would pass on a
     router that wrote to BOTH."""
     out = _model(app_at, pairs, """
-        const m = await loaded();
+        const m = await loaded("peptide");
         m.pickAtom(0);
         const offTrack = m.measurement.getState().picks, offSel = m.selection.get();
         m.measurement.setActive(true);
@@ -224,7 +194,7 @@ def test_clearing_a_measurement_leaves_the_selection_alone(app_at, pairs):
     the two shared a list, clearing a measurement would silently change what the
     next Delete removes."""
     out = _model(app_at, pairs, """
-        const m = await loaded();
+        const m = await loaded("peptide");
         m.selection.add([0, 1, 2]);
         m.measurement.setActive(true);
         m.pickAtom(3);
@@ -239,7 +209,7 @@ def test_the_track_is_not_structure_metadata(app_at, pairs):
     status"*.  A label IS metadata and travels with the file; the track must not
     reach one, and must not appear in what a state records."""
     out = _model(app_at, pairs, """
-        const m = await loaded();
+        const m = await loaded("peptide");
         const labelsOn = () => m.getAtoms()
             .filter((a) => [1, 2].includes(a.index)).map((a) => a.labels);
         const before = labelsOn();
@@ -359,11 +329,11 @@ def test_a_structure_change_clears_the_track_without_the_door_asking(app_at, pai
     the structure card's Load does -- so a rule that cleared only when the
     atoms changed in number would leave the picks standing."""
     out = _model(app_at, pairs, """
-        const m = await loaded();
+        const m = await loaded("peptide");
         m.measurement.setActive(true);
         m.pickAtom(2); m.pickAtom(0);
         const before = m.measurement.getState().picks;
-        await m.installMolecule({ path: PAIRS.peptide });
+        await opened(m, "peptide");
         console.log(JSON.stringify({ before, after: m.measurement.getState().picks }));
     """)
     assert out["before"] == [2, 0], "the picks were not taken in click order"
@@ -378,7 +348,7 @@ def test_a_frame_arriving_from_a_job_does_NOT_clear_the_track(app_at, pairs):
     a trajectory plays.  The picks are indices and the readout re-reads the
     current frame, so a growing movie must leave them standing."""
     out = _model(app_at, pairs, """
-        const m = await loaded();
+        const m = await loaded("peptide");
         m.measurement.setActive(true);
         m.pickAtom(1); m.pickAtom(3);
         // A running job's frames: the same atoms, moved.
@@ -409,7 +379,7 @@ def test_orient_sends_the_anchors_in_CLICK_order_not_sorted_order(app_at, pairs)
     the same two atoms sorted.  What reaches the server must be the click
     order, because reversing the pair reverses the tilt."""
     out = _model(app_at, pairs, """
-        const m = await loaded();
+        const m = await loaded("peptide");
         // the SET says {0, 2}: `add` SORTS, and `add` is what shift-range and
         // the drag box call -- which is exactly how the same two atoms came to
         // orient in two directions depending on how they were picked.
@@ -437,7 +407,7 @@ def test_a_set_op_still_reads_the_selection_and_ignores_the_ruler(app_at, pairs)
     """The other half, or the column would be a rule with no edge: `delete`
     declares no `ordered`, so the picks must not reach it."""
     out = _model(app_at, pairs, """
-        const m = await loaded();
+        const m = await loaded("peptide");
         m.selection.adopt([1, 3]);
         m.measurement.setActive(true);
         m.pickAtom(0);
@@ -466,7 +436,7 @@ def test_the_router_is_what_a_pick_goes_through(app_at, pairs):
     """The other half: `pickAtom` must actually reach the track, or the door
     above would be closed with nothing open in its place."""
     out = _model(app_at, pairs, """
-        const m = await loaded();
+        const m = await loaded("peptide");
         m.measurement.setActive(true);
         m.pickAtom(2); m.pickAtom(0);
         const measuring = m.measurement.getState().picks;
@@ -488,7 +458,7 @@ def test_asking_for_the_ruler_is_the_modules_decision_not_the_pages(app_at, pair
     """`requestPicking` answers whether it turned the ruler ON, so a caller
     never has to read `active` and set it itself."""
     out = _model(app_at, pairs, """
-        const m = await loaded();
+        const m = await loaded("peptide");
         const first  = m.requestPicking();   // was off -> turns on
         const second = m.requestPicking();   // already on
         const active = m.measurement.getState().active;

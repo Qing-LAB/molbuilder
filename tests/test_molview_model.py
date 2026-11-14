@@ -47,9 +47,8 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from support.molview_lane import HOST, KEPT, WS
-from support.road import CO2, CO2_HELD_FIRST, H2, WATER
-from tests._node_esm import run_node, served, tab_storage
+from support import molview_page
+from support.road import CO2, CO2_HELD_FIRST, H2, WATER, saved_by_name
 
 REPO = Path(__file__).resolve().parents[1]
 MODULE_DIR = REPO / "molbuilder" / "web" / "static" / "lib" / "molview"
@@ -84,15 +83,6 @@ def _moved(spec, frames: int) -> list:
 
 
 @pytest.fixture(scope="module")
-def app_at(isolated_projects_root_module):
-    """The app, serving: what answers the viewer and the workspace
-    (`support.live_server`)."""
-    from support.live_server import serve
-    with serve() as base:
-        yield base
-
-
-@pytest.fixture(scope="module")
 def pairs(isolated_projects_root_module):
     """The structures the tests open, by name -- the road's own
     (`support.road`), each saved as the road saves one (`structure_saved`)
@@ -109,24 +99,19 @@ def pairs(isolated_projects_root_module):
     Structure API (`Structure.set_channel`, :data:`CHANNELS`)."""
     from molbuilder.builders import build
     from molbuilder.structure import AtomChannel
-    from support.road import (co2_in_engine_order, road_structure,
-                              structure_saved, water_in_vacuum)
+    from support.road import co2_in_engine_order, road_structure, water_in_vacuum
     root = isolated_projects_root_module
-
-    def saved(name, s):
-        return str(root / structure_saved(root, s, at=f"P/structure/{name}.xyz"))
 
     def framed(spec, n):
         return road_structure(spec).with_frames(np.array(_moved(spec, n)))
     peptide = build("peptide", "GA").structure
     for name, (kind, data, said) in CHANNELS.items():
         peptide.set_channel(name, AtomChannel(kind, data, **said))
-    named = {"H2": saved("h2", H2), "water": saved("water", WATER),
-             "CO2 labelled": saved("co2-labelled", _labelled_assigned()),
-             "no box stated": saved("water-no-box", water_in_vacuum()),
-             "H2, 2 frames": saved("h2-2-frames", framed(H2, 2)),
-             "H2, 5 frames": saved("h2-5-frames", framed(H2, 5)),
-             "peptide": saved("peptide-ga", peptide)}
+    named = saved_by_name(root, {
+        "H2": H2, "water": WATER, "CO2 labelled": _labelled_assigned(),
+        "no box stated": water_in_vacuum(),
+        "H2, 2 frames": framed(H2, 2), "H2, 5 frames": framed(H2, 5),
+        "peptide": peptide})
     # AN ENGINE'S RECORD IN ITS OWN ORDER has one door, the codec's
     # ``engine_record`` (`model/overview.md` § 2.2b): a pair is in the user
     # order.
@@ -158,7 +143,7 @@ def recorded(tmp_path, monkeypatch):
     run's output would add the `relaxation` block, which these tests do not
     read.  Its path."""
     from support.road import (described, jobset, road_structure, road_tree,
-                              stage_file, structure_saved)
+                              stage_file)
     tree = road_tree(tmp_path, monkeypatch)
     bundle = described(tree, stage_strategy="")
     r = jobset("prep", "task", "--group", "1", "--bundle", bundle,
@@ -168,39 +153,13 @@ def recorded(tmp_path, monkeypatch):
     s = view_of(run_of(stage_file(bundle, "coarse", ".fdf"))).onto(
         road_structure(H2))
     assert s.info["calculation"]["contract"], s.info
-    return str(tree / structure_saved(tree, s,
-                                      at="P/structure/h2-recorded.xyz"))
+    return saved_by_name(tree, {"recorded": s})["recorded"]
 
 
-def _prelude(pairs) -> str:
-    return f"""
-const {{ createModel }} = await import({json.dumps(HOST.as_uri())});
+#: This file's own page script, after MolView's page (`support.
+#: molview_page`): the drawing's processing, and what a run delivers.
+MODEL = f"""
 const ENGINE = await import({json.dumps(ENGINE.resolve().as_uri())});
-await import({json.dumps(KEPT.resolve().as_uri())});
-await import({json.dumps(WS.resolve().as_uri())});
-/* The workspace a page hands its viewer (workspace.md § 5): the real one,
- * its files on the app's own routes, this run's browser tab its own. */
-const ws = globalThis.molbuilder.workspace;
-const PAIRS = {json.dumps(pairs)};
-
-/* A structure opened as a tab opens one -- by path, the server reading the
- * pair -- and the wire quiet after it: the load answered and, in an editable
- * viewer handed a workspace, point 0 written. */
-async function opened(m, name, extra) {{
-    const got = await m.installMolecule(
-        Object.assign({{ path: PAIRS[name] }}, extra || {{}}));
-    await __quiet();
-    return got;
-}}
-
-/* A viewer holding `name`, the wire's record starting after it. */
-async function loaded(name, opts) {{
-    const m = createModel(opts || {{}});
-    await opened(m, name);
-    __calls.length = 0;
-    __answered.length = 0;
-    return m;
-}}
 
 /* What a run delivers for the atoms a viewer holds: `frame` moved `dz` Å
  * along z, and a force of `fz` along z on each of its atoms. */
@@ -219,12 +178,11 @@ async function pointsOf(tag) {{
 
 
 def _run(app_at, pairs, snippet: str, **given):
-    """The test's script on the page, the app's routes answering and the
-    tab's own storage under it; ``given`` -- values a test worked out from
-    the road's structures -- as constants of the same names."""
-    consts = "".join(f"const {k} = {json.dumps(v)};\n" for k, v in given.items())
-    return run_node([], _prelude(pairs) + consts + snippet,
-                    globals_js=tab_storage() + served(app_at), storage=True)
+    """The test's script on MolView's page with the real workspace
+    (`support.molview_page`); ``given`` -- values a test worked out from the
+    road's structures -- as constants of the same names."""
+    return molview_page.run(app_at, pairs, MODEL + snippet, workspace=True,
+                            given=given)
 
 
 # ---------------------------------------------------------------------------
@@ -1263,8 +1221,7 @@ def test_a_read_only_viewer_is_seeded_once_and_then_frozen(app_at, pairs):
 
         // A second load would REPLACE the structure the calculation ran on.
         __calls.length = 0;
-        const replaced = await m.installMolecule({ path: PAIRS["water"] });
-        await __quiet();
+        const replaced = await opened(m, "water");
 
         console.log(JSON.stringify({
             seeded: seed !== null, afterSeed, replaced,

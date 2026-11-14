@@ -179,14 +179,6 @@ def _written(app_at, records, *, scf=False, periodic=False, hours=None,
     """, globals_js=served(app_at)))
 
 
-@pytest.fixture(scope="module")
-def app_at(isolated_projects_root_module):
-    """The app, serving: what answers the card (`support.live_server`)."""
-    from support.live_server import serve
-    with serve() as base:
-        yield base
-
-
 @pytest.fixture
 def calculation(tmp_path, monkeypatch):
     """A calculation as `molbuilder describe` wrote it."""

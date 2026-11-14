@@ -23,74 +23,50 @@ the route answered (``__answered``) -- never a sentence typed here.
 """
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 import pytest
 
-from tests._node_esm import run_node, served
-
-#: The page that hosts MolView, as a test plays it: it hands the viewer the
-#: one reader of a server's answer (`support/molview_host.mjs`).
-HOST = Path(__file__).resolve().parent / "support" / "molview_host.mjs"
+from support import molview_page
+from support.road import saved_by_name
 
 
 @pytest.fixture(scope="module")
-def app_at(isolated_projects_root_module):
-    """The app, serving: what answers the viewer (`support.live_server`)."""
-    from support.live_server import serve
-    with serve() as base:
-        yield base
+def pairs(isolated_projects_root_module):
+    """Carbon monoxide in a typed 10 Å box, saved as the road saves a
+    structure (`support.road.saved_by_name`) -- every test below starts from
+    it loaded and editable, since a viewer with nothing in it answers `null`
+    for a different reason (§ 6.9)."""
+    return saved_by_name(isolated_projects_root_module, {"CO": {
+        "elements": ["C", "O"], "positions": [[5.0, 5.0, 5.0],
+                                              [5.0, 5.0, 6.13]],
+        "cell": [10.0, 10.0, 10.0]}})
 
 
-@pytest.fixture(scope="module")
-def co(isolated_projects_root_module):
-    """Carbon monoxide in a typed 10 Å box, on disk as the road writes a
-    structure (`support.road.road_structure`, `StructureCodec`)."""
-    from molbuilder.workingcopy_structure import StructureCodec
-    from support.road import road_structure
-    path = isolated_projects_root_module / "P" / "structure" / "co.xyz"
-    path.parent.mkdir(parents=True, exist_ok=True)
-    StructureCodec().write(road_structure(
-        {"elements": ["C", "O"], "positions": [[5.0, 5.0, 5.0],
-                                               [5.0, 5.0, 6.13]],
-         "cell": [10.0, 10.0, 10.0]}), path)
-    return path
-
-
-def _prelude(co) -> str:
-    return f"""
-const {{ createModel }} = await import({json.dumps(HOST.as_uri())});
-
-/* A loaded, editable viewer -- the state every test below starts from, since a
- * viewer with nothing in it answers `null` for a different reason (§ 6.9). */
-async function loaded(opts) {{
-    const m = createModel(opts || {{}});
-    await m.installMolecule({{ path: {json.dumps(str(co))} }});
-    globalThis.__calls.length = 0;
-    globalThis.__answered.length = 0;
-    return m;
-}}
-
+#: This file's own page script, after MolView's page (`support.
+#: molview_page`).
+OUTCOMES = """
 /* Run a call and report which of § 6.9's three outcomes happened, so a test
  * asserts the OUTCOME rather than the shape of a try/catch -- and, for a
  * refusal, the sentence the route answered it with. */
-async function outcome(fn) {{
+async function outcome(fn) {
     globalThis.__answered.length = 0;
-    try {{
+    try {
         const value = await fn();
-        return {{ threw: false, isNull: value === null }};
-    }} catch (err) {{
+        return { threw: false, isNull: value === null };
+    } catch (err) {
         const said = globalThis.__answered.at(-1);
-        return {{ threw: true, message: String(err && err.message),
-                  answered: (said && said.error) || null }};
-    }}
-}}
+        return { threw: true, message: String(err && err.message),
+                 answered: (said && said.error) || null };
+    }
+}
 """
 
 
-def _run(app_at, co, snippet: str):
-    return run_node([], _prelude(co) + snippet, globals_js=served(app_at))
+def _run(app_at, pairs, snippet: str, **given):
+    """The test's script on MolView's page (`support.molview_page`);
+    ``given`` -- values worked out here, as constants of the same names."""
+    return molview_page.run(app_at, pairs, OUTCOMES + snippet, given=given)
 
 
 # ---------------------------------------------------------------------------
@@ -112,7 +88,7 @@ REFUSED = {
 
 
 @pytest.mark.parametrize("door", list(REFUSED))
-def test_a_refused_change_throws_the_servers_own_sentence(app_at, co, door):
+def test_a_refused_change_throws_the_servers_own_sentence(app_at, pairs, door):
     """§ 6.9: "it throws, carrying the reason", and "the words are the server's,
     unchanged. It is the side that decided, and its sentence carries the numbers
     — the clearance, the axis, what to do instead." One rule over every door
@@ -125,11 +101,11 @@ def test_a_refused_change_throws_the_servers_own_sentence(app_at, co, door):
     ``installMolecule`` is a row deliberately: it was already the one door
     that let a throw through, so the rule could hold there for another reason.
     """
-    out = _run(app_at, co, """
-        const CO_GONE = %s;
-        const m = await loaded();
+    out = _run(app_at, pairs, """
+        const m = await loaded("CO");
         console.log(JSON.stringify(await outcome(() => %s)));
-        """ % (json.dumps(str(co.parent / "gone.xyz")), REFUSED[door]))
+        """ % REFUSED[door],
+        CO_GONE=str(Path(pairs["CO"]).parent / "gone.xyz"))
     assert out["threw"] is True, f"{door} swallowed a refusal: {out}"
     assert out["answered"], f"{door}'s route did not refuse"
     assert out["message"] == out["answered"], (
@@ -140,7 +116,7 @@ def test_a_refused_change_throws_the_servers_own_sentence(app_at, co, door):
 # § 6.9 — `null` and a refusal are different answers
 # ---------------------------------------------------------------------------
 
-def test_nothing_to_do_answers_null_and_says_nothing(app_at, co):
+def test_nothing_to_do_answers_null_and_says_nothing(app_at, pairs):
     """§ 6.9: "the viewer is read-only · an op was asked for that the controls
     already rule out · … · the cell door with nothing loaded" → ``null``, and
     nothing else — "none of these needs explaining"; the interface has
@@ -150,10 +126,10 @@ def test_nothing_to_do_answers_null_and_says_nothing(app_at, co):
     caller could not tell a refusal from an ordinary no-op and would show a
     message for both.
     """
-    out = _run(app_at, co, """
+    out = _run(app_at, pairs, """
         const empty  = createModel({});
-        const frozen = await loaded({ mode: "readonly" });
-        const m      = await loaded();
+        const frozen = await loaded("CO", { mode: "readonly" });
+        const m      = await loaded("CO");
 
         console.log(JSON.stringify({
             // Nothing loaded, at the CELL door: a cell is a property OF a
@@ -189,13 +165,13 @@ def test_nothing_to_do_answers_null_and_says_nothing(app_at, co):
         assert got["isNull"] is True, f"{case} did not answer null"
 
 
-def test_nothing_to_do_never_reaches_the_server(app_at, co):
+def test_nothing_to_do_never_reaches_the_server(app_at, pairs):
     """The same rule seen from the wire. A no-op that still sent a request could
     be refused, and would then produce a message for something the interface had
     already ruled out.
     """
-    out = _run(app_at, co, """
-        const frozen = await loaded({ mode: "readonly" });
+    out = _run(app_at, pairs, """
+        const frozen = await loaded("CO", { mode: "readonly" });
         await frozen.commitPeriodicityOp("vacuum", [1, 1, 1]);
         await frozen.applyOp("translate", { dx: 1 });
         console.log(JSON.stringify({ urls: __calls.map((c) => c.url) }));
@@ -203,7 +179,7 @@ def test_nothing_to_do_never_reaches_the_server(app_at, co):
     assert out["urls"] == [], "a read-only viewer sent an edit to the server"
 
 
-def test_an_anchorless_add_reaches_the_server_with_no_anchor_key(app_at, co):
+def test_an_anchorless_add_reaches_the_server_with_no_anchor_key(app_at, pairs):
     """The other side of the same rule (§ 11.1): with nothing selected
     `add_atom` is NOT a no-op -- it is a request whose anchor is the world
     origin, and the way it says so on the wire is by OMITTING the key.
@@ -212,8 +188,8 @@ def test_an_anchorless_add_reaches_the_server_with_no_anchor_key(app_at, co):
     not an index) and sending `0` would silently mean atom 0, so what is
     checked here is the absence itself.
     """
-    out = _run(app_at, co, """
-        const m = await loaded();
+    out = _run(app_at, pairs, """
+        const m = await loaded("CO");
         const got = await outcome(() => m.applyOp(
             "add_atom", { element: "H", offset: [0, 0, 1.5] }));
         const add = __calls.filter((c) => c.url.endsWith("/api/modify/add_atom"));
@@ -235,7 +211,7 @@ def test_an_anchorless_add_reaches_the_server_with_no_anchor_key(app_at, co):
 # ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize("door", ["op", "cell"])
-def test_a_refused_change_leaves_the_earlier_notices_standing(app_at, co,
+def test_a_refused_change_leaves_the_earlier_notices_standing(app_at, pairs,
                                                               door):
     """§ 6.9: "A failed change clears nothing: nothing moved, so every condition
     that held a moment before still holds." -- an edit refused and a cell
@@ -245,8 +221,8 @@ def test_a_refused_change_leaves_the_earlier_notices_standing(app_at, co,
     there, a refusal would replace the set — wiping notices that are still true,
     on the strength of an edit that never took place.
     """
-    out = _run(app_at, co, """
-        const m = await loaded();
+    out = _run(app_at, pairs, """
+        const m = await loaded("CO");
         const before = m.getNotices();
         const got = await outcome(() => %s);
         console.log(JSON.stringify({ before, got, after: m.getNotices() }));
@@ -258,14 +234,14 @@ def test_a_refused_change_leaves_the_earlier_notices_standing(app_at, co,
         "that did not move")
 
 
-def test_a_refused_edit_changes_no_data(app_at, co):
+def test_a_refused_edit_changes_no_data(app_at, pairs):
     """§ 11.1's "a failed edit changes nothing", for a failure that leaves by
     throwing. Throwing must not skip the part where nothing
     was written — and must not leave the door jammed against the next attempt,
     which is what an `running` flag cleared only on the success path would do.
     """
-    out = _run(app_at, co, """
-        const m = await loaded();
+    out = _run(app_at, pairs, """
+        const m = await loaded("CO");
         const before = JSON.stringify(m.getStructure());
         const refused = await outcome(() => %s);
         const unchanged = JSON.stringify(m.getStructure()) === before;

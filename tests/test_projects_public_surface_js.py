@@ -52,14 +52,6 @@ def _run(snippet: str, app_at: "str | None" = None) -> object:
         storage=True)
 
 
-@pytest.fixture(scope="module")
-def app_at(isolated_projects_root_module):
-    """The app, serving: what answers the wrappers (`support.live_server`)."""
-    from support.live_server import serve
-    with serve() as base:
-        yield base
-
-
 @pytest.fixture
 def tree(isolated_projects_root):
     """This test's projects tree (`isolated_projects_root`): a project
