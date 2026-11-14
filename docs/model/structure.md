@@ -1286,9 +1286,8 @@ sequenceDiagram
 | Molbuilder tab — Load / dblclick | `modify/selection-bootstrap.js:_commitFile` | `POST /api/build/load`; on a file of several frames, which frame (1 … F, frame 1 offered) and a second load of that one (§ 2.2e — the tab holds one frame); with a structure open, the add-or-clear question (`tabs.md` § 2, *Creating a structure*); then `structurePage.loadIntoCanvas(…, {replace})` — *Add* merges through `/api/modify/append` (§ 2.2b), *Clear* installs the file over the view |
 | Molbuilder tab — Save panel | `modify/structure/save.js:save` | `projects.molviewFiles.save("project", stem, exportFile())` — the door asks WHERE and owns the overwrite flow (`tabs.md` § 6). **It does not go through `saveMolecule`**, and since 2026-09-02 nothing does |
 | Transport commit | `lib/transport/core.js:_showInMolview` | `openMolecule(path)` + `molview.mount` |
-| Spectra commit | `spectra/viewer.js:_commitStructure` | `openMolecule(path)` + `molview.mount` |
 | Results structure inspector | `lib/inspectors/structure.js` | `openMolecule(path)` + `molview.mount` |
-| Structure-optimization | `structure-optimization/viewer.js:_commitStructure` | `openMolecule(path)`; reads state off the model |
+| Structure-optimization and Spectrum — Load / dblclick | `lib/structure-card.js:loadNow` | `openMolecule(path)` + `molview.mount`, one load on the canvas at a time, the newest asked winning (`tabs.md` § 3); reads state off the model |
 | Generators (smiles/dna/…) | `modify/structure/*.js` → `page.js` | `molview.data.installMolecule({structure, filename})` (not a door) |
 | Trajectory inspector | `lib/trajectory/core.js` | `installMolecule({structure, filename, frames, forces})` + `reloadFrames(...)` — **the one exception to frames-in-the-envelope**: a run's frames are parsed by the tab from the run's own file, carry forces and no rows, and replace any frame axis the envelope had (`web/molview.md` § 11.7) |
 

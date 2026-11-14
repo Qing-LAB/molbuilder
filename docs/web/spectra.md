@@ -799,10 +799,15 @@ drawing choice and never this input.
 
 On `/spectrum-calculation` the page is a short vertical workflow:
 
-1. **Inspect the structure.** The top card mounts a **read-only MolView**
-   ([`molview.md`](?doc=web/molview.md)). Pick a `.xyz`/`.pdb` in the Projects
-   sidebar and load it; the card shows the 3D structure plus its atom count and
-   formula, read straight off the loaded model.
+1. **Inspect the structure.** The top card is the Structure-optimization tab's
+   ([`tabs.md`](?doc=web/tabs.md) § 3, `lib/structure-card.js`): a **read-only
+   MolView** ([`molview.md`](?doc=web/molview.md)). Pick a `.xyz`/`.pdb` in the
+   Projects sidebar and load it; the card shows the 3D structure plus its atom
+   count and formula, read straight off the loaded model. **A reload keeps the
+   structure and what the forms hold**, as on the Structure-optimization tab
+   *(the user, 2026-11-14)*: the structure as the tab's own draft
+   (`spectra:panel`, [`workspace.md`](?doc=web/workspace.md) § 2), every part of
+   the form in this browser tab (`formSchema.keepInTab`).
 2. **Charge and spin.** The chemistry card holds the three fields — *Net
    charge*, *Spin treatment*, *Unpaired electrons* — one setting for both
    engines, drawn once (`GET /api/build/schema/common?calculation=vibration&surface=state`,

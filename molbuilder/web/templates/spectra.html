@@ -47,37 +47,7 @@
 <main class="app-grid">
 
   <!-- ===================== 1. Inspect ===================== -->
-  <section class="card card-viewer">
-    <div class="viewer-header">
-      <h2>1. Inspect structure</h2>
-      <div class="viewer-info">
-        <span class="title" id="info-title">no structure loaded</span>
-        <span class="meta">
-          <b id="info-atoms">&mdash;</b> atoms
-          <span class="sep">&middot;</span>
-          <code id="info-formula">&mdash;</code>
-        </span>
-      </div>
-    </div>
-
-    {# Sole structure entry: pick a .xyz / .pdb in the Projects
-       sidebar and click Load.  Dblclick on the sidebar also
-       commits the same path (universal interaction model from
-       web/projects.md § 4).  Matches the entry-point on
-       /structure-optimization verbatim. #}
-    <div class="viewer-load-bar">
-      <button id="load-from-sidebar-btn" disabled
-        title="Load the file currently picked in the Projects sidebar (.xyz / .pdb).  Disabled when no loadable file is picked.">
-        Load from sidebar selection
-      </button>
-      <span id="load-source-readout" class="muted"></span>
-      <span id="load-status" class="status"></span>
-    </div>
-
-    {#- Empty host -> molview.mount builds the read-only fused card (viewer +
-        selection/cell panel + view toggles) here on first structure load. -#}
-    <div id="spectra-molview-host" class="molviewer-host"></div>
-  </section>
+  {% with viewer_host = "spectra-molview-host" %}{% include "_structure_card.html" %}{% endwith %}
 
   {#- ===================== 2. Charge and spin ===================== -#}
   {#- A missing charge/spin must never silently run PySCF's (0, 0) and

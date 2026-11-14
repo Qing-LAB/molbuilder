@@ -1156,6 +1156,45 @@
         return out;
     }
 
+    /* A PAGE'S FORMS KEPT IN THIS BROWSER TAB (`runtime.md` § 3, through
+     * `lib/page-prefs.js`; the user, 2026-11-11): under ``key``, each form
+     * ``{name, host, schema}`` that ``forms()`` names, held as it stands
+     * (`heldValues`: a blank stays blank, a field that will not read keeps
+     * what it was last saved with) as the page is left, and put back
+     * (`setValues`) when the page asks -- after its forms are drawn.  A form
+     * not drawn, or none on a page whose forms never came, keeps what was
+     * saved for it.  The one keeper every tab that
+     * describes a calculation asks. */
+    function keepInTab(key, forms) {
+        const prefs = () => root.molbuilder.pagePrefs;
+        function kept() {
+            try { return JSON.parse(prefs().read(key) || "null"); }
+            catch (_) { return null; }
+        }
+        function save() {
+            // What was kept stays, but where a drawn form says otherwise.
+            const out = Object.assign({}, kept() || {});
+            for (const f of forms() || []) {
+                if (f && f.host && f.schema) {
+                    out[f.name] = heldValues(f.host, f.schema, out[f.name]);
+                }
+            }
+            prefs().write(key, JSON.stringify(out));
+        }
+        function restore() {
+            const saved = kept();
+            if (!saved || typeof saved !== "object") return;
+            for (const f of forms() || []) {
+                const v = f && saved[f.name];
+                if (f && f.host && f.schema && v && typeof v === "object") {
+                    setValues(f.host, f.schema, v);
+                }
+            }
+        }
+        root.addEventListener("pagehide", save);
+        return { save: save, restore: restore };
+    }
+
     root.molbuilder = root.molbuilder || {};
     root.molbuilder.formSchema = {
         renderForm:  renderForm,
@@ -1167,5 +1206,6 @@
         fetchSchema: fetchSchema,
         setValues:   setValues,
         diffFromDefaults: diffFromDefaults,
+        keepInTab:   keepInTab,
     };
 })(typeof window !== "undefined" ? window : this);

@@ -922,6 +922,14 @@
         return out;
     }
 
+    /* THE FORMS THE PAGE KEEPS IN ITS BROWSER TAB (`formSchema.keepInTab`):
+     * each part as it is drawn -- the charge and spin, the shared settings,
+     * each engine's own -- by its name. */
+    function keptForms() {
+        return ["state", "common", "pyscf", "siesta"].map((part) => ({
+            name: part, host: els.form[part], schema: state.schemas[part] }));
+    }
+
     // ----- Helpers: gather form values + xyz -------------------
     /* WHAT AN ENGINE'S FORM HOLDS: its parts read with `collectForm` and
      * joined by name, so the description holds the values it always held
@@ -4662,6 +4670,7 @@
         setEngine:       setEngine,
         structureLoaded: structureLoaded,
         stateForms:      stateForms,
+        keptForms:       keptForms,
         structureForRequest: structureForRequest,
     };
 

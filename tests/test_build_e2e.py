@@ -281,7 +281,7 @@ class TestSidebarStructureFlow:
         walk_to(page, water_xyz_file)
         # THE PAGE TOOK THE PICK -- its load bar names the file as
         # selected -- and a load it began would say so at once: a commit's
-        # first act is "Loading <file>…" (`_commitStructure`).
+        # first act is "Loading <file>…" (`lib/structure-card.js:loadNow`).
         page.wait_for_function(
             "(n) => (document.getElementById('load-source-readout') || {})"
             "  .textContent === 'Selected: ' + n", arg=water_xyz_file.name,

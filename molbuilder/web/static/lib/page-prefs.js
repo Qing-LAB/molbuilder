@@ -3,8 +3,8 @@
  *
  * Every value a page keeps in the browser goes through here, nowhere else:
  * its layout (a width, a panel open or collapsed, a filter, a reading
- * theme), the sidebar's place, the Structure-optimization tab's forms, and
- * the browser tab's id the workspace names its files with (`workspace.md`
+ * theme), the sidebar's place, the Structure-optimization and Spectrum
+ * tabs' forms (`formSchema.keepInTab`), and the browser tab's id the workspace names its files with (`workspace.md`
  * § 4).  Every key `molbuilder.` and its name.
  *
  * A value lasts this browser tab's session -- its own, beside no other

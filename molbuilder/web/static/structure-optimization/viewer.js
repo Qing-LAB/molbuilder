@@ -18,139 +18,37 @@
  * run it (`project-layout.md` § 2.2) — never here.  What this tab produces is
  * a DESCRIPTION, and step 5 is where it leaves.
  *
- * MolView is consumed through its ONE public door (web/molview.md § 9.1): the ES-module
- * import below, no global reads.  Workspace (`window.molbuilder.workspace`) is a SEPARATE module, still a
- * classic global, read at call time.
+ * THE INSPECT CARD -- the viewer, the Load button, the structure kept as the
+ * tab's own draft and put back when the tab is shown again -- is the one card
+ * the Spectrum tab shares (`lib/structure-card.js`, `web/tabs.md` § 3).
  */
-import { mount as mvMount, formula as mvFormula }
-    from "/static/lib/molview/index.js";
-import { molviewDoors } from "/static/lib/projects/molview-doors.js";
-import { isStructureFile } from "/static/lib/projects/state.js";
-import { basename, dirname, join, suffix } from "/static/lib/path-utils.js";
+import { attachStructureCard } from "/static/lib/structure-card.js";
 import { ask } from "../lib/server.js";
 
 (function () {
     "use strict";
-    /* WHO THESE BYTES BELONG TO (workspace.md § 4) — the one string used BOTH as the
-     * viewer's `owner` and as the tag on every workspace call, so the two cannot
-     * drift into naming different slots. */
-    const WORKSPACE_TAG = "structure-opt";
-
     const $ = (id) => document.getElementById(id);
 
-    // ----- State ------------------------------------------------------
-    const state = {
-        pdb: null,
-        title: null,
-        labels: [],           // 3Dmol label objects so we can clear them
-        fdf: null,
-        pyscf: null,
-        // NOTHING structural is held here.  Coordinates, labels and periodicity
-        // are read LIVE off the viewer at request time, in ONE read
-        // (exportFile) -- contract F1 (docs/science/validation.md 4.1).
-    };
-
-    /* THE STRUCTURE AS THE SERVER TAKES IT — ASKED FOR, NOT ASSEMBLED.
-     *
-     * `exportFile()` is the viewer's own producer: the atoms, their positions
-     * at the frame on screen, and the facts beside them, in the one envelope
-     * every structure door reads (molview.md § 9.3 — the facts that leave
-     * together were read together). */
-    /* WHICH FRAME IS SENT, of a structure with several: the one on screen
-     * (`exportFile()`), said with the confirmation; null for one frame. */
-    function _frameSent() {
-        const d = _data();
-        const n = d && typeof d.frameCount === "function" ? d.frameCount() : 1;
-        return n > 1 ? "frame " + (d.currentFrame() + 1) + " of " + n
-                       + ", the one on screen" : null;
-    }
-
-    function _structureForRequest() {
-        const d = _data();
-        const out = d ? d.exportFile() : null;
-        return (out && out.structure) ? out.structure : null;
-    }
-
-    // The FULL concealed MolView component — the SAME rich card Modify (/molbuilder)
-    // mounts (fused viewer + selection/cell panel + view toggles) — but mode:"readonly"
-    // because this tab READS the structure (to generate SIESTA/PySCF scripts), it does
-    // not edit geometry.  The structure lives in molview.data as the single source of
-    // truth.  Mounted lazily on the first renderStructure().
-    // MolView is imported through its one door (top of file): `mvMount` and
-    // `mvFormula`.  `_data()` is THE VIEWER THIS PAGE MOUNTED — the handle
-    // `mvMount` handed back, held in `_mvHandle` — and not a name looked up in a
-    // global, because a viewer belongs to whoever mounted it (molview.md § 5.6).
-    // Workspace is a separate module, read at call time.
-    const _ws   = () => (window.molbuilder && window.molbuilder.workspace) || null;
+    /* THE INSPECT CARD (`lib/structure-card.js`): under this tab's own tag
+     * (workspace.md § 4), the viewer's owner and its draft's.  A structure
+     * that lands -- loaded, or put back on arriving -- invalidates the last
+     * findings and is checked and answered for again. */
+    const card = attachStructureCard({
+        host: "viewer-host",
+        tag:  "structure-opt",
+        onLoaded: () => {
+            clearIssues("fdf-issues", "siesta-form-container");
+            clearIssues("pyscf-issues", "pyscf-form-container");
+            refreshPreflightDebounced.siesta();
+            refreshPreflightDebounced.pyscf();
+            _chemistry.refresh();
+        },
+    });
     // The engine strip is a SHARED widget (ui-contract.md § 1): the sheet in
     // form-components.css, the behaviour in lib/tab-strip.js, mounted below.
     let _engineStrip = null;
-    const _data = () => ((_mvHandle && _mvHandle.ok) ? _mvHandle.data : null);
-    let _mvHandle = null;
 
-    /* ── WHAT THIS TAB REMEMBERS ──────────────────────────────────────────
-     *
-     * Two things, and they are the two a user would be annoyed to lose on a
-     * tab switch: THE MOLECULE THEY LOADED, and THE PARAMETERS THEY TYPED.
-     * The parameters already survive (see the form-state block near the end of
-     * this file); this is the molecule.
-     *
-     * IT IS THE TAB'S SAVE, NOT THE VIEWER'S. This viewer is read-only, which
-     * means its timeline does nothing -- no saved points, no Retract, nothing
-     * written of its own accord. That is about the SEQUENCE, not about the
-     * page: what the tab put on screen is the tab's own fact, kept under the
-     * tab's own tag beside its form values (workspace.md § 4 -- several savers
-     * on one page, each deciding what and when).
-     *
-     * WHAT IS SAVED IS THE STRUCTURE, NOT THE PATH. A path would be re-read on
-     * the way back, so a file changed on disk while you were away would quietly
-     * replace what you had; the structure comes back as you left it, and the
-     * Load button is what goes and gets the new bytes.
-     */
-    /* Under the tab's OWN tag, as its draft (workspace.md § 2, § 4): one
-     * saver, one tag. */
-    const PANEL_TAG = WORKSPACE_TAG + ":panel";
-
-    function _rememberStructure() {
-        const ws = _ws();
-        const d  = _data();
-        if (!ws || !d) return;
-        // What the viewer hands out as data -- atoms, labels, cell -- which is
-        // exactly what it can be handed back (molview.md § 9.3).
-        const out = d.exportFile();
-        if (!out || !out.structure) return;
-        ws.persistDraft(PANEL_TAG, { v: 1, structure: out.structure,
-                                     loadedFrom: _sidebarLastFile || "" });
-    }
-
-    /* Put it back, or answer null when there is nothing to put back.
-     *
-     * `installMolecule` into a viewer that holds nothing is allowed in
-     * read-only -- what read-only refuses is EDITING what is on screen, and
-     * this is a page arriving with no structure at all. */
-    async function _restoreStructure() {
-        const ws = _ws();
-        const d  = _data();
-        if (!ws || !d) return null;
-        let saved;
-        try {
-            saved = await ws.readDraft(PANEL_TAG);
-        } catch (_e) {
-            return null;          // unreachable storage reads as "nothing saved"
-        }
-        // Bytes from a layout this build does not know are not something to
-        // guess at; an empty canvas is the honest answer.
-        if (!saved || saved.v !== 1 || !saved.structure) return null;
-        await d.installMolecule({ structure: saved.structure });
-        return saved;
-    }
-
-    // ----- Status helpers --------------------------------------------
-    /** The shared `.status` writer (lib/status.js). */
-    function setStatus(elId, msg, kind) {
-        window.molbuilder.status.set(elId, msg, kind);
-    }
-
+    // ----- Findings ----------------------------------------------------
     // Findings rendering lives in ONE module for the whole app
     // (lib/validation-findings.js, contract R2 in
     // docs/science/validation.md 4.1).  These two
@@ -207,21 +105,28 @@ import { ask } from "../lib/server.js";
     // adds its own to (`handover-procedure.md` § 2.1).
     const _live = { siesta: [], pyscf: [] };
 
+    // The newest check asked, per engine: an answer to an older one -- an
+    // edit since, or a structure since -- is not drawn, as on the Spectrum
+    // tab (`lib/spectra/core.js`).
+    const _checkSeq = { siesta: 0, pyscf: 0 };
+
     async function refreshPreflight(engine) {
-        if (!_structureForRequest()) return;
+        const structure = card.structure();
+        if (!structure) return;
         let params;
         try { params = collectParams(engine); }
         catch (_) { return; }   // the field's own caption says why
+        const mine = ++_checkSeq[engine];
         // THE ONE READER (ui-contract.md § 12).
         const a = await ask("/api/build/preflight", {
             method: "POST",
             /* The cell rides inside `structure`, from the same read as the
              * atoms -- the preflight has to judge the structure the user is
              * looking at, not a cell fetched a moment later. */
-            body: { structure: _structureForRequest(),
-                    engine, params,
+            body: { structure, engine, params,
                     calculation: "optimization" },
         });
+        if (mine !== _checkSeq[engine]) return;
         /* Rendered whenever issues came back, ok or not (E-A3): the
          * endpoint's bad-params branch answers ok:false WITH the parse
          * error as an issue precisely so this panel can show it.
@@ -238,58 +143,6 @@ import { ask } from "../lib/server.js";
         siesta: debounce(() => refreshPreflight("siesta"), 250),
         pyscf:  debounce(() => refreshPreflight("pyscf"),  250),
     };
-
-    function clearStructureInfo(reason) {
-        // Wipe the info readout when a load attempt FAILS or when
-        // the user picks a non-loadable file in the sidebar.  Without
-        // this, the readout keeps showing the LAST successful load
-        // ("3 atoms, formula H2O") even after the user picked a
-        // junction.pdb that failed to parse -- a lie to the user
-        // about what's currently loaded.  ``reason`` is the
-        // short string to show in #info-title (e.g. "load failed",
-        // "no structure built").  The atoms and formula slots
-        // go to the em-dash placeholder so the user can't read
-        // numbers off them.
-        const title = $("info-title");
-        const atoms = $("info-atoms");
-        const form  = $("info-formula");
-        if (title) title.textContent = reason || "no structure built";
-        if (atoms) atoms.textContent = "—";   // em-dash
-        if (form)  form.textContent  = "—";
-    }
-
-    // Populate the page state + info panel FROM THE MODEL (the single source of truth
-    // the ONE load door installed) -- NOT from a hand-rolled /api/build/load response +
-    // a separate sidecar fetch.  The Generate/preflight POST reads the live facts + the
-    // sidecar labels; the info panel reads the counts; all come off molview.data.
-    function _applyLoadedModel(filename) {
-        const d = _data();
-        /* THE COUNT COMES OFF THE ELEMENTS, because that is what the structure
-         * carries (`elements`, `annotations`, `periodicity`, `frames`,
-         * `forcesPerFrame`). */
-        const elements = (d && typeof d.getElements === "function")
-            ? (d.getElements() || []) : [];
-        const n_atoms = elements.length;
-        state.title = filename;
-        // Labels (regions / frozen) are NOT mirrored into state -- whatever
-        // consumes them reads them FRESH off the model (getRegions / getFrozen)
-        // so they can never desync (unified-API access, no state.* copy).
-        $("info-title").textContent     = filename;
-        $("info-atoms").textContent     = n_atoms;
-        $("info-formula").textContent   = formula(elements);
-        // The BlockSize placeholder is left as the catalogue's own
-        // ``null_label`` -- "(auto)": a
-        // prediction that is usually wrong is worse than no prediction
-        // (user, 2026-08-15).
-        // A new structure invalidates the previous run's issue panels;
-        // refresh both with a preflight tick so the user sees only
-        // issues against the new geometry + current params.
-        clearIssues("fdf-issues", "siesta-form-container");
-        clearIssues("pyscf-issues", "pyscf-form-container");
-        refreshPreflightDebounced.siesta();
-        refreshPreflightDebounced.pyscf();
-        _ensureMounted();
-    }
 
     // ----- Tabs (SIESTA / PySCF) -------------------------------------
     // One switcher for both tabs that offer two engine forms
@@ -326,7 +179,7 @@ import { ask } from "../lib/server.js";
             pyscf:  [{ host: $("pyscf-form-container"),
                        schema: formSchemas.pyscf }],
         }),
-        structure: _structureForRequest,
+        structure: () => card.structure(),
     });
 
 
@@ -481,7 +334,7 @@ import { ask } from "../lib/server.js";
         }
         // The restore writes through `setValues`, which fires `input`, so
         // the renderer's greying follows the restored values.
-        restoreFormState();
+        _forms.restore();
         wirePreflightListeners();
         installPsmlLibLiveCaption();
         // AFTER the restore: mounted here, the panel's first reading is the
@@ -498,340 +351,6 @@ import { ask } from "../lib/server.js";
         // they say -- a structure loaded before the schemas arrived was
         // answered with every item blank.  A no-op with no structure yet.
         _chemistry.refresh();
-    }
-
-    // ----- Sidebar-driven loading (Projects sidebar -> Build) ------- //
-    //
-    // The Projects sidebar publishes commits via
-    // ``window.molbuilder.projects.onCommit``.  On a commit of a
-    // ``.xyz`` / ``.pdb`` we load it through the ONE file door
-    // (``projects.parser.openMolecule(path)``), which reads the .xyz +
-    // its .molstruct.json sidecar and installs the model -- so picking a
-    // structure in the sidebar auto-loads it without a re-upload.
-    //
-    // Race safety: every subscribe fire takes a monotonic seq; if a
-    // later pick supersedes this one before the two-step fetch
-    // finishes, we discard the older response.  ``lastLoadedFile``
-    // also debounces against same-file refires (onChange publishes
-    // on every set, not only on diffs).
-    let _sidebarLoadSeq = 0;
-    let _sidebarLastFile = "";
-
-    // Subscribe via ``runtime.whenReady("projects")``: the projects-sidebar
-    // module loads as ``<script type="module">`` (deferred), so it's NOT
-    // available when this classic-script viewer.js's IIFE runs.  If the
-    // runtime isn't loaded, the wiring is skipped so the rest of viewer.js
-    // still works.
-
-    if (window.molbuilder && window.molbuilder.runtime
-        && typeof window.molbuilder.runtime.whenReady === "function") {
-        window.molbuilder.runtime.whenReady("projects").then((_proj) => {
-        // The "use this file in Build" handler.  Defined once and
-        // wired to both the universal commit channel AND the page-
-        // mount cross-tab handoff (a structure file already the tab's
-        // kept selection when /structure-optimization mounts should
-        // be treated as a commit; the user picked it on another tab
-        // and navigated here to configure SIESTA / PySCF for it).
-        async function _commitStructure(sel) {
-            /* A commit carries the file's FULL path.  A bare name is completed
-             * from the commit's directory: the server would resolve it against
-             * its own process directory and refuse it as "outside every
-             * configured root". */
-            let f = (sel && sel.file) ? String(sel.file) : "";
-            if (f && !dirname(f) && sel && sel.dir) {
-                f = join(sel.dir, f);
-            }
-            if (!isStructureFile(f)) {
-                // Commit on a non-structure file — tell the user
-                // what they double-clicked isn't loadable into
-                // Build; leave the existing structure alone.
-                if (f) {
-                    const filename = basename(f);
-                    setStatus("load-status",
-                        `${filename} is not a structure file `
-                        + `(this tab loads .xyz and .pdb files).`,
-                        "warn");
-                }
-                return;
-            }
-            if (f === _sidebarLastFile) {
-                // Same file as the last commit: the structure on screen
-                // stays (the Load button is what fetches new bytes), and so
-                // does the card's answer, which is about that structure.
-                return;
-            }
-            // NO DISCARD QUESTION: a load replaces the read-only viewer's
-            // structure and leaves the parameters as typed, so nothing is
-            // lost (`runtime.md`: the question is for an edited canvas).
-            _sidebarLastFile = f;
-            const mySeq = ++_sidebarLoadSeq;
-            const filename = basename(f);
-            setStatus("load-status", `Loading ${filename}…`);
-            // ONE load door (web/molview.md § 9.3 + model/structure.md § 2.4): read the .xyz + its
-            // .molstruct.json sidecar via the concealed projects parser and install the
-            // MODEL -- labels/regions/frozen ride along, so the read-only viewer shows
-            // them.
-            const _proj2 = window.molbuilder && window.molbuilder.projects;
-            if (!_proj2 || !_proj2.parser
-                    || typeof _proj2.parser.openMolecule !== "function") {
-                setStatus("load-status",
-                    "The sidebar's file tools did not load \u2014 reload "
-                    + "the page.", "error");
-                clearStructureInfo("load failed: " + filename);
-                return;
-            }
-            const _viewer = await _ensureMounted();
-            if (!_viewer) {
-                setStatus("load-status",
-                    "Viewer unavailable: nothing to load the structure into.",
-                    "error");
-                clearStructureInfo("load failed: " + filename);
-                return;
-            }
-            let res;
-            try {
-                res = await _proj2.parser.openMolecule(_viewer, f);
-            } catch (e) {
-                if (mySeq !== _sidebarLoadSeq) return;
-                // The load door's own sentence -- the one reader's words
-                // (ui-contract.md § 12) where it asked the server.
-                setStatus("load-status",
-                          (e && e.message) ? e.message : String(e), "error");
-                clearStructureInfo("load failed: " + filename);
-                return;
-            }
-            if (mySeq !== _sidebarLoadSeq) return;     // superseded
-            if (!res || res.ok === false) {
-                setStatus("load-status",
-                    (res && res.error) || "Load failed.", "error");
-                clearStructureInfo("load failed: " + filename);
-                return;
-            }
-            // Populate page state + info panel FROM THE MODEL (single source of truth) +
-            // mount the read-only card.  The Generate/preflight POST + info panel now
-            // read the model, not a parallel hand-rolled response.
-            _applyLoadedModel(filename);
-            /* KEEP IT, so coming back to this tab shows what you were working
-             * on.  Saved HERE, at the one moment the tab acquires a structure,
-             * rather than on a timer or on the way out: `pagehide` does not
-             * fire reliably on a mobile tab switch, and this page has exactly
-             * one event worth recording. */
-            _rememberStructure();
-            const _d = _data();
-            const _atoms = _d ? (_d.getStructure() || {}).elements : null;
-            setStatus("load-status",
-                `Loaded ${(Array.isArray(_atoms) ? _atoms.length : "")}-atom `
-                + `${suffix(filename).slice(1).toUpperCase()} from `
-                + `${filename}.`, "ok");
-            // Flip the load-bar readout to "Loaded: <name>" and ask the
-            // chemistry card for this structure's charge and spin.
-            if (typeof _refreshLoadButton === "function") _refreshLoadButton();
-            _chemistry.refresh();
-        }   // close _commitStructure
-
-        // Universal commit subscription — dblclick on a structure
-        // file in the sidebar.  Falls back to onChange for older
-        // deployments without onCommit so the tab stays usable.
-        const subscribe = (typeof _proj.onCommit === "function")
-            ? _proj.onCommit.bind(_proj)
-            : _proj.onChange.bind(_proj);
-        subscribe(_commitStructure);
-
-        /* WHAT HAPPENS WHEN YOU COME BACK TO THIS TAB.
-         *
-         * The molecule you had, and the parameters you typed.  The parameters
-         * are handled at the end of this file (form state); this is the
-         * molecule.
-         *
-         * THE TAB SAVES IT, NOT THE VIEWER.  This viewer is read-only, which
-         * settles two things and neither of them is "the tab remembers
-         * nothing": its timeline does nothing -- no saved points, no Retract --
-         * and `installMolecule` is allowed only into a viewer holding nothing,
-         * or when the caller says `enforce`.  Both of those are about the
-         * SEQUENCE and about EDITING.  What this tab put on screen is the tab's
-         * own fact, kept under the tab's own tag beside its form values
-         * (workspace.md § 4: several savers on one page, each deciding what and
-         * when).
-         *
-         * THE VIEWER IS MOUNTED FIRST, because a structure needs somewhere to
-         * go.
-         *
-         * THE SIDEBAR ONLY SEEDS AN EMPTY CANVAS.  A pick left highlighted from
-         * last time is not an instruction to load it: loading a file is the
-         * Load button or a double-click, never a side effect of arriving.  What
-         * is asked is "did anything come back?", never "does the sidebar's file
-         * match" -- a generated structure has atoms and no file at all.
-         */
-        const _initialFile = (typeof _proj.getCurrentFile === "function")
-            ? _proj.getCurrentFile() : "";
-        const _restored = (async function _restoreThenSeed() {
-            await _ensureMounted();
-            const saved = await _restoreStructure();
-            if (saved) {
-                /* The file it came from is the TAB's note, saved beside the
-                 * structure -- the viewer tracks contents, not files
-                 * (molview.md § 6.7), so it does not come back with the atoms. */
-                _sidebarLastFile = saved.loadedFrom || "";
-                const _name = _sidebarLastFile
-                    ? basename(_sidebarLastFile) : "restored structure";
-                _applyLoadedModel(_name);
-                /* AND THE PAGE FURNITURE, or the tab contradicts itself: the
-                 * molecule is back on the canvas while the load bar still reads
-                 * "Selected: x.xyz" with the Load button live, as though nothing
-                 * had been loaded.  Same refreshers a fresh load runs -- there
-                 * is one way for this page to say "a structure is loaded", and
-                 * a restore has to use it rather than half of it. */
-                setStatus("load-status",
-                    `Restored ${_name} — ${saved.structure.elements.length} atoms.`,
-                    "ok");
-                if (typeof _refreshLoadButton === "function") _refreshLoadButton();
-                // ...and the chemistry card,
-                // about the RESTORED structure, which is the one on screen
-                // -- not the file it once came from, which may have moved
-                // on (or be none).
-                _chemistry.refresh();
-                return true;
-            }
-            if (!_initialFile) return false;
-            // Empty canvas + a sidebar pick: the genuine first arrival, or a
-            // handoff from another tab.
-            const _initialDir = (typeof _proj.getCurrentDir === "function")
-                ? _proj.getCurrentDir() : "";
-            _commitStructure({ dir: _initialDir, file: _initialFile });
-            return false;
-        })().catch(function (e) {
-            /* NOBODY IS WAITING ON THIS PROMISE, so a throw would land nowhere.
-             * This is the first thing the page does; failing at it in silence
-             * leaves an empty canvas that reads as "there was nothing here". */
-            setStatus("load-status",
-                "Could not restore this tab's structure: "
-                + ((e && e.message) || "unknown error")
-                + ". Pick a file and press Load.", "error");
-            return false;
-        });
-
-        // ----- Load-from-sidebar button ------------------------------ //
-        //
-        // The structure-optimization tab's sole structure entry
-        // point.  Reads the current Projects-sidebar pick and
-        // commits it through ``_commitStructure``.  Click is the
-        // explicit user gesture; the button surfaces the current
-        // pick + enables only when it's a loadable .xyz/.pdb.
-        let _candidatePath = "";
-        // Workspace dirty state — surfaced in the readout so the user
-        // sees "Loaded: X · unsaved changes" after they modify the
-        // structure but before saving.  Read lazily so this code
-        // works during early init when ws may not be wired yet.
-        // "Is there work here that is not on the sequence yet" is `uncommitted`,
-        // a value the viewer holds rather than a question asked of it. It is
-        // raised inside the gate, after a change lands, so nothing outside marks
-        // it (molview.md § 11.2). Read lazily: there is no viewer until the first
-        // load mounts one.
-        const _modelDirty = () => {
-            const d = _data();
-            return !!(d && d.uncommitted);
-        };
-        function _refreshLoadButton() {
-            const btn = $("load-from-sidebar-btn");
-            const readout = $("load-source-readout");
-            if (!btn) return;
-            const loadable = isStructureFile(_candidatePath);
-            btn.disabled = !loadable;
-            if (readout) {
-                const isLoaded = loadable
-                    && _sidebarLastFile === _candidatePath;
-                if (isLoaded) {
-                    readout.textContent = _modelDirty()
-                        ? `Loaded: ${basename(_candidatePath)} · unsaved changes`
-                        : `Loaded: ${basename(_candidatePath)}`;
-                } else if (loadable) {
-                    readout.textContent =
-                        `Selected: ${basename(_candidatePath)}`;
-                } else if (_candidatePath) {
-                    // SAY WHY, not just that: a single click names what
-                    // would be loadable.
-                    readout.textContent =
-                        `Selected: ${basename(_candidatePath)} `
-                        + `(not loadable — .xyz / .pdb only)`;
-                } else {
-                    readout.textContent =
-                        "Pick a .xyz / .pdb in the Projects sidebar.";
-                }
-            }
-        }
-        _candidatePath = _initialFile;
-        _refreshLoadButton();
-        if (typeof _proj.onChange === "function") {
-            _proj.onChange((sel) => {
-                _candidatePath = (sel && sel.file) ? sel.file : "";
-                _refreshLoadButton();
-            });
-        }
-        // Re-render the readout whenever the model's dirty state flips.
-        // Subscribe defensively — molview.data may not be mounted on pages
-        // that don't mount the canvas (e.g. spectra-only views).
-        (function _subscribeModelDirty() {
-            const d = _data();
-            if (d && typeof d.subscribe === "function") {
-                d.subscribe(_refreshLoadButton);
-            }
-        })();
-        const _loadBtn = $("load-from-sidebar-btn");
-        if (_loadBtn) {
-            _loadBtn.addEventListener("click", () => {
-                if (!isStructureFile(_candidatePath)) return;
-                const _dir = (typeof _proj.getCurrentDir === "function")
-                    ? _proj.getCurrentDir() : "";
-                // Explicit Load = "load the current file NOW".  Always re-read
-                // from disk, even if it is the same path the tab already holds
-                // (restored on mount, or loaded earlier this session): the file
-                // may have changed on disk and the user asked for a fresh load.
-                // Clear the same-file dedup guard so _commitStructure does not
-                // short-circuit.  (The auto/subscribe path keeps the dedup.)
-                _sidebarLastFile = "";
-                _commitStructure({ dir: _dir, file: _candidatePath });
-            });
-        }
-
-        });   // close runtime.whenReady("projects").then(...)
-    }
-
-    // formula() is imported from MolView's door (mvFormula, top of file).  Imported,
-    // so it is always the real function.
-    const formula = mvFormula;
-
-    // ----- 2. Render --------------------------------------------------
-    // The standard knob bar (style picker / labels popover / axes /
-    // reset / background / export) owns all the per-viewer chrome;
-    // the Optimization tab's host page only owns its tab-specific
-    // controls (Load-from-sidebar button, Generate buttons,
-    // Download row).  Rep / radius / background /
-    // labels are reached via the knob bar so every consumer site
-    // shares the same UX.
-
-    // The model is loaded by the ONE door (projects.parser.openMolecule); this ONLY
-    // ensures the read-only MolView card is mounted on first load.  The mounted render
-    // reacts to the model on its own -- we must NOT re-install bare text here: it
-    // would drop the sidecar labels the door loaded.
-    /* AWAITABLE, because the load door needs a viewer to put the file into and
-     * this is what makes one. A viewer mounts before it has a structure
-     * (molview.md § 8), so this runs first and the load follows. */
-    async function _ensureMounted() {
-        const ws = _ws();
-        // NOT gated on a viewer existing: this IS what creates it.
-        if (!ws) return null;
-        if (_mvHandle) return _mvHandle;
-        return mvMount($("viewer-host"), ws,
-                { mode: "readonly", owner: WORKSPACE_TAG, ...molviewDoors })
-            .then(function (h) { _mvHandle = (h && h.ok) ? h : null; return _mvHandle; })
-            .catch(function (e) {
-                // #load-status is the page's load/viewer status slot (there is
-                // no #status element).  The severity is a CSS class
-                // (.status.ok/.error/.warn/.muted, page-shell.css).
-                setStatus("load-status",
-                    "Viewer failed to mount: " + ((e && e.message) || "render failed"),
-                    "error");
-            });
     }
 
     /**
@@ -904,53 +423,14 @@ import { ask } from "../lib/server.js";
     }
 
 
-    /* KEPT IN THIS BROWSER TAB, through what a page keeps in this browser
-     * (`lib/page-prefs.js`, `runtime.md` § 3): each browser tab its own
-     * forms (the user, 2026-11-11), saved as the page is left. */
-    const FORMS = "structure_optimization_forms";
-    const _prefs = () => window.molbuilder.pagePrefs;
-
-    /* What each engine's form HOLDS, through the form's own reader and
-     * writer (`heldValues` / `setValues`): a blank stays blank -- a box
-     * nobody answered stays unanswered.  Field by field: a field that
-     * will not read keeps what it was last saved with, so a half-typed
-     * field at `pagehide` does not wipe its engine's whole saved form. */
-    function saveFormState() {
-        const fs = (window.molbuilder || {}).formSchema;
-        if (!fs) return;
-        let before = null;
-        try { before = JSON.parse(_prefs().read(FORMS) || "null"); }
-        catch (_) { before = null; }
-        const saved = {};
-        for (const engine of ["siesta", "pyscf"]) {
-            const sch = formSchemas[engine];
-            const host = $(engine + "-form-container");
-            if (!sch || !host) continue;
-            saved[engine] = fs.heldValues(host, sch,
-                                          before && before[engine]);
-        }
-        _prefs().write(FORMS, JSON.stringify(saved));
-    }
-
-    function restoreFormState() {
-        const fs = (window.molbuilder || {}).formSchema;
-        let saved;
-        try { saved = JSON.parse(_prefs().read(FORMS) || "null"); }
-        catch (_) { return; }
-        if (!saved || !fs) return;
-        for (const engine of ["siesta", "pyscf"]) {
-            const sch = formSchemas[engine];
-            const host = $(engine + "-form-container");
-            if (!sch || !host || !saved[engine]
-                    || typeof saved[engine] !== "object") continue;
-            fs.setValues(host, sch, saved[engine]);
-        }
-    }
-
-    // No synchronous first restore: the forms are drawn from the
-    // schemas, which are not loaded yet.  The real restore runs inside
-    // initFormsFromSchema() after the renderer fills the containers.
-    window.addEventListener("pagehide", saveFormState);
+    /* KEPT IN THIS BROWSER TAB (`formSchema.keepInTab`, `runtime.md` § 3):
+     * each engine's form as it stands, saved as the page is left and put
+     * back after the forms are drawn (the user, 2026-11-11). */
+    const _forms = window.molbuilder.formSchema.keepInTab(
+        "structure_optimization_forms",
+        () => ["siesta", "pyscf"].map((engine) => ({
+            name: engine, host: $(engine + "-form-container"),
+            schema: formSchemas[engine] })));
 
     // Kick off the async schema fetch + form render.  Everything that
     // needs the drawn forms -- the restore, the live check's listeners on
@@ -989,8 +469,8 @@ import { ask } from "../lib/server.js";
      * the files first keeps all four bought.
      *
      * It lives HERE rather than in its own module because the two things it
-     * needs -- `_structureForRequest()` and `collectParams()` -- are
-     * private to this file.  A separate module would have to re-derive them,
+     * needs -- the card's structure (`card.structure()`) and
+     * `collectParams()` -- are this page's.  A separate module would have to re-derive them,
      * which is the duplication this codebase keeps paying for.
      */
     function _handoverSay(kind, text) {
@@ -1032,8 +512,8 @@ import { ask } from "../lib/server.js";
             // ...and a refusal's first error brought into view.
             showFindings: (issues) => _showFindings(engine, issues, true),
             door:      mb.taskHandover.HANDOVER,
-            fields:    { structure: _structureForRequest(), params: params },
-            frame:     _frameSent(),
+            fields:    { structure: card.structure(), params: params },
+            frame:     card.frame(),
             engine:    engine,
             calculation: "optimization",
         });

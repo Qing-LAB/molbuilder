@@ -267,13 +267,26 @@ restore and edit) → ~~**Generate**~~ *(the two emit routes were **deleted**
 engines' were deleted with the same rule (a deck is rendered by `prep`).
 Live validation runs against `/api/build/preflight` as you edit.
 
+**The inspect card is the one the Spectrum tab shares**
+(`lib/structure-card.js`, `templates/_structure_card.html`): the read-only
+viewer, the Load button and its readout, the sidebar's pick and double-click,
+the atoms and formula, and one sentence for a load (*Loaded water.xyz — 3
+atoms.*) and for a structure put back (*Restored water.xyz — 3 atoms.*). A file
+counts as loaded only once it has, so a load that failed can be asked again;
+arriving, the tab's own draft comes back first, and only an empty canvas is
+seeded from the sidebar's pick. What goes on the canvas goes on one at a time,
+the newest asked winning: a load asked while another is under way waits for it,
+and one a newer load overtook before its turn is skipped -- so a slow first
+file never replaces a second one picked after it, and the structure the tab
+sends is the one its readout names.
+
 **A reload keeps the structure and what the forms hold**: the structure the
 viewer shows as the tab's own draft in the workspace (`structure-opt:panel`,
 [`workspace.md`](?doc=web/workspace.md) § 2, saved when the tab loads one), and
-both engines' forms in this browser tab, each tab its own (`pagePrefs`,
-[`runtime.md`](?doc=web/runtime.md) § 3; the user, 2026-11-11), saved as the page is
-left and put back after the forms draw (a field that will not read keeps what
-it was last saved with).
+both engines' forms in this browser tab, each tab its own
+(`formSchema.keepInTab` over `pagePrefs`, [`runtime.md`](?doc=web/runtime.md) § 3;
+the user, 2026-11-11), saved as the page is left and put back after the forms
+draw (a field that will not read keeps what it was last saved with).
 
 What the tab writes today is the DESCRIPTION, via Send to Task setup: the
 parameter template, the structure pair and the hand-over — written by the

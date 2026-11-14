@@ -1,39 +1,24 @@
 /* The Spectrum calculation page's bootstrap (`web/spectra.md`).
  *
- * Two responsibilities, both this page's own (a finished result is
- * shown on the Results tab, through lib/spectra/core.js and the
- * spectra inspector):
+ * Three responsibilities, all this page's own (a finished result is shown on
+ * the Results tab, through lib/spectra/core.js and the spectra inspector):
  *
- *   1. Mount the spectra core against ``document``, so the vibration
- *      form, its checks and the hand-over to Task setup wire up.
+ *   1. Mount the spectra core against ``document``, so the vibration form,
+ *      its checks and the hand-over to Task setup wire up.
  *
- *   2. Wire the Inspect-structure card: mount MolView in
- *      ``#spectra-molview-host`` and hook ``#load-from-sidebar-btn`` so
- *      the person can pick a structure in the Projects sidebar and load
- *      it.  The hand-over reads the structure OFF THE MODEL when it is
- *      sent -- no push, no in-memory holder.
+ *   2. Attach the inspect card (`lib/structure-card.js`, the one the
+ *      Structure-optimization tab attaches): the read-only viewer, the Load
+ *      button, the structure kept as the tab's own draft and put back when
+ *      the tab is shown again.  The hand-over reads the structure OFF THE
+ *      VIEWER when it is sent -- no push, no in-memory holder.
  *
- * Mirrors the Optimization tab's pattern in
- * structure-optimization/viewer.js (the Load button, the info readout,
- * the sidebar onCommit subscription).
+ *   3. Keep the forms in this browser tab (`formSchema.keepInTab`), as the
+ *      Structure-optimization tab keeps its own (the user, 2026-11-14).
  */
-import { mount, formula as mvFormula } from "/static/lib/molview/index.js";
+import { attachStructureCard } from "/static/lib/structure-card.js";
 
-// Who this tab's saved work belongs to (workspace.md § 4): the viewer's `owner`
-// and the tag on any workspace call, so the two cannot name different slots.
-const WORKSPACE_TAG = "spectra";
-import { molviewDoors } from "../lib/projects/molview-doors.js";
-import { isStructureFile } from "../lib/projects/state.js";
-import { basename } from "../lib/path-utils.js";
 (function () {
     "use strict";
-
-    function _$(id) { return document.getElementById(id); }
-
-    /** The shared `.status` writer (lib/status.js). */
-    function setStatus(elId, msg, kind) {
-        window.molbuilder.status.set(elId, msg, kind);
-    }
 
     /* THE INSPECTOR THIS PAGE MOUNTED, kept so the page can hand it the viewer
      * it also mounted.  One page, two things it owns, and it introduces them --
@@ -48,246 +33,40 @@ import { basename } from "../lib/path-utils.js";
     // charge or spin field, and fills nothing in.
     const _chemistry = window.molbuilder.chemistry.attach({
         kind: "vibration",
-        forms: () => (_inspector && typeof _inspector.stateForms === "function"
-                      ? _inspector.stateForms() : {}),
-        structure: () => (_inspector
-                          && typeof _inspector.structureForRequest === "function"
-                          ? _inspector.structureForRequest() : null),
+        forms: () => (_inspector ? _inspector.stateForms() : {}),
+        structure: () => (_inspector ? _inspector.structureForRequest()
+                                     : null),
     });
 
-    function _bootstrapSpectraCore() {
-        // Defensive: if core.js failed to load (e.g. a CDN-block in
-        // some weird CSP edge case), fail loudly in the console
-        // rather than silently rendering an empty <main>.
-        const api = (window.molbuilder || {}).spectraInspector;
-        if (!api || typeof api.mount !== "function") {
-            console.error(
-                "[spectra] spectraInspector.mount not found.  "
-                + "Check that lib/spectra/core.js is loaded BEFORE "
-                + "spectra/viewer.js (the script tag order in "
-                + "spectra.html is load-bearing)."
-            );
-            return;
-        }
-        // Mount with ``document`` as the root so $() lookups find
-        // /spectra's generate-side form ids (which live OUTSIDE any
-        // partial; full-page mount).
-        _inspector = api.mount(document, {
-            // The forms exist now: the chemistry card answers for them.
-            onFormsReady: () => { if (_chemistry) _chemistry.refresh(); },
-        });
-    }
-
-    /**
-     * Update the static info readout below the viewer header.  Title shows the
-     * basename of the loaded file; atom count + formula are READ FROM THE MODEL
-     * (molview.data.getElements -- the structure the Load just installed), never
-     * re-parsed from text: MolView already parsed it, and the inspector rule is
-     * "no structure parsing in a consumer" (lib/inspectors/structure.js).
-     * Runs synchronously after every successful Load (the model is settled).
-     */
-    /* THE VIEWER IS HANDED IN, because this function does not have one. */
-    function _updateInfo(viewer, filename) {
-        const title   = _$("info-title");
-        const atomsEl = _$("info-atoms");
-        const formula = _$("info-formula");
-        const elements = (viewer && viewer.ok
-            && viewer.data.getElements()) || [];
-        if (!elements.length) {
-            if (title)   title.textContent   = "no structure loaded";
-            if (atomsEl) atomsEl.textContent = "—";
-            if (formula) formula.textContent = "—";
-            return;
-        }
-        if (title)   title.textContent   = filename || "loaded";
-        if (atomsEl) atomsEl.textContent = String(elements.length);
-        // The Hill formula() is imported from MolView's door (mvFormula).  `formula`
-        // here is the DOM readout node; mvFormula is the formatter function.
-        if (formula) formula.textContent = mvFormula(elements);
-    }
-
-    /**
-     * Bootstrap the Inspect-structure card: mount the read-only MolView
-     * component (lazily, on first load), wire the Load button, and subscribe to
-     * ``onCommit`` so a sidebar dblclick on a .xyz/.pdb loads it via
-     * ``projects.parser.openMolecule``.
-     */
-    function _bootstrapInspectCard() {
-        const host = _$("spectra-molview-host");
-        if (!host) return;
-        // Read-only MolView — the SAME concealed component Modify/Transport mount,
-        // in mode:"readonly" for structure demonstration only (view toggles +
-        // selection/cell panel, no editing).  Mounted lazily on the first load.
-        const ws   = window.molbuilder && window.molbuilder.workspace;
-        const proj = window.molbuilder && window.molbuilder.projects;
-        // NOT gated on a viewer: there is none until a load mounts one.
-        if (!ws || typeof mount !== "function"
-                || !proj || !proj.parser
-                || typeof proj.parser.openMolecule !== "function") {
-            setStatus("load-status",
-                "Viewer unavailable: the MolView / projects module failed to load "
-                + "(check the template script tags).", "error");
-            return;
-        }
-        let mvHandle = null;   // mounted on first structure load
-
-        let _sidebarLastFile = "";
-        let _loadSeq         = 0;
-
-        // ---- Load button + sidebar onCommit subscription -------- //
-
-        let _candidatePath = "";
-        function _refreshLoadButton() {
-            const btn = _$("load-from-sidebar-btn");
-            const readout = _$("load-source-readout");
-            if (!btn) return;
-            const loadable = isStructureFile(_candidatePath);
-            btn.disabled = !loadable;
-            if (readout) {
-                const isLoaded = loadable
-                    && _sidebarLastFile === _candidatePath;
-                readout.textContent = isLoaded
-                    ? `Loaded: ${basename(_candidatePath)}`
-                    : loadable
-                        ? `Selected: ${basename(_candidatePath)}`
-                        // SAY WHY, not just that: a single click names
-                        // what would be loadable.
-                        : (_candidatePath
-                            ? `Selected: ${basename(_candidatePath)} `
-                              + `(not loadable — .xyz / .pdb only)`
-                            : "Pick a .xyz / .pdb in the Projects sidebar.");
-            }
-        }
-
-        async function _commitStructure(sel) {
-            const f = (sel && sel.file) ? String(sel.file) : "";
-            if (!isStructureFile(f)) {
-                if (f) {
-                    setStatus("load-status",
-                        `${basename(f)} is not a structure file `
-                        + `(.xyz / .pdb only).`, "warn");
-                }
-                return;
-            }
-            if (f === _sidebarLastFile) {
-                // Same file: the structure on screen stays, and so does the
-                // card's answer about it.  The Load button is what fetches
-                // new bytes (it clears this guard, below).
-                return;
-            }
-            const mySeq = ++_loadSeq;
-            setStatus("load-status",
-                `Loading ${basename(f)}…`, null);
-            try {
-                // THE VIEWER FIRST, THEN THE FILE: a viewer mounts before it has
-                // a structure (molview.md § 8), and the load door needs somewhere
-                // to put what it reads.
-                if (!mvHandle || !mvHandle.ok) {
-                    // Cache ONLY a live handle (mount contract: failure ->
-                    // {ok:false}); a failed mount must not stick, so the next
-                    // structure load retries instead of staying viewer-less.
-                    const _h = await mount(host, ws,
-                        { mode: "readonly", owner: WORKSPACE_TAG,
-                          ...molviewDoors });
-                    mvHandle = (_h && _h.ok) ? _h : null;
-                    if (!mvHandle) throw new Error("the viewer could not be built");
-                    /* The page mounted the viewer, so the page hands it on:
-                     * the Generate panel needs this same one.
-                     *
-                     * Handed to THE INSPECTOR THIS PAGE MOUNTED, not to a
-                     * module-wide door. The viewer belongs to whoever mounted
-                     * it (molview.md § 5.6), and so does the inspector holding
-                     * it -- a module-level setter would be one viewer for every
-                     * mount on the page. */
-                    if (_inspector && typeof _inspector.useViewer === "function") {
-                        _inspector.useViewer(mvHandle);
-                    }
-                }
-                // The format-aware sidebar door reads the .xyz + its
-                // .molstruct.json and installs both into THIS viewer in one write.
-                const r = await proj.parser.openMolecule(mvHandle, f);
-                if (r && r.ok === false) {
-                    throw new Error(r.error || ("Could not load " + f));
-                }
-            } catch (e) {
-                setStatus("load-status",
-                    "Load failed: " + (e && e.message ? e.message : e), "error");
-                return;
-            }
-            if (mySeq !== _loadSeq) return;  // superseded by a newer load
-            _sidebarLastFile = f;
-            // The inspector reads the structure off the viewer it was handed
-            // at mount -- no second copy -- and is told a load landed so the
-            // structure can pick the default engine (a periodic structure is
-            // SIESTA's) and the live checks rerun.
-            if (_inspector && typeof _inspector.structureLoaded === "function") {
-                _inspector.structureLoaded();
-            }
-            _updateInfo(mvHandle, basename(f));
-            setStatus("load-status",
-                `Loaded ${basename(f)}.`, "ok");
-            _refreshLoadButton();
-            // The chemistry card: this structure's charge and spin, for
-            // exactly what the forms say.
-            _chemistry.refresh();
-        }
-
-        // Sidebar onChange / onCommit subscription + initial
-        // candidate-path tracking.  Mirrors the Optimization
-        // tab's pattern in structure-optimization/viewer.js.
-        const rt = (window.molbuilder || {}).runtime;
-        const projP = (rt && typeof rt.whenReady === "function")
-            ? rt.whenReady("projects")
-            : Promise.resolve((window.molbuilder || {}).projects);
-        projP.then((proj) => {
-            if (!proj) return;
-            // Initial mount-time auto-load (cross-tab handoff through
-            // the tab's kept pick).
-            const initialFile = (typeof proj.getCurrentFile === "function")
-                ? proj.getCurrentFile() : "";
-            if (initialFile) {
-                _candidatePath = initialFile;
-                _refreshLoadButton();
-                _commitStructure({ file: initialFile });
-            } else {
-                _refreshLoadButton();
-            }
-            // Subscribe to sidebar changes for the candidate-path
-            // readout (single-click → "Selected: foo.xyz" hint).
-            if (typeof proj.onChange === "function") {
-                proj.onChange((sel) => {
-                    _candidatePath = (sel && sel.file) ? sel.file : "";
-                    _refreshLoadButton();
-                });
-            }
-            // Dblclick commits the file for loading (universal
-            // interaction model).
-            const subscribe = (typeof proj.onCommit === "function")
-                ? proj.onCommit.bind(proj)
-                : proj.onChange.bind(proj);
-            subscribe(_commitStructure);
-        });
-
-        // Explicit Load button click → load whatever the sidebar
-        // currently highlights.
-        const loadBtn = _$("load-from-sidebar-btn");
-        if (loadBtn) {
-            loadBtn.addEventListener("click", () => {
-                if (!isStructureFile(_candidatePath)) return;
-                // Explicit Load = "load the current file NOW", even the one
-                // already on screen: it may have changed on disk, so the
-                // same-file guard is cleared.  (The
-                // sidebar's double-click path keeps the guard.)
-                _sidebarLastFile = "";
-                _commitStructure({ file: _candidatePath });
-            });
-        }
-
-    }
+    /* KEPT IN THIS BROWSER TAB: every part of the vibration's form, put back
+     * once the inspector has drawn them. */
+    const _forms = window.molbuilder.formSchema.keepInTab(
+        "spectrum_calculation_forms",
+        () => (_inspector ? _inspector.keptForms() : []));
 
     function bootstrapSpectraPage() {
-        _bootstrapInspectCard();
-        _bootstrapSpectraCore();
+        // Mount with ``document`` as the root so $() lookups find /spectra's
+        // generate-side form ids (which live OUTSIDE any partial).
+        _inspector = window.molbuilder.spectraInspector.mount(document, {
+            // The forms exist now: put back what this tab kept, then the
+            // chemistry card answers for them.
+            onFormsReady: () => { _forms.restore(); _chemistry.refresh(); },
+        });
+        /* THE INSPECT CARD, under this tab's own tag (workspace.md § 4).  The
+         * page mounted the viewer through it, so the page hands it on: the
+         * Generate panel reads this same one.  A structure that lands --
+         * loaded, or put back -- lets the structure pick the default engine
+         * (a periodic structure is SIESTA's), reruns the live checks, and
+         * asks the chemistry card again. */
+        attachStructureCard({
+            host: "spectra-molview-host",
+            tag:  "spectra",
+            onMounted: (handle) => _inspector.useViewer(handle),
+            onLoaded: () => {
+                _inspector.structureLoaded();
+                _chemistry.refresh();
+            },
+        });
     }
 
     if (document.readyState === "loading") {

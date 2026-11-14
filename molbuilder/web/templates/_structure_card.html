@@ -1,0 +1,32 @@
+{#- THE INSPECT CARD of a tab that describes a calculation of a structure --
+    the Structure-optimization tab's and the Spectrum tab's (`web/tabs.md`
+    § 3, `web/spectra.md` § 5).  Wired by `lib/structure-card.js`; the page
+    names its viewer host's id (`viewer_host`). -#}
+<section class="card card-viewer">
+  <div class="viewer-header">
+    <h2>1. Inspect structure</h2>
+    <div class="viewer-info">
+      <span class="title" id="info-title">no structure loaded</span>
+      <span class="meta">
+        <b id="info-atoms">&mdash;</b> atoms
+        <span class="sep">&middot;</span>
+        <code id="info-formula">&mdash;</code>
+      </span>
+    </div>
+  </div>
+
+  {#- Pick a .xyz / .pdb in the Projects sidebar and press Load; a
+      double-click in the sidebar loads it too (`web/projects.md` § 4). -#}
+  <div class="viewer-load-bar">
+    <button id="load-from-sidebar-btn" disabled
+      title="Load the file currently picked in the Projects sidebar (.xyz / .pdb).  Disabled when no loadable file is picked.">
+      Load from sidebar selection
+    </button>
+    <span id="load-source-readout" class="muted"></span>
+    <span id="load-status" class="status"></span>
+  </div>
+
+  {#- Empty host -> MolView mounts the read-only fused card (viewer +
+      selection/cell panel + view toggles) here when the tab arrives. -#}
+  <div id="{{ viewer_host }}" class="molviewer-host"></div>
+</section>
