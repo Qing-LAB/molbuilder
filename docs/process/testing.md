@@ -364,8 +364,10 @@ answered every route with success, where the route refuses).
    driven (§ 5), the road's own writers for its input (§ 2a, `support.road`).
 2. **A fake stays only for a named need**, said in the test: keeping the test
    off the person's machine (§ 2b), a failure that cannot be caused for real
-   (a full disk, a builder falling over), or a timing (a slow server — the real
-   answer held, `__hold`, never an answer invented).
+   (a full disk, a builder falling over), a timing (a slow server — the real
+   answer held, `__hold`, never an answer invented), or what node cannot run
+   (the drawing library, which needs WebGL; a page's DOM) — a test that needs
+   the real one of those runs in a browser (§ 5).
 3. **Even then it is built through the entry the tested code uses**: a server
    answer from the route, or the module that composes it; a result as the
    module's own type (`subprocess.CompletedProcess`, the installer's
@@ -1171,7 +1173,9 @@ deliberately not installed there.
   MolView's tests under node, the stand-ins for 3Dmol and the DOM
   (`molview_3dmol_standin.js`, `molview_dom_standin.js`), and a stand-in
   server, `molview_server_standin.js`, which answers every route alike —
-  still loaded by four test files, each yet to move onto the server's own
+  still loaded by three test files (`test_molview_model`, `_mount`,
+  `_ui_context`) — and `test_molview_measurement` keeps a `fetch` of its own
+  that answers every route alike — each yet to move onto the server's own
   answers (§ 4; planned, the finish-line review's O-TESTS).
 - `test_one_door_reads_a_structure.py` — the author's frozen atoms, regions
   and cell, saved as the `.xyz` + `.molstruct.json` pair, reach the deck

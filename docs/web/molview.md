@@ -4858,13 +4858,22 @@ suite that came before was largely the opposite.
   reporting that no movie exists describes something this design forbids — and a
   suite built on it will confirm behaviour that cannot happen while missing
   behaviour that does.
+- **A stand-in for what is real and reachable** *(the user, 2026-11-14:
+  "otherwise you are maintaining two sets of facts and tests are not actively
+  reviewed so it will desync easily")*. The server is the app's own routes,
+  answering in node (`_node_esm.served`, `process/testing.md` § 3b, § 4): a
+  stand-in server that answered every route alike passed an operation the
+  route refuses. A stand-in stays only where a named need asks for one
+  (`testing.md` § 3b) — in these tests, what node cannot run: the drawing
+  library (it needs WebGL) and a page's DOM; a test that needs the real one of
+  those runs in a browser.
 
 ### 13.2 Three levels of test
 
 | Level | Runs | Derived from | Shows |
 |---|---|---|---|
 | **Behaviour, no browser** | node | § 6, § 10.3, § 11.2 | the model's rules, and the per-frame calculation — values in, values out |
-| **Boundary behaviour** | node, with stand-ins that obey this document | § 7, § 10.5–10.10 | how much work a change takes, and that each level refuses what its "never" column forbids |
+| **Boundary behaviour** | node, the app's own routes answering; a stand-in only for the drawing library or a DOM, obeying this document | § 7, § 10.5–10.10 | how much work a change takes, and that each level refuses what its "never" column forbids |
 | **End to end** | a real page | § 1.1 | what a user does: select, isolate, measure, scrub, play, export |
 
 ### 13.3 What each rule obliges a test to show
@@ -4889,7 +4898,7 @@ This table is the test plan. **A rule with no row here is a rule nothing guards.
 | § 6.8 — every op is checked | each `/api/modify/*` route validates the structure it returns, because the check is in the shared return path; the op list is read from the app's route table so a new op is covered on arrival |
 | § 6.8 — a notice lives until what it describes changes | an edit to the structure clears the set, and an answer carrying notices replaces it; nothing is stored, saved, or survives a reload |
 | § 6.9 — a refused change throws, carrying the server's own sentence | the caller of a door the server refused receives the *text the server sent*, not a status code and not `null`; asserting it means asserting that text |
-| § 6.9 — `null` and a refusal are different answers | nothing loaded, a read-only viewer and a wrongly-sized selection all answer `null` and say nothing; only a refusal throws — so a caller cannot mistake one for the other |
+| § 6.9 — `null` and a refusal are different answers | the cell door with nothing loaded, a read-only viewer and a wrongly-sized selection all answer `null` and say nothing; only a refusal throws — so a caller cannot mistake one for the other |
 | § 6.9 — a failed change leaves the notices alone | after a refused edit every condition that held before it still stands, because nothing is stored and nothing was cleared |
 | § 11.3 — the draft and a saved point are separate files | a change rewrites the draft and never a point already laid, so Retract returns you to a point exactly as it was laid; and the badge answers only whether work is on the sequence |
 | § 6.7 — a viewer holds no file path | nothing a viewer answers, saves or restores names a file it was read from; a structure built with no file behaves exactly like one read from disk, and the only name kept is what an export gets called |

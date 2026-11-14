@@ -4,7 +4,8 @@
  * answer -- `{ask}`, `lib/server.js` -- because MolView reaches no module of
  * the app by name (molview.md § 4; ui-contract.md § 12).  A test that builds
  * a viewer stands where that page stands, so it hands the same reader in: the
- * real one, asking whatever stand-in server the test put on `fetch`.
+ * real one, asking whatever answers the test put on `fetch` -- the app's own
+ * routes (`_node_esm.served`), where a test has moved onto them.
  */
 const LIB = new URL("../../molbuilder/web/static/lib/", import.meta.url);
 const { ask } = await import(new URL("server.js", LIB).href);
