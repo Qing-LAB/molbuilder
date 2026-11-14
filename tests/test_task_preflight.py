@@ -129,6 +129,28 @@ def test_varies_is_checked_too_not_only_the_overrides():
     assert "task.varies" in _wheres(issues)
 
 
+@pytest.mark.parametrize("where, way", [
+    ("task.varies", "takes it out of varies"),
+    ("task.stages.overrides", "refuses a stage that overrides it -- "
+                              "it picked that stage's Raman modes"),
+])
+def test_a_retired_name_is_told_what_the_migration_does_where_it_is_written(
+        where, way):
+    """`engines/template.md` § 3: a retired name is told the way out the
+    migration takes where it is written, never the template's words for
+    another place -- SIESTA's retired Raman selector, which in a template
+    the migration states Compute Raman from: a `varies` entry it takes out,
+    a stage's own override it refuses, the person's to restate.  THE SILENT
+    FAILURE: told the template's way, a person waits for the migration to
+    state Compute Raman from a column or a stage, which it never does."""
+    issues = preflight(_task(calculation="vibration",
+                             varies=("es_mode_selection",),
+                             stages=(Stage(name="freq", overrides={
+                                 "es_mode_selection": "all"}),)))
+    said = [i.message for i in issues if i.where == where]
+    assert said and way in said[0], said
+
+
 def test_a_varies_name_that_no_stage_overrides_is_still_checked():
     """``varies`` is what the surface draws a column for.  A misspelt one with
     no override yet is a column that can never be filled."""

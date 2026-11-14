@@ -1573,19 +1573,21 @@ def _decide_template(rec: "_Records", task):
     stage_retired = [(st.name, k, v) for st in (task.stages or ())
                      for k, v in (st.overrides or {}).items() if _gone(k)]
     varies_retired = [k for k in (task.varies or ()) if _gone(k)]
-    # A STAGE'S OWN RAMAN, said by SIESTA's retired selector, is not taken
-    # out: it decided the stage's optical phase, and the template's mapping
-    # (:func:`_map_raman`) speaks for the template alone.  A `varies` entry
-    # alone decides nothing, and is taken out as any retired item's.
-    raman_said = [f"stage {st!r} overrides {k}" for st, k, _v in stage_retired
-                  if k in _T.SIESTA_RAMAN_SELECTOR and engine == "siesta"]
-    if raman_said:
+    # A STAGE'S OVERRIDE A RETIRED ROW SAYS IS THE PERSON'S is not taken
+    # out, but refused naming the row's way out (`Retired.on_a_stage`) --
+    # SIESTA's Raman selector: it decided the stage's optical phase, and the
+    # template's mapping (:func:`_map_raman`) speaks for the template alone.
+    # A `varies` entry alone decides nothing, and is taken out as any
+    # retired item's.
+    refused = [(st, k) for st, k, _v in stage_retired
+               if _T.RETIRED_ITEMS[k].on_a_stage]
+    if refused:
         raise MigrateError(
-            f"{'; '.join(raman_said)}, which picked that stage's Raman modes "
-            f"on SIESTA -- since 2.45.0 Compute Raman and Raman for say it.  "
-            f"Nothing was written: state them on the stage instead (or take "
-            f"the override out), then run the migration again"
-            f".")
+            "; ".join(f"stage {st!r} overrides {k}: "
+                      f"{_T.RETIRED_ITEMS[k].on_a_stage}"
+                      for st, k in refused)
+            + ".  Nothing was written: do that, then run the migration "
+            "again.")
     stuck = ([(f"the template says {it.name} = {it.value!r}", it.name)
               for it in retired
               if it.is_set

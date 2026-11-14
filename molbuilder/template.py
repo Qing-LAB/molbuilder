@@ -3273,10 +3273,15 @@ class Retired(NamedTuple):
     #: another retired (`es_mode_selection`: PySCF's probe, no longer
     #: SIESTA's).  Empty: every engine.
     engines: Tuple[str, ...] = ()
-    #: What `jobset migrate` does with it, as the refusal says it: takes it
-    #: out, or -- an item whose value today's items say -- states them from
-    #: it (SIESTA's Raman selector: Compute Raman and Raman for).
+    #: What `jobset migrate` does with it in a TEMPLATE, as the refusal says
+    #: it: takes it out, or -- an item whose value today's items say --
+    #: states them from it (SIESTA's Raman selector: Compute Raman and Raman
+    #: for).
     migrate_does: str = "takes it out"
+    #: Where `jobset migrate` REFUSES a stage that overrides it, the way out
+    #: it names (SIESTA's Raman selector: a stage's own Raman is the
+    #: person's to restate); empty, it takes the override out.
+    on_a_stage: str = ""
 
     def retired_on(self, engine: str) -> bool:
         """Whether ``engine``'s schema retired the item (:attr:`engines`)."""
@@ -3286,6 +3291,14 @@ class Retired(NamedTuple):
         """Whether a calculation holding ``value`` runs as before without
         the item (:attr:`runs`)."""
         return self.runs is None or value in self.runs
+
+    def way_at(self, at: str) -> str:
+        """What `jobset migrate` does with it where it is written, by
+        :data:`MIGRATE_AT`: the row's own field that speaks there, when it
+        says something, else the place's words."""
+        place = MIGRATE_AT[at]
+        said = getattr(self, place.speaks) if place.speaks else ""
+        return place.lead + said if said else place.words
 
 
 def retired(name: str, engine: Optional[str] = None) -> Optional[Retired]:
@@ -3351,7 +3364,10 @@ RETIRED_ITEMS: Dict[str, Retired] = {
         engines=("siesta",),
         migrate_does=("states Compute Raman and Raman for from it -- an "
                       "explicit list of modes, or a stage's own value, is "
-                      "yours to restate as Raman for"))
+                      "yours to restate as Raman for"),
+        on_a_stage=("it picked that stage's Raman modes, which Compute "
+                    "Raman and Raman for say since 2.45.0: state them on "
+                    "the stage instead, or take the override out"))
        for name in SIESTA_RAMAN_SELECTOR},
 }
 
@@ -3371,16 +3387,46 @@ RENAMED_ITEMS = {
 }
 
 
+class MigrateAt(NamedTuple):
+    """What `jobset migrate` does with a name a release retired or renamed,
+    at one place it may be written (:data:`MIGRATE_AT`)."""
+    #: The retired row's field that speaks here, when it says something
+    #: (`Retired.migrate_does`, `Retired.on_a_stage`); ``None``: none does.
+    speaks: Optional[str]
+    #: The words before that field's.
+    lead: str
+    #: The place's words for a retired name, where no field speaks.
+    words: str
+    #: Whether it renames a renamed name here.
+    renames: bool
+
+
+#: WHAT `jobset migrate` DOES WITH A NAME A RELEASE RETIRED OR RENAMED, by
+#: where it is written (§ 3, `jobset.migrate`), read by `Retired.way_at` and
+#: :func:`why_not_an_item`: in a template, the row's own words; a stage's
+#: override it takes out, or refuses where the row names the way out of one
+#: (SIESTA's Raman selector, the migration's refusal reading the same
+#: field); a `varies` entry it takes out; a run card's name it takes off,
+#: and renames nothing there (`migrate._retired_off`).
+MIGRATE_AT = {
+    "template": MigrateAt("migrate_does", "", "takes it out", True),
+    "override": MigrateAt("on_a_stage", "refuses a stage that overrides "
+                          "it -- ", "takes it out of the stage's overrides",
+                          True),
+    "varies": MigrateAt(None, "", "takes it out of varies", True),
+    "card": MigrateAt(None, "", "takes it off the run card", False),
+}
+
+
 def why_not_an_item(name: str, *, value: Any = None, is_set: bool = False,
-                    on_card: bool = False) -> Optional[str]:
+                    at: str = "template") -> Optional[str]:
     """Why ``name`` names no item when a release made it so -- retired, and
     the way on: `jobset migrate` when its value runs as before without it,
     else deleting it; renamed, and its new name -- or ``None`` for a name no
     release ever held (`engines/template.md` § 3).  Every door says it
     through :func:`why_not_items`, ``value`` the one the name was given
-    (``is_set``).  ``on_card``: the name is a run card's, where `jobset
-    migrate` takes a retired name off and renames nothing
-    (`migrate._retired_off`) -- so a renamed name is no answer there."""
+    (``is_set``), ``at`` where it is written -- a key of :data:`MIGRATE_AT`,
+    whose way out is the one the migration takes there."""
     r = retired(name)
     if r is not None:
         if is_set and not r.runs_without(value):
@@ -3390,9 +3436,8 @@ def why_not_an_item(name: str, *, value: Any = None, is_set: bool = False,
                     f"cannot be run again")
         return (f"{name} was retired from the schema ({r.why}) -- "
                 f"`{migrate_as_typed()}` in this calculation's folder "
-                + ("takes it off the run card" if on_card else
-                   r.migrate_does))
-    if name in RENAMED_ITEMS and not on_card:
+                f"{r.way_at(at)}")
+    if name in RENAMED_ITEMS and MIGRATE_AT[at].renames:
         new, why, _at = RENAMED_ITEMS[name]
         return (f"{name} is now {new} ({why}) -- `{migrate_as_typed()}` "
                 f"in this calculation's folder renames it, keeping its value")
@@ -3401,7 +3446,7 @@ def why_not_an_item(name: str, *, value: Any = None, is_set: bool = False,
 
 def why_not_items(given, fields, *, among=None, is_set: bool = False,
                   note: str = "", list_known: bool = False,
-                  on_card: bool = False) -> Optional[str]:
+                  at: str = "template") -> Optional[str]:
     """THE ONE SENTENCE FOR NAMES THAT ARE NOT SETTINGS (§ 3), which every
     door that reads a setting's name where `jobset migrate` reaches says --
     the template reader, the description's `varies` and a stage's
@@ -3414,16 +3459,15 @@ def why_not_items(given, fields, *, among=None, is_set: bool = False,
     -- among ``among``, the settings its place may hold, never one it may
     not (``fields`` when not given) -- and ``note`` where none is.  The
     settings are not listed, too many to read in a refusal, unless
-    ``list_known`` -- a place that holds few, a run card.  ``on_card``: a
-    run card's names (:func:`why_not_an_item`).  ``given`` maps each name
+    ``list_known`` -- a place that holds few, a run card.  ``at``: where
+    the names are written (:data:`MIGRATE_AT`).  ``given`` maps each name
     to the value it was given (``is_set``), or lists the names; ``None``
     when every one is in ``fields``."""
     values = given if isinstance(given, Mapping) else dict.fromkeys(given)
     names = [k for k in values if k not in fields]
     if not names:
         return None
-    gone = {k: why_not_an_item(k, value=values[k], is_set=is_set,
-                               on_card=on_card)
+    gone = {k: why_not_an_item(k, value=values[k], is_set=is_set, at=at)
             for k in names}
     near = fields if among is None else [a for a in among if a in fields]
     misspelt = unknown_keys([k for k in names if gone[k] is None], near,
@@ -3445,7 +3489,7 @@ __all__ = ["SCHEMA", "KINDS", "TYPES", "CATEGORIES",
            "run_settings", "why_run_setting",
            "IDENTITY_ITEMS", "fixed_by_role", "role_answers",
            "fixed_answers", "fixed_on_every_rung", "why_role", "offered", "why_not_offered",
-           "as_declared", "why_not", "why_not_an_item", "why_not_items",
+           "as_declared", "why_not", "why_not_an_item", "why_not_items", "MIGRATE_AT",
            "template_settings", "retired",
            "HOMES", "SAID", "TRIAL_PINS", "GRID_AXES", "is_run_setting",
            "home_of", "items_in", "settings_in", "why_not_in",

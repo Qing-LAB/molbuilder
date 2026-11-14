@@ -914,7 +914,7 @@ def effective_config(template, overrides: Mapping[str, Any], *,
     # sentence every door says (`template.why_not_items`), so a description
     # and a template written before get one answer.
     from .template import template_settings, why_not_items
-    said = why_not_items(overrides, known, is_set=True,
+    said = why_not_items(overrides, known, is_set=True, at="override",
                          among=(template_settings(type(template))
                                 if among is None else among),
                          note=(f".  A stage may override any field of "

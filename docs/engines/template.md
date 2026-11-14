@@ -392,9 +392,14 @@ reads a name where `jobset migrate` reaches — the template reader, the
 description's `varies` and a stage's overrides, a run card (the description's
 check and prep's alike, `job_request.why_not_on_card`), a migration — says it
 in one sentence (`template.why_not_items`): a retired or renamed name told
-so, with the way on (`template.why_not_an_item`) — on a run card, which
-`jobset migrate` takes a retired name off and renames nothing on, a retired
-one alone — and any other name with the setting it is close to when one is,
+so, with the way out the migration takes where the name is written
+(`template.why_not_an_item`, by `template.MIGRATE_AT`): in a template the
+retired row's own words; a stage's override taken out, unless the row names
+the way out of a stage it refuses (`Retired.on_a_stage`, the migration's
+refusal and the door reading it alike); a `varies` entry taken out; a run
+card's name taken off — a renamed one there no answer, the migration
+renaming nothing on a run card *(2.69.60)* — and any other name with the
+setting it is close to when one is,
 among the settings its place may hold, never one it may not (a template's,
 `template.template_settings`; a stage's overrides', a run card's and a
 benchmark row's, `template.settings_in`, by the one membership rule the stage
@@ -413,10 +418,11 @@ and of the three dynamics settings, `optimizer = "geometric"`). A retired
 run setting it takes off the job request's run cards, the calculation's and
 each stage's, and out of each job's resources in `job-set.json`
 ([`execution/job-request.md`](?doc=execution/job-request.md) § 8). SIESTA's
-retired Raman selector it does not take out: it states *Compute IR*,
-*Compute Raman* and *Raman for* from it in the template, and refuses by name
-a stage that overrides it and an explicit list of modes, which has no range
-to become ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 9).
+retired Raman selector it takes out of a template stating *Compute IR*,
+*Compute Raman* and *Raman for* from it, refusing an explicit list of
+modes, which has no range to become; a stage that overrides it it refuses
+by name (its row's way out, `Retired.on_a_stage`); a `varies` entry naming
+it, which decides nothing alone, it takes out ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 9).
 It
 **renames a renamed one** in the same three
 places, keeping its value or its blank; it says each, and keeps the old file

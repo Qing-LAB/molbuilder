@@ -70,17 +70,23 @@ LANE_ASKS = ("time", "domain")
 
 
 def why_not_on_card(given, *, engine: str, kind: str) -> Optional[str]:
-    """THE ONE SENTENCE for a run card's names that are no execution
-    setting -- asked by the description's check and, for a direct caller,
-    by prep (`resolve.card_values`), so the two say one thing: retired or
-    renamed told so, misspelt with the run setting it is close to, the
-    run settings and :data:`LANE_ASKS` listed, a card holding few
-    (`template.why_not_items`, `engines/template.md` § 3)."""
-    from .template import settings_in, why_not_items
+    """THE ONE SENTENCE for a run card's names that are no setting of the
+    engine -- asked by the description's check and, for a direct caller,
+    by prep (`resolve.card_values`), so the two say one thing: a retired
+    one told the migration takes it off the card, any other matched among
+    the run settings and :data:`LANE_ASKS`, which are listed, a card holding
+    few (`template.why_not_items`, `engines/template.md` § 3).  A setting
+    of the engine that is no run setting is the setting door's to say
+    (`template.accepts`)."""
+    from .template import catalogue, select, settings_in, why_not_items
+    # A NAME THAT IS A SETTING of this engine is not this door's -- the
+    # setting door says where it lives (`template.accepts`); a name that is
+    # none is matched among, and told, what a run card holds.
+    card = [*settings_in("run_card", engine=engine, kind=kind), *LANE_ASKS]
     return why_not_items(
-        given, [*settings_in("run_card", engine=engine, kind=kind),
+        given, [*(it.name for it in select(catalogue(), engine=engine)),
                 *LANE_ASKS],
-        is_set=True, list_known=True, on_card=True,
+        among=card, is_set=True, list_known=True, at="card",
         note=(".  It is not an execution setting: a run card says what the "
               "run uses -- ranks, threads, the device, the solver"))
 

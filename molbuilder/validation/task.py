@@ -367,7 +367,7 @@ def _names_exist(task, cls, fields) -> List[Issue]:
     no_field = f" -- not a field of {cls.__name__}"
 
     out: List[Issue] = []
-    said = why_not_items(list(task.varies or ()), fields,
+    said = why_not_items(list(task.varies or ()), fields, at="varies",
                          among=settings_in("override", engine=engine,
                                            kind=kind), note=no_field)
     if said:
@@ -381,6 +381,7 @@ def _names_exist(task, cls, fields) -> List[Issue]:
                              where="task.varies"))
     for st in (task.stages or ()):
         said = why_not_items(st.overrides, fields, is_set=True,
+                             at="override",
                              among=settings_in("override", engine=engine,
                                                kind=kind, stage=st.name),
                              note=no_field)
