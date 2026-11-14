@@ -49,18 +49,6 @@ class EngineSeam:
     #: supposed to contain, so nothing has to be carried alongside the text to
     #: make the check possible.
     spec_for: Callable
-    #: The deck's type suffix (``.fdf``).
-    suffix: str
-    #: ``(config, label) -> config`` — the identity WRITTEN, for a trial's
-    #: relabelling.  Filename relabelling alone is not the protection
-    #: (`generator.md` § 4.2): the deck's own ``SystemLabel`` line is what
-    #: keys the warm files.
-    relabel: Callable
-    #: ``(label, config, calculation, base_dir) -> warm-file declaration``
-    #: for the Job -- the engine reads its § 4.2a rules file for the TYPE
-    #: (U2), and ``base_dir`` lets a calculation's own fine-tuned copy win
-    #: (U6a).
-    warm_for: Callable
     #: ``config -> traits``: the facts its warm files are conditioned on --
     #: SIESTA's optimizer, which `model.warm_carry` compares (§ 4, 3.13).
     traits_for: Callable
@@ -101,15 +89,6 @@ class EngineSeam:
         default=None, metadata={"step": "describe"})
 
 
-def relabel(engine: str) -> Callable:
-    """``(config, label) -> config`` for ``engine``: the label written into
-    the setting its record in the engine table names as the one that names
-    a calculation's files (``identity_field`` -- ``system_label``,
-    ``job_name``)."""
-    from ..engine_table import relabelled
-    return lambda cfg, label: relabelled(engine, cfg, label)
-
-
 def engine_seam(engine: str) -> EngineSeam:
     """What ``engine`` supplies for `prep` to run its steps over it -- the
     seam its record in the engine table names (``seam``,
@@ -128,4 +107,4 @@ def engine_seam(engine: str) -> EngineSeam:
     return part(rec.seam, record=f"engine {rec.name}", key="seam")()
 
 
-__all__ = ["EngineSeam", "engine_seam", "relabel"]
+__all__ = ["EngineSeam", "engine_seam"]

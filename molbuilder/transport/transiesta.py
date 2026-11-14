@@ -182,7 +182,7 @@ def _lattice_block(struct: Structure, cell: np.ndarray) -> List[str]:
     vectors (§ 5, I6).  The block judges nothing (the kind gate does,
     `validation/__init__.py`).
     """
-    lines = ["LatticeConstant        1.0 Ang"]
+    lines: List[str] = []
     cell = np.asarray(cell, dtype=float)
     # THE KIND, NOT THE BOOLEAN: `struct.pbc` flattens `transport` and
     # `periodic` to the same True, and the per-axis line below needs them
@@ -206,13 +206,10 @@ def _lattice_block(struct: Structure, cell: np.ndarray) -> List[str]:
     # lead (`engines/transport.md` § 6.1c, I12 both ways; its findings
     # land in the deck's `.validation.txt`) -- the lines above are the
     # measurement, and this block judges nothing.
-    # THE ONE WRITER OF A GEOMETRY ROW (`siesta.deck_lines`), the SIESTA
-    # deck's too.
-    from ..siesta.deck_lines import lattice_rows
-    lines.append("%block LatticeVectors")
-    lines.extend(lattice_rows(cell))
-    lines.append("%endblock LatticeVectors")
-    return lines
+    # THE ONE WRITER OF A DECK'S GEOMETRY (`siesta.deck_lines`), the
+    # SIESTA deck's too.
+    from ..siesta.deck_lines import lattice_block
+    return lines + lattice_block(cell)
 
 
 def engine_frame_for(struct: Structure):
@@ -245,8 +242,9 @@ def _emit_geometry(struct: Structure, cfg=None, frame=None) -> List[str]:
     # inside `.DM` and `.TSHS`, a value § 2a.13 binds to every stage, so a
     # second rule here is not a variation -- it is the defect.
     from ..chemistry import species_order as _species_order
-    from ..siesta.deck_lines import (coordinates_rows, species_index,
-                                     species_rows)
+    from ..siesta.deck_lines import (coordinates_block, coordinates_rows,
+                                     count_lines, species_block,
+                                     species_index)
     # An override that omits a species is refused by the one entry.
     species = _species_order(
         struct.elements,
@@ -259,26 +257,18 @@ def _emit_geometry(struct: Structure, cfg=None, frame=None) -> List[str]:
         frame = engine_frame_for(struct)
 
     lines: List[str] = ["# --- Geometry ---", ""]
-    lines.append(f"NumberOfAtoms          {struct.n_atoms}")
-    lines.append(f"NumberOfSpecies        {len(species)}")
-    lines.append("")
-    lines.append("%block ChemicalSpeciesLabel")
+    lines += count_lines(struct.n_atoms, len(species)) + [""]
     # ``atomic_number`` raises rather than defaulting: a species with no
     # element cannot be calculated, and Z=0 in this block is a ghost atom
     # SIESTA would silently accept.
-    lines.extend(species_rows(species, [atomic_number(sp)
-                                        for sp in species]))
-    lines.append("%endblock ChemicalSpeciesLabel")
+    lines += species_block(species, [atomic_number(sp) for sp in species])
     lines.append("")
     lines.extend(_lattice_block(struct, frame.cell))
     lines.append("")
-    lines.append("AtomicCoordinatesFormat        Ang")
-    lines.append("%block AtomicCoordinatesAndAtomicSpecies")
-    # THE ONE WRITER OF A COORDINATE ROW (`siesta.deck_lines`), the
+    # THE ONE WRITER OF A DECK'S GEOMETRY (`siesta.deck_lines`), the
     # optimization and vibration deck's too.
-    lines.extend(coordinates_rows(struct.elements, frame.positions,
-                                  species_idx))
-    lines.append("%endblock AtomicCoordinatesAndAtomicSpecies")
+    lines += coordinates_block(coordinates_rows(
+        struct.elements, frame.positions, species_idx))
     lines.append("")
     return lines
 

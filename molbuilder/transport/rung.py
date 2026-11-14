@@ -180,9 +180,9 @@ def transport_parts(task, stage: str, composed, config):
         # `rung_label` -- so the device deck's `TS.Elec.<name> HS` line, the
         # gather and the run door name the files the lead wrote.  The
         # template's `system_label` never reaches a transport deck.  Written
-        # through the engine's seam, on the field its record names.
-        from ..jobset.engines import engine_seam
-        return engine_seam(task.engine).relabel(cfg, label)
+        # on the field the engine's record names (`engine_table.relabelled`).
+        from ..engine_table import relabelled
+        return relabelled(task.engine, cfg, label)
     # THE ELECTRONIC STATE BELONGS TO THE CALCULATION (ES1,
     # `science/chemistry-correctness.md` § 2a) -- and on a transport ladder
     # that is physics, not bookkeeping: TranSIESTA joins the leads'

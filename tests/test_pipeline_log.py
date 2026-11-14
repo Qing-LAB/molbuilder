@@ -297,8 +297,7 @@ def test_a_hook_that_raises_says_whose_it_was(tmp_path, monkeypatch, hook):
     real prep runs.  The three promises of `issues.calling`, each asserted:
     the TYPE survives, the MESSAGE survives, and the attribution is attached
     as a note on the exception -- the whole record, since a prep that raised
-    writes nothing (`script-preparation.md` § 4.5).  `relabel` is asked only
-    of a TRIAL, so it is reached through a benchmark prep.
+    writes nothing (`script-preparation.md` § 4.5).
 
     The hook is swapped in-process, and the prep is `jobset prep`'s: an
     exception that is no refusal comes out of the verb as raised.
@@ -331,14 +330,7 @@ def test_a_hook_that_raises_says_whose_it_was(tmp_path, monkeypatch, hook):
 
     bundle = _calculation(tmp_path, monkeypatch, "siesta")
     monkeypatch.setattr(P, "engine_seam", _with_one_hook_swapped)
-    if hook == "relabel":
-        request = read_request(bundle)
-        request["bench"] = {"mpi_np": [1], "omp_threads": [1]}
-        write_request(bundle, request)
-        r = jobset("prep", "bench", "coarse", "--bundle", bundle,
-                   "--target", "this", "--np", 8)
-    else:
-        r = jobset(*_prep(bundle))
+    r = jobset(*_prep(bundle))
     caught = r.exception
     assert isinstance(caught, TypeError), r.output
 

@@ -205,7 +205,7 @@ run card. There are two kinds:
   ([`job-request.md`](?doc=execution/job-request.md) § 3.4).
 
 **Each trial is also relabelled**, `<label>-<point>` (`paths.trial_label`), and
-the deck's own `SystemLabel` line carries it (`EngineSeam.relabel`). SIESTA
+the deck's own `SystemLabel` line carries it (`engine_table.relabelled`, on the field the engine's record names). SIESTA
 finds its restart files by label, so a trial cannot read or overwrite the real
 run's. The relabel and the cold start are why a trial can live inside its
 stage's folder.

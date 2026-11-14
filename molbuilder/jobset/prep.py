@@ -48,12 +48,13 @@ from .naming import (described_refs, job_dir_names, open_container,
 from ..warmfiles import warm_list
 from ..issues import calling as _calling
 from .model import FILENAME as JOBSET_FILENAME, Job, JobSet, Resources
-from ..engine_table import read_deck
+from .model import warm_for
+from ..engine_table import read_deck, relabelled
 from .plan import FILENAME as _PLAN_FILE, path_of as _plan_path
 from . import prepared_with
 from ..runfiles import (GROUP_HEADER, ROLE_HEADER, ROLE_MOLWATCH,
                         ROLE_VALIDATION, RunNames, beside_the_deck,
-                        fixed_fields, role_of)
+                        deck_role, fixed_fields, role_of)
 from .errors import PrepError, as_prep_error, step_errors, user_error_as_prep
 from .machine import machine_record, require_activation, set_machine
 from .engines import EngineSeam, engine_seam
@@ -699,7 +700,7 @@ def _plan_calculation(calc, stage: Optional[str], resolved: "Resolved",
         # deck, its run script and its seed are all named by them, so
         # none can spell another's name its way.
         _names = RunNames(element.label, token)
-        script = _names.name(seam.suffix)
+        script = _names.name(deck_role(task.engine))
         # WHERE THIS ELEMENT'S FILES GO (`project-layout.md` § 1.0):
         # the stage's folder, or a trial's run, `bench-<point>/run-0`
         # (§ 1.5a) -- by the rule `job_dir_names` answers with
@@ -730,9 +731,7 @@ def _plan_calculation(calc, stage: Optional[str], resolved: "Resolved",
             # The deck's OWN identity line carries the trial label -- this,
             # not the filename, is what keys SIESTA's warm files away from
             # the real run's (generator.md § 4.2).
-            with _calling("relabel", engine=task.engine,
-                          where=element.label):
-                cfg = seam.relabel(cfg, element.label)
+            cfg = relabelled(task.engine, cfg, element.label)
             # ...said on the field the engine's record names as its
             # identity (``identity_field``).
             from ..engine_table import engine as _engine_rec
@@ -1529,8 +1528,8 @@ def _job_for(element, script: str, task, stage_name: Optional[str],
     # it resumes (`job-contracts.md` § 4.2a); a run of points renders each
     # prepared point's run script with its own section (`Rung.wrapper_at`).
     kind = str(task.calculation)
-    with _calling("warm_for", engine=task.engine, where=name):
-        warm = seam.warm_for(element.label, element.values, kind, base_dir)
+    warm = warm_for(task.engine, element.label, element.values, kind,
+                    base_dir)
     resumes = warm_list(str(task.engine), kind, base_dir).resumes
     with _calling("traits_for", engine=task.engine, where=name):
         traits = seam.traits_for(element.values)

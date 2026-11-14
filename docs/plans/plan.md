@@ -30,7 +30,7 @@ as they stood.
 
 ## ▶ HANDOVER — where we are, and where to start *(2026-11-10)*
 
-**Where we are: 2.69.67.** F0–F8 and F7a are closed; F9, the tests through
+**Where we are: 2.69.68.** F0–F8 and F7a are closed; F9, the tests through
 the road, has eight releases out (2.67.4–2.67.11) and four steps left (its
 row below). Since 2.67.11 three bodies of work the user put first have run;
 each release is its changelog row and its ledger section
@@ -113,7 +113,10 @@ each release is its changelog row and its ledger section
   (X-ENG); 2.69.65, a box with no volume refused in one sentence, and the
   room along each cell axis measured once (X-ENG); 2.69.66, sizes and a
   run's lengths of time said in the one spelling (X-ENG); 2.69.67, the
-  electronic state's answers read from it, not worked out again (X-ENG).
+  electronic state's answers read from it, not worked out again (X-ENG);
+  2.69.68, the engine stretch's last unifications in one release: the bias
+  list's range test, one writer of a SIESTA deck's geometry, three seam
+  members gone to the engine's record (X-ENG).
   **Left, in order**: X-ENG; then the page doors and
   the copies they share (O-STATUS, O-FIND, O-STATE, O-WORDS, O-KEYS's rest
   with X-UI and X-PLOT; O-TESTS).

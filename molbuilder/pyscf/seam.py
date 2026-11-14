@@ -1,7 +1,7 @@
 """PySCF's seam -- what PySCF supplies for `prep` to run its steps over it
-(`execution/script-preparation.md` § 4): its deck's spec and its warm files.
-The part its record in the engine table names (``seam``), resolved by
-`jobset.engines.engine_seam`.  Floor 3 (`execution/architecture.md` § 2.1).
+(`execution/script-preparation.md` § 4): its deck's spec, and the facts
+its warm files are conditioned on.  The part its record in the engine
+table names (``seam``), resolved by `jobset.engines.engine_seam`.  Floor 3 (`execution/architecture.md` § 2.1).
 """
 from __future__ import annotations
 
@@ -21,15 +21,10 @@ def pyscf_seam() -> EngineSeam:
     is nothing in the calculation for every job to link to.  NO
     ``describe_findings``: there is no data file to settle before one is
     written."""
-    from ..jobset.engines import EngineSeam, relabel
-    from ..runfiles import deck_role
+    from ..jobset.engines import EngineSeam
     from .input import spec_for as _pyscf_spec
     from .stages import traits_for as _pyscf_traits
-    from .stages import warm_for as _pyscf_warm
-    return EngineSeam(spec_for=_pyscf_spec,
-                      suffix=deck_role("pyscf"),
-                      relabel=relabel("pyscf"),
-                      warm_for=_pyscf_warm, traits_for=_pyscf_traits)
+    return EngineSeam(spec_for=_pyscf_spec, traits_for=_pyscf_traits)
 
 
 __all__ = ["pyscf_seam"]

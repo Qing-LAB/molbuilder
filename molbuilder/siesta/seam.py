@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, List
 
 from ..pseudos import PSEUDO_DIRNAME
-from ..runfiles import PSEUDO_FILE, deck_role, fixed_fields
+from ..runfiles import PSEUDO_FILE, fixed_fields
 
 if TYPE_CHECKING:
     from ..jobset.engines import EngineSeam
@@ -177,13 +177,10 @@ def _siesta_shared_package(base: Path, plan=None) -> List[str]:
 def siesta_seam() -> EngineSeam:
     """SIESTA's seam -- the part its record in the engine table names
     (``seam``)."""
-    from ..jobset.engines import EngineSeam, relabel
+    from ..jobset.engines import EngineSeam
     from .input import spec_for as _siesta_spec
-    from .stages import traits_for, warm_for
-    return EngineSeam(spec_for=_siesta_spec,
-                      suffix=deck_role("siesta"),
-                      relabel=relabel("siesta"),
-                      warm_for=warm_for, traits_for=traits_for,
+    from .stages import traits_for
+    return EngineSeam(spec_for=_siesta_spec, traits_for=traits_for,
                       sibling_artifacts=_siesta_sibling_artifacts,
                       provide_data=siesta_provide_pseudos,
                       shared_package=_siesta_shared_package,

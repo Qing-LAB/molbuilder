@@ -40,9 +40,10 @@ def _keyword_suffix(item) -> str:
 def outside_range(value, rng) -> list:
     """The components of ``value`` outside ``rng``, inclusive -- ``[(None,
     v)]`` for a number, ``[(i, v), ...]`` for a triple, whose range bounds
-    each component (`engines/template.md` § 5).  ONE answer for the two
-    places a range is warned: the settings gate's metadata pass and the
-    description's own check (`validation/task.py`).  A component that is not
+    each component (`engines/template.md` § 5).  ONE answer for every
+    place a range is warned: the settings gate's metadata pass, the
+    description's own check (`validation/task.py`) and a transport
+    calculation's bias list (`validation/transport.py`).  A component that is not
     a number -- a bool included -- is the type check's business, and is
     skipped here."""
     lo, hi = rng

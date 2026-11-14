@@ -206,17 +206,21 @@ def check_description(task, ladder) -> List[Issue]:
 def _bias_points_in_range(task) -> List[Issue]:
     """The bias list's points are values of `bias_voltage_v`, and a value
     outside its item's recommended range is WARNED, as any value is
-    (`engines/template.md` § 5.3).  A repeated point is the codec's refusal
-    (`task.py`), with the list's other shape rules."""
+    (`engines/template.md` § 5.3) -- found by the one test of a range
+    (`metadata.outside_range`), each point a component.  A repeated point
+    is the codec's refusal (`task.py`), with the list's other shape
+    rules."""
     bias = tuple(getattr(task, "bias", ()) or ())
     if not bias:
         return []
     from ..template import catalogue, one
+    from .metadata import outside_range
     item = one(catalogue(), "bias_voltage_v", engine=str(task.engine))
     if item is None or not item.range:
         return []
     lo, hi = item.range
-    out = [float(v) for v in bias if not lo <= float(v) <= hi]
+    out = [v for _i, v in outside_range([float(v) for v in bias],
+                                        item.range)]
     return [Issue(
         "warn",
         f"the bias list holds {', '.join(f'{v:g}' for v in out)} V, outside "

@@ -1,7 +1,7 @@
-"""THE ONE WRITER OF A SIESTA DECK'S GEOMETRY ROWS -- the body of
-``%block AtomicCoordinatesAndAtomicSpecies`` (`engines/vibration.md`
-§ 5.11 § 3; `engines/siesta.md` § 3), of ``%block LatticeVectors`` and of
-``%block ChemicalSpeciesLabel``.
+"""THE ONE WRITER OF A SIESTA DECK'S GEOMETRY -- the counts, and each
+block whole: ``%block AtomicCoordinatesAndAtomicSpecies`` (`engines/
+vibration.md` § 5.11 § 3; `engines/siesta.md` § 3), ``%block
+LatticeVectors`` and ``%block ChemicalSpeciesLabel``, and their rows.
 
 MODULE  siesta.deck_lines (floor 1: the standard library alone)
 ROLE    one spelling of each geometry row -- a coordinate row,
@@ -17,7 +17,7 @@ TRAVELS in ``mb_vibration.pyz`` (`runwrap.VIBRATION_COMPANIONS`)
 """
 from __future__ import annotations
 
-from typing import Dict, Iterable, List, Sequence
+from typing import Dict, Iterable, List, Optional, Sequence
 
 
 def species_index(species: Sequence[str]) -> Dict[str, int]:
@@ -53,6 +53,39 @@ def coordinates_rows(elements: Sequence[str], positions: Iterable,
             for el, (x, y, z) in zip(elements, positions)]
 
 
+def count_lines(n_atoms: int, n_species: int) -> List[str]:
+    """``NumberOfAtoms`` and ``NumberOfSpecies``."""
+    return [f"NumberOfAtoms     {n_atoms}", f"NumberOfSpecies   {n_species}"]
+
+
+def lattice_block(cell: Iterable) -> List[str]:
+    """The lattice, whole: ``LatticeConstant 1.0 Ang`` and the vectors'
+    block (:func:`lattice_rows`)."""
+    return ["LatticeConstant 1.0 Ang", "%block LatticeVectors",
+            *lattice_rows(cell), "%endblock LatticeVectors"]
+
+
+def species_block(species: Sequence[str], numbers: Sequence[int]
+                  ) -> List[str]:
+    """The species' block, whole (:func:`species_rows`)."""
+    return ["%block ChemicalSpeciesLabel", *species_rows(species, numbers),
+            "%endblock ChemicalSpeciesLabel"]
+
+
+def coordinates_block(rows: Sequence[str] = (), *,
+                      beside: Optional[str] = None) -> List[str]:
+    """The coordinates, whole: their format and their block -- the rows
+    (:func:`coordinates_rows`), or, for a deck whose rows lie in the file
+    ``beside`` it, libfdf's include of that file (`engines/vibration.md`
+    § 5.11 § 4)."""
+    if beside is not None:
+        return ["AtomicCoordinatesFormat Ang",
+                f"%block AtomicCoordinatesAndAtomicSpecies < {beside}"]
+    return ["AtomicCoordinatesFormat Ang",
+            "%block AtomicCoordinatesAndAtomicSpecies", *rows,
+            "%endblock AtomicCoordinatesAndAtomicSpecies"]
+
+
 def coordinates_text(elements: Sequence[str], positions: Iterable,
                      species_index: Dict[str, int]) -> str:
     """The rows as the file beside a deck holds them, one a line."""
@@ -60,5 +93,6 @@ def coordinates_text(elements: Sequence[str], positions: Iterable,
         elements, positions, species_index))
 
 
-__all__ = ["coordinates_rows", "coordinates_text", "lattice_rows",
+__all__ = ["coordinates_block", "coordinates_rows", "coordinates_text",
+           "count_lines", "lattice_block", "lattice_rows", "species_block",
            "species_index", "species_rows"]

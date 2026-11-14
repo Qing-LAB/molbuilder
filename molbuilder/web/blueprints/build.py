@@ -67,7 +67,7 @@ from ._shared import (
 
 from molbuilder.builders import GENERATORS, build
 from molbuilder.engine_table import (EngineTableError, config_class,
-                                     engine as _engine)
+                                     engine as _engine, relabelled)
 from molbuilder.structure import Structure
 from molbuilder.template import stated_config
 from molbuilder.validation import validate
@@ -1035,7 +1035,7 @@ def api_task_setup_handover():
     # `task.json` took the folder's name, the split would simply reappear from
     # the other side.  Normalisation happens once and the result is stored
     # (§ 3 rule 1) — this is the storing.
-    cfg = engine_seam(engine).relabel(cfg, label)
+    cfg = relabelled(engine, cfg, label)
 
     # AND THE CALCULATION'S OWN NAME is the person's too.
     sources[_field] = "person"

@@ -1,13 +1,13 @@
-"""SIESTA's stage knowledge — the shipped ladder, and what a stage's
-warm restart means (docs/execution/job-system.md).
+"""SIESTA's stage knowledge — the facts its warm files are conditioned on
+(docs/execution/job-system.md).
 
-Two things live here, read by the engine seam
+One thing lives here, read by the engine seam
 (`jobset/engines.py::engine_seam`) -- the shipped ladder is every engine's
-one rule over its presets (`jobset.ladder.engine_ladder`):
+one rule over its presets (`jobset.ladder.engine_ladder`), and what a stage
+takes from a run it continues every engine's one door over its warm-files
+table (`jobset.model.warm_for`; ``.XV``, ``.DM`` and ``.CG``, the last
+conditioned on the optimizer, `run-identity.md` § 4):
 
-  * :func:`warm_for` — ``restart: continue`` means ``.XV``, ``.DM``
-    and ``.CG``, the last conditioned on the optimizer (`run-identity.md`
-    § 4);
   * :func:`traits_for` — the opaque per-job facts a warm file is conditioned on.
 
 **Where the ladder comes from, and where it does not.**  An engine config
@@ -19,9 +19,7 @@ Per-stage SCHEDULER resources are not stage fields either; they ride on
 
 from __future__ import annotations
 
-from typing import Dict, List
-
-from ..jobset.model import WarmFile
+from typing import Dict
 
 
 #: The key a `.CG` carry is conditioned on -- re-exported from the one place
@@ -42,30 +40,4 @@ def traits_for(eff) -> Dict[str, str]:
     # compare equal, or the warm .CG the pair rule carries is withheld
     return {OPTIMIZER_TRAIT:
             str(getattr(eff, "relax_type", "") or "").strip().lower()}
-
-
-def warm_for(label: str, eff, calculation: str,
-             base_dir=None) -> List[WarmFile]:
-    """What a stage with this resolved config takes from a run it continues.
-
-    THE ROWS COME FROM THE RULES FILE (`job-contracts.md` § 4.2a, U2
-    2026-08-13): ``siesta/warm-files.toml``'s carry rows for this
-    CALCULATION TYPE, gated -- as ever -- on the stage actually
-    continuing: `run-identity.md` § 4 rule 2 makes ``restart`` the ONE
-    field that says so, and ``identity.continues`` gates the deck's
-    ``MD.UseSave*`` keywords from the same answer, so files placed for a
-    ``clean`` stage would sit unread -- § 4's *"present but not
-    honoured"*, the silent half of the pair.
-
-    The pair conditions (``requires_same`` -- only `.CG` carries one
-    today) are DECLARED here and EVALUATED by
-    :func:`~molbuilder.jobset.model.warm_carry`, the one interpreter,
-    once ``--from`` names the source and both stages are in hand.
-    """
-    from ..identity import continues
-    from ..jobset.model import warm_declaration
-    if not continues(eff):
-        return []
-    return warm_declaration("siesta", label, calculation, base_dir)
-
 

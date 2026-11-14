@@ -1023,34 +1023,28 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
         out.append(f"SystemName        {cfg.system_label}")
         out.append(f"SystemLabel       {cfg.system_label}")
         out.append("")
-        out.append(f"NumberOfAtoms     {struct.n_atoms}")
-        out.append(f"NumberOfSpecies   {len(species)}")
+        # THE ONE WRITER OF A DECK'S GEOMETRY (`siesta.deck_lines`): the
+        # counts and each block whole, the TranSIESTA decks' too.
+        from .deck_lines import (coordinates_block, coordinates_rows,
+                                 count_lines, lattice_block, species_block)
+        out.extend(count_lines(struct.n_atoms, len(species)))
         out.append("")
 
         # Lattice
         out.append("# --- Lattice ---")
         out.append(cell_note.rstrip())
-        # THE ONE WRITER OF A GEOMETRY ROW (`siesta.deck_lines`): the
-        # TranSIESTA decks write their lattice and species with it too.
-        from .deck_lines import lattice_rows, species_rows
-        out.append("LatticeConstant 1.0 Ang")
-        out.append("%block LatticeVectors")
-        out.extend(lattice_rows(cell))
-        out.append("%endblock LatticeVectors")
+        out.extend(lattice_block(cell))
         out.append("")
 
         # Species: ``index Z label``, the label the user's, Z derived.
         from ..chemistry import atomic_number
         out.append("# --- Species ---")
-        out.append("%block ChemicalSpeciesLabel")
-        out.extend(species_rows(species, [atomic_number(s)
-                                          for s in species]))
-        out.append("%endblock ChemicalSpeciesLabel")
+        out.extend(species_block(species, [atomic_number(s)
+                                           for s in species]))
         out.append("")
 
         # Coordinates
         out.append("# --- Atomic coordinates ---")
-        out.append("AtomicCoordinatesFormat Ang")
         if _vibration:
             # A VIBRATION CALL READS ITS COORDINATES FROM THE FILE BESIDE
             # THE DECK (`engines/vibration.md` § 5.11 § 4; libfdf's own
@@ -1062,16 +1056,10 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
                            "deck: the structure's as prep wrote them, or")
                 out.append("# this call's own, written by the run's python "
                            "(engines/vibration.md 5.11).")
-            out.append(f"%block AtomicCoordinatesAndAtomicSpecies < "
-                       f"{COORDINATES_FILE}")
+            out.extend(coordinates_block(beside=COORDINATES_FILE))
         else:
-            out.append("%block AtomicCoordinatesAndAtomicSpecies")
-            # THE ONE WRITER OF A COORDINATE ROW (`siesta.deck_lines`): the
-            # TranSIESTA decks and a run's own coordinates file write it too.
-            from .deck_lines import coordinates_rows
-            out.extend(coordinates_rows(struct.elements, positions,
-                                        species_index))
-            out.append("%endblock AtomicCoordinatesAndAtomicSpecies")
+            out.extend(coordinates_block(coordinates_rows(
+                struct.elements, positions, species_index)))
         out.append("")
 
         v = cfg.verbose_comments

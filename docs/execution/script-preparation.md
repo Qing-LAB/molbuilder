@@ -150,7 +150,7 @@ reader has to decode. The table is in the order the sub-steps run:
 |:--:|---|---|
 | 3.1 | **load** | read the structure; check it still matches what was described |
 | 3.2 | **data files** | put in what the engine cannot start without — pseudopotentials |
-| 3.4 | **identity** | name the deck's files (`RunNames`); a benchmark trial's identity line carries its own label (`relabel`) |
+| 3.4 | **identity** | name the deck's files (`RunNames`); a benchmark trial's identity line carries its own label (`engine_table.relabelled`) |
 | 3.3 | **validate** | refuse an unsound calculation before writing a line of it |
 | 3.5 | **structure** | cell, species, coordinates, frozen atoms, region labels |
 | 3.6 | **parameters** | every resolved value, each written with its reason |
@@ -350,8 +350,7 @@ blank row: this table is an engine author's checklist.
 | **2** | the class the values rebuild into | *the engine record's* — `config` (`engine_table.config_class`) | no |
 | **3.2** data files | what the engine cannot start without | `provide_data` | **yes** |
 | **3.2** data files | which of those are the shared package every job copies | `shared_package` | **yes** |
-| **3.4** identity | the deck's type suffix | `suffix` | no |
-| **3.4** identity | how the label is written in | `relabel` | no |
+| **3.4** identity | the deck's type suffix, and how the label is written in | *the engine record's* — `runfiles.deck_role(engine)`, `engine_table.relabelled(engine, …)` (its `identity_field`) | no |
 | **3.3** validate | whether this resolved config is sound | *shared* — `validation.validate` | no |
 | **3.5** structure | the structure block | `spec.layout` — a `Block` | no |
 | **3.6** parameters | which items, in what order, and how each is spelled | `spec.layout` + `spec.line` | no |
@@ -359,7 +358,7 @@ blank row: this table is an engine author's checklist.
 | **3.9** record | the values only this engine can supply for two blocks — the benchmark anchors, and a SIESTA force-constant deck's VIBRATION block, whose values prep builds ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.3) | `spec.bench_marks` · `spec.vibration` | **yes** |
 | **3.11** check | what a finished deck of this engine must satisfy | `spec.check_rules` | **yes** |
 | **3.12** promises | files its own text instructs | `sibling_artifacts` | **yes** |
-| **3.13** declare | what may be reused from an earlier run | `warm_for` | no |
+| **3.13** declare | what may be reused from an earlier run | *the engine's warm-files table* — `jobset.model.warm_for(engine, …)`, gated on the stage continuing | no |
 | **3.13** declare | the facts its warm files are conditioned on — SIESTA's optimizer, so a `.CG` is handed only to a stage that runs the same one; PySCF's none | `traits_for` | no |
 | **3.13** declare | the bundle that finishes this deck's run, when the engine alone leaves no result — prep puts it on the job (`Job.finish`) ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.11) | `spec.finish` | **yes** |
 
@@ -498,7 +497,7 @@ two doors; the rows are in the order the sub-steps run:
 
 | sub-step | who | how |
 |:--:|---|---|
-| 3.4 **identity** | engine, as data | `suffix` · `relabel` — a deck is named by the calculation's label; a benchmark trial's identity line carries the trial's label |
+| 3.4 **identity** | engine, as data | its record — `deck_role`, `relabelled` — a deck is named by the calculation's label; a benchmark trial's identity line carries the trial's label |
 | 3.3 **validate** | **shared** | `validation.validate(struct, cfg, calculation=spec.calculation)` — on the subject the spec names (`validate_subject`), inside `render_deck` |
 | 3.5 **structure** | engine | a `Block` in `spec.layout` — door 1 |
 | 3.6 **parameters** | **shared walk**, engine syntax | `Section`s in `spec.layout` + `spec.line` — doors 1 and 2 |

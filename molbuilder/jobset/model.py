@@ -506,6 +506,18 @@ class Job:
 OPTIMIZER_TRAIT = "optimizer"
 
 
+def warm_for(engine: str, label: str, eff, kind: str,
+             base=None) -> List[WarmFile]:
+    """What a stage with this resolved config (``eff``) takes from a run it
+    continues: the declaration (:func:`warm_declaration`), gated on the stage
+    continuing -- ``restart`` the one field that says so (`run-identity.md`
+    § 4 rule 2, ``identity.continues``), which gates the deck's own reads
+    too, so files placed for a ``clean`` stage would sit unread.  Every
+    engine's, by its name (A18): the rows are its warm-files table's."""
+    from ..identity import continues
+    return warm_declaration(engine, label, kind, base) if continues(eff) else []
+
+
 def warm_declaration(engine: str, label: str, kind: Optional[str] = None,
                      base=None) -> List[WarmFile]:
     """What a run of ``kind`` would take from a run it continues -- the warm
