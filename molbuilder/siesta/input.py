@@ -507,7 +507,6 @@ def _relaxation_facts(cfg) -> Optional[dict]:
 
 def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
                *, names: "RunNames",
-               cell: Optional[np.ndarray] = None,
                calculation: str,
                vibration: Optional[dict] = None,
                part: Optional[str] = None,
@@ -555,11 +554,14 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
     calculation's point (`transport.energies.Contours`, § 2a.16).  Only a
     transport deck reads them.
 
-    The box is ``cell`` when a caller passes one (Angstrom, row vectors), else the
-    structure's resolved cell -- the one it states, or ``struct.resolve_cell()``'s
-    vacuum box (isolated axes ``bbox + 2*vacuum``) for one nobody typed.  Vacuum
-    comes with the structure (``Structure.vacuum``, per-side gap); a thin-vacuum
-    isolated system is WARNED about, never mutated.
+    The box is the structure's own -- the cell it states, or its vacuum box
+    (isolated axes ``bbox + 2*vacuum``) for one nobody typed -- as the one
+    placement door works it out (``cell.to_engine``), which refuses a box the
+    atoms cannot be placed in, in the cell checker's words; a box with too
+    little volume to compute in is refused by the settings gate before a line
+    is written, in the same words.  Vacuum comes with
+    the structure (``Structure.vacuum``, per-side gap); a thin-vacuum isolated
+    system is WARNED about, never mutated.
 
     Whichever box it is, the atoms are placed by ONE rule
     (`model/structure-periodicity.md` § 6.0): the design coordinates plus
@@ -579,17 +581,16 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
         # and its decks reuse THIS module's sections and syntax door
         # rather than restating them.
         # A RENDER ARGUMENT THIS ARM DOES NOT READ is refused by name: a
-        # transport deck derives no cell -- it is the composed junction's own
-        # (§ 2a.9) -- and has no vibration, relaxation record or bench trial
+        # transport deck has no vibration, vibration phase or bench trial
         # (§ 3.6a).
         unread = [name for name, value in (
-            ("cell", cell), ("vibration", vibration),
-            ("part", part), ("trial", trial)) if value is not None]
+            ("vibration", vibration), ("part", part), ("trial", trial))
+            if value is not None]
         if unread:
             raise ValueError(
-                f"a transport deck reads no {', '.join(unread)} -- its cell "
-                f"is the composed junction's own"
-                f".")
+                f"a transport deck reads no {', '.join(unread)}: a "
+                f"vibration's phases and a benchmark's trials are not a "
+                f"transport calculation's.")
         from ..transport.deck import transport_spec
         return transport_spec(struct, config or SiestaConfig(),
                               stage_token=stage_token, state=state,
@@ -641,126 +642,44 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
     # from, which the comments below write beside it.
     state = electronic_state(struct, cfg, kind=calculation)
 
-    # The box first, then ONE placement for either box (§ 6.0, below the two
-    # branches).  The branches decide only which box and check that it is a
-    # real one; the atoms are placed once, by the rule every emitter takes.
-    positions = np.asarray(struct.positions, dtype=float)
-    if cell is None:
-        # The structure's own box -- the single source of truth for lattice and
-        # vacuum (structure-periodicity.md): its stated cell, or resolve_cell()'s
-        # bbox + 2*vacuum on isolated axes.  There is no cfg.cell_padding /
-        # center_in_vacuum -- vacuum comes with the structure.
-        cell = struct.resolve_cell()
-        if cell is None:
-            raise ValueError(
-                "cannot derive a vacuum cell: the structure is empty")
-        cell = np.asarray(cell, dtype=float).reshape(3, 3)
-        # LAST LINE OF DEFENCE: SIESTA builds reciprocal vectors from the cell,
-        # so a zero-volume lattice fails outright -- it must never be emitted.
-        #
-        # The 6.1 default gives every ISOLATED axis 3 A per side, so two
-        # things reach here: a vacuum a user SET to zero on
-        # a flat axis (their value is honoured, never overridden), and an
-        # axis where vacuum does not apply: a TRANSPORT axis, whose length is the
-        # captured device length rather than bbox + padding.  The message names
-        # the offending axes and their kinds, because telling the user to "set a
-        # vacuum" would be wrong advice for exactly the case that gets here.
-        from molbuilder.cell import ZERO_VOLUME_TOL
-        if abs(float(np.linalg.det(cell))) < ZERO_VOLUME_TOL:
-            _kinds = struct.axis_kind
-            # THE AXIS LENGTH IS THE VECTOR'S NORM, not its diagonal entry:
-            # on a hexagonal or otherwise off-axis cell `cell[i, i]` is a
-            # component, so a perfectly good b-vector could be named as the
-            # thin one.  Every other length measurement in the tree
-            # (`cell._clearances`, `validation/*`) already uses the norm.
-            _thin = [(i, _kinds[i]) for i in range(3)
-                     if float(np.linalg.norm(cell[i])) < ZERO_VOLUME_TOL]
-            _detail = ", ".join(f"axis {i} (kind '{k}')" for i, k in _thin) \
-                or "no single axis -- the three vectors are not independent"
-            # A FINDING, the checker's id: every prep door answers one with
-            # its sentence (`workflow.md` § 9), where a bare ValueError
-            # reached the person as a traceback.
-            from molbuilder.issues import Issue, ValidationError
-            raise ValidationError([Issue("error",
-                f"the cell derived from the structure is degenerate (zero "
-                f"volume), and SIESTA cannot run without a real box: {_detail}. "
-                f"Vacuum padding applies only to an 'isolated' axis -- on a "
-                f"'transport' axis the length IS the device length captured at "
-                f"construction, and a structure with zero extent along it cannot "
-                f"define that length. Set an explicit unit cell for that "
-                f"direction (Modify -> Cell tab), or correct the axis kind. The "
-                f"geometry is never changed for you.", "cell.no_volume")])
-        # Vacuum adequacy is checked by the VALIDATOR
-        # (validation/siesta.py:_check_siesta_vacuum_adequacy), which
-        # `script_emit.render_deck` runs -- so the finding reaches the web
-        # panel and the stderr report alike (contract R5,
-        # science/validation.md 4.1).
-        # ROW NORMS, NOT THE DIAGONAL.  `np.diag` is the axis length only for
-        # an orthogonal cell; on the hexagonal Au(111) lattice this whole
-        # branch exists to preserve it reported b 13% short.
-        sizes = np.linalg.norm(cell, axis=1)
-        # Report the EFFECTIVE vacuum: where the user set none, the § 6.1
-        # default supplied one, and the provenance comment must describe the
-        # box that was actually emitted -- printing the stored value (``None``)
-        # would make the note disagree with the LatticeVectors above it.
-        _eff = struct.effective_vacuum()
-        _defaulted = struct.defaulted_vacuum_axes()
-        # Named from the model rather than repeated as a literal here.
-        from molbuilder.structure import _DEFAULT_ISOLATED_VACUUM as _GAP
-        _DEFAULT_GAP_TEXT = f"{_GAP:g} A/side"
-        # SAY WHICH BOX THIS IS, AND WHAT WAS ACTUALLY DONE TO THE ATOMS: a
-        # stated cell or a derived one, the default vacuum only where it sized
-        # a derived box (`cell.check` guards the same case), and the placement
-        # with its number.
-        _manual = struct.cell is not None
-        cell_note = (
-            "# (" + ("cell stated on the structure"
-                     if _manual else "vacuum cell derived from the structure")
-            + f": {sizes[0]:.2f} x {sizes[1]:.2f} x {sizes[2]:.2f} A"
-            + (f"; vacuum = {tuple(round(float(v), 2) for v in _eff)} A/side"
-               if not _manual else
-               "; vacuum is reference-only under a stated cell")
-            + (f"; no vacuum was set, so the default {_DEFAULT_GAP_TEXT} "
-               f"was used on isolated axes {_defaulted}"
-               if _defaulted and not _manual else "")
-        )
-    else:
-        cell = np.asarray(cell, dtype=float).reshape(3, 3)
-        # Sanity: cell must be physically large enough to contain the
-        # atoms.  The check is ``vol < n_atoms * 1.0 A^3`` -- 1 A^3
-        # per atom is well below any real atom's van der Waals volume
-        # (H ~ 7 A^3, C ~ 20 A^3), so it only fires on degenerate
-        # cells: coplanar lattice vectors (vol = 0), a typo zeroing
-        # one vector, or a unit confusion that produces sub-Angstrom
-        # vectors (e.g., user wrote ``0.5`` meaning 0.5 nm = 5 A, but
-        # the call passed it as A: vol = 0.5^3 = 0.125 A^3, fails for
-        # any non-empty molecule).  The per-atom floor scales with the
-        # molecule.  The
-        # check does NOT false-positive on legitimate dense cells:
-        # compressed Fe at 100 GPa is ~10 A^3 per atom, 10x above the
-        # threshold; even hard-sphere close-packed C is ~6 A^3 per
-        # atom.
-        vol = abs(float(np.linalg.det(cell)))
-        n = max(1, len(positions))
-        if vol < n * 1.0:
-            raise ValueError(
-                f"Provided cell has volume {vol:.3f} A^3, which is "
-                f"below the minimum physical volume for {n} atom(s) "
-                f"({float(n):.1f} A^3, = 1 A^3 per atom).  Likely "
-                f"causes: lattice vectors in the wrong unit (nm vs "
-                f"A), coplanar vectors, or a typo.  Inspect the "
-                f"lattice vectors."
-            )
-        cell_note = "# (using the lattice supplied by the caller"
-
-    # THE ONE PLACEMENT (`model/structure-periodicity.md` § 6.0): the design
-    # coordinates plus the engine offset, which centres the atoms' span inside
-    # the box along each lattice vector.  Whichever box was decided above, the
-    # atoms are placed by this and by nothing else -- no hand translation, no
-    # per-atom wrap.  The deck states the offset it applied.
+    # THE BOX AND THE ATOMS from the one placement (the docstring above).
+    # Vacuum adequacy, and a box with too little volume to compute in, are
+    # the settings gate's (`validation`), which `script_emit.render_deck`
+    # runs before a line is written -- so a finding reaches the web panel and
+    # the stderr report alike (contract R5, science/validation.md 4.1).
     from molbuilder.cell import to_engine as _to_engine
-    _frame = _to_engine(struct, box=cell)
+    _frame = _to_engine(struct)
+    cell = _frame.cell
     positions = _frame.positions
+    # ROW NORMS, NOT THE DIAGONAL.  `np.diag` is the axis length only for
+    # an orthogonal cell; on the hexagonal Au(111) lattice it reported b 13%
+    # short.
+    sizes = np.linalg.norm(cell, axis=1)
+    # Report the EFFECTIVE vacuum: where the user set none, the § 6.1
+    # default supplied one, and the provenance comment must describe the
+    # box that was actually emitted -- printing the stored value (``None``)
+    # would make the note disagree with the LatticeVectors above it.
+    _eff = struct.effective_vacuum()
+    _defaulted = struct.defaulted_vacuum_axes()
+    # Named from the model rather than repeated as a literal here.
+    from molbuilder.structure import _DEFAULT_ISOLATED_VACUUM as _GAP
+    _DEFAULT_GAP_TEXT = f"{_GAP:g} A/side"
+    # SAY WHICH BOX THIS IS, AND WHAT WAS ACTUALLY DONE TO THE ATOMS: a
+    # stated cell or a derived one, the default vacuum only where it sized
+    # a derived box (`cell.check` guards the same case), and the placement
+    # with its number.
+    _manual = struct.cell is not None
+    cell_note = (
+        "# (" + ("cell stated on the structure"
+                 if _manual else "vacuum cell derived from the structure")
+        + f": {sizes[0]:.2f} x {sizes[1]:.2f} x {sizes[2]:.2f} A"
+        + (f"; vacuum = {tuple(round(float(v), 2) for v in _eff)} A/side"
+           if not _manual else
+           "; vacuum is reference-only under a stated cell")
+        + (f"; no vacuum was set, so the default {_DEFAULT_GAP_TEXT} "
+           f"was used on isolated axes {_defaulted}"
+           if _defaulted and not _manual else "")
+    )
     # Centred only when the rule placed them: an origin the person assigned,
     # or an engine's own 0, is the structure's and need not centre anything.
     cell_note += ("; atoms placed by the engine offset "
@@ -768,8 +687,7 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
                   + (" A, the offset the structure states)" if _frame.stated
                      else " A, centred in the cell)"))
 
-    # By now `cell` and `positions` are final.  The validation_struct
-    # mirrors the input struct but uses the FINAL post-positioning
+    # The validation_struct mirrors the input struct but uses the placed
     # ``positions`` array (so geometry-based checks see what SIESTA will
     # actually read) -- the subject the settings gate judges.
     # ONE FIELD CHANGES -- the positions the deck will actually write --
@@ -1111,8 +1029,7 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
 
         # Lattice
         out.append("# --- Lattice ---")
-        if cell_note:
-            out.append(cell_note.rstrip())
+        out.append(cell_note.rstrip())
         # THE ONE WRITER OF A GEOMETRY ROW (`siesta.deck_lines`): the
         # TranSIESTA decks write their lattice and species with it too.
         from .deck_lines import lattice_rows, species_rows

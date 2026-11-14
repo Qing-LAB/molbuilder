@@ -565,13 +565,13 @@ it is judged"*, and the one place atoms are placed: every emitter takes
 | operation | answers | its only callers |
 |---|---|---|
 | `engine_offset(struct)` | the rule: the offset the structure states when it states one, else the centring | `to_engine`, `resolve`, `Structure.to_wire`, `Structure.frame_at` (a later frame of a set states frame 0's, below) |
-| `to_engine(struct) → EngineFrame` | the cell, the engine coordinates, the offset, and whether it was stated | every emitter — the SIESTA deck, the TranSIESTA rungs, the PySCF script, the molwatch log's step 0, the validators' subject |
+| `to_engine(struct) → EngineFrame` | the cell, the engine coordinates, the offset, and whether it was stated; a box the atoms cannot be placed in — a singular lattice, a periodic axis with no lattice — refused with the one checker's finding | every emitter — the SIESTA deck (its box too: the deck works out no box of its own), the TranSIESTA rungs, the PySCF script, the molwatch log's step 0, the validators' subject |
 | every door that builds a structure from an engine's output | states `engine_offset = 0` on it, set together with the coordinates and recorded as the engine's (`offset_by = engine`) — keywords, no API of their own (plan § 5q D10) | the `.XV` reader, a run's view (`runs.Declared.frame`: the transport citation, the Results door, `xv2xyz`), PySCF's own pairs, the vibration `freq` stage, the SIESTA validators' subject |
 | `entering(struct, *, keep_engine_frame)` | the structure as a new calculation takes it: an engine's stated offset dropped, so the rule places it; a person's kept; the engine's kept when the kind says so (a vibration's input stated relaxed, read from the template at prep) | `rung.structure_for`, the transport compose, and the two that show or judge it as it will be taken: the hand-over's box check, the Transport tab's describe of a citation |
 | `Structure.to_wire` | `box_corner = −engine_offset`, the one place a viewer's corner is worked out | every payload that tells a viewer where to draw |
 | `require_placed(frame, struct)` | refuses coordinates that were not placed: a computed frame whose atoms are not centred, and any frame with an atom outside the cell along a non-periodic lattice vector, to 1e-6 Å | the deck renderer, before it writes a line |
 | the periodicity door's `box_corner` op | assigns the box's origin on a typed cell (`offset_by = person`), or clears it back to the rule | the Cell page |
-| `resolve(struct) → ResolvedCell` | the box and its judgement | the periodicity gate, the validators |
+| `resolve(struct) → ResolvedCell` | the box and its judgement; per lattice vector, the room at each face (`clearances`) and the length the atoms leave empty (`empty_span`, the two together, never below 0) — the one measurement of the room along a vector | the periodicity gate, the validators, the transport citation and the Raman data file (`has_volume`); `empty_span`: the k-point grid's hint (`kmesh.check`) and the transport deck's boundary comment |
 
 **The record — engine-neutral, beside the coordinates it labels.** Every deck
 molbuilder writes (SIESTA `.fdf`, PySCF `.py`) carries a `molbuilder
@@ -906,6 +906,18 @@ refusal, which places every engine's atoms (§ 6.0, check 3), and
 `cell.periodic_in_gas_phase`. The **error rows are every engine's**: an
 impossible box is a broken structure, refused on every road (§ 8.2).
 
+**A box with no volume is refused in one sentence, the checker's** — at every
+edit (once, on its result, an edit that clears a stated cell saying so first)
+and at every deck (by `to_engine` where the atoms cannot be placed at all, else
+by the settings gate before a line is written), and a load reports it — naming
+the flat side and the way out that side takes: a stated cell's row is given a
+length; a box sized from the atoms is flat along an isolated axis only where
+the vacuum set there is about 0, so a vacuum is set there; along a transport
+axis vacuum does not apply (table A), so the way out is a cell stated for that
+direction or another kind. A transport calculation's citation asks the same
+verdict and refuses in its own words, which name the cited pair or run
+([`engines/transport.md`](?doc=engines/transport.md) § 6.2, *What each hop does to the BOX*).
+
 **One severity, two verdicts.** The rows above carry *one* severity, and the
 door decides what it costs: `report()` raises on `error`, so a generating door
 refuses; a loading or modifying door reports the same finding as a warning so
@@ -989,8 +1001,8 @@ thin. On a typed box `cell.image_distance` is the check that means anything.
 
    **Errors vs notices.** `ValueError` (HTTP 400 at the door) is raised only for
    states that cannot be represented: a left-handed cell (`det ≤ 0`), a cell no
-   origin could make contain the structure, a degenerate derived box (zero
-   extent and no vacuum), a periodic axis with no explicit cell, and malformed
+   origin could make contain the structure, a box with no volume (§ 6.1a), a
+   periodic axis with no explicit cell, and malformed
    payloads. Everything else — including a box that does not contain its atoms
    under a user-owned origin — is a notice: the gate reports, the user decides.
 
@@ -1188,9 +1200,9 @@ checks nothing.** The gate is server-side only, and it runs at seven points:
 |---|---|---|---|
 | 1 | `StructureCodec.load` | reading the pair from disk | **nothing is refused and nothing is reported — reading does not judge** (§ 8.2, 2026-08-03). The structure it produces is checked at seam 2, on the way out, where the answer can carry the verdict. It used to raise, which made a file with an unusable box unopenable and therefore unfixable |
 | 2 | `_shared.ok_structure_response` | **every structure the server sends the browser**: `/api/build/load`, `/api/build/molecule`, and the seven `/api/modify/*` ops | notices ride out with the structure |
-| 3 | `/api/structure/periodicity` — before | a Cell-page edit arrives | notices **dropped** — they describe what arrived, not the result |
-| 4 | `/api/structure/periodicity` — after | the edit has been applied | notices **returned** — these describe the box the user now has |
-| 5 | `apply_edit`, `box_corner` branch | inside the edit | used only to DECIDE whether a caveat is needed; its notices are not reported |
+| 3 | `/api/structure/periodicity` — what arrived | a Cell-page edit arrives | **not checked** — this is the page a bad box is repaired on, and refusing what arrived would leave it unfixable |
+| 4 | `apply_edit` — the result | once, at the edit's exit, whatever the op | an error **refuses** the edit (400), in the checker's sentence — after *this edit would clear the cell the structure states* where it would |
+| 5 | `/api/structure/periodicity` — the answer | the edit has been applied | the box's conditions **returned** through seam 2 — these describe the box the user now has |
 | 6 | `/api/structure/export` | export | notices returned |
 | 7 | `_shared.periodicity_checked_for_emit` | a tab emits a job | the checked structure is what the emitter uses; its notices are dropped, and nothing on that path carries them (`molview.md` § 6.8) |
 
@@ -1201,7 +1213,7 @@ checked and had nothing to say. Added 2026-08-01; until then the modify ops
 ran no check at all, and an edit could strand the atoms outside an explicit box
 with nobody told.
 
-**The 3 → 5 → 4 order is the whole reason a corrected box reports as corrected.**
+**The 3 → 4 → 5 order is the whole reason a corrected box reports as corrected.**
 The check that reaches the user runs on the *result*, after the edit — not on the
 request that asked for it. Reporting seam 2 instead told a user who had just
 fixed their box that it was still broken.
@@ -1317,15 +1329,16 @@ sequenceDiagram
 sequenceDiagram
     participant M as MolView
     participant D as the periodicity door
-    participant G as validate_periodicity
     participant E as apply_edit
+    participant G as cell.check
+    participant R as ok_structure_response
     M->>D: the whole structure + op + payload
-    D->>G: check what ARRIVED
-    G-->>D: notices — dropped, they describe the old box
-    D->>E: apply the op
+    D->>E: apply the op — what ARRIVED is not checked
+    E->>G: check the RESULT, once
+    G-->>E: an error refuses the edit (400), in its sentence
     E-->>D: new structure + RECEIPTS (what the edit did)
-    D->>G: check the RESULT
-    G-->>D: CONDITIONS (what is now true)
+    D->>R: answer with it (seam 2)
+    R-->>D: + CONDITIONS (what is now true)
     D-->>M: post-edit cell block + receipts + conditions
     M->>M: adopt the block, show the notices on the Cell page
 ```

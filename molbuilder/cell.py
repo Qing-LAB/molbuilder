@@ -13,7 +13,8 @@ USED-BY periodicity_gate (the hand-over gate + the edit door), validation/
         modify.py, trajectory_log/format.py, Structure.to_wire, and
         web/blueprints (_shared, modify); the engine's axes:
         electronic_state, validation/ (siesta, spectra), and
-        pyscf/vibration_deck.py's view
+        pyscf/vibration_deck.py's view; the room along each lattice vector
+        (``ResolvedCell.empty_span``): kmesh and transport/transiesta
 
 Contract: docs/model/structure-periodicity.md § 6.0 (where the atoms sit) and
 § 6.1 / § 6.1a (what is true of the box), and the finding contract in
@@ -117,6 +118,14 @@ class ResolvedCell:
     #: ``contains_atoms`` is False about, named so a person can say which
     #: (plan § 5q D12; `model/overview.md` § 2.2a).
     outside_atoms: Tuple[Tuple[int, Tuple[int, ...]], ...] = ()
+
+    @property
+    def empty_span(self) -> Tuple[float, ...]:
+        """Per lattice vector, the length in Å the atoms leave empty: the
+        near and far clearances together, never below 0 -- the room between
+        the structure and its next image along that vector, wherever the
+        corner sits.  Empty without a box."""
+        return tuple(max(0.0, near + far) for near, far in self.clearances)
 
     @property
     def has_volume(self) -> bool:
@@ -307,6 +316,44 @@ def _clearances(frac: Optional[np.ndarray],
     )
 
 
+def _no_volume_words(rc: ResolvedCell) -> str:
+    """The one sentence a box with no volume is refused in -- at the edit and
+    at every deck, and reported on a load: which side is flat, and the way
+    out that side takes.  A stated cell's is a row to give a length.  A box
+    sized from the atoms is flat along an isolated axis only where the
+    vacuum set there is ~0 (§ 6.1's default gap is never 0), and along a
+    transport axis wherever the structure is: vacuum does not apply there,
+    so its way out is a stated cell or another kind (§ 6.1a, table A)."""
+    lengths = np.linalg.norm(rc.box, axis=1)
+    # A FLAT SIDE is one shorter than the cube root of the volume tolerance:
+    # a box whose rows are at right angles -- every box sized from the atoms
+    # -- has a volume below the tolerance only with such a side, so the
+    # sentence always names one there.  A stated cell with none is three
+    # rows in one plane.
+    flat = [i for i in range(3) if lengths[i] < ZERO_VOLUME_TOL ** (1 / 3)]
+    head = (f"This box is flat ({' × '.join(f'{v:g}' for v in lengths)} Å), "
+            f"so there is no space for the calculation to happen in. ")
+    if not flat:
+        why = ("No one side is without length: the three vectors lie in one "
+               "plane. Make them point in three directions.")
+    elif rc.is_manual:
+        names = ", ".join("abc"[i] for i in flat)
+        why = (f"The cell this structure states has no length along {names}. "
+               f"Give {'that row' if len(flat) == 1 else 'those rows'} a "
+               f"real length.")
+    else:
+        why = " ".join(
+            f"Along {'abc'[i]}, a transport axis, the structure has no "
+            f"length, and vacuum does not apply there: the box is only as "
+            f"long as the structure. State a cell for that direction, or "
+            f"change the axis's kind."
+            if rc.axis_kind[i] == "transport" else
+            f"Along {'abc'[i]}, the structure is flat and the vacuum set "
+            f"there is {rc.vacuum[i]:g} Å. Set a larger vacuum there."
+            for i in flat)
+    return head + why + " Nothing you set has been changed."
+
+
 # --------------------------------------------------------------------- #
 #  The one checker                                                      #
 # --------------------------------------------------------------------- #
@@ -356,15 +403,7 @@ def check(rc: ResolvedCell) -> List[Issue]:
             "cell.unfittable"))
 
     if not rc.has_volume:
-        lengths = " × ".join(f"{v:g}" for v in np.linalg.norm(rc.box, axis=1))
-        out.append(Issue(
-            "error",
-            f"This box is flat ({lengths} Å), so there is no space for the "
-            f"calculation to happen in. One side has no length — either the "
-            f"molecule is flat that way and you set no vacuum there, or the "
-            f"cell you typed has a row of zeros. Add vacuum on that side, or "
-            f"give that row a real length. Nothing you set has been changed.",
-            "cell.no_volume"))
+        out.append(Issue("error", _no_volume_words(rc), "cell.no_volume"))
 
     # YOUR VACUUM IS DOING NOTHING -- said whenever it is true, which is the
     # point.  A condition, not a receipt: it is true until

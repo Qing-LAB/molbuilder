@@ -174,31 +174,6 @@ def _find_electrode_regions(
 # --------------------------------------------------------------------- #
 
 
-def axis_vacuum(cell: np.ndarray,
-                positions: np.ndarray) -> List[float]:
-    """Per-axis vacuum gap (Å): the part of each lattice vector NOT
-    spanned by the atoms.
-
-    Computes fractional coordinates, takes each axis' atom span, and
-    returns ``(1 - span_frac) * |lattice_vector|``.  For a genuinely
-    periodic axis this is roughly one inter-layer spacing (the next
-    atom is the periodic image); for a vacuum axis it is the real
-    empty padding.  A large value on an axis the user declared
-    periodic (or on the transport axis) is the diagnostic the
-    boundary check warns on.
-    """
-    cell = np.asarray(cell, dtype=float)
-    pos = np.asarray(positions, dtype=float)
-    inv = np.linalg.inv(cell)
-    frac = pos @ inv                                  # (N, 3)
-    veclen = np.linalg.norm(cell, axis=1)             # |a|, |b|, |c|
-    out: List[float] = []
-    for ax in range(3):
-        span = float(frac[:, ax].max() - frac[:, ax].min())
-        out.append(max(0.0, (1.0 - span) * float(veclen[ax])))
-    return out
-
-
 def _lattice_block(struct: Structure, cell: np.ndarray) -> List[str]:
     """Emit the LatticeVectors block: the structure's own lattice --
     hexagonal, triclinic, whatever -- VERBATIM.  A transport calculation
@@ -213,7 +188,10 @@ def _lattice_block(struct: Structure, cell: np.ndarray) -> List[str]:
     # `periodic` to the same True, and the per-axis line below needs them
     # apart.
     kinds = struct.axis_kind
-    vac = axis_vacuum(cell, struct.positions)
+    # THE ROOM ALONG EACH VECTOR is the cell's one measurement
+    # (`cell.ResolvedCell.empty_span`), of this box.
+    from ..cell import resolve
+    span = resolve(struct, box=cell).empty_span
     lines += [
         "# Explicit lattice preserved from the structure (NOT",
         "# recomputed from atom extents).  Per-axis boundary:",
@@ -223,7 +201,7 @@ def _lattice_block(struct: Structure, cell: np.ndarray) -> List[str]:
         kind = kinds[ax]
         lines.append(
             f"#   {names[ax]:<14} {kind:<8} | empty span "
-            f"{vac[ax]:.2f} Å")
+            f"{span[ax]:.2f} Å")
     # WHETHER THE ROOM IS RIGHT IS THE GATE'S ONE RULE, measured from the
     # lead (`engines/transport.md` § 6.1c, I12 both ways; its findings
     # land in the deck's `.validation.txt`) -- the lines above are the

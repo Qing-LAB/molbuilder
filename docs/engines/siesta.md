@@ -19,7 +19,7 @@ what SIESTA wrote: its output lines § 5d.5, the run record § 5d).
 This is how molbuilder turns a `Structure` + a `SiestaConfig` into a
 **SIESTA-runnable `.fdf` text**. SIESTA is a periodic-DFT code (Soler et al. 2002 — see References); a `.fdf`
 ("Flexible Data Format") is its plain-text input file. The engine describes the
-deck — `spec_for(struct, config=None, *, names, cell=None, calculation=…, …) ->
+deck — `spec_for(struct, config=None, *, names, calculation=…, …) ->
 DeckSpec` (`siesta/input.py`) — and `jobset prep` hands that spec to
 `script_emit.prepare_deck`, which validates, renders (`script_emit.render_deck`),
 writes and checks it.
@@ -51,7 +51,7 @@ flowchart LR
     end
     CLI["CLI: molbuilder jobset prep<br/>(via the template)"]
     WEB["web Structure-optimization tab<br/><i>collects parameters only —<br/>renders no deck</i>"]
-    R["spec_for(struct, config, *, names, cell=None) → DeckSpec<br/>siesta/input.py"]
+    R["spec_for(struct, config, *, names, calculation) → DeckSpec<br/>siesta/input.py"]
     P["prepare_deck(spec, …)<br/>script_emit.py<br/><i>validate → render_deck → write → check</i>"]
     OUT["JOB.fdf<br/>(+ sibling JOB.molwatch.log,<br/> + copied &lt;label&gt;.psml)"]
     S --> R
@@ -122,7 +122,7 @@ the framework renders, writes and checks it
 > which `prep` hands to `spec_for`.
 
 **The seam does not move, and that is the point.** In
-`spec_for(struct, config=None, *, names, cell=None, …)` the config dataclass
+`spec_for(struct, config=None, *, names, …)` the config dataclass
 stays the one object of settings handed to the engine — `names`, the stage's
 (`runfiles.RunNames`), give its stage token and every name the deck prints —
 and `prep` hands the same object to `script_emit.prepare_deck`, which is what
@@ -174,7 +174,7 @@ the plan holds the order).
 @dataclass
 class SiestaConfig: ...                                             # config/siesta.py
 
-spec_for(struct, config=None, *, names, cell=None,
+spec_for(struct, config=None, *, names,
          calculation="optimization", vibration=None,
          part=None, state=None, trial=None) -> DeckSpec             # siesta/input.py
 copy_pseudopotentials(species, lib, dest_dir, *, plan=None) -> list[str]  # pseudos.py → the species labels whose <label>.psml was MISSING
@@ -235,7 +235,7 @@ fineness (Ry); `PAO` = the pseudo-atomic-orbital basis.
 | # | Section | Emitted from | Notes |
 |---|---|---|---|
 | 1 | Header | `SystemName` / `SystemLabel` / atom + species counts | `SystemName` == `SystemLabel` == `cfg.system_label` (same value, default `"siesta"`) |
-| 2 | Lattice (3×3 Å) | `cell=` kwarg, or `resolve_cell()` vacuum box | § 6 |
+| 2 | Lattice (3×3 Å) | `cell.to_engine` — the cell the structure states, or its vacuum box | § 6 |
 | 3 | Species table | `%block ChemicalSpeciesLabel`, ordered by Z | |
 | 4 | Atomic coordinates | `%block AtomicCoordinatesAndAtomicSpecies` (Å) | every atom, no reorder — but a vibration's call: held atoms first, from a sorted copy of the structure, the block read from `coordinates.fdf` beside the deck (`< coordinates.fdf`, [`vibration.md`](?doc=engines/vibration.md) § 5.11 § 4) |
 | 5 | **Frozen atoms** | `%block Geometry.Constraints` (1-based indices) | only if `struct.frozen_atoms`; the 3-stage boundary carrier (see [`model/structure-annotations.md`](?doc=model/structure-annotations.md)) |
@@ -387,9 +387,10 @@ metal-driven count warned until it is stated (ES8)
 
 ## 6. Lattice & the k-point grid
 
-**Lattice (§2).** Either the caller passes `cell=` (a 3×3 Å matrix), or the emitter
-auto-generates the box via `struct.resolve_cell()` (isolated axes = bbox + 2·vacuum)
-with the molecule centred. The per-axis / periodicity behaviour (which axes are
+**Lattice (§2).** The box is the structure's own — the cell it states, or its vacuum
+box (isolated axes = bbox + 2·vacuum) — with the atoms placed in it by the one
+placement door, `cell.to_engine`; the deck works out no box of its own, and a box
+with no volume is refused in the cell checker's one sentence. The per-axis / periodicity behaviour (which axes are
 periodic vs vacuum, `axis_kind`, `resolve_cell`) is the model's contract —
 [`model/structure-periodicity.md`](?doc=model/structure-periodicity.md).
 

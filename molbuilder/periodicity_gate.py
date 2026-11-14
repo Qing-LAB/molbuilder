@@ -109,8 +109,10 @@ def _notice(level: str, message: str, where: str = "cell.edit") -> Dict[str, str
     return _wire(Issue(level, message, where))
 
 
-def _refuse_on_error(s: Structure) -> None:
-    """Raise on the first error the ONE checker finds in ``s``'s box.
+def _refuse_on_error(s: Structure, lead: str = "") -> None:
+    """Raise on the first error the ONE checker finds in ``s``'s box, in its
+    sentence, after ``lead`` -- what the edit did that the sentence's box
+    comes from.
 
     The edit door's half of § 8.2: the Cell page refuses the value you type,
     because its whole subject is that value and a good one entered straight
@@ -121,7 +123,7 @@ def _refuse_on_error(s: Structure) -> None:
     _rc, issues = resolve_and_check(s)
     for i in issues:
         if i.severity == "error":
-            raise ValueError(i.message)
+            raise ValueError(lead + i.message)
 
 
 def notices_for_report(issues) -> List[Dict[str, str]]:
@@ -183,12 +185,12 @@ def validate_periodicity(struct: Structure, engine: Optional[str] = None
     from .cell import resolve_and_check
 
     _rc, issues = resolve_and_check(struct)
-    # ERRORS STILL RAISE HERE, because this door's callers are mid-edit and a
-    # state that cannot be represented has to become an HTTP 400 rather than a
-    # structure nobody can act on (§ 8.2's "the Cell page refuses the value you
-    # type").  The LOADING doors call ``cell.check`` directly and report the
-    # same Issues instead -- one checker, two verdicts, exactly as the contract
-    # says.
+    # ERRORS STILL RAISE HERE, because this door's callers are about to act
+    # on the box -- a job emitted from it (`_shared.checked_periodicity`) --
+    # and a state that cannot be computed in has to become an HTTP 400 rather
+    # than a calculation (§ 8.2).  The LOADING doors call ``cell.check``
+    # directly and report the same Issues instead -- one checker, two
+    # verdicts, exactly as the contract says.
     fatal = [i for i in issues if i.severity == "error"]
     if fatal:
         raise ValueError(fatal[0].message)
@@ -207,31 +209,16 @@ def _reset_to_derived(s: Structure, what: str,
     axis_kind} moves the box back to the DERIVED regime — explicit cell +
     origin cleared, boundary recomputed from the structure + vacuum.
 
-    Refuses when the derived box would be DEGENERATE.  On an ISOLATED axis with
-    no vacuum set that can no longer happen — the § 6.1 default gives a flat or
-    linear molecule a real 3 Å-per-side gap (``Structure.effective_vacuum``), so
-    a planar structure resets cleanly now instead of being told to set a vacuum
-    first.  With a vacuum of 0 explicitly SET it can still happen, and must: the
-    typed value is never overridden.  A TRANSPORT axis still refuses: its length
-    is the captured device length, vacuum does not apply there, and a zero-extent
-    bbox cannot reproduce it.
+    Judges nothing.  A derived box with no volume -- a vacuum of 0 SET on a
+    flat isolated axis (the typed value is never overridden), or a transport
+    axis the structure has no length along, where vacuum does not apply --
+    is the one checker's to refuse, on the result (``_refuse_on_error``), in
+    the words the load reports and every deck refuses with.
 
-    Says nothing about the default gap itself.  ``validate_periodicity`` runs on
-    the RESULT of every edit (build.py::api_structure_periodicity) and reports it
-    there, for every hand-over rather than only for an edit — a second producer
-    here would deliver the same sentence twice."""
-    if s.n_atoms:
-        ext = s.positions.max(axis=0) - s.positions.min(axis=0)
-        kinds = s.axis_kind
-        eff = s.effective_vacuum()
-        for i, kind in enumerate(kinds):
-            pad = 2.0 * float(eff[i]) if kind == "isolated" else 0.0
-            if float(ext[i]) + pad < 1e-6:
-                raise ValueError(
-                    f"cannot reset to the derived box: axis {i} would be "
-                    f"degenerate (a '{kind}' axis whose structure extent is ~0, "
-                    f"and vacuum does not apply to it). Keep an explicit cell "
-                    f"for that direction.")
+    Says nothing about the default gap itself: it is a condition of the
+    resulting box, which ``ok_structure_response`` reports for every
+    hand-over rather than only for an edit -- a second producer here would
+    deliver the same sentence twice."""
     had_manual = s.cell is not None or s.engine_offset is not None
     s.cell = None
     s.engine_offset = None          # an assigned origin goes with the cell
@@ -258,10 +245,10 @@ def _apply_block(s: Structure, payload: Any,
     non-periodic -- so "become a periodic crystal" and "go back to a derived
     box" were two-step journeys through a state the gate refuses.
 
-    So this one sets all four and checks ONCE, at the end.  The intermediate
-    states never exist, which is why the interlocks that make the step-at-a-time
-    ops refuse are simply not in the way here -- the same rules are still
-    enforced, on the result, below.
+    So this one sets all four, and the box is checked ONCE, on the result.
+    The intermediate states never exist, which is why the interlocks that make
+    the step-at-a-time ops refuse are simply not in the way here -- the same
+    rules are still enforced, on the result (``apply_edit``'s one check).
     """
     if not isinstance(payload, dict):
         raise ValueError(
@@ -337,10 +324,6 @@ def _apply_block(s: Structure, payload: Any,
     s.axis_kind = kinds
     s.vacuum = None if vac is None else tuple(vac)
     s.__post_init__()
-    # ONE CHECK, ON THE RESULT.  Every refusal the field-at-a-time ops raise
-    # about a bad box is this same checker; asking it here asks it of the box
-    # the user actually described.
-    _refuse_on_error(s)
 
     # A RECEIPT: which regime the box is now in, because that is the fact the
     # panel's own switch is about and the one thing a user cannot read off the
@@ -384,10 +367,28 @@ def apply_edit(struct: Structure, op: str,
     # the answer, so the flag arrives from the one place that decides it.
     s.mark_contract_outdated()
     notices: List[dict] = []
+    s = _edit(s, op, payload, notices)
+    # ONE CHECK, ON THE RESULT, whatever the op: the box the person now has,
+    # asked of the one checker -- the refusals the ops would raise about a
+    # bad box are all its findings.  An edit that gave up a stated cell says
+    # so first: the box the sentence measures is the one sized from the
+    # atoms, not the cell on screen.
+    _refuse_on_error(s, lead=(
+        "This edit would clear the cell the structure states, sizing the box "
+        "from the atoms instead. "
+        if struct.cell is not None and s.cell is None else ""))
+    return s, notices
+
+
+def _edit(s: Structure, op: str, payload: Any,
+          notices: List[dict]) -> Structure:
+    """``op`` applied to ``s`` (a copy) -- its receipts added to
+    ``notices``, its payload's own refusals raised; the box it leaves is
+    judged by :func:`apply_edit`, once."""
     kinds = s.axis_kind
 
     if op == "block":
-        return _apply_block(s, payload, notices), notices
+        return _apply_block(s, payload, notices)
 
     if op == "vacuum":
         # ``null`` CLEARS (molview.md § 9.5).
@@ -418,7 +419,7 @@ def apply_edit(struct: Structure, op: str,
             notices.append(_notice("info", "vacuum cleared."))
         _reset_to_derived(s, "vacuum", notices)
         s.__post_init__()
-        return s, notices
+        return s
 
     if op == "axis_kind":
         new_kinds = tuple(str(k) for k in (payload or []))
@@ -439,11 +440,11 @@ def apply_edit(struct: Structure, op: str,
                 "info",
                 "axis kinds updated; the existing explicit cell is kept "
                 "(respected) and vacuum stays reference-only."))
-            return s, notices
+            return s
         s.axis_kind = new_kinds
         _reset_to_derived(s, "periodicity", notices)
         s.__post_init__()
-        return s, notices
+        return s
 
     if op == "cell":
         if payload is None:
@@ -459,28 +460,26 @@ def apply_edit(struct: Structure, op: str,
                 "explicit cell cleared; the box is derived again "
                 "(structure size + 2·vacuum, molecule centred) and vacuum "
                 "is authoritative."))
-            return s, notices
+            return s
         try:
             cell = np.asarray(payload, dtype=float).reshape(3, 3)
         except (TypeError, ValueError):
             raise ValueError(
                 "cell must be a 3×3 matrix of numbers (Å)") from None
         s.cell = cell
-        # A cell the structure cannot fit for ANY origin is REFUSED, not
-        # stored — a stored-but-invalid cell would lock every later door.
-        # Asked of the ONE checker, so the rule and its
-        # wording live in a single place.  An origin the person assigned is
-        # kept: it is theirs, and whether the atoms still fit is a CONDITION
-        # the door reports on the result (molview.md § 6.8).
+        # A cell the structure cannot fit for ANY origin is REFUSED at the
+        # exit, not stored — a stored-but-invalid cell would lock every later
+        # door.  An origin the person assigned is kept: it is theirs, and
+        # whether the atoms still fit is a CONDITION the door reports on the
+        # result (molview.md § 6.8).
         s.__post_init__()
-        _refuse_on_error(s)
         notices.append(_notice(
             "info",
             ("explicit cell set; the stated origin is kept. "
              if s.engine_offset is not None else
              "explicit cell set; the atoms are centred in it (Automatic). ")
             + "Vacuum values are reference-only from now on."))
-        return s, notices
+        return s
 
     # op == "box_corner" -- the person assigns the box's origin, or clears it
     # back to the rule (§ 6.0, *A stated offset*).  Automatic first: an
@@ -493,7 +492,7 @@ def apply_edit(struct: Structure, op: str,
             "info",
             "origin set back to Automatic: the atoms are centred in the cell"
             "."))
-        return s, notices
+        return s
     if s.cell is None:
         raise ValueError(
             "an origin is assigned on a typed cell only -- a box sized from "
@@ -507,12 +506,9 @@ def apply_edit(struct: Structure, op: str,
     s.engine_offset = -np.asarray(corner, dtype=float)
     s.offset_by = "person"          # the person's origin, kept by every door
     s.__post_init__()
-    # The validator DECIDES here; it does not report here: whether the atoms
-    # are still inside is a CONDITION, answered once on the result.
-    s, _conditions = validate_periodicity(s)
     notices.append(_notice(
         "info",
         f"origin set: the box's corner is at "
         f"{np.round(np.asarray(corner), 4).tolist()} Å, and the engine is "
         f"handed these coordinates minus it."))
-    return s, notices
+    return s

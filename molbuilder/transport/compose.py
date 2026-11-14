@@ -105,9 +105,10 @@ def _unusable_cell(struct) -> Optional[str]:
     c = np.asarray(struct.cell, dtype=float)
     if c.shape != (3, 3) or not np.all(np.isfinite(c)):
         return "states a cell that is not three finite vectors"
-    # The ONE threshold, from the module that owns the question.
-    from ..cell import ZERO_VOLUME_TOL
-    if abs(float(np.linalg.det(c))) < ZERO_VOLUME_TOL:
+    # WHETHER IT HAS VOLUME is the cell's verdict (`cell.ResolvedCell`);
+    # these words are the citation's, naming what it cites.
+    from ..cell import resolve
+    if not resolve(struct).has_volume:
         return ("states a cell with no volume (its vectors are not "
                 "linearly independent)")
     return None

@@ -329,9 +329,9 @@ def api_periodicity():
 
     400 on: an unknown op, a missing payload for ``cell`` / ``box_corner``, a
     malformed envelope, and every contract violation the gate raises (a
-    left-handed cell, a cell no origin could make fit, a degenerate derived
-    box, a periodic axis with no explicit cell)."""
-    from molbuilder.periodicity_gate import apply_edit, OPS, validate_periodicity
+    left-handed cell, a cell no origin could make fit, a box with no volume,
+    a periodic axis with no explicit cell)."""
+    from molbuilder.periodicity_gate import apply_edit, OPS
     body = request.get_json(silent=True) or {}
     op = body.get("op")
     if op not in OPS:
@@ -354,14 +354,12 @@ def api_periodicity():
         # NOT GATED ON THE INCOMING STATE.  This is the page a bad box is
         # repaired on -- the load door admits one for exactly that reason --
         # so refusing the edit because the box is still bad would leave it
-        # unfixable.  The RESULT is gated below, which is what
-        # molview.md § 6.8 actually asks for.
+        # unfixable.  The RESULT is gated, inside the edit door: a box nothing
+        # can be done with is refused there (`ValueError`, 400), which is
+        # what molview.md § 6.8 actually asks for.  What is otherwise true
+        # of the box that now exists, its conditions, the one answer
+        # builder says.
         new_struct, receipts = apply_edit(struct, op, body.get("payload"))
-        # THE RESULT IS GATED: a box nothing can be done with -- left-handed,
-        # or one no origin could make contain the structure -- is refused
-        # (`ValueError`, 400).  What is otherwise true of the box that now
-        # exists, its conditions, the one answer builder says.
-        new_struct, _conditions = validate_periodicity(new_struct)
         # WHAT THE BOUNDARY DOES TO THE CRYSTAL -- the verdict the slab
         # build gives, on the box just set (`science/junction-cell.md` § 6.1:
         # the loop closes where `c` is set).

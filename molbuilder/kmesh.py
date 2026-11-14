@@ -18,9 +18,10 @@ the template's ``kx ky 1`` while its deck writes ``kx ky 100``.
 
 It imports nothing from the catalogue -- :mod:`molbuilder.template` asks
 :func:`fixed` for its one per-value door (``template.why_not``), so this module
-must not import it back; :func:`check` reaches :mod:`molbuilder.issues`, and
-numpy for the cell's lengths, when it runs.  Which rungs are leads is the kind
-table's (`execution/architecture.md` § 3.3): a kind with leads is open along
+must not import it back; :func:`check` reaches :mod:`molbuilder.issues`,
+numpy for the cell's lengths, and :mod:`molbuilder.cell` for the room the
+atoms leave along each lattice vector, when it runs.  Which rungs are leads
+is the kind table's (`execution/architecture.md` § 3.3): a kind with leads is open along
 the transport axis on every other rung.
 """
 from __future__ import annotations
@@ -310,17 +311,16 @@ def check(meshes: Sequence[Optional[KMesh]], struct, *, cell=None,
     judged = [m for m in meshes if m is not None and not (
         ({a.source for a in m.axes} | {"kgrid_displacement"}) & set(refused))]
     out: List[Any] = []
-    lengths = extent = None
+    lengths = None
+    room: Tuple[float, ...] = ()
     if cell is not None:
         import numpy as np
+        from .cell import resolve
         box = np.asarray(cell, dtype=float)
         lengths = [float(np.linalg.norm(box[i])) for i in range(3)]
-        # THE ATOMS' SPAN ALONG EACH LATTICE VECTOR, as a share of it: on a
-        # skewed cell a span across the Cartesian axes says nothing of the
-        # room left along the vector.
-        pos = np.asarray(getattr(struct, "positions", ()), dtype=float)
-        extent = (np.ptp(pos @ np.linalg.pinv(box), axis=0) if pos.size
-                  else np.zeros(3))
+        # THE ROOM ALONG EACH LATTICE VECTOR is the cell's one measurement
+        # (`cell.ResolvedCell.empty_span`), of the box this deck writes.
+        room = resolve(struct, box=box).empty_span
     for mesh in judged:
         for i, axis in enumerate(mesh.axes):
             where = f"config.{axis.source}"
@@ -367,9 +367,8 @@ def check(meshes: Sequence[Optional[KMesh]], struct, *, cell=None,
                     f"per cent.  The benchmark used 4 x 4 for a cell about "
                     f"9 A wide{wide}",
                     where))
-            elif (axis.role == "sampled" and axis.count > 1
-                  and lengths is not None):
-                gap = max(0.0, lengths[i] * (1.0 - float(extent[i])))
+            elif axis.role == "sampled" and axis.count > 1 and room:
+                gap = room[i]
                 if gap >= VACUUM_HINT_A:
                     out.append(Issue(
                         "warn",

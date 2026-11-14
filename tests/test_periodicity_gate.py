@@ -256,7 +256,8 @@ class TestApplyEditV3:
         assert out.cell is None and out.engine_offset is None
         assert any("is derived again" in n["message"] for n in notes)
         # A transport axis with zero structure extent would be a
-        # degenerate derived box -> refused (its own pin below).
+        # box with no volume -> refused
+        # (TestSiestaNeverReceivesAZeroVolumeCell).
 
     def test_axis_to_periodic_keeps_the_explicit_cell(self):
         """The reset is CONDITIONAL: turning an axis periodic while an explicit cell
@@ -912,8 +913,8 @@ class TestPeriodicAxesAreNeverContained:
         CLEARING the vacuum is the way back -- the § 6.1 default then gives that
         axis 3 Å per side.  Asking for an explicit zero there is still refused,
         and must be: the value is honoured, so the box really would have no
-        volume (see TestTheDefaultVacuumGap).  A transport axis, where vacuum
-        has no meaning, refuses either way."""
+        volume (see TestSiestaNeverReceivesAZeroVolumeCell).  A transport
+        axis, where vacuum has no meaning, refuses either way."""
         s = _mol(vacuum=(2.5, 2.5, 0.0))              # extent 0 on y,z
         s.cell = np.eye(3) * 10.0
         s.__post_init__()
@@ -1383,29 +1384,6 @@ class TestTheDefaultVacuumGap:
         assert out.cell is None
         assert float(np.linalg.det(out.resolve_cell())) > 0.0
 
-    def test_typing_a_zero_gap_on_a_flat_axis_is_refused_at_the_edit(self):
-        """The Cell page refuses the value you TYPE (8.2): its whole subject is
-        that value, so this is immediate feedback, not a block on getting work
-        done -- a good value entered straight after is accepted.
-
-        A FILE that already holds this state still opens and is reported
-        instead; see TestTheLoadAnswerIsNotSilent.  Same state, two verdicts,
-        decided by whether you just typed it.
-        """
-        s = self._planar()
-        with pytest.raises(ValueError, match="degenerate"):
-            apply_edit(s, "vacuum", [0.0, 0.0, 0.0])
-
-    def test_a_zero_extent_transport_axis_still_refuses(self):
-        """Vacuum cannot rescue a transport axis -- its length is the captured
-        device length, so the refusal must stay."""
-        s = self._planar()
-        s.cell = np.diag([9.0, 9.0, 9.0])
-        s.axis_kind = ("isolated", "isolated", "transport")
-        s.__post_init__()
-        with pytest.raises(ValueError, match="degenerate"):
-            apply_edit(s, "vacuum", [2.0, 2.0, 2.0])
-
     # -- the wire ------------------------------------------------------------ #
 
     def test_the_wire_carries_unset_and_the_resolved_view(self):
@@ -1444,33 +1422,87 @@ class TestTheDefaultVacuumGap:
 
 class TestSiestaNeverReceivesAZeroVolumeCell:
     """PINS: docs/model/structure-periodicity.md § 6.1 (the default vacuum gap)
-    + the emitter's own last-line check.
+    + § 6.1a (*a box with no volume is refused in one sentence, the
+    checker's*).
 
     INVARIANT: no code path can hand SIESTA a zero-volume lattice.  SIESTA
     builds reciprocal vectors from the cell, so a zero determinant fails the run
-    outright -- we refuse first, at whichever layer sees it, with a message that
-    matches the actual cause.
-
-    THREE independent layers stop one from ever being emitted; this pins each
-    so a future change cannot quietly remove the last of them.
+    outright -- refused first, by the one checker, at every door about to act
+    on it, in one sentence that names the flat side and its way out.
 
     § 8.2 says reading does not judge, so a bad box can be HELD and the load
-    REPORTS it (layer 0); refusing happens at the doors about to act on it.
+    REPORTS it -- in the sentence the acting doors refuse with.
     """
 
-    def test_layer0_it_can_be_held_and_is_reported_rather_than_hidden(self):
-        """A degenerate lattice may exist in memory -- that is what lets the
-        Cell page show you the box you have to fix.  What must never happen
-        is it existing QUIETLY, so the same checker that refuses at the edit
-        and emit doors answers here too, as a finding.
-        """
-        from molbuilder.cell import resolve_and_check
-        s = self._flat()
-        s.cell = np.diag([8.0, 8.0, 0.0])
-        s.__post_init__()                      # must not raise
-        assert s.cell is not None, "the box the user has to fix was dropped"
-        _rc, issues = resolve_and_check(s)
-        assert [i.where for i in issues] == ["cell.no_volume"]
+    #: (the axis kinds under the stated cell, the edit and its payload, the
+    #: box the edit makes -- held as a file holds it -- and the words the
+    #: sentence names that box's flat side and way out by).
+    _ISOLATED = ("isolated",) * 3
+    _TRANSPORT_C = ("isolated", "isolated", "transport")
+    _FLAT_ROW = [[8.0, 0, 0], [0, 8.0, 0], [0, 0, 0.0]]
+    _ONE_PLANE = [[8.0, 0, 0], [0, 8.0, 0], [8.0, 8.0, 0]]
+
+    @pytest.mark.parametrize("kinds, op, payload, made, names", [
+        # A vacuum of 0 SET on the flat axis: honoured, never overridden.
+        (_ISOLATED, "vacuum", [3.0, 3.0, 0.0],
+         dict(axis_kind=_ISOLATED, vacuum=(3.0, 3.0, 0.0)),
+         "Along c, the structure is flat"),
+        # A transport axis: vacuum does not apply there, whatever is set --
+        # by the vacuum edit, or by the edit that makes the axis transport.
+        (_TRANSPORT_C, "vacuum", [3.0, 3.0, 3.0],
+         dict(axis_kind=_TRANSPORT_C, vacuum=(3.0, 3.0, 3.0)),
+         "Along c, a transport axis"),
+        (_ISOLATED, "axis_kind", list(_TRANSPORT_C),
+         dict(axis_kind=_TRANSPORT_C),
+         "Along c, a transport axis"),
+        # A stated cell: a row with no length, or three rows in one plane.
+        (_ISOLATED, "cell", _FLAT_ROW,
+         dict(axis_kind=_ISOLATED, cell=np.array(_FLAT_ROW)),
+         "no length along c"),
+        (_ISOLATED, "cell", _ONE_PLANE,
+         dict(axis_kind=_ISOLATED, cell=np.array(_ONE_PLANE)),
+         "lie in one plane"),
+    ], ids=["a-vacuum-of-0-on-the-flat-axis", "a-flat-transport-axis",
+            "an-axis-made-transport", "a-stated-cell-with-a-flat-row",
+            "a-stated-cell-in-one-plane"])
+    def test_a_flat_box_is_refused_in_the_checkers_one_sentence(
+            self, prepared, kinds, op, payload, made, names):
+        """The edit that makes a flat box, prep's deck of it, and a load of
+        the file holding it: one sentence, the checker's, naming the flat side
+        and the way out that side takes.  The edit and the deck refuse; the
+        load opens the file and reports (§ 8.2).  An edit that clears the
+        cell the structure stated says so before the sentence, whose box is
+        then the one sized from the atoms, not the cell on screen.
+
+        GOAL: the vacuum and axis-kind edits and the SIESTA deck each refused
+        this box in words of their own beside the checker's -- whose sentence
+        told a transport axis to add vacuum, where vacuum does not apply."""
+        pytest.importorskip("flask")
+        typed = self._flat()
+        typed.cell = np.eye(3) * 9.0
+        typed.axis_kind = kinds
+        typed.__post_init__()
+        with pytest.raises(ValueError) as edit:
+            apply_edit(typed, op, payload)
+        held = Structure(elements=list(typed.elements),
+                         positions=typed.positions, **made)
+        _dest, _stage, at_prep = prepared(held, "siesta", refused=True)
+        # THE LOAD: the pair the road saved, opened by the load route.
+        from molbuilder.projects import projects_root
+        from molbuilder.web.app import create_app
+        from support.road import STRUCTURE
+        r = create_app(config={}).test_client().post(
+            "/api/build/load", json={"path": str(projects_root() / STRUCTURE)})
+        assert r.status_code == 200, r.get_json()
+        said = [n["message"] for n in r.get_json()["notices"]
+                if n["where"] == "cell.no_volume"]
+        assert len(said) == 1 and names in said[0], said
+        clears = held.cell is None
+        assert str(edit.value).endswith(said[0]), (str(edit.value), said[0])
+        assert (str(edit.value) != said[0]) == clears, str(edit.value)
+        refused = [line.strip() for line in at_prep.splitlines()
+                   if line.strip().startswith("* [")]
+        assert refused == [f"* [cell.no_volume] {said[0]}"], at_prep
 
     @staticmethod
     def _flat():
@@ -1479,16 +1511,7 @@ class TestSiestaNeverReceivesAZeroVolumeCell:
                                              [0.757, 0.586, 0.0],
                                              [-0.757, 0.586, 0.0]]))
 
-    def test_layer2_the_gate_refuses_a_zero_volume_cell_edit(self):
-        """A FLAT cell is a volume problem, not a HANDEDNESS one.  What this test means is that the edit is refused -- not which
-        sentence explains it."""
-        with pytest.raises(ValueError) as exc:
-            apply_edit(self._flat(), "cell",
-                       [[8.0, 0, 0], [0, 8.0, 0], [0, 0, 0.0]])
-        assert "handed" not in str(exc.value).lower(), (
-            f"a flat cell is not a handedness problem: {exc.value}")
-
-    def test_layer3_the_default_gap_makes_an_unset_isolated_axis_never_zero(self):
+    def test_the_default_gap_makes_an_unset_isolated_axis_never_zero(self):
         """A flat molecule with no vacuum: the § 6.1 default closes it -- for
         the UNSET case only.  A deliberate zero is still honoured (that is the
         rule)."""

@@ -6996,7 +6996,7 @@ and hop 7 only for the two electrode rungs.
 |---|---|---|
 | 1 | a cited run's: SIESTA wrote it with every geometry step of its output; a cited pair's: its sidecar states it | a fixed-cell relaxation ends in the box it started in |
 | 2 | a cited run's: its last step's, read by the run door (`runs.view_of`), **never from the atoms**; a cited pair's: the one its sidecar states | § 7: the box is not recoverable from atom extents |
-| 3 | **refused** if absent, non-finite or flat | the citation is the one place user input enters, so it is the one place that checks — and transport derives no cell of its own, by ruling (§ 2a.9; I14) |
+| 3 | **refused** if absent, non-finite or flat — flat by the cell's own verdict (`cell.ResolvedCell.has_volume`), in words naming the cited pair or run | the citation is the one place user input enters, so it is the one place that checks — and transport derives no cell of its own, by ruling (§ 2a.9; I14) |
 | 4–5 | untouched (hop 4 reads a cited run's first step's coordinates, not its box); the sort carries it through `take()` | a reorder states the per-atom fields and nothing else, so the box rides along untouched |
 | 6 | written to the sidecar, read back verbatim | |
 | 7 | **lateral taken verbatim, transport DERIVED** | the two halves differ on purpose — see below |
