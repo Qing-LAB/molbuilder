@@ -25,7 +25,7 @@ from pathlib import Path
 
 import pytest
 
-from tests._node_esm import run_node, served
+from tests._node_esm import run_node, served, tab_storage as tab_storage_of
 
 REPO = Path(__file__).resolve().parents[1]
 WS = REPO / "molbuilder" / "web" / "static" / "lib" / "workspace" / "dispatcher.js"
@@ -36,24 +36,9 @@ KEPT = REPO / "molbuilder" / "web" / "static" / "lib" / "page-prefs.js"
 #: one reader of a server's answer (`support/molview_host.mjs`).
 HOST = Path(__file__).resolve().parent / "support" / "molview_host.mjs"
 
-# The browser around the page: its document and events, and the tab's own
-# storage -- carried whole from an earlier run when a test plays that tab
-# reloaded, empty for a new tab.
-BROWSER = """
-globalThis.window = globalThis;
-globalThis.document = { addEventListener() {}, body: { dataset: {} } };
-globalThis.addEventListener = () => {};
-globalThis.dispatchEvent = () => {};
-globalThis.CustomEvent = class { constructor(t, o) { this.detail = o && o.detail; } };
-
-const _tabStore = new Map(Object.entries(globalThis.__tabStorage || {}));
-globalThis.sessionStorage = {
-    getItem: (k) => (_tabStore.has(k) ? _tabStore.get(k) : null),
-    setItem: (k, v) => { _tabStore.set(k, String(v)); },
-    removeItem: (k) => { _tabStore.delete(k); },
-};
-globalThis.tabStorage = () => Object.fromEntries(_tabStore);
-"""
+# The tab's own storage is Node's (`tab_storage`): carried whole from an
+# earlier run when a test plays that tab reloaded, empty for a new tab.  The
+# store needs nothing else of a browser: no event it sends has a listener here.
 
 PRELUDE = f"""
 await import({json.dumps(KEPT.resolve().as_uri())});
@@ -87,9 +72,9 @@ def _run(snippet: str, *, app_at=None, tab_storage=None):
     """``snippet`` on a page in one browser tab -- ``tab_storage`` what that
     tab kept in an earlier run (none: a tab opened fresh) -- its requests
     answered by the app at ``app_at`` (none: a snippet that sends none)."""
-    seed = f"globalThis.__tabStorage = {json.dumps(tab_storage or {})};\n"
     return run_node([], PRELUDE + snippet, globals_js=(
-        seed + BROWSER + (served(app_at) if app_at else "")))
+        tab_storage_of(tab_storage)
+        + (served(app_at) if app_at else "")), storage=True)
 
 
 # ---------------------------------------------------------------------------
@@ -363,7 +348,7 @@ def _with_molview(app_at, snippet: str):
         await m.installMolecule({{ text: "1\\n\\nH 0 0 0\\n",
                                    filename: "/p/mine.xyz" }});
         {snippet}
-        """, globals_js=BROWSER + served(app_at))
+        """, globals_js=served(app_at), storage=True)
 
 
 def test_what_molview_saves_can_be_read_back(app_at):

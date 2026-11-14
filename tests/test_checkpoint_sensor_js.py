@@ -187,10 +187,6 @@ globalThis.document = {
   head: _mk("head"),
 };
 globalThis.getComputedStyle = () => ({ getPropertyValue: () => "" });
-globalThis.sessionStorage = {
-  _d: {}, getItem(k) { return this._d[k] ?? null; },
-  setItem(k, v) { this._d[k] = String(v); }, removeItem(k) { delete this._d[k]; },
-};
 globalThis.__els = _els;
 // A RELOAD: the page's DOM built afresh and the panel's module run again --
 // what the browser keeps across one, its session storage, kept.
@@ -260,9 +256,12 @@ def _set_up(folder):
 
 def _drive(app_at, script):
     """``script`` run against the panel, its requests answered by the app."""
+    # The tab's session storage is Node's own (`run_node(..., storage=True)`),
+    # kept across a reload as a browser keeps it.
     return run_node([_WORDS, _PREFS, _PANEL], script, globals_js=(
         _DOM + served(app_at)
-        + f"\nprocess.env.PANEL_URL = {_PANEL.resolve().as_uri()!r};"))
+        + f"\nprocess.env.PANEL_URL = {_PANEL.resolve().as_uri()!r};"),
+        storage=True)
 
 
 def _calls():

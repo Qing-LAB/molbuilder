@@ -17,7 +17,14 @@ side-effect, the ES module executes + exports. So ONE loader serves both.
 ``served(base)``: ``globals_js`` that answers the page's ``fetch`` from the app serving
   at ``base`` -- the real route's reply to the page's own request.
 
-``run_node(files, snippet, *, globals_js="", timeout=20)``:
+``tab_storage(seed)``: ``globals_js`` for one browser tab on Node's own ``sessionStorage``
+  (``run_node(..., storage=True)``), seeded, and read back by ``tabStorage()``.
+
+``TO_THE_BRIM``: ``globals_js`` defining ``toTheBrim(storage)`` -- a storage filled until
+  it takes not one character more, so the next write that grows it is refused by Node's
+  own quota (a full quota made for real, never an error typed in its shape).
+
+``run_node(files, snippet, *, globals_js="", static_root=None, timeout=20, storage=False)``:
   * ``files``   : ordered list of Path/str module files to load (dependencies first). Each is
                   dynamically imported (side effects apply; a later file sees earlier globals).
                   A classic file that hands its api to ``module.exports`` when it sees
@@ -32,12 +39,16 @@ side-effect, the ES module executes + exports. So ONE loader serves both.
                      a resolve hook mapping ``/static/…`` → that dir — mirroring the browser's
                      static root so consumer modules (e.g. ``import {mount} from
                      "/static/lib/molview/index.js"``) resolve in Node too.
+  * ``timeout`` : seconds before the run is failed.
+  * ``storage`` : Node's own Web Storage for the page (``process/testing.md`` § 4).
 """
 from __future__ import annotations
 
+import contextlib
 import json
 import shutil
 import subprocess
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -158,7 +169,46 @@ def served(base: str) -> str:
     )
 
 
-def run_node(files, snippet: str, *, globals_js: str = "", static_root=None, timeout: int = 20):
+#: A FULL QUOTA, MADE FOR REAL: Node's Web Storage enforces one (about 5 MiB
+#: a storage, measured 2026-11-14), so a storage is filled -- the longest
+#: value it still takes, found by halving -- and the next write that grows
+#: it is refused with Node's own error (`process/testing.md` § 4).
+TO_THE_BRIM = """
+globalThis.toTheBrim = (s) => {
+    let lo = 0, hi = 8 << 20;
+    while (lo < hi) {
+        const mid = Math.ceil((lo + hi) / 2);
+        // A refused write leaves the last value taken, so the filler ends
+        // holding the longest -- `lo`.
+        try { s.setItem("filler", "x".repeat(mid)); lo = mid; }
+        catch (_) { hi = mid - 1; }
+    }
+};
+"""
+
+
+def tab_storage(seed=None) -> str:
+    """``globals_js`` for ``run_node(..., storage=True)``:
+    a page in ONE browser tab, on Node's own ``sessionStorage`` -- ``seed``,
+    what the tab already holds when a test plays it reloaded, written into
+    it, and ``tabStorage()``, what it holds now, read through its own API
+    (`process/testing.md` § 4)."""
+    return (
+        f"for (const [k, v] of Object.entries({json.dumps(seed or {})})) "
+        "sessionStorage.setItem(k, v);\n"
+        "globalThis.tabStorage = () => Object.fromEntries(\n"
+        "  Array.from({ length: sessionStorage.length },\n"
+        "             (_, i) => sessionStorage.key(i))\n"
+        "    .map((k) => [k, sessionStorage.getItem(k)]));\n"
+    )
+
+
+def run_node(files, snippet: str, *, globals_js: str = "", static_root=None,
+             timeout: int = 20, storage: bool = False):
+    """``storage``: Node's own Web Storage, the ``sessionStorage`` and
+    ``localStorage`` a page keeps values in -- the real implementation, its
+    ``localStorage`` file the run's own, gone with it
+    (`process/testing.md` § 4)."""
     node = shutil.which("node")
     if node is None:
         pytest.skip("node not available")
@@ -189,10 +239,17 @@ def run_node(files, snippet: str, *, globals_js: str = "", static_root=None, tim
         f"{imports}\n"
         f"{snippet}\n"
     )
-    proc = subprocess.run(
-        [node, "--input-type=module", "-e", program],
-        capture_output=True, text=True, timeout=timeout,
-    )
+    with contextlib.ExitStack() as stack:
+        flags = []
+        if storage:
+            # THE RUN'S OWN localStorage FILE, thrown away with the run.
+            folder = stack.enter_context(tempfile.TemporaryDirectory())
+            flags = ["--experimental-webstorage",
+                     f"--localstorage-file={Path(folder) / 'local.db'}"]
+        proc = subprocess.run(
+            [node, *flags, "--input-type=module", "-e", program],
+            capture_output=True, text=True, timeout=timeout,
+        )
     if proc.returncode != 0:
         pytest.fail(
             f"node exited {proc.returncode}\nstderr:\n{proc.stderr}\nstdout:\n{proc.stdout}"

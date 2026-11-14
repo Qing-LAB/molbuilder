@@ -24,7 +24,7 @@ from pathlib import Path
 
 import pytest
 
-from tests._node_esm import run_node, served
+from tests._node_esm import TO_THE_BRIM, run_node, served
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -33,22 +33,6 @@ PAGE_BUSY = ROOT / "molbuilder/web/static/lib/page-busy.js"
 #: What a page keeps in this browser -- loaded by the page header before
 #: any page's own script (`runtime.md` § 3).
 KEPT = ROOT / "molbuilder/web/static/lib/page-prefs.js"
-
-#: What a browser has and node lacks, as a page starts: an empty
-#: ``sessionStorage``, a document with nothing on it.
-_BROWSER = """
-const _store = new Map();
-globalThis.sessionStorage = {
-    getItem:    k => _store.has(k) ? _store.get(k) : null,
-    setItem:    (k, v) => _store.set(k, String(v)),
-    removeItem: k => _store.delete(k),
-    clear:      () => _store.clear(),
-};
-globalThis.document = {
-    addEventListener: () => {},
-    getElementById:   () => null,
-};
-"""
 
 
 def _run(snippet: str, app_at: "str | None" = None) -> object:
@@ -61,7 +45,9 @@ def _run(snippet: str, app_at: "str | None" = None) -> object:
             f"const {{ pageBusy }} = await import("
             f"{json.dumps(PAGE_BUSY.as_uri())});\n"
             f"{snippet}",
-        globals_js=_BROWSER + (served(app_at) if app_at else ""))
+        globals_js=served(app_at) if app_at else "",
+        # The page's tab storage, as a page starts: Node's own, empty.
+        storage=True)
 
 
 @pytest.fixture(scope="module")
@@ -671,44 +657,37 @@ class TestSetSharedStorageFailure:
         Private-browsing `SecurityError` and quota failures are real, and the slots
         are the browser's short-term storage (`web/projects.md` § 2). The subtle
         half is the second assertion: the publish reads its payload explicitly instead
-        of re-reading storage, so after a failed write subscribers get `/after` rather
-        than the `/before` still on disk. Without it, every tab quietly follows a
-        selection the user has already moved away from.
+        of re-reading storage, so after a failed write subscribers get the new pick
+        rather than the `/before` the tab's storage still holds. Without it, every tab
+        quietly follows a selection the user has already moved away from.
         """
-        out = _run('''
-            // Make sessionStorage.setItem throw.  Use a wrapper
-            // so we can flip it on/off.
-            let storageBroken = false;
-            const origSet = sessionStorage.setItem.bind(sessionStorage);
-            global.sessionStorage.setItem = (k, v) => {
-                if (storageBroken) {
-                    const e = new Error("QuotaExceededError");
-                    e.name = "QuotaExceededError";
-                    throw e;
-                }
-                return origSet(k, v);
-            };
+        out = _run(TO_THE_BRIM + '''
             const calls = [];
             state.projects.onChange(p => calls.push({...p}));
             // First setShared works.
             const r1 = state.setShared("/before", "/before/x");
-            // Now break storage.
-            storageBroken = true;
-            const r2 = state.setShared("/after", "/after/y");
-            console.log(JSON.stringify({
-                r1: r1,
-                r2: r2,
-                calls: calls,
-            }));
+            // A FULL QUOTA, made for real: the tab's storage filled until it
+            // takes not one character more -- so the longer pick below is
+            // refused by Node's own quota.
+            toTheBrim(sessionStorage);
+            const r2 = state.setShared("/after-the-quota-filled",
+                                       "/after-the-quota-filled/y");
+            const kept = Array.from({ length: sessionStorage.length },
+                                    (_, i) => sessionStorage.key(i))
+                .filter((k) => k !== "filler")
+                .map((k) => sessionStorage.getItem(k));
+            console.log(JSON.stringify({ r1, r2, calls, kept }));
         ''')
         assert out["r1"] == {"ok": True}
         assert out["r2"] == {"ok": True}    # MUST NOT throw
         # 3 calls: initial-fire on subscribe + 2 from setShared.
         assert len(out["calls"]) == 3
-        # The post-failure publish carries the INTENDED payload
-        # (sessionStorage didn't update, so without the explicit
-        # payload the publish would carry "/before" + "/before/x").
-        assert out["calls"][2] == {"dir": "/after", "file": "/after/y"}
+        # The storage kept the earlier pick -- the write was refused --
+        # and the post-failure publish carries the INTENDED payload, which
+        # re-reading the storage would have given as "/before".
+        assert "/before/x" in out["kept"], out["kept"]
+        assert out["calls"][2] == {"dir": "/after-the-quota-filled",
+                                   "file": "/after-the-quota-filled/y"}
 
 
 # ----- Subscriber contract: throw on duplicate ------------------- #

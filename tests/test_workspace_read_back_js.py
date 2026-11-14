@@ -15,12 +15,11 @@ what they saved was there and could not be read.
 """
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 import pytest
 
-from tests._node_esm import run_node, served
+from tests._node_esm import run_node, served, tab_storage as _tab
 
 _LIB = Path(__file__).resolve().parents[1] / "molbuilder" / "web" / "static" / "lib"
 _STORE = _LIB / "workspace" / "dispatcher.js"
@@ -29,22 +28,16 @@ _BAR = _LIB / "app-notifications.js"
 #: (`runtime.md` § 3), loaded by the page header before any page's own script.
 _KEPT = _LIB / "page-prefs.js"
 
-#: The page around the store and the bar: its event bus, a document with no
-#: bar drawn in it -- the bar keeps its rows (``notify.list()``) either way --
-#: and ONE browser tab's storage, the same tab's on every opening, so a second
-#: opening is that tab reloaded and finds its files (`workspace.md` § 4).
+#: The page around the store and the bar: its event bus, Node's own
+#: `EventTarget`, which the bar listens on -- the bar keeps its rows
+#: (``notify.list()``) with no document to draw them in.  ONE browser tab's
+#: storage, Node's own (`_node_esm.tab_storage`), the same
+#: tab's on every opening, so a second opening is that tab reloaded and finds
+#: its files (`workspace.md` § 4).
 _PAGE = """
-const __tabStore = new Map(Object.entries(globalThis.__tabStorage || {}));
-globalThis.tabStorage = () => Object.fromEntries(__tabStore);
-globalThis.sessionStorage = {
-    getItem: (k) => (__tabStore.has(k) ? __tabStore.get(k) : null),
-    setItem: (k, v) => { __tabStore.set(k, String(v)); },
-    removeItem: (k) => { __tabStore.delete(k); },
-};
 const __bus = new EventTarget();
 globalThis.addEventListener = __bus.addEventListener.bind(__bus);
 globalThis.dispatchEvent = __bus.dispatchEvent.bind(__bus);
-globalThis.document = { getElementById: () => null, addEventListener() {} };
 """
 
 @pytest.fixture
@@ -58,9 +51,9 @@ def app_at(isolated_projects_root):
 def _page(base, snippet, tab_storage=None):
     """``snippet`` on the page in one browser tab -- ``tab_storage`` what the
     tab kept in an earlier opening, so this one is that tab reloaded."""
-    seed = f"globalThis.__tabStorage = {json.dumps(tab_storage or {})};\n"
     return run_node([_KEPT, _BAR, _STORE], snippet,
-                    globals_js=seed + _PAGE + served(base))
+                    globals_js=_tab(tab_storage) + _PAGE + served(base),
+                    storage=True)
 
 
 def test_a_state_that_cannot_be_read_back_is_said_and_a_miss_is_not(app_at):

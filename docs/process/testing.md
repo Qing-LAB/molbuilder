@@ -346,6 +346,39 @@ and records only the ones already met. So:
 *The failure it would have caught*, above, means our code going wrong, never a
 list of what the outside world might send.
 
+### A fake stays only for a named need, and is built through the real entry *(user, 2026-11-14)*
+
+> *"Do we still have code that fakes things when there is no real
+> justification/need for such design of tests?"* — *"Even the fake ones, when
+> possible should be constructed with api/module entry relevant to the test."*
+> — *"Otherwise you are maintaining two sets of facts and tests are not
+> actively reviewed so it will desync easily."*
+
+A hand-typed stand-in is a second copy of the facts, in code nobody reviews as
+code: it drifts from what it stands for, and a test reading it passes while the
+real thing fails (one kept a `classList` door the code had stopped using; one
+answered every route with success, where the route refuses).
+
+1. **A test uses the real thing**: the real library loaded (`run_node` with the
+   module's own files, § 4), the real route asked (`served`), the real page
+   driven (§ 5), the road's own writers for its input (§ 2a, `support.road`).
+2. **A fake stays only for a named need**, said in the test: keeping the test
+   off the person's machine (§ 2b), a failure that cannot be caused for real
+   (a full disk, a builder falling over), or a timing (a slow server — the real
+   answer held, `__hold`, never an answer invented).
+3. **Even then it is built through the entry the tested code uses**: a server
+   answer from the route, or the module that composes it; a result as the
+   module's own type (`subprocess.CompletedProcess`, the installer's
+   `InstallResult`), never a `MagicMock`; a failure at the door that fails; a
+   refusing browser storage by the real `Storage` throwing the browser's own
+   error — never a hand-typed literal of its shape. **Measure before calling a
+   failure uncausable**: a full storage quota looked like one, and Node
+   enforces a real one (§ 4).
+
+Where the suite still breaks this, the finish-line review's O-TESTS row
+records the audit, by kind of fake, and the parts of the tests stretch that
+remove what is left.
+
 ### Every test states its GOAL and its CONTRACT, in its first lines *(user, 2026-09-08)*
 
 > *"The tests should have their goal clearly stated upfront in their starting
@@ -706,6 +739,24 @@ plus a handful of others. `tests/_node_esm.py` is **the harness to use**, and
 its `run_node(files, snippet)` loads an ordered list of module files via
 dynamic `import()` and then runs a JS snippet against them.
 
+**The browser's own storage** *(2.70.3)*: `run_node(..., storage=True)` runs
+Node with its Web Storage (`--experimental-webstorage`, a `localStorage` file of
+the run's own, gone with it) — the `sessionStorage` and `localStorage` a page
+keeps values in (`lib/page-prefs.js`, `runtime.md` § 3), the real
+implementation, read back through its own API (`length`, `key(i)`,
+`getItem`); `tab_storage(seed)` plays one browser tab on it — what the tab
+already holds when a test plays it reloaded, written in, and `tabStorage()`,
+what it holds now. **A full quota is made for real**: Node enforces one (about
+5 MiB a storage), and `TO_THE_BRIM` fills a storage until it takes not one
+character more, so the next write that grows it is refused with Node's own
+error. A private window refusing each call, or storage blocked outright, are
+not states Node can be brought to: there the real `Storage` — or the window's
+door to it — throws the browser's own error (`DOMException`,
+`SecurityError`), never an object typed in its shape. A test that reads or
+writes a page's storage asks for it with `storage=True` even where Node has it
+unasked (Node 26 turns Web Storage on by default; Node 24, the other one found
+on this machine, does not), so it runs alike on either.
+
 **A page test's input is what the server answers** *(F9, 2.67.9)*. The page's
 requests go to the real routes of a live app (`served(base)`, the app started by
 `support.live_server.serve`), on a folder the real commands made or on a real
@@ -728,7 +779,8 @@ rule) needs no server and is tested as it is.
 > `projects_state_busy_guard`, `structure_page`, `structure_save`,
 > `tab_strip`, `task_setup_save_bar`), and **2** drive a browser under a
 > fast-tier name (`form_schema_diff`, `form_schema_setvalues`). Converting
-> them is 2.67.12's sweep (plan F9). Reach for `run_node` in anything new.
+> them is the tests stretch's (the finish-line review's O-TESTS). Reach for
+> `run_node` in anything new.
 
 The clever part is that it spans the ESM migration: a classic IIFE file publishes
 its `window.molbuilder.*` global as a side effect, and a converted ES module

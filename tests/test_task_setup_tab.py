@@ -151,11 +151,6 @@ for (const name of ["addEventListener", "removeEventListener"]) {
 }
 globalThis.requestAnimationFrame = (f) => setTimeout(f, 0);
 globalThis.getComputedStyle = () => ({ getPropertyValue: () => "" });
-const __store = () => { const m = new Map(); return {
-  getItem: (k) => (m.has(k) ? m.get(k) : null),
-  setItem: (k, v) => m.set(k, String(v)), removeItem: (k) => m.delete(k) }; };
-globalThis.sessionStorage = __store();
-globalThis.localStorage = __store();
 globalThis.location = new URL("http://127.0.0.1/task-setup");
 globalThis.history = { replaceState() {}, pushState() {} };
 for (const name of ["MutationObserver", "ResizeObserver",
@@ -225,7 +220,7 @@ def test_the_page_script_reads_a_calculation_on_the_page_as_served(
             globals_js=("globalThis.__held = new Set(%s);\n"
                         % json.dumps(sorted(ids_of(page)))
                         + _THE_SERVED_DOCUMENT + served(base)),
-            static_root=STATIC)
+            static_root=STATIC, storage=True)
     assert got == {"state": "loaded", "said": "Loaded — H2",
                    "machine_card_shown": True}, got
 
