@@ -19,11 +19,11 @@ under node): the picker's scan and a run picked off the ladder alike.
 from __future__ import annotations
 
 import json
-import shutil
-import subprocess
 from pathlib import Path
 
 import pytest
+
+from tests._node_esm import run_node
 
 ROOT = Path(__file__).resolve().parents[1]
 STATIC = ROOT / "molbuilder/web/static/lib"
@@ -63,25 +63,17 @@ CASES = [
 
 def _page_reading(body: dict) -> dict:
     """``body`` read as the page reads a folder's answer -- the picker's
-    one reading (`resultsFilePicker.readAnswer`), under node -- with the
-    words every listed file's ``meta`` carries to its presenter."""
-    node = shutil.which("node")
-    if node is None:
-        pytest.skip("node not available")
-    script = "\n".join([
-        "global.window = global;",
-        (STATIC / "time-ago.js").read_text(),
-        (STATIC / "results/file-picker.js").read_text(),
-        "const a = window.molbuilder.resultsFilePicker.readAnswer("
-        + json.dumps(body) + ", null);",
-        "const m = window.molbuilder.resultsFilePicker;",
-        "console.log(JSON.stringify({opens: a.opens, points: a.points,",
-        "  words: a.results.map((r) => { const x = m.metaOf(r);",
-        "    return [x.engine_words, x.noun]; })}));"])
-    proc = subprocess.run([node, "--input-type=commonjs", "-e", script],
-                          capture_output=True, text=True, timeout=15)
-    assert proc.returncode == 0, proc.stderr
-    return json.loads(proc.stdout.strip().splitlines()[-1])
+    one reading (`resultsFilePicker.readAnswer`), under node, the picker
+    loaded as `results.html` loads it, the one "ago" first
+    (`_node_esm.run_node`) -- with the words every listed file's ``meta``
+    carries to its presenter."""
+    return run_node(
+        [STATIC / "time-ago.js", STATIC / "results/file-picker.js"],
+        "const m = window.molbuilder.resultsFilePicker;\n"
+        "const a = m.readAnswer(" + json.dumps(body) + ", null);\n"
+        "console.log(JSON.stringify({opens: a.opens, points: a.points,\n"
+        "  words: a.results.map((r) => { const x = m.metaOf(r);\n"
+        "    return [x.engine_words, x.noun]; })}));")
 
 
 @pytest.mark.parametrize("calculation,where,want", CASES,

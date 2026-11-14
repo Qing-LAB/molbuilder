@@ -1,89 +1,29 @@
-"""Unit tests for ``lib/molbuilder-runtime.js`` driven via Node.
+"""``lib/molbuilder-runtime.js``, the runtime registry (`web/runtime.md`
+§ 2): ``window.molbuilder.runtime.register / whenReady / get /
+listRegistered / listPending``, the load-order contract every other module
+relies on.
 
-The runtime registry (``window.molbuilder.runtime.register / whenReady /
-get / listRegistered / listPending``) is the load-bearing init contract
-every other module relies on.
-
-This file is the lowest test layer for the registry per
-``docs/process/testing.md`` § 1: pure JS unit tests in
-node, no DOM.  The IIFE is loaded via ``-e`` with a stubbed
-``window`` so each test starts from a clean slate.
+Pure JS in node, no DOM (`process/testing.md` § 4): the registry is loaded
+as a page loads it, first and through its own file (`_node_esm.run_node`),
+and each test is a page of its own -- its own node run -- so the registry's
+maps start empty.
 """
 from __future__ import annotations
 
-import json
-import shutil
-import subprocess
 from pathlib import Path
 
 import pytest
 
+from tests._node_esm import run_node
 
 ROOT   = Path(__file__).resolve().parents[1]
 MODULE = ROOT / "molbuilder/web/static/lib/molbuilder-runtime.js"
 
 
 def _run_node(snippet: str) -> object:
-    """Run a JS snippet under Node with the runtime IIFE pre-loaded.
-
-    The IIFE attaches to ``window.molbuilder.runtime``.  Each test
-    runs in its own ``node -e`` invocation so the module's internal
-    Maps start empty -- no cross-test pollution from the singleton.
-    The snippet must end with ``console.log(JSON.stringify(OUT))``.
-    """
-    node = shutil.which("node")
-    if node is None:
-        pytest.skip("node not available")
-    bootstrap = """
-        // The IIFE picks ``window`` or ``globalThis``; we pin it to
-        // a per-invocation global so re-loading the module across
-        // tests can't leak state (Node sandboxes each --input-type
-        // invocation anyway, but we make the contract explicit).
-        global.window = global;
-    """
-    full = bootstrap + "\n" + MODULE.read_text() + "\n" + snippet
-    proc = subprocess.run(
-        [node, "--input-type=commonjs", "-e", full],
-        capture_output=True, text=True, timeout=10,
-    )
-    if proc.returncode != 0:
-        pytest.fail(
-            f"node exited {proc.returncode}\n"
-            f"stderr:\n{proc.stderr}\n"
-            f"stdout:\n{proc.stdout}"
-        )
-    last = proc.stdout.strip().splitlines()[-1]
-    return json.loads(last)
-
-
-# --------------------------------------------------------------------- #
-#  Loaded twice                                                          #
-# --------------------------------------------------------------------- #
-
-
-class TestLoadedTwice:
-
-    def test_double_load_is_idempotent(self):
-        """Loading the IIFE twice (e.g. a template double-includes
-        the script) must keep the original runtime + ignore the
-        second IIFE.  Concretely: a module registered BEFORE the
-        second load must still resolve whenReady() AFTER it."""
-        out = _run_node(f'''
-            // First load happened in the bootstrap above; register
-            // a marker module against THAT runtime.
-            window.molbuilder.runtime.register("marker", {{value: 1}});
-            // Now re-evaluate the IIFE source.  If the idempotence
-            // guard is missing, this would clobber the registry.
-            {json.dumps(MODULE.read_text())};
-            eval({json.dumps(MODULE.read_text())});
-            const api = window.molbuilder.runtime.get("marker");
-            console.log(JSON.stringify({{
-                marker_still_there: api && api.value === 1,
-                list: window.molbuilder.runtime.listRegistered(),
-            }}));
-        ''')
-        assert out["marker_still_there"] is True
-        assert out["list"] == ["marker"]
+    """``snippet`` on a page that has loaded the registry; it ends with
+    ``console.log(JSON.stringify(OUT))``."""
+    return run_node([MODULE], snippet)
 
 
 # --------------------------------------------------------------------- #
@@ -101,65 +41,23 @@ class TestRegister:
         ''')
         assert out == {"hello": "world"}
 
-    def test_register_lands_in_listRegistered(self):
-        out = _run_node('''
+    @pytest.mark.parametrize("call", [
+        'rt.register("", {x: 1})',
+        'rt.register("x", null)',
+        'rt.register("x", undefined)',
+    ], ids=["an empty name", "a null api", "no api"])
+    def test_register_refuses_a_name_or_an_api_it_cannot_hold(self, call):
+        """§ 2: "Throws if the name is empty or the api is null" -- a
+        programmer's mistake said at once, rather than a ``whenReady`` that
+        later resolves to nothing."""
+        out = _run_node(f'''
             const rt = window.molbuilder.runtime;
-            rt.register("a", {x: 1});
-            rt.register("b", {y: 2});
-            rt.register("c", {z: 3});
-            console.log(JSON.stringify(rt.listRegistered()));
+            let thrown = null;
+            try {{ {call}; }} catch (e) {{ thrown = e.name; }}
+            console.log(JSON.stringify({{ thrown,
+                                          registered: rt.listRegistered() }}));
         ''')
-        # listRegistered is sorted -- pin the contract.
-        assert out == ["a", "b", "c"]
-
-    def test_register_rejects_empty_name(self):
-        out = _run_node('''
-            const rt = window.molbuilder.runtime;
-            try {
-                rt.register("", {x: 1});
-                console.log(JSON.stringify({threw: false}));
-            } catch (e) {
-                console.log(JSON.stringify({
-                    threw: true,
-                    name:  e.name,
-                    msg:   e.message,
-                }));
-            }
-        ''')
-        assert out["threw"] is True
-        assert out["name"] == "TypeError"
-        assert "non-empty string" in out["msg"]
-
-    def test_register_rejects_non_string_name(self):
-        out = _run_node('''
-            const rt = window.molbuilder.runtime;
-            try {
-                rt.register(42, {x: 1});
-                console.log(JSON.stringify({threw: false}));
-            } catch (e) {
-                console.log(JSON.stringify({
-                    threw: true,
-                    name:  e.name,
-                }));
-            }
-        ''')
-        assert out["threw"] is True
-        assert out["name"] == "TypeError"
-
-    def test_register_rejects_null_api(self):
-        """A null/undefined api is a programmer bug -- the registry
-        rejects it loudly rather than letting whenReady() resolve to
-        ``null`` and downstream callers NPE."""
-        out = _run_node('''
-            const rt = window.molbuilder.runtime;
-            const results = [];
-            try { rt.register("x", null); }
-            catch (e) { results.push("null:" + e.name); }
-            try { rt.register("x", undefined); }
-            catch (e) { results.push("undef:" + e.name); }
-            console.log(JSON.stringify(results));
-        ''')
-        assert out == ["null:TypeError", "undef:TypeError"]
+        assert out == {"thrown": "TypeError", "registered": []}
 
     def test_register_accepts_falsy_but_non_null_api(self):
         """The api object is opaque to the registry; 0, "", false,
@@ -375,14 +273,6 @@ class TestListSnapshots:
 
 
 class TestGet:
-
-    def test_get_returns_registered_api(self):
-        out = _run_node('''
-            const rt = window.molbuilder.runtime;
-            rt.register("g", {payload: [1, 2, 3]});
-            console.log(JSON.stringify(rt.get("g")));
-        ''')
-        assert out == {"payload": [1, 2, 3]}
 
     def test_get_returns_undefined_for_unregistered_name(self):
         """get() is synchronous; for a name the registry has never

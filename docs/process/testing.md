@@ -773,16 +773,23 @@ request the page aborted fails when released, not at once as in a browser.
 The page's own arithmetic on analytic numbers (a unit conversion, a layout
 rule) needs no server and is tested as it is.
 
-> **It is the harness to use, not the harness in use.** Measured 2026-11-07,
-> after 2.67.9 moved the page tests onto it: of the **31** `*_js.py` files,
-> **20** run on `_node_esm` (42 files across the whole suite import it); **9**
-> still start node with their own `subprocess.run` (`format_fetch_error`,
-> `molbuilder_runtime`, `page_busy`, `projects_render_sidebar`,
-> `projects_state_busy_guard`, `structure_page`, `structure_save`,
-> `tab_strip`, `task_setup_save_bar`), and **2** drive a browser under a
-> fast-tier name (`form_schema_diff`, `form_schema_setvalues`). Converting
-> them is the tests stretch's (the finish-line review's O-TESTS). Reach for
-> `run_node` in anything new.
+> **It is the harness to use, not the harness in use.** Measured 2026-11-14
+> (2.70.9): of the **36** `*_js.py` files, **27** run on `_node_esm` (53
+> files across the whole suite import it); **7** still start node with their
+> own `subprocess.run` (`one_stop_list`, `page_busy`,
+> `projects_render_sidebar`, `structure_page`, `structure_save`, `tab_strip`,
+> `task_setup_save_bar`) -- all but `structure_page` with a DOM of their
+> own -- and **2** drive a browser under a fast-tier name (`form_schema_diff`,
+> `form_schema_setvalues`). Converting them is the tests stretch's (the
+> finish-line review's O-TESTS). Reach for `run_node` in anything new.
+
+**A classic script loads as CommonJS** under `run_node`: a file with no
+`import` or `export` is read by node's CommonJS loader, so a second
+`import()` of it -- with a query string or without -- is answered from that
+loader's cache and does not run it again.  A browser runs a classic script
+each time a page includes it, in the page's global scope; a test that needs
+a script run again runs the file's own text that way,
+`vm.runInThisContext(readFileSync(path))`.
 
 The clever part is that it spans the ESM migration: a classic IIFE file publishes
 its `window.molbuilder.*` global as a side effect, and a converted ES module

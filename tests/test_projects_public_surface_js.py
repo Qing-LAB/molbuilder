@@ -14,8 +14,10 @@ requests and envelopes are `test_projects_api_envelope_js.py`'s:
     change landed, and a refresh that fails does not fail the change (§ 5);
   * every call answers `{ok, ...}` and never throws (§ 5) -- `refresh`,
     `readCurrentFile`, a refused `writeFile`, `upload`;
-  * `navigateTo` refuses while the page's busy fence is held
-    (`ui-contract.md` § 10, *Programmatic races*).
+  * `setShared` and `navigateTo` refuse while the page's busy fence is
+    held (`ui-contract.md` § 10, *Programmatic races*);
+  * each page keeps its own pick, and a hand-off writes the target page's
+    (§ 2).
 """
 from __future__ import annotations
 
@@ -202,6 +204,145 @@ class TestSetSharedOnTheDoor:
             console.log(JSON.stringify({ok: r.ok}));
         ''')
         assert out["ok"] is True
+
+
+# ----- setShared while the page's busy fence is held -------------- #
+
+
+class TestSetSharedWhenBusy:
+    """`ui-contract.md` § 10, *Programmatic races*: the cover blocks clicks,
+    not code, so the selection's own setter refuses while the page's busy
+    fence (`lib/page-busy.js`) is claimed -- answering `{ok: false}`, keeping
+    nothing, telling no subscriber.  A tab-level navigator (the Results file
+    picker) could otherwise move the sidebar's folder mid-save, which
+    "retargets the operation's later steps"."""
+
+    def test_returns_not_ok_envelope(self):
+        out = _run('''
+            pageBusy.claim("Saving FDF…", []);
+            const r = state.setShared("/dir", "/dir/file.out");
+            console.log(JSON.stringify(r));
+        ''')
+        assert out["ok"] is False
+        assert "page is busy" in out["error"]
+        # The fence's reason, so the caller can say why.
+        assert "Saving FDF" in out["error"]
+
+    def test_does_not_update_session_storage(self):
+        """Nothing kept: the tab's storage holds what it held, and the
+        selection reads as it did."""
+        out = _run('''
+            const held = sessionStorage.length;
+            pageBusy.claim("Save in flight", []);
+            state.setShared("/locked-target", "/locked-target/x.out");
+            console.log(JSON.stringify({
+                grew: sessionStorage.length - held,
+                dir:  state.projects.getCurrentDir(),
+                file: state.projects.getCurrentFile(),
+            }));
+        ''')
+        assert out == {"grew": 0, "dir": "", "file": ""}
+
+    def test_does_not_fire_subscribers(self):
+        """A refused pick is not published: a subscriber that re-renders on
+        a change (the Results viewer) would otherwise tear down the
+        inspector while the fence is still held."""
+        out = _run('''
+            const calls = [];
+            state.projects.onChange(p => calls.push(p));
+            pageBusy.claim("Save in flight", []);
+            state.setShared("/locked-target", "/locked-target/x.out");
+            console.log(JSON.stringify(calls));
+        ''')
+        # Only the subscription's own first fire.
+        assert out == [{"dir": "", "file": ""}]
+
+    def test_release_restores_set_shared(self):
+        """Once the fence is released, a pick is taken and kept again."""
+        out = _run('''
+            pageBusy.claim("step 1", []);
+            const blocked = state.setShared("/a", "/a/b");
+            pageBusy.release();
+            const allowed = state.setShared("/c", "/c/d");
+            console.log(JSON.stringify({
+                blocked, allowed,
+                dir:  state.projects.getCurrentDir(),
+                file: state.projects.getCurrentFile(),
+            }));
+        ''')
+        assert out["blocked"]["ok"] is False
+        assert out["allowed"] == {"ok": True}
+        assert (out["dir"], out["file"]) == ("/c", "/c/d")
+
+
+# ----- each page's own pick (`projects.md` § 2) -------------------- #
+
+#: Where the page is: node has no address, so the page's own is given as
+#: the browser's `URL` -- the module keys each page's pick by its path.
+AT = "globalThis.location = new URL({!r});"
+
+
+class TestEachPagesOwnPick:
+    """`projects.md` § 2: each page keeps its own pick in the tab's storage,
+    and the shared most-recent is only the fallback a page with none of its
+    own falls back to.  A navigation in the tab is played as the page's
+    address changing."""
+
+    def test_a_handoff_lands_in_the_target_tabs_own_slot(self):
+        """'Open in Molbuilder' writes the TARGET page's own pick: the
+        shared most-recent alone would be shadowed by the target's own
+        memory (the silent break the door exists to prevent)."""
+        out = _run(AT.format("http://127.0.0.1/molbuilder") + '''
+            state.projects.setShared("/p/old/place", "");
+        ''' + AT.format("http://127.0.0.1/results") + '''
+            const r = state.projects.handOffSelection(
+                "/molbuilder", "/p/proj/optimization/run-1",
+                "/p/proj/optimization/run-1/out.xyz");
+        ''' + AT.format("http://127.0.0.1/molbuilder") + '''
+            console.log(JSON.stringify({
+                ok: r.ok,
+                dir: state.projects.getCurrentDir(),
+                file: state.projects.getCurrentFile(),
+            }));
+        ''')
+        assert out["ok"] is True
+        assert out["dir"] == "/p/proj/optimization/run-1"
+        assert out["file"] == "/p/proj/optimization/run-1/out.xyz"
+
+    def test_a_page_never_visited_starts_at_the_last_pick_anywhere(self):
+        """"A tab you have never visited starts at the most recent place
+        anywhere -- every write also refreshes a shared most-recent slot."
+        A pick kept for its own page alone would open every other page
+        empty."""
+        out = _run(AT.format("http://127.0.0.1/molbuilder") + '''
+            state.projects.setShared("/p/structure", "/p/structure/a.xyz");
+        ''' + AT.format("http://127.0.0.1/results") + '''
+            console.log(JSON.stringify({
+                dir: state.projects.getCurrentDir(),
+                file: state.projects.getCurrentFile(),
+            }));
+        ''')
+        assert out == {"dir": "/p/structure", "file": "/p/structure/a.xyz"}, (
+            f"a page never visited did not start at the last pick: {out}")
+
+    def test_a_tab_that_cleared_its_file_keeps_it_cleared(self):
+        """Picking a new folder clears the page's file, and the page's own
+        empty pick shadows the shared most-recent.  THE SILENT FAILURE: a
+        store that dropped an empty value (the one door before 2.69.28) let
+        a page that cleared its file fall back to the file another page
+        picked last."""
+        out = _run(AT.format("http://127.0.0.1/molbuilder") + '''
+            state.projects.setShared("/m", "");
+        ''' + AT.format("http://127.0.0.1/results") + '''
+            state.projects.setShared("/r", "/r/x.xyz");
+        ''' + AT.format("http://127.0.0.1/molbuilder") + '''
+            console.log(JSON.stringify({
+                dir: state.projects.getCurrentDir(),
+                file: state.projects.getCurrentFile(),
+            }));
+        ''')
+        assert out == {"dir": "/m", "file": ""}, (
+            f"a page that cleared its file picked up another page's: {out}")
 
 
 # ----- readRange: a network drop -------------------------------- #

@@ -14,11 +14,11 @@ Contract: `docs/web/bench-summary.md`.
 from __future__ import annotations
 
 import json
-import shutil
-import subprocess
 from pathlib import Path
 
 import pytest
+
+from tests._node_esm import lifted, run_node
 
 pytestmark = pytest.mark.module
 
@@ -26,29 +26,15 @@ ROOT = Path(__file__).resolve().parents[1]
 CARD = ROOT / "molbuilder/web/static/lib/inspectors/bench-summary.js"
 
 
-def _fn(src: str, name: str) -> str:
-    """One `function <name>(` through to the next top-level `function `."""
-    start = src.index(f"    function {name}(")
-    nxt = src.find("\n    function ", start + 1)
-    return src[start:nxt if nxt != -1 else len(src)].rstrip()
-
-
 def _usage_line(metrics: dict) -> str:
-    node = shutil.which("node")
-    if node is None:                                    # pragma: no cover
-        pytest.skip("node not available")
-    src = CARD.read_text(encoding="utf-8")
-    bootstrap = (
-        f"{_fn(src, '_num')}\n"
-        f"{_fn(src, '_usageLine')}\n"
-        f"console.log(JSON.stringify("
-        f"_usageLine({{metrics: {json.dumps(metrics)}}})));"
-    )
-    proc = subprocess.run([node, "--input-type=commonjs", "-e", bootstrap],
-                          capture_output=True, text=True, timeout=10)
-    if proc.returncode != 0:                            # pragma: no cover
-        pytest.fail(f"node exited {proc.returncode}\n{proc.stderr}")
-    return json.loads(proc.stdout.strip())
+    """The card's usage line for a trial carrying ``metrics``: its two
+    private functions lifted out of the shipped file (`_node_esm.lifted`)
+    and run under node -- a pure formatter, no page around it."""
+    def fn(name):
+        return lifted(CARD, f"    function {name}(", "\n    function ")
+    return run_node([], f"{fn('_num')}\n{fn('_usageLine')}\n"
+                    f"console.log(JSON.stringify("
+                    f"_usageLine({{metrics: {json.dumps(metrics)}}})));")
 
 
 def _real_metrics() -> dict:

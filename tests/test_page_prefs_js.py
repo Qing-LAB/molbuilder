@@ -84,7 +84,7 @@ def test_an_empty_value_is_kept():
     """`runtime.md` § 3: `null` drops a value, "" is one.  THE SILENT
     FAILURE: an empty value read as nothing kept -- the sidebar's cleared
     file falling back to the pick another page made, which
-    `test_projects_state_busy_guard_js.py` asks of the selection itself."""
+    `test_projects_public_surface_js.py` asks of the selection itself."""
     out = _run("""
         prefs.write("current_file.results", "");
         const kept = prefs.read("current_file.results");

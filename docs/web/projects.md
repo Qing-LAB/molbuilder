@@ -581,8 +581,6 @@ into the Documents tab). These are tracked as known gaps.
 
 ## 7. Test map
 
-- `test_projects_state_busy_guard_js.py` — the selection state's busy guard, and a
-  hand-off landing in the other tab's own slot.
 - `test_sidebar_e2e.py` — in the browser: each tab back to its own folder and file
   (§ 2), a project deleted only once its name is typed, the create bar's
   project, folder and upload, and a row's `⋯` menu closed by a scroll that
@@ -590,7 +588,8 @@ into the Documents tab). These are tracked as known gaps.
 - `test_projects_public_surface_js.py` — what the public calls do, fed the real
   files routes: a change that landed announces the folders it changed, a
   refused one announces nothing, a commit names the whole path and moves the
-  selection,
+  selection, a pick refused while the page is busy is neither kept nor told,
+  each page keeps its own pick and a hand-off lands in the target page's,
   a read and a write answer the uniform result, a subscription taken twice is
   refused by name, and the root asked for before the start has answered is
   answered once it does, and asked after, at once — with the words the start
