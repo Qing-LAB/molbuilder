@@ -176,18 +176,21 @@ def siesta_config_from_citation(answers: CitationAnswers, *, label: str,
     "work it out" (`science/chemistry-correctness.md` § 2a).
     """
     from ..config.siesta import SiestaConfig
-    if answers.net_charge:
-        # ES7 (`science/chemistry-correctness.md` § 2a): a transport
-        # calculation's boundaries are OPEN -- the leads set the electron
-        # number -- so the junction must be neutral, and a geometry relaxed
-        # at another charge is not this junction's.
+    # ES7 (`science/chemistry-correctness.md` § 2a): the charge a transport
+    # calculation carries is its kind's (the kind table's `charge`, the
+    # record the state's rule and the settings gate read), and a geometry
+    # relaxed at another is not this junction's -- refused in the record's
+    # own reason.
+    from ..kind_table import kind as _kind
+    kind = _kind("transport")
+    fixed = kind.charge
+    if answers.net_charge != fixed.value:
         raise ValueError(
             f"the citation's record states a net charge of "
             f"{answers.net_charge:+d} ({answers.source_name or 'its record'}), "
-            f"and a transport calculation cannot: its boundaries are open and "
-            f"the leads set the electron number, so the junction must be "
-            f"neutral.  Relax the junction "
-            f"neutral and cite that run, or the pair saved from it.")
+            f"and {kind.with_article} carries {fixed.value:+d} -- "
+            f"{fixed.why}.  Relax the junction neutral and cite that run, or "
+            f"the pair saved from it.")
     # UNDER BOTH, the one default (`engines/template.md` § 5.4, § 6.3a),
     # and WHO SET EACH (§ 6.6 obligation 2), by the one door every
     # road asks: the citation's answers -- its recorded contract -- then

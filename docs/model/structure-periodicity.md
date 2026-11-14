@@ -171,7 +171,7 @@ computes on):
 |---|---|
 | is the system finite — does the electron count's parity bind, may a moment float ([`science/chemistry-correctness.md`](?doc=science/chemistry-correctness.md) § 2a) | the electronic state |
 | which whole-body motions a vibration removes, so how many modes it reports ([`engines/vibration.md`](?doc=engines/vibration.md) R7) | the deck, the Methods count and the settings check's note — one count: on PySCF, the vibration deck's view (`axis_kind`) |
-| does a polar molecule sit in a box of vacuum whose images shift its energy | SIESTA's dipole advisory — asked of the axes, never of the k-point count: a crystal or a junction sampled at Γ alone carries its images by design |
+| does a polar molecule sit in a box of vacuum whose images shift its energy | SIESTA's dipole advisory — the electronic state's *finite*, the row above, never the k-point count: a crystal or a junction sampled at Γ alone carries its images by design |
 | does the box's advice apply — its vacuum, its images, its faces (§ 6.1a, table B) | the settings gate, for an engine that computes in a cell (`cell.box_findings_for`) |
 
 **The structure keeps its own kinds and its own box.** A periodic structure

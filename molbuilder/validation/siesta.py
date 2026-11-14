@@ -664,12 +664,10 @@ def validate_siesta(struct: Structure, cfg,
     # dipole correction.
     #
     # Triggered only for a box of vacuum on every axis -- an isolated
-    # molecule: the axes SIESTA computes on (`cell.engine_axis_kinds`,
-    # `model/structure-periodicity.md` § 2.1), never the k-point count.
-    from ..cell import engine_axis_kinds
-    vacuum_box = all(k == "isolated" for k in
-                     engine_axis_kinds(engine, struct))
-    if state is not None and vacuum_box and len(struct.positions) > 0:
+    # molecule: the state's ``finite``, read off the axes SIESTA computes on
+    # (`cell.engine_axis_kinds`, `model/structure-periodicity.md` § 2.1),
+    # never the k-point count.
+    if state is not None and state.finite and len(struct.positions) > 0:
         try:
             from ..chemistry import estimate_dipole_moment_debye
             # The state's charge.

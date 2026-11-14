@@ -250,11 +250,18 @@ class PySCFConfig:
 
     @property
     def is_dft(self) -> bool:
-        """Whether the method is a density functional.  THE one answer every
-        reader of the level of theory asks: the decks' SCF construction,
-        headers, constants and line spellings, the grid advisory and the
-        Methods paragraph (`engines/vibration.md` § 4.10).  Hartree-Fock has
-        no functional and no integration grid, whatever those items hold.
+        """Whether the method is a density functional, for every reader that
+        holds the config: the decks' headers, constants and line spellings,
+        the vibration deck's SCF module, imports and GPU shim, the grid
+        advisory and the Methods paragraph (`engines/vibration.md` § 4.10).
+        The SCF class is composed from the electronic state's method and
+        treatment in both decks (`pyscf.layout.scf_class`), and the
+        optimization deck takes its module from the state too
+        (`scf_module`) -- the same item, one value on every path: on this
+        engine the state's method is this field, stated, or the catalogue's
+        default on a form that left it blank, this field's default too
+        (`science/chemistry-correctness.md` § 2a.1).  Hartree-Fock has no
+        functional and no integration grid, whatever those items hold.
         The dispersion correction is not asked of this answer: HF takes it
         like any method -- it has no correlation at all, so it misses
         dispersion entirely, D3 and D4 carry parameters fitted for it, and

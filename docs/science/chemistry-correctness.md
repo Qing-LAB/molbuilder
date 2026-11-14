@@ -530,7 +530,7 @@ every value the shared panel carries: defaulted, never sealed
 and what its structure's run recorded is warned by the record check, because a
 frequency or a transmission at a geometry optimised for another electronic state
 is usually a mistake and occasionally the point (a vertical ionisation). **A
-transport calculation refuses a cited run that carried a net charge**: its
+transport calculation refuses a cited run that carried a net charge** — in the reason the kind table states for its fixed charge, the one the state's rule and the settings gate read: its
 boundaries are open and the junction must be neutral.
 
 **ES8 · A blank is decided, never hidden.** There is no fill step: a blank item
