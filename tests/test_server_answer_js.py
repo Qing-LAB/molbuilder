@@ -87,6 +87,11 @@ _ROWS = [
      {"ok": False, "status": 500,
       "error": "the server's answer could not be read (HTTP 500) \u2014 its "
                "log says why"}),
+    ("a page with a yes status, never handed over as data",
+     {"status": 200, "text": "<html>Bad Gateway</html>"},
+     {"ok": False, "status": 200,
+      "error": "the server's answer could not be read (HTTP 200) \u2014 its "
+               "log says why"}),
     ("no answer at all, said plainly",
      {"throws": "Failed to fetch"},
      {"ok": False, "status": 0,
@@ -100,7 +105,8 @@ _ROWS = [
 def test_each_answer_is_read_as_what_it_is(what, answer, returns):
     """MUTATIONS THIS MUST FAIL AGAINST: a body read without asking whether
     the server said yes; an error page read as unreachable; a refusal's own
-    words dropped for a status."""
+    words dropped for a status; a yes's body parsed without the guard a
+    refusal's has, the parser's own words handed to the person."""
     out = _ask([{"answer": answer}])["out"][0]
     assert {k: out.get(k) for k in returns} == returns, what
 

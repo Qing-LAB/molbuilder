@@ -260,27 +260,35 @@ def test_no_record_here_means_nothing_is_created(tmp_path, monkeypatch,
     assert not path.exists()
 
 
-def test_the_record_is_read_through_its_door_once(tmp_path, monkeypatch):
+def test_the_record_is_read_through_its_door_once(config_root, monkeypatch):
     """`configuration.md` M-4: no consumer reads the file.  The door asks
     `read_environment(machine_scope_path())`, once per process, and takes
-    the `manager_run` block as the record wrote it."""
-    from molbuilder.scheduler.record import Environment, Scheduler
+    the `manager_run` block as the record holds it."""
+    from molbuilder import scheduler
+    from molbuilder.scheduler.record import (Environment, Scheduler,
+                                             write_environment)
+    # THE RECORD, as the probe makes one, in this test's machine folder...
+    record = write_environment(
+        Environment(scheduler=Scheduler(kind="workstation")),
+        scheduler.machine_scope_path())
+    # ...the measurement saved into it by the door that saves it, then
+    # forgotten by this process, as a fresh one starts.
+    assert B.remember_manager_run("/m/mamba", False) == record
+    B.reset_manager_run_measurement()
+    # Each read the door makes, counted -- the reader itself still reads.
     reads = []
+    real_read = scheduler.read_environment
 
-    def fake_read(path):
+    def counted(path):
         reads.append(path)
-        env = Environment(scheduler=Scheduler(kind="workstation"))
-        env.manager_run = {"manager": "/m/mamba", "run_works": False}
-        return env
+        return real_read(path)
 
-    monkeypatch.setattr("molbuilder.scheduler.read_environment", fake_read)
-    monkeypatch.setattr("molbuilder.scheduler.machine_scope_path",
-                        lambda: tmp_path / "environment.json")
+    monkeypatch.setattr("molbuilder.scheduler.read_environment", counted)
 
     assert B.recorded_manager_run() == {"manager": "/m/mamba",
                                         "run_works": False}
     assert B.recorded_manager_run()["run_works"] is False
-    assert reads == [tmp_path / "environment.json"], reads
+    assert reads == [record], reads
 
 
 def test_the_probe_s_measurement_is_the_door_s_own():

@@ -30,7 +30,7 @@ as they stood.
 
 ## ▶ HANDOVER — where we are, and where to start *(2026-11-10)*
 
-**Where we are: 2.70.1.** F0–F8 and F7a are closed; F9, the tests through
+**Where we are: 2.70.2.** F0–F8 and F7a are closed; F9, the tests through
 the road, has eight releases out (2.67.4–2.67.11) and four steps left (its
 row below). Since 2.67.11 three bodies of work the user put first have run;
 each release is its changelog row and its ledger section
@@ -124,7 +124,9 @@ each release is its changelog row and its ledger section
   reload (X-UI 1, O-STATE; the user, 2026-11-14); 2.70.1, the shared look --
   the messages that coloured their own words in the shell's tone, the
   Documents reader's palette and the sidebar's shadows as tokens, the focus
-  ring one token, one page head (O-STATUS, O-KEYS, X-UI).
+  ring one token, one page head (O-STATUS, O-KEYS, X-UI); 2.70.2, the
+  tests stretch's first part, taken next on the user's word (2026-11-14):
+  fakes with no reason retired or made the real thing (O-TESTS T0).
   X-ENG closed with 2.69.68 — its two items that change a generated
   program placed by the user with F10's end-to-end pass.
   **Left, in order**: the page doors and the copies they share (O-STATUS,

@@ -1,10 +1,9 @@
 """Unit tests for the setShared busy-guard contract (sidebar gap
 #177, defense-in-depth).
 
-Per docs/web/projects.md, programmatic state
-mutators (setShared, future navigateTo) MUST early-return
-``{ok:false, error:"page is busy"}`` while the page busy fence
-(``lib/page-busy.js``, ui-contract.md § 10 -- page-wide) is claimed.  The
+Per ui-contract.md § 10 (*Programmatic races*), the selection's own setter
+(setShared, and navigateTo) refuses while the page busy fence
+(``lib/page-busy.js``) is claimed -- answering ``{ok:false}``.  The
 full-window cover blocks user clicks but
 tab-level navigators (the /results file-picker dropdown at
 ``lib/results/file-picker.js``) could otherwise sneak a directory
@@ -12,8 +11,10 @@ change past an active Save pipeline.
 
 These tests stub sessionStorage under Node and exercise setShared
 with the fence claimed and released,
-and verify both the return value AND the side-effect (sessionStorage
-+ subscriber fire) shape.
+and verify the return value, what it writes to sessionStorage, and that a
+refused change is never published to a subscriber -- a page that followed it
+would switch the sidebar's directory mid-save, which "retargets the
+operation's later steps" (`ui-contract.md` § 10).
 """
 from __future__ import annotations
 
@@ -57,10 +58,6 @@ def _run_node(snippet: str) -> object:
         }};
         // Locale fallback some sub-imports touch.
         global.navigator = {{ language: "en-US" }};
-        // Answered as a browser hands an answer, for the page's one reader
-        // (`lib/server.js`); what is asked is not what these tests read.
-        global.fetch = async () => new Response(
-            JSON.stringify({{ ok: true }}), {{ status: 200 }});
         // What a page keeps in this browser, loaded first as the page
         // header loads it (`runtime.md` § 3).
         const statePromise = import("{kept_url}").then(
@@ -98,13 +95,6 @@ def _run_node(snippet: str) -> object:
 
 class TestSetSharedWhenIdle:
 
-    def test_returns_ok_envelope(self):
-        out = _run_node('''
-            const r = state.setShared("/dir", "/dir/file.out");
-            console.log(JSON.stringify(r));
-        ''')
-        assert out == {"ok": True}
-
     def test_updates_session_storage(self):
         out = _run_node('''
             state.setShared("/foo", "/foo/bar.out");
@@ -114,22 +104,6 @@ class TestSetSharedWhenIdle:
             }));
         ''')
         assert out == {"dir": "/foo", "file": "/foo/bar.out"}
-
-    def test_fires_subscribers(self):
-        """Subscribers registered via projects.onChange receive the new
-        {dir, file} payload after setShared.  onChange fires ONCE
-        immediately on subscribe (per the docstring contract), so we
-        expect 2 callbacks: the initial empty + the post-setShared."""
-        out = _run_node('''
-            const calls = [];
-            state.projects.onChange(p => calls.push(p));
-            state.setShared("/a", "/a/b.out");
-            console.log(JSON.stringify(calls));
-        ''')
-        # Initial fire (empty) + post-setShared fire.
-        assert len(out) == 2
-        assert out[0] == {"dir": "", "file": ""}
-        assert out[1] == {"dir": "/a", "file": "/a/b.out"}
 
 
 class TestSetSharedWhenBusy:

@@ -5,11 +5,11 @@ roles:
 
   * every subcommand has a ``--help``
   * every subcommand parses the documented happy-path invocation
-  * subcommand routing (``main(["X", ...]) -> proper handler``) works
-    for the build verbs without hitting heavy external deps
+  * a build verb builds what was typed -- read off what the real builder
+    built, a backend not installed skipped (`engines/builders.md`)
 
-Heavy dispatches (smiles needs RDKit, name needs PubChem) are tested via
-mocks where reasonable and via ``--help`` only otherwise.  A deck is
+A name lookup needs PubChem over the network and is reached by ``--help``
+only.  A deck is
 rendered by `jobset prep` from a description; the rendered deck is the prep road's
 (``tests/data/prep_protocol.toml``), value fidelity by the template
 round-trip (``tests/test_template_roundtrip.py``).
@@ -17,6 +17,8 @@ round-trip (``tests/test_template_roundtrip.py``).
 
 from __future__ import annotations
 
+
+import re
 
 import numpy as np
 import pytest
@@ -132,88 +134,131 @@ def test_unknown_subcommand_is_an_error():
 
 
 # --------------------------------------------------------------------- #
-#  Build subcommand routing                                              #
+#  Build subcommands: what was typed reaches the builder                 #
 #                                                                        #
-#  We don't run the real builders here (they'd hit RDKit / PeptideBuilder/
-#  PubChem); instead we monkeypatch the module-level builder funcs that  #
-#  cli.main looks up, and assert it routed the right one.  This catches  #
-#  argument-mapping bugs (e.g. --form vs --terminal swap).               #
+#  Read off what the real builder built -- the pair the call wrote,      #
+#  opened through the codec -- and what it said on stderr, against what  #
+#  `engines/builders.md` states; never off a recorder standing in for    #
+#  the builder, which passed while a flag changed nothing.  The real     #
+#  builders answer in seconds here (measured 2026-11-14: 0.3-3.7 s); a   #
+#  row whose backend is not installed is skipped, said why.              #
 # --------------------------------------------------------------------- #
 
 
-def _make_capture(captured):
-    """Return a fake builder that records (kind, sequence, kwargs)."""
-    def _fake(seq, **kwargs):
-        captured.append((seq, kwargs))
-        # Return a tiny Structure so cli._emit() can call .to_xyz() / .summary().
-        from molbuilder.structure import Structure
-        return Structure(elements=["H"], positions=np.array([[0.0, 0.0, 0.0]]),
-                         title="stub", vacuum=(12.0, 12.0, 12.0))
-    return _fake
+def _needs(*tools):
+    """Skip unless each tool is installed: a nucleic-acid backend, asked of
+    the registry (`builders.md` § 4, `available_backends`), or ``hydrogens``,
+    the engine a build adds its hydrogens with -- asked of the engine's own
+    door, which refuses with `BackendUnavailable` when there is none."""
+    from molbuilder.builders.backends import available_backends
+    for tool in tools:
+        if tool == "hydrogens":
+            from molbuilder.chemistry import BackendUnavailable, add_hydrogens
+            from support.road import H2, road_structure
+            try:
+                add_hydrogens(road_structure(H2))
+            except BackendUnavailable as e:
+                pytest.skip(str(e))
+        elif not available_backends().get(tool):
+            pytest.skip(f"the {tool} backend is not installed")
 
 
-def test_build_peptide_routes_to_build_peptide(monkeypatch, capsys, tmp_path):
-    captured = []
-    monkeypatch.setattr("molbuilder.peptide.build_peptide", _make_capture(captured))
-    rc = cli.main(["peptide", "ARNDC", "--out", str(tmp_path / "p.xyz")])
-    assert rc == 0
-    assert len(captured) == 1
-    seq, kwargs = captured[0]
-    assert seq == "ARNDC"
-    # title kwarg is always passed (even if None).
-    assert "title" in kwargs
-    # WHAT THE BUILD FOUND is printed as every finding is
-    # (`science/validation.md` § 4.1 R5): a peptide's C-terminus with no
-    # OXT, said on stderr.
-    assert "warn [build.peptide_aldehyde]" in capsys.readouterr().err
+def _built(tmp_path, *typed):
+    """``molbuilder <typed> --out <pair>``: what it built, read back."""
+    from molbuilder.workingcopy_structure import StructureCodec
+    pair = tmp_path / "built.xyz"
+    assert cli.main([*typed, "--out", str(pair)]) == 0
+    return StructureCodec().load(pair)
 
 
-def test_build_dna_passes_backend_and_form(monkeypatch, tmp_path):
-    """DNA's --backend / --form / --terminal flags must reach the
-    builder.  This catches the click-decorator -> kwargs mapping; if
-    a flag is dropped, the test fails -- a real bug."""
-    captured = []
-    monkeypatch.setattr("molbuilder.nucleic.build_dna", _make_capture(captured))
-    rc = cli.main([
-        "dna", "ATGC",
-        "--backend", "rdkit",
-        "--form", "B",
-        "--terminal", "OH",
-        "--out", str(tmp_path / "d.xyz"),
-    ])
-    assert rc == 0
-    seq, kwargs = captured[0]
-    assert seq == "ATGC"
-    assert kwargs.get("backend") == "rdkit"
-    assert kwargs.get("form") == "B"
-    assert kwargs.get("terminal") == "OH"
-    # protonate_phosphates defaults True; --no-protonate-phosphates not given.
-    assert kwargs.get("protonate_phosphates") is True
+def _residues(built):
+    """The residue names in order, one a residue (`builders.md`, *The uniform
+    output contract*: a build carries ``residue_ids`` and ``residue_names``
+    an atom)."""
+    return [name for _, name in dict.fromkeys(zip(built.residue_ids,
+                                                  built.residue_names))]
 
 
-def test_build_dna_no_protonate_phosphates_flag(monkeypatch, tmp_path):
-    captured = []
-    monkeypatch.setattr("molbuilder.nucleic.build_dna", _make_capture(captured))
-    cli.main([
-        "dna", "ATGC",
-        "--no-protonate-phosphates",
-        "--out", str(tmp_path / "d.xyz"),
-    ])
-    _seq, kwargs = captured[0]
-    assert kwargs.get("protonate_phosphates") is False
+@pytest.mark.parametrize("tools, typed, residues, said", [
+    # A peptide built residue by residue, its C-terminus with no OXT said on
+    # stderr as every finding is (`builders.md` § 1, `validation.md` R5).
+    (("hydrogens",), ("peptide", "ARNDC"),
+     ["ALA", "ARG", "ASN", "ASP", "CYS"], {"build.peptide_aldehyde"}),
+    # The backend typed is the one that built: RDKit embeds a conformer, and
+    # the form a DNA is asked when none is typed (§ 4, ``DEFAULT_FORM``) is
+    # said not built (§ 5).
+    (("rdkit",), ("dna", "ATGC", "--backend", "rdkit"),
+     ["DA", "DT", "DG", "DC"], {"build.form"}),
+    (("rdkit",), ("rna", "AUGC", "--backend", "rdkit"), None, {"build.form"}),
+    # An RNA is built A-form, its own, with nothing to say (§ 3)...
+    (("threedna", "hydrogens"), ("rna", "AUGC"), None, set()),
+    # ...and a form typed reaches it: another is built A-form, and said (§ 5).
+    (("threedna", "hydrogens"), ("rna", "AUGC", "--form", "B"), None,
+     {"build.form"}),
+], ids=["peptide", "dna-backend", "rna-backend", "rna-own-form",
+        "rna-form-typed"])
+def test_a_build_subcommand_builds_what_was_typed(tmp_path, capsys, tools,
+                                                  typed, residues, said):
+    """Each build subcommand reaches its builder with the sequence, the
+    backend and the form typed: what was built carries the residues the
+    sequence names, and the build says exactly the findings `builders.md`
+    states for what it could not build as asked."""
+    _needs(*tools)
+    built = _built(tmp_path, *typed)
+    if residues:
+        assert _residues(built) == residues
+    err = capsys.readouterr().err
+    assert set(re.findall(r"warn \[([a-z_.]+)\]", err)) == said, err
 
 
-def test_build_rna_default_form_is_a(monkeypatch, tmp_path):
-    """RNA's default helix form is A; if the user doesn't pass --form,
-    the builder must NOT receive a form kwarg (the builder library
-    has its own RNA default)."""
-    captured = []
-    monkeypatch.setattr("molbuilder.nucleic.build_rna", _make_capture(captured))
-    cli.main(["rna", "AUGC", "--out", str(tmp_path / "r.xyz")])
-    _seq, kwargs = captured[0]
-    # When --form isn't passed, cli should not inject a default form
-    # kwarg; the builder picks one.
-    assert "form" not in kwargs
+def test_a_title_typed_is_the_title_built(tmp_path):
+    """``--title`` reaches the builder: what was built is called by it."""
+    _needs("hydrogens")
+    assert _built(tmp_path, "peptide", "A", "--title", "my run").title == (
+        "my run")
+
+
+def test_a_form_typed_is_the_form_built(tmp_path):
+    """``--form`` reaches the DNA builder: A, the compact form (`builders.md`'s
+    *Vocabulary*), is shorter end to end than the B built by default -- the first
+    phosphate to the last, a distance no axis convention enters."""
+    _needs("threedna", "hydrogens")
+
+    def span(*typed):
+        built = _built(tmp_path, "dna", "ATGC", *typed)
+        p = built.positions[[i for i, e in enumerate(built.elements)
+                             if e == "P"]]
+        return float(np.linalg.norm(p[-1] - p[0]))
+    assert span("--form", "A") < span()
+
+
+@pytest.mark.parametrize("strand", [("dna", "ATGC"), ("rna", "AUGC")],
+                         ids=["dna", "rna"])
+def test_a_terminal_typed_is_the_terminal_built(tmp_path, strand):
+    """``--terminal 5P`` reaches the builder: the fiber's 5'-phosphate is kept,
+    where the both-ends-OH default strips it (`builders.md` § 5) -- one
+    phosphorus more."""
+    _needs("threedna", "hydrogens")
+
+    def phosphori(*typed):
+        return list(_built(tmp_path, *strand, *typed).elements).count("P")
+    assert phosphori("--terminal", "5P") == phosphori() + 1
+
+
+@pytest.mark.parametrize("strand", [("dna", "ATGC"), ("rna", "AUGC")],
+                         ids=["dna", "rna"])
+def test_no_protonate_phosphates_leaves_each_phosphate_charged(tmp_path,
+                                                               strand):
+    """``--no-protonate-phosphates`` reaches the builder: by default an H is
+    added to each deprotonated non-bridging phosphate oxygen (`builders.md`
+    § 7); with the flag none is -- one H fewer a phosphate, three between
+    four bases.  On the backend that leaves them deprotonated, tleap (§ 7)."""
+    _needs("amber")
+
+    def hydrogens(*typed):
+        return list(_built(tmp_path, *strand, "--backend", "amber",
+                           *typed).elements).count("H")
+    assert hydrogens() - hydrogens("--no-protonate-phosphates") == 3
 
 
 # --------------------------------------------------------------------- #

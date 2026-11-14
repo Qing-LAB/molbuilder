@@ -296,7 +296,8 @@ rather than to the calculation ([`generator.md`](?doc=execution/generator.md) §
 - `parse/test_scripts.py` — the parse layer's script readers.
 - `test_negative_body_assert_lint.py` — the status-guarded-assert meta-lint.
 - `test_cli.py` (+ `test_cli_runtime_info.py`, `test_cli_tls.py`) — every
-  subcommand's `--help`, routing, and the dataclass→flag bridge.
+  subcommand's `--help`, and a build verb building what was typed (the real
+  builders).
 
 > **Three names left this list on 2026-09-12, having been deleted on
 > 2026-09-10** in the sweep that retired 18 files asserting the shape of the

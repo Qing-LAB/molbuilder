@@ -189,22 +189,6 @@ def test_release_lowers_the_cover_and_is_idempotent():
     assert out["claimed"] is True and out["reason"] == "again"
 
 
-def test_state_works_without_a_dom():
-    """The node-harness path every OTHER suite relies on: with a partial
-    document, the fence still enforces state (navigateTo/setShared read
-    ``isClaimed()``), it just paints nothing."""
-    out = _run_node('''
-        global.document = { getElementById: () => null };  // partial stub
-        pageBusy.release();      // reset from module scope
-        pageBusy.claim("headless op", []);
-        console.log(JSON.stringify({
-            claimed: pageBusy.isClaimed(),
-            reason:  pageBusy.reason(),
-        }));
-    ''')
-    assert out == {"claimed": True, "reason": "headless op"}
-
-
 def test_the_keyboard_is_fenced_and_cancel_shows_only_with_cancelers():
     """§ 10: a key pressed outside the cover does nothing while claimed, and
     focus rests on the cover -- on Cancel when there is one to run, on the

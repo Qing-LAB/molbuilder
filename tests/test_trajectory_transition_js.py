@@ -4,7 +4,7 @@ own `transition()`, on no answer of the server's.
 * `IDLE` clears the file's name, so an answer after dispose fails the
   guard; each target lands the machine and leaves the poll timer right;
 * mid-write frames stay out of the plots; the legacy flat names are the
-  buckets' values; the poll wires no listener.
+  buckets' values; starting the poll starts its timer.
 
 What the viewer makes of the server's ANSWERS -- an answer written under its
 own file's name or not at all, the poll loop taking how the run is doing,
@@ -12,7 +12,8 @@ the settle -- is fed what the routes answered of real runs:
 `test_the_viewers_follow_a_real_run_e2e.py`.
 
 **These RUN the real functions.** Their source is lifted from the shipped
-module (`tests/_node_esm.lifted`) and executed against a fake state, so
+module (`tests/_node_esm.lifted`) and executed against a fake state -- or,
+where the state itself is the question, the module's real one -- so
 what is asserted is the OUTCOME -- the path is null, the timer is off --
 and not the presence of a string.
 
@@ -240,32 +241,45 @@ def test_every_target_lands_the_machine_and_settles_the_timer(target, timer):
         f"{'running' if timer else 'stopped'}")
 
 
-def test_starting_the_poll_wires_no_listener():
-    """`startPolling` is timer-only.
-
-    The viewer's listeners are wired ONCE at mount: one wired here would be
-    wired again on every load, stacking handlers that each fire. This runs
-    the real function with a spying registrar and asserts it registered
-    nothing.
+def test_starting_the_poll_follows_the_run_every_15_s_once():
+    """`startPolling` is what `transition('WATCHING')` calls to keep a live
+    run followed (the harness above fakes it), so the shipped one runs here
+    on the module's real state, its aliases wired, and Node's own timers --
+    each call only watched: it polls the run (`pollOnce`) every 15 s
+    (`results.md`: a trajectory is polled every 15 s), and a second start replaces the first rather than
+    stacking a second poller on the same run.
     """
+    state_lit = lifted(MODULE, "    const state = {",
+                       "\n    (function _wireBackcompatAliases")
+    wiring = lifted(MODULE, "    (function _wireBackcompatAliases",
+                    "\n    // Transition orchestrator")
+    every = lifted(MODULE, "    const POLL_MS = ", ";\n")
     fn = lifted(MODULE, "    function startPolling() {",
                 "\n    function stopPolling")
     harness = f"""
-        const _registered = [];
-        function _on(t, ev) {{ _registered.push(ev); }}
+        const root = globalThis;
+        {state_lit}
+        {wiring}
+        {every};
         function pollOnce() {{}}
-        const POLL_MS = 15000;
-        const state = {{ pollTimer: null }};
-        const document = {{ addEventListener: (ev) => _registered.push(ev) }};
-        globalThis.setInterval = () => 1;
-        globalThis.clearInterval = () => {{}};
+        const started = [], cleared = [];
+        const realSet = setInterval, realClear = clearInterval;
+        globalThis.setInterval = (f, ms) => {{
+            const t = realSet(f, ms); started.push({{t, ms, f}}); return t; }};
+        globalThis.clearInterval = (t) => {{ cleared.push(t); realClear(t); }};
         {fn}
         startPolling();
-        console.log(JSON.stringify({{ registered: _registered,
-                                      timer: state.pollTimer }}));
+        const first = state.lifecycle.pollTimer;
+        startPolling();
+        const second = state.lifecycle.pollTimer;
+        console.log(JSON.stringify({{
+            every:    started.map((s) => s.ms),
+            polls:    started.every((s) => s.f === pollOnce),
+            replaced: cleared.length === 1 && cleared[0] === first,
+            live:     second === started[1].t,
+        }}));
+        started.forEach((s) => realClear(s.t));
     """
-    out = run_node([], harness)
-    assert out["registered"] == [], (
-        f"startPolling registered {out['registered']!r}. Every load would "
-        f"add another handler.")
-    assert out["timer"] is not None, "startPolling must actually start a timer"
+    out = run_node([LIFECYCLE], harness)
+    assert out["every"] == [15000, 15000], out
+    assert out["polls"] and out["replaced"] and out["live"], out

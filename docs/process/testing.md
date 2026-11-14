@@ -1117,10 +1117,10 @@ deliberately not installed there.
   it), `findings.py` (a page's findings, drawn row for row),
   `leftovers.py` (what opening again leaves on the page); and for
   MolView's tests under node, the stand-ins for 3Dmol and the DOM
-  (`molview_3dmol_standin.js`, `molview_dom_standin.js`), the shim that
-  seeds its selection store (`seed_selection_store.js`), and a stand-in
-  server, `molview_server_standin.js`, which 2.67.12 replaces with the
-  server's own answers (§ 4).
+  (`molview_3dmol_standin.js`, `molview_dom_standin.js`), and a stand-in
+  server, `molview_server_standin.js`, which answers every route alike —
+  still loaded by four test files, each yet to move onto the server's own
+  answers (§ 4; planned, the finish-line review's O-TESTS).
 - `test_one_door_reads_a_structure.py` — the author's frozen atoms, regions
   and cell, saved as the `.xyz` + `.molstruct.json` pair, reach the deck
   through `molbuilder describe → prep`, because the pair is one file. Written

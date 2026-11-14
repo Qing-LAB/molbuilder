@@ -365,7 +365,10 @@ Two independent controls decide the H content of a built nucleic acid:
 - **`protonate_phosphates`** (default `True`) — adds an H to each deprotonated
   non-bridging phosphate oxygen so the molecule is formally **neutral** (the easier
   DFT starting point — no `NetCharge` to set). Set `False` to keep the deprotonated
-  state; the SIESTA/PySCF emitter then auto-sets the net charge.
+  state; the SIESTA/PySCF emitter then auto-sets the net charge. Only `amber`
+  (tleap) leaves the phosphates deprotonated; `threedna` and `rdkit` build them
+  neutral, where the flag has nothing to do (measured 2026-11-14: a four-base
+  strand's H, 50 with and without it on those, 50 against 47 on `amber`).
 
 The actual H placement lives in [`model/chemistry.md`](?doc=model/chemistry.md):
 `add_hydrogens` tries **OpenBabel first** (geometric, no ghost-coordinate failure

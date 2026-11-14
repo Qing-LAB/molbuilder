@@ -53,21 +53,15 @@ GATE_SENTENCE = _gate_sentence()
 SERVER = (HOST.parent / "molview_server_standin.js").read_text() + """
 globalThis.__requests   = [];
 globalThis.__refuse     = null;   // {status, body} -> the server says no
-globalThis.__unreachable = false; // fetch itself rejects
 globalThis.__nextPayload = null;
 
 globalThis.fetch = async function (route, init) {
     globalThis.__requests.push({ route, body: JSON.parse(init.body) });
-    if (globalThis.__unreachable) {
-        throw new TypeError("Failed to fetch");
-    }
     // Each answer as a browser hands it, for the page's one reader
-    // (`lib/server.js`); `notJson` an error page in the server's stead.
+    // (`lib/server.js`).
     if (globalThis.__refuse) {
         const r = globalThis.__refuse;
-        return new Response(r.notJson ? "<html>Bad Gateway</html>"
-                                      : JSON.stringify(r.body),
-                            { status: r.status });
+        return new Response(JSON.stringify(r.body), { status: r.status });
     }
     const payload = globalThis.__nextPayload || globalThis.__payload(
         [atomRow(0, "C", 0), atomRow(1, "O", 1)]);
@@ -83,7 +77,6 @@ const {{ createModel }} = await import({json.dumps(HOST.as_uri())});
 async function loaded(opts) {{
     globalThis.__requests    = [];
     globalThis.__refuse      = null;
-    globalThis.__unreachable = false;
     globalThis.__nextPayload = null;
     const m = createModel(opts || {{}});
     await m.installMolecule({{ text: "2\\n\\nC 0 0 0\\nO 1 0 0\\n",
@@ -183,69 +176,6 @@ def test_every_changing_door_reports_a_refusal_the_same_way():
         assert got["threw"] is True, f"{door} swallowed a refusal"
         assert got["message"] == GATE_SENTENCE, (
             f"{door} did not pass on the server's sentence")
-
-
-def test_a_refusal_with_no_reason_still_says_something_a_reader_can_use():
-    """§ 6.9: "MolView writes a message itself only when there is none to quote."
-
-    A crash page or a proxy answers with a body that is not the envelope, so
-    there is no sentence to pass on. What must NOT happen is the failure path
-    raising a second failure of its own — a parse error replacing the reason.
-    """
-    out = _run(
-        """
-        const m = await loaded();
-        globalThis.__refuse = { status: 502, notJson: true };
-        const got = await outcome(() => m.commitPeriodicityOp("vacuum", [1,1,1]));
-        console.log(JSON.stringify(got));
-        """
-    )
-    assert out["threw"] is True
-    assert "Unexpected token" not in out["message"], (
-        "the body parse error replaced the reason")
-    assert out["message"].strip(), "a refusal arrived with an empty message"
-
-
-def test_an_unreadable_success_does_not_leak_the_parser_at_the_reader():
-    """The same rule on the other side of the status line. A 200 whose body is
-    not JSON — a proxy or a cache answering in the server's stead — must not put
-    the parser's own words in front of somebody: "Unexpected token <" is the kind
-    of sentence § 6.9 exists to keep off the screen.
-
-    Found by reading the change rather than by a failing test: the refusal path
-    guarded its parse and the success path did not.
-    """
-    out = _run(
-        """
-        const m = await loaded();
-        globalThis.fetch = async () => new Response("<html>Bad Gateway</html>",
-                                                    { status: 200 });
-        const got = await outcome(() => m.commitPeriodicityOp("vacuum", [1,1,1]));
-        console.log(JSON.stringify(got));
-        """
-    )
-    assert out["threw"] is True
-    assert "Unexpected token" not in out["message"]
-    assert "server" in out["message"].lower()
-
-
-def test_a_request_that_never_arrived_says_so_in_plain_language():
-    """§ 6.9's other case with none of the server's words to quote: the
-    reader handed in at mount says it (§ 4). The browser's own wording is
-    "Failed to fetch", which reads as a bug in the page rather than as something
-    the reader can do anything about.
-    """
-    out = _run(
-        """
-        const m = await loaded();
-        globalThis.__unreachable = true;
-        const got = await outcome(() => m.commitPeriodicityOp("vacuum", [1,1,1]));
-        console.log(JSON.stringify(got));
-        """
-    )
-    assert out["threw"] is True
-    assert "Failed to fetch" not in out["message"]
-    assert "server" in out["message"].lower()
 
 
 # ---------------------------------------------------------------------------

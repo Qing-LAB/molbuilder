@@ -11,8 +11,9 @@ recipe-shape-driven, so an in-test recipe is the honest fixture.
 from __future__ import annotations
 
 import json
+import os
+import subprocess
 from pathlib import Path
-from unittest.mock import MagicMock
 
 import pytest
 
@@ -119,11 +120,10 @@ def test_plan_raises_without_conda_binary():
 # manager's documents -- `conda_env_prefixes` (env list --json) and
 # `manager_info` (info --json) -- live there.
 def _stub(returncode=0, stdout="", stderr=""):
-    cp = MagicMock()
-    cp.returncode = returncode
-    cp.stdout = stdout
-    cp.stderr = stderr
-    return cp
+    """What `subprocess.run` hands back -- its own type, so a field the
+    readers ask that it does not carry fails here as it would there."""
+    return subprocess.CompletedProcess(args=[], returncode=returncode,
+                                       stdout=stdout, stderr=stderr)
 
 
 def _stream_stub_factory(*outputs):
@@ -745,40 +745,35 @@ def test_run_install_verify_substring_failure_is_fatal(monkeypatch):
 # interactive confirm prompt.
 
 
-def _make_install_stub(succeeded_per_call=None):
-    """Return a fake ``run_install`` that records calls + returns a
-    minimal succeeded-or-failed result.  ``succeeded_per_call`` is an
-    iterable of bools; default all True."""
+def _make_install_stub():
+    """Return a fake ``run_install`` that records which recipes it was asked
+    for and answers each installed -- the installer stands in for a package
+    manager this suite never runs (it changes environments)."""
     calls = []
-    iterator = iter(succeeded_per_call or ())
 
     def _fake(recipe, caps=None, **kw):
         calls.append(recipe.name)
-        # Default True if iterator exhausted (favors success path).
-        try:
-            ok = next(iterator)
-        except StopIteration:
-            ok = True
-        return _fake_result(recipe, ok)
+        return _installed(recipe, caps)
 
     return _fake, calls
 
 
-def _fake_result(recipe, ok=True):
-    """An `InstallResult` as the installer really returns one.
-
-    A bare `MagicMock` invents a truthy attribute for anything asked of it, so
-    `if result.build_result.activate_hook_written:` came out TRUE for a
-    conda-only recipe and the recap then dereferenced a `build_spec` that is
-    None -- an AttributeError that aborted a whole `bootstrap` run and looked
-    like a product bug.  A fake has to look like the thing it stands for.
-    """
-    result = MagicMock()
-    result.succeeded = ok
-    result.recipe = recipe
-    result.build_result = None
-    result.steps = []
-    return result
+def _installed(recipe, caps=None):
+    """An `InstallResult` as the installer returns one for a recipe whose
+    every step went through -- built as the installer builds it, its own
+    frozen type: a bare `MagicMock` once invented a truthy attribute for
+    anything asked of it, so `if result.build_result.activate_hook_written:`
+    came out TRUE for a conda-only recipe and the recap dereferenced a
+    `build_spec` that is None.  No steps, so succeeded, as the installer
+    works it out from its steps."""
+    from molbuilder.diagnostics import get_capabilities
+    from molbuilder.envs.install import InstallResult
+    from molbuilder.envs.recipes import effective_name
+    # NAMED AS THE INSTALLER NAMES IT: through the same two doors.
+    named = effective_name(recipe,
+                           caps if caps is not None else get_capabilities())
+    return InstallResult(recipe=recipe, effective_name=named,
+                         steps=(), succeeded=True, build_result=None)
 
 
 def _dispatch_log(monkeypatch, output=""):
@@ -952,7 +947,7 @@ def test_bootstrap_gives_a_source_build_the_same_eyes_as_install(monkeypatch):
     def _fake_run_install(recipe, **kw):
         seen[recipe.name] = (kw.get("build_on_warnings"),
                              kw.get("build_on_progress"))
-        return _fake_result(recipe)
+        return _installed(recipe)
 
     _bind()
     monkeypatch.setattr(_cli._install, "run_install", _fake_run_install)
@@ -1728,10 +1723,6 @@ def test_bootstrap_runs_doctor_at_end(monkeypatch):
 #      passing ``"$@"`` (all flags including trailing ones)
 #    * PYTHONPATH=$REPO_ROOT set so ``python -m molbuilder`` works
 #      regardless of the caller's CWD
-
-import os
-import subprocess
-from pathlib import Path
 
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent

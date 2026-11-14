@@ -5,8 +5,6 @@ The rows of ``docs/web/molview.md`` § 13.3 guarded here:
 
     § 11.5 one translation, one place
     § 9.5  by atom number crosses the numbering boundary once
-    § 6.2  the data holds what the filter enumerates
-    § 6.6  MolView interprets no reserved label
     § 10.3 the two steps, in that order
     § 10.3 a label carries the original number
     § 10.3 frame f's arrows come from frame f
@@ -141,86 +139,6 @@ def test_a_typed_range_shifts_once_at_any_size():
     assert out["unknown"] == "0-3, all", (
         "a token this does not recognise passes through — the server validates "
         "the rule, and dropping it silently would hide a typo"
-    )
-
-
-# ---------------------------------------------------------------------------
-# § 6.2 / § 6.6 — the data holds what the filter enumerates
-# ---------------------------------------------------------------------------
-
-def test_the_enumerated_channels_are_exactly_what_an_atom_carries():
-    """§ 6.2: "every property the filter enumerates from an atom — element,
-    labels, residue — is a property the structure actually carries; neither list
-    can grow without the other."
-    """
-    out = _run(
-        """
-        const annotations = [
-            { labels: ["anchor"], residue: "ALA" },
-            { labels: [], residue: "ALA" },
-            { labels: ["anchor", "tip"] },
-        ];
-        const kinds = ATOM.channelKinds(["C", "O", "N"], annotations);
-        const one = ATOM.atomChannels("C", annotations[0]);
-        console.log(JSON.stringify({
-            names: kinds.map(k => k.name),
-            kinds: kinds.map(k => k.kind),
-            one: one,
-        }));
-        """
-    )
-    assert out["names"] == ["element", "residue", "anchor", "tip"], (
-        "the offered channels must be exactly element, residue and the labels "
-        f"the atoms carry, in a stable order — got {out['names']}"
-    )
-    assert out["kinds"] == ["category", "category", "tag", "tag"]
-    assert out["one"]["element"] == {"kind": "category", "value": "C"}, (
-        "a category channel carries the value it matches on"
-    )
-    assert out["one"]["anchor"] == {"kind": "tag"}, (
-        "a tag channel is membership, so it carries no value"
-    )
-
-
-def test_a_structure_with_no_residues_offers_no_residue_row():
-    """§ 9.5: "which rows are worth offering is read from the structure, not
-    hard-coded" — whether a by-residue row makes sense at all comes from looking
-    at the atoms.
-    """
-    out = _run(
-        """
-        const kinds = ATOM.channelKinds(["C", "O"], [{ labels: [] }, { labels: [] }]);
-        console.log(JSON.stringify({ names: kinds.map(k => k.name) }));
-        """
-    )
-    assert out["names"] == ["element"], (
-        f"a structure with no residues and no labels offers only element: {out['names']}"
-    )
-
-
-def test_a_reserved_label_is_an_ordinary_label():
-    """§ 6.6: a reserved name is "stored, filtered and displayed exactly like any
-    other label", and "no code here acts on the name".
-
-    """
-    out = _run(
-        """
-        const annotations = [
-            { labels: ["frozen atoms"] },
-            { labels: ["my region"] },
-        ];
-        const kinds = ATOM.channelKinds(["C", "C"], annotations);
-        const byName = {};
-        for (const k of kinds) byName[k.name] = k.kind;
-        console.log(JSON.stringify({ byName }));
-        """
-    )
-    assert out["byName"]["frozen atoms"] == "tag", (
-        "a reserved name must be a tag like any other label, with no kind of "
-        f"its own: {out['byName']}"
-    )
-    assert out["byName"]["my region"] == out["byName"]["frozen atoms"], (
-        "a reserved label and an ordinary one must be indistinguishable here"
     )
 
 

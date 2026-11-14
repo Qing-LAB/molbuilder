@@ -1191,12 +1191,6 @@ def _picker(snippet: str):
          INSPECTORS / "trajectory.js"],
         "const traj = window.molbuilder.inspectors.trajectoryInspector;\n"
         "const P = window.molbuilder.resultsFilePicker;\n" + snippet,
-        globals_js=(
-            "globalThis.document = { createElement: () => ({ setAttribute() {},"
-            " appendChild() {} }), getElementById: () => null,"
-            " querySelector: () => null };\n"
-            "window.molbuilder.inspectors = window.molbuilder.inspectors"
-            " || {};"),
         timeout=30)
 
 

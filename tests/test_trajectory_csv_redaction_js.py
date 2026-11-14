@@ -120,22 +120,6 @@ _CASES = [
 
 _STATIC = _CORE.parents[2]
 
-#: A DOM thin enough to import the module under Node.  `core.js` mounts
-#: nothing at import time -- loading it is a no-op by design ("safe to include
-#: on any page that might need the inspector later") -- so the stub only has
-#: to survive the module's top level.
-_DOM_STUB = """
-globalThis.window = globalThis;
-globalThis.document = {
-    createElement: () => ({ style: {}, classList: { add() {}, remove() {} },
-                            appendChild() {}, setAttribute() {},
-                            addEventListener() {} }),
-    querySelector: () => null, querySelectorAll: () => [],
-    addEventListener() {},
-};
-globalThis.molbuilder = {};
-"""
-
 
 def _load_and_call(raw):
     """Load `core.js` and call the exported redactor on *raw*."""
@@ -144,7 +128,7 @@ def _load_and_call(raw):
         [_CORE], "console.log(JSON.stringify({v: "
                  "globalThis.molbuilder.trajectoryInspector._redactSourcePath("
                  + json.dumps(raw) + ")}));",
-        globals_js=_DOM_STUB, static_root=_STATIC)
+        static_root=_STATIC)
     return out["v"]
 
 
