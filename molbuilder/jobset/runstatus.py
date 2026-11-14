@@ -228,6 +228,19 @@ class JobSetStatus:
     #: with no description beside it.
     steps: List[GroupStep] = field(default_factory=list)
 
+    @property
+    def stands(self) -> str:
+        """WHERE THE TASK STANDS, in a line -- *every group finished*, by
+        the next step's own rule (:func:`_every_group_finished`), or each
+        group and its words (:attr:`steps`): the transport tab's meta line
+        for a calculation it extends (`engines/transport.md` § 2a.16, *On
+        the page*).  Not :attr:`complete`, every stage's newest run: a
+        group changed since its prep, or held by a job, is not finished."""
+        if _every_group_finished(self.steps):
+            return "every group finished"
+        return "; ".join(f"group {g.group} {g.words.rstrip('.')}"
+                         for g in self.steps)
+
     def to_dict(self) -> Dict[str, Any]:
         """THE WIRE FORM -- the Results tab's ladder is this (`web/results.md`
         § 2.4), the next prep's answer included."""
@@ -786,6 +799,13 @@ def jobset_status(calc, *, sweep=None, state=None) -> JobSetStatus:
 _ENDED_BADLY = ("failed", "unreadable")
 
 
+def _every_group_finished(steps: List[GroupStep]) -> bool:
+    """Whether every group of the next step is *finished* -- THE RULE the
+    next step names `summarize task` by (:func:`_steps`) and the task's
+    line says it by (`JobSetStatus.stands`)."""
+    return bool(steps) and all(s.state == _DONE for s in steps)
+
+
 def _steps(calc, groups, rows: List[StageStatus]) -> List[GroupStep]:
     """THE NEXT STEP (`job-system.md`, *The task*, *The next step*): every
     group of ``task``, in its order, its state read off its members' rows
@@ -918,7 +938,7 @@ def _steps(calc, groups, rows: List[StageStatus]) -> List[GroupStep]:
     first = next((i for i, s in enumerate(out) if s.state != _DONE), None)
     if first is not None:
         out[first] = dataclasses.replace(out[first], next=True)
-    elif out and task_summary(task) is not None:
+    elif _every_group_finished(out) and task_summary(task) is not None:
         out[-1] = dataclasses.replace(
             out[-1], next=True,
             words="finished -- every group has; gather the results",

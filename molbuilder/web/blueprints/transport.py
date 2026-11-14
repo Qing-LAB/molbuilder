@@ -423,11 +423,8 @@ def _describe_reused(folder: str, root) -> Any:
     cfg = stage_config(task, window_rung(), calc.template_text)
     window = (f"{cfg.transmission_emin_ev:g}…{cfg.transmission_emax_ev:g} "
               f"eV at {cfg.transmission_n_points} points")
-    steps = jobset_status(calc).steps
-    stands = ("every group finished"
-              if steps and all(s.state == "finished" for s in steps) else
-              "; ".join(f"group {s.group} {s.words.rstrip('.')}"
-                        for s in steps))
+    # WHERE IT STANDS, the status door's line (`JobSetStatus.stands`).
+    stands = jobset_status(calc).stands
     summary = " · ".join([
         "a transport calculation", Extension(rel, task).name,
         f"its junction, cited from {citation_of(task)}",
