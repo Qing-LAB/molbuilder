@@ -16,9 +16,10 @@ the track caps at three, the fourth pick drops the oldest, and the order is the
 click order because the vertex of an angle is the atom picked second
 (``docs/web/molview.md`` § 11.6).  **The wall**: the track never enters the
 selection's snapshot, never reaches a label, never becomes structure metadata,
-never leaves the browser, and is persisted in exactly one place — MolView's own
-``<owner>:ui`` view-context lane (§ 11.2b), which is *how you were looking* and
-not part of the work.
+leaves the browser only as the anchors of an op that declares it reads the
+ordered track (`orient`, below), and is never persisted -- MolView's own
+``<owner>:ui`` view-context lane (§ 11.2b), *how you were looking* and not part
+of the work, keeps only whether the ruler is on (§ 11.6).
 
 The wall is the half worth having tests for.  A leak would not throw: it would
 quietly widen what the next Delete removes.
@@ -28,9 +29,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from molbuilder.structure import Structure
-from support.envelope import answer
-from tests._node_esm import run_node
+import pytest
+
+from tests._node_esm import run_node, served
 
 REPO = Path(__file__).resolve().parents[1]
 MODULE_DIR = REPO / "molbuilder" / "web" / "static" / "lib" / "molview"
@@ -43,30 +44,40 @@ STORE_PRELUDE = f"""
 const S = await import({json.dumps(STORES.resolve().as_uri())});
 """
 
-#: The server's answer for four carbons in a row, 1 Å apart
-#: (`support.envelope.answer`), so the stand-in speaks the server's one
-#: shape.  No box stated: nothing here is about the cell (molview.md § 6.2).
-FOUR_CARBONS = json.dumps(answer(Structure(
-    elements=["C"] * 4,
-    positions=[[float(i), 0.0, 0.0] for i in range(4)])))
 
-SERVER = """
-globalThis.fetch = async function (route, init) {
-    const body = JSON.parse(init.body);
-    // As a browser hands it, for the page's one reader (`lib/server.js`).
-    return new Response(JSON.stringify(""" + FOUR_CARBONS + """),
-                        { status: 200 });
-};
-"""
+@pytest.fixture(scope="module")
+def app_at(isolated_projects_root_module):
+    """The app, serving: what answers the viewer (`support.live_server`)."""
+    from support.live_server import serve
+    with serve() as base:
+        yield base
 
-MODEL_PRELUDE = f"""
+
+@pytest.fixture(scope="module")
+def pairs(isolated_projects_root_module):
+    """The structure the tests open, by path, saved as the road saves one
+    (`support.road.structure_saved`): a peptide the one build door builds
+    (`builders.build`) -- more atoms than the ruler's three and the one a
+    fourth pick adds."""
+    from molbuilder.builders import build
+    from support.road import structure_saved
+    root = isolated_projects_root_module
+    return {
+        "peptide": str(root / structure_saved(
+            root, build("peptide", "GA").structure,
+            at="P/structure/peptide.xyz")),
+    }
+
+
+def _model_prelude(pairs) -> str:
+    return f"""
 const {{ createModel }} = await import({json.dumps(HOST.as_uri())});
+const PAIRS = {json.dumps(pairs)};
+/* The structure opened as a tab opens one: by its path, the server
+ * reading the pair. */
 async function loaded() {{
     const m = createModel({{}});
-    await m.installMolecule({{
-        text: "4\\n\\nC 0 0 0\\nC 1 0 0\\nC 2 0 0\\nC 3 0 0\\n",
-        filename: "x.xyz",
-    }});
+    await m.installMolecule({{ path: PAIRS.peptide }});
     return m;
 }}
 """
@@ -76,8 +87,12 @@ def _store(snippet: str):
     return run_node([], STORE_PRELUDE + snippet)
 
 
-def _model(snippet: str):
-    return run_node([], MODEL_PRELUDE + snippet, globals_js=SERVER)
+def _model(app_at, pairs, snippet: str):
+    """The test's script on the page, the app's own routes answering
+    (`_node_esm.served`) -- each request the page made kept, in order, in
+    ``__calls``."""
+    return run_node([], _model_prelude(pairs) + snippet,
+                    globals_js=served(app_at))
 
 
 # ---------------------------------------------------------------------------
@@ -184,11 +199,11 @@ def test_the_track_never_appears_in_the_selections_snapshot():
             f"`{forbidden}` in the selection's snapshot is the wall breaking"
 
 
-def test_a_click_lands_in_exactly_one_track():
+def test_a_click_lands_in_exactly_one_track(app_at, pairs):
     """The router (§ 11.6).  With measuring ON the selection must not move; with
     it OFF the track must not.  Asserting only the first half would pass on a
     router that wrote to BOTH."""
-    out = _model("""
+    out = _model(app_at, pairs, """
         const m = await loaded();
         m.pickAtom(0);
         const offTrack = m.measurement.getState().picks, offSel = m.selection.get();
@@ -204,11 +219,11 @@ def test_a_click_lands_in_exactly_one_track():
         "measuring moved the selection — this is the leak the user named"
 
 
-def test_clearing_a_measurement_leaves_the_selection_alone():
+def test_clearing_a_measurement_leaves_the_selection_alone(app_at, pairs):
     """The failure the user is guarding against, stated as its consequence: if
     the two shared a list, clearing a measurement would silently change what the
     next Delete removes."""
-    out = _model("""
+    out = _model(app_at, pairs, """
         const m = await loaded();
         m.selection.add([0, 1, 2]);
         m.measurement.setActive(true);
@@ -219,24 +234,25 @@ def test_clearing_a_measurement_leaves_the_selection_alone():
     assert out["selection"] == [0, 1, 2]
 
 
-def test_the_track_is_not_structure_metadata():
+def test_the_track_is_not_structure_metadata(app_at, pairs):
     """User: *"not part of the structure meta data but rather molview internal
     status"*.  A label IS metadata and travels with the file; the track must not
     reach one, and must not appear in what a state records."""
-    out = _model("""
+    out = _model(app_at, pairs, """
         const m = await loaded();
+        const labelsOn = () => m.getAtoms()
+            .filter((a) => [1, 2].includes(a.index)).map((a) => a.labels);
+        const before = labelsOn();
         m.measurement.setActive(true);
         m.pickAtom(1); m.pickAtom(2);
-        const atoms = m.getAtoms();
         const struct = m.getStructure();
         console.log(JSON.stringify({
-            labelsOnPicked: atoms.filter((a) => [1, 2].includes(a.index))
-                                 .map((a) => a.labels),
+            before, labelsOnPicked: labelsOn(),
             structureKeys: Object.keys(struct).sort(),
             serialised: JSON.stringify(struct),
         }));
     """)
-    assert out["labelsOnPicked"] == [[], []], "measuring wrote a label"
+    assert out["labelsOnPicked"] == out["before"], "measuring wrote a label"
     for key in ("measurement", "measuring", "picks"):
         assert key not in out["structureKeys"], \
             f"`{key}` became structure metadata"
@@ -336,18 +352,18 @@ def test_a_pick_that_is_no_longer_in_the_structure_is_dropped():
 #  clear, because § 12.4 is measuring an angle WHILE a trajectory plays.  #
 # ---------------------------------------------------------------------- #
 
-def test_a_structure_change_clears_the_track_without_the_door_asking():
+def test_a_structure_change_clears_the_track_without_the_door_asking(app_at, pairs):
     """The rule, from the outside: pick atoms, change the structure, and the
-    picks are gone -- with no door having decided that for itself."""
-    out = _model("""
+    picks are gone -- with no door having decided that for itself.  The
+    change keeps every atom's count and element: the file opened again, as
+    the structure card's Load does -- so a rule that cleared only when the
+    atoms changed in number would leave the picks standing."""
+    out = _model(app_at, pairs, """
         const m = await loaded();
         m.measurement.setActive(true);
         m.pickAtom(2); m.pickAtom(0);
         const before = m.measurement.getState().picks;
-        await m.installMolecule({
-            text: "4\\n\\nO 0 0 0\\nO 1 0 0\\nO 2 0 0\\nO 3 0 0\\n",
-            filename: "y.xyz",
-        });
+        await m.installMolecule({ path: PAIRS.peptide });
         console.log(JSON.stringify({ before, after: m.measurement.getState().picks }));
     """)
     assert out["before"] == [2, 0], "the picks were not taken in click order"
@@ -357,16 +373,19 @@ def test_a_structure_change_clears_the_track_without_the_door_asking():
     )
 
 
-def test_a_frame_arriving_from_a_job_does_NOT_clear_the_track():
+def test_a_frame_arriving_from_a_job_does_NOT_clear_the_track(app_at, pairs):
     """The one exemption, and the reason it exists: § 12.4 is measuring while
     a trajectory plays.  The picks are indices and the readout re-reads the
     current frame, so a growing movie must leave them standing."""
-    out = _model("""
+    out = _model(app_at, pairs, """
         const m = await loaded();
         m.measurement.setActive(true);
         m.pickAtom(1); m.pickAtom(3);
-        m.addFrame([[0,0,0],[1.1,0,0],[2,0,0],[3,0,0]]);
-        m.addFrames([[[0,0,0],[1.2,0,0],[2,0,0],[3,0,0]]]);
+        // A running job's frames: the same atoms, moved.
+        const f0 = m.getFrameAllAtoms(0);
+        const moved = (d) => f0.map((p) => [p[0] + d, p[1], p[2]]);
+        m.addFrame(moved(0.1));
+        m.addFrames([moved(0.2)]);
         m.setForces(null);
         console.log(JSON.stringify({ picks: m.measurement.getState().picks }));
     """)
@@ -385,26 +404,11 @@ def test_a_frame_arriving_from_a_job_does_NOT_clear_the_track():
 #  track.                                                                 #
 # ---------------------------------------------------------------------- #
 
-_RECORDING_SERVER = """
-globalThis.__sent = [];
-globalThis.fetch = async function (route, init) {
-    globalThis.__sent.push({ route, body: JSON.parse(init.body) });
-    // As a browser hands it, for the page's one reader (`lib/server.js`).
-    return new Response(JSON.stringify(""" + FOUR_CARBONS + """),
-                        { status: 200 });
-};
-"""
-
-
-def _model_recording(snippet: str):
-    return run_node([], MODEL_PRELUDE + snippet, globals_js=_RECORDING_SERVER)
-
-
-def test_orient_sends_the_anchors_in_CLICK_order_not_sorted_order():
+def test_orient_sends_the_anchors_in_CLICK_order_not_sorted_order(app_at, pairs):
     """The bug, driven: pick 2 then 0 with the ruler while the selection holds
     the same two atoms sorted.  What reaches the server must be the click
     order, because reversing the pair reverses the tilt."""
-    out = _model_recording("""
+    out = _model(app_at, pairs, """
         const m = await loaded();
         // the SET says {0, 2}: `add` SORTS, and `add` is what shift-range and
         // the drag box call -- which is exactly how the same two atoms came to
@@ -414,7 +418,7 @@ def test_orient_sends_the_anchors_in_CLICK_order_not_sorted_order():
         m.measurement.setActive(true);
         m.pickAtom(2); m.pickAtom(0);
         await m.applyOp("orient", { axis: "z", angle: 0, center: "midpoint" });
-        const sent = globalThis.__sent.filter((s) => /orient/.test(s.route));
+        const sent = __calls.filter((c) => /orient/.test(c.url));
         console.log(JSON.stringify({
             selection: m.selection.get(),
             anchors: sent.length ? sent[0].body.anchors : null,
@@ -429,16 +433,16 @@ def test_orient_sends_the_anchors_in_CLICK_order_not_sorted_order():
     )
 
 
-def test_a_set_op_still_reads_the_selection_and_ignores_the_ruler():
+def test_a_set_op_still_reads_the_selection_and_ignores_the_ruler(app_at, pairs):
     """The other half, or the column would be a rule with no edge: `delete`
     declares no `ordered`, so the picks must not reach it."""
-    out = _model_recording("""
+    out = _model(app_at, pairs, """
         const m = await loaded();
         m.selection.adopt([1, 3]);
         m.measurement.setActive(true);
         m.pickAtom(0);
         await m.applyOp("delete", {});
-        const sent = globalThis.__sent.filter((s) => /delete/.test(s.route));
+        const sent = __calls.filter((c) => /delete/.test(c.url));
         console.log(JSON.stringify({
             indices: sent.length ? sent[0].body.indices : null }));
     """)
@@ -458,10 +462,10 @@ def test_a_set_op_still_reads_the_selection_and_ignores_the_ruler():
 #  isolate has been translated.                                           #
 # ---------------------------------------------------------------------- #
 
-def test_the_router_is_what_a_pick_goes_through():
+def test_the_router_is_what_a_pick_goes_through(app_at, pairs):
     """The other half: `pickAtom` must actually reach the track, or the door
     above would be closed with nothing open in its place."""
-    out = _model("""
+    out = _model(app_at, pairs, """
         const m = await loaded();
         m.measurement.setActive(true);
         m.pickAtom(2); m.pickAtom(0);
@@ -480,10 +484,10 @@ def test_the_router_is_what_a_pick_goes_through():
     assert out["selection"] == [3], "...it selects instead"
 
 
-def test_asking_for_the_ruler_is_the_modules_decision_not_the_pages():
+def test_asking_for_the_ruler_is_the_modules_decision_not_the_pages(app_at, pairs):
     """`requestPicking` answers whether it turned the ruler ON, so a caller
     never has to read `active` and set it itself."""
-    out = _model("""
+    out = _model(app_at, pairs, """
         const m = await loaded();
         const first  = m.requestPicking();   // was off -> turns on
         const second = m.requestPicking();   // already on

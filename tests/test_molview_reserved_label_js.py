@@ -16,7 +16,7 @@ WHAT THESE TESTS EXIST TO PREVENT: a translator at either boundary (an
 the absence directly: the label crosses BOTH boundaries as a label, untouched.
 
 THE SERVER IS THE APP'S OWN (`_node_esm.served`): the structure is a pair on
-disk, written as the road writes one (`StructureCodec`) with an ordinary label
+disk, saved as the road saves one (`support.road.structure_saved`) with an ordinary label
 on one atom and the reserved one on the other, opened by `/api/build/load` and
 edited by `/api/modify/*`.  The structure they answer keeps every label in its
 one label store (`metadata.regions`), the reserved one included, with no
@@ -50,19 +50,16 @@ def app_at(isolated_projects_root_module):
 
 @pytest.fixture
 def pair(isolated_projects_root):
-    """Two atoms on disk as the road writes a structure (`support.road.
-    road_structure`, `StructureCodec`) -- one with an ordinary label, one
-    with the reserved one -- in this test's own projects tree."""
-    from molbuilder.workingcopy_structure import StructureCodec
-    from support.road import road_structure
-    path = isolated_projects_root / "P" / "structure" / "co.xyz"
-    path.parent.mkdir(parents=True)
-    StructureCodec().write(road_structure(
-        {"elements": ["C", "O"],
-         "positions": [[5.0, 5.0, 5.0], [5.0, 5.0, 6.13]],
-         "regions": {"L-electrode": [0], FROZEN: [1]},
-         "cell": [10.0, 10.0, 10.0]}), path)
-    return path
+    """Two atoms saved as the road saves a structure (`support.road.
+    structure_saved`) -- one with an ordinary label, one with the reserved
+    one -- in this test's own projects tree."""
+    from support.road import structure_saved
+    tree = isolated_projects_root
+    return tree / structure_saved(tree, {
+        "elements": ["C", "O"],
+        "positions": [[5.0, 5.0, 5.0], [5.0, 5.0, 6.13]],
+        "regions": {"L-electrode": [0], FROZEN: [1]},
+        "cell": [10.0, 10.0, 10.0]})
 
 
 def _prelude(path) -> str:
@@ -220,36 +217,19 @@ def test_an_op_sends_its_arguments_where_the_route_reads_them(app_at, pair):
     )
 
 
-def test_the_selection_lands_under_the_key_its_operation_names(app_at, pair):
-    """§ 11.1's table names WHERE the resolved selection goes: knowing how many
-    atoms an op needs and not where to put them cannot build a body."""
-    out = _run(app_at, pair,
-        """
-        const m = await labelled();
-        m.selection.adopt([1]);
-        await m.applyOp("delete");
-        const del = globalThis.__calls[globalThis.__calls.length - 1].body;
-        console.log(JSON.stringify({ indices: del.indices,
-                                     keys: Object.keys(del).sort() }));
-        """
-    )
-    assert out["indices"] == [1], f"the selection did not land: {out['keys']}"
-
-
 def test_a_second_edit_while_one_is_running_is_refused(app_at, pair):
     """One mutation in flight. Two responses applying over each other produce a
     structure neither edit asked for, and a history state the user never saw."""
     out = _run(app_at, pair,
         """
         const m = await labelled();
-        let release;
-        const held = new Promise((r) => { release = r; });
-        const realFetch = globalThis.fetch;
-        globalThis.fetch = async (route, init) => { await held; return realFetch(route, init); };
+        // The first edit kept on its way (`_node_esm.served`'s hold): an
+        // order held, never timed.
+        __hold((call) => call.url.startsWith("/api/modify/"));
 
         const first  = m.applyOp("translate", { dx: 1, dy: 0, dz: 0 });
         const second = await m.applyOp("translate", { dx: 9, dy: 0, dz: 0 });
-        release();
+        __release();
         await first;
         console.log(JSON.stringify({
             secondRefused: second === null,

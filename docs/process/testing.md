@@ -1173,13 +1173,10 @@ deliberately not installed there.
   MolView's tests under node, the stand-ins for what node cannot run, 3Dmol
   (WebGL) and the DOM (`molview_3dmol_standin.js`, `molview_dom_standin.js`),
   and the page around the view lane on the real routes and the real
-  workspace (`molview_lane.py`).  MolView's tests ask the app's own routes,
-  but for three that keep a `fetch` of their own -- answering every route
-  alike (`test_molview_measurement`, `test_structure_info_bridge`) or only
-  the load route (`test_frame_sets`) -- yet to move onto the server's own
-  answers (§ 4; planned, the finish-line review's O-TESTS).  One test holds
-  the real route's answer back, to have two edits in flight at once (a
-  timing, § 3b: `test_molview_reserved_label_js`, the one-mutation case).
+  workspace (`molview_lane.py`).  A MolView test that asks the server asks
+  the app's own routes (`_node_esm.served`), and one that needs an edit
+  still on its way while it asks another holds it with `__hold` (§ 4),
+  never a `fetch` of its own.
 - `test_one_door_reads_a_structure.py` — the author's frozen atoms, regions
   and cell, saved as the `.xyz` + `.molstruct.json` pair, reach the deck
   through `molbuilder describe → prep`, because the pair is one file. Written

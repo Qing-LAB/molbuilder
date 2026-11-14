@@ -11,10 +11,11 @@ Keys of a ``[[case]]``:
     ``save_load`` -- ``StructureCodec.write`` then ``load(**load)``;
     ``route_load`` -- the pair saved into a project, then ``POST
     /api/build/load`` with ``{path, **body}``;
-    ``viewer`` -- the route's answer to ``{path, frames: true}`` installed in
-    a MolView model of ``mode`` under node, then -- unless refused -- its
-    ``exportFile`` of every frame posted to ``/api/structure/export`` and the
-    files read back with ``load(frames=True)``;
+    ``viewer`` -- the pair saved into a project and opened by its path in a
+    MolView model of ``mode`` under node, the app's own route answering,
+    then -- unless refused -- its ``exportFile`` of every frame posted to
+    ``/api/structure/export`` and the files read back with
+    ``load(frames=True)``;
     ``take`` -- ``Structure.take(order)``;
     ``sorted_restored`` -- ``transport.sort.sort_by(set, SORT_HELD_FIRST)``,
     the set in an engine's order, then its ``restored()``;
@@ -83,14 +84,18 @@ _EDITS = {
 }
 
 
-def _route_load(tmp_path, monkeypatch, built, body, client=None):
-    from conftest import point_the_one_door_at
+def _saved_in_a_project(tree, built) -> Path:
+    """``built`` saved in a project of this test's own tree
+    (``isolated_projects_root``) as the road saves a structure
+    (`support.road.structure_saved`): the path a tab opens it by."""
+    from support.road import structure_saved
+    return tree / structure_saved(tree, built)
+
+
+def _route_load(tree, built, body):
     from molbuilder.web.app import create_app
-    tree = point_the_one_door_at(tmp_path / "tree", monkeypatch.setenv)
-    (tree / "P").mkdir()
-    path = tree / "P" / "set.xyz"
-    StructureCodec().write(built, path)
-    client = client or create_app(config={}).test_client()
+    path = _saved_in_a_project(tree, built)
+    client = create_app(config={}).test_client()
     answer = client.post("/api/build/load", json={"path": str(path), **body})
     return answer.status_code, answer.get_json()
 
@@ -100,31 +105,22 @@ def _route_load(tmp_path, monkeypatch, built, body, client=None):
 _HOST = Path(__file__).resolve().parent / "support" / "molview_host.mjs"
 
 
-def _viewer(answer, mode):
-    """The route's answer installed in a MolView model under node; the
-    stand-in server answers only the body the model sends for a file it
-    names no frame of -- the whole file (`molview.md` § 9.3)."""
-    from tests._node_esm import run_node
-    stand_in = (
-        "globalThis.fetch = async (route, init) => {\n"
-        "  const body = JSON.parse(init.body);\n"
-        "  const ok = route === '/api/build/load' && body.frames === true;\n"
-        # As a browser hands it, for the page's one reader (`lib/server.js`).
-        "  return new Response(JSON.stringify(ok ? "
-        + json.dumps(answer)
-        + " : { ok: false, error: 'not the whole file: ' + init.body }),"
-        " { status: ok ? 200 : 400 });\n"
-        "};\n")
+def _viewer(base, path, mode):
+    """The set opened by its path in a MolView model of ``mode`` under node,
+    as a tab opens a file -- the app serving at ``base`` answering
+    (`_node_esm.served`) -- and, unless refused, its ``exportFile`` of every
+    frame."""
+    from tests._node_esm import run_node, served
     return run_node([], (
         "const { createModel } = await import("
         + json.dumps(_HOST.as_uri()) + ");\n"
         "const v = createModel({ mode: " + json.dumps(mode) + " });\n"
         "let out;\n"
         "try {\n"
-        "  await v.installMolecule({ path: 'P/set.xyz' });\n"
+        "  await v.installMolecule({ path: " + json.dumps(str(path)) + " });\n"
         "  out = { export: v.exportFile({ from: 0, to: v.frameCount() - 1 }) };\n"
         "} catch (e) { out = { refused: e.message }; }\n"
-        "console.log(JSON.stringify(out));\n"), globals_js=stand_in)
+        "console.log(JSON.stringify(out));\n"), globals_js=served(base))
 
 
 def _check(expect, got: Structure, built: Structure, *, written=None,
@@ -182,7 +178,7 @@ def _check(expect, got: Structure, built: Structure, *, written=None,
 
 
 @pytest.mark.parametrize("case", _CASES, ids=[c["name"] for c in _CASES])
-def test_frame_set(case, tmp_path, monkeypatch):
+def test_frame_set(case, tmp_path, isolated_projects_root):
     built = _the_set(case.get("held"))
     door = case["door"]
     refused = case.get("refused")
@@ -190,17 +186,17 @@ def test_frame_set(case, tmp_path, monkeypatch):
 
     if door == "viewer":
         from molbuilder.web.app import create_app
-        client = create_app(config={}).test_client()
-        status, answer = _route_load(tmp_path, monkeypatch, built,
-                                     {"frames": True}, client=client)
-        assert status == 200, answer
-        out = _viewer(answer, case["mode"])
+        from support.live_server import serve
+        path = _saved_in_a_project(isolated_projects_root, built)
+        with serve() as base:
+            out = _viewer(base, path, case["mode"])
         if refused:
             assert refused in out.get("refused", ""), out
             return
         assert "export" in out, out
-        files = client.post("/api/structure/export", json={
-            "structure": out["export"]["structure"], "name": "back"}
+        files = create_app(config={}).test_client().post(
+            "/api/structure/export", json={
+                "structure": out["export"]["structure"], "name": "back"}
         ).get_json()
         assert files["ok"], files
         for f in files["files"]:
@@ -210,7 +206,7 @@ def test_frame_set(case, tmp_path, monkeypatch):
         return
 
     if door == "route_load":
-        status, answer = _route_load(tmp_path, monkeypatch, built,
+        status, answer = _route_load(isolated_projects_root, built,
                                      case.get("body", {}))
         if refused:
             assert status == 400 and refused in answer["error"], answer
@@ -239,11 +235,12 @@ def test_frame_set(case, tmp_path, monkeypatch):
         written = None
         act = lambda: Structure.from_xyz(case["document"])  # noqa: E731
     elif door == "lone_file":
-        from conftest import point_the_one_door_at
         from molbuilder.web.app import create_app
-        tree = point_the_one_door_at(tmp_path / "tree", monkeypatch.setenv)
-        (tree / "P").mkdir()
-        lone = tree / "P" / "lone.xyz"
+        from molbuilder.projects import populate_project_skeleton
+        # A PROJECT, MADE AS A PERSON MAKES ONE, the lone file dropped in.
+        project = isolated_projects_root / "P"
+        populate_project_skeleton(project, project_name=project.name)
+        lone = project / "lone.xyz"
         lone.write_text(case["document"])
         from molbuilder.workingcopy_structure import LONE_FILE
         read_said: list = []
