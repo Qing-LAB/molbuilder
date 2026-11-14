@@ -488,14 +488,15 @@ def test_nothing_reaches_a_deck_until_the_last_refusal(tmp_path, monkeypatch):
     """**W3**: nothing reaches a deck until the last thing that can refuse
     has refused.
 
-    A missing pseudopotential costs a second to find at the data-files step
-    and a queue wait plus MPI startup to find on the cluster -- and in
-    between sits a half-built folder, which reads to its owner as a folder
-    that worked.  So the refusal lands with NO deck on disk.
+    A missing pseudopotential costs a second to find at prep -- the settings
+    gate refuses it there, before anything is written -- and a queue wait
+    plus MPI startup to find on the cluster -- and in between sits a
+    half-built folder, which reads to its owner as a folder that worked.  So
+    the refusal lands with NO deck on disk.
 
     **SIESTA only, and the reason is worth stating rather than hiding in a
     parametrize list.**  PySCF ships its basis sets inside the library, so it
-    has no data-files step to refuse at -- that is W5's *nothing*, a recorded
+    reads no data files to be missing -- that is W5's *nothing*, a recorded
     answer.
     """
     bundle = _calculation(tmp_path, monkeypatch, "siesta")
@@ -505,7 +506,12 @@ def test_nothing_reaches_a_deck_until_the_last_refusal(tmp_path, monkeypatch):
         psml.unlink()
     r = jobset(*_prep(bundle))
     assert r.exit_code != 0, r.output
-    assert "this calculation needs H.psml" in r.output, r.output
+    # REFUSED BY THE ONE DOOR, in its words (`science/pseudopotentials.md`
+    # § 1): the settings gate, which prep asks before anything is written.
+    assert "no .psml file for H in the calculation folder" in r.output, \
+        r.output
+    # ...and the way out, on the command line as on the page.
+    assert "point `psml_lib` at a library that has it" in r.output, r.output
     decks = [p for p in bundle.rglob("*") if p.suffix in (".fdf", ".py")]
     assert not decks, f"a deck was written despite the refusal: {decks}"
 

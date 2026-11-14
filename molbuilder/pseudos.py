@@ -723,11 +723,13 @@ def check_coverage(labels: Iterable[str],
             else:
                 out.append(CoverageEntry(
                     element=key, status="missing",
-                    message=(f"no .psml file for {key} in "
-                             f"{d.name!r} -- SIESTA will refuse to "
-                             f"start.  Download from "
-                             f"http://www.pseudo-dojo.org (PSML format, "
-                             f"functional matching cfg.xc_authors)."),
+                    message=(f"no .psml file for {key} in {d} -- SIESTA "
+                             f"opens <label>.psml in the folder it runs "
+                             f"from and has no search path, so it will "
+                             f"refuse to start.  Put {key}.psml in {d}, or "
+                             f"point `psml_lib` at a library that has it "
+                             f"(http://www.pseudo-dojo.org, PSML format, "
+                             f"the functional the run uses)."),
                     path=None,
                 ))
             continue

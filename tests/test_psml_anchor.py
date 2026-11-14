@@ -173,8 +173,10 @@ class TestTheRefusalNamesWhatWasAskedFor:
         assert str(tmp_path / "server" / "projects" / "psml") in msg
 
 
-class TestPrepRefusesWithTheRealPlace:
-    """End to end through `prep`'s own refusal -- the Sol reproduction."""
+class TestTheGateNamesTheRealPlace:
+    """Through the one door prep's every deck asks -- the settings gate
+    (`science/pseudopotentials.md` § 1) -- the Sol reproduction: a library
+    that is not there is an error at prep, named by its tree."""
 
     def _struct(self):
         import numpy as np
@@ -186,23 +188,27 @@ class TestPrepRefusesWithTheRealPlace:
     def test_the_missing_library_is_named_by_its_tree(
             self, calc, tmp_path, monkeypatch):
         from molbuilder.config.siesta import SiestaConfig
-        from molbuilder.jobset.errors import PrepError
-        from molbuilder.siesta.seam import siesta_provide_pseudos
+        from molbuilder.validation import validate
         monkeypatch.chdir(calc)          # stand where the failure happened
-        with pytest.raises(PrepError) as e:
-            siesta_provide_pseudos(
-                self._struct(),
-                SiestaConfig(system_label="x", psml_lib="pseudopotential"),
-                calc)
-        msg = str(e.value)
+        found = [i for i in validate(
+            self._struct(),
+            SiestaConfig(system_label="x", psml_lib="pseudopotential"),
+            calculation="optimization", dest_dir=calc)
+            if i.severity == "error" and i.where == "config.psml_lib"]
+        assert found, "a library that is not there refuses at the gate"
+        msg = found[0].message
+        # The PATH the message names -- the tree the calculation lives in,
+        # never the folder the command stood in.
         assert str(tmp_path / "projects" / "pseudopotential") in msg
-        # ASKED, NEVER SPELLED.  This test is about the PATH the message
-        # names; the element list is incidental, and spelling it pinned the
-        # species order -- a separate contract (`model/chemistry.md` § 3a)
-        # with its own test -- which went red when that rule changed.
-        from molbuilder.chemistry import species_order
-        assert ", ".join(species_order(["H", "C", "S", "Au"])) in msg
         assert str(calc / "projects") not in msg
+        # ...AND THE SPECIES IT WAS TO SUPPLY, and the way out on any
+        # surface -- what prep's own refusal said before 2.69.64.  The set,
+        # never the order (the species order is `model/chemistry.md` § 3a's).
+        import re
+        named = re.search(r"\.psml files for (.+?) come from it", msg)
+        assert named and set(named.group(1).split(", ")) == {
+            "H", "C", "S", "Au"}, msg
+        assert "`psml_lib`" in msg, msg
 
     def test_it_finds_the_library_that_is_really_there(
             self, calc, tmp_path, monkeypatch):

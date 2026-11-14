@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, List
 
 from ..pseudos import PSEUDO_DIRNAME
-from ..runfiles import PSEUDO_FILE, deck_role, fixed_fields, fixed_name
+from ..runfiles import PSEUDO_FILE, deck_role, fixed_fields
 
 if TYPE_CHECKING:
     from ..jobset.engines import EngineSeam
@@ -116,7 +116,7 @@ def siesta_provide_pseudos(struct, cfg, base: Path, plan=None) -> None:
     is this calculation of*, and the structure is the first.
 
     A species in neither place stops `prep` **by name**, before a deck is
-    written.
+    written -- the settings gate's refusal, not this step's (below).
 
     **The science protocol is the settings gate's, not this step's.**
     `science/pseudopotentials.md` exists because a defective `S.psml` with a
@@ -124,15 +124,18 @@ def siesta_provide_pseudos(struct, cfg, base: Path, plan=None) -> None:
     catches that class reads the files the run will open, and it runs ONCE,
     in the one gate (`validation.siesta._check_siesta_pseudo_coverage`, § 1),
     at step 3.3 of every deck this prep renders -- after this step, reading
-    the folder as the plan will leave it.  This step copies.
+    the folder as the plan will leave it.  This step copies; and WHERE THE
+    FILES COME FROM is that gate's to refuse too -- no library named, one
+    that is no folder, a file it lacks -- in its words (`science/
+    pseudopotentials.md` § 1, the ONE door), so prep and the page say one
+    thing.  What cannot be copied is left for it.
 
     ``plan`` (`jobset.planned.Plan`) receives the copies, which the gate
     reads as the plan will leave the folder (`pseudos.PLANNED`): `prep`
     decides everything before it writes (`job-system.md` § 5.0).
     """
-    from ..jobset.errors import PrepError
-    from ..pseudos import (copy_pseudopotentials, psml_sources,
-                           resolve_psml_lib)
+    from ..pseudos import (PsmlLibError, copy_pseudopotentials,
+                           psml_sources, resolve_psml_lib)
     from ..chemistry import species_order
 
     species = species_order(struct.elements)
@@ -147,37 +150,13 @@ def siesta_provide_pseudos(struct, cfg, base: Path, plan=None) -> None:
 
     lib_raw = getattr(cfg, "psml_lib", None)
     if not lib_raw:
-        raise PrepError(
-            f"this calculation needs pseudopotentials for "
-            f"{', '.join(want)} and none are in {base.name}/, but no "
-            f"pseudopotential directory is set.  Set `psml_lib` in the "
-            f"template to the library they live in -- the convention is the "
-            f"bare name `pseudopotential`, which means that folder in the "
-            f"projects tree this calculation lives in.")
-    from ..pseudos import PsmlLibError
+        return
     try:
         lib = resolve_psml_lib(str(lib_raw), dest_dir=base)
-    except PsmlLibError as exc:
-        raise PrepError(str(exc))
-    if not lib.is_dir():
-        # Name the anchor the SPELLING asked for, in the rule's own words.
-        from ..pseudos import describe_psml_anchor
-        raise PrepError(
-            f"this calculation needs pseudopotentials for "
-            f"{', '.join(want)}, and the library they should come from is "
-            f"not a directory.  "
-            + describe_psml_anchor(str(lib_raw), dest_dir=base)
-            + "  Put the .psml files there, or set `psml_lib` to a "
-              "directory that has them.")
-    missing = copy_pseudopotentials(want, lib, pdir, plan=plan)
-    if missing:
-        raise PrepError(
-            f"this calculation needs "
-            f"{', '.join(fixed_name(PSEUDO_FILE, species=m) for m in missing)}"
-            f" and there is none in {base.name}/ or in {lib}.  SIESTA opens "
-            f"<label>.psml in the directory it runs from and has no search "
-            f"path, so it would refuse at startup.  Put the file in the "
-            f"library, or point `psml_lib` at one that has it.")
+    except PsmlLibError:
+        return
+    if lib.is_dir():
+        copy_pseudopotentials(want, lib, pdir, plan=plan)
 
 
 def _siesta_shared_package(base: Path, plan=None) -> List[str]:

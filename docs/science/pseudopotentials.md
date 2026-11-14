@@ -96,7 +96,14 @@ about what blocks**. And the preflight
 asks about **the files the run will open**: at `prep` it is handed the
 calculation folder, and `pseudos.psml_sources` — the rule `prep` fetches by —
 says per species label whether that file comes from the folder or from `psml_lib`
-([`execution/job-contracts.md`](?doc=execution/job-contracts.md) § 2.5a):
+([`execution/job-contracts.md`](?doc=execution/job-contracts.md) § 2.5a).
+**Where they come from is the gate's to refuse too** — no library named, one
+that is no folder, a file it lacks — so prep and the page say it in one set of
+words; SIESTA's data-files step at prep copies what is there and refuses
+nothing (`siesta.seam.siesta_provide_pseudos`) *(2.69.64)*. (A transport
+calculation's cited run brings its own files, and one it lacks is refused by
+the transport rung's own data-files step, `transport.rung.provide_pseudos`,
+naming the citation's way out.) The severities:
 
 | Severity | Statuses | Meaning |
 |---|---|---|

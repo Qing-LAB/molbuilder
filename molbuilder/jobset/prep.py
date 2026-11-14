@@ -673,10 +673,12 @@ def _plan_calculation(calc, stage: Optional[str], resolved: "Resolved",
                   reuse=reuse)
     if notes is not None:
         notes.extend(rung.said)
-    # The DATA FILES the engine will open, before any deck is written: a
-    # missing pseudopotential is a run that cannot start, and finding that out
-    # here costs a second (project-layout.md § 2.6).  Idempotent -- what is
-    # already in the folder is left alone.  The elements come from the
+    # The DATA FILES the engine will open, before any deck is written -- put
+    # in the plan, which the settings gate reads at each deck: a missing
+    # pseudopotential is a run that cannot start, and the gate refuses it
+    # here, before anything is written (`science/pseudopotentials.md` § 1;
+    # project-layout.md § 2.6).  Idempotent -- what is already in the folder
+    # is left alone.  The elements come from the
     # structure, which has just been checked against the description's witness.
     if rung.provide_data is not None:
         with user_error_as_prep(), _calling(

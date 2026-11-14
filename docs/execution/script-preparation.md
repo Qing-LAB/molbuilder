@@ -268,7 +268,7 @@ Every adjacent pair is a data dependency, not a convention:
 | **step 2 → identity** | the stage token and the trial coordinate that name a file come from the resolved set |
 | **load → data files** | the structure's elements say which data files are needed |
 | **validate → structure** | refuse an unsound calculation before writing a line of it |
-| **data files → write** | a refusal must arrive before a folder is half-built |
+| **data files → write** | the settings gate reads the copies the data files put in the plan, and its refusal arrives before a folder is half-built |
 | **structure → parameters** | forced by the language when the deck is a program that runs top to bottom, as PySCF's is; the same convention when it is a keyword list, as SIESTA's is |
 | **write → promises** | the promise is made by the text that was just written |
 | **write → step 4** | the run script is written beside the finished deck, the environment and the counts handed to it — a deck's comment never stands in for a launch value (A3) |
@@ -312,8 +312,11 @@ refusal in the tree.
 > range, and the note saying why this project chose what it chose.
 
 > **W3 · Nothing reaches a deck until the last thing that can refuse has
-> refused.** A missing pseudopotential costs one second to find at **data
-> files**, and a queue wait plus MPI startup to find on the cluster — and in
+> refused.** A missing pseudopotential costs one second to find at prep, where
+> the settings gate refuses it before anything is written
+> ([`science/pseudopotentials.md`](?doc=science/pseudopotentials.md) § 1, the
+> one door; the data-files step copies what is there, *2.69.64*); on the
+> cluster it costs a queue wait plus MPI startup — and in
 > between sits a folder half-built, which reads to its owner as a folder that
 > worked.
 

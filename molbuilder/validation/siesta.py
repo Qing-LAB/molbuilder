@@ -84,7 +84,7 @@ def _check_siesta_pseudo_coverage(struct: Structure, cfg,
                                        relativistic=relativistic)
                 or (f"  Download them from http://www.pseudo-dojo.org (PBE-SR, "
                     f"standard, PSML format) into the projects tree's "
-                    f"`{CONVENTIONAL_LIBRARY}` folder and set the field to "
+                    f"`{CONVENTIONAL_LIBRARY}` folder and set `psml_lib` to "
                     f"`{CONVENTIONAL_LIBRARY}`"
                     + (", or put them in the calculation folder itself"
                        if dest_dir is not None else "") + "."))),
@@ -117,11 +117,12 @@ def _check_siesta_pseudo_coverage(struct: Structure, cfg,
                         else "warn")
             return [Issue(
                 severity,
-                f"the pseudopotential folder does not exist or is not a directory: "
-                f"{psml_lib}.  SIESTA will not find any pseudopotentials.  "
+                f"the pseudopotential folder {psml_lib} does not exist or is "
+                f"not a directory, and the .psml files for "
+                f"{', '.join(lacking)} come from it.  "
                 + describe_psml_anchor(psml_lib, dest_dir=dest_dir)
-                + "  Create that directory, use an absolute path, or pick "
-                  "the directory with the file-picker.",
+                + "  Put the .psml files there, or set `psml_lib` to a "
+                  "directory that has them.",
                 "config.psml_lib",
             )]
         found = {el: (d if d is not None else psml_dir)
@@ -180,7 +181,7 @@ def _the_convention_covers(lacking, cfg, *, dest_dir=None,
         return ""
     return (f"  The tree's `{CONVENTIONAL_LIBRARY}` folder covers all "
             f"{len(lacking)} species this needs ({', '.join(lacking)}): "
-            f"set the field to `{CONVENTIONAL_LIBRARY}`.")
+            f"set `psml_lib` to `{CONVENTIONAL_LIBRARY}`.")
 
 
 def _relativistic(state) -> str:
