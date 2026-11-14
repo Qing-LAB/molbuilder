@@ -771,7 +771,7 @@ The set is closed (`job.RUN_STATES`). Each state's **detail** is one line for a 
   where the run is, in the reading pass's words ([`model/parse.md`](?doc=model/parse.md) § 2b, `doing`):
   *running · negf SCF iteration 12*, or a device's set-up, *running · computing the R lead's surface Green's
   function (estimated 49.170 GB)* — the monitor's words too. A sent run's bare *running* says how long since
-  the job last wrote, *running · last wrote 2 h 10 min ago*. A requeued job past the wall rule's bound, on the
+  the job last wrote, in the one rule a run says a length of time by ([`web/ui-contract.md`](?doc=web/ui-contract.md) § 4), *running · last wrote 2h ago*. A requeued job past the wall rule's bound, on the
   machine it was sent to: *the scheduler lists it: PENDING (Requeue)*.
 - **`finished`** — *ended, exit 0*; *concluded (rc=0 at …)*.
 - **`failed`** — one of:

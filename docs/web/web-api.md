@@ -394,7 +394,7 @@ citation that cannot be cited answers `ok: true` with the refusal as its
 | 403 | forbidden — an admin-gate reject. **Authorization only**: the caller is known and may not do this |
 | 404 | no such file / directory / route — one answer for every route that needs a path to be there (`files._existing`): a path not there is 404, *path does not exist*; one of the wrong kind 400, *path is not a directory* / *is not a regular file* |
 | 409 | conflict — among them a rename/move/copy/mkdir whose destination exists, a link there included; a write, an upload or a structure save whose file exists — one answer, `{needsOverwrite: true, replaces, error}`, `replaces` the files a yes replaces (a structure's pair, by the pairing rule); the upload door and the structure save door ask about it and send again with `overwrite` (`projects.md` § 3), a write's caller says it; and a checkpoint route that needs a history, asked of a folder without one (§ 5) |
-| 413 | payload too large — over the 50 MB global upload cap |
+| 413 | payload too large — over the 50 MiB global upload cap, named in the answer (`units.size_words`) |
 | 422 | unprocessable (spectra) |
 | 500 | internal / I/O / parse fault |
 | 502 | the notebook passed through to Jupyter, when no notebook answers on this machine (§ 5) |
@@ -472,7 +472,7 @@ Set on every response by an `after_request` hook (`app.py`):
   operator sets it. `127.0.0.1`/`::1` are allowlisted; a blocked IP gets an
   empty **429**. The full threat model and the two `/api/admin/rate_limit/*` routes
   live in [`ops/deployment.md § 4`](?doc=ops/deployment.md).
-- The global upload cap is **50 MB** (`MAX_CONTENT_LENGTH`).
+- The global upload cap is **50 MiB** (`MAX_CONTENT_LENGTH`).
 
 ### 2.1 A path from the browser is fenced at the ROUTE — the rule
 

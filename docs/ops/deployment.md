@@ -419,7 +419,7 @@ override):
   `'self'`.
 - `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`,
   `Referrer-Policy: same-origin`, and **HSTS only when served over HTTPS**.
-- a **50 MB request cap** — over it, a JSON `413`, not Flask's HTML default.
+- a **50 MiB request cap** — over it, a JSON `413` naming the cap, not Flask's HTML default.
 - **no CSRF token layer**: cross-site request forgery is defended by
   **`SameSite=Lax` cookies** (a third-party page can't ride your session on a
   state-changing request) plus `form-action 'self'`; no CORS headers are emitted

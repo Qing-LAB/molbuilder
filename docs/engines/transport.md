@@ -5557,7 +5557,7 @@ what that record states:
 ```
 concluded (rc=0 at …) · geometry yes · SZP · 150 Ry · GGA/PBE · k 1x1x1 · 52 atoms
 concluded (rc=0 at …) · geometry NO -- its last geometry is the last one SIESTA wrote, not a converged minimum · …
-not concluded -- running · last wrote 2 min ago
+not concluded -- running · last wrote 2m ago
 a structure pair · 3 frames · optimized with J_01_coarse.fdf · SZ · 150 Ry · … · 22 atoms
 ```
 

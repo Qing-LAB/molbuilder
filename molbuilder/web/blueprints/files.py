@@ -1218,7 +1218,7 @@ def api_files_upload():
         (:func:`exists_answer`: ``needsOverwrite``, ``replaces``) -- or
         is resolved to a free name when ``auto_rename=true``.
       * Max upload size is enforced globally by Flask's
-        ``MAX_CONTENT_LENGTH`` (50 MB; the app-level 413 handler
+        ``MAX_CONTENT_LENGTH`` (50 MiB; the app-level 413 handler
         catches oversize uploads with a clean message).
       * Any other file returns the same shape as ``/api/files/write``
         (``{ok, path, size, mtime}``) so the sidebar refresh code

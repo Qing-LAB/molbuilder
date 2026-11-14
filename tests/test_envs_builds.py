@@ -376,30 +376,33 @@ def test_check_disk_reminds_and_never_refuses(tmp_path, monkeypatch):
     requirement.  **It reminds either way**: a rule that speaks only below a
     number IS a threshold, whatever the docstring says.  With no reference at all it still reminds,
     because "make sure you have room" is true with or without a figure.
+    Every size in it is said in the one spelling of a size
+    (`units.size_words`), as `envs clean` says the same envs' sizes.
     """
     class FakeUsage:
-        def __init__(self, free_gb):
+        def __init__(self, free_gib):
             self.total = 10_000 * 1024 ** 3
             self.used = 0
-            self.free = int(free_gb * 1024 ** 3)
+            self.free = int(free_gib * 1024 ** 3)
 
-    # Plenty of room against a 4 GB reference: it still says what it measured.
+    # Plenty of room against a 4 GiB reference: it still says what it
+    # measured.
     monkeypatch.setattr("shutil.disk_usage", lambda p: FakeUsage(500))
-    free, msg = B.check_disk(str(tmp_path), reference_gb=4.0)
-    assert free == pytest.approx(500, abs=0.1)
+    free, msg = B.check_disk(str(tmp_path), reference_bytes=4 * 1024 ** 3)
+    assert free == 500 * 1024 ** 3
     assert msg is not None, "silence above a number is a threshold"
-    assert "500.0 GB free" in msg, msg
+    assert "500.0 GiB free" in msg, msg
 
     # Tight against the same reference: the same reminder, naming both numbers
     # and disclaiming itself.  And NOT an error -- there is no error to return.
     monkeypatch.setattr("shutil.disk_usage", lambda p: FakeUsage(5))
-    free, msg = B.check_disk(str(tmp_path), reference_gb=4.0)
+    free, msg = B.check_disk(str(tmp_path), reference_bytes=4 * 1024 ** 3)
     assert msg is not None
-    assert "4.0 GB" in msg and "8 GB" in msg, msg
+    assert "4.0 GiB" in msg and "8.0 GiB" in msg, msg
     assert "NOT a requirement" in msg, msg
 
     # No reference to offer: still reminds, just without a figure.
-    free, msg = B.check_disk(str(tmp_path), reference_gb=None)
+    free, msg = B.check_disk(str(tmp_path), reference_bytes=None)
     assert msg is not None and "make sure you have enough space" in msg, msg
 
 
@@ -412,10 +415,10 @@ def test_disk_is_never_a_preflight_WARNING_either(tmp_path, monkeypatch,
     install.  It is `info`: a line to read, not a decision to make.
     """
     class FakeUsage:
-        def __init__(self, free_gb=2.0):
+        def __init__(self, free_gib=2.0):
             self.total = 10_000 * 1024 ** 3
             self.used = 0
-            self.free = int(free_gb * 1024 ** 3)
+            self.free = int(free_gib * 1024 ** 3)
 
     monkeypatch.setattr("shutil.disk_usage", lambda p: FakeUsage())
     env_prefix = tmp_path / "envs" / "env"
@@ -425,9 +428,9 @@ def test_disk_is_never_a_preflight_WARNING_either(tmp_path, monkeypatch,
                          check_network=False)
 
     joined = " ".join(report.warnings) + " ".join(report.errors)
-    assert "GB free" not in joined, (
+    assert "GiB free" not in joined, (
         f"the disk reminder is gating the install:\n{report.warnings}")
-    assert any("GB free" in line for line in report.info), report.info
+    assert any("GiB free" in line for line in report.info), report.info
 
 
 def test_disk_is_never_a_preflight_ERROR(tmp_path, monkeypatch, tiny_spec):
@@ -448,7 +451,7 @@ def test_disk_is_never_a_preflight_ERROR(tmp_path, monkeypatch, tiny_spec):
     probe = B.probe_toolchain(str(env_prefix))
     report = B.preflight(tiny_spec, probe, str(env_prefix),
                          check_network=False)
-    assert not any("free" in e or "GB" in e for e in report.errors), (
+    assert not any("free" in e or "GiB" in e for e in report.errors), (
         f"disk put a hard stop in errors: {report.errors}")
 
 

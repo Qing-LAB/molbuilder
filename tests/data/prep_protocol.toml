@@ -98,7 +98,7 @@ template = { compute_raman = true }
 # The road's H2 holds atom 0, so one atom is free -- one mode, every mode
 # Raman for's default picks; a vibration's template
 # carries the catalogue's recommended relax_steps, 100.
-said = ["the run: relax up to 100 geometry steps · fc 7 SCFs (1 + 6 × 1 free atom) · optical 3 calls (1 + 2 × 1 mode), each .EPSIMG about 0.8 MB (15,001 photon energies, one spin channel; 0.4 MB more with two)",
+said = ["the run: relax up to 100 geometry steps · fc 7 SCFs (1 + 6 × 1 free atom) · optical 3 calls (1 + 2 × 1 mode), each .EPSIMG about 776.4 KiB (15,001 photon energies, one spin channel; 380.9 KiB more with two)",
         "one job walking its calls -- 2 prepared, the rest planned by the job (one time limit for the whole run)"]
 
 # A run is one start, and what a launch again does is the launch's own fact
@@ -126,7 +126,7 @@ name = "...and Raman for a frequency range, at most the modes the run reports: 3
 calculation = "vibration"
 stage = "freq"
 template = { compute_raman = true, raman_modes = "range", raman_freq_min_cm1 = 100.0 }
-said = ["the run: relax up to 100 geometry steps · fc 7 SCFs (1 + 6 × 1 free atom) · optical up to 3 calls (1 + 2 × the modes within the range, at most 1), each .EPSIMG about 0.8 MB"]
+said = ["the run: relax up to 100 geometry steps · fc 7 SCFs (1 + 6 × 1 free atom) · optical up to 3 calls (1 + 2 × the modes within the range, at most 1), each .EPSIMG about 776.4 KiB"]
 
 [[case]]
 name = "...and Raman for a range stated nowhere -- neither end given -- is refused at prep, naming the setting and the ways on, before a deck is written (engines/vibration.md 3.1)"

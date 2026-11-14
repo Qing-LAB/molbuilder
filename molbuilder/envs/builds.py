@@ -52,6 +52,7 @@ from .abi import (
 from . import hints as _hints
 from .recipes import BuildComponent, BuildSpec
 from ..persist import write_bytes
+from ..units import size_words
 
 
 # --------------------------------------------------------------------- #
@@ -1033,19 +1034,20 @@ def detect_gpu_name() -> Optional[str]:
     return first[0].strip() if first else None
 
 
-def disk_free_gb(path: str) -> Optional[float]:
-    """Free space at ``path`` in GB, or ``None`` if the path is unreachable."""
+def disk_free_bytes(path: str) -> Optional[int]:
+    """Free space at ``path`` in bytes, or ``None`` if the path is
+    unreachable."""
     try:
         usage = shutil.disk_usage(path)
     except (FileNotFoundError, PermissionError, OSError):
         return None
-    return usage.free / (1024 ** 3)
+    return int(usage.free)
 
 
-def env_size_reference_gb(envs_dir: str) -> Optional[float]:
+def env_size_reference_bytes(envs_dir: str) -> Optional[int]:
     """A scale for "what one of these costs", measured on THIS machine.
 
-    The largest immediate subdirectory of ``envs_dir``, in GB, or ``None`` when
+    The largest immediate subdirectory of ``envs_dir``, in bytes, or ``None`` when
     there is nothing to measure (no envs yet, or the directory is unreadable).
     Measured with ``du``-equivalent walking, skipping symlinks so conda's hard/
     soft-linked package cache is not counted twice.
@@ -1070,7 +1072,7 @@ def env_size_reference_gb(envs_dir: str) -> Optional[float]:
     except OSError:
         return None
     best = max((tree_bytes(child) for child in children), default=0)
-    return (best / (1024 ** 3)) if best else None
+    return best or None
 
 
 def tree_bytes(root: Path) -> int:
@@ -1089,44 +1091,46 @@ def tree_bytes(root: Path) -> int:
     return total
 
 
-def check_disk(path: str, *, reference_gb: Optional[float] = None
-               ) -> Tuple[Optional[float], Optional[str]]:
-    """Return ``(free_gb, reminder_or_None)``.
+def check_disk(path: str, *, reference_bytes: Optional[int] = None
+               ) -> Tuple[Optional[int], Optional[str]]:
+    """Return ``(free_bytes, reminder_or_None)`` -- every size in it in the
+    one spelling (`units.size_words`).
 
     **Never an error, and there is no threshold.**  It reports what it measured
     and, when a reference is available, what that suggests -- then the person
     decides.  See the note on `_REFERENCE_HEADROOM_FACTOR` for why no threshold
     can be defended.
 
-    ``reference_gb`` is the scale from :func:`env_size_reference_gb`.  Without
+    ``reference_bytes`` is the scale from :func:`env_size_reference_bytes`.  Without
     one the reminder still goes out, just without a figure beside it -- "make
     sure you have room" is true whether or not we can put a number on it.
     """
-    free = disk_free_gb(path)
+    free = disk_free_bytes(path)
     if free is None:
         return None, (
             f"Could not stat {path!r} for disk usage, so free space is "
             f"unknown -- check the path exists and is reachable, and make "
             f"sure there is room for a source build before committing."
         )
-    if reference_gb:
-        suggested = reference_gb * _REFERENCE_HEADROOM_FACTOR
+    if reference_bytes:
+        suggested = reference_bytes * _REFERENCE_HEADROOM_FACTOR
         # NO THRESHOLD: returning nothing above `suggested` would be a
         # threshold however it is worded.  The user's instruction (2026-09-12):
         # *"I wouldn't really bother that.  We just remind user that you need
         # to make sure you have enough free space... that's not really our job
         # to get it."*  So: always report, never gate.
         return free, (
-            f"{free:.1f} GB free at {path}.  For scale, the largest conda env "
-            f"already on this machine is {reference_gb:.1f} GB, so about "
-            f"{suggested:.0f} GB would give a source build comfortable room "
+            f"{size_words(free)} free at {path}.  For scale, the largest "
+            f"conda env already on this machine is "
+            f"{size_words(reference_bytes)}, so about "
+            f"{size_words(suggested)} would give a source build comfortable room "
             f"for the clone, the build tree and a parallel compile -- all of "
             f"which peak well above what the finished env keeps.  That is a "
             f"reference from your own machine, NOT a requirement molbuilder "
             f"computed: make sure you have enough space."
         )
     return free, (
-        f"{free:.1f} GB free at {path}.  A source build needs room for the "
+        f"{size_words(free)} free at {path}.  A source build needs room for the "
         f"download, the build tree and a parallel compile, which peak above "
         f"what the finished env keeps -- make sure you have enough space."
     )
@@ -1492,14 +1496,15 @@ def preflight(spec: BuildSpec, probe: ToolchainProbe,
         # created with ``--prefix /scratch/<user>/x`` it would otherwise walk
         # the person's whole scratch on a login node.
         parent = Path(env_prefix).parent
-        reference = (env_size_reference_gb(str(parent))
+        reference = (env_size_reference_bytes(str(parent))
                      if any(parent == Path(d) for d in envs_dirs) else None)
-        free, disk_msg = check_disk(env_prefix, reference_gb=reference)
+        free, disk_msg = check_disk(env_prefix, reference_bytes=reference)
         if free is not None:
-            info.append(f"Disk free          {free:>5.1f} GB  at {env_prefix}")
+            info.append(f"Disk free          {size_words(free):<10s}  "
+                        f"at {env_prefix}")
         if reference:
             info.append(
-                f"Largest env here   {reference:>5.1f} GB  "
+                f"Largest env here   {size_words(reference):<10s}  "
                 f"(a scale, not a requirement)")
         if disk_msg:
             # INFO, not a warning: `_build_callbacks` turns warnings into
@@ -2330,8 +2335,8 @@ __all__ = [
     "check_cuda_gcc_compat",
     "check_disk",
     "check_repo_reachable",
-    "disk_free_gb",
-    "env_size_reference_gb",
+    "disk_free_bytes",
+    "env_size_reference_bytes",
     "detect_gpu_name",
     "resolve_paths",
     "tree_bytes",

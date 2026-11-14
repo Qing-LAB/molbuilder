@@ -3151,7 +3151,7 @@ label = "Optical resolution"
 tier = "advanced"
 help = """
 THE RUN'S RESOLUTION, not the width you will read the spectrum at.  SIESTA spreads every transition as a Gaussian of this width, on an energy grid a tenth of it, and writes only the spread spectrum (<label>.EPSIMG).  The width a person reads the Raman strength at -- 0.1 eV, 0.5 eV -- is applied when the result is presented (the Spectra page's Electronic broadening (eV) box) by spreading SIESTA's spectrum with one more Gaussian: two Gaussians compose into one, so it is the spectrum SIESTA would have written at that width, but for the few widths nearest the ends of its energy grid.  This number only sets the finest width you can ask for later, and the size of the file.
-0.002 Ry (0.027 eV) gives 15,001 energies up to the 3 Ry cutoff (Optical spectrum cutoff): 0.8 MB of text per optical call, 96 MB over a junction's 121 calls.  Halving it doubles both.
+0.002 Ry (0.027 eV) gives 15,001 energies up to the 3 Ry cutoff (Optical spectrum cutoff): 776.4 KiB of text per optical call, 91.7 MiB over a junction's 121 calls.  Halving it doubles both.
 """
 
 [item.optical_energy_max]

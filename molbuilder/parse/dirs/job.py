@@ -53,12 +53,14 @@ try:                                        # inside molbuilder
     # the package while the monitor reads with the shipped copies -- two
     # versions of one reader in one process.
     from ...monitor_log import MONITOR_ENDED_LINE
+    from ...report_fields import span_words
     from ... import runfiles as _rf
     from ... import runrecord as _rr
     from ... import wrapper_log as _wl
     from ..engines import _run_ending as _re
 except ImportError:                         # beside a job, as the monitor's
     from monitor_log import MONITOR_ENDED_LINE
+    from report_fields import span_words
     import runfiles as _rf
     import runrecord as _rr
     import wrapper_log as _wl
@@ -269,17 +271,6 @@ def _started(run_dir: Path, basename: str) -> bool:
     return _wl.log_of_run(run_dir, *_rf.split_stem(basename)) is not None
 
 
-def _ago(seconds: float) -> str:
-    """``2 h 10 min``, ``35 min``, ``20 s`` -- how long ago, in words."""
-    s = int(max(seconds, 0))
-    if s < 60:
-        return f"{s} s"
-    h, m = divmod(s // 60, 60)
-    d, h = divmod(h, 24)
-    return " ".join(w for w in (f"{d} d" if d else "", f"{h} h" if h else "",
-                                f"{m} min" if m or not (d or h) else "") if w)
-
-
 def _past_wall(run_dir: Path, basename: str, launch: Any) -> Optional[str]:
     """A SENT RUN PAST ITS WALL, wherever it is read (`running-a-job.md`
     § 4.2, *Past its wall*): the job cannot run longer than the wall its
@@ -307,16 +298,17 @@ def _past_wall(run_dir: Path, basename: str, launch: Any) -> Optional[str]:
 
 
 def _quiet_for(run_dir: Path, basename: str, launch: Any) -> str:
-    """``· last wrote 2 h 10 min ago`` for a sent run still reading
+    """``· last wrote 2h ago`` for a sent run still reading
     `running` (`running-a-job.md` § 4.2): the one fact a folder gives
     where its scheduler cannot be asked -- the job's own last write
-    (:func:`_newest_write`); empty for a run here."""
+    (:func:`_newest_write`), how long ago in the one rule a run says a
+    length of time by (`report_fields.span_words`); empty for a run here."""
     if not isinstance(launch, dict) or launch.get("mode") != "submit":
         return ""
     newest = _newest_write(run_dir, basename)
     if newest is None:
         return ""
-    return f" \u00b7 last wrote {_ago(time.time() - newest)} ago"
+    return f" \u00b7 last wrote {span_words(time.time() - newest)} ago"
 
 
 def _finish_failed(concluded: Optional[str]) -> bool:
@@ -764,6 +756,7 @@ def _build_status(out_paths: List[Path],
 #: imports there by their bare names (`runwrap.monitor_companions`).
 TRAVELS_WITH = ("molbuilder.parse.engines._run_ending",
                 "molbuilder.monitor_log",
+                "molbuilder.report_fields",
                 "molbuilder.runfiles",
                 "molbuilder.runrecord",
                 "molbuilder.wrapper_log")

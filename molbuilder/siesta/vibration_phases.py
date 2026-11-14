@@ -38,12 +38,14 @@ try:                                       # inside molbuilder
     from ..paths import frame_index
     from ..runfiles import SIESTA_DM, SIESTA_EPSIMG, SIESTA_FC, compose
     from ..runpoints import AGAIN, CONTINUE
+    from ..units import size_words
 except ImportError:                        # beside a job
     from calcdirs import RunPlace  # type: ignore[no-redef]
     from paths import frame_index  # type: ignore[no-redef]
     from runfiles import (  # type: ignore[no-redef]
         SIESTA_DM, SIESTA_EPSIMG, SIESTA_FC, compose)
     from runpoints import AGAIN, CONTINUE  # type: ignore[no-redef]
+    from units import size_words  # type: ignore[no-redef]
 
 #: The phases' names -- one spelling each, the folder below the stage and
 #: below a run that holds the phase's deck, and a call's.
@@ -378,11 +380,12 @@ def run_size_words(cfg, n_free: int, n_modes: int) -> str:
         if broaden > 0:
             rows = int(round(float(cfg.optical_energy_max)
                              / (broaden / 10.0))) + 1
-            one = rows * (2 * EPSIMG_COLUMN_BYTES + 1) / 1e6
-            more = rows * EPSIMG_COLUMN_BYTES / 1e6
-            calls += (f", each {SIESTA_EPSIMG} about {one:.1f} MB ({rows:,} "
-                      f"photon energies, one spin channel; {more:.1f} "
-                      f"MB more with two)")
+            # A FILE'S SIZE, in the one spelling (`units.size_words`).
+            one = size_words(rows * (2 * EPSIMG_COLUMN_BYTES + 1))
+            more = size_words(rows * EPSIMG_COLUMN_BYTES)
+            calls += (f", each {SIESTA_EPSIMG} about {one} ({rows:,} "
+                      f"photon energies, one spin channel; {more} more "
+                      f"with two)")
         parts.append(f"optical {calls}")
     return "the run: " + " · ".join(parts)
 
@@ -408,4 +411,5 @@ __all__ = ["RELAX", "FC", "OPTICAL", "PhaseRule", "PHASES", "phase",
 TRAVELS_WITH = ("molbuilder.calcdirs",
                 "molbuilder.paths",
                 "molbuilder.runfiles",
-                "molbuilder.runpoints")
+                "molbuilder.runpoints",
+                "molbuilder.units")

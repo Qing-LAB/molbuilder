@@ -102,9 +102,9 @@ def request_is_https() -> bool:
     return fwd == "https"
 
 
-# Cap multipart uploads at 50 MB.  Build side only needs ~10 MB for
-# realistic PDBs (10k atoms ~= 1 MB at 80 bytes/line); the watch side
-# accepts trajectory log uploads up to 50 MB.  Flask's
+# Cap multipart uploads at 50 MiB.  Build side only needs ~10 MiB for
+# realistic PDBs (10k atoms ~= 1 MiB at 80 bytes/line); the watch side
+# accepts trajectory log uploads up to 50 MiB.  Flask's
 # MAX_CONTENT_LENGTH is a single global cap, so we use the larger.
 _MAX_UPLOAD_MB = 50
 
@@ -464,11 +464,14 @@ def create_app(*, config=None) -> Flask:
     # ``{ok: false, error: ...}`` JSON shape every other endpoint
     # uses gives the user an actionable message.
     from werkzeug.exceptions import RequestEntityTooLarge
+    from ..units import size_words
 
     @app.errorhandler(RequestEntityTooLarge)
     def _too_large(_exc):
+        # THE CAP IN EFFECT, in the one spelling of a size.
         return err(
-            f"Upload exceeds the {_MAX_UPLOAD_MB} MB cap "
+            f"Upload exceeds the {size_words(app.config['MAX_CONTENT_LENGTH'])} "
+            f"cap "
             f"(MAX_CONTENT_LENGTH).  Shrink the file or "
             f"point the loader at the path on disk.",
             413)

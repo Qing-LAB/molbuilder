@@ -2874,7 +2874,8 @@ inside the range under `range`, which only the run can count —
 $3\,n_{\mathrm{free}}$ less the whole-body motions the held atoms leave (the
 rank rule prep's check states, `science/normal-modes.md` § 3.1), and each
 `.EPSIMG`'s size from its photon energies (`Optical.Energy.Maximum` over a
-step of `Optical.Broaden / 10`), one spin channel's and what a second adds.
+step of `Optical.Broaden / 10`), one spin channel's and what a second adds,
+each in the one spelling of a file's size (`units.size_words`).
 The run's one job is worded by the points declaration (`prep.walk_words`):
 its calls prepared — where the stage runs its optical phase, the rest
 planned by the job — one time limit for the whole run. The wall stays the person's.
