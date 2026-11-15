@@ -9,8 +9,8 @@ from __future__ import annotations
 import pytest
 
 from molbuilder.chemistry import BackendUnavailable
-
 from molbuilder.nucleic import build_dna, parse_dna_notation
+from support import tooling
 
 
 # --------------------------------------------------------------------- #
@@ -68,9 +68,7 @@ def test_ds_rejected_on_non_x3dna_backend():
 
 def test_ds_rejected_on_unsupported_form():
     # B / A / Z are supported; anything else is rejected up front.
-    from molbuilder.builders.backends import auto_backend_name
-    if auto_backend_name() != "threedna":
-        pytest.skip("X3DNA not installed; the backend gate fires first")
+    tooling.needs_backend("threedna")
     with pytest.raises(ValueError, match="B / A / Z"):
         build_dna("ds,ATGC", backend="threedna", form="Q")
 
@@ -99,9 +97,7 @@ def test_two_strand_non_B_form_rejected():
 
 @pytest.fixture(scope="module")
 def _x3dna():
-    from molbuilder.builders.backends import auto_backend_name
-    if auto_backend_name() != "threedna":
-        pytest.skip("X3DNA (threedna) not installed")
+    tooling.needs_backend("threedna")
 
 
 def test_ds_build_is_a_two_chain_duplex(_x3dna):

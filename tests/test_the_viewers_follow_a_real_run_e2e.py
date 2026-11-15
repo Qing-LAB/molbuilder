@@ -74,18 +74,10 @@ from pathlib import Path
 
 import pytest
 
-from _road import conda_hook, env_available
 from support.real_runs import (copy_of, left_to_end, makes_a_real_run, pyscf,
                                road_at, stage_status, taken)
 from tests._node_esm import lifted, run_node
 
-pytestmark = [
-    pytest.mark.skipif(
-        not (conda_hook().is_file() and env_available("molbuilder-siesta")
-             and env_available("molbuilder-pySCF")),
-        reason="needs the molbuilder-siesta and molbuilder-pySCF envs + a "
-               "detectable conda hook"),
-]
 
 _LIB = Path(__file__).resolve().parents[1] / "molbuilder/web/static/lib"
 TRAJECTORY = _LIB / "trajectory" / "core.js"
@@ -178,7 +170,7 @@ def _uploaded(name: str, data: bytes) -> dict:
     return r.get_json()
 
 
-@makes_a_real_run("module")
+@makes_a_real_run("module", "molbuilder-siesta")
 def followed(real_h2_layered, tmp_path_factory):
     """THE SHARED H2'S `coarse`, LAUNCHED AGAIN COLD IN A COPY of its
     calculation and followed while it went (:func:`_as_the_trajectory_viewer_
@@ -217,7 +209,7 @@ def followed(real_h2_layered, tmp_path_factory):
     return copy_of(real_h2_layered, "followed", follow)
 
 
-@makes_a_real_run("module")
+@makes_a_real_run("module", "molbuilder-siesta")
 def stopped(real_h2_stopped, tmp_path_factory):
     """THE SHARED STOPPED H2'S `coarse` (``real_h2_stopped``: its SCF unable
     to converge in its cap, set by the person in its template), LAUNCHED
@@ -241,7 +233,7 @@ def stopped(real_h2_stopped, tmp_path_factory):
     return copy_of(real_h2_stopped, "followed", follow)
 
 
-@makes_a_real_run("module")
+@makes_a_real_run("module", "molbuilder-pySCF")
 def vibration_followed(real_water_linear, tmp_path_factory):
     """THE SHARED STRAIGHT WATER'S `freq`, LAUNCHED AGAIN COLD IN A COPY and
     followed as the spectra viewer follows it (`web/spectra.md` § 7): its
@@ -1151,7 +1143,7 @@ INSPECTORS = _LIB / "inspectors"
 PATH_DOOR = _LIB / "path-utils.js"
 
 
-@makes_a_real_run("module")
+@makes_a_real_run("module", "molbuilder-pySCF")
 def stage_shaped(tmp_path_factory):
     """AN H2 OPTIMIZATION ON PYSCF LABELLED `au_2_bdt` -- a label holding a
     part shaped like a stage -- made by the shared PySCF run's maker under

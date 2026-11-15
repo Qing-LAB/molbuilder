@@ -20,7 +20,6 @@ import copy as _copy
 import numpy as np
 import pytest
 
-from _road import conda_hook, env_available
 from molbuilder.modify import (add_atom, append_structure, delete_atoms,
                                orient_along_axis, rotate_around_axis,
                                translate)
@@ -28,11 +27,6 @@ from molbuilder.periodicity_gate import apply_edit
 from molbuilder.structure import Structure
 from molbuilder.workingcopy_structure import StructureCodec
 
-pytestmark = [
-    pytest.mark.skipif(
-        not (conda_hook().is_file() and env_available("molbuilder-siesta")),
-        reason="needs the molbuilder-siesta env + a detectable conda hook"),
-]
 
 _CELL = [[9., 0, 0], [0, 9., 0], [0, 0, 9.]]
 

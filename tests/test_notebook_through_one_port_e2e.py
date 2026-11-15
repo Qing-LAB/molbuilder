@@ -31,12 +31,10 @@ from pathlib import Path
 
 import pytest
 
-from _road import env_available
+from support.tooling import needs
 
 
-pytestmark = pytest.mark.skipif(
-    not env_available("molbuilder-jupyternb"),
-    reason="needs the opt-in molbuilder-jupyternb env")
+pytestmark = needs("molbuilder-jupyternb")
 
 _REPO = Path(__file__).resolve().parents[1]
 

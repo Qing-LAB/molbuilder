@@ -61,7 +61,6 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from _road import conda_hook, env_available
 from support.real_runs import (RealRun, co2_vibration, copy_of,
                                makes_a_real_run, notified, on_the_road,
                                road_at, stage_status, stopped_by_its_line,
@@ -69,11 +68,6 @@ from support.real_runs import (RealRun, co2_vibration, copy_of,
 from support.road import set_by_the_person
 from support.road import CO2, CO2_HELD_FIRST, all_written, group_words
 
-pytestmark = [
-    pytest.mark.skipif(
-        not (conda_hook().is_file() and env_available("molbuilder-siesta")),
-        reason="needs the molbuilder-siesta env + a detectable conda hook"),
-]
 
 #: q0² · ν̃ for every mode: the zero-point amplitude in mass-weighted units is
 #: q0 = sqrt(ħ / 2ω), so q0² ν̃ = ħ / (4π c) -- CODATA 2018's ħ, c and atomic
@@ -88,7 +82,7 @@ _PICKED_MODES = [3, 4]
 _OPTICAL_CALLS = ("f000", "f001", "f002", "f003", "f004")
 
 
-@makes_a_real_run("module")
+@makes_a_real_run("module", "molbuilder-siesta")
 def unticked(real_co2_vibration, tmp_path_factory):
     """The box unticked: a copy of the shared run's calculation
     (`support.real_runs.copy_of`), on which, in order -- `summarize` asked
@@ -107,7 +101,7 @@ def unticked(real_co2_vibration, tmp_path_factory):
     return copy_of(real_co2_vibration, "unticked", on_the_run)
 
 
-@makes_a_real_run("module")
+@makes_a_real_run("module", "molbuilder-siesta")
 def ticked(tmp_path_factory):
     """The box ticked, on the road: the template's `already_relaxed` true
     and its temperature 350 K, `freq` prepared and launched -- one run, its
@@ -1523,7 +1517,7 @@ def test_a_displacement_sweep_compares_every_stages_force_constants(unticked):
     assert rec2["tolerance_cm1"] == 1e-6
 
 
-@makes_a_real_run("module")
+@makes_a_real_run("module", "molbuilder-siesta")
 def stopped(real_co2_vibration, tmp_path_factory):
     """THE PERSON STOPS THE RUN ONCE ITS FORCE CONSTANTS AND ITS FIRST
     OPTICAL CALL ENDED (`engines/vibration.md` § 5.11 § 6): a copy of the
@@ -1568,7 +1562,7 @@ def stopped(real_co2_vibration, tmp_path_factory):
     return copy_of(real_co2_vibration, "stopped", stop)
 
 
-@makes_a_real_run("module")
+@makes_a_real_run("module", "molbuilder-siesta")
 def stopped_after_fc(stopped, tmp_path_factory):
     """THE STOPPED RUN LAUNCHED AGAIN (:func:`stopped`): a copy of it, `freq`
     launched again warm, in the foreground -- run-2 -- the stop's status and
@@ -1701,7 +1695,7 @@ def test_launched_again_warm_after_a_stop_runs_only_the_optical_calls(
     _common_assertions(d, optical=True)
 
 
-@makes_a_real_run("module")
+@makes_a_real_run("module", "molbuilder-siesta")
 def failed_parts(stopped, tmp_path_factory):
     """THE STOPPED RUN LAUNCHED AGAIN UNDER A WALL ALREADY PASSED
     (:func:`stopped`): a copy of it, its run card given a wall of 20 s

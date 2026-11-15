@@ -136,10 +136,11 @@ Tests are marked by **layer**, and the marker is orthogonal to the directory (a
 | `module` | L2 | one submodule's public surface, end to end |
 | `interface` | L3 | the contract between two modules (a registry, a severity map, a shape) |
 | `integration` | L4 | several subsystems agreeing on one shared fact |
-| `smoke` | — | subprocess-runs a *generated script* (slow; needs pyscf) |
+| `smoke` | — | subprocess-runs an engine on what molbuilder wrote (slow; needs its engine's env, § 3) |
 | `e2e` | — | browser-driven Playwright (slow; needs chromium) |
 | `slow` | — | > 1 s (`make test` skips them) |
 | `engine` | — | starts a real SIESTA / TranSIESTA / PySCF process, itself or through a fixture; such tests run one at a time; set at collection through a fixture declared to make a real run, written by hand only where a test's own body starts the engine (§ 6.1a) |
+| `needs` | — | what a test's own body needs of the machine beyond the host env (an env, the env manager, a GPU), stated with `support.tooling.needs`; skipped where one is unmet (§ 3) |
 | `capture_on_fail` | — | dump browser state + console to `test-artifacts/` on failure |
 
 The rule of thumb: **cover a contract at the lowest layer that can see it.** A
@@ -291,20 +292,45 @@ pins each part. A test that needs a machine's real answers is a **field** test
 molbuilder dispatches into per-backend conda envs
 ([`installation.md`](?doc=ops/installation.md)), and the test rule follows from
 that: **a test must not require an env to be reshaped to pass.** The whole suite
-runs in the host `molbuilder` env; tests that genuinely need a backend
-(`smoke` needs pyscf) are **marked and gated** so they skip cleanly when that
-backend is absent, rather than failing — and a test that needs the opt-in test
-tooling (Node, the browser) skips by one rule (§ 4, *one rule for missing
-tooling*). **A package the host env requires never skips** *(the user,
-2026-11-14: "flask tests should not skip")*: `host-env.txt`'s `conda` lines --
-Flask, RDKit, Open Babel, ASE, git and the rest, and what they bring with them
-(`cryptography`, under `authlib`) -- are there on every install, so a test
-whose package is missing FAILS, the env broken; a skip would read as green.
-Only an optional package -- its `pip` lines, the UI's PeptideBuilder and
-pubchempy -- or a tool outside the env is skipped for, naming it. A
-structure builder's backend follows the same rule, through one function,
+runs in the host `molbuilder` env; a test that needs what that env does not
+hold skips cleanly where it is absent, rather than failing, by the rules
+below — and a test that needs the opt-in test tooling (Node, the browser)
+skips by one rule (§ 4, *one rule for missing tooling*). **A package the
+host env requires never skips** *(the user, 2026-11-14: "flask tests should
+not skip")*: `host-env.txt`'s `conda` lines -- Flask, RDKit, Open Babel,
+ASE, git and the rest, and what they bring with them (`cryptography`, under
+`authlib`) -- are there on every install, so a test whose package is
+missing FAILS, the env broken; a skip would read as green. Only an optional
+package -- its `pip` lines, the UI's PeptideBuilder and pubchempy -- or a
+tool outside the env is skipped for, naming it. A structure builder's
+backend follows the same rule, through one function,
 `support.tooling.needs_backend`: RDKit's is the host env's own and never
-skipped for; X3DNA and AmberTools are tools outside the env. You design the test to
+skipped for; X3DNA and AmberTools are tools outside the env.
+
+**What a test needs of the machine beyond the host env** — an env of its
+own recipe (an engine's, `molbuilder-siesta`, `molbuilder-siesta-gpu`,
+`molbuilder-pySCF`; the notebook's, `molbuilder-jupyternb`; the host env in
+the manager's list), the env manager itself, a visible NVIDIA GPU — **is
+stated once, where it is used, and an unmet need skips by one rule**,
+`support.tooling.unmet`: its reason says no env manager is found, or no GPU
+is visible, or names the command that installs the env, as `doctor` names
+it (`bash scripts/install-env.sh install <env> --yes`). A fixture that
+makes a real run states its run's needs as it is declared
+(`support.real_runs.makes_a_real_run(scope, *needs)`, § 6.1a); a test whose
+own body uses one states it on itself or its module
+(`support.tooling.needs(...)`, a mark). The collection hook reads both and
+skips for an unmet one in one place, before any of the test's fixtures is
+set up, after the browser's reason (§ 4). The road door checks the engine
+its run is made on again as the run starts (`road_at`), and that the
+manager keeps its shell hook where the run scripts source it. The machine
+is read once per test process (`_road`), not through the product's
+`get_capabilities()`, which the suite resets before every test and tests
+replace with snapshots of their own. No file writes a skip of its own for
+an env, the manager or a GPU. **An env that is here but broken fails**: a
+program a test runs from it that is missing or does not start
+(`_road.env_binary`) fails the test, saying so — save what the env's recipe
+records as optional, which a test may skip for, naming it (`pyscf.prop.
+infrared`, which the PySCF recipe falls back without). You design the test to
 fit the environment model — you never edit an env to make a test pass (that rule is
 load-bearing elsewhere too).
 
@@ -1091,8 +1117,9 @@ tests are collected:
    beside it**: each fixture that makes a real run — the session's in
    `conftest.py`, or a module's own, made down `support.real_runs`' road
    (`on_the_road`, `road_at`, or a maker that takes them) — is declared with
-   `support.real_runs.makes_a_real_run(scope)`, and the collection hook
-   marks every test that asks for one, directly or through another fixture.
+   `support.real_runs.makes_a_real_run(scope, *needs)`, its run's needs of
+   the machine (§ 3) stated with it, and the collection hook marks every
+   test that asks for one, directly or through another fixture.
    A hand `@pytest.mark.engine` stays only where a test's own body starts
    the engine. *(Found by reading, 2026-11-14:
    `test_keyboard_paths_e2e` asked for a session run with no hand mark, so
@@ -1212,10 +1239,15 @@ deliberately not installed there.
   names, the paths a tab opens them by, `saved_by_name`),
   `real_runs.py` (the real runs a pass makes once, each made by one maker
   and asked for through its session fixture in `conftest.py`; the
-  declaration every fixture that makes a run carries, `makes_a_real_run`;
-  a run's tree with the engine on the road, `road_at`; the one maker of the road's H2
-  optimization, `h2_optimization`; the one maker of a displacement sweep,
-  `swept`), `machines.py` (a machine record's scheduler of each kind,
+  declaration every fixture that makes a run carries, with what its run
+  needs of the machine, `makes_a_real_run`; a run's tree with the engine
+  on the road, `road_at`; the one maker of the road's H2 optimization,
+  `h2_optimization`; the one maker of a displacement sweep, `swept`),
+  `tooling.py` (what a test needs beyond the host env -- the opt-in
+  tooling, an env, the env manager, a GPU -- and the one reason it skips
+  with when that is missing, § 3, § 4: `unmet`, `needs`), `suite.py` (a small suite
+  run by the suite's own rules, for a test of the harness itself,
+  `linked`), `machines.py` (a machine record's scheduler of each kind,
   `SLURM` and `WORKSTATION`, the GPU tool the load monitor asks,
   `a_gpu_tool`, and a machine with none, `no_gpu_tool`; the record itself
   is written by

@@ -2318,7 +2318,7 @@ def render_run_wrapper(script_path: Path, *,
             f"request), and {_where} lists no ``{target_env}`` environment, "
             f"{eng.words}'s GPU build.  The run script enters it at its "
             f"start and stops there if it is absent -- so install it before "
-            f"launching, {_there}: ``{_hints.fix_cmd('install', target_env)}`` "
+            f"launching, {_there}: ``{_hints.install_cmd(target_env)}`` "
             f"-- or turn ``Use GPU`` off and prep again.")
         if notes is not None and _said not in notes:
             notes.append(_said)

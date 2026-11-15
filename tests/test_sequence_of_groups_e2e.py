@@ -23,16 +23,9 @@ from pathlib import Path
 
 import pytest
 
-from _road import conda_hook, env_available
 from support.real_runs import (h2_optimization, makes_a_real_run, on_the_road,
                                stage_status)
 from support.road import jobset, molbuilder
-
-pytestmark = [
-    pytest.mark.skipif(
-        not (conda_hook().is_file() and env_available("molbuilder-siesta")),
-        reason="needs the molbuilder-siesta env + a detectable conda hook"),
-]
 
 
 def _groups(bundle: Path):
@@ -48,7 +41,7 @@ def _ledger(bundle: Path):
     return ledger.read(bundle)
 
 
-@makes_a_real_run("module")
+@makes_a_real_run("module", "molbuilder-siesta")
 def road(tmp_path_factory):
     """Two calculations: one sent as a sequence run here and waited on;
     one sent in the background, looked at while it runs, its group launched

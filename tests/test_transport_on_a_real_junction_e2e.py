@@ -55,7 +55,6 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from _road import conda_hook, env_available
 from molbuilder.parse.engines import siesta_grammar as _G
 from molbuilder.transport.stages import TRANSPORT_STAGES
 from support.machines import SLURM
@@ -66,11 +65,6 @@ from support.real_runs import (RealRun, Said, copy_of, makes_a_real_run,
 from support.road import (all_written, molbuilder, one_rank,
                           set_by_the_person)
 
-pytestmark = [
-    pytest.mark.skipif(
-        not (conda_hook().is_file() and env_available("molbuilder-siesta")),
-        reason="needs the molbuilder-siesta env + a detectable conda hook"),
-]
 
 #: Nine hydrogens an electrode block, one ångström apart -- a lead cell
 #: longer than the minimal basis's interaction range (§ 0.3, I11) -- and four
@@ -288,7 +282,7 @@ _ANOTHER_INPUT = [
 ]
 
 
-@makes_a_real_run("module")
+@makes_a_real_run("module", "molbuilder-siesta")
 def junction(tmp_path_factory):
     """The relaxation cited and the transport calculation run on it: a
     `RealRun` of the transport calculation, with ``cite``, the relaxation's
@@ -4290,7 +4284,7 @@ def test_the_results_tab_opens_a_transmission_folder_at_its_point(
 _WIDER = (-3.0, 3.0)
 
 
-@makes_a_real_run("module")
+@makes_a_real_run("module", "molbuilder-siesta")
 def reused(junction, tmp_path_factory):
     """Calculations that reuse the finished one, `P/transport/T`, each made
     on the road as a person makes it (`engines/transport.md` § 2a.16): the

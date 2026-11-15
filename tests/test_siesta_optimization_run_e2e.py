@@ -28,16 +28,10 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from _road import conda_hook, env_available
 from support.real_runs import makes_a_real_run, on_the_road
 from support.road import H2
 from support.road import molbuilder, set_by_the_person
 
-pytestmark = [
-    pytest.mark.skipif(
-        not (conda_hook().is_file() and env_available("molbuilder-siesta")),
-        reason="needs the molbuilder-siesta env + a detectable conda hook"),
-]
 
 #: The structure both calculations hold: the road's H2 (`support.road.H2`),
 #: in a 10 Å box isolated on every axis, its first atom held -- its box's
@@ -46,7 +40,7 @@ _BOX = H2["cell"][0]
 _H2 = H2["positions"]
 
 
-@makes_a_real_run("module")
+@makes_a_real_run("module", "molbuilder-siesta")
 def capped(tmp_path_factory):
     """The capped calculation's coarse stage, in a projects tree of its own:
     the road's H2 described as the one stage its template alone describes,

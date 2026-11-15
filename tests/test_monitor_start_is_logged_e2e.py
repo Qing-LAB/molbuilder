@@ -13,17 +13,6 @@ bundle edited by hand after prep is not one molbuilder writes
 """
 from __future__ import annotations
 
-import pytest
-
-from _road import conda_hook, env_available
-
-CONDA_SH = conda_hook()
-
-_needs = {env: pytest.mark.skipif(
-    not (CONDA_SH.is_file() and env_available(env)),
-    reason=f"needs the {env} env + a detectable conda hook")
-    for env in ("molbuilder-pySCF",)}
-
 
 def _session_log(ran_in) -> str:
     """The session log of the run in ``ran_in`` -- its one start's
@@ -33,7 +22,6 @@ def _session_log(ran_in) -> str:
     return log.read_text(errors="replace") if log is not None else ""
 
 
-@_needs["molbuilder-pySCF"]
 def test_a_monitor_that_loads_says_so(real_h2_pyscf):
     """``starting`` and then ``started``, and the monitor went on to open its
     own log -- on the pass's PySCF run, its bundle as prepared

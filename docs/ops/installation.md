@@ -1276,7 +1276,3 @@ its own header documents the three and its error text names all three.
   so they are not exercised here.
 - `test_envs.py` — subprocess dispatch into an env: `run_in_env` argv
   construction and the no-conda error path.
-- `test_envs_solve_drift.py` — the only test that runs a **real solve** and
-  compares the result against what the recipe intends. Slow, network-bound, and
-  self-skipping; it is what catches conda-forge moving a default underneath a
-  spec that never changed. Run nightly: `pytest tests/test_envs_solve_drift.py -m slow`.

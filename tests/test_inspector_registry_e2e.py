@@ -18,19 +18,7 @@ from pathlib import Path
 
 import pytest
 
-from _road import conda_hook, env_available
 from support.sidebar import WAIT_MS
-
-#: THE ROWS ARE ASKED OF REAL RUNS (`support/real_runs.py`): SIESTA's and
-#: PySCF's.
-pytestmark = [
-    pytest.mark.skipif(
-        not (conda_hook().is_file() and env_available("molbuilder-siesta")
-             and env_available("molbuilder-pySCF")),
-        reason="needs the molbuilder-siesta and molbuilder-pySCF envs + a "
-               "detectable conda hook"),
-]
-
 
 ROOT = Path(__file__).resolve().parents[1]
 PRESENTERS = tomllib.loads(

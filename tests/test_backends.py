@@ -22,6 +22,7 @@ import pytest
 
 from molbuilder.builders.backends import dispatch
 from molbuilder.chemistry import BackendUnavailable
+from support import tooling
 
 
 def test_dispatch_explicit_backend_calls_only_that_one(monkeypatch):
@@ -248,8 +249,7 @@ def test_threedna_builds_real_dna_when_installed():
     least one of each base (DA/DT/DG/DC), backbone connectivity check
     passing.  Skipped on machines without 3DNA."""
     from molbuilder.builders.backends import _threedna
-    if not _threedna.is_available():
-        pytest.skip("3DNA not reachable on this machine")
+    tooling.needs_backend("threedna")
     s = _threedna.build("dna", "ATGC", form="B", terminal="OH")
     assert s.n_atoms > 0
     assert "P" in s.elements
@@ -261,8 +261,7 @@ def test_threedna_a_form_differs_from_b_form():
     geometries the fiber backend produces must actually differ.  This
     catches the case where the form flag isn't being plumbed through."""
     from molbuilder.builders.backends import _threedna
-    if not _threedna.is_available():
-        pytest.skip("3DNA not reachable on this machine")
+    tooling.needs_backend("threedna")
     b = _threedna.build("dna", "ATGC", form="B", terminal="OH")
     a = _threedna.build("dna", "ATGC", form="A", terminal="OH")
     # Same sequence -> same atom count, but positions differ.
@@ -310,8 +309,7 @@ def test_threedna_z_form_with_non_gc_sequence_rejects_fast():
     reachable (the build() entry-point raises BackendUnavailable
     earlier in that case)."""
     from molbuilder.builders.backends import _threedna
-    if not _threedna.is_available():
-        pytest.skip("3DNA not reachable on this machine")
+    tooling.needs_backend("threedna")
     with pytest.raises(ValueError, match=r"Z-DNA.*poly-d\(GC\)"):
         _threedna.build("dna", "ATGC", form="Z", terminal="OH")
 
@@ -321,8 +319,7 @@ def test_threedna_z_form_with_alternating_gc_succeeds():
     3DNA.  Catches the case where the new alternating-GC guard
     accidentally rejects a sequence fiber actually accepts."""
     from molbuilder.builders.backends import _threedna
-    if not _threedna.is_available():
-        pytest.skip("3DNA not reachable on this machine")
+    tooling.needs_backend("threedna")
     s = _threedna.build("dna", "GCGCGC", form="Z", terminal="OH")
     assert s.n_atoms > 0
     assert "P" in s.elements
@@ -333,8 +330,7 @@ def test_threedna_rna_uses_uracil_not_thymine():
     has to be set; if we accidentally call DNA mode for RNA, residue
     names will include DT and the structure will be chemically wrong."""
     from molbuilder.builders.backends import _threedna
-    if not _threedna.is_available():
-        pytest.skip("3DNA not reachable on this machine")
+    tooling.needs_backend("threedna")
     r = _threedna.build("rna", "AUGC", form="A", terminal="OH")
     assert "DT" not in r.residue_names, (
         "RNA build emitted DT residues -- fiber was called in DNA mode"

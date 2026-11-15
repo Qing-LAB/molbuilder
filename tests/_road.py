@@ -1,14 +1,31 @@
 """What a test needs to walk the road with a real engine: the conda hook the
 wrapper sources, and an engine env's own ``bin`` -- each through the
 product's own resolvers, never a guess at the layout or the host's PATH.
+
+THE MACHINE IS READ ONCE per test process (:func:`_machine`): which conda,
+which envs and whether a GPU is visible are facts of the machine, asked at
+every engine file's collection and by every real run (`testing.md` § 3).
+Not through the product's `diagnostics.get_capabilities()`, the process's
+one reading: the suite resets it before every test, and tests bind
+snapshots of their own to it.
 """
 from __future__ import annotations
 
+import functools
 from contextlib import contextmanager
 from pathlib import Path
 
 import support  # refuses to load outside a pytest run (testing.md § 2b)
+
 del support
+
+
+@functools.cache
+def _machine():
+    """This machine's conda and envs, as `diagnostics.detect` reads them --
+    once."""
+    from molbuilder import diagnostics
+    return diagnostics.detect()
 
 
 def conda_hook() -> Path:
@@ -16,8 +33,7 @@ def conda_hook() -> Path:
     product detects (``<root>/condabin/conda`` or ``<root>/bin/conda`` ->
     ``<root>/etc/profile.d/conda.sh``); a path that does not exist when no
     conda is detected."""
-    from molbuilder import diagnostics
-    binary = diagnostics.detect().conda_binary
+    binary = _machine().conda_binary
     if not binary:
         return Path("/nonexistent/conda.sh")
     return Path(binary).parent.parent / "etc" / "profile.d" / "conda.sh"
@@ -26,22 +42,17 @@ def conda_hook() -> Path:
 def env_available(name: str) -> bool:
     """Through ``Capabilities.env_available`` -- the door that knows the
     manager's own env list."""
-    from molbuilder import diagnostics
-    return diagnostics.detect().env_available(name)
+    return _machine().env_available(name)
 
 
 def env_bin(name: str) -> Path:
-    """The env's own ``bin``, through the product's resolver; a path that does
-    not exist when the env is absent."""
-    from molbuilder import diagnostics
-    from molbuilder.envs.install import _env_prefix
-    caps = diagnostics.detect()
-    if not caps.env_available(name):
-        return Path("/nonexistent")
-    prefix = _env_prefix(name, caps.conda_binary)
+    """The env's own ``bin``, where the manager's env list places it; a path
+    that does not exist when the env is absent."""
+    prefix = _machine().env_prefix(name) if env_available(name) else None
     return Path(prefix) / "bin" if prefix else Path("/nonexistent")
 
 
+@functools.cache
 def gpu_visible() -> bool:
     """Whether an NVIDIA GPU is visible here -- ``nvidia-smi -L`` lists one:
     the machine fact a GPU run is skipped on."""
@@ -94,7 +105,6 @@ def live_siesta(tree: Path, tmp_path_factory):
     import shutil
     with _live(tree, tmp_path_factory) as mp:
         bin_ = env_bin("molbuilder-siesta")
-        assert (bin_ / "siesta").is_file(), bin_
         mp.setenv("PATH", f"{bin_}{os.pathsep}{os.environ['PATH']}")
         from support.road import library_of
         library = library_of(tree)

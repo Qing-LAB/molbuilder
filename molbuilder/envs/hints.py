@@ -30,6 +30,13 @@ def fix_cmd(action: str, *args: str) -> str:
     return " ".join([LAUNCHER, action, *args])
 
 
+def install_cmd(recipe: str) -> str:
+    """The command that installs a recipe's env -- the remedy every surface
+    names for an env that is not there: `envs`' hints, `molbuilder jupyter`
+    and the notebook page, and a test that skips for want of the env."""
+    return fix_cmd("install", recipe, "--yes")
+
+
 def opt_in_cmd(recipe: str) -> str:
     """The command that adds a recipe's opt-in records -- for the host env,
     the test tooling (`ops/env-framework.md` § 3.2a): what `doctor`,

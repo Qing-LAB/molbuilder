@@ -27,14 +27,7 @@ import io
 
 import pytest
 
-from _road import conda_hook, env_available, gpu_visible
 from molbuilder.parse.instruments.util_csv import util_csv_metrics
-
-pytestmark = [
-    pytest.mark.skipif(
-        not (conda_hook().is_file() and env_available("molbuilder-siesta")),
-        reason="needs the molbuilder-siesta env + a detectable conda hook"),
-]
 
 
 def _util_csv(run, stage: str, n: int = 0) -> str:
@@ -84,9 +77,6 @@ def test_a_real_monitors_file_reads_as_a_mean_over_time(real_h2_layered):
     assert all(holes), files
 
 
-@pytest.mark.skipif(not (env_available("molbuilder-siesta-gpu")
-                         and gpu_visible()),
-                    reason="needs an NVIDIA GPU and the molbuilder-siesta-gpu env")
 def test_a_gpu_column_is_weighted_the_same_way(real_h2_gpu):
     """`gpu<N>_sm` of the file a real GPU run's monitor wrote: the rule worked
     on its rows -- it was the same mean over rows, and a GPU that idles at

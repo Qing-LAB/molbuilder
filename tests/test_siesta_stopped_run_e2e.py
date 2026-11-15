@@ -28,16 +28,6 @@ from pathlib import Path
 
 import pytest
 
-from _road import conda_hook, env_available
-
-CONDA_SH = conda_hook()
-
-pytestmark = [
-    pytest.mark.skipif(
-        not (CONDA_SH.is_file() and env_available("molbuilder-siesta")),
-        reason="needs the molbuilder-siesta env + a detectable conda hook"),
-]
-
 
 @pytest.fixture(scope="module")
 def stopped(real_h2_stopped):

@@ -31,7 +31,6 @@ from unittest.mock import ANY
 import numpy as np
 import pytest
 
-from _road import conda_hook, env_available
 from molbuilder.runfiles import (ROLE_SPECTRA, ROLE_SPECTRA_DATA, compose,
                                  stem_before)
 from molbuilder.runs import on_label_at
@@ -42,14 +41,6 @@ from molbuilder.spectra.datafile import read_spectra_data
 from molbuilder.spectra.results import SCHEMA_VERSION
 from molbuilder.structure import Structure
 from support.pages import spectra_served
-
-pytestmark = [
-    pytest.mark.skipif(
-        not (conda_hook().is_file() and env_available("molbuilder-pySCF")
-             and env_available("molbuilder-siesta")),
-        reason="needs the molbuilder-pySCF and molbuilder-siesta envs + a "
-               "detectable conda hook"),
-]
 
 
 def _read(path) -> dict:

@@ -83,7 +83,7 @@ import subprocess
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict
+from typing import Dict, Optional
 
 import pytest
 from support.road import (all_written, described, molbuilder,
@@ -159,10 +159,6 @@ class RealRun:
         return self.attempt(stage, n) / Call(phase, phase).rel
 
 
-#: Each engine's environment, and the road a run of it is made on.
-_ENGINES = {"siesta": "molbuilder-siesta", "pyscf": "molbuilder-pySCF"}
-
-
 def stage_status(bundle, stage: str):
     """THE STAGE AS `jobset status` READS IT -- the one status door every
     surface asks (`jobset.runstatus.jobset_status`: the status verb, Task
@@ -187,25 +183,27 @@ def point_row(status, bias_v: float, frame=None) -> dict:
                 if p["bias_v"] == bias_v and p["frame"] == frame)
 
 
-def makes_a_real_run(scope: str):
+def makes_a_real_run(scope: str, *needs: str):
     """Declares a fixture that makes a real run -- each of the session's in
-    `conftest.py`, and a module's own made down this road: a test asking
-    for it, directly or through another fixture, runs an engine, and the
-    collection hook marks it so (`testing.md` § 6.1a, rule 2)."""
+    `conftest.py`, and a module's own made down this road -- and what its
+    run needs of the machine (`support.tooling.NEEDS`: the envs it runs in,
+    the GPU): a test asking for it, directly or through another fixture,
+    runs an engine, and is skipped where a need is unmet, before any of its
+    fixtures is set up; the collection hook marks it so (`testing.md` § 3,
+    § 6.1a rule 2)."""
+    from support.tooling import known
+    stated = known(needs)
+
     def declared(fixture_function):
-        fixture_function.makes_a_real_run = True
+        fixture_function.needs_of_its_run = stated
         return pytest.fixture(scope=scope)(fixture_function)
     return declared
 
 
-def declared_to_make_a_real_run(fixture_function) -> bool:
-    """Was ``fixture_function`` declared by :func:`makes_a_real_run`?"""
-    return getattr(fixture_function, "makes_a_real_run", False)
-
-
-def _engine_here(engine: str = "siesta") -> bool:
-    from _road import conda_hook, env_available
-    return conda_hook().is_file() and env_available(_ENGINES[engine])
+def needs_of_its_run(fixture_function) -> Optional[tuple]:
+    """What the run of a fixture declared by :func:`makes_a_real_run` needs
+    of the machine, as declared; ``None`` for any other fixture."""
+    return getattr(fixture_function, "needs_of_its_run", None)
 
 
 @contextmanager
@@ -227,17 +225,13 @@ def road_at(where: Path, tmp_path_factory, *, engine: str = "siesta"):
     `_road.live_pyscf`); the process environment as it was, after.
 
     CALLED FROM A MODULE'S OR THE SESSION'S FIXTURE, declared to make a real
-    run (:func:`makes_a_real_run`), never from a test's body: there the
-    suite's own stand-in conda stands first on PATH
-    (`conftest.product_toolchain_is_the_suites_own`), the engine's conda
-    hook is not found beside it, and the run is skipped."""
+    run (:func:`makes_a_real_run`), never from a test's body: a run made
+    there is no declared fixture's, so its test is not among the engine
+    tests and its needs are stated nowhere (`testing.md` § 3, § 6.1a)."""
     from _pytest.monkeypatch import MonkeyPatch
 
     from _road import live_pyscf, live_siesta
     from conftest import point_the_one_door_at
-    if not _engine_here(engine):
-        pytest.skip(f"needs the {_ENGINES[engine]} env + a detectable conda "
-                    f"hook")
     mp = MonkeyPatch()
     try:
         tree = point_the_one_door_at(where, mp.setenv)

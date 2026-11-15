@@ -302,8 +302,9 @@ def test_sysroot_is_pinned_not_merely_declared(recipe):
     Note what this test can and cannot do.  It is a string assertion --
     it never solves.  It is only sufficient BECAUSE the spec is pinned:
     once the version is stated, the spec fully determines what gets
-    installed.  While the spec was bare, no static assertion could have
-    caught this, which is why `test_envs_solve_drift.py` solves it live.
+    installed.  What the installed env is then checked against -- this
+    machine's glibc and kernel -- is the build's own preflight
+    (`envs.abi.AbiContract`).
     """
     specs = [p for p in recipe.conda_specs
              if p.split("=")[0] == "sysroot_linux-64"]

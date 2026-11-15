@@ -18,20 +18,11 @@ from __future__ import annotations
 import os
 import re
 
-import pytest
-
-from _road import conda_hook, env_available
 from support.real_runs import h2_optimization, makes_a_real_run, on_the_road
 from support.road import group_words, jobset
 
-pytestmark = [
-    pytest.mark.skipif(
-        not (conda_hook().is_file() and env_available("molbuilder-siesta")),
-        reason="needs the molbuilder-siesta env + a detectable conda hook"),
-]
 
-
-@makes_a_real_run("module")
+@makes_a_real_run("module", "molbuilder-siesta")
 def walled(tmp_path_factory):
     """An H2 optimization whose coarse stage ran here under the 20 s wall
     its run card states -- its run folder and what that launch said -- and

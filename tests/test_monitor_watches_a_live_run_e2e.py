@@ -26,16 +26,10 @@ from pathlib import Path
 
 import pytest
 
-from _road import conda_hook, env_available
 from molbuilder import monitor
 from molbuilder.monitor import NotifyPolicy
 from support.replay import Output, output_lines, replay, statuses
 
-pytestmark = [
-    pytest.mark.skipif(
-        not (conda_hook().is_file() and env_available("molbuilder-siesta")),
-        reason="needs the molbuilder-siesta env + a detectable conda hook"),
-]
 
 @pytest.fixture(scope="module")
 def run(real_co2_vibration):

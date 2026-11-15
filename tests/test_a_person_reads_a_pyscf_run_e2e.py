@@ -8,7 +8,6 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from _road import conda_hook, env_available
 from molbuilder.runfiles import ROLE_MOLWATCH, ROLE_PYSCF_LOG
 from support.road import molbuilder
 
@@ -18,11 +17,6 @@ from support.road import molbuilder
 LOG_FACTS = ("frozen_atoms", "convergence_targets", "scf_criteria",
              "scf_residuals")
 
-pytestmark = [
-    pytest.mark.skipif(
-        not (conda_hook().is_file() and env_available("molbuilder-pySCF")),
-        reason="needs the molbuilder-pySCF env + a detectable conda hook"),
-]
 
 
 def test_a_person_s_script_reads_the_steps_a_run_logged(real_held_water_pyscf):

@@ -10,6 +10,14 @@ this module: the harness's `_node_esm.node()`, the one way a test reaches
 Node, and `conftest.py`'s collection hook, for every test that asks for a
 fixture of the browser plugin (:func:`browser_fixtures_asked`) -- skipped
 there, before any fixture of the test is set up.
+
+What a test needs of the MACHINE beyond the host env -- an env of its own
+recipe, a visible GPU -- follows the same rule
+(`process/testing.md` § 3): :func:`unmet` is the one answer and its reason.
+The collection hook asks it, in one place and after the browser's reason,
+for the needs a real run's fixture declares
+(`support.real_runs.makes_a_real_run`) and those a test states of its own
+body (:func:`needs`).
 """
 from __future__ import annotations
 
@@ -21,11 +29,15 @@ from typing import Optional
 
 import pytest
 
-from molbuilder.envs.hints import opt_in_cmd
+from molbuilder.diagnostics import DEFAULT_ENV_NAMES
+from molbuilder.envs.hints import install_cmd, opt_in_cmd
 
+#: The host env, as its recipe names it -- always its own name
+#: (`envs.recipes.effective_name`).
+HOST_ENV = "molbuilder"
 #: The command that installs every piece of the test tooling -- the host
 #: env's opt-in records, as `doctor` names it (`envs.hints.opt_in_cmd`).
-INSTALL = opt_in_cmd("molbuilder")
+INSTALL = opt_in_cmd(HOST_ENV)
 
 #: The browser plugin's pytest name (`pytest-playwright`'s entry point), and
 #: how a reason names it.
@@ -46,6 +58,50 @@ BROWSER_FIXTURES = frozenset({
 })
 
 
+#: A need beside the envs: a visible NVIDIA GPU.
+GPU = "an NVIDIA GPU"
+#: Every need a test may state: an env named as its recipe is, or the GPU.
+NEEDS = frozenset({HOST_ENV, *DEFAULT_ENV_NAMES.values(), GPU})
+
+
+def known(stated) -> tuple:
+    """``stated``, each one of :data:`NEEDS` -- or a ``ValueError`` naming
+    the ones that are not."""
+    unknown = sorted(set(stated) - NEEDS)
+    if unknown:
+        raise ValueError(f"not a need a test can state: {unknown}; a need is "
+                         f"one of {sorted(NEEDS)}")
+    return tuple(stated)
+
+
+def unmet(need: str) -> Optional[str]:
+    """Why ``need`` -- one of :data:`NEEDS` -- is not met on this machine:
+    no GPU visible, or the env not in the env manager's list, naming the
+    command that installs it; ``None`` when it is met."""
+    from _road import env_available, gpu_visible
+    known([need])
+    if need == GPU:
+        return None if gpu_visible() else "no NVIDIA GPU is visible here"
+    if env_available(need):
+        return None
+    return f"the {need} env is not installed here: {install_cmd(need)}"
+
+
+def why_unmet(stated) -> str:
+    """Every unmet need's reason among ``stated``, each said once, joined --
+    empty when all are met."""
+    return "; ".join(dict.fromkeys(
+        w for w in map(unmet, sorted(stated)) if w))
+
+
+def needs(*stated: str):
+    """The mark for a test, or a module, whose own body uses ``stated``: the
+    collection hook skips it where one is unmet (:func:`unmet`)."""
+    if not stated:
+        raise TypeError("needs() names at least one need")
+    return pytest.mark.needs(*known(stated))
+
+
 def missing(what: str) -> str:
     """The one reason a test that needs ``what`` skips with -- "not
     available": not installed, or a run told not to load it."""
@@ -64,7 +120,7 @@ def node() -> Optional[Path]:
 def _host_requires() -> frozenset:
     from molbuilder.envs.recipes import recipe_by_name
     return frozenset(re.split(r"[=<>!~ ]", spec)[0]
-                     for spec in recipe_by_name("molbuilder").conda_set())
+                     for spec in recipe_by_name(HOST_ENV).conda_set())
 
 
 def host_requires(package: str) -> bool:

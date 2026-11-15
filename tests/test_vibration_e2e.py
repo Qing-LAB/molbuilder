@@ -24,16 +24,12 @@ import subprocess
 import numpy as np
 import pytest
 
-from _road import conda_hook, env_available
+from _road import conda_hook
 from support.real_runs import makes_a_real_run, water_vibration
+from support.tooling import needs
 
 CONDA_SH = conda_hook()
 
-pytestmark = [
-    pytest.mark.skipif(
-        not (CONDA_SH.is_file() and env_available("molbuilder-pySCF")),
-        reason="needs the molbuilder-pySCF env + a detectable conda hook"),
-]
 
 
 def _bundle_head(folder, *objects) -> str:
@@ -336,7 +332,7 @@ def test_ir_alone_runs_decoupled_and_lands_in_waters_windows(real_water_probed):
     assert d["raman_route"] == "none" and d["raman_fd_step_ang"] is None
 
 
-@makes_a_real_run("module")
+@makes_a_real_run("module", "molbuilder-pySCF")
 def solvated(tmp_path_factory):
     """Water in water, by the one maker of a water vibration
     (`support.real_runs.water_vibration`): water as the solvent, and IR OFF
@@ -391,6 +387,7 @@ def test_water_in_water_runs_the_solvated_chain_end_to_end(solvated, water):
 
 
 @pytest.mark.engine
+@needs("molbuilder-pySCF")
 def test_asking_for_ir_does_not_move_the_frequencies(tmp_path):
     """The analytic route must return the Hessian the NO-IR path returns
     (`engines/vibration.md` § 4.6: *"Asking for intensities must not move
@@ -453,6 +450,7 @@ def test_asking_for_ir_does_not_move_the_frequencies(tmp_path):
 
 
 @pytest.mark.engine
+@needs("molbuilder-pySCF")
 def test_the_rank_rule_reproduces_pyscf_on_free_molecules(tmp_path):
     """`engines/vibration.md` § 4.5, *the gate this rests on*: the one path
     -- `spectra.normal_modes.vibrational_modes`, nothing held -- must
@@ -631,6 +629,7 @@ def test_water_with_its_oxygen_held_reports_three_vibrations(real_water_held,
 
 
 @pytest.mark.engine
+@needs("molbuilder-pySCF")
 def test_the_free_atom_hessian_is_the_free_block_of_the_full_one(tmp_path):
     """`engines/vibration.md` § 4.4: the block agrees with
     compute-everything-and-slice.  The reduced calculation asks PySCF for second

@@ -9,22 +9,19 @@ against its real tool, and is skipped where no device is visible.
 """
 from __future__ import annotations
 
-import shutil
 import subprocess
 
 import pytest
 
 from molbuilder.web.blueprints import system_load as sl
+from support.tooling import GPU, needs
 
 
+@needs(GPU)
 def test_the_widget_reads_each_device_the_tool_lists(monkeypatch):
-    if shutil.which("nvidia-smi") is None:
-        pytest.skip("no nvidia-smi on this machine")
     listed = subprocess.run(["nvidia-smi", "-L"], capture_output=True,
                             text=True, timeout=5)
     devices = [ln for ln in listed.stdout.splitlines() if ln.startswith("GPU ")]
-    if not devices:
-        pytest.skip("nvidia-smi lists no device here")
     monkeypatch.setattr(sl, "_smi_cache", {"t": 0.0, "gpus": [], "error": None})
     gpus, err = sl._gpu_snapshot()
     if err and "timed out" in err:

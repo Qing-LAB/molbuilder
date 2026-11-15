@@ -154,6 +154,7 @@ from molbuilder import diagnostics
 from molbuilder.calculation import register_readers
 from molbuilder.structure import Structure
 from support import real_runs as _real_runs
+from support.tooling import GPU
 
 # THE READERS OF A CALCULATION'S RECORDS, registered as each surface
 # registers them at start (`calculation.register_readers`): a test that asks
@@ -1216,18 +1217,21 @@ def _shares_a_fixture(item) -> bool:
                for d in _fixture_defs(item))
 
 
-def _asks_a_real_run(item) -> bool:
-    """Does this test ask for a fixture that makes a real run
-    (`support.real_runs.makes_a_real_run`)?"""
-    return any(_real_runs.declared_to_make_a_real_run(d.func)
-               for d in _fixture_defs(item))
+def _needs_of_its_runs(item) -> "frozenset | None":
+    """What the real runs this test asks for need of the machine -- each
+    fixture declared by `support.real_runs.makes_a_real_run` that it asks
+    for, directly or through another; ``None`` when it asks for none."""
+    stated = [needs for d in _fixture_defs(item)
+              if (needs := _real_runs.needs_of_its_run(d.func)) is not None]
+    return (frozenset(n for needs in stated for n in needs) if stated
+            else None)
 
 
 def _worker_group(item, engine_files, whole_files) -> "str | None":
     """Which tests share a worker in a spread run (`testing.md` § 6.1a).
 
     Every file holding an engine test (marked at collection,
-    :func:`_asks_a_real_run`, or by hand where a test's own body starts the
+    :func:`_needs_of_its_runs`, or by hand where a test's own body starts the
     engine) shares the one engine worker, so no two computations overlap; a
     file in ``whole_files`` -- an e2e file, or one whose tests share a
     fixture wider than one test -- runs whole, in order, in one worker, its
@@ -1283,15 +1287,16 @@ def pytest_collection_modifyitems(config, items):
     # test that drives no browser is not skipped for one.  No file carries a
     # skip of its own.
     # A `skipif`, not a `skip`: pytest weighs every `skipif` before any
-    # `skip`, and a file's own `skipif` (an engine it needs) must not speak
-    # first.
+    # `skip`, and the needs skip below is a `skipif` too -- the two are
+    # reported in the order they are added.
     _no_browser = (None if tooling.browser_plugin(config)
                    else _pt.mark.skipif(True, reason=tooling.missing(
                        tooling.BROWSER)))
 
     # RULE 2, DERIVED: a test asking for a real run runs an engine.
+    needed = {item: _needs_of_its_runs(item) for item in items}
     for item in items:
-        if _asks_a_real_run(item):
+        if needed[item] is not None:
             item.add_marker(_pt.mark.engine)
     in_worker = hasattr(config, "workerinput")
     engine_files = {item.nodeid.split("::", 1)[0] for item in items
@@ -1305,10 +1310,18 @@ def pytest_collection_modifyitems(config, items):
         if fn.endswith("_e2e.py") or "_e2e_" in fn:
             item.add_marker(_pt.mark.e2e)
         if _no_browser is not None and tooling.browser_fixtures_asked(item):
-            # The item's own mark: pytest weighs it before its file's, so its
-            # reason is the one a run reports -- the tooling is the first
-            # thing to put right.
+            # Added before the needs skip below, so its reason is the one a
+            # run reports -- the tooling is the first thing to put right.
             item.add_marker(_no_browser)
+        # WHAT IT NEEDS OF THE MACHINE (`testing.md` § 3): its runs' needs
+        # and its own body's (`tooling.needs`), skipped for here, in one
+        # place, before any of its fixtures -- after the browser's reason,
+        # which is reported first.
+        stated = set(needed[item] or ()) | {
+            n for mark in item.iter_markers("needs") for n in mark.args}
+        why = tooling.why_unmet(stated) if stated else ""
+        if why:
+            item.add_marker(_pt.mark.skipif(True, reason=why))
         if "_smoke" in fn or "_smoke_l4" in fn:
             item.add_marker(_pt.mark.integration)
             item.add_marker(_pt.mark.smoke)
@@ -1483,81 +1496,82 @@ def _isolated_workspace_store(tmp_path, monkeypatch):
 # `stopped`) stay out of the fixtures' namespace.
 
 
-@_real_runs.makes_a_real_run("session")
+@_real_runs.makes_a_real_run("session", "molbuilder-siesta")
 def real_h2_layered(tmp_path_factory):
     return _real_runs.layered(tmp_path_factory)
 
 
-@_real_runs.makes_a_real_run("session")
+@_real_runs.makes_a_real_run("session", "molbuilder-siesta")
 def real_h2_one_group(tmp_path_factory):
     return _real_runs.one_group(tmp_path_factory)
 
 
-@_real_runs.makes_a_real_run("session")
+@_real_runs.makes_a_real_run("session", "molbuilder-siesta")
 def real_h2_stopped(tmp_path_factory):
     return _real_runs.stopped(tmp_path_factory)
 
 
-@_real_runs.makes_a_real_run("session")
+@_real_runs.makes_a_real_run("session", "molbuilder-siesta",
+                              "molbuilder-siesta-gpu", GPU)
 def real_h2_gpu(tmp_path_factory):
     return _real_runs.gpu(tmp_path_factory)
 
 
-@_real_runs.makes_a_real_run("session")
+@_real_runs.makes_a_real_run("session", "molbuilder-siesta")
 def real_h2_bench(tmp_path_factory):
     return _real_runs.bench(tmp_path_factory)
 
 
-@_real_runs.makes_a_real_run("session")
+@_real_runs.makes_a_real_run("session", "molbuilder-siesta")
 def real_co2_vibration(tmp_path_factory):
     return _real_runs.vibration(tmp_path_factory)
 
 
-@_real_runs.makes_a_real_run("session")
+@_real_runs.makes_a_real_run("session", "molbuilder-siesta")
 def real_h2_sweep(tmp_path_factory):
     return _real_runs.sweep(tmp_path_factory)
 
 
-@_real_runs.makes_a_real_run("session")
+@_real_runs.makes_a_real_run("session", "molbuilder-pySCF")
 def real_h2_pyscf(tmp_path_factory):
     return _real_runs.pyscf(tmp_path_factory)
 
 
-@_real_runs.makes_a_real_run("session")
+@_real_runs.makes_a_real_run("session", "molbuilder-pySCF")
 def real_held_water_pyscf(tmp_path_factory):
     return _real_runs.held_water_pyscf(tmp_path_factory)
 
 
-@_real_runs.makes_a_real_run("session")
+@_real_runs.makes_a_real_run("session", "molbuilder-pySCF")
 def real_water_vibration(tmp_path_factory):
     return _real_runs.water(tmp_path_factory)
 
 
-@_real_runs.makes_a_real_run("session")
+@_real_runs.makes_a_real_run("session", "molbuilder-pySCF")
 def real_water_held(tmp_path_factory):
     return _real_runs.water_held(tmp_path_factory)
 
 
-@_real_runs.makes_a_real_run("session")
+@_real_runs.makes_a_real_run("session", "molbuilder-pySCF")
 def real_water_probed(tmp_path_factory):
     return _real_runs.water_probed(tmp_path_factory)
 
 
-@_real_runs.makes_a_real_run("session")
+@_real_runs.makes_a_real_run("session", "molbuilder-pySCF")
 def real_water_linear(tmp_path_factory):
     return _real_runs.water_linear(tmp_path_factory)
 
 
-@_real_runs.makes_a_real_run("session")
+@_real_runs.makes_a_real_run("session", "molbuilder-siesta")
 def real_bridged_chain(tmp_path_factory):
     return _real_runs.bridged_chain_relaxed(tmp_path_factory)
 
 
-@_real_runs.makes_a_real_run("session")
+@_real_runs.makes_a_real_run("session", "molbuilder-siesta")
 def real_uneven_chain(tmp_path_factory):
     return _real_runs.uneven_chain_relaxed(tmp_path_factory)
 
 
-@_real_runs.makes_a_real_run("session")
+@_real_runs.makes_a_real_run("session", "molbuilder-siesta")
 def real_charged_formate(tmp_path_factory):
     return _real_runs.charged_formate_relaxed(tmp_path_factory)

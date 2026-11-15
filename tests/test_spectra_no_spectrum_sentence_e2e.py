@@ -41,24 +41,13 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import pytest
-
 from support.pages import spectra_served
 from support.real_runs import (CO2_SETTINGS, RealRun, makes_a_real_run,
                                on_the_road, taken)
 from tests._node_esm import lifted, run_node
 
-from _road import conda_hook, env_available
 from molbuilder.runfiles import ROLE_SPECTRA
 from molbuilder.runs import on_label_at
-
-pytestmark = [
-    pytest.mark.skipif(
-        not (conda_hook().is_file() and env_available("molbuilder-pySCF")
-             and env_available("molbuilder-siesta")),
-        reason="needs the molbuilder-pySCF and molbuilder-siesta envs + a "
-               "detectable conda hook"),
-]
 
 
 def _h2_with_compute_ir_off(tmp_path_factory, name: str, **settings):
@@ -82,12 +71,12 @@ def _h2_with_compute_ir_off(tmp_path_factory, name: str, **settings):
     return on_label_at(run.attempt("freq"), ROLE_SPECTRA)
 
 
-@makes_a_real_run("module")
+@makes_a_real_run("module", "molbuilder-siesta")
 def siesta_asked_nothing(tmp_path_factory):
     return _h2_with_compute_ir_off(tmp_path_factory, "asked-nothing")
 
 
-@makes_a_real_run("module")
+@makes_a_real_run("module", "molbuilder-siesta")
 def siesta_range_kept_no_mode(tmp_path_factory):
     """Compute Raman on, over a range above H2's one mode: the phase ends with
     no optical call (`engines/vibration.md` § 5.11 § 8)."""

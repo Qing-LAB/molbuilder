@@ -17,20 +17,10 @@ one or two geometry steps cannot relax it.
 from __future__ import annotations
 
 import numpy as np
-import pytest
 
-from _road import conda_hook, env_available
 from support.real_runs import makes_a_real_run, on_the_road
 from support.road import group_words, jobset
-
-CONDA_SH = conda_hook()
-
-pytestmark = [
-    pytest.mark.skipif(
-        not (CONDA_SH.is_file() and env_available("molbuilder-pySCF")),
-        reason="needs the molbuilder-pySCF env + a detectable conda hook"),
-]
-
+from support.tooling import GPU
 
 #: H2 at 0.95 Å, far from its minimum -- the relaxation's subject.
 _H2 = (["H", "H"], [[5.0, 5.0, 5.0], [5.0, 5.0, 5.95]])
@@ -40,8 +30,8 @@ def _run(tmp_path_factory, name: str, *, calculation, overrides,
          template=None, molecule=_H2, execution=None):
     """``molecule``, described on the road in a tree of its own, ``name``,
     with the real PySCF (`support.real_runs.on_the_road`, asked from a
-    module's fixture: a test's own PATH holds the suite's stand-in conda,
-    where no engine is found; `support.road.described`), its template
+    module's fixture declared to make a real run; `support.road.described`),
+    its template
     ``template``'s values set as a person sets them
     (`support.road.set_by_the_person`), since the electronic state binds
     every rung and is the template's, and its one stage carrying
@@ -133,7 +123,7 @@ def _the_engines_words_kept(run, words: str) -> str:
     return session
 
 
-@makes_a_real_run("module")
+@makes_a_real_run("module", "molbuilder-pySCF")
 def halted(tmp_path_factory):
     """H2 from 0.95 Å, one step allowed under ``halt`` (:func:`_run`)."""
     return _run(tmp_path_factory, "halted", calculation="optimization",
@@ -198,7 +188,7 @@ def test_halt_stops_the_rung_and_keeps_the_geometry_it_reached(halted):
             "run saved") in session, session[-3000:]
 
 
-@makes_a_real_run("module")
+@makes_a_real_run("module", "molbuilder-pySCF")
 def continued(tmp_path_factory):
     """H2 from 1.6 Å, one step a batch and two batches more under
     ``continue`` (:func:`_run`)."""
@@ -255,7 +245,7 @@ def test_continue_reenters_from_the_geometry_reached(continued):
         f"a batch started again at the input geometry: {bonds}")
 
 
-@makes_a_real_run("module")
+@makes_a_real_run("module", "molbuilder-pySCF")
 def proceeded(tmp_path_factory):
     """H2's vibration from 0.95 Å, its relaxation one step allowed under
     ``proceed`` (:func:`_run`)."""
@@ -298,13 +288,10 @@ def test_proceed_keeps_the_geometry_and_the_result_says_so(proceeded):
     assert written_as_ended(run.folder, run.label, [chk.name]) == {}
 
 
-@makes_a_real_run("module")
+@makes_a_real_run("module", "molbuilder-pySCF", GPU)
 def open_shell_on_the_gpu(tmp_path_factory):
     """Triplet O2, UHF/STO-3G, on the GPU (:func:`_run`) -- where an NVIDIA
     GPU is visible."""
-    from _road import gpu_visible
-    if not gpu_visible():
-        pytest.skip("no NVIDIA GPU visible here")
     return _run(
         tmp_path_factory, "open-shell-gpu", calculation="optimization",
         molecule=(["O", "O"], [[5.0, 5.0, 5.0], [5.0, 5.0, 6.21]]),
@@ -334,7 +321,7 @@ def test_an_open_shell_run_on_the_gpu_says_its_stability_was_not_checked(
     assert state == "finished", said[-3000:]
 
 
-@makes_a_real_run("module")
+@makes_a_real_run("module", "molbuilder-pySCF")
 def stated_relaxed(tmp_path_factory):
     """H2's vibration at 0.95 Å, its structure stated relaxed
     (:func:`_run`)."""
@@ -370,7 +357,7 @@ def test_a_structure_stated_relaxed_is_measured_not_relaxed(stated_relaxed):
     assert nonstationary_remedy(None) in (rx.get("warning") or ""), rx
 
 
-@makes_a_real_run("module")
+@makes_a_real_run("module", "molbuilder-pySCF")
 def relaxation_past_its_wall(tmp_path_factory):
     """H2 from 0.95 Å under ``proceed``, its run card's wall 1 s
     (:func:`_run`)."""
@@ -417,7 +404,7 @@ def test_the_wall_stops_the_relaxation_and_keeps_the_geometry(
     assert "Final energy" not in said, said[-3000:]
 
 
-@makes_a_real_run("module")
+@makes_a_real_run("module", "molbuilder-pySCF")
 def vibration_past_its_wall(tmp_path_factory):
     """H2's vibration, frequencies alone, under ``halt``, its run card's
     wall 1 s (:func:`_run`)."""

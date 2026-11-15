@@ -29,6 +29,7 @@ import pytest
 
 from molbuilder import jupyter as J
 from support.live_server import free_serve_port
+from support.tooling import needs
 
 
 @pytest.fixture
@@ -148,6 +149,7 @@ def test_the_notebook_token_never_reaches_the_command_line():
 # --------------------------------------------------------------------- #
 
 @pytest.mark.slow
+@needs("molbuilder-jupyternb")
 def test_a_notebook_saved_in_the_projects_tree_leaves_no_checkpoint(
         isolated_projects_root, tmp_path):
     """`jupyter.md` § 4.2: the framed server writes no `.ipynb_checkpoints/`
@@ -176,9 +178,6 @@ def test_a_notebook_saved_in_the_projects_tree_leaves_no_checkpoint(
     import time
     import urllib.error
     import urllib.request
-    from _road import env_available
-    if not env_available("molbuilder-jupyternb"):
-        pytest.skip("needs the molbuilder-jupyternb env")
     serve_port = free_serve_port()
     folder = isolated_projects_root / "P" / "notes"
     folder.mkdir(parents=True)

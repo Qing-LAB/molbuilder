@@ -794,10 +794,10 @@ def run_shepherd(serve_port: int) -> int:
         # THE REMEDY HAS ONE HOME (`envs.hints`): a hand-copied remedy drifts
         # to a recipe name `recipe_by_name` does not accept, and the remedy
         # printed is itself a usage error.
-        from .envs.hints import fix_cmd
+        from .envs.hints import install_cmd
         sys.stderr.write(
             f"molbuilder jupyter: env `{env_name}` is not installed.  It is "
-            f"opt-in: `{fix_cmd('install', recipe.name, '--yes')}`.\n")
+            f"opt-in: `{install_cmd(recipe.name)}`.\n")
         return 2
 
     port = jupyter_port(serve_port)

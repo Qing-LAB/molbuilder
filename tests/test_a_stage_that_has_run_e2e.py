@@ -23,16 +23,10 @@ from pathlib import Path
 
 import pytest
 
-from _road import conda_hook, env_available
 from support.real_runs import (copy_of, makes_a_real_run, road_at,
                                stage_status, taken, typed)
 from support.road import read_request, run_road_case, write_request
 
-pytestmark = [
-    pytest.mark.skipif(
-        not (conda_hook().is_file() and env_available("molbuilder-siesta")),
-        reason="needs the molbuilder-siesta env + a detectable conda hook"),
-]
 
 TABLE = tomllib.loads((Path(__file__).parent / "data"
                        / "a_stage_that_has_run.toml").read_text())
@@ -44,7 +38,7 @@ def _rows(on: str) -> dict:
     return dict(argvalues=rows, ids=[c["name"] for c in rows])
 
 
-@makes_a_real_run("module")
+@makes_a_real_run("module", "molbuilder-siesta")
 def short_of_its_relaxation(real_co2_vibration, tmp_path_factory):
     """A vibration with a run whose relaxation is not done, and one whose is:
     a copy of the shared run, its run card given a wall already passed

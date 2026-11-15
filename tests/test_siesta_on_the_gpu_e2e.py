@@ -19,17 +19,6 @@ import shutil
 
 import pytest
 
-from _road import conda_hook, env_available, gpu_visible
-
-
-pytestmark = [
-    pytest.mark.skipif(
-        not (conda_hook().is_file() and env_available("molbuilder-siesta-gpu")
-             and gpu_visible()),
-        reason="needs an NVIDIA GPU, the molbuilder-siesta-gpu env and a "
-               "detectable conda hook"),
-]
-
 
 def _said(run, step, *words):
     """What ``step`` answered holds each of ``words``."""

@@ -177,7 +177,8 @@ def cmd_list() -> None:
 
 #: The remedy speller lives in `hints.py` (floor 1) so that `recipes.py` can
 #: reach it: a recipe may not depend on the CLI (A7).  Bound here because every
-#: hint in this file reads it.
+#: hint in this file reads it, directly or through the remedies it spells
+#: (`install_cmd`, `opt_in_cmd`).
 _fix_cmd = _hints.fix_cmd
 
 
@@ -215,7 +216,7 @@ def _render_doctor(reports: Iterable[_doctor.EnvReport]) -> int:
             else:
                 click.echo("    state:   MISSING")
             click.echo("    next:    "
-                       + _fix_cmd("install", rep.recipe.name, "--yes"))
+                       + _hints.install_cmd(rep.recipe.name))
             continue
         click.echo("    state:   present")
         if rep.verify_ok is None:
@@ -251,7 +252,7 @@ def _render_doctor(reports: Iterable[_doctor.EnvReport]) -> int:
                 click.echo("                " + (
                     _fix_cmd("bootstrap", "--yes") + ")"
                     if rep.recipe.category is None
-                    else _fix_cmd("install", rep.recipe.name, "--yes") + ")"))
+                    else _hints.install_cmd(rep.recipe.name) + ")"))
             else:
                 click.echo("             (if repair finds nothing to fix, "
                            "rebuild from the recipe: "
@@ -392,7 +393,7 @@ def _render_doctor(reports: Iterable[_doctor.EnvReport]) -> int:
                     # to re-run, when a default install dispatches none.
                     if rep.recipe.extra_set():
                         click.echo("    then:    "
-                                   + _fix_cmd("install", rep.recipe.name, "--yes"))
+                                   + _hints.install_cmd(rep.recipe.name))
                         click.echo("             (repair installs the packages; "
                                    "this recipe also has post-install steps, "
                                    "which only `install` re-runs)")
@@ -484,7 +485,7 @@ def cmd_repair(name: str, include_optional: bool,
             err=True,
         )
         click.echo(
-            "    " + _fix_cmd("install", recipe.name, "--yes"),
+            "    " + _hints.install_cmd(recipe.name),
             err=True,
         )
         sys.exit(2)
@@ -1007,7 +1008,7 @@ def cmd_validate(name: str, quiet_on_fail: bool) -> None:
     if not caps.env_available(effective):
         click.echo(
             f"env `{effective}` is not present.  Install it first:\n"
-            f"  {_fix_cmd('install', name)}",
+            f"  {_hints.install_cmd(name)}",
             err=True,
         )
         sys.exit(2)
@@ -1400,7 +1401,7 @@ def _install_one(recipe, effective: str, caps, *,
         if recipe.category is None:
             click.echo("    " + _fix_cmd("bootstrap", "--yes"))
         else:
-            click.echo("    " + _fix_cmd("install", name, "--yes"))
+            click.echo("    " + _hints.install_cmd(name))
         click.echo("")
         click.echo("  Nothing was removed.")
         raise _CannotInstall("--clean refused: that is the env we run from")
@@ -1417,7 +1418,7 @@ def _install_one(recipe, effective: str, caps, *,
         click.echo("Remove it yourself, then re-run:")
         click.echo("")
         click.echo(f"    rm -rf {state.prefix}")
-        click.echo("    " + _fix_cmd("install", name, "--yes"))
+        click.echo("    " + _hints.install_cmd(name))
         click.echo("")
         raise _CannotInstall("--clean refused: the manager will not remove "
                              "that directory")
@@ -1450,7 +1451,7 @@ def _install_one(recipe, effective: str, caps, *,
         click.echo("    " + _install.remove_env_cmd(caps.conda_binary,
                                                     effective))
         click.echo(
-            "    " + _fix_cmd("install", name, "--yes")
+            "    " + _hints.install_cmd(name)
         )
         raise _CannotInstall(
             f"env is {state.state_label}; conda create cannot recover it")
@@ -1769,7 +1770,7 @@ def cmd_bootstrap(dry_run: bool, skip_existing: bool, clean: bool,
         for r in skipped:
             click.echo(f"    {r.name}", err=True)
             click.echo(f"        {r.opt_in}", err=True)
-            hint = _fix_cmd("install", r.name, "--yes")
+            hint = _hints.install_cmd(r.name)
             if r.build_spec is not None:
                 hint += "   (or `bootstrap --include-source-builds`)"
             click.echo(f"        {hint}", err=True)
@@ -1964,7 +1965,7 @@ def cmd_bootstrap(dry_run: bool, skip_existing: bool, clean: bool,
         click.echo("# committing; the host env from this bootstrap is the")
         click.echo("# prerequisite):")
         click.echo(
-            _fix_cmd("install", DEFAULT_ENV_NAMES["siesta-gpu"], "--yes")
+            _hints.install_cmd(DEFAULT_ENV_NAMES["siesta-gpu"])
         )
     click.echo("")
     click.echo("# Repair any REQUIRED package gaps doctor's audit surfaced:")

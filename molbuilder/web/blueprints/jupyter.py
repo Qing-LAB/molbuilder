@@ -175,7 +175,7 @@ def api_jupyter_status():
     not in its log.
     """
     from ...diagnostics import get_capabilities
-    from ...envs.hints import fix_cmd
+    from ...envs.hints import install_cmd
     from ...envs.recipes import effective_name, recipe_by_name
     from ...jupyter import status
 
@@ -233,7 +233,7 @@ def api_jupyter_status():
         "may_control":     may_control,
         "env_name":        env_name,
         "env_installed":   installed,
-        "install_command": fix_cmd("install", recipe.name, "--yes"),
+        "install_command": install_cmd(recipe.name),
         "port_clash":      port_clash(port) if may_control else None,
     })
 

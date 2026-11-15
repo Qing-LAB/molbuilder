@@ -12,11 +12,14 @@ from __future__ import annotations
 
 import os
 import re
-import shutil
 import subprocess
 import sys
 
 import pytest
+
+from support.tooling import GPU, needs
+
+pytestmark = needs(GPU)
 
 
 def _dry_run(recipe, **env):
@@ -32,8 +35,6 @@ def _dry_run(recipe, **env):
 
 @pytest.fixture
 def driver_major():
-    if shutil.which("nvidia-smi") is None:
-        pytest.skip("no nvidia-smi on this machine")
     said = subprocess.run(["nvidia-smi"], capture_output=True, text=True,
                           timeout=5).stdout
     found = re.search(r"CUDA Version:\s*(\d+)", said)

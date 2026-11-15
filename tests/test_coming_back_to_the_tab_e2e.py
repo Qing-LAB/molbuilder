@@ -27,14 +27,6 @@ from __future__ import annotations
 
 import pytest
 
-from _road import conda_hook, env_available
-
-pytestmark = [
-    pytest.mark.skipif(
-        not (conda_hook().is_file() and env_available("molbuilder-siesta")),
-        reason="needs the molbuilder-siesta env + a detectable conda hook"),
-]
-
 
 # --------------------------------------------------------------------- #
 #  Fixtures                                                              #

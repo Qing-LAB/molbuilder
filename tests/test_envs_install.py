@@ -22,6 +22,7 @@ from molbuilder.diagnostics import Capabilities, set_capabilities
 from molbuilder.envs import install
 from molbuilder.envs.recipes import (CondaPackage, PipPackage, Recipe,
                                      recipe_by_name)
+from support.tooling import HOST_ENV, needs
 
 
 # A recipe that exercises EVERY install phase: conda create + pip
@@ -977,6 +978,7 @@ def test_bootstrap_gives_a_source_build_the_same_eyes_as_install(monkeypatch):
             f"{name} built with no progress callback -- no per-phase output")
 
 
+@needs(HOST_ENV)
 def test_the_shim_runs_a_readonly_verb_with_no_terminal_and_no_flag():
     """`install-env.sh list` must work with nothing on stdin.
 
@@ -992,16 +994,12 @@ def test_the_shim_runs_a_readonly_verb_with_no_terminal_and_no_flag():
     stays true wherever it is still reached.
 
     A real invocation, because the defect is only visible WITHOUT a terminal and
-    no amount of reading the bash proves the exit code.  Self-skipping, and
-    gated on the manager the PACKAGE detects rather than a hard-coded path.
+    no amount of reading the bash proves the exit code.  It needs the host env
+    in the env manager's list -- the shim works through it -- as the manager
+    the package detects lists it (`support.tooling.needs`).
     """
     import subprocess as _sp
     from pathlib import Path as _P
-    from molbuilder import diagnostics
-
-    caps = diagnostics.detect()
-    if not (caps.conda_binary and caps.env_available("molbuilder")):
-        pytest.skip("needs a detectable conda and the `molbuilder` host env")
 
     script = _P(__file__).resolve().parents[1] / "scripts" / "install-env.sh"
     proc = _sp.run(["bash", str(script), "list"],

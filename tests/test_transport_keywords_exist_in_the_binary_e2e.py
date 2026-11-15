@@ -52,6 +52,8 @@ from pathlib import Path
 
 import pytest
 
+from _road import env_bin
+
 #: Labels that are NOT fdf keywords and must not be looked up: block
 #: delimiters, block-interior grammar words, and comments.  Each is read by
 #: the block's own parser, not by `fdf_get`.
@@ -63,27 +65,10 @@ _NOT_A_LABEL = {
 
 
 def _engine_binaries():
-    """The installed `siesta` + `tbtrans`, or ``None`` when absent.
-
-    Asked through `diagnostics`, never by joining a path onto a manager
-    binary — the rule `docs/ops/installation.md` M2 states and
-    `feedback_ask_the_manager_never_derive_a_path` exists for.
-    """
-    from molbuilder.diagnostics import get_capabilities
-    from molbuilder.envs.recipes import effective_name, recipe_by_name
-    caps = get_capabilities()
-    try:
-        recipe = recipe_by_name("molbuilder-siesta")
-    except Exception:                                   # noqa: BLE001
-        return None
-    name = effective_name(recipe, caps)
-    if not caps.env_available(name):
-        return None
-    prefix = caps.env_prefix(name)
-    if not prefix:
-        return None
-    found = [Path(prefix) / "bin" / b for b in ("siesta", "tbtrans")]
-    return [p for p in found if p.is_file()] or None
+    """The molbuilder-siesta env's own `siesta` and `tbtrans`
+    (`_road.env_bin`): every test reading them asks for a run made in the
+    env, whose need that run states."""
+    return [env_bin("molbuilder-siesta") / b for b in ("siesta", "tbtrans")]
 
 
 def _strings(path: Path) -> str:
@@ -94,10 +79,7 @@ def _strings(path: Path) -> str:
 
 @pytest.fixture(scope="module")
 def binary_text():
-    bins = _engine_binaries()
-    if not bins:
-        pytest.skip("molbuilder-siesta is not installed -- nothing to measure")
-    return "\n".join(_strings(p) for p in bins)
+    return "\n".join(_strings(p) for p in _engine_binaries())
 
 
 def _emitted_labels(text: str):
@@ -223,10 +205,7 @@ def test_the_device_deck_holds_no_label_siesta_cannot_read(
     whether ANY installed binary knows a label, and blind to a `TBT.*` line
     finding its way back into the device deck -- a line `tbtrans` knows and
     `siesta`, which reads this deck, never will."""
-    bins = _engine_binaries()
-    siesta = next((b for b in (bins or ()) if b.name == "siesta"), None)
-    if siesta is None:
-        pytest.skip("molbuilder-siesta is not installed -- nothing to measure")
+    [siesta] = [b for b in _engine_binaries() if b.name == "siesta"]
     deck = _prepped_deck(real_bridged_chain.pair, tmp_path, monkeypatch, "device",
                          ("1", "2"))
     _refuse_unknown_labels(deck, _strings(siesta), "device (siesta alone)")

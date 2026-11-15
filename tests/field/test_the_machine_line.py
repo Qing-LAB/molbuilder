@@ -15,24 +15,19 @@ two of a model.
 """
 from __future__ import annotations
 
-import shutil
 import subprocess
 
-import pytest
-
 from molbuilder import monitor
+from support.tooling import GPU, needs
 
 
+@needs(GPU)
 def test_the_machine_line_names_each_model_once_and_no_count():
-    if shutil.which("nvidia-smi") is None:
-        pytest.skip("no nvidia-smi on this machine")
     listed = subprocess.run(["nvidia-smi", "-L"], capture_output=True,
                             text=True, timeout=5)
     models = [line.split(":", 1)[1].split("(UUID")[0].strip()
               for line in listed.stdout.splitlines()
               if line.startswith("GPU ")]
-    if listed.returncode != 0 or not models:
-        pytest.skip("no device visible here")
     distinct = list(dict.fromkeys(models))
     assert monitor.machine_line().split("gpu=", 1)[1] == ", ".join(distinct), (
         "the gpu field must be exactly the distinct models, in the order they "

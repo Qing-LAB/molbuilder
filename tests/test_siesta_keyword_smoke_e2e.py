@@ -21,55 +21,21 @@ from pathlib import Path
 
 import pytest
 
+from _road import env_bin
+from support.tooling import needs
+
 # The pseudopotential is an INPUT checked in beside the tests, because
 # `conftest.write_pseudos`'s PSML is enough for prep's screening but SIESTA
 # does not start on it (tests/fixtures/psml/README.md).
 _H_PSML_SOURCE = Path(__file__).resolve().parent / "fixtures" / "psml" / "H.psml"
 
-pytestmark = pytest.mark.engine
+pytestmark = [pytest.mark.engine, needs("molbuilder-siesta")]
 
 
-def _siesta_binary():
-    """Return the path to the molbuilder-siesta env's siesta binary,
-    or None when the env is not present on this machine.
-
-    Asks the product where the env is (``_env_prefix``), which cannot return
-    something outside the env -- never a host PATH siesta.
-    """
-    from molbuilder.diagnostics import get_capabilities
-    from molbuilder.envs.install import _env_prefix
-    caps = get_capabilities()
-    if not caps.env_available("molbuilder-siesta"):
-        return None
-    prefix = _env_prefix("molbuilder-siesta", caps.conda_binary)
-    if not prefix:
-        return None
-    candidate = Path(prefix) / "bin" / "siesta"
-    return candidate if candidate.exists() else None
-
-
-def _require_siesta_binary():
-    """pytest skip helper: skip when the SIESTA binary is unreachable
-    or refuses to start (broken env, missing libs)."""
-    binary = _siesta_binary()
-    if binary is None:
-        pytest.skip(
-            "molbuilder-siesta env not installed; install via "
-            "`bash scripts/install-env.sh --bootstrap --yes` or "
-            "`python -m molbuilder envs install molbuilder-siesta`."
-        )
-    # Fast self-test so a downstream subprocess failure has a clean
-    # cause (env broken vs the keyword we are gating).
-    probe = subprocess.run(
-        [str(binary), "--version"],
-        capture_output=True, text=True, timeout=15,
-    )
-    if probe.returncode != 0:
-        pytest.skip(
-            f"molbuilder-siesta env's siesta refused to start: "
-            f"{probe.stderr.strip() or probe.stdout.strip()}"
-        )
-    return binary
+def _siesta() -> Path:
+    """The molbuilder-siesta env's own siesta (`_road.env_bin`), never a host
+    PATH one."""
+    return env_bin("molbuilder-siesta") / "siesta"
 
 
 def _run_siesta_on_fdf(binary: Path, fdf_path: Path, *, work_dir: Path,
@@ -138,7 +104,7 @@ def test_siesta_REFUSES_a_physical_value_with_no_unit(keyword, bare,
     FAILURE: the reader answering a bare value in a unit it guessed, so a
     value SIESTA refuses is compared and recorded as if the deck stated it.
     """
-    binary = _require_siesta_binary()
+    binary = _siesta()
     bad_dir = tmp_path / "bad"; bad_dir.mkdir(parents=True)
     out = _run_siesta_on_fdf(
         binary, _unit_probe_deck(bad_dir, extra_lines=bare + "\n"),
@@ -191,7 +157,7 @@ def test_siesta_defaults_omitted_coordinates_to_BOHR(tmp_path):
     SIESTA places its atoms, so two decks are judged by places neither run
     had.
     """
-    binary = _require_siesta_binary()
+    binary = _siesta()
     (tmp_path / "d").mkdir(parents=True, exist_ok=True)
     deck = _unit_probe_deck(tmp_path / "d")
     out = _run_siesta_on_fdf(binary, deck, work_dir=deck.parent)
@@ -225,7 +191,7 @@ def test_siesta_scales_lattice_vectors_by_ONE_when_no_constant_is_given(
     Å as SIESTA places them -- ... `LatticeConstant` and the units folded in
     by the reader" (`engines/transport.md` § 6.1, *The same engine input*).
     """
-    binary = _require_siesta_binary()
+    binary = _siesta()
     (tmp_path / "d").mkdir(parents=True, exist_ok=True)
     deck = _unit_probe_deck(
         tmp_path / "d", coord_format="Ang",

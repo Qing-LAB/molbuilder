@@ -308,8 +308,9 @@ _NOTE = ("import os, pathlib\n"
 
 
 #: A module fixture declared to make a real run, as a module's own is
-#: (`testing.md` § 6.1a, rule 2) -- here it makes none: what is asked is
-#: where the tests that ask for it run, and this batch starts no engine.
+#: (`testing.md` § 6.1a, rule 2) -- here it makes none, and so states no
+#: need: what is asked is where the tests that ask for it run, and this
+#: batch starts no engine.
 _DECLARED = ("from support.real_runs import makes_a_real_run\n"
              "@makes_a_real_run('module')\n"
              "def run(): return 1\n")
@@ -420,18 +421,15 @@ def test_an_expected_failure_that_passes_fails_the_run(tmp_path, monkeypatch):
 
 
 def _spread_run(tmp_path, files):
-    """``testrun.py run --workers 2`` over a suite whose ``conftest.py`` and
-    ``pyproject.toml`` ARE the real suite's (links), so the rules a run is
-    spread by are the suite's own.  Returns the summary, the suite and where
+    """``testrun.py run --workers 2`` over a suite run by the suite's own
+    rules (`support.suite.linked`).  Returns the summary, the suite and where
     each test ran."""
-    suite, seen = tmp_path / "suite", tmp_path / "seen"
-    suite.mkdir()
+    from support.suite import linked
+    seen = tmp_path / "seen"
     seen.mkdir()
-    repo = Path(testrun.REPO)
-    (suite / "conftest.py").symlink_to(repo / "tests" / "conftest.py")
-    (suite / "pyproject.toml").symlink_to(repo / "pyproject.toml")
-    for name, body in files.items():
-        (suite / name).write_text(_NOTE.format(seen=str(seen)) + body)
+    suite = linked(tmp_path / "suite", {
+        name: _NOTE.format(seen=str(seen)) + body
+        for name, body in files.items()})
     assert testrun.main(["run", str(suite), "--workers", "2"]) == 1
     s = testrun._summarise("custom", testrun._progress_path("custom"))
     return s, suite, {f.name: f.read_text() for f in seen.iterdir()}

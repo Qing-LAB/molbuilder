@@ -141,19 +141,16 @@ each release is its changelog row and its ledger section
   installed by the host recipe's opt-in test tooling beside Playwright,
   and every Node test on the env's own Node; 2.70.12, one rule for a test
   that needs the opt-in tooling; 2.70.13, the engine tests named by the
-  fixture that makes their run, never by hand beside it (TF1).
+  fixture that makes their run, never by hand beside it (TF1); 2.70.14,
+  what a test needs of the machine stated once and skipped for by one rule
+  (TF2).
   X-ENG closed with 2.69.68 — its two items that change a generated
   program placed by the user with F10's end-to-end pass.
-  **Left, in order**: the page doors and the copies they share, worked as
-  one stretch — each item checked by its own tests, the review, the record
-  and the push once for the stretch (the user, 2026-11-13): O-TESTS first,
-  taken first on the user's word (2026-11-14, 2.70.2) — the test
-  framework's own copies, one owning door per release (TF2–TF10; the user
-  asked for the framework's check on 2026-11-14: "framework level fix ...
-  redundant/duplicated support code/design"), then the page tests on a real
-  DOM (jsdom), then the rest of the finish-line review's O-TESTS row, that
-  order mine: the page tests will use the doors these make; then O-STATUS,
-  O-FIND, O-STATE, O-WORDS, O-KEYS's rest with X-UI and X-PLOT.
+  **Left, in order** *(the user, 2026-11-15: "focus on real issues",
+  "focusing on lib code")*: the page doors' rest -- O-STATE, O-WORDS,
+  O-KEYS's rest with X-UI and X-PLOT; the dead-code release; F9's closing
+  review rounds. The test framework's TF3–TF10 and the page tests on jsdom
+  wait on the user's word.
 
 **Last checked** (2.69.21): the fast batch, 5,959 passed; every e2e test,
 744 passed, on the release's final code (a change every road passes through,
