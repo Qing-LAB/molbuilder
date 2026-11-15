@@ -932,3 +932,97 @@ def test_a_host_narrower_than_the_stylesheets_floor_says_so(
         said.wait_for()
         assert f"needs at least {floor:g}px" in said.inner_text(), (
             floor, said.inner_text())
+
+
+@pytest.mark.parametrize("scale", ["1", "2", "4"])
+def test_a_picture_exported_is_the_view_as_drawn(demo, scale):
+    """`web/molview.md` § 11.3: a picture is THE VIEW -- one frame is a
+    `.png` rendered from the drawing as it is set, at "1×/2×/4× of the
+    window".  Export → Image → Download on the benzene the demo shows hands
+    the person a PNG of that size -- the window's own at 1×, twice it at 2×,
+    four times at 4× -- with the molecule on it: more than the background's
+    one colour.
+
+    THE SILENT FAILURES: a blank picture -- captured before the drawing
+    library painted, or from a cleared canvas -- with every node test green,
+    since the stand-ins there answer the capture themselves; and the size
+    asked not the size given -- measured 2026-11-15, every choice gave the
+    one picture the canvas held, twice the window (the drawing library
+    keeps its own pixels and its picture call takes no size); and the window
+    left drawn at the picture's size."""
+    import io
+    from PIL import Image
+    demo.locator(".molviewer-menu summary", has_text="Export").click()
+    image = demo.locator(".molviewer-export-section", has_text="Image")
+    image.wait_for()
+    image.locator(".molviewer-export-btn", has_text="Download").click()
+    asked = demo.locator("dialog.molviewer-export-dialog")
+    asked.wait_for()
+    asked.locator("select").first.select_option(scale)
+    window = demo.evaluate("""(scale) => {
+        const c = document.querySelector(".molviewer-window-canvas canvas");
+        return [c.clientWidth * scale, c.clientHeight * scale];
+    }""", int(scale))
+    held = """() => {
+        const c = document.querySelector(".molviewer-window-canvas canvas");
+        return [c.width, c.height, c.style.width, c.style.height];
+    }"""
+    before = demo.evaluate(held)
+    with demo.expect_download() as got:
+        asked.locator("[data-action='confirm']").click()
+    # ...AND THE WINDOW PUT BACK AS IT WAS: its pixels and its size on the
+    # page, whatever size the picture was drawn at.
+    assert demo.evaluate(held) == before, (demo.evaluate(held), before)
+    picture = Image.open(io.BytesIO(open(got.value.path(), "rb").read()))
+    assert got.value.suggested_filename.endswith(".png"), \
+        got.value.suggested_filename
+    assert list(picture.size) == window, (picture.size, window)
+    colours = picture.convert("RGB").getcolors(maxcolors=1 << 20)
+    assert colours is None or len(colours) > 1, colours
+
+
+def test_a_movie_exported_holds_every_frame_at_the_size_asked(demo):
+    """`web/molview.md` § 11.3's export table: a range of frames is a movie
+    -- *"one frame → `.png`; more → the chosen `.webm` / `.gif`"* -- at the
+    resolution asked.  The demo's six-frame trajectory, exported whole as a
+    gif at 4×, is six frames each four times the window, and the window is put
+    back as it was after every frame was drawn at that size.
+
+    THE SILENT FAILURES: a movie of fewer frames than its range; and the
+    window left drawn at the movie's size -- each frame is drawn at it for
+    its capture (`3dmol-embed.js` `capture`).  (The movie's size alone
+    cannot tell a frame drawn at that size from one stretched to it: the
+    encoder sizes every frame to the movie.)"""
+    import io
+    from PIL import Image
+    demo.click("#demo-trajectory")
+    demo.wait_for_function(
+        "() => (document.querySelector('.molviewer-frames-counter') || {})"
+        "  .textContent === '1 / 6'")
+    _settle(demo)
+    demo.locator(".molviewer-menu summary", has_text="Export").click()
+    image = demo.locator(".molviewer-export-section", has_text="Image")
+    image.wait_for()
+    image.locator(".molviewer-export-btn", has_text="Download").click()
+    asked = demo.locator("dialog.molviewer-export-dialog")
+    asked.wait_for()
+    # THE WHOLE RANGE, typed as a person types it: the dialog offers the
+    # frame on screen at both ends.
+    asked.locator("input[type='number']").nth(0).fill("1")
+    asked.locator("input[type='number']").nth(1).fill("6")
+    asked.locator("select").nth(0).select_option("4")
+    asked.locator("select").nth(1).select_option("gif")
+    held = """() => {
+        const c = document.querySelector(".molviewer-window-canvas canvas");
+        return [c.width, c.height, c.style.width, c.style.height,
+                c.clientWidth, c.clientHeight];
+    }"""
+    before = demo.evaluate(held)
+    with demo.expect_download(timeout=120_000) as got:
+        asked.locator("[data-action='confirm']").click()
+    assert got.value.suggested_filename.endswith(".gif"), \
+        got.value.suggested_filename
+    movie = Image.open(io.BytesIO(open(got.value.path(), "rb").read()))
+    assert (movie.n_frames, list(movie.size)) == (
+        6, [before[4] * 4, before[5] * 4]), (movie.n_frames, movie.size, before)
+    assert demo.evaluate(held) == before, (demo.evaluate(held), before)

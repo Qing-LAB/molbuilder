@@ -288,9 +288,12 @@ export function create(hostEl, opts) {
 
     /* ── The one render primitive ──────────────────────────────────────────
      *
-     * Every draw site goes through here. While a batch is open it only marks
-     * the scene dirty; the paint fires once at the outermost endBatch, not once
-     * per door touched (§ 10.1, one render place).
+     * Every draw site goes through here but one: a picture's own draw
+     * (`capture`), which must happen now, at the picture's size, whatever
+     * batch is open -- the window's own draw after it comes back here. While
+     * a batch is open this only marks the scene dirty; the paint fires once
+     * at the outermost endBatch, not once per door touched (§ 10.1, one
+     * render place).
      */
     function paint() {
         if (state.disposed || !state.viewer) return;
@@ -938,30 +941,47 @@ export function create(hostEl, opts) {
         capture(width, height) {
             return new Promise((resolve, reject) => {
                 if (state.disposed) { reject(new Error("capture: disposed")); return; }
+                const viewer = state.viewer;
+                const canvas = viewer.container.querySelector("canvas");
+                if (!canvas || typeof canvas.toBlob !== "function") {
+                    const blob = dataUrlToBlob(viewer.pngURI());
+                    blob ? resolve(blob)
+                         : reject(new Error("capture: no canvas, pngURI failed"));
+                    return;
+                }
+                // `toBlob` copies the canvas's pixels as it is called; the
+                // encoding comes after.
+                const take = () => canvas.toBlob((b) => {
+                    b ? resolve(b) : reject(new Error("capture: toBlob returned null"));
+                }, "image/png");
+                /* A PICTURE OF THE SIZE ASKED (§ 11.3: 1x/2x/4x of the
+                 * window).  The canvas holds the drawing library's own
+                 * pixels -- the screen's ratio, doubled below 2 (its
+                 * `setSize`) -- and its `pngURI` takes no size, so a size the
+                 * canvas does not hold is DRAWN at that size: its buffer set
+                 * through its own sizing (half a pixel added, as the canvas
+                 * truncates `size / ratio * ratio`), the canvas's on-screen
+                 * size kept, drawn, copied, and put back -- all in one task,
+                 * so no frame between is shown.  The draw for the picture is
+                 * the library's own, not `paint()`: a batch left open must
+                 * not keep the picture undrawn; putting it back is `paint()`'s. */
+                const asked = width && height
+                    && (width !== canvas.width || height !== canvas.height);
+                if (!asked) { take(); return; }
+                const renderer = viewer.renderer;
+                const ratio = renderer.devicePixelRatio || 1;
+                const onScreen = [canvas.style.width, canvas.style.height];
                 try {
-                    const container = state.viewer.container;
-                    const resize = (width && width !== container.clientWidth)
-                                || (height && height !== container.clientHeight);
-                    // A size override re-renders at that resolution; otherwise
-                    // grab the live canvas directly, which is much faster.
-                    if (resize) {
-                        const blob = dataUrlToBlob(state.viewer.pngURI(width, height));
-                        blob ? resolve(blob)
-                             : reject(new Error("capture: pngURI conversion failed"));
-                        return;
-                    }
-                    const canvas = container.querySelector("canvas");
-                    if (!canvas || typeof canvas.toBlob !== "function") {
-                        const blob = dataUrlToBlob(state.viewer.pngURI());
-                        blob ? resolve(blob)
-                             : reject(new Error("capture: no canvas, pngURI failed"));
-                        return;
-                    }
-                    canvas.toBlob((b) => {
-                        b ? resolve(b) : reject(new Error("capture: toBlob returned null"));
-                    }, "image/png");
+                    renderer.setSize((width + 0.5) / ratio, (height + 0.5) / ratio);
+                    canvas.style.width = onScreen[0];
+                    canvas.style.height = onScreen[1];
+                    viewer.render();
+                    take();
                 } catch (e) {
                     reject(new Error("capture: " + (e && e.message)));
+                } finally {
+                    renderer.setSize(viewer.WIDTH, viewer.HEIGHT);
+                    paint();
                 }
             });
         },

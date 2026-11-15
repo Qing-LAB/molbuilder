@@ -331,8 +331,15 @@ def test_the_run_panel_says_what_ran_and_why_it_stopped(stopped, page,
         card = page.locator("#results-file-card .fc-name")
         card.wait_for(timeout=20000)
         picked = card.inner_text()
+        # THE CLICK HEARD: the sidebar tells its listeners in the order they
+        # came, and the card listened from the page's start -- so once a
+        # listener added now has heard the click, the card has answered it.
+        page.evaluate("() => { window.__picked = [];"
+                      " window.molbuilder.projects.onChange("
+                      "  (s) => window.__picked.push(s && s.file)); }")
         walk_to(page, bundle / "task.json")
-        page.wait_for_timeout(500)
+        page.wait_for_function("(f) => window.__picked.includes(f)",
+                               arg=str(bundle / "task.json"), timeout=10000)
         assert card.inner_text() == picked, (
             "a click on a root file was taken for one of the picked run's "
             "files")

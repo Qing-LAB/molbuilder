@@ -1168,6 +1168,13 @@ def test_saving_to_the_project_writes_the_pair_and_remembers_where(
     ``StructureCodec.write`` (§ 11.3).  Where they went is the PAGE's note, not
     the viewer's (§ 6.7), and nothing was setting it: ``markSavedTo`` had no
     caller, so the readout still offered "Save as…" straight after a save.
+
+    And saved again under the same name, it asks before it replaces
+    (`tabs.md` § 6, step 4: *"An existing file answers 409 {needsOverwrite:
+    true, replaces}; the door confirms through `confirmOverwrite`, naming
+    what a yes replaces"*): the question names both files of the pair, and
+    Cancel writes nothing.  THE SILENT FAILURE: a save that replaces the
+    person's pair without asking -- every layer below the page green.
     """
     from molbuilder.projects import populate_project_skeleton
     # A PROJECT TO SAVE INTO, made as New project makes one: a file is placed
@@ -1179,33 +1186,37 @@ def test_saving_to_the_project_writes_the_pair_and_remembers_where(
     _open(page, flask_server)
     _load(page, labelled_xyz)
 
-    # TWO QUESTIONS, in this order: WHERE, then what to call it
-    # (`tabs.md` § 6 -- the door owns the destination).
-    page.locator("#save-to-source-btn").click()
+    def save_as(stem):
+        # TWO QUESTIONS, in this order: WHERE, then what to call it
+        # (`tabs.md` § 6 -- the door owns the destination).
+        page.locator("#save-to-source-btn").click()
 
-    # 1. WHERE.  The picker's Choose stays disabled until a folder is
-    #    selected -- opening the project and clicking its structure folder's
-    #    row is the selection, which is what a person does.
-    dialog = page.locator("dialog.molbuilder-tree-picker-dialog")
-    # The projects root is the tree, never an answer: a file is placed in a
-    # folder below it, so its row cannot be chosen (`projects.md` § 4.1).
-    root_row = dialog.locator(
-        f'li.tp-node[data-path="{project.parent}"] > .tp-row')
-    root_row.wait_for(state="visible", timeout=WAIT_MS)
-    assert "tp-row--inert" in (root_row.get_attribute("class") or "")
-    dialog.locator(f'li.tp-node[data-path="{project}"]'
-                   " > .tp-row > .tp-twisty").click()
-    row = dialog.locator(f'li.tp-node[data-path="{where}"] > .tp-row')
-    row.wait_for(state="visible", timeout=WAIT_MS)
-    row.click()
-    page.locator("dialog [data-action='confirm']").first.click()
+        # 1. WHERE.  The picker's Choose stays disabled until a folder is
+        #    selected -- opening the project and clicking its structure
+        #    folder's row is the selection, which is what a person does.
+        dialog = page.locator("dialog.molbuilder-tree-picker-dialog")
+        # The projects root is the tree, never an answer: a file is placed
+        # in a folder below it, so its row cannot be chosen
+        # (`projects.md` § 4.1).
+        root_row = dialog.locator(
+            f'li.tp-node[data-path="{project.parent}"] > .tp-row')
+        root_row.wait_for(state="visible", timeout=WAIT_MS)
+        assert "tp-row--inert" in (root_row.get_attribute("class") or "")
+        # The picker opens at the root each time (a closed dialog is gone).
+        dialog.locator(f'li.tp-node[data-path="{project}"]'
+                       " > .tp-row > .tp-twisty").click()
+        row = dialog.locator(f'li.tp-node[data-path="{where}"] > .tp-row')
+        row.wait_for(state="visible", timeout=WAIT_MS)
+        row.click()
+        page.locator("dialog [data-action='confirm']").first.click()
 
-    # 2. WHAT TO CALL IT.
-    name = page.locator("dialog input[data-role='name']")
-    name.wait_for(state="visible", timeout=WAIT_MS)
-    name.fill("saved_by_test")
-    page.locator("dialog [data-action='confirm']").last.click()
+        # 2. WHAT TO CALL IT.
+        name = page.locator("dialog input[data-role='name']")
+        name.wait_for(state="visible", timeout=WAIT_MS)
+        name.fill(stem)
+        page.locator("dialog [data-action='confirm']").last.click()
 
+    save_as("saved_by_test")
     page.wait_for_function(
         "() => /Saved/.test(document.getElementById('save-status').textContent)",
         timeout=WAIT_MS)
@@ -1218,6 +1229,21 @@ def test_saving_to_the_project_writes_the_pair_and_remembers_where(
     assert StructureCodec().load(where / "saved_by_test.xyz").regions == {
         "SOLVENT": [0, 1, 2]}
     assert "saved_by_test.xyz" in page.locator("#save-readout").inner_text()
+
+    # SAVED AGAIN UNDER THE SAME NAME: the one overwrite question, naming
+    # both files of the pair; Cancel leaves them as they were -- their bytes
+    # and their time, since a rewrite of the same structure writes the same
+    # bytes.
+    pair = (where / "saved_by_test.xyz", where / "saved_by_test.molstruct.json")
+    kept = [(f.read_bytes(), f.stat().st_mtime_ns) for f in pair]
+    save_as("saved_by_test")
+    question = page.locator("dialog.molbuilder-warning-modal")
+    question.wait_for(state="visible", timeout=WAIT_MS)
+    said = question.inner_text()
+    assert all(f.name in said for f in pair), said
+    question.locator("[data-action='cancel']").click()
+    question.wait_for(state="hidden", timeout=WAIT_MS)
+    assert [(f.read_bytes(), f.stat().st_mtime_ns) for f in pair] == kept
 
 
 def test_the_page_remembers_which_file_it_is_showing_across_a_reload(

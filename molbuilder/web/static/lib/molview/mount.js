@@ -423,7 +423,8 @@ export async function mount(hostEl, workspace, opts) {
 
         /* A picture of the window as drawn (§ 11.3's Image; § 9.2: the
          * handle owns actions on the window).  `{width, height}` asks for a
-         * size; omitted, the window's own. */
+         * size in pixels; omitted, the canvas as it holds it -- the drawing
+         * library's own pixel count. */
         capture(size) {
             const s = size || {};
             return engine.capture(s.width, s.height);

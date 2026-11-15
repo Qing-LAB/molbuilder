@@ -3982,6 +3982,13 @@ So the menu offers **two** things, and each asks **which frames** as a range:
 | **Data** | the master copy | a frame range | a plain `.xyz` + `.json` — a block per frame, as many as the range |
 | **Image** | the drawing | a frame range, a **resolution** (1×/2×/4× of the window), and — for a range — **webm or gif** | one frame → `.png`; more → the chosen `.webm` / `.gif` |
 
+**A picture is drawn at the size asked** *(the user, 2026-11-15: "Render
+at the size asked")*: the drawing library keeps its canvas at its own pixel
+count -- the screen's ratio, doubled below 2 -- and its picture call takes
+no size, so a size the canvas does not hold is drawn at that size for the
+picture and put back, in one step the page never shows (`3dmol-embed.js`
+`capture`).
+
 *(The resolution and the movie-format choice are the user's additions,
 2026-08-19.  A movie plays at the viewer's own playback speed — the rate you
 set the frame bar to is the rate the file plays at, one fact with one home

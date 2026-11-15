@@ -146,8 +146,9 @@ globalThis.$3Dmol = {
             removeAllShapes: function () { __rec("removeAllShapes", []); },
             removeAllLabels: function () { __rec("removeAllLabels", []); },
 
-            pngURI: function (w, h) {
-                __rec("pngURI", [w, h]);
+            // The vendor's own takes no size: the canvas as drawn.
+            pngURI: function () {
+                __rec("pngURI", []);
                 return "data:image/png;base64,aGk=";
             },
 
