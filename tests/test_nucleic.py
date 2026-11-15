@@ -300,17 +300,20 @@ _TAUTOMER_H = {
 _BASE = {"DA": "A", "DT": "T", "DG": "G", "DC": "C",
          "A": "A", "U": "U", "G": "G", "C": "C"}
 
-#: A build as a person asks it, and the anchors of its hydrogens where the
-#: row states them.
+#: A build as a person asks it, the anchors of its hydrogens where the row
+#: states them, and the backends that build it -- a duplex is 3DNA's alone
+#: (the others refuse it: `test_dna_double_strand.py`).
 _CHEMISTRY_ROWS = [
-    pytest.param(build_dna, "ATGC", {"O": 5, "C": 37, "N": 8}, id="dna"),
-    pytest.param(build_rna, "ACGU", None, id="rna"),
-    pytest.param(build_dna, "ds,GCGC", None, id="canonical-duplex"),
+    ("dna", build_dna, "ATGC", {"O": 5, "C": 37, "N": 8}, _BACKENDS),
+    ("rna", build_rna, "ACGU", None, _BACKENDS),
+    ("canonical-duplex", build_dna, "ds,GCGC", None, ("threedna",)),
 ]
 
 
-@pytest.mark.parametrize("build, text, anchors", _CHEMISTRY_ROWS)
-@pytest.mark.parametrize("backend", _BACKENDS)
+@pytest.mark.parametrize("backend, build, text, anchors", [
+    pytest.param(backend, build, text, anchors, id=f"{backend}-{name}")
+    for name, build, text, anchors, backends in _CHEMISTRY_ROWS
+    for backend in backends])
 def test_protonation_chemistry_matches_across_backends(backend, build, text,
                                                        anchors):
     """Pin that every backend produces the same protonation chemistry: for
@@ -333,8 +336,6 @@ def test_protonation_chemistry_matches_across_backends(backend, build, text,
     hydrogens all read as one residue `MOL` until its `AddHs` was asked for
     their residues (2026-10-31)."""
     tooling.needs_backend(backend)
-    if text.startswith("ds,") and backend != "threedna":
-        pytest.skip("a duplex is 3DNA's alone")
     s = build(text, backend=backend)
     pos = s.positions
     is_h = np.array([e == "H" for e in s.elements])
