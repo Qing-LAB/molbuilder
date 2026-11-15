@@ -18,10 +18,14 @@ from molbuilder.envs.recipes import PipPackage, Recipe, recipe_by_name
 
 
 def _bind(*, conda_envs=(), conda_binary="/usr/bin/conda"):
+    """A snapshot of the machine: ``conda_envs`` a ``{name: prefix}``
+    mapping, as the real one carries, or bare names where only whether an
+    env exists is asked."""
     set_capabilities(Capabilities(
         runtime_config={},
         conda_binary=conda_binary,
-        conda_envs=frozenset(conda_envs),
+        conda_envs=(dict(conda_envs) if isinstance(conda_envs, dict)
+                    else frozenset(conda_envs)),
     ))
 
 
@@ -68,9 +72,7 @@ def test_doctor_verify_uses_the_accept_rule(monkeypatch, tmp_path):
     mgr = tmp_path / "mgr"
     mgr.write_text("#!/bin/sh\nexit 0\n")
     mgr.chmod(0o755)
-    _bind(conda_envs=("synthetic",), conda_binary=str(mgr))
-    monkeypatch.setattr(_install, "_env_prefix",
-                        lambda env_name, conda_binary: str(tmp_path))
+    _bind(conda_envs={"synthetic": str(tmp_path)}, conda_binary=str(mgr))
     recipe = Recipe(name="synthetic", category=None, description="d",
                     channels=("conda-forge",), conda_packages=("python",),
                     verify_argv=("true",), verify_expect_contains="LEaP")
@@ -100,9 +102,7 @@ def test_repair_runs_the_step_the_installer_would(monkeypatch):
     recipe = recipe_by_name("molbuilder-pySCF")
     pkg = next(p for p in recipe.pip_packages
                if p.name == "pyscf-properties")
-    _bind(conda_envs=(recipe.name,))
-    monkeypatch.setattr(_install, "_env_prefix",
-                        lambda env_name, conda_binary: "/fake/envs/x")
+    _bind(conda_envs={recipe.name: "/fake/envs/x"})
 
     # The audit says: present, but from the wrong tree.
     issue = doctor.PackageAuditIssue(

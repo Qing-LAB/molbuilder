@@ -88,8 +88,6 @@ def test_the_install_probes_this_env_once_not_three_times(monkeypatch, tmp_path)
     monkeypatch.setattr(I._builds, "dispatch_into_env",
                         lambda argv, prefix, **kw: (ran.append(tuple(argv)),
                                                     (0, _VERIFY_OK))[1])
-    monkeypatch.setattr(_cli._install, "_env_prefix",
-                        lambda name, binary: str(tmp_path / "prefix"))
 
     from click.testing import CliRunner
     result = CliRunner().invoke(

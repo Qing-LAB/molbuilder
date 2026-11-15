@@ -18,11 +18,10 @@ Pins the contract that the user can run after a successful install:
 """
 from __future__ import annotations
 
-from unittest.mock import patch
-
 import pytest
 from click.testing import CliRunner
 
+from molbuilder.diagnostics import Capabilities, set_capabilities
 from molbuilder.envs._cli import envs_group
 
 
@@ -98,19 +97,15 @@ def fake_artifact_root(tmp_path):
     return env_prefix, root, sizes
 
 
-def _patched_run(args, env_prefix):
-    """Run ``clean`` with the env-detection layer stubbed out so the
-    CLI uses our fake env_prefix instead of probing real conda."""
-    # Mock the capability snapshot to claim mamba is present + the env
-    # exists.  Mock the env-prefix resolver to return our fake prefix.
-    with patch("molbuilder.envs._cli.get_capabilities") as gc, \
-         patch("molbuilder.envs.install._env_prefix") as ep:
-        caps = gc.return_value
-        caps.conda_binary = "mamba"
-        caps.env_available.return_value = True
-        ep.return_value = str(env_prefix)
-        return CliRunner().invoke(envs_group, args,
-                                  catch_exceptions=False)
+def _patched_run(args, env_prefix, input=None):
+    """Run ``clean`` on a machine whose snapshot -- the product's own type --
+    holds the env at ``env_prefix``, so the CLI finds it there rather than
+    by probing real conda."""
+    set_capabilities(Capabilities(
+        runtime_config={}, conda_binary="mamba",
+        conda_envs={"molbuilder-siesta-gpu": str(env_prefix)}))
+    return CliRunner().invoke(envs_group, args, input=input,
+                              catch_exceptions=False)
 
 
 def test_dry_run_shows_all_candidate_dirs_with_sizes(fake_artifact_root):
@@ -142,16 +137,8 @@ def test_default_prompt_aborts_on_no(fake_artifact_root):
     env_prefix, root, _ = fake_artifact_root
     # User pipes 'n' to the confirmation prompt -> click.confirm
     # returns False -> our handler exits 2 with the abort message.
-    with patch("molbuilder.envs._cli.get_capabilities") as gc, \
-         patch("molbuilder.envs.install._env_prefix") as ep:
-        caps = gc.return_value
-        caps.conda_binary = "mamba"
-        caps.env_available.return_value = True
-        ep.return_value = str(env_prefix)
-        r = CliRunner().invoke(envs_group,
-                                ["clean", "molbuilder-siesta-gpu"],
-                                input="n\n",
-                                catch_exceptions=False)
+    r = _patched_run(["clean", "molbuilder-siesta-gpu"], env_prefix,
+                     input="n\n")
     assert r.exit_code == 2, r.output
     assert "aborted by user" in r.output
     # Nothing got deleted.
@@ -245,13 +232,11 @@ def test_missing_env_reports_and_exits_zero(tmp_path):
     (it's a no-op, not an error).  This lets a CI script call
     ``clean`` defensively before measurement steps without first
     having to check whether the env exists."""
-    with patch("molbuilder.envs._cli.get_capabilities") as gc:
-        caps = gc.return_value
-        caps.conda_binary = "mamba"
-        caps.env_available.return_value = False
-        r = CliRunner().invoke(envs_group,
-                               ["clean", "molbuilder-siesta-gpu", "--yes"],
-                               catch_exceptions=False)
+    set_capabilities(Capabilities(runtime_config={}, conda_binary="mamba",
+                                  conda_envs={}))
+    r = CliRunner().invoke(envs_group,
+                           ["clean", "molbuilder-siesta-gpu", "--yes"],
+                           catch_exceptions=False)
     assert r.exit_code == 0
     assert "does not exist" in r.output
     assert "nothing to clean" in r.output
