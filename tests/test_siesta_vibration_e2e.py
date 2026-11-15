@@ -1210,13 +1210,20 @@ def test_the_ladder_names_each_call_of_the_run_in_its_words(
     each picked mode's two sides at its frequency
     (`lib/results/point-words.js`).
 
-    THE SILENT FAILURE: every call's row reading ``run-0`` alone -- eight
-    rows of one name, a person unable to tell the relaxation from an
-    optical call without opening each.
+    And a call picked off the ladder -- the relaxation's row's *open* --
+    shows the file its own folder opens, the Result file menu's first row
+    naming it (§ 2.4: *(showing <file>, a run picked from the ladder)*).
 
-    MUTATION THIS MUST FAIL AGAINST: the ladder naming a row from its
-    voltage alone (a transport point's words only)."""
+    THE SILENT FAILURES: every call's row reading ``run-0`` alone -- eight
+    rows of one name, a person unable to tell the relaxation from an
+    optical call without opening each; and a call's *open* showing another
+    folder's file -- the run's -- while the page says that call is shown.
+
+    MUTATIONS THIS MUST FAIL AGAINST: the ladder naming a row from its
+    voltage alone (a transport point's words only); a pick asking another
+    folder than the row's."""
     from conftest import point_the_one_door_at
+    from molbuilder.runs import openable
     from molbuilder.siesta.vibration_phases import FC, RELAX, calls_of
     from support.live_server import serve
     from support.sidebar import results_on
@@ -1253,6 +1260,24 @@ def test_the_ladder_names_each_call_of_the_run_in_its_words(
         names = page.eval_on_selector_all(
             ".results-ladder-table tr.is-run",
             "rows => rows.map(r => r.children[1].textContent)")
+        # A CALL PICKED OFF THE LADDER (`web/results.md` § 2.4: "Picking a
+        # run shows its result in this panel -- the file that run's own
+        # folder would open"): the relaxation's row's *open*, and the panel
+        # shows the file the run door opens in the call's own folder
+        # (`runs.openable`), the menu's first row naming the file shown.
+        opens = Path(openable(run.call("freq", RELAX))[0]).name
+        row = page.locator(".results-ladder-table tr.is-run",
+                           has_text="the relaxation")
+        row.locator(".results-ladder-open[aria-pressed]").click()
+        row.locator(".results-ladder-open[aria-pressed='true']").wait_for(
+            timeout=20000)
+        page.wait_for_function(
+            "(t) => { const s = document.querySelector("
+            "'#results-file-picker-select');"
+            " return s.selectedIndex >= 0"
+            "   && s.options[s.selectedIndex].textContent === t; }",
+            arg=f"(showing {opens}, a run picked from the ladder)",
+            timeout=10000)
     assert sorted(names) == want, (names, want)
     assert errors == [], errors
 
@@ -1518,6 +1543,131 @@ def test_a_displacement_sweep_compares_every_stages_force_constants(unticked):
 
 
 @makes_a_real_run("module", "molbuilder-siesta")
+def fc_unconverged(tmp_path_factory):
+    """THE ROAD'S H2, STATED RELAXED, ITS FORCE-CONSTANT CALL'S SCF CAPPED
+    (`execution/runs-of-points.md` § 1.3), on :data:`QUICK`'s mesh and
+    basis: two SCF steps and SIESTA's own stop on an unconverged SCF off, so
+    the call runs to its end unconverged and SIESTA exits 0 -- `freq`
+    prepared and launched, waited on."""
+    from support.real_runs import QUICK
+    from support.road import H2, described, structure_saved
+    with on_the_road(tmp_path_factory, "fc-unconverged") as tree:
+        bundle = described(tree, "P/spectrum/H2",
+                           structure=structure_saved(tree, H2), name="H2",
+                           calculation="vibration",
+                           execution={"mpi_np": 1, "omp_threads": 1})
+        set_by_the_person(bundle, {
+            "already_relaxed": True,
+            **{k: QUICK[k] for k in ("mesh_cutoff", "basis_size",
+                                     "pao_energy_shift")},
+            "max_scf_iter": 2, "scf_must_converge": False})
+        run = RealRun(tree=tree, bundle=bundle)
+        taken(run, "prep freq", "prep", "task", "--group", "1",
+              "--target", "this")
+        typed(run, "launch freq", "launch", "task", "--stage", "freq",
+              "--mode", "direct", "--foreground", "--yes")
+    return run
+
+
+def test_a_force_constant_call_not_converged_is_not_done_and_the_run_fails(
+        fc_unconverged):
+    """`execution/runs-of-points.md` § 1.3: a call that ran to its end not
+    converged where that counts -- a SIESTA vibration's `fc` -- is *not
+    done*, never *failed*: it ran.  A vibration's run finishes only when
+    every call is done (its result is built from them all), so the run
+    fails, naming the call short of done in its own words -- in `status`
+    and in the run's finish (`run-reports.md` § 2.9, *What a failed
+    `finish` says*).
+
+    THE SILENT FAILURE: a spectrum built on force constants from an
+    unconverged SCF, passed as a finished run."""
+    status = stage_status(fc_unconverged.bundle, "freq")
+    fc, = [p for p in status.points if p["rel"] == "fc"]
+    assert fc["converged"] is False and fc["state"] != "failed", fc
+    assert status.state == "failed", (status.state, status.detail)
+    said = "the force constants: not done -- finished, not converged (SCF NO)"
+    assert said in (status.detail or ""), status.detail
+    finish, = told(fc_unconverged, "finish", "freq")
+    assert finish.startswith(f"failed ({said}"), finish
+
+
+@makes_a_real_run("module", "molbuilder-siesta")
+def two_geometries(tmp_path_factory):
+    """THE ROAD'S H2 AS A SWEEP WHOSE SECOND STAGE RELAXED ON ITS OWN
+    (`engines/vibration.md` § 5.9), on :data:`QUICK`'s settings -- one
+    relaxation step, so the free atom ends where that step's forces put it:
+    `freq` relaxed and measured; `freq_fine`, on a finer mesh, launched
+    ``--cold``, relaxing on its own; the sweep summarized -- refused -- and
+    whether that left a record; `freq_fine` launched again with the
+    ``--from`` the refusal names, taking `freq`'s relaxation over; and the
+    sweep summarized (``record``).  Each step written down by its name."""
+    import json
+    import re
+    from molbuilder.task import of as task_of
+    from support.real_runs import QUICK
+    from support.road import H2, described, ladder_edited, structure_saved
+    with on_the_road(tmp_path_factory, "two-geometries") as tree:
+        bundle = described(tree, "P/spectrum/H2",
+                           structure=structure_saved(tree, H2), name="H2",
+                           calculation="vibration",
+                           execution={"mpi_np": 1, "omp_threads": 1})
+        set_by_the_person(bundle, {k: QUICK[k] for k in (
+            "mesh_cutoff", "basis_size", "pao_energy_shift", "max_scf_iter",
+            "relax_steps")})
+        run = RealRun(tree=tree, bundle=bundle)
+        record = bundle / f"{task_of(bundle).label}.fc-sweep.json"
+        taken(run, "prep freq", "prep", "task", "--group", "1",
+              "--target", "this")
+        taken(run, "launch freq", "launch", "task", "--stage", "freq",
+              "--mode", "direct", "--foreground", "--yes")
+        assert ladder_edited({"added": [{
+            "name": "freq_fine",
+            "overrides": {"mesh_cutoff": 2 * QUICK["mesh_cutoff"]}}]}, bundle)
+        taken(run, "prep freq_fine", "prep", "task",
+              *group_words(bundle, "freq_fine"), "--target", "this")
+        taken(run, "launch freq_fine cold", "launch", "task", "--stage",
+              "freq_fine", "--cold", "--mode", "direct", "--foreground",
+              "--yes")
+        refused = typed(run, "summarize two geometries", "summarize", "task")
+        run.sweep["recorded when refused"] = record.exists()
+        way_out = re.search(r"--from\s+(\S+)", refused.output)
+        assert way_out, refused.output
+        taken(run, "launch freq_fine from freq", "launch", "task", "--stage",
+              "freq_fine", "--from", way_out.group(1), "--mode", "direct",
+              "--foreground", "--yes")
+        taken(run, "summarize one geometry", "summarize", "task")
+        run.sweep["record"] = json.loads(record.read_text())
+    return run
+
+
+def test_a_sweep_measured_at_two_geometries_is_refused_and_its_way_out_runs(
+        two_geometries):
+    """`engines/vibration.md` § 5.9: a sweep across stages that were measured
+    at different geometries is refused by name, with how far an atom moved
+    between them -- a relaxation's change reported as the displacement's
+    would be a wrong answer that looks right -- its way out the later stage
+    launched again with ``--from`` naming the reference stage's run, whose
+    relaxation it takes over; then the sweep is summarized.  Here the later
+    stage relaxed on its own (launched ``--cold``) on a finer mesh.
+
+    THE SILENT FAILURE: the mesh's effect on the geometry reported as the
+    force constants' convergence -- `summarize` writing the record, every
+    number in it plausible."""
+    run = two_geometries
+    refused = run.said["summarize two geometries"]
+    assert refused.exit_code != 0, refused.output
+    for words in ("'freq'", "'freq_fine'", "different geometries",
+                  "an atom moved", "--from"):
+        assert words in refused.output, (words, refused.output)
+    assert run.sweep["recorded when refused"] is False, (
+        "a refused sweep wrote its record")
+    record = run.sweep["record"]
+    assert [s["name"] for s in record["stages"]] == ["freq", "freq_fine"]
+    assert not record["failed"] and not record["pending"], record
+
+
+
+@makes_a_real_run("module", "molbuilder-siesta")
 def stopped(real_co2_vibration, tmp_path_factory):
     """THE PERSON STOPS THE RUN ONCE ITS FORCE CONSTANTS AND ITS FIRST
     OPTICAL CALL ENDED (`engines/vibration.md` § 5.11 § 6): a copy of the
@@ -1695,6 +1845,39 @@ def test_launched_again_warm_after_a_stop_runs_only_the_optical_calls(
     _common_assertions(d, optical=True)
 
 
+def test_a_call_the_stop_killed_says_it_was_stopped_in_its_session_log(
+        stopped):
+    """`execution/running-a-job.md` § 2.0a, *The signals and the exit
+    trap*: a call running when the person stops the run is stopped by a
+    signal, and the run script's one handler logs the signal in the call's
+    session log -- one of the signals that stop a run, named there
+    (`runwrap._STOPPING_SIGNALS`) -- and writes no conclusion marker: a
+    forced stop is told by the monitor, never as an end of the script's
+    own (§ 4.2).  The call is the one run-1's index
+    lists started and never ended when the person stopped the run
+    (:func:`stopped`).
+
+    THE SILENT FAILURE: a killed call with nothing of its stop in its
+    session log -- the line written through the log's tee, which the stop
+    takes with it (the 2026-10-08 road walk) -- or a marker reading the
+    kill as an end of its own."""
+    from molbuilder.runfiles import ROLE_CONCLUDED
+    from molbuilder.runs import run_of
+    from molbuilder.runwrap import _STOPPING_SIGNALS
+    killed = [r["facts"]["name"] for r in stopped.stopped_index["points"]
+              if r.get("started") and not r.get("ended")]
+    assert len(killed) == 1, stopped.stopped_index["points"]
+    rel, = [p["rel"] for p in stopped.stopped.points
+            if p["call"] == killed[0]]
+    call = run_of(stopped.attempt("freq", 1) / rel)
+    assert call.session_log is not None, sorted(
+        p.name for p in call.folder.iterdir())
+    lines = call.session_log.read_text(errors="replace").splitlines()
+    assert any(f"SIG{s}" in ln for ln in lines for s in _STOPPING_SIGNALS), \
+        lines[-20:]
+    assert call.file(ROLE_CONCLUDED) is None, call.file(ROLE_CONCLUDED)
+
+
 @makes_a_real_run("module", "molbuilder-siesta")
 def failed_parts(stopped, tmp_path_factory):
     """THE STOPPED RUN LAUNCHED AGAIN UNDER A WALL ALREADY PASSED
@@ -1806,6 +1989,128 @@ def test_a_failed_part_is_said_at_once_and_once_per_reason(failed_parts):
         f"done · fc done · optical {len(taken)} of {len(optical)} done "
         f"({len(taken)} taken over, {len(ran)} failed) |"), finish
 
+
+@makes_a_real_run("module", "molbuilder-siesta")
+def taken_twice(failed_parts, tmp_path_factory):
+    """THE WALLED RUN LAUNCHED AGAIN WARM (:func:`failed_parts`): a copy of
+    it, `freq` launched warm once more, in the foreground -- run-3, which
+    takes over the calls run-2 itself took over from run-1, and runs again,
+    under the same wall, the ones run-2 ran."""
+
+    def again(c):
+        with road_at(c.tree.parent, tmp_path_factory):
+            typed(c, "launch freq warm again", "launch", "task", "--stage",
+                  "freq", "--mode", "direct", "--foreground", "--yes")
+    return copy_of(failed_parts, "taken-twice", again)
+
+
+def test_a_call_taken_over_twice_names_the_run_that_computed_it(
+        taken_twice):
+    """A CALL TAKEN OVER FROM A RUN THAT ITSELF TOOK IT OVER
+    (`execution/runs-of-points.md` § 3, op. 3; § 2.3 `taken_from`: "its
+    folder in the run that computed it ..., one hop"): run-3, launched warm
+    after run-2 took run-1's done calls over, takes them over in its turn,
+    and each one's record names run-1's folder -- where it was computed --
+    never run-2's, which only copied it: its index entry, and its start as
+    `jobset status` reads it (`.continued-from`).
+
+    THE SILENT FAILURE: a chain of warm launches pointing each reused
+    calculation at the run before, which holds only a copy -- the Run
+    panel's *Started from* and the run's record leading the person to a
+    folder that never computed it.
+
+    MUTATION THIS MUST FAIL AGAINST: the take-over naming the run it copied
+    from (`submit._take_over` without its one hop)."""
+    run = taken_twice
+    run1 = run.attempt("freq", 1).relative_to(run.bundle).as_posix()
+    run2 = run.attempt("freq", 2).relative_to(run.bundle).as_posix()
+    index2 = {r["facts"]["name"]: r for r in _index_of(run, n=2)["points"]}
+    index3 = {r["facts"]["name"]: r for r in _index_of(run, n=3)["points"]}
+    # THE PREMISE: run-2 took calls over from run-1 (the relaxation, the
+    # force constants, the optical calls run-1 finished), and run-3 is the
+    # stage's newest run.
+    twice = sorted(name for name, r in index2.items() if r.get("taken_from"))
+    assert twice, index2
+    status = stage_status(run.bundle, "freq")
+    assert status.attempt == run.attempt("freq", 3).name, status.attempt
+    started = {p["call"]: p["started_from"] for p in status.points}
+    for name in twice:
+        computed = index2[name]["taken_from"]
+        assert computed.startswith(f"{run1}/"), index2[name]
+        assert index3[name].get("taken_from") == computed, (
+            name, index3[name], computed)
+        assert started[name] == computed, (name, started[name], computed)
+    # NONE OF RUN-3'S CALLS names run-2, which computed nothing done.
+    assert not [r for r in index3.values()
+                if (r.get("taken_from") or "").startswith(f"{run2}/")], \
+        index3
+
+
+
+@makes_a_real_run("module", "molbuilder-siesta")
+def fixed_spin_raman(tmp_path_factory):
+    """O2 IN ITS TRIPLET GROUND STATE, STATED RELAXED, ITS TWO UNPAIRED
+    ELECTRONS STATED under unrestricted spin -- `Spin.Fix`, so SIESTA holds
+    the count and prints a Fermi level for each channel (`engines/siesta.md`
+    § 5); seven electrons up, five down, so each channel has one to place
+    (SIESTA cannot place a Fermi level in a channel holding none: an H2+
+    stopped on "Fermid: Iteration has not converged") -- one oxygen held, as
+    the road's H2 holds one hydrogen; its Raman asked for the stretch
+    (:data:`support.real_runs.CO2_OPTICAL`'s range), on :data:`QUICK`'s
+    mesh and basis: `freq` prepared and launched, waited on."""
+    from support.real_runs import CO2_OPTICAL, QUICK
+    from support.road import described, structure_saved
+    o2 = {"elements": ["O", "O"],
+          "positions": [[5.0, 5.0, 5.0], [5.0, 5.0, 6.21]],
+          "regions": {"frozen_atoms": [0]}, "cell": [10.0, 10.0, 10.0]}
+    with on_the_road(tmp_path_factory, "fixed-spin-raman") as tree:
+        bundle = described(tree, "P/spectrum/O2",
+                           structure=structure_saved(tree, o2), name="O2",
+                           calculation="vibration",
+                           execution={"mpi_np": 1, "omp_threads": 1})
+        set_by_the_person(bundle, {
+            "already_relaxed": True,
+            "spin_treatment": "unrestricted", "unpaired_electrons": 2,
+            **CO2_OPTICAL,
+            **{k: QUICK[k] for k in ("mesh_cutoff", "basis_size",
+                                     "pao_energy_shift", "max_scf_iter")}})
+        run = RealRun(tree=tree, bundle=bundle)
+        taken(run, "prep freq", "prep", "task", "--group", "1",
+              "--target", "this")
+        taken(run, "launch freq", "launch", "task", "--stage", "freq",
+              "--mode", "direct", "--foreground", "--yes")
+    return run
+
+
+def test_a_fixed_spin_optical_call_keeps_each_channels_fermi_level(
+        fixed_spin_raman):
+    """`engines/vibration.md` § 5.11 § 8 (`fermi_level_ev(frame, spin)`:
+    "each channel's own (Ef_up, Ef_dn) under Spin.Fix, else the one Ef
+    they share"): a run whose count SIESTA holds -- O2's triplet, seven
+    electrons up and five down -- keeps, for each optical call, the two
+    levels SIESTA printed on its last SCF row, as SIESTA's reader reads
+    them, one a channel; and the two differ.
+
+    THE SILENT FAILURE: one level written for both channels of a run whose
+    channels hold different numbers of electrons -- a channel's spectrum
+    placed against the other channel's Fermi level."""
+    from molbuilder.parse.engines.siesta_reader import read_output
+    from molbuilder.runfiles import ROLE_OPTICAL
+    from molbuilder.runs import on_label_at, run_of
+    from molbuilder.spectra.optical_data import read_optical_data
+    folder = fixed_spin_raman.attempt("freq")
+    path = on_label_at(folder, ROLE_OPTICAL)
+    assert path is not None, sorted(p.name for p in folder.iterdir())
+    data = read_optical_data(path)
+    assert len(data["spin"]) == 2 and data["frames"], data
+    for f in data["frames"]:
+        steps = [s for s in read_output(run_of(folder / f["call"]).stdout)
+                 .finish()["steps"] if s.get("coords")]
+        last = steps[-1]["scf_history"][-1]
+        printed = [last["ef_up"], last["ef_dn"]]
+        assert printed[0] != printed[1], (f["call"], printed)
+        assert np.allclose(f["fermi_level_ev"], printed), (
+            f["call"], f["fermi_level_ev"], printed)
 
 def test_a_script_reads_a_steps_charges_on_the_persons_atoms(real_co2_vibration):
     """`runs.StepsTable`: the force-constant call, whose atoms SIESTA ran held

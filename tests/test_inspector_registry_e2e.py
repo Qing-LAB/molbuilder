@@ -540,3 +540,50 @@ def test_a_viewer_whose_file_cannot_load_says_why_and_lets_go(
         expect(page.locator(".results-loading-overlay")).to_be_hidden(
             timeout=1000)
         expect(page.locator(_BUSY)).to_have_count(0, timeout=1000)
+
+
+def test_a_load_overtaken_by_a_later_pick_says_nothing_over_it(
+        page, flask_server, real_h2_layered, monkeypatch):
+    """A viewer put away before its page part arrives ends silently
+    (`web/presenters.md` § 3, step 2: a file opened puts the viewer showing
+    the last one away first): its request is cancelled, and a cancelled
+    request is no failure -- "the caller says nothing: a newer question
+    replaced it" (`web/ui-contract.md` § 12) -- so no error card and no
+    ended-with-an-error word reach the viewer the later pick mounted.
+
+    The layered H2's first `coarse` run, made on the road
+    (`support.real_runs.layered`), bound as a person binds it
+    (:func:`_bound`): of its progress log and SIESTA's output -- each the
+    trajectory viewer's -- the one not on screen picked while the viewer's
+    page part is held on its way (the one timing no person's gesture makes
+    reliably), and the other picked before it arrives.
+
+    THE SILENT FAILURE: a person picking quickly shown an error over the
+    file they picked -- the request the page itself cancelled read as the
+    server failing.
+
+    MUTATION THIS MUST FAIL AGAINST: the partial viewer drawing its error
+    card for a request its own put-away cancelled
+    (`_partial_inspector_factory.js`)."""
+    from conftest import point_the_one_door_at
+    from molbuilder.runfiles import ROLE_MOLWATCH
+    from molbuilder.runs import run_of
+    folder = real_h2_layered.attempt("coarse")
+    run = run_of(folder)
+    point_the_one_door_at(real_h2_layered.tree.parent, monkeypatch.setenv)
+    _bound(page, flask_server, folder)
+    shown = page.locator(_MENU).input_value()
+    first, then = sorted((str(run.file(ROLE_MOLWATCH)), str(run.stdout)),
+                         key=lambda f: f == shown)
+    _ended_kept(page)
+    held = []
+    page.route("**/partials/trajectory-inspector",
+               lambda route: route.continue_() if held
+               else held.append(route))
+    try:
+        with page.expect_request("**/partials/trajectory-inspector"):
+            page.select_option(_MENU, first)
+        _opened(page, then, "trajectory", ".molviewer-frames-counter")
+        assert page.locator("#inspector-host .error-card").count() == 0
+    finally:
+        page.unroute_all(behavior="ignoreErrors")

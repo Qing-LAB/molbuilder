@@ -524,8 +524,8 @@ folder would open, with its Run panel: the page asks the run door for that
 folder (`/api/results/dir`) and announces its file with the root's ladder kept
 — while the sidebar stays on the calculation, the record read in the run's
 own folder, its deck named whole (the Run panel's **View** opens it as sent),
-and the Result file menu's first row saying which, `(showing <file>, a run off
-the ladder)`, so the menu never names a file that is not shown (§ 2.2);
+and the Result file menu's first row saying which, `(showing <file>, a run picked
+from the ladder)`, so the menu never names a file that is not shown (§ 2.2);
 a folder that does not answer is said under the ladder, and a pick overtaken
 by a later one or by a new selection is dropped; *back to the calculation*
 re-announces the root, and the menu names the root's file again. **The pick

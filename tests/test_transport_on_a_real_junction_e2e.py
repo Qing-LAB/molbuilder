@@ -547,6 +547,41 @@ def junction(tmp_path_factory):
                   "--mode", "direct", "--foreground", "--yes", *extra)
         run.single = single
 
+        # THE DEVICE TAKING ITS INPUTS ANEW (`execution/job-system.md` § 5.4):
+        # a copy whose seed and leads ran again, its device launched again --
+        # carrying the inputs its last run was given -- and then with
+        # `--gather`, taking the new runs' files.  The runs each device run
+        # took from, as its record says (`runrecord.read_gathered_from`), and
+        # the newest run of each stage it gathers from.
+        def gathered(c):
+            from molbuilder.jobset.materialize import latest_attempt
+            from molbuilder.jobset.naming import stage_home
+            from molbuilder.runrecord import RunRef, read_gathered_from
+            from molbuilder.task import of as task_of
+
+            def newest(stage):
+                return latest_attempt(
+                    stage_home(c.bundle, task_of(c.bundle), stage).dir)
+
+            def took():
+                return {file: str(ref) for ref, file
+                        in read_gathered_from(newest("device"))}
+            c.took = {}
+            taken(c, "launch seed and leads again", "launch", "task",
+                  *seed_and_leads(c), "--mode", "direct", "--foreground",
+                  "--yes")
+            c.upstream_newest = {str(RunRef.at(c.bundle, newest(stage)))
+                                 for stage in ("seed", "electrode_L",
+                                               "electrode_R")}
+            taken(c, "launch device carried", "launch", "task", "--stage",
+                  "device", "--mode", "direct", "--foreground", "--yes")
+            c.took["carried"] = took()
+            taken(c, "launch device gathered", "launch", "task", "--stage",
+                  "device", "--gather", "--mode", "direct", "--foreground",
+                  "--yes")
+            c.took["gathered"] = took()
+        run.gathered = copy_of(single, "gathered", gathered)
+
         # WHAT THE DEVICE RAN, CHANGED SINCE (`_ANOTHER_INPUT`): each a
         # copy, changed as a person changes it, its transmission prepared now
         # and its launch asked dry.
@@ -807,6 +842,11 @@ def junction(tmp_path_factory):
         # voltage.
         run.aborted = copy_of(run, "device-aborted",
                               the_devices_own_scf({"max_scf_iter": 1}))
+        # A POLE ENERGY TOO SMALL FOR THE RUN'S TEMPERATURE (§ 6.1c): the
+        # device's own `negf_eq_pole_ev` at 1.5 eV -- said, written, and
+        # stopped by TranSIESTA itself.
+        run.few_poles = copy_of(run, "device-few-poles",
+                                the_devices_own_scf({"negf_eq_pole_ev": 1.5}))
     yield run
 
 
@@ -2518,6 +2558,26 @@ def test_every_folder_of_a_device_run_reads_back_as_its_run_and_point(
     assert (w.what, w.run_folder) == (calcdirs.SCRATCH, folder.resolve()), w
 
 
+def test_a_device_launched_again_with_gather_takes_its_inputs_anew(junction):
+    """`execution/job-system.md` § 5.4: launched again, a transport rung
+    carries the inputs its last run was given; with ``--gather`` it takes
+    them anew, from the runs its upstream stages have now -- here the seed
+    and the leads, run again.  Each launched again warm, the device takes
+    the same inputs both times (the leads'; its density is its own): first
+    from the runs it had, then from the newest.
+
+    THE SILENT FAILURE: the seed and leads run again (a setting changed, a
+    tighter convergence) and the device, asked to gather, computes on the
+    old inputs -- every number it prints plausible."""
+    c = junction.gathered
+    carried, gathered = c.took["carried"], c.took["gathered"]
+    assert gathered and set(carried) == set(gathered), c.took
+    assert not set(carried.values()) & c.upstream_newest, (
+        c.took, c.upstream_newest)
+    assert set(gathered.values()) <= c.upstream_newest, (
+        c.took, c.upstream_newest)
+
+
 def test_a_failed_point_is_said_once_per_reason_and_its_round_by_the_milestone(
         junction):
     """`run-reports.md` § 2.9: a transmission whose every point fails --
@@ -2659,6 +2719,50 @@ def test_a_voltage_that_does_not_finish_ends_its_frame_and_the_run_once(
         device.state, device.detail)
     stopped = point_row(device, _BIAS[0])["detail"] or ""
     assert "SCF_NOT_CONV:" in stopped and "(required)" in stopped, stopped
+
+
+def test_a_pole_energy_too_small_is_said_written_and_stopped_by_transiesta(
+        junction):
+    """`engines/transport.md` § 6.1c: a stated pole energy that gives fewer
+    than 20 poles at the run's temperature is said before the queue wait, as
+    information on the energy, "with the least energy that gives twenty" --
+    20 pi kT, the count being int(E / (pi kT)) -- never refused, the stop is
+    TranSIESTA's (the user, 2026-11-02) -- written as stated, and when
+    TranSIESTA stops, the run keeps TranSIESTA's own words, shown by
+    `status`.
+
+    THE SILENT FAILURES: prep refusing what the person stated, or quietly
+    writing another energy; the point failing with nothing of why
+    TranSIESTA stopped it."""
+    import math
+    from molbuilder.jobset.naming import stage_home
+    from molbuilder.parse.fdf import fdf_key, read_deck, read_fdf
+    from molbuilder.task import of as task_of
+    from molbuilder.transport.stages import Point
+    from molbuilder.units import ENERGY_EV
+    c = junction.few_poles
+    prep = c.said["prep device"]
+    assert prep.exit_code == 0, prep.output
+    device = stage_status(c.bundle, "device")
+    names = stage_home(c.bundle, task_of(c.bundle), "device").names
+    point = (c.attempt("device", device.attempts[-1])
+             / Point(frame=None, volts=_BIAS[0]).rel)
+    scalars, _blocks = read_fdf(read_deck(point / names.name(".fdf")))
+    energy, unit = scalars[fdf_key("TS.Contours.Eq.Pole")]
+    assert (float(energy), unit.lower()) == (1.5, "ev"), (energy, unit)
+    # SAID AT PREP, as information on the energy, with the least energy
+    # that gives twenty at the temperature the deck states.
+    t, t_unit = scalars[fdf_key("ElectronicTemperature")][:2]
+    least = 20 * math.pi * float(t) * ENERGY_EV[t_unit.lower()]
+    said = [ln for ln in prep.output.splitlines()
+            if ln.startswith("info [config.negf_eq_pole_ev]:")]
+    assert len(said) == 1 and f"{least:.2f} eV" in said[0], (
+        least, prep.output)
+    assert device.state == "failed", (device.state, device.detail)
+    stopped = point_row(device, _BIAS[0])["detail"] or ""
+    assert stopped.startswith("stopped before its end: ") and (
+        "The continued fraction method requires at least 20 poles"
+        in stopped), stopped
 
 
 def test_a_point_the_ended_walk_never_reached_reads_not_run_everywhere(

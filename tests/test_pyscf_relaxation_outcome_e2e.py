@@ -27,7 +27,7 @@ _H2 = (["H", "H"], [[5.0, 5.0, 5.0], [5.0, 5.0, 5.95]])
 
 
 def _run(tmp_path_factory, name: str, *, calculation, overrides,
-         template=None, molecule=_H2, execution=None):
+         template=None, molecule=_H2, execution=None, again=()):
     """``molecule``, described on the road in a tree of its own, ``name``,
     with the real PySCF (`support.real_runs.on_the_road`, asked from a
     module's fixture declared to make a real run; `support.road.described`),
@@ -37,7 +37,8 @@ def _run(tmp_path_factory, name: str, *, calculation, overrides,
     every rung and is the template's, and its one stage carrying
     ``overrides`` and its own run card ``execution`` (`job-request.md` § 2:
     a run setting lives in the job request alone), saved through Task
-    setup's Save -- prepared and launched directly: the stage's run
+    setup's Save -- prepared and launched directly, then launched again
+    once for each of ``again``'s flags: the stage's newest run
     (`runs.run_of`), the stage's state as the ladder reads it, and what the
     run itself printed."""
     from molbuilder.calculation import open as open_calculation
@@ -72,8 +73,9 @@ def _run(tmp_path_factory, name: str, *, calculation, overrides,
                    "--bundle", bundle,
                    "--target", "this")
         assert r.exit_code == 0, r.output
-        jobset("launch", "task", "--stage", stage, "--bundle", bundle,
-               "--mode", "direct", "--foreground", "--yes")
+        for flags in ((), *again):
+            jobset("launch", "task", "--stage", stage, "--bundle", bundle,
+                   "--mode", "direct", "--foreground", "--yes", *flags)
         row = next(iter(jobset_status(open_calculation(bundle)).stages))
         ran_in = latest_attempt(stage_home(bundle, task, stage).dir)
     assert ran_in is not None, sorted(p.name for p in bundle.rglob("*"))
@@ -186,6 +188,58 @@ def test_halt_stops_the_rung_and_keeps_the_geometry_it_reached(halted):
              "(on_nonconvergence = halt)")
     assert ("launch the stage again to continue warm from the files this "
             "run saved") in session, session[-3000:]
+
+
+@makes_a_real_run("module", "molbuilder-pySCF")
+def halted_launched_again(tmp_path_factory):
+    """:func:`halted`'s case in a tree of its own, its stage launched again
+    warm -- run-1 -- and then cold -- run-2 (:func:`_run`)."""
+    return _run(tmp_path_factory, "halted-again", calculation="optimization",
+                overrides={"geom_max_steps": 1, "on_nonconvergence": "halt"},
+                again=((), ("--cold",)))
+
+
+def test_a_halted_rung_launched_again_continues_where_it_stopped(
+        halted_launched_again):
+    """THE HALTED RUNG LAUNCHED AGAIN, as its run told the person to
+    (`engines/pyscf.md` § 3, ``halt``: the geometry each step reached kept
+    in `_optimized.xyz`, "so the rung launched again continues from it";
+    `execution/runs-of-points.md` § 3, *What the run continues from*:
+    "Cold, nothing is taken over"): warm, run-1 continues
+    from run-0 -- its `.continued-from` names it -- and its first step is
+    the geometry run-0 reached, not the input's 0.95 Å; cold, run-2
+    continues from nothing and starts at the input's 0.95 Å.
+
+    THE SILENT FAILURE: a run told "launch this stage again to continue
+    from it" starting over from the input geometry -- its steps spent
+    again -- or a cold launch continuing anyway."""
+    from molbuilder.jobset.naming import stage_home
+    from molbuilder.parse.registry import parse
+    from molbuilder.paths import attempt_dir
+    from molbuilder.runrecord import read_continued_from
+    from molbuilder.runs import run_of
+    from molbuilder.task import of as task_of
+    newest, _state, _said = halted_launched_again
+    bundle = newest.place.root
+    task = task_of(bundle)
+    home = stage_home(bundle, task, task.stages[0].name).dir
+    folders = [attempt_dir(home, n) for n in range(3)]
+    assert newest.folder == folders[2], (newest.folder, folders)
+
+    def bonds(folder):
+        # Each step's H-H distance, by the live log's own reader.
+        frames = parse(run_of(folder).file(".molwatch.log")).frames
+        return [round(float(np.linalg.norm(np.diff(
+            np.asarray(fr.structure.positions), axis=0))), 4)
+            for fr in frames if fr.structure is not None]
+    reached = bonds(folders[0])[-1]
+    # THE PREMISE: run-0's one step moved the bond.
+    assert reached != 0.95, bonds(folders[0])
+    assert str(read_continued_from(folders[1])) == \
+        folders[0].relative_to(bundle).as_posix()
+    assert bonds(folders[1])[0] == reached, (bonds(folders[1]), reached)
+    assert read_continued_from(folders[2]) is None
+    assert bonds(folders[2])[0] == 0.95, bonds(folders[2])
 
 
 @makes_a_real_run("module", "molbuilder-pySCF")

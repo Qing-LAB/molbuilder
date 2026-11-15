@@ -28,6 +28,8 @@ from pathlib import Path
 
 import pytest
 
+from support.real_runs import makes_a_real_run
+
 
 @pytest.fixture(scope="module")
 def stopped(real_h2_stopped):
@@ -391,3 +393,57 @@ def test_the_run_panel_says_what_ran_and_why_it_stopped(stopped, page,
             timeout=10000)
         assert menu.input_value() == a_file
         assert menu.locator("option[data-picked-run]").count() == 0
+
+
+@makes_a_real_run("module", "molbuilder-siesta")
+def fixed_count_non_collinear(tmp_path_factory):
+    """THE ROAD'S H2 UNDER NON-COLLINEAR SPIN WITH ITS UNPAIRED-ELECTRON
+    COUNT STATED, 2 -- a count SIESTA holds only under collinear spin
+    (`engines/siesta.md` § 5) -- on :data:`support.real_runs.QUICK`'s
+    settings: `coarse` prepared and launched, waited on."""
+    from support.real_runs import (QUICK, RealRun, h2_optimization,
+                                   on_the_road, taken, typed)
+    from support.road import set_by_the_person
+    with on_the_road(tmp_path_factory, "non-collinear") as tree:
+        bundle = h2_optimization(tree, "P/optimization/H2",
+                                 execution={"mpi_np": 1, "omp_threads": 1})
+        set_by_the_person(bundle, {
+            "spin_treatment": "non-collinear", "unpaired_electrons": 2,
+            **{k: QUICK[k] for k in ("mesh_cutoff", "basis_size",
+                                     "pao_energy_shift")}})
+        run = RealRun(tree=tree, bundle=bundle)
+        taken(run, "prep coarse", "prep", "task", "--group", "1",
+              "--target", "this")
+        typed(run, "launch coarse", "launch", "task", "--stage", "coarse",
+              "--mode", "direct", "--foreground", "--yes")
+    return run
+
+
+def test_a_count_siesta_cannot_hold_is_said_written_and_stopped_by_siesta(
+        fixed_count_non_collinear):
+    """`engines/siesta.md` § 5 (ES6; the user, 2026-11-02): a stated count
+    under a spin where SIESTA cannot hold one is said before the run, as
+    information on the count (the CLI prints it, `science/validation.md`
+    R4) -- never refused, the stop is SIESTA's -- and written as
+    stated, `Spin.Fix` beside it; SIESTA stops at its start, and the run
+    keeps SIESTA's own words, shown by `status`.
+
+    THE SILENT FAILURES: prep refusing what the person stated, or quietly
+    letting the count float; the run failing with nothing of why SIESTA
+    stopped it."""
+    from molbuilder.parse.fdf import fdf_key, fdf_true, read_deck, read_fdf
+    from molbuilder.runs import run_of
+    from support.real_runs import stage_status
+    run = fixed_count_non_collinear
+    prep = run.said["prep coarse"]
+    assert any(ln.startswith("info [config.unpaired_electrons]:")
+               for ln in prep.output.splitlines()), prep.output
+    scalars, _blocks = read_fdf(read_deck(run_of(run.attempt("coarse")).deck))
+    assert scalars[fdf_key("Spin")] == ["non-colinear"], scalars
+    assert fdf_true(scalars[fdf_key("Spin.Fix")]), scalars
+    assert float(scalars[fdf_key("Spin.Total")][0]) == 2.0, scalars
+    status = stage_status(run.bundle, "coarse")
+    assert status.state == "failed", (status.state, status.detail)
+    assert (status.detail or "").startswith("stopped before its end: ") and (
+        "You can only fix the spin of the system for collinear spin "
+        "polarized calculations" in status.detail), status.detail

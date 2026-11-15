@@ -193,3 +193,36 @@ def test_a_tab_made_visible_again_asks_the_server_at_once(
     _asks_at_once(page, lambda: page.evaluate(
         "() => document.dispatchEvent(new Event('visibilitychange'))"),
         "a tab made visible again")
+
+
+def test_the_panel_scans_its_folder_once_and_only_reload_moves_it(
+        page, flask_server, project_with_trajectory, real_co2_vibration):
+    """THE PICKER'S OWN RULES (`web/results.md` § 2.1, *You do this / What
+    happens*): opening the tab binds the panel to the folder this tab was
+    last pointed at and scans it once; walking the sidebar to another
+    folder does nothing here -- no scan, and the header says the sidebar
+    has moved on; *Reload from the sidebar's folder* binds the panel to the
+    sidebar's folder, one scan of it.
+
+    THE SILENT FAILURES: a tab that scans twice as it opens, one answer
+    thrown away; a sidebar walk re-pointing the panel under the result
+    being read; a Reload scanning the old folder again."""
+    from pathlib import Path
+    from urllib.parse import parse_qs, urlparse
+    from playwright.sync_api import expect
+    from support.sidebar import reload_from, walk_to
+    scanned = []
+    page.on("request", lambda r: scanned.append(Path(
+        parse_qs(urlparse(r.url).query)["path"][0]))
+        if "/api/results/dir" in r.url else None)
+    _loaded(page, flask_server, project_with_trajectory)
+    assert scanned == [Path(project_with_trajectory).parent], scanned
+    elsewhere = real_co2_vibration.bundle
+    walk_to(page, elsewhere)
+    expect(page.locator("#results-current-file")).to_contain_text(
+        "the sidebar has moved on", timeout=5000)
+    assert len(scanned) == 1, scanned
+    with page.expect_response(lambda r: "/api/results/dir" in r.url,
+                              timeout=10_000):
+        reload_from(page, elsewhere)
+    assert scanned[1:] == [elsewhere], scanned

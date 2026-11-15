@@ -29,6 +29,7 @@ from typing import Any, Optional, Tuple
 import numpy as np
 import pytest
 
+from support.real_runs import makes_a_real_run
 from support.road import CO2, CO2_ENGINE_ELEMENTS, CO2_HELD_FIRST
 
 
@@ -651,3 +652,61 @@ def test_every_door_asked_of_the_run_says_its_order(
         assert got.mark == (_SAID if row["marked"] else None), got.mark
     if "wrote" in row:
         assert got.wrote is row["wrote"], got
+
+
+@makes_a_real_run("module", "molbuilder-siesta")
+def labelled(tmp_path_factory):
+    """THE ROAD'S H2 WITH ONE HYDROGEN LABELLED `H1` (`model/chemistry.md`
+    § 3), relaxed one step on :data:`support.real_runs.QUICK`'s settings:
+    its pseudopotential the person's file under the label's name, `H1.psml`
+    -- a copy of the checked-in H's -- in the tree's library beside `H.psml`;
+    `coarse` prepared and launched, waited on."""
+    import shutil
+    from support.real_runs import QUICK, RealRun, on_the_road, taken
+    from support.road import (H2, described, library_of, set_by_the_person,
+                              structure_saved)
+    with on_the_road(tmp_path_factory, "labelled") as tree:
+        lib = library_of(tree)
+        shutil.copy(lib / "H.psml", lib / "H1.psml")
+        bundle = described(
+            tree, "P/optimization/H2lab",
+            structure=structure_saved(tree, {**H2, "elements": ["H1", "H"]}),
+            name="H2lab", calculation="optimization",
+            stage_strategy="publishable",
+            execution={"mpi_np": 1, "omp_threads": 1})
+        set_by_the_person(bundle, {k: QUICK[k] for k in (
+            "mesh_cutoff", "basis_size", "pao_energy_shift", "max_scf_iter",
+            "relax_steps")})
+        run = RealRun(tree=tree, bundle=bundle)
+        taken(run, "prep coarse", "prep", "task", "--group", "1",
+              "--target", "this")
+        taken(run, "launch coarse", "launch", "task", "--stage", "coarse",
+              "--mode", "direct", "--foreground", "--yes")
+    return run
+
+
+def test_a_labelled_species_runs_on_the_file_its_label_names(labelled):
+    """`engines/siesta.md` § 1, `science/pseudopotentials.md`: SIESTA opens,
+    for each species label, the file `<label>.psml`, and prep copies that
+    file by that name -- a hydrogen labelled `H1` is a species of its own in
+    the deck's table, beside `H`, and SIESTA reads `H1.psml` for it.
+
+    THE SILENT FAILURE: the labelled atom given the plain element's file, or
+    the label dropped from the deck -- a run on another pseudopotential that
+    finishes as if nothing were wrong."""
+    from molbuilder.parse.fdf import fdf_key, read_deck, read_fdf
+    from molbuilder.runs import record_of, run_of
+    from support.real_runs import stage_status
+    run = run_of(labelled.attempt("coarse"))
+    _scalars, blocks = read_fdf(read_deck(run.deck))
+    table = blocks[fdf_key("ChemicalSpeciesLabel")]
+    assert {(z, label) for _i, z, label in table} == {
+        ("1", "H1"), ("1", "H")}, table
+    assert (run.deck.parent / "H1.psml").is_file()
+    # WHAT SIESTA READ FOR EACH SPECIES, as the run's record states it
+    # (`model/parse.md` § 5d: the setup's pseudopotentials).
+    read = {(p["species"], p["file"])
+            for p in record_of(run)["setup"]["pseudopotentials"]}
+    assert read == {("H1", "H1.psml"), ("H", "H.psml")}, read
+    assert stage_status(labelled.bundle, "coarse").state in (
+        "finished", "done"), stage_status(labelled.bundle, "coarse")

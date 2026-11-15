@@ -54,14 +54,20 @@ def test_the_selection_locks_what_it_would_ignore(page, flask_server):
                     "explicit": [True, False, False]}, live
 
 
-def _water_picked(page, base, root):
-    """Water, a structure of the person's in a projects tree of the test's
-    own, picked in the Spectrum tab's sidebar by its rows -- its Load
-    button awake (`support.sidebar.picked`)."""
+def _water_picked(page, base, folder):
+    """Water, a structure of the person's -- stating no box, as one a
+    person brings -- saved through the codec in ``folder`` of a projects
+    tree of the test's own, picked in the Spectrum tab's sidebar by its rows
+    -- its Load button awake (`support.sidebar.picked`)."""
+    import numpy as np
+    from molbuilder.structure import Structure
+    from molbuilder.workingcopy_structure import StructureCodec
     from support.sidebar import picked
-    water = root / "w" / "water.xyz"
-    water.parent.mkdir()
-    water.write_text("3\nwater\nO 0 0 0\nH 0.957 0 0\nH -0.239 0.927 0\n")
+    folder.mkdir(parents=True, exist_ok=True)
+    water = StructureCodec().write(Structure(
+        elements=["O", "H", "H"],
+        positions=np.array([[0.0, 0.0, 0.0], [0.957, 0.0, 0.0],
+                            [-0.239, 0.927, 0.0]])), folder / "water.xyz")
     picked(page, base, "spectrum-calculation", water)
 
 
@@ -135,7 +141,7 @@ def test_every_finding_the_live_check_returns_is_on_the_page(
     global entry point; the tab drawing only the findings about a field; a
     finding drawn twice."""
     from support.findings import assert_every_finding_drawn
-    _water_picked(page, flask_server, isolated_projects_root)
+    _water_picked(page, flask_server, isolated_projects_root / "w")
     with page.expect_response(lambda r: "/api/build/preflight" in r.url,
                               timeout=15000) as answered:
         page.locator("#load-from-sidebar-btn").click()
@@ -161,7 +167,7 @@ def test_an_edit_in_the_shared_part_is_checked_live_beside_its_field(
 
     MUTATION THIS MUST FAIL AGAINST: the live check's listener on the
     engine forms' wrapper only (no request after the shared part's edit)."""
-    _water_picked(page, flask_server, isolated_projects_root)
+    _water_picked(page, flask_server, isolated_projects_root / "w")
     with page.expect_response(lambda r: "/api/build/preflight" in r.url,
                               timeout=15000):
         page.locator("#load-from-sidebar-btn").click()
@@ -192,7 +198,7 @@ def test_a_charge_stated_in_the_chemistry_card_is_what_the_form_carries(
     MUTATIONS THIS MUST FAIL AGAINST: the state part left out of the
     form's parts (`_formParts`); the live check not listening in the
     chemistry card."""
-    _water_picked(page, flask_server, isolated_projects_root)
+    _water_picked(page, flask_server, isolated_projects_root / "w")
     with page.expect_response(lambda r: "/api/build/preflight" in r.url,
                               timeout=15000):
         page.locator("#load-from-sidebar-btn").click()
@@ -203,3 +209,47 @@ def test_a_charge_stated_in_the_chemistry_card_is_what_the_form_carries(
                              timeout=15000) as asked:
         committed(page, "#common-net-charge", "1")
     assert asked.value.post_data_json["params"]["net_charge"] == 1
+
+
+def test_a_send_hands_over_a_vibration_with_what_the_form_says(
+        page, flask_server, isolated_projects_root):
+    """`web/spectra.md` § 5 step 5: the Send runs the general hand-over
+    (`web/handover-procedure.md`) -- the parameter template, the structure
+    pair and `task.1st.json` carrying `calculation: "vibration"`, written
+    into the folder selected in the sidebar -- and the template holds what
+    the form says: Compute Raman, ticked by the person, stated true.
+
+    Water in a calculation's folder under a topic, the depth the Send
+    demands (`projects.ensure_structure_dir`), its pseudopotentials beside
+    it as a person leaves them; picked in the tab's sidebar and loaded with
+    its Load button; Compute Raman ticked; Send pressed.
+
+    THE SILENT FAILURE: the Spectrum tab's Send handing over another kind,
+    or a template without the form's spectrum settings -- the run prepared
+    from it computes no Raman, and nothing says so."""
+    import json
+    from conftest import write_pseudos
+    from molbuilder.projects import ensure_structure_dir
+    from molbuilder.template import read_template
+    from support.sidebar import WAIT_MS
+    calc = ensure_structure_dir("proj", "spectrum", "water-vib").resolve()
+    write_pseudos(calc, ["O", "H"])
+    _water_picked(page, flask_server, calc)
+    page.locator("#load-from-sidebar-btn").click()
+    page.wait_for_selector("#common-compute-raman:not([disabled])",
+                           timeout=WAIT_MS)
+    page.check("#common-compute-raman")
+    with page.expect_response(
+            lambda r: "/api/task-setup/handover" in r.url,
+            timeout=WAIT_MS) as answered:
+        page.locator("#send-to-task-setup").click()
+    assert answered.value.ok, answered.value.text()
+    page.wait_for_function(
+        "() => (document.querySelector('#send-status')?.textContent || '')"
+        "      .includes('Task setup')", timeout=WAIT_MS)
+    over = json.loads((calc / "task.1st.json").read_text())
+    assert over["calculation"] == "vibration", over
+    template, = calc.glob("*.template.toml")
+    items = {i.name: i.value
+             for i in read_template(template.read_text()).items}
+    assert items["compute_raman"] is True, items.get("compute_raman")
