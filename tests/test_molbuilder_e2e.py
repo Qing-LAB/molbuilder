@@ -1445,3 +1445,31 @@ def test_a_measured_lattices_notes_are_rows_each_at_its_own_severity(
     page.locator("#slab-a").fill("4.2")
     findings.wait_for(state="hidden", timeout=WAIT_MS)
     assert findings.locator("li.issue-item").count() == 0
+
+
+def test_taking_a_label_off_an_atom_leaves_the_selection_as_it_was(
+        page, flask_server, labelled_xyz):
+    """`web/molview.md` § 1.1, *Tagging atoms*: labels "show as chips you
+    can remove"; § 9.5: a click on a row "toggles that atom".  Taking a
+    chip off is not a click on its row: the label leaves that atom alone,
+    and the selection stays as it was -- in a real page, where a click
+    reaches the row around the chip (the node tests' stand-in DOM passes
+    no click upward, so only a browser shows it).
+
+    THE SILENT FAILURE: taking a label off also selecting the atom -- the
+    next Assign or Isolate acting on an atom the person never picked."""
+    _open(page, flask_server)
+    _load(page, labelled_xyz)
+    chips = page.locator(f"{_CARD} .molviewer-atoms-table "
+                         ".molviewer-selection-tag-remove")
+    chips.first.wait_for(timeout=WAIT_MS)
+    before = (chips.count(), page.locator(_COUNT).inner_text())
+    assert before[1].startswith("0 of 3"), before
+    chips.first.click()
+    page.wait_for_function(
+        "(a) => document.querySelectorAll(a.sel).length === a.n - 1",
+        arg={"sel": f"{_CARD} .molviewer-atoms-table "
+                    ".molviewer-selection-tag-remove", "n": before[0]},
+        timeout=WAIT_MS)
+    assert page.locator(_COUNT).inner_text() == before[1], (
+        before, page.locator(_COUNT).inner_text())

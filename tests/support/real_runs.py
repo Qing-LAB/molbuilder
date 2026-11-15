@@ -710,7 +710,7 @@ CO2_SETTINGS = {"mixing_weight": 0.25, "mesh_cutoff": 150.0}
 
 #: THE OPTICAL PHASE ASKED FOR, on the shared run: Compute Raman, for the
 #: modes above 1000 cm-1 -- the two stretches, modes 3 and 4 of four, 1-based
-#: (`spectra.selection.select_modes`); the bends sit near 620 cm-1 at this
+#: (`spectra.selection.select_modes`); the bends sit near 281 cm-1 at this
 #: mesh -- the one whose oxygens move apart and the one whose oxygens move
 #: together, so the Raman view can be held to CO2's symmetry; so the run's
 #: optical calls are five, the equilibrium and each mode's two sides; the

@@ -6864,7 +6864,8 @@ device run may say sooner.
 
 **One home for the rule.** `transiesta.pole_count` is TranSIESTA's rule
 written once — with its inverse, `pole_energy_for`, the least energy that
-gives a count (rounded up, since the count truncates), and the two floors,
+gives a count (to a hundredth of an eV, rounded up, since the count
+truncates), and the two floors,
 `MIN_EQ_POLES` and `MIN_TS_TEMPERATURE_K`; the settings gate asks them for
 its information, and the deck's context asks for the count the line states.
 When TranSIESTA stops, the run's ending keeps TranSIESTA's own words, shown

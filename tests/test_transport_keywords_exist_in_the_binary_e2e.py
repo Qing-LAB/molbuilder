@@ -1,4 +1,5 @@
-"""Every fdf label a transport deck writes, checked against the BINARY.
+"""Every fdf label a SIESTA deck writes, checked against the BINARY --
+a transport calculation's rungs, an optimization's and a vibration's calls.
 
 `plan.md` § 5o. Seven keywords shipped that SIESTA 5.4.2 cannot read —
 `TS.TBT.Emin`, `TS.TBT.Emax`, `TS.TBT.NumE`, `TS.TBT.Erange.RelToEF` and
@@ -35,6 +36,11 @@ this project emits it can never take effect, because the continued-fraction
 branch overwrites the count from the pole ENERGY two hundred lines later
 (`:319`). A deck asking for 40 poles gets the engine's 42.
 
+And a misspelling that is the START of a keyword the binary holds passes:
+SIESTA's literals run together in its strings, so a label is looked for INSIDE
+them, and `ElectronicTemp` is found inside `ElectronicTemperature` (measured
+2026-11-15; `ElectronTemperature`, found nowhere, fails as it should).
+
 So a green result here means "spelled in a way this build knows", which is the
 `plan.md` § 5o failure and worth catching. It does not mean "has the effect you
 intended". Only the manual, the source, or a run settles that -- and for
@@ -53,6 +59,9 @@ from pathlib import Path
 import pytest
 
 from _road import env_bin
+from support.real_runs import CO2_OPTICAL
+from support.road import CO2, H2
+from support.tooling import needs
 
 #: Labels that are NOT fdf keywords and must not be looked up: block
 #: delimiters, block-interior grammar words, and comments.  Each is read by
@@ -74,6 +83,9 @@ def _engine_binaries():
 def _strings(path: Path) -> str:
     out = subprocess.run(["strings", str(path)], capture_output=True,
                          text=True, timeout=120)
+    # A binary that is not there, or not read, fails saying so -- never as
+    # a deck whose every label the binary lacks.
+    assert out.returncode == 0 and out.stdout, (path, out.stderr)
     return out.stdout
 
 
@@ -209,3 +221,38 @@ def test_the_device_deck_holds_no_label_siesta_cannot_read(
     deck = _prepped_deck(real_bridged_chain.pair, tmp_path, monkeypatch, "device",
                          ("1", "2"))
     _refuse_unknown_labels(deck, _strings(siesta), "device (siesta alone)")
+
+
+@needs("molbuilder-siesta")
+@pytest.mark.parametrize("calculation, structure, template", [
+    ("optimization", H2, None),
+    ("vibration", CO2, CO2_OPTICAL),
+], ids=["optimization", "vibration"])
+def test_every_label_a_siesta_optimization_or_vibration_writes_is_known(
+        calculation, structure, template, tmp_path, monkeypatch):
+    """THE SAME FAILURE ON THE OTHER KINDS' DECKS (the module's head: a
+    label SIESTA cannot read is silently ignored): the decks `jobset prep`
+    writes for an optimization's first rung, and for a vibration's three
+    calls -- the relaxation, the force constants and the optical call,
+    Raman asked so its deck is written (`engines/vibration.md` § 5.11
+    § 2) -- each checked against `siesta`'s binary alone, the one program
+    that reads them."""
+    from molbuilder.jobset.naming import stage_home
+    from molbuilder.parse.fdf import read_deck
+    from molbuilder.siesta.vibration_deck import PARTS
+    from molbuilder.task import of as task_of
+    from support.road import described_and_prepared
+    [siesta] = [b for b in _engine_binaries() if b.name == "siesta"]
+    known = _strings(siesta)
+    dest, stage, deck = described_and_prepared(
+        tmp_path, monkeypatch, structure, "siesta",
+        calculation=calculation, template=template)
+    decks = {stage: deck}
+    if calculation == "vibration":
+        home = stage_home(dest, task_of(dest), stage)
+        name = home.names.name(".fdf")
+        decks = {part: read_deck(home.dir / part / name) for part in PARTS}
+    for where, text in decks.items():
+        assert "PAO.BasisSize" in text, (
+            f"the {where} deck carries none of the engine's section set")
+        _refuse_unknown_labels(text, known, f"{calculation} {where}")

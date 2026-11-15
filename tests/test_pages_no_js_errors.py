@@ -88,21 +88,20 @@ def _collect_js_errors(page):
 def test_page_boots_without_js_errors(page, app_at, path, ready_selector):
     """Loading <path> must produce zero pageerror / console.error.
 
-    Waiting on ``ready_selector`` proves the HTML rendered; waiting an
-    extra 250 ms gives ``<script type="module">`` bundles time to
-    parse + execute their top-level code (which is where a SyntaxError
-    surfaces).
+    The page is read once its network has gone quiet -- every module
+    script parsed and run, and every first answer the page asked for
+    handled -- so an error thrown by code that runs on an answer is seen
+    (`process/testing.md` § 5: wait on state, not time); waiting on
+    ``ready_selector`` then proves the HTML rendered.
 
     `/molbuilder` that lost its selection bootstrap errors here as it boots
     -- the silent failure behind it: picking an `.xyz` in the sidebar stops
     loading it into the viewer, the click doing nothing (measured 2.67.11).
     """
     errors = _collect_js_errors(page)
-    page.goto(f"{app_at}{path}")
+    page.goto(f"{app_at}{path}", wait_until="networkidle",
+              timeout=_PAGE_BOOT_TIMEOUT_MS)
     page.wait_for_selector(ready_selector, timeout=_PAGE_BOOT_TIMEOUT_MS)
-    # Module-script bundles execute after the initial parse; wait long
-    # enough for their top-level code (including parse errors) to fire.
-    page.wait_for_timeout(250)
     assert errors == [], (
         f"JS errors while booting {path!r}: {errors}"
     )

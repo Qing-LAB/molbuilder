@@ -320,15 +320,13 @@ makes a real run states its run's needs as it is declared
 own body uses one states it on itself or its module
 (`support.tooling.needs(...)`, a mark). The collection hook reads both and
 skips for an unmet one in one place, before any of the test's fixtures is
-set up, after the browser's reason (§ 4). The road door checks the engine
-its run is made on again as the run starts (`road_at`), and that the
-manager keeps its shell hook where the run scripts source it. The machine
-is read once per test process (`_road`), not through the product's
-`get_capabilities()`, which the suite resets before every test and tests
-replace with snapshots of their own. No file writes a skip of its own for
-an env, the manager or a GPU. **An env that is here but broken fails**: a
-program a test runs from it that is missing or does not start
-(`_road.env_binary`) fails the test, saying so — save what the env's recipe
+set up, after the browser's reason (§ 4). The machine is read once per
+test process (`_road`), not through the product's `get_capabilities()`,
+which the suite resets before every test and tests replace with snapshots
+of their own. No file writes a skip of its own for an env, the manager or a
+GPU, and no test probes an installation *(the user, 2026-11-15)*. **An env
+that is here but broken fails**: the run made on it fails, in the shell's
+or the engine's words, and the test with it — save what the env's recipe
 records as optional, which a test may skip for, naming it (`pyscf.prop.
 infrared`, which the PySCF recipe falls back without). You design the test to
 fit the environment model — you never edit an env to make a test pass (that rule is

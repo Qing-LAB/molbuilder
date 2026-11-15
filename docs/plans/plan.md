@@ -150,8 +150,11 @@ each release is its changelog row and its ledger section
   "focusing on lib code"; asked which first, "Toward the finish line")*: the
   rest of F9 as its row orders it -- its page-side test doors done by
   O-TESTS (2.70.2–2.70.10), the dead-code release (2.70.20) and the tests
-  owed on real runs (2.70.21) done; F9's closing review rounds next; then
-  F10 with its first full end-to-end pass, on the user's word. The page doors' rest -- O-STATE's
+  owed on real runs (2.70.21) done; F9's closing review rounds -- the first
+  done (2.70.22), its findings fixed or judged; the second next, on the
+  saving-over question, exported pictures in a real browser, the CLI's own
+  entry point, four fixed waits, and fresh readers over the whole; then F10
+  with its first full end-to-end pass, on the user's word. The page doors' rest -- O-STATE's
   one save door, O-WORDS, O-KEYS's rest with X-UI and X-PLOT -- is internal
   tidying no page shows (measured against `tabs.md` § 6 for O-STATE) and
   waits; so do the test framework's TF3–TF10 and the page tests on jsdom.

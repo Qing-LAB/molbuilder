@@ -897,3 +897,38 @@ def test_a_molecule_along_z_is_seen_side_on(demo):
         assert abs(out[turned] - out[plain]) <= 0.1 * out[plain], (
             f"the {turned} covers {out[turned]} pixels, the {plain} "
             f"{out[plain]} -- the fit did not turn to see it whole: {out}")
+
+
+@pytest.mark.parametrize("width, mounts", [(340, False), (1100, True)],
+                         ids=["narrower-than-its-floor", "wide-enough"])
+def test_a_host_narrower_than_the_stylesheets_floor_says_so(
+        page, molview_server, width, mounts):
+    """`web/molview.md` § 8.2: the card's floor is the stylesheet's -- the
+    card's `min-width`, the wider of the window and the panel plus the
+    card's own surface (`molview.css`) -- and mount reads it there: a host
+    narrower than it gets a blank card naming the floor, one wide enough
+    gets the viewer.  The floor expected is the one this browser resolves
+    for a card on this page, read apart from the mount.
+
+    THE SILENT FAILURE (2.70.15): the floor read as the custom property's
+    text, a `calc(...)` no number parses from, so no host was ever too
+    narrow -- a viewer squeezed into a sliver, with no word."""
+    page.set_viewport_size({"width": width, "height": 900})
+    page.goto(f"{molview_server}/molview-demo")
+    floor = page.evaluate("""() => {
+        const card = document.createElement("div");
+        card.className = "molviewer-card";
+        document.body.appendChild(card);
+        const px = parseFloat(getComputedStyle(card).minWidth);
+        card.remove();
+        return px;
+    }""")
+    assert floor > 0, floor
+    if mounts:
+        page.wait_for_selector(".molviewer-card .molviewer-rail button")
+        assert page.locator(".molviewer-embed-error").count() == 0
+    else:
+        said = page.locator(".molviewer-embed-error")
+        said.wait_for()
+        assert f"needs at least {floor:g}px" in said.inner_text(), (
+            floor, said.inner_text())

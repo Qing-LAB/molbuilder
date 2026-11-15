@@ -2610,6 +2610,11 @@ def test_a_failed_point_is_said_once_per_reason_and_its_round_by_the_milestone(
     # being done.
     assert all(x["exit"] not in (0, "0") for x in index["points"]), (
         index["points"])
+    # ...AND WHY EACH IS SHORT OF DONE, in the contract's words for a point
+    # that did not run (`runs-of-points.md` § 4.2: "its exit ... *exit 1*"),
+    # from the exit its own entry states.
+    assert {r["why"] for r in rows} == {
+        f"exit {x['exit']}" for x in index["points"]}, (rows, index["points"])
     failed = total
     assert notified(c, "transmission", n) == [
         "start", "part_failed", "milestone", "finish"]
@@ -2703,9 +2708,14 @@ def test_a_voltage_that_does_not_finish_ends_its_frame_and_the_run_once(
     c = junction.aborted
     device = stage_status(c.bundle, "device")
     n = device.attempts[-1]
-    _index, rows = _run_index(c, "device", n)
+    index, rows = _run_index(c, "device", n)
     first, then = rows
     assert first["ended"] and first["state"] == "failed", first
+    # WHY, in the contract's words for a point that did not run
+    # (`runs-of-points.md` § 4.2: "its exit ... *exit 1*"), from the exit
+    # its own entry states.
+    ran, = [x for x in index["points"] if x.get("exit") is not None]
+    assert first["why"] == f"exit {ran['exit']}", (first, ran)
     assert then["not_run"] == (f"it builds on {first['words']}, which "
                                f"failed"), then
     assert notified(c, "device", n) == ["start", "finish"]
@@ -2751,13 +2761,19 @@ def test_a_pole_energy_too_small_is_said_written_and_stopped_by_transiesta(
     energy, unit = scalars[fdf_key("TS.Contours.Eq.Pole")]
     assert (float(energy), unit.lower()) == (1.5, "ev"), (energy, unit)
     # SAID AT PREP, as information on the energy, with the least energy
-    # that gives twenty at the temperature the deck states.
+    # that gives twenty at the temperature the deck states -- the count
+    # being int(E / (pi kT)): the energy said gives twenty, and a
+    # hundredth of an eV less would not.
+    import re
     t, t_unit = scalars[fdf_key("ElectronicTemperature")][:2]
-    least = 20 * math.pi * float(t) * ENERGY_EV[t_unit.lower()]
+    pi_kt = math.pi * float(t) * ENERGY_EV[t_unit.lower()]
     said = [ln for ln in prep.output.splitlines()
             if ln.startswith("info [config.negf_eq_pole_ev]:")]
-    assert len(said) == 1 and f"{least:.2f} eV" in said[0], (
-        least, prep.output)
+    assert len(said) == 1, prep.output
+    least = float(re.search(r"the least energy is ([0-9.]+) eV",
+                            said[0]).group(1))
+    assert int(least / pi_kt) >= 20 > int(round(least - 0.01, 2) / pi_kt), (
+        least, pi_kt, said[0])
     assert device.state == "failed", (device.state, device.detail)
     stopped = point_row(device, _BIAS[0])["detail"] or ""
     assert stopped.startswith("stopped before its end: ") and (
@@ -5154,6 +5170,8 @@ def test_a_fitted_window_computes_only_the_energies_the_finished_point_did_not(
                   own["transmission_n_points"])
     a = json.loads((finished.bundle / "T.transport.json").read_text())
     b = json.loads((fitted.bundle / "T.transport.json").read_text())
+    assert a["points"] and len(b["points"]) == len(a["points"]), (
+        len(a["points"]), len(b["points"]))
     for pa, pb in zip(a["points"], b["points"]):
         e = np.asarray(pb["energy_ev"])
         assert e.size == 601 and np.max(np.abs(e - window)) < 1e-9

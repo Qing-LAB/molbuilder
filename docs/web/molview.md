@@ -1611,7 +1611,9 @@ every resize.
 the sum, the card does not break — it **stacks**, window above panel, and both
 are still usable. So the floor a host has to respect is the *stacked* minimum,
 and only a host narrower than that is the broken embed § 8 describes, the one
-that gets a blank card with the error written in it.
+that gets a blank card with the error written in it -- naming the floor and the
+width it was given, *"This viewer needs at least 368px of width; it was given
+292px."*
 
 Getting that backwards — treating the side-by-side sum as the floor — makes
 MolView refuse to mount in hosts where it would have worked perfectly well by

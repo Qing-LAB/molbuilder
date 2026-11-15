@@ -391,8 +391,9 @@ def _delegating_body(real: str) -> str:
 
 @pytest.fixture(scope="session")
 def _product_toolchain_stubs(tmp_path_factory) -> Path:
-    """Built once per session, in two folders: ``engines/``, the tripwires,
-    on PATH for the whole session (`_the_engines_answer_nowhere`); and
+    """Built once per session, in three folders: ``engines/``, the
+    tripwires, and ``no-scheduler/``, the scheduler's commands refusing, on
+    PATH for the whole session (`_the_engines_answer_nowhere`); and
     ``managers/``, conda and mamba swallowing `activate`, on PATH per test
     (`product_toolchain_is_the_suites_own`) -- an end-to-end run made in a
     module's or the session's setup finds the real conda, whose hook its
@@ -414,6 +415,21 @@ def _product_toolchain_stubs(tmp_path_factory) -> Path:
         else:
             f, body = d / "engines" / name, _TRIPWIRE
         f.write_text("#!/usr/bin/env bash\n" + body, encoding="utf-8")
+        f.chmod(0o755)
+    # THE SCHEDULER'S COMMANDS REFUSE, from the session's first moment: a
+    # scheduler this suite can reach is a job it can submit -- on a login
+    # node a real job in a real queue, against the rule that submission is
+    # manual, one at a time -- and the shared runs are made in a module's or
+    # the session's setup, before any test's own fixture.  A folder of their
+    # own, so a test of a machine with no scheduler takes them off PATH
+    # without the engines' tripwires.
+    (d / "no-scheduler").mkdir()
+    for name in ("sbatch", "srun", "salloc"):
+        f = d / "no-scheduler" / name
+        f.write_text("#!/bin/sh\n"
+                     f'echo "the test suite must never run {name}: a job '
+                     'would be queued for real" >&2\n'
+                     "exit 97\n")
         f.chmod(0o755)
     return d
 
@@ -472,33 +488,6 @@ def the_suite_leaves_your_checkout_alone():
             "A test wrote into the checkout, or reached a real `git checkout "
             "--force` / `git clean -fdq`.  Checkpoints belong under "
             "`tmp_path`.")
-
-
-@pytest.fixture(autouse=True)
-def the_suite_cannot_submit_a_job(tmp_path_factory, monkeypatch):
-    """A scheduler this suite can reach is a job this suite can submit.
-
-    Nothing here may queue work.  On this workstation `sbatch` does not
-    exist; on a login node it is a real job in a real queue, against the rule
-    that submission is manual, one at a time.
-
-    So the suite gets its own `sbatch` / `srun` / `salloc` FIRST on PATH, and
-    they refuse: a test that reaches one fails where it stands.
-    """
-    import stat as _stat
-
-    refusing = tmp_path_factory.getbasetemp() / "no-scheduler"
-    if not refusing.is_dir():
-        refusing.mkdir(parents=True, exist_ok=True)
-        for name in ("sbatch", "srun", "salloc"):
-            f = refusing / name
-            f.write_text(
-                "#!/bin/sh\n"
-                f'echo "the test suite must never run {name}: '
-                'a job would be queued for real" >&2\n'
-                "exit 97\n")
-            f.chmod(f.stat().st_mode | _stat.S_IXUSR)
-    monkeypatch.setenv("PATH", f"{refusing}{os.pathsep}{os.environ['PATH']}")
 
 
 def _env_fingerprint():
@@ -735,6 +724,7 @@ def _the_engines_answer_nowhere(_product_toolchain_stubs, tmp_path_factory):
     log = tmp_path_factory.mktemp("tripwire") / "calls"
     saved = {k: os.environ.get(k) for k in ("PATH", "MB_TRIPWIRE_LOG")}
     os.environ["PATH"] = (f"{_product_toolchain_stubs / 'engines'}"
+                          f"{os.pathsep}{_product_toolchain_stubs / 'no-scheduler'}"
                           f"{os.pathsep}{os.environ['PATH']}")
     os.environ["MB_TRIPWIRE_LOG"] = str(log)
     yield log

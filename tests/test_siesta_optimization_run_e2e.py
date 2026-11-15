@@ -631,7 +631,8 @@ def test_a_relaxation_out_of_moves_launched_again_continues_warm(capped):
     (`job-contracts.md` § 4.4).
 
     THE SILENT FAILURES: a launch again that starts cold, its relaxation
-    begun again from the structure; a new run that names no run it
+    begun again from the structure -- the restart file copied and never
+    read; a new run that names no run it
     continues, or another; the launch saying of the run it continues from
     a verdict the status column does not (`job-system.md` § 5.4: in the
     status column's words).  MUTATION THIS MUST FAIL
@@ -655,3 +656,17 @@ def test_a_relaxation_out_of_moves_launched_again_continues_warm(capped):
         errors="replace").splitlines() if "continues (engine will load" in ln),
         None)
     assert mode is not None and "H2.XV" in mode, mode
+    # ...AND SIESTA STARTED WHERE RUN-0 STOPPED (`job-system.md` § 5.4):
+    # run-1's first step is at the geometry run-0 saved in its restart
+    # file, never at the input's -- each read by the parse registry.
+    import numpy as np
+    from molbuilder.parse.registry import parse
+
+    def first_geometry(folder):
+        return next(fr.structure.positions
+                    for fr in parse(_run(folder).stdout).frames
+                    if fr.structure is not None)
+    saved = parse(_run(first).on_label(".XV")).structure.positions
+    assert not np.allclose(saved, first_geometry(first), atol=1e-4), saved
+    assert np.allclose(first_geometry(again), saved, atol=1e-4), (
+        first_geometry(again), saved)

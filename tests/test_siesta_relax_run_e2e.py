@@ -659,15 +659,17 @@ def labelled(tmp_path_factory):
     """THE ROAD'S H2 WITH ONE HYDROGEN LABELLED `H1` (`model/chemistry.md`
     § 3), relaxed one step on :data:`support.real_runs.QUICK`'s settings:
     its pseudopotential the person's file under the label's name, `H1.psml`
-    -- a copy of the checked-in H's -- in the tree's library beside `H.psml`;
+    -- the checked-in H's, a comment of the person's added at its end, so
+    its bytes are its own -- in the tree's library beside `H.psml`;
     `coarse` prepared and launched, waited on."""
-    import shutil
     from support.real_runs import QUICK, RealRun, on_the_road, taken
     from support.road import (H2, described, library_of, set_by_the_person,
                               structure_saved)
     with on_the_road(tmp_path_factory, "labelled") as tree:
         lib = library_of(tree)
-        shutil.copy(lib / "H.psml", lib / "H1.psml")
+        (lib / "H1.psml").write_bytes(
+            (lib / "H.psml").read_bytes()
+            + b"\n<!-- H1: the person's own copy -->\n")
         bundle = described(
             tree, "P/optimization/H2lab",
             structure=structure_saved(tree, {**H2, "elements": ["H1", "H"]}),
@@ -704,9 +706,15 @@ def test_a_labelled_species_runs_on_the_file_its_label_names(labelled):
         ("1", "H1"), ("1", "H")}, table
     assert (run.deck.parent / "H1.psml").is_file()
     # WHAT SIESTA READ FOR EACH SPECIES, as the run's record states it
-    # (`model/parse.md` § 5d: the setup's pseudopotentials).
-    read = {(p["species"], p["file"])
+    # (`model/parse.md` § 5d: the setup's pseudopotentials) -- each file
+    # by its bytes: the person's `H1.psml` for H1, never H's.
+    from molbuilder.persist import sha256_of
+    from support.road import library_of
+    read = {p["species"]: (p["file"], p.get("sha256"))
             for p in record_of(run)["setup"]["pseudopotentials"]}
-    assert read == {("H1", "H1.psml"), ("H", "H.psml")}, read
+    lib = library_of(labelled.tree)
+    assert read == {
+        "H1": ("H1.psml", sha256_of(lib / "H1.psml")),
+        "H": ("H.psml", sha256_of(lib / "H.psml"))}, read
     assert stage_status(labelled.bundle, "coarse").state in (
         "finished", "done"), stage_status(labelled.bundle, "coarse")

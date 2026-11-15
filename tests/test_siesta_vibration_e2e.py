@@ -524,6 +524,19 @@ def test_unticked_the_run_relaxes_first_and_measures_at_the_relaxed_geometry(
     # THE LAUNCH ENDS WITH THE RESULT: the record step wrote it (§ 5.11 § 3).
     d = _the_result(run)
     _common_assertions(d, optical=True)
+    # THE MAGNITUDES, as `science/vibrational-optical-response.md` measured
+    # them on this relaxed run at its 150 Ry mesh: the bend pair at 281
+    # cm-1, the stretches at 1250 and 1312, and the stretch a field along z
+    # sees, 215.3 km/mol under Hirshfeld.  THE SILENT FAILURE: a wrong unit
+    # factor scaling every frequency or every intensity, the shape intact.
+    from molbuilder.spectra.infrared import infrared_view
+    from molbuilder.spectra.results import SpectraResults
+    freqs = [m["frequency_cm1"] for m in d["modes"]]
+    assert freqs == pytest.approx([281, 281, 1250, 1312], rel=0.01), freqs
+    along_z = infrared_view(SpectraResults.from_dict(d), direction="z",
+                            partition="hirshfeld").modes
+    assert max(m.intensity_km_mol for m in along_z) == pytest.approx(
+        215.3, rel=0.02), along_z
     # EACH MILESTONE SAYS ITS PHASE'S OUTCOME, from the record its step
     # wrote, and the run's count after it (`run-reports.md` § 2.9).
     after_relax, after_fc = told(run, "milestone", "freq")
@@ -1538,7 +1551,8 @@ def test_a_displacement_sweep_compares_every_stages_force_constants(unticked):
     assert rec["tolerance_cm1"] is None
     (fc,) = rec["force_constants"]
     assert fc["against"] == "freq" and fc["max_abs_change_ev_ang2"] > 0.0
-    assert all(m["flagged"] is True for m in rec2["modes"])
+    assert len(rec2["modes"]) == 4 and all(
+        m["flagged"] is True for m in rec2["modes"]), rec2["modes"]
     assert rec2["tolerance_cm1"] == 1e-6
 
 
@@ -2092,8 +2106,9 @@ def test_a_fixed_spin_optical_call_keeps_each_channels_fermi_level(
     them, one a channel; and the two differ.
 
     THE SILENT FAILURE: one level written for both channels of a run whose
-    channels hold different numbers of electrons -- a channel's spectrum
-    placed against the other channel's Fermi level."""
+    channels hold different numbers of electrons, or the two read swapped
+    -- a channel's spectrum placed against the other channel's Fermi
+    level."""
     from molbuilder.parse.engines.siesta_reader import read_output
     from molbuilder.runfiles import ROLE_OPTICAL
     from molbuilder.runs import on_label_at, run_of
@@ -2108,7 +2123,11 @@ def test_a_fixed_spin_optical_call_keeps_each_channels_fermi_level(
                  .finish()["steps"] if s.get("coords")]
         last = steps[-1]["scf_history"][-1]
         printed = [last["ef_up"], last["ef_dn"]]
-        assert printed[0] != printed[1], (f["call"], printed)
+        # THE CHANNELS IN THEIR ORDER, by the physics, not by the reader:
+        # seven electrons up, five down, so the up channel fills higher and
+        # its Fermi level lies above the down channel's -- a reader that
+        # swapped the two columns fails here, whatever it then writes.
+        assert printed[0] > printed[1], (f["call"], printed)
         assert np.allclose(f["fermi_level_ev"], printed), (
             f["call"], f["fermi_level_ev"], printed)
 
