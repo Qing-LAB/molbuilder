@@ -27,10 +27,8 @@ import re
 
 import pytest
 
-pytest.importorskip("playwright.sync_api")
-pytest.importorskip("flask")
 
-from support.sidebar import WAIT_MS, committed, picked   # noqa: E402
+from support.sidebar import WAIT_MS, committed, picked
 
 
 #: A second structure beside the road's water: the road's H2, as a pair.

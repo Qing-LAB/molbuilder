@@ -26,8 +26,6 @@ same way.
 """
 from __future__ import annotations
 
-import pytest
-
 
 def test_no_page_declares_an_id_twice(isolated_projects_root):
     """Every page the app serves (`support/pages.every_served_page`: each
@@ -36,7 +34,6 @@ def test_no_page_declares_an_id_twice(isolated_projects_root):
     MUTATION THIS MUST FAIL AGAINST: an id a page already carries given to
     an element of a partial it includes -- the account strip a signed-in
     page alone carries among them."""
-    pytest.importorskip("flask")
     from support.pages import every_served_page, ids_of
     offenders = {}
     for path, html in sorted(every_served_page().items()):

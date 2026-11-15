@@ -13,6 +13,7 @@ import pytest
 
 from molbuilder.nucleic import build_dna, build_rna
 from molbuilder.builders.backends import available_backends
+from support import tooling
 
 
 _BACKENDS = sorted(available_backends())
@@ -45,8 +46,7 @@ def _no_isolated_atoms(struct, max_nn: float = 2.5):
 
 @pytest.mark.parametrize("backend", _BACKENDS)
 def test_dna_4mer_connected(backend):
-    if not available_backends()[backend]:
-        pytest.skip(f"backend {backend!r} not installed on this machine")
+    tooling.needs_backend(backend)
     s = build_dna("ATGC", backend=backend)
     _no_isolated_atoms(s)
     inter = _measure_inter_PO3(s)
@@ -61,8 +61,7 @@ def test_dna_4mer_connected(backend):
 
 @pytest.mark.parametrize("backend", _BACKENDS)
 def test_rna_4mer_has_phosphorus(backend):
-    if not available_backends()[backend]:
-        pytest.skip(f"backend {backend!r} not installed on this machine")
+    tooling.needs_backend(backend)
     r = build_rna("AUGC", backend=backend,
                   form=("A" if backend != "rdkit" else "B"))
     assert "P" in r.elements
@@ -80,8 +79,7 @@ def test_dna_default_protonation_yields_simulation_ready_h_count(backend):
     """All backends, with default kwargs, must produce a structure with
     H/heavy >= 0.6 -- typical organic ratio.  Pre-fix this failed on
     threedna (H/heavy ~ 0.05 because fiber emits heavy atoms only)."""
-    if not available_backends()[backend]:
-        pytest.skip(f"backend {backend!r} not installed on this machine")
+    tooling.needs_backend(backend)
     s = build_dna("ATGC", backend=backend)
     n_h     = sum(1 for e in s.elements if e == "H")
     n_heavy = sum(1 for e in s.elements if e != "H")
@@ -200,8 +198,7 @@ def test_dna_12mer_simulation_ready_at_default_settings(backend):
     A 12-mer is closer to what users actually run for stacking / canonical-helix work,
     where the H/heavy heuristic threshold matters most.
     """
-    if not available_backends()[backend]:
-        pytest.skip(f"backend {backend!r} not installed on this machine")
+    tooling.needs_backend(backend)
     from molbuilder.chemistry import formal_charge_from_phosphates
     s = build_dna("ATGCATGCATGC", backend=backend)
     assert s.n_residues == 12
@@ -235,8 +232,7 @@ def test_dna_12mer_force_on_overrides_skip(backend):
     coordinates micro-shifts on the second AddHs round-trip; we
     don't pin exact equality.
     """
-    if not available_backends()[backend]:
-        pytest.skip(f"backend {backend!r} not installed on this machine")
+    tooling.needs_backend(backend)
     s_auto = build_dna("ATGCATGCATGC", backend=backend, add_hydrogens="auto")
     s_on   = build_dna("ATGCATGCATGC", backend=backend, add_hydrogens="on")
     n_h_auto = sum(1 for e in s_auto.elements if e == "H")
@@ -257,8 +253,7 @@ def test_dna_12mer_off_returns_unprotonated_for_heavy_only_backends(backend):
     For X3DNA (heavy-atom skeleton) the user gets a low-H structure
     they can hand to an external protonator.  Amber and RDKit
     backends already ship H, so off-mode also leaves them alone."""
-    if not available_backends()[backend]:
-        pytest.skip(f"backend {backend!r} not installed on this machine")
+    tooling.needs_backend(backend)
     s = build_dna("ATGCATGCATGC", backend=backend,
                   add_hydrogens="off", protonate_phosphates=False)
     if backend == "threedna":
@@ -281,8 +276,7 @@ def test_dna_add_hydrogens_false_returns_heavy_skeleton():
     """The kwarg has to be honored: explicitly opting out skips the
     H-add step.  Useful when the user wants to inspect the fiber
     output directly or feed an external protonator."""
-    if not available_backends().get("threedna"):
-        pytest.skip("threedna backend not installed")
+    tooling.needs_backend("threedna")
     s = build_dna("ATGC", backend="threedna",
                   add_hydrogens="off", protonate_phosphates=False)
     n_h = sum(1 for e in s.elements if e == "H")
@@ -338,8 +332,7 @@ def test_protonation_chemistry_matches_across_backends(backend, build, text,
     were given it (`residues.NUCLEOBASE_BONDS`, 2026-10-31).  RDKit's
     hydrogens all read as one residue `MOL` until its `AddHs` was asked for
     their residues (2026-10-31)."""
-    if not available_backends()[backend]:
-        pytest.skip(f"backend {backend!r} not installed on this machine")
+    tooling.needs_backend(backend)
     if text.startswith("ds,") and backend != "threedna":
         pytest.skip("a duplex is 3DNA's alone")
     s = build(text, backend=backend)
@@ -386,8 +379,7 @@ def test_threedna_strips_5prime_phosphate_for_terminal_oh():
     Pinning: a single dA nucleotide with terminal='OH' must be
     deoxyadenosine (no P), and a 4-mer must have 3 phosphate groups
     (the 3 internal bridges), not 4."""
-    if not available_backends().get("threedna"):
-        pytest.skip("threedna backend not installed")
+    tooling.needs_backend("threedna")
 
     # Single nucleotide -- a free deoxyadenosine, no phosphate.
     s_a = build_dna("A", backend="threedna", terminal="OH",

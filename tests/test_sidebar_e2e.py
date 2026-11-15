@@ -19,10 +19,6 @@ import pytest
 
 pytestmark = pytest.mark.e2e
 
-pytest.importorskip("playwright.sync_api")
-pytest.importorskip("flask")
-
-from playwright.sync_api import expect  # noqa: E402
 
 from support.sidebar import WAIT_MS, row, walk_to  # noqa: E402
 
@@ -54,6 +50,7 @@ def test_each_tab_comes_back_to_its_own_folder_and_file(
 
     MUTATIONS THIS MUST FAIL AGAINST: the file kept on re-listing read from
     the shared slot; every page keyed alike."""
+    from playwright.sync_api import expect
     proj = isolated_projects_root.resolve() / "P"
     here, there = proj / "structure", proj / "optimization" / "run"
     here.mkdir(parents=True)
@@ -140,6 +137,7 @@ def test_the_create_bar_makes_a_project_a_folder_and_an_upload(
     THE SILENT FAILURE: a button losing its id leaves the JS unable to wire
     it: the control renders and does nothing when clicked, with no error
     anywhere."""
+    from playwright.sync_api import expect
     root = isolated_projects_root.resolve()
     proj = root / "made"
     notes = proj / "user" / "notes"
@@ -246,6 +244,7 @@ def test_a_rows_menu_closes_only_when_its_row_moves(page, flask_server,
     nothing (`test_task_setup_follows_its_folder_e2e`'s unsaved edit).  The
     viewport is short so that both panes can scroll once the folder is open
     (`process/testing.md` § 5)."""
+    from playwright.sync_api import expect
     from support.task_setup_page import task_setup_on
     task_setup_on(page, flask_server, calc_dir)
     page.set_viewport_size(dict(page.viewport_size, height=600))

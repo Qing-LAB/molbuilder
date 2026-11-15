@@ -24,9 +24,6 @@ import pytest
 from support.sidebar import WAIT_MS, history_shown, results_on
 from support.task_setup_page import task_setup_on
 
-pytest.importorskip("playwright.sync_api")
-pytest.importorskip("flask")
-
 
 def _focused(page):
     """The control holding focus, by its name -- ``None`` on the body."""

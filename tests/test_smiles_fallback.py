@@ -12,12 +12,7 @@ network:
 """
 from __future__ import annotations
 
-import pytest
-
-pytest.importorskip("rdkit")
-pytest.importorskip("openbabel")
-
-from molbuilder.smiles import (          # noqa: E402
+from molbuilder.smiles import (
     build_from_smiles, BACKEND_RDKIT, BACKEND_OPENBABEL,
 )
 

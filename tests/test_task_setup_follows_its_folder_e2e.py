@@ -24,9 +24,6 @@ import pytest
 from support.sidebar import WAIT_MS
 from support.task_setup_page import task_setup_on
 
-pytest.importorskip("playwright.sync_api")
-pytest.importorskip("flask")
-
 
 @pytest.fixture
 def flask_server(isolated_projects_root):

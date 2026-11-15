@@ -83,7 +83,6 @@ def test_a_folder_is_served_with_the_views_it_is_read_with(
     """Each folder's answer, through the route: its own state (the run
     door's), the views it is read with -- by what it is -- and every path
     whole: each file's, each run's folder, what a ladder row opens."""
-    pytest.importorskip("flask")
     from molbuilder.web.app import create_app
     from support.road import described, jobset, road_tree
     tree = road_tree(tmp_path, monkeypatch)

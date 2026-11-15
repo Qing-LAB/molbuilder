@@ -22,9 +22,8 @@ def test_to_pyscf_list_form(water_structure):
     ]
 
 
-def test_to_ase_optional_dep(water_structure):
-    """ASE is a hard dep of molbuilder.siesta; assert if installed."""
-    pytest.importorskip("ase")
+def test_to_ase(water_structure):
+    """ASE is a required package of the host env (`host-env.txt`)."""
     atoms = water_structure.to_ase()
     assert len(atoms) == 3
     assert list(atoms.get_chemical_symbols()) == ["O", "H", "H"]
@@ -39,7 +38,6 @@ def test_to_ase_hands_over_the_box_as_well_as_the_atoms():
     symmetry search or write done with it answered the wrong question
     silently.
     """
-    pytest.importorskip("ase")
     s = Structure(elements=["Au", "Au"],
                   positions=np.array([[0.0, 0.0, 0.0], [1.44, 1.44, 0.0]]),
                   cell=np.array([[2.885, 0.0, 0.0],
@@ -58,7 +56,6 @@ def test_to_ase_puts_the_atoms_where_the_engine_puts_them():
     THE SILENT FAILURE: authored coordinates in a box that starts at the
     origin, the atoms at its corner and half of them outside, so a neighbour
     list or a calculator handed them sees a molecule cut by the cell's face."""
-    pytest.importorskip("ase")
     s = Structure(elements=["H", "H"],
                   positions=np.array([[0.0, 0.0, -0.37], [0.0, 0.0, 0.37]]),
                   vacuum=(10.0, 10.0, 10.0))
@@ -72,7 +69,6 @@ def test_to_ase_carries_a_derived_box_too(water_structure):
     """`resolve_cell()`, not the raw field: a molecule states no lattice but
     still HAS a box, and ASE should receive the one every other consumer
     sees."""
-    pytest.importorskip("ase")
     atoms = water_structure.to_ase()
     np.testing.assert_allclose(np.asarray(atoms.get_cell()),
                                np.asarray(water_structure.resolve_cell(),

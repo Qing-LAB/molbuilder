@@ -35,12 +35,9 @@ import re
 
 import pytest
 
-pytest.importorskip("playwright.sync_api")
-pytest.importorskip("flask")
 
 from pathlib import Path
 
-from playwright.sync_api import expect
 from support.road import (H2, described, description_with_overrides,
                           ladder_edited, read_request, road_tree, save_both,
                           stage_file, write_request)
@@ -1306,6 +1303,7 @@ def test_choosing_a_machine_puts_it_in_the_command_you_copy(
     `pre.ts-cmd` blocks a person actually copies were built before the
     machine existed and kept a command with no `--target` in it.
     """
+    from playwright.sync_api import expect
     task_setup_on(page, flask_server, two_stage_dir)
     opt = machine(page, a_named_machine)
     opt.click()

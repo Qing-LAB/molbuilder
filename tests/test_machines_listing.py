@@ -113,7 +113,6 @@ class TestTheTerminalAndTheBrowserCannotDisagree:
         Not "produce equal output" -- the same call, so a change to the rule
         reaches both or neither.
         """
-        pytest.importorskip("flask")
         _write_record(home, "sol")
         from molbuilder.scheduler import known_machines, choice_required
         from molbuilder.web.app import create_app

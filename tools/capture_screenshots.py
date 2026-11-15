@@ -101,7 +101,9 @@ def main() -> int:
     try:
         from playwright.sync_api import sync_playwright
     except ImportError:
-        print("playwright not installed; pip install pytest-playwright", file=sys.stderr)
+        from molbuilder.envs.hints import opt_in_cmd
+        print("playwright is not installed in this env: "
+              + opt_in_cmd("molbuilder"), file=sys.stderr)
         return 1
 
     with sync_playwright() as p:

@@ -36,9 +36,6 @@ pytestmark = [
         reason="needs the molbuilder-siesta env + a detectable conda hook"),
 ]
 
-pytest.importorskip("playwright.sync_api")
-pytest.importorskip("flask")
-
 
 # --------------------------------------------------------------------- #
 #  Fixtures                                                              #

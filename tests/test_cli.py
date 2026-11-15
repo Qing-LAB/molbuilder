@@ -23,6 +23,8 @@ import re
 import numpy as np
 import pytest
 
+from support import tooling
+
 from molbuilder import cli
 
 
@@ -145,24 +147,6 @@ def test_unknown_subcommand_is_an_error():
 # --------------------------------------------------------------------- #
 
 
-def _needs(*tools):
-    """Skip unless each tool is installed: a nucleic-acid backend, asked of
-    the registry (`builders.md` § 4, `available_backends`), or ``hydrogens``,
-    the engine a build adds its hydrogens with -- asked of the engine's own
-    door, which refuses with `BackendUnavailable` when there is none."""
-    from molbuilder.builders.backends import available_backends
-    for tool in tools:
-        if tool == "hydrogens":
-            from molbuilder.chemistry import BackendUnavailable, add_hydrogens
-            from support.road import H2, road_structure
-            try:
-                add_hydrogens(road_structure(H2))
-            except BackendUnavailable as e:
-                pytest.skip(str(e))
-        elif not available_backends().get(tool):
-            pytest.skip(f"the {tool} backend is not installed")
-
-
 def _built(tmp_path, *typed):
     """``molbuilder <typed> --out <pair>``: what it built, read back."""
     from molbuilder.workingcopy_structure import StructureCodec
@@ -182,7 +166,7 @@ def _residues(built):
 @pytest.mark.parametrize("tools, typed, residues, said", [
     # A peptide built residue by residue, its C-terminus with no OXT said on
     # stderr as every finding is (`builders.md` § 1, `validation.md` R5).
-    (("hydrogens",), ("peptide", "ARNDC"),
+    ((), ("peptide", "ARNDC"),
      ["ALA", "ARG", "ASN", "ASP", "CYS"], {"build.peptide_aldehyde"}),
     # The backend typed is the one that built: RDKit embeds a conformer, and
     # the form a DNA is asked when none is typed (§ 4, ``DEFAULT_FORM``) is
@@ -191,9 +175,9 @@ def _residues(built):
      ["DA", "DT", "DG", "DC"], {"build.form"}),
     (("rdkit",), ("rna", "AUGC", "--backend", "rdkit"), None, {"build.form"}),
     # An RNA is built A-form, its own, with nothing to say (§ 3)...
-    (("threedna", "hydrogens"), ("rna", "AUGC"), None, set()),
+    (("threedna",), ("rna", "AUGC"), None, set()),
     # ...and a form typed reaches it: another is built A-form, and said (§ 5).
-    (("threedna", "hydrogens"), ("rna", "AUGC", "--form", "B"), None,
+    (("threedna",), ("rna", "AUGC", "--form", "B"), None,
      {"build.form"}),
 ], ids=["peptide", "dna-backend", "rna-backend", "rna-own-form",
         "rna-form-typed"])
@@ -203,7 +187,8 @@ def test_a_build_subcommand_builds_what_was_typed(tmp_path, capsys, tools,
     backend and the form typed: what was built carries the residues the
     sequence names, and the build says exactly the findings `builders.md`
     states for what it could not build as asked."""
-    _needs(*tools)
+    for tool in tools:
+        tooling.needs_backend(tool)
     built = _built(tmp_path, *typed)
     if residues:
         assert _residues(built) == residues
@@ -213,7 +198,6 @@ def test_a_build_subcommand_builds_what_was_typed(tmp_path, capsys, tools,
 
 def test_a_title_typed_is_the_title_built(tmp_path):
     """``--title`` reaches the builder: what was built is called by it."""
-    _needs("hydrogens")
     assert _built(tmp_path, "peptide", "A", "--title", "my run").title == (
         "my run")
 
@@ -222,7 +206,7 @@ def test_a_form_typed_is_the_form_built(tmp_path):
     """``--form`` reaches the DNA builder: A, the compact form (`builders.md`'s
     *Vocabulary*), is shorter end to end than the B built by default -- the first
     phosphate to the last, a distance no axis convention enters."""
-    _needs("threedna", "hydrogens")
+    tooling.needs_backend("threedna")
 
     def span(*typed):
         built = _built(tmp_path, "dna", "ATGC", *typed)
@@ -238,7 +222,7 @@ def test_a_terminal_typed_is_the_terminal_built(tmp_path, strand):
     """``--terminal 5P`` reaches the builder: the fiber's 5'-phosphate is kept,
     where the both-ends-OH default strips it (`builders.md` § 5) -- one
     phosphorus more."""
-    _needs("threedna", "hydrogens")
+    tooling.needs_backend("threedna")
 
     def phosphori(*typed):
         return list(_built(tmp_path, *strand, *typed).elements).count("P")
@@ -253,7 +237,7 @@ def test_no_protonate_phosphates_leaves_each_phosphate_charged(tmp_path,
     added to each deprotonated non-bridging phosphate oxygen (`builders.md`
     § 7); with the flag none is -- one H fewer a phosphate, three between
     four bases.  On the backend that leaves them deprotonated, tleap (§ 7)."""
-    _needs("amber")
+    tooling.needs_backend("amber")
 
     def hydrogens(*typed):
         return list(_built(tmp_path, *strand, "--backend", "amber",

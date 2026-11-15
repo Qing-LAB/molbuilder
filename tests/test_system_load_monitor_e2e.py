@@ -35,9 +35,6 @@ from __future__ import annotations
 import pytest
 
 
-pytest.importorskip("playwright.sync_api")
-pytest.importorskip("flask")
-
 #: The reason the sampler composes for the driver/library mismatch measured
 #: on the development host (2026-09-18: `nvidia-smi` exits 18 and says why on
 #: stdout, `support.machines.DRIVER_MISMATCH`;

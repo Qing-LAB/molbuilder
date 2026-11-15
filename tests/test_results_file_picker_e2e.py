@@ -19,9 +19,6 @@ import pytest
 
 pytestmark = pytest.mark.e2e
 
-pytest.importorskip("playwright.sync_api")
-pytest.importorskip("flask")
-
 
 # --------------------------------------------------------------------- #
 #  Fixtures                                                              #

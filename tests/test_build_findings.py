@@ -66,10 +66,10 @@ ROWS = [
 @pytest.mark.parametrize("kind, text, ask, want, says", ROWS)
 def test_what_a_build_found_is_answered_beside_its_structure(
         web_client, kind, text, ask, want, says):
-    from molbuilder.builders.backends import available_backends
+    from support import tooling
     backend = ask.get("backend")
-    if backend and not available_backends().get(backend):
-        pytest.skip(f"{backend} is not installed here")
+    if backend:
+        tooling.needs_backend(backend)
     with warnings.catch_warnings(record=True) as raised:
         warnings.simplefilter("always")
         r = web_client.post("/api/build/molecule",

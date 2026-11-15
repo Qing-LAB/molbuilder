@@ -32,10 +32,8 @@ from pathlib import Path
 
 import pytest
 
-pytest.importorskip("playwright.sync_api")
-pytest.importorskip("flask")
 
-from support.sidebar import WAIT_MS, walk_to  # noqa: E402
+from support.sidebar import WAIT_MS, walk_to
 
 
 # --------------------------------------------------------------------- #

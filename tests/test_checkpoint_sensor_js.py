@@ -39,21 +39,6 @@ from pathlib import Path
 import pytest
 
 
-def _have_git() -> bool:
-    try:
-        subprocess.run(["git", "--version"],
-                       capture_output=True, check=True)
-        return True
-    except (FileNotFoundError, subprocess.CalledProcessError):
-        return False
-
-
-pytestmark = pytest.mark.skipif(
-    not _have_git(),
-    reason="git not on PATH; checkpoint sensor tests need git ≥ 2.20",
-)
-
-
 # ----------------------------------------------------------------- #
 #  1. /state is cheap -- no .binsnapshots/ walk on the refresh path #
 # ----------------------------------------------------------------- #

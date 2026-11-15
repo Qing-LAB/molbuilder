@@ -20,9 +20,6 @@ import pytest
 
 from support.chemistry_card import card_answered, card_blocks
 
-pytest.importorskip("playwright.sync_api")
-pytest.importorskip("flask")
-
 
 @pytest.fixture(scope="module")
 def flask_server(isolated_projects_root_module):

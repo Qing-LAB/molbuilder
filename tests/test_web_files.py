@@ -45,7 +45,6 @@ def picker_root(isolated_projects_root: Path):
 @pytest.fixture
 def web(picker_root):
     """Flask test client with the picker_root fixture pre-installed."""
-    pytest.importorskip("flask")
     from molbuilder.web.app import create_app
     app = create_app(config={})
     return app.test_client()

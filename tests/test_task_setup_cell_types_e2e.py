@@ -35,9 +35,6 @@ import json
 import pytest
 
 
-pytest.importorskip("playwright.sync_api")
-pytest.importorskip("flask")
-
 from support.road import (described, description_with_overrides, read_request,
                           road_tree, save_both)
 from support.sidebar import committed

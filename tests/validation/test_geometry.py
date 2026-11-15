@@ -97,9 +97,8 @@ def test_the_h_ratio_is_a_reference_note_counted_by_element(elements, said):
 def test_polymer_orientation_normal_chain_no_warn():
     """A clean 4-mer DNA chain with 5'->3' residue ordering must not
     trip the orientation validator."""
-    from molbuilder.builders.backends import available_backends
-    if not available_backends().get("threedna"):
-        pytest.skip("threedna backend not installed")
+    from support import tooling
+    tooling.needs_backend("threedna")
     from molbuilder.nucleic import build_dna
     s = build_dna("ATGC", backend="threedna")
     issues = validate(s, SiestaConfig(), calculation="optimization")
@@ -115,9 +114,8 @@ def test_polymer_orientation_reversed_listing_warns():
     Build a normal chain, then flip residue_ids so the highest-numbered
     residue ends up at index 0.  Atom positions stay the same -- only
     the ID listing is reversed."""
-    from molbuilder.builders.backends import available_backends
-    if not available_backends().get("threedna"):
-        pytest.skip("threedna backend not installed")
+    from support import tooling
+    tooling.needs_backend("threedna")
     from molbuilder.nucleic import build_dna
     s = build_dna("ATGC", backend="threedna")
     rid_max = max(s.residue_ids)

@@ -37,11 +37,6 @@ from __future__ import annotations
 import logging
 import ssl
 
-import pytest
-
-
-pytest.importorskip("flask")
-
 
 from molbuilder.web.app import _ClientDisconnectSSLFilter
 

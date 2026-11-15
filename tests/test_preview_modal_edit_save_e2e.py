@@ -15,8 +15,6 @@ import pytest
 
 pytestmark = pytest.mark.e2e
 
-pytest.importorskip("playwright.sync_api")
-pytest.importorskip("flask")
 
 from support.sidebar import WAIT_MS, replace_text, row, walk_to  # noqa: E402
 

@@ -34,15 +34,10 @@ from __future__ import annotations
 import pytest
 
 
-pytest.importorskip("playwright.sync_api")
-pytest.importorskip("flask")
-
-from playwright.sync_api import expect  # noqa: E402
-
-from molbuilder.projects import ensure_structure_dir  # noqa: E402
-from molbuilder.structure import Structure  # noqa: E402
-from molbuilder.workingcopy_structure import StructureCodec  # noqa: E402
-from support.sidebar import WAIT_MS, committed, walk_to  # noqa: E402
+from molbuilder.projects import ensure_structure_dir
+from molbuilder.structure import Structure
+from molbuilder.workingcopy_structure import StructureCodec
+from support.sidebar import WAIT_MS, committed, walk_to
 
 
 # --------------------------------------------------------------------- #
@@ -140,6 +135,7 @@ def _use(page, path, atoms):
     """``path`` used -- its row double-clicked, *use it*
     (`web/projects.md`) -- and the tab showing its ``atoms``, its form drawn
     for what comes next to read."""
+    from playwright.sync_api import expect
     walk_to(page, path, use=True)
     expect(page.locator("#info-atoms")).to_have_text(str(atoms),
                                                      timeout=WAIT_MS)
@@ -213,6 +209,7 @@ class TestFormSchemasRender:
         (`form-schema.js`), which draws none only where the label already
         is the keyword.
         """
+        from playwright.sync_api import expect
         _open_build(page, flask_server)
         for engine in ("siesta", "pyscf"):
             expect(page.locator(
@@ -734,6 +731,7 @@ class TestSendToTaskSetup:
         MUTATIONS THIS MUST FAIL AGAINST: a single click loading the file;
         the load dropping the sidecar; `exportFile` dropping the held atoms;
         the Send building its structure from the sidebar's file."""
+        from playwright.sync_api import expect
         from conftest import write_pseudos
         import numpy as np
         loaded_dir, dest = (
@@ -787,6 +785,7 @@ class TestSendToTaskSetup:
         the file loaded, and sent from the copy; `exportFile` answering the
         first frame, or the last, whatever is on screen; or every frame from
         the one on screen to the last."""
+        from playwright.sync_api import expect
         from conftest import write_pseudos
         import numpy as np
         calc = ensure_structure_dir("proj", "optimization", "scan").resolve()

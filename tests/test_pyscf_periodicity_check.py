@@ -92,7 +92,6 @@ def test_it_reaches_the_tab_before_generate():
     /api/build/preflight, so the warning has to arrive there -- before the
     click, not after.
     """
-    pytest.importorskip("flask")
     from molbuilder.web.app import create_app
 
     client = create_app(config={}).test_client()
@@ -173,7 +172,6 @@ def test_a_gas_phase_script_hears_no_advice_about_a_box_it_does_not_use():
 
     MUTATIONS THIS MUST FAIL AGAINST: the gate giving every engine the box's
     advice; a free-space engine hearing only the box's errors."""
-    pytest.importorskip("flask")
     from molbuilder.web.app import create_app
 
     client = create_app(config={}).test_client()

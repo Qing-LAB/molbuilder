@@ -22,8 +22,6 @@ import json
 
 import pytest
 
-pytest.importorskip("flask")
-
 
 @pytest.fixture
 def web(isolated_projects_root):
@@ -74,7 +72,6 @@ def test_a_saved_browser_payload_reads_back_whole(web):
     assert back.frozen_atoms == [1] and back.regions["anchor"] == [0]
     assert np.allclose(back.engine_offset, [3.0, 4.0, 5.0])
     assert back.to_wire()["resolved_box"]["box_corner"] == [-3.0, -4.0, -5.0]
-
 
 
 def test_overwrite_gate_drives_the_dialog(web):

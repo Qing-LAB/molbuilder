@@ -21,9 +21,6 @@ from __future__ import annotations
 import pytest
 
 
-pytest.importorskip("flask")
-
-
 @pytest.fixture
 def web():
     from molbuilder.web.app import create_app

@@ -240,7 +240,6 @@ def test_a_saved_structure_comes_back_the_same(tmp_path):
     assert back.frozen_atoms == [1, 2]
 
 
-
 def test_the_designated_read_works_on_a_saved_payload_too():
     """The same "one place spells the name" rule, one level down: code holding a
     sidecar dict rather than a Structure asks `molstruct.frozen_atoms` instead
@@ -263,7 +262,6 @@ def served(isolated_projects_root):
     pointed at it (`isolated_projects_root`), and a client -- these routes
     resolve a path against the projects tree, so a path outside it is
     refused."""
-    pytest.importorskip("flask")
     from molbuilder.web.app import create_app
 
     xyz = isolated_projects_root / "labelled.xyz"

@@ -44,7 +44,6 @@ def _envelope(**metadata):
 
 @pytest.fixture
 def client():
-    pytest.importorskip("flask")
     from molbuilder.web.app import create_app
     return create_app(config={}).test_client()
 

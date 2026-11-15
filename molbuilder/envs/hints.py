@@ -30,6 +30,13 @@ def fix_cmd(action: str, *args: str) -> str:
     return " ".join([LAUNCHER, action, *args])
 
 
+def opt_in_cmd(recipe: str) -> str:
+    """The command that adds a recipe's opt-in records -- for the host env,
+    the test tooling (`ops/env-framework.md` § 3.2a): what `doctor`,
+    `repair` and a test that skips for want of it all name."""
+    return fix_cmd("install", recipe, "--with-dev-tools", "--yes")
+
+
 def stdin_can_answer() -> bool:
     """Is somebody there to answer a prompt?
 

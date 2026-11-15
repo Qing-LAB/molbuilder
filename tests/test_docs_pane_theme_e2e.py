@@ -25,9 +25,6 @@ import pytest
 
 pytestmark = pytest.mark.e2e
 
-pytest.importorskip("playwright.sync_api")
-pytest.importorskip("flask")
-
 
 @pytest.fixture(scope="module")
 def flask_server(isolated_projects_root_module):

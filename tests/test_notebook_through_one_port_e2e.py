@@ -33,7 +33,6 @@ import pytest
 
 from _road import env_available
 
-pytest.importorskip("playwright.sync_api")
 
 pytestmark = pytest.mark.skipif(
     not env_available("molbuilder-jupyternb"),

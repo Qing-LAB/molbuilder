@@ -420,9 +420,7 @@ def _render_doctor(reports: Iterable[_doctor.EnvReport]) -> int:
                     click.echo(f"        {issue.spec}"
                                + (f"  -- {issue.reason}" if issue.reason
                                   else ""))
-                click.echo("    add:     "
-                           + _fix_cmd("install", rep.recipe.name,
-                                      "--with-dev-tools", "--yes"))
+                click.echo("    add:     " + _hints.opt_in_cmd(rep.recipe.name))
 
     click.echo("")
     if any_failed:
@@ -551,8 +549,7 @@ def cmd_repair(name: str, include_optional: bool,
             f"installed and not repairable here "
             f"({' '.join(i.name or i.spec for i in skipped_opt_in)}).  "
             f"They are added, with their post-install steps, by:", err=True)
-        click.echo("    " + _fix_cmd("install", recipe.name,
-                                     "--with-dev-tools", "--yes"), err=True)
+        click.echo("    " + _hints.opt_in_cmd(recipe.name), err=True)
     if not to_install_conda and not to_install_pip:
         if skipped_optional or skipped_version:
             click.echo(

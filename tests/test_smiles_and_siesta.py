@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 
-import pytest
-
 from molbuilder.config.siesta import SiestaConfig
 from molbuilder.smiles import build_from_smiles
 
@@ -14,15 +12,8 @@ from molbuilder.smiles import build_from_smiles
 # --------------------------------------------------------------------- #
 
 
-def _smiles_or_skip(smiles: str, **kw):
-    try:
-        return build_from_smiles(smiles, **kw)
-    except ImportError as e:
-        pytest.skip(f"RDKit not installed: {e}")
-
-
 def test_smiles_benzene_planarity():
-    s = _smiles_or_skip("c1ccccc1", title="benzene")
+    s = build_from_smiles("c1ccccc1", title="benzene")
     assert s.n_atoms == 12
     assert s.elements.count("C") == 6
     assert s.elements.count("H") == 6

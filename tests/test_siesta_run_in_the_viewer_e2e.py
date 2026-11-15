@@ -25,9 +25,6 @@ pytestmark = [
         reason="needs the molbuilder-siesta env + a detectable conda hook"),
 ]
 
-pytest.importorskip("playwright.sync_api")
-pytest.importorskip("flask")
-
 
 @pytest.fixture(scope="module")
 def finished(real_h2_layered):

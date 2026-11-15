@@ -202,8 +202,6 @@ def test_save_endpoint_gates_a_corrupted_blob_without_inventing_an_origin(
     § 6.0), and the retired corner absent (D2)."""
     import json as _json
     import numpy as np
-    import pytest as _pytest
-    _pytest.importorskip("flask")
     from molbuilder.structure import Structure
     from molbuilder.workingcopy_structure import StructureCodec
     sdir = isolated_projects_root / "P" / "structure"

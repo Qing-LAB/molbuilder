@@ -19,9 +19,6 @@ import pytest
 
 pytestmark = pytest.mark.e2e
 
-pytest.importorskip("playwright.sync_api")
-pytest.importorskip("flask")
-
 
 #: A Slack webhook: the URL *is* the credential — whoever holds it can post
 #: into the channel as you, with no second factor — so it must never render

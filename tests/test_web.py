@@ -3,7 +3,7 @@
 Covers the build blueprint's doors (molecule / load / preflight /
 schema), the modify routes, and the form-schema plumbing.  NOT every endpoint: spectra,
 watch, checkpoint, projects and transport are tested in their own
-files.  Skipped cleanly if Flask isn't installed.
+files.
 """
 
 from __future__ import annotations
@@ -55,12 +55,11 @@ def test_build_rna(web_client):
     assert "P" in body["structure"]["elements"]
 
 
-def test_build_smiles_optional(web_client):
+def test_build_smiles(web_client):
     r = web_client.post("/api/build/molecule",
                         json={"kind": "smiles", "input": "c1ccccc1"})
     body = r.get_json()
-    if not body.get("ok"):
-        pytest.skip(f"RDKit not installed: {body.get('error')}")
+    assert body.get("ok"), body
     assert len(body["structure"]["elements"]) == 12
 
 

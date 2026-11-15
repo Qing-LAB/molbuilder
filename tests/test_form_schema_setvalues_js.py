@@ -29,10 +29,6 @@ import textwrap
 import pytest
 
 
-pytest.importorskip("playwright.sync_api")
-pytest.importorskip("flask")
-
-
 @pytest.fixture
 def flask_server():
     """Tiny Flask app that serves the form-schema.js bundle + an

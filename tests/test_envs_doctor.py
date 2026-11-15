@@ -148,8 +148,6 @@ def widget(tmp_path_factory):
     """A small package in a git repository, installed by real pip both ways:
     from the repository, and from a folder standing for an index.  What the
     audit reads is what pip wrote."""
-    pytest.importorskip("setuptools", reason="building a package needs it, "
-                                             "with no network to fetch it")
     root = tmp_path_factory.mktemp("widget")
     env = {**os.environ, "HOME": str(root), "PIP_NO_CACHE_DIR": "1",
            "PIP_CONFIG_FILE": os.devnull, "PIP_DISABLE_PIP_VERSION_CHECK": "1"}

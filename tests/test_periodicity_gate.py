@@ -519,7 +519,6 @@ class TestPeriodicityDoor:
 
     @pytest.fixture
     def client(self):
-        pytest.importorskip("flask")
         from molbuilder.web.app import create_app
         return create_app(config={}).test_client()
 
@@ -832,7 +831,6 @@ class TestLoaderGate:
         Contract: `model/structure-periodicity.md` § 6.0 (the rule; the wire's
         `box_corner`) + § 8.1 (where the gate runs).
         """
-        pytest.importorskip("flask")
         sdir = isolated_projects_root / "P" / "structure"
         sdir.mkdir(parents=True)
         xyz = self._write_pair_stating_no_offset(sdir)
@@ -939,7 +937,6 @@ class TestTabEmitContract:
 
     @pytest.fixture
     def client(self):
-        pytest.importorskip("flask")
         from molbuilder.web.app import create_app
         return create_app(config={}).test_client()
 
@@ -1044,7 +1041,6 @@ class TestTheLoadAnswerIsNotSilent:
         Contract: `model/structure-periodicity.md` § 6.1 clause 6 + § 8.2 ("the
         report has to arrive"); `web/molview.md` § 6.8 for the notice shape.
         """
-        pytest.importorskip("flask")
         from molbuilder.workingcopy_structure import StructureCodec
         sdir = isolated_projects_root / "P" / "structure"
         sdir.mkdir(parents=True)
@@ -1090,7 +1086,6 @@ class TestDoorHygieneAndRemainingOps:
 
     @pytest.fixture
     def client(self):
-        pytest.importorskip("flask")
         from molbuilder.web.app import create_app
         return create_app(config={}).test_client()
 
@@ -1477,7 +1472,6 @@ class TestSiestaNeverReceivesAZeroVolumeCell:
         GOAL: the vacuum and axis-kind edits and the SIESTA deck each refused
         this box in words of their own beside the checker's -- whose sentence
         told a transport axis to add vacuum, where vacuum does not apply."""
-        pytest.importorskip("flask")
         typed = self._flat()
         typed.cell = np.eye(3) * 9.0
         typed.axis_kind = kinds
@@ -1560,7 +1554,6 @@ class TestEveryOpIsChecked:
 
     @pytest.fixture
     def client(self):
-        pytest.importorskip("flask")
         from molbuilder.web.app import create_app
         return create_app(config={}).test_client()
 
@@ -1664,7 +1657,6 @@ class TestARefusedCellIsA400:
 
     @pytest.fixture
     def client(self):
-        pytest.importorskip("flask")
         from molbuilder.web.app import create_app
         return create_app(config={}).test_client()
 

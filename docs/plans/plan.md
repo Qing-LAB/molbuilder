@@ -30,7 +30,7 @@ as they stood.
 
 ## ▶ HANDOVER — where we are, and where to start *(2026-11-10)*
 
-**Where we are: 2.70.11.** F0–F8 and F7a are closed; F9, the tests through
+**Where we are: 2.70.12.** F0–F8 and F7a are closed; F9, the tests through
 the road, has eight releases out (2.67.4–2.67.11) and four steps left (its
 row below). Since 2.67.11 three bodies of work the user put first have run;
 each release is its changelog row and its ledger section
@@ -139,7 +139,8 @@ each release is its changelog row and its ledger section
   harness's copies made one door each (the app serving, a page's
   workspace, MolView's page); 2.70.11, a DOM library for the Node tests,
   installed by the host recipe's opt-in test tooling beside Playwright,
-  and every Node test on the env's own Node.
+  and every Node test on the env's own Node; 2.70.12, one rule for a test
+  that needs the opt-in tooling.
   X-ENG closed with 2.69.68 — its two items that change a generated
   program placed by the user with F10's end-to-end pass.
   **Left, in order**: the page doors and the copies they share (O-STATUS,

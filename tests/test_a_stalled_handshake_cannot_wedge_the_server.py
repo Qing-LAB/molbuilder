@@ -32,8 +32,6 @@ import pytest
 
 pytestmark = pytest.mark.module
 
-cryptography = pytest.importorskip("cryptography")
-
 
 def _self_signed(tmp_path):
     """A throwaway cert/key pair for 127.0.0.1."""

@@ -19,10 +19,6 @@ from __future__ import annotations
 
 import pytest
 
-# The module under test relies on Flask.  Skip the whole file
-# cleanly if Flask isn't available in the test env.
-flask = pytest.importorskip("flask")
-
 
 # --------------------------------------------------------------------- #
 #  Fixtures                                                             #
@@ -675,7 +671,6 @@ class TestTheSignInCheckIsNotEvidence:
 
     @pytest.fixture
     def app_with_auth(self, tmp_path):
-        pytest.importorskip("flask")
         from molbuilder.web.app import create_app
         # A config a server would start on: `create_app` validates a given
         # one (W54 C17).

@@ -16,10 +16,8 @@ from __future__ import annotations
 
 import pytest
 
-pytest.importorskip("playwright.sync_api")
-pytest.importorskip("flask")
 
-from molbuilder.scheduler import Topology                  # noqa: E402
+from molbuilder.scheduler import Topology
 from support.road import declare_bench, described, jobset, one_rank, road_tree
 
 

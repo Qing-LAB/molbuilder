@@ -27,9 +27,8 @@ from __future__ import annotations
 
 import pytest
 
-pytest.importorskip("flask")
 
-from molbuilder.reload_protocol import SUPERVISED_ENV  # noqa: E402
+from molbuilder.reload_protocol import SUPERVISED_ENV
 
 
 def _app(monkeypatch, *, supervised: bool, admins: list[str] | None):

@@ -10,8 +10,6 @@ import json
 
 import pytest
 
-pytest.importorskip("flask")
-
 
 @pytest.fixture
 def client_project(isolated_projects_root, monkeypatch):

@@ -292,8 +292,19 @@ molbuilder dispatches into per-backend conda envs
 ([`installation.md`](?doc=ops/installation.md)), and the test rule follows from
 that: **a test must not require an env to be reshaped to pass.** The whole suite
 runs in the host `molbuilder` env; tests that genuinely need a backend
-(`smoke` needs pyscf, `e2e` needs chromium) are **marked and gated** so they skip
-cleanly when that backend is absent, rather than failing. You design the test to
+(`smoke` needs pyscf) are **marked and gated** so they skip cleanly when that
+backend is absent, rather than failing — and a test that needs the opt-in test
+tooling (Node, the browser) skips by one rule (§ 4, *one rule for missing
+tooling*). **A package the host env requires never skips** *(the user,
+2026-11-14: "flask tests should not skip")*: `host-env.txt`'s `conda` lines --
+Flask, RDKit, Open Babel, ASE, git and the rest, and what they bring with them
+(`cryptography`, under `authlib`) -- are there on every install, so a test
+whose package is missing FAILS, the env broken; a skip would read as green.
+Only an optional package -- its `pip` lines, the UI's PeptideBuilder and
+pubchempy -- or a tool outside the env is skipped for, naming it. A
+structure builder's backend follows the same rule, through one function,
+`support.tooling.needs_backend`: RDKit's is the host env's own and never
+skipped for; X3DNA and AmberTools are tools outside the env. You design the test to
 fit the environment model — you never edit an env to make a test pass (that rule is
 load-bearing elsewhere too).
 
@@ -735,18 +746,36 @@ to react to is *"the real check is elsewhere"*, never *"proves nothing"*.
 > env's own Node (`_node_esm.node()`), whatever else is first on `PATH`.
 >
 > `bash scripts/install-env.sh doctor` shows what you have: the `opt-in:` row
-> for `molbuilder` lists the opt-in packages still absent (not what the two
-> install steps put down -- the browser, the JS packages; a test that needs
-> either skips, naming the command).
+> for `molbuilder` lists the opt-in packages still absent -- not what the two
+> install steps put down, the browser and the JS packages.
 > Neither is needed to RUN molbuilder, and chromium is a large download
 > nobody should pay for by accident — which is why `bootstrap` leaves them
 > out (`envs/recipes.py` records the ruling: a browser-tooling-only env
 > cannot start the app, so e2e runs in the host env or not at all).
 >
+> **ONE RULE FOR MISSING TOOLING** *(the user, 2026-11-14: "unify the
+> mechanism")*: a test that needs the opt-in tooling skips, naming the command
+> that installs it, and the rule lives in one module, `tests/support/
+> tooling.py` — what each tool is, how its presence is found, the one reason.
+> A Node test meets it in the harness's `node()`, the one way any test reaches
+> Node, when the env holds no Node; a browser test meets it in `conftest.py`'s
+> collection hook when the browser plugin (pytest-playwright) is not loaded:
+> every test that asks for one of that plugin's fixtures (`page`, `browser`,
+> `launch_browser`, ... -- `tooling.BROWSER_FIXTURES`, checked against the
+> plugin where it is installed), directly or through a fixture of its own, is
+> marked there, at collection, and so skipped before any of its fixtures --
+> real runs among them -- is set up, the rule's reason the one reported; a name a test parametrizes itself is its own value, not
+> the plugin's. **No test file carries a skip of its own** for either, and
+> none imports Playwright at module level (a test imports `expect` where it
+> uses it), so a machine without the tooling collects every file. What the
+> rule does not check: the plugin present and its browser not downloaded --
+> Playwright then fails, naming its own install step.
+>
 > **Know what a missing tool costs you.** Without the env's `node`, **every
 > Node test skips** — and pytest counts a skip toward a green run, so the
-> suite reports healthy while every one of those modules goes unexercised. A full lane
-> here reads `9,414 collected` and runs about 7,800.
+> suite reports healthy while every one of those modules goes unexercised:
+> `python tools/testrun.py status` lists what did not run, counted by that
+> reason.
 
 
 Most front-end logic is tested **in Node, no browser** — the `*_js.py` tests,
@@ -817,9 +846,11 @@ this, assert the result." Save the browser for what needs the DOM + 3Dmol.
 
 ## 5. The browser tests (Playwright / e2e)
 
-The `*_e2e.py` tests use **Playwright** against a real headless Chromium — the
-name is the gate: a file so named drives a browser or a real engine and skips
-without one; an engine-less road test is tier 1 and named plainly *(2026-10-08,
+The `*_e2e.py` tests use **Playwright** against a real headless Chromium, or a
+real engine — the name sorts them into the slow batch; a test that drives a
+browser skips without the browser plugin by the one rule (§ 4, *one rule for
+missing tooling*: it asks for one of the plugin's fixtures), whatever its file
+is named; an engine-less road test is tier 1 and named plainly *(2026-10-08,
 B8 S4: five such files lost the suffix)*. Each
 starts the app on a **live server** through `support.live_server.serve`, which
 stands on the test's own projects tree: a module's server asks

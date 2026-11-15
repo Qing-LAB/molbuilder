@@ -47,7 +47,6 @@ from __future__ import annotations
 import contextlib
 import json
 import subprocess
-import sys
 import tempfile
 from pathlib import Path
 
@@ -213,15 +212,13 @@ def tab_storage(seed=None) -> str:
 
 
 def node() -> str:
-    """THE NODE EVERY NODE TEST RUNS ON: the env's own -- the host recipe's
-    opt-in ``nodejs`` (`ops/env-framework.md` § 3.2a) -- under the prefix of
-    the env this suite runs in, whatever else is first on ``PATH``.  Absent, a test skips, naming the command that installs it
-    (`process/testing.md` § 4)."""
-    found = Path(sys.prefix) / "bin" / "node"
-    if not found.exists():
-        pytest.skip(f"no Node in this env ({sys.prefix}): bash "
-                    "scripts/install-env.sh install molbuilder "
-                    "--with-dev-tools --yes")
+    """THE NODE EVERY NODE TEST RUNS ON: the env's own (`support.tooling`),
+    whatever else is first on ``PATH``.  Absent, the test skips by the one
+    rule for missing tooling (`process/testing.md` § 4)."""
+    from support import tooling
+    found = tooling.node()
+    if found is None:
+        pytest.skip(tooling.missing(tooling.NODE))
     return str(found)
 
 

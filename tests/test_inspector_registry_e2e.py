@@ -32,8 +32,6 @@ pytestmark = [
                "detectable conda hook"),
 ]
 
-pytest.importorskip("playwright.sync_api")
-pytest.importorskip("flask")
 
 ROOT = Path(__file__).resolve().parents[1]
 PRESENTERS = tomllib.loads(
@@ -256,8 +254,6 @@ def test_the_dropdown_files_it_under_its_heading(registry_answers, row):
     `resultCategory` reading ``meta.engine`` or a fixed noun instead of the
     served ``engine_words`` and ``noun``."""
     assert registry_answers["heading"][row["name"]] == row.get("heading")
-
-
 
 
 # --------------------------------------------------------------------- #

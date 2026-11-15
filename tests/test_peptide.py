@@ -1,7 +1,9 @@
 """Peptide builder smoke tests.
 
-The protonation tests need OpenBabel or RDKit; they skip if neither is
-available.
+The builder needs PeptideBuilder, an optional package of the host env (a
+`pip` line of `host-env.txt`): the file skips without it, naming it.  The
+protonation tests need Open Babel or RDKit, which the host env requires, so
+they never skip (`process/testing.md` § 3).
 """
 
 from __future__ import annotations
@@ -35,8 +37,6 @@ def test_full_protonation_keeps_heavy_atom_counts(heavy_only_arndc):
     """build_peptide(...) with default add_hydrogens=True should keep
     the same heavy-atom counts but add explicit Hs."""
     s_full = build_peptide("ARNDC")
-    if "H" not in s_full.elements:
-        pytest.skip("no protonation backend installed (openbabel/rdkit)")
     n_h = s_full.elements.count("H")
     # 35, derivable: backbone 12 + side chains 23 (Ala 3, Arg 10, Asn 4,
     # Asp 3, Cys 3).  NOT asserted as == 35, and the reason is the point:

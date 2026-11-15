@@ -65,7 +65,6 @@ def pdb_under_root(isolated_projects_root):
 
 @pytest.fixture
 def web(pdb_under_root):
-    pytest.importorskip("flask")
     from molbuilder.web.app import create_app
     app = create_app(config={})
     return app.test_client()

@@ -24,14 +24,7 @@ alone because the unhandled rejection is async).
 
 from __future__ import annotations
 
-
 import pytest
-
-
-# Skip cleanly when Playwright / pytest-playwright / chromium aren't
-# installed.  Mirrors the test_molbuilder_e2e.py pattern.
-pytest.importorskip("playwright.sync_api")
-pytest.importorskip("flask")
 
 
 # --------------------------------------------------------------------- #

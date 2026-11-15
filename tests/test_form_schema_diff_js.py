@@ -28,9 +28,6 @@ from pathlib import Path
 import pytest
 
 
-pytest.importorskip("playwright.sync_api")
-pytest.importorskip("flask")
-
 ROOT = Path(__file__).resolve().parents[1]
 STATIC = ROOT / "molbuilder" / "web" / "static"
 

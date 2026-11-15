@@ -20,9 +20,6 @@ from __future__ import annotations
 
 import pytest
 
-pytest.importorskip("playwright.sync_api")
-pytest.importorskip("flask")
-
 
 # --------------------------------------------------------------------- #
 #  A real server, on its own port, with no login                        #

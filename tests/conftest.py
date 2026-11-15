@@ -36,7 +36,7 @@ import pytest
 # the person's real config, breaking every real run on their machine; and
 # module fixtures, collection-time checks and child processes all ran before
 # or outside the per-test isolation further below.
-import sys as _sys  # noqa: E402
+import sys as _sys
 # `support` is found beside this file's real place: a suite that links this
 # conftest in (tools/testrun.py's own tests do) has no `support` of its own.
 _sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
@@ -853,7 +853,8 @@ def deprotonated_diester() -> Structure:
 
 @pytest.fixture
 def web_client():
-    """Flask test client; skips the test if Flask isn't installed.
+    """Flask test client -- Flask is a required package of the host env, so
+    a test whose Flask is missing fails rather than skips.
 
     Passes ``config={}`` explicitly so ``create_app`` takes its sections
     (auth, admin, rate_limit) from no file at all -- the developer's own
@@ -863,7 +864,6 @@ def web_client():
     or otherwise non-default app build their own fixture and pass
     the matching ``config`` dict.
     """
-    pytest.importorskip("flask")
     from molbuilder.web.app import create_app
     # rate_limit.enabled=false in the default test client because
     # several test files fire 60+ requests within the rolling
@@ -1250,22 +1250,26 @@ def pytest_collection_modifyitems(config, items):
     Its second half, once every other hook has ordered the tests, keeps
     each file whole and in order (`testing.md` § 6.1a, rule 1).
     """
-    import importlib.util as _ilu
     import pytest as _pt
+    from support import tooling
 
-    # THE SKIP BELONGS WITH THE MARKER, not in each file.  Every `*_e2e.py`
-    # drives headless chromium through pytest-playwright's `page` fixture,
-    # which only exists when that plugin is installed -- it is opt-in
-    # (`install-env.sh install molbuilder --with-dev-tools`), so on a plain
-    # install it is absent, and a file without the skip ERRORS with "fixture
-    # 'page' not found", which reads as a broken suite rather than absent
-    # tooling.  This hook already knows which files are e2e, so it is the one
-    # place that can apply the rule to all of them, including the next one.
-    _has_playwright = _ilu.find_spec("playwright") is not None
-    _no_playwright = _pt.mark.skip(
-        reason="e2e needs pytest-playwright + chromium; install them with "
-               "`bash scripts/install-env.sh install molbuilder "
-               "--with-dev-tools --yes`")
+    # THE ONE RULE FOR MISSING TOOLING (`testing.md` § 4), for a test that
+    # drives a browser: it asks for a fixture of the browser plugin
+    # (pytest-playwright -- `page`, `browser`, `launch_browser`, ...), which
+    # exist only when that opt-in plugin is loaded, so on a plain install such
+    # a test would ERROR with "fixture 'page' not found" -- a broken suite, to
+    # a reader, rather than absent tooling -- and only after its other
+    # fixtures, real runs among them, were set up.  Marked here, at
+    # collection, it skips before any of them.  Keyed on the fixtures, not
+    # the file's name: a browser test under any name is caught, an engine
+    # test that drives no browser is not skipped for one.  No file carries a
+    # skip of its own.
+    # A `skipif`, not a `skip`: pytest weighs every `skipif` before any
+    # `skip`, and a file's own `skipif` (an engine it needs) must not speak
+    # first.
+    _no_browser = (None if tooling.browser_plugin(config)
+                   else _pt.mark.skipif(True, reason=tooling.missing(
+                       tooling.BROWSER)))
 
     in_worker = hasattr(config, "workerinput")
     engine_files = {item.nodeid.split("::", 1)[0] for item in items
@@ -1278,8 +1282,11 @@ def pytest_collection_modifyitems(config, items):
         fn = item.fspath.basename
         if fn.endswith("_e2e.py") or "_e2e_" in fn:
             item.add_marker(_pt.mark.e2e)
-            if not _has_playwright:
-                item.add_marker(_no_playwright)
+        if _no_browser is not None and tooling.browser_fixtures_asked(item):
+            # The item's own mark: pytest weighs it before its file's, so its
+            # reason is the one a run reports -- the tooling is the first
+            # thing to put right.
+            item.add_marker(_no_browser)
         if "_smoke" in fn or "_smoke_l4" in fn:
             item.add_marker(_pt.mark.integration)
             item.add_marker(_pt.mark.smoke)

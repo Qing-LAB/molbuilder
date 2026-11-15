@@ -26,9 +26,6 @@ from support.road import ladder_edited
 from support.sidebar import WAIT_MS, history_shown
 from support.task_setup_page import file_text, task_setup_on, wait_for_file
 
-pytest.importorskip("playwright.sync_api")
-pytest.importorskip("flask")
-
 
 @pytest.fixture
 def flask_server(isolated_projects_root):
