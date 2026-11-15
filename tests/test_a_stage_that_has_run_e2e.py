@@ -24,10 +24,11 @@ from pathlib import Path
 import pytest
 
 from _road import conda_hook, env_available
+from support.real_runs import (copy_of, makes_a_real_run, road_at,
+                               stage_status, taken, typed)
 from support.road import read_request, run_road_case, write_request
 
 pytestmark = [
-    pytest.mark.engine,
     pytest.mark.skipif(
         not (conda_hook().is_file() and env_available("molbuilder-siesta")),
         reason="needs the molbuilder-siesta env + a detectable conda hook"),
@@ -43,7 +44,7 @@ def _rows(on: str) -> dict:
     return dict(argvalues=rows, ids=[c["name"] for c in rows])
 
 
-@pytest.fixture(scope="module")
+@makes_a_real_run("module")
 def short_of_its_relaxation(real_co2_vibration, tmp_path_factory):
     """A vibration with a run whose relaxation is not done, and one whose is:
     a copy of the shared run, its run card given a wall already passed
@@ -53,8 +54,6 @@ def short_of_its_relaxation(real_co2_vibration, tmp_path_factory):
     Said by the one status door: run-1 is the newest and its relaxation is not
     done."""
     from molbuilder.siesta.vibration_phases import RELAX
-    from support.real_runs import (road_at, taken, typed, copy_of,
-                                   stage_status)
 
     def walled(c):
         request = read_request(c.bundle)
@@ -77,7 +76,6 @@ def _row(case, run, tmp_path, monkeypatch) -> None:
     """``case`` on a copy of ``run`` of its own, the one door pointed at the
     tree the run was made in."""
     from conftest import point_the_one_door_at
-    from support.real_runs import copy_of
     point_the_one_door_at(run.tree.parent, monkeypatch.setenv)
     monkeypatch.chdir(run.tree.parent)
     copy = copy_of(run, re.sub(r"\W+", "-", case["name"])[:60], lambda _c: None)

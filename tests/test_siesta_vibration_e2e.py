@@ -62,12 +62,14 @@ import numpy as np
 import pytest
 
 from _road import conda_hook, env_available
-from support.real_runs import notified, told
+from support.real_runs import (RealRun, co2_vibration, copy_of,
+                               makes_a_real_run, notified, on_the_road,
+                               road_at, stage_status, stopped_by_its_line,
+                               swept, taken, told, typed)
 from support.road import set_by_the_person
 from support.road import CO2, CO2_HELD_FIRST, all_written, group_words
 
 pytestmark = [
-    pytest.mark.engine,
     pytest.mark.skipif(
         not (conda_hook().is_file() and env_available("molbuilder-siesta")),
         reason="needs the molbuilder-siesta env + a detectable conda hook"),
@@ -86,7 +88,7 @@ _PICKED_MODES = [3, 4]
 _OPTICAL_CALLS = ("f000", "f001", "f002", "f003", "f004")
 
 
-@pytest.fixture(scope="module")
+@makes_a_real_run("module")
 def unticked(real_co2_vibration, tmp_path_factory):
     """The box unticked: a copy of the shared run's calculation
     (`support.real_runs.copy_of`), on which, in order -- `summarize` asked
@@ -95,7 +97,6 @@ def unticked(real_co2_vibration, tmp_path_factory):
     `engines/vibration.md` § 5.9), its `freq_half` taking `freq`'s
     relaxation over.  What each step answered is written down by its
     name."""
-    from support.real_runs import road_at, typed, copy_of, swept
 
     def on_the_run(run):
         with road_at(run.tree.parent, tmp_path_factory):
@@ -106,13 +107,11 @@ def unticked(real_co2_vibration, tmp_path_factory):
     return copy_of(real_co2_vibration, "unticked", on_the_run)
 
 
-@pytest.fixture(scope="module")
+@makes_a_real_run("module")
 def ticked(tmp_path_factory):
     """The box ticked, on the road: the template's `already_relaxed` true
     and its temperature 350 K, `freq` prepared and launched -- one run, its
     `fc` call alone -- each answer written down."""
-    from support.real_runs import (RealRun, on_the_road, taken,
-                                   co2_vibration)
     with on_the_road(tmp_path_factory, "ticked") as tree:
         run = RealRun(tree=tree, bundle=co2_vibration(tree))
         set_by_the_person(run.bundle, {"already_relaxed": True,
@@ -154,7 +153,6 @@ def _the_run(run, stage: str = "freq", n: int = 0):
     door (`support.real_runs.stage_status`), which reads the stage's newest
     run, so ``n`` must be it: finished, every call done and its finish
     ended; and its folder."""
-    from support.real_runs import stage_status
     status = stage_status(run.bundle, stage)
     folder = run.attempt(stage, n)
     assert status.attempt == folder.name, (
@@ -1525,7 +1523,7 @@ def test_a_displacement_sweep_compares_every_stages_force_constants(unticked):
     assert rec2["tolerance_cm1"] == 1e-6
 
 
-@pytest.fixture(scope="module")
+@makes_a_real_run("module")
 def stopped(real_co2_vibration, tmp_path_factory):
     """THE PERSON STOPS THE RUN ONCE ITS FORCE CONSTANTS AND ITS FIRST
     OPTICAL CALL ENDED (`engines/vibration.md` § 5.11 § 6): a copy of the
@@ -1539,8 +1537,6 @@ def stopped(real_co2_vibration, tmp_path_factory):
     (``stopped_index``).  Each road launched after the stop is a copy of
     this one."""
     from molbuilder.siesta.vibration_phases import OPTICAL
-    from support.real_runs import (road_at, stopped_by_its_line, taken,
-                                   copy_of, stage_status)
     from support.road import until
 
     def stop(c):
@@ -1572,12 +1568,11 @@ def stopped(real_co2_vibration, tmp_path_factory):
     return copy_of(real_co2_vibration, "stopped", stop)
 
 
-@pytest.fixture(scope="module")
+@makes_a_real_run("module")
 def stopped_after_fc(stopped, tmp_path_factory):
     """THE STOPPED RUN LAUNCHED AGAIN (:func:`stopped`): a copy of it, `freq`
     launched again warm, in the foreground -- run-2 -- the stop's status and
     index kept beside it."""
-    from support.real_runs import road_at, typed, copy_of
 
     def warm(c):
         c.stopped, c.stopped_index = stopped.stopped, stopped.stopped_index
@@ -1706,7 +1701,7 @@ def test_launched_again_warm_after_a_stop_runs_only_the_optical_calls(
     _common_assertions(d, optical=True)
 
 
-@pytest.fixture(scope="module")
+@makes_a_real_run("module")
 def failed_parts(stopped, tmp_path_factory):
     """THE STOPPED RUN LAUNCHED AGAIN UNDER A WALL ALREADY PASSED
     (:func:`stopped`): a copy of it, its run card given a wall of 20 s
@@ -1718,7 +1713,6 @@ def failed_parts(stopped, tmp_path_factory):
     (`running-a-job.md` § 3.6; `siesta.md` § 8.9) -- every call it runs
     ending alike, not done."""
     from support.road import read_request, write_request
-    from support.real_runs import road_at, taken, typed, copy_of
 
     def walled(c):
         request = read_request(c.bundle)
@@ -1797,7 +1791,6 @@ def test_a_failed_part_is_said_at_once_and_once_per_reason(failed_parts):
     # up.`"; 2.65.1: the ending keeps SIESTA's own line).  THE SILENT
     # FAILURE: a call stopped at its wall read as an SCF failure, or failed
     # with no cause named.
-    from support.real_runs import stage_status
     status = stage_status(run.bundle, "freq")
     assert status.attempt == run.attempt("freq", 2).name, status.attempt
     by_rel = {p["rel"]: p for p in status.points}

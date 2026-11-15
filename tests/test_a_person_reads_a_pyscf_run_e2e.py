@@ -19,7 +19,6 @@ LOG_FACTS = ("frozen_atoms", "convergence_targets", "scf_criteria",
              "scf_residuals")
 
 pytestmark = [
-    pytest.mark.engine,
     pytest.mark.skipif(
         not (conda_hook().is_file() and env_available("molbuilder-pySCF")),
         reason="needs the molbuilder-pySCF env + a detectable conda hook"),

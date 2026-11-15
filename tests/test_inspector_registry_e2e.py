@@ -24,7 +24,6 @@ from support.sidebar import WAIT_MS
 #: THE ROWS ARE ASKED OF REAL RUNS (`support/real_runs.py`): SIESTA's and
 #: PySCF's.
 pytestmark = [
-    pytest.mark.engine,
     pytest.mark.skipif(
         not (conda_hook().is_file() and env_available("molbuilder-siesta")
              and env_available("molbuilder-pySCF")),

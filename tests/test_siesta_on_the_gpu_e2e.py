@@ -23,7 +23,6 @@ from _road import conda_hook, env_available, gpu_visible
 
 
 pytestmark = [
-    pytest.mark.engine,
     pytest.mark.skipif(
         not (conda_hook().is_file() and env_available("molbuilder-siesta-gpu")
              and gpu_visible()),

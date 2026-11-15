@@ -19,8 +19,6 @@ from _road import conda_hook, env_available
 
 CONDA_SH = conda_hook()
 
-pytestmark = pytest.mark.engine
-
 _needs = {env: pytest.mark.skipif(
     not (CONDA_SH.is_file() and env_available(env)),
     reason=f"needs the {env} env + a detectable conda hook")

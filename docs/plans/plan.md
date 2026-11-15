@@ -140,25 +140,33 @@ each release is its changelog row and its ledger section
   workspace, MolView's page); 2.70.11, a DOM library for the Node tests,
   installed by the host recipe's opt-in test tooling beside Playwright,
   and every Node test on the env's own Node; 2.70.12, one rule for a test
-  that needs the opt-in tooling.
+  that needs the opt-in tooling; 2.70.13, the engine tests named by the
+  fixture that makes their run, never by hand beside it (TF1).
   X-ENG closed with 2.69.68 — its two items that change a generated
   program placed by the user with F10's end-to-end pass.
-  **Left, in order**: the page doors and the copies they share (O-STATUS,
-  O-FIND, O-STATE, O-WORDS, O-KEYS's rest with X-UI and X-PLOT; O-TESTS),
-  worked as one stretch — each item checked by its own tests, the review,
-  the record and the push once for the stretch (the user, 2026-11-13).
+  **Left, in order**: the page doors and the copies they share, worked as
+  one stretch — each item checked by its own tests, the review, the record
+  and the push once for the stretch (the user, 2026-11-13): O-TESTS first,
+  taken first on the user's word (2026-11-14, 2.70.2) — the test
+  framework's own copies, one owning door per release (TF2–TF10; the user
+  asked for the framework's check on 2026-11-14: "framework level fix ...
+  redundant/duplicated support code/design"), then the page tests on a real
+  DOM (jsdom), then the rest of the finish-line review's O-TESTS row, that
+  order mine: the page tests will use the doors these make; then O-STATUS,
+  O-FIND, O-STATE, O-WORDS, O-KEYS's rest with X-UI and X-PLOT.
 
 **Last checked** (2.69.21): the fast batch, 5,959 passed; every e2e test,
 744 passed, on the release's final code (a change every road passes through,
 said first).
 
-**What runs next**: the overlap review's left rows, in that order; then the
+**What runs next**: the stretch above (*Left, in order*); then the
 UI review's two left items; then F9's four steps — 2.67.12, the page-side test
 doors (the JS stand-ins fed from the server's own composer among them),
 2.67.13, the tests owed, the dead-code release, F9's closing review rounds;
-then F10, F11, F12. **Waiting on the user**: nothing now. F10's first full
-e2e pass and F12's walk of the three roads in the browser start only on the
-user's word, said to them first.
+then F10, F11, F12. **Waiting on the user**: nothing now; TF5 brings one
+decision when it is reached (a test's own projects tree by default). F10's
+first full e2e pass and F12's walk of the three roads in the browser start
+only on the user's word, said to them first.
 
 **The test suite's guards** keep every test off the person's machine
 ([`process/testing.md`](?doc=process/testing.md) § 2b): test code loads only

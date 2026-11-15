@@ -59,11 +59,14 @@ from _road import conda_hook, env_available
 from molbuilder.parse.engines import siesta_grammar as _G
 from molbuilder.transport.stages import TRANSPORT_STAGES
 from support.machines import SLURM
+from support.real_runs import (RealRun, Said, copy_of, makes_a_real_run,
+                               notified, on_the_road, point_row, road_at,
+                               stage_status, stopped_by_its_line, taken, told,
+                               typed)
 from support.road import (all_written, molbuilder, one_rank,
                           set_by_the_person)
 
 pytestmark = [
-    pytest.mark.engine,
     pytest.mark.skipif(
         not (conda_hook().is_file() and env_available("molbuilder-siesta")),
         reason="needs the molbuilder-siesta env + a detectable conda hook"),
@@ -285,15 +288,13 @@ _ANOTHER_INPUT = [
 ]
 
 
-@pytest.fixture(scope="module")
+@makes_a_real_run("module")
 def junction(tmp_path_factory):
     """The relaxation cited and the transport calculation run on it: a
     `RealRun` of the transport calculation, with ``cite``, the relaxation's
     citation, ``cited_before`` -- the cited run's files as the relaxation
     left them -- and every answer the road gave, by step."""
     from molbuilder.web.app import create_app
-    from support.real_runs import (RealRun, Said, copy_of, on_the_road,
-                                   taken, typed)
     from support.road import (described, description_with_overrides,
                               group_words, structure_saved)
 
@@ -409,7 +410,6 @@ def junction(tmp_path_factory):
         taken(run, "status device", "status", "device")
         typed(run, "launch device again", "launch", "task", "--stage",
               "device", "--mode", "direct", "--foreground", "--yes")
-        from support.real_runs import stage_status
         run.device_runs_after_refusal = stage_status(run.bundle,
                                                      "device").attempts
         taken(run, "launch device cold", "launch", "task", "--stage",
@@ -578,7 +578,6 @@ def junction(tmp_path_factory):
         from support.road import read_request, write_request
 
         def device_runs(c):
-            from support.real_runs import stage_status
             return " ".join(str(n) for n in
                             stage_status(c.bundle, "device").attempts)
 
@@ -615,7 +614,6 @@ def junction(tmp_path_factory):
         # once TBtrans states a share done, the jobs launched from here
         # asked (`job-system.md` § 6.0a), the run stopped with the line its
         # launch printed and let end, and the jobs asked twice more.
-        from support.real_runs import stopped_by_its_line
         from support.road import until
         from support.replay import output_lines
 
@@ -649,7 +647,6 @@ def junction(tmp_path_factory):
         # once its 0 V point is done -- a point takes some 15 s, so the next
         # is not -- then launched again warm.
         def walk_stopped(c):
-            from support.real_runs import point_row, stage_status
             ran = stage_status(c.bundle, "device").attempts
             launched = taken(c, "launch device cold", "launch", "task",
                              "--stage", "device", "--mode", "direct",
@@ -846,7 +843,6 @@ def _a_walk_prepared_for_a_queue(tree: Path, cite: str):
                                              read_environment,
                                              write_environment)
     from molbuilder.task import of as task_of
-    from support.real_runs import RealRun, typed
     from support.road import (described, group_words, read_request,
                               write_request)
     from molbuilder.config_dir import ensure_private_dir
@@ -1390,7 +1386,6 @@ def _the_decks_a_person_sets(tree, cite: str, client):
     shared panel offers set alone in the template of a copy of it
     (`support.real_runs.copy_of`), and with each value a rung's tab offers
     set alone on it (the rows below)."""
-    from support.real_runs import RealRun, taken
     from support.road import described, group_words
     # AT A VOLTAGE AS WELL AS AT ZERO, each its own device run: TranSIESTA
     # reads its bias window only under bias (`engines/transport.md` § 6.1),
@@ -1454,7 +1449,6 @@ def _set_on_its_tab(probe, client, unset: str, rung: str, name: str):
     run setting, the run card's (`execution/job-request.md` § 2) -- and the
     rung's group prepared again: ``{was, value, saved, said, decks}``, the
     decks' texts as prep wrote them."""
-    from support.real_runs import typed
     from support.road import group_words, read_request, save_both
     task = json.loads(unset)
     _item, was, value = _another_than_runs(probe, rung, name, task)
@@ -1543,7 +1537,6 @@ def _set_in_the_template(probe, name: str):
     § 3.8.2), every group prepared again: ``{was, value, said, decks}``,
     the decks of every rung that reads the item (`template.reads`)."""
     from molbuilder.template import catalogue, one, reads
-    from support.real_runs import copy_of, typed
     from support.road import group_words
     task = json.loads((probe.bundle / "task.json").read_text())
     item = one(catalogue(), name, engine="siesta")
@@ -1966,7 +1959,6 @@ def test_launched_cold_every_point_runs_again(junction):
     FAILURES: a done point taken over by a launch the person asked to
     compute again; a cold run recorded as continuing from the last."""
     from molbuilder.task import of as task_of
-    from support.real_runs import point_row, stage_status
     label = task_of(junction.bundle).label
     device = stage_status(junction.bundle, "device")
     assert device.attempt == "run-1", device.attempt
@@ -2046,7 +2038,6 @@ def test_launched_again_warm_it_takes_the_done_points_over(junction):
     MUTATION THIS MUST FAIL AGAINST: the warm launch taking nothing over
     (the 0 V point recomputed, its start the seed's density)."""
     from molbuilder.runs import folder_answer
-    from support.real_runs import point_row, stage_status
     c = junction.walk_stopped
     # THE STOP, as the walk's premise needs it: after the first point,
     # before the second.
@@ -2105,7 +2096,6 @@ def test_the_transmission_takes_the_devices_newest_run_whole(junction):
     """Its first launch gathers from the device's newest run, and says
     which (`job-system.md` § 6.0, step 1)."""
     from molbuilder.task import of as task_of
-    from support.real_runs import point_row, stage_status
     label = task_of(junction.bundle).label
     _said(junction, "launch transmission", "04_device/run-1")
     # EACH POINT'S DEVICE INPUT, from that run at its own voltage -- never
@@ -2310,7 +2300,6 @@ def test_a_points_run_panel_says_how_its_run_was_launched(junction):
     status asked of the run's folder (`runs.folder_answer`)."""
     from molbuilder import runs
     from molbuilder.calculation import register_readers
-    from support.real_runs import stage_status
     register_readers()
     run = junction.from_pair
     gathered = set(stage_status(run.bundle, "device").gathered)
@@ -2456,7 +2445,6 @@ def test_a_run_of_points_reports_as_one_run(junction, calc, stage, n,
     last round, and every message the run's count.  The silent failures: a
     `start` and a `finish` per point (six of each on a frame set), a
     round's numbers not the record's."""
-    from support.real_runs import notified, told
     run = getattr(junction, calc) if calc else junction
     assert notified(run, stage, n) == ["start", "milestone", "finish"]
     rec = _record(run)
@@ -2555,8 +2543,6 @@ def test_a_failed_point_is_said_once_per_reason_and_its_round_by_the_milestone(
     words, shown by `status`).  The silent failures: a message per failed
     point, a round never said because no point of it was done, a run said
     finished; a point said failed with nothing of what TBtrans said."""
-    from support.real_runs import notified, told
-    from support.real_runs import stage_status
     c = junction.refused
     n = stage_status(c.bundle, "transmission").attempts[-1]
     index, rows = _run_index(c, "transmission", n)
@@ -2623,7 +2609,6 @@ def test_a_device_point_that_finishes_unconverged_is_walked_on_and_said_once(
     converged (`job-system.md`, rule 4: one door)."""
     from molbuilder.calculation import open as open_calculation
     from molbuilder.jobset.runstatus import every_run
-    from support.real_runs import notified, stage_status, told
     c = junction.unconverged
     device = stage_status(c.bundle, "device")
     n = device.attempts[-1]
@@ -2661,7 +2646,6 @@ def test_a_voltage_that_does_not_finish_ends_its_frame_and_the_run_once(
     finish that never comes, waiting on a point the walk will not run; a
     count that disagrees with `status`; a point said failed with nothing of
     why SIESTA stopped it."""
-    from support.real_runs import notified, point_row, stage_status, told
     c = junction.aborted
     device = stage_status(c.bundle, "device")
     n = device.attempts[-1]
@@ -2706,7 +2690,6 @@ def test_a_point_the_ended_walk_never_reached_reads_not_run_everywhere(
     from molbuilder.transport.datafile import read_data_file
     from molbuilder.transport.export import export
     from molbuilder.transport.record import collect_record
-    from support.real_runs import point_row, stage_status
     c = junction.aborted
     device = stage_status(c.bundle, "device")
     never = point_row(device, _BIAS[1])
@@ -2745,7 +2728,6 @@ def test_a_stopped_walk_says_no_finish_and_its_warm_launch_one(junction):
     takes over listed as taken over in its index, and its `finish` saying
     the round it walked.  The silent failures: a stopped walk said
     finished, a taken-over point said not done."""
-    from support.real_runs import notified, stage_status, told
     c = junction.walk_stopped
     ended = junction.walk_ended
     stopped = ended.attempts[-1]
@@ -3111,7 +3093,6 @@ def test_an_export_reads_no_data_file_and_says_what_is_missing(
     from molbuilder.parse.engines.tbtrans_nc import data_files, digest_of
     from molbuilder.task import of as task_of
     from molbuilder.transport.datafile import read_data_file
-    from support.real_runs import copy_of
     run = copy_of(junction.unread, "exported", lambda c: None)
     label = task_of(run.bundle).label
     data = [data_files(_point(run, "transmission", v), label)["unpolarized"]
@@ -3236,7 +3217,6 @@ def test_a_scripts_parse_keeps_a_reading_that_states_both_indices(
                                                      kept_state)
     from molbuilder.postprocess import parse
     from molbuilder.task import of as task_of
-    from support.real_runs import copy_of
     run = copy_of(junction.unread, "parsed", lambda c: None)
     label = task_of(run.bundle).label
     data = data_files(_point(run, "transmission", _BIAS[0]),
@@ -4310,7 +4290,7 @@ def test_the_results_tab_opens_a_transmission_folder_at_its_point(
 _WIDER = (-3.0, 3.0)
 
 
-@pytest.fixture(scope="module")
+@makes_a_real_run("module")
 def reused(junction, tmp_path_factory):
     """Calculations that reuse the finished one, `P/transport/T`, each made
     on the road as a person makes it (`engines/transport.md` § 2a.16): the
@@ -4329,7 +4309,6 @@ def reused(junction, tmp_path_factory):
     calculation reused.  And what a folder that cannot be reused is refused
     with, a set whose frame 0 is another junction among them."""
     from molbuilder.web.app import create_app
-    from support.real_runs import RealRun, Said, road_at, taken, typed
 
     finished = "P/transport/T"
     out = {}
@@ -4662,7 +4641,6 @@ def _copied_in(plan: str) -> list:
 def _runs_of(made, stage):
     """Every run of ``stage``, oldest first, as the status door lists them,
     each its folder (`RealRun.attempt`)."""
-    from support.real_runs import stage_status
     return [made.attempt(stage, n)
             for n in stage_status(made.bundle, stage).attempts]
 
@@ -4752,7 +4730,6 @@ def test_a_question_the_finished_results_answer_is_copied_in(
     from molbuilder.runs import folder_answer
     from molbuilder.task import of as task_of
     from molbuilder.transport.stages import TRANSPORT_STAGES
-    from support.real_runs import stage_status
     made, theirs = reused[name], reused[finished]
     bare = made.said["prep bare"].output
     assert _copied_in(bare) == [1, 2, 3], bare
@@ -5106,7 +5083,6 @@ def test_a_sharing_points_round_says_the_records_conductance(reused, which):
     from molbuilder.jobset.naming import stage_home
     from molbuilder.task import of as task_of
     from molbuilder.transport.run_words import point_fact
-    from support.real_runs import notified, told
     c = reused[which]
     assert notified(c, "transmission", 0) == ["start", "milestone", "finish"]
     rec = _record(c)
@@ -5302,7 +5278,6 @@ def test_a_launched_groups_run_card_change_is_prepared_again_for_its_request(
     from molbuilder.calculation import open as open_calculation
     from molbuilder.jobset.prepared_with import RUN_CARD
     from molbuilder.jobset.runstatus import jobset_status
-    from support.real_runs import RealRun, copy_of, stage_status
     from support.road import read_request, write_request
 
     def more_ranks(copy):
@@ -5332,7 +5307,6 @@ def test_a_rung_of_points_changed_after_its_prep_is_said_by_status(reused):
     points with nothing saying so."""
     from molbuilder.calculation import open as open_calculation
     from molbuilder.jobset.runstatus import jobset_status
-    from support.real_runs import stage_status
     bundle = reused["edited"].bundle
     said = stage_status(bundle, "transmission").changed
     assert any(d.said.startswith("transmission_n_points: ")

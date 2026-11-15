@@ -71,7 +71,9 @@ in), its structure (`support.road.structure_saved`) and the calculation
 road's H2 optimization, :func:`h2_optimization`), each command written
 down (:func:`typed`; :func:`taken`, which must succeed), and a run a launch
 left in the background, waited for (:func:`left_to_end`) or stopped as its
-launch said (:func:`stopped_by_its_line`).
+launch said (:func:`stopped_by_its_line`).  A fixture that runs the engine
+so is declared to (:func:`makes_a_real_run`), which puts every test asking
+for it among the engine tests (`testing.md` § 6.1a).
 """
 from __future__ import annotations
 
@@ -185,6 +187,22 @@ def point_row(status, bias_v: float, frame=None) -> dict:
                 if p["bias_v"] == bias_v and p["frame"] == frame)
 
 
+def makes_a_real_run(scope: str):
+    """Declares a fixture that makes a real run -- each of the session's in
+    `conftest.py`, and a module's own made down this road: a test asking
+    for it, directly or through another fixture, runs an engine, and the
+    collection hook marks it so (`testing.md` § 6.1a, rule 2)."""
+    def declared(fixture_function):
+        fixture_function.makes_a_real_run = True
+        return pytest.fixture(scope=scope)(fixture_function)
+    return declared
+
+
+def declared_to_make_a_real_run(fixture_function) -> bool:
+    """Was ``fixture_function`` declared by :func:`makes_a_real_run`?"""
+    return getattr(fixture_function, "makes_a_real_run", False)
+
+
 def _engine_here(engine: str = "siesta") -> bool:
     from _road import conda_hook, env_available
     return conda_hook().is_file() and env_available(_ENGINES[engine])
@@ -208,8 +226,9 @@ def road_at(where: Path, tmp_path_factory, *, engine: str = "siesta"):
     it, and the real ``engine`` on the road (`_road.live_siesta`,
     `_road.live_pyscf`); the process environment as it was, after.
 
-    CALLED FROM A MODULE'S OR THE SESSION'S FIXTURE, never from a test's
-    body: there the suite's own stand-in conda stands first on PATH
+    CALLED FROM A MODULE'S OR THE SESSION'S FIXTURE, declared to make a real
+    run (:func:`makes_a_real_run`), never from a test's body: there the
+    suite's own stand-in conda stands first on PATH
     (`conftest.product_toolchain_is_the_suites_own`), the engine's conda
     hook is not found beside it, and the run is skipped."""
     from _pytest.monkeypatch import MonkeyPatch

@@ -24,10 +24,11 @@ from pathlib import Path
 import pytest
 
 from _road import conda_hook, env_available
+from support.real_runs import (h2_optimization, makes_a_real_run, on_the_road,
+                               stage_status)
 from support.road import jobset, molbuilder
 
 pytestmark = [
-    pytest.mark.engine,
     pytest.mark.skipif(
         not (conda_hook().is_file() and env_available("molbuilder-siesta")),
         reason="needs the molbuilder-siesta env + a detectable conda hook"),
@@ -47,12 +48,11 @@ def _ledger(bundle: Path):
     return ledger.read(bundle)
 
 
-@pytest.fixture(scope="module")
+@makes_a_real_run("module")
 def road(tmp_path_factory):
     """Two calculations: one sent as a sequence run here and waited on;
     one sent in the background, looked at while it runs, its group launched
     alone refused, and then stopped."""
-    from support.real_runs import h2_optimization, on_the_road
     said = {}
     # One rank a run: an H2 needs no more.
     one_rank = {"mpi_np": 1, "omp_threads": 1}
@@ -102,7 +102,6 @@ def road(tmp_path_factory):
         # began would leave it never started, not stopped.  Waited for,
         # bounded; what the stop then found is the tests' to judge
         # (`reached_last`, the stopped stage's state).
-        from support.real_runs import stage_status
         first, deadline = groups[0][1][0], time.time() + 300
         while (stage_status(left, first).state
                not in ("running", "finished", "failed")

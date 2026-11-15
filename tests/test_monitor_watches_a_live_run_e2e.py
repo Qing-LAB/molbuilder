@@ -32,7 +32,6 @@ from molbuilder.monitor import NotifyPolicy
 from support.replay import Output, output_lines, replay, statuses
 
 pytestmark = [
-    pytest.mark.engine,
     pytest.mark.skipif(
         not (conda_hook().is_file() and env_available("molbuilder-siesta")),
         reason="needs the molbuilder-siesta env + a detectable conda hook"),

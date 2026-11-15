@@ -29,11 +29,11 @@ import numpy as np
 import pytest
 
 from _road import conda_hook, env_available
+from support.real_runs import makes_a_real_run, on_the_road
 from support.road import H2
 from support.road import molbuilder, set_by_the_person
 
 pytestmark = [
-    pytest.mark.engine,
     pytest.mark.skipif(
         not (conda_hook().is_file() and env_available("molbuilder-siesta")),
         reason="needs the molbuilder-siesta env + a detectable conda hook"),
@@ -46,7 +46,7 @@ _BOX = H2["cell"][0]
 _H2 = H2["positions"]
 
 
-@pytest.fixture(scope="module")
+@makes_a_real_run("module")
 def capped(tmp_path_factory):
     """The capped calculation's coarse stage, in a projects tree of its own:
     the road's H2 described as the one stage its template alone describes,
@@ -57,7 +57,6 @@ def capped(tmp_path_factory):
     from molbuilder.jobset.materialize import latest_attempt
     from molbuilder.jobset.naming import stage_home
     from molbuilder.task import of as task_of
-    from support.real_runs import on_the_road
     from support.road import described, group_words, jobset, structure_saved
     with on_the_road(tmp_path_factory, "capped") as tree:
         bundle = described(tree, "P/optimization/H2cap",

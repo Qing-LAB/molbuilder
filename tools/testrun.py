@@ -32,11 +32,13 @@ Design notes
 * ``failed`` prints node-ids you can pass straight back to pytest to rerun only
   the failures -- the fix-the-whole-batch-then-verify loop, no full reruns.
 * A run is spread over ``--workers`` pytest-xdist processes
-  (``docs/process/testing.md`` § 6.1a): each test file runs whole in one
-  worker, and every file holding an ``engine`` test shares one worker, so no
-  two computations overlap.  ``tests/conftest.py`` names the groups; this
-  passes ``--dist loadgroup`` so the scheduler honours them.  ``lf`` runs in
-  one process, and only when the last-failed list names a test file.
+  (``docs/process/testing.md`` § 6.1a): a file whose tests share a fixture
+  wider than one test, and every e2e file, runs whole in one worker; every
+  file holding an ``engine`` test shares one worker, so no two computations
+  overlap; every other test runs on whichever worker is free.
+  ``tests/conftest.py`` names the groups; this passes ``--dist loadgroup`` so
+  the scheduler honours them.  ``lf`` runs in one process, and only when the
+  last-failed list names a test file.
 """
 import argparse
 import importlib.util

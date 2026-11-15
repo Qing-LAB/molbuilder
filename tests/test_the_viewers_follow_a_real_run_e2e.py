@@ -75,10 +75,11 @@ from pathlib import Path
 import pytest
 
 from _road import conda_hook, env_available
+from support.real_runs import (copy_of, left_to_end, makes_a_real_run, pyscf,
+                               road_at, stage_status, taken)
 from tests._node_esm import lifted, run_node
 
 pytestmark = [
-    pytest.mark.engine,
     pytest.mark.skipif(
         not (conda_hook().is_file() and env_available("molbuilder-siesta")
              and env_available("molbuilder-pySCF")),
@@ -109,7 +110,6 @@ def _launched(c, stage: str, *cold: str) -> Path:
     """``stage`` of ``c`` launched here, ``cold`` (``"--cold"``) or not,
     left in the background as a launch leaves a run (`job-system.md`
     § 6.0): the new run's folder, by the status door."""
-    from support.real_runs import stage_status, taken
     taken(c, f"launch {stage}", "launch", "task", "--stage", stage,
           "--mode", "direct", "--yes", *cold)
     return c.attempt(stage, 0).parent / stage_status(c.bundle, stage).attempt
@@ -125,7 +125,6 @@ def _as_the_trajectory_viewer_follows(c, folder: Path) -> None:
     running -- a run's file kept as it grew, replayed under its own name
     (`process/testing.md` § 6); ``final``, the folder loaded again once the
     run's process ended."""
-    from support.real_runs import left_to_end
     web = _web()
     c.answers, c.growing = [], None
     mtime, over, end = None, False, time.monotonic() + 900
@@ -179,14 +178,13 @@ def _uploaded(name: str, data: bytes) -> dict:
     return r.get_json()
 
 
-@pytest.fixture(scope="module")
+@makes_a_real_run("module")
 def followed(real_h2_layered, tmp_path_factory):
     """THE SHARED H2'S `coarse`, LAUNCHED AGAIN COLD IN A COPY of its
     calculation and followed while it went (:func:`_as_the_trajectory_viewer_
     follows`); then the copy's first run loaded, and polled, as a tab does
     that opens another file -- the poll's answer, ``other_poll`` -- and the
     output as it grew and as it ended, each uploaded -- ``uploads``."""
-    from support.real_runs import copy_of, road_at
 
     def follow(c):
         with road_at(c.tree.parent, tmp_path_factory):
@@ -219,14 +217,13 @@ def followed(real_h2_layered, tmp_path_factory):
     return copy_of(real_h2_layered, "followed", follow)
 
 
-@pytest.fixture(scope="module")
+@makes_a_real_run("module")
 def stopped(real_h2_stopped, tmp_path_factory):
     """THE SHARED STOPPED H2'S `coarse` (``real_h2_stopped``: its SCF unable
     to converge in its cap, set by the person in its template), LAUNCHED
     AGAIN COLD IN A COPY of its calculation and followed while it went until
     SIESTA stopped it (:func:`_as_the_trajectory_viewer_follows`); its
     output as it stopped, uploaded."""
-    from support.real_runs import copy_of, road_at
 
     def follow(c):
         with road_at(c.tree.parent, tmp_path_factory):
@@ -244,7 +241,7 @@ def stopped(real_h2_stopped, tmp_path_factory):
     return copy_of(real_h2_stopped, "followed", follow)
 
 
-@pytest.fixture(scope="module")
+@makes_a_real_run("module")
 def vibration_followed(real_water_linear, tmp_path_factory):
     """THE SHARED STRAIGHT WATER'S `freq`, LAUNCHED AGAIN COLD IN A COPY and
     followed as the spectra viewer follows it (`web/spectra.md` § 7): its
@@ -254,7 +251,6 @@ def vibration_followed(real_water_linear, tmp_path_factory):
     from molbuilder.runfiles import ROLE_SPECTRA
     from molbuilder.runs import on_label_at
     from molbuilder.task import of as task_of
-    from support.real_runs import copy_of, left_to_end, road_at
 
     def follow(c):
         # THE ROAD OF THE RUN'S OWN ENGINE, as the calculation states it --
@@ -1155,14 +1151,13 @@ INSPECTORS = _LIB / "inspectors"
 PATH_DOOR = _LIB / "path-utils.js"
 
 
-@pytest.fixture(scope="module")
+@makes_a_real_run("module")
 def stage_shaped(tmp_path_factory):
     """AN H2 OPTIMIZATION ON PYSCF LABELLED `au_2_bdt` -- a label holding a
     part shaped like a stage -- made by the shared PySCF run's maker under
     that label (`support.real_runs.pyscf`): `coarse` prepared, launched and
     waited on, the run a picker once listed as four entries (2026-09-19),
     its label cut at the leftmost `_<digits>_`."""
-    from support.real_runs import pyscf
     began = time.monotonic()
     run = pyscf(tmp_path_factory, label="au_2_bdt")
     run.took = time.monotonic() - began

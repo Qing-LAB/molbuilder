@@ -25,11 +25,11 @@ import numpy as np
 import pytest
 
 from _road import conda_hook, env_available
+from support.real_runs import makes_a_real_run, water_vibration
 
 CONDA_SH = conda_hook()
 
 pytestmark = [
-    pytest.mark.engine,
     pytest.mark.skipif(
         not (CONDA_SH.is_file() and env_available("molbuilder-pySCF")),
         reason="needs the molbuilder-pySCF env + a detectable conda hook"),
@@ -336,13 +336,12 @@ def test_ir_alone_runs_decoupled_and_lands_in_waters_windows(real_water_probed):
     assert d["raman_route"] == "none" and d["raman_fd_step_ang"] is None
 
 
-@pytest.fixture(scope="module")
+@makes_a_real_run("module")
 def solvated(tmp_path_factory):
     """Water in water, by the one maker of a water vibration
     (`support.real_runs.water_vibration`): water as the solvent, and IR OFF
     (it defaults on) -- Raman stays off, its default: the one route PCM
     reaches (`engines/vibration.md` § 4.6)."""
-    from support.real_runs import water_vibration
     return water_vibration(tmp_path_factory, "solvated",
                            settings={"solvent": "water", "compute_ir": False})
 
@@ -391,6 +390,7 @@ def test_water_in_water_runs_the_solvated_chain_end_to_end(solvated, water):
         d["thermo"]["h_eh"], gas["thermo"]["h_eh"])
 
 
+@pytest.mark.engine
 def test_asking_for_ir_does_not_move_the_frequencies(tmp_path):
     """The analytic route must return the Hessian the NO-IR path returns
     (`engines/vibration.md` § 4.6: *"Asking for intensities must not move
@@ -452,6 +452,7 @@ def test_asking_for_ir_does_not_move_the_frequencies(tmp_path):
     assert len(rows) == 4, "every functional x density-fitting combination"
 
 
+@pytest.mark.engine
 def test_the_rank_rule_reproduces_pyscf_on_free_molecules(tmp_path):
     """`engines/vibration.md` § 4.5, *the gate this rests on*: the one path
     -- `spectra.normal_modes.vibrational_modes`, nothing held -- must
@@ -629,6 +630,7 @@ def test_water_with_its_oxygen_held_reports_three_vibrations(real_water_held,
             assert abs(float((L * v).sum())) < 1e-6
 
 
+@pytest.mark.engine
 def test_the_free_atom_hessian_is_the_free_block_of_the_full_one(tmp_path):
     """`engines/vibration.md` § 4.4: the block agrees with
     compute-everything-and-slice.  The reduced calculation asks PySCF for second

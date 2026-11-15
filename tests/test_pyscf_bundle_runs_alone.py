@@ -10,7 +10,7 @@ script does, which the package's own codec reads back.
 
 API-level, because the road's run of this needs PySCF: every PySCF run
 through `jobset launch` proves it too (`test_pyscf_relaxation_outcome_e2e.py`,
-the engine test in `test_molwatch_preview.py`).  This one runs in every
+`test_vibration_e2e.py`'s water).  This one runs in every
 batch, and that is what catches a member growing an import of something that
 does not travel -- `structure.py` and `sidecars/molstruct.py` are edited
 often, and the cost would be every PySCF run stopping on its first lines.

@@ -52,8 +52,6 @@ from pathlib import Path
 
 import pytest
 
-pytestmark = pytest.mark.engine
-
 #: Labels that are NOT fdf keywords and must not be looked up: block
 #: delimiters, block-interior grammar words, and comments.  Each is read by
 #: the block's own parser, not by `fdf_get`.

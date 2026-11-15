@@ -23,7 +23,6 @@ from support.road import (described, jobset, one_rank, prep_groups,
                           set_by_the_person, stage_file)
 
 pytestmark = [
-    pytest.mark.engine,
     pytest.mark.skipif(
         not (conda_hook().is_file() and env_available("molbuilder-siesta")),
         reason="needs the molbuilder-siesta env + a detectable conda hook"),

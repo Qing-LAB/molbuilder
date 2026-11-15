@@ -44,7 +44,6 @@ from molbuilder.structure import Structure
 from support.pages import spectra_served
 
 pytestmark = [
-    pytest.mark.engine,
     pytest.mark.skipif(
         not (conda_hook().is_file() and env_available("molbuilder-pySCF")
              and env_available("molbuilder-siesta")),

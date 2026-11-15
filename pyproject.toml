@@ -261,6 +261,6 @@ markers      = [
     "smoke: end-to-end smoke tests that subprocess-run a generated script (slow; require pyscf)",
     "e2e: browser-driven Playwright tests (slow; require chromium install)",
     "slow: tests that take > 1s (`make test` skips them)",
-    "engine: starts a real SIESTA / TranSIESTA / PySCF process; runs one at a time (docs/process/testing.md § 6.1a)",
+    "engine: starts a real SIESTA / TranSIESTA / PySCF process; runs one at a time; set at collection on a test asking for a fixture declared by support.real_runs.makes_a_real_run, by hand only where a test's own body starts the engine (docs/process/testing.md § 6.1a)",
     "capture_on_fail: dump browser state + console to test-artifacts/ on failure (flagged intermittents)",
 ]

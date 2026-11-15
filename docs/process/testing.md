@@ -139,7 +139,7 @@ Tests are marked by **layer**, and the marker is orthogonal to the directory (a
 | `smoke` | — | subprocess-runs a *generated script* (slow; needs pyscf) |
 | `e2e` | — | browser-driven Playwright (slow; needs chromium) |
 | `slow` | — | > 1 s (`make test` skips them) |
-| `engine` | — | starts a real SIESTA / TranSIESTA / PySCF process, itself or through a fixture; such tests run one at a time (§ 6.1a) |
+| `engine` | — | starts a real SIESTA / TranSIESTA / PySCF process, itself or through a fixture; such tests run one at a time; set at collection through a fixture declared to make a real run, written by hand only where a test's own body starts the engine (§ 6.1a) |
 | `capture_on_fail` | — | dump browser state + console to `test-artifacts/` on failure |
 
 The rule of thumb: **cover a contract at the lowest layer that can see it.** A
@@ -1086,10 +1086,20 @@ tests are collected:
    minute on one worker while seven sat idle)*.
 2. **A file that runs a real engine runs alone among those that do.** A test
    that starts SIESTA, TranSIESTA or PySCF — itself or through a fixture —
-   carries `@pytest.mark.engine` (§ 1), on itself or on its module, and every
-   file holding one shares one worker. Two computations never overlap (the
-   same one-at-a-time rule as job submission), and an engine's threads never
-   compete with another engine's.
+   is an `engine` test (§ 1), and every file holding one shares one worker.
+   **The mark is derived from the fixture that makes the run, never written
+   beside it**: each fixture that makes a real run — the session's in
+   `conftest.py`, or a module's own, made down `support.real_runs`' road
+   (`on_the_road`, `road_at`, or a maker that takes them) — is declared with
+   `support.real_runs.makes_a_real_run(scope)`, and the collection hook
+   marks every test that asks for one, directly or through another fixture.
+   A hand `@pytest.mark.engine` stays only where a test's own body starts
+   the engine. *(Found by reading, 2026-11-14:
+   `test_keyboard_paths_e2e` asked for a session run with no hand mark, so
+   the worker its file ran on would make that run again, beside the engine
+   worker's.)* Two computations never overlap (the same one-at-a-time rule
+   as job submission), and an engine's threads never compete with another
+   engine's.
 3. **A targeted set is handed to pytest ordered by directory**, stably
    (`tools/testrun.py`, 2026-10-08, plan § 5x.7 F26). pytest parses a
    subdirectory's `conftest.py` once, into the first collector it builds for
@@ -1201,8 +1211,9 @@ deliberately not installed there.
   contract tables' one runner, `run_road_case`; structures saved under
   names, the paths a tab opens them by, `saved_by_name`),
   `real_runs.py` (the real runs a pass makes once, each made by one maker
-  and asked for through its session fixture in `conftest.py`; a run's tree
-  with the engine on the road, `road_at`; the one maker of the road's H2
+  and asked for through its session fixture in `conftest.py`; the
+  declaration every fixture that makes a run carries, `makes_a_real_run`;
+  a run's tree with the engine on the road, `road_at`; the one maker of the road's H2
   optimization, `h2_optimization`; the one maker of a displacement sweep,
   `swept`), `machines.py` (a machine record's scheduler of each kind,
   `SLURM` and `WORKSTATION`, the GPU tool the load monitor asks,

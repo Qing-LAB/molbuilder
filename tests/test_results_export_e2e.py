@@ -41,8 +41,6 @@ from support.road import STRUCTURE
 #: runs read (`tests/data/presenters.toml`).
 _SAVED_IN = str(Path(STRUCTURE).parts[0]) + "/user"
 
-pytestmark = pytest.mark.engine
-
 
 @pytest.fixture(scope="module")
 def flask_server(isolated_projects_root_module):

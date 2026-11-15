@@ -33,7 +33,6 @@ from _road import conda_hook, env_available
 from support.road import CO2, CO2_ENGINE_ELEMENTS, CO2_HELD_FIRST
 
 pytestmark = [
-    pytest.mark.engine,
     pytest.mark.skipif(
         not (conda_hook().is_file() and env_available("molbuilder-siesta")),
         reason="needs the molbuilder-siesta env + a detectable conda hook"),

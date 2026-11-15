@@ -31,7 +31,6 @@ from _road import conda_hook, env_available, gpu_visible
 from molbuilder.parse.instruments.util_csv import util_csv_metrics
 
 pytestmark = [
-    pytest.mark.engine,
     pytest.mark.skipif(
         not (conda_hook().is_file() and env_available("molbuilder-siesta")),
         reason="needs the molbuilder-siesta env + a detectable conda hook"),

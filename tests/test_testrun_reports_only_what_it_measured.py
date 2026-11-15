@@ -307,6 +307,14 @@ _NOTE = ("import os, pathlib\n"
          "        os.environ['PYTEST_XDIST_WORKER'])\n")
 
 
+#: A module fixture declared to make a real run, as a module's own is
+#: (`testing.md` § 6.1a, rule 2) -- here it makes none: what is asked is
+#: where the tests that ask for it run, and this batch starts no engine.
+_DECLARED = ("from support.real_runs import makes_a_real_run\n"
+             "@makes_a_real_run('module')\n"
+             "def run(): return 1\n")
+
+
 def _a_small_run(tmp_path, monkeypatch, *words):
     """A real run through ``testrun.py run`` on real files: one test passing,
     one skipped, one expected to fail, and a file that skips itself whole.  Its
@@ -439,8 +447,10 @@ def test_a_run_spread_over_workers_reads_as_one_run(tmp_path, monkeypatch):
     back, in the progress file and in the last-failed cache that ``run lf``
     reads; a file that fails to collect is a failure of its own, named by its
     path; a file whose tests share a fixture wider than one test runs whole
-    in one worker; every file holding an engine test, marked on its module or
-    on a test, shares one worker.
+    in one worker; every file holding an engine test shares one worker -- a
+    test marked on its module or on itself, or one asking for a fixture
+    declared to make a real run (`support.real_runs.makes_a_real_run`),
+    directly or through another fixture, with no mark written.
     """
     monkeypatch.setattr(testrun, "PROGRESS_DIR", str(tmp_path / "progress"))
     s, suite, ran_on = _spread_run(tmp_path, {
@@ -465,9 +475,19 @@ def test_a_run_spread_over_workers_reads_as_one_run(tmp_path, monkeypatch):
                                "def test_e5(): note('e5')\n"
                                + "".join(f"def test_f{i}(): note('f{i}')\n"
                                          for i in range(1, 7))),
+        # No mark written: each file's tests ask for a fixture declared to
+        # make a real run -- one directly, the other only through a fixture
+        # of its own.  Each outnumbers every group but the engine's, so the
+        # first assignment would put either, left out of it, on the other
+        # worker.
+        "test_engine_three.py": _DECLARED + "".join(
+            f"def test_g{i}(run): note('g{i}')\n" for i in range(1, 5)),
+        "test_engine_four.py": (_DECLARED + "@pytest.fixture\n"
+                                "def read(run): return run\n" + "".join(
+            f"def test_h{i}(read): note('h{i}')\n" for i in range(1, 5))),
         "test_broken.py": "import no_such_module\n",
     })
-    assert (s["state"], s["collected"], s["ran"]) == ("done", 17, 17), s
+    assert (s["state"], s["collected"], s["ran"]) == ("done", 25, 25), s
     events = [e["event"] for e in testrun._read_events(s["path"])]
     assert [e for e in events if e != "test"] == [
         "start", "collect", "collected", "done"]
@@ -477,7 +497,8 @@ def test_a_run_spread_over_workers_reads_as_one_run(tmp_path, monkeypatch):
     lastfailed = suite / ".pytest_cache" / "v" / "cache" / "lastfailed"
     assert set(json.loads(lastfailed.read_text())) == failed
     assert len({ran_on[t] for t in ("a1", "a2", "a3")}) == 1, ran_on
-    engine = [f"e{i}" for i in range(1, 6)] + [f"f{i}" for i in range(1, 7)]
+    engine = ([f"e{i}" for i in range(1, 6)] + [f"f{i}" for i in range(1, 7)]
+              + [f"{g}{i}" for g in "gh" for i in range(1, 5)])
     assert len({ran_on[t] for t in engine}) == 1, ran_on
 
 

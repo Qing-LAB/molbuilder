@@ -153,6 +153,7 @@ collect_ignore_glob = ([] if os.environ.get("MOLBUILDER_FIELD_RECORD")
 from molbuilder import diagnostics
 from molbuilder.calculation import register_readers
 from molbuilder.structure import Structure
+from support import real_runs as _real_runs
 
 # THE READERS OF A CALCULATION'S RECORDS, registered as each surface
 # registers them at start (`calculation.register_readers`): a test that asks
@@ -1200,28 +1201,41 @@ def _capture_on_fail(request):
 _SHARED_SCOPES = ("module", "class", "package")
 
 
+def _fixture_defs(item):
+    """Every definition of every fixture ``item`` asks for, directly or
+    through another fixture."""
+    info = getattr(item, "_fixtureinfo", None)
+    for defs in (getattr(info, "name2fixturedefs", None) or {}).values():
+        yield from defs
+
+
 def _shares_a_fixture(item) -> bool:
     """Does this test use a fixture wider than itself -- one its file's
     other tests meet too?"""
-    info = getattr(item, "_fixtureinfo", None)
-    for defs in (getattr(info, "name2fixturedefs", None) or {}).values():
-        if any(getattr(d, "scope", "function") in _SHARED_SCOPES
-               for d in defs):
-            return True
-    return False
+    return any(getattr(d, "scope", "function") in _SHARED_SCOPES
+               for d in _fixture_defs(item))
+
+
+def _asks_a_real_run(item) -> bool:
+    """Does this test ask for a fixture that makes a real run
+    (`support.real_runs.makes_a_real_run`)?"""
+    return any(_real_runs.declared_to_make_a_real_run(d.func)
+               for d in _fixture_defs(item))
 
 
 def _worker_group(item, engine_files, whole_files) -> "str | None":
     """Which tests share a worker in a spread run (`testing.md` § 6.1a).
 
-    Every file holding an engine test, marked on the module or on the test,
-    shares the one engine worker, so no two computations overlap; a file in
-    ``whole_files`` -- an e2e file, or one whose tests share a fixture wider
-    than one test -- runs whole, in order, in one worker, its fixtures built
-    once.  By FILE, because a test-level mark grouped alone split its file:
-    the engine test ran on one worker and its siblings on another, each
-    building the module's fixtures.  Every other test is ``None``, no group:
-    its fixtures are its own, so it runs on whichever worker is free.
+    Every file holding an engine test (marked at collection,
+    :func:`_asks_a_real_run`, or by hand where a test's own body starts the
+    engine) shares the one engine worker, so no two computations overlap; a
+    file in ``whole_files`` -- an e2e file, or one whose tests share a
+    fixture wider than one test -- runs whole, in order, in one worker, its
+    fixtures built once.  By FILE, because a test-level mark grouped alone
+    split its file: the engine test ran on one worker and its siblings on
+    another, each building the module's fixtures.  Every other test is
+    ``None``, no group: its fixtures are its own, so it runs on whichever
+    worker is free.
     """
     file = item.nodeid.split("::", 1)[0]
     if file in engine_files:
@@ -1232,13 +1246,17 @@ def _worker_group(item, engine_files, whole_files) -> "str | None":
 @pytest.hookimpl(hookwrapper=True)
 def pytest_collection_modifyitems(config, items):
     """Auto-apply ``e2e`` to ``*_e2e.py`` files + ``integration`` and
-    ``smoke`` to ``*_smoke*`` files.
+    ``smoke`` to ``*_smoke*`` files, and ``engine`` to every test that asks
+    for a fixture that makes a real run (`testing.md` § 6.1a, rule 2).
 
     This hook gives every test file its baseline marker so the doc-
     promised selectors work, without requiring per-test annotation.
     File-name pattern is a coarse pre-classifier; finer-grained
     decisions still belong on individual tests via explicit
-    decorators.
+    decorators -- ``engine`` written so only where a test's own body starts
+    the engine (on the test, or on its module when every test's does);
+    through a fixture that makes a real run it is set here (`testing.md`
+    § 6.1a, rule 2).
 
     In an xdist worker it also names each test's group
     (:func:`_worker_group`).  xdist's own hook in the worker turns that
@@ -1271,6 +1289,10 @@ def pytest_collection_modifyitems(config, items):
                    else _pt.mark.skipif(True, reason=tooling.missing(
                        tooling.BROWSER)))
 
+    # RULE 2, DERIVED: a test asking for a real run runs an engine.
+    for item in items:
+        if _asks_a_real_run(item):
+            item.add_marker(_pt.mark.engine)
     in_worker = hasattr(config, "workerinput")
     engine_files = {item.nodeid.split("::", 1)[0] for item in items
                     if item.get_closest_marker("engine") is not None}
@@ -1453,100 +1475,89 @@ def _isolated_workspace_store(tmp_path, monkeypatch):
 # --------------------------------------------------------------------- #
 #  The real runs an end-to-end pass makes, each once (plan § 5y)         #
 # --------------------------------------------------------------------- #
-# Session fixtures, so every module that reads a run asks for the one made
-# (`support/real_runs.py`, imported when a test asks, as every helper of the
-# suite's is here).
-@pytest.fixture(scope="session")
+# Session fixtures, so every module that reads a run asks for the one made,
+# each made by its maker in `support/real_runs.py` and declared to make one
+# by that module's `makes_a_real_run` -- imported with this file, not when a
+# test asks, because the declaration decorates these fixtures as they are
+# defined; under the module's name, so the makers' short names (`water`,
+# `stopped`) stay out of the fixtures' namespace.
+
+
+@_real_runs.makes_a_real_run("session")
 def real_h2_layered(tmp_path_factory):
-    from support.real_runs import layered
-    return layered(tmp_path_factory)
+    return _real_runs.layered(tmp_path_factory)
 
 
-@pytest.fixture(scope="session")
+@_real_runs.makes_a_real_run("session")
 def real_h2_one_group(tmp_path_factory):
-    from support.real_runs import one_group
-    return one_group(tmp_path_factory)
+    return _real_runs.one_group(tmp_path_factory)
 
 
-@pytest.fixture(scope="session")
+@_real_runs.makes_a_real_run("session")
 def real_h2_stopped(tmp_path_factory):
-    from support.real_runs import stopped
-    return stopped(tmp_path_factory)
+    return _real_runs.stopped(tmp_path_factory)
 
 
-@pytest.fixture(scope="session")
+@_real_runs.makes_a_real_run("session")
 def real_h2_gpu(tmp_path_factory):
-    from support.real_runs import gpu
-    return gpu(tmp_path_factory)
+    return _real_runs.gpu(tmp_path_factory)
 
 
-@pytest.fixture(scope="session")
+@_real_runs.makes_a_real_run("session")
 def real_h2_bench(tmp_path_factory):
-    from support.real_runs import bench
-    return bench(tmp_path_factory)
+    return _real_runs.bench(tmp_path_factory)
 
 
-@pytest.fixture(scope="session")
+@_real_runs.makes_a_real_run("session")
 def real_co2_vibration(tmp_path_factory):
-    from support.real_runs import vibration
-    return vibration(tmp_path_factory)
+    return _real_runs.vibration(tmp_path_factory)
 
 
-@pytest.fixture(scope="session")
+@_real_runs.makes_a_real_run("session")
 def real_h2_sweep(tmp_path_factory):
-    from support.real_runs import sweep
-    return sweep(tmp_path_factory)
+    return _real_runs.sweep(tmp_path_factory)
 
 
-@pytest.fixture(scope="session")
+@_real_runs.makes_a_real_run("session")
 def real_h2_pyscf(tmp_path_factory):
-    from support.real_runs import pyscf
-    return pyscf(tmp_path_factory)
+    return _real_runs.pyscf(tmp_path_factory)
 
 
-@pytest.fixture(scope="session")
+@_real_runs.makes_a_real_run("session")
 def real_held_water_pyscf(tmp_path_factory):
-    from support.real_runs import held_water_pyscf
-    return held_water_pyscf(tmp_path_factory)
+    return _real_runs.held_water_pyscf(tmp_path_factory)
 
 
-@pytest.fixture(scope="session")
+@_real_runs.makes_a_real_run("session")
 def real_water_vibration(tmp_path_factory):
-    from support.real_runs import water
-    return water(tmp_path_factory)
+    return _real_runs.water(tmp_path_factory)
 
 
-@pytest.fixture(scope="session")
+@_real_runs.makes_a_real_run("session")
 def real_water_held(tmp_path_factory):
-    from support.real_runs import water_held
-    return water_held(tmp_path_factory)
+    return _real_runs.water_held(tmp_path_factory)
 
 
-@pytest.fixture(scope="session")
+@_real_runs.makes_a_real_run("session")
 def real_water_probed(tmp_path_factory):
-    from support.real_runs import water_probed
-    return water_probed(tmp_path_factory)
+    return _real_runs.water_probed(tmp_path_factory)
 
 
-@pytest.fixture(scope="session")
+@_real_runs.makes_a_real_run("session")
 def real_water_linear(tmp_path_factory):
-    from support.real_runs import water_linear
-    return water_linear(tmp_path_factory)
+    return _real_runs.water_linear(tmp_path_factory)
 
 
-@pytest.fixture(scope="session")
+@_real_runs.makes_a_real_run("session")
 def real_bridged_chain(tmp_path_factory):
-    from support.real_runs import bridged_chain_relaxed
-    return bridged_chain_relaxed(tmp_path_factory)
+    return _real_runs.bridged_chain_relaxed(tmp_path_factory)
 
 
-@pytest.fixture(scope="session")
+@_real_runs.makes_a_real_run("session")
 def real_uneven_chain(tmp_path_factory):
-    from support.real_runs import uneven_chain_relaxed
-    return uneven_chain_relaxed(tmp_path_factory)
+    return _real_runs.uneven_chain_relaxed(tmp_path_factory)
 
 
-@pytest.fixture(scope="session")
+@_real_runs.makes_a_real_run("session")
 def real_charged_formate(tmp_path_factory):
-    from support.real_runs import charged_formate_relaxed
-    return charged_formate_relaxed(tmp_path_factory)
+    return _real_runs.charged_formate_relaxed(tmp_path_factory)

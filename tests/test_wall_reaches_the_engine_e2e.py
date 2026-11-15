@@ -21,17 +21,17 @@ import re
 import pytest
 
 from _road import conda_hook, env_available
+from support.real_runs import h2_optimization, makes_a_real_run, on_the_road
 from support.road import group_words, jobset
 
 pytestmark = [
-    pytest.mark.engine,
     pytest.mark.skipif(
         not (conda_hook().is_file() and env_available("molbuilder-siesta")),
         reason="needs the molbuilder-siesta env + a detectable conda hook"),
 ]
 
 
-@pytest.fixture(scope="module")
+@makes_a_real_run("module")
 def walled(tmp_path_factory):
     """An H2 optimization whose coarse stage ran here under the 20 s wall
     its run card states -- its run folder and what that launch said -- and
@@ -41,7 +41,6 @@ def walled(tmp_path_factory):
     from molbuilder.jobset.naming import stage_home
     from molbuilder.runs import run_of
     from molbuilder.task import of as task_of
-    from support.real_runs import h2_optimization, on_the_road
     with on_the_road(tmp_path_factory, "walled") as tree:
         # THE WALL ITS RUN CARD STATES (`architecture.md` § 5.2's
         # ladder), 20 s, one rank, so the engine, told what is left and the
