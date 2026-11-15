@@ -2105,11 +2105,9 @@ def _plan_shelves(jobset: JobSet, base: Path, *, machine, mode: str,
         jobset, base, plan, mode=mode,
         jobs=[j for j in jobset.jobs if j.name in sent])}
     for this, names, members in shelves:
-        if side and this != side:
-            continue
         pending = [trials[j.name] for j in members if j.name in trials]
         if not pending:
-            continue            # this shelf already rode a group
+            continue            # already rode a group, or a side not sent
         _plan_shelf(jobset, base, pending, names, members, plan,
                     trial_timeout_s=trial_timeout_s, told=told,
                     time_s=time_s, machine=machine)

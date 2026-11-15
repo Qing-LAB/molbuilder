@@ -43,12 +43,7 @@
 (function (root) {
     "use strict";
 
-    // Idempotent: if molbuilder-runtime.js gets loaded twice (e.g.
-    // a template double-includes it), keep the first runtime
-    // instance + ignore the second.  Re-creating the registry
-    // would drop already-registered modules.
     root.molbuilder = root.molbuilder || {};
-    if (root.molbuilder.runtime) return;
 
     const _registered = new Map();   // name -> api
     const _waiters    = new Map();   // name -> Array<(api) => void>

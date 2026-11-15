@@ -445,10 +445,9 @@ def api_structure_export():
     touches the filesystem.
 
     Returns ``{ok, files: [{name, text}], frames, notices}`` -- ``frames`` the
-    count the files hold -- each entry is a
-    file as it would exist on disk, under the name it would exist as.  One entry
-    means the structure carries no metadata worth keeping, which is exactly when
-    a save writes no ``.json`` either (``no .json == empty metadata``)."""
+    count the files hold -- each entry a file as it would exist on disk, under
+    the name it would exist as: always the pair, the coordinates and their
+    sidecar (`model/structure.md` § 2.4)."""
     from molbuilder.workingcopy_structure import StructureCodec
     body = request.get_json(silent=True) or {}
     if not isinstance(body.get("structure"), dict):
@@ -1892,11 +1891,6 @@ def api_task_setup_bench_grid():
         return err("no folder given", 400)
     dest = _existing(_resolve_within_roots(dest_raw), "dir")
     bench = body.get("bench")
-    if bench is not None and not isinstance(bench, dict):
-        return err(
-            "bench: must be an object of "
-            "axis -> points",
-            400)
     target = _machine_named(body.get("target") or None)
 
     from molbuilder.jobset.prep_inputs import bench_inputs

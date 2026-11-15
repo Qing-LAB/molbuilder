@@ -354,7 +354,6 @@ be set before numpy loads.
 
 | missing | what happens |
 |---|---|
-| `config_dir` | imported only when the channels are read; `monitor.load_channels` catches the import error, logs *reports off*, and the monitor keeps monitoring |
 | any reader the monitor imports at start | the monitor cannot start: the session log holds its `monitor: starting` line and the error, and no `started` ([`run-reports.md`](?doc=execution/run-reports.md) § 2.6); the ending cannot be read either — no failure hint ([`job-contracts.md`](?doc=execution/job-contracts.md) § 2.6) |
 | the whole monitor bundle | the run script logs *monitor: not started*, and the ending cannot be read — no failure hint |
 | a member of `mb_pyscf.pyz`, or the whole file | the PySCF script stops on its first lines, before PySCF computes anything: the import error, or the sentence saying the file is missing beside the script, is in the run's output, and the run reads failed |

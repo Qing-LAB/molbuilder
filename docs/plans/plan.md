@@ -147,10 +147,14 @@ each release is its changelog row and its ledger section
   X-ENG closed with 2.69.68 — its two items that change a generated
   program placed by the user with F10's end-to-end pass.
   **Left, in order** *(the user, 2026-11-15: "focus on real issues",
-  "focusing on lib code")*: the page doors' rest -- O-STATE, O-WORDS,
-  O-KEYS's rest with X-UI and X-PLOT; the dead-code release; F9's closing
-  review rounds. The test framework's TF3–TF10 and the page tests on jsdom
-  wait on the user's word.
+  "focusing on lib code"; asked which first, "Toward the finish line")*: the
+  rest of F9 as its row orders it -- its page-side test doors done by
+  O-TESTS (2.70.2–2.70.10), then the dead-code release, the tests owed on
+  real runs (2.67.13), F9's closing review rounds; then F10 with its first
+  full end-to-end pass, on the user's word. The page doors' rest -- O-STATE's
+  one save door, O-WORDS, O-KEYS's rest with X-UI and X-PLOT -- is internal
+  tidying no page shows (measured against `tabs.md` § 6 for O-STATE) and
+  waits; so do the test framework's TF3–TF10 and the page tests on jsdom.
 
 **Last checked** (2.69.21): the fast batch, 5,959 passed; every e2e test,
 744 passed, on the release's final code (a change every road passes through,

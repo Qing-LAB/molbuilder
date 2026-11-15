@@ -1352,9 +1352,6 @@ def _secrets_dir():
     Restating the rule here -- joining ``config_dir() / "secrets"`` -- would
     be another copy of it, which review exists to refuse
     (`process/code-audit.md` § 1c): *"a comment is not a mechanism"*.
-
-    Raises `ModuleNotFoundError` when the companion is absent, which
-    `load_channels` catches: absent is reports-off, never a dead monitor.
     """
     try:
         from .config_dir import secrets_dir     # inside the package
@@ -1781,26 +1778,17 @@ def load_channels(log: Optional[Path] = None) -> Dict[str, Dict[str, Any]]:
     def _say(msg: str) -> None:
         _notify_say(msg, log)
 
+    # ONE RESOLVER, no `path=`.  For Slack and Discord the URL in this
+    # file IS the credential, so it is reached the way every other
+    # credential in this tree is: through the door that owns it.  A second
+    # way to name a file with one home is how a file gets written where
+    # nothing reads it.
+    p = default_notify_path()
     try:
-        # ONE RESOLVER, no `path=`.  For Slack and Discord the URL in this
-        # file IS the credential, so it is reached the way every other
-        # credential in this tree is: through the door that owns it.  A second
-        # way to name a file with one home is how a file gets written where
-        # nothing reads it.
-        p = default_notify_path()
-        try:
-            from .config_dir import (CHANNEL_NAME_RULE,  # inside the package
-                                     is_channel_name)
-        except ImportError:                            # in the shipped bundle
-            from config_dir import CHANNEL_NAME_RULE, is_channel_name
-    except ImportError:
-        # The shipped monitor could not find `config_dir.py` beside it, so
-        # WHERE the channels live cannot be answered.  Absent is off
-        # (`run-reports.md` § 3): a monitor that cannot report must still
-        # MONITOR -- dying here would cost every status line, the util
-        # series and the [MACHINE] record, silently.
-        _say("no config_dir.py beside the monitor -- reports off")
-        return {}
+        from .config_dir import (CHANNEL_NAME_RULE,      # inside the package
+                                 is_channel_name)
+    except ImportError:                                # in the shipped bundle
+        from config_dir import CHANNEL_NAME_RULE, is_channel_name
     try:
         obj = read_channels_file()
     except OSError:

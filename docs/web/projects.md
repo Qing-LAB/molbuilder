@@ -517,8 +517,8 @@ implementation of the `files` option every MolView mount hands in
 (`molview.md` § 4). `save(destination, stem, {structure})` turns
 the viewer's truth into the `.xyz` + `.molstruct.json` pair — `"download"`
 through `POST /api/structure/export`, delivered as **one `<stem>.zip`**
-when it is a pair (a second programmatic download is what browsers
-silently swallow; a single file downloads bare), `"project"` through
+holding the pair (a second programmatic download is what browsers
+silently swallow), `"project"` through
 `chooseSavePath` and `POST /api/structure/save` (the overwrite flow
 included). Both `save` shapes carry the periodicity gate's verdicts in the
 result — `notices`, verbatim from the server *(2026-08-20: one gate, two

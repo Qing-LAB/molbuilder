@@ -62,23 +62,15 @@ export const molviewFiles = {
                 });
                 if (!res.ok) return { ok: false, error: res.error };
                 // BOTH files — the coordinates and the metadata that has to
-                // travel with them (§ 11.3).  As ONE artifact when there are
-                // two: a second programmatic download is exactly what
-                // browsers silently swallow (Chrome's multiple-download
-                // policy).  A store-zip named by the stem cannot lose its
-                // half.
+                // travel with them (§ 11.3) -- as ONE artifact: a second
+                // programmatic download is exactly what browsers silently
+                // swallow (Chrome's multiple-download policy).  A store-zip
+                // named by the stem cannot lose its half.
                 const files = res.body.files;
                 // The gate's verdicts ride the result: the server judged
                 // what is leaving, and its sentence is said.
                 const notices = Array.isArray(res.body.notices)
                     ? res.body.notices : null;
-                if (files.length === 1) {
-                    download(files[0].name,
-                              new Blob([files[0].text],
-                                       { type: "text/plain" }));
-                    return { ok: true, files: [files[0].name],
-                             notices: notices };
-                }
                 const enc = new TextEncoder();
                 const archive = storeZip(files.map((f) => ({
                     name: f.name, bytes: enc.encode(f.text) })));
