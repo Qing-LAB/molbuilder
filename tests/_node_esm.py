@@ -46,8 +46,8 @@ from __future__ import annotations
 
 import contextlib
 import json
-import shutil
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
@@ -212,15 +212,25 @@ def tab_storage(seed=None) -> str:
     )
 
 
+def node() -> str:
+    """THE NODE EVERY NODE TEST RUNS ON: the env's own -- the host recipe's
+    opt-in ``nodejs`` (`ops/env-framework.md` § 3.2a) -- under the prefix of
+    the env this suite runs in, whatever else is first on ``PATH``.  Absent, a test skips, naming the command that installs it
+    (`process/testing.md` § 4)."""
+    found = Path(sys.prefix) / "bin" / "node"
+    if not found.exists():
+        pytest.skip(f"no Node in this env ({sys.prefix}): bash "
+                    "scripts/install-env.sh install molbuilder "
+                    "--with-dev-tools --yes")
+    return str(found)
+
+
 def run_node(files, snippet: str, *, globals_js: str = "", static_root=None,
              timeout: int = 20, storage: bool = False):
     """``storage``: Node's own Web Storage, the ``sessionStorage`` and
     ``localStorage`` a page keeps values in -- the real implementation, its
     ``localStorage`` file the run's own, gone with it
     (`process/testing.md` § 4)."""
-    node = shutil.which("node")
-    if node is None:
-        pytest.skip("node not available")
     imports = "\n".join(
         f"await import({json.dumps(Path(f).resolve().as_uri())});" for f in files
     )
@@ -256,7 +266,7 @@ def run_node(files, snippet: str, *, globals_js: str = "", static_root=None,
             flags = ["--experimental-webstorage",
                      f"--localstorage-file={Path(folder) / 'local.db'}"]
         proc = subprocess.run(
-            [node, *flags, "--input-type=module", "-e", program],
+            [node(), *flags, "--input-type=module", "-e", program],
             capture_output=True, text=True, timeout=timeout,
         )
     if proc.returncode != 0:

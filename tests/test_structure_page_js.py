@@ -14,11 +14,12 @@ machinery (which has its own dedicated test files).
 from __future__ import annotations
 
 import json
-import shutil
 import subprocess
 from pathlib import Path
 
 import pytest
+
+from tests._node_esm import node as the_envs_node
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -137,9 +138,7 @@ function _mkFakeModal(verdict) {
 
 
 def _run_node(snippet: str) -> object:
-    node = shutil.which("node")
-    if node is None:
-        pytest.skip("node not available")
+    node = the_envs_node()
     module_path = MODULE.resolve()
     bootstrap = f"""
         {_FAKES}

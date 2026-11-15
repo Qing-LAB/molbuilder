@@ -226,6 +226,9 @@ molbuilder = [
     # The host env's package list (`envs/host-env.txt`), read at import by
     # `envs/recipes.py` and by `scripts/install-env.sh`.
     "envs/*.txt",
+    # The JS test packages' pins (`envs/js/package.json`, its lockfile), what
+    # the host recipe's opt-in step installs (`ops/env-framework.md` § 3.2a).
+    "envs/js/*.json",
     # `data/jupyter_server_config.py` -- Python that is COPIED, never
     # imported: the framed notebook server's config file, which subclasses
     # jupyter_server's checkpoints class and so cannot be imported by the

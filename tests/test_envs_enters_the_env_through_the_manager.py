@@ -324,6 +324,9 @@ def test_every_step_gets_the_clean_slate_only_builds_used_to_get(
     strip, two functions away from the stripper."""
     monkeypatch.setenv("CPATH", "/usr/include/evil")
     monkeypatch.setenv("CUDA_HOME", "/opt/cuda-system")
+    # npm reads its variables in either case: a host's upper-case cache
+    # would compete with the env's.
+    monkeypatch.setenv("NPM_CONFIG_CACHE", "/home/someone/.npm")
     monkeypatch.setenv("OMPI_MCA_btl", "self,tcp")
     monkeypatch.setenv("KEEP_ME", "yes")
     prefix = _prefix(tmp_path)
@@ -333,10 +336,13 @@ def test_every_step_gets_the_clean_slate_only_builds_used_to_get(
     assert "CPATH" not in env and "CUDA_HOME" not in env
     assert "OMPI_MCA_btl" not in env
     assert env["KEEP_ME"] == "yes"
-    # Temp and cache inside the prefix, so removing the env really cleans up
-    # and a small /tmp on a cluster cannot fail a wheel build.
+    # Temp and caches inside the prefix, so removing the env really cleans up
+    # and a small /tmp on a cluster cannot fail a wheel build -- npm's too,
+    # whose default is ~/.npm (`env-framework.md` § 3.2a).
     assert env["TMPDIR"] == f"{prefix}/var/tmp"
     assert env["PIP_CACHE_DIR"] == f"{prefix}/var/cache/pip"
+    assert env["npm_config_cache"] == f"{prefix}/var/cache/npm"
+    assert "NPM_CONFIG_CACHE" not in env
     assert os.path.isdir(env["TMPDIR"])
 
 

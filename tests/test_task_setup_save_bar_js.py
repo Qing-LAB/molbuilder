@@ -18,11 +18,12 @@ comparison inverted.
 from __future__ import annotations
 
 import json
-import shutil
 import subprocess
 from pathlib import Path
 
 import pytest
+
+from tests._node_esm import node as the_envs_node
 
 ROOT = Path(__file__).resolve().parents[1]
 VIEWER = ROOT / "molbuilder/web/static/task-setup/viewer.js"
@@ -65,9 +66,7 @@ HARNESS = f"""
 
 
 def _run(js: str) -> dict:
-    node = shutil.which("node")
-    if node is None:
-        pytest.skip("node not available")
+    node = the_envs_node()
     prog = HARNESS + _fns() + "\n(async () => {\n" + js + "\n})();"
     proc = subprocess.run([node, "--input-type=commonjs", "-e", prog],
                           capture_output=True, text=True, timeout=20)

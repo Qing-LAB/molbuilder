@@ -285,10 +285,11 @@ rather than as three surfaces that would have to be built.
 
 **It applies to all three kinds**, which is what forced `extra_steps` to become
 records (`ExtraStep`). The host env's test tooling is the case that needed it:
-a conda package (`nodejs`), two pip packages (`playwright`,
-`pytest-playwright`) and a step (`playwright install chromium`) that **cannot**
-be gated by the packages alone — run it in an env without playwright and it
-simply fails. A bare argv tuple still normalises into an `ExtraStep`, so a step
+a conda package (`nodejs` — the Node every Node test runs on, the env's own
+whatever else is on `PATH`), two pip packages (`playwright`,
+`pytest-playwright`) and two steps — `playwright install chromium`, and the JS
+test packages (below) — that **cannot** be gated by the packages alone: run
+either in an env without its tool and it simply fails. A bare argv tuple still normalises into an `ExtraStep`, so a step
 with nothing extra to say still reads as an argv.
 
 **Why the test tooling is in the host env and not its own.** The `e2e` tests
@@ -309,6 +310,33 @@ elevated privilege**: `playwright install-deps` installs distro packages as
 root and is not run; a host missing those shared libraries is a host
 prerequisite, like conda itself. A test asserts both, on the step's command
 tokens rather than its text.
+
+**The JS test packages are a step of the same kind** *(the user, 2026-11-14:
+"self-contained ... so that we don't have to contaminate the system")*: the
+page scripts' Node tests are to run on a real DOM implementation, `jsdom`,
+rather than the DOMs written by hand in test files today. What is
+installed is pinned by a lockfile kept as data beside the host env's list —
+`molbuilder/envs/js/package.json` and `package-lock.json` — and the step
+installs exactly that, `npm ci --ignore-scripts` (no package's install script
+runs), into the env's `recipes.JS_TEST_PACKAGES_HOME`
+(`$CONDA_PREFIX/share/molbuilder-js`): inside the env, removed with it. npm's
+cache is kept inside the prefix by the step's environment, beside pip's
+(`env_for_step`, § 5.6); the person's own npm configuration — a site's
+registry mirror — is honoured, as pip's is; the packages are `dependencies`,
+not `devDependencies`, so no `omit` setting of the person's can leave them out.
+No hook is needed: a test reads the packages from that folder under the prefix
+of the env it runs in. A pin is changed in `package.json`, and the lockfile is
+rewritten in that folder by the host env's own npm, its cache in that env:
+
+```
+conda activate molbuilder      # its npm, and its $CONDA_PREFIX
+cd molbuilder/envs/js
+npm_config_cache="$CONDA_PREFIX/var/cache/npm" npm install --package-lock-only --ignore-scripts
+```
+
+`doctor` does not check what an install step puts down — the browser or these
+packages — only the declared packages: a test that needs either skips, naming
+the command that installs it.
 
 **An opt-in package that is absent is a choice, not a defect.** The audit
 reports it under its own kind (`*-missing-opt-in`) and it does not fail the
@@ -361,7 +389,8 @@ envs/recipes.py         ── reads it ──►  `_HOST`'s packages; every rec
 * **A line holds a kind and a name — nothing a record says.** A host package
   that ever needs a source, a force flag or a fallback (§ 3.3) is a record in
   `recipes.py`, as is the **opt-in test tooling** (`nodejs`, `playwright`,
-  `pytest-playwright` and the chromium step, § 3.2a): the shim performs a
+  `pytest-playwright`, the chromium step and the JS test packages' step,
+  § 3.2a): the shim performs a
   default install, which leaves those out, so they are not on the list it
   reads.
 * **The `python` line is the python every env is built on**, not only the
@@ -672,8 +701,8 @@ corrects how this section first stated it:
   reported once, and the step's outcome is whatever the step's own criteria say.
 
 **Environment, not activation.** What a step legitimately needs beyond activation
-— `TMPDIR` and `PIP_CACHE_DIR` kept inside the prefix so `env remove` really
-cleans up, and `builds.build_subprocess_env()`'s stripping of host `CPATH` /
+— `TMPDIR`, `PIP_CACHE_DIR` and npm's cache (`npm_config_cache`) kept inside
+the prefix so `env remove` really cleans up, and `builds.build_subprocess_env()`'s stripping of host `CPATH` /
 `CFLAGS` / `CUDA_HOME` / `OMPI_*` leakage — is computed by `builds.env_for_step`
 inside `run_step` (and by `builds._build_env` for a build phase). A step does not
 choose its environment; `run_step` had an `env` parameter no caller passed, and it

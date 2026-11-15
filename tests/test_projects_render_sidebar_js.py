@@ -21,11 +21,12 @@ core DOM-sync logic without standing up a browser.
 from __future__ import annotations
 
 import json
-import shutil
 import subprocess
 from pathlib import Path
 
 import pytest
+
+from tests._node_esm import node as the_envs_node
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -33,9 +34,7 @@ LIST_MODULE = ROOT / "molbuilder/web/static/lib/projects/list.js"
 
 
 def _run_node(snippet: str) -> object:
-    node = shutil.which("node")
-    if node is None:
-        pytest.skip("node not available")
+    node = the_envs_node()
     list_url = LIST_MODULE.resolve().as_uri()
     kept_url = (ROOT / "molbuilder/web/static/lib/page-prefs.js").resolve().as_uri()
     bootstrap = f"""

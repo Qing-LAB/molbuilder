@@ -13,11 +13,10 @@ strip's keyboard.  Under guard, each named for its failure:
 from __future__ import annotations
 
 import json
-import shutil
 import subprocess
 from pathlib import Path
 
-import pytest
+from tests._node_esm import node as the_envs_node
 
 MODULE = (Path(__file__).resolve().parents[1]
           / "molbuilder/web/static/lib/tab-strip.js")
@@ -73,9 +72,7 @@ process.stdout.write(JSON.stringify(out));
 
 
 def test_one_tab_stop_and_the_arrow_keys_over_what_can_be_chosen(tmp_path):
-    node = shutil.which("node")
-    if node is None:
-        pytest.skip("node not available")
+    node = the_envs_node()
     driver = tmp_path / "drive.js"
     driver.write_text(_DRIVER)
     out = json.loads(subprocess.run(

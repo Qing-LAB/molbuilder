@@ -17,11 +17,12 @@ that it tells the page where the bytes went.
 from __future__ import annotations
 
 import json
-import shutil
 import subprocess
 from pathlib import Path
 
 import pytest
+
+from tests._node_esm import node as the_envs_node
 
 ROOT = Path(__file__).resolve().parents[1]
 MODULE = ROOT / "molbuilder/web/static/modify/structure/save.js"
@@ -36,9 +37,7 @@ def _run_node(snippet: str) -> object:
     handed their collaborators rather than importing them — so it is loaded
     through `module.exports`, which is the seam it already provides.
     """
-    node = shutil.which("node")
-    if node is None:
-        pytest.skip("node not available")
+    node = the_envs_node()
     bootstrap = f"""
         globalThis.window = globalThis;
         globalThis.molbuilder = {{}};
@@ -103,7 +102,7 @@ def _run_node(snippet: str) -> object:
         const mod = require(MODULE_PATH);
     """
     proc = subprocess.run(
-        ["node", "-e", bootstrap + "\n" + snippet],
+        [node, "-e", bootstrap + "\n" + snippet],
         capture_output=True, text=True, timeout=30,
     )
     if proc.returncode != 0:

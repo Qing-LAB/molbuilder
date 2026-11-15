@@ -219,8 +219,8 @@ def test_opt_in_is_the_difference_between_the_two_plans():
     adds and a default run leaves out -- across all three kinds.
 
     The host env's test tooling is the case: a conda package (nodejs), two pip
-    packages (playwright, pytest-playwright) and an extra step (the chromium
-    download).  It was four hand-typed commands in `install-env.sh --help`
+    packages (playwright, pytest-playwright) and two extra steps (the chromium
+    download, the JS test packages into `molbuilder-js`).  It was four hand-typed commands in `install-env.sh --help`
     until 2026-09-18, which is what a package the registry cannot express
     looks like.
     """
@@ -229,11 +229,12 @@ def test_opt_in_is_the_difference_between_the_two_plans():
     flat = lambda plan: " ".join(" ".join(s.argv) for s in plan)
     default = flat(install.plan_install(recipe)[1])
     opted = flat(install.plan_install(recipe, include_opt_in=True)[1])
-    for name in ("nodejs", "playwright", "pytest-playwright", "chromium"):
+    for name in ("nodejs", "playwright", "pytest-playwright", "chromium",
+                 "molbuilder-js"):
         assert name not in default, f"{name} is opt-in; a default run must skip it"
         assert name in opted, f"--with-dev-tools must install {name}"
-    # The chromium download is the only extra step this recipe has, so a
-    # default plan dispatches none at all.
+    # Both of this recipe's extra steps are opt-in, so a default plan
+    # dispatches none at all.
     assert not [s for s in install.plan_install(recipe)[1]
                 if s.role is install.StepRole.EXTRA]
 

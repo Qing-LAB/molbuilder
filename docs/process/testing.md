@@ -725,21 +725,27 @@ to react to is *"the real check is elsewhere"*, never *"proves nothing"*.
 > bash scripts/install-env.sh install molbuilder --with-dev-tools --yes
 > ```
 >
-> That installs `nodejs`, `playwright`, `pytest-playwright` and a headless
-> chromium **into the host env**, with the browser confined to
+> That installs `nodejs`, the JS test packages (`jsdom`,
+> from the lockfile `molbuilder/envs/js/package-lock.json`, into
+> `$CONDA_PREFIX/share/molbuilder-js`), `playwright`, `pytest-playwright` and
+> a headless chromium **into the host env**, with the browser confined to
 > `$CONDA_PREFIX/share/ms-playwright` (an `activate.d` hook keeps the path set
-> for the pytest process) and no step requiring root.
+> for the pytest process), npm's cache inside the env too, and no step
+> requiring root (`ops/env-framework.md` § 3.2a). Every Node test runs on that
+> env's own Node (`_node_esm.node()`), whatever else is first on `PATH`.
 >
 > `bash scripts/install-env.sh doctor` shows what you have: the `opt-in:` row
-> for `molbuilder` lists whatever is still absent.
+> for `molbuilder` lists the opt-in packages still absent (not what the two
+> install steps put down -- the browser, the JS packages; a test that needs
+> either skips, naming the command).
 > Neither is needed to RUN molbuilder, and chromium is a large download
 > nobody should pay for by accident — which is why `bootstrap` leaves them
 > out (`envs/recipes.py` records the ruling: a browser-tooling-only env
 > cannot start the app, so e2e runs in the host env or not at all).
 >
-> **Know what a missing tool costs you.** Without `node`, **717 tests skip**
-> — and pytest counts a skip toward a green run, so the suite reports
-> healthy while every one of those modules goes unexercised. A full lane
+> **Know what a missing tool costs you.** Without the env's `node`, **every
+> Node test skips** — and pytest counts a skip toward a green run, so the
+> suite reports healthy while every one of those modules goes unexercised. A full lane
 > here reads `9,414 collected` and runs about 7,800.
 
 

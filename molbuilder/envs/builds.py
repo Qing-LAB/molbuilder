@@ -686,23 +686,30 @@ def env_for_step(env_prefix: Optional[str],
     * **host leakage stripped** (`build_subprocess_env`), so a pip install
       never sees the user's ``CPATH`` / ``CFLAGS`` / ``CUDA_HOME`` /
       ``OMPI_*``.
-    * **temp and cache under the prefix**, so that removing the env really
-      does clean up after an install and a small ``/tmp`` on a cluster cannot
-      fail a wheel build.
+    * **temp and caches under the prefix** -- pip's and npm's -- so that
+      removing the env really does clean up after an install and a small
+      ``/tmp`` on a cluster cannot fail a wheel build.
     """
     env = build_subprocess_env(base_env)
     if env_prefix:
         tmp = f"{env_prefix}/var/tmp"
         pip_cache = f"{env_prefix}/var/cache/pip"
+        # npm's too, for the step that installs the JS test packages
+        # (`env-framework.md` § 3.2a): its default is ``~/.npm``.
+        npm_cache = f"{env_prefix}/var/cache/npm"
         # ``make_dirs=False`` for a step that only READS the env, so
         # `doctor`'s verify creates nothing in an env it audits.
-        for d in ((tmp, pip_cache) if make_dirs else ()):
+        for d in ((tmp, pip_cache, npm_cache) if make_dirs else ()):
             try:
                 os.makedirs(d, exist_ok=True)
             except OSError:
                 pass  # an unwritable prefix is the step's failure to report
         env["TMPDIR"] = tmp
         env["PIP_CACHE_DIR"] = pip_cache
+        # npm reads its variables in either case, so a host's upper-case
+        # one would compete with this.
+        env.pop("NPM_CONFIG_CACHE", None)
+        env["npm_config_cache"] = npm_cache
     return env
 
 

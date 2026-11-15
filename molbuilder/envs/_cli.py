@@ -384,9 +384,10 @@ def _render_doctor(reports: Iterable[_doctor.EnvReport]) -> int:
                     # mismatch is answered with `--include-version-fix` above.
                     click.echo("    next:    "
                                + _fix_cmd("repair", rep.recipe.name, *_flags))
-                    # THE DEFAULT SET, not every declared step.  `_HOST` has an
-                    # opt-in `extra_steps` entry -- the chromium download -- and
-                    # keying on the raw tuple would tell every
+                    # THE DEFAULT SET, not every declared step.  `_HOST` has
+                    # opt-in `extra_steps` entries -- the chromium download,
+                    # the JS test packages -- and keying on the raw tuple
+                    # would tell every
                     # host-env reader that `install --yes` has post-install work
                     # to re-run, when a default install dispatches none.
                     if rep.recipe.extra_set():
@@ -406,9 +407,10 @@ def _render_doctor(reports: Iterable[_doctor.EnvReport]) -> int:
             # packages.
             #
             # It reports PACKAGES.  The audit walks declared packages, so the
-            # opt-in extra step (the chromium download) is not among them --
-            # the count says "package(s)" for that reason, and `add:` installs
-            # the whole opt-in set including the step.
+            # opt-in extra steps (the chromium download, the JS test
+            # packages) are not among them -- the count says "package(s)" for
+            # that reason, and `add:` installs the whole opt-in set including
+            # the steps.
             if opt_in_issues:
                 click.echo(
                     f"    opt-in:  {len(opt_in_issues)} package(s) not "
@@ -1121,8 +1123,10 @@ def _build_callbacks(recipe, auto_yes: bool):
                    "a non-fatal warning (sm_80 fallback etc.).")
 @click.option("--with-dev-tools", "with_dev_tools", is_flag=True,
               help="also install what the recipe marks opt-in -- for "
-                   "`molbuilder`, the test tooling: nodejs, playwright, "
-                   "pytest-playwright and a headless chromium.  Left out of "
+                   "`molbuilder`, the test tooling: nodejs, the JS test "
+                   "packages (jsdom, from molbuilder/envs/js's lockfile), "
+                   "playwright, pytest-playwright and a headless chromium.  "
+                   "Left out of "
                    "a default install because none of it is needed to RUN "
                    "molbuilder and the browser is a ~115 MB download.  "
                    "Everything lands INSIDE the env (the browser under "

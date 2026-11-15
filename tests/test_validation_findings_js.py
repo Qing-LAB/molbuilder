@@ -27,18 +27,12 @@ from __future__ import annotations
 
 import json
 import pathlib
-import shutil
-
-import pytest
 
 from support.road import CO2, H2
 from tests._node_esm import run_node
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
 MODULE = REPO / "molbuilder/web/static/lib/validation-findings.js"
-
-pytestmark = pytest.mark.skipif(shutil.which("node") is None,
-                                reason="node not available")
 
 # A DOM stub: just enough element/list semantics for the module under test.
 _STUB = r"""

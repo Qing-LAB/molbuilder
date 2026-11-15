@@ -342,7 +342,8 @@ bash scripts/install-env.sh init-config
 # 9. TEST TOOLING (optional -- only if you run the test suite):
 bash scripts/install-env.sh install molbuilder --with-dev-tools --yes
 #
-#    Installs node, playwright, pytest-playwright and a headless
+#    Installs node, the JS test packages (jsdom, from the lockfile
+#    molbuilder/envs/js/), playwright, pytest-playwright and a headless
 #    chromium INTO the host env.  Left out of a default install
 #    because none of it is needed to RUN molbuilder and the browser
 #    is a ~115 MB download.
@@ -351,7 +352,9 @@ bash scripts/install-env.sh install molbuilder --with-dev-tools --yes
 #    $CONDA_PREFIX/share/ms-playwright, not ~/.cache/ms-playwright
 #    (measured 1.3 GB there, outside every env and surviving
 #    `conda env remove`), via an activate.d hook that also sets the
-#    variable for the pytest process.  Nothing needs root:
+#    variable for the pytest process; the JS packages go to
+#    $CONDA_PREFIX/share/molbuilder-js, npm's cache inside the env
+#    too.  Nothing needs root:
 #    `playwright install-deps` is NOT run and must not be -- it
 #    installs distro packages as root.  A host missing those shared
 #    libraries is a host prerequisite, like conda itself.

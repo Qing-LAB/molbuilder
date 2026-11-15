@@ -36,7 +36,6 @@ inputs and asserts each one redacts to the expected shape.
 from __future__ import annotations
 
 import json
-import shutil
 from pathlib import Path
 
 import pytest
@@ -44,16 +43,6 @@ import pytest
 
 _ROOT = Path(__file__).resolve().parents[1]
 _CORE = _ROOT / "molbuilder/web/static/lib/trajectory/core.js"
-
-
-def _have_node():
-    return shutil.which("node") is not None
-
-
-pytestmark = pytest.mark.skipif(
-    not _have_node(),
-    reason="node not installed; skipping L2 Node-driven JS test",
-)
 
 
 # Cases: (input, expected_output, why).

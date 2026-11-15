@@ -202,6 +202,13 @@ _SIESTA_REF  = _env_default("MOLBUILDER_SIESTA_TAG",
 #: python exists to read a recipe (`env-framework.md` § 8).  It also states
 #: the python every env is built on.  Nothing here repeats it.
 _HOST_ENV_FILE = Path(__file__).with_name("host-env.txt")
+#: THE JS TEST PACKAGES' PINS -- `package.json` and its lockfile, data beside
+#: the host env's list -- what the host recipe's opt-in step installs
+#: (`env-framework.md` § 3.2a).
+_JS_TEST_PACKAGES = Path(__file__).with_name("js")
+#: Where in an env that step installs them -- below its prefix, so they are
+#: removed with it; what a test reads them from.
+JS_TEST_PACKAGES_HOME = "share/molbuilder-js"
 
 
 @dataclass(frozen=True)
@@ -1036,9 +1043,9 @@ class Recipe:
     extra_steps
         Arbitrary shell-command argv tuples to run AFTER pip installs
         but BEFORE the build_spec (if any) -- the host env's opt-in
-        ``python -m playwright install chromium`` and siesta-gpu's
-        toolchain shims; each is dispatched through the manager's
-        ``run -n <env> ...``.
+        ``python -m playwright install chromium`` and its JS test packages'
+        ``npm ci``, and siesta-gpu's toolchain shims; each is dispatched
+        through the manager's ``run -n <env> ...``.
     build_spec
         Optional :class:`BuildSpec`.  When non-``None``, the install
         machinery chains into :mod:`molbuilder.envs.builds` after
@@ -1227,8 +1234,9 @@ _HOST = Recipe(
         # than a documented `nvm install`, because nvm is a per-user local
         # thing conda cannot provide and this project cannot assume -- the
         # same error as reading the host's /usr/bin/python3 and calling an
-        # env fine (user, 2026-09-18).
-        CondaPackage("nodejs", opt_in='test tooling -- runs the shipped ES modules directly; without it 717 JS tests SKIP, and pytest counts a skip toward a green run'),
+        # env fine (user, 2026-09-18).  The Node tests run on THIS env's
+        # Node (`tests/_node_esm.node`), never whatever is first on PATH.
+        CondaPackage("nodejs", opt_in='test tooling -- runs the shipped ES modules directly; without it every Node test SKIPS, and pytest counts a skip toward a green run'),
     ),
     # The file's pip packages are OPTIONAL -- UI-only conveniences, the env
     # usable without them -- as the shim installs them (warn and continue).
@@ -1264,7 +1272,19 @@ _HOST = Recipe(
     # NO ELEVATED PRIVILEGE, EVER.  `playwright install-deps` installs distro
     # packages as root and is NOT run here and must not be: a missing system
     # library is a host prerequisite, the same class of thing as conda itself.
-    extra_steps=(ExtraStep(("bash", "-c", 'set -e; D="$CONDA_PREFIX/share/ms-playwright"; H="$CONDA_PREFIX/etc/conda/activate.d"; mkdir -p "$D" "$H"; printf \'export PLAYWRIGHT_BROWSERS_PATH="$CONDA_PREFIX/share/ms-playwright"\\n\' > "$H/playwright-browsers.sh"; export PLAYWRIGHT_BROWSERS_PATH="$D"; python -m playwright install chromium; echo "[molbuilder] chromium -> $D (inside the env; removed with it, no sudo, nothing in ~/.cache)" >&2'), opt_in='test tooling -- a ~115 MB browser download, and nobody should pay for it by accident'),),
+    #
+    # THE JS TEST PACKAGES, the same kind of step: exactly what the lockfile
+    # beside the host env's list pins (`_JS_TEST_PACKAGES`, passed as bash's
+    # `$1` so no path is spliced into the script), installed by `npm ci`
+    # with no package's install script run, into the env's own
+    # `JS_TEST_PACKAGES_HOME`.
+    # npm's cache is the step environment's (`builds.env_for_step`), inside
+    # the prefix beside pip's.  No hook: a test finds the packages under the
+    # prefix of the env it runs in.
+    extra_steps=(
+        ExtraStep(("bash", "-c", 'set -e; D="$CONDA_PREFIX/share/ms-playwright"; H="$CONDA_PREFIX/etc/conda/activate.d"; mkdir -p "$D" "$H"; printf \'export PLAYWRIGHT_BROWSERS_PATH="$CONDA_PREFIX/share/ms-playwright"\\n\' > "$H/playwright-browsers.sh"; export PLAYWRIGHT_BROWSERS_PATH="$D"; python -m playwright install chromium; echo "[molbuilder] chromium -> $D (inside the env; removed with it, no sudo, nothing in ~/.cache)" >&2'), opt_in='test tooling -- a ~115 MB browser download, and nobody should pay for it by accident'),
+        ExtraStep(("bash", "-c", f'set -e; D="$CONDA_PREFIX/{JS_TEST_PACKAGES_HOME}"; mkdir -p "$D"; cp "$1/package.json" "$1/package-lock.json" "$D/"; cd "$D"; npm ci --ignore-scripts --no-audit --no-fund --no-update-notifier; echo "[molbuilder] JS test packages -> $D (inside the env; removed with it, no sudo, nothing in ~/.npm)" >&2', "js-test-packages", str(_JS_TEST_PACKAGES)), opt_in='test tooling -- the DOM the Node tests run the page scripts on (jsdom), pinned by molbuilder/envs/js/package-lock.json'),
+    ),
     # NOT A NOTEBOOK KERNEL.  The user's design: the notebook env is
     # SELF-CONTAINED and no other env carries notebook tooling.  See
     # `_JUPYTER`.

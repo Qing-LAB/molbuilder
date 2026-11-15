@@ -204,8 +204,9 @@ configuration details.
   [validation](docs/science/validation.md)
 - **Developing molbuilder:** [design](docs/design.md),
   [architecture](docs/architecture.md), and the in-app [documentation index](docs/README.md).
-  The test suite needs tooling the normal install leaves out — node, playwright
-  and a headless browser — which one command adds to the host environment:
+  The test suite needs tooling the normal install leaves out — node, the JS
+  test packages, playwright and a headless browser — which one command adds to
+  the host environment:
   ```bash
   bash scripts/install-env.sh install molbuilder --with-dev-tools --yes
   ```

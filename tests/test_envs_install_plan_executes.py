@@ -47,7 +47,8 @@ def _caps():
 def _all_steps():
     """(recipe_name, label, argv) for every step of every install plan."""
     for recipe in R.builtin_recipes():
-        name, steps = I.plan_install(recipe)
+        # The opt-in steps too: they are generated shell like the rest.
+        name, steps = I.plan_install(recipe, include_opt_in=True)
         for st in steps:
             yield name, st.label, tuple(st.argv)
 
@@ -120,10 +121,7 @@ def test_the_browser_step_confines_itself_to_the_prefix(tmp_path):
         'mkdir -p "$PLAYWRIGHT_BROWSERS_PATH/chromium-stub"\n')
     stub.chmod(0o755)
 
-    recipe = R.recipe_by_name("molbuilder")
-    step = next(e for e in recipe.extra_steps if e.opt_in)
-    argv = ("/usr/bin/conda", "run", "-n", "x", "--no-capture-output",
-            *step.argv)
+    argv = _host_step("ms-playwright")
     env = dict(os.environ, HOME=str(fake_home))
     cp = subprocess.run(list(_B.activation_wrapper(argv, str(prefix))),
                         capture_output=True, text=True, timeout=120, env=env)
@@ -143,6 +141,64 @@ def test_the_browser_step_confines_itself_to_the_prefix(tmp_path):
     assert hook.is_file(), "no activate.d hook: the browser would be looked "\
                            "for outside the env it was downloaded into"
     assert "$CONDA_PREFIX/share/ms-playwright" in hook.read_text()
+
+
+def _host_step(installs_into: str):
+    """The argv the installer plans (`install.extra_steps_for`, opt-in
+    included) for the host recipe's extra step that installs into
+    ``$CONDA_PREFIX/share/<installs_into>``."""
+    steps = I.extra_steps_for(R.recipe_by_name("molbuilder"), "/usr/bin/conda",
+                              "x", include_opt_in=True)
+    (step,) = [s for s in steps
+               if any(f"share/{installs_into}" in a for a in s.argv)]
+    return tuple(step.argv)
+
+
+def test_the_js_test_packages_step_confines_itself_to_the_prefix(tmp_path):
+    """END RESULT, not the string -- the browser step's twin
+    (`env-framework.md` § 3.2a).  Runs the real step against a synthetic
+    prefix, in the environment every install step runs in
+    (`builds.env_for_step`), with a stub `npm` that records what it was
+    asked -- a test downloads nothing; the real install is
+    `--with-dev-tools`'s -- and asserts where things land: the lockfile's packages installed
+    by `npm ci` with no install scripts, in the env's own `share/`, npm's
+    cache inside the prefix, and $HOME untouched."""
+    prefix = tmp_path / "env"
+    (prefix / "bin").mkdir(parents=True)
+    fake_home = tmp_path / "home"
+    fake_home.mkdir()
+    # A stub npm that records what it was asked, and -- as npm does --
+    # writes its log under its cache, ``~/.npm`` unless told otherwise.
+    stub = prefix / "bin" / "npm"
+    stub.write_text(
+        "#!/bin/sh\n"
+        'printf "%s\\n%s\\n%s\\n" "$*" "$PWD" "$npm_config_cache" '
+        '> "$0.asked"\n'
+        'C="${npm_config_cache:-$HOME/.npm}"; mkdir -p "$C/_logs"; '
+        'echo ran > "$C/_logs/debug.log"\n'
+        'mkdir -p node_modules/jsdom\n')
+    stub.chmod(0o755)
+
+    argv = _host_step("molbuilder-js")
+    env = _B.env_for_step(str(prefix), dict(os.environ, HOME=str(fake_home)))
+    cp = subprocess.run(list(_B.activation_wrapper(argv, str(prefix))),
+                        capture_output=True, text=True, timeout=120, env=env)
+    assert cp.returncode == 0, f"JS packages step failed:\n{cp.stderr}"
+
+    args, cwd, cache = (prefix / "bin" / "npm.asked").read_text().split("\n")[:3]
+    there = prefix / R.JS_TEST_PACKAGES_HOME
+    assert args.split()[0] == "ci" and "--ignore-scripts" in args.split(), (
+        f"not the lockfile's install with no install scripts: {args!r}")
+    assert cwd == str(there), f"npm ran in {cwd!r}, not inside the prefix"
+    assert cache == str(prefix / "var" / "cache" / "npm"), (
+        f"npm's cache was {cache!r}, not inside the prefix")
+    pins = R._JS_TEST_PACKAGES
+    for name in ("package.json", "package-lock.json"):
+        assert (there / name).read_text() == (pins / name).read_text(), (
+            f"{name} is not the pinned one")
+    assert (there / "node_modules" / "jsdom").is_dir()
+    assert not list(fake_home.iterdir()), (
+        "something was written to the user's home instead of the env")
 
 
 def test_the_toolchain_shim_step_actually_creates_the_links(tmp_path):
