@@ -29,6 +29,7 @@ import pytest
 
 from molbuilder import jupyter as J
 from support.live_server import free_serve_port
+from support.pages import SIGN_INS, SIGNED_IN
 from support.tooling import needs
 
 
@@ -266,25 +267,48 @@ def test_no_supervisor_answers_404_on_every_gated_route(method, route,
     assert r.get_json()["ok"] is False
 
 
+#: The callers the gate refuses (`jupyter.md` § 6): another machine, on a
+#: server with no sign-in -- asking by a loopback name, so only its address
+#: tells -- and, on a server with sign-in, a person signed in who is not an
+#: admin, from this machine.
+_REFUSED = [
+    pytest.param({}, None, "10.0.0.7", id="another-machine"),
+    pytest.param({"auth": {"providers": [SIGN_INS[0]]},
+                  "admin": {"emails": ["boss@example.org"]}},
+                 SIGNED_IN, "127.0.0.1", id="signed-in-not-an-admin"),
+]
+
+
+@pytest.mark.parametrize("config, user, peer", _REFUSED)
 @pytest.mark.parametrize("method,route,headers", _GATED)
-def test_a_caller_who_may_not_control_gets_403_not_404(method, route,
-                                                       headers, monkeypatch):
+def test_a_caller_who_may_not_control_gets_403_not_404(
+        method, route, headers, config, user, peer, monkeypatch):
     """With a supervisor present, the refusal changes meaning -- and
     reaching the notebook through ``/jupyter/``, its kernel's WebSocket
     included, is refused as starting one is (`jupyter.md` § 6).
 
     404 says *there is no button*; 403 says *there is one and it is not
     yours*. Every gated route answers with the SAME sentence (`plan.md`
-    § 5n, J4).
-    """
+    § 5n, J4).  Through the real gate; only the supervisor's presence stood
+    in (it reads a live server's pidfile).
+
+    THE SILENT FAILURE: the gate broken so that it lets in anyone asking by
+    a loopback name, or anyone on this machine whatever the sign-in -- a
+    stranger starting a kernel, running code as the account that serves the
+    page -- while a test with the gate stood in stays green (to 2.70.17)."""
     from molbuilder.web.app import create_app
     from molbuilder.web.blueprints import jupyter as bp
     monkeypatch.setattr(bp, "_supervised", lambda: True)
-    monkeypatch.setattr(bp, "_may_control", lambda: False)
-    app = create_app(config={})
+    app = create_app(config=config)
     app.config["MOLBUILDER_SERVE_PORT"] = 8000
-    r = app.test_client().open(route, method=method, headers=headers)
-    assert r.status_code == 403
+    client = app.test_client()
+    if user:
+        with client.session_transaction() as session:
+            session["user"] = user
+    r = client.open(route, method=method,
+                    headers={"Host": "localhost:5050", **headers},
+                    environ_base={"REMOTE_ADDR": peer})
+    assert r.status_code == 403, r.get_data(as_text=True)
     assert "admin" in r.get_json()["error"]
 
 
