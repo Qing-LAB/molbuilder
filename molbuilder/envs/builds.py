@@ -35,9 +35,11 @@ import os
 import re
 import shlex
 import shutil
+import signal
 import stat
 import subprocess
 import sys
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 from typing import (Any, Callable, Dict, List, Mapping, Optional, Sequence,
@@ -225,6 +227,21 @@ _LEAKAGE_ENV_PREFIXES: Tuple[str, ...] = (
 _STREAM_INDENT = "    "
 
 
+def _stop_group(proc: "subprocess.Popen", sig: int) -> None:
+    """Send ``sig`` to the process group `run_streaming` started ``proc``
+    in -- the command and every process it started -- and, for a kill, wait
+    for it."""
+    try:
+        os.killpg(proc.pid, sig)
+    except (ProcessLookupError, PermissionError):
+        pass
+    if sig == signal.SIGKILL:
+        try:
+            proc.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            pass
+
+
 def timeout_tail(timeout: Optional[int]) -> str:
     """The line `run_streaming` appends when it kills a command on timeout.
 
@@ -271,8 +288,9 @@ def run_streaming(
         caller reads the returned transcript.  A caller that wants
         streaming says so.
     timeout
-        Optional seconds; ``Popen.wait(timeout=...)`` raises
-        :class:`subprocess.TimeoutExpired` on overrun.  ``None``
+        Optional seconds from the start: past them the command is stopped
+        -- it and every process it started, its own process group -- and
+        the call returns ``(None, transcript + timeout_tail)``.  ``None``
         waits indefinitely.
     inherit_stdio
         **NO PIPE AND NO CAPTURE**: the child writes straight to the file
@@ -336,6 +354,10 @@ def run_streaming(
                 env=dict(env) if env is not None else None,
             )
         else:
+            # ITS OWN PROCESS GROUP, so a timeout stops the command and every
+            # process it started: a tool entered through the manager's `run`
+            # is the manager's child, and killing the manager alone would
+            # leave the tool running and holding the output pipe open.
             proc = subprocess.Popen(
                 list(argv),
                 cwd=str(cwd) if cwd is not None else None,
@@ -344,6 +366,7 @@ def run_streaming(
                 text=True,
                 bufsize=1,
                 env=dict(env) if env is not None else None,
+                start_new_session=True,
             )
     except (FileNotFoundError, OSError) as exc:
         msg = f"failed to launch: {exc}"
@@ -367,7 +390,8 @@ def run_streaming(
         return rc, ""
 
     captured_lines: List[str] = []
-    try:
+
+    def _pump() -> None:
         # Stream each line: write indented copy to sink, accumulate
         # unindented copy for the log + the CLI's tail-on-failure.
         assert proc.stdout is not None
@@ -381,14 +405,18 @@ def run_streaming(
                     # If the sink dies (closed pipe, etc.) keep accumulating;
                     # we still want the log file to land.
                     pass
+
+    # THE OUTPUT IS READ BESIDE THE CLOCK, not before it: reading until the
+    # command ends and only then waiting with a timeout let a command that
+    # never ends run for ever.
+    reader = threading.Thread(target=_pump, daemon=True)
+    reader.start()
+    try:
         try:
             proc.wait(timeout=timeout)
         except subprocess.TimeoutExpired:
-            proc.kill()
-            try:
-                proc.wait(timeout=10)
-            except subprocess.TimeoutExpired:
-                pass
+            _stop_group(proc, signal.SIGKILL)
+            reader.join(timeout=10)
             tail = timeout_tail(timeout)
             captured_lines.append(tail)
             if out_sink is not None:
@@ -405,6 +433,11 @@ def run_streaming(
                 except OSError:
                     pass
             return None, combined
+        except KeyboardInterrupt:
+            # Its own group does not hear the terminal's Ctrl-C: passed on.
+            _stop_group(proc, signal.SIGINT)
+            raise
+        reader.join()
     finally:
         try:
             if proc.stdout is not None:

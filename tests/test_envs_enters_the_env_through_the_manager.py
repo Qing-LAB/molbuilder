@@ -426,10 +426,10 @@ def test_a_package_install_into_an_env_is_addressed_at_its_directory(
 #  S17 -- the tool router gets the same answer                                #
 # --------------------------------------------------------------------------- #
 
-def _machine_with(env_name, prefix):
+def _machine_with(env_name, prefix, manager="/opt/mgr/bin/conda"):
     from molbuilder.diagnostics import Capabilities, set_capabilities
     set_capabilities(Capabilities(
-        runtime_config={}, conda_binary="/opt/mgr/bin/conda",
+        runtime_config={}, conda_binary=manager,
         conda_envs={env_name: prefix}))
 
 
@@ -465,20 +465,30 @@ def test_the_tool_router_enters_through_the_door_addressed_by_prefix(
     assert done.returncode == 0 and done.stdout == "tleap: done\n"
 
 
-def test_a_tool_that_overruns_its_timeout_raises_as_subprocess_run_would(
-        monkeypatch):
-    """The door kills and reports in its transcript; the caller of a tool
-    expects `subprocess.TimeoutExpired`, and gets it."""
+def test_a_tool_that_overruns_its_timeout_is_stopped_at_it(tmp_path):
+    """A tool that hangs is stopped at its limit -- it and what it started --
+    and its caller gets `subprocess.TimeoutExpired`, as from
+    `subprocess.run`.  Through the real door; the env manager, the outside
+    world, stood in by a script that starts a child and never ends.
+
+    THE SILENT FAILURE (to 2.70.16): the door read the tool's output until
+    the tool ended and only then started the clock, so a hung `tleap`, or a
+    hung conda or pip step of an install, ran for ever.  Fails on the clock
+    started after the reading, and on the manager stopped without its
+    child, which keeps the output open."""
     import subprocess
+    import time
     from molbuilder import envs
 
-    monkeypatch.setattr(
-        B, "dispatch_into_env",
-        lambda argv, prefix, **kw: (None, "partial\n" + B.timeout_tail(3)))
-    _machine_with("molbuilder-MDtools", "/envs/mdtools")
+    manager = tmp_path / "conda"
+    manager.write_text("#!/bin/sh\necho started\nsleep 30\necho late\n")
+    manager.chmod(0o755)
+    _machine_with("molbuilder-MDtools", _prefix(tmp_path), str(manager))
 
+    began = time.monotonic()
     with pytest.raises(subprocess.TimeoutExpired):
-        envs.run_in_env("molbuilder-MDtools", ["tleap"], timeout=3)
+        envs.run_in_env("molbuilder-MDtools", ["tleap"], timeout=1)
+    assert time.monotonic() - began < 10
 
 
 # --------------------------------------------------------------------------- #
