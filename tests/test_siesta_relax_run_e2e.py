@@ -718,3 +718,73 @@ def test_a_labelled_species_runs_on_the_file_its_label_names(labelled):
         "H": ("H.psml", sha256_of(lib / "H.psml"))}, read
     assert stage_status(labelled.bundle, "coarse").state in (
         "finished", "done"), stage_status(labelled.bundle, "coarse")
+
+
+@makes_a_real_run("module", "molbuilder-siesta")
+def charged_in_a_long_box(tmp_path_factory):
+    """THE ROAD'S WATER AS ITS CATION, +1, IN A BOX 10 × 10 × 12 Å -- not
+    cubic, so SIESTA applies no image-charge term of its own (its
+    `madelung.f`: a molecule in a simple, face- or body-centred cubic cell
+    alone) -- relaxed one step on :data:`support.real_runs.QUICK`'s
+    settings: `coarse` prepared and launched, waited on; then the
+    correction script prep wrote beside the deck (`engines/siesta.md` § 4),
+    run in the run's folder as a person runs it after the run -- what it
+    answered kept under ``"the correction"``."""
+    import subprocess
+    import sys
+    from molbuilder.runfiles import MAKOV_PAYNE_SCRIPT
+    from support.real_runs import QUICK, RealRun, on_the_road, taken
+    from support.road import (WATER, described, set_by_the_person,
+                              structure_saved)
+    with on_the_road(tmp_path_factory, "charged") as tree:
+        bundle = described(
+            tree, "P/optimization/W",
+            structure=structure_saved(tree, {**WATER,
+                                             "cell": [10.0, 10.0, 12.0]}),
+            name="W", calculation="optimization",
+            stage_strategy="publishable",
+            execution={"mpi_np": 1, "omp_threads": 1})
+        set_by_the_person(bundle, {"net_charge": 1, **{k: QUICK[k] for k in (
+            "mesh_cutoff", "basis_size", "pao_energy_shift", "max_scf_iter",
+            "relax_steps")}})
+        run = RealRun(tree=tree, bundle=bundle)
+        taken(run, "prep coarse", "prep", "task", "--group", "1",
+              "--target", "this")
+        taken(run, "launch coarse", "launch", "task", "--stage", "coarse",
+              "--mode", "direct", "--foreground", "--yes")
+    run.said["the correction"] = subprocess.run(
+        [sys.executable, MAKOV_PAYNE_SCRIPT], cwd=run.attempt("coarse"),
+        capture_output=True, text=True, timeout=120)
+    return run
+
+
+def test_the_charge_correction_adds_the_image_term_siesta_did_not(
+        charged_in_a_long_box):
+    """`engines/siesta.md` § 4: a charged molecule's image energy falls as
+    1/L, "q²α/2L ... (α = 2.837, Makov–Payne)"; the script prep writes
+    beside the deck "adds only what SIESTA did not", the cubic constant at
+    L = V^(1/3) for a box that is not cubic.  Here SIESTA added none, so
+    the script adds that term -- computed here from the contract's numbers
+    and the box's own volume -- to the run's raw energy, and says so.
+
+    THE SILENT FAILURE (found 2026-11-15): the script raising on a name a
+    release had removed, on exactly this branch -- a person handed a
+    traceback where the corrected energy belongs, for every charged
+    molecule in a box that is not cubic."""
+    import re
+    said = charged_in_a_long_box.said["the correction"]
+    assert said.returncode == 0, said.stderr
+    assert "SIESTA did not apply it" in said.stdout, said.stdout
+
+    def number(label):
+        m = re.search(re.escape(label) + r"\s*=\s*(-?[0-9.]+)", said.stdout)
+        assert m, (label, said.stdout)
+        return float(m.group(1))
+    raw = number("E_total (raw, eV)")
+    added = number("DeltaE_MP (correction, eV)")
+    corrected = number("E_total (corrected, eV)")
+    bohr_angstrom, hartree_ev = 0.529177210903, 27.211386245988   # CODATA
+    length_bohr = (10.0 * 10.0 * 12.0) ** (1.0 / 3.0) / bohr_angstrom
+    assert added == pytest.approx(2.837 * 1 ** 2 / (2 * length_bohr)
+                                  * hartree_ev, rel=1e-3), said.stdout
+    assert corrected == pytest.approx(raw + added, abs=2e-6), said.stdout

@@ -2870,11 +2870,11 @@ panel (§ 2a.13); every one written explicitly, never left to the engine:
 The spacing's block is written at every device point, with the window the
 cutoff gives: `from − cutoff kT − |V|/2 to |V|/2 + cutoff kT`, rendered from
 `negf_neq_fermi_cutoff_kt` and never typed a second time. TranSIESTA reads it
-only under bias. Its range is 0.001–0.1 eV, and prep refuses a spacing that
-leaves fewer than two points in the narrowest window the description sweeps
-— the smallest voltage other than 0, since the block is unread at 0 V; a
-description with no such voltage has no check. The floor of two is ours:
-TranSIESTA itself stops only at none.
+only under bias. Its range is 0.001–0.1 eV, written as set when it gives the
+window a point or more -- one point is a calculation like any other -- and
+refused only when it gives none, naming the largest spacing that gives one
+*(the user, 2026-11-15: "Only give error when you have no points")*; the
+block is unread at 0 V, where there is no check.
 
 #### Runs, and what is never overwritten
 

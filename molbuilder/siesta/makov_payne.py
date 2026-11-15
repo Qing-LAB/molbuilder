@@ -367,6 +367,7 @@ def main():
             print(f"error: could not parse 'outcell: Unit cell vectors' "
                   f"from {{out_path}}", file=sys.stderr)
             sys.exit(1)
+        V = lattice_volume_angstrom3(cell)
         L = effective_length_angstrom(cell)
         dE = compute_correction(NET_CHARGE, L, args.epsilon, args.madelung)
         # Cell-shape sanity: warn if the cell is markedly non-cubic

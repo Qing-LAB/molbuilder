@@ -509,9 +509,11 @@ def _check_siesta_vacuum_adequacy(struct: Structure,
 
 def _bias_window_points(cfg) -> List[Issue]:
     """The device point's bias window at its spacing, counted as TranSIESTA
-    counts it (`transport.gf_files.line_points`); fewer than two points is
-    an error naming the spacing.  0 V has no window and no check."""
-    from ..constants import BOLTZMANN_EV_K
+    counts it (`transport.gf_files.line_points`): a spacing that leaves the
+    window no point is an error, naming the largest that gives it one;
+    one point or more is written as set (the user, 2026-11-15).  0 V has
+    no window and no check."""
+    import math
     from ..siesta.engine_input import IS_VOLT_EV
     from ..transport.gf_files import bias_window_ev, line_points
     volts = abs(float(cfg.bias_voltage_v))
@@ -519,17 +521,16 @@ def _bias_window_points(cfg) -> List[Issue]:
         return []
     delta = float(cfg.negf_neq_spacing_ev)
     cutoff = float(cfg.negf_neq_fermi_cutoff_kt)
-    kt = BOLTZMANN_EV_K * float(cfg.electronic_temperature)
     window = bias_window_ev(volts, cutoff, cfg.electronic_temperature)
-    n = line_points(window, delta)
-    if n >= 2:
+    if line_points(window, delta) >= 1:
         return []
+    largest = math.floor(2 * window * 1e4) / 1e4
     return [Issue(
         "error",
         f"negf_neq_spacing_ev = {delta:g} eV leaves the bias window at "
         f"{volts:g} V ({window:.4f} eV wide: |V| plus {cutoff:g} kT each "
-        f"side at {kt / BOLTZMANN_EV_K:g} K) {n} point(s); the line needs "
-        f"two or more -- set the spacing below {window / 2:.4f} eV",
+        f"side at {float(cfg.electronic_temperature):g} K) no point -- set it "
+        f"at or below {largest:.4f} eV",
         "config.negf_neq_spacing_ev")]
 
 
@@ -644,8 +645,7 @@ def validate_siesta(struct: Structure, cfg,
     issues += _kmesh.check(meshes, struct, cell=cell, refused=refused)
 
     # THE BIAS WINDOW'S LINE (`engines/transport.md` § 2a.11, *The levers*):
-    # a device point under bias whose spacing leaves its window fewer than
-    # two points is refused -- the floor is ours; TranSIESTA stops at none.
+    # a device point under bias whose spacing leaves its window no point.
     if (calculation == "transport" and rung == "device"
             and "negf_neq_spacing_ev" not in refused):
         issues += _bias_window_points(cfg)

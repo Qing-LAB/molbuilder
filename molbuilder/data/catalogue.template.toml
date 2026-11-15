@@ -2901,7 +2901,7 @@ label = "Bias window's energy spacing"
 tier = "advanced"
 help = """
 The spacing of the energy points on the line through the bias window, from -cutoff kT - |V|/2 to |V|/2 + cutoff kT (the cutoff is the item above).  0.01 eV is TranSIESTA's own default; the deck writes the whole block at every device point, so the choice is on the card and never the engine's silent one.
-It is a lever on the leads' surface Green's-function files: the files hold one matrix per energy point, so a coarser spacing means fewer points and smaller files, and a less finely integrated non-equilibrium density.  Unread at 0 V.  Prep refuses a spacing that leaves fewer than two points in the narrowest window the description sweeps.
+It is a lever on the leads' surface Green's-function files: the files hold one matrix per energy point, so a coarser spacing means fewer points and smaller files, and a less finely integrated non-equilibrium density.  Unread at 0 V.  A spacing that leaves the bias window no point is refused at prep, naming the largest that gives one.
 """
 
 [item.ts_elecs_out_of_core]

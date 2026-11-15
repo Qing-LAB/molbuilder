@@ -200,7 +200,9 @@ went with it — § 5):*
 
 Why the server writes the sidecar: a browser-written sidecar had no schema
 stamp, so the *load* door rejected it — a save-then-reload trap. Letting the
-server own the write closes that. If the file already exists, the
+server own the write closes that. If the file already exists — or its
+sidecar does, alone, its geometry gone: the person's labels, asked about as
+the file is (§ 4.1, a structure and its sidecar are one) — the
 server answers `409 {needsOverwrite: true, replaces}` — the one answer every
 write door gives (`web-api.md` § 1), `replaces` the files a yes replaces, by
 the pairing rule; the door itself asks — the one confirm,

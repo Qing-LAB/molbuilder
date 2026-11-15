@@ -153,8 +153,11 @@ each release is its changelog row and its ledger section
   owed on real runs (2.70.21) done; F9's closing review rounds -- the first
   done (2.70.22), its findings fixed or judged; its carried items done
   (2.70.23 -- the exported picture's resolution, a product defect they
-  found, fixed); the second round's fresh readers over the whole next; then
-  F10
+  found, fixed); the second round's readers over the fast tier done, its
+  two product defects and the bias window's floor fixed (2.70.24); its test
+  gaps next, most harmful first -- the destructive actions' "no" answers,
+  a run folder opened again emptied whole, the thermochemistry's numbers,
+  spin-polarized transport, the unit factors; then F10
   with its first full end-to-end pass, on the user's word. The page doors' rest -- O-STATE's
   one save door, O-WORDS, O-KEYS's rest with X-UI and X-PLOT -- is internal
   tidying no page shows (measured against `tabs.md` § 6 for O-STATE) and

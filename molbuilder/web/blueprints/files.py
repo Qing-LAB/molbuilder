@@ -371,17 +371,21 @@ def exists_answer(path, overwrite: bool):
     replaces, error}`` -- ``replaces`` the files a yes replaces: a structure
     file's pair, by the pairing rule (`molstruct.paired_sidecar`).  The
     upload door and the structure save door ask about it and send again with
-    ``overwrite`` (`projects.md` § 3)."""
+    ``overwrite`` (`projects.md` § 3).  A structure and its sidecar are one
+    (§ 4.1): a sidecar there with no geometry beside it -- the person's
+    labels -- is asked about as the file itself is."""
     path = Path(path)
-    if overwrite or not path.exists():
+    if overwrite:
         return None
-    sidecar = paired_sidecar(path)
+    here = ([path] if path.exists() else []) + [
+        s for s in [paired_sidecar(path)] if s is not None]
+    if not here:
+        return None
     return err(
-        f"a file named {path.name} is already here",
+        f"a file named {here[0].name} is already here",
         409,
         needsOverwrite=True,
-        replaces=[path.name] + ([sidecar.name] if sidecar
-                                else []))
+        replaces=[f.name for f in here])
 
 
 def _entry_dict(p: Path) -> dict:

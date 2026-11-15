@@ -79,15 +79,49 @@ def test_overwrite_gate_drives_the_dialog(web):
     path = str(web._root / "x.xyz")
     assert web.post("/api/structure/save", json={"path": path, "structure": blob}).get_json()["ok"]
 
-    # A second save WITHOUT overwrite -> 409 + needsOverwrite (the tab's confirm dialog).
+    # A second save WITHOUT overwrite -> 409 + needsOverwrite (the tab's
+    # confirm dialog), and the pair on disk as it was.
+    from pathlib import Path
+    pair = (Path(path), Path(path).with_suffix(".molstruct.json"))
+    kept = [f.read_bytes() for f in pair]
     r2 = web.post("/api/structure/save", json={"path": path, "structure": blob})
     assert r2.status_code == 409
     assert r2.get_json().get("needsOverwrite") is True
+    assert [f.read_bytes() for f in pair] == kept
 
     # WITH overwrite -> ok.
     r3 = web.post("/api/structure/save",
                   json={"path": path, "structure": blob, "overwrite": True})
     assert r3.status_code == 200 and r3.get_json()["ok"] is True
+
+
+def test_a_save_asks_before_it_replaces_a_lone_sidecar(web):
+    """`web/projects.md` § 3, the one overwrite question, and § 4.1: a
+    structure and its sidecar are one -- *"A destination whose sidecar
+    already exists is refused up front rather than overwritten."*  A folder
+    holding `y.molstruct.json` with no `y.xyz` beside it -- the person's
+    labels, its geometry deleted by hand -- is asked about before a save of
+    `y` replaces it, the question naming that file; the file stays as it
+    was until a yes.
+
+    THE SILENT FAILURE (found 2026-11-15): the check asked about the `.xyz`
+    alone, so a save replaced the lone sidecar -- the person's labels --
+    without a word."""
+    blob = _browser_blob()
+    path = web._root / "y.xyz"
+    assert web.post("/api/structure/save",
+                    json={"path": str(path), "structure": blob}).get_json()["ok"]
+    sidecar = path.with_suffix(".molstruct.json")
+    path.unlink()
+    kept = sidecar.read_bytes()
+    r = web.post("/api/structure/save",
+                 json={"path": str(path), "structure": blob})
+    assert r.status_code == 409, r.get_json()
+    assert r.get_json()["replaces"] == [sidecar.name], r.get_json()
+    assert sidecar.read_bytes() == kept and not path.exists()
+    r = web.post("/api/structure/save",
+                 json={"path": str(path), "structure": blob, "overwrite": True})
+    assert r.status_code == 200 and r.get_json()["ok"], r.get_json()
 
 
 def test_bad_inputs_are_400_not_500(web):
