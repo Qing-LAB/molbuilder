@@ -559,14 +559,15 @@ function buildCard(hostEl, opts) {
 }
 
 /* The floor a host must respect, read from the stylesheet rather than written
- * here (§ 8.2) — so the layout stays decided in one place. */
+ * here (§ 8.2) — so the layout stays decided in one place: the card's
+ * `min-width` as the browser resolves it.  Not the custom property it is set
+ * from: a browser returns that as the text of its `calc()`, never a length
+ * (measured, Chrome 156: `calc(max(...) + ...)` where `min-width` is 368px). */
 function minimumWidth(root) {
     const view = root.ownerDocument && root.ownerDocument.defaultView;
     if (!view || typeof view.getComputedStyle !== "function") return 0;
     try {
-        const raw = view.getComputedStyle(root)
-            .getPropertyValue("--molviewer-size-card-min-width").trim();
-        return parseFloat(raw) || 0;
+        return parseFloat(view.getComputedStyle(root).minWidth) || 0;
     } catch (_) { return 0; }
 }
 

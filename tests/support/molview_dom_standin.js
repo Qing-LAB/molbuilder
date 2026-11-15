@@ -258,20 +258,30 @@ globalThis.innerHeight = 800;
 
 globalThis.document = doc;
 
-/* `--molviewer-size-card-min-width` is declared on the card by the stylesheet, so mount.js
- * reads it rather than writing the number itself (§ 8.2). The stand-in serves it
- * from whatever the test set on the nearest ancestor that has one. */
+/* The card's floor is declared by the stylesheet, `min-width:
+ * var(--molviewer-size-card-min-width)`, so mount.js reads it rather than
+ * writing the number itself (§ 8.2). The stand-in answers as a browser does
+ * (measured, Chrome 156): `min-width` resolved to a length, the custom
+ * property as the text of its `calc()` -- from whatever the test set on the
+ * nearest ancestor that has one. */
 globalThis.getComputedStyle = function (node) {
-    return {
-        getPropertyValue(name) {
-            let at = node;
-            while (at) {
-                if (at._customProps && name in at._customProps) {
-                    return at._customProps[name];
-                }
-                at = at.parentNode;
+    const declared = (name) => {
+        let at = node;
+        while (at) {
+            if (at._customProps && name in at._customProps) {
+                return at._customProps[name];
             }
-            return "";
+            at = at.parentNode;
+        }
+        return "";
+    };
+    const floor = declared("--molviewer-size-card-min-width");
+    return {
+        minWidth: floor || "0px",
+        getPropertyValue(name) {
+            const value = declared(name);
+            return name === "--molviewer-size-card-min-width" && value
+                ? `calc(${value})` : value;
         },
     };
 };
