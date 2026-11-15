@@ -246,3 +246,23 @@ def test_a_groups_run_in_phases_is_walked_by_its_own_walk(tmp_path,
         s.relative_to(bundle) for s in ran if not plan.writes.is_file(s)]
     assert {s.relative_to(bundle).parts[0] for s in ran} == {
         "01_freq", "02_fine"}, ran
+
+
+def test_a_calculation_whose_machine_record_is_gone_is_refused(cluster):
+    """`job-system.md` R-L38: a launch reads the calculation's own copy of
+    its machine's record, which its prep wrote, first, in every mode; a copy
+    that is gone is refused -- *"a calculation is launched after its prep,
+    which copies the record"* -- never read past to this machine's record.
+    The copy is taken away after prep, as a person's hand would.
+
+    THE SILENT FAILURE: the job sent with another machine's scheduler line
+    -- this one's -- for a calculation prepared for a cluster."""
+    from molbuilder.scheduler.record import calculation_record
+    bundle, calls = cluster
+    _prep(bundle, "coarse", "--domain", "debug")
+    calculation_record(bundle).unlink()
+    r = jobset("launch", "task", "--stage", "coarse", "--bundle", bundle,
+               "--mode", "submit", "--yes")
+    assert r.exit_code != 0, r.output
+    assert "holds no record of its machine" in r.output, r.output
+    assert calls_made(calls) == [], calls_made(calls)

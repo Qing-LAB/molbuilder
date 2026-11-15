@@ -51,6 +51,21 @@ def test_kramers_kronig_gives_a_lorentz_oscillators_real_part(laser_nm):
                                 abs=1e-4 * peak)
 
 
+@pytest.mark.parametrize("laser_nm,ev", [(633.0, 1.958676), (248.0, 4.999363),
+                                         (200.0, 6.199210)])
+def test_a_lasers_photon_energy_is_hc_over_its_wavelength(laser_nm, ev):
+    """`web/spectra.md` § 3.3, the Raman at a laser: the photon energy the
+    real part is read at is hc/λ -- hc = 1239.841984 eV·nm, CODATA 2018,
+    written here -- so 633 nm is 1.959 eV, below the test's oscillator,
+    248 nm 4.999 eV at it, 200 nm 6.199 eV above it: the rows the test
+    above names are what their ids say.
+
+    THE SILENT FAILURE: a wrong hc -- every Raman at a laser read at another
+    energy, and the test above still green, since it reads its expectation
+    at the same wrong energy."""
+    assert photon_energy_ev(laser_nm) == pytest.approx(ev, rel=1e-6)
+
+
 #: One transition at the run's own width -- the narrowest line a stored
 #: spectrum holds, ten grid steps wide -- near a laser's energy.
 LINE_EV = 2.0

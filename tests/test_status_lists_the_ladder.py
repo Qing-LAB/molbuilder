@@ -126,6 +126,12 @@ def test_status_ends_with_each_groups_next_step(tmp_path, monkeypatch,
     assert "prep task --group 1 --bundle" in first, first
     assert "ready to launch" not in first and "launch task" not in first, \
         first
+    # ...AND LAUNCH REFUSES IT (R-L28): a stage runs in its run, never in
+    # its own folder, which would launch it with no record of the run and
+    # leave it launchable again (`project-layout.md` § 1.5).
+    r = jobset("launch", "task", "--stage", stage, "--bundle", bundle,
+               "--mode", "direct", "--dry-run", "--yes")
+    assert r.exit_code != 0 and "no run is open" in r.output, r.output
     answer = web_client.get("/api/task-setup/folder",
                             query_string={"dir": str(bundle)}).get_json()
     row = next(s for s in answer["ladder"]["stages"] if s["stage"] == stage)

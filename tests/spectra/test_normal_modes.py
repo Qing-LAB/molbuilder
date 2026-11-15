@@ -150,3 +150,58 @@ def test_the_free_case_is_the_held_case_with_nothing_held():
     lam_none, _, pats_none = vibrational_modes(H, masses, WATER, (), ISO)
     assert len(pats_free) == len(pats_none) == 6
     assert np.allclose(lam_free, lam_none, atol=0, rtol=0)
+
+
+# --------------------------------------------------------------------- #
+#  The vibrational-only thermochemistry, as numbers (§ 4.7)              #
+# --------------------------------------------------------------------- #
+
+#: CODATA 2018, written here so the expectation does not borrow the
+#: product's own constants: cm-1 per hartree, and Boltzmann's constant in
+#: cm-1/K and in hartree/K.
+_CM1_PER_EH, _KB_CM1, _KB_EH = 219474.6313632, 0.695034800, 3.166811563e-6
+
+
+@pytest.mark.parametrize("freq_cm1, temperature_k", [
+    (1000.0, 298.15), (281.0, 298.15), (3000.0, 1500.0)])
+def test_one_modes_thermochemistry_is_the_harmonic_oscillators(
+        freq_cm1, temperature_k):
+    """SCIENCE (`testing.md` § 3b, the one exception): `engines/vibration.md`
+    § 4.7, the vibrational-only block -- the harmonic sums of the modes
+    given, above the electronic energy, no kT -- for ONE mode is the
+    textbook oscillator: ZPE = hν/2, U = hν/(e^x − 1), S = k[x/(e^x − 1) −
+    ln(1 − e^−x)] with x = hν/kT, H = ZPE + U, G = H − TS.  Rows at a
+    mode near room temperature's kT, below it (the shared CO2's bend,
+    281 cm-1, where U and S are largest), and hot.
+
+    THE SILENT FAILURES: a wrong unit factor scaling every term, a sign
+    slipped in the entropy's logarithm, kT added as for a gas -- every
+    SIESTA vibration's and every held PySCF vibration's thermochemistry
+    wrong, with the e2e checking only that the page's bars equal the file."""
+    from molbuilder.spectra.normal_modes import vibrational_only_thermo
+    w = freq_cm1 / _CM1_PER_EH
+    x = freq_cm1 / (_KB_CM1 * temperature_k)
+    zpe = w / 2
+    u = w / np.expm1(x)
+    s = _KB_EH * (x / np.expm1(x) - np.log1p(-np.exp(-x)))
+    got = vibrational_only_thermo([freq_cm1], [False], temperature_k,
+                                  e_ref_eh=None, n_rigid=0, why="a test")
+    assert got["regime"] == "vibrational-only"
+    assert got["zpe_eh"] == pytest.approx(zpe, rel=1e-6)
+    assert got["h_eh"] == pytest.approx(zpe + u, rel=1e-6)
+    assert got["s_eh_k"] == pytest.approx(s, rel=1e-6)
+    assert got["g_eh"] == pytest.approx(zpe + u - temperature_k * s,
+                                        rel=1e-6)
+
+
+def test_an_imaginary_mode_is_left_out_and_counted():
+    """§ 4.7: the imaginary ones "have no partition function and whose count
+    is stated, never dropped in silence" -- a mode marked imaginary adds
+    nothing to the sums and is counted."""
+    from molbuilder.spectra.normal_modes import vibrational_only_thermo
+    one = vibrational_only_thermo([1000.0], [False], 298.15, n_rigid=0,
+                                  why="a test")
+    two = vibrational_only_thermo([1000.0, 50.0], [False, True], 298.15,
+                                  n_rigid=0, why="a test")
+    assert two["n_imag_excluded"] == 1 and one["n_imag_excluded"] == 0
+    assert (two["zpe_eh"], two["s_eh_k"]) == (one["zpe_eh"], one["s_eh_k"])

@@ -22,28 +22,40 @@ from molbuilder.units import (ENERGY_EV, LENGTH_ANGSTROM, TEMPERATURE_K,
 # --------------------------------------------------------------------- #
 
 #: SIESTA 5.4.2's own energy dimension, read out of the shipped binary's
-#: libfdf table.  A word the engine accepts and this table lacks is not an
-#: error at read time -- it is a refusal where a number was expected.
-_SIESTA_ENERGY_WORDS = (
-    "eV", "meV", "Ry", "mRy", "Ha", "mHa", "Hartree", "mHartree",
-    "K", "Kelvin", "J", "kJ", "erg", "kcal/mol", "kJ/mol",
-    "Hz", "THz", "cm-1", "cm^-1", "cm**-1",
-)
+#: libfdf table -- each word with ONE of it in eV, CODATA 2018, written here
+#: so the expectation borrows nothing from the table under test.  A word the
+#: engine accepts and the table lacks is a refusal where a number was
+#: expected; a word with the wrong factor is a wrong number, silently.
+_SIESTA_ENERGY_EV = {
+    "eV": 1.0, "meV": 1e-3,
+    "Ry": 13.605693122994, "mRy": 13.605693122994e-3,
+    "Ha": 27.211386245988, "mHa": 27.211386245988e-3,
+    "Hartree": 27.211386245988, "mHartree": 27.211386245988e-3,
+    "K": 8.617333262e-5, "Kelvin": 8.617333262e-5,
+    "J": 6.241509074e18, "kJ": 6.241509074e21, "erg": 6.241509074e11,
+    "kcal/mol": 4.336410e-2, "kJ/mol": 1.036427e-2,
+    "Hz": 4.135667696e-15, "THz": 4.135667696e-3,
+    "cm-1": 1.239841984e-4, "cm^-1": 1.239841984e-4,
+    "cm**-1": 1.239841984e-4,
+}
 
-_SIESTA_LENGTH_WORDS = ("m", "cm", "nm", "Ang", "Bohr", "pm")
+#: ...and its length dimension, each word in Ångström.
+_SIESTA_LENGTH_ANG = {"m": 1e10, "cm": 1e8, "nm": 10.0, "Ang": 1.0,
+                      "Bohr": 0.529177210903, "pm": 1e-2}
 
 
-@pytest.mark.parametrize("word", _SIESTA_ENERGY_WORDS)
-def test_every_energy_word_siesta_accepts_is_known(word):
+@pytest.mark.parametrize("word,ev", _SIESTA_ENERGY_EV.items())
+def test_every_energy_word_siesta_accepts_carries_its_factor(word, ev):
     """`eV` is the one that mattered: without it, a deck written in eV
     read as Ry and every number after was 13.6x.  The rest are here
-    because the same hole is the same hole for any of them."""
-    assert energy_ev(1.0, word) > 0.0
+    because the same hole is the same hole for any of them -- and a word
+    present with the wrong factor is the same wrong number."""
+    assert energy_ev(1.0, word) == pytest.approx(ev, rel=1e-6)
 
 
-@pytest.mark.parametrize("word", _SIESTA_LENGTH_WORDS)
-def test_every_length_word_siesta_accepts_is_known(word):
-    assert length_ang(1.0, word) > 0.0
+@pytest.mark.parametrize("word,ang", _SIESTA_LENGTH_ANG.items())
+def test_every_length_word_siesta_accepts_carries_its_factor(word, ang):
+    assert length_ang(1.0, word) == pytest.approx(ang, rel=1e-9)
 
 
 @pytest.mark.parametrize("word,ev", [

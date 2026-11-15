@@ -47,3 +47,25 @@ def test_a_perfect_channels_low_bias_current_is_g0_times_v():
         assert abs(i - G0 * v) < 1e-3 * G0 * max(abs(v), 0.1), (v, i, G0 * v)
     # THE NOTE IS KEYED BY THE ROW, never by a spelling of the voltage.
     assert got["current_a"][4] is None and "does not reach" in got["notes"]["4"]
+
+
+def test_a_spin_polarized_points_transmission_is_its_two_channels_averaged():
+    """`engines/transport.md` § 2a.12: G = G0 · T(E_F), G0 = 2e²/h already
+    counting both spins, so a spin-polarized point is read on (T↑ + T↓)/2
+    -- G/G0 = 0.6 for a channel of 1 up and 0.2 down -- and an unpolarized
+    one on its one channel as it is; a polarized point whose run wrote one
+    channel only is not read at all.
+
+    THE SILENT FAILURES: the down channel dropped (G of the up spin alone),
+    or the two summed (G doubled) -- every spin-polarized junction's
+    conductance and current wrong, the restricted e2e green."""
+    import pytest
+    from molbuilder.transport.conductance import at_fermi, per_spin_channel
+    energies = [-0.1, 0.0, 0.1]
+    t = per_spin_channel({"up": [1.0, 1.0, 1.0], "down": [0.2, 0.2, 0.2]},
+                         "polarized")
+    assert at_fermi(energies, t) == pytest.approx(0.6)
+    assert per_spin_channel({"unpolarized": [0.3, 0.4, 0.5]},
+                            "non-polarized") == [0.3, 0.4, 0.5]
+    with pytest.raises(ValueError, match="no down channel"):
+        per_spin_channel({"up": [1.0, 1.0, 1.0]}, "polarized")

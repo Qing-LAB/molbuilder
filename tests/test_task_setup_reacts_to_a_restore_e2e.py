@@ -160,3 +160,51 @@ def test_a_restore_updates_the_tab_that_is_showing_the_folder(
         "`onFolderChanged` (`web/projects.md` § 2).  Right now a person "
         "is looking at stages the folder no longer has.")
     assert native == [], f"a native dialog was opened: {native}"
+
+
+def test_a_restore_over_unsaved_work_answered_no_changes_nothing(
+        page, flask_server, calc_dir):
+    """`checkpointing.md`: a restore over work not saved names it and asks,
+    and "the question is answered by you, and the answer is honoured" -- the
+    page's first request does not force (`checkpoint.js` `_restore`), the
+    server refuses naming what would be lost, the page asks *Lose what is
+    not saved?*, and a no leaves the folder as it is, saying *Nothing was
+    changed.*
+
+    The folder put under history (its first state, *set up*), then changed
+    behind the tab by another client's Save -- work not saved in a state --
+    then Restore to *set up*, yes to putting it back, no to losing.
+
+    THE SILENT FAILURE: the page forcing its first request -- the person's
+    unsaved work gone with no question, every route test green."""
+    asked = []
+    page.on("request", lambda r: asked.append(r.post_data_json)
+            if "/api/checkpoint/restore" in r.url else None)
+    task_setup_on(page, flask_server, calc_dir)
+    wait_for_file(page, "task", "coarse")
+    history_shown(page)
+    page.wait_for_selector("#ps-checkpoint-init", state="visible",
+                           timeout=WAIT_MS)
+    page.click("#ps-checkpoint-init")
+    page.wait_for_function(
+        "() => [...document.querySelectorAll('.ps-checkpoint-list-item')]"
+        "        .some(li => li.textContent.includes('set up'))",
+        timeout=WAIT_MS)
+    # WORK NOT SAVED IN A STATE: the stage renamed by another client's Save.
+    assert ladder_edited({"removed": ["coarse"],
+                          "added": [{"name": "afterwards"}]}, calc_dir)
+    kept = (calc_dir / "task.json").read_bytes()
+    row = page.locator(".ps-checkpoint-list-item", has_text="set up")
+    row.click()
+    row.locator('[data-action="restore"]').click()
+    _yes(page)
+    lose = page.locator("dialog.molbuilder-warning-modal[open]",
+                        has_text="Lose what is not saved?")
+    lose.wait_for(state="visible", timeout=WAIT_MS)
+    lose.locator("[data-action='cancel']").click()
+    page.wait_for_function(
+        "() => ((document.getElementById('ps-checkpoint-advisory') || {})"
+        "  .textContent || '').includes('Nothing was changed.')",
+        timeout=WAIT_MS)
+    assert (calc_dir / "task.json").read_bytes() == kept
+    assert [a.get("force") for a in asked] == [False], asked

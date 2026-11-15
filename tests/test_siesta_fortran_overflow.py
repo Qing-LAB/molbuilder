@@ -177,3 +177,27 @@ class TestJsonSafe:
         cleaned = json_safe(arr)
         assert cleaned == [[1.0, None], [None, 3.0]]
         json.dumps(cleaned, allow_nan=False)   # must not raise
+
+
+def test_the_user_reported_row_is_read_whole_by_the_readers_own_calls():
+    """The module's head: the row the user reported -- two columns packed
+    tight and a trailing overflow -- read as the reader reads every SCF row
+    (`siesta_reader._on_scf_data`: `scf_row`, then `scf_floats` with the
+    line and where its columns start), gives the six values the head
+    states, the overflowed one NaN.  The line is typed: no real run makes
+    a divergence this one does on demand, which is the named need
+    (`testing.md` § 3b).
+
+    THE SILENT FAILURE: the cycle dropped -- the very rows a person reads to
+    see why the run diverged."""
+    from molbuilder.parse.engines import siesta_grammar as G
+    line = ("scf:    2  -152787.998333  -593325.180671  -593325.460881"
+            "280.683754  6.401317**********")
+    row = G.scf_row(line)
+    assert row is not None and row.iscf == 2, row
+    vals = G.scf_floats(line[row.columns_at:].lstrip(), line=line,
+                        data_start=row.columns_at)
+    assert vals is not None and len(vals) == 6, vals
+    assert vals[:5] == [-152787.998333, -593325.180671, -593325.460881,
+                        280.683754, 6.401317], vals
+    assert math.isnan(vals[5]), vals

@@ -239,7 +239,7 @@ structure = { elements = ["C", "O", "O", "H"], positions = [[5.0, 5.0, 5.0], [6.
 template = { net_charge = -1 }
 before = [["prep", "task", "--group", "1"]]
 changed = { template = { net_charge = 0 } }
-made_lacks = ["01_coarse/makov_payne_correction.py"]
+made_lacks = ["01_coarse/makov_payne_correction.py", "01_coarse/run-0/makov_payne_correction.py"]
 
 [[case]]
 name = "...and a sequence of groups (--one-job) is one job: nothing to write when every group of it and its one header are as this prep plans them -- no state saved, nothing written again, and still sent as one job"

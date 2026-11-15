@@ -1293,6 +1293,56 @@ def test_a_registry_entry_whose_directory_is_gone_is_still_GHOST(
     assert state.remove_cmd() == "/fake/conda env remove -n was-here -y"
 
 
+def test_clean_answered_no_removes_nothing(monkeypatch, tmp_path,
+                                           machine_config):
+    """`install <env> --clean` without ``--yes`` asks before the wipe,
+    "Proceed with wipe?", no by default, and a no ends the install with
+    nothing done -- "aborted by user (--clean declined)"
+    (`env-framework.md`, the installer's --clean).  The env is there -- the
+    manager lists it at a folder that exists -- so the question is asked.
+
+    THE SILENT FAILURE: the question skipped, or yes by default -- the
+    person's env removed, every package in it, by a command they declined.
+
+    Behind the same recording doors as the refusal below: the manager a
+    recorder, every dispatch recorded."""
+    # AN ENV AS THE MANAGER LEAVES ONE: its folder, with the `conda-meta/`
+    # every conda env holds -- without it the install reads the folder as
+    # residue and refuses before it asks.
+    prefix = tmp_path / "envs" / "molbuilder-siesta"
+    (prefix / "conda-meta").mkdir(parents=True)
+    calls = tmp_path / "manager-calls"
+    manager = tmp_path / "manager" / "conda"
+    manager.parent.mkdir()
+    registry = json.dumps({"envs": [str(prefix)], "envs_details": {
+        str(prefix): {"name": "molbuilder-siesta", "base": False}}})
+    manager.write_text(
+        "#!/bin/sh\n"
+        f'echo "$*" >> "{calls}"\n'
+        'case "$1 $2" in\n'
+        f"  'env list') echo '{registry}' ;;\n"
+        "  'info --json') echo '{\"envs_dirs\": []}' ;;\n"
+        "esac\n")
+    manager.chmod(0o755)
+    machine_config({"envs": {"manager": str(manager)}})
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    from molbuilder.envs import _cli
+    seen = _dispatch_log(monkeypatch)
+
+    result = _make_runner().invoke(
+        _cli.envs_group, ["install", "molbuilder-siesta", "--clean"],
+        input="n\n")
+
+    assert "Proceed with wipe?" in result.output, result.output
+    assert "aborted by user (--clean declined)" in result.output, \
+        result.output
+    assert seen == [], (f"a declined --clean dispatched:\n{seen}\n"
+                        f"{result.output}")
+    asked = calls.read_text().splitlines() if calls.is_file() else []
+    assert all(c in ("env list --json", "info --json") for c in asked), asked
+    assert prefix.is_dir()
+
+
 def test_clean_REFUSES_to_remove_the_env_molbuilder_IS_RUNNING_FROM(
         monkeypatch, tmp_path, machine_config):
     """The self-destruct `--clean` opened up, and nothing stood in its way.
@@ -1850,6 +1900,38 @@ def test_shim_bootstrap_creates_host_env_without_dry_run(tmp_path):
     assert r.returncode == 0, f"{r.stdout}\n{r.stderr}"
     assert "[stub-create]" in (r.stdout + r.stderr), (
         "bootstrap must create the host env when it is missing")
+
+
+@pytest.mark.parametrize("asked", [
+    ["bootstrap", "--clean", "--help", "--yes"],
+    ["bootstrap", "--clean", "--check", "--yes"],
+    ["bootstrap", "--clean", "--dry-run", "--yes"],
+], ids=["help", "check", "dry-run"])
+def test_shim_clean_removes_nothing_when_the_run_installs_nothing(
+        tmp_path, asked):
+    """`env-framework.md` § 8: ``--help`` never installs -- nor does
+    ``--check`` or ``--dry-run`` -- so ``bootstrap --clean`` beside one of
+    them leaves the host env where it is, ``--yes`` included: the wipe is
+    for an invocation that is actually installing (`install-env.sh`,
+    ``MB_NO_ACTION``).  The control below is the same ``--clean --yes``
+    that does install, which removes it.
+
+    THE SILENT FAILURE (the shim's own comment): ``--help`` and ``--check``
+    reaching the wipe on the way past -- a person asking for the flag list
+    left with no molbuilder."""
+    r = _run_install_env_sh(asked, tmp_path=tmp_path, host_env_present=True)
+    assert "env remove" not in (r.stdout + r.stderr), (
+        f"{asked} removed the host env:\n{r.stdout}\n{r.stderr}")
+
+
+def test_shim_clean_removes_the_host_env_when_it_installs(tmp_path):
+    """The control for the test above: ``bootstrap --clean --yes`` removes
+    the host env through the manager, then builds it again."""
+    r = _run_install_env_sh(["bootstrap", "--clean", "--yes"],
+                            tmp_path=tmp_path, host_env_present=True)
+    said = r.stdout + r.stderr
+    assert "[stub-mamba] env remove -n molbuilder -y" in said, said
+    assert "[stub-create]" in said, said
 
 
 def test_shim_help_needs_no_tty(tmp_path):
