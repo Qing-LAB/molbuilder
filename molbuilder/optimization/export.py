@@ -22,9 +22,11 @@ def _stem(calc) -> str:
     return f"{calc.task.label}.{calc.task.calculation}"
 
 
-def name_of(calc, fmt: str) -> str:
+def name_of(calc, fmt: str, **_asks) -> str:
     """What an export of ``calc`` as ``fmt`` is named -- the data file itself,
-    or its tables' folder -- known before anything is composed."""
+    or its tables' folder -- known before anything is composed; it asks
+    nothing beyond its form (:data:`ASKS`), the export surface's
+    ``name_of(calc, fmt, **asks)`` (`kind_table`)."""
     from ..ncdata import export_name
     from .datafile import data_file_name
     return export_name(_stem(calc), fmt, data_file_name(calc))

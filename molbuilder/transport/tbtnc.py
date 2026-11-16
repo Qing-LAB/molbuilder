@@ -20,7 +20,7 @@ by default (``WriteOrbitalIndex``, ``read_options.F90``): its ``l`` and
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 #: The orbital types a selection may be narrowed to, as ``(l, m)`` --
 #: ``m`` ``None`` for every orbital of that ``l``.  SIESTA's own naming
@@ -156,7 +156,7 @@ def point_dos(folder, label: str, regions: Dict[str, Sequence[int]],
     which each kept reading's must be (F7).  ``av`` is the point's averages
     where the caller read them already (`record.point_averages_of`, one read
     for the transmission and the DOS)."""
-    from ..parse.engines.tbtrans_nc import data_files, kept
+    from ..parse.engines.tbtrans_nc import data_files, digest_of, kept
     if av is None:
         from .record import point_averages_of
         try:
@@ -185,6 +185,12 @@ def point_dos(folder, label: str, regions: Dict[str, Sequence[int]],
             # atoms it computes a DOS for (`engines/transport.md` § 2a.12,
             # *How each DOS is made*), by engine index.
             d["device_atoms"] = sorted({int(a) for a in reading.atom})
+            # THE READING IT IS, named: its digest and the data file's
+            # version it states, which a PDOS from the files reads back
+            # (*A PDOS of the atoms you choose, from the files*).
+            d["per_orbital"] = [{"digest": str(digest_of(data[c])),
+                                 "channel": c,
+                                 "version": [int(v) for v in reading.version]}]
         if reading is not None and reading.dos is not None and regions:
             _checked(reading, expected, data[c].name)
             d["by_label"] = _by_label(reading, regions)
@@ -197,8 +203,14 @@ def point_dos(folder, label: str, regions: Dict[str, Sequence[int]],
         raise TbtError(f"{Path(folder).name}: its two spin channels are on "
                        f"different energy grids -- not one run's two spins")
     out: Dict = {"energy_ev": up["energy_ev"]}
-    if "device_atoms" in up:
-        out["device_atoms"] = up["device_atoms"]
+    # THE ATOMS ITS DOS COVERS, from either channel's kept reading -- one
+    # run's two spins, one device region.
+    covered = up.get("device_atoms") or dn.get("device_atoms")
+    if covered is not None:
+        out["device_atoms"] = covered
+    if "per_orbital" in up or "per_orbital" in dn:
+        out["per_orbital"] = (list(up.get("per_orbital") or ())
+                              + list(dn.get("per_orbital") or ()))
     if "total" in up and "total" in dn:
         out["total"] = _sum(up["total"], dn["total"])
     if "by_label" in up and "by_label" in dn:
@@ -226,30 +238,104 @@ def selection_pdos(folder, label: str, orb_indx: Optional[Path],
     summed.  Atoms outside the device region (a buffer) have no DOS and are
     named, not counted.  :class:`TbtError` names what is missing: a reading
     not kept (:data:`NOT_READ`), a device DOS not written, a reading whose
-    atom index map is not ``expected``, the composed junction's (F7)."""
-    import numpy as np
+    atom index map is not ``expected``, the composed junction's (F7).  The
+    sum is :func:`summed_pdos`'s, which a PDOS from the files sums with too
+    (`postprocess.pdos`)."""
     from ..parse.engines.tbtrans_nc import data_files, kept
     from ..runfiles import SIESTA_ORB_INDX
-    asked = sorted({int(a) for a in atoms})
-    if not asked:
-        raise TbtError("no atoms selected")
-    if orbitals != "all" and orbitals not in ORBITAL_TYPES:
-        raise TbtError(f"orbital type {orbitals!r}: one of all, "
-                       f"{', '.join(ORBITAL_TYPES)}")
     files = data_files(folder, label)
     if not files:
         raise TbtError(f"{Path(folder).name} holds no data file of {label}")
-    total = None
-    inside: List[int] = []
-    outside: List[int] = []
-    energy: List[float] = []
+    readings = []
     for path in files.values():
         reading = kept(path, need_user=True)
         if reading is None:
             raise TbtError(f"{path.name}: {NOT_READ}")
-        _checked(reading, expected, path.name)
+        readings.append((path.name, reading))
+    basis = None
+    if orbitals != "all":
+        if orb_indx is None or not Path(orb_indx).is_file():
+            raise TbtError(f"the device run's {SIESTA_ORB_INDX} is not "
+                           f"there, so its orbitals' types are not known")
+        basis = basis_of(Path(orb_indx))
+    return summed_pdos(readings, basis, atoms, orbitals, expected=expected,
+                       basis_said=Path(orb_indx).name if orb_indx else "")
+
+
+def basis_table(orb_indx: Path) -> List[Tuple[int, int, int, int, int]]:
+    """THE DEVICE RUN'S BASIS, every orbital in its order as ``(atom, n, l,
+    m, zeta)`` -- the atom by engine index -- from its ``<label>.ORB_INDX``
+    (sisl's reader, `tbtrans_nc.read_orbitals`): the one read of it, which
+    the report's PDOS and the data file's orbital table ask alike."""
+    from ..parse.engines.tbtrans_nc import read_orbitals
+    try:
+        basis = read_orbitals(orb_indx)
+    except Exception as exc:                                  # noqa: BLE001
+        raise TbtError(f"{orb_indx.name} does not read: {exc}") from exc
+    return [(i, int(o.n), int(o.l), int(o.m), int(o.zeta))
+            for i in range(len(basis)) for o in basis[i].orbitals]
+
+
+def basis_of(orb_indx: Path) -> List[List[Tuple[int, int]]]:
+    """Each atom's orbitals as ``(l, m)``, in the device run's order
+    (:func:`basis_table`, :func:`per_atom`)."""
+    return per_atom(basis_table(orb_indx))
+
+
+def per_atom(rows: Sequence[Tuple[int, int, int, int, int]]
+             ) -> List[List[Tuple[int, int]]]:
+    """A basis table's rows -- ``(atom, n, l, m, zeta)``, the atom by engine
+    index, in the run's order -- as each atom's orbitals' ``(l, m)``: what
+    a selection's orbital type is matched on (:func:`summed_pdos`), read
+    from the ``.ORB_INDX`` or from a data file's orbital table alike."""
+    out: List[List[Tuple[int, int]]] = [
+        [] for _ in range(1 + max((r[0] for r in rows), default=-1))]
+    for atom, _n, l, m, _z in rows:
+        out[atom].append((l, m))
+    return out
+
+
+def orbital_word(l: int, m: int) -> str:
+    """An orbital's type in the orbital menu's words (:data:`ORBITAL_TYPES`):
+    the one naming its ``l`` and ``m`` (``px``), else its ``l`` alone
+    (``d``); ``""`` for an ``l`` the menu does not offer."""
+    exact = [k for k, (ll, mm) in ORBITAL_TYPES.items()
+             if ll == l and mm == m]
+    whole = [k for k, (ll, mm) in ORBITAL_TYPES.items()
+             if ll == l and mm is None]
+    return (exact or whole or [""])[0]
+
+
+def summed_pdos(readings: Sequence[Tuple[str, Any]],
+                basis: Optional[List[List[Tuple[int, int]]]],
+                atoms: Sequence[int], orbitals: str = "all", *, expected,
+                basis_said: str = "") -> Dict:
+    """THE ONE SUM of a selection's PDOS (`web/results.md` § 2.5;
+    `engines/transport.md` § 2a.12, *A PDOS of the atoms you choose, from
+    the files*): over ``readings`` -- each a channel's kept reading, named --
+    the DOS columns of ``atoms`` (0-based, the device run's order) that the
+    reading covers, narrowed to the orbitals of type ``orbitals`` by
+    ``basis`` (each atom's ``(l, m)``, :func:`basis_of`; ``None`` for
+    ``"all"``), the channels summed.  ``{energy_ev, pdos, atoms,
+    outside_device, orbitals}``; :class:`TbtError` names what cannot
+    answer."""
+    import numpy as np
+    asked = sorted({int(a) for a in atoms})
+    if not asked:
+        raise TbtError("no atoms selected")
+    if not readings:
+        raise TbtError("no kept reading of the point's data file to sum")
+    if orbitals != "all" and orbitals not in ORBITAL_TYPES:
+        raise TbtError(f"orbital type {orbitals!r}: one of all, "
+                       f"{', '.join(ORBITAL_TYPES)}")
+    total = None
+    inside: List[int] = []
+    outside: List[int] = []
+    energy: List[float] = []
+    for name, reading in readings:
+        _checked(reading, expected, name)
         if reading.dos is None:
-            raise TbtError(f"{path.name} holds no device DOS -- the run was "
+            raise TbtError(f"{name} holds no device DOS -- the run was "
                            f"not asked for it (TBT.DOS.Gf)")
         device = set(reading.atom)
         inside = [a for a in asked if a in device]
@@ -260,11 +346,8 @@ def selection_pdos(folder, label: str, orb_indx: Optional[Path],
         if orbitals == "all":
             mask = np.isin(np.asarray(reading.atom), inside)
         else:
-            if orb_indx is None or not Path(orb_indx).is_file():
-                raise TbtError(f"the device run's {SIESTA_ORB_INDX} is not "
-                               f"there, so its orbitals' types are not known")
-            orbs = _orbitals_of(reading.firsto, Path(orb_indx), inside,
-                                orbitals, path.name)
+            orbs = _orbitals_of(reading.firsto, basis, inside, orbitals,
+                                name, basis_said)
             if not orbs:
                 raise TbtError(f"the selected atoms have no {orbitals} "
                                f"orbital in their basis")
@@ -277,28 +360,24 @@ def selection_pdos(folder, label: str, orb_indx: Optional[Path],
             "orbitals": orbitals}
 
 
-def _orbitals_of(firsto: Sequence[int], orb_indx: Path,
-                 atoms: Sequence[int], kind: str, name: str) -> List[int]:
+def _orbitals_of(firsto: Sequence[int], basis: List[List[Tuple[int, int]]],
+                 atoms: Sequence[int], kind: str, name: str,
+                 basis_said: str) -> List[int]:
     """The geometry's orbital indices of ``atoms`` of type ``kind`` -- each
-    atom's basis as the device run's ``.ORB_INDX`` lists it (sisl's reader,
-    one entry per atom, in the run's order).  Its orbital counts must be the
-    data file's, atom by atom (its reading's ``firsto``), or the two are not
-    of one run and the answer is refused."""
-    from ..parse.engines.tbtrans_nc import read_orbitals
+    atom's basis, ``(l, m)`` per orbital in the device run's order
+    (:func:`basis_of`; a data file's orbital table, `postprocess.pdos`).
+    Its orbital counts must be the reading's, atom by atom (its ``firsto``),
+    or the two are not of one run and the answer is refused."""
     l_want, m_want = ORBITAL_TYPES[kind]
-    try:
-        basis = read_orbitals(orb_indx)
-    except Exception as exc:                                  # noqa: BLE001
-        raise TbtError(f"{orb_indx.name} does not read: {exc}") from exc
     firsto = [int(x) for x in firsto]
-    counts = [len(basis[i].orbitals) for i in range(len(basis))]
+    counts = [len(orbs) for orbs in basis]
     if counts != [firsto[i + 1] - firsto[i] for i in range(len(firsto) - 1)]:
-        raise TbtError(f"{orb_indx.name} and {name} list different orbitals "
+        raise TbtError(f"{basis_said} and {name} list different orbitals "
                        f"per atom -- not one run's files")
     out: List[int] = []
     for a in atoms:
-        for j, orb in enumerate(basis[a].orbitals):
-            if orb.l == l_want and (m_want is None or orb.m == m_want):
+        for j, (ll, mm) in enumerate(basis[a]):
+            if ll == l_want and (m_want is None or mm == m_want):
                 out.append(firsto[a] + j)
     return out
 

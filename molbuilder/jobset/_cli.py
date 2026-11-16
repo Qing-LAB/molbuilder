@@ -2397,9 +2397,15 @@ def _export_of(calc):
               help="with --laser-nm: the electronic broadening in eV the "
                    "view is taken at -- the run's own when omitted, never "
                    "below it.")
+@click.option("--dos-per-orbital", "dos_per_orbital", is_flag=True,
+              default=False,
+              help="a transport calculation, as netcdf: each point's DOS "
+                   "per orbital beside the data file, at the path the point "
+                   "names -- what molbuilder.postprocess.pdos reads a PDOS "
+                   "of chosen atoms from.")
 @_bundle_option()
 def export_cmd(bundle: str, fmt: str, to: str, laser_nm: Optional[float],
-               broaden_ev: Optional[float]) -> None:
+               broaden_ev: Optional[float], dos_per_orbital: bool) -> None:
     """A calculation's results as they stand, written into the folder named,
     never into the calculation.  A TRANSPORT calculation: every result, its
     data file ``<label>.transport.nc`` or the same as tables,
@@ -2429,7 +2435,9 @@ def export_cmd(bundle: str, fmt: str, to: str, laser_nm: Optional[float],
     # name, known before anything is composed.
     module = _export_of(calc)
     asks = {k: v for k, v in (("laser_nm", laser_nm),
-                              ("broaden_ev", broaden_ev)) if v is not None}
+                              ("broaden_ev", broaden_ev),
+                              ("dos_per_orbital", dos_per_orbital or None))
+            if v is not None}
     stray = [k for k in asks if k not in module.ASKS]
     if stray:
         # WHOSE EXPORT ASKS IT, read from the kind table (A18).
@@ -2442,7 +2450,7 @@ def export_cmd(bundle: str, fmt: str, to: str, laser_nm: Optional[float],
             f"{' or a '.join(asked_by)} calculation; {_P(calc.base).name} "
             f"is a {calc.task.calculation} calculation")
     try:
-        name = module.name_of(calc, fmt)
+        name = module.name_of(calc, fmt, **asks)
     except ExportError as exc:
         raise click.ClickException(str(exc)) from None
     dest = dest_dir / name

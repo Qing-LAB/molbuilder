@@ -35,10 +35,12 @@ def _stem(calc, result: Path) -> str:
     return f"{stem_before(result, ROLE_SPECTRA)}.{calc.task.calculation}"
 
 
-def name_of(calc, fmt: str) -> str:
+def name_of(calc, fmt: str, **_asks) -> str:
     """What an export of ``calc`` as ``fmt`` is named -- the folder its files
     lie in (`ncdata.export_name`), on the label the result it is of
-    (:func:`result_path`) is named on, known before anything is composed."""
+    (:func:`result_path`) is named on, known before anything is composed;
+    the same whatever is asked (:data:`ASKS`) -- the Raman view at a laser
+    is one more file in that folder."""
     from ..ncdata import export_name
     return export_name(_stem(calc, result_path(calc)), fmt)
 

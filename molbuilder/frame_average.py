@@ -821,6 +821,17 @@ def with_meanings(variables: Tuple[Any, ...], structure) -> Tuple[Any, ...]:
         if v.name in said and said[v.name][1] else v for v in variables)
 
 
+#: THE FRAME PART'S VARIABLES OF THE SUMMARY -- the frames' average at each
+#: voltage, its weights' sum and tolerance -- across the points, where a
+#: grouped data file lays it (`engines/transport.md` § 2a.12, *The
+#: calculation as groups*); every other of :func:`data_file_variables` is the
+#: structure's: each frame's rows, the masses, the set's numbers.
+SUMMARY_PART = ("average_transmission", "average_delta_transmission",
+                "average_conductance_g0",
+                "average_conductance_change_percent", "average_why",
+                "average_conductance_why", "weight_sum", "weight_tolerance")
+
+
 #: THE FRAME PART'S ATTRIBUTES WRITTEN AS JSON TEXT (`ncdata.json_attr`,
 #: :func:`fill_data_file` below) -- read back as the blocks they hold by the
 #: data file's door (`transport.datafile.read_data_file`,
@@ -893,7 +904,7 @@ def fill_data_file(values: Dict[str, Any], attrs: Dict[str, Any],
 
 
 __all__ = ["ASSUMPTIONS", "AverageError", "FRAME_ROWS", "INFO_KEY",
-           "JSON_ATTRS",
+           "JSON_ATTRS", "SUMMARY_PART",
            "MASS_CHANNEL", "ROWS", "ReaverageError", "Row", "STRUCTURE_ROWS",
            "answer", "at_voltage", "average_block", "average_said",
            "citation_block",

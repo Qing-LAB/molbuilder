@@ -364,7 +364,7 @@ def _of_deck(deck: Path) -> Optional[AtomIndexMap]:
 
 def _of_nc(p: Path) -> Optional[AtomIndexMap]:
     """A NetCDF file's map -- the group of it that states one (a vibration
-    result's ``/structure``; the transport data file's and a digest's
+    result's and the transport data file's ``/structure``; a digest's
     root); ``None`` where none does (an engine's ``.TBT.nc``, an older
     file)."""
     from .ncdata import ATOM_AXIS, read_atom_index_map, reading

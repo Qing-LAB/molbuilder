@@ -133,7 +133,7 @@ optimization* while the plot title, which asks the server, says SIESTA.
 The registry's own surface is small: `register`, `pick` (the first presenter
 whose `match` is true), `pickResult` (same but only presenters marked
 `isResult` — the file picker uses this), `mount`, `list`, and
-`createDefaultContext(host)` — the standard `ctx` below. A `match` that
+`createDefaultContext(host, header)` — the standard `ctx` below, `header` the page's top line (`placeInHeader`). A `match` that
 throws is logged and skipped, so one broken presenter can't jam the switchboard;
 a `mount` that throws falls back to a clean error card in the panel.
 

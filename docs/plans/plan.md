@@ -46,7 +46,8 @@ each release is its changelog row and its ledger section
   the same pass, each run's engine version, how each DOS is made
   (`engines/transport.md` § 2a.12, designed; the post-processing
   document's examples move with it, each run on a real calculation) —
-  built in 2.71.0, the PDOS of chosen atoms from the files still designed;
+  built in 2.71.0; the PDOS of chosen atoms from the files built in 2.72.0,
+  after two review rounds that also fixed 2.71.0 (the energies' names);
   (C)
   every chart's own export — a picture, its drawn data as CSV and NetCDF;
   the PDOS of a mixed selection from the data file and each point's digest

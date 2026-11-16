@@ -48,7 +48,7 @@ by a second reader: it is that composition on its grid, for analysis.
 
 | file | what it is | written by | schema | its chapter |
 |---|---|---|---|---|
-| `<label>.transport.nc` | every result of a transport calculation, in groups: the junction, each stage, each point and its device run, and the summary across the points | `jobset summarize task`; an export composes the same file | `molbuilder/transport-data@9` | `engines/transport.md` § 2a.12 |
+| `<label>.transport.nc` | every result of a transport calculation, in groups: the junction, each stage, each point and its device run, and the summary across the points | `jobset summarize task`; an export composes the same file | `molbuilder/transport-data@10` | `engines/transport.md` § 2a.12 |
 | `<label>.spectra.nc` | a vibration result, beside its JSON — the same payload, tied by the JSON's sha256 | the result's one writer, at every write on both engines | `molbuilder/spectra-data@8` (`@1`–`@7` read as they are) | `engines/vibration.md` § 6.10, *The data file* |
 | `<label>.TBT.digest.nc` (`.TBT_UP` / `.TBT_DN`) | a TBtrans data file's DOS per orbital, k-averaged once and kept | the reading of the `.TBT.nc` beside it | `molbuilder/tbt-digest@4` | `model/parse.md` § 5e |
 | `<label>.optical.nc` | a SIESTA vibration's optical calls — each frame's ε₂ on the photon energies, its mode, side and geometry, the settings the calls read: the record of the Raman phase so far | the run's own record steps — the force constants', every frame pending, then each optical call's — and its finish | `molbuilder/optical-data@3` (`@1`, `@2` read as they are) | `engines/vibration.md` § 5.11 § 8 |
@@ -194,7 +194,12 @@ naming this section — in every file, every group, the root's included.
 1. **One concept, one name; one name, one concept** — in every file. The
    energy relative to the device's Fermi level is `energy_ev` in the transport
    data file and in the digest alike; `xyz` is a Cartesian component wherever
-   it appears, and never a cell vector's.
+   it appears, and never a cell vector's. **In a file of groups, no
+   variable takes the name of an axis an enclosing group defines**: a tree
+   reader (xarray's DataTree) hands the inherited axis in its place, the
+   value lost without an error — the one writer refuses it
+   (`ncdata.write_group`), and the transport data file's stage and device
+   energies are `last_energy_ev` for it.
 2. **How a name is made**: lowercase, words joined by `_`, singular. The
    axis of a physical quantity names its unit, as a variable does
    (`energy_ev`, `bias_v`, `temperature_k`); the axis of counted things names
@@ -224,8 +229,9 @@ naming this section — in every file, every group, the root's included.
 | `device_atom` | the atoms of TranSIESTA's device region | their atom indices, from 0 | 1 | digest |
 | `atom_bound` | each atom's first orbital, and one past the last | from 0 to the atom count | 1 | digest |
 | `device_orbital` | the device region's orbitals, one DOS column each | each orbital's index in the geometry, from 0; its atom beside it (`device_orbital_atom`) | 1 | digest |
+| `orbital` | the junction's basis orbitals, every atom's, in the device run's order | each orbital's index in the geometry, from 0 — the digest's `device_orbital` names a subset of them; its atom, quantum numbers and type beside it (`orbital_atom` …) | 1 | transport (`/structure`) |
 | `xyz` | a Cartesian component | `x`, `y`, `z` | — | transport, vibration, optical, optimization, digest |
-| `cell_vector` | the cell's three vectors | `a`, `b`, `c` | — | vibration, optical (`/structure`), optimization, digest |
+| `cell_vector` | the cell's three vectors | `a`, `b`, `c` | — | transport, vibration, optical (`/structure`), optimization, digest |
 | `reciprocal_vector` | the reciprocal cell's three vectors — a k-point's reduced components | `b1`, `b2`, `b3` | — | digest |
 | `kpoint` | the k-points a reading averaged over | from 0 | 1 | digest |
 | `frame` | a frame set's frames — a transport calculation's structures, a vibration's optical calls (the reference geometry, then each mode's two sides) | from 0, as MolView's API counts | 1 | transport, optical |
@@ -326,7 +332,7 @@ groups' axes; each axis a column under its own name, each variable a column
 named with its units, a value not stated an empty cell; and a `README.txt`
 in the variables' own words — every variable's definition and source, the
 file's attributes, the atom axis's `atoms_listed_by` and `atom_index_base`.
-The atom axis's own table (`atom.csv`) carries both index columns.
+The atom axis's own table (`atom.csv`; a group's under its path, the transport file's `structure/atom.csv`) carries both index columns.
 
 ## 6. One import — `molbuilder.postprocess`
 
@@ -339,7 +345,7 @@ doors ask (`model/parse.md` § 3, *One layer*): `read_transport_data`,
 `read_structure(path)` for a structure pair in the user order with the map
 of the structure it returns, `parse(path)` for an engine's file in its own order
 with the map on the answer, `read_steps(path)` for a run's steps in the user
-order, `list_runs(calculation)` for its runs, `read_xv(path)` for SIESTA's own `.XV`, in the engine's order. `pdos(data_file, point, atoms=, labels=, regions=, orbitals=)` for the PDOS of a mixed selection at a transport point, from the data file and the point's digest beside it, summed as the report sums (`engines/transport.md` § 2a.12, designed). A notebook's kernel imports the molbuilder its server
+order, `list_runs(calculation)` for its runs, `read_xv(path)` for SIESTA's own `.XV`, in the engine's order. `pdos(data_file, point, atoms=, labels=, regions=, orbitals=)` for the PDOS of a mixed selection at a transport point, from the data file and the point's digests beside it, summed as the report sums (`engines/transport.md` § 2a.12). A notebook's kernel imports the molbuilder its server
 runs ([`web/jupyter.md`](?doc=web/jupyter.md) § 7).
 
 ## 7. The transport calculation — what the framework serves, file by file
@@ -356,7 +362,8 @@ same atoms.
 | `T.TBT.nc` | each transmission point's folder | TBtrans's own data: everything per k-point, energy and orbital — gigabytes on a large junction | written by TBtrans; read **on a person's word only**, through the door with `sile=True`, **one k-point an access** (113 opens on Sol's AuBDTAu point: 1.4 s held, 5.6 s reopened), its version checked each step | the one door (§ 4); its atoms are its run's engine order, answered by the run's deck (`model/overview.md` § 2.2b, F3) |
 | `T.TBT.digest.nc` | beside it | the DOS per orbital, k-averaged once, and the facts the report needs (energies, the device's atoms, each column's atom) | written by that reading through `write_group`, **listed by engine index** with each atom's user index (the point's run's map, handed to the parser by the caller that knows the run); read by the report's DOS by region and a selection's PDOS, its map **checked against the composed junction's record** (F7) | the one writer, the atom axis as its map, `device_orbital_atom` / `device_atom` marked `atom_index` (§ 2, § 3) |
 | `T.transport.nc` | the calculation's folder | every result in groups — `/structure` the junction whole (cell, each atom's region and labels), `/stages/<stage>` each once-run stage, `/points/<point>` each point's transmission and its `device` run, `/summary` what is compared across the points (the I–V, G and T(E) over the voltages) — each run's state and SCF history, the calculation's own records — one shape for one structure at one voltage too | written by `summarize task` from the record's one composition (`record.collect_record`), the atom axis **listed by user index** with each atom's engine index from the junction's order record; read by `read_data_file`, `postprocess.read_transport_data`, and the export | the variable record (§ 2), the one writer (§ 3), the one door (§ 4) |
-| `T.transport-csv/` | where an export is asked to write it | the same as long tables, `atom.csv` with both index columns, `README.txt` | `ncdata.as_tables` of the data file's bytes, composed on request — the export reads no data file (`engines/transport.md` § 2a.12, *Export*) | the tables (§ 5) |
+| `T.transport-csv/` | where an export is asked to write it | the same as long tables, a group's under its path — `structure/atom.csv` with both index columns — and `README.txt` | `ncdata.as_tables` of the data file's bytes, composed on request — the export reads no data file (`engines/transport.md` § 2a.12, *Export*) | the tables (§ 5) |
+| `T.transport-netcdf/` | where an export is asked to write it, with the DOS per orbital | the data file and, at the paths its points name, each kept digest as it is | the export's bytes copied, never read; read by `postprocess.pdos` from the folder, no `.TBT.nc` beside (`engines/transport.md` § 2a.12, *A PDOS of the atoms you choose, from the files*) | the one door's version rule, the reading a data file names (§ 4) |
 
 **The chain, for one selection.** A person selects the bridge's first atom,
 **user index 0**, on the report's Device view (it numbers it *#1*). The data

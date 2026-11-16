@@ -76,6 +76,7 @@
  *     readFile(file, opts?):  Promise<{ok, text, error?}>,          // -> projects.readFile
  *     readRange(file, offset, maxBytes, opts?): Promise<{ok, text, eof, …}>, // -> projects.readRange
  *     writeFile(file, text, opts?): Promise<{ok, mtime} | {ok:false, error, actual_mtime}>, // -> projects.writeFile
+ *     placeInHeader(node): void,                       // the page's top line: a result's actions
  *   };
  *
  * The framework is high-level DISPATCH; it does NOT implement file reading.  The default
@@ -173,7 +174,7 @@
      * passing ``ctx``.  Returns the inspector's handle, or ``null``
      * if no inspector matched (caller renders a fallback).
      *
-     * ``ctx`` is required.  Use ``createDefaultContext(host)`` for
+     * ``ctx`` is required.  Use ``createDefaultContext(host, header)`` for
      * the standard one or build your own.  Explicit is better than
      * "registry magically materialises a default" because it makes
      * customisation (caching, telemetry, custom error UI) a one-
@@ -183,7 +184,7 @@
         if (!ctx) {
             throw new TypeError(
                 "inspectors.mount(host, file, ctx) requires ctx; "
-                + "use createDefaultContext(host) for the standard one"
+                + "use createDefaultContext(host, header) for the standard one"
             );
         }
         /* `meta` IS PASSED ON, because this pick must be the dispatcher's
@@ -229,9 +230,13 @@
              * its content replaced by each call; the page empties it as it
              * puts the presenter away. */
             placeInHeader(node) {
+                // A CONTEXT WITH NO TOP LINE -- a page that has none -- draws
+                // the result all the same: its actions are not shown, and
+                // the console says why.
                 if (!header) {
-                    throw new TypeError("this page has no top line: "
-                        + "createDefaultContext(host, header)");
+                    console.warn("[inspectors] this page has no top line "
+                        + "for a result's actions (#results-current-actions)");
+                    return;
                 }
                 header.replaceChildren(node);
             },

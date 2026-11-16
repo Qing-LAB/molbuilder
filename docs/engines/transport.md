@@ -3094,7 +3094,7 @@ that each calculation has its own group, so it can separate them and look at
 each data set carefully … to access the IV curve, the user could decide to
 take individual points from each calculation group, or … just go for the
 summary and then look at the final. This should be consistent and coming
-from the same result")* — schema `molbuilder/transport-data@9`. The file
+from the same result")* — schema `molbuilder/transport-data@10`. The file
 is the calculation's ladder: the junction,
 each stage that runs once, each point — its device run and its transmission —
 and a summary that gathers across the points what is compared between them.
@@ -3126,7 +3126,8 @@ reader takes either road: `xr.load_dataset(path, group="summary")
 .iv_current_a.sel(frame=0)` is the whole I–V, `group="points/v0.2"` one
 calculation whole. **Every group is read alone**: it holds its own axes as
 coordinates — a point's `energy_ev`, `spin`, `region`, `lead`,
-`eigenchannel`, `atom`, `scf_cycle`, `charge_part` — so `xr.load_dataset(path,
+`eigenchannel`, `atom`; its device run's `scf_cycle`, `charge_part` — so
+`xr.load_dataset(path,
 group=…)` answers a whole dataset, and `xr.open_datatree(path)` the tree.
 **One shape for every transport calculation**: the same groups always; one
 structure at one voltage is one point group and a 1 × 1 summary; a point not
@@ -3144,6 +3145,7 @@ done holds the same variables at their fill values, `done` 0.
 | `rung` | the stages that run once — `seed`, `electrode_L`, `electrode_R`, by their stage names; a group's name in this layout |
 | `scf_cycle` | an SCF row's index within its run, from 0 — every row of the run's last step, a device's periodic start and its NEGF loop alike; a run of fewer rows padded with the fill value |
 | `charge_part` | TranSIESTA's charge columns, as its `ts-q:` header names them — `D` the bridge, `E1` `C1` … each electrode and its overlap population with the bridge (§ 2a.12, *The device's charges*) |
+| `orbital` | the junction's basis orbitals, every atom's, in the device run's order — `/structure`'s (*A PDOS of the atoms you choose, from the files*) |
 
 **Every axis is a coordinate of its own name** (a NetCDF coordinate
 variable), in each group that runs over it — so a reader selects by value,
@@ -3204,10 +3206,7 @@ the report's PDOS of a selection is computed on request and never written
 (*PDOS of a selection*, [`web/results.md`](?doc=web/results.md) § 2.5).
 
 **A PDOS of the atoms you choose, from the files** *(the user, 2026-11-16:
-"go with option 3, and allow mixed selections")* — **designed, not built**:
-the orbital table, each point's digest named, `postprocess.pdos` and the
-Export's choice below come in their own release.
-The DOS per orbital stays in each point's digest, beside its `.TBT.nc` —
+"go with option 3, and allow mixed selections")*. The DOS per orbital stays in each point's digest, beside its `.TBT.nc` —
 gigabytes over a sweep of a large junction, never copied into this file —
 and the data file says where it is and what each orbital is:
 
@@ -3216,13 +3215,20 @@ and the data file says where it is and what each orbital is:
   basis): `orbital_atom` (the atom it sits on, by user index, `atom_index`),
   `orbital_n`, `orbital_l`, `orbital_m`, `orbital_zeta` and `orbital_type`
   (`s`, `px`, `py`, `pz`, `d…`, the words a selection's orbital menu uses,
-  `tbtnc.ORBITAL_TYPES`), from the first point's device run's `.ORB_INDX`;
-- **each point names its digests and the reading they are** — the path
-  of each from the data file's folder (a polarized point's two, `TBT_UP`
-  and `TBT_DN`; a point that shares energies, its `shared/` one's too) and
-  the `.TBT.nc` version each states, its size and modification time when it
-  was read ([`model/parse.md`](?doc=model/parse.md) § 5e) — empty where
-  none is kept. A digest is trusted as **the reading this file was composed
+  `tbtnc.ORBITAL_TYPES`), from the `.ORB_INDX` of the device run the
+  transmission gathered — the one orbital index the report's PDOS reads too
+  (`record.device_orbital_index`, `tbtnc.basis_table`); where none is there
+  or it does not read, the table is empty and `/structure`'s
+  `orbitals_why` says why — the file is written all the same;
+- **each point names its digests and the reading they are** —
+  `dos_per_orbital_files`, the path of each from the data file's folder (a
+  polarized point's two, `TBT_UP` and `TBT_DN`; a point that shares
+  energies, its `shared/` one's too) and the `.TBT.nc` version each states,
+  its size and modification time when it was read
+  ([`model/parse.md`](?doc=model/parse.md) § 5e) — named **only where every
+  reading of the point is kept** (`record.readings_kept`, the same answer
+  its DOS by region is written on): a reading in part, one spin or one side
+  of a shared grid, is no PDOS. A digest is trusted as **the reading this file was composed
   from**: one stating that version is read, with no `.TBT.nc` beside it —
   an export's zip carries none — and one stating another is refused, the
   way on said: summarize or export again; one whose atom index map is not
@@ -3237,16 +3243,20 @@ index, every atom carrying a label as the junction writes it (matched as
 written, never interpreted), every atom of a region molbuilder owns —
 their union, an atom named twice counted once — narrowed to one orbital
 type. It reads the selection against `/structure`, the point's digest through
-its door, and sums with **the one function the report's PDOS of a selection
-sums with** (`tbtnc.selection_pdos`), so a notebook's curve is the page's.
-It answers an xarray `DataArray` over `energy_ev`, `units` `1/eV`, whose
-attributes state the construction whole: the selection as asked (each
+its door (`tbtrans_nc.kept_at`), and sums with **the one function the
+report's PDOS of a selection sums with** (`tbtnc.summed_pdos`), a point
+that shares energies joined as the report joins it, so a notebook's curve
+is the page's. It answers as `reaveraged` does, a dict — `energy_ev`,
+`pdos` in `1/eV`, and the construction whole: the selection as asked (each
 part), the atoms it made, those it named outside the device region (no DOS,
-not counted), the orbital type and the orbitals summed, the digest(s) read,
-the point, and that the sum is the person's selection — a polarized point's
-two channels summed, as the report's. A selection that is empty, a label no
-atom carries, a region not one of the three, or a point whose digest is not
-kept is refused by name. A chart's own export of the report's PDOS of a
+not counted), the orbital type, the digests read, the point, and that the
+sum is the person's selection — a polarized point's two channels summed, as
+the report's; xarray or pandas take it in a line, and molbuilder carries no
+xarray of its own. A point the file does not hold, a point not done, a
+selection that is empty, a label no atom carries, a region not one of the
+three, a point whose readings were not all kept when the file was written,
+or an orbital type where the file holds no orbital table (its
+`orbitals_why`) is refused by name. A chart's own export of the report's PDOS of a
 selection, when it is built, writes it through the same function.
 
 Each variable by its name and the axes it runs over in the summary — in a
@@ -3258,6 +3268,9 @@ dropped (above):
 | `positions_ang` | frame, atom, xyz | given | every frame's coordinates, listed by user index — the composed junction restored |
 | `cell_ang` | cell_vector, xyz | given | the composed junction's cell, its three lattice vectors as rows — `/structure`'s (*The junction, whole*) |
 | `atom_region` · `labels` | atom | given | each atom's region molbuilder owns — `L-electrode`, `bridge`, `R-electrode`, empty in none — and every label the junction states for it, as written (JSON) — `/structure`'s |
+| `cell_axis_kind` | cell_vector | given | each cell vector's periodicity as the composed junction states it — `periodic`, `isolated`, `transport` — `/structure`'s |
+| `orbital_atom` · `orbital_n` · `orbital_l` · `orbital_m` · `orbital_zeta` · `orbital_type` | orbital | given · raw · derived (`orbital_type`) | the junction's basis, every orbital in the device run's order: its atom by user index, its quantum numbers and zeta as the `.ORB_INDX` states them, its type in the orbital menu's words — `/structure`'s (*A PDOS of the atoms you choose, from the files*) |
+| `dos_per_orbital_files` | frame, bias_v | state | the point's digests and the data file's version each states, JSON — only where every reading of the point is kept — a point's |
 | `dos_atom` | frame, bias_v, atom | state | 1 for each atom the point's DOS covers — TBtrans's device region, from its kept reading; the fill value where none is kept (*How each DOS is made*) — a point's |
 | `transmission_by_spin` | frame, bias_v, spin, energy_ev | raw | T(E) as each point's `.TBT.AVTRANS` file states it, channel by channel |
 | `dos_total_by_spin` | frame, bias_v, spin, energy_ev | raw | each spin channel's device DOS, as its `.TBT.AVDOS` states it — a non-polarized point's one channel |
@@ -3286,7 +3299,7 @@ dropped (above):
 | `average_why` · `average_conductance_why` | bias_v | state | why the average is none — at every voltage the reason there is none (one structure, the weights not stated), or the frames this voltage's waits for — and why the averaged conductance or its change is none |
 | `point_state` | frame, bias_v | state | the transmission point's run state, the run door's word (`finished`, `failed`, `not run`, `pending` …) — beside `done` |
 | `device_state` · `device_detail` · `device_scf_converged` | frame, bias_v | state | the device point's run state (`not run` among them, § 2a.11) and the run door's sentence for it, and whether its SCF converged (1, 0; −1 where its output does not state it) |
-| `device_energy_ev` · `device_negf_cycles` · `device_dq` | frame, bias_v | raw | the NEGF phase's last energy — never compared across points or calculations (§ 1.1) — how many NEGF cycles ran, and the last one's `dQ` — the charge its open boundaries did not conserve, every column summed less the neutral count (*The device's charges*) |
+| `device_last_energy_ev` · `device_negf_cycles` · `device_dq` | frame, bias_v | raw | the NEGF phase's last energy — never compared across points or calculations (§ 1.1) — how many NEGF cycles ran, and the last one's `dQ` — the charge its open boundaries did not conserve, every column summed less the neutral count (*The device's charges*) |
 | `device_charge` | frame, bias_v, charge_part | raw | the last NEGF cycle's Mulliken populations — electrons, positive, not a net charge — column by column, as TranSIESTA printed them |
 | `device_d_change_from_0v` | frame, bias_v | derived | $D(V) - D(0\ \mathrm{V})$: the bridge's net Mulliken population at this voltage less the same frame's at 0 V, both the last NEGF cycle's; the fill value where the frame has no finished 0 V point, and at 0 V itself 0 (§ 2a.12, *The device's charges*) |
 | `device_contour_poles` · `device_neq_emin_ev` · `device_neq_emax_ev` · `device_neq_points` | frame, bias_v | raw | the contour TranSIESTA echoed: its equilibrium contour's poles; under a bias, the non-equilibrium line's window and points |
@@ -3295,7 +3308,7 @@ dropped (above):
 | `device_scf_charge` | frame, bias_v, scf_cycle, charge_part | raw | every NEGF row's Mulliken populations, column by column, as TranSIESTA printed them |
 | `device_scf_phases` · `rung_scf_phases` | frame, bias_v · rung | state | each run's phases — periodic, negf — what each had to reach and how it ended (`scf_phases`, JSON) |
 | `rung_copied_from` | rung | state | a calculation that reuses a finished one: the run a once-run rung's newest run is a copy of |
-| `rung_state` · `rung_detail` · `rung_scf_converged` · `rung_energy_ev` · `rung_fermi_ev` · `rung_scf_cycles` | rung | state · raw | each once-run rung's state and the run door's sentence for it, convergence, energy, Fermi level — the device's the zero T(E)'s energies are measured from, the leads' at $\pm eV/2$ from it under bias — and its SCF history's length |
+| `rung_state` · `rung_detail` · `rung_scf_converged` · `rung_last_energy_ev` · `rung_fermi_ev` · `rung_scf_cycles` | rung | state · raw | each once-run rung's state and the run door's sentence for it, convergence, energy, Fermi level — the device's the zero T(E)'s energies are measured from, the leads' at $\pm eV/2$ from it under bias — and its SCF history's length |
 | `rung_scf_iscf` · `rung_scf_energy_ev` · `rung_scf_delta_e_ev` · `rung_scf_ddmax` · `rung_scf_dhmax_ev` · `rung_scf_ef_ev` | rung, scf_cycle | raw · derived (`*_scf_delta_e_ev`) | each once-run rung's SCF rows, as the device's |
 
 **Every variable says what it is**: `units` — one spelling a unit
@@ -3304,7 +3317,7 @@ dropped (above):
 it is obtained, the formula for a derived one — and, for a raw one,
 `source`, the file it was read from. The file says what it is
 (`model/datafiles.md` § 2b): its `title` — and each group its own —
-`schema` (`molbuilder/transport-data@9`), the molbuilder that wrote it, its
+`schema` (`molbuilder/transport-data@10`), the molbuilder that wrote it, its
 `source` — the engine and its version that computed it, as the runs' own
 outputs state it (*the user, 2026-11-16: "transport can also save siesta
 version where appropriate in the meta data"*): *computed by SIESTA 5.4.2 —
@@ -3323,6 +3336,7 @@ the calculation the writing verb opened (`summarize task`, an export) — the
 provenance chain (`provenance_chain`, JSON: each rung's run and what it was
 gathered from, a run of points' points), the citation and its
 kind, `energies_relative_to_ef`, the DFT-NEGF caveat; how the I–V was computed
+— on the root and on `/summary`, where the I–V is read alone —
 (`iv_computed`; under the low-bias approximation its `iv_notes`, JSON, each
 note with the `frame` and the `bias_v` it is
 about — the voltages the window does not reach, and a frame's own note (its
@@ -3391,15 +3405,20 @@ deliverable.
   file first, so a point whose DOS per orbital is not kept is without its DOS
   by region, as said above: every variable with its units, definition and
   source, the calculation's specifics as its attributes.
-- **With the DOS per orbital** — a choice beside either form: one zip, the
-  export and, at the paths its points name (`dos_per_orbital_file`), each
-  kept digest as it is, its bytes copied and never read, so
-  `postprocess.pdos` answers from the zip's folder anywhere; a point whose
-  digest is not kept is said, as above (designed, not built).
+- **NetCDF with the DOS per orbital** — the NetCDF form's choice (the
+  report's third button, `--dos-per-orbital`, `dos_per_orbital=1`): a
+  folder `<label>.transport-netcdf/`, one zip as a download — the data
+  file and, at the paths its points name (`dos_per_orbital_files`), each
+  digest of a point whose readings are all kept, its bytes copied and never
+  read — so `postprocess.pdos` answers from the folder anywhere; a point
+  whose readings are not all kept is said, as above. The CSV form carries
+  none: a PDOS is read with the data file beside it. The NetCDF files are
+  stored in the zip as they are, compressed inside already.
 - **CSV** — the same variables as tables, never a second reader of the
-  calculation: **one long table per set of axes**, every variable over the
-  same dimensions in one table, named by them (`frame_bias_v_energy_ev.csv`,
-  `frame_bias_v.csv`, `rung_scf_cycle.csv`, …); one row per point of those
+  calculation: **one long table per set of axes** in each group, under its
+  path, every variable over the same dimensions in one table, named by them
+  (`summary/frame_bias_v_energy_ev.csv`, `summary/frame_bias_v.csv`,
+  `stages/seed/scf_cycle.csv`, `structure/atom.csv`, …); one row per point of those
   axes, each axis a column of its coordinate's values (`frame`, `bias_v`,
   `energy_ev`, …), each variable a column named with its unit
   (`dos_total [1/eV]`, `current_a [A]`), the fill value an empty cell; an
@@ -3413,16 +3432,19 @@ deliverable.
 
 **Asked two ways, one composition** (`transport.export`, through the one
 composer every export shares, `ncdata.exported`), so both give the
-same files: the transport report's **Export** (*CSV* · *NetCDF*), a download
+same files: the transport report's **Export** (*CSV* · *NetCDF* · *NetCDF
+with DOS per orbital*), a download
 (`GET /api/transport/export`, [`web/results.md`](?doc=web/results.md) § 2.5;
 handed over by the file layer's export door, `projects.downloadExport`) — the tables as one zip,
 `<label>.transport-csv.zip` — the points whose DOS by region is not in it
 said beside the buttons; and **`molbuilder jobset export --bundle <calc>
---format csv|netcdf --to <folder>`**, written into the folder named — the
-tables as a folder, `<label>.transport-csv/` — the same points said on its
+--format csv|netcdf [--dos-per-orbital] --to <folder>`**, written into the
+folder named — the tables as a folder, `<label>.transport-csv/`, the data
+file with its digests as `<label>.transport-netcdf/` — the same points said on its
 line; refused, before anything is composed, where the name is there already,
 and for a folder inside the calculation.
-**Refused by name**: a form that is not one of the two; on the report's
+**Refused by name**: a form that is not one of the two, and the DOS per
+orbital asked with the CSV form; on the report's
 route, a calculation that is not transport (the command exports each kind
 through its own export); one whose results do not lay out on one grid — the data
 file's own refusal (`DataFileError`), in its words. The command's line says

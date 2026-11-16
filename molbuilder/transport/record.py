@@ -611,6 +611,25 @@ def _gathered(folder):
         raise RecordError(str(exc)) from None
 
 
+def readings_kept(point: Dict) -> bool:
+    """Whether every reading of a point's data files is kept -- its own and
+    those in its ``shared/`` (the record's ``digest``, `model/parse.md`
+    § 5e): the one answer to *its DOS per orbital is whole*, which its DOS
+    by region, its digests named and an export's digests all ask."""
+    readings = point.get("digest") or ()
+    return bool(readings) and all(d.get("state") == "kept"
+                                  for d in readings)
+
+
+def engine_version(runtime_info: Optional[Dict]) -> Optional[str]:
+    """The version a run's output states its engine is -- SIESTA's build
+    header, which TBtrans prints too (``Version :``, `siesta_grammar.
+    BUILD_VERSION`) -- or ``None``: each run's ``engine_version``
+    (`engines/transport.md` § 2a.12)."""
+    version = ((runtime_info or {}).get("siesta_build") or {}).get("version")
+    return str(version) if version else None
+
+
 def _science(out: Path) -> Dict:
     """A rung run's own answer, read from its engine output: its SCF as it
     ran (every row of its last step, phase-tagged, with each phase's
@@ -629,11 +648,10 @@ def _science(out: Path) -> Dict:
     fact["scf_converged"] = res.scf_converged
     frames = res.frames or []
     info = res.runtime_info or {}
-    # THE ENGINE THAT RAN IT, as its output's build header states it
-    # (`engines/transport.md` § 2a.12: each run's `engine_version`).
-    version = (info.get("siesta_build") or {}).get("version")
+    # THE ENGINE THAT RAN IT (`engines/transport.md` § 2a.12).
+    version = engine_version(info)
     if version:
-        fact["engine_version"] = str(version)
+        fact["engine_version"] = version
     # THE RUN'S SCF, AS IT RAN (`web/results.md` § 2.5): every row of the
     # last step, phase-tagged -- a device's periodic start and its NEGF
     # loop apart -- with what each phase had to reach and how it ended.
@@ -940,10 +958,9 @@ def collect_record(calc, *, partial: bool = False) -> Dict:
             try:
                 reader = read_output(output)
                 now = reader.now()
-                # THE TBTRANS THAT RAN IT, as its output's header states it
-                # -- the family's one read (`engines/transport.md` § 2a.12).
-                version = ((reader.runtime_info or {}).get("siesta_build")
-                           or {}).get("version")
+                # THE TBTRANS THAT RAN IT -- the family's one read
+                # (`engines/transport.md` § 2a.12).
+                version = engine_version(reader.runtime_info)
                 keep_reading(output, version_of(output), reader.finish())
             except OSError:
                 now = None
@@ -975,7 +992,8 @@ def collect_record(calc, *, partial: bool = False) -> Dict:
                   if sharing is not None else {})
         if state != "finished":
             entry = {**at, "attempt": rel, "state": state, "why": why,
-                     **shares}
+                     **shares,
+                     **({"engine_version": version} if version else {})}
             # HOW FAR ITS LOOP IS -- running, or where it stopped -- in the
             # one sentence the point's run record states it in
             # (`tbtrans.loop_record`, `model/parse.md` § 5d.1b, § 5d.5).
@@ -1032,6 +1050,10 @@ def collect_record(calc, *, partial: bool = False) -> Dict:
             if junction is not None:
                 dos["device_atoms"] = sorted(
                     junction.map_to_user_index(engine))
+        for src in (dos or {}).get("per_orbital") or ():
+            # EACH DIGEST BY ITS PATH FROM THE CALCULATION'S FOLDER, where
+            # the data file lies (`record.record_path`).
+            src["digest"] = str(Path(src["digest"]).relative_to(base))
         # THE POINT IT IS A COPY OF -- taken over from, or copied in with
         # its run from, the finished calculation this one reuses (§ 2a.16):
         # the run that computed it (`runrecord.copied_of`).
@@ -1072,7 +1094,7 @@ def collect_record(calc, *, partial: bool = False) -> Dict:
             "n_energies": len(energies),
             **shares,
             **({"copied_from": copied} if copied else {}),
-            **({"engine_version": str(version)} if version else {}),
+            **({"engine_version": version} if version else {}),
             "spin": spin,
             **({"dos": dos} if dos is not None else {"dos_why": dos_why}),
             # WHAT IS KEPT OF EACH DATA FILE'S READING -- its own and those
@@ -1249,14 +1271,35 @@ def order_way_said(base: Path, recorded) -> Optional[str]:
     return order_recorded(base=base)
 
 
+def device_orbital_index(calc) -> Optional[Path]:
+    """The device run's ``<label>.ORB_INDX`` -- each atom's basis, in its
+    order -- of the device run the transmission gathered, at the first point
+    holding one: one junction, one basis at every point
+    (`engines/transport.md` § 2a.12, *A PDOS of the atoms you choose, from
+    the files*); ``None`` where no device run holds one."""
+    from ..runfiles import SIESTA_ORB_INDX
+    from ..runs import run_of
+    for _pt, folder, _run in result_folders(
+            calc, "device", run=gathered_device_run(calc)):
+        if folder is None:
+            continue
+        run = run_of(folder)
+        orb = run.on_label(SIESTA_ORB_INDX) if run is not None else None
+        if orb is not None and Path(orb).is_file():
+            return Path(orb)
+    return None
+
+
 def selection_pdos(calc, bias_v: float, atoms, orbitals: str,
                    frame: Optional[int] = None) -> Dict:
     """The PDOS of ``atoms`` at the point (``frame``, ``bias_v``) of the
     transport calculation ``calc`` (`calculation.open`), narrowed to one
     orbital type (`tbtnc.selection_pdos`; `web/results.md` § 2.5): read from
     that point's kept reading of its transmission run's data file, each
-    orbital's type from the device run's ``.ORB_INDX`` at the same point --
-    the two runs share the composed junction's atom order.  ``atoms`` are
+    orbital's type from the device run's ``.ORB_INDX``
+    (:func:`device_orbital_index`: one junction, one basis at every point,
+    the reading's orbital counts held against it) -- the two runs share the
+    composed junction's atom order.  ``atoms`` are
     named in the user order, the order the report draws the junction in,
     and so are the answer's ``atoms`` and ``outside_device``
     (`model/overview.md` § 2.2a, I1, I3); an index that is not one of the
@@ -1289,14 +1332,13 @@ def selection_pdos(calc, bias_v: float, atoms, orbitals: str,
                  of=n if frame is not None else None)
     said = want.words()
 
-    def _at(stage: str, run: Optional[Path] = None):
+    def _at(stage: str = "transmission"):
         # THE POINT BY EACH AXIS THE RUNG VARIES (`stages.rung_points`): an
         # axis a rung does not vary is ``None`` on its points, and its one
         # result serves every value of it -- a rung that runs once serves
         # every point, one that runs per frame every voltage (a single
         # bias, the low-bias approximation).  ``(point, folder)``.
-        return next(((pt, w) for pt, w, _r in result_folders(
-                         calc, stage, run=run)
+        return next(((pt, w) for pt, w, _r in result_folders(calc, stage)
                      if (pt.frame is None or pt.frame == want.frame)
                      and (pt.volts is None
                           or same_volts(pt.bias_v, want.bias_v))),
@@ -1322,15 +1364,11 @@ def selection_pdos(calc, bias_v: float, atoms, orbitals: str,
         raise RecordError(f"the transmission at {said} has written no data "
                           f"file")
     junction = recorded.structure if recorded is not None else None
-    # THE DEVICE RUN THE TRANSMISSION GATHERED, as every device fact beside
-    # a transmission is (`engines/transport.md` § 2a.12) -- never a newer one.
-    _dev_at, dev = _at("device", run=gathered_device_run(calc))
-    # ITS ORBITAL INDEX, the engine's own file on the label, through the run
-    # door (`runs.Run.on_label`).
-    from ..runfiles import SIESTA_ORB_INDX
-    from ..runs import run_of
-    dev_run = run_of(dev) if dev is not None else None
-    orb = dev_run.on_label(SIESTA_ORB_INDX) if dev_run is not None else None
+    # THE JUNCTION'S BASIS, the one orbital index the data file's table is
+    # read from too (:func:`device_orbital_index`): the device run the
+    # transmission gathered -- one junction, one basis at every point; the
+    # reading's own orbital counts are held against it (`tbtnc._orbitals_of`).
+    orb = device_orbital_index(calc)
     # THE SELECTION, each atom one of the junction's -- refused by name
     # otherwise, never wrapped (`model/overview.md` § 2.2a).
     try:

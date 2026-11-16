@@ -16,7 +16,9 @@ ROLE    ``parse`` -- an engine's file, a run's file → its result (the
         optimization -- ``read_raman_data`` -- an exported Raman view; ``infrared_view`` -- the free atoms' infrared from a
         SIESTA vibration result's charges (`spectra.infrared`);
         ``raman_view`` -- a SIESTA vibration's Raman at a laser, from its
-        optical calls (`spectra.raman`); ``reaveraged`` -- a frame set's
+        optical calls (`spectra.raman`); ``pdos`` -- a transport point's PDOS
+        of a mixed selection from its data file and digests, summed as the
+        report sums (`tbtnc.summed_pdos`); ``reaveraged`` -- a frame set's
         transport calculation averaged over another motion
         (`frame_average.motion_weights`); ``outermost_move`` -- how far
         a mode's frame set at a temperature moves its atom that moves most
@@ -255,6 +257,135 @@ def infrared_view(path, *, direction="z",
                             partition=partition or DEFAULT_PARTITION)
 
 
+def pdos(data_file, point, *, atoms=(), labels=(), regions=(),
+         orbitals="all") -> Dict[str, Any]:
+    """THE PDOS OF A MIXED SELECTION at one point of a transport
+    calculation, from its data file ``<label>.transport.nc`` and the
+    point's digests beside it (`engines/transport.md` § 2a.12, *A PDOS of
+    the atoms you choose, from the files*; the user, 2026-11-16: "go with
+    option 3, and allow mixed selections").  ``point`` is the point's group
+    name (``"v0.2"``, a frame set's ``"f003/v0.2"``); the selection is the
+    union of ``atoms`` (user indices), every atom carrying one of ``labels``
+    as the junction writes it (matched as written), and every atom of
+    ``regions`` (``L-electrode``, ``bridge``, ``R-electrode``) -- an atom
+    named twice counted once -- narrowed to ``orbitals`` (``all`` or a type
+    of the file's ``orbital_type``).  Each digest is read as the reading the
+    file was composed from (`tbtrans_nc.kept_at`: the data file's version it
+    states, no ``.TBT.nc`` needed) and summed by the report's one sum
+    (`tbtnc.summed_pdos`), a point that shares energies joined as the report
+    joins it -- so the curve is the report's.
+
+    Answers ``{point, energy_ev, pdos, units, selection, atoms,
+    outside_device, orbitals, digests, said}``; :class:`tbtnc.TbtError`
+    names what cannot answer -- a point the file does not hold, an atom,
+    label or region that names none, an empty selection, a digest not kept
+    when the file was written or not the reading it names."""
+    from pathlib import Path
+    from .atom_permutation import AtomIndexError
+    from .ncdata import unjson_attr
+    from .parse.engines.tbtrans_nc import kept_at
+    from .transport.energies import joined, window_of_grid
+    from .transport.tbtnc import TbtError, per_atom, summed_pdos
+    path = Path(data_file)
+    here = path.parent
+    data = read_transport_data(path)
+    groups, amap = data["groups"], data[MAP_KEY]
+    # A POINT IS A GROUP THAT SAYS WHETHER IT IS DONE -- not a frame's group
+    # of points, nor a point's device run.
+    held = sorted(k[len("points/"):] for k in groups
+                  if k.startswith("points/")
+                  and "done" in groups[k]["variables"])
+    if point not in held:
+        raise TbtError(f"{point} is not one of {path.name}'s points: "
+                       f"{', '.join(held)}")
+    J = {k: v["data"] for k, v in groups["structure"]["variables"].items()}
+    P = {k: v["data"] for k, v in
+         groups[f"points/{point}"]["variables"].items()}
+    if int(P["done"]) != 1:
+        why = str(P["why"]) or "no transmission yet"
+        raise TbtError(f"{point} is not done: {why}")
+    n = len(J["atom"])
+    # THE SELECTION, a union -- each part naming at least one atom; an
+    # index through the map's one bounds check (`checked_indices`).
+    try:
+        amap.map_to_engine_index(list(atoms))
+    except AtomIndexError as exc:
+        raise TbtError(str(exc)) from exc
+    chosen = {int(a) for a in atoms}
+    for label in labels:
+        members = [a for a in range(n)
+                   if label in unjson_attr(str(J["labels"][a]))]
+        if not members:
+            raise TbtError(f"no atom of the junction carries the label "
+                           f"{label!r}")
+        chosen.update(members)
+    owned = sorted({str(r) for r in J["atom_region"] if str(r)})
+    for region in regions:
+        if region not in owned:
+            raise TbtError(f"region {region!r}: one of {', '.join(owned)}")
+        chosen.update(a for a in range(n) if str(J["atom_region"][a]) == region)
+    if not chosen:
+        raise TbtError("no atoms selected")
+    # THE DIGESTS THE FILE NAMES -- only a point every reading of which was
+    # kept and named when it was written (`datafile`): none named, its why.
+    named = str(P["dos_per_orbital_files"])
+    if not named:
+        why = (str(P["dos_why"]) or str(P["dos_per_orbital_reading"])
+               or "not read")
+        raise TbtError(f"{point}: {path.name} names no reading of its DOS "
+                       f"per orbital ({why}) -- read it (the report's DOS "
+                       f"tab, or `jobset summarize task`), then summarize "
+                       f"or export again")
+    sources = unjson_attr(named)
+    if orbitals != "all" and not len(J["orbital"]):
+        why = groups["structure"]["attrs"].get("orbitals_why", "")
+        raise TbtError(f"{path.name} holds no orbital table ({why}), so "
+                       f"its orbitals' types are not known")
+    # THE FILE'S ATOMS AS ITS DIGESTS LIST THEM, by engine index (F7), and
+    # its orbital table as each atom's (l, m) -- the page's own shape.
+    expected = amap.as_listed_by_engine()
+    engine = dict(zip(range(n), amap.map_to_engine_index(list(range(n)))))
+    basis = None if orbitals == "all" else per_atom(
+        [(engine[int(J["orbital_atom"][o])], int(J["orbital_n"][o]),
+          int(J["orbital_l"][o]), int(J["orbital_m"][o]),
+          int(J["orbital_zeta"][o])) for o in range(len(J["orbital"]))])
+
+    def read(folder):
+        mine = [s for s in sources if (here / s["digest"]).parent == folder]
+        readings = []
+        for s in mine:
+            got = kept_at(here / s["digest"], s["version"], need_user=True)
+            if got is None:
+                raise TbtError(
+                    f"{s['digest']} is not the reading {path.name} was "
+                    f"composed from -- not there, or read again from "
+                    f"another run of its data file: summarize or export "
+                    f"again")
+            readings.append((Path(s["digest"]).name, got))
+        return summed_pdos(readings, basis,
+                           [engine[a] for a in sorted(chosen)], orbitals,
+                           expected=expected,
+                           basis_said=f"{path.name}'s orbital table")
+    own = here / str(P["folder"])
+    # THE POINT'S OWN GRID, as the report restricts a joined answer to it.
+    window = window_of_grid(P["energy_ev"])
+    got = joined(own, read, window_of=lambda f: window if f == own else None)
+    return {"point": point, "energy_ev": got["energy_ev"],
+            "pdos": got["pdos"], "units": "1/eV",
+            "selection": {"atoms": sorted({int(a) for a in atoms}),
+                          "labels": list(labels), "regions": list(regions)},
+            "atoms": sorted(amap.map_to_user_index(got["atoms"])),
+            "outside_device": sorted(
+                amap.map_to_user_index(got["outside_device"])),
+            "orbitals": orbitals,
+            "digests": [s["digest"] for s in sources],
+            "said": ("the DOS per orbital of the digests named, summed over "
+                     "the orbitals of the atoms selected -- their union -- "
+                     "that the point's DOS covers; a polarized point's two "
+                     "channels summed.  The selection, and so the sum, is "
+                     "the person's.")}
+
+
 def reaveraged(path, *, temperature_k, swing_quanta=0.0) -> Dict[str, Any]:
     """A FRAME SET'S TRANSPORT CALCULATION AVERAGED OVER ANOTHER MOTION
     (`science/vibrational-averaging.md` § 5.4), from its data file
@@ -360,5 +491,6 @@ __all__ = ["AtomIndexMap", "AtomIndexUnknown", "RunStepsError", "atom_index_map"
            "infrared_view", "list_runs", "parse", "raman_view", "read_optical_data",
            "read_optimization_data", "read_raman_data", "read_spectra_data", "read_steps",
            "read_structure", "read_transport_data", "read_xv", "read_xv_cell", "reaveraged",
+           "pdos",
            "outermost_move", "projects_root", "project_dir", "topic_dir",
            "structure_dir", "list_projects", "list_topics", "list_structures"]

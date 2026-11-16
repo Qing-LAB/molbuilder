@@ -586,8 +586,9 @@ def api_transport_export() -> Any:
     """EVERY RESULT OF A TRANSPORT CALCULATION, AS IT STANDS
     (`engines/transport.md` § 2a.12, *Export*) -- ``?path=`` the
     calculation's ``task.json`` or folder, ``format=`` ``netcdf`` or
-    ``csv`` -- an attachment: its data file, or its tables and README as one
-    zip; composed on request from what is there (`transport.export`), no
+    ``csv``, ``dos_per_orbital=1`` with ``netcdf`` for each point's digest
+    beside the data file -- an attachment: its data file, or its files as
+    one zip; composed on request from what is there (`transport.export`), no
     data file read and nothing written into the calculation's folder; the
     points it holds without their DOS by region said in the response's
     ``X-Molbuilder-Said`` header.  400 names what is refused."""
@@ -597,7 +598,9 @@ def api_transport_export() -> Any:
     if refusal is not None:
         return refusal
     try:
-        got = export(calc, str(request.args.get("format") or ""))
+        got = export(calc, str(request.args.get("format") or ""),
+                     dos_per_orbital=request.args.get("dos_per_orbital")
+                     == "1")
     except ExportError as exc:
         return err(str(exc), 400)
     return sent_export(got)

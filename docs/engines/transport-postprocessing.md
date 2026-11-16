@@ -247,6 +247,30 @@ pdos = dg.DOS.isel(device_orbital=theirs).sum("device_orbital")  # per energy
 pdos.plot(x="energy_ev")
 ```
 
+### 5.1 The same from the data file: `postprocess.pdos`
+
+The PDOS of atoms you choose — by index, by label, by region, mixed, their
+union — summed as the report sums it, from the data file and each point's
+digest beside it ([`engines/transport.md`](?doc=engines/transport.md)
+§ 2a.12, *A PDOS of the atoms you choose, from the files*). In the
+calculation's folder, or in the folder of the Export's *NetCDF with DOS per
+orbital* — no `.TBT.nc` needed:
+
+```python
+from molbuilder.postprocess import pdos
+r = pdos("F.transport.nc", "f001/v0.2",
+         regions=["bridge"], labels=["R-electrode"], atoms=[0])
+r["energy_ev"], r["pdos"]           # 1/eV, on the point's energies
+r["atoms"]                          # the atoms summed -- your user indices
+r["outside_device"]                 # named, outside TBtrans's device region: no DOS
+r["digests"], r["said"]             # what was read, and what the sum is
+pdos("F.transport.nc", "f001/v0.2", regions=["bridge"], orbitals="s")
+```
+
+The selection, and so the sum, is yours. A point whose readings were not
+all kept when the file was written, a digest read again since, or an orbital
+type the basis does not hold is refused by name.
+
 ## 6. TBtrans's own file, with sisl
 
 The same PDOS from the point's `.TBT.nc` — every k-point read, the cost the

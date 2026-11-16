@@ -98,6 +98,15 @@ def grid(emin: float, emax: float, points: int) -> List[float]:
     return [float(emin) + (i + 0.5) * h for i in range(int(points))]
 
 
+def window_of_grid(energies: Sequence[float]) -> Tuple[float, float, int]:
+    """The window a grid of :func:`grid` was computed from -- ``(from, to,
+    points)``, its first and last energies half a spacing inside each end --
+    its inverse, for a grid read back from a data file."""
+    e = [float(x) for x in energies]
+    h = (e[-1] - e[0]) / (len(e) - 1) if len(e) > 1 else 0.0
+    return (e[0] - h / 2, e[-1] + h / 2, len(e))
+
+
 def deck_window(text: str) -> Optional[Tuple[float, float, int]]:
     """The grid a transmission deck describes -- ``(from, to, points)``, the
     numbers tbtrans computed its energies from: its sharing record's
@@ -241,6 +250,11 @@ def _consecutive(indices: Sequence[int], step: int) -> List[List[int]]:
 #: never joined, whatever their length.
 _NOT_ALONG_E = frozenset(("atoms", "outside_device", "device_atoms"))
 
+#: The files an answer is read from -- each point's digests
+#: (`engines/transport.md` § 2a.12, *A PDOS of the atoms you choose, from
+#: the files*): a joined answer is read from both sides', so both are kept.
+_SOURCES = frozenset(("per_orbital",))
+
 
 def joined(folder: Path, read: Callable[[Path], Dict], *,
            window_of: Optional[Callable[[Path], Optional[
@@ -301,7 +315,7 @@ def _pick(a, b, rows, na: int, nb: int):
     each row of ``rows`` -- ``(side, index)`` -- recursively."""
     if isinstance(a, dict) and isinstance(b, dict):
         return {k: _pick(a[k], b[k], rows, na, nb) for k in a
-                if k in b and k not in _NOT_ALONG_E}
+                if k in b and k not in _NOT_ALONG_E and k not in _SOURCES}
     if (isinstance(a, list) and isinstance(b, list)
             and len(a) == na and len(b) == nb
             and all(isinstance(x, (int, float)) for x in a + b)):
@@ -323,6 +337,9 @@ def _merge(own: Dict, other: Dict) -> Dict:
     for key in _NOT_ALONG_E:
         if key in own:
             out[key] = own[key]
+    for key in _SOURCES:
+        if key in own or key in other:
+            out[key] = list(own.get(key) or ()) + list(other.get(key) or ())
     return out
 
 
@@ -334,7 +351,7 @@ def _on(answer: Dict, energies: Sequence[float]) -> Dict:
     rows = [(0, i) for i in keep]
     out = _pick(answer, answer, rows, len(e), len(e))
     out["energy_ev"] = [e[i] for i in keep]
-    for key in _NOT_ALONG_E:
+    for key in _NOT_ALONG_E | _SOURCES:
         if key in answer:
             out[key] = answer[key]
     return out

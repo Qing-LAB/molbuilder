@@ -105,8 +105,8 @@
 .results-file-kind:empty { display: none; }
 
 /* A viewer's actions on the whole calculation (presenters.md § 2,
- * `placeInHeader`): their own line under the folder when the row is full,
- * so a long status sentence beside the buttons never crowds the path. */
+ * `placeInHeader`): always a line of their own under the folder, so a long
+ * status sentence beside the buttons never crowds the path. */
 .results-file-actions {
     flex: 1 1 100%;
     min-width: 0;

@@ -511,6 +511,13 @@ class AtomIndexMap:
         self._needs(user=True, engine=False)
         return self._relisted(LISTED_BY_USER)[1]
 
+    def as_listed_by_engine(self) -> "AtomIndexMap":
+        """The same atoms' map, listed by engine index -- as a run's own
+        files list them (a digest), so a file listed by user index is set
+        against one (F7)."""
+        self._needs(user=False, engine=True)
+        return self._relisted(LISTED_BY_ENGINE)[1]
+
     def table(self) -> List[dict]:
         """Every atom of the file: its user index and its engine index, each
         counted from 0 -- the correspondence whole.  The number a view shows

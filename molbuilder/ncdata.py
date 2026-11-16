@@ -145,6 +145,8 @@ AXES: Dict[str, Axis] = {a.name: a for a in (
     Axis("atom_bound", "each atom's first orbital, and one past the last",
          "1"),
     Axis("device_orbital", "the device region's orbitals", "1"),
+    Axis("orbital", "the junction's basis orbitals, the device run's order",
+         "1"),
     Axis("xyz", "a Cartesian component", ""),
     Axis("cell_vector", "the cell's three vectors", ""),
     Axis("reciprocal_vector", "the reciprocal cell's three vectors", ""),
@@ -374,6 +376,22 @@ def write_group(group, dims: Mapping[str, Any], variables: Sequence[Var],
     check_axes(dims, variables)
     for var in variables:
         check_said(var)
+    # NO VARIABLE SHADOWS AN AXIS ITS GROUP'S ENCLOSING GROUPS DEFINE: a tree
+    # reader (xarray's DataTree) hands the inherited axis in its place, the
+    # value lost without an error -- one name, one concept
+    # (`model/datafiles.md` § 2a, rule 1).
+    inherited: set = set()
+    above = group.parent
+    while above is not None:
+        inherited |= set(above.dimensions)
+        above = above.parent
+    shadowing = [v.name for v in variables
+                 if v.name in inherited and v.dims != (v.name,)]
+    if shadowing:
+        raise ValueError(
+            f"variable {', '.join(shadowing)} has the name of an axis an "
+            f"enclosing group defines, which a tree reader shows in its "
+            f"place: one name, one concept (model/datafiles.md § 2a, rule 1)")
     atoms = dims.get(ATOM_AXIS)
     if atoms is not None and not isinstance(atoms, AtomIndexMap):
         raise ValueError(
@@ -763,7 +781,13 @@ class Exported:
         out = io.BytesIO()
         with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
             for rel, data in self.files.items():
-                z.writestr(f"{self.name}/{rel}", data)
+                # A NETCDF FILE IS STORED AS IT IS: its arrays are
+                # compressed inside it already, so deflating again costs
+                # the time of its size and gains nothing.
+                z.writestr(f"{self.name}/{rel}", data,
+                           compress_type=(zipfile.ZIP_STORED
+                                          if rel.endswith(".nc")
+                                          else zipfile.ZIP_DEFLATED))
         return out.getvalue()
 
     def download(self) -> Tuple[bytes, str, str]:

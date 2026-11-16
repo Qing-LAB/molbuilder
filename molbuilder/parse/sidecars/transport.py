@@ -26,7 +26,7 @@ class TransportRecordError(ParseError):
 
 #: The record's schema (`execution/job-contracts.md` § 6.1): an older record is
 #: refused by its version, and `summarize task` writes it again.
-TRANSPORT_RESULT_SCHEMA = "molbuilder/transport-result@16"
+TRANSPORT_RESULT_SCHEMA = "molbuilder/transport-result@17"
 
 
 def _load(path: Path) -> Dict[str, Any]:

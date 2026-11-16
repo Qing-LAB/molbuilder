@@ -329,13 +329,20 @@ def _digest(path: Path, part: Tuple[str, ...], *, need_user: bool = False
     none there, another version's, one stating no user index where
     ``need_user``, or one that does not read (read again, and written
     anew)."""
-    import numpy as np
-    from molbuilder.atom_permutation import FIELD_USER
-    from molbuilder.ncdata import read_atom_index_map, reading
     digest = digest_of(path)
     if not digest.is_file():
         return None
-    version = _version(path)
+    return _digest_at(digest, _version(path), part, need_user=need_user)
+
+
+def _digest_at(digest: Path, version: Tuple[int, int], part: Tuple[str, ...],
+               *, need_user: bool = False) -> Optional[Dict[str, Any]]:
+    """The digest at ``digest`` when it is a reading of the data file at
+    ``version`` -- its size and modification time -- (:func:`_digest`'s
+    answer), ``None`` otherwise."""
+    import numpy as np
+    from molbuilder.atom_permutation import FIELD_USER
+    from molbuilder.ncdata import read_atom_index_map, reading
     try:
         with reading(digest) as ds:
             if (getattr(ds, "schema", "") != DIGEST_SCHEMA
@@ -354,11 +361,32 @@ def _digest(path: Path, part: Tuple[str, ...], *, need_user: bool = False
         return None
 
 
+def kept_at(digest, version, *, need_user: bool = False
+            ) -> Optional[TransmissionResult]:
+    """THE READING A DIGEST IS, where its data file is not beside it -- an
+    export's zip (`engines/transport.md` § 2a.12, *A PDOS of the atoms you
+    choose, from the files*): ``digest`` read when it states the data file
+    ``version`` -- ``(size, modification time in ns)``, the reading a
+    transport data file was composed from -- ``None`` when it states
+    another, or does not read (``need_user`` as :func:`kept_state`)."""
+    digest = Path(digest)
+    if not digest.is_file():
+        return None
+    got = _digest_at(digest, (int(version[0]), int(version[1])), _READING,
+                     need_user=need_user)
+    return _as_reading(digest, got) if got is not None else None
+
+
 def _from_digest(path: Path, *, need_user: bool = False
                  ) -> Optional[TransmissionResult]:
     got = _digest(path, part=_READING, need_user=need_user)
     if got is None:
         return None
+    return _as_reading(path, got)
+
+
+def _as_reading(path: Path, got: Dict[str, Any]) -> TransmissionResult:
+    """A digest's variables as the reading it keeps."""
     return TransmissionResult(
         **ParseResult.envelope(TBTransNcFileParser.name, path),
         channel=got["channel"],

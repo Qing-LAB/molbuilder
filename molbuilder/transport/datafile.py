@@ -16,7 +16,9 @@ ROLE    one NetCDF-4 file per transport calculation, in groups -- the
         task` writes the JSON record from, :func:`write_data_file` writes
         it; :func:`read_data_file` is its door
 USED-BY `jobset summarize task`, beside `record.write_record`; an export
-        (`transport.export`), which hands the bytes out
+        (`transport.export`), which hands the bytes out; a person's script
+        through `postprocess` -- `read_transport_data`, `reaveraged`,
+        `pdos` -- which reads them through :func:`read_data_file`
 
 **One shape for every transport calculation** (user, 2026-10-10: "doing a
 derivative is trivial if the result are saved with these parameter and
@@ -57,9 +59,12 @@ from .stages import same_volts
 #: the calculation as groups -- the junction whole (its cell, each atom's
 #: region and labels), each stage, each point and its device run, a summary
 #: across the points from the same arrays -- each run's engine version, and
-#: which atoms a point's DOS covers (the user, 2026-11-16).  An older file
-#: is refused by its version, and `summarize task` writes it again.
-DATA_SCHEMA = "molbuilder/transport-data@9"
+#: which atoms a point's DOS covers (the user, 2026-11-16); ``@10``: the
+#: junction's basis orbitals, each point's digests and the reading each is,
+#: the stage's and device's ``last_energy_ev`` (no name an axis's), the
+#: I-V's words on the summary too.  An older file is refused by its version,
+#: and `summarize task` writes it again.
+DATA_SCHEMA = "molbuilder/transport-data@10"
 
 #: THE ROOT ATTRIBUTES THIS FILE WRITES AS JSON TEXT (`ncdata.json_attr`,
 #: :func:`data_file_bytes`; `engines/transport.md` § 2a.12 names each
@@ -176,6 +181,26 @@ def _variables() -> Tuple[Var, ...]:
             "x, y, z", dtype=S),
         Var("element", ("atom",), "given", "", "the atom's element",
             "as the composed junction states it", dtype=S, auxiliary=True),
+        # THE JUNCTION'S BASIS, every orbital in the device run's order --
+        # what a PDOS of chosen atoms narrows by (`engines/transport.md`
+        # § 2a.12, *A PDOS of the atoms you choose, from the files*).
+        Var("orbital", ("orbital",), "coordinate", "1", "orbital index",
+            "its index in the geometry, from 0, the device run's order -- "
+            "a digest's device_orbital names a subset of them", dtype="i4"),
+        Var("orbital_atom", ("orbital",), "given", "1", "the orbital's atom",
+            "the atom it sits on, by the file's atom index map (user "
+            "index)", dtype="i4", atom_index=True),
+        *(Var(f"orbital_{q}", ("orbital",), "raw", "1", words,
+              f"as the device run's ORB_INDX states it ({key})",
+              source="the device run's <label>.ORB_INDX", dtype="i4")
+          for q, words, key in (("n", "the orbital's principal number", "n"),
+                                ("l", "the orbital's angular momentum", "l"),
+                                ("m", "the orbital's magnetic number", "m"),
+                                ("zeta", "the orbital's zeta", "z"))),
+        Var("orbital_type", ("orbital",), "derived", "", "the orbital's type",
+            "its l and m in the orbital menu's words -- s, px, py, pz, d "
+            "(tbtnc.ORBITAL_TYPES) -- empty for an l the menu does not "
+            "offer", dtype=S),
         # THE JUNCTION WHOLE (the user, 2026-11-16: "junction's cell should
         # be saved together with structure"): its cell, its periodicity,
         # each atom's region and labels (`engines/transport.md` § 2a.12,
@@ -370,6 +395,14 @@ def _variables() -> Tuple[Var, ...]:
             "computes a DOS for -- from the point's kept reading of its data "
             "file (model/parse.md 5e), 0 for every other; -1 where none is "
             "kept", dtype="i1", flag=True),
+        Var("dos_per_orbital_files", ("frame", "bias_v"), "state", "",
+            "the point's digests, and the reading each is",
+            "a JSON list: each digest's path from the calculation's folder "
+            "-- where this file lies -- its channel, and the version of the "
+            "data file it states, [its size in bytes, its modification time "
+            "in ns] when it was read: the reading dos_region is summed from, "
+            "which postprocess.pdos reads back; empty where none is kept",
+            dtype=S),
         Var("dos_per_orbital_reading", ("frame", "bias_v"), "state", "",
             "the point's data-file reading, the DOS by region's",
             "kept, or each data file's state in its words -- a reading just "
@@ -401,7 +434,7 @@ def _variables() -> Tuple[Var, ...]:
         Var("device_scf_converged", ("frame", "bias_v"), "state", "1",
             "the device point's SCF converged",
             "1 converged, 0 not, -1 not stated", dtype="i1", flag=True),
-        Var("device_energy_ev", ("frame", "bias_v"), "raw", "eV",
+        Var("device_last_energy_ev", ("frame", "bias_v"), "raw", "eV",
             "the NEGF phase's last energy",
             "never compared across points or calculations "
             "(engines/transport.md 1.1)",
@@ -463,7 +496,8 @@ def _variables() -> Tuple[Var, ...]:
         Var("rung_scf_converged", ("rung",), "state", "1",
             "the stage's SCF converged", "1 converged, 0 not, -1 not stated",
             dtype="i1", flag=True),
-        Var("rung_energy_ev", ("rung",), "raw", "eV", "the stage's energy",
+        Var("rung_last_energy_ev", ("rung",), "raw", "eV",
+            "the stage's last energy",
             "its run's last energy", source="the stage's SIESTA output"),
         Var("rung_fermi_ev", ("rung",), "raw", "eV", "the stage's Fermi level",
             "its last SCF cycle's E_F, in its own run's frame -- how the "
@@ -491,22 +525,29 @@ VARIABLES: Tuple[Var, ...] = _variables()
 #: group, or ... just go for the summary ... consistent and coming from the
 #: same result"): what is compared across the points -- each point's
 #: numbers and its T(E) over frame x voltage, written from the same arrays
-#: as each point's own -- the I-V, and the frames' average.
-SUMMARY = ("done", "point_state", "conductance_g0", "current_a",
-           "current_by_spin_a", "current_from", "device_ef_ev",
-           "device_vha_ev", "device_dq", "device_d_change_from_0v",
-           "device_scf_converged", "transmission",
-           "iv_current_a", "iv_current_by_spin_a", "iv_kt_ev",
-           "iv_window_lowest_ev", "iv_window_highest_ev",
-           "average_transmission", "average_delta_transmission",
-           "average_conductance_g0", "average_conductance_change_percent",
-           "average_why", "average_conductance_why",
-           "weight_sum", "weight_tolerance")
+#: as each point's own -- the I-V, and the frames' average, whose part is
+#: its post-process's to name (`frame_average.SUMMARY_PART`).
+def _summary() -> Tuple[str, ...]:
+    from ..frame_average import SUMMARY_PART
+    return ("done", "point_state", "conductance_g0", "current_a",
+            "current_by_spin_a", "current_from", "device_ef_ev",
+            "device_vha_ev", "device_dq", "device_d_change_from_0v",
+            "device_scf_converged", "transmission",
+            "iv_current_a", "iv_current_by_spin_a", "iv_kt_ev",
+            "iv_window_lowest_ev", "iv_window_highest_ev", *SUMMARY_PART)
+
+
+SUMMARY: Tuple[str, ...] = _summary()
 
 #: THE PREFIX A VARIABLE DROPS in the group its path names
 #: (`engines/transport.md` § 2a.12: ``rung_fermi_ev`` is a stage's
 #: ``fermi_ev``, ``point_why`` a point's ``why``).
 _PREFIX = {"stage": "rung_", "point": "point_", "device": "device_"}
+
+#: THE JUNCTION'S AXES: a variable over these alone -- an atom, an orbital,
+#: the cell, a frame's rows -- is the junction's.
+_STRUCTURE_AXES = frozenset(("frame", "atom", "xyz", "cell_vector",
+                             "orbital"))
 
 
 def _is_axis(var: Var) -> bool:
@@ -515,17 +556,41 @@ def _is_axis(var: Var) -> bool:
 
 
 def _home(var: Var) -> str:
-    """Where a variable lives, by the axes it runs over: a stage's over
-    ``rung``; a point's over ``frame`` and ``bias_v`` -- its device run's
-    where it is ``device_*``; the summary's what :data:`SUMMARY` names; the
-    junction's everything else (`engines/transport.md` § 2a.12)."""
+    """Where a variable lives (`engines/transport.md` § 2a.12): a stage's
+    over ``rung``; a point's over ``frame`` and ``bias_v`` -- its device
+    run's where it is ``device_*`` -- the summary gathering those
+    :data:`SUMMARY` names besides; the summary's what it names of the rest;
+    the junction's over its axes alone, or a number of the frame set's
+    (`frame_average.STRUCTURE_ROWS`).  A variable no rule places is
+    refused, naming it -- never laid in a group by default."""
+    from ..frame_average import STRUCTURE_ROWS
     if "rung" in var.dims:
         return "stage"
     if "frame" in var.dims and "bias_v" in var.dims:
         return "device" if var.name.startswith(_PREFIX["device"]) else "point"
     if var.name in SUMMARY:
         return "summary"
-    return "structure"
+    if (var.dims and set(var.dims) <= _STRUCTURE_AXES) or (
+            not var.dims and var.name in {r.name for r in STRUCTURE_ROWS}):
+        return "structure"
+    raise ValueError(f"the data file's variable {var.name} has no group: "
+                     f"engines/transport.md § 2a.12 names one first")
+
+
+#: EACH VARIABLE'S GROUP, placed once as the module loads -- a variable no
+#: rule places refuses the module, not a file.
+_HOMES: Dict[str, str] = {v.name: _home(v) for v in VARIABLES
+                          if not _is_axis(v)}
+
+#: A POINT'S OWN PLACE on the summary's axes, in its group: its frame and its
+#: voltage, each the axis's value there (`engines/transport.md` § 2a.12).
+_POINT_AT = (
+    Var("frame", (), "coordinate", "1", "frame index",
+        "the point's frame, counted from 0 -- the summary's frame axis at "
+        "this point", dtype="i4"),
+    Var("bias_v", (), "coordinate", "V", "bias voltage",
+        "the point's voltage -- the summary's bias_v axis at this point"),
+)
 
 
 def data_file_path(base_dir, label: str) -> Path:
@@ -582,7 +647,7 @@ def data_file_bytes(calc, record: Dict, *,
     from ..frame_average import fill_data_file, with_meanings
     from ..ncdata import NC_LOCK, as_bytes, empty, in_memory, state
     from .compose import recorded_junction
-    from .record import iv_notes_placed, order_unstated_said
+    from .record import iv_notes_placed, order_unstated_said, readings_kept
     from ..paths import frame_token
     from .stages import (TRANSPORT_STAGES, frames_of,
                          per_point_rungs, rung_points)
@@ -636,6 +701,28 @@ def data_file_bytes(calc, record: Dict, *,
     iv = record.get("iv") or {}
     iv_biases = _voltages(task.bias)
     n_atoms = junction.n_atoms if junction is not None else 0
+    # THE JUNCTION'S BASIS, each orbital's atom by user index -- the device
+    # run's own order, the engine's (`record.device_orbital_index`).
+    # A table that cannot be read is said, never the file refused for it:
+    # an export holds what exists (§ 2a.12, *Export*).
+    from .record import device_orbital_index
+    from .tbtnc import TbtError, basis_table, orbital_word
+    orb_indx = device_orbital_index(calc) if recorded is not None else None
+    basis: List[Tuple] = []
+    from ..runfiles import SIESTA_ORB_INDX
+    orbitals_why = ("" if orb_indx is not None
+                    else "no junction composed yet" if recorded is None
+                    else f"no device run holds its {SIESTA_ORB_INDX} yet")
+    if orb_indx is not None:
+        try:
+            rows = basis_table(orb_indx)
+        except TbtError as exc:
+            rows, orbitals_why = [], str(exc)
+        engine = sorted({e for e, *_q in rows})
+        user_of = dict(zip(engine,
+                           recorded.structure.map_to_user_index(engine)))
+        basis = [(int(user_of[e]), n, l, m, z, orbital_word(l, m))
+                 for e, n, l, m, z in rows]
     # THE ATOM AXIS, LISTED BY USER INDEX, with each atom's engine index --
     # the device run's, from the composed junction's order record
     # (`model/overview.md` § 2.2b, F2: a result for the user), so a script
@@ -663,7 +750,8 @@ def data_file_bytes(calc, record: Dict, *,
 
     dims = {"frame": n_frames, "bias_v": len(biases), "energy_ev": len(grid),
             "spin": len(spins), "iv_bias_v": len(iv_biases), "atom": atoms,
-            "xyz": 3, "cell_vector": 3, "region": len(_REGIONS),
+            "xyz": 3, "cell_vector": 3, "orbital": len(basis),
+            "region": len(_REGIONS),
             "lead": len(leads),
             "eigenchannel": n_eig, "rung": len(once), "scf_cycle": n_cycles,
             "charge_part": len(parts)}
@@ -687,6 +775,10 @@ def data_file_bytes(calc, record: Dict, *,
     values["scf_cycle"][:] = np.arange(n_cycles)
     values["charge_part"][:] = parts
     values["cell_vector"][:] = ["a", "b", "c"]
+    values["orbital"][:] = np.arange(len(basis))
+    for k, name in enumerate(("orbital_atom", "orbital_n", "orbital_l",
+                              "orbital_m", "orbital_zeta", "orbital_type")):
+        values[name][:] = [row[k] for row in basis]
     if junction is not None:
         # The element, never the species label (`Au1` is gold): the
         # variable says "the atom's element" (`Structure.chemical_symbols`).
@@ -757,13 +849,20 @@ def data_file_bytes(calc, record: Dict, *,
             values["dos_atom"][f, b, list(covered)] = 1
         if p.get("engine_version"):
             versions["point"][(f, b)] = str(p["engine_version"])
-        kept = p.get("digest") or ()
-        if kept:
+        readings = p.get("digest") or ()
+        whole = readings_kept(p)
+        if readings:
             values["dos_per_orbital_reading"][f, b] = (
-                "kept" if all(d.get("state") == "kept" for d in kept)
+                "kept" if whole
                 else "; ".join(tried.get(d.get("file"))
                                or f"{d.get('file')}: {d.get('said')}"
-                               for d in kept))
+                               for d in readings))
+        # ITS DIGESTS AND THE READING EACH IS -- only where every reading is
+        # kept and the DOS block names each one, one snapshot: a reading in
+        # part -- one spin, one side of a shared grid -- is no PDOS (§ 2a.12).
+        sources = (p.get("dos") or {}).get("per_orbital") or ()
+        if whole and len(sources) == len(readings):
+            values["dos_per_orbital_files"][f, b] = json_attr(sources)
         dos = p.get("dos") or {}
         if dos.get("energy_ev") is not None and not (
                 len(dos["energy_ev"]) == len(grid)
@@ -799,6 +898,8 @@ def data_file_bytes(calc, record: Dict, *,
         values["point_progress"][f, b] = (p.get("progress") or {}).get(
             "said") or ""
         _shared_facts(p, (f, b), values)
+        if p.get("engine_version"):
+            versions["point"][(f, b)] = str(p["engine_version"])
     rows = list(zip(iv.get("frame") or [None] * len(iv.get("voltages_v")
                                                    or ()),
                     iv.get("voltages_v") or ()))
@@ -817,15 +918,8 @@ def data_file_bytes(calc, record: Dict, *,
             if i is not None:
                 values["iv_current_by_spin_a"][0 if f is None else int(f),
                                                _index(v, iv_biases), s] = i
-    _device_facts(device, device_runs, biases, parts, values)
-    for p in device_runs:
-        if p.get("engine_version"):
-            cells = ([(int(p.get("frame") or 0), _index(p["bias_v"], biases))]
-                     if device.get("by_point") else
-                     [(f, b) for f in range(n_frames)
-                      for b in range(len(biases))])
-            for cell in cells:
-                versions["device"][cell] = str(p["engine_version"])
+    _device_facts(device, device_runs, biases, parts, values,
+                  versions["device"], n_frames)
     for r, name in enumerate(once):
         if (by_stage.get(name) or {}).get("engine_version"):
             versions["stage"][name] = str(by_stage[name]["engine_version"])
@@ -905,7 +999,10 @@ def data_file_bytes(calc, record: Dict, *,
         # (`model/datafiles.md` § 2).
         _write_groups(ds, dims, with_meanings(VARIABLES, junction), values,
                       label=attrs["label"], once=once, biases=biases,
-                      n_frames=n_frames, versions=versions)
+                      n_frames=n_frames, versions=versions,
+                      group_words={"structure": {"orbitals_why": orbitals_why},
+                            "summary": {k: attrs[k] for k in
+                                        ("iv_computed", "iv_notes")}})
         ds.setncatts(attrs)
         data = as_bytes(ds)
     return data_file_path(base, attrs["label"]).name, data
@@ -914,20 +1011,22 @@ def data_file_bytes(calc, record: Dict, *,
 def _write_groups(ds, dims: Dict[str, Any], variables: Sequence[Var],
                   values: Dict[str, Any], *, label: str, once: Sequence[str],
                   biases: Sequence[float], n_frames: int,
-                  versions: Dict[str, Dict]) -> None:
+                  versions: Dict[str, Dict],
+                  group_words: Dict[str, Dict[str, str]]) -> None:
     """THE CALCULATION AS GROUPS (`engines/transport.md` § 2a.12): every
     variable in its home (:func:`_home`) -- a stage's and a point's sliced
     from the one array at its index, the prefix its group names dropped --
     and the summary's (:data:`SUMMARY`) whole, so a value two groups hold is
     one array's.  Each group holds the coordinate of every axis it runs
-    over, so it is read alone."""
+    over, so it is read alone, and ``group_words`` the words a group's own
+    readers need beside its values: the I-V's computation in the summary,
+    why the junction holds no orbital table."""
     from dataclasses import replace
     from ..ncdata import write_group
     from ..paths import frame_token
     from ..task import bias_token
     from .stages import Point
     axes = {v.name: v for v in variables if _is_axis(v)}
-    homes = {v.name: _home(v) for v in variables if not _is_axis(v)}
     labels_of = [v for v in variables if v.auxiliary]
 
     def put(group, members, at: Dict[str, int], drop: str, title: str,
@@ -966,12 +1065,14 @@ def _write_groups(ds, dims: Dict[str, Any], variables: Sequence[Var],
                     title=title)
 
     def members(home: str) -> List[Var]:
-        return [v for v in variables if homes.get(v.name) == home]
+        return [v for v in variables if _HOMES.get(v.name) == home]
 
-    put(ds.createGroup("structure"), members("structure"), {}, "",
+    structure = ds.createGroup("structure")
+    put(structure, members("structure"), {}, "",
         f"the junction of {label} as the calculation composed it, listed "
         f"by user index: its cell, each atom with its region and labels, "
-        f"every frame")
+        f"its basis orbitals, every frame")
+    structure.setncatts(group_words["structure"])
     stages = ds.createGroup("stages")
     stages.setncattr("title", "each stage that runs once, a group each, by "
                               "its stage name")
@@ -998,14 +1099,7 @@ def _write_groups(ds, dims: Dict[str, Any], variables: Sequence[Var],
                 _PREFIX["point"],
                 f"the point {said}: its transmission, its DOS, its current "
                 f"and its state",
-                extra=(
-                    (Var("frame", (), "coordinate", "1", "frame index",
-                         "the point's frame, counted from 0 -- the "
-                         "summary's frame axis at this point", dtype="i4"),
-                     f),
-                    (Var("bias_v", (), "coordinate", "V", "bias voltage",
-                         "the point's voltage -- the summary's bias_v axis "
-                         "at this point"), volts)))
+                extra=tuple(zip(_POINT_AT, (f, volts))))
             g.setncattr("engine_version", versions["point"].get((f, b), ""))
             d = g.createGroup("device")
             put(d, members("device"), {"frame": f, "bias_v": b},
@@ -1014,11 +1108,12 @@ def _write_groups(ds, dims: Dict[str, Any], variables: Sequence[Var],
                 f"transmission gathered: its NEGF figures, charges and SCF "
                 f"history")
             d.setncattr("engine_version", versions["device"].get((f, b), ""))
-    put(ds.createGroup("summary"),
-        [v for v in variables if v.name in SUMMARY], {}, "",
+    summary = ds.createGroup("summary")
+    put(summary, [v for v in variables if v.name in SUMMARY], {}, "",
         "what is compared across the points, gathered from the same arrays "
         "as each point's own: each point's numbers and T(E) over frame x "
         "voltage, the I-V, and the frames' average")
+    summary.setncatts(group_words["summary"])
 
 
 def _records_of(calc) -> Dict[str, str]:
@@ -1035,23 +1130,30 @@ def _records_of(calc) -> Dict[str, str]:
 
 def _device_facts(device: Dict, runs: Sequence[Dict],
                   biases: Sequence[float], parts: Sequence[str],
-                  values: Dict[str, Any]) -> None:
+                  values: Dict[str, Any], versions: Dict[Tuple, str],
+                  n_frames: int) -> None:
     """Each point's device facts from the record's device rung -- its run
-    state, convergence, NEGF figures, contour and SCF history: a rung that
-    runs per point, point by point; one that runs once, its one run's, at
-    every point."""
+    state, convergence, NEGF figures, contour and SCF history, and its
+    engine's version into ``versions`` by point: a rung that runs per
+    point, point by point; one that runs once, its one run's, at every
+    point."""
     for p in runs:
         if device.get("by_point"):
             f = 0 if p.get("frame") is None else int(p["frame"])
             cell = (f, _index(p["bias_v"], biases))
+            points = [cell]
         else:
             cell = (Ellipsis,)
+            points = [(f, b) for f in range(n_frames)
+                      for b in range(len(biases))]
+        if p.get("engine_version"):
+            versions.update({at: str(p["engine_version"]) for at in points})
         negf = p.get("negf") or {}
         contour = negf.get("contour") or {}
         line = contour.get("neq_line") or {}
         for value, name in ((negf.get("ef"), "device_ef_ev"),
                             (negf.get("vha_ev"), "device_vha_ev"),
-                            (negf.get("energy"), "device_energy_ev"),
+                            (negf.get("energy"), "device_last_energy_ev"),
                             (negf.get("cycles"), "device_negf_cycles"),
                             (negf.get("dq"), "device_dq"),
                             (negf.get("d_change_from_0v_e"),
@@ -1098,7 +1200,7 @@ def _run_facts(run: Dict, prefix: str, cell: Tuple, values: Dict[str, Any],
         values[f"{prefix}_scf_converged"][cell] = int(bool(
             run["scf_converged"]))
     if prefix == "rung":
-        for key, name in (("energy_ev", "rung_energy_ev"),
+        for key, name in (("energy_ev", "rung_last_energy_ev"),
                           ("fermi_ev", "rung_fermi_ev")):
             if run.get(key) is not None:
                 values[name][cell] = run[key]
@@ -1144,6 +1246,9 @@ def read_data_file(path) -> Dict[str, Any]:
                                 f"{attrs.get('schema')!r}, not {DATA_SCHEMA} "
                                 f"-- jobset summarize task writes it again")
         walk(ds, "")
-    attrs.update({k: unjson_attr(attrs[k])
-                  for k in JSON_ATTRS + FRAME_JSON_ATTRS if k in attrs})
+    # A RECORD IS A RECORD WHEREVER IT IS WRITTEN -- the root's, and the
+    # summary's own copy of the I-V's notes.
+    for at in [attrs, *(g["attrs"] for g in groups.values())]:
+        at.update({k: unjson_attr(at[k])
+                   for k in JSON_ATTRS + FRAME_JSON_ATTRS if k in at})
     return {"attrs": attrs, "groups": groups}

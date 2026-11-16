@@ -341,7 +341,7 @@ class CalculationKind:
     #: ``None``: its engine's checks are its science.
     validator: Optional[str] = None
     #: The module that exports its results -- ``export(calc, fmt,
-    #: **asks)``, ``name_of(calc, fmt)``, ``ASKS`` -- or ``None``: it
+    #: **asks)``, ``name_of(calc, fmt, **asks)``, ``ASKS`` -- or ``None``: it
     #: exports nothing (:func:`export_of`).
     export: Optional[str] = None
     #: The labels besides its leads that it reads on its structure's atoms,

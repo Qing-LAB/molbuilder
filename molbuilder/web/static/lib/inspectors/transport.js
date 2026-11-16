@@ -291,20 +291,27 @@ const WORKSPACE_TAG = "results:transport";
         const msg = _el("span", "status");
         msg.setAttribute("role", "status");
         const say = (text, kind) => root.molbuilder.status.set(msg, text, kind);
-        const buttons = [["CSV", "csv"], ["NetCDF", "netcdf"]].map(
-            ([label, fmt]) => {
+        /* THE THIRD: the NetCDF with each point's DOS per orbital beside
+         * it -- what a PDOS of chosen atoms is read from in a notebook
+         * (`engines/transport.md` § 2a.12, *NetCDF with the DOS per
+         * orbital*). */
+        const buttons = [["CSV", { format: "csv" }],
+                         ["NetCDF", { format: "netcdf" }],
+                         ["NetCDF with DOS per orbital",
+                          { format: "netcdf", dos_per_orbital: "1" }]].map(
+            ([label, ask]) => {
                 const b = _el("button", null, label);
                 b.type = "button";
-                b.addEventListener("click", () => run(fmt));
+                b.addEventListener("click", () => run(ask));
                 bar.appendChild(b);
                 return b;
             });
-        const run = async (fmt) => {
+        const run = async (ask) => {
             buttons.forEach((b) => { b.disabled = true; });
             say("Composing the export.", "muted");
             const got = await root.molbuilder.projects.downloadExport(
                 "/api/transport/export?" + new URLSearchParams(
-                    { path: file, format: fmt }).toString());
+                    Object.assign({ path: file }, ask)).toString());
             buttons.forEach((b) => { b.disabled = false; });
             say(got.ok ? got.said : got.error, got.ok ? "muted" : "warn");
         };

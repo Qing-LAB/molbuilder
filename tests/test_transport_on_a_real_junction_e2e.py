@@ -3193,14 +3193,14 @@ def test_the_data_file_holds_every_runs_convergence_on_its_grid(junction):
         assert P["state"] == p["state"] == "finished", p["point"]
 
 
-def _export(junction, monkeypatch, run, fmt, to):
-    """`molbuilder jobset export` of ``run`` into ``to``, the one door
-    pointed at the junction's tree."""
+def _export(junction, monkeypatch, run, fmt, to, *asks):
+    """`molbuilder jobset export` of ``run`` into ``to`` -- ``asks`` its
+    further options -- the one door pointed at the junction's tree."""
     from conftest import point_the_one_door_at
     from support.road import jobset
     point_the_one_door_at(junction.tree.parent, monkeypatch.setenv)
     r = jobset("export", "--bundle", run.bundle, "--format", fmt,
-               "--to", to)
+               "--to", to, *asks)
     assert r.exit_code == 0, r.output
     return r.output
 
@@ -3269,6 +3269,18 @@ def test_an_export_is_the_data_file_and_its_tables(junction, monkeypatch,
     assert f"{label}.transport-csv/README.txt" in names
     assert (f"{label}.transport-csv/summary/frame_bias_v_energy_ev.csv"
             in names)
+    # THE NETCDF WITH EACH POINT'S DIGESTS, at the paths its points name.
+    answer = create_app(config={}).test_client().get(
+        f"/api/transport/export?path={run.bundle / 'task.json'}"
+        f"&format=netcdf&dos_per_orbital=1")
+    assert answer.status_code == 200, answer.get_json()
+    names = zipfile.ZipFile(io.BytesIO(answer.data)).namelist()
+    assert f"{label}.transport-netcdf/{label}.transport.nc" in names
+    named = {json.loads(str(v["variables"]["dos_per_orbital_files"]["data"]))
+             [0]["digest"] for k, v in want.items()
+             if k.startswith("points/") and "done" in v["variables"]}
+    assert named and {f"{label}.transport-netcdf/{d}" for d in named} <= set(
+        names), names
 
 
 def test_an_export_reads_no_data_file_and_says_what_is_missing(
@@ -3298,10 +3310,8 @@ def test_an_export_reads_no_data_file_and_says_what_is_missing(
     from molbuilder.task import bias_token
     G = read_data_file(tmp_path / f"{label}.transport.nc")["groups"]
     for v in _BIAS:
-        # FRAME 0's point at the voltage -- named by its voltage alone for
-        # one structure.
-        tok = bias_token(v)
-        P = (G.get(f"points/{tok}") or G[f"points/f000/{tok}"])["variables"]
+        # ONE STRUCTURE'S POINT, named by its voltage alone.
+        P = G[f"points/{bias_token(v)}"]["variables"]
         assert "not read yet" in str(P["dos_per_orbital_reading"]["data"])
         assert np.isnan(np.asarray(P["dos_region"]["data"], float)).all()
         # NOT KEPT, SO NOT KNOWN: which atoms its DOS covers is the fill.
@@ -3715,6 +3725,152 @@ def test_a_selections_pdos_is_asked_at_its_frame_and_voltage(junction, ask):
         for p in others), "the points' DOS do not tell them apart"
 
 
+#: A PDOS OF CHOSEN ATOMS FROM THE FILES (`engines/transport.md` § 2a.12),
+#: a mixed selection each -- atoms, labels and regions together, an atom
+#: named twice -- at a frame set's point and at one structure's.
+_FILE_PDOS = (
+    {"name": "atoms, a label and a region at a frame set's point",
+     "calc": "from_pair", "frame": 1, "bias": 0.2,
+     "atoms": (_at(0), _at(_LEAD)), "labels": ("R-electrode",),
+     "regions": ("bridge",), "orbitals": "all"},
+    {"name": "a region's s orbitals", "calc": "from_pair", "frame": 2,
+     "bias": 0.0, "regions": ("bridge",), "orbitals": "s"},
+    {"name": "one structure's point", "calc": None, "frame": None,
+     "bias": 0.2, "labels": ("bridge",), "atoms": (_at(1),),
+     "orbitals": "all"},
+)
+
+
+@pytest.mark.parametrize("ask", _FILE_PDOS, ids=lambda a: a["name"])
+def test_a_pdos_from_the_files_is_the_reports(junction, ask, tmp_path,
+                                             monkeypatch):
+    """`engines/transport.md` § 2a.12, *A PDOS of the atoms you choose,
+    from the files* (the user, 2026-11-16: "go with option 3, and allow
+    mixed selections"): `postprocess.pdos` of a selection -- the union of
+    the atoms, labels and regions named -- read from the data file and the
+    point's digests, is the report's PDOS of the same atoms
+    (`record.selection_pdos`, the route's), energy for energy; and the same
+    from the NetCDF export with each point's DOS per orbital, unpacked
+    where no `.TBT.nc` is.
+
+    THE SILENT FAILURES: a notebook's curve of other atoms, another point or
+    another orbital type than the report draws; an export whose digests do
+    not answer away from the calculation."""
+    from molbuilder.calculation import open as open_calculation
+    from molbuilder.postprocess import pdos
+    from molbuilder.task import bias_token, of as task_of
+    from molbuilder.transport.compose import recorded_junction
+    from molbuilder.transport.datafile import data_file_path
+    from molbuilder.transport.record import selection_pdos
+    run = getattr(junction, ask["calc"]) if ask["calc"] else junction
+    label = task_of(run.bundle).label
+    point = ("" if ask["frame"] is None else f"f{ask['frame']:03d}/") + \
+        bias_token(ask["bias"])
+    # THE ATOMS THE SELECTION NAMES, by the composed junction's own labels.
+    regions = recorded_junction(run.bundle).structure.restored().regions
+    union = set(ask.get("atoms", ()))
+    for name in ask.get("labels", ()) + ask.get("regions", ()):
+        union.update(int(a) for a in regions[name])
+    calc = open_calculation(run.bundle)
+    page = selection_pdos(calc, ask["bias"], sorted(union), ask["orbitals"],
+                          frame=ask["frame"])
+    asked = {k: ask[k] for k in ("atoms", "labels", "regions") if k in ask}
+
+    def same(got):
+        assert got["energy_ev"] == page["energy_ev"]
+        assert np.allclose(got["pdos"], page["pdos"], rtol=1e-12, atol=0)
+        assert (got["atoms"], got["outside_device"]) == (
+            page["atoms"], page["outside_device"])
+        assert got["orbitals"] == ask["orbitals"]
+    same(pdos(data_file_path(run.bundle, label), point,
+              orbitals=ask["orbitals"], **asked))
+    # FROM THE EXPORT, away from the calculation, as the command writes it:
+    # no .TBT.nc beside.
+    _export(junction, monkeypatch, run, "netcdf", tmp_path,
+            "--dos-per-orbital")
+    assert not list(tmp_path.rglob("*.TBT.nc")), "an export holds no .TBT.nc"
+    same(pdos(tmp_path / f"{label}.transport-netcdf"
+              / data_file_path(run.bundle, label).name,
+              point, orbitals=ask["orbitals"], **asked))
+
+
+def test_a_pdos_of_a_point_that_shares_energies_is_the_reports(
+        junction, reused, monkeypatch):
+    """§ 2a.16, § 2a.12, *A PDOS of the atoms you choose, from the files*:
+    at a point that shares energies with a finished calculation's -- its
+    own run's energies and its `shared/` digest joined -- `postprocess.pdos`
+    reads both digests the file names and joins them on the point's own
+    grid as the report does (`energies.joined`), so its curve is the
+    report's.  The calculation is the fitted window's, summarized on a copy
+    of its own.
+
+    THE SILENT FAILURE: a PDOS over part of the point's grid, or over the
+    finished calculation's energies alone."""
+    from conftest import point_the_one_door_at
+    from support.road import jobset
+    from molbuilder.calculation import open as open_calculation
+    from molbuilder.postprocess import pdos
+    from molbuilder.task import of as task_of
+    from molbuilder.transport.compose import recorded_junction
+    from molbuilder.transport.datafile import data_file_path, read_data_file
+    from molbuilder.transport.record import selection_pdos
+    point_the_one_door_at(junction.tree.parent, monkeypatch.setenv)
+
+    def summarized(copy):
+        r = jobset("summarize", "task", "--bundle", copy.bundle)
+        assert r.exit_code == 0, r.output
+    copy = copy_of(reused["fitted"], "pdos", summarized)
+    label = task_of(copy.bundle).label
+    path = data_file_path(copy.bundle, label)
+    groups = read_data_file(path)["groups"]
+    sharing = [k for k, g in groups.items() if k.startswith("points/")
+               and "shared/" in str(g["variables"].get(
+                   "dos_per_orbital_files", {}).get("data", ""))]
+    assert sharing, "no point of the fitted window names a shared digest"
+    bridge = sorted(int(a) for a in recorded_junction(
+        copy.bundle).structure.restored().regions["bridge"])
+    for k in sharing:
+        bias = float(groups[k]["variables"]["bias_v"]["data"])
+        got = pdos(path, k[len("points/"):], regions=("bridge",))
+        page = selection_pdos(open_calculation(copy.bundle), bias, bridge,
+                              "all")
+        assert got["energy_ev"] == page["energy_ev"], k
+        assert np.allclose(got["pdos"], page["pdos"], rtol=1e-12, atol=0), k
+
+
+def test_a_pdos_from_the_files_refuses_a_digest_read_again(junction):
+    """`engines/transport.md` § 2a.12: a digest is read as the reading the
+    data file was composed from -- one read again from another version of
+    its data file is refused by name, the way on said.  The other version is
+    caused as TBtrans rewriting the file would leave it: its modification
+    time moved (the digest's version is the file's size and time, `model/
+    parse.md` § 5e) -- a second TBtrans run the cost of this alone -- and
+    the person's *Read again*, the reading door's own (`tbtnc.read_points`).
+
+    THE SILENT FAILURE: a PDOS summed from a reading the data file's
+    regions were not, its curve of another run drawn beside the file's."""
+    from molbuilder.calculation import open as open_calculation
+    from molbuilder.parse.engines.tbtrans_nc import data_files
+    from molbuilder.postprocess import pdos
+    from molbuilder.task import of as task_of
+    from molbuilder.transport.datafile import data_file_path
+    from molbuilder.transport.tbtnc import TbtError, read_points
+
+    def read_again(copy):
+        label = task_of(copy.bundle).label
+        nc = data_files(_point(copy, "transmission", 0.2, frame=0),
+                        label)["unpolarized"]
+        st = nc.stat()
+        os.utime(nc, ns=(st.st_atime_ns, st.st_mtime_ns + 10 ** 9))
+        read_points(open_calculation(copy.bundle), fresh=True)
+    copy = copy_of(junction.from_pair, "read-again", read_again)
+    label = task_of(copy.bundle).label
+    with pytest.raises(TbtError, match="is not the reading .* was composed "
+                                       "from .* summarize or export again"):
+        pdos(data_file_path(copy.bundle, label), "f000/v0.2",
+             regions=("bridge",))
+
+
 def test_summarize_keeps_each_points_reading_and_its_digest_reads_alone(
         junction):
     """`model/parse.md` § 5e, `engines/transport.md` § 2a.12: `summarize
@@ -3921,7 +4077,7 @@ def test_the_calculations_export_is_in_the_tabs_top_line(junction, page,
             f"the Export is not on the first screen as the report opens: "
             f"{seen}")
         with page.expect_download(timeout=120000) as got:
-            bar.get_by_role("button", name="NetCDF").click()
+            bar.get_by_role("button", name="NetCDF", exact=True).click()
         assert got.value.suggested_filename.endswith(".transport.nc"), (
             got.value.suggested_filename)
         page.locator(".results-ladder-open[aria-pressed]").first.click()
