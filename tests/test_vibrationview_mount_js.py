@@ -71,13 +71,18 @@ HARNESS = r"""
     // drawing surface and the caption onto one, and records what it was handed.
     const composited = [];
     const painted = [];   // text drawn onto the composited picture
+    const edged = [];     // each box outline stroked onto it
+    // A canvas measures text by what it says: here 6 px a character.
     function fakeCanvas(w, h) {
         return { width: w, height: h,
                  getContext: () => ({
                      clearRect(){}, drawImage(){}, fillRect(){},
+                     beginPath(){}, rect(){}, roundRect(){}, fill(){},
+                     stroke(){ edged.push(1); },
                      fillText(t){ painted.push(t); },
-                     measureText: () => ({ width: 40 }),
-                     set font(v){}, set fillStyle(v){}, set textBaseline(v){} }),
+                     measureText: (t) => ({ width: 6 * String(t).length }),
+                     set font(v){}, set fillStyle(v){}, set textBaseline(v){},
+                     set lineWidth(v){}, set strokeStyle(v){} }),
                  toBlob(cb) { composited.push([this.width, this.height]);
                               cb({ size: 128,
                                    arrayBuffer: async () => new ArrayBuffer(4) }); } };
@@ -101,6 +106,8 @@ HARNESS = r"""
         fontSize: "12px", paddingLeft: "6px", paddingTop: "3px",
         left: "8px", top: "8px", lineHeight: "16px", fontFamily: "sans-serif",
         backgroundColor: "#000", color: "#fff",
+        borderTopWidth: "1px", borderTopColor: "#888",
+        borderTopLeftRadius: "4px",
         getPropertyValue: (name) => ({
             "--vibview-ground":     "#0f1217",
             "--vibview-held-still": "#555555",
@@ -819,6 +826,38 @@ def test_the_caption_is_composited_into_every_exported_frame():
     assert out["withCaption"] == out["frames"]   # once per frame, not once
     assert out["everyFrame"] is True
     assert out["whenHidden"] == 0                # off means off, in the file too
+
+
+def test_an_exported_caption_wraps_and_keeps_its_edge_as_on_screen():
+    r"""§ 12.3: everything else in an exported picture "is what was on screen" --
+    a caption longer than the window wraps between words within it, as the
+    sheet's `max-width` wraps it on screen, and keeps the sheet's edge.
+
+    THE SILENT FAILURE (F10's reading, 2026-11-16): the compositor drew the
+    caption as one line in a plain box -- a long caption ran off the picture's
+    edge, without the outline the screen shows."""
+    out = _run("""
+        const vib = await mount(host, {});
+        vib.setStructure(WATER);
+        const label = "Mode 12 · 1584.2 cm⁻¹ · the bend of the two hydrogens "
+                    + "against the oxygen, held still at the equilibrium";
+        vib.showMode({ index: 12, displacements: [[1,0,0],[0,1,0],[0,0,1]],
+                       label });
+        painted.length = 0; edged.length = 0;
+        const r = await vib.exportAnimation({ format: "png-zip", cycles: 1 });
+        const perFrame = painted.length / r.meta.frames;
+        const first = painted.slice(0, perFrame);
+        console.log(JSON.stringify({
+            perFrame, first, label, room: 340 - 2 * 8 - 2 * 6,
+            edges: edged.length, frames: r.meta.frames }));
+    """)
+    assert out["perFrame"] > 1, (
+        f"a caption wider than the window was drawn on one line: {out['first']}")
+    assert " ".join(out["first"]) == " ".join(out["label"].split()), out["first"]
+    assert all(6 * len(line) <= out["room"] for line in out["first"]), (
+        f"a line runs past the room the window gives it: {out['first']}")
+    assert out["edges"] == out["frames"], (
+        f"the caption's edge was not drawn in every frame: {out['edges']}")
 
 
 def test_the_zip_carries_a_manifest_that_matches_its_frames():

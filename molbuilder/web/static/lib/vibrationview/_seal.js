@@ -183,6 +183,7 @@ export async function create(hostEl) {
         captionEl: null,     // the DOM overlay that shows them (§ 12.3)
         composite: null,     // the 2-D canvas an export reads (see compose())
         ground:    ground,
+        captureSize: null,   // [width, height] an export asked, while it runs
     };
 
     function canvasEl() {
@@ -274,7 +275,30 @@ export async function create(hostEl) {
      * scaled by how much bigger the capture is than the screen — an export
      * several thousand pixels wide would otherwise carry a caption sized for a
      * box a few hundred wide, which is the speck § 12.3 warns about. */
+    /* THE SIZE A CAPTURE ASKED, HELD: the library sizes its drawing buffer
+     * through `setWidth`/`setHeight` at its renderer's pixel ratio (the half
+     * pixel lands the buffer's floor on the size asked) and sets the
+     * camera's aspect, so nothing is stretched; the box on screen keeps its
+     * size.  The library also watches its container and puts the on-screen
+     * size back when the box reports a change, so the size is asked again
+     * before each frame whose buffer it has been put back on. */
+    function holdCaptureSize() {
+        const c = canvasEl();
+        const want = state.captureSize;
+        if (!c || !want || (c.width === want[0] && c.height === want[1])) return;
+        const renderer = typeof viewer.getRenderer === "function"
+            ? viewer.getRenderer() : null;
+        const ratio = (renderer && renderer.devicePixelRatio) || 1;
+        const onScreen = [c.style.width, c.style.height];
+        viewer.setWidth((want[0] + 0.5) / ratio);
+        viewer.setHeight((want[1] + 0.5) / ratio);
+        c.style.width = onScreen[0];
+        c.style.height = onScreen[1];
+        paint();
+    }
+
     function compose() {
+        holdCaptureSize();
         const src = canvasEl();
         if (!src) return null;
         if (!state.composite) {
@@ -313,14 +337,44 @@ export async function create(hostEl) {
             // The line height is the sheet's as well, so the exported caption's
             // box matches the one on screen.
             const lineH = parseFloat(cs && cs.lineHeight);
-            const boxH  = (isFinite(lineH) ? lineH * k : fontPx * 1.35) + 2 * padY;
+            const lineHpx = isFinite(lineH) ? lineH * k : fontPx * 1.35;
             g.font = fontPx + "px " + ((cs && cs.fontFamily) || "sans-serif");
             g.textBaseline = "top";
-            const w = g.measureText(el.textContent).width;
+
+            /* IT WRAPS AS ON SCREEN (§ 12.3): the sheet lets the caption be as
+             * wide as the window less its corner on each side, and a longer
+             * one breaks between words there instead of running off the edge;
+             * the box, its edge and its rounded corners are the sheet's. */
+            const room = Math.max(1, src.width - 2 * x - 2 * padX);
+            const lines = [];
+            for (const word of el.textContent.split(/\s+/).filter(Boolean)) {
+                const last = lines.length ? lines[lines.length - 1] : null;
+                const joined = last === null ? word : last + " " + word;
+                if (last !== null && g.measureText(joined).width <= room) {
+                    lines[lines.length - 1] = joined;
+                } else {
+                    lines.push(word);
+                }
+            }
+            const textW = Math.max(...lines.map((l) => g.measureText(l).width));
+            const boxW = Math.min(textW, room) + 2 * padX;
+            const boxH = lines.length * lineHpx + 2 * padY;
+            const radius = (parseFloat(cs && cs.borderTopLeftRadius) || 0) * k;
+            const edge   = (parseFloat(cs && cs.borderTopWidth) || 0) * k;
+            g.beginPath();
+            if (typeof g.roundRect === "function") g.roundRect(x, y, boxW, boxH, radius);
+            else g.rect(x, y, boxW, boxH);
             g.fillStyle = (cs && cs.backgroundColor) || "rgba(15,18,23,0.62)";
-            g.fillRect(x, y, w + 2 * padX, boxH);
+            g.fill();
+            if (edge > 0) {
+                g.lineWidth = edge;
+                g.strokeStyle = (cs && cs.borderTopColor) || "transparent";
+                g.stroke();
+            }
             g.fillStyle = (cs && cs.color) || "#e6e9ef";
-            g.fillText(el.textContent, x + padX, y + padY);
+            lines.forEach((line, i) => {
+                g.fillText(line, x + padX, y + padY + i * lineHpx);
+            });
         }
         return out;
     }
@@ -396,18 +450,24 @@ export async function create(hostEl) {
             if (state.disposed) return function () {};
             opts = opts || {};
             const c = canvasEl();
-            const origW = c ? c.width : 0;
-            const origH = c ? c.height : 0;
             const origGround = state.ground;
             let resized = false;
 
+            /* THE PICTURE IS THE SIZE ASKED, through the library's own
+             * sizing: `setWidth`/`setHeight` size the drawing buffer at the
+             * renderer's pixel ratio and set the camera's aspect, so the
+             * frame is `width` x `height` pixels and nothing is stretched
+             * (a canvas set by hand is put back by the library's next
+             * `resize`, which reads the on-screen box).  The half pixel lands
+             * the buffer's floor on the size asked; the box on screen keeps
+             * its size meanwhile, and `resize` restores the rest after. */
             if (c && opts.width > 0 && opts.height > 0) {
                 try {
-                    c.width  = Math.round(opts.width);
-                    c.height = Math.round(opts.height);
-                    if (typeof viewer.resize === "function") viewer.resize();
+                    state.captureSize = [Math.round(opts.width),
+                                         Math.round(opts.height)];
+                    holdCaptureSize();
                     resized = true;
-                } catch (_) { resized = false; }
+                } catch (_) { resized = false; state.captureSize = null; }
             }
             if (opts.background !== undefined && opts.background !== null) {
                 try {
@@ -424,10 +484,8 @@ export async function create(hostEl) {
             return function endCapture() {
                 if (state.disposed) return;
                 if (resized && c) {
-                    try {
-                        c.width = origW; c.height = origH;
-                        if (typeof viewer.resize === "function") viewer.resize();
-                    } catch (_) {}
+                    state.captureSize = null;
+                    try { viewer.resize(); } catch (_) {}
                 }
                 if (state.ground !== origGround) {
                     try { viewer.setBackgroundColor(origGround, 1); } catch (_) {}

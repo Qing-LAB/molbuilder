@@ -369,8 +369,13 @@
             </label>
             <label class="inline-label">
               <span>Speed</span>
+              {#- THE TOP IS THE FASTEST SMOOTH SPEED: the viewer plays at
+                  its default 30 fps and draws no fewer than 15 frames a cycle
+                  (`vibrationview/_maths.js` FRAMES_PER_CYCLE_MIN), so 2.0x is
+                  the fastest it plays -- a slider past it would show speeds
+                  that all play alike (`vibrationview.md` § 10.1). -#}
               <input id="anim-speed" type="range"
-                     min="0.2" max="3.0" step="0.1" value="1.0">
+                     min="0.2" max="2.0" step="0.1" value="1.0">
               <span id="anim-speed-val" class="unit">1.0×</span>
             </label>
             <button id="anim-toggle" type="button">Pause</button>

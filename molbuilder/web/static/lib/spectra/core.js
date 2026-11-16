@@ -3944,9 +3944,11 @@
      * WHY THIS IS NOT JUST TOGGLING `hidden`.  A box inside a hidden panel has
      * no size, and both a 3-D canvas and a Plotly figure take their size FROM
      * their box.  Mounted or drawn while their tab was hidden, they come back
-     * with a zero-size drawing surface.  So becoming visible is an event: the
-     * viewer is told to re-fit its camera to the box (vibrationview.md § 8
-     * `refit`), and a chart sees its box come back by itself (lib/plot-box.js).
+     * with a zero-size drawing surface.  Both see their box come back by
+     * themselves: the viewer's drawing library watches its container and
+     * draws again at its size, fitted (measured 2026-11-16: a viewer given its
+     * mode while hidden draws, once shown, what one given it while shown
+     * draws), and a chart through lib/plot-box.js.
      */
     const MODE_TABS = ["table", "viewer", "es", "thermo"];
 
@@ -3955,10 +3957,6 @@
      * page does when one is shown. */
     function _modeTabShown(name) {
         state.modeTab = name;
-        // Now that the box has a size again, let what draws into it catch up.
-        if (name === "viewer" && state.vib) {
-            try { state.vib.refit(); } catch (_) {}
-        }
     }
 
     function _activateModeTab(name) {

@@ -717,13 +717,14 @@ the code by one reader each (the two sealed viewers' chapters each alone)
 and applied by a second; every item in those chapters' sections below is
 closed, except: `testing.md`'s *What the 2026-09-08 audit left open* (work,
 not a text fix); the plan's own pointer sections, kept while chapters cite
-them; and the code the readings found, owed to its own release -- the
-VibrationView export (its size, a transparent GIF, a cancel during encoding,
-the caption, the page's `refit` call, the Speed slider's top, the export's
-size in its metadata), the MolView save's round trip (the badge and the
-history position moving on send, a read overtaking the write it waits for),
-the spectrum chart's imaginary mode marked in the first lane only, and the
-notebook tab's port-clash state offering no way on.*
+them. The code the readings found, each measured then fixed: the MolView
+save's refused point (2.70.30, warned and stepped past, by the user's rule),
+the notebook tab's port-clash state, the spectrum chart's imaginary mode in
+every lane (2.70.30); the VibrationView export -- its size, a transparent
+GIF, a cancel during encoding, the caption, the export's size in its
+description, the Speed slider's top (2.70.31); the page's `refit` call
+measured no defect (a viewer given its mode while hidden draws, once shown,
+what one given it while shown draws) and removed as dead (2.70.31).*
 
 *Wave 1 (2.70.28): README, `docs/README.md`, `architecture.md`,
 `backend-architecture.md`, `configuration.md`, `design.md`, `workflow.md`,

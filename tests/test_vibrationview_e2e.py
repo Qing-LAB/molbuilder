@@ -158,3 +158,146 @@ def test_a_viewer_on_a_kept_window_draws_as_a_new_one(page, flask_server):
     assert out["drawn"][0] == out["drawn"][1], (
         "the viewer on a kept window drew its molecule differently from one "
         "on a new window -- the last viewer's camera or ground")
+
+
+#: An export's size, a row each: the window's own, twice it, and a shape
+#: the window is not -- each asked of a viewer in a 400 x 300 window.
+_EXPORT_SIZES = ((400, 300), (800, 600), (640, 640))
+
+
+@pytest.mark.parametrize("width,height", _EXPORT_SIZES,
+                         ids=[f"{w}x{h}" for w, h in _EXPORT_SIZES])
+def test_an_export_is_the_size_asked(page, flask_server, width, height):
+    """§ 12 (`exportAnimation`): `width` and `height` are the picture's,
+    "independent of the on-screen box" -- every frame of a PNG export is the
+    size asked, the manifest says so, and the window is put back.
+
+    THE SILENT FAILURE (F10's reading, 2026-11-16): the capture set the
+    canvas to the size asked and then asked the library to resize, which
+    reads the on-screen box again -- every export came out the window's
+    size, whatever was asked."""
+    _open(page, flask_server)
+    out = page.evaluate("""async (c) => {
+        const { mount } = await import("/static/lib/vibrationview/index.js");
+        const host = document.createElement("div");
+        host.style.cssText = "width: 400px; height: 300px;";
+        document.body.prepend(host);
+        const vib = await mount(host, {});
+        vib.setStructure(c.water);
+        vib.showMode(c.mode);
+        const before = host.querySelector("canvas").getBoundingClientRect();
+        const got = await vib.exportAnimation({
+            format: "png-zip", width: c.w, height: c.h, cycles: 1 });
+        const text = new TextDecoder("latin1").decode(
+            new Uint8Array(await got.blob.arrayBuffer()));
+        const at = text.indexOf('"width"');
+        const manifest = JSON.parse(text.slice(text.lastIndexOf("{", at),
+                                               text.indexOf("}", at) + 1));
+        // Every frame's own header: a PNG states its size in its IHDR.
+        const bytes = new Uint8Array(await got.blob.arrayBuffer());
+        const sizes = [];
+        for (let i = 0; i + 24 < bytes.length; i++) {
+            if (bytes[i] === 0x89 && bytes[i + 1] === 0x50 && bytes[i + 2] === 0x4E
+                    && bytes[i + 3] === 0x47 && bytes[i + 12] === 0x49
+                    && bytes[i + 13] === 0x48) {
+                const dv = new DataView(bytes.buffer, i + 16, 8);
+                sizes.push([dv.getUint32(0), dv.getUint32(4)]);
+            }
+        }
+        const after = host.querySelector("canvas").getBoundingClientRect();
+        vib.dispose(); host.remove();
+        return { manifest: [manifest.width, manifest.height], sizes,
+                 meta: [got.meta.width, got.meta.height],
+                 window: [Math.round(before.width), Math.round(before.height),
+                          Math.round(after.width), Math.round(after.height)] };
+    }""", {"water": WATER, "mode": MODE, "w": width, "h": height})
+    assert out["manifest"] == [width, height], out
+    assert out["meta"] == [width, height], (
+        f"the export's description does not say its size: {out['meta']}")
+    assert out["sizes"] and all(s == [width, height] for s in out["sizes"]), (
+        out["sizes"][:3])
+    assert out["window"][:2] == out["window"][2:], (
+        f"the window was not put back after the export: {out['window']}")
+
+
+def test_a_gif_on_a_transparent_ground_is_transparent(page, flask_server):
+    """§ 12.1: a GIF asked for on a transparent ground has one -- 1-bit, a
+    pixel opaque or gone (its edges fringe, as the chapter says), never an
+    opaque ground.  The file decoded by the browser itself: the corner, where
+    no atom is, shows through.
+
+    THE SILENT FAILURE (F10's reading, 2026-11-16): the encoder was never
+    told which colour is transparent and painted each frame over black, so a
+    "transparent" GIF came out on an opaque black ground."""
+    _open(page, flask_server)
+    out = page.evaluate("""async (c) => {
+        const { mount } = await import("/static/lib/vibrationview/index.js");
+        const host = document.createElement("div");
+        host.style.cssText = "width: 400px; height: 300px;";
+        document.body.prepend(host);
+        const vib = await mount(host, {});
+        vib.setStructure(c.water);
+        vib.showMode(c.mode);
+        const got = await vib.exportAnimation({
+            format: "gif", width: 200, height: 150, cycles: 1,
+            background: "transparent" });
+        vib.dispose(); host.remove();
+        // The browser's own decoder, the file's first frame.
+        const img = await createImageBitmap(got.blob);
+        const cv = document.createElement("canvas");
+        cv.width = img.width; cv.height = img.height;
+        const g = cv.getContext("2d");
+        g.drawImage(img, 0, 0);
+        const corner = Array.from(g.getImageData(0, 0, 1, 1).data);
+        return { size: [img.width, img.height], corner };
+    }""", {"water": WATER, "mode": MODE})
+    assert out["size"] == [200, 150], out
+    assert out["corner"][3] == 0, (
+        f"the GIF's ground is opaque, not transparent: corner {out['corner']}")
+
+
+def test_a_gifs_encoding_reports_progress_and_can_be_cancelled(page,
+                                                               flask_server):
+    """§ 12.2: a GIF's progress covers its encoding -- the fraction reaches 1
+    only when the last frame is encoded -- and a cancel while it encodes
+    rejects, handing back no file and leaving the viewer free for the next
+    export.
+
+    THE SILENT FAILURE (F10's reading, 2026-11-16): the fraction reached 1
+    when the last frame was COPIED, the encoding after it reported nothing,
+    and a cancel during it was ignored -- the file resolved anyway."""
+    _open(page, flask_server)
+    out = page.evaluate("""async (c) => {
+        const { mount } = await import("/static/lib/vibrationview/index.js");
+        const host = document.createElement("div");
+        host.style.cssText = "width: 400px; height: 300px;";
+        document.body.prepend(host);
+        const vib = await mount(host, {});
+        vib.setStructure(c.water);
+        vib.showMode(c.mode);
+        const seen = [];
+        await vib.exportAnimation({ format: "gif", width: 120, height: 90,
+                                    onProgress: (f, label) => seen.push([f, label]) });
+        const ac = new AbortController();
+        let cancelled = "resolved";
+        try {
+            await vib.exportAnimation({
+                format: "gif", width: 120, height: 90, signal: ac.signal,
+                onProgress: (f, label) => { if (label === "encoding") ac.abort(); } });
+        } catch (e) { cancelled = e.message; }
+        let next = "refused";
+        try {
+            await vib.exportAnimation({ format: "gif", width: 120, height: 90 });
+            next = "ran";
+        } catch (e) { next = e.message; }
+        vib.dispose(); host.remove();
+        return { seen, cancelled, next };
+    }""", {"water": WATER, "mode": MODE})
+    fractions = [f for f, _ in out["seen"]]
+    encoding = [f for f, label in out["seen"] if label == "encoding"]
+    assert encoding, "the encoding reported no progress"
+    assert fractions[-1] == 1.0 and fractions.count(1.0) == 1, fractions[-5:]
+    assert all(b >= a for a, b in zip(fractions, fractions[1:])), fractions
+    assert out["cancelled"] == "the export was cancelled", out["cancelled"]
+    assert out["next"] == "ran", out["next"]
+

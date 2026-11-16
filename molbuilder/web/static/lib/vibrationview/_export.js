@@ -160,6 +160,10 @@ function describe(meta, format, count) {
     return {
         format:        format,
         frames:        count,
+        // THE PICTURE'S SIZE, as its first frame is drawn (§ 12.2) -- every
+        // format's description says it, not only the zip's manifest.
+        width:         null,
+        height:        null,
         cycles:        meta.cycles,
         fps:           meta.fps,
         cycleSeconds:  meta.cycleSec,
@@ -173,10 +177,8 @@ function describe(meta, format, count) {
 /* The zip's copy, plus what only a folder of frames needs: its size, the note
  * that keeps the amplitude honest, and the line that turns the frames into
  * whatever a journal asked for. Six months later it still explains itself. */
-function manifest(description, width, height) {
+function manifest(description) {
     return JSON.stringify(Object.assign({}, description, {
-        width:  width,
-        height: height,
         note: "amplitude is meaningful only together with normalization; "
             + "they are the two halves of one pairing",
         ffmpeg: "ffmpeg -framerate " + description.fps + " -i frame_%04d.png"
@@ -191,23 +193,28 @@ function manifest(description, width, height) {
  * to whoever is encoding. Sharing it is what stops three formats from becoming
  * three slightly different animations.
  */
-async function eachFrame(ctx, opts, count, take) {
+async function eachFrame(ctx, opts, count, take, share) {
+    // `share`: the part of the whole export the walk is -- all of it, or the
+    // first half of a GIF's, whose encoding is the second (§ 12.2).
+    const part = share || 1;
     for (let n = 0; n < count; n++) {
         if (aborted(opts.signal)) throw new Error("the export was cancelled");
         ctx.surface.setAtomCoords(ctx.coordsAt(n));
         const canvas = ctx.surface.compositeCanvas();
         if (!canvas) throw new Error("nothing drawn");
+        if (n === 0 && ctx.description) {
+            ctx.description.width = canvas.width;
+            ctx.description.height = canvas.height;
+        }
         await take(canvas, n);
-        report(opts, (n + 1) / count, "frame " + (n + 1) + "/" + count);
+        report(opts, part * (n + 1) / count, "frame " + (n + 1) + "/" + count);
     }
 }
 
 
 async function toPngZip(ctx, opts, count, description) {
     const files = [];
-    let width = 0, height = 0;
     await eachFrame(ctx, opts, count, async function (canvas, n) {
-        width = canvas.width; height = canvas.height;
         const blob = await new Promise(function (res, rej) {
             canvas.toBlob(function (b) { b ? res(b) : rej(new Error("a frame could not be encoded")); },
                           "image/png");
@@ -216,20 +223,50 @@ async function toPngZip(ctx, opts, count, description) {
                      bytes: new Uint8Array(await blob.arrayBuffer()) });
     });
     files.push({ name: "manifest.json",
-                 bytes: new TextEncoder().encode(manifest(description, width, height)) });
+                 bytes: new TextEncoder().encode(manifest(description)) });
     return zip(files);
 }
 
+
+/* A GIF'S TRANSPARENCY IS ONE COLOUR (§ 12.1: 1-bit, a pixel opaque or gone,
+ * an antialiased edge fringing).  On a transparent ground every pixel at
+ * most half covered becomes this key -- magenta, a colour no element is
+ * drawn in, so the palette entry the encoder clears holds no atom -- and the
+ * encoder is told the key is the transparent colour.  Without it the encoder
+ * paints each frame over black and keeps no alpha: an opaque black ground. */
+const GIF_KEY = 0xFF00FF;
+
+function keyed(canvas, into) {
+    const out = into || (typeof document !== "undefined"
+        ? document.createElement("canvas") : null);
+    if (!out) return canvas;
+    if (out.width !== canvas.width) out.width = canvas.width;
+    if (out.height !== canvas.height) out.height = canvas.height;
+    const g = out.getContext("2d");
+    const img = canvas.getContext("2d").getImageData(0, 0, canvas.width,
+                                                     canvas.height);
+    const px = img.data;
+    for (let i = 0; i < px.length; i += 4) {
+        if (px[i + 3] < 128) {
+            px[i] = 0xFF; px[i + 1] = 0x00; px[i + 2] = 0xFF;
+        }
+        px[i + 3] = 255;
+    }
+    g.putImageData(img, 0, 0);
+    return out;
+}
 
 async function toGif(ctx, opts, count) {
     const GIF = await gifEncoder();
     const first = ctx.surface.compositeCanvas();
     if (!first) throw new Error("nothing drawn");
-    const gif = new GIF({
+    const clear = opts.background === "transparent";
+    const gif = new GIF(Object.assign({
         workers: 2, quality: 10,
         width: first.width, height: first.height,
         workerScript: GIF_WORKER,
-    });
+    }, clear ? { transparent: GIF_KEY } : {}));
+    let keyCanvas = null;
     // Milliseconds, which is what the encoder takes. It writes them into the file
     // in HUNDREDTHS of a second, so only rates dividing 100 come out exact
     // (§ 12.1) — at the default 30 fps the delay rounds and the GIF plays a few
@@ -237,10 +274,30 @@ async function toGif(ctx, opts, count) {
     // it twice.
     const delay = 1000 / ctx.meta.fps;
     await eachFrame(ctx, opts, count, function (canvas) {
-        gif.addFrame(canvas, { copy: true, delay: delay });
-    });
+        if (clear) keyCanvas = keyed(canvas, keyCanvas);
+        gif.addFrame(clear ? keyCanvas : canvas, { copy: true, delay: delay });
+    }, 0.5);
+    /* THE ENCODING IS THE SECOND HALF (§ 12.2): copying the frames is the
+     * first, and the encoder's own progress the rest, so the fraction reaches
+     * 1 when the last frame is encoded -- never for an export that failed --
+     * and a cancel during the encoding stops the encoder and rejects, as it
+     * does during the walk. */
     return new Promise(function (resolve, reject) {
-        gif.on("finished", resolve);
+        const signal = opts.signal;
+        const cancel = function () {
+            try { gif.abort(); } catch (_) {}
+            reject(new Error("the export was cancelled"));
+        };
+        if (aborted(signal)) { cancel(); return; }
+        if (signal) signal.addEventListener("abort", cancel, { once: true });
+        gif.on("progress", function (p) {
+            report(opts, 0.5 + 0.5 * Math.min(p, 0.99), "encoding");
+        });
+        gif.on("finished", function (blob) {
+            if (signal) signal.removeEventListener("abort", cancel);
+            report(opts, 1, "encoded");
+            resolve(blob);
+        });
         try { gif.render(); } catch (e) { reject(e); }
     });
 }
@@ -256,6 +313,10 @@ async function toWebm(ctx, opts, count) {
     const canvas = ctx.surface.compositeCanvas();
     if (!canvas || typeof canvas.captureStream !== "function") {
         throw new Error("this browser cannot record a canvas");
+    }
+    if (ctx.description) {
+        ctx.description.width = canvas.width;
+        ctx.description.height = canvas.height;
     }
     const mime = (typeof MR.isTypeSupported === "function"
                   && MR.isTypeSupported("video/webm;codecs=vp9"))
@@ -319,7 +380,9 @@ export async function exportAnimation(opts, ctx) {
         const meta = Object.assign({}, ctx.meta, { cycles: cycles });
         const run  = { "png-zip": toPngZip, "gif": toGif, "webm": toWebm }[format];
         description = describe(meta, format, count);
-        blob = await run(Object.assign({}, ctx, { meta: meta }), opts, count, description);
+        blob = await run(Object.assign({}, ctx, { meta: meta,
+                                                  description: description }),
+                         opts, count, description);
     } finally {
         /* On EVERY path out — done, failed, cancelled — the surface goes back to
          * the size and colour it was, and playback to what it was doing. A viewer
