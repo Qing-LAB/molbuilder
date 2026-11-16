@@ -79,6 +79,19 @@ _ENABLING = {
         "freq_min_cm1":          [{"es_mode_selection": "all"}],
         "freq_max_cm1":          [{"es_mode_selection": "all"}],
         "es_explicit_indices":   [{"es_mode_selection": "explicit"}],
+        # SIESTA's optical call and Raman for, which enter only with
+        # Compute Raman on -- a range's ends only with a range chosen, and
+        # a range with one end at least (a range of no end is refused, a
+        # value stated nowhere): each end tried beside the other.
+        **{name: [{"compute_raman": True}] for name in (
+            "optical_bands", "optical_broaden", "optical_direction",
+            "optical_energy_max", "optical_mesh", "raman_modes")},
+        "raman_freq_min_cm1":    [{"compute_raman": True,
+                                   "raman_modes": "range",
+                                   "raman_freq_max_cm1": 4000.0}],
+        "raman_freq_max_cm1":    [{"compute_raman": True,
+                                   "raman_modes": "range",
+                                   "raman_freq_min_cm1": 100.0}],
     },
 }
 
@@ -94,7 +107,11 @@ _ENABLING = {
 _PROBE = {"spin_treatment": "unrestricted", "unpaired_electrons": 2,
           "net_charge": 2, "solvent": "water", "ecp_atoms": ["O"],
           "ecp": "lanl2dz", "species_order": ["O", "H"],
-          "es_explicit_indices": "1,2", "scf_must_converge": False}
+          "es_explicit_indices": "1,2", "scf_must_converge": False,
+          # A range's ends, each a legal one beside the other end its
+          # context gives -- a lower end above the upper is two values that
+          # conflict, refused.
+          "raman_freq_min_cm1": 500.0, "raman_freq_max_cm1": 3000.0}
 
 #: A refusal is filed under the field it names, and a count of unpaired
 #: electrons a kind cannot hold under the treatment that count implies.
@@ -169,7 +186,8 @@ def _form_fields(engine, prefix, calculation) -> dict:
     ("siesta", "p", "optimization"),
     ("pyscf", "py", "optimization"),
     ("pyscf", "py", "vibration"),
-], ids=["SIESTA", "PySCF", "PySCF vibration"])
+    ("siesta", "p", "vibration"),
+], ids=["SIESTA", "PySCF", "PySCF vibration", "SIESTA vibration"])
 def test_every_field_the_form_offers_changes_what_the_engine_reads(
         engine, prefix, calculation, tmp_path, monkeypatch):
     bundle = described(road_tree(tmp_path, monkeypatch, WATER, engine=engine),
@@ -179,6 +197,22 @@ def test_every_field_the_form_offers_changes_what_the_engine_reads(
     suffix = ".fdf" if engine == "siesta" else ".py"
     template = open_calculation(bundle).template.path
     as_described = template.read_text()
+
+    def decks() -> dict:
+        """The decks the stage's prep wrote, by what reads each: a SIESTA
+        vibration's run in phases a deck per call it makes -- the
+        relaxation unless the structure is stated relaxed, the force
+        constants, the optical call when Raman is asked (`engines/
+        vibration.md` § 5.11 § 2) -- any other stage its one."""
+        if engine == "siesta" and calculation == "vibration":
+            from molbuilder.jobset.naming import stage_home
+            from molbuilder.parse.fdf import read_deck
+            from molbuilder.siesta.vibration_deck import PARTS
+            home = stage_home(bundle, open_calculation(bundle).task, stage)
+            name = home.names.name(suffix)
+            return {part: read_deck(home.dir / part / name)
+                    for part in PARTS if (home.dir / part / name).is_file()}
+        return {stage: stage_file(bundle, stage, suffix).read_text()}
 
     def prepared(values):
         """The group prepared again with ``values`` set and nothing else
@@ -191,8 +225,19 @@ def test_every_field_the_form_offers_changes_what_the_engine_reads(
                    "--bundle", bundle, "--target", "this")
         if r.exit_code:
             return r.output, None, None
-        deck = stage_file(bundle, stage, suffix).read_text()
-        return None, _what_the_engine_reads(engine, deck), deck
+        deck = decks()
+        reads = {k: _what_the_engine_reads(engine, text)
+                 for k, text in deck.items()}
+        if engine == "siesta" and calculation == "vibration":
+            # ...AND THE RUN'S OWN RECORD OF IT, which SIESTA skips and the
+            # run reads: the finish sums its thermochemistry at its
+            # temperature, the force constants plan the optical calls from
+            # its Raman for (`engines/vibration.md` § 5.11 § 3).
+            from molbuilder.deck_record import extract_vibration_record
+            from molbuilder.siesta.vibration_deck import FC_PART
+            reads["the run's record"] = extract_vibration_record(
+                deck[FC_PART])
+        return None, reads, deck
 
     def value_of(item, context):
         current = (context[item.name] if item.name in context else
@@ -235,7 +280,11 @@ def test_every_field_the_form_offers_changes_what_the_engine_reads(
                 # ...AND IS ANOTHER CALCULATION by the one door a launched
                 # stage is prepared again through (`execution/job-request.md`
                 # § 6): a change the engine reads is never passed as the same.
-                if not same_calculation(engine, base_deck, deck):
+                # (A change of the calls the run makes is another
+                # calculation by itself.)
+                if set(deck) == set(base_deck) and not any(
+                        same_calculation(engine, base_deck[k], deck[k])
+                        for k in deck):
                     unseen.append(name)
                 break
         else:

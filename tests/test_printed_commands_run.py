@@ -94,7 +94,11 @@ def test_the_lines_task_setup_shows_are_the_terminals_and_are_taken(
     medium = lines(2, cold=True)
     assert medium[0].split(" --bundle ")[0] == \
         "molbuilder jobset prep task --group 2", medium
-    assert all("--cold" in l for l in medium if " launch " in l), medium
+    # The prep line needs no `--target` and carries no `--cold`, which is
+    # its launch's -- and there IS a launch line to carry it.
+    assert "--target" not in medium[0] and "--cold" not in medium[0], medium
+    launches = [l for l in medium if " launch " in l]
+    assert launches and all("--cold" in l for l in launches), medium
 
 
 def test_every_command_a_benchmark_prints_is_taken(tmp_path, monkeypatch):

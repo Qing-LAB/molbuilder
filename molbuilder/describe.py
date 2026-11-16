@@ -440,15 +440,19 @@ def publish(dest, fill) -> List[Path]:
     if project is not None:
         from .projects import populate_project_skeleton
         populate_project_skeleton(project, project_name=project.name)
+    made_here = not out_dir.exists()
     out_dir.mkdir(parents=True, exist_ok=True)
     staging = Path(tempfile.mkdtemp(prefix=f".{out_dir.name}.describe-",
                                     dir=out_dir.parent))
     try:
         fill(staging)
     except BaseException:
-        # Nothing is published, so the target is exactly as it was -- and
-        # a project made for it is taken back.
+        # Nothing is published, so the target is exactly as it was -- the
+        # folder this describe made for it, and a project made for it,
+        # taken back.
         shutil.rmtree(staging, ignore_errors=True)
+        if made_here:
+            shutil.rmtree(out_dir, ignore_errors=True)
         if project is not None:
             shutil.rmtree(project, ignore_errors=True)
         raise

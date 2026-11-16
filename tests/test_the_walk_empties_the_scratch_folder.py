@@ -9,12 +9,15 @@ Driven as the launch drives it: the script rendered by `submit._walk_script`
 with the steps a round-by-round walk gives it, run by bash over members
 that do nothing, the log read back.  No engine file is made here -- what the
 emptying removes is the real engine's, which the real-junction e2e shows
-(`test_transport_on_a_real_junction_e2e`); this bounds WHERE the walk
-empties.
+(`test_transport_on_a_real_junction_e2e`, the emptying lines of its walk
+log).  WHERE a round begins is the planner's (`submit`, the first step of
+each round), typed here as it gives it; what this bounds is the walk
+script's own part: it empties exactly where it is told, once per round and
+once at the end, and after a failed member too.
 
-PREVENTS: the emptying attached to the wrong step (a round's pair removed
-under the round's later frames, or never), or skipped after a failed
-member, which would leave the last round's pair behind.
+PREVENTS: the walk script emptying anywhere but where it is told, or
+skipping the emptying after a failed member, which would leave the last
+round's pair behind.
 """
 from __future__ import annotations
 

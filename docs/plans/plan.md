@@ -155,10 +155,11 @@ each release is its changelog row and its ledger section
   (2.70.23 -- the exported picture's resolution, a product defect they
   found, fixed); the second round's readers over the fast tier done, its
   two product defects and the bias window's floor fixed (2.70.24); its
-  most harmful test gaps closed (2.70.25); the rest next -- the page's own
-  overwrite and refused-save paths, the SIESTA vibration form's sweep, the
-  monitor's one notify try, and the stand-ins without a named need; then
-  F10
+  most harmful test gaps closed (2.70.25), the rest (2.70.26, which found
+  the SIESTA vibration record's place in the same calculation); left of it:
+  four page stand-ins without a named need (the Task setup save bar's
+  refusal, the export door's answers, the save door's page, the checkpoint
+  Cancel's signal) and the installer's repair audit -- low harm; then F10
   with its first full end-to-end pass, on the user's word. The page doors' rest -- O-STATE's
   one save door, O-WORDS, O-KEYS's rest with X-UI and X-PLOT -- is internal
   tidying no page shows (measured against `tabs.md` § 6 for O-STATE) and

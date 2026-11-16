@@ -117,6 +117,11 @@ def test_state_names_the_three_shapes(client, started, calc):
     assert "keep.txt" in body["changed"]
     assert "fresh.bin" in body["added"]
     assert "gone.txt" in body["deleted"]
+    # ...AND WHAT IS UNSAVED, the list the panel's pill counts: every one
+    # of the three shapes -- a file added or deleted is as unsaved as one
+    # changed.
+    assert sorted(body["unsaved"]) == ["fresh.bin", "gone.txt", "keep.txt"], \
+        body["unsaved"]
 
 
 def test_state_on_a_plain_folder_says_it_is_not_initialised(client, calc):

@@ -1159,6 +1159,30 @@ def test_the_timeline_indicator_says_where_you_are(
 #  Saving to the project (tabs.md § 6; molview § 11.3)                  #
 # --------------------------------------------------------------------- #
 
+def _answer_where_and_name(page, project, where, stem):
+    """The one save-where question (`projects.chooseSavePath`), answered as
+    a person answers it: WHERE -- the picker's Choose stays disabled until a
+    folder is selected; opening the project and clicking the folder's row
+    is the selection -- then WHAT TO CALL IT.  The projects root is the
+    tree, never an answer: its row cannot be chosen (`projects.md` § 4.1).
+    The picker opens at the root each time (a closed dialog is gone)."""
+    dialog = page.locator("dialog.molbuilder-tree-picker-dialog")
+    root_row = dialog.locator(
+        f'li.tp-node[data-path="{project.parent}"] > .tp-row')
+    root_row.wait_for(state="visible", timeout=WAIT_MS)
+    assert "tp-row--inert" in (root_row.get_attribute("class") or "")
+    dialog.locator(f'li.tp-node[data-path="{project}"]'
+                   " > .tp-row > .tp-twisty").click()
+    row = dialog.locator(f'li.tp-node[data-path="{where}"] > .tp-row')
+    row.wait_for(state="visible", timeout=WAIT_MS)
+    row.click()
+    page.locator("dialog [data-action='confirm']").first.click()
+    name = page.locator("dialog input[data-role='name']")
+    name.wait_for(state="visible", timeout=WAIT_MS)
+    name.fill(stem)
+    page.locator("dialog [data-action='confirm']").last.click()
+
+
 def test_saving_to_the_project_writes_the_pair_and_remembers_where(
         page, flask_server, labelled_xyz, isolated_projects_root):
     """A save writes BOTH files, and the page records the target.
@@ -1190,31 +1214,7 @@ def test_saving_to_the_project_writes_the_pair_and_remembers_where(
         # TWO QUESTIONS, in this order: WHERE, then what to call it
         # (`tabs.md` § 6 -- the door owns the destination).
         page.locator("#save-to-source-btn").click()
-
-        # 1. WHERE.  The picker's Choose stays disabled until a folder is
-        #    selected -- opening the project and clicking its structure
-        #    folder's row is the selection, which is what a person does.
-        dialog = page.locator("dialog.molbuilder-tree-picker-dialog")
-        # The projects root is the tree, never an answer: a file is placed
-        # in a folder below it, so its row cannot be chosen
-        # (`projects.md` § 4.1).
-        root_row = dialog.locator(
-            f'li.tp-node[data-path="{project.parent}"] > .tp-row')
-        root_row.wait_for(state="visible", timeout=WAIT_MS)
-        assert "tp-row--inert" in (root_row.get_attribute("class") or "")
-        # The picker opens at the root each time (a closed dialog is gone).
-        dialog.locator(f'li.tp-node[data-path="{project}"]'
-                       " > .tp-row > .tp-twisty").click()
-        row = dialog.locator(f'li.tp-node[data-path="{where}"] > .tp-row')
-        row.wait_for(state="visible", timeout=WAIT_MS)
-        row.click()
-        page.locator("dialog [data-action='confirm']").first.click()
-
-        # 2. WHAT TO CALL IT.
-        name = page.locator("dialog input[data-role='name']")
-        name.wait_for(state="visible", timeout=WAIT_MS)
-        name.fill(stem)
-        page.locator("dialog [data-action='confirm']").last.click()
+        _answer_where_and_name(page, project, where, stem)
 
     save_as("saved_by_test")
     page.wait_for_function(
@@ -1499,3 +1499,44 @@ def test_taking_a_label_off_an_atom_leaves_the_selection_as_it_was(
         timeout=WAIT_MS)
     assert page.locator(_COUNT).inner_text() == before[1], (
         before, page.locator(_COUNT).inner_text())
+
+
+
+def test_a_picture_saved_under_a_name_taken_leaves_the_first_alone(
+        page, flask_server, labelled_xyz, isolated_projects_root):
+    """`web/projects.md` § 5, the picture's door (`molview-doors.js`
+    `saveBinary`): a picture saved to the project under a name a file
+    already holds is written under a name nothing holds -- the server's
+    `<stem>-2.png` -- and the first is left as it was, its bytes and its
+    time: ``autoRename`` "keeps a collision from silently clobbering".
+    Export → Image → Save to project, twice, the same name.
+
+    THE SILENT FAILURE: the second picture written over the first, with
+    nothing asked and nothing said."""
+    from molbuilder.projects import populate_project_skeleton
+    from support.road import until
+    project = isolated_projects_root.resolve() / "P"
+    populate_project_skeleton(project, project_name="P")
+    where = project / "structure"
+    _open(page, flask_server)
+    _load(page, labelled_xyz)
+
+    def picture():
+        card = page.locator(_CARD)
+        card.locator(".molviewer-menu summary", has_text="Export").click()
+        image = card.locator(".molviewer-export-section", has_text="Image")
+        image.wait_for(timeout=WAIT_MS)
+        image.locator(".molviewer-export-btn",
+                      has_text="Save to project").click()
+        page.locator("dialog.molviewer-export-dialog "
+                     "[data-action='confirm']").click()
+        _answer_where_and_name(page, project, where, "picture")
+
+    picture()
+    first = where / "picture.png"
+    until(first.is_file, within=30, what="the first picture written")
+    kept = (first.read_bytes(), first.stat().st_mtime_ns)
+    picture()
+    until(lambda: len(list(where.glob("picture*.png"))) == 2, within=30,
+          what="the second picture written beside the first")
+    assert (first.read_bytes(), first.stat().st_mtime_ns) == kept

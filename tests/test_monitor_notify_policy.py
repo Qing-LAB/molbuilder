@@ -472,8 +472,7 @@ def test_a_missing_channel_is_said_in_the_monitor_log(tmp_path, monkeypatch):
     """Returned by `channels_for` is not enough: it has to reach the file a
     person actually opens."""
     monkeypatch.delenv("MB_NOTIFY_URL", raising=False)
-    f = _file(tmp_path, monkeypatch, {"here": {"url": "https://example/hook"}})
-    monkeypatch.setattr(M, "default_notify_path", lambda: f)
+    _file(tmp_path, monkeypatch, {"here": {"url": "https://example/hook"}})
     M.clear_notifiers()
     log = tmp_path / "m.log"
     log.write_text("")
@@ -541,11 +540,32 @@ def test_a_count_nothing_stated_is_sent_absent_not_zero():
     assert names == ["elapsed"], names
 
 
-def test_an_unreachable_destination_costs_the_run_nothing(tmp_path):
+def test_an_unreachable_destination_costs_the_run_nothing(tmp_path,
+                                                         monkeypatch):
     """A dead server must not raise, must not retry, and must not block --
-    this runs beside compute ranks."""
-    hook = M.make_webhook_notifier("http://127.0.0.1:9/nowhere")
+    this runs beside compute ranks -- and what failed is said in the
+    monitor log (`make_webhook_notifier`: "costs the run nothing and is
+    SAID in the monitor log").  The send is the real one, to the discard
+    port where nothing listens, counted on its way.
+
+    THE SILENT FAILURES: a retry loop, a sleep between tries -- a run's
+    monitor held minutes behind its ranks -- and a lost report said
+    nowhere."""
+    import time
+    import urllib.request as _u
+    real, tries = _u.urlopen, []
+
+    def counted(*a, **kw):
+        tries.append(kw.get("timeout"))
+        return real(*a, **kw)
+    monkeypatch.setattr(_u, "urlopen", counted)
+    log = tmp_path / "monitor.log"
+    hook = M.make_webhook_notifier("http://127.0.0.1:9/nowhere", log=log)
+    began = time.monotonic()
     hook(M.JobStatus(), "finish")        # must simply return
+    assert tries == [M.NOTIFY_TIMEOUT_S], tries
+    assert time.monotonic() - began <= M.NOTIFY_TIMEOUT_S + 1.0
+    assert "finish not delivered" in log.read_text(), log.read_text()
 
 
 # --------------------------------------------------------------------- #

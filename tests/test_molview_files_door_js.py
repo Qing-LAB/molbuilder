@@ -12,8 +12,8 @@ a real DOM (this module's own dialogs) and is not run here: a browser saves
 a run's structure through it in `test_results_export_e2e.py`
 (`support.results_export.save_to_project`); the server's overwrite gate is
 `test_structure_save_endpoint.py`; the menu-to-door handoff,
-`test_molview_mount.py`.  No test runs the overwrite confirmation the door
-asks between the two.
+`test_molview_mount.py`; the overwrite question the door asks between the
+two, `test_molbuilder_e2e.py`'s save to the project.
 """
 from __future__ import annotations
 

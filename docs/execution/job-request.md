@@ -809,7 +809,12 @@ record names (`same_calculation`, [`architecture.md`](?doc=execution/architectur
   ([`engines/transport.md`](?doc=engines/transport.md) § 6.1, *the same engine
   input*), every run setting's keyword aside — the keywords the catalogue's run
   settings write (their `anchor`, or their `expands`). It reads keywords by
-  name, so it holds of any deck molbuilder wrote.
+  name, so it holds of any deck molbuilder wrote. **And what the run reads of
+  its own record**, which SIESTA skips: a vibration's Raman for, its
+  thermochemistry's temperature, whether the structure is stated relaxed and
+  the force its reference geometry is relaxed to
+  (`engine_input.RECORD_COMPUTES`) -- each changes what the run computes
+  *(the user, 2026-11-15: "Compare the record too")*.
 - **PySCF** — `pyscf.script_input`: the script's statements as Python reads
   them — its comments, its layout and how a value is spelled saying nothing of
   what it computes — with its run-settings block and molbuilder's stamps aside

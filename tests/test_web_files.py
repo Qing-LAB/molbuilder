@@ -1693,6 +1693,8 @@ class TestFilesMove:
         (dst_dir / "config.json").write_text("existing\n")
         r = self._move(web, src, dst_dir)
         assert r.status_code == 409
+        assert (dst_dir / "config.json").read_text() == "existing\n"
+        assert src.exists()
 
     def test_move_refuses_canonical_topic_dir(self, web, picker_root):
         """Moving a canonical-topic dir would orphan the project
@@ -1853,6 +1855,7 @@ class TestFilesCopy:
         (dst_dir / "config.json").write_text("existing\n")
         r = self._copy(web, src, dst_dir)
         assert r.status_code == 409
+        assert (dst_dir / "config.json").read_text() == "existing\n"
 
     def test_copy_refuses_directory(self, web, picker_root):
         """A recursive directory copy from one click: on a run directory that

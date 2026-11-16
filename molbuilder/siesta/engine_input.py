@@ -115,7 +115,31 @@ def engine_input_differences(ran: str, now: str) -> List[str]:
                 out.append(f"block {spelled[key]}, row {i}: the run had "
                            f"{' '.join(ra)}, it renders {' '.join(rb)} now")
     geometry = _geometry_difference(ran, now)
-    return out + ([geometry] if geometry else [])
+    return (out + ([geometry] if geometry else [])
+            + _record_differences(ran, now))
+
+
+#: WHAT THE RUN READS OF ITS OWN RECORD, which SIESTA skips -- a
+#: vibration's block (`deck_record.extract_vibration_record`): Raman for,
+#: which decides the modes that get optical calls; the thermochemistry's
+#: temperature, which the finish sums at; whether the structure is stated
+#: relaxed; and the force the reference geometry is relaxed to
+#: (`engines/vibration.md` § 5.11 § 3).  Each changes what the run computes,
+#: so each is part of the same calculation *(the user, 2026-11-15: "Compare
+#: the record too")*.
+RECORD_COMPUTES = ("raman", "temperature_K", "already_relaxed",
+                   "force_criterion_ev_ang")
+
+
+def _record_differences(ran: str, now: str) -> List[str]:
+    """Each of :data:`RECORD_COMPUTES` the run's own record states
+    otherwise in the two decks, compared as values."""
+    from ..deck_record import extract_vibration_record
+    a = extract_vibration_record(ran) or {}
+    b = extract_vibration_record(now) or {}
+    return [f"the run's record, {key}: the run had {a.get(key)!r}, it "
+            f"renders {b.get(key)!r} now"
+            for key in RECORD_COMPUTES if a.get(key) != b.get(key)]
 
 
 def _as_siesta_reads(keys: Dict[str, List[str]],

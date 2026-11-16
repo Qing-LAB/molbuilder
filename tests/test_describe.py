@@ -299,7 +299,9 @@ def test_a_failure_while_writing_publishes_nothing(tmp_path, monkeypatch):
     assert r.exit_code != 0, r.output
     assert "the disk filled" in r.output, r.output
     optimization = tree / "P" / "optimization"
-    assert list((optimization / "JOB").iterdir()) == []
+    # THE FOLDER THIS DESCRIBE MADE, taken back with the rest: "every file
+    # or none" leaves no empty calculation folder behind.
+    assert not (optimization / "JOB").exists()
     assert not [p for p in optimization.iterdir()
                 if p.name.startswith(".JOB.")]
 
