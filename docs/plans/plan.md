@@ -38,10 +38,8 @@ each release is its changelog row and its ledger section
 *Found by …*):
 
 - **The UI review** *(the user, 2026-11-08: "Right after 2.67.11")* —
-  2.68.0–2.69.9: groups A, B and D done; group C's Task setup, Send and
-  after-an-action items done. **Left**: the tabs following the sidebar's
-  folder (where the Send writes, the live check of it — the user's yes,
-  2026-11-09) and the ladder's layout.
+  2.68.0–2.69.9, 2.70.27: done — the last two items, the tabs following
+  the sidebar's folder and the ladder's layout, in 2.70.27.
 - **The overlap audit** *(the user, 2026-11-09)* — 2.69.10–2.69.12: a
   structure file through the one writer, every answer through the one reader,
   every failure through the one builder.
@@ -171,8 +169,8 @@ said first).
 
 **What runs next**: the stretch above (*Left, in order*) -- F9's last
 step, its closing review rounds (the page-side test doors, the dead-code
-release and the tests owed done: 2.70.2–2.70.10, 2.70.20, 2.70.21); then
-the UI review's two left items; then F10, F11, F12. **Waiting on the user**: nothing now; TF5 brings one
+release and the tests owed done: 2.70.2–2.70.10, 2.70.20, 2.70.21) and
+the UI review's two left items (2.70.27) done; next F10, F11, F12. **Waiting on the user**: nothing now; TF5 brings one
 decision when it is reached (a test's own projects tree by default). F10's
 first full e2e pass and F12's walk of the three roads in the browser start
 only on the user's word, said to them first.

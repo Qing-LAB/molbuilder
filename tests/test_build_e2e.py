@@ -629,6 +629,51 @@ class TestSendToTaskSetup:
         assert f"from the {tab} tab" in over["_what"], (
             "the hand-over's provenance does not name this tab (E-B9)")
 
+    def test_the_tab_says_where_a_send_writes_and_checks_that_folder(
+            self, page, flask_server, isolated_projects_root):
+        """`tabs.md` § 3 *(the user, 2026-11-09)*: the line beside Send
+        names the folder selected in the sidebar, and the live check asks of
+        that folder -- in one holding every species' pseudopotential nothing
+        is said of them; the sidebar moved to one holding none, the line
+        follows and the live check gives the Send's own verdict, an error
+        on the pseudopotential field, before any click
+        (`handover-procedure.md` § 2.2).
+
+        THE SILENT FAILURE (the UI review, K2698-7): *no pseudopotential
+        folder is set*, warned while the folder the Send writes into holds
+        every file -- and a person not told where a Send writes until it
+        has."""
+        from playwright.sync_api import expect
+        calc, xyz = self._calc_dir()
+        bare = ensure_structure_dir("proj", "optimization",
+                                    "no-pseudos").resolve()
+
+        def checked_as(folder, act):
+            # SIESTA's live check, asked once the page stands at ``folder``
+            # -- the tab asks each engine's, and PySCF reads no
+            # pseudopotentials: what it was asked of, and what it answered.
+            def siesta_of(r):
+                asked = (r.request.post_data_json or {}
+                         if "/api/build/preflight" in r.url else {})
+                return (asked.get("engine") == "siesta"
+                        and asked.get("dest") == str(folder))
+            with page.expect_response(siesta_of,
+                                      timeout=WAIT_MS) as answered:
+                act()
+            return answered.value.json()["issues"]
+
+        self._open_on(page, flask_server, calc)
+        said = checked_as(calc, lambda: _use(page, xyz, 3))
+        expect(page.locator("#send-where")).to_have_text(
+            "Writes into proj/optimization/water-run.", timeout=WAIT_MS)
+        assert not [i for i in said if i.get("where") == "config.psml_lib"], \
+            said
+        said = checked_as(bare, lambda: walk_to(page, bare))
+        expect(page.locator("#send-where")).to_have_text(
+            "Writes into proj/optimization/no-pseudos.", timeout=WAIT_MS)
+        assert [i for i in said if i.get("where") == "config.psml_lib"
+                and i.get("severity") == "error"], said
+
     def test_send_keeps_what_the_live_check_says(
             self, page, flask_server, isolated_projects_root):
         """A Send adds its findings to the live check's and clears none
@@ -702,7 +747,7 @@ class TestSendToTaskSetup:
         assert seen is not None, "the refusal is not beside the field"
         assert page.evaluate(
             f"() => {field}.querySelectorAll('.field-issues .issue-item').length"
-        ) == 1, "one fact said twice beside the field, in two severities"
+        ) == 1, "one fact said twice beside the field"
         assert 0 <= seen["top"] and seen["bottom"] <= seen["height"], seen
 
         page.fill("#p-psml-lib", "pseudopotential")

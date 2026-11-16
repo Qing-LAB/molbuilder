@@ -96,6 +96,10 @@ where = "json"
 name = "params.psml_lib"
 request = { json = { engine = "siesta", calculation = "optimization", structure = { elements = ["H", "H"], positions = [[0.0, 0.0, 0.0], [0.0, 0.0, 0.74]], metadata = {} }, params = { psml_lib = "{link_out_from_root}" } } }
 status = 200
+[[route.path]]
+where = "json"
+name = "dest"
+request = { json = { engine = "siesta", calculation = "optimization", structure = { elements = ["H", "H"], positions = [[0.0, 0.0, 0.0], [0.0, 0.0, 0.74]], metadata = {} }, params = {}, dest = "{outside_dir}" } }
 
 [[route]]
 rule = "/api/build/schema/<engine>"

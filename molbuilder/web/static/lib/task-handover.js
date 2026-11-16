@@ -77,6 +77,51 @@
                  "Load a structure first — a description is of something."]],
     };
 
+    /* WHERE A SEND WRITES -- the folder selected in the sidebar, read in
+     * ONE place for the Send, the line beside it and the tab's live check,
+     * so the three cannot name different folders (the user, 2026-11-09;
+     * `tabs.md` § 3): ``dest``, the selection the Send hands the server,
+     * whose rules on the place are the door's (the projects root refused in
+     * its words); ``into``, the folder a Send writes into -- "" with none
+     * picked or at the projects root, where nothing is written -- which the
+     * line names and the live check asks of; ``rel``, the sidebar's words
+     * for it. */
+    const PICK = "Pick the folder to write into, in the sidebar first — "
+        + "this button writes into the selected folder and creates none of "
+        + "its own.";
+
+    function where(projects) {
+        if (!projects || typeof projects.getCurrentDir !== "function") {
+            return { dest: "", into: "", rel: "" };
+        }
+        const dest = projects.getCurrentDir() || "";
+        const atRoot = typeof projects.atRoot === "function"
+            && projects.atRoot();
+        const into = atRoot ? "" : dest;
+        const rel = (dest && typeof projects.relativeToProjects === "function")
+            ? String(projects.relativeToProjects(dest) || "") : "";
+        return { dest: dest, into: into, rel: rel };
+    }
+
+    /* ...SAID BESIDE THE SEND, and followed as the sidebar moves: ``el``
+     * names the folder, or asks for one; ``onMove()`` is told each time the
+     * folder changes -- the tab's live check asked again of the new one. */
+    function followWhere(projects, el, onMove) {
+        let last = null;
+        projects.onChange(() => {
+            const w = where(projects);
+            const words = w.into
+                ? "Writes into " + (w.rel || w.into) + "." : PICK;
+            // Written only when its words change: a live region read out
+            // again on every file clicked in the same folder is noise.
+            if (el && el.textContent !== words) el.textContent = words;
+            if (w.into !== last) {
+                last = w.into;
+                if (typeof onMove === "function") onMove(w.into);
+            }
+        });
+    }
+
     async function sendUnder(opts) {
         const o = opts || {};
         const projects = o.projects;
@@ -93,8 +138,8 @@
          * One the live check
          * and the send both carry (the cell gate runs in each for a stated
          * box) is shown once, and a refusal replaces what the live check said
-         * of the same field: the send knows the folder the live check could
-         * not, so one fact is not said twice in two severities. */
+         * of the same field: the send's verdict is the
+         * newer, so one fact is not said twice in two severities. */
         const standing = Array.isArray(o.standing) ? o.standing : [];
         const beside = (found) => {
             const key = (i) => [i && i.severity, i && i.where,
@@ -111,11 +156,9 @@
             say("error", "The projects sidebar is not available on this page.");
             return;
         }
-        const dest = projects.getCurrentDir() || "";
+        const { dest, rel } = where(projects);
         if (!dest) {
-            say("warn", "Pick the folder to write into, in the "
-                + "sidebar first — this button writes into the selected "
-                + "folder and creates none of its own.");
+            say("warn", PICK);
             return;
         }
         const door = o.door;
@@ -137,9 +180,7 @@
         /* THE FOLDER'S RULES ARE THE DOOR'S -- a calculation lives under a
          * topic, one calculation per folder (`job-contracts.md` § 2.5,
          * § 2.1 Rule 1): every door refuses, and its sentence is shown
-         * below.  `rel` is the sidebar's own words for the folder. */
-        const rel = (typeof projects.relativeToProjects === "function")
-            ? String(projects.relativeToProjects(dest) || "") : "";
+         * below. */
 
         /* THE KIND RIDES EVERY HAND-OVER, stated by the tab that sends it
          * -- the server refuses one with none (2026-10-06). */
@@ -228,5 +269,7 @@
     }
 
     window.molbuilder = window.molbuilder || {};
-    window.molbuilder.taskHandover = { send: send, HANDOVER: HANDOVER };
+    window.molbuilder.taskHandover = { send: send, HANDOVER: HANDOVER,
+                                       where: where,
+                                       followWhere: followWhere };
 })();

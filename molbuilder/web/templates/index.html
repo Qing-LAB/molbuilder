@@ -165,6 +165,9 @@
         <button type="button" id="send-to-task-setup" class="primary">
           Send to Task setup
         </button>
+        {#- Where a Send writes -- the sidebar's folder, followed as it moves
+            (`taskHandover.followWhere`, tabs.md § 3). -#}
+        <p class="hint" id="send-where" aria-live="polite"></p>
         <p class="hint" id="handover-hint">
           Writes the structure this is of
           (<code>&lt;label&gt;.source.xyz</code> + <code>&lt;label&gt;.source.molstruct.json</code>,

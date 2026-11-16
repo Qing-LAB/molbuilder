@@ -1003,6 +1003,9 @@
                 engine:      engine,
                 calculation: "vibration",
                 params:      params,
+                // THE FOLDER A SEND WOULD WRITE INTO (tabs.md § 3).
+                dest:        root.molbuilder.taskHandover.where(
+                                 root.molbuilder.projects).into || undefined,
             },
         });
         if (mySeq !== _preflightSeq) return;
@@ -4457,6 +4460,12 @@
         const hasGenerateSide = Boolean(els.formContainer);
         if (hasGenerateSide) {
             _on(els.sendBtn, "click", sendToTaskSetup);
+            // WHERE A SEND WRITES, said beside it, and the live check asked
+            // again of the folder as the sidebar moves (`tabs.md` § 3).
+            root.molbuilder.runtime.whenReady("projects").then((proj) =>
+                root.molbuilder.taskHandover.followWhere(
+                    proj, document.getElementById("send-where"),
+                    refreshPreflightDebounced));
             // Live science check on every edit -- in every part the form is
             // drawn in: the charge and spin in the chemistry card, the
             // shared settings above the strip and each engine's own below

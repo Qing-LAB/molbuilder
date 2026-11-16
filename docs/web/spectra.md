@@ -872,7 +872,9 @@ On `/spectrum-calculation` the page is a short vertical workflow:
    *Thermochemistry* the pressure, and *Orbital energies along a mode* —
    the probe, with its own *Mode selection*, not tied to Raman; then each
    engine's method, convergence targets, budget and output files.
-5. **Send to Task setup.** The Send button runs the general hand-over
+5. **Send to Task setup.** The line beside the button names the folder a
+   Send writes into, the sidebar's, and the live check asks of it, as on the
+   Structure optimization tab ([`tabs.md`](?doc=web/tabs.md) § 3). The Send button runs the general hand-over
    ([`handover-procedure.md`](?doc=web/handover-procedure.md), via
    `lib/task-handover.js` — the same door `/structure-optimization` uses):
    the server renders the parameter template, the structure pair and

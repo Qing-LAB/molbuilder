@@ -288,6 +288,15 @@ both engines' forms in this browser tab, each tab its own
 the user, 2026-11-11), saved as the page is left and put back after the forms
 draw (a field that will not read keeps what it was last saved with).
 
+**It follows the sidebar's folder** *(the user, 2026-11-09)*: the line beside
+Send says where a Send writes — the folder selected in the sidebar, or that
+one is to be picked first — and the live check asks of that same folder, so
+SIESTA's pseudopotentials are checked against the files there first, the
+verdict the Send gives (`handover-procedure.md` § 2.2), before the click. The
+sidebar moving, both follow. One read of the folder serves the Send, the line
+and the check (`taskHandover.where`); the Spectrum tab does the same
+([`spectra.md`](?doc=web/spectra.md) § 5).
+
 What the tab writes today is the DESCRIPTION, via Send to Task setup: the
 parameter template, the structure pair and the hand-over — written by the
 server, every file or none, the pair through the codec

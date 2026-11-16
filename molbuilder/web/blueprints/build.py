@@ -734,7 +734,9 @@ def api_build_preflight():
 
     Body: the structure envelope (``structure`` per `_struct_from_body`)
     plus ``engine`` (``"siesta"``/``"pyscf"``), ``params`` (the config
-    dict), and ``calculation`` (the kind the validators branch on).
+    dict), ``calculation`` (the kind the validators branch on), and
+    ``dest``, the sidebar's folder a Send would write into, when the tab
+    names one.
 
     Returns ``{"ok": True, "issues": [{"severity", "message",
     "where"}, ...]}``; on bad input returns ``{"ok": False, "error":
@@ -788,10 +790,17 @@ def api_build_preflight():
             issues=[Issue("error", f"bad parameters: {exc}",
                           "config").to_json()])
 
+    # THE FOLDER A SEND WOULD WRITE INTO, the sidebar's, when the tab names
+    # it: SIESTA's pseudopotentials checked against it, its own files first,
+    # as the hand-over checks them -- the verdict the Send gives, before the
+    # click (`handover-procedure.md` § 2.2; the user, 2026-11-09).
+    dest_dir = (_resolve_within_roots(str(body["dest"]))
+                if body.get("dest") else None)
     return jsonify({
         "ok": True,
         "issues": _issues_to_json(
-            validate(struct, cfg, calculation=calculation), cfg=cfg,
+            validate(struct, cfg, calculation=calculation,
+                     dest_dir=dest_dir), cfg=cfg,
             calculation=calculation),
     })
 

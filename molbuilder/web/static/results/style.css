@@ -163,6 +163,10 @@
     width: 2.5ch;
     text-align: right;
 }
+/* A stage's name is one word -- letters, digits, underscores
+ * (`engines/stages.md` § 2) -- of any length a person types: it breaks
+ * inside its own cell, so it never widens the table past the card. */
+.results-ladder-table td:nth-child(2) { overflow-wrap: anywhere; }
 .results-ladder-table tr.is-next td:nth-child(2) { font-weight: var(--weight-semibold); }
 .results-ladder-table td:last-child { color: var(--text-muted); }
 /* Every run of a rung, under it (results.md § 2.4): the row steps in by
@@ -194,6 +198,8 @@
  * next one in the weight the next row takes, its command as the terminal
  * prints it. */
 .results-ladder-steps { margin-bottom: var(--space-sm); }
+/* ...a stage's name in its lines too, broken where it would pass the card. */
+.results-ladder-steps-list li { overflow-wrap: anywhere; }
 .results-ladder-steps-head {
     margin: 0 0 var(--space-xs);
     font-size: var(--text-xs);

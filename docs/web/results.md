@@ -469,8 +469,11 @@ transport calculation copied in from a finished one it reuses is shown as any
 run, *copied from* the run its `.copied-from` names beside its state
 ([`engines/transport.md`](?doc=engines/transport.md) § 2a.16).
 
-The page's empty-state card draws it: one row per rung in ladder order, the
-state in the one state chip (`lib/state-chip.js`), in `jobset status`'s words
+The page's empty-state card draws it: one row per rung in ladder order — its
+name whole, a name longer than its column broken inside its own cell, so the
+table stays within the card (a stage's name is one word of any length,
+[`engines/stages.md`](?doc=engines/stages.md) § 2; the UI review, 2026-11-09) —
+the state in the one state chip (`lib/state-chip.js`), in `jobset status`'s words
 ([`running-a-job.md`](?doc=execution/running-a-job.md) § 4.2) — *not run*, a
 point its ended walk never started, in the warn tone, never the bad tone
 of *failed* ([`runs-of-points.md`](?doc=execution/runs-of-points.md) § 1.3) — whether its run

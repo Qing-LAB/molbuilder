@@ -165,6 +165,9 @@
       <button id="send-to-task-setup" class="primary" type="button">
         Send to Task setup
       </button>
+      {#- Where a Send writes -- the sidebar's folder, followed as it moves
+          (`taskHandover.followWhere`, tabs.md § 3). -#}
+      <span id="send-where" class="hint" aria-live="polite"></span>
       <span id="send-status" class="status" role="status"
             aria-live="polite"></span>
     </div>

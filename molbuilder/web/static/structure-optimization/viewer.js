@@ -124,7 +124,10 @@ import { ask } from "../lib/server.js";
              * atoms -- the preflight has to judge the structure the user is
              * looking at, not a cell fetched a moment later. */
             body: { structure, engine, params,
-                    calculation: "optimization" },
+                    calculation: "optimization",
+                    // THE FOLDER A SEND WOULD WRITE INTO (tabs.md § 3).
+                    dest: window.molbuilder.taskHandover.where(
+                        window.molbuilder.projects).into || undefined },
         });
         if (mine !== _checkSeq[engine]) return;
         /* Rendered whenever issues came back, ok or not (E-A3): the
@@ -143,6 +146,15 @@ import { ask } from "../lib/server.js";
         siesta: debounce(() => refreshPreflight("siesta"), 250),
         pyscf:  debounce(() => refreshPreflight("pyscf"),  250),
     };
+
+    // WHERE A SEND WRITES, said beside it, and each live check asked again
+    // of the folder as the sidebar moves (`tabs.md` § 3).
+    window.molbuilder.runtime.whenReady("projects").then((proj) =>
+        window.molbuilder.taskHandover.followWhere(
+            proj, document.getElementById("send-where"), () => {
+                refreshPreflightDebounced.siesta();
+                refreshPreflightDebounced.pyscf();
+            }));
 
     // ----- Tabs (SIESTA / PySCF) -------------------------------------
     // One switcher for both tabs that offer two engine forms

@@ -1977,9 +1977,9 @@ changelog's test claims checked against the code)*
 | K2699-4 | **closed 2.69.9** | the Molbuilder tab's Save said *Saved water.xyz.* and dropped what the server said of the box, which the viewer's own Export said | the server's notices after the outcome, in the tone that says read this (`tabs.md` § 6) |
 | K2699-5 | **closed 2.69.9** | on This machine, an edit of a listener's address under its name saved it as a Slack webhook — the form's first kind stayed ticked — so every report went unsigned to a listener that refuses it | a name typed that is a stored channel's ticks its kind (`this-machine.md` § 3) |
 | K2699-6 | **closed 2.69.9** | *Issue a key to* asked for *your molbuilder user id*, a name molbuilder uses nowhere else | *the email you sign in with* — the name the report log reads by default |
-| K2699-7 | 2.69.10 | the optimization and Spectrum tabs do not say where the Send writes before the click, and their live check asks with no folder (K2698-7) | each tab follows the sidebar's folder and says it beside the Send; the live check asks of that folder |
+| K2699-7 | **closed 2.70.27** | the optimization and Spectrum tabs do not say where the Send writes before the click, and their live check asks with no folder (K2698-7) | each tab follows the sidebar's folder and says it beside the Send; the live check asks of that folder |
 | K2699-8 | 2.69.10 | the Spectrum tab's form starts over after a switch to another tab and back | kept across a tab switch as the optimization tab's is |
-| K2699-9 | 2.69.10 | Results' stage ladder clips a long stage name | the ladder's layout |
+| K2699-9 | **closed 2.70.27** | Results' stage ladder clips a long stage name | the ladder's layout |
 
 ## Found by the UI review's group C, sending a structure (2026-11-09), by the release that owns each
 
@@ -1993,7 +1993,7 @@ changelog's test claims checked against the code)*
 | K2698-4 | **closed 2.69.8** | the folder's caption said *nothing can be built until the folder is filled in*, which the files beside the calculation make untrue | the caption and the card's line say the calculation's own files are taken first |
 | K2698-5 | **closed 2.69.8** | a file of several frames sent one of them without saying which | the Send sends the frame on screen and its line says so (*the structure at frame 3 of 12, the one on screen*); the tabs' hint says it before the click |
 | K2698-6 | **closed 2.69.8** | the charge's reason read as a chemistry verdict (*no deprotonated phosphate groups*) and *open-d metal* as shorthand | *none of the charged groups molbuilder counts (deprotonated phosphates)*; *no metal with an open d shell* |
-| K2698-7 | 2.69.9 | the live check on the optimization and Spectrum tabs asks about the pseudopotentials with no folder, so it warns *no pseudopotential folder is set* while the folder the Send writes into holds every file | the tabs know where the Send writes (the sidebar's folder, C14) and the live check asks of it |
+| K2698-7 | **closed 2.70.27** | the live check on the optimization and Spectrum tabs asks about the pseudopotentials with no folder, so it warns *no pseudopotential folder is set* while the folder the Send writes into holds every file | the tabs know where the Send writes (the sidebar's folder, C14) and the live check asks of it |
 | K2698-8 | left | the blank name field's caption reads *SIESTA's own default: siesta* although a blank field takes the folder's name | the field's caption by the name rule (`run-identity.md` § 4) |
 | K2698-9 | the dead-code release | the catalogue's `required` key reads, validates and serves a list no item declares | delete the key and its reader, or keep it for the next item that needs one — the dead-code release decides |
 

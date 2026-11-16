@@ -211,8 +211,9 @@ def test_a_charge_stated_in_the_chemistry_card_is_what_the_form_carries(
     assert asked.value.post_data_json["params"]["net_charge"] == 1
 
 
+@pytest.mark.parametrize("engine", ["pyscf", "siesta"])
 def test_a_send_hands_over_a_vibration_with_what_the_form_says(
-        page, flask_server, isolated_projects_root):
+        page, flask_server, isolated_projects_root, engine):
     """`web/spectra.md` § 5 step 5: the Send runs the general hand-over
     (`web/handover-procedure.md`) -- the parameter template, the structure
     pair and `task.1st.json` carrying `calculation: "vibration"`, written
@@ -222,11 +223,18 @@ def test_a_send_hands_over_a_vibration_with_what_the_form_says(
     Water in a calculation's folder under a topic, the depth the Send
     demands (`projects.ensure_structure_dir`), its pseudopotentials beside
     it as a person leaves them; picked in the tab's sidebar and loaded with
-    its Load button; Compute Raman ticked; Send pressed.
+    its Load button; the engine of the row -- PySCF the tab's own for a
+    molecule, SIESTA chosen by its button; Compute Raman ticked; Send
+    pressed.  Before the click the line beside Send names that folder, and
+    the engine's live check is asked of it -- SIESTA's saying nothing of
+    the pseudopotentials the folder holds
+    (`web/tabs.md` § 3; the user, 2026-11-09).
 
     THE SILENT FAILURE: the Spectrum tab's Send handing over another kind,
     or a template without the form's spectrum settings -- the run prepared
-    from it computes no Raman, and nothing says so."""
+    from it computes no Raman, and nothing says so; and *no pseudopotential
+    folder is set* warned while the folder the Send writes into holds every
+    file (the UI review, K2698-7)."""
     import json
     from conftest import write_pseudos
     from molbuilder.projects import ensure_structure_dir
@@ -238,7 +246,21 @@ def test_a_send_hands_over_a_vibration_with_what_the_form_says(
     page.locator("#load-from-sidebar-btn").click()
     page.wait_for_selector("#common-compute-raman:not([disabled])",
                            timeout=WAIT_MS)
-    page.check("#common-compute-raman")
+    def checked_of(r):
+        asked = (r.request.post_data_json or {}
+                 if "/api/build/preflight" in r.url else {})
+        return (asked.get("engine") == engine
+                and asked.get("dest") == str(calc))
+    if engine == "siesta":
+        with page.expect_response(checked_of, timeout=WAIT_MS):
+            page.locator('#spectra-engine-strip [data-tab="siesta"]').click()
+    with page.expect_response(checked_of, timeout=WAIT_MS) as checked:
+        page.check("#common-compute-raman")
+    said = checked.value.json()["issues"]
+    assert not [i for i in said if i.get("where") == "config.psml_lib"], said
+    assert page.locator("#send-where").text_content() \
+        == "Writes into proj/spectrum/water-vib.", \
+        page.locator("#send-where").text_content()
     with page.expect_response(
             lambda r: "/api/task-setup/handover" in r.url,
             timeout=WAIT_MS) as answered:
@@ -249,6 +271,7 @@ def test_a_send_hands_over_a_vibration_with_what_the_form_says(
         "      .includes('Task setup')", timeout=WAIT_MS)
     over = json.loads((calc / "task.1st.json").read_text())
     assert over["calculation"] == "vibration", over
+    assert over["engine"]["name"] == engine, over
     template, = calc.glob("*.template.toml")
     items = {i.name: i.value
              for i in read_template(template.read_text()).items}

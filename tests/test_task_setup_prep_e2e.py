@@ -41,7 +41,7 @@ from pathlib import Path
 from support.road import (H2, described, description_with_overrides,
                           ladder_edited, read_request, road_tree, save_both,
                           stage_file, write_request)
-from support.sidebar import committed, walk_to
+from support.sidebar import committed, results_on, walk_to
 from support.task_setup_page import (edited_by_hand, file_text, machine,
                                      page_free, picked_by_the_page,
                                      task_setup_on, unfold, wait_for_file)
@@ -1510,3 +1510,41 @@ def test_no_rung_is_taught_a_from_by_default(
     assert not any("--from" in c for c in cmds), (
         "a rung whose card states nothing was taught a --from: "
         + repr([c for c in cmds if "--from" in c]))
+
+
+#: A stage's name as a person might type one in Task setup -- letters,
+#: digits and underscores, so one word the browser has no place to break
+#: (`engines/stages.md` § 2: `[A-Za-z0-9_]+`, no length of ours) -- longer
+#: than the card is wide, so the next-step list under the rows, which names
+#: the stage too, has to break it as well.
+_LONG_STAGE = ("relaxed_again_after_the_second_gold_layer_was_added_"
+               "with_the_tighter_force_criterion_and_the_finer_mesh")
+
+
+def test_a_long_stage_name_reads_whole_on_the_results_ladder(
+        page, flask_server, isolated_projects_root_module):
+    """`web/results.md` § 2.4: a calculation's ladder on the Results tab
+    shows each stage's name whole -- one a person typed in Task setup
+    (added through its Save, `_described_h2`), longer than the card is
+    wide, is broken inside its own cell and inside the next-step list's
+    line, so nothing of the ladder lies past the card's edge at a
+    1024-pixel window.
+
+    THE SILENT FAILURE (the UI review, K2699-9): the one word widened the
+    table past the card, which cut the name and the columns after it at the
+    card's edge -- read only by a sideways scroll whose bar shows on
+    hover."""
+    d = _described_h2(isolated_projects_root_module / "prep_ladder",
+                      "ladder", **{_LONG_STAGE: {"mesh_cutoff": 200}})
+    page.set_viewport_size({"width": 1024, "height": 900})
+    results_on(page, flask_server, d)
+    page.locator(".results-ladder-table").wait_for(state="visible",
+                                                   timeout=20000)
+    laid = page.evaluate(
+        "(name) => { const host = document.getElementById('results-ladder');"
+        " return {named: [...host.querySelectorAll('td')]"
+        "                   .some(c => c.textContent === name),"
+        "         past: host.scrollWidth - host.clientWidth}; }",
+        _LONG_STAGE)
+    assert laid["named"], f"no ladder row names {_LONG_STAGE}"
+    assert laid["past"] <= 0, laid
