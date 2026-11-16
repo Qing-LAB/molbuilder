@@ -42,7 +42,7 @@ def test_a_data_file_of_another_schema_is_not_read_as_an_optimizations(tmp_path)
     with NC_LOCK:
         ds = in_memory(other.name)
         state(ds, title="a file of another kind", schema="molbuilder/other@1",
-              molbuilder_version="0", source="this test")
+              molbuilder_version="0", derived_from="this test")
         other.write_bytes(as_bytes(ds))
     with pytest.raises(DataFileError, match="molbuilder/other@1"):
         read_optimization_data(other)

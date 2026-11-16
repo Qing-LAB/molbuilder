@@ -2744,25 +2744,29 @@ calculation: ε₂(ω) for a field along ê, first-order perturbation over
 independent states, at the equilibrium geometry and at ±δQ along each
 selected mode*; every SIESTA parameter the calls read under `/settings`
 (`spectra/optical_data.py`, schema
-`molbuilder/optical-data@3`; `@1` — `delta_ang` an attribute — and `@2`
-read as they are, the one Fermi level a frame both kept (written only
-where SIESTA printed one `Ef`) each channel's; the framework's rules are
+`molbuilder/optical-data@4`; `@1` — `delta_ang` an attribute — `@2` and
+`@3` read as they are, the one Fermi level a frame both kept (written only
+where SIESTA printed one `Ef`) each channel's, and the engine's version
+`@1`–`@3` name `siesta_version` read as `engine_version`; the framework's
+rules are
 [`model/datafiles.md`](?doc=model/datafiles.md), every group titled):
 
 ```text
 /                     attributes: title -- the calculation in words, schema,
-                      molbuilder_version, source -- SIESTA's version and the
-                      run, Conventions, unit_meanings, label, run,
-                      siesta_version
+                      molbuilder_version, source -- "computed by SIESTA
+                      <version> in <run>", Conventions, unit_meanings,
+                      engine_version, label, run
 /settings             delta_ang -- angstrom, of no dimension
                       attributes: keywords (JSON: each Optical.* key and
                       OpticalCalculation as written), direction, selection
                       (JSON: asked, applied), deck_name, deck_text,
                       deck_sha256
-/structure            the result's own layout (spectra.datafile.
-                      write_structure_group): atom(atom) -- the user index,
-                      element, position_ang, mass_amu, held, cell_ang,
-                      axis_kind, user/engine_atom_index; structure_json
+/structure            the framework's one structure layout
+                      (ncdata.write_structure_group, model/datafiles.md
+                      3a): atom(atom) -- the user index, element,
+                      position_ang, mass_amu, held, cell_ang,
+                      axis_kind(cell_vector), user/engine_atom_index;
+                      structure_json
 /frames               frame(frame) -- 0 the reference, then each mode's +dQ
                       and -dQ  atom(atom)  xyz(xyz)
                       photon_energy_ev(photon_energy_ev) -- eV, as written
@@ -2965,7 +2969,7 @@ laser named**: `<label>.spectra.nc` and, on a SIESTA run with an optical
 phase, `<label>.optical.nc`, each copied as its writer wrote it, and, when a
 laser is named, `<label>.raman.nc`, the view composed now through the
 data-file framework ([`model/datafiles.md`](?doc=model/datafiles.md) § 1,
-`molbuilder/raman-view@2`), citing the two files it was derived from by name
+`molbuilder/raman-view@3`), citing the two files it was derived from by name
 and sha256. **NetCDF**: the files; **CSV**: each file's tables and README
 (`ncdata.as_tables`) — flat for one file, a folder each for several. A
 download is one zip
@@ -2991,9 +2995,9 @@ an export):
              attributes: title -- the Raman strengths of a SIESTA
              vibration's picked modes at a laser, derived from its optical
              calls' eps2, and how; schema, molbuilder_version, source --
-             the files it was derived from and the SIESTA that computed
-             them, Conventions, unit_meanings, label, direction, spins (the
-             channels summed), run, siesta_version, derived_from (JSON:
+             "derived from" the files and the SIESTA that computed them,
+             Conventions, unit_meanings, label, direction, spins (the
+             channels summed), run, engine_version, derived_from (JSON:
              each data file's name and sha256)
 /equilibrium alpha_static_a3  alpha_laser_real_a3  alpha_laser_imag_a3 --
              frame 0's, angstrom^3
@@ -3006,7 +3010,7 @@ an export):
              relative(mode)  state(mode)  why(mode)
 ```
 
-A view of any schema but `raman-view@2` is refused by its reader with the
+A view of any schema but `raman-view@3` is refused by its reader with the
 way back: the view exported again.
 
 
@@ -3554,7 +3558,7 @@ value — `.sel(mode=7)`, `.sel(temperature_k=298.15)`.
                       relaxation_max_force_eh_bohr
                       relaxation_max_force_all_atoms_eh_bohr -- the scalar
                       blocks' numbers, each of no dimension
-                      attributes: title, schema "molbuilder/spectra-data@8",
+                      attributes: title, schema "molbuilder/spectra-data@9",
                       molbuilder_version, source -- the engine and its
                       version, Conventions, unit_meanings, json_sha256,
                       spectra_schema_version 14, engine, engine_version,
@@ -3565,9 +3569,12 @@ value — `.sel(mode=7)`, `.sel(temperature_k=298.15)`.
                       relaxation_<key> for the relaxation block's;
                       config, engine_metadata, runtime_info, optical and
                       relaxation_record as JSON text
-/structure            atom(atom) -- the user index  xyz(xyz)  cell_vector(cell_vector)
+/structure            the framework's one structure layout
+                      (ncdata.write_structure_group, model/datafiles.md 3a):
+                      atom(atom) -- the user index  xyz(xyz)  cell_vector(cell_vector)
                       element(atom)  position_ang(atom, xyz)  mass_amu(atom)
-                      held(atom)  cell_ang(cell_vector, xyz)  axis_kind(xyz)
+                      held(atom)  cell_ang(cell_vector, xyz)
+                      axis_kind(cell_vector) -- each lattice vector's periodicity
                       user_atom_index(atom)  engine_atom_index(atom)
                       attributes atoms_listed_by "user_index",
                       atom_index_base 0 -- the atom index map
@@ -3618,7 +3625,9 @@ and `temperatures_K`; `@3` names the temperatures `temperature`; `@1`–`@4`
 hold no `/partial_charges`; `@1`–`@5` no `dipole_derivative_d_per_ang_amu12`;
 `@1`–`@6` no `optical` citation; `@1`–`@7` keep the scalar blocks' numbers,
 `/equilibrium`'s `scf_energy_eh` and `/partial_charges`' `displacement_ang`
-as attributes, read from there, and state no title or source.
+as attributes, read from there, and state no title or source; `@1`–`@8`
+state `/structure`'s `axis_kind` over `xyz` — the reader takes the structure
+from `structure_json`, so each reads as it is.
 
 **The atoms are listed by user index, and the file says so**
 *([`model/overview.md`](?doc=model/overview.md) § 2.2b)*: `/structure`

@@ -17,14 +17,14 @@ from typing import Any, Dict, List, Tuple
 
 import numpy as np
 
-from ..ncdata import Var
+from ..ncdata import Var, axis_values, coordinate
 from ..spectra.results import PARTITIONS
 
 #: What an optimization's data file is named on its label.
 DATA_FILE = ".optimization.nc"
 
 #: Which file this is, at which version (`model/datafiles.md` § 2b).
-DATA_SCHEMA = "molbuilder/optimization-data@1"
+DATA_SCHEMA = "molbuilder/optimization-data@2"
 
 #: The stress's components, in SIESTA's order: its ``Voigt[x,y,z,yz,xz,xy]``.
 VOIGT = ("xx", "yy", "zz", "yz", "xz", "xy")
@@ -34,12 +34,7 @@ _OUTPUT = ("the run's own output, named by output_file, and for SIESTA's "
            "steps it holds")
 
 _VARS = (
-    Var("atom", ("atom",), "coordinate", "1", "the atom",
-        "its index by the file's atom index map, from 0", dtype="i4"),
-    Var("xyz", ("xyz",), "coordinate", "", "Cartesian component", "x, y or z",
-        dtype=str),
-    Var("cell_vector", ("cell_vector",), "coordinate", "", "cell vector",
-        "a, b or c", dtype=str),
+    coordinate("atom"), coordinate("xyz"), coordinate("cell_vector"),
     Var("voigt", ("voigt",), "coordinate", "", "stress component",
         "xx, yy, zz, yz, xz or xy, SIESTA's order", dtype=str),
     Var("run", ("run",), "coordinate", "", "a run",
@@ -131,8 +126,10 @@ _VARS = (
         "a row per lattice vector: the output's own, else the box the run's "
         "deck placed the atoms in, which on an isolated axis (axis_kind) is no "
         "lattice; NaN for none"),
-    Var("axis_kind", ("run", "xyz"), "given", "", "each axis's kind",
-        "periodic, isolated or as the run's structure states it", dtype=str),
+    Var("axis_kind", ("run", "cell_vector"), "given", "",
+        "each cell vector's periodicity",
+        "periodic, isolated or transport, as the run's structure states it "
+        "(model/structure-periodicity.md)", dtype=str),
 )
 
 
@@ -197,9 +194,8 @@ def data_file_bytes(calc) -> Tuple[str, bytes, str]:
     dims = {"atom": atoms, "xyz": 3, "cell_vector": 3, "voigt": len(VOIGT),
             "run": len(read), "step": n_steps}
     values = {v.name: empty(v, dims) for v in _VARS}
-    values["atom"][:] = np.arange(atoms.n_atoms)
-    values["xyz"][:] = ["x", "y", "z"]
-    values["cell_vector"][:] = ["a", "b", "c"]
+    for axis in ("atom", "xyz", "cell_vector"):
+        values[axis][:] = axis_values(axis, atoms.n_atoms)
     values["voigt"][:] = list(VOIGT)
     values["run"][:] = [row["run"] for row in read]
     values["rung_of_run"][:] = [row["rung"] for row in read]
@@ -250,8 +246,8 @@ def data_file_bytes(calc) -> Tuple[str, bytes, str]:
                          f"runs finished, each atom's position and force, and "
                          f"each run's own record"),
               schema=DATA_SCHEMA, molbuilder_version=__version__,
-              source=(f"derived from {calc.task.engine}'s output of each run, "
-                      f"named by output_file"))
+              derived_from=(f"{calc.task.engine}'s output of each run, "
+                            f"named by output_file"))
         ds.setncatts({"label": str(calc.task.label),
                       "engine": str(calc.task.engine)})
         write_group(ds, dims, _VARS, values)
@@ -263,20 +259,14 @@ def data_file_bytes(calc) -> Tuple[str, bytes, str]:
 def read_data_file(path) -> Dict[str, Any]:
     """``<label>.optimization.nc`` as data: ``{"attrs": {...}, "variables":
     {name: {"dims", "data", "attrs"}}}`` -- each variable's values as numpy
-    arrays, a number's fill NaN and a flag ``True``, ``False`` or ``None`` where
-    not stated (`ncdata.unflag`), its units, long name, definition and source.
-    Refuses another schema by name."""
-    from ..ncdata import read_variables, reading, unflag
-    with reading(path) as ds:
-        attrs = {k: ds.getncattr(k) for k in ds.ncattrs()}
-        if attrs.get("schema") != DATA_SCHEMA:
-            raise DataFileError(f"{Path(path).name} states the schema "
-                                f"{attrs.get('schema')!r}, not {DATA_SCHEMA}")
-        variables = read_variables(ds)
-    for var in variables.values():
-        if "flag_values" in var["attrs"]:
-            var["data"] = np.vectorize(unflag, otypes=[object])(var["data"])
-    return {"attrs": attrs, "variables": variables}
+    arrays, a number's fill NaN and a flag as stored (1, 0, -1 not stated,
+    as xarray reads it; `model/datafiles.md` § 3a), its units, long name,
+    definition and source -- the framework's one read of a file
+    (`ncdata.read_file`).  Refuses another schema by name."""
+    from ..ncdata import read_file
+    got = read_file(path, schemas=(DATA_SCHEMA,), error=DataFileError,
+                    way="jobset export writes it again")
+    return {"attrs": got["attrs"], "variables": got["groups"][""]["variables"]}
 
 
 __all__ = ["DATA_FILE", "DATA_SCHEMA", "DataFileError", "VOIGT",

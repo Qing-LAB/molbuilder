@@ -215,11 +215,11 @@ _mb_set_python() {
         exit 2
     fi
     local _minor="${1#3.}"
-    if (( _minor < 11 )); then
+    if (( _minor < 12 )); then
         echo "[molbuilder] --python $1 is below molbuilder's floor." >&2
-        echo "[molbuilder] pyproject.toml declares requires-python >= 3.11, and" >&2
-        echo "[molbuilder] molbuilder imports tomllib unconditionally -- the env" >&2
-        echo "[molbuilder] would build and then fail at 'import molbuilder'." >&2
+        echo "[molbuilder] pyproject.toml declares requires-python >= 3.12:" >&2
+        echo "[molbuilder] molbuilder's code uses Python 3.12's f-strings -- the" >&2
+        echo "[molbuilder] env would build and then fail at 'import molbuilder'." >&2
         exit 2
     fi
     export MOLBUILDER_PYTHON="$1"

@@ -69,7 +69,7 @@ try:                                        # inside molbuilder
                                            fc_block_asymmetry,
                                            hessian_from_fc, read_fc,
                                            reference_frame_of)
-    from ..parse.engines.siesta_reader import read_output
+    from ..parse.engines.siesta_reader import engine_version, read_output
     from ..parse.fdf import (GEOMETRY_KEYS, SPIN_COMPONENTS, deck_atoms,
                              fdf_key, parse_fdf_params, read_deck, read_fdf,
                              system_label)
@@ -118,7 +118,7 @@ except ImportError:                         # beside a job, in mb_vibration.pyz
     from constants import BOHR_ANGSTROM, HARTREE_BOHR_EV_ANGSTROM_ASE
     from siesta_fc import (ForceConstantFile, fc_block_asymmetry,
                            hessian_from_fc, read_fc, reference_frame_of)
-    from siesta_reader import read_output
+    from siesta_reader import engine_version, read_output
     from fdf import (GEOMETRY_KEYS,  # type: ignore[no-redef]
                      SPIN_COMPONENTS, deck_atoms, fdf_key, parse_fdf_params,
                      read_deck, read_fdf, system_label)
@@ -245,7 +245,7 @@ class ForceConstantRun:
     title: str
     identity: dict
     fc: ForceConstantFile
-    siesta_version: str
+    engine_version: str
     #: the deck's ``vibration`` block (`script_emit.emit_vibration_record`)
     record: Mapping[str, Any]
     #: each step's partial charges as the run's output printed them -- one
@@ -340,8 +340,6 @@ def read_force_constant_run(deck, output) -> ForceConstantRun:
             f"{output.name} describes {len(said)} atoms in an order that is "
             f"not {deck.name}'s: the run and the deck disagree about the "
             f"atoms")
-    build = reading.get("runtime_info", {}).get("siesta_build") or {}
-
     # THE ENGINE'S NAME ON THE LABEL, composed by the one grammar
     # (`runfiles.compose`), which travels beside the job too.
     fc_path = folder / compose(label, phase(FC).products[0])
@@ -361,7 +359,7 @@ def read_force_constant_run(deck, output) -> ForceConstantRun:
         title=str(record.get("title") or ""),
         identity=dict(record.get("identity") or {}),
         fc=read_fc(fc_path),
-        siesta_version=str(build.get("version") or ""),
+        engine_version=engine_version(reading.get("runtime_info")) or "",
         record=record,
         step_charges=tuple(s.get("charges") for s in reading["steps"]),
         # WHAT THE DECK ASKED, from its own lines -- the one statement of
@@ -500,7 +498,7 @@ def result_of(run: ForceConstantRun,
         run.positions_ang, run.elements, run.held,
         axis_kind=run.axis_kind, cell=run.cell, permutation=run.permutation,
         structure=equilibrium_structure(run),
-        engine="siesta", engine_version=run.siesta_version,
+        engine="siesta", engine_version=run.engine_version,
         molbuilder_version=str(rec.get("molbuilder_version") or ""),
         geometry_note=GEOMETRY_NOTE,
         reference_forces_ev_ang=run.reference_forces_ev_ang,
@@ -535,7 +533,7 @@ def result_of(run: ForceConstantRun,
         displacement_bohr=run.fc.displacement_ang / BOHR_ANGSTROM,
         n_free=len(run.displaced), n_held=len(run.held),
         n_rigid=int(res.removed_motions["count"]),
-        siesta_version=run.siesta_version,
+        engine_version=run.engine_version,
         charge_partitions=tuple(charges["charges_e"]) if charges else ())
     # THE INFRARED IS THE CHARGES', derived on request from them -- done
     # once they are stored (`engines/vibration.md` § 5.11 § 8).
@@ -982,9 +980,8 @@ def _call_facts(here: _CallHere, folder: Path, spins) -> dict:
     if out is None:
         return {}
     reading = read_output(out).finish()
-    facts: dict = {"siesta_version": ((reading.get("runtime_info") or {})
-                                      .get("siesta_build") or {})
-                   .get("version")}
+    facts: dict = {"engine_version": engine_version(
+        reading.get("runtime_info"))}
     step = next((s for s in reversed(reading.get("steps") or [])
                  if s.get("coords")), None)
     if step is not None:
@@ -1047,7 +1044,7 @@ def _optical_payload(here: _CallHere, index: dict, res: SpectraResults
         facts = (_call_facts(here, folder, spins) if state != "pending"
                  else {})
         coords = facts.get("coords")
-        version = version or facts.get("siesta_version")
+        version = version or facts.get("engine_version")
         f = {"call": c.rel, "mode": c.mode,
              "frequency_cm1": known.get("frequency_cm1"),
              "side": int(c.side or 0),
@@ -1088,7 +1085,7 @@ def _optical_payload(here: _CallHere, index: dict, res: SpectraResults
         frames.append(f)
     masses = res.equilibrium_masses_amu
     return {"label": here.label, "run": run_rel,
-            "siesta_version": version or res.engine_version,
+            "engine_version": version or res.engine_version,
             "molbuilder_version": res.molbuilder_version,
             "settings": _optical_settings(here, index),
             "structure": res.structure,

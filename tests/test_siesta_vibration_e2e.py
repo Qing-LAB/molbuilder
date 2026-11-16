@@ -250,6 +250,20 @@ def _the_optical_record(run, computed_in, n: int = 0):
         assert np.array_equal(got.energy_ev, grid), c.rel
         assert np.array_equal(f["eps2"], got.eps2), c.rel
         assert np.array_equal(ds["eps2"].values[k], got.eps2.T), c.rel
+    # THE ENGINE THAT COMPUTED THE CALLS, said once (`model/datafiles.md`
+    # § 3a): the version every call's own output states, in the file's
+    # `engine_version` and its source.  THE SILENT FAILURE: a file naming
+    # no version, or another, while SIESTA printed its own.
+    from molbuilder.parse.engines.siesta_reader import read_output
+    printed = {read_output(run_of(folder / c.rel).stdout)
+               .finish()["runtime_info"]["siesta_build"]["version"]
+               for c in calls}
+    assert len(printed) == 1 and "" not in printed, printed
+    whole = xarray.load_dataset(path)
+    assert [whole.attrs["engine_version"], data["engine_version"]] == [
+        *printed, *printed], whole.attrs
+    assert f"computed by SIESTA {next(iter(printed))}" in \
+        whole.attrs["source"], whole.attrs["source"]
     settings = data["settings"]
     assert (cited["direction"], cited["selection"], cited["displacement_ang"]
             ) == (settings["direction"], settings["selection"],
@@ -870,6 +884,15 @@ def test_the_raman_at_a_laser_holds_co2s_symmetry_and_exports_whole(
     assert data["derived_from"] == [
         {"name": result.name, "sha256": sha256_of(result)},
         {"name": optical.name, "sha256": sha256_of(optical)}]
+    # THE ENGINE, said once (`model/datafiles.md` § 3a): the view states
+    # the SIESTA its optical calls' file states, in `engine_version` and in
+    # its source beside what it was derived from.  THE SILENT FAILURE: a
+    # view naming no version, or another, than the calls it was made from.
+    computed = own(optical)["engine_version"]
+    assert data["engine_version"] == computed != "", data["engine_version"]
+    stated = xarray.load_dataset(out / f"{label}.raman.nc").attrs["source"]
+    assert f"computed by SIESTA {computed}" in stated \
+        and stated.startswith("derived from "), stated
     assert (data["laser_nm"], data["broaden_ev"]) == (
         view["laser_nm"], view["broaden_ev"])
     keys = ("strength_laser_a4_amu", "strength_static_a4_amu",

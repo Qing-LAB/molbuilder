@@ -18,7 +18,7 @@ molbuilder that prepared it (§ 2b);
 ``/settings`` every optical keyword as the deck wrote it, the direction, the
 selection as asked and as applied, ``δ``, and the optical deck's whole text
 and sha256; ``/structure`` the reference geometry -- the result's own
-layout (`spectra.datafile.write_structure_group`), its atom axis listed by
+layout (`ncdata.write_structure_group`), its atom axis listed by
 user index; ``/frames`` one row per optical call: its mode, frequency, side
 and ``δQ``, the geometry it computed at, its state and the run that computed
 it, its output's SCF facts -- the Fermi level per spin channel -- its
@@ -40,33 +40,36 @@ import numpy as np
 # TWO WAYS, because this module travels beside the job.
 try:                                        # inside molbuilder
     from ..atom_permutation import AtomIndexMap
-    from ..ncdata import (NC_LOCK, Var, as_bytes, empty, in_memory,
-                          json_attr, number_attr, read_variables, reading,
+    from ..ncdata import (NC_LOCK, Var, as_bytes, axis_values, checked,
+                          coordinate, empty, in_memory,
+                          json_attr, number_attr, read_variables,
                           state, unjson_attr, unnumber_attr, write_group)
     from ..persist import unknown_keys, write_bytes
     from ..runfiles import ROLE_SIESTA_OUT, SIESTA_EPSIMG, compose
     from ..structure import Structure as _Structure
-    from .datafile import (UNSTATED, read_structure_group,
-                           write_structure_group)
+    from ..ncdata import read_structure_group, write_structure_group
+    from .datafile import UNSTATED
 except ImportError:                         # beside a job, in mb_vibration.pyz
     from atom_permutation import AtomIndexMap  # type: ignore[no-redef]
-    from ncdata import (NC_LOCK, Var, as_bytes, empty,  # type: ignore[no-redef]
+    from ncdata import (NC_LOCK, Var, as_bytes,  # type: ignore[no-redef]
+                        axis_values, checked, coordinate, empty,
                         in_memory, json_attr, number_attr, read_variables,
-                        reading, state, unjson_attr, unnumber_attr,
-                        write_group)
+                        state, unjson_attr, unnumber_attr, write_group)
     from persist import unknown_keys, write_bytes  # type: ignore[no-redef]
     from runfiles import (  # type: ignore[no-redef]
         ROLE_SIESTA_OUT, SIESTA_EPSIMG, compose)
     from structure import Structure as _Structure  # type: ignore[no-redef]
-    from spectra_datafile import (  # type: ignore[no-redef]
-        UNSTATED, read_structure_group, write_structure_group)
+    from ncdata import (  # type: ignore[no-redef]
+        read_structure_group, write_structure_group)
+    from spectra_datafile import UNSTATED  # type: ignore[no-redef]
 
-DATA_SCHEMA = "molbuilder/optical-data@3"
+DATA_SCHEMA = "molbuilder/optical-data@4"
 #: ``@1`` kept ``δ`` as an attribute of ``/settings``, read as it is; ``@1``
 #: and ``@2`` kept one Fermi level a frame, read as the level of each of its
 #: channels -- they were written only where SIESTA printed one ``Ef``.
 READABLE_DATA_SCHEMAS = ("molbuilder/optical-data@1",
-                         "molbuilder/optical-data@2", DATA_SCHEMA)
+                         "molbuilder/optical-data@2",
+                         "molbuilder/optical-data@3", DATA_SCHEMA)
 
 #: WHAT THE CALCULATION IS, in words -- the file's own title.
 WHAT = ("SIESTA's optical calculation: the imaginary part of the dielectric "
@@ -79,7 +82,7 @@ WHAT = ("SIESTA's optical calculation: the imaginary part of the dielectric "
 
 #: The payload's keys, and its frames' -- a key this file does not know is
 #: refused by name rather than dropped.
-_PAYLOAD_KEYS = ("label", "run", "siesta_version", "molbuilder_version",
+_PAYLOAD_KEYS = ("label", "run", "engine_version", "molbuilder_version",
                  "settings", "structure", "atom_index_map", "masses_amu",
                  "photon_energy_ev", "spin", "frames")
 _SETTINGS_KEYS = ("keywords", "direction", "selection", "delta_ang",
@@ -108,25 +111,18 @@ def _frame_vars(label: str) -> Tuple[Var, ...]:
     epsimg = compose(label, SIESTA_EPSIMG)
     out = f"the call's output, {label}_<stage>{ROLE_SIESTA_OUT}"
     return (
-        Var("frame", ("frame",), "coordinate", "1", "the optical call",
-            "from 0: frame 0 the force-constant run's reference geometry, "
-            "then each selected mode's +dQ and -dQ sides, in the order the "
-            "calls were planned (engines/vibration.md 5.11 3)", dtype="i4"),
-        Var("atom", ("atom",), "coordinate", "1", "atom index",
-            "the atom's user index, from 0 -- the file is listed by user "
-            "index (atoms_listed_by); engine_atom_index beside it in "
-            "/structure (model/overview.md 2.2b)", dtype="i4"),
-        Var("xyz", ("xyz",), "coordinate", "", "Cartesian component",
-            "x, y, z", dtype=str),
+        coordinate("frame", more=(
+            "the optical calls': frame 0 the force-constant run's reference "
+            "geometry, then each selected mode's +dQ and -dQ sides, in the "
+            "order the calls were planned (engines/vibration.md 5.11 3)")),
+        coordinate("atom"), coordinate("xyz"),
         Var("photon_energy_ev", ("photon_energy_ev",), "coordinate", "eV",
             "the photon energy",
             "the light's energy of each row, hbar*omega, as SIESTA wrote it: "
             "Optical.Broaden / 10 apart (Src/optical.F)",
             source=epsimg),
-        Var("spin", ("spin",), "coordinate", "", "spin channel",
-            "unpolarized, or up and down -- the channels the optical deck's "
-            "spin computes, in the SIESTA family's names",
-            dtype=str),
+        coordinate("spin", more="the channels the optical deck's spin "
+                                "computes, in the SIESTA family's names"),
         Var("call", ("frame",), "given", "", "the call's folder",
             "its folder below the run: optical/f000, optical/f001, ...",
             dtype=str, auxiliary=True),
@@ -223,14 +219,13 @@ def write_optical_data(payload: Mapping[str, Any], path) -> Path:
     n_atoms = atoms.n_atoms
     settings = dict(payload.get("settings") or {})
     run = str(payload.get("run") or "")
-    siesta_version = str(payload.get("siesta_version") or "")
+    version = str(payload.get("engine_version") or "")
     with NC_LOCK:
         ds = in_memory(p.name)
         state(ds, title=WHAT, schema=DATA_SCHEMA,
               molbuilder_version=str(payload.get("molbuilder_version") or ""),
-              source=f"computed by SIESTA {siesta_version} in {run}")
-        ds.setncatts({"label": label, "run": run,
-                      "siesta_version": siesta_version})
+              engine="SIESTA", engine_version=version, computed_in=run)
+        ds.setncatts({"label": label, "run": run})
         g = ds.createGroup("settings")
         g.setncatts({
             "keywords": json_attr(settings.get("keywords") or {}),
@@ -246,6 +241,8 @@ def write_optical_data(payload: Mapping[str, Any], path) -> Path:
                           "keyword as the deck wrote it, the direction, the "
                           "selection, delta, and the deck itself")
         write_structure_group(ds, structure, atoms,
+                              geometry="the geometry the optical calls "
+                                       "displace",
                               masses=payload.get("masses_amu"))
         g = ds.createGroup("frames")
         dims = {"frame": len(frames), "atom": atoms, "xyz": 3,
@@ -254,8 +251,8 @@ def write_optical_data(payload: Mapping[str, Any], path) -> Path:
         sizes = {**dims, "atom": n_atoms}
         values = {v.name: empty(v, sizes) for v in vars_}
         values["frame"][:] = np.arange(len(frames))
-        values["atom"][:] = np.arange(n_atoms)
-        values["xyz"][:] = ["x", "y", "z"]
+        for axis in ("atom", "xyz"):
+            values[axis][:] = axis_values(axis, n_atoms)
         values["photon_energy_ev"][:] = grid
         values["spin"][:] = spins
         for k, f in enumerate(frames):
@@ -305,15 +302,15 @@ def read_optical_data(path, *, data=None) -> Dict[str, Any]:
     name.  A frame not run reads its fills as ``None``.  ``data``, the
     file's bytes already in hand, is read from memory (`ncdata.reading`)."""
     out: Dict[str, Any] = {}
-    with reading(path, data=data) as ds:
-        attrs = {k: ds.getncattr(k) for k in ds.ncattrs()}
-        if attrs.get("schema") not in READABLE_DATA_SCHEMAS:
-            raise OpticalDataError(
-                f"{Path(path).name} states the schema "
-                f"{attrs.get('schema')!r}; this molbuilder reads "
-                f"{', '.join(READABLE_DATA_SCHEMAS)}")
-        for key in ("label", "run", "siesta_version", "molbuilder_version"):
+    with checked(path, schemas=READABLE_DATA_SCHEMAS, error=OpticalDataError,
+                 data=data) as (ds, attrs):
+        for key in ("label", "run", "engine_version", "molbuilder_version"):
             out[key] = str(attrs.get(key, ""))
+        # A FILE BEFORE @4 names the engine's version ``siesta_version``,
+        # read as it is -- every older layout is read as it was written
+        # (above), by what it holds.
+        if "engine_version" not in attrs:
+            out["engine_version"] = str(attrs.get("siesta_version", ""))
         g = ds["settings"]
         sa = {k: g.getncattr(k) for k in g.ncattrs()}
         held = read_variables(g)
@@ -332,10 +329,7 @@ def read_optical_data(path, *, data=None) -> Dict[str, Any]:
         out["structure"] = st["structure"]
         out["atom_index_map"] = (st["atoms"].to_dict()
                                  if st["atoms"] is not None else None)
-        masses = st["masses"]
-        out["masses_amu"] = ([float(m) for m in masses]
-                             if masses.size and np.isfinite(masses).all()
-                             else None)
+        out["masses_amu"] = st["masses"]
         fv = read_variables(ds["frames"])
         out["photon_energy_ev"] = [float(x) for x in
                                    fv["photon_energy_ev"]["data"]]

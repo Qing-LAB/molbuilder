@@ -5,8 +5,8 @@ and the tables every NetCDF file molbuilder writes or opens shares
 `model/parse.md` § 5e).
 
 MODULE  ncdata (L2 by the index, `architecture.md`; it imports only numpy,
-        netCDF4 and L1's persist and atom_permutation, as it travels
-        beside a job)
+        netCDF4 and L1's persist, atom_permutation and structure, as it
+        travels beside a job)
 ROLE    :class:`Var` -- one variable: its dimensions, its kind (given, raw,
         derived, state, coordinate), its units, its words; :data:`AXES` --
         every axis of every data file, one name for one concept, which
@@ -60,11 +60,15 @@ import numpy as np
 
 # TWO WAYS, because this module travels beside the job.
 try:                                        # inside molbuilder
+    from .persist import check_schema
+    from .structure import Structure
     from .atom_permutation import (ATOM_INDEX_BASE, FIELD_BASE, FIELD_ENGINE,
                                    FIELD_LISTED_BY, FIELD_USER, FIELD_WHY,
                                    AtomIndexMap)
     from .persist import json_safe
 except ImportError:                         # beside a job, in a bundle
+    from persist import check_schema  # type: ignore[no-redef]
+    from structure import Structure  # type: ignore[no-redef]
     from atom_permutation import (  # type: ignore[no-redef]
         ATOM_INDEX_BASE, FIELD_BASE, FIELD_ENGINE, FIELD_LISTED_BY,
         FIELD_USER, FIELD_WHY, AtomIndexMap)
@@ -94,7 +98,10 @@ class Var:
     variable whose VALUES are atom indices -- a subset of the atoms, the
     atom each orbital is on -- is ``atom_index=True``: they count by the
     file's atom index map, and its attribute says so
-    (`model/overview.md` § 2.2b)."""
+    (`model/overview.md` § 2.2b).  A text variable whose every value is a
+    record -- a JSON list or object -- is ``json=True``: its attribute
+    ``content`` says ``json``, and the one reader hands it over as the
+    record (`model/datafiles.md` § 3a)."""
     name: str
     dims: Tuple[str, ...]
     kind: str
@@ -107,6 +114,7 @@ class Var:
     fill: Any = None
     flag: bool = False
     atom_index: bool = False
+    json: bool = False
 
 
 #: The map's two columns as variables on the atom axis -- labels of its
@@ -127,10 +135,14 @@ _MAP_VARS = (
 class Axis:
     """One axis of the data files (`model/datafiles.md` § 2a): its name,
     what its points are, and its coordinate's units -- ``1`` an index, the
-    empty string labels."""
+    empty string labels -- and, for an axis every file means one way, its
+    coordinate whole (:func:`coordinate`): its ``definition`` and, where
+    its points are fixed, their ``labels``."""
     name: str
     points: str
     units: str
+    definition: str = ""
+    labels: Tuple[str, ...] = ()
 
 
 #: EVERY AXIS OF EVERY DATA FILE, one name for one concept
@@ -139,7 +151,10 @@ class Axis:
 #: coordinate.  A new axis is a row here and there, in the change that first
 #: writes it.
 AXES: Dict[str, Axis] = {a.name: a for a in (
-    Axis(ATOM_AXIS, "the atoms", "1"),
+    Axis(ATOM_AXIS, "the atoms", "1",
+         "the atom's index by the file's atom index map, from 0 -- which "
+         "index the file is listed by is its atoms_listed_by; both indices "
+         "beside it (model/overview.md 2.2b)"),
     Axis("free_atom", "the atoms a vibration moves", "1"),
     Axis("device_atom", "the atoms of TranSIESTA's device region", "1"),
     Axis("atom_bound", "each atom's first orbital, and one past the last",
@@ -147,23 +162,39 @@ AXES: Dict[str, Axis] = {a.name: a for a in (
     Axis("device_orbital", "the device region's orbitals", "1"),
     Axis("orbital", "the junction's basis orbitals, the device run's order",
          "1"),
-    Axis("xyz", "a Cartesian component", ""),
-    Axis("cell_vector", "the cell's three vectors", ""),
-    Axis("reciprocal_vector", "the reciprocal cell's three vectors", ""),
+    Axis("xyz", "a Cartesian component", "", "x, y, z",
+         ("x", "y", "z")),
+    Axis("cell_vector", "the cell's three vectors", "",
+         "a, b, c: the cell's rows", ("a", "b", "c")),
+    Axis("reciprocal_vector", "the reciprocal cell's three vectors", "",
+         "b1, b2, b3: the reciprocal cell's rows, 2 pi times the inverse "
+         "cell's columns", ("b1", "b2", "b3")),
     Axis("kpoint", "the k-points a reading averaged over", "1"),
-    Axis("frame", "a frame set's frames", "1"),
+    Axis("frame", "a frame set's frames", "1",
+         "the frame's index, counted from 0: one geometry of the file's "
+         "sequence of them"),
     Axis("bias_v", "the voltages computed", "V"),
     Axis("iv_bias_v", "the I-V's voltages", "V"),
     Axis("energy_ev", "energy relative to the device's Fermi level, the "
-         "zero TBtrans measures from", "eV"),
-    Axis("spin", "spin channels", ""),
-    Axis("lead", "the two leads", ""),
+         "zero TBtrans measures from", "eV",
+         "E - E_F: E_F the leads' Fermi level at 0 V; under a bias V the "
+         "left lead's chemical potential sits at +V/2 on this axis and the "
+         "right's at -V/2"),
+    Axis("spin", "spin channels", "",
+         "a spin channel: the one channel of a calculation that is not "
+         "spin-polarized, or up and down"),
+    Axis("lead", "the two leads", "",
+         "a lead of the junction, by the name TranSIESTA and TBtrans give "
+         "it"),
     Axis("region", "molbuilder's regions of the junction", ""),
-    Axis("eigenchannel", "transmission eigenchannels", "1"),
+    Axis("eigenchannel", "transmission eigenchannels", "1",
+         "counted from 0, as TBtrans orders them"),
     Axis("rung", "the stages that run once", ""),
     Axis("scf_cycle", "a run's SCF rows", "1"),
     Axis("charge_part", "TranSIESTA's charge columns", ""),
-    Axis("mode", "vibrational modes", "1"),
+    Axis("mode", "vibrational modes", "1",
+         "the mode's 1-based index in the vibration result, ascending "
+         "frequency (its index_1based)"),
     Axis("removed", "the rigid motions removed", "1"),
     Axis("mo", "molecular orbitals", "1"),
     Axis("es", "the modes the electronic-structure probe ran on", "1"),
@@ -175,6 +206,36 @@ AXES: Dict[str, Axis] = {a.name: a for a in (
     Axis("step", "those runs' steps, run by run", "1"),
     Axis("voigt", "a stress tensor's six components", ""),
 )}
+
+
+def coordinate(axis: str, *, more: str = "", source: str = "") -> "Var":
+    """THE COORDINATE OF AN AXIS MORE THAN ONE FILE RUNS OVER -- the atoms
+    by the file's map, a Cartesian component, a cell vector, a frame, an
+    energy, a spin channel, a lead, an eigenchannel, a mode -- made from its
+    row of
+    :data:`AXES` (`model/datafiles.md` § 3a): its meaning the row's, once;
+    ``more`` what the file adds of where its points come from, and
+    ``source`` the file a raw one was read from.  Its type is the row's
+    units' (§ 2a): ``1`` an index, the empty string labels, a unit a
+    number."""
+    row = AXES[axis]
+    if not row.definition:
+        raise ValueError(f"axis {axis}'s coordinate is its file's own: its "
+                         f"row states no definition (model/datafiles.md 3a)")
+    return Var(axis, (axis,), "coordinate", row.units, row.points,
+               f"{row.definition}; {more}" if more else row.definition,
+               source=source,
+               dtype=("i4" if row.units == "1" else str if row.units == ""
+                      else "f8"))
+
+
+def axis_values(axis: str, size: int) -> np.ndarray:
+    """An axis's coordinate values (:func:`coordinate`): its fixed labels,
+    else its points counted from 0."""
+    row = AXES[axis]
+    if row.labels:
+        return np.asarray(row.labels, dtype=object)
+    return np.arange(int(size))
 
 
 #: ONE SPELLING FOR EACH UNIT (`model/datafiles.md` § 2c): every unit a data
@@ -296,6 +357,8 @@ def size_of(dim) -> int:
 def empty(var: Var, dims: Mapping[str, Any]) -> np.ndarray:
     """The array ``var`` starts as, over ``dims``: every cell its fill."""
     shape = tuple(size_of(dims[d]) for d in var.dims)
+    if var.json:
+        return np.full(shape, None, dtype=object)
     if var.dtype is str:
         return np.full(shape, "", dtype=object)
     if var.dtype in ("i1", "i2", "i4", "i8"):
@@ -441,9 +504,18 @@ def write_group(group, dims: Mapping[str, Any], variables: Sequence[Var],
                       # atom index map (§ 2.2b).
                       **({"atom_index": np.int8(1)} if var.atom_index
                          else {}),
+                      # A RECORD HELD AS TEXT says so (§ 3a).
+                      **({"content": "json"} if var.json else {}),
                       **({"coordinates": " ".join(labels)} if labels
                          else {})})
         data = values[var.name]
+        if var.json:
+            # A RECORD, written as its JSON text; not stated, the fill --
+            # the empty text (§ 3a).  The reader hands it back as it was.
+            data = np.asarray(
+                ["" if r is None else json_attr(r)
+                 for r in np.asarray(data, dtype=object).ravel()],
+                dtype=object).reshape(np.shape(data))
         if data.size:
             nc[...] = data
 
@@ -516,13 +588,28 @@ ROOT_FACTS = ("schema", "molbuilder_version", "source")
 
 
 def state(ds, *, title: str, schema: str, molbuilder_version: str,
-          source: str) -> None:
-    """THE FILE'S OWN FACTS on its root (`model/datafiles.md` § 2b): its
-    ``title`` -- one sentence of what it holds --, its
-    ``schema``, the ``molbuilder_version`` that wrote it, its ``source`` --
-    the engine and its version that computed its data, or the files it was
-    derived from -- and the ``Conventions`` it follows; one not stated is
-    refused, naming it."""
+          engine: Optional[str] = None, engine_version: Optional[str] = None,
+          computed_in: Optional[str] = None,
+          derived_from: Optional[str] = None) -> None:
+    """THE FILE'S OWN FACTS on its root (`model/datafiles.md` § 2b, § 3a):
+    its ``title`` -- one sentence of what it holds --, its ``schema``, the
+    ``molbuilder_version`` that wrote it, its ``source`` in ONE SENTENCE --
+    *derived from* ``derived_from``, and *computed by* the ``engine`` at
+    its ``engine_version`` *in* ``computed_in``, the attribute
+    ``engine_version`` beside it -- one or both, a view derived from files
+    an engine computed both -- and the ``Conventions`` it follows; one not
+    stated is refused, naming it."""
+    if not engine and not derived_from:
+        raise ValueError("a data file states what computed it or what it "
+                         "was derived from (model/datafiles.md 3a)")
+    said = [f"derived from {derived_from}"] if derived_from else []
+    if engine:
+        said.append(" ".join(w for w in (
+            "computed by", engine,
+            engine_version or "-- its version not stated by its output --",
+            f"in {computed_in}" if computed_in else "") if w))
+        ds.setncattr("engine_version", str(engine_version or ""))
+    source = "; ".join(said)
     facts = {"title": title, "schema": schema,
              "molbuilder_version": molbuilder_version, "source": source}
     missing = [k for k, v in facts.items() if not str(v or "").strip()]
@@ -533,11 +620,46 @@ def state(ds, *, title: str, schema: str, molbuilder_version: str,
                   "Conventions": CONVENTIONS})
 
 
-def _groups(group, path: str = "/"):
-    """``group`` and every group below it, each with its path."""
+def groups(group, path: str = ""):
+    """``group`` and every group below it, each with its path -- ``""`` the
+    root, ``points/v0.2`` below it: the one walk of a file's groups
+    (`model/datafiles.md` § 3a)."""
     yield path, group
     for name, g in group.groups.items():
-        yield from _groups(g, f"{path}{name}/")
+        yield from groups(g, f"{path}/{name}" if path else name)
+
+
+@contextlib.contextmanager
+def checked(path, *, schemas: Sequence[str], error=ValueError,
+            way: str = "", data: Optional[bytes] = None):
+    """A DATA FILE OPENED TO BE READ through the one door (:func:`reading`,
+    § 4; ``data`` its bytes already in hand), its schema one of ``schemas``
+    -- else ``error`` by `persist.check_schema`, the one check of every
+    record's and file's schema, with the way on (``way``) -- handing
+    ``(dataset, the root's attributes)`` (`model/datafiles.md` § 3a)."""
+    with reading(path, data=data) as ds:
+        attrs = {k: ds.getncattr(k) for k in ds.ncattrs()}
+        check_schema(str(attrs.get("schema") or ""), schemas,
+                     label=Path(path).name, error=error, way=way)
+        yield ds, attrs
+
+
+def read_file(path, *, schemas: Sequence[str], error=ValueError,
+              way: str = "") -> Dict[str, Any]:
+    """A DATA FILE READ BACK WHOLE (:func:`checked`): ``{"attrs": the
+    root's, "groups": {path: {"attrs", "variables"}}}`` -- every group by
+    its path (:func:`groups`), the root's under ``""``, each variable as
+    :func:`read_variables` hands it (records decoded, flags as stored), and
+    the structure a ``/structure`` states (``structure_json``) as its
+    dict."""
+    with checked(path, schemas=schemas, error=error, way=way) as (ds, attrs):
+        out = {}
+        for where, g in groups(ds):
+            ga = {k: g.getncattr(k) for k in g.ncattrs()}
+            if STRUCTURE_JSON in ga:
+                ga[STRUCTURE_JSON] = unjson_attr(ga[STRUCTURE_JSON])
+            out[where] = {"attrs": ga, "variables": read_variables(g)}
+    return {"attrs": attrs, "groups": out}
 
 
 def _check_stated(ds) -> None:
@@ -551,16 +673,17 @@ def _check_stated(ds) -> None:
         raise ValueError(f"the file states no {', '.join(missing)} "
                          f"(model/datafiles.md 2b)")
     used: Dict[str, str] = {}
-    for path, g in _groups(ds):
+    for path, g in groups(ds):
+        where = f"/{path}/" if path else "/"
         if not str(g.getncattr("title") if "title" in g.ncattrs()
                    else "").strip():
-            raise ValueError(f"group {path} states no title -- what it holds "
-                             f"(model/datafiles.md 2b)")
+            raise ValueError(f"group {where} states no title -- what it "
+                             f"holds (model/datafiles.md 2b)")
         for k in g.ncattrs():
             v = np.asarray(g.getncattr(k))
             if v.dtype.kind == "f":
                 raise ValueError(
-                    f"{path} keeps the number {k} as an attribute: a number "
+                    f"{where} keeps the number {k} as an attribute: a number "
                     f"with a unit is a variable, its unit and meaning said "
                     f"(model/datafiles.md 2)")
         for var in g.variables.values():
@@ -604,14 +727,32 @@ def read_atom_index_map(group, *, source: str,
 
 def read_variables(group) -> Dict[str, Dict[str, Any]]:
     """Every variable of ``group`` as ``{name: {"dims", "data", "attrs"}}``
-    -- its values as a numpy array (the fill value as written), its
-    attributes but the fill value."""
+    -- its values as a numpy array (the fill value as written; a record's
+    the records it holds, its fill ``None``, § 3a), its attributes but the
+    fill value."""
     group.set_auto_mask(False)
-    return {name: {"dims": tuple(v.dimensions),
-                   "data": np.asarray(v[...]),
-                   "attrs": {k: v.getncattr(k) for k in v.ncattrs()
-                             if k != "_FillValue"}}
-            for name, v in group.variables.items()}
+    out = {}
+    for name, v in group.variables.items():
+        data = np.asarray(v[...])
+        attrs = {k: v.getncattr(k) for k in v.ncattrs() if k != "_FillValue"}
+        if attrs.get("content") == "json":
+            # A RECORD HELD AS TEXT, handed over as the record -- the fill,
+            # the empty string, as None (§ 3a).
+            data = _records(data)
+        out[name] = {"dims": tuple(v.dimensions), "data": data,
+                     "attrs": attrs}
+    return out
+
+
+def _records(texts: np.ndarray) -> Any:
+    """A JSON-text variable's values as the records they hold, in its shape;
+    an empty text -- the fill -- ``None``."""
+    flat = [unjson_attr(t) if str(t) else None for t in texts.ravel()]
+    if texts.ndim == 0:
+        return flat[0]
+    out = np.empty(len(flat), dtype=object)
+    out[:] = flat
+    return out.reshape(texts.shape)
 
 
 def as_tables(data: bytes, name: str) -> Tuple[Dict[str, str], str]:
@@ -664,13 +805,14 @@ def as_tables(data: bytes, name: str) -> Tuple[Dict[str, str], str]:
             return "not stated"
         return json_attr(v)
 
-    def read(group, path: str, sizes: Dict[str, int],
-             axes: Dict[str, Any], out: List[Dict[str, Any]]) -> None:
-        """Each group's attributes, sizes and variables, read into memory --
-        a dimension and a coordinate seen from an enclosing group as the
-        format resolves them, the nearest enclosing one's."""
-        sizes = {**sizes, **{k: len(d) for k, d in group.dimensions.items()}}
-        axes = dict(axes)
+    def read(group, path: str, enclosing: Dict[str, Any]) -> Dict[str, Any]:
+        """A group's attributes, sizes and variables, read into memory --
+        a dimension and a coordinate seen from an enclosing group
+        (``enclosing``, its parent's read) as the format resolves them, the
+        nearest enclosing one's."""
+        sizes = {**enclosing["sizes"],
+                 **{k: len(d) for k, d in group.dimensions.items()}}
+        axes = dict(enclosing["axes"])
         held: Dict[str, Any] = {}
         for var, v in group.variables.items():
             v.set_auto_mask(True)
@@ -681,17 +823,18 @@ def as_tables(data: bytes, name: str) -> Tuple[Dict[str, str], str]:
                 axes[var] = entry
             else:
                 held[var] = entry
-        out.append({"path": path, "sizes": sizes, "axes": axes, "held": held,
-                    "attrs": {k: group.getncattr(k)
-                              for k in group.ncattrs()}})
-        for sub, g in group.groups.items():
-            read(g, f"{path}/{sub}" if path else sub, sizes, axes, out)
+        return {"path": path, "sizes": sizes, "axes": axes, "held": held,
+                "attrs": {k: group.getncattr(k) for k in group.ncattrs()}}
 
-    # THE FILE READ under the lock every NetCDF access holds; its tables
-    # written out of it.
-    read_groups: List[Dict[str, Any]] = []
+    # THE FILE READ under the lock every NetCDF access holds, group by group
+    # through the one walk (:func:`groups`, a group after its parent); its
+    # tables written out of it.
+    read_groups: Dict[str, Dict[str, Any]] = {}
     with reading(name, data=data) as ds:
-        read(ds, "", {}, {}, read_groups)
+        for path, g in groups(ds):
+            read_groups[path] = read(
+                g, path, read_groups[path.rpartition("/")[0]] if path
+                else {"sizes": {}, "axes": {}})
 
     def header(var: str, info: Dict[str, Any]) -> str:
         units = str(info.get("units") or "")
@@ -702,7 +845,7 @@ def as_tables(data: bytes, name: str) -> Tuple[Dict[str, str], str]:
              "Every table is long: one row per point of its axes, each axis "
              "a column, each variable a column named with its units; an "
              "empty cell is a value the file does not state.", ""]
-    for g in read_groups:
+    for g in read_groups.values():
         path, sizes, axes, held = g["path"], g["sizes"], g["axes"], g["held"]
         here = f"{path}/" if path else ""
         if g["attrs"]:
@@ -745,6 +888,117 @@ def as_tables(data: bytes, name: str) -> Tuple[Dict[str, str], str]:
                              f": {what or 'an index'}")
             lines.append("")
     return tables, "\n".join(lines) + "\n"
+
+
+# ---- a structure, one layout in every file (`model/datafiles.md` § 3a) ---- #
+
+#: The attribute of ``/structure`` holding the structure whole.
+STRUCTURE_JSON = "structure_json"
+
+
+def structure_vars(frames: bool = False) -> Tuple[Var, ...]:
+    """``/structure`` -- the geometry a file is about, ONE LAYOUT in every
+    file (`model/datafiles.md` § 3a): its atom axis by the file's atom index
+    map, each atom's element, position, mass and whether it was held, the
+    cell and each cell vector's periodicity.  ``frames``: a file whose kind
+    runs over frames states each frame's positions (over ``frame``, whose
+    coordinate is the file's own)."""
+    return (
+        coordinate(ATOM_AXIS), coordinate("xyz"), coordinate("cell_vector"),
+        Var("element", (ATOM_AXIS,), "given", "", "the atom's element",
+            "the chemical symbol, in the file's atom order", dtype=str,
+            auxiliary=True),
+        Var("position_ang",
+            ("frame", ATOM_AXIS, "xyz") if frames else (ATOM_AXIS, "xyz"),
+            "given", "angstrom", "the atom's position",
+            ("each frame's coordinates" if frames else "the structure's "
+             "coordinates") + ", in the file's atom order"),
+        Var("mass_amu", (ATOM_AXIS,), "given", "amu", "the atom's mass",
+            "the mass the calculation used, as its result or its structure "
+            "states it; the fill value where neither does"),
+        Var("held", (ATOM_AXIS,), "given", "1", "whether the atom was held",
+            "the structure's frozen_atoms label: 1 held, 0 free",
+            dtype="i1", flag=True),
+        Var("cell_ang", ("cell_vector", "xyz"), "given", "angstrom",
+            "the cell", "its three lattice vectors as rows; NaN for none"),
+        Var("axis_kind", ("cell_vector",), "given", "",
+            "each cell vector's periodicity",
+            "periodic, isolated or transport, as the structure states it "
+            "(model/structure-periodicity.md)", dtype=str),
+    )
+
+
+def structure_values(structure: Optional[Mapping[str, Any]],
+                     atoms: AtomIndexMap, *, masses=None, held=(),
+                     frames: Optional[int] = None) -> Dict[str, np.ndarray]:
+    """:func:`structure_vars`' values from ``structure`` -- its
+    ``Structure.to_dict()`` -- read through the structure's own door, never a
+    hand-walk of the dict: ``masses`` each atom's number (``None`` where it
+    states none), or ``None``; ``held`` the held atoms where no structure is
+    stated (a result written before one existed); ``frames`` the file's
+    frame count where its kind runs over frames -- a frame set's every
+    frame, one structure's own one."""
+    s = Structure.from_dict(structure) if structure is not None else None
+    dims = {ATOM_AXIS: atoms.n_atoms, "xyz": 3, "cell_vector": 3,
+            **({"frame": frames} if frames is not None else {})}
+    values = {v.name: empty(v, dims)
+              for v in structure_vars(frames is not None)}
+    for axis in (ATOM_AXIS, "xyz", "cell_vector"):
+        values[axis][:] = axis_values(axis, dims[axis])
+    held = [int(i) for i in held]
+    if s is not None:
+        if frames is not None and frames > 1 and s.frames is None:
+            raise ValueError(f"the file runs over {frames} frames and its "
+                             f"structure holds one geometry")
+        values["element"][:] = s.chemical_symbols()
+        values["position_ang"][:] = np.asarray(
+            s.positions if frames is None
+            else s.frames if frames > 1 else [s.positions], dtype=float)
+        held = [int(i) for i in (s.frozen_atoms or ())]
+        if s.cell is not None:
+            values["cell_ang"][:] = np.asarray(s.cell, dtype=float)
+        values["axis_kind"][:] = [str(k) for k in s.axis_kind]
+    values["held"][:] = 0
+    for i in held:
+        values["held"][i] = 1
+    if masses is not None:
+        values["mass_amu"][:] = [number_attr(m) for m in masses]
+    return values
+
+
+def structure_attrs(structure: Optional[Mapping[str, Any]]) -> Dict[str, str]:
+    """``/structure``'s attribute: ``structure_json``, ``Structure.to_dict()``
+    whole -- its labels among it, never a second encoding of them."""
+    return {STRUCTURE_JSON: json_attr(structure)}
+
+
+def write_structure_group(ds, structure, atoms: AtomIndexMap, *,
+                          geometry: str, masses=None, held=()) -> None:
+    """``/structure`` written on ``ds`` (:func:`structure_vars`,
+    :func:`structure_values`, :func:`structure_attrs`) for a file of one
+    geometry, its title saying which (``geometry``)."""
+    g = ds.createGroup("structure")
+    write_group(g, {ATOM_AXIS: atoms, "cell_vector": 3, "xyz": 3},
+                structure_vars(), structure_values(structure, atoms,
+                                                   masses=masses, held=held),
+                title=f"{geometry}: each atom's element, position, mass and "
+                      f"whether it was held, and the cell")
+    g.setncatts(structure_attrs(structure))
+
+
+def read_structure_group(group, *, source: str) -> Dict[str, Any]:
+    """``/structure`` read back: ``structure`` (the dict, or ``None``),
+    ``atoms`` (its atom index map, or ``None`` for a file written before
+    one), ``held`` (each atom's flag) and ``masses`` (each atom's, or
+    ``None`` where the file states not every one)."""
+    sv = read_variables(group)
+    masses = np.asarray(sv["mass_amu"]["data"], dtype=float)
+    return {"structure": unjson_attr(group.getncattr(STRUCTURE_JSON)),
+            "atoms": read_atom_index_map(group, source=source),
+            "held": sv["held"]["data"],
+            "masses": ([float(m) for m in masses]
+                       if masses.size and np.isfinite(masses).all()
+                       else None)}
 
 
 #: THE FORMS AN EXPORT TAKES -- a calculation's data files as they are, or
@@ -855,4 +1109,8 @@ __all__ = ["Var", "Axis", "AXES", "UNITS", "CONVENTIONS", "ROOT_FACTS",
            "unnumber_attr", "json_attr", "unjson_attr", "write_group",
            "in_memory",
            "as_bytes", "read_variables", "EXPORT_FORMATS", "ExportError",
+           "coordinate", "axis_values", "groups", "checked", "read_file",
+           "STRUCTURE_JSON",
+           "structure_vars", "structure_values", "structure_attrs",
+           "write_structure_group", "read_structure_group",
            "Exported", "export_format", "export_name", "exported"]

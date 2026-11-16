@@ -48,12 +48,12 @@ by a second reader: it is that composition on its grid, for analysis.
 
 | file | what it is | written by | schema | its chapter |
 |---|---|---|---|---|
-| `<label>.transport.nc` | every result of a transport calculation, in groups: the junction, each stage, each point and its device run, and the summary across the points | `jobset summarize task`; an export composes the same file | `molbuilder/transport-data@10` | `engines/transport.md` § 2a.12 |
-| `<label>.spectra.nc` | a vibration result, beside its JSON — the same payload, tied by the JSON's sha256 | the result's one writer, at every write on both engines | `molbuilder/spectra-data@8` (`@1`–`@7` read as they are) | `engines/vibration.md` § 6.10, *The data file* |
+| `<label>.transport.nc` | every result of a transport calculation, in groups: the junction, each stage, each point and its device run, and the summary across the points | `jobset summarize task`; an export composes the same file | `molbuilder/transport-data@11` | `engines/transport.md` § 2a.12 |
+| `<label>.spectra.nc` | a vibration result, beside its JSON — the same payload, tied by the JSON's sha256 | the result's one writer, at every write on both engines | `molbuilder/spectra-data@9` (`@1`–`@8` read as they are) | `engines/vibration.md` § 6.10, *The data file* |
 | `<label>.TBT.digest.nc` (`.TBT_UP` / `.TBT_DN`) | a TBtrans data file's DOS per orbital, k-averaged once and kept | the reading of the `.TBT.nc` beside it | `molbuilder/tbt-digest@4` | `model/parse.md` § 5e |
-| `<label>.optical.nc` | a SIESTA vibration's optical calls — each frame's ε₂ on the photon energies, its mode, side and geometry, the settings the calls read: the record of the Raman phase so far | the run's own record steps — the force constants', every frame pending, then each optical call's — and its finish | `molbuilder/optical-data@3` (`@1`, `@2` read as they are) | `engines/vibration.md` § 5.11 § 8 |
-| `<label>.optimization.nc` | an optimization's every step on one grid — each atom's position and force, its charges where the run printed them, the energy, the stress, the largest force — and each run's own record: whether it converged, how it ended | an export alone (`optimization.export`), never into the calculation | `molbuilder/optimization-data@1` | `engines/optimization-postprocessing.md` § 6 |
-| `<label>.raman.nc` | a SIESTA vibration's Raman view at the laser and width a person named — per picked mode `∂α/∂Q` and the strength, at the laser and static, and the equilibrium `α`; what it was derived from by name and sha256 — the result, `<label>.spectra.json`, and the optical calls' data file | an export alone (`spectra.export`), never into the calculation | `molbuilder/raman-view@2` | `engines/vibration.md` § 5.11 § 10 |
+| `<label>.optical.nc` | a SIESTA vibration's optical calls — each frame's ε₂ on the photon energies, its mode, side and geometry, the settings the calls read: the record of the Raman phase so far | the run's own record steps — the force constants', every frame pending, then each optical call's — and its finish | `molbuilder/optical-data@4` (`@1`–`@3` read as they are) | `engines/vibration.md` § 5.11 § 8 |
+| `<label>.optimization.nc` | an optimization's every step on one grid — each atom's position and force, its charges where the run printed them, the energy, the stress, the largest force — and each run's own record: whether it converged, how it ended | an export alone (`optimization.export`), never into the calculation | `molbuilder/optimization-data@2` | `engines/optimization-postprocessing.md` § 6 |
+| `<label>.raman.nc` | a SIESTA vibration's Raman view at the laser and width a person named — per picked mode `∂α/∂Q` and the strength, at the laser and static, and the equilibrium `α`; what it was derived from by name and sha256 — the result, `<label>.spectra.json`, and the optical calls' data file | an export alone (`spectra.export`), never into the calculation | `molbuilder/raman-view@3` | `engines/vibration.md` § 5.11 § 10 |
 
 **An engine's NetCDF files molbuilder reads** come through the same door
 (§ 4): TBtrans's `<label>.TBT.nc` (through sisl, `sile=True`) and SIESTA's
@@ -283,6 +283,92 @@ atomic writer (`persist.write_bytes`): a reader sees the old file or the new
 one, never half of either. Every NetCDF call — a write included — holds the
 process's one lock (§ 4).
 
+## 3a. One framework for what every file shares
+
+*(The user, 2026-11-16: "make sure the code discipline of unified api and
+framework level implementation is honored with no duplicated/redundant code
+or design"; a review across the kinds found each of these written two to
+seven ways.)*
+
+**A structure, one layout in every file.** The geometry a file is about is
+laid out by one door, `ncdata.structure_vars` with its values
+`structure_values` and its attribute `structure_attrs` — written whole for a
+file of one geometry by `write_structure_group`, its title saying which
+geometry it is (the vibration result, the optical calls), and read back by
+`read_structure_group`: in the group `/structure`, the atom axis listed by
+the file's atom index map; `xyz`, `cell_vector`; each atom's `element` (a
+label beside the atom axis), `mass_amu` (a value; the fill where the
+structure states none) and `held` (the `frozen_atoms` label, a flag);
+`position_ang` — over `atom`, `xyz` for one geometry, over `frame`, `atom`,
+`xyz` in a file whose kind runs over frames (the transport data file, one
+frame for one structure); `cell_ang` over `cell_vector`, `xyz`; `axis_kind`
+over **`cell_vector`** — each lattice vector's periodicity, never a Cartesian
+component's (§ 2a rule 1); and the attribute `structure_json`,
+`Structure.to_dict()` whole, **its labels among it — never a second encoding
+of them by hand**, read back as its dict by the framework. A kind adds its
+own variables to the same group in the same write (the transport file: each
+atom's region, the basis orbitals, each frame's rows); a reader asks the
+structure's labels of `Structure.from_dict(structure_json)`. The
+optimization file is not laid out so: its geometry is a trajectory, each
+step's positions and each run's held atoms and cell, stated beside its steps
+(`engines/optimization-postprocessing.md` § 6).
+
+**A record held as text says so.** A variable whose text is a record — a
+JSON list or object (a frame's rows, a run's phases, a point's digests) — is
+declared so (`Var(…, json=True)`, written with the attribute `content`
+`json`): its writer hands the records to the one writer, which writes each
+as its text (`ncdata.write_group`, a record not stated the fill, the empty
+text), and the one reader of variables (`ncdata.read_variables`) hands it
+back as the record, the fill as `None`; no caller encodes or decodes one by
+hand. The tables (§ 5) keep the text as the file holds it.
+
+**An axis more than one file runs over has its coordinate from its row.**
+Its row of `ncdata.AXES` carries its coordinate's meaning, once — the atoms
+by the file's map; `xyz`, `cell_vector`, `reciprocal_vector` with their fixed
+labels; `frame`, `energy_ev`, `spin`, `lead`, `eigenchannel`, `mode` — and
+`ncdata.coordinate(axis, more=, source=)` makes the coordinate variable, a
+file adding only where its points come from and, for a raw one, its source;
+`ncdata.axis_values` gives a fixed axis's values. An axis one kind alone
+runs over (a vibration's `fc_step`, a transport stage's `rung`) has its
+coordinate declared once, in that kind's writer.
+
+**The engine, said once.** `ncdata.state(…, engine=, engine_version=,
+computed_in=)` writes `source` in one sentence — *computed by SIESTA 5.4.2
+in …*, *its version not stated by its output* where none is — and the
+attribute `engine_version`, the version read by the one reader of an engine
+output's build header (`siesta_reader.engine_version`); a file derived from
+others states `derived_from=` — and, a view derived from files an engine
+computed (the Raman view), both, in one sentence. One name,
+`engine_version`, wherever a file states an engine's version — the optical
+calls' and the Raman view's `siesta_version` with it; a file that states
+only what it was derived from (the optimization file, a TBtrans digest)
+states none.
+
+**A file read back by one door.** Every reader opens a data file through
+`ncdata.checked` — the one door (§ 4) and the schema checked by
+`persist.check_schema`, the one door of the schema convention for every
+record and every data file: a schema it does not read is refused by name,
+the schemas it reads listed, and the way on where a command writes the file
+again (the transport file's `summarize task`, the optimization file's and
+the Raman view's export). A TBtrans digest is not refused: one of another
+version is out of date and read again (`model/parse.md` § 5e). A file's
+groups are walked by one walk, `ncdata.groups`, a group after its parent —
+the tables (§ 5), the atom index door, the file's own statement. A file read
+back as variables alone — the transport data file, the optimization file —
+is `ncdata.read_file(path, schemas=)`: `{attrs, groups: {path: {attrs,
+variables}}}`, the root under `""`, its records decoded and its flags as the
+file stores them — `1` yes, `0` no, `-1` not stated (xarray masks the last
+as NaN, a table leaves its cell empty): **test `== 1`**, which means yes on
+every road. A file whose reader rebuilds a record — the vibration result's
+payload, the optical calls' frames, the Raman view's modes — does that from
+the same doors.
+
+Each file moves its schema with this, and its chapter says which older ones
+it still reads: the vibration result's and the optical calls', which a run
+wrote and nothing writes again, are read as they are; the transport and
+optimization files and the Raman view, which an export or `summarize`
+writes, are refused by version, their writer's command writing them again.
+
 ## 4. Reading — one door, one access, one handle
 
 **One door for every NetCDF file molbuilder opens** (`ncdata.reading`):
@@ -361,7 +447,7 @@ same atoms.
 |---|---|---|---|---|
 | `T.TBT.nc` | each transmission point's folder | TBtrans's own data: everything per k-point, energy and orbital — gigabytes on a large junction | written by TBtrans; read **on a person's word only**, through the door with `sile=True`, **one k-point an access** (113 opens on Sol's AuBDTAu point: 1.4 s held, 5.6 s reopened), its version checked each step | the one door (§ 4); its atoms are its run's engine order, answered by the run's deck (`model/overview.md` § 2.2b, F3) |
 | `T.TBT.digest.nc` | beside it | the DOS per orbital, k-averaged once, and the facts the report needs (energies, the device's atoms, each column's atom) | written by that reading through `write_group`, **listed by engine index** with each atom's user index (the point's run's map, handed to the parser by the caller that knows the run); read by the report's DOS by region and a selection's PDOS, its map **checked against the composed junction's record** (F7) | the one writer, the atom axis as its map, `device_orbital_atom` / `device_atom` marked `atom_index` (§ 2, § 3) |
-| `T.transport.nc` | the calculation's folder | every result in groups — `/structure` the junction whole (cell, each atom's region and labels), `/stages/<stage>` each once-run stage, `/points/<point>` each point's transmission and its `device` run, `/summary` what is compared across the points (the I–V, G and T(E) over the voltages) — each run's state and SCF history, the calculation's own records — one shape for one structure at one voltage too | written by `summarize task` from the record's one composition (`record.collect_record`), the atom axis **listed by user index** with each atom's engine index from the junction's order record; read by `read_data_file`, `postprocess.read_transport_data`, and the export | the variable record (§ 2), the one writer (§ 3), the one door (§ 4) |
+| `T.transport.nc` | the calculation's folder | every result in groups — `/structure` the junction whole (the structure layout every file shares, § 3a, with each atom's region), `/stages/<stage>` each once-run stage, `/points/<point>` each point's transmission and its `device` run, `/summary` what is compared across the points (the I–V, G and T(E) over the voltages) — each run's state and SCF history, the calculation's own records — one shape for one structure at one voltage too | written by `summarize task` from the record's one composition (`record.collect_record`), the atom axis **listed by user index** with each atom's engine index from the junction's order record; read by `read_data_file`, `postprocess.read_transport_data`, and the export | the variable record (§ 2), the one writer (§ 3), the one door (§ 4) |
 | `T.transport-csv/` | where an export is asked to write it | the same as long tables, a group's under its path — `structure/atom.csv` with both index columns — and `README.txt` | `ncdata.as_tables` of the data file's bytes, composed on request — the export reads no data file (`engines/transport.md` § 2a.12, *Export*) | the tables (§ 5) |
 | `T.transport-netcdf/` | where an export is asked to write it, with the DOS per orbital | the data file and, at the paths its points name, each kept digest as it is | the export's bytes copied, never read; read by `postprocess.pdos` from the folder, no `.TBT.nc` beside (`engines/transport.md` § 2a.12, *A PDOS of the atoms you choose, from the files*) | the one door's version rule, the reading a data file names (§ 4) |
 

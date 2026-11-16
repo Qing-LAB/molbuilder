@@ -312,7 +312,7 @@ CHARGE_PARTITION_WORDS = {"hirshfeld": "Hirshfeld [Hirshfeld1977]",
 
 
 def siesta_methods_text(*, displacement_bohr: float, n_free: int,
-                        n_held: int, n_rigid: int, siesta_version: str,
+                        n_held: int, n_rigid: int, engine_version: str,
                         charge_partitions: Sequence[str] = ()) -> str:
     """The Methods paragraph for SIESTA's force-constant route
     (`engines/vibration.md` § 5.5), with the citation keys the science
@@ -327,7 +327,7 @@ def siesta_methods_text(*, displacement_bohr: float, n_free: int,
                f"{'the held geometry permits' if n_held else 'of the free system'}"
                f" were projected out before diagonalisation [Ghysels2008]."
                if n_rigid else "")
-    ver = f" (SIESTA {siesta_version})" if siesta_version else ""
+    ver = f" (SIESTA {engine_version})" if engine_version else ""
     named = [CHARGE_PARTITION_WORDS[p] for p in charge_partitions]
     # THE RAMAN SENTENCE IS THE RUN'S ROUTE'S (`with_siesta_raman_route`),
     # added once the run knows whether its optical calls were planned.

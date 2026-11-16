@@ -367,18 +367,17 @@ def _of_nc(p: Path) -> Optional[AtomIndexMap]:
     result's and the transport data file's ``/structure``; a digest's
     root); ``None`` where none does (an engine's ``.TBT.nc``, an older
     file)."""
-    from .ncdata import ATOM_AXIS, read_atom_index_map, reading
+    from .ncdata import ATOM_AXIS, groups, read_atom_index_map, reading
     n = None
     with reading(p) as ds:
-        groups = [ds]
-        while groups:
-            g = groups.pop(0)
+        # THE FILE'S GROUPS by the one walk (`ncdata.groups`): every group
+        # that states a map states the file's one.
+        for _path, g in groups(ds):
             if FIELD_LISTED_BY in g.ncattrs():
                 return replace(read_atom_index_map(g, source=p.name),
                                stated_by=str(p))
             if n is None and ATOM_AXIS in g.dimensions:
                 n = len(g.dimensions[ATOM_AXIS])
-            groups.extend(g.groups.values())
     # A FILE OF OURS WRITTEN BEFORE IT SAID SO, by its catalogue row (F3).
     return _of_older_result(p, n)
 

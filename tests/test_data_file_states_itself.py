@@ -43,7 +43,7 @@ def _write(variables, *, title="the group", stated=True, attrs=None,
                 ds.createGroup("h").setncattr("note", "made by hand")
             if stated:
                 state(ds, title="a test file", schema="test@1",
-                      molbuilder_version="0", source="the test")
+                      molbuilder_version="0", derived_from="the test")
         except ValueError:
             ds.close()
             raise

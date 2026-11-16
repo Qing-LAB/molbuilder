@@ -506,7 +506,7 @@ def _digest_variables(path: Path, result: TransmissionResult,
     values)``; the atom axis as ``atoms``, its atom index map
     (`model/overview.md` § 2.2b)."""
     import numpy as np
-    from molbuilder.ncdata import Var
+    from molbuilder.ncdata import Var, axis_values, coordinate
     data = path.name
     av = meta["averages"]
     files = av.get("files", {})
@@ -524,9 +524,8 @@ def _digest_variables(path: Path, result: TransmissionResult,
             "lead": len(meta["electrodes"]),
             "device_atom": len(meta["device"])}
     rows = [
-        (Var("energy_ev", ("energy_ev",), "coordinate", "eV", "energy",
-             "TBtrans's E - E_F: E_F the leads' Fermi level at 0 V; under a bias V the left lead's chemical potential sits at +V/2 on this axis and the right's at -V/2, at the "
-             "data file's full precision, ascending", source=data),
+        (coordinate("energy_ev", more="TBtrans's, at the data file's full "
+                                      "precision, ascending", source=data),
          np.asarray(result.energy_ev, dtype=float)),
         (Var("device_orbital", ("device_orbital",), "coordinate", "1",
              "the device orbital", "its index in the geometry, from 0 -- "
@@ -536,10 +535,7 @@ def _digest_variables(path: Path, result: TransmissionResult,
              "each device orbital's atom", "its engine index, from 0",
              dtype="i4", auxiliary=True, atom_index=True),
          np.asarray(result.atom, dtype="i4")),
-        (Var("atom", ("atom",), "coordinate", "1", "atom index",
-             "the atom's engine index, from 0 -- the digest is listed by "
-             "engine index (atoms_listed_by); user_atom_index beside it", dtype="i4"),
-         np.arange(n_atoms, dtype="i4")),
+        (coordinate("atom"), axis_values("atom", n_atoms)),
         (Var("atom_bound", ("atom_bound",), "coordinate", "1",
              "an atom's orbital bound", "from 0 to the atom count: bound i "
              "is atom i's first orbital, the last one past the last "
@@ -550,15 +546,8 @@ def _digest_variables(path: Path, result: TransmissionResult,
              "0-based, and one past the last orbital", source=data,
              dtype="i4"),
          np.asarray(result.firsto, dtype="i4")),
-        (Var("xyz", ("xyz",), "coordinate", "", "Cartesian component",
-             "x, y, z", dtype=str),
-         np.asarray(["x", "y", "z"], dtype=object)),
-        (Var("cell_vector", ("cell_vector",), "coordinate", "",
-             "lattice vector", "a, b, c", dtype=str),
-         np.asarray(["a", "b", "c"], dtype=object)),
-        (Var("reciprocal_vector", ("reciprocal_vector",), "coordinate", "",
-             "reciprocal lattice vector", "b1, b2, b3", dtype=str),
-         np.asarray(["b1", "b2", "b3"], dtype=object)),
+        *((coordinate(axis), axis_values(axis, 3))
+          for axis in ("xyz", "cell_vector", "reciprocal_vector")),
         (Var("position", ("atom", "xyz"), "raw", "angstrom",
              "each atom's position", "x, y, z", source=data),
          np.asarray(meta["xyz"], dtype=float)),
@@ -580,9 +569,8 @@ def _digest_variables(path: Path, result: TransmissionResult,
         (Var("wkpt", ("kpoint",), "raw", "1", "each k-point's weight",
              "the data file's own; they sum to 1", source=data),
          np.asarray(meta["wkpt"], dtype=float)),
-        (Var("lead", ("lead",), "coordinate", "",
-             "each lead's name", "as its TS.Elecs block names it",
-             source=data, dtype=str),
+        (coordinate("lead", more="as its TS.Elecs block names it",
+                    source=data),
          np.asarray(meta["electrodes"], dtype=object)),
         (Var("lead_mu", ("lead",), "raw", "eV",
              "each lead's chemical potential", "on the energy axis's "
@@ -628,9 +616,7 @@ def _digest_variables(path: Path, result: TransmissionResult,
                          np.asarray(av[key], dtype=float)))
     if "eigenchannels" in av:
         dims["eigenchannel"] = len(av["eigenchannels"])
-        rows.append((Var("eigenchannel", ("eigenchannel",), "coordinate",
-                         "1", "eigenchannel", "counted from 0, as TBtrans "
-                         "orders them", dtype="i4"),
+        rows.append((coordinate("eigenchannel"),
                      np.arange(len(av["eigenchannels"]), dtype="i4")))
         rows.append((Var("eigenchannel_transmission",
                          ("eigenchannel", "energy_ev"), "raw", "1",
@@ -691,7 +677,7 @@ def _write_digest(path: Path, result: TransmissionResult,
                          "file states of its geometry and its electrodes, "
                          "and TBtrans's own k-averaged quantities"),
               schema=DIGEST_SCHEMA, molbuilder_version=__version__,
-              source="read from " + ", ".join(read_from))
+              derived_from=", ".join(read_from))
         write_group(ds, dims, variables, values)
         ds.setncatts(attrs)
         data = as_bytes(ds)

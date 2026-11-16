@@ -2994,27 +2994,32 @@ def test_the_data_file_holds_every_point_beside_its_frames_definition(
         assert list(J[r.name]) == [cited.customized_value(r.name, frame=f)
                                    for f in range(_N_FRAMES)], r.name
         assert np.array_equal(S[r.name], J[r.name], equal_nan=True), r.name
-    assert [json.loads(x) for x in J["frame_rows"]] == [
+    assert list(J["frame_rows"]) == [
         cited.customized_rows(f) for f in range(_N_FRAMES)]
     masses = cited.annotations[MASS_CHANNEL].data
     assert list(J["atom"]) == list(range(cited.n_atoms))
     assert list(J["element"]) == cited.chemical_symbols()
     assert list(J["mass_amu"]) == [masses[i] for i in range(cited.n_atoms)]
-    assert np.array_equal(J["positions_ang"],
+    assert np.array_equal(J["position_ang"],
                           np.asarray(cited.frames, dtype=float))
     # THE JUNCTION WHOLE: its cell and periodicity, each atom's region and
     # every label it carries, as the composed junction states them.
     composed = recorded_junction(run.bundle).structure.restored()
     assert np.array_equal(J["cell_ang"], np.asarray(composed.cell, float))
-    assert list(J["cell_axis_kind"]) == list(composed.axis_kind)
+    assert list(J["axis_kind"]) == list(composed.axis_kind)
     regions = device_regions(composed)
     assert regions and set(regions) == {"L-electrode", "bridge",
                                         "R-electrode"}, regions
     for a in range(cited.n_atoms):
         want = next((n for n, m in regions.items() if a in m), "")
         assert J["atom_region"][a] == want, a
-        assert json.loads(J["labels"][a]) == [
-            k for k, m in composed.regions.items() if a in m], a
+    # EVERY LABEL, in the structure whole -- never a second encoding.
+    from molbuilder.ncdata import json_attr, unjson_attr
+    stated = G["structure"]["attrs"]["structure_json"]
+    assert stated == unjson_attr(json_attr(composed.to_dict())), (
+        "the structure is not the junction")
+    assert [a for a, h in enumerate(J["held"]) if h == 1] == sorted(
+        composed.frozen_atoms or ()), J["held"]
     # EACH VALUE PLACED BY ITS OWN POINT, as the record states it: the
     # device's facts, the I-V, the averaged conductance.
     rec = _record(run)
@@ -3060,8 +3065,8 @@ def test_the_data_file_holds_every_point_beside_its_frames_definition(
         == frame_labels
     at_structure = {k: v["attrs"]
                     for k, v in G["structure"]["variables"].items()}
-    assert set(at_structure["positions_ang"]["coordinates"].split()) \
-        == frame_labels | {"element", MASS_CHANNEL, "atom_region", "labels",
+    assert set(at_structure["position_ang"]["coordinates"].split()) \
+        == frame_labels | {"element", "atom_region",
                            "user_atom_index", "engine_atom_index"}
     # EACH FRAME ROW'S DEFINITION its meaning as the set writes it
     # (`model/datafiles.md` § 2).
@@ -3168,7 +3173,7 @@ def test_the_data_file_holds_every_runs_convergence_on_its_grid(junction):
         for c, r in enumerate(rows):
             for k, q in (r.get("charges") or {}).items():
                 assert D["scf_charge"][c][parts.index(k)] == q
-        assert json.loads(str(D["scf_phases"])) == p["scf_phases"]
+        assert D["scf_phases"] == p["scf_phases"]
     # THE BRIDGE'S CHARGE FROM 0 V -- each frame against its own 0 V point,
     # the D column (engines/transport.md § 2a.12, *The device's charges*).
     for f in range(_N_FRAMES):
@@ -3276,8 +3281,8 @@ def test_an_export_is_the_data_file_and_its_tables(junction, monkeypatch,
     assert answer.status_code == 200, answer.get_json()
     names = zipfile.ZipFile(io.BytesIO(answer.data)).namelist()
     assert f"{label}.transport-netcdf/{label}.transport.nc" in names
-    named = {json.loads(str(v["variables"]["dos_per_orbital_files"]["data"]))
-             [0]["digest"] for k, v in want.items()
+    named = {v["variables"]["dos_per_orbital_files"]["data"][0]["digest"]
+             for k, v in want.items()
              if k.startswith("points/") and "done" in v["variables"]}
     assert named and {f"{label}.transport-netcdf/{d}" for d in named} <= set(
         names), names
@@ -3824,8 +3829,8 @@ def test_a_pdos_of_a_point_that_shares_energies_is_the_reports(
     path = data_file_path(copy.bundle, label)
     groups = read_data_file(path)["groups"]
     sharing = [k for k, g in groups.items() if k.startswith("points/")
-               and "shared/" in str(g["variables"].get(
-                   "dos_per_orbital_files", {}).get("data", ""))]
+               and any("shared/" in d["digest"] for d in g["variables"].get(
+                   "dos_per_orbital_files", {}).get("data") or ())]
     assert sharing, "no point of the fitted window names a shared digest"
     bridge = sorted(int(a) for a in recorded_junction(
         copy.bundle).structure.restored().regions["bridge"])

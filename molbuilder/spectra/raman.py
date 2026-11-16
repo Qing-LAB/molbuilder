@@ -49,7 +49,7 @@ from ..runpoints import NOT_RUN
 from .activity import CHANNEL_PRESENT_FLOOR_RAMAN_A4_AMU, relative_to_strongest
 
 #: The view's data file, written only by an export (`model/datafiles.md` § 1).
-RAMAN_SCHEMA = "molbuilder/raman-view@2"
+RAMAN_SCHEMA = "molbuilder/raman-view@3"
 READABLE_RAMAN_SCHEMAS = (RAMAN_SCHEMA,)
 
 #: What a page or a script asks (:func:`read_ask`).
@@ -262,7 +262,7 @@ class RamanView:
     spins: Tuple[str, ...]
     #: the run the optical calls were computed in, and SIESTA's version
     run: str
-    siesta_version: str
+    engine_version: str
     #: each file the view was derived from, ``{name, sha256}``
     derived_from: Tuple[Dict[str, str], ...]
 
@@ -282,7 +282,7 @@ class RamanView:
                 "alpha_laser_imag_a3": self.alpha_laser_imag_a3,
                 "cell_volume_a3": self.cell_volume_a3,
                 "spins": list(self.spins),
-                "run": self.run, "siesta_version": self.siesta_version,
+                "run": self.run, "engine_version": self.engine_version,
                 "derived_from": [dict(d) for d in self.derived_from],
                 "modes": [dict(m.__dict__) for m in self.modes]}
 
@@ -445,7 +445,7 @@ def raman_view(result, optical: Mapping[str, Any], *, laser_nm: float,
         cell_volume_a3=volume,
         spins=tuple(str(s) for s in optical.get("spin") or ()),
         run=str(optical.get("run") or ""),
-        siesta_version=str(optical.get("siesta_version") or ""),
+        engine_version=str(optical.get("engine_version") or ""),
         derived_from=tuple(dict(d) for d in derived_from))
 
 
@@ -577,10 +577,9 @@ def _equilibrium_vars():
 
 
 def _mode_vars():
-    from ..ncdata import Var
+    from ..ncdata import Var, coordinate
     return (
-        Var("mode", ("mode",), "coordinate", "1", "the mode",
-            "the mode's 1-based index in the result", dtype="i4"),
+        coordinate("mode"),
         Var("frequency_cm1", ("mode",), "given", "cm-1",
             "the mode's frequency", "the harmonic frequency"),
         Var("dq_amu12_ang", ("mode",), "given", "amu^1/2 angstrom",
@@ -636,15 +635,14 @@ def raman_data_bytes(view: RamanView, *, label: str) -> Tuple[str, bytes]:
         ds = in_memory(name)
         state(ds, title=WHAT, schema=RAMAN_SCHEMA,
               molbuilder_version=__version__,
-              source=(f"derived from "
-                      f"{', '.join(d['name'] for d in view.derived_from)}: "
-                      f"the optical calls SIESTA {view.siesta_version} "
-                      f"computed in {view.run}"))
+              derived_from=", ".join(d["name"] for d in view.derived_from),
+              engine="SIESTA", engine_version=view.engine_version,
+              computed_in=view.run)
         ds.setncatts({
             "label": label,
             "direction": json_attr(list(view.direction)),
             "spins": json_attr(list(view.spins)),
-            "run": view.run, "siesta_version": view.siesta_version,
+            "run": view.run,
             "derived_from": json_attr([dict(d) for d in view.derived_from])})
         for g, vars_, title in (
                 (ds, _view_vars(), None),
@@ -676,20 +674,15 @@ def read_raman_data(path) -> Dict[str, Any]:
     """``<label>.raman.nc`` back as data -- its attributes, its numbers,
     frame 0's alpha and each mode's row; a schema it does not read refused
     by name, with the way back: the view exported again."""
-    from ..ncdata import read_variables, reading, unjson_attr, unnumber_attr
-    with reading(path) as ds:
-        attrs = {k: ds.getncattr(k) for k in ds.ncattrs()}
-        if attrs.get("schema") not in READABLE_RAMAN_SCHEMAS:
-            raise RamanError(f"{Path(path).name} states the schema "
-                             f"{attrs.get('schema')!r}; this molbuilder reads "
-                             f"{', '.join(READABLE_RAMAN_SCHEMAS)} -- export "
-                             f"the view again (jobset export)")
+    from ..ncdata import checked, read_variables, unjson_attr, unnumber_attr
+    with checked(path, schemas=READABLE_RAMAN_SCHEMAS, error=RamanError,
+                 way="export the view again (jobset export)") as (ds, attrs):
         out: Dict[str, Any] = {
             "label": str(attrs.get("label", "")),
             **{k: unjson_attr(attrs[k])
                for k in ("direction", "spins", "derived_from")},
             **{k: str(attrs.get(k, "")) for k in (
-                "run", "siesta_version", "molbuilder_version")}}
+                "run", "engine_version", "molbuilder_version")}}
         for g, vars_ in ((ds, _view_vars()),
                          (ds["equilibrium"], _equilibrium_vars())):
             held = read_variables(g)

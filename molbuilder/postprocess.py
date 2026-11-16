@@ -281,8 +281,8 @@ def pdos(data_file, point, *, atoms=(), labels=(), regions=(),
     label or region that names none, an empty selection, a digest not kept
     when the file was written or not the reading it names."""
     from .atom_permutation import AtomIndexError, checked_indices
-    from .ncdata import unjson_attr
     from .parse.engines.tbtrans_nc import kept_at
+    from .structure import Structure
     from .transport.energies import joined, restricted
     from .transport.tbtnc import READ_WAY, TbtError, per_atom, summed_pdos
     path = Path(data_file)
@@ -310,9 +310,12 @@ def pdos(data_file, point, *, atoms=(), labels=(), regions=(),
         chosen = set(checked_indices(atoms, n, "user index"))
     except AtomIndexError as exc:
         raise TbtError(str(exc)) from exc
+    # THE JUNCTION'S LABELS, the structure's own (`structure_json`, read
+    # through its door): matched as written, never read for meaning.
+    carried = Structure.from_dict(
+        groups["structure"]["attrs"]["structure_json"]).regions or {}
     for label in labels:
-        members = [a for a in range(n)
-                   if label in unjson_attr(str(J["labels"][a]))]
+        members = [int(a) for a in carried.get(label, ())]
         if not members:
             raise TbtError(f"no atom of the junction carries the label "
                            f"{label!r}")
@@ -326,14 +329,13 @@ def pdos(data_file, point, *, atoms=(), labels=(), regions=(),
         raise TbtError("no atoms selected")
     # THE DIGESTS THE FILE NAMES -- only a point every reading of which was
     # kept and named when it was written (`datafile`): none named, its why.
-    named = str(P["dos_per_orbital_files"])
-    if not named:
+    sources = P["dos_per_orbital_files"]
+    if not sources:
         why = (str(P["dos_why"]) or str(P["dos_per_orbital_reading"])
                or "not read")
         raise TbtError(f"{point}: {path.name} names no reading of its DOS "
                        f"per orbital ({why}) -- {READ_WAY}, then summarize "
                        f"or export again")
-    sources = unjson_attr(named)
     if orbitals != "all" and not len(J["orbital"]):
         why = groups["structure"]["attrs"].get("orbitals_why", "")
         raise TbtError(f"{path.name} holds no orbital table ({why}), so "

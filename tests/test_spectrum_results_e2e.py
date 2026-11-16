@@ -671,13 +671,18 @@ def test_the_element_is_the_atoms_element_never_its_species_label(
     `H1` and `H2`, the file states `H` there, the labels kept in the structure
     the group holds whole.  THE SILENT FAILURE: the variable was filled from the
     labels, so a reader selecting gold by element missed every labelled gold
-    atom."""
+    atom.  And the group is the one layout every data file shares
+    (`model/datafiles.md` § 3a): each cell vector's periodicity over
+    `cell_vector` -- a script reading it by lattice vector never handed a
+    Cartesian axis."""
     import xarray as xr
     nc = _data_file(_final(real_water_linear))
     group = xr.load_dataset(nc, group="structure")
     assert [str(e) for e in group.element.values] == ["O", "H", "H"]
     back = Structure.from_dict(read_spectra_data(nc)["structure"])
     assert back.elements == ["O", "H1", "H2"]
+    assert group.axis_kind.dims == ("cell_vector",), group.axis_kind.dims
+    assert list(group.axis_kind.values) == list(back.axis_kind)
 
 
 def test_every_axis_is_a_coordinate_a_reader_selects_by(real_water_probed):

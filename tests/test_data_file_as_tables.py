@@ -48,7 +48,7 @@ def _a_data_file() -> bytes:
         ds = in_memory("x.nc")
         write_group(ds, dims, variables, values)
         state(ds, title="a transport calculation's transmission",
-              schema="test@1", molbuilder_version="0", source="the test")
+              schema="test@1", molbuilder_version="0", derived_from="the test")
         ds.setncatts({"label": "T"})
         return as_bytes(ds)
 
@@ -107,7 +107,7 @@ def test_a_groups_variables_are_tables_under_its_name():
         write_group(g, {"mode": 2, "xyz": 3}, mode, values,
                     title="the normal modes")
         state(ds, title="a vibration result", schema="test@1",
-              molbuilder_version="0", source="the test")
+              molbuilder_version="0", derived_from="the test")
         data = as_bytes(ds)
     tables, readme = as_tables(data, "V.spectra.nc")
     assert sorted(tables) == ["modes/mode.csv", "modes/mode_xyz.csv"]

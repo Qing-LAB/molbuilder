@@ -262,9 +262,10 @@ _HOST_ENV = _read_host_env()
 #: interpreters -- the same trap the gcc pin documents at length below.
 #:
 #: THE FLOOR IS REAL AND IS NOT ENFORCED HERE.  `pyproject.toml` says
-#: ``requires-python = ">=3.11"``, and `template.py` imports `tomllib`
-#: unconditionally, so anything below 3.11 builds a multi-gigabyte env and
-#: then fails at `import molbuilder` from inside it.  The shim shape-checks
+#: ``requires-python = ">=3.12"`` (the user, 2026-11-16) -- molbuilder's
+#: code uses Python 3.12's f-string grammar -- so anything below 3.12 builds
+#: a multi-gigabyte env and then fails at `import molbuilder` from inside
+#: it.  The shim shape-checks
 #: the value before the solver ever sees it (`_mb_set_python`), which is the
 #: only place that check can be cheap.  Setting the variable directly is the
 #: expert path and skips it, exactly as `MOLBUILDER_GCC` does.

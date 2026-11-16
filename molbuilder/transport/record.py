@@ -635,15 +635,6 @@ def readings_kept(readings: Optional[Sequence[Dict]]) -> bool:
                                   for d in readings)
 
 
-def engine_version(runtime_info: Optional[Dict]) -> Optional[str]:
-    """The version a run's output states its engine is -- SIESTA's build
-    header, which TBtrans prints too (``Version :``, `siesta_grammar.
-    BUILD_VERSION`) -- or ``None``: each run's ``engine_version``
-    (`engines/transport.md` § 2a.12)."""
-    version = ((runtime_info or {}).get("siesta_build") or {}).get("version")
-    return str(version) if version else None
-
-
 def _science(out: Path) -> Dict:
     """A rung run's own answer, read from its engine output: its SCF as it
     ran (every row of its last step, phase-tagged, with each phase's
@@ -651,6 +642,7 @@ def _science(out: Path) -> Dict:
     a NEGF phase's own figures, a lead's E_F -- or ``unreadable`` with the
     parser's first sentence."""
     from ..parse import detect
+    from ..parse.engines.siesta_reader import engine_version
     fact: Dict = {}
     try:
         res = detect(str(out)).parse(str(out))
@@ -890,7 +882,7 @@ def collect_record(calc, *, partial: bool = False) -> Dict:
     from ..parse.engines.tbtrans import loop_record
     from ..runpoints import NOT_RUN
     from ..parse.engines._run_ending import keep_reading, version_of
-    from ..parse.engines.siesta_reader import read_output
+    from ..parse.engines.siesta_reader import engine_version, read_output
     from ..runfiles import JUNCTION_FILE
     from ..frame_average import (AverageError, average_block, average_said,
                                  citation_block)

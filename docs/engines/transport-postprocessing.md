@@ -145,11 +145,20 @@ t[(t.frame == 0) & (t.bias_v == 0.2)].plot(x="energy_ev", y="transmission")
 ```python
 j = xr.load_dataset("T.transport.nc", group="structure")
 j.cell_ang.values                   # the lattice vectors as rows, angstrom
-j.cell_axis_kind.values             # isolated / periodic / transport, per vector
+j.axis_kind.values                  # isolated / periodic / transport, per vector
 j.atom_region.to_series()           # L-electrode, bridge, R-electrode -- or empty
-j.labels.values                     # every label each atom carries, JSON
 p.dos_atom.sum()                    # how many atoms this point's DOS covers
+
+import json
+from molbuilder.structure import Structure
+junction = Structure.from_dict(json.loads(j.attrs["structure_json"]))
+junction.regions                    # every label and its atoms, yours among them
 ```
+
+`/structure` is laid out as the framework lays out a structure
+([`model/datafiles.md`](?doc=model/datafiles.md) § 3a): a vibration result's
+`.spectra.nc` holds the same variables, its `position_ang` one geometry's
+(`atom`, `xyz`) where this file's runs over its frames.
 
 `dos_region` is the DOS per orbital summed over the atoms of a region that
 the point's DOS covers (`atom_region`, `dos_atom`); a sum over atoms you

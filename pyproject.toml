@@ -47,14 +47,13 @@ name = "molbuilder"
 dynamic = ["version"]
 description = "Build 3-D molecules from sequences / SMILES / names; emit SIESTA / PySCF / ASE input."
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 authors = [{ name = "Quan Qing", email = "qqing@asu.edu" }]
 license = { text = "BSD-3-Clause" }
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Science/Research",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Topic :: Scientific/Engineering :: Chemistry",
 ]

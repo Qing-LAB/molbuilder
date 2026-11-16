@@ -1588,6 +1588,15 @@ class SiestaReader:
                 "warnings": self.warnings, **self._forces_now()}
 
 
+def engine_version(runtime_info) -> Optional[str]:
+    """THE VERSION AN OUTPUT STATES its engine is -- SIESTA's build header,
+    which TBtrans prints too (``Version :``, `siesta_grammar.BUILD_VERSION`)
+    -- or ``None``: the one reader of it, every data file's
+    ``engine_version`` (`model/datafiles.md` § 3a)."""
+    version = ((runtime_info or {}).get("siesta_build") or {}).get("version")
+    return str(version) if version else None
+
+
 def read_output(path, *, warn: Optional[Callable[[int, str, str, str], None]]
                 = None) -> SiestaReader:
     """THE ONE WAY A SIESTA OUTPUT IS READ: line by line, as the file holds

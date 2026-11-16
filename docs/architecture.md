@@ -271,8 +271,9 @@ schema strings + the config↔scheduler parameter vocabulary is the **data
 vocabulary** in [`execution/job-contracts.md`](?doc=execution/job-contracts.md).
 New persisted artifacts MUST be registered there; a JSON record is read by
 `persist.read_object(path, schema=…)`, a TOML one checked by
-`persist.check_schema`, a NetCDF data file through `ncdata`
-([`model/datafiles.md`](?doc=model/datafiles.md)). The structure save file itself
+`persist.check_schema`, a NetCDF data file through `ncdata`, its schema by
+the same `persist.check_schema`
+([`model/datafiles.md`](?doc=model/datafiles.md) § 3a). The structure save file itself
 (`.molstruct.json`, its envelope and schema versions — v7–v17 read) is
 [`model/structure-molstruct.md`](?doc=model/structure-molstruct.md).
 

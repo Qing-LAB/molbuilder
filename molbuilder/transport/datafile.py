@@ -37,7 +37,8 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 
-from ..ncdata import Var, json_attr
+from ..ncdata import (Var, coordinate, json_attr, structure_attrs,
+                      structure_values, structure_vars)
 from ..runfiles import (ROLE_TBT_DIGEST, TBT_CHANNEL_TAGS, TBTRANS_AVADOS,
                         TBTRANS_AVBDOS, TBTRANS_AVDOS, TBTRANS_AVTEIG,
                         TBTRANS_AVTRANS, TBTRANS_NC, shown)
@@ -49,13 +50,15 @@ from .stages import same_volts
 
 #: The file's schema, stated in it: an older file is refused by its
 #: version, and `summarize task` writes it again.
-DATA_SCHEMA = "molbuilder/transport-data@10"
+DATA_SCHEMA = "molbuilder/transport-data@11"
 
-#: THE ROOT ATTRIBUTES THIS FILE WRITES AS JSON TEXT (`ncdata.json_attr`,
-#: :func:`data_file_bytes`; `engines/transport.md` § 2a.12 names each
-#: "JSON") -- read back as the blocks they hold by its door
-#: (:func:`read_data_file`, `ncdata.unjson_attr`).  The frames' part names
-#: its own (`frame_average.JSON_ATTRS`).
+#: THE ATTRIBUTES THIS FILE WRITES AS JSON TEXT, on its root and the
+#: summary (`ncdata.json_attr`, :func:`data_file_bytes`;
+#: `engines/transport.md` § 2a.12 names each "JSON") -- read back as the
+#: blocks they hold by its door (:func:`read_data_file`,
+#: `ncdata.unjson_attr`).  The frames' part names its own
+#: (`frame_average.JSON_ATTRS`); ``/structure``'s structure the framework
+#: reads (`ncdata.read_file`).
 JSON_ATTRS = ("current_means", "provenance_chain", "iv_notes",
               "fermi_frames", "scf_criteria")
 
@@ -132,10 +135,9 @@ def _variables() -> Tuple[Var, ...]:
     from ..frame_average import data_file_variables
     S = str
     return (
-        Var("frame", ("frame",), "coordinate", "1", "frame index",
-            "its index, counted from 0 as MolView's API counts; a message and "
-            "the page number it from 1 (model/structure.md 2.2e)",
-            dtype="i4"),
+        coordinate("frame", more=(
+            "the frame set's, as MolView's API counts; a message and the "
+            "page number it from 1 (model/structure.md 2.2e)")),
         Var("frame_token", ("frame",), "coordinate", "", "the frame's folder",
             "its index: f000 is frame index 0 (engines/transport.md 2a.11); "
             "empty for one structure, which has no frame level",
@@ -143,27 +145,22 @@ def _variables() -> Tuple[Var, ...]:
         Var("bias_v", ("bias_v",), "coordinate", "V", "bias voltage",
             "the voltage the device and the transmission ran at -- the "
             "description's list, in its order"),
-        Var("energy_ev", ("energy_ev",), "coordinate", "eV", "energy",
-            "E - E_F: E_F the leads' Fermi level at 0 V; under a bias V the left lead's chemical potential sits at +V/2 on this axis and the right's at -V/2: the transmission's "
-            "grid, at the full precision of each point's "
-            f"{shown(TBTRANS_NC, tbt=_TBT)}, ascending; "
-            "TBtrans's text files, printed to 5 decimals, put on it within "
-            "half that decimal"),
-        Var("spin", ("spin",), "coordinate", "", "spin channel",
-            "the record's: the one channel of a non-polarized run, or up "
-            "and down", dtype=S),
+        coordinate("energy_ev", more=(
+            "the transmission's grid, at the full precision of each "
+            f"point's {shown(TBTRANS_NC, tbt=_TBT)}, ascending; TBtrans's "
+            "text files, printed to 5 decimals, put on it within half that "
+            "decimal")),
+        coordinate("spin", more="the record's"),
         Var("iv_bias_v", ("iv_bias_v",), "coordinate", "V",
             "the I-V's voltage",
             "the description's voltage list, in its order"),
-        Var("atom", ("atom",), "coordinate", "1", "atom index",
-            "the atom's user index, from 0 -- the file is listed by user "
-            "index (atoms_listed_by), the composed junction put back in the "
-            "user order through its order record; engine_atom_index beside "
-            "it (model/overview.md 2.2b)", dtype="i4"),
-        Var("xyz", ("xyz",), "coordinate", "", "Cartesian component",
-            "x, y, z", dtype=S),
-        Var("element", ("atom",), "given", "", "the atom's element",
-            "as the composed junction states it", dtype=S, auxiliary=True),
+        # THE JUNCTION WHOLE, in the framework's one structure layout
+        # (`model/datafiles.md` § 3a; the user, 2026-11-16: "junction's cell
+        # should be saved together with structure"): each atom's element,
+        # every frame's positions, its mass and whether it was held, the
+        # cell and each cell vector's periodicity, the structure whole in
+        # `structure_json` -- its labels among it.
+        *structure_vars(frames=True),
         # THE JUNCTION'S BASIS, every orbital in the device run's order --
         # what a PDOS of chosen atoms narrows by (`engines/transport.md`
         # § 2a.12, *A PDOS of the atoms you choose, from the files*).
@@ -184,21 +181,8 @@ def _variables() -> Tuple[Var, ...]:
             "its l and m in the orbital menu's words -- s, px, py, pz, d "
             "(tbtnc.ORBITAL_TYPES) -- empty for an l the menu does not "
             "offer", dtype=S),
-        # THE JUNCTION WHOLE (the user, 2026-11-16: "junction's cell should
-        # be saved together with structure"): its cell, its periodicity,
-        # each atom's region and labels (`engines/transport.md` § 2a.12,
-        # *The junction, whole*).
-        Var("cell_vector", ("cell_vector",), "coordinate", "",
-            "lattice vector", "a, b, c: the cell's rows", dtype=S),
-        Var("cell_ang", ("cell_vector", "xyz"), "given", "angstrom",
-            "the junction's cell",
-            "its three lattice vectors as rows, as the composed junction "
-            "states them -- the same for every frame"),
-        Var("cell_axis_kind", ("cell_vector",), "given", "",
-            "each cell vector's periodicity",
-            "as the composed junction states it: periodic, isolated, or "
-            "transport -- the electrodes' semi-infinite direction "
-            "(model/structure-periodicity.md)", dtype=S),
+        # EACH ATOM'S REGION molbuilder owns (`engines/transport.md`
+        # § 2a.12, *The junction, whole*).
         Var("atom_region", ("atom",), "given", "", "the atom's region",
             "the region molbuilder owns that it lies in -- L-electrode, "
             "bridge, R-electrode -- from the composed junction's labels "
@@ -206,27 +190,16 @@ def _variables() -> Tuple[Var, ...]:
             "sums the atoms of a region that a point's DOS covers "
             "(dos_atom); the region axis names the three",
             dtype=S, auxiliary=True),
-        Var("labels", ("atom",), "given", "", "the atom's labels",
-            "every label the composed junction states for it, as written, a "
-            "JSON list -- the person's own among them, matched as written "
-            "by a selection and never read for meaning", dtype=S,
-            auxiliary=True),
         Var("region", ("region",), "coordinate", "", "device region",
             "the regions molbuilder owns: L-electrode, bridge, R-electrode",
             dtype=S),
-        Var("lead", ("lead",), "coordinate", "", "lead",
-            "the two leads, as TBtrans names them (transiesta.LEAD_NAMES)",
-            dtype=S),
-        Var("eigenchannel", ("eigenchannel",), "coordinate", "1",
-            "eigenchannel", "counted from 0, as TBtrans orders them -- as "
-            "many as its files hold, those it was asked for (TBT.T.Eig), "
-            "each spin channel's; none where no file is read", dtype="i4"),
-        # THE FRAMES' POST-PROCESS: their rows, their masses and their
-        # average (`frame_average`).
+        coordinate("lead", more="transiesta.LEAD_NAMES"),
+        coordinate("eigenchannel", more=(
+            "as many as its files hold, those it was asked for (TBT.T.Eig), "
+            "each spin channel's; none where no file is read")),
+        # THE FRAMES' POST-PROCESS: their rows and their average
+        # (`frame_average`).
         *data_file_variables(Var),
-        Var("positions_ang", ("frame", "atom", "xyz"), "given", "angstrom",
-            "atom positions", "every frame's coordinates, listed by user index "
-            "-- the composed junction restored"),
         Var("transmission_by_spin", ("frame", "bias_v", "spin", "energy_ev"),
             "raw", "1", "transmission, by spin channel",
             "T(E), k-averaged, channel by channel",
@@ -385,7 +358,7 @@ def _variables() -> Tuple[Var, ...]:
             "data file it states, [its size in bytes, its modification time "
             "in ns] when it was read: the reading dos_region is summed from, "
             "which postprocess.pdos reads back; empty where none is kept",
-            dtype=S),
+            dtype=S, json=True),
         Var("dos_per_orbital_reading", ("frame", "bias_v"), "state", "",
             "the point's data-file reading, the DOS by region's",
             "kept, or each data file's state in its words -- a reading just "
@@ -470,7 +443,7 @@ def _variables() -> Tuple[Var, ...]:
             source="the device point's SIESTA output"),
         Var("device_scf_phases", ("frame", "bias_v"), "state", "",
             "the device run's phases", "periodic and negf: what each had to "
-            "reach and how it ended, JSON", dtype=S),
+            "reach and how it ended, JSON", dtype=S, json=True),
         Var("rung_state", ("rung",), "state", "", "the stage's state",
             "the run door's word for its run", dtype=S),
         Var("rung_detail", ("rung",), "state", "",
@@ -491,7 +464,8 @@ def _variables() -> Tuple[Var, ...]:
             dtype="i4", fill=-1),
         *_scf_vars("rung", ("rung", "scf_cycle"), _SCF_COLUMNS),
         Var("rung_scf_phases", ("rung",), "state", "", "the stage's phases",
-            "what each had to reach and how it ended, JSON", dtype=S),
+            "what each had to reach and how it ended, JSON", dtype=S,
+            json=True),
         Var("rung_copied_from", ("rung",), "state", "",
             "the run a stage's newest run is a copy of",
             "a calculation that reuses a finished one "
@@ -772,41 +746,29 @@ def data_file_bytes(calc, record: Dict, *,
     values["energy_ev"][:] = grid
     values["spin"][:] = spins
     values["iv_bias_v"][:] = iv_biases
-    values["atom"][:] = np.arange(n_atoms)
-    values["xyz"][:] = ["x", "y", "z"]
     values["region"][:] = list(DEVICE_REGIONS)
     values["lead"][:] = leads
     values["eigenchannel"][:] = np.arange(n_eig)
     values["rung"][:] = once
     values["scf_cycle"][:] = np.arange(n_cycles)
     values["charge_part"][:] = parts
-    values["cell_vector"][:] = ["a", "b", "c"]
     values["orbital"][:] = np.arange(len(basis))
     for k, name in enumerate(("orbital_atom", "orbital_n", "orbital_l",
                               "orbital_m", "orbital_zeta", "orbital_type")):
         values[name][:] = [row[k] for row in basis]
+    # THE JUNCTION WHOLE through the framework's one structure door, the
+    # user order's, as the restored junction states it, its masses the
+    # frame set's as numbers (`frame_average.mass_numbers`).
+    from ..frame_average import mass_numbers
+    values.update(structure_values(
+        junction.to_dict() if junction is not None else None, atoms,
+        masses=mass_numbers(junction) if junction is not None else None,
+        frames=n_frames))
     if junction is not None:
-        # The element, never the species label (`Au1` is gold): the
-        # variable says "the atom's element" (`Structure.chemical_symbols`).
-        values["element"][:] = junction.chemical_symbols()
-        values["positions_ang"][:] = np.asarray(
-            junction.frames if n_frames > 1 else [junction.positions])
-        # THE JUNCTION WHOLE: its cell and periodicity, each atom's region
-        # molbuilder owns and every label it carries -- the user order's,
-        # as the restored junction states them.
-        if junction.cell is not None:
-            values["cell_ang"][:] = np.asarray(junction.cell, dtype=float)
-        values["cell_axis_kind"][:] = list(junction.axis_kind)
         from .record import device_regions
         for name, members in device_regions(junction).items():
             for a in members:
                 values["atom_region"][a] = name
-        carried: List[List[str]] = [[] for _ in range(n_atoms)]
-        for label, members in (junction.regions or {}).items():
-            for a in members:
-                carried[int(a)].append(label)
-        for a, labels in enumerate(carried):
-            values["labels"][a] = json_attr(labels)
 
     # EACH RUN'S ENGINE, as its output states it: the stages', each point's
     # TBtrans, each point's device run (`engines/transport.md` § 2a.12).
@@ -861,7 +823,7 @@ def data_file_bytes(calc, record: Dict, *,
         # only where every reading is kept (`record.collect_record`).
         sources = (p.get("dos") or {}).get("per_orbital")
         if sources:
-            values["dos_per_orbital_files"][f, b] = json_attr(sources)
+            values["dos_per_orbital_files"][f, b] = sources
         dos = p.get("dos") or {}
         _copied(dos, (("total", "dos_total"),), (f, b), values)
         for r, region in enumerate(DEVICE_REGIONS):
@@ -941,8 +903,8 @@ def data_file_bytes(calc, record: Dict, *,
         if slot.get(key) is not None:
             attrs[f"citation_{key}" if key != "citation" else "citation"] = (
                 str(slot[key]))
-    # THE FRAMES' PART -- their rows, masses and average, and what is said
-    # of them: the post-process's (`frame_average`).
+    # THE FRAMES' PART -- their rows and average, and what is said of
+    # them: the post-process's (`frame_average`).
     fill_data_file(values, attrs, junction, average, biases, _index)
     # HOW THE I-V WAS COMPUTED, as the record states it (§ 2a.10).
     attrs["iv_computed"] = str(iv.get("computed") or "")
@@ -965,8 +927,6 @@ def data_file_bytes(calc, record: Dict, *,
     # 2026-11-16: "transport can also save siesta version where appropriate
     # in the meta data").
     found = sorted({v for by in versions.values() for v in by.values()})
-    engine = (f"SIESTA {' and '.join(found)}" if found
-              else "SIESTA, its version not stated by the runs' outputs")
 
     # THE FILE, through the variable record's one writing loop (`ncdata`),
     # group by group, stating itself (`model/datafiles.md` § 2b).
@@ -977,16 +937,21 @@ def data_file_bytes(calc, record: Dict, *,
                          f"stage that runs once, each point and its device "
                          f"run, and a summary across the points"),
               schema=DATA_SCHEMA, molbuilder_version=__version__,
-              source=(f"computed by {engine} -- its TranSIESTA and TBtrans "
-                      f"-- in the calculation's runs, each stage's run named "
-                      f"in provenance_chain and each point's in its folder; "
-                      f"each variable's source names its file"))
+              engine="SIESTA", engine_version=" and ".join(found),
+              computed_in=("the calculation's runs -- its TranSIESTA and "
+                           "TBtrans -- each stage's run named in "
+                           "provenance_chain and each point's in its folder; "
+                           "each variable's source names its file"))
         # A FRAME ROW'S DEFINITION is its meaning as the set writes it
         # (`model/datafiles.md` § 2).
         _write_groups(ds, dims, with_meanings(VARIABLES, junction), values,
                       label=attrs["label"], once=once, biases=biases,
                       n_frames=n_frames, versions=versions,
-                      group_words={"structure": {"orbitals_why": orbitals_why},
+                      group_words={"structure": {
+                          "orbitals_why": orbitals_why,
+                          **structure_attrs(junction.to_dict()
+                                            if junction is not None
+                                            else None)},
                             "summary": {k: attrs[k] for k in
                                         ("iv_computed", "iv_notes")}})
         ds.setncatts(attrs)
@@ -1026,11 +991,16 @@ def _write_groups(ds, dims: Dict[str, Any], variables: Sequence[Var],
             idx = tuple(at.get(d, slice(None)) for d in v.dims)
             out_vars.append(replace(v, name=name, dims=tuple(
                 d for d in v.dims if d not in at)))
-            # A CELL OF THE ONE ARRAY, kept an array of its own type: a
-            # text cell indexes out as a bare string, which the writer
-            # cannot size.
+            # A CELL OF THE ONE ARRAY, kept an array of its own type and
+            # its remaining dimensions: cut by slices of one, never indexed
+            # down to a bare element -- a text the writer cannot size, a
+            # record (a list) numpy would spread over a new axis.
             whole = values[v.name]
-            out_values[name] = (np.asarray(whole[idx], dtype=whole.dtype)
+            one = [isinstance(i, (int, np.integer)) for i in idx]
+            cut = whole[tuple(slice(i, i + 1) if o else i
+                              for i, o in zip(idx, one))]
+            out_values[name] = (cut.reshape([n for n, o in zip(cut.shape, one)
+                                             if not o])
                                 if idx else whole)
         for v, value in extra:
             out_vars.append(v)
@@ -1040,8 +1010,8 @@ def _write_groups(ds, dims: Dict[str, Any], variables: Sequence[Var],
             out_vars.append(axes[d])
             out_values[d] = values[d]
         # THE LABELS OF AN AXIS'S POINTS GO WITH IT -- a frame's folder and
-        # rows, an atom's element, region and labels -- into every group
-        # that runs over it, so each is read alone (CF `coordinates`).
+        # rows, an atom's element and region -- into every group that runs
+        # over it, so each is read alone (CF `coordinates`).
         for v in labels_of:
             if v.dims[0] in used and v.name not in out_values:
                 out_vars.append(v)
@@ -1055,8 +1025,8 @@ def _write_groups(ds, dims: Dict[str, Any], variables: Sequence[Var],
     structure = ds.createGroup("structure")
     put(structure, members("structure"), {}, "",
         f"the junction of {label} as the calculation composed it, listed "
-        f"by user index: its cell, each atom with its region and labels, "
-        f"its basis orbitals, every frame")
+        f"by user index: the structure whole, its cell, each atom with its "
+        f"region, its basis orbitals, every frame")
     structure.setncatts(group_words["structure"])
     stages = ds.createGroup("stages")
     stages.setncattr("title", "each stage that runs once, a group each, by "
@@ -1184,7 +1154,7 @@ def _run_facts(run: Dict, prefix: str, cell: Tuple, values: Dict[str, Any],
             run["scf_converged"]))
     _copied(run, also, cell, values)
     if run.get("scf_phases"):
-        values[f"{prefix}_scf_phases"][cell] = json_attr(run["scf_phases"])
+        values[f"{prefix}_scf_phases"][cell] = run["scf_phases"]
     # A RUN THAT DID NOT RUN states no history: its count keeps the fill,
     # -1, never 0, which is a count (§ 2a.12).
     if "scf" not in run:
@@ -1203,31 +1173,20 @@ def read_data_file(path) -> Dict[str, Any]:
     "attrs"}}}}}`` -- every group by its path (``structure``,
     ``stages/seed``, ``points/v0.2``, ``points/v0.2/device``, ``summary``),
     each variable's values as numpy arrays (a number's fill NaN, a flag's
-    -1), its units, long name, definition and source; the root's attributes
-    written as JSON text (:data:`JSON_ATTRS`, the frames' part's
-    `frame_average.JSON_ATTRS`) as the block each holds, where the file
-    holds it.  The file's door (`runfiles.WRITTEN`); refuses another schema
-    by name."""
+    -1; a record the record), its units, long name, definition and
+    source; the attributes written as JSON text (:data:`JSON_ATTRS`, the
+    frames' part's `frame_average.JSON_ATTRS`, ``/structure``'s structure)
+    as the block each holds, where the file holds it -- the root among the
+    groups under ``""``, its attributes and no variable
+    (`ncdata.read_file`).  The file's door (`runfiles.WRITTEN`); refuses
+    another schema by name."""
     from ..frame_average import JSON_ATTRS as FRAME_JSON_ATTRS
-    from ..ncdata import read_variables, reading, unjson_attr
-    groups: Dict[str, Dict[str, Any]] = {}
-
-    def walk(group, at: str) -> None:
-        for name, g in group.groups.items():
-            here = f"{at}/{name}" if at else name
-            groups[here] = {"attrs": {k: g.getncattr(k) for k in g.ncattrs()},
-                            "variables": read_variables(g)}
-            walk(g, here)
-    with reading(path) as ds:
-        attrs = {k: ds.getncattr(k) for k in ds.ncattrs()}
-        if attrs.get("schema") != DATA_SCHEMA:
-            raise DataFileError(f"{Path(path).name} states the schema "
-                                f"{attrs.get('schema')!r}, not {DATA_SCHEMA} "
-                                f"-- jobset summarize task writes it again")
-        walk(ds, "")
+    from ..ncdata import read_file, unjson_attr
+    got = read_file(path, schemas=(DATA_SCHEMA,), error=DataFileError,
+                    way="jobset summarize task writes it again")
     # A RECORD IS A RECORD WHEREVER IT IS WRITTEN -- the root's, and the
     # summary's own copy of the I-V's notes.
-    for at in [attrs, *(g["attrs"] for g in groups.values())]:
+    for at in [got["attrs"], *(g["attrs"] for g in got["groups"].values())]:
         at.update({k: unjson_attr(at[k])
                    for k in JSON_ATTRS + FRAME_JSON_ATTRS if k in at})
-    return {"attrs": attrs, "groups": groups}
+    return got

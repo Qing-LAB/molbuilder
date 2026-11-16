@@ -218,9 +218,11 @@ ds.force_within_tolerance.sel(run="01_coarse/run-0") == 1
 ```
 
 **A flag has three states**, yes, no and not stated. `read_optimization_data` gives
-them as `True`, `False` and `None`; xarray as `1.0`, `0.0` and NaN; a table as `1`, `0`
-and an empty cell. **Test `== 1`**: `bool(NaN)` is true, so `bool(...)` or `.all()`
-reads a rung that died as passed.
+them as the file stores them, `1`, `0` and `-1`
+([`model/datafiles.md`](?doc=model/datafiles.md) § 3a); xarray as `1.0`, `0.0` and
+NaN; a table as `1`, `0` and an empty cell. **Test `== 1`**, which means yes on
+every road: `bool(-1)` and `bool(NaN)` are true, so `bool(...)` or `.all()` reads a
+rung that died as passed.
 
 | variable | over | what it holds |
 |---|---|---|
@@ -238,7 +240,7 @@ reads a rung that died as passed.
 | `held` | `run`, `atom` | whether the run's output says it holds the atom |
 | `applied_offset_ang` | `run`, `xyz` | what prep moved the structure it was handed by (§ 3) |
 | `cell_ang` | `run`, `cell_vector`, `xyz` | the cell the run ended in, else the box its deck placed the atoms in, which on an isolated axis is no lattice |
-| `axis_kind` | `run`, `xyz` | each axis's kind |
+| `axis_kind` | `run`, `cell_vector` | each cell vector's periodicity — periodic, isolated or transport, as the run's structure states it |
 
 The framework it follows, and what every data file promises:
 [`model/datafiles.md`](?doc=model/datafiles.md).

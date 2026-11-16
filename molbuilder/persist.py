@@ -44,24 +44,31 @@ def schema_name(schema: str) -> str:
     return s.rsplit("@", 1)[0]
 
 
-def check_schema(got: str, want: str, *, label: str = "") -> None:
-    """Raise :class:`ValueError` unless ``got`` and ``want`` name the SAME
-    artifact at the same major (tolerate same-major minor bumps, reject a
-    different major).  ``label`` prefixes the message so the artifact is
-    obvious.
+def check_schema(got: str, want, *, label: str = "", error=ValueError,
+                 way: str = "") -> None:
+    """Raise ``error`` (:class:`ValueError`) unless ``got`` names the SAME
+    artifact at the same major as ``want`` -- one schema, or every one its
+    reader reads (a data file's older versions read as they are,
+    `model/datafiles.md` § 3a) -- tolerating same-major minor bumps,
+    rejecting a different major.  ``label`` prefixes the message so the
+    artifact is obvious; ``way`` is the way on, said after it (a data file
+    written again by its command).
 
-    The single enforcement point for the schema convention.  The NAME half
-    is what says which artifact this is: comparing majors alone, any ``@1``
-    artifact would parse as any other, and ``task.json`` handed to the
-    Environment reader would sail through the gate and fail later."""
-    if (schema_name(got) != schema_name(want)
-            or schema_major(got) != schema_major(want)):
+    The single enforcement point for the schema convention, every record's
+    and every data file's.  The NAME half is what says which artifact this
+    is: comparing majors alone, any ``@1`` artifact would parse as any
+    other, and ``task.json`` handed to the Environment reader would sail
+    through the gate and fail later."""
+    wants = [want] if isinstance(want, str) else list(want)
+    if not any(schema_name(got) == schema_name(w)
+               and schema_major(got) == schema_major(w) for w in wants):
         prefix = f"{label} " if label else ""
-        raise ValueError(
+        raise error(
             f"{prefix}schema mismatch: "
             + (f"it says {got!r}" if got else "it names no schema")
-            + f", this molbuilder reads "
-              f"{schema_name(want)}@{schema_major(want)}.")
+            + ", this molbuilder reads "
+            + ", ".join(f"{schema_name(w)}@{schema_major(w)}" for w in wants)
+            + (f" -- {way}" if way else "") + ".")
 
 
 def unknown_keys(obj, allowed, note: str = "", *,

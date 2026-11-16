@@ -112,7 +112,7 @@ def test_the_export_holds_the_steps_and_says_why_a_run_holds_none(
     assert list(got["run_of_step"]) == [got["run"][0]] * len(steps.energy_ev)
     assert "holds no step its run finished" in got["said"][1]
     assert np.isnan(got["final_energy_ev"][1])
-    assert got["force_within_tolerance"][1] is None
+    assert got["force_within_tolerance"][1] == -1     # not stated
     assert list(got["element"]) == list(steps.elements)
     assert np.allclose(got["position_ang"], steps.positions_ang)
     assert np.allclose(got["force_ev_per_ang"], steps.forces_ev_per_ang)
@@ -120,8 +120,9 @@ def test_the_export_holds_the_steps_and_says_why_a_run_holds_none(
     assert np.allclose(got["max_force_free_ev_per_ang"],
                        steps.max_force_free_ev_per_ang)
     assert np.allclose(got["applied_offset_ang"][0], steps.applied_offset_ang)
-    assert [i for i, h in enumerate(got["held"][0]) if h] == [0]
-    assert got["force_within_tolerance"][0] is steps.relaxation["converged"]
+    assert [i for i, h in enumerate(got["held"][0]) if h == 1] == [0]
+    assert got["force_within_tolerance"][0] == int(
+        steps.relaxation["converged"])
 
 
 def test_the_trajectory_beside_a_run_s_progress_log_and_the_atom_index_door_read_it(

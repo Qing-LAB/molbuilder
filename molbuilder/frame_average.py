@@ -682,7 +682,7 @@ def _wire(rows, structure) -> Dict[str, Any]:
         # no list).
         "mode": _states_a_mode(rows),
     }
-    masses = _masses(structure)
+    masses = masses_of(structure)
     if masses is not None:
         out["masses_amu"] = masses
     info = (structure.info or {}).get(INFO_KEY)
@@ -713,12 +713,14 @@ def citation_block(structure, provenance: Optional[Dict]
             "files": dict(prov.get("files") or {}),
             "rows": list(rows.structure) if rows is not None else [],
             "vibration": dict(info) if isinstance(info, dict) else None,
-            MASS_CHANNEL: _masses(structure)}
+            MASS_CHANNEL: masses_of(structure)}
 
 
-def _masses(structure) -> Optional[List[Any]]:
+def masses_of(structure) -> Optional[List[Any]]:
     """Every atom's value on the :data:`MASS_CHANNEL` channel, as written,
-    where the structure carries it as a value channel -- else ``None``."""
+    where the structure carries it as a value channel -- else ``None``: the
+    masses a data file's ``/structure`` states (`ncdata.structure_values`;
+    which masses, the set's ``mass_source``)."""
     channel = (structure.annotations or {}).get(MASS_CHANNEL)
     data = getattr(channel, "data", None)
     if getattr(channel, "kind", None) != "value" or not isinstance(data, dict):
@@ -729,6 +731,15 @@ def _masses(structure) -> Optional[List[Any]]:
 # ----------------------------------------------------------------------- #
 #  The data file's frame part                                              #
 # ----------------------------------------------------------------------- #
+
+def mass_numbers(structure) -> Optional[List[float]]:
+    """Every atom's mass as a data file states it -- :func:`masses_of`,
+    one that is not a finite number the fill, NaN, as every frame row's
+    (:func:`_or_nan`) -- or ``None`` where the structure carries no
+    masses."""
+    masses = masses_of(structure)
+    return None if masses is None else [_or_nan(m) for m in masses]
+
 
 def _or_nan(value) -> float:
     """``value`` as a number for a variable, NaN -- the fill value -- where
@@ -743,9 +754,9 @@ def data_file_variables(Var) -> Tuple[Any, ...]:
     row of the vocabulary -- its words the ``long_name``, its meaning the
     ``definition``, which the set's own meaning replaces where it writes one
     (:func:`with_meanings`) -- and every row each frame states as written
-    (``frame_rows``); along ``atom`` the :data:`MASS_CHANNEL` channel; and
-    the frames' average at each voltage, each naming the rule it was taken
-    at."""
+    (``frame_rows``); and the frames' average at each voltage, each naming
+    the rule it was taken at.  The atoms' masses are the file's
+    ``/structure``'s (`ncdata.structure_vars`), from :func:`masses_of`."""
     return tuple(Var(r.name, ("frame",), r.kind, r.unit_spelled, r.words,
                      _defined(r, r.means, "model/structure.md 2.2f"),
                      auxiliary=True)
@@ -763,11 +774,8 @@ def data_file_variables(Var) -> Tuple[Any, ...]:
             "frames state no weights"),
         Var("frame_rows", ("frame",), "given", "", "the frame's rows",
             "every row the frame states, as written: a JSON list of its rows "
-            "(model/structure.md 2.2f)", dtype=str, auxiliary=True),
-        Var(MASS_CHANNEL, ("atom",), "given", "amu", "the atom's mass",
-            "the structure's mass_amu channel, as written -- which masses, "
-            "the mass_source attribute (model/structure.md 2.2f; the fill "
-            "value where it carries none)", auxiliary=True),
+            "(model/structure.md 2.2f)", dtype=str, auxiliary=True,
+            json=True),
         Var("average_transmission", ("bias_v", "energy_ev"), "derived", "1",
             "the frames' average transmission",
             "sum_f weight_f T_f(E) over every frame, at its stated weight -- "
@@ -825,7 +833,7 @@ def with_meanings(variables: Tuple[Any, ...], structure) -> Tuple[Any, ...]:
 #: voltage, its weights' sum and tolerance -- across the points, where a
 #: grouped data file lays it (`engines/transport.md` § 2a.12, *The
 #: calculation as groups*); every other of :func:`data_file_variables` is the
-#: structure's: each frame's rows, the masses, the set's numbers.
+#: structure's: each frame's rows, the set's numbers.
 SUMMARY_PART = ("average_transmission", "average_delta_transmission",
                 "average_conductance_g0",
                 "average_conductance_change_percent", "average_why",
@@ -845,7 +853,7 @@ def fill_data_file(values: Dict[str, Any], attrs: Dict[str, Any],
     """Fill the data file's frame part, in place: each frame's rows -- the
     vocabulary's numbers in their own variables, the fill value where a
     frame states none, and every row as written in ``frame_rows`` -- the
-    masses, the frames' average at each voltage and why it is none there
+    frames' average at each voltage and why it is none there
     (``index`` placing a voltage on ``biases``), the vocabulary's
     structure rows -- a number a variable of no dimension, the fill value
     where the set states none or writes no number; a name an attribute, as
@@ -857,11 +865,8 @@ def fill_data_file(values: Dict[str, Any], attrs: Dict[str, Any],
     rows = read(structure) if structure is not None else None
     if rows is not None:
         check_units(rows)
-        masses = _masses(structure)
-        if masses is not None:
-            values[MASS_CHANNEL][:] = [_or_nan(m) for m in masses]
         for f, frame in enumerate(rows.frames):
-            values["frame_rows"][f] = json_attr(list(frame))
+            values["frame_rows"][f] = list(frame)
             for r in FRAME_ROWS:
                 values[r.name][f] = _or_nan(rows.value(r.name, f))
     # WHY AN AVERAGE IS NONE, at each voltage: the block's reason at every
@@ -906,6 +911,7 @@ def fill_data_file(values: Dict[str, Any], attrs: Dict[str, Any],
 __all__ = ["ASSUMPTIONS", "AverageError", "FRAME_ROWS", "INFO_KEY",
            "JSON_ATTRS", "SUMMARY_PART",
            "MASS_CHANNEL", "ROWS", "ReaverageError", "Row", "STRUCTURE_ROWS",
+           "masses_of", "mass_numbers",
            "answer", "at_voltage", "average_block", "average_said",
            "citation_block",
            "data_file_variables", "fill_data_file", "motion_weights",
