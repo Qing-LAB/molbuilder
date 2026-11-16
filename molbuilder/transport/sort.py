@@ -95,6 +95,13 @@ REGION_BUFFER          = _region("buffer")
 #: so any other label, ``tip-electrode`` included, is not a lead.
 ELECTRODE_LABELS = (REGION_LEFT_ELECTRODE, REGION_RIGHT_ELECTRODE)
 
+#: THE DEVICE'S REGIONS, in order along the transport axis -- the left
+#: lead, the bridge, the right lead: the ones a junction must hold, and the
+#: ones its DOS by region and each atom's region are said in
+#: (`engines/transport.md` § 2a.12).
+DEVICE_REGIONS = (REGION_LEFT_ELECTRODE, REGION_BRIDGE,
+                  REGION_RIGHT_ELECTRODE)
+
 #: The PARTITION labels — exactly one per atom: the labels the kind reads
 #: (its leads' and its ``regions``, the kind table's).  Everything else
 #: (``interface``, ``frozen_atoms``, user labels) is partition-neutral
@@ -261,9 +268,8 @@ def _transport_order(struct: Structure) -> List[int]:
     by = {label: [i for i, p in enumerate(part) if p == label]
           for label in PARTITION_LABELS}
     left, right = by[REGION_LEFT_ELECTRODE], by[REGION_RIGHT_ELECTRODE]
-    if not left or not right or not by[REGION_BRIDGE]:
-        missing = [lab for lab in (REGION_LEFT_ELECTRODE, REGION_BRIDGE,
-                                   REGION_RIGHT_ELECTRODE) if not by[lab]]
+    missing = [lab for lab in DEVICE_REGIONS if not by[lab]]
+    if missing:
         raise SortError(
             f"the partition is missing {', '.join(missing)} -- a "
             f"2-terminal junction needs all three (buffer is optional).")

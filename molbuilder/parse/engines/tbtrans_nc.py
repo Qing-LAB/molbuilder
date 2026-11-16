@@ -825,4 +825,5 @@ def point_averages(folder, label: str, *, pair: str,
 __all__ = ["TBTransNcFileParser", "ReadingClaimed", "Kept", "DIGEST_SCHEMA",
            "read_orbitals",
            "channel_of", "digest_of", "data_files", "kept_state", "kept",
+           "kept_at",
            "claim_words", "energies", "point_averages"]

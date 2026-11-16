@@ -15,7 +15,7 @@ here:
   * :mod:`.citation_defaults` — what the cited run contributes to the
     template, once, at ``molbuilder describe``.
   * :mod:`.record`    — ``summarize task``'s ``<label>.transport.json``
-    (``molbuilder/transport-result@16``), the frames' average in it their
+    (``molbuilder/transport-result@17``), the frames' average in it their
     post-process's (`molbuilder.frame_average`, outside this package).
   * :mod:`.transiesta` — the TranSIESTA **emission library**: the
     geometry table every rung writes and the electrode and reservoir
@@ -31,7 +31,9 @@ here:
     a transport rung's words (the index itself is every kind's,
     `runpoints`).
   * :mod:`.conductance` — G/G0 = T(E_F) off a transmission;
-    :mod:`.tbtnc` — a transmission point's DOS for the report;
+    :mod:`.tbtnc` — a transmission point's DOS, and the one sum of a
+    region's or a selection's PDOS, for the report, the data file and a
+    PDOS from the files;
     :mod:`.gf_files` — the leads' surface Green's function files, as
     status says them.
   * :mod:`.datafile`  — ``<label>.transport.nc``, the record's results as

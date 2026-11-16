@@ -4,8 +4,10 @@ a window reaches a bias (:func:`window_short_of`); the contours a
 point computes when it shares energies with a finished point, and their
 record in its deck (:class:`Contours`); and **the one door that reads a
 point's energies and every value on them** -- from its own run and its
-``shared/``, recursively, in the grid's order (:func:`joined`) -- asked by
-the record, the data file, a selection's PDOS and the sharing test alike.
+``shared/``, recursively, in the grid's order (:func:`joined`), put on a
+point's grid (:func:`restricted`) -- asked by the record, the report's
+selection PDOS, a PDOS from the files (`postprocess.pdos`) and the sharing
+test alike.
 
 Two energies are one when they lie within :data:`SAME_ENERGY_EV`: the
 energies of two runs agree to rounding (10⁻¹⁵ eV), and an energy a few
@@ -96,15 +98,6 @@ def grid(emin: float, emax: float, points: int) -> List[float]:
     mid-rule``)."""
     h = spacing((emin, emax, points))
     return [float(emin) + (i + 0.5) * h for i in range(int(points))]
-
-
-def window_of_grid(energies: Sequence[float]) -> Tuple[float, float, int]:
-    """The window a grid of :func:`grid` was computed from -- ``(from, to,
-    points)``, its first and last energies half a spacing inside each end --
-    its inverse, for a grid read back from a data file."""
-    e = [float(x) for x in energies]
-    h = (e[-1] - e[0]) / (len(e) - 1) if len(e) > 1 else 0.0
-    return (e[0] - h / 2, e[-1] + h / 2, len(e))
 
 
 def deck_window(text: str) -> Optional[Tuple[float, float, int]]:
@@ -282,7 +275,7 @@ def joined(folder: Path, read: Callable[[Path], Dict], *,
     else:
         window = window_of(Path(folder))
     if window is not None:
-        out = _on(out, grid(*window))
+        out = restricted(out, grid(*window))
     return out
 
 
@@ -343,8 +336,11 @@ def _merge(own: Dict, other: Dict) -> Dict:
     return out
 
 
-def _on(answer: Dict, energies: Sequence[float]) -> Dict:
-    """``answer`` restricted to ``energies``."""
+def restricted(answer: Dict, energies: Sequence[float]) -> Dict:
+    """``answer`` -- a reader's, every value along its ``energy_ev`` --
+    restricted to ``energies``, each within :data:`SAME_ENERGY_EV`: a
+    joined answer put on the grid its point describes (:func:`joined`; a
+    PDOS from the files on the point's own energies, `postprocess.pdos`)."""
     want = sorted(energies)
     e = answer["energy_ev"]
     keep = [i for i, x in enumerate(e) if _index(want, x) is not None]
@@ -377,5 +373,5 @@ TRAVELS_WITH = ("molbuilder.deck_record",)
 __all__ = ["SAME_ENERGY_EV", "SHARED_DIR", "WINDOW_TAILS_KT", "spacing",
            "window_short_of", "sampled_window", "grid", "deck_window",
            "same_grid", "in_common",
-           "Contours", "shared_contours", "joined", "sharing_of",
-           "window_of", "held"]
+           "Contours", "shared_contours", "joined", "restricted",
+           "sharing_of", "window_of", "held"]

@@ -3226,10 +3226,11 @@ and the data file says where it is and what each orbital is:
   energies, its `shared/` one's too) and the `.TBT.nc` version each states,
   its size and modification time when it was read
   ([`model/parse.md`](?doc=model/parse.md) § 5e) — named **only where every
-  reading of the point is kept** (`record.readings_kept`, the same answer
-  its DOS by region is written on): a reading in part, one spin or one side
-  of a shared grid, is no PDOS. A digest is trusted as **the reading this file was composed
-  from**: one stating that version is read, with no `.TBT.nc` beside it —
+  reading of the point is kept and the DOS was read from each** — one
+  decision, the record's (`record.collect_record`, `readings_kept`), which
+  the data file and the export both read: a reading in part, one spin or
+  one side of a shared grid, is no PDOS. A digest is trusted as **the
+  reading this file was composed from**: one stating that version is read, with no `.TBT.nc` beside it —
   an export's zip carries none — and one stating another is refused, the
   way on said: summarize or export again; one whose atom index map is not
   the junction's is refused too (F7). No checksum: the HDF5 library stamps

@@ -3,12 +3,21 @@
 MODULE  atom_permutation (L1, the job as described; stdlib + numpy, and
         `persist`, which travels with it)
 ROLE    the order record -- the class every reader crosses with, its one dict
-        reader, the sort keys' names (`model/overview.md` § 2.2a)
+        reader, the sort keys' names (`model/overview.md` § 2.2a) -- and the
+        atom index map a file is listed by (:class:`AtomIndexMap`: its two
+        columns, its relistings and its one bounds check, `checked_indices`;
+        § 2.2b), which the data files (`ncdata`), their readers
+        (`atom_index`, `postprocess`) and the transport record ask
 USED-BY structure.py (the type of ``Structure.atom_order``), transport/sort.py
         (the keys, and the record it sorts by), deck_record.py (a deck's
         record, read by ``order_record_of``), transport/rung.py (its
         refusal), spectra/vibrational_analysis.py and
-        spectra/siesta_vibration.py (read it back, beside the job)
+        spectra/siesta_vibration.py (read it back, beside the job); the
+        atom index map and its bounds check, wherever a file's atoms are
+        listed or an index crosses orders (`model/overview.md` § 2.2b): the
+        data files' writer and readers (ncdata, atom_index, postprocess and
+        each kind's datafile), the structure and its sidecar and working
+        copy, the deck writers, prep, the run door, the transport record
 TRAVELS in ``mb_vibration.pyz`` beside each call of a SIESTA vibration
         (`runwrap.VIBRATION_COMPANIONS`), and in ``mb_pyscf.pyz``
         (`runwrap.PYSCF_COMPANIONS`) as the type ``structure.py`` holds

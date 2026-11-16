@@ -10,7 +10,7 @@ by the binary's own rule, :func:`joined_currents`).  Both formats were pinned ag
 a REAL 5.4.2 run (the carbon-chain live walk, 2026-08-29).
 
 What lands on disk is ONE file at the calculation root,
-``<label>.transport.json`` (``molbuilder/transport-result@16``): T(E)
+``<label>.transport.json`` (``molbuilder/transport-result@17``): T(E)
 per point -- a frame and a voltage -- the I–V table per frame, the frames'
 average, their post-process's (`frame_average.average_block`), the junction's TOTAL
 current, with the
@@ -36,7 +36,7 @@ as it was.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Dict, List, Optional, Sequence, Tuple
 
 from ..calcdirs import RunPlace
 from ..constants import BOLTZMANN_EV_K, CONDUCTANCE_QUANTUM_S
@@ -328,18 +328,32 @@ def iv_notes_placed(iv: Dict) -> List[Dict]:
     with both, a frame's own (keyed by the frame: its 0 V transmission not
     run) with ``bias_v`` ``None``: how a file with no row axis states them
     (`transport/datafile.py`, `engines/transport.md` § 2a.12)."""
-    from ..paths import frame_token
     notes = iv.get("notes") or {}
+    rows = iv_rows(iv)
+    out = [{"frame": f, "bias_v": v, "note": notes[str(k)]}
+           for k, f, v in rows if str(k) in notes]
+    for f in dict.fromkeys(f for _k, f, _v in rows):
+        if iv_frame_key(f) in notes:
+            out.append({"frame": f, "bias_v": None,
+                        "note": notes[iv_frame_key(f)]})
+    return out
+
+
+def iv_rows(iv: Dict) -> List[Tuple[int, Optional[int], float]]:
+    """THE I-V TABLE'S ROWS (:func:`_iv`'s), each ``(row, frame,
+    voltage)`` -- the frame ``None`` for one structure: the one reading of
+    the record's ``iv`` by its rows, which its notes are keyed by."""
     volts = list(iv.get("voltages_v") or ())
     frames = list(iv.get("frame") or [None] * len(volts))
-    out = [{"frame": f, "bias_v": v, "note": notes[str(k)]}
-           for k, (f, v) in enumerate(zip(frames, volts))
-           if str(k) in notes]
-    for f in dict.fromkeys(frames):
-        key = frame_token(f) if f is not None else "all"
-        if key in notes:
-            out.append({"frame": f, "bias_v": None, "note": notes[key]})
-    return out
+    return list(zip(range(len(volts)), frames, volts))
+
+
+def iv_frame_key(frame: Optional[int]) -> str:
+    """The key a frame's own I-V note is under -- written by :func:`_iv`,
+    read by :func:`iv_notes_placed` and :func:`iv_table_text`: its folder
+    token, ``all`` for one structure."""
+    from ..paths import frame_token
+    return frame_token(frame) if frame is not None else "all"
 
 
 def _output_of(where: Path) -> Optional[Path]:
@@ -611,12 +625,12 @@ def _gathered(folder):
         raise RecordError(str(exc)) from None
 
 
-def readings_kept(point: Dict) -> bool:
+def readings_kept(readings: Optional[Sequence[Dict]]) -> bool:
     """Whether every reading of a point's data files is kept -- its own and
-    those in its ``shared/`` (the record's ``digest``, `model/parse.md`
-    § 5e): the one answer to *its DOS per orbital is whole*, which its DOS
-    by region, its digests named and an export's digests all ask."""
-    readings = point.get("digest") or ()
+    those in its ``shared/``, the point's ``digest`` (`model/parse.md`
+    § 5e): the one answer to *its DOS per orbital is whole*, which the
+    digests a point names, the data file's ``dos_per_orbital_reading`` and
+    the export's missing-DOS sentence ask."""
     return bool(readings) and all(d.get("state") == "kept"
                                   for d in readings)
 
@@ -807,20 +821,16 @@ def _rung_points(calc, name: str, run: Optional[Path] = None, *, rung: Dict,
 
 def device_regions(junction) -> Dict[str, List[int]]:
     """The device's regions molbuilder owns -- L-electrode, bridge,
-    R-electrode -- as atom indices (0-based, the composed junction's order,
-    which is the seed's, the device's and the transmission's decks' -- each
-    electrode rung lists a cell of its own), from the calculation's composed
-    junction
-    (`compose.recorded_junction`).  ``{}`` before it is composed
-    (``None``)."""
-    from .sort import ELECTRODE_LABELS, REGION_BRIDGE
+    R-electrode (`sort.DEVICE_REGIONS`) -- as atom indices in ``junction``'s
+    own order: the composed junction's, the decks' order, for the record's
+    sums; the restored one's, the user order, for the data file's
+    ``atom_region``.  ``{}`` before a junction is composed (``None``)."""
+    from .sort import DEVICE_REGIONS
     if junction is None:
         return {}
     regions = junction.regions or {}
     return {label: [int(i) for i in regions.get(label, ())]
-            for label in (ELECTRODE_LABELS[0], REGION_BRIDGE,
-                          ELECTRODE_LABELS[1])
-            if regions.get(label)}
+            for label in DEVICE_REGIONS if regions.get(label)}
 
 
 def _chain(base: Path, stages: List[Dict]) -> List[Dict]:
@@ -848,7 +858,8 @@ def _chain(base: Path, stages: List[Dict]) -> List[Dict]:
 def not_transport(calc) -> Optional[str]:
     """Why the calculation ``calc`` (`calculation.open`) answers no transport
     door -- it is another kind -- or ``None``: the one sentence the
-    transport routes and an export refuse with."""
+    transport routes refuse with (an export is picked by the kind table,
+    `kind_table.export_of`)."""
     if calc.task.calculation == "transport":
         return None
     return (f"{Path(calc.base).name} is a {calc.task.calculation} "
@@ -1050,6 +1061,17 @@ def collect_record(calc, *, partial: bool = False) -> Dict:
             if junction is not None:
                 dos["device_atoms"] = sorted(
                     junction.map_to_user_index(engine))
+        # WHAT IS KEPT OF EACH DATA FILE'S READING -- its own and those in
+        # its `shared/` (`model/parse.md` § 5e) -- and, ONE DECISION the data
+        # file and the export both read, the digests the point names: only
+        # where every reading is kept and the DOS was read from each, never a
+        # reading in part -- one spin, one side of a shared grid.
+        digest = [k.to_wire(base) for k in readings(where, task.label)]
+        named = (dos or {}).get("per_orbital") or ()
+        if dos is not None and "per_orbital" in dos and not (
+                readings_kept(digest)
+                and len(named) == len(digest)):
+            dos.pop("per_orbital")
         for src in (dos or {}).get("per_orbital") or ():
             # EACH DIGEST BY ITS PATH FROM THE CALCULATION'S FOLDER, where
             # the data file lies (`record.record_path`).
@@ -1097,11 +1119,9 @@ def collect_record(calc, *, partial: bool = False) -> Dict:
             **({"engine_version": version} if version else {}),
             "spin": spin,
             **({"dos": dos} if dos is not None else {"dos_why": dos_why}),
-            # WHAT IS KEPT OF EACH DATA FILE'S READING -- its own and those
-            # in its `shared/` -- the DOS by region's (`model/parse.md`
-            # § 5e): kept, missing, out of date or being read, with its
-            # size and its claim.
-            "digest": [k.to_wire(base) for k in readings(where, task.label)],
+            # kept, missing, out of date or being read, with its size and
+            # its claim (above).
+            "digest": digest,
         })
     if not points_out and not partial:
         # THE WAY ON, by what the stage's state says: prepared (an attempt is
@@ -1332,13 +1352,14 @@ def selection_pdos(calc, bias_v: float, atoms, orbitals: str,
                  of=n if frame is not None else None)
     said = want.words()
 
-    def _at(stage: str = "transmission"):
+    def _transmission_at():
         # THE POINT BY EACH AXIS THE RUNG VARIES (`stages.rung_points`): an
         # axis a rung does not vary is ``None`` on its points, and its one
         # result serves every value of it -- a rung that runs once serves
         # every point, one that runs per frame every voltage (a single
         # bias, the low-bias approximation).  ``(point, folder)``.
-        return next(((pt, w) for pt, w, _r in result_folders(calc, stage)
+        return next(((pt, w) for pt, w, _r in result_folders(
+                         calc, "transmission")
                      if (pt.frame is None or pt.frame == want.frame)
                      and (pt.volts is None
                           or same_volts(pt.bias_v, want.bias_v))),
@@ -1356,7 +1377,7 @@ def selection_pdos(calc, bias_v: float, atoms, orbitals: str,
     unstated = order_unstated_said(base, recorded)
     if unstated:
         raise RecordError(unstated)
-    read_at, where = _at("transmission")
+    read_at, where = _transmission_at()
     if where is None:
         raise RecordError(f"no transmission point at {said}")
     ncs = data_files(where, task.label)
@@ -1423,7 +1444,6 @@ def _iv(base: Path, task, treatment: str, points_out: List[Dict],
     the two-channel G₀'s."""
     from ..structure import frame_words
     from .energies import spacing, window_of
-    from ..paths import frame_token
     from .stages import same_volts
     polarized = any(p.get("spin") == "polarized" for p in points_out)
     if treatment == "low-bias-approximation":
@@ -1444,7 +1464,7 @@ def _iv(base: Path, task, treatment: str, points_out: List[Dict],
                     if polarized:
                         out["current_up_a"].append(None)
                         out["current_down_a"].append(None)
-                out["notes"][frame_token(f) if f is not None else "all"] = (
+                out["notes"][iv_frame_key(f)] = (
                     f"the 0 V transmission of {frame_words(f, len(frames))} "
                     f"has not run" if f is not None
                     else "the 0 V transmission has not run")
@@ -1619,13 +1639,13 @@ def iv_table_text(record: Dict) -> str:
     lines.append(f"  {'':>8}  {'V [V]':>8}  {'G(E_F) [G0]':>12}  "
                  f"{'I total [A]':>12}  {'I printed [A]':>13}")
 
-    def _frame(p) -> str:
-        return frame_words(p["frame"]) if p.get("frame") is not None else "--"
+    def _frame(f) -> str:
+        return frame_words(f) if f is not None else "--"
     for p in record["points"]:
         g = p["conductance_g0"]
         i, i0 = p["current_a"], p.get("current_a_printed")
         lines.append(
-            f"  {_frame(p):>8}  {p['bias_v']:>8.3f}  "
+            f"  {_frame(p.get('frame')):>8}  {p['bias_v']:>8.3f}  "
             + (f"{g:>12.4f}" if g is not None else f"{'--':>12}")
             + "  "
             + (f"{i:>12.4e}" if i is not None else f"{'--':>12}")
@@ -1634,7 +1654,7 @@ def iv_table_text(record: Dict) -> str:
     for what, said in (("pending", "not ended"), ("not_run", "not run"),
                        ("failed", "failed")):
         for p in record.get(what, ()):
-            lines.append(f"  {_frame(p):>8}  {p['bias_v']:>8.3f}  "
+            lines.append(f"  {_frame(p.get('frame')):>8}  {p['bias_v']:>8.3f}  "
                          f"{said:>12}  {p['state']:>12}  ({p['why']})")
     iv = record.get("iv") or {}
     if iv.get("computed") == "low-bias-approximation":
@@ -1645,16 +1665,11 @@ def iv_table_text(record: Dict) -> str:
                      + (f", kT = {kt:.4f} eV, window {iv.get('window_ev')} eV"
                         if kt is not None else "")
                      + ":")
-        from ..paths import frame_token
-        for k, (f, v, i) in enumerate(zip(iv.get("frame", ()),
-                                          iv.get("voltages_v", ()),
-                                          iv.get("current_a", ()))):
-            notes = iv.get("notes") or {}
-            # A VOLTAGE'S NOTE IS KEYED BY ITS ROW (`low_bias_iv`).
-            note = notes.get(str(k)) or (
-                notes.get(frame_token(f)) if f is not None
-                else notes.get("all"))
-            lines.append(f"  {frame_words(f) if f is not None else '--':>8}  "
+        notes = iv.get("notes") or {}
+        for (k, f, v), i in zip(iv_rows(iv), iv.get("current_a", ())):
+            # A VOLTAGE'S NOTE IS KEYED BY ITS ROW, ELSE ITS FRAME'S.
+            note = notes.get(str(k)) or notes.get(iv_frame_key(f))
+            lines.append(f"  {_frame(f):>8}  "
                          f"{v:>8.3f}  {'':>12}  "
                          + (f"{i:>12.4e}" if i is not None else f"{'--':>12}")
                          + (f"  ({note})" if note else ""))

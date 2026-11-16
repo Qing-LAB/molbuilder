@@ -48,6 +48,10 @@ each release is its changelog row and its ledger section
   document's examples move with it, each run on a real calculation) —
   built in 2.71.0; the PDOS of chosen atoms from the files built in 2.72.0,
   after two review rounds that also fixed 2.71.0 (the energies' names);
+  its internals one door each in 2.72.1 (the user's discipline review);
+  next the framework across the kinds -- one structure group, one engine
+  version, declared JSON variables, axis coordinates from their rows, one
+  /api/export route, one export bar, the vibration Export in the top line;
   (C)
   every chart's own export — a picture, its drawn data as CSV and NetCDF;
   the PDOS of a mixed selection from the data file and each point's digest

@@ -63,15 +63,15 @@ def missing_dos_said(record: Dict) -> str:
     # A POINT WITH A DATA FILE whose reading is not whole -- one with none
     # has nothing to read.
     missing = [p for p in record.get("points") or ()
-               if p.get("digest") and not readings_kept(p)]
+               if p.get("digest") and not readings_kept(p["digest"])]
     if not missing:
         return ""
     n = len(missing)
+    from .tbtnc import READ_WAY
     return (f"{n} finished point{'s' if n != 1 else ''} export"
             f"{'' if n != 1 else 's'} without {'their' if n != 1 else 'its'} "
             f"DOS by region: {'their' if n != 1 else 'its'} DOS per orbital "
-            f"is not read yet -- read it from the report's DOS tab (Read the "
-            f"DOS per orbital), or `jobset summarize task`, then export again")
+            f"is not read yet -- {READ_WAY}, then export again")
 
 
 def export(calc, fmt: str, *, dos_per_orbital: bool = False) -> Exported:
@@ -79,24 +79,22 @@ def export(calc, fmt: str, *, dos_per_orbital: bool = False) -> Exported:
     as it stands, as ``fmt`` -- ``netcdf``: the data file, ``{name: bytes}``;
     ``csv``: its tables and ``README.txt`` -- from what is already there, no
     data file read (:func:`missing_dos_said` in ``said``).
-    :class:`ExportError` names a form that is not one, a calculation that is
-    not transport, and results that do not read or do not lay out on one
-    grid -- in their owners' words, as the record's route says them.
+    :class:`ExportError` names a form that is not one, and results that do
+    not read or do not lay out on one grid -- in their owners' words, as
+    the record's route says them; which kind's export runs is the kind
+    table's (`kind_table.export_of`).
     ``dos_per_orbital``: the NetCDF form with each point's kept digest beside
     it, at the path the point names, its bytes copied and never read -- what
     `postprocess.pdos` reads a PDOS of chosen atoms from, anywhere."""
     from ..ncdata import export_format, exported
     from .compose import ComposeError
     from .datafile import DataFileError, data_file_bytes
-    from .record import RecordError, collect_record, not_transport
+    from .record import RecordError, collect_record
     export_format(fmt)
     if dos_per_orbital and fmt != "netcdf":
         raise ExportError("the DOS per orbital goes with the NetCDF form, "
                           "beside the data file it is read with -- export "
                           "as netcdf")
-    other = not_transport(calc)
-    if other:
-        raise ExportError(other)
     try:
         # WHAT EXISTS, as the Results tab reads a ladder in progress: a
         # point not done is the fill value (`done` 0).
@@ -107,14 +105,11 @@ def export(calc, fmt: str, *, dos_per_orbital: bool = False) -> Exported:
         raise ExportError(str(exc)) from exc
     files = {name: data}
     if dos_per_orbital:
-        # EACH POINT'S DIGESTS, at the paths the data file names -- a point
-        # whose readings are not all kept names none (`datafile`).
+        # EACH POINT'S DIGESTS, at the paths the data file names -- the
+        # record's one decision of which a point names (`collect_record`).
         from pathlib import Path
-        from .record import readings_kept
         try:
             for p in record.get("points") or ():
-                if not readings_kept(p):
-                    continue
                 for src in (p.get("dos") or {}).get("per_orbital") or ():
                     files[src["digest"]] = (
                         Path(calc.base) / src["digest"]).read_bytes()

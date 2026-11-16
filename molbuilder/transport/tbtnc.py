@@ -1,6 +1,8 @@
 """What a transmission point says of its DOS -- its total, its regions', the
-leads', the eigenchannels and a selection's PDOS -- for the transport report
-(`web/results.md` § 2.5; `engines/transport.md` § 2a.12).
+leads', the eigenchannels and a selection's PDOS -- for the transport report,
+its data file and a PDOS from the files alike (`web/results.md` § 2.5;
+`engines/transport.md` § 2a.12): **one sum** (:func:`summed_pdos`) of a
+region's atoms and of a selection's.
 
 **Read through the SIESTA family's parser** (`model/parse.md` § 5e): the
 averages from TBtrans's k-averaged text files, on the data file's own
@@ -36,9 +38,13 @@ ORBITAL_NOTE = ("TBtrans writes each orbital's own DOS, not the terms "
                 "so a ring's π orbitals are p_x, p_y or p_z only when the "
                 "ring lies in a coordinate plane.")
 
+#: THE WAY TO A POINT'S DOS PER ORBITAL, said wherever one is missing --
+#: the report's line, the export's, a PDOS from the files.
+READ_WAY = ("read it from the report's DOS tab (Read the DOS per orbital), "
+            "or `jobset summarize task`")
+
 #: The words a point without its kept reading is said in.
-NOT_READ = ("its DOS per orbital is not read yet -- read it from the "
-            "report's DOS tab, or `jobset summarize task`")
+NOT_READ = f"its DOS per orbital is not read yet -- {READ_WAY}"
 
 
 class TbtError(Exception):
@@ -113,20 +119,16 @@ def _checked(reading, expected, name: str) -> None:
             f"it again")
 
 
-def _by_label(reading, regions: Dict[str, Sequence[int]]
+def _by_label(readings: Sequence[Tuple[str, Any]],
+              regions: Dict[str, Sequence[int]], expected
               ) -> Dict[str, List[float]]:
-    """Each region's DOS: the reading's columns of its atoms (0-based, the
-    device run's order) that are in the device, summed."""
-    import numpy as np
-    atom = np.asarray(reading.atom)
-    device = set(reading.atom)
-    out = {}
-    for name, atoms in regions.items():
-        mine = sorted(int(a) for a in atoms if int(a) in device)
-        if mine:
-            out[name] = [float(x) for x in
-                         reading.dos[:, np.isin(atom, mine)].sum(axis=1)]
-    return out
+    """Each region's DOS: its atoms (0-based, the device run's order) summed
+    by :func:`summed_pdos` over ``readings`` -- the PDOS of the region, the
+    channels summed; a region with no atom in the device has none."""
+    return {name: summed_pdos(readings, None, atoms, "all",
+                              expected=expected)["pdos"]
+            for name, atoms in regions.items()
+            if all(covered(r, atoms)[0] for _name, r in readings)}
 
 
 #: THE CURVES A DOS BLOCK MAY HOLD (:func:`point_dos`) -- a block holding
@@ -146,11 +148,15 @@ NO_CURVE = ("its files hold no DOS over its whole grid -- TBtrans wrote none "
 def point_dos(folder, label: str, regions: Dict[str, Sequence[int]],
               spin: str, expected, *, av: Optional[Dict] = None) -> Dict:
     """THE DOS BLOCK of a point's folder (`web/results.md` § 2.5):
-    ``{energy_ev, total, by_label, lead_spectral, lead_bulk, eigenchannels}``
-    -- the averages TBtrans wrote, on the data file's energies; ``by_label``
-    each region's, from the data file's kept reading, present only when it
-    is kept.  A polarized point's two channels summed, and ``by_spin`` each
-    channel's own ``total`` and ``eigenchannels`` beside.  A quantity
+    ``{energy_ev, total, by_label, lead_spectral, lead_bulk, eigenchannels,
+    device_atoms, per_orbital}`` -- the averages TBtrans wrote, on the data
+    file's energies; ``by_label`` each region's, summed by
+    :func:`summed_pdos` from the data file's kept readings, present only
+    when every channel's is kept; ``device_atoms`` the atoms a kept reading
+    covers, and ``per_orbital`` each kept reading's digest and the data
+    file's version it states.  A polarized point's two channels summed,
+    and ``by_spin`` each channel's own ``total`` and ``eigenchannels``
+    beside.  A quantity
     TBtrans did not write is absent, never zero.  ``regions`` count by
     engine index; ``expected`` is the composed junction's atom index map,
     which each kept reading's must be (F7).  ``av`` is the point's averages
@@ -171,6 +177,7 @@ def point_dos(folder, label: str, regions: Dict[str, Sequence[int]],
                        f"the {' or '.join(missing)} channel")
     data = data_files(folder, label)
     per: Dict[str, Dict] = {}
+    read: List[Tuple[str, Any]] = []
     for c in channels:
         a = av[c]
         d: Dict = {"energy_ev": a["energy_ev"]}
@@ -181,21 +188,30 @@ def point_dos(folder, label: str, regions: Dict[str, Sequence[int]],
                 d[dst] = a[src]
         reading = kept(data[c], need_user=True) if c in data else None
         if reading is not None:
+            # EVERY KEPT READING IS THE JUNCTION'S (F7) -- a reading of
+            # another structure is refused here, its DOS no point's.
+            if expected is not None:
+                _checked(reading, expected, data[c].name)
             # THE ATOMS ITS DOS COVERS -- TBtrans's device region, the only
             # atoms it computes a DOS for (`engines/transport.md` § 2a.12,
             # *How each DOS is made*), by engine index.
-            d["device_atoms"] = sorted({int(a) for a in reading.atom})
+            d["device_atoms"] = device_atoms(reading)
             # THE READING IT IS, named: its digest and the data file's
             # version it states, which a PDOS from the files reads back
             # (*A PDOS of the atoms you choose, from the files*).
             d["per_orbital"] = [{"digest": str(digest_of(data[c])),
                                  "channel": c,
                                  "version": [int(v) for v in reading.version]}]
-        if reading is not None and reading.dos is not None and regions:
-            _checked(reading, expected, data[c].name)
-            d["by_label"] = _by_label(reading, regions)
+        if reading is not None and reading.dos is not None:
+            read.append((data[c].name, reading))
         per[c] = d
+    # EACH REGION'S DOS, every channel's reading kept: the one sum a PDOS of
+    # chosen atoms is (:func:`summed_pdos`), its channels summed there.
+    by_label = (_by_label(read, regions, expected)
+                if regions and len(read) == len(channels) else None)
     if len(channels) == 1:
+        if by_label is not None:
+            per[channels[0]]["by_label"] = by_label
         return per[channels[0]]
     up, dn = per["up"], per["down"]
     from .energies import same_grid
@@ -205,18 +221,16 @@ def point_dos(folder, label: str, regions: Dict[str, Sequence[int]],
     out: Dict = {"energy_ev": up["energy_ev"]}
     # THE ATOMS ITS DOS COVERS, from either channel's kept reading -- one
     # run's two spins, one device region.
-    covered = up.get("device_atoms") or dn.get("device_atoms")
-    if covered is not None:
-        out["device_atoms"] = covered
+    atoms_covered = up.get("device_atoms") or dn.get("device_atoms")
+    if atoms_covered is not None:
+        out["device_atoms"] = atoms_covered
     if "per_orbital" in up or "per_orbital" in dn:
         out["per_orbital"] = (list(up.get("per_orbital") or ())
                               + list(dn.get("per_orbital") or ()))
     if "total" in up and "total" in dn:
         out["total"] = _sum(up["total"], dn["total"])
-    if "by_label" in up and "by_label" in dn:
-        out["by_label"] = {k: _sum(v, dn["by_label"][k])
-                           for k, v in up["by_label"].items()
-                           if k in dn["by_label"]}
+    if by_label is not None:
+        out["by_label"] = by_label
     for key in ("lead_spectral", "lead_bulk"):
         both = {e: _sum(v, dn[key][e]) for e, v in up.get(key, {}).items()
                 if e in dn.get(key, {})}
@@ -257,7 +271,7 @@ def selection_pdos(folder, label: str, orb_indx: Optional[Path],
         if orb_indx is None or not Path(orb_indx).is_file():
             raise TbtError(f"the device run's {SIESTA_ORB_INDX} is not "
                            f"there, so its orbitals' types are not known")
-        basis = basis_of(Path(orb_indx))
+        basis = per_atom(basis_table(Path(orb_indx)))
     return summed_pdos(readings, basis, atoms, orbitals, expected=expected,
                        basis_said=Path(orb_indx).name if orb_indx else "")
 
@@ -274,12 +288,6 @@ def basis_table(orb_indx: Path) -> List[Tuple[int, int, int, int, int]]:
         raise TbtError(f"{orb_indx.name} does not read: {exc}") from exc
     return [(i, int(o.n), int(o.l), int(o.m), int(o.zeta))
             for i in range(len(basis)) for o in basis[i].orbitals]
-
-
-def basis_of(orb_indx: Path) -> List[List[Tuple[int, int]]]:
-    """Each atom's orbitals as ``(l, m)``, in the device run's order
-    (:func:`basis_table`, :func:`per_atom`)."""
-    return per_atom(basis_table(orb_indx))
 
 
 def per_atom(rows: Sequence[Tuple[int, int, int, int, int]]
@@ -310,12 +318,13 @@ def summed_pdos(readings: Sequence[Tuple[str, Any]],
                 basis: Optional[List[List[Tuple[int, int]]]],
                 atoms: Sequence[int], orbitals: str = "all", *, expected,
                 basis_said: str = "") -> Dict:
-    """THE ONE SUM of a selection's PDOS (`web/results.md` § 2.5;
+    """THE ONE SUM of a selection's PDOS, and so of a region's
+    (:func:`_by_label`; `web/results.md` § 2.5;
     `engines/transport.md` § 2a.12, *A PDOS of the atoms you choose, from
     the files*): over ``readings`` -- each a channel's kept reading, named --
     the DOS columns of ``atoms`` (0-based, the device run's order) that the
     reading covers, narrowed to the orbitals of type ``orbitals`` by
-    ``basis`` (each atom's ``(l, m)``, :func:`basis_of`; ``None`` for
+    ``basis`` (each atom's ``(l, m)``, :func:`per_atom`; ``None`` for
     ``"all"``), the channels summed.  ``{energy_ev, pdos, atoms,
     outside_device, orbitals}``; :class:`TbtError` names what cannot
     answer."""
@@ -337,9 +346,7 @@ def summed_pdos(readings: Sequence[Tuple[str, Any]],
         if reading.dos is None:
             raise TbtError(f"{name} holds no device DOS -- the run was "
                            f"not asked for it (TBT.DOS.Gf)")
-        device = set(reading.atom)
-        inside = [a for a in asked if a in device]
-        outside = [a for a in asked if a not in device]
+        inside, outside = covered(reading, asked)
         if not inside:
             raise TbtError("none of the selected atoms is in the device "
                            "region, where TBtrans computes the DOS")
@@ -360,12 +367,29 @@ def summed_pdos(readings: Sequence[Tuple[str, Any]],
             "orbitals": orbitals}
 
 
+def device_atoms(reading) -> List[int]:
+    """The atoms a reading's DOS covers -- TBtrans's device region, the only
+    atoms it computes a DOS for -- by engine index, in order."""
+    return sorted({int(a) for a in reading.atom})
+
+
+def covered(reading, atoms: Sequence[int]) -> Tuple[List[int], List[int]]:
+    """Which of ``atoms`` (0-based, the device run's order) a reading's DOS
+    covers -- TBtrans's device region -- and which it does not: the one rule
+    a region's sum and a selection's both ask."""
+    device = set(device_atoms(reading))
+    inside = [int(a) for a in atoms if int(a) in device]
+    outside = [int(a) for a in atoms if int(a) not in device]
+    return inside, outside
+
+
 def _orbitals_of(firsto: Sequence[int], basis: List[List[Tuple[int, int]]],
                  atoms: Sequence[int], kind: str, name: str,
                  basis_said: str) -> List[int]:
     """The geometry's orbital indices of ``atoms`` of type ``kind`` -- each
     atom's basis, ``(l, m)`` per orbital in the device run's order
-    (:func:`basis_of`; a data file's orbital table, `postprocess.pdos`).
+    (:func:`per_atom` of the ``.ORB_INDX``'s :func:`basis_table`, or of a
+    data file's orbital table, `postprocess.pdos`).
     Its orbital counts must be the reading's, atom by atom (its ``firsto``),
     or the two are not of one run and the answer is refused."""
     l_want, m_want = ORBITAL_TYPES[kind]

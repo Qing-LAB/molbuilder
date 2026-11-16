@@ -280,12 +280,11 @@ def pdos(data_file, point, *, atoms=(), labels=(), regions=(),
     names what cannot answer -- a point the file does not hold, an atom,
     label or region that names none, an empty selection, a digest not kept
     when the file was written or not the reading it names."""
-    from pathlib import Path
-    from .atom_permutation import AtomIndexError
+    from .atom_permutation import AtomIndexError, checked_indices
     from .ncdata import unjson_attr
     from .parse.engines.tbtrans_nc import kept_at
-    from .transport.energies import joined, window_of_grid
-    from .transport.tbtnc import TbtError, per_atom, summed_pdos
+    from .transport.energies import joined, restricted
+    from .transport.tbtnc import READ_WAY, TbtError, per_atom, summed_pdos
     path = Path(data_file)
     here = path.parent
     data = read_transport_data(path)
@@ -308,10 +307,9 @@ def pdos(data_file, point, *, atoms=(), labels=(), regions=(),
     # THE SELECTION, a union -- each part naming at least one atom; an
     # index through the map's one bounds check (`checked_indices`).
     try:
-        amap.map_to_engine_index(list(atoms))
+        chosen = set(checked_indices(atoms, n, "user index"))
     except AtomIndexError as exc:
         raise TbtError(str(exc)) from exc
-    chosen = {int(a) for a in atoms}
     for label in labels:
         members = [a for a in range(n)
                    if label in unjson_attr(str(J["labels"][a]))]
@@ -333,8 +331,7 @@ def pdos(data_file, point, *, atoms=(), labels=(), regions=(),
         why = (str(P["dos_why"]) or str(P["dos_per_orbital_reading"])
                or "not read")
         raise TbtError(f"{point}: {path.name} names no reading of its DOS "
-                       f"per orbital ({why}) -- read it (the report's DOS "
-                       f"tab, or `jobset summarize task`), then summarize "
+                       f"per orbital ({why}) -- {READ_WAY}, then summarize "
                        f"or export again")
     sources = unjson_attr(named)
     if orbitals != "all" and not len(J["orbital"]):
@@ -367,9 +364,9 @@ def pdos(data_file, point, *, atoms=(), labels=(), regions=(),
                            expected=expected,
                            basis_said=f"{path.name}'s orbital table")
     own = here / str(P["folder"])
-    # THE POINT'S OWN GRID, as the report restricts a joined answer to it.
-    window = window_of_grid(P["energy_ev"])
-    got = joined(own, read, window_of=lambda f: window if f == own else None)
+    # JOINED AS THE REPORT JOINS IT, on the point's own grid -- the file's.
+    got = restricted(joined(own, read, window_of=lambda _f: None),
+                     [float(e) for e in P["energy_ev"]])
     return {"point": point, "energy_ev": got["energy_ev"],
             "pdos": got["pdos"], "units": "1/eV",
             "selection": {"atoms": sorted({int(a) for a in atoms}),
