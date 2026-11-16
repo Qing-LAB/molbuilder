@@ -82,12 +82,12 @@ the UI review's two left items (2.70.27) done; **F10 under way** (the user,
 chapters read whole against the code: wave 1 (2.70.28) the top-level
 chapters, ops and execution; waves 2 and 3 (2.70.29) the engines, science,
 model, web and process chapters and this plan -- every live chapter read
-once. Next, the product defects those readings found in the pages (the
-VibrationView export, the MolView save's round trip, the spectrum chart's
-imaginary modes, the notebook tab's port clash), each measured in a browser
-then fixed; then F11, F12. **Waiting on the user**: whether prep's
-hand-written run-setting subsets become catalogue declarations or the rule
-names them (`engines/template.md` § 6.4, the user's 2026-08-17 ruling); TF5
+once. Next, the product defects those readings found in the pages, each
+measured then fixed: the MolView save's refused point, the notebook tab's
+port clash and the spectrum chart's imaginary modes done (2.70.30); the
+VibrationView export left (its size, a transparent GIF, a cancel during
+encoding, the caption, the page's `refit` call, the Speed slider's top, the
+export's size in its metadata); then F11, F12. **Waiting on the user**: nothing now; TF5
 brings one decision when it is reached (a test's own projects tree by
 default). F12's walk of the three roads in the browser starts only on the
 user's word, said to them first.

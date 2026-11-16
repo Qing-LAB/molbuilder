@@ -227,6 +227,7 @@ export async function mount(host, options = {}) {
                         y: modes.map(() => 1),
                         width: modes.map(() => stickWidth),
                         state: modes.map((m) => stateOf(m, false, null)),
+                        imaginary: modes.map((m) => Boolean(m.imaginary)),
                     },
                     curve: null,
                 }],
@@ -289,6 +290,11 @@ export async function mount(host, options = {}) {
                     }),
                     width: modes.map(() => stickWidth),
                     state: modes.map((m) => stateOf(m, known, c.key)),
+                    // WHICH MODE IS IMAGINARY, beside its state: the state
+                    // says the selection first, and every lane marks an
+                    // imaginary mode apart (§ 6.4), the ones showing no
+                    // selection too.
+                    imaginary: modes.map((m) => Boolean(m.imaginary)),
                 },
                 /* The envelope is a sum over the bands that are drawn,
                  * so a filtered band must not keep contributing to it --

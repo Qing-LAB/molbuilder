@@ -1315,9 +1315,8 @@ So it answers, and never throws:
 
 **A failure turns up afterwards, not here.** The workspace is non-blocking but
 *error-explicit*: a write that does not arrive reaches its own error channel, and
-the app-wide notification bar shows it — *"Couldn't save state to disk (the
-reason). Your edits are kept in this page, but Retract and a reload of this tab
-may not bring back everything."*
+the app-wide notification bar shows it — *"Couldn't save state to disk (the reason). Your edits are kept in this page and marked unsaved; Retract goes back to the last state that was saved, and a reload of this tab brings back only what was."* — and the badge
+goes up for the point it was (§ 11.2).
 
 **And the app-wide bar is the right place for it**, which is worth saying because
 § 6.8 keeps notices *out* of it. The rule there is that the bar is for what
@@ -3425,8 +3424,8 @@ flowchart LR
     CHANGING -->|"the change finishes:<br/>send what was remembered"| WRITING
     CHANGING -->|"the change finishes,<br/>nothing was remembered"| SETTLED
     SETTLED -->|"a write is asked for"| WRITING
-    WRITING -->|"it landed:<br/>the position moves"| SETTLED
-    WRITING -->|"it failed:<br/>the position does not move"| SETTLED
+    WRITING -->|"handed to storage:<br/>the position moves"| SETTLED
+    WRITING -->|"storage would not take it:<br/>the position does not move"| SETTLED
     WRITING -->|"another write is asked for:<br/>it waits its turn"| WRITING
 ```
 
@@ -3434,7 +3433,7 @@ flowchart LR
 |---|---|---|
 | **SETTLED** | goes out immediately | the structure is consistent, so there is nothing to wait for |
 | **CHANGING** | is remembered and sent when the change finishes. At most one is remembered; if a **saved state** is among them, that is the one sent, and a routine write arriving after it does not replace it | the structure is halfway between two files, and what is halfway is wrong — see below |
-| **WRITING** | waits until the one already on its way has landed | two writes in flight is how the position comes to describe a state that was never written |
+| **WRITING** | waits until the one already on its way has been handed to storage | two writes going out at once is how the position comes to describe a state that was never sent |
 
 **A read waits for a write that has not finished.** The three states above decide
 when a *write* may go out, and they decide nothing about a read — so without this
@@ -3446,8 +3445,10 @@ Three words, used exactly:
   when a structure is opened;
 - a **read** is taking one back out: `load` in all three of its forms, `undo`
   among them;
-- **finished** means the write is over either way — it landed, or it failed and
-  left the position where it was. A read waits for the answer, not for success.
+- **finished** means the server has answered the write — stored it, or
+  refused it. The workspace sends each write at once and keeps one tag's
+  writes in order (`workspace.md` § 9.2); a read waits for the answers to
+  every point already handed over, so it knows which the server refused.
 
 **Why waiting is not just about the bytes.** A save that lands moves the position
 and lowers the badge, and a read looks at both to work out *which* point it is
@@ -3469,12 +3470,20 @@ before it: you ask to be put where you are and are given where you were.
 > `test_a_read_cannot_answer_from_before_a_write_that_is_under_way`
 > (`tests/test_molview_stores_history.py`).
 
-**When a write does not land**, the position does not move and the badge is not
-cleared — so "there is work here that is not on the sequence yet" stays true and
-stays on screen. That is the whole of what `save` answers: `true` when the point
-was recorded, `false` when the write is *held* and still to go out. It never
-throws, because the write is not awaited: the structure in memory is the truth,
-and a slow or unreachable disk must not stall an edit.
+**A point counts once it is handed to storage**: the position moves and the
+badge goes down then, so every edit stays its own point however fast they
+come. That is the whole of what `save` answers: `true` when the point was
+handed over, `false` when the write is *held* and still to go out. It never
+throws, because the write is not awaited: the structure in memory is the
+truth, and a slow or unreachable disk must not stall an edit.
+
+**When the server refuses a point, the state is warned and a Retract steps
+past it** *(the user, 2026-11-16: "warn about the state, roll back goes to the
+last correctly saved state or none if none exists")*: the badge goes up — the
+state on screen is not on the server — and the notification bar gives the
+server's reason; a Retract goes back to the last point the server stored,
+past every one it refused, and to none when it stored none. Saving again
+writes the state on screen as a new point.
 
 **Which is why the reason travels a different road from the server's.** A refused
 edit throws, carrying the server's sentence, because MolView asked and waited
@@ -4818,7 +4827,7 @@ This table is the test plan. **A rule with no row here is a rule nothing guards.
 | § 11.1 — a failed edit changes nothing | when the server refuses, the structure is exactly as it was and no history state is recorded |
 | § 11.2 — state is the truth, not the view of it | restoring brings back the structure and the selection; it does not bring back the camera, the displayed frame or the switches — and the saving mechanism itself excludes nothing |
 | § 11.2 — a new structure invalidates the old one's pending writes | a save still in flight when a new structure is opened does not apply its state over the new one |
-| § 11.2 — there is no automatic write | no point is laid on a timer: the sequence grows only by anchoring a structure (an install or `clear()`), an edit and Save state, and each moves the history position only after its round trip finishes |
+| § 11.2 — there is no automatic write | no point is laid on a timer: the sequence grows only by anchoring a structure (an install or `clear()`), an edit and Save state, and each moves the history position once its write is handed to storage |
 | § 11.2 — a bracketed change writes once, at the end | a write requested mid-bracket does not land until the bracket closes, and what lands is the settled state; if a saved state was among the held writes, it is the one written |
 | § 1.1, § 11.2 — every edit lays its own point | after three edits, three Retracts step back one edit each; an operation that declares no point raises the badge, and the next Retract discards its work |
 | § 11.2 — the history is offered as calls, not as a control | a mounted viewer draws no save-state or retract button of its own, and the calls work all the same when a host wires its own |

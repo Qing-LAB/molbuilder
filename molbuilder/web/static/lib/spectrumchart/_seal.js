@@ -357,10 +357,12 @@ export async function openSurface(host) {
                  * one `recolour` can reach, and the one the mode table is
                  * ordered by.  A second lane is drawn in its channel's own
                  * colour so the panels stay legible; selection is shown
-                 * once, not twice. */
+                 * once, not twice -- and an imaginary mode is marked apart
+                 * in it too (§ 6.4). */
                 drawn.colour.push(firstSticks < 0
                     ? colourFor(lane.sticks.state[i], palette)
-                    : laneColour);
+                    : (lane.sticks.imaginary && lane.sticks.imaginary[i])
+                        ? palette.imaginary : laneColour);
             });
 
             if (firstSticks < 0) firstSticks = traces.length;

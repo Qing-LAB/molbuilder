@@ -221,9 +221,9 @@ const root = (typeof window !== "undefined") ? window : globalThis;
         return done;
     }
     function _persistState(snapshotBlob, identity) {
-        if (!root.fetch || !snapshotBlob) return;
+        if (!root.fetch || !snapshotBlob) return Promise.resolve(false);
         var idx = identity && identity.state_index;
-        _queued(identity.workspace_id, function () {
+        return _queued(identity.workspace_id, function () {
             _trace("http:write-state:issue", { idx: idx });
             return ask("/api/workspace-storage/write", {
                 method:  "POST",
@@ -233,23 +233,25 @@ const root = (typeof window !== "undefined") ? window : globalThis;
                 if (!res.ok) {
                     _saveFailed({ op: "write-state", state_index: idx,
                                   status: res.status, error: res.error });
-                } else {
-                    _reportPersistOk({ op: "write-state", state_index: idx });
+                    return false;
                 }
+                _reportPersistOk({ op: "write-state", state_index: idx });
+                return true;
             });
         });
     }
 
     /* ONE PLACE -- the server -- and the call does not wait for it.
      *
-     * NOTHING USEFUL CAN COME BACK FROM HERE. The write is sent without
-     * waiting, so a slow disk never stalls an edit, and whether it arrived is
-     * not known yet. A failure turns up afterwards on `onPersistError`.
-     * `true` means "sent", never "saved". */
+     * The write is sent at once, so a slow disk never stalls an edit, and
+     * what comes back is a PROMISE OF ITS ANSWER: `true` once the server
+     * stored the bytes, `false` when it refused them (said on
+     * `onPersistError` too).  Nothing waits on it unless it awaits it;
+     * MolView watches it to know which of its points the server refused
+     * (`molview.md` § 11.2).  `false` straight away: no storage to send to. */
     function _send(bytes, identity) {
         if (!root.fetch) return false;
-        _persistState(bytes, identity);
-        return true;
+        return _persistState(bytes, identity);
     }
 
     /** A numbered point of ``tag``'s: ``bytes`` as its point ``step``. */

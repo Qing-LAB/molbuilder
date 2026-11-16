@@ -194,7 +194,7 @@ two callers can disagree about whose slot they are in.
 
 | Member | What it does |
 |---|---|
-| `persist(tag, bytes, step)` | Send these bytes as the tag's numbered point `step`. Does not wait; `true` means sent, not saved. |
+| `persist(tag, bytes, step)` | Send these bytes as the tag's numbered point `step`. Does not wait: it answers with a promise of the server's answer — `true` stored, `false` refused — or `false` at once when there is no storage to send to. |
 | `readState(tag, step)` | Read the tag's point `step` back. `null` for a file that is not there **and** for any failure, deliberately: the only safe reading of it is "nothing to put back". A failure is still said — through `onPersistError`, as a read — never passed off as nothing saved. |
 | `pruneStatesAbove(tag, step)` | Drop the tag's points above `step` (used when Undo-then-a-new-edit throws away the redo tail); `-1` drops every point. The draft stays. |
 | `persistDraft(tag, bytes)` | Send these bytes as the tag's draft — its one file, rewritten each time. Does not wait, as `persist`. |
@@ -251,10 +251,13 @@ three steps and then start working again, the points above are now abandoned and
 they are yours to delete — call `pruneStatesAbove`.
 
 **Know that the save is not finished when the call returns.** `persist` and
-`persistDraft` say only that the bytes were sent. Whether they reached the
-server is not known yet — that is the point, so a slow disk never freezes your
-editor. If it fails you find out afterwards, through `onPersistError`. If your
-user should be told, subscribe to it.
+`persistDraft` send the bytes at once and answer with a promise of the
+server's answer — `true` once stored, `false` when refused — so a slow disk
+never freezes your editor: nothing waits on it unless it awaits it. A refusal
+also reaches `onPersistError`, which the notification bar shows. A saver
+whose own bookkeeping depends on the answer watches the promise — MolView
+marks a refused point, raises its badge and steps a Retract past it
+([`molview.md`](?doc=web/molview.md) § 11.2).
 
 **Do not go round the front door.** If you find some other way to write these
 bytes, report it — bytes written any other way carry no tag, and then two savers

@@ -872,6 +872,65 @@ def test_an_edit_lays_down_a_point_so_retract_steps_back_one_edit(app_at, pairs)
     )
 
 
+#: When the server stops storing points, a row each: before the open's own
+#: point (nothing stored -- a Retract has nowhere to go), or after it (the
+#: open's point stored -- a Retract goes back to it, past the two refused).
+_REFUSED_FROM = (("after the open", True, 0), ("before the open", False, None))
+
+
+@pytest.mark.parametrize("when,open_stored,retract_to", _REFUSED_FROM,
+                         ids=[r[0] for r in _REFUSED_FROM])
+def test_a_point_the_server_refuses_is_warned_and_retract_steps_past_it(
+        app_at, pairs, when, open_stored, retract_to):
+    """§ 11.2 *(the user, 2026-11-16: "warn about the state, roll back goes
+    to the last correctly saved state or none if none exists")*: on the real
+    workspace and the app's own write route, which refuses every point once
+    the storage folder cannot be written -- the badge goes up for the state
+    the server did not store, and a Retract goes back to the last point it
+    did store, or nowhere when it stored none.
+
+    THE SILENT FAILURE (F10's reading, 2026-11-16): the badge went down for
+    points the server refused, and a Retract stepped onto a refused point --
+    nothing to read back, so nothing restored."""
+    import os
+    import stat
+    # THE FOLDER THE WRITE ROUTE STORES IN, asked of the route's own module,
+    # whose root the suite points at this test's own store (`conftest`).
+    from molbuilder.web.blueprints import workspace_storage as store
+    states = store.projects_root() / store.SCRATCH_DIR / "states"
+    states.mkdir(parents=True, exist_ok=True)
+    try:
+        out = _run(app_at, pairs, """
+            const fs = await import("node:fs");
+            const lock = () => fs.chmodSync(STATES, 0o500);
+            const m = createModel({ owner: "r", workspace: ws });
+            if (!OPEN_STORED) lock();
+            await opened(m, "H2");
+            await __quiet();
+            const atOpen = m.getCoordinates();
+            if (OPEN_STORED) lock();
+            await m.applyOp("translate", { dx: 1 });
+            await m.applyOp("translate", { dx: 1 });
+            await __quiet();
+            const warned = m.uncommitted;
+            const back = await m.load(-1);
+            console.log(JSON.stringify({
+                warned, back,
+                restored: JSON.stringify(m.getCoordinates())
+                          === JSON.stringify(atOpen),
+            }));
+            """, STATES=str(states), OPEN_STORED=open_stored)
+    finally:
+        os.chmod(states, stat.S_IRWXU)
+    assert out["warned"] is True, (
+        f"{when}: the badge is down for a state the server did not store")
+    assert out["back"] == retract_to, (
+        f"{when}: a Retract went to {out['back']}, not the last point the "
+        f"server stored ({retract_to})")
+    if retract_to is not None:
+        assert out["restored"], f"{when}: the Retract restored another state"
+
+
 def test_a_load_fits_the_camera_and_an_operation_keeps_it(app_at, pairs):
     """§ 9.6: the camera is fitted on load and on Reset, and at no other
     moment -- and the model is the one that knows which write is a load.

@@ -158,8 +158,10 @@
             level:   "error",
             message: "Couldn't save state to disk ("
                    + ((detail && detail.error) || "no reason given")
-                   + "). Your edits are kept in this page, but Retract and "
-                   + "a reload of this tab may not bring back everything.",
+                   + "). Your edits are kept in this page and marked "
+                   + "unsaved; Retract goes back to the last state that was "
+                   + "saved, and a reload of this tab brings back only what "
+                   + "was.",
             detail:  detail,
         });
     }

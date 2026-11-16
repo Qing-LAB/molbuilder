@@ -1858,7 +1858,13 @@ help       = "How many MPI ranks to run with."
 
 **Five items carry it** — `mpi_np`, `gpu_count`, `omp_threads`, `max_memory_mb`, `threads` — and
 `select(t, allocation=True)` is the one way to ask which. Nothing hand-lists
-them: not the deck writer, not the web form, not `prep`.
+them: not the deck writer, not the web form, not `prep`. A door that needs
+some of them for a question of its own names those, with its reason beside
+them -- the items that size the processes (`jobset.placement`), what a
+benchmark must state (the user, 2026-11-04: *"Refuse, you state it"*), the
+axes a benchmark's grid sweeps (`template.GRID_AXES`,
+[`execution/generator.md`](?doc=execution/generator.md) § 4.3a); none of
+them answers which items are run settings.
 
 **`block_size` is the case that shows why one flag is enough.** The scheduler
 does not grant it: the person sets it on the run card, or a benchmark measures

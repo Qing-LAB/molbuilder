@@ -65,6 +65,17 @@ export function createHistory(handed) {
 
     let state = SETTLED;
     let held = null;               // at most one, remembered during CHANGING
+    /* THE POINTS THE SERVER REFUSED (the user, 2026-11-16: "warn about the
+     * state, roll back goes to the last correctly saved state or none if
+     * none exists").  A point counts once it is handed to storage, so every
+     * edit stays its own point; the server's answer comes later, and a
+     * refusal is kept here -- the badge raised for it, a Retract stepping
+     * past it.  `answers`: the answers still to come, which a read waits
+     * for; `opened`: which structure they belong to, so an answer for the
+     * one replaced marks nothing on the new one. */
+    const refused = new Set();
+    const answers = new Set();
+    let opened = 0;
     let depth = 0;                 // nested brackets
 
     function setBadge(next) {
@@ -127,17 +138,20 @@ export function createHistory(handed) {
              * new while the file on disk is old; without a stamp there is no way
              * to tell that apart from bytes it understands. */
             const ws = handed.workspace;
-            landed = (isSave
+            const answer = isSave
                 ? ws.persist(handed.tag, { v: 1, state: bytes }, step)
-                : ws.persistDraft(handed.tag, { v: 1, state: bytes })) !== false;
+                : ws.persistDraft(handed.tag, { v: 1, state: bytes });
+            landed = answer !== false;
+            if (landed && isSave) watchAnswer(step, answer);
 
-            // "it landed: the position moves" / "it failed: the position does
-            // not move". Two writes in flight is how the position comes to
-            // describe a state that was never written, which is why WRITING
-            // queues.
+            // "handed to storage: the position moves" / "storage would not
+            // take it: the position does not move" -- the hand-over, not the
+            // server's answer; a refusal the server gives later marks the
+            // point and raises the badge (`watchAnswer`, `molview.md` § 11.2).
             if (landed && isSave) {
                 position = step;
                 highest = step;              // a save drops every point above it
+                refused.forEach((r) => { if (r > step) refused.delete(r); });
                 /* AND THE DROP REACHES THE DISK. `highest` alone only stops this
                  * session from stepping forward into an abandoned point; the
                  * files for those points stay on the server, so a later session
@@ -223,8 +237,31 @@ export function createHistory(handed) {
      * position and the stored bytes have settled, and a write that failed has
      * settled too — it left the position where it was. */
     async function settled() {
-        if (!inFlight) return;
-        try { await inFlight; } catch (_) { /* it failed; it is still over */ }
+        if (inFlight) {
+            try { await inFlight; } catch (_) { /* it failed; it is still over */ }
+        }
+        // ...AND THE SERVER'S ANSWERS for the points handed over, so a read
+        // knows which of them were refused.
+        while (answers.size) await Promise.all(Array.from(answers));
+    }
+
+    /* A POINT'S ANSWER, when it comes: refused, it is marked and the badge
+     * goes up -- the state on screen is not on the server; stored, any
+     * earlier refusal of the same point is forgotten. */
+    function watchAnswer(step, answer) {
+        const mine = opened;
+        const told = (ok) => {
+            if (mine !== opened) return;
+            if (ok === false) {
+                refused.add(step);
+                setBadge(true);
+            } else {
+                refused.delete(step);
+            }
+        };
+        const watched = Promise.resolve(answer).then(told, () => told(false));
+        answers.add(watched);
+        watched.then(() => answers.delete(watched));
     }
 
     /* ── Taking up a sequence that outlived its page (§ 11.2a) ──────────────
@@ -296,6 +333,8 @@ export function createHistory(handed) {
         // structure is beats whatever is in flight.
         anchor() {
             held = null;
+            opened += 1;
+            refused.clear();
             position = 0;
             highest = 0;
             anchored = true;
@@ -403,6 +442,10 @@ export function createHistory(handed) {
             } else {
                 target = position + step;
             }
+            // A POINT THE SERVER REFUSED IS STEPPED PAST: a Retract goes to
+            // the last point it stored, or nowhere when it stored none.
+            const way = step < 0 ? -1 : (step > 0 ? 1 : 0);
+            while (way && refused.has(target)) target += way;
             if (target < 0 || target > highest) return null;
 
             /* THE POINT COMES BACK BY ITS NUMBER, under this tag.

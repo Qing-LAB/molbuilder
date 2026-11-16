@@ -325,6 +325,10 @@ const STATES = [
       // construction (`jupyter.port_clash`).
       if (st.port_clash) {
         sayError("Asked for a notebook and none started: " + st.port_clash);
+        // EVERY STATE POLLS OR OFFERS A BUTTON (`jupyter.md` § 5): this one
+        // polls no more, so it offers the check -- the port freed, the
+        // person asks again here instead of reloading the tab.
+        actions.appendChild(recheckButton());
         return;
       }
       // TWO LOGS, AND THEY HOLD DIFFERENT FAILURES.  Everything

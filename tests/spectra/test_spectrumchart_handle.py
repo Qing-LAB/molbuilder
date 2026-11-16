@@ -306,6 +306,41 @@ def test_a_list_that_is_not_a_list_is_refused():
 
 # --- § 6.2  heights only where strengths exist --------------------------------
 
+def test_an_imaginary_mode_is_marked_apart_in_every_lane():
+    """§ 6.4 — an imaginary mode is marked apart, in every lane it is drawn
+    in: the second lane, which draws its channel's colour and shows no
+    selection, marks it too -- and the first lane's choice of it does not
+    hide the mark there.
+
+    THE SILENT FAILURE (F10's reading, 2026-11-16): a later lane drew every
+    stick in its channel's colour, so an imaginary mode read there as an
+    ordinary line."""
+    program = (
+        f"const {{ mount }} = await import({json.dumps(ENTRY.resolve().as_uri())});\n"
+        f"const MODES = {json.dumps(MODES)};\n"
+        "const host = globalThis.__host();\n"
+        "const chart = await mount(host, { onSelect: () => {},\n"
+        "  channels: [{ key: 'raman', label: 'Raman', unit: '', direction: 'up' },\n"
+        "             { key: 'ir', label: 'IR', unit: '', direction: 'down' }] });\n"
+        "chart.setModes(MODES.map((m, i) => ({ index: m.index, freq: m.freq,\n"
+        "  imaginary: i === 0,\n"
+        "  values: { raman: m.values.activity, ir: 2 * m.values.activity } })));\n"
+        "chart.setSelected(MODES[0].index);\n"
+        "const drawn = __calls.filter(c => c.call === 'react').pop();\n"
+        "console.log(JSON.stringify(drawn));"
+    )
+    react = run_node([], program, globals_js=BROWSER)
+    lanes = [t["marker"]["color"] for t in react["traces"]
+             if t.get("type") == "bar"
+             and isinstance((t.get("marker") or {}).get("color"), list)]
+    assert len(lanes) == 2, lanes
+    first, second = lanes
+    assert second[0] == "#ff0000", (
+        f"the second lane drew the imaginary mode as an ordinary line: "
+        f"{second}")
+    assert len(set(second[1:])) == 1 and second[1] != "#ff0000", second
+
+
 def test_with_no_strengths_anywhere_the_modes_are_drawn_as_positions():
     """§ 6.2 — with nothing computed the chart draws where each mode is: one
     lane, one line of one height at every mode, no curve whatever the width,
