@@ -215,7 +215,7 @@
      * they don't need to override anything.  The returned object
      * captures ``host`` so callers don't have to pass it twice.
      */
-    function createDefaultContext(host) {
+    function createDefaultContext(host, header) {
         // The framework is high-level DISPATCH; it does NOT own a file reader.  It
         // INJECTS the sidebar's file layer (``projects.readFile`` / ``readRange`` -- the
         // ONE byte-access implementation) so handlers never hand-roll an /api/files/*
@@ -224,6 +224,17 @@
             return (root.molbuilder && root.molbuilder.projects) || null;
         }
         return {
+            /* WHAT A PRESENTER OFFERS FOR THE WHOLE CALCULATION, in the
+             * page's top line (presenters.md § 2): ``header`` is that place,
+             * its content replaced by each call; the page empties it as it
+             * puts the presenter away. */
+            placeInHeader(node) {
+                if (!header) {
+                    throw new TypeError("this page has no top line: "
+                        + "createDefaultContext(host, header)");
+                }
+                header.replaceChildren(node);
+            },
             showError(message) {
                 host.innerHTML = "";
                 const div = document.createElement("div");

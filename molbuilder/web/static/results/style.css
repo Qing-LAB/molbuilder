@@ -3,7 +3,9 @@
  * Owns:
  *   * .results-main          -- page layout container
  *   * .results-status        -- header above the inspector: WHICH FOLDER
- *                              these results came from (+ the file)
+ *                              these results came from (+ the file), and
+ *                              what the viewer offers for the whole
+ *                              calculation (.results-file-actions)
  *   * .results-inspector-host -- the mount-point frame
  *   * .results-fallback      -- empty state when no file is picked
  *
@@ -54,6 +56,7 @@
 
 .results-status {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: var(--space-sm);
     padding: var(--space-sm) var(--space-md);
@@ -100,6 +103,15 @@
      * is mounted; the empty span would otherwise show a stray pill). */
 }
 .results-file-kind:empty { display: none; }
+
+/* A viewer's actions on the whole calculation (presenters.md § 2,
+ * `placeInHeader`): their own line under the folder when the row is full,
+ * so a long status sentence beside the buttons never crowds the path. */
+.results-file-actions {
+    flex: 1 1 100%;
+    min-width: 0;
+}
+.results-file-actions:empty { display: none; }
 
 /* ===========================================================
    Inspector host: single mount point.  The active inspector

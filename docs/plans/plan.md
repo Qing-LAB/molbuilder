@@ -37,6 +37,20 @@ each release is its changelog row and its ledger section
 - **The UI review** *(the user, 2026-11-08: "Right after 2.67.11")* —
   2.68.0–2.69.9, 2.70.27: done — the last two items, the tabs following
   the sidebar's folder and the ladder's layout, in 2.70.27.
+- **A transport result's export** *(the user, 2026-11-16, after F10)* —
+  three pieces, each designed in its chapter before code: (A) the
+  calculation's Export moved into the Results tab's top line (2.70.32,
+  done); (B) the data
+  file in groups, `@9` — the junction whole (cell, regions, labels), each
+  stage, each point with its device run, a summary across the points from
+  the same pass, each run's engine version, how each DOS is made
+  (`engines/transport.md` § 2a.12, designed; the post-processing
+  document's examples move with it, each run on a real calculation); (C)
+  every chart's own export — a picture, its drawn data as CSV and NetCDF;
+  the PDOS of a mixed selection from the data file and each point's digest
+  (`postprocess.pdos`, the user's option 3, designed with B). Then a
+  full-text review of the result summary and data export code *(the user,
+  2026-11-16)*.
 - **The overlap audit** *(the user, 2026-11-09)* — 2.69.10–2.69.12: a
   structure file through the one writer, every answer through the one reader,
   every failure through the one builder.

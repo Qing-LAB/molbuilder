@@ -34,6 +34,7 @@
         fallback:       null,
         fileReadout:    null,
         kindReadout:    null,
+        actions:        null,
         loadingOverlay: null,   // lock-down cover shown during an async load
     };
 
@@ -523,11 +524,19 @@
         host.hidden = false;
     }
 
-    function _showFallback(file, place, points) {
+    /* PUT THE MOUNTED VIEWER AWAY -- its handle disposed and what it placed
+     * in the top line (`ctx.placeInHeader`, presenters.md § 2) emptied with
+     * it, so a result's actions never outlive the result. */
+    function _putAway() {
         if (currentHandle) {
             try { currentHandle.dispose(); } catch (_) { /* swallow */ }
             currentHandle = null;
         }
+        if (els.actions) els.actions.replaceChildren();
+    }
+
+    function _showFallback(file, place, points) {
+        _putAway();
         // Restore the fallback section.  The host owns its contents
         // exclusively while an inspector is mounted, so we re-insert
         // the fallback markup here.  Cheap (small static block).
@@ -562,10 +571,7 @@
 
     /** Put down whatever is on screen, and forget it. */
     function _clearMounted() {
-        if (currentHandle) {
-            try { currentHandle.dispose(); } catch (_) { /* swallow */ }
-            currentHandle = null;
-        }
+        _putAway();
         mountedFile = "";
         mountedName = "";
     }
@@ -665,10 +671,7 @@
         // Dispose the previous inspector BEFORE handing the host
         // to the next one -- listeners / timers / 3Dmol viewers
         // leak otherwise.
-        if (currentHandle) {
-            try { currentHandle.dispose(); } catch (_) { /* swallow */ }
-            currentHandle = null;
-        }
+        _putAway();
         currentHandle = reg.mount(els.host, file, mountContext, meta);
         mountedFile = file;
         mountedName = inspector.displayName;
@@ -695,6 +698,7 @@
         els.fallback    = $("results-fallback");
         els.fileReadout = $("results-current-file");
         els.kindReadout = $("results-current-kind");
+        els.actions     = $("results-current-actions");
         if (!els.host) return;   // template invariant broken; bail.
 
         // Build the loading lock-down overlay: wrap the host in a relative box and
@@ -754,7 +758,7 @@
         // closure variable it captures; future inspectors that
         // need it just call ctx.showError / ctx.readFile).
         mountContext = reg && reg.createDefaultContext
-            ? reg.createDefaultContext(els.host)
+            ? reg.createDefaultContext(els.host, els.actions)
             : null;
 
         // Detach the fallback from the DOM so the inspector can

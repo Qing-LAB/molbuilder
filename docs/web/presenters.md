@@ -138,12 +138,18 @@ throws is logged and skipped, so one broken presenter can't jam the switchboard;
 a `mount` that throws falls back to a clean error card in the panel.
 
 **Every presenter reads and writes files through one shared reader.** `mount` is
-handed a `ctx` with four helpers. Three touch files and all go through the
+handed a `ctx` with five helpers. Three touch files and all go through the
 projects file layer ([`projects.md`](?doc=web/projects.md)) — `readFile`,
 `readRange` (a byte window, for large files), and `writeFile` (timestamp-safe,
 so a concurrent edit on disk is caught); the fourth, `showError`, just renders an
 error card in the panel. Presenters never hand-roll their own `/api/files/*`
-calls; that shared reader is the one file door.
+calls; that shared reader is the one file door. The fifth, **`placeInHeader(node)`**,
+puts what a presenter offers for the **whole calculation** — a transport
+report's Export — in the page's top line, beside the folder and the kind, where
+it is seen as the result opens *(the user, 2026-11-16: the transport Export
+"sits … below the 5-stage ladder", moved to the top line)*: one place, its
+content replaced by each call, emptied by the page whenever it puts a presenter
+away, so a result's actions never outlive it.
 
 ## 3. How the switchboard runs
 

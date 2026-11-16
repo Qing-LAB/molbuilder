@@ -3089,45 +3089,168 @@ reader — xarray, netCDF4, sisl — and by molbuilder's own door
 ([`model/datafiles.md`](?doc=model/datafiles.md)) — each variable stating
 itself, the one writer, the one door, the tables — and this section lists its
 variables; § 7 there follows a transport calculation's files end to end.
-**One shape for every transport calculation**: one
-structure at one voltage is a 1 × 1 grid, never a different layout.
+**The calculation as groups** *(the user, 2026-11-16: "I like the idea
+that each calculation has its own group, so it can separate them and look at
+each data set carefully … to access the IV curve, the user could decide to
+take individual points from each calculation group, or … just go for the
+summary and then look at the final. This should be consistent and coming
+from the same result")* — schema `molbuilder/transport-data@9`. **Designed,
+not built**: until the release that builds it, `transport/datafile.py` writes
+`@8`, every result on one grid of the axes below, the variables with the
+prefixes the table keeps. The file is the calculation's ladder: the junction,
+each stage that runs once, each point — its device run and its transmission —
+and a summary that gathers across the points what is compared between them.
 
-| dimension | what it runs over |
+| group | what it is | holds |
+|---|---|---|
+| `/` | the file | its statement and the calculation's records (*Every variable says what it is*, below) — no variable |
+| `/structure` | the junction as the calculation composed it, **listed by user index** ([`model/overview.md`](?doc=model/overview.md) § 2.2a, I1) | each atom's `element`, `mass_amu`, `region`, `labels` and its atom index map; the **cell**, `cell_ang`; every frame's `positions_ang`; along `frame` its folder and rows (the frames' part, `frame_average`) |
+| `/stages/seed` · `/stages/electrode_L` · `/stages/electrode_R` | each stage that runs once | its run's state, energy, E_F and SCF history — the table's `rung_*`, the prefix dropped |
+| `/points/v0.2` — a frame set's `/points/f003/v0.2` | **each point the description asks for, done or not**, named as its folders are (`task.bias_token`, `paths.frame_token`) | its transmission's results and state — every variable over `frame` and `bias_v` below that is not the device's — and which atoms its DOS covers (`dos_atom`) |
+| `/points/…/device` | that point's device run — the one its transmission gathered (*The provenance chain*) | its NEGF figures, charges and SCF history — the table's `device_*`, the prefix dropped |
+| `/summary` | **what is compared across the points**, gathered | on `frame` × `bias_v`: each point's `done`, `point_state`, `conductance_g0`, `current_a`, `current_by_spin_a`, `current_from`, and its device's `device_ef_ev`, `device_vha_ev`, `device_dq`, `device_d_change_from_0v`, `device_scf_converged`; `transmission` over `energy_ev` too, the T(E, V) map; **the I–V** — `iv_current_a`, `iv_current_by_spin_a` over `frame` × `iv_bias_v`, `iv_kt_ev`, the window, `iv_computed`, `iv_notes`; and the frames' average (`average_*`, `weight_sum`, `weight_tolerance`) |
+
+**A group's path names a point on the axes it drops.** `/stages/seed` is
+`rung` = `seed`; `/points/f003/v0.2` is `frame` 3 at 0.2 V. Each variable in
+the table below keeps its one definition; inside a stage's or a point's group
+it runs over the axes left, and the prefix its group names (`rung_`,
+`device_`, `point_`) is dropped — `rung_fermi_ev` is `/stages/seed`'s
+`fermi_ev`, `device_scf_ddmax` is `/points/v0.2/device`'s `scf_ddmax`,
+`point_why` a point's `why`. A point group states its `frame` and `bias_v` as
+attributes, and `done`.
+
+**The summary and the points are one composition.** Each value the summary
+gathers is written in the same pass, from the same record entry, as the
+point's own — never computed again from the file — so the summary's
+`current_a` at 0.2 V and `/points/v0.2`'s `current_a` are one number, and a
+reader takes either road: `xr.load_dataset(path, group="summary")
+.iv_current_a.sel(frame=0)` is the whole I–V, `group="points/v0.2"` one
+calculation whole. **Every group is read alone**: it holds its own axes as
+coordinates — a point's `energy_ev`, `spin`, `region`, `lead`,
+`eigenchannel`, `atom`, `scf_cycle`, `charge_part` — so `xr.load_dataset(path,
+group=…)` answers a whole dataset, and `xr.open_datatree(path)` the tree.
+**One shape for every transport calculation**: the same groups always; one
+structure at one voltage is one point group and a 1 × 1 summary; a point not
+done holds the same variables at their fill values, `done` 0.
+
+| axis | what it runs over |
 |---|---|
 | `frame` | the cited structure's frames — 1 for one structure |
-| `bias_v` | the voltages the device and the transmission ran at — the description's list, in its order, or 0 V |
+| `bias_v` | the voltages the device and the transmission ran at — the description's list, in its order (a transport description states its voltages, [0.0] for a single bias — one stating none is refused, `task.Task`) |
 | `energy_ev` | the transmission's energy grid, $E - E_F$, at the full precision of each point's `.TBT.nc` — the `.TBT.AVTRANS` beside it prints the same points to five decimals of an eV (`f10.5`, `m_tbt_save.F90`), and a file that is not within half that decimal of it is refused as not one run's; a point that shares energies with a finished calculation's point, its joined grid (§ 2a.16) |
 | `spin` | the spin channels TBtrans wrote, by the record's names — the one channel of a `non-polarized` run, or `up` and `down` |
-| `iv_bias_v` | the I–V's voltages — the description's list, in its order (under the low-bias approximation, more than ran), or 0 V |
-| `atom` · `xyz` | the junction's atoms **listed by user index** — the composed junction, the engine's record in TranSIESTA's order, restored through its own order record (`Structure.restored`; [`model/overview.md`](?doc=model/overview.md) § 2.2a, I1) — and the three Cartesian components; every per-atom variable (`element`, `mass_amu`, `positions_ang`) along it, and **its atom index map** (`model/overview.md` § 2.2b): `user_atom_index`, `engine_atom_index` — the device run's, TranSIESTA's, from the junction's order record, so `sisl` is asked about a point's `.TBT.nc` with this file's own `engine_atom_index` — and the attributes `atoms_listed_by` `user_index`, `atom_index_base` `0` |
+| `iv_bias_v` | the I–V's voltages — the description's list, in its order (under the low-bias approximation, more than ran) |
+| `atom` · `xyz` · `cell_vector` | the junction's atoms **listed by user index** — the composed junction, the engine's record in TranSIESTA's order, restored through its own order record (`Structure.restored`; [`model/overview.md`](?doc=model/overview.md) § 2.2a, I1) — the three Cartesian components, and the cell's three vectors; every per-atom variable along `atom`, and **its atom index map** (`model/overview.md` § 2.2b): `user_atom_index`, `engine_atom_index` — the device run's, TranSIESTA's, from the junction's order record, so `sisl` is asked about a point's `.TBT.nc` with this file's own `engine_atom_index` — and the attributes `atoms_listed_by` `user_index`, `atom_index_base` `0` |
 | `region` · `lead` · `eigenchannel` | the device's regions molbuilder owns (L-electrode, bridge, R-electrode); the two leads, as TBtrans names them (`L`, `R`; `transiesta.LEAD_NAMES`); the eigenchannels a point's files hold — those TBtrans was asked for (`TBT.T.Eig`), each spin channel's, none where no file is read |
-| `rung` | the rungs that run once — `seed`, `electrode_L`, `electrode_R`, by their stage names |
+| `rung` | the stages that run once — `seed`, `electrode_L`, `electrode_R`, by their stage names; a group's name in this layout |
 | `scf_cycle` | an SCF row's index within its run, from 0 — every row of the run's last step, a device's periodic start and its NEGF loop alike; a run of fewer rows padded with the fill value |
 | `charge_part` | TranSIESTA's charge columns, as its `ts-q:` header names them — `D` the bridge, `E1` `C1` … each electrode and its overlap population with the bridge (§ 2a.12, *The device's charges*) |
 
-**Every dimension is a coordinate of its own name** (a NetCDF coordinate
-variable): `frame` (0-based, MolView's index), `bias_v`, `energy_ev`, `spin`,
-`iv_bias_v`, `atom`, `xyz`, `region`, `lead`, `eigenchannel`, `rung`,
-`scf_cycle`, `charge_part` — so a reader
-selects by value, `transmission.sel(bias_v=0.2)`. **The labels of a
-dimension's points are coordinates beside it** (CF auxiliary coordinates,
-named in each variable's `coordinates` attribute, which xarray and netCDF4
-read): along `frame` its folder `frame_token` (`f000` …, empty for one
-structure, which has no frame level), every per-frame row of a mode's frame
-set's vocabulary (`model/structure.md` § 2.2f) — each variable's `definition` the row's meaning
-as the set states it (its `note`, said to be the set's), the vocabulary's
-where it states none —
-and `frame_rows`, every row the frame states as written, a JSON list of the
-rows whole, meanings included; along `atom` each atom's `element`
-and `mass_amu` — the fill value where the structure states none — and its
-`user_atom_index` and `engine_atom_index`, the atom index map
-([`model/overview.md`](?doc=model/overview.md) § 2.2b). The frames'
-part — their rows, masses and average — is laid out by their post-process
+**Every axis is a coordinate of its own name** (a NetCDF coordinate
+variable), in each group that runs over it — so a reader selects by value,
+`transmission.sel(bias_v=0.2)`. **The labels of an axis's points are
+coordinates beside it** (CF auxiliary coordinates, named in each variable's
+`coordinates` attribute, which xarray and netCDF4 read): along `frame` its
+folder `frame_token` (`f000` …, empty for one structure, which has no frame
+level), every per-frame row of a mode's frame set's vocabulary
+(`model/structure.md` § 2.2f) — each variable's `definition` the row's
+meaning as the set states it (its `note`, said to be the set's), the
+vocabulary's where it states none — and `frame_rows`, every row the frame
+states as written, a JSON list of the rows whole, meanings included; along
+`atom` each atom's `element`, `mass_amu` — the fill value where the structure
+states none — `region`, `labels` and its `user_atom_index` and
+`engine_atom_index`, the atom index map
+([`model/overview.md`](?doc=model/overview.md) § 2.2b). The frames' part —
+their rows, masses and average — is laid out by their post-process
 (`frame_average.data_file_variables`, `fill_data_file`).
+
+**The junction, whole** *(the user, 2026-11-16: "junction's cell should be
+saved together with structure")*. `/structure` holds what the calculation
+ran on, so a reader needs no other file to place an atom: `cell_ang`
+(`cell_vector` × `xyz`, ångström, the lattice vectors as rows, as the
+composed junction states them — the same for every frame), each atom's
+`region` — `L-electrode`, `bridge`, `R-electrode`, or empty for an atom in
+none: the regions molbuilder owns, from the junction's own
+(`record.device_regions`), the ones `dos_region` sums — and its `labels`,
+every label the junction states for it, as written, a JSON list — the
+regions' among the person's own; molbuilder reads only the labels it owns
+([`model/structure.md`](?doc=model/structure.md)).
+
+**How each DOS is made, said in the file** *(the user, 2026-11-16: "the
+meta data of netcdf should have enough capacity to explain how the dos is
+calculated (or where it comes from) the user is ultimately responsible when
+he/she constructs dos with selected atoms or groups (by labels etc of that
+dos trace)")*. TBtrans computes a DOS only for the atoms of its device
+region; a point's `dos_atom` (along `atom`, a flag) is 1 for each atom its
+DOS covers, from the point's kept reading of its data file (`model/parse.md`
+§ 5e) — the fill value where none is kept. Each DOS variable's `definition`
+and `source` say what it is and where it is read: TBtrans's Green-function
+DOS of the device (`dos_total`, its `.TBT.AVDOS`), the device's spectral DOS
+of the states from each lead (`lead_spectral_dos`, `.TBT.AVADOS_<lead>`), a
+lead's bulk DOS (`lead_bulk_dos`, `.TBT.AVBDOS_<lead>`) — each k-averaged by
+TBtrans, on the transmission's energies at the settings the `template`
+states — and `dos_region`, the DOS per orbital of the point's digest
+(`<label>.TBT.digest.nc` beside its `.TBT.nc`) summed over the orbitals of
+the atoms whose `region` is that region and whose `dos_atom` is 1
+(`tbtnc._by_label`); each says its spin — a non-polarized point's one
+spin's, a polarized point's up + down — and `dos_total_by_spin` each
+channel's own. **A DOS summed over atoms a person chooses — by index, by
+label, by region — is that person's construction**: the file says what it is
+made from — each atom's region and labels, which atoms a point's DOS covers,
+where its DOS per orbital is — and sums nothing over a selection of its own;
+the report's PDOS of a selection is computed on request and never written
+(*PDOS of a selection*, [`web/results.md`](?doc=web/results.md) § 2.5).
+
+**A PDOS of the atoms you choose, from the files** *(the user, 2026-11-16:
+"go with option 3, and allow mixed selections"; designed with the groups)*.
+The DOS per orbital stays in each point's digest, beside its `.TBT.nc` —
+gigabytes over a sweep of a large junction, never copied into this file —
+and the data file says where it is and what each orbital is:
+
+- **each orbital, once, in `/structure`** — along `orbital`, the device
+  run's basis in its own order (the same at every point: one junction, one
+  basis): `orbital_atom` (the atom it sits on, by user index, `atom_index`),
+  `orbital_n`, `orbital_l`, `orbital_m`, `orbital_zeta` and `orbital_type`
+  (`s`, `px`, `py`, `pz`, `d…`, the words a selection's orbital menu uses,
+  `tbtnc.ORBITAL_TYPES`), from the first point's device run's `.ORB_INDX`;
+- **each point names its digest** — `dos_per_orbital_file`, the path from
+  the data file's folder (a polarized point's two, `TBT_UP` and `TBT_DN`),
+  empty where none is kept. No checksum: the HDF5 library stamps a file with
+  the time it is built, so the same content reads as another sha256
+  ([`model/datafiles.md`](?doc=model/datafiles.md) § 2b). A digest is
+  trusted as it is read: its door refuses one out of date with its `.TBT.nc`
+  ([`model/parse.md`](?doc=model/parse.md) § 5e) and one whose atom index
+  map is not the junction's (F7).
+
+**`postprocess.pdos(data_file, point, *, atoms=(), labels=(), regions=(),
+orbitals="all")`** — the PDOS of a selection at one point (`"v0.2"`,
+`"f003/v0.2"`, the point group's name), **a mixed selection**: atoms by user
+index, every atom carrying a label as the junction writes it (matched as
+written, never interpreted), every atom of a region molbuilder owns —
+their union, an atom named twice counted once — narrowed to one orbital
+type. It reads the selection against `/structure`, the point's digest through
+its door, and sums with **the one function the report's PDOS of a selection
+sums with** (`tbtnc.selection_pdos`), so a notebook's curve is the page's.
+It answers an xarray `DataArray` over `energy_ev`, `units` `1/eV`, whose
+attributes state the construction whole: the selection as asked (each
+part), the atoms it made, those it named outside the device region (no DOS,
+not counted), the orbital type and the orbitals summed, the digest(s) read,
+the point, and that the sum is the person's selection — a polarized point's
+two channels summed, as the report's. A selection that is empty, a label no
+atom carries, a region not one of the three, or a point whose digest is not
+kept is refused by name. A chart's own export of the report's PDOS of a
+selection, when it is built, writes it through the same function.
+
+Each variable by its name and the axes it runs over in the summary — in a
+stage's or a point's group, over the axes its path leaves, its group's prefix
+dropped (above):
 
 | variable | over | kind | what it is |
 |---|---|---|---|
 | `positions_ang` | frame, atom, xyz | given | every frame's coordinates, listed by user index — the composed junction restored |
+| `cell_ang` | cell_vector, xyz | given | the composed junction's cell, its three lattice vectors as rows — `/structure`'s (*The junction, whole*) |
+| `region` · `labels` | atom | given | each atom's region molbuilder owns — `L-electrode`, `bridge`, `R-electrode`, empty in none — and every label the junction states for it, as written (JSON) — `/structure`'s |
+| `dos_atom` | frame, bias_v, atom | state | 1 for each atom the point's DOS covers — TBtrans's device region, from its kept reading; the fill value where none is kept (*How each DOS is made*) — a point's |
 | `transmission_by_spin` | frame, bias_v, spin, energy_ev | raw | T(E) as each point's `.TBT.AVTRANS` file states it, channel by channel |
 | `dos_total_by_spin` | frame, bias_v, spin, energy_ev | raw | each spin channel's device DOS, as its `.TBT.AVDOS` states it — a non-polarized point's one channel |
 | `current_by_spin_a` | frame, bias_v, spin | raw | the current TBtrans printed for each channel — a non-polarized point's one channel, half the junction's total; the fill value for a point whose energies two runs computed |
@@ -3172,10 +3295,16 @@ part — their rows, masses and average — is laid out by their post-process
 `angstrom` and the ampere `A`; a text none — `long_name`, `definition` — how
 it is obtained, the formula for a derived one — and, for a raw one,
 `source`, the file it was read from. The file says what it is
-(`model/datafiles.md` § 2b): its `title`, `schema`
-(`molbuilder/transport-data@8`), the molbuilder that wrote it, its `source`
-— the calculation's runs, each named in `provenance_chain` and
-`point_folder` — `Conventions` `CF-1.8` and `unit_meanings`; the label, the
+(`model/datafiles.md` § 2b): its `title` — and each group its own —
+`schema` (`molbuilder/transport-data@9`), the molbuilder that wrote it, its
+`source` — the engine and its version that computed it, as the runs' own
+outputs state it (*the user, 2026-11-16: "transport can also save siesta
+version where appropriate in the meta data"*): *computed by SIESTA 5.4.2 —
+its TranSIESTA and TBtrans — in the calculation's runs*, each run named in
+`provenance_chain` and a point's folder, each version where runs state more
+than one — `Conventions` `CF-1.8` and `unit_meanings`; each run's group its
+own `engine_version`, the version line of that run's output (SIESTA's build
+header, TBtrans's `Version`), empty where its output states none; the label, the
 treatment and what it means
 (`treatment_note`), whether the low-bias approximation was made
 (`low_bias_approximation`, 1 or 0), what each spin's current means (`current_means`, JSON),
@@ -3254,6 +3383,11 @@ deliverable.
   file first, so a point whose DOS per orbital is not kept is without its DOS
   by region, as said above: every variable with its units, definition and
   source, the calculation's specifics as its attributes.
+- **With the DOS per orbital** — a choice beside either form: one zip, the
+  export and, at the paths its points name (`dos_per_orbital_file`), each
+  kept digest as it is, its bytes copied and never read, so
+  `postprocess.pdos` answers from the zip's folder anywhere; a point whose
+  digest is not kept is said, as above (designed with the groups).
 - **CSV** — the same variables as tables, never a second reader of the
   calculation: **one long table per set of axes**, every variable over the
   same dimensions in one table, named by them (`frame_bias_v_energy_ev.csv`,

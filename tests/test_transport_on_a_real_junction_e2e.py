@@ -3793,6 +3793,54 @@ def test_the_report_draws_the_junction_in_the_user_order(junction, page,
         assert page.locator(".molviewer-order").is_hidden()
 
 
+def test_the_calculations_export_is_in_the_tabs_top_line(junction, page,
+                                                        monkeypatch):
+    """`web/results.md` § 2.5 *export*, `web/presenters.md` § 2
+    (`placeInHeader`): the report's Export -- every result of the
+    calculation -- sits in the Results tab's top line, beside the folder and
+    the kind, seen as the report opens; it downloads the data file from
+    there; and it leaves with the report when a run is opened in its place.
+
+    THE SILENT FAILURE (the user, 2026-11-16, "I don't see the button
+    there"): the bar drawn in the report's own header, below the ladder --
+    a screen down, never seen; or left in the top line after the report is
+    put away, exporting a calculation no longer shown."""
+    from conftest import point_the_one_door_at
+    from support.live_server import serve
+    from support.sidebar import results_on
+    point_the_one_door_at(junction.tree.parent, monkeypatch.setenv)
+    task = (junction.from_pair.bundle / "task.json").resolve()
+    with serve() as base:
+        results_on(page, base, junction.from_pair.bundle)
+        page.wait_for_function(
+            "(want) => [...document.querySelectorAll("
+            "  '#results-file-picker-select option')]"
+            "  .some(o => o.value === want)", arg=str(task), timeout=30000)
+        page.select_option("#results-file-picker-select", value=str(task))
+        bar = page.locator(".results-status .transport-export")
+        bar.wait_for(timeout=60000)
+        assert page.locator("#inspector-host .transport-export").count() == 0
+        seen = page.evaluate(
+            "() => { const r = document.querySelector("
+            "'.results-status .transport-export').getBoundingClientRect();"
+            " return { top: r.top, bottom: r.bottom, screen: innerHeight,"
+            " scrolled: scrollY }; }")
+        assert seen["scrolled"] == 0 and seen["bottom"] <= seen["screen"], (
+            f"the Export is not on the first screen as the report opens: "
+            f"{seen}")
+        with page.expect_download(timeout=120000) as got:
+            bar.get_by_role("button", name="NetCDF").click()
+        assert got.value.suggested_filename.endswith(".transport.nc"), (
+            got.value.suggested_filename)
+        page.locator(".results-ladder-open[aria-pressed]").first.click()
+        page.wait_for_function(
+            "() => !document.querySelector('#inspector-host .transport-record')",
+            timeout=30000)
+        assert page.locator(".results-status .transport-export").count() == 0, (
+            "the calculation's Export stayed in the top line after its "
+            "report was put away")
+
+
 # --------------------------------------------------------------------- #
 #  The record (§ 2a.12)                                                  #
 # --------------------------------------------------------------------- #

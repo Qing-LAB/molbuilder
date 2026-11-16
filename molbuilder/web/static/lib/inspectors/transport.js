@@ -175,7 +175,10 @@ const WORKSPACE_TAG = "results:transport";
             + (failed.length ? " · " + failed.length + " failed" : "")
             + (rec.energies_relative_to_ef ? " · energies relative to E_F"
                                            : "")));
-        head.appendChild(_exportBar(file));
+        /* THE CALCULATION'S EXPORT, in the page's top line, seen as the
+         * report opens (presenters.md § 2, `placeInHeader`; web/results.md
+         * § 2.5 *export*). */
+        state.ctx.placeInHeader(_exportBar(file));
         wrap.appendChild(head);
 
         /* ROW 1: the device beside the curves. */
@@ -1460,7 +1463,8 @@ const WORKSPACE_TAG = "results:transport";
                             unsubFrame: null, unsubPlay: null, drawn: false,
                             disposed: false, file: file, dir: dirname(file),
                             nFrames: 1, average: {}, pendingFrame: null,
-                            frameMode: { te: ONE, dos: ONE, iv: ONE, conv: ONE } };
+                            frameMode: { te: ONE, dos: ONE, iv: ONE, conv: ONE },
+                            ctx: ctx };
             /* THE POINTS READ AGAIN -- once a data file's DOS per orbital
              * is read (`_digestCard`): their regions, and a selection's
              * PDOS asked again; the page around them stays as it is. */
