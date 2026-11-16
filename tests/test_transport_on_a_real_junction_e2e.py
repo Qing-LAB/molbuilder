@@ -2822,13 +2822,11 @@ def test_a_point_the_ended_walk_never_reached_reads_not_run_everywhere(
     assert (at["state"], at["detail"]) == ("not run", said), at
     got = export(calc, "netcdf")
     (tmp_path / got.name).write_bytes(got.files[got.name])
-    V = {k: v["data"]
-         for k, v in read_data_file(tmp_path / got.name)["variables"].items()}
-    k = list(V["bias_v"]).index(_BIAS[1])
-    assert [str(s) for s in V["device_state"][..., k].ravel()] == [
-        "not run"], V["device_state"]
-    assert [str(s) for s in V["device_detail"][..., k].ravel()] == [
-        said], V["device_detail"]
+    from molbuilder.task import bias_token
+    G = read_data_file(tmp_path / got.name)["groups"]
+    D = G[f"points/{bias_token(_BIAS[1])}/device"]["variables"]
+    assert (str(D["state"]["data"]), str(D["detail"]["data"])) == (
+        "not run", said), D["state"]
     status = folder_answer(folder)["status"]
     assert (status["state"], status["detail"]) == ("not run",
                                                    NOT_STARTED), status
@@ -2935,88 +2933,148 @@ def test_the_mode_average_is_every_frames_curve_at_its_stated_weight(
 
 def test_the_data_file_holds_every_point_beside_its_frames_definition(
         junction):
-    """§ 2a.12, *the data file*: `<label>.transport.nc`, read through its
-    door, holds every point on one grid -- frame x voltage x energy, the
-    I-V's voltages the description's -- its T(E) TBtrans's own, each frame's
-    definition rows and every atom's element, mass and coordinates beside it
-    in the user order, the cited set's (`model/overview.md` § 2.2a, I1), the
-    device's facts, the I-V and the mode's average each at its own point as
-    the record states them; every dimension a coordinate of its own name and
-    the labels of its points coordinates beside it -- every variable says
-    what it is, which the one writer holds (`ncdata.check_said`); and a
-    calculation of one
-    structure has the same layout, one frame.  THE SILENT FAILURE: a value
-    written at another point's cell of the grid, or a variable that does
-    not say what it is -- a script reading the file takes another point's
-    numbers, with nothing in the file to tell it."""
+    """§ 2a.12, *the data file* -- *The calculation as groups*:
+    `<label>.transport.nc`, read through its door, holds the junction whole
+    in `/structure` -- every frame's definition rows, every atom's element,
+    mass, coordinates, region and labels in the user order, the cited set's
+    (`model/overview.md` § 2.2a, I1), the cell and its periodicity -- each
+    stage in `/stages/<stage>`, each point in `/points/<frame>/<voltage>` with
+    its device run, and `/summary` across the points: T(E) TBtrans's own,
+    the device's facts, the I-V and the mode's average each at its own
+    point as the record states them, **the summary's value and the point's
+    one number**; each run's engine version; which atoms a point's DOS
+    covers; in every group every axis a coordinate of its own name and the
+    labels of its points beside it -- every variable says what it is, which
+    the one writer holds (`ncdata.check_said`); and a calculation of one
+    structure has the same groups, its points named by voltage alone.
+
+    THE SILENT FAILURES: a value written at another point's cell or group,
+    the summary and a point disagreeing, or a variable that does not say
+    what it is -- a script reading the file takes another point's numbers,
+    with nothing in the file to tell it; and a junction whose cell, regions
+    or engine are not in the file (the user, 2026-11-16)."""
     from molbuilder.frame_average import FRAME_ROWS, MASS_CHANNEL
-    from molbuilder.task import of as task_of
+    from molbuilder.task import bias_token, of as task_of
+    from molbuilder.transport.compose import recorded_junction
     from molbuilder.transport.datafile import data_file_path, read_data_file
+    from molbuilder.transport.record import device_regions
     run = junction.from_pair
     label = task_of(run.bundle).label
     got = read_data_file(data_file_path(run.bundle, label))
-    V = {k: v["data"] for k, v in got["variables"].items()}
-    assert list(V["frame"]) == list(range(_N_FRAMES))
-    assert list(V["frame_token"]) == [f"f{f:03d}" for f in range(_N_FRAMES)]
-    assert list(V["bias_v"]) == list(_BIAS)
-    assert list(V["iv_bias_v"]) == list(_BIAS)
+    G = got["groups"]
+
+    def V(group):
+        return {k: v["data"] for k, v in G[group]["variables"].items()}
+    S, J = V("summary"), V("structure")
+
+    def at(f, v):
+        return f"points/f{f:03d}/{bias_token(v)}"
+    assert list(S["frame"]) == list(range(_N_FRAMES))
+    assert list(J["frame_token"]) == [f"f{f:03d}" for f in range(_N_FRAMES)]
+    assert list(S["bias_v"]) == list(_BIAS)
+    assert list(S["iv_bias_v"]) == list(_BIAS)
     for b, v in enumerate(_BIAS):
         energies, curves = _frame_curves(run, label, v)
-        assert np.array_equal(V["energy_ev"], energies)
+        assert np.array_equal(S["energy_ev"], energies)
         for f in range(_N_FRAMES):
-            assert V["done"][f, b] == 1
-            assert np.array_equal(V["transmission"][f, b], curves[f])
-        assert np.allclose(V["average_transmission"][b],
+            P = V(at(f, v))
+            assert S["done"][f, b] == 1 and P["done"] == 1
+            assert (int(P["frame"]), float(P["bias_v"])) == (f, v)
+            assert np.array_equal(P["energy_ev"], energies)
+            assert np.array_equal(S["transmission"][f, b], curves[f])
+            # ONE COMPOSITION: the point's own and the summary's.
+            for name in ("transmission", "conductance_g0", "current_a"):
+                assert np.array_equal(P[name], S[name][f, b],
+                                      equal_nan=True), (name, f, v)
+        assert np.allclose(S["average_transmission"][b],
                            sum(w * c for w, c in zip(_WEIGHTS, curves)),
                            rtol=1e-12, atol=0)
     cited = _the_set(junction)
     for r in FRAME_ROWS:
-        assert list(V[r.name]) == [cited.customized_value(r.name, frame=f)
+        assert list(J[r.name]) == [cited.customized_value(r.name, frame=f)
                                    for f in range(_N_FRAMES)], r.name
-    assert [json.loads(x) for x in V["frame_rows"]] == [
+        assert np.array_equal(S[r.name], J[r.name], equal_nan=True), r.name
+    assert [json.loads(x) for x in J["frame_rows"]] == [
         cited.customized_rows(f) for f in range(_N_FRAMES)]
     masses = cited.annotations[MASS_CHANNEL].data
-    assert list(V["atom"]) == list(range(cited.n_atoms))
-    assert list(V["element"]) == cited.chemical_symbols()
-    assert list(V["mass_amu"]) == [masses[i] for i in range(cited.n_atoms)]
-    assert np.array_equal(V["positions_ang"],
+    assert list(J["atom"]) == list(range(cited.n_atoms))
+    assert list(J["element"]) == cited.chemical_symbols()
+    assert list(J["mass_amu"]) == [masses[i] for i in range(cited.n_atoms)]
+    assert np.array_equal(J["positions_ang"],
                           np.asarray(cited.frames, dtype=float))
+    # THE JUNCTION WHOLE: its cell and periodicity, each atom's region and
+    # every label it carries, as the composed junction states them.
+    composed = recorded_junction(run.bundle).structure.restored()
+    assert np.array_equal(J["cell_ang"], np.asarray(composed.cell, float))
+    assert list(J["cell_axis_kind"]) == list(composed.axis_kind)
+    regions = device_regions(composed)
+    assert regions and set(regions) == {"L-electrode", "bridge",
+                                        "R-electrode"}, regions
+    for a in range(cited.n_atoms):
+        want = next((n for n, m in regions.items() if a in m), "")
+        assert J["atom_region"][a] == want, a
+        assert json.loads(J["labels"][a]) == [
+            k for k, m in composed.regions.items() if a in m], a
     # EACH VALUE PLACED BY ITS OWN POINT, as the record states it: the
     # device's facts, the I-V, the averaged conductance.
     rec = _record(run)
     device = next(s for s in rec["stages"] if s["stage"] == "device")
     for p in device["by_point"]:
         f, b = p["frame"], list(_BIAS).index(p["bias_v"])
-        assert V["device_ef_ev"][f, b] == p["negf"]["ef"], (f, b)
-        assert V["device_vha_ev"][f, b] == p["negf"]["vha_ev"], (f, b)
+        D = V(at(f, p["bias_v"]) + "/device")
+        assert D["ef_ev"] == p["negf"]["ef"] == S["device_ef_ev"][f, b]
+        assert D["vha_ev"] == p["negf"]["vha_ev"] == S["device_vha_ev"][f, b]
     for f, v, i in zip(rec["iv"]["frame"], rec["iv"]["voltages_v"],
                        rec["iv"]["current_a"]):
-        assert V["iv_current_a"][f, list(_BIAS).index(v)] == i, (f, v)
+        assert S["iv_current_a"][f, list(_BIAS).index(v)] == i, (f, v)
     for e in rec["average"]["at"]:
-        assert V["average_conductance_g0"][list(_BIAS).index(e["bias_v"])] \
+        assert S["average_conductance_g0"][list(_BIAS).index(e["bias_v"])] \
             == e["conductance_g0"], e["bias_v"]
-    # EVERY DIMENSION A COORDINATE OF ITS OWN NAME, and the labels of a
-    # dimension's points named as its coordinates (CF `coordinates`).
-    dims = {d for v in got["variables"].values() for d in v["dims"]}
-    for d in dims:
-        assert got["variables"][d]["dims"] == (d,), d
+    # EACH RUN'S ENGINE, as its output states it, and the file's source.
+    for s_ in rec["stages"]:
+        if s_["stage"] in ("seed", "electrode_L", "electrode_R"):
+            stated = G[f"stages/{s_['stage']}"]["attrs"]["engine_version"]
+            assert stated and stated == s_["engine_version"], s_["stage"]
+    for p in rec["points"]:
+        g = G[at(p["frame"], p["bias_v"])]
+        assert g["attrs"]["engine_version"] == p["engine_version"] != "", p
+    assert f"SIESTA {rec['points'][0]['engine_version']}" in \
+        got["attrs"]["source"], got["attrs"]["source"]
+    # WHICH ATOMS A POINT'S DOS COVERS -- its kept reading's, in the user
+    # order -- and the regions summed over exactly those.
+    for p in rec["points"]:
+        covered = p["dos"]["device_atoms"]
+        assert covered, p["point"]
+        flags = V(at(p["frame"], p["bias_v"]))["dos_atom"]
+        assert [a for a in range(cited.n_atoms) if flags[a] == 1] == covered
+    # IN EVERY GROUP, EVERY AXIS A COORDINATE OF ITS OWN NAME, and the
+    # labels of an axis's points named as its coordinates (CF
+    # `coordinates`), there too.
+    for path, g in G.items():
+        for d in {d for v in g["variables"].values() for d in v["dims"]}:
+            assert g["variables"][d]["dims"] == (d,), (path, d)
     frame_labels = {"frame_token", "frame_rows",
                     *(r.name for r in FRAME_ROWS)}
-    attrs_of = {k: v["attrs"] for k, v in got["variables"].items()}
+    attrs_of = {k: v["attrs"] for k, v in G["summary"]["variables"].items()}
     assert set(attrs_of["transmission"]["coordinates"].split()) \
         == frame_labels
-    assert set(attrs_of["positions_ang"]["coordinates"].split()) \
-        == frame_labels | {"element", MASS_CHANNEL, "user_atom_index",
-                           "engine_atom_index"}
+    at_structure = {k: v["attrs"]
+                    for k, v in G["structure"]["variables"].items()}
+    assert set(at_structure["positions_ang"]["coordinates"].split()) \
+        == frame_labels | {"element", MASS_CHANNEL, "atom_region", "labels",
+                           "user_atom_index", "engine_atom_index"}
     # EACH FRAME ROW'S DEFINITION its meaning as the set writes it
     # (`model/datafiles.md` § 2).
     for r in FRAME_ROWS:
         note = next(x["note"] for x in cited.customized_rows(0)
                     if x["name"] == r.name)
-        assert attrs_of[r.name]["definition"].startswith(note), r.name
-    one = read_data_file(data_file_path(junction.bundle, "T"))["variables"]
-    assert one["transmission"]["data"].shape[:2] == (1, len(_BIAS))
-    assert one["transmission"]["dims"] == ("frame", "bias_v", "energy_ev")
+        assert at_structure[r.name]["definition"].startswith(note), r.name
+    one = read_data_file(data_file_path(junction.bundle, "T"))["groups"]
+    assert one["summary"]["variables"]["transmission"]["data"].shape[:2] \
+        == (1, len(_BIAS))
+    assert {k for k in one if k.startswith("points/")} == {
+        f"points/{bias_token(v)}" for v in _BIAS} | {
+        f"points/{bias_token(v)}/device" for v in _BIAS}
 
 
 def test_the_frames_are_reaveraged_over_another_motion(junction):
@@ -3037,7 +3095,11 @@ def test_the_frames_are_reaveraged_over_another_motion(junction):
     from molbuilder.transport.datafile import data_file_path, read_data_file
     run = junction.from_pair
     path = data_file_path(run.bundle, task_of(run.bundle).label)
-    V = {k: v["data"] for k, v in read_data_file(path)["variables"].items()}
+    G = read_data_file(path)["groups"]
+    # THE AVERAGE THE RECORD TOOK is the summary's, the motion's rows the
+    # junction's (§ 2a.12, *The calculation as groups*).
+    V = {k: v["data"] for group in ("structure", "summary")
+         for k, v in G[group]["variables"].items()}
     own = reaveraged(path, temperature_k=_TEMPERATURE_K)
     assert own["weights"] == pytest.approx(list(_WEIGHTS), rel=1e-9)
     assert own["bias_v"] == list(_BIAS)
@@ -3076,49 +3138,59 @@ def test_the_data_file_holds_every_runs_convergence_on_its_grid(junction):
     from molbuilder.transport.datafile import data_file_path, read_data_file
     run = junction.from_pair
     label = task_of(run.bundle).label
-    got = read_data_file(data_file_path(run.bundle, label))
-    V = {k: v["data"] for k, v in got["variables"].items()}
+    from molbuilder.task import bias_token
+    G = read_data_file(data_file_path(run.bundle, label))["groups"]
+
+    def V(group):
+        return {k: v["data"] for k, v in G[group]["variables"].items()}
+
+    def device_of(f, v):
+        return V(f"points/f{f:03d}/{bias_token(v)}/device")
     rec = _record(run)
     by = {s["stage"]: s for s in rec["stages"]}
     for p in by["device"]["by_point"]:
-        cell = (p["frame"], list(_BIAS).index(p["bias_v"]))
+        cell = (p["frame"], p["bias_v"])
+        D = device_of(*cell)
         rows = p["scf"]
-        assert rows and V["device_scf_cycles"][cell] == len(rows), cell
-        assert list(V["device_scf_ddmax"][cell][:len(rows)]) == [
+        assert rows and D["scf_cycles"] == len(rows), cell
+        assert list(D["scf_ddmax"][:len(rows)]) == [
             r["dDmax"] for r in rows], cell
-        assert list(V["device_scf_phase"][cell][:len(rows)]) == [
+        assert list(D["scf_phase"][:len(rows)]) == [
             r["phase"] for r in rows], cell
-        assert np.isnan(V["device_scf_ddmax"][cell][len(rows):]).all(), cell
-        assert V["device_state"][cell] == p["state"], cell
-        assert V["device_scf_converged"][cell] == int(p["scf_converged"])
+        assert np.isnan(D["scf_ddmax"][len(rows):]).all(), cell
+        assert D["state"] == p["state"], cell
+        assert D["scf_converged"] == int(p["scf_converged"])
         charges = p["negf"]["charges"]
-        parts = list(V["charge_part"])
-        assert {k: V["device_charge"][cell][parts.index(k)]
+        parts = list(D["charge_part"])
+        assert {k: D["charge"][parts.index(k)]
                 for k in charges} == charges, cell
         # EVERY NEGF ROW'S CHARGES, and the run's phases.
         for c, r in enumerate(rows):
             for k, q in (r.get("charges") or {}).items():
-                assert V["device_scf_charge"][cell][c][parts.index(k)] == q
-        assert json.loads(V["device_scf_phases"][cell]) == p["scf_phases"]
+                assert D["scf_charge"][c][parts.index(k)] == q
+        assert json.loads(str(D["scf_phases"])) == p["scf_phases"]
     # THE BRIDGE'S CHARGE FROM 0 V -- each frame against its own 0 V point,
     # the D column (engines/transport.md § 2a.12, *The device's charges*).
-    d = list(V["charge_part"]).index("D")
-    for f in range(V["device_charge"].shape[0]):
-        for b in range(len(_BIAS)):
-            assert V["device_d_change_from_0v"][f, b] == pytest.approx(
-                V["device_charge"][f, b, d] - V["device_charge"][f, 0, d],
-                abs=1e-9), (f, b)
-    assert list(V["rung"]) == ["seed", "electrode_L", "electrode_R"]
-    for r, name in enumerate(V["rung"]):
+    for f in range(_N_FRAMES):
+        zero = device_of(f, _BIAS[0])
+        d = list(zero["charge_part"]).index("D")
+        for v in _BIAS:
+            D = device_of(f, v)
+            assert D["d_change_from_0v"] == pytest.approx(
+                D["charge"][d] - zero["charge"][d], abs=1e-9), (f, v)
+    assert sorted(k for k in G if k.startswith("stages/")) == [
+        "stages/electrode_L", "stages/electrode_R", "stages/seed"]
+    for name in ("seed", "electrode_L", "electrode_R"):
+        R = V(f"stages/{name}")
         rows = by[name]["scf"]
-        assert V["rung_scf_cycles"][r] == len(rows), name
-        assert list(V["rung_scf_energy_ev"][r][:len(rows)]) == [
+        assert R["scf_cycles"] == len(rows), name
+        assert list(R["scf_energy_ev"][:len(rows)]) == [
             c["energy"] for c in rows], name
-        assert V["rung_fermi_ev"][r] == by[name]["fermi_ev"], name
-        assert V["rung_state"][r] == by[name]["state"], name
+        assert R["fermi_ev"] == by[name]["fermi_ev"], name
+        assert R["state"] == by[name]["state"], name
     for p in rec["points"]:
-        cell = (p["frame"], list(_BIAS).index(p["bias_v"]))
-        assert V["point_state"][cell] == p["state"] == "finished", cell
+        P = V(f"points/f{p['frame']:03d}/{bias_token(p['bias_v'])}")
+        assert P["state"] == p["state"] == "finished", p["point"]
 
 
 def _export(junction, monkeypatch, run, fmt, to):
@@ -3161,19 +3233,24 @@ def test_an_export_is_the_data_file_and_its_tables(junction, monkeypatch,
     _export(junction, monkeypatch, run, "netcdf", tmp_path)
     _export(junction, monkeypatch, run, "csv", tmp_path)
     assert all_written(run.bundle) == before, "nothing written in it"
-    want = read_data_file(data_file_path(run.bundle, label))["variables"]
-    got = read_data_file(tmp_path / f"{label}.transport.nc")["variables"]
+    want = read_data_file(data_file_path(run.bundle, label))["groups"]
+    got = read_data_file(tmp_path / f"{label}.transport.nc")["groups"]
     assert sorted(got) == sorted(want)
-    for name, v in want.items():
-        a, b = np.asarray(v["data"]), np.asarray(got[name]["data"])
-        same = (np.allclose(a, b, equal_nan=True, rtol=0, atol=0)
-                if a.dtype.kind == "f" else np.array_equal(a, b))
-        assert same, name
+    for path, group in want.items():
+        assert got[path]["attrs"] == group["attrs"], path
+        assert sorted(got[path]["variables"]) == sorted(group["variables"])
+        for name, v in group["variables"].items():
+            a = np.asarray(v["data"])
+            b = np.asarray(got[path]["variables"][name]["data"])
+            same = (np.allclose(a, b, equal_nan=True, rtol=0, atol=0)
+                    if a.dtype.kind == "f" else np.array_equal(a, b))
+            assert same, (path, name)
     rows = list(csv.DictReader(io.StringIO(
-        (tmp_path / f"{label}.transport-csv"
+        (tmp_path / f"{label}.transport-csv" / "summary"
          / "frame_bias_v_energy_ev.csv").read_text())))
-    T = np.asarray(want["transmission"]["data"])
-    E = np.asarray(want["energy_ev"]["data"])
+    summary = want["summary"]["variables"]
+    T = np.asarray(summary["transmission"]["data"])
+    E = np.asarray(summary["energy_ev"]["data"])
     for r in rows:
         f = int(r["frame"])
         b = list(_BIAS).index(float(r["bias_v"]))
@@ -3181,7 +3258,8 @@ def test_an_export_is_the_data_file_and_its_tables(junction, monkeypatch,
         assert float(r["transmission"]) == T[f, b, e], r
     assert len(rows) == T.size
     readme = (tmp_path / f"{label}.transport-csv" / "README.txt").read_text()
-    assert "frame_bias_v_energy_ev.csv" in readme and "transmission:" in readme
+    assert "summary/frame_bias_v_energy_ev.csv" in readme and (
+        "transmission:" in readme)
     answer = create_app(config={}).test_client().get(
         f"/api/transport/export?path={run.bundle / 'task.json'}&format=csv")
     assert answer.status_code == 200, answer.get_json()
@@ -3189,7 +3267,8 @@ def test_an_export_is_the_data_file_and_its_tables(junction, monkeypatch,
             in answer.headers["Content-Disposition"])
     names = zipfile.ZipFile(io.BytesIO(answer.data)).namelist()
     assert f"{label}.transport-csv/README.txt" in names
-    assert f"{label}.transport-csv/frame_bias_v_energy_ev.csv" in names
+    assert (f"{label}.transport-csv/summary/frame_bias_v_energy_ev.csv"
+            in names)
 
 
 def test_an_export_reads_no_data_file_and_says_what_is_missing(
@@ -3216,11 +3295,17 @@ def test_an_export_reads_no_data_file_and_says_what_is_missing(
             f"region") in out, out
     assert not any(digest_of(d).exists() for d in data), (
         "the export read a data file")
-    V = {k: v["data"] for k, v in read_data_file(
-        tmp_path / f"{label}.transport.nc")["variables"].items()}
-    for b in range(len(_BIAS)):
-        assert "not read yet" in str(V["dos_per_orbital_reading"][0, b])
-        assert np.isnan(np.asarray(V["dos_region"][0, b], float)).all()
+    from molbuilder.task import bias_token
+    G = read_data_file(tmp_path / f"{label}.transport.nc")["groups"]
+    for v in _BIAS:
+        # FRAME 0's point at the voltage -- named by its voltage alone for
+        # one structure.
+        tok = bias_token(v)
+        P = (G.get(f"points/{tok}") or G[f"points/f000/{tok}"])["variables"]
+        assert "not read yet" in str(P["dos_per_orbital_reading"]["data"])
+        assert np.isnan(np.asarray(P["dos_region"]["data"], float)).all()
+        # NOT KEPT, SO NOT KNOWN: which atoms its DOS covers is the fill.
+        assert (np.asarray(P["dos_atom"]["data"]) == -1).all()
 
 
 def test_a_scripts_read_of_a_sorted_run_stands_on_the_persons_atoms(junction):
@@ -3386,11 +3471,11 @@ def test_the_data_file_holds_the_calculations_own_records(junction):
     assert attrs["job_request"] == request_path(run.bundle).read_text()
     rec = _record(run)
     assert attrs["provenance_chain"] == rec["provenance"]["chain"]
-    V = {k: v["data"] for k, v in got["variables"].items()}
+    from molbuilder.task import bias_token
     for p in rec["points"]:
-        b = list(_BIAS).index(p["bias_v"])
-        assert V["tbt_k_points"][0, b] == p["k_points"], p
-        assert V["tbt_k_method"][0, b] == p["k_method"], p
+        P = got["groups"][f"points/{bias_token(p['bias_v'])}"]["variables"]
+        assert P["tbt_k_points"]["data"] == p["k_points"], p
+        assert P["tbt_k_method"]["data"] == p["k_method"], p
 
 
 def test_a_ladder_without_a_transmission_exports_what_exists(
@@ -3409,24 +3494,31 @@ def test_a_ladder_without_a_transmission_exports_what_exists(
     from molbuilder.transport.record import collect_record
     run = junction.single
     _export(junction, monkeypatch, run, "netcdf", tmp_path)
-    V = {k: v["data"] for k, v in read_data_file(
-        tmp_path / f"{task_of(run.bundle).label}.transport.nc")[
-            "variables"].items()}
-    assert len(V["energy_ev"]) == 0
-    assert list(V["rung"]) == ["seed", "electrode_L", "electrode_R"]
-    assert all(n > 0 for n in V["rung_scf_cycles"]), V["rung_scf_cycles"]
-    assert (np.asarray(V["device_scf_cycles"]) > 0).all()
-    assert not np.asarray(V["done"]).any()
+    G = read_data_file(
+        tmp_path / f"{task_of(run.bundle).label}.transport.nc")["groups"]
+
+    def V(group):
+        return {k: v["data"] for k, v in G[group]["variables"].items()}
+    S = V("summary")
+    assert len(S["energy_ev"]) == 0
+    assert not np.asarray(S["done"]).any()
+    names = ["seed", "electrode_L", "electrode_R"]
+    assert sorted(k for k in G if k.startswith("stages/")) == sorted(
+        f"stages/{n}" for n in names)
+    assert all(V(f"stages/{n}")["scf_cycles"] > 0 for n in names)
+    devices = [k for k in G if k.endswith("/device")]
+    assert len(devices) == len(S["bias_v"]) and all(
+        V(k)["scf_cycles"] > 0 for k in devices), devices
     rec = collect_record(open_calculation(run.bundle), partial=True)
     stage = {s["stage"]: s for s in rec["stages"]}
-    assert [V["rung_detail"][r] for r in range(3)] == [
-        stage[n]["detail"] for n in V["rung"]]
-    assert all(V["rung_detail"]), V["rung_detail"]
+    assert [V(f"stages/{n}")["detail"] for n in names] == [
+        stage[n]["detail"] for n in names]
+    assert all(V(f"stages/{n}")["detail"] for n in names)
     device = stage["device"].get("by_point") or [stage["device"]]
-    assert set(np.asarray(V["device_detail"]).ravel()) == {
+    assert {str(V(k)["detail"]) for k in devices} == {
         d["detail"] for d in device}
-    assert list(V["average_why"]) == [rec["average"]["why"]] * len(
-        V["bias_v"]), V["average_why"]
+    assert list(S["average_why"]) == [rec["average"]["why"]] * len(
+        S["bias_v"]), S["average_why"]
 
 
 def test_the_command_line_says_what_the_temperature_means(junction):

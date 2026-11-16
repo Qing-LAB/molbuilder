@@ -45,7 +45,9 @@ each release is its changelog row and its ledger section
   stage, each point with its device run, a summary across the points from
   the same pass, each run's engine version, how each DOS is made
   (`engines/transport.md` § 2a.12, designed; the post-processing
-  document's examples move with it, each run on a real calculation); (C)
+  document's examples move with it, each run on a real calculation) —
+  built in 2.71.0, the PDOS of chosen atoms from the files still designed;
+  (C)
   every chart's own export — a picture, its drawn data as CSV and NetCDF;
   the PDOS of a mixed selection from the data file and each point's digest
   (`postprocess.pdos`, the user's option 3, designed with B). Then a

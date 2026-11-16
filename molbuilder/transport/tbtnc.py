@@ -180,6 +180,11 @@ def point_dos(folder, label: str, regions: Dict[str, Sequence[int]],
             if src in a:
                 d[dst] = a[src]
         reading = kept(data[c], need_user=True) if c in data else None
+        if reading is not None:
+            # THE ATOMS ITS DOS COVERS -- TBtrans's device region, the only
+            # atoms it computes a DOS for (`engines/transport.md` § 2a.12,
+            # *How each DOS is made*), by engine index.
+            d["device_atoms"] = sorted({int(a) for a in reading.atom})
         if reading is not None and reading.dos is not None and regions:
             _checked(reading, expected, data[c].name)
             d["by_label"] = _by_label(reading, regions)
@@ -192,6 +197,8 @@ def point_dos(folder, label: str, regions: Dict[str, Sequence[int]],
         raise TbtError(f"{Path(folder).name}: its two spin channels are on "
                        f"different energy grids -- not one run's two spins")
     out: Dict = {"energy_ev": up["energy_ev"]}
+    if "device_atoms" in up:
+        out["device_atoms"] = up["device_atoms"]
     if "total" in up and "total" in dn:
         out["total"] = _sum(up["total"], dn["total"])
     if "by_label" in up and "by_label" in dn:

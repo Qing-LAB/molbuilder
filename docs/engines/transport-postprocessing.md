@@ -42,7 +42,7 @@ files, pandas for the CSV export, sisl for TBtrans's own files.
 
 | file | where | holds | read it with |
 |---|---|---|---|
-| `<label>.transport.nc` | the calculation's folder, written by `jobset summarize task` (and by an export, anywhere you choose) | **every result** on its grid: T(E) per point and spin, G, the currents and the I–V, the DOS and its regions, the eigenchannels, the frames' average, every run's state and SCF history — each variable with its units and definition | xarray (§ 3) |
+| `<label>.transport.nc` | the calculation's folder, written by `jobset summarize task` (and by an export, anywhere you choose) | **every result**, in groups — the junction whole (its cell, each atom's region and labels), each stage, each point and its device run, and a summary across the points: T(E) per point and spin, G, the currents and the I–V, the DOS and its regions, the eigenchannels, the frames' average, every run's state, SCF history and engine version — each variable with its units and definition | xarray (§ 3) |
 | `<label>.transport-csv/` | an export's CSV form | the same, as long tables — one per set of axes — and `README.txt` | pandas (§ 3.4) |
 | `<label>.TBT.digest.nc` | beside each transmission point's `.TBT.nc` | the **DOS per orbital**, k-averaged, once read — on the DOS tab's *Read the DOS per orbital*, or by `summarize task` | xarray (§ 5); `parse` of the `.TBT.nc` beside it answers the same reading |
 | `<label>.TBT.nc` | each transmission point's folder | TBtrans's own data: everything per k-point, energy and orbital — gigabytes on a large junction | sisl (§ 6) |
@@ -56,32 +56,48 @@ atom its index + 1 on screen.
 
 ## 3. The data file
 
+The calculation as groups ([`engines/transport.md`](?doc=engines/transport.md)
+§ 2a.12): `/structure` the junction, `/stages/<stage>` each stage that runs
+once, `/points/v0.2` each point — a frame set's `/points/f003/v0.2` — with
+its `device` run, and `/summary` across the points. **The summary and each
+point are one composition**: a value both hold is one number. Each group is
+read alone, its axes its own:
+
 ```python
 import xarray as xr
-ds = xr.load_dataset("T.transport.nc")   # read whole, the file closed (§ 7)
+root = xr.load_dataset("T.transport.nc")                     # the file's own words
+s = xr.load_dataset("T.transport.nc", group="summary")        # across the points
+p = xr.load_dataset("T.transport.nc", group="points/v0.2")     # one calculation whole
+tree = xr.open_datatree("T.transport.nc")                     # every group (close it, § 7)
+sorted(tree.groups)
+tree.close()
 ```
 
 ### 3.1 T(E), the conductance, the I–V
 
 ```python
 # T(E) at 0.2 V, frame 0 -- the axes are coordinates, selected by value
-ds.transmission.sel(frame=0, bias_v=0.2).plot(x="energy_ev")
+s.transmission.sel(frame=0, bias_v=0.2).plot(x="energy_ev")
 
 # G / G0 at E_F, every point
-ds.conductance_g0.to_series()
+s.conductance_g0.to_series()
 
 # the I-V, as the record computed it (iv_computed says how)
-ds.iv_current_a.sel(frame=0).plot(x="iv_bias_v")
-ds.attrs["iv_computed"]
+s.iv_current_a.sel(frame=0).plot(x="iv_bias_v")
+root.attrs["iv_computed"]
+
+# the same point taken whole: its current is the summary's
+float(p.current_a) == float(s.current_a.sel(frame=0, bias_v=0.2))
 ```
 
 ### 3.2 A frame set: along the mode, and the average
 
 ```python
-along_q = ds.swap_dims(frame="q_amu12_ang").sortby("q_amu12_ang")
+s = xr.load_dataset("F.transport.nc", group="summary")
+along_q = s.swap_dims(frame="q_amu12_ang").sortby("q_amu12_ang")
 along_q.conductance_g0.differentiate("q_amu12_ang")
-ds.average_transmission.sel(bias_v=0.0).plot(x="energy_ev")
-ds.average_why.to_series()          # why an average is none, where it is
+s.average_transmission.sel(bias_v=0.0).plot(x="energy_ev")
+s.average_why.to_series()           # why an average is none, where it is
 ```
 
 **Averaged over another motion**. Each frame is its position along the mode; its weight is the
@@ -92,7 +108,7 @@ or with a swing added by a push in step with the mode
 
 ```python
 from molbuilder.postprocess import reaveraged
-r = reaveraged("T.transport.nc", temperature_k=300, swing_quanta=1.0)
+r = reaveraged("F.transport.nc", temperature_k=300, swing_quanta=0.0)
 r["motion"]                       # the quanta, the spreads, the swing's turning points
 r["weights"]                      # each frame's weight for this motion
 r["conductance_change_percent"]   # <ΔG>/G at each voltage
@@ -106,27 +122,45 @@ there).
 ### 3.3 The convergence
 
 ```python
-pt = ds.sel(frame=0, bias_v=0.2)
-n = int(pt.device_scf_cycles)
-pt.device_scf_ddmax.isel(scf_cycle=slice(0, n)).plot()
-pt.device_scf_phase.isel(scf_cycle=slice(0, n)).values   # periodic / negf
+d = xr.load_dataset("T.transport.nc", group="points/v0.2/device")
+n = int(d.scf_cycles)
+d.scf_ddmax.isel(scf_cycle=slice(0, n)).plot()
+d.scf_phase.isel(scf_cycle=slice(0, n)).values       # periodic / negf
+seed = xr.load_dataset("T.transport.nc", group="stages/seed")
+float(seed.fermi_ev), seed.attrs["engine_version"]    # its E_F, the SIESTA that ran it
 ```
 
 ### 3.4 The CSV export
 
 ```python
 import pandas as pd
-t = pd.read_csv("T.transport-csv/frame_bias_v_energy_ev.csv")
+t = pd.read_csv("T.transport-csv/summary/frame_bias_v_energy_ev.csv")
 t[(t.frame == 0) & (t.bias_v == 0.2)].plot(x="energy_ev", y="transmission")
+# a group's tables under its path (points/v0.2/..., stages/seed/...);
 # README.txt says what every column is, in the variables' own words
 ```
 
-### 3.5 What is missing, and why
+### 3.5 The junction, and which atoms a DOS covers
+
+```python
+j = xr.load_dataset("T.transport.nc", group="structure")
+j.cell_ang.values                   # the lattice vectors as rows, angstrom
+j.cell_axis_kind.values             # isolated / periodic / transport, per vector
+j.atom_region.to_series()           # L-electrode, bridge, R-electrode -- or empty
+j.labels.values                     # every label each atom carries, JSON
+p.dos_atom.sum()                    # how many atoms this point's DOS covers
+```
+
+`dos_region` is the DOS per orbital summed over the atoms of a region that
+the point's DOS covers (`atom_region`, `dos_atom`); a sum over atoms you
+choose is yours to form, from the point's digest (§ 5).
+
+### 3.6 What is missing, and why
 
 ```python
 # a point whose DOS per orbital is not kept has no DOS by region
-ds.dos_per_orbital_reading.to_series()
-ds.point_why.to_series()            # a point not done: why
+p.dos_per_orbital_reading.values
+p.why.values                        # a point not done: why
 ```
 
 ## 4. Atom indices — user index and engine index
@@ -149,8 +183,9 @@ atoms.listed_by                     # 'user_index'
 atoms.map_to_engine_index([0, 5])   # user atoms 0 and 5, as engine indices
 atoms.table()                       # every atom: its user index and engine index
 
-# the same in the data file itself
-ds.engine_atom_index.sel(atom=[0, 5]).values
+# the same in the data file itself, its junction's group
+xr.load_dataset("T.transport.nc", group="structure").engine_atom_index.sel(
+    atom=[0, 5]).values
 
 # the junction, in the user order, with the map of the structure returned
 junction, junction_atoms, said = read_structure("junction.xyz")

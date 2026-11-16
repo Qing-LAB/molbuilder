@@ -239,7 +239,7 @@ def _consecutive(indices: Sequence[int], step: int) -> List[List[int]]:
 
 #: The values of a reader's answer that do not run along the energies --
 #: never joined, whatever their length.
-_NOT_ALONG_E = frozenset(("atoms", "outside_device"))
+_NOT_ALONG_E = frozenset(("atoms", "outside_device", "device_atoms"))
 
 
 def joined(folder: Path, read: Callable[[Path], Dict], *,

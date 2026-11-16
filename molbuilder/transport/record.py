@@ -629,6 +629,11 @@ def _science(out: Path) -> Dict:
     fact["scf_converged"] = res.scf_converged
     frames = res.frames or []
     info = res.runtime_info or {}
+    # THE ENGINE THAT RAN IT, as its output's build header states it
+    # (`engines/transport.md` § 2a.12: each run's `engine_version`).
+    version = (info.get("siesta_build") or {}).get("version")
+    if version:
+        fact["engine_version"] = str(version)
     # THE RUN'S SCF, AS IT RAN (`web/results.md` § 2.5): every row of the
     # last step, phase-tagged -- a device's periodic start and its NEGF
     # loop apart -- with what each phase had to reach and how it ended.
@@ -930,10 +935,15 @@ def collect_record(calc, *, partial: bool = False) -> Dict:
         # -- three readers, one read.
         output = _output_of(where)
         now = None
+        version = None
         if output is not None:
             try:
                 reader = read_output(output)
                 now = reader.now()
+                # THE TBTRANS THAT RAN IT, as its output's header states it
+                # -- the family's one read (`engines/transport.md` § 2a.12).
+                version = ((reader.runtime_info or {}).get("siesta_build")
+                           or {}).get("version")
                 keep_reading(output, version_of(output), reader.finish())
             except OSError:
                 now = None
@@ -1014,6 +1024,14 @@ def collect_record(calc, *, partial: bool = False) -> Dict:
         if dos is not None and not any(k in dos for k in DOS_CURVES):
             # A BLOCK OF NO CURVE is no DOS, said.
             dos, dos_why = None, NO_CURVE
+        if dos is not None and "device_atoms" in dos:
+            # THE ATOMS ITS DOS COVERS, in the user order, as the record
+            # names every atom (`model/overview.md` § 2.2a, I1) -- never
+            # by engine index under the record's name for them.
+            engine = dos.pop("device_atoms")
+            if junction is not None:
+                dos["device_atoms"] = sorted(
+                    junction.map_to_user_index(engine))
         # THE POINT IT IS A COPY OF -- taken over from, or copied in with
         # its run from, the finished calculation this one reuses (§ 2a.16):
         # the run that computed it (`runrecord.copied_of`).
@@ -1054,6 +1072,7 @@ def collect_record(calc, *, partial: bool = False) -> Dict:
             "n_energies": len(energies),
             **shares,
             **({"copied_from": copied} if copied else {}),
+            **({"engine_version": str(version)} if version else {}),
             "spin": spin,
             **({"dos": dos} if dos is not None else {"dos_why": dos_why}),
             # WHAT IS KEPT OF EACH DATA FILE'S READING -- its own and those

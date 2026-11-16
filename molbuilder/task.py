@@ -267,9 +267,9 @@ class Task:
 
     #: THE BIAS SWEEP AXIS, volts (engines/transport.md § 2a.10) -- like
     #: a benchmark's plan, a list of points the description asks for, not a
-    #: machine's answer.  Empty means zero-bias only (the default every
-    #: transport description says by omitting the key).  When present
-    #: the first entry must be 0.0: the treatment's one zero-bias device
+    #: machine's answer.  A transport description states it -- ``[0.0]``
+    #: for a single bias; one stating none is refused (:meth:`__post_init__`).
+    #: The first entry must be 0.0: the treatment's one zero-bias device
     #: run, or the sweep's start from equilibrium.
     bias: Tuple[float, ...] = ()
     #: THE LOW-BIAS APPROXIMATION, stated for a list of more than one

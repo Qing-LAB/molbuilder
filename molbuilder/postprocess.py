@@ -178,7 +178,9 @@ def read_structure(path):
 def read_transport_data(path) -> Dict[str, Any]:
     """A transport calculation's data file, ``<label>.transport.nc``, as
     data (`transport.datafile.read_data_file`: its attributes and every
-    variable with its words) and ``atom_index_map`` -- its atoms listed by
+    group's variables with their words -- ``structure``, ``stages/<stage>``,
+    ``points/<point>`` and its ``device``, ``summary``) and
+    ``atom_index_map`` -- its atoms listed by
     user index, each atom's engine index beside (`engines/transport.md`
     § 2a.12)."""
     from .transport.datafile import read_data_file
@@ -274,7 +276,12 @@ def reaveraged(path, *, temperature_k, swing_quanta=0.0) -> Dict[str, Any]:
     import numpy as np
     from .frame_average import at_voltage, motion_weights
     from .transport.datafile import read_data_file
-    data = read_data_file(path)["variables"]
+    groups = read_data_file(path)["groups"]
+    # THE FRAMES' ROWS ARE THE JUNCTION'S, the points' figures the
+    # summary's (`engines/transport.md` § 2a.12, *The calculation as
+    # groups*).
+    data = {**groups["structure"]["variables"],
+            **groups["summary"]["variables"]}
 
     def value(name):
         got = data.get(name)
