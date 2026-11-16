@@ -236,8 +236,7 @@ writes nothing — and name each that differs: `mesh_cutoff: 300 → 400`.
 - **Only what the person changed is a difference.** A deck a newer molbuilder
   words otherwise is none, nor an item a newer molbuilder added or retired, nor
   a point it words otherwise: points are compared by their folders, and a record
-  written before 2.67.2, which holds none, by the words it holds, read as today
-  words them. A run-card value stated or taken away is one: *run card
+  that names no folders by the words it holds, read as today words them. A run-card value stated or taken away is one: *run card
   mpi_np: not stated → 4*.
 - **A record that does not read** — not JSON, or another file's schema — is
   said in its reader's words, naming the file and the way back: the state
@@ -320,10 +319,12 @@ stateDiagram-v2
 - whether it **may be prepared now** (`preparable`) and, when not, why
   (`why`; a launched group whose members changed says so in the one rule's
   words, `members_changed` — `ready.launched_without`, `ready.joined_launched`);
-- whether a launch that names no group **may send it now** (`launchable`);
-- a stage's **way on**, composed once (`commands.way_back`): a stage never
-  launched, its group's prep; a launched one, its group's prep for how it
-  runs, the state saved before its group's first launch for what it computes.
+- whether a launch that names no group **may send it now** (`launchable`).
+
+Beside it, a stage's **way on** is composed once (`commands.way_back`): a
+stage never launched, its group's prep; a launched one, its group's prep for
+how it runs, the state saved before its group's first launch for what it
+computes.
 
 `prep task`'s offer and its refusals (R-P5, R-P22, R-P23), `launch task`'s
 offer and its refusals (R-L6–R-L10), the command line's question, `status`'s
@@ -339,8 +340,8 @@ finished.
 into it, or a member moved to another group, in the answer's words. A group
 whose members changed anyway — a member removed from the description, or
 `job-request.json` edited by hand — is **launched, its members changed**:
-offered by no verb, its prep refused ([R-P5](#every-refusal-and-its-way-on))
-and its launch whole refused ([R-L7](#every-refusal-and-its-way-on)). The way
+offered by no verb, its prep refused (R-P5, *Every refusal, and its way on*)
+and its launch whole refused (R-L7). The way
 on: each member launched again alone, the members put back, or the state saved
 before the group's first launch restored.
 
@@ -637,8 +638,9 @@ cold; `run-0` stays what it was.
    failed or stopped — **warm by default, or cold when you say `--cold`**
    (§ 5.4, *A stage launched again*). Before anything is sent it shows the
    exact line, which run it follows, how that run ended and what is copied,
-   and asks once; it refuses only warm with nothing to be warm from (R-L17,
-   R-L18).
+   and asks once; it refuses only a warm launch with nothing to be warm from
+   (R-L17), or a run of points' warm launch with every point already done
+   (R-L18).
 4. **It tells you where each stage and run stands, from one door.** `jobset
    status`, the Results tab and every reader that needs a run's state ask
    the same doors (*The states*): pending, queued, running, finished or
@@ -920,9 +922,9 @@ flowchart LR
 
 ### 4.1 A ladder's stages, as jobs
 
-**Every engine's ladder is the same object: N decks, N jobs**, a person
-looking between the rungs ([`engines/stages.md`](?doc=engines/stages.md)
-§ 1.1a). The ladder lives in `task.json`, never in an engine config
+**Every engine's ladder is the same object: N decks, one row of the plan per
+stage**, sent group by group, with a person looking between the groups
+([`engines/stages.md`](?doc=engines/stages.md) § 1.1a). The ladder lives in `task.json`, never in an engine config
 ([`engines/stages.md`](?doc=engines/stages.md) § 1.1). Prep makes one job per
 stage of the description, its deck `<label>_<NN>_<stage>.<ext>`, through the
 engine seam (`jobset/engines.engine_seam`, SIESTA's `siesta/seam.py`; SIESTA's stage knowledge,
@@ -1184,7 +1186,7 @@ an earlier prep wrote that this prep does not — a header for a queue since
 dropped, a correction script for a charge since made 0 — is taken away, never
 left to be sent, run or read as this prep's.
 
-Each refusal node names its row in [the refusal table](#every-refusal-and-its-way-on):
+Each refusal node names its row in the refusal table (*Every refusal, and its way on*, above):
 
 ```mermaid
 flowchart TD
@@ -1269,7 +1271,7 @@ instead ([`task-setup.md`](?doc=web/task-setup.md) § 11).
 | `attempt` | the first run it opened and what it brought in — the stage's own files |
 | `takes` | what the stage's first launch will take, and from which stage (§ 5.4) |
 | `copied` | a transport calculation reusing a finished one: its manifest — each group copied in or prepared here, and why ([`engines/transport.md`](?doc=engines/transport.md) § 2a.16) |
-| `points` | a transport bias scan's point folders |
+| `points` | a run of points' point folders: a transport rung's frames × voltages, a SIESTA vibration's calls |
 | `need` | the stage's memory need at the ranks it is prepared with, or that nothing has measured it ([`job-request.md`](?doc=execution/job-request.md) § 3.1a) — a hint that refuses nothing |
 | `placement` | the queue it was placed on, and where each value came from |
 | `fit` | the fit of what it sends on that queue's machines; none for a benchmark or a member of a group of several, whose shelves and group say theirs |
@@ -1563,7 +1565,7 @@ Directory: 01_coarse/run-1
   beside it is no calculation of molbuilder's, and is refused
   ([`architecture.md`](?doc=execution/architecture.md) A16).
 - **`status` never resumes anything** (decision 5). To watch one run live,
-  open it in the Results tab or `molbuilder watch`
+  open it in the Results tab
   ([`running-a-job.md`](?doc=execution/running-a-job.md) § 4).
 
 #### `jobset scratch` — an engine's scratch, listed and emptied
@@ -1800,9 +1802,10 @@ they are.
   which run, and which it walks (`walks`).
 - **`--from` and `--gather`** are decided at that launch and recorded as a
   first launch's are.
-- **Warm needs something to be warm from**: a run that left none of the files
-  the stage takes is refused warm, naming `--cold` (R-L17, R-L18). Nothing
-  else about how a run ended is refused, or asked about.
+- **Warm needs something to be warm from, and something left to run**: a run
+  that left none of the files the stage takes (R-L17), or a run of points with
+  every point done and nothing more needed (R-L18), is refused warm, naming
+  `--cold`. Nothing else about how a run ended is refused, or asked about.
 
 #### An explicit choice, and what launch prints
 
@@ -1918,7 +1921,7 @@ a dry run writes none.
 - **Several `--group`**: one job launching each in turn (*A sequence of
   groups*, below).
 
-Each refusal node names its row in [the refusal table](#every-refusal-and-its-way-on):
+Each refusal node names its row in the refusal table (*Every refusal, and its way on*, above):
 
 ```mermaid
 flowchart TD
@@ -2002,7 +2005,7 @@ process exists, the ledger's `launched` line carrying `background` and its pid.
   script alone it would wait for the engine to end.
 - **Nothing it prints is lost**: the run script copies everything it prints
   into its `<stem>.runwrap.log` as its first act, the engine's own output is
-  the run's `<stem>.out`, and a walk sends its own standard error and each
+  the run's `<stem>.out` (SIESTA) or `<stem>.pyscf.log` (PySCF), and a walk sends its own standard error and each
   member's output to its log under `launch/`. The launch prints the folder to
   read — or the walk's log — and the next step; for a benchmark, the
   `summarize bench` that reads its trials once they have run.
@@ -2594,7 +2597,7 @@ sequenceDiagram
     E->>R: launched_without / held_by_sequence — refused (R-P5, R-P23)
     E->>E: checked — preflight, machine, provenance (3, 4)
     loop every member of every group picked
-        E->>P: plan_stage(base, described, "task", stage, plan=the one plan)
+        E->>P: plan_stage(described, "task", stage, plan=the one plan)
         P->>F: prep_calculation — decks, scripts, run-0, its row
         F-->>P: what it planned
         P-->>E: PrepAnswer (what its first launch takes)

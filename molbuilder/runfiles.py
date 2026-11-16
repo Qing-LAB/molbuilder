@@ -1647,7 +1647,7 @@ WRITTEN: "tuple[Artifact, ...]" = (
                   "a milestone, a failed part and its reason, finish -- and "
                   "when",
              when="run", level="run", kind="record",
-             writer="`mb_monitor.pyz notify` (a run of points' start, milestones, failed parts and finish, sent by its points' report steps); a member's monitor, for every event it sends",
+             writer="the run's monitor, for every event it sends -- a member's into its run's folder; `mb_monitor.pyz notify` (a run of points' start, milestones, failed parts and finish, sent by its points' report steps)",
              door="runrecord.read_notified"),
     Artifact(name=CONTINUED_FROM_FILE,
              what="the run this one continues from -- a stage's run, a run "
@@ -1727,8 +1727,9 @@ WRITTEN: "tuple[Artifact, ...]" = (
              writer='`jobset summarize`'),
     Artifact(name=GROUP_RUN_SCRIPT,
              what="a launch group's sequencer: a benchmark's trials, a "
-                  "run of points' walk (a vibration's calls, a bias "
-                  "sweep's points), a task's stages sharing one job, or a "
+                  "run of points' walk (a vibration's calls, a transport "
+                  "stage's frames and voltages), a task's stages sharing "
+                  "one job, or a "
                   "task's groups launched one after another in one job, "
                   "in order",
              when="launch", level="launch", kind="derived",

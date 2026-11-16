@@ -548,7 +548,7 @@ Once no point is left to run, each point not ended is stamped `not_run` (`runpoi
 (`runpoints.why_not_run`):
 
 - *it builds on &lt;words&gt;, which failed* — the first need up its chain that failed; or
-- *the walk ended before it reached this point* (`runpoints.NEVER_REACHED`).
+- *the run ended before it reached this point* (`runpoints.NEVER_REACHED`).
 
 It reads **not run** — never *failed*: the point did not run; the run is failed, its first point short of done
 named. Three readers say the same:

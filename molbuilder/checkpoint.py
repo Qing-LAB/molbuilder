@@ -231,6 +231,16 @@ class CheckpointError(Exception):
     """Base class for every refusal this module raises."""
 
 
+class InputError(CheckpointError):
+    """A refusal the PERSON resolves with their own input -- a note left
+    blank, a tag name taken or not a name, a name to repair, a folder holding
+    several calculations, a state that does not exist.  Every other failure
+    here is a fault -- git missing, an archive damaged, a copy corrupt -- and
+    a surface that cannot tell them apart reports "please fix your input" for
+    a broken disk: the command exits 2 for this class and 1 for the rest
+    (`checkpointing.md` § 5, *Exit codes*)."""
+
+
 class GitNotInstalledError(CheckpointError):
     """``git`` is not on PATH."""
 
@@ -239,26 +249,20 @@ class DirtyWorkingTreeError(CheckpointError):
     """Operation refuses to proceed on a dirty working tree."""
 
 
-class NoSuchRefError(CheckpointError):
+class NoSuchRefError(InputError):
     """The given name is neither a state id nor a tag (§ 5)."""
 
 
-class NestedRepoRefusedError(CheckpointError):
+class NestedRepoRefusedError(InputError):
     """Init refused (L1): this folder holds several independent
     calculations, which one history would rewind together, or a history
     below it; or it lies inside a calculation's folder, whose history
     covers it."""
 
 
-class CalculationNameError(CheckpointError):
-    """The calculation's name would have to be repaired to be used (L3).
-
-    Its own class because it is the one refusal here a **user** resolves, by
-    choosing a name or renaming the folder.  Every other failure in this module
-    is a fault -- git missing, an archive damaged, a copy corrupt -- and a
-    surface that cannot tell them apart reports "please fix your input" for a
-    broken disk.
-    """
+class CalculationNameError(InputError):
+    """The calculation's name would have to be repaired to be used (L3): the
+    person chooses a name or renames the folder."""
 
 
 # --------------------------------------------------------------------- #
@@ -1703,7 +1707,7 @@ class Repo:
         """
         self._require_init()
         if not (note or "").strip():
-            raise CheckpointError(
+            raise InputError(
                 "a state needs a note saying what happened and what you were "
                 "about to do -- it is the only thing that answers the question "
                 "you bring to a history a month later, and it is not "
@@ -1954,11 +1958,27 @@ class Repo:
         """Give a state a name so you can find it again (§ 5, L4)."""
         self._require_init()
         if not (name or "").strip():
-            raise CheckpointError("a tag needs a name.")
+            raise InputError("a tag needs a name.")
         if not (note or "").strip():
-            raise CheckpointError(
+            raise InputError(
                 "a tag needs a note saying why this state is worth returning "
                 "to.")
+        # THE NAME IS THE PERSON'S, so git's refusals of it are theirs too:
+        # asked of git before the tag is written (its answer read, so a git
+        # that is missing stays the machine's error) -- a name `git tag`
+        # would read as an option among them.
+        if name.startswith("-") or _run_git(
+                ["check-ref-format", f"refs/tags/{name}"], cwd=self.path,
+                check=False).returncode != 0:
+            raise InputError(
+                f"{name!r} is not a name git takes for a tag -- no spaces, "
+                f"no leading '-', and see `git check-ref-format` for the "
+                f"rest.")
+        if _run_git(["show-ref", "--verify", "--quiet", f"refs/tags/{name}"],
+                    cwd=self.path, check=False).returncode == 0:
+            raise InputError(
+                f"a tag named {name!r} exists already -- choose another "
+                f"name.")
         sha = self.resolve(at) if at else self.resolve("HEAD")
         _run_git(["tag", "-a", name, sha, "-m", note], cwd=self.path)
         return Tag(name=name, state=sha, note=note)

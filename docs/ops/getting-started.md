@@ -33,10 +33,12 @@ step to the document that owns its details.
 | `~/.config/molbuilder/environments/<name>.json` | your workstation | another machine's record, so you can describe work *for* it from here | probe there, copy here (§ 4) |
 | TLS cert/key + `auth` section | the machine that serves | HTTPS and sign-in — **only** when others reach your server | you (§ 5) |
 | `<config dir>/secrets/notify_keys` | the machine that **serves** | the signing keys and the route. **This file is the switch** — the listener exists because it does | `molbuilder notify-token` (§ 6) |
-| `<config dir>/secrets/notify` | the machine that **runs jobs** | the named channels the monitor posts to | you, on that machine, from what `notify-token` prints (§ 6) |
+| `<config dir>/secrets/notify` | the machine that **runs jobs** | the named channels the monitor posts to | you, on that machine — its This machine tab, or by hand from what `notify-token` prints (§ 6) |
 
 Everything else — templates, task files, decks, results — is made by the
-workflow itself, inside the projects tree.
+workflow itself, inside the projects tree — except the pseudopotential files a
+SIESTA calculation names, which you put in the tree's `pseudopotential/`
+folder ([`project-layout.md`](?doc=execution/project-layout.md) § 2.6).
 
 ---
 
@@ -118,9 +120,8 @@ molbuilder jobset probe --write          # THIS machine -> environment.json
 > record as `environments/<name>.json` — the name ANOTHER machine preps it by
 > (§ 4) — so on this machine it would leave
 > `environment.json` untouched and stale while looking like a refresh — and the
-> named record it creates then makes every `prep` without `--target` refuse,
-> because two machines could be meant. This section said
-> `probe --write --name <name>` until 2026-09-12. `jobset probe` itself refuses
+> named record it creates then makes a calculation's first `prep` without
+> `--target` refuse, because two machines could be meant. `jobset probe` itself refuses
 > the one reserved name and says so: *"this machine's own record needs no
 > `--name` at all."*
 
@@ -146,8 +147,9 @@ Now `prep --target sol` (and the Task-setup tab's machine card) can answer
 with the cluster's real numbers, and a calculation folder travels there
 **unchanged** — the folder never names a machine (`workflow.md` § 3).
 
-> **From here on `prep` wants `--target`.** The moment one named record exists,
-> a bare `prep` refuses rather than guess which machine you meant — `--target
+> **From here on a first `prep` wants `--target`.** The moment one named record
+> exists, a calculation's first bare `prep` refuses rather than guess which
+> machine you meant — `--target
 > sol` for the cluster, `--target this` for the box you are on (`this` is
 > reserved for exactly that). The refusal lists the choices, so it costs one
 > re-run and never a wrong answer. § 7's road below shows the commands without
@@ -198,10 +200,11 @@ straight:
 | half | file | set up |
 |---|---|---|
 | **when** to speak | the calculation's `job-request.json` (its `notify`) | tick it on the Task-setup card — portable, no secrets |
-| **where** to send | `<config dir>/secrets/notify` on the machine that **runs the job** | `molbuilder notify-token <you>` prints the address + key and says exactly where to put them; the Task-setup card can write the file for you when the job runs on the same machine |
+| **where** to send | `<config dir>/secrets/notify` on the machine that **runs the job** | `molbuilder notify-token <you>` prints the address + key and says exactly where to put them; the This machine tab writes the file on the machine molbuilder runs on |
 
-On a cluster, that file lives in **your cluster home** (the card hands you
-the exact command to run there). Absent means silently off — a run without
+On a cluster, that file lives in your cluster's config directory: run
+molbuilder there and use its This machine tab, or copy the file across;
+nothing generates a command for it. Absent means silently off — a run without
 the file behaves exactly as it always did.
 
 ---

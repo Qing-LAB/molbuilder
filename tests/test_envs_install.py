@@ -405,15 +405,18 @@ def test_run_install_skips_create_when_env_already_present(monkeypatch, tmp_path
 
 
 def test_run_install_blocks_when_env_state_is_broken(monkeypatch, tmp_path):
-    """An env directory with no `conda-meta/` BLOCKS the install and says
-    `--clean`, instead of letting `conda create` fail cryptically.
+    """An env directory with no `conda-meta/` BLOCKS the install and names
+    its remedy -- the person's `rm -rf` of the directory, which the manager
+    will not remove and `--clean` cannot wipe (`env-framework.md` § 2.1;
+    `installation.md` M5: a fix printed is one that runs) -- instead of
+    letting `conda create` fail cryptically.
 
     THE FAILURE THIS CATCHES.  `probe_env_state` returns BROKEN for a directory
     that exists without `conda-meta/` -- a half-finished or
     interrupted install.  `run_install` must stop there
     (`state.needs_cleanup`): if it proceeds, `conda create` refuses with "prefix
     already exists" and the person is left staring at a conda error with no idea
-    that `--clean` is the answer.  Worse, nothing downstream runs, so a
+    what the answer is.  Worse, nothing downstream runs, so a
     `succeeded is True` here would report a working env that is not one.
 
     Contract: `ops/environments.md` -- the state machine and `--clean`.
@@ -451,11 +454,52 @@ def test_run_install_blocks_when_env_state_is_broken(monkeypatch, tmp_path):
     create = next(s for s in result.steps if s.label == "conda create")
     assert create.returncode is None, (
         f"the blocked step must not claim an exit code: {create.returncode!r}")
-    assert "BROKEN" in create.output and "--clean" in create.output, (
+    assert ("BROKEN" in create.output and str(fake_env) in create.output
+            and "rm -rf" in create.output), (
         f"the refusal does not tell the person what to do: {create.output!r}")
+    assert "--clean" not in create.output, (
+        f"a remedy `install --clean` refuses for this state: "
+        f"{create.output!r}")
     # NOTHING may run past the gate -- pip, extra steps and verify would all
     # execute against an env that does not exist.
     assert calls == [], f"work ran past the BROKEN gate: {len(calls)} call(s)"
+
+
+def test_clean_restores_a_ghost_env_by_running_the_create(monkeypatch,
+                                                          tmp_path):
+    """A GHOST -- a registry entry whose directory is gone -- is restored by
+    `--clean` (`env-framework.md` § 2.1): the removal has no directory to
+    act on and is skipped, and the create runs and makes the directory the
+    entry names.
+
+    THE SILENT FAILURE: the create step probed again, still read GHOST, and
+    failed saying "re-run with --clean" -- the remedy it named, looping."""
+    recipe = _ALL_PHASES_RECIPE
+    gone = tmp_path / recipe.name          # registered, and NOT on disk
+    _bind(conda_envs=(recipe.name,))
+
+    def fake_run(argv, *a, **kw):
+        argv_list = list(argv) if not isinstance(argv, str) else [argv]
+        if argv_list[1:3] == ["env", "list"]:
+            return _stub(0, stdout=f'{{"envs": ["{gone}"]}}')
+        if argv_list[1:2] == ["info"]:
+            return _stub(0, stdout=f'{{"envs_dirs": ["{tmp_path}"]}}')
+        return _stub(0, stdout="")
+    monkeypatch.setattr(_diag.subprocess, "run", fake_run)
+    assert install.probe_env_state(recipe.name, "/fake/conda").state \
+        is install.EnvPresence.GHOST
+    calls = []
+    def fake_stream(argv, *a, **kw):
+        calls.append([str(x) for x in argv])
+        return (0, "Version 1.40")
+    monkeypatch.setattr(install._builds, "run_streaming", fake_stream)
+
+    result = install.run_install(recipe, clean=True)
+
+    create = next(s for s in result.steps if s.label == "conda create")
+    assert create.outcome is not install.Outcome.FAILED, create.output
+    assert any("create" in c for c in calls), (
+        f"the create that restores a ghost was not run: {calls}")
 
 
 def test_run_install_does_not_skip_create_when_caps_are_stale(monkeypatch):
@@ -1057,6 +1101,11 @@ def test_bootstrap_hard_stops_on_a_wrecked_env_like_install_does(
     assert "refused" in result.output.lower(), (
         "the report must say which recipe was refused and why:\n"
         + result.output)
+    # ...AND ITS REMEDY IS ONE THAT RUNS (`installation.md` M5): the
+    # manager will not remove a directory its registry does not know, so
+    # the hard stop names the person's `rm -rf`, never `--clean`.
+    assert f"rm -rf {tmp_path}" in result.output, result.output
+    assert "--clean --yes" not in result.output, result.output
 
 
 def test_the_environment_canary_notices_a_change(monkeypatch, tmp_path):

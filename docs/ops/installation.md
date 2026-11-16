@@ -13,7 +13,8 @@ SIESTA, PySCF, AmberTools, and friends — have **mutually incompatible dependen
 pins** (you cannot solve AmberTools, gpu4pyscf, and a real-MPI SIESTA into one
 conda environment). So molbuilder installs each backend into **its own conda
 environment**: a job's run script activates its env, and molbuilder installs,
-verifies and probes each with `conda run -n <env>`. Installation is
+verifies and probes each through the detected manager's own `run`, addressed
+at the env's prefix. Installation is
 mostly about creating those environments — and one command does it.
 
 ## 1. The environment model
@@ -25,10 +26,10 @@ runs in its backend env, which its run script activates.
 ```mermaid
 flowchart TD
   HOST["molbuilder (host env)<br/>the web UI + CLI + build-time chemistry<br/>python · ase · rdkit · openbabel · flask · sisl · netCDF4"]
-  HOST -->|"installs, probes: conda run -n molbuilder-siesta"| SI["molbuilder-siesta<br/>SIESTA 5.4.2 (MPI, precompiled)<br/>+ numpy · ase · sisl · netCDF4 (what a job's python reads its run and writes its result with)"]
-  HOST -->|"installs, probes: conda run -n molbuilder-pySCF"| PY["molbuilder-pySCF<br/>PySCF · geomeTRIC · numpy · ase · netCDF4 · (gpu4pyscf)"]
-  HOST -->|"installs, probes: conda run -n molbuilder-MDtools"| MD["molbuilder-MDtools<br/>AmberTools (tleap, antechamber)"]
-  HOST -->|"installs, probes: conda run -n molbuilder-siesta-gpu"| GPU["molbuilder-siesta-gpu<br/>SIESTA+TranSiesta+TBtrans, CUDA-ELPA<br/>(built from source, optional)"]
+  HOST -->|"installs, probes: the manager's run"| SI["molbuilder-siesta<br/>SIESTA 5.4.2 (MPI, precompiled)<br/>+ numpy · ase · sisl · netCDF4 (what a job's python reads its run and writes its result with)"]
+  HOST -->|"installs, probes: the manager's run"| PY["molbuilder-pySCF<br/>PySCF · geomeTRIC · numpy · ase · netCDF4 · (gpu4pyscf)"]
+  HOST -->|"installs, probes: the manager's run"| MD["molbuilder-MDtools<br/>AmberTools (tleap, antechamber)"]
+  HOST -->|"installs, probes: the manager's run"| GPU["molbuilder-siesta-gpu<br/>SIESTA+TranSiesta+TBtrans, CUDA-ELPA<br/>(built from source, optional)"]
   HOST -.->|"molbuilder jupyter start"| NB["molbuilder-jupyternb<br/>JupyterLab · ipykernel · numpy/scipy/pandas/matplotlib · ase/sisl/netCDF4<br/>(optional)"]
 ```
 
@@ -40,12 +41,9 @@ science backend: a second copy of ase/rdkit/pyscf would be a second thing to
 keep in step, and the day it drifted a notebook would stop reproducing what a
 calculation does. It is an env for *reading* what a calculation wrote.
 
-*(Until 2026-09-14 this diagram had two edges running the other way —
-`molbuilder` and `molbuilder-pySCF` each registering a kernelspec — and the
-env held "JupyterLab and nothing else". That design was withdrawn: to be a
-kernel an env must carry `ipykernel`, which drags `debugpy`, `ipython`,
-`pyzmq`, `tornado` and seven more into an env whose only job is reproducible
-calculation. **A job env stays a job env.**)* See
+**A job env stays a job env**: no job env is a notebook kernel, because a
+kernel needs `ipykernel`, which brings `debugpy`, `ipython`, `pyzmq`,
+`tornado` and more into an env whose only job is reproducible calculation. See
 [`web/jupyter.md`](?doc=web/jupyter.md) § 7.
 
 Each environment is defined by a **recipe** — a frozen data record in
@@ -84,7 +82,7 @@ The resolver lives in `molbuilder/diagnostics.py` and NOWHERE else —
 a module that probes for a manager by name is a second door, and review
 refuses it (`process/code-audit.md` § 1c).  Every consumer reads
 `caps.conda_binary`; `doctor` and `repair` print the resolved manager
-**and its provenance** as their first line, so "which manager did it
+**and its provenance** at the head of their output, so "which manager did it
 use" is never a mystery to reconstruct from a stack trace.
 
 ### One door for RUNNING, not only for finding *(2026-09-12)*
@@ -98,7 +96,7 @@ same question**, and the answer is the same: ask the thing that knows.
 
 | | the rule | what the violation looks like |
 |---|---|---|
-| **M1** | **The manager activates; molbuilder does not.** A step enters an env as `<mgr> run -n <env> …` — the detected binary's own mechanism, which performs the activation the env's own packages expect, `activate.d` hooks included | exporting `PATH` / `LD_LIBRARY_PATH` / `CONDA_PREFIX` by hand and sourcing `<prefix>/etc/conda/activate.d/*.sh` from a generated shell wrapper |
+| **M1** | **The manager activates; molbuilder does not.** A step enters an env as `<mgr> run --prefix <the prefix the manager reported> …` (by `-n <env>` only before the prefix is known) — the detected binary's own mechanism, which performs the activation the env's own packages expect, `activate.d` hooks included | exporting `PATH` / `LD_LIBRARY_PATH` / `CONDA_PREFIX` by hand and sourcing `<prefix>/etc/conda/activate.d/*.sh` from a generated shell wrapper |
 | **M2** | **A path inside an env is ASKED FOR, never derived.** The prefix comes from the manager — `env list --json`, `info --json` | `<manager root>/envs/<name>`, `~/.conda/envs/<name>`, `Path(binary).parent.parent/etc/profile.d/conda.sh`. The binary's path says where the **manager** is installed; it does not say where that manager keeps envs, and on exactly the machines `envs.manager` exists for, the two differ |
 | **M3** | **A remedy names the DETECTED manager** — `caps.conda_binary` | a literal `conda env remove …` printed on a machine that has only micromamba: a remedy the person cannot run |
 | **M4** | **A manager's bug is MEASURED, then worked around — inside the one door.** Taken only when that bug's signature actually appears, reported once, and **not** recorded as the step's outcome: a broken manager is a fact about the machine — so **the machine's record remembers it** (`jobset probe` measures it there, `manager_run`, [`configuration.md`](?doc=configuration.md) § 5 M-2) and the door reads the record before it tries, trying nothing the record says is broken; calling every step on such a machine `RECOVERED` would say the PACKAGE came from elsewhere | making the workaround unconditional: every other machine loses the manager's real activation, the bug becomes invisible, and the hand-written copy drifts — twice, here |
@@ -109,11 +107,12 @@ same question**, and the answer is the same: ask the thing that knows.
 module 2.9.0 on ASU Sol, seen 2026-10-18), and that is a real failure on real
 clusters — but "which versions are broken" is a fact about someone else's
 software that we would have to keep current, whereas *"the stub failed, here is the
-alternative"* is a fact we measure on the spot. **What the person sees**, once per
-command on such a machine, on stderr: *`mamba run` does not work on this machine:
+alternative"* is a fact we measure on the spot. **What the person sees**, the
+first time on such a machine, on stderr: *`mamba run` does not work on this machine:
 it stopped before the command started … Nothing ran. For the rest of this command
 each env is entered as `run` would enter it: its prefix, its bin on PATH, its
-activate.d hooks. Measured by trying it, once per command.* It names no version,
+activate.d hooks. Saved in this machine's record (…), so no later command
+measures it again.* It names no version,
 because none was measured; the rest of the command's output is the real result.
 **And once per machine, not once per command** *(the user, 2026-10-18: "remember
 the measurement in the machine record so it stops repeating"; "facts has only
@@ -124,26 +123,26 @@ every later command reads the record first and, where it says `run` is broken
 for the manager in hand, goes straight to the activation hooks and says
 nothing. A machine with no record yet cannot hold the fact — the note says
 that too, and `jobset probe --write`, which makes the same measurement,
-writes one. Nobody re-runs anything to record a fact molbuilder has measured. The env framework already has the
-mechanism: a declared alternative on the step
+writes one. Nobody re-runs anything to record a fact molbuilder has measured. The
+workaround lives inside the one door, never as a declared alternative on a step
 ([`env-framework.md`](?doc=ops/env-framework.md) § 5.6).
 
-**M1 and M4 hold as of 2026-09-12**, for all three dispatches —
+**M1 and M4 hold** for all three dispatches —
 install steps, build phases and tool routing — through one door,
 `builds.dispatch_into_env`. Verified on conda 26.7.1 (`envs doctor`: four envs
 verified, no generated shell) and, for the mamba-1.x stub this machine cannot
 produce, by a fake manager that emits exactly its signature
 (`tests/test_envs_enters_the_env_through_the_manager.py`).
 
-**M3 holds as of 2026-09-12.** The remedy speller moved below the surfaces
-(`envs/hints.py`), so `recipes.py` imports it instead of hand-copying its output
-— which is how that line came to name a recipe `recipe_by_name` rejects — the
-`--clean` help names the detected manager rather than `conda`, and `EnvState` /
-`EnvReport` carry the manager so a report can spell a removal line at all.
+**M3**: the remedy speller lives below the surfaces (`envs/hints.py`), so
+`recipes.py` imports it rather than hand-copying a command that could name a
+recipe `recipe_by_name` rejects. The `--clean` help names the detected manager,
+and `EnvState` / `EnvReport` carry the manager so a report can spell a removal
+line.
 
-**M2's config-writing site is fixed too**: `initconfig.conda_hook` asks
-`<mgr> info --json` for `root_prefix` instead of taking the binary's
-grandparent, because the line it produces is this machine's
+**M2 holds where the config is written too**: `initconfig.conda_hook` asks
+`<mgr> info --json` for `root_prefix`, never the binary's grandparent,
+because the line it produces is this machine's
 `env_init.preamble`, copied into every record the probe writes, and a wrong one
 fails in a job on a cluster, not here. The
 manager a cluster module puts on PATH is a shell wrapper whose own location says
@@ -175,8 +174,9 @@ bootstrap`, which creates the
 (`doctor`). Add `--include-source-builds` to also build the GPU SIESTA env (§6).
 
 **The host env's packages are that one file.** It is a plain list — `python
-3.12`, `conda numpy`, `pip PeptideBuilder <why>`, one per line, each with a
-comment saying why it is there — and both the shim and molbuilder's own
+3.12`, `conda numpy`, `pip PeptideBuilder <why>`, one per line: a `pip` line
+with its reason after the name, and comments above the lines that need one — and
+both the shim and molbuilder's own
 recipe read it, so a bootstrap and `molbuilder envs` always mean the same host
 env. To add or drop a host package, change its line; nothing else holds the
 list ([`env-framework.md`](?doc=ops/env-framework.md) § 3.4).
@@ -184,18 +184,19 @@ list ([`env-framework.md`](?doc=ops/env-framework.md) § 3.4).
 `doctor` verifies the installed backends; its checks include `siesta`, the
 `pyscf` import probe, and AmberTools `LEaP`. **Every problem it detects
 ends with its exact fix command** *(user, 2026-08-20)* — a `next:` line
-naming the `bash scripts/install-env.sh` invocation that repairs it
-(`install --yes` for a missing env, `repair` for missing packages,
-`repair --include-version-fix` when only version/build pins differ,
-`repair --include-optional` to turn on gated features) — so the report is
+(`enable:` for gated features, `add:` for opt-in packages) naming the
+`bash scripts/install-env.sh` invocation that repairs it (`install --yes` for a
+missing env, `repair` for missing packages, `repair --include-version-fix` when
+only version/build pins differ — `install --clean --yes` for a source build,
+whose binaries a repair would not recompile — `repair --include-optional` to
+turn on gated features) — so the report is
 the instruction and this page is background, not a required detour.
 
 **Non-interactive use** *(2026-09-12)*. `doctor`, `list`, `validate` and `repair`
 need **no flag and no terminal** — run them from CI, a batch step or `nohup` as
 they are. Only `bootstrap` and `install` confirm the env manager, and both take
-`--yes`. (Those four verbs define no `--yes`; until 2026-09-12 the shim demanded
-one from every verb and so could not run a health check unattended at all —
-`env-framework.md` § 8 has the rule.) `bootstrap` without `--yes` has two
+`--yes`. (Those four verbs define no `--yes`, and the shim asks none of them for
+one — `env-framework.md` § 8 has the rule.) `bootstrap` without `--yes` has two
 questions to ask and will say so up front when there is no terminal to ask in.
 
 Then you're ready:
@@ -214,8 +215,8 @@ Once the host env exists, **`molbuilder envs` is the same surface** the shim use
 `init-config`.
 
 
-**What `bootstrap` leaves you with.** `init-config` runs at the end of it, and
-seeds a config directory you can start from rather than one you have to
+**What `bootstrap` leaves you with.** `init-config` runs after the installs,
+before the closing `doctor`, and seeds a config directory you can start from rather than one you have to
 discover:
 
 ```
@@ -234,11 +235,8 @@ discover:
                                    reached through, and mock notify channels
 
 The session key, the notify channels file, the run-report signing keys and
-Google's client secret all live in `secrets/`, and `molbuilder.json` names no
-secret but the cert files (`configuration.md` § 3.1). *(Until 2026-09-20 those
-four sat beside `molbuilder.json` and this tree said the README documented "the
-THREE secrets that cannot live here" — the opposite of what is now true.
-`configuration.md` § 3.1 owns the rule.)*
+each OAuth provider kind's client secret all live in `secrets/`, and
+`molbuilder.json` names no secret but the cert files (`configuration.md` § 3.1).
 ```
 
 Two things are **asked**, because install time is the one moment the answer is
@@ -272,7 +270,8 @@ projects  /home/qqing/molbuilder/projects   (default -- no paths.projects set)
 
 ### 2.1 What `bootstrap` seeds — the config directory *(2026-09-08)*
 
-`bootstrap` finishes by running **`molbuilder envs init-config`**, which creates
+`bootstrap` runs **`molbuilder envs init-config`** after the installs, before
+the closing `doctor`; it creates
 the per-user config directory and writes the one thing a fresh machine cannot
 work out for itself:
 
@@ -294,8 +293,7 @@ known and being discussed: conda has just been located and you have just
 confirmed it. Every later surface can only report that nobody ever said.
 
 **It is asked, never sniffed.** Activation is *declared*
-(`running-a-job.md` § 5; `detect_conda_activation` was deleted 2026-08-13 for
-having zero callers). `bootstrap` puts the question to you and writes your
+(`running-a-job.md` § 5); nothing detects it. `bootstrap` puts the question to you and writes your
 answer into `molbuilder.json`, and the probe copies it into this machine's
 record; `--yes` takes the recommendation — `conda activate` when conda's
 `etc/profile.d/conda.sh` hook is on disk, `source activate` otherwise — and
@@ -348,8 +346,8 @@ Reference:
 | **gpu4pyscf / cupy** | `molbuilder-pySCF` | pip `cupy-cuda<N>x[ctk]` + `gpu4pyscf-cuda<N>x` — the `<N>` wheel suffix is **derived from the host's CUDA version** (`cuda13x` by default, `cuda12x` on a CUDA-12 host), not hardcoded — optional, GPU only |
 | **AmberTools** (tleap) | `molbuilder-MDtools` | conda `dacase::ambertools-dac=26` |
 | **RDKit, OpenBabel, ASE, sisl, netCDF4, biopython** | host `molbuilder` | conda |
-| **numpy, ASE, sisl, netCDF4** in the job envs | `molbuilder-siesta`, `molbuilder-siesta-gpu` (numpy, ASE, sisl, netCDF4); `molbuilder-pySCF` (numpy, ASE, netCDF4) | conda — a SIESTA vibration's job derives its modes with numpy after the force-constant run (`engines/vibration.md` § 5.5) and writes its result's data file with netCDF4, as a PySCF vibration's deck does (`engines/vibration.md` § 6.10.5), and its wrapper does not start the engine without them; sisl is SIESTA's own reader of its outputs (`.HSX` and `.TSHS` binary, `.TBT.nc` NetCDF, `.PDOS` XML), in every SIESTA env so a job can always read what its engine wrote (`engines/vibration.md` § 5.10 D5). The same packages on both SIESTA recipes, so the GPU switch never changes what a job can import (plan W36 ⑤). **An existing env gains what its recipe declares with** `molbuilder envs repair <env>` — the installer's own conda step for each missing package, added packages only (measured 2026-09-28: sisl 0.16.4 with netcdf4, pandas and xarray into both SIESTA envs) |
-| **JupyterLab** (the notebook tab) | `molbuilder-jupyternb` | conda `jupyterlab`, `ipykernel`, the analysis stack (`numpy`, `scipy`, `pandas`, `matplotlib`) and, since 2026-09-24, the file-level science libraries `ase` and `sisl`, `netcdf4` to open the data files molbuilder writes and `xarray` to read them as the post-processing document does — **the whole notebook environment, entire**. Jupyter is installed, activated and runs here, and **no other env carries notebook tooling**. It holds no calculation engine (no pyscf / siesta / rdkit): a notebook reads the MD and trajectory formats calculations produce, and is not a second place to run one nor the place a frame set is made (`web/jupyter.md` § 7). A notebook's LaTeX is drawn by the MathJax JupyterLab carries in its own bundle, so the recipe adds no math package. **Opt-in**, like the GPU env: `bootstrap` does not install it |
+| **numpy, ASE, sisl, netCDF4** in the job envs | `molbuilder-siesta`, `molbuilder-siesta-gpu` (numpy, ASE, sisl, netCDF4); `molbuilder-pySCF` (numpy, ASE, netCDF4) | conda — a SIESTA vibration's job derives its modes with numpy after the force-constant run (`engines/vibration.md` § 5.5) and writes its result's data file with netCDF4, as a PySCF vibration's deck does (`engines/vibration.md` § 6.10.5), and its wrapper does not start the engine without them; sisl is SIESTA's own reader of its outputs (`.HSX` and `.TSHS` binary, `.TBT.nc` NetCDF, `.PDOS` XML), in every SIESTA env so a job can always read what its engine wrote (`engines/vibration.md` § 5.10 D5). The same packages on both SIESTA recipes, so the GPU switch never changes what a job can import. **An existing env gains what its recipe declares with** `molbuilder envs repair <env>` — the installer's own conda step for each missing package, added packages only (measured 2026-09-28: sisl 0.16.4 with netcdf4, pandas and xarray into both SIESTA envs) |
+| **JupyterLab** (the notebook tab) | `molbuilder-jupyternb` | conda `jupyterlab`, `ipykernel`, the analysis stack (`numpy`, `scipy`, `pandas`, `matplotlib`) and the file-level science libraries `ase` and `sisl`, `netcdf4` to open the data files molbuilder writes and `xarray` to read them as the post-processing document does — **the whole notebook environment, entire**. Jupyter is installed, activated and runs here, and **no other env carries notebook tooling**. It holds no calculation engine (no pyscf / siesta / rdkit): a notebook reads the MD and trajectory formats calculations produce, and is not a second place to run one nor the place a frame set is made (`web/jupyter.md` § 7). A notebook's LaTeX is drawn by the MathJax JupyterLab carries in its own bundle, so the recipe adds no math package. **Opt-in**, like the GPU env: `bootstrap` does not install it |
 | **PeptideBuilder, pubchempy** | host | pip |
 | **Plotly.js** (every chart in the web UI) | host `molbuilder` | conda `plotly` — the browser bundle is package data of the Python package, and the app serves it at `/vendor/plotly.min.js` |
 | **The web UI's other browser libraries** (3D viewer, editor, Markdown, diagrams, math) | none — **the source tree** | **committed** under `molbuilder/web/static/vendor/`, each beside its licence, its release and its citation — that folder's `README.md` is the inventory. They come with the clone and the app serves them; nothing installs them, and a new one is added by that README's procedure, not by a recipe |
@@ -432,9 +430,7 @@ what the audit reads — so what landed stays auditable without one.
 Optional pip packages install in their **own non-fatal step**; optional *conda*
 packages degrade differently, because conda solves everything at once. The
 generic rule and its reasons live in
-[`env-framework.md`](?doc=ops/env-framework.md) § 4.3 — one home, so the two
-pages cannot drift the way this one had (it taught "counts as OK" for a
-fallback that is RECOVERED).
+[`env-framework.md`](?doc=ops/env-framework.md) § 4.3, their one home.
 
 **A missing `infrared` is a WARNING, not a failure.** The env is degraded, not
 broken: the deck still computes IR by finite-difference dipoles, spending `6N`
@@ -449,9 +445,10 @@ still audits OK:
 
 ```
 ==  molbuilder-pySCF  ==
+    PySCF (CPU + GPU runtime libs); Spectra-tab Raman/IR + geomeTRIC geomopt; gpu4pyscf available when use_gpu=True.
     state:   present
     verify:  OK
-    audit:   OK (9/10 ok; 1 optional unavailable -- gated features will be disabled)
+    audit:   OK (11/12 ok; 1 optional unavailable -- gated features will be disabled)
         [pip-source-optional] pyscf-properties @ git+https://github.com/pyscf/properties.git  (installed: (default index))
           why: pyscf.prop.infrared -- the analytic dipole derivative -- was written 2022-02-22 …
     enable:  bash scripts/install-env.sh repair molbuilder-pySCF --include-optional
@@ -495,7 +492,7 @@ bash scripts/install-env.sh bootstrap --yes
 # → creates molbuilder, molbuilder-siesta, molbuilder-pySCF, molbuilder-MDtools
 #   then runs `molbuilder envs doctor`
 conda activate molbuilder
-python -m molbuilder envs list      # confirm every env is healthy
+python -m molbuilder envs list      # every default env exists (the doctor at the end of bootstrap verifies them)
 python -m molbuilder serve start    # open http://127.0.0.1:8000
 ```
 
@@ -546,7 +543,7 @@ isn't available as a conda package. `bash scripts/install-env.sh install molbuil
   object into a conda-compiled SIESTA) and fails outright on a machine that
   does not. The shim step's own exit code is the gate on a fresh install; the
   `verify` step additionally **warns** when a bare `gcc` resolves outside the
-  env, which is what you see on an env built before this existed — re-run
+  env, which is what you see on an env that lacks the links — re-run
   `bash scripts/install-env.sh install molbuilder-siesta-gpu` to pick the links
   up. It warns rather
   than fails because such an env still builds and runs SIESTA; the risk is
@@ -579,9 +576,8 @@ package set a solve returns depends on when you run it, and the peak is during
 the compile (tarballs, a git clone, object files, a parallel `ninja`), well above
 anything the finished env keeps. So preflight **measures** instead: it prints the
 free space it found and the size of the largest conda env you already have, as a
-scale. It warns and lets you decide; it does not refuse. It did refuse below a
-hard-coded 30 GB until 2026-09-12 — a number whose only documentation was the
-word *"Rough"*, which had stopped builds that would have been fine.
+scale. It reports this as information — nothing to confirm, no refusal — and
+you decide.
 
 An **NVIDIA driver is optional** — the binary builds and runs CPU-only without a
 GPU; you only need `nvidia-smi` to actually use the GPU at run time.
@@ -605,8 +601,9 @@ GPU; you only need `nvidia-smi` to actually use the GPU at run time.
 > above becomes due whether or not the SIESTA tag has moved.
 
 **Verified end to end on a clean machine, 2026-08-14** — every install step
-completed with the pin in place. (That run had two source components; a third
-joined on 2026-09-19, § 6.4, so the plan now prints fifteen steps, not ten.)
+completed with the pin in place. The build plan has fifteen steps: five phases
+for each of its three source components; that run predates the third,
+netcdf-fortran (§ 6.4).
 
 The compiler is pinned to a **minor** version, `gcc/gxx/gfortran_linux-64=14.3`.
 `14` would not be a pin: conda reads it as `14.*`, so two machines installing the
@@ -677,13 +674,10 @@ Four things are worth knowing before you move it.
   the first second rather than after a multi-gigabyte solve. The ceiling is
   not guessed at: whether conda-forge has rdkit, openbabel and sisl for a
   given python is the solver's question and it answers it.
-* **Every env carries it, `molbuilder-siesta` included** *(2026-09-17)*. It
-  declared no python until then, on the stated grounds that a pin "would
-  constrain the one solve whose purpose is not to be constrained" — which was
-  measured and is not so: the solve with `python=3.12` resolves the **identical**
-  siesta build (`5.4.2-mpi_openmpi_h9ae7e9f_3`), drops nothing, changes nothing,
-  and adds 9 packages (80 → 89), because siesta already pulls most of what
-  python needs. What the absence did cost is in the next paragraph.
+* **Every env carries it, `molbuilder-siesta` included**, and it costs that
+  solve nothing: with `python=3.12` it resolves the **identical** siesta build
+  (`5.4.2-mpi_openmpi_h9ae7e9f_3`), drops nothing, and adds 9 packages
+  (80 → 89). Why every env needs one is the next paragraph.
 
 **It does not appear in a generated job script, and that is why every env
 needs one.** Every python a job runs — its deck, its monitor, its finish — is
@@ -701,8 +695,10 @@ env reaches.
 capability `nvidia-smi` reports on the machine you install from; with no GPU
 there (a login node) the build targets `sm_80` (A100, A30). To compile for
 another card set `MOLBUILDER_CUDA_CC=<x.y>` before the install — `9.0` for
-H100, `8.9` for L40/Ada, `7.0` for V100. GPU use is an option the benchmark
-decides later, not the env's premise; this knob is there if it is needed.
+H100, `8.9` for L40/Ada, `7.0` for V100. Whether a run uses the GPU is the
+person's choice on its run card (`use_gpu`,
+[`execution/gpu.md`](?doc=execution/gpu.md)), not the env's premise; this knob
+is there if it is needed.
 
 `--gcc` is handled by the shim itself rather than forwarded, because the recipe
 reads `MOLBUILDER_GCC` when it is imported — a Python-side option would arrive
@@ -721,16 +717,14 @@ holds and there is nothing to do. It bites only if
 you move one of the two: setting `MOLBUILDER_CUDA_VERSION=12.4` with the default
 gcc 14.3 is refused, and the message names `MOLBUILDER_GCC=13` as the fix.
 
-There is **no minimum-CUDA gate**. One was declared until 2026-09-14 (`12.4`) and
-it was never a requirement of anything: not of ELPA, which documents no minimum,
-and not of SIESTA — it was a fossil of an early belief about the gcc pairing, and
-it duplicated a number this recipe sets itself.
+There is **no minimum-CUDA gate**: neither ELPA, which documents no minimum, nor
+SIESTA requires one, and the toolkit version is the recipe's own pin.
 
 **A version change only affects a fresh solve.** An env that already exists keeps
 the compiler it was built with, so re-running `install` on a machine that already
-has the bad toolchain changes nothing. Use `--clean`, which wipes the conda env
-(`conda env remove -n <name> -y`) *and* the artifact directory, then installs
-fresh:
+has the bad toolchain changes nothing. Use `--clean`, which wipes the env
+through the detected manager (`<mgr> env remove`) *and* the artifact directory,
+then installs fresh:
 
 ```bash
 bash scripts/install-env.sh install molbuilder-siesta-gpu --clean --yes
@@ -739,13 +733,9 @@ bash scripts/install-env.sh install molbuilder-siesta-gpu --clean --yes
 There is no `envs remove` subcommand — `install --clean` is the one door, so the
 wipe and the reinstall cannot get out of step.
 
-**It works for every recipe** *(since 2026-09-12)*. It was refused for the
-conda-only ones — four of the five — so this sentence was a promise the code did
-not keep, while doctor's failed-verify hint and its `ORPHAN`/`GHOST`/`BROKEN` hard
-stop both printed `install <name> --clean --yes` as the copy-paste fix. For a
-conda-only recipe the wipe is just *remove the env*; only a source build also has
-an artifact directory to delete, and the confirmation names whichever applies
-rather than promising both.
+**It works for every recipe.** For a conda-only recipe the wipe is just *remove
+the env*; only a source build also has an artifact directory to delete, and the
+confirmation names whichever applies.
 
 **One environment fix worth knowing:** on NFS-mounted homes, OpenMPI's
 shared-memory files can land on the network and slow every `mpirun`. The GPU env's
@@ -963,8 +953,8 @@ module file.
 > skipped and the ceiling is never applied; `doctor` does not catch it either,
 > because its version check runs only for `=` specs and skips `<`. (If some other
 > declared package happens to be missing, the step does run and carries the full
-> spec list, ceiling included — so this is unreliable rather than never.) Both
-> gaps are tracked; until then, `--clean` is the only path that applies this rule
+> spec list, ceiling included — so this is unreliable rather than never.) Neither
+> gap is closed, so `--clean` is the only path that applies this rule
 > dependably. That is the signal to re-measure `kpoint_t.F90` against gfortran 15 and
 move § 6.1's pin, which is the real fix and needs a measurement nobody has yet.
 **Raising this ceiling without moving the compiler underneath it just restores
@@ -1013,16 +1003,13 @@ that was a hand-run of the same commands into a scratch prefix — the first
 | consumer | when | mechanism |
 |---|---|---|
 | **SIESTA's cmake** | build | `{dep_netcdf_fortran}` is **first** on `CMAKE_PREFIX_PATH`, ahead of `{env_prefix}` |
-| **the siesta / transiesta / tbtrans binaries** | run | SIESTA's **own** install rpath — see the correction below; the recipe's `CMAKE_INSTALL_RPATH` does not reach this binary |
+| **the siesta / transiesta / tbtrans binaries** | run | SIESTA's **own** install rpath — see the note below; the recipe's `CMAKE_INSTALL_RPATH` does not reach this binary |
 | **an interactive shell** | run | the activate hook puts `.../netcdf_fortran/lib` on `LD_LIBRARY_PATH`; the deactivate hook drops it |
 | **ELPA** | never | **it does not see this, and must not.** ELPA is a dense eigensolver with no NetCDF dependency at all — its `NEEDED` list is BLAS, ScaLAPACK, CUDA and MPI plus the usual libgfortran/libgomp/libc runtime, and no netcdf of any kind |
 
-> **⚠ Correction, measured 2026-09-19.** An earlier version of this section
-> claimed all three mechanisms put the components ahead of `$CONDA_PREFIX`, and
-> that the rpath was the decisive one because conda's `--disable-new-dtags` makes
-> it `DT_RPATH`. **All of that is wrong for the SIESTA binary**, and the
-> measurement is simple enough to repeat: build a probe under `conda run` in this
-> env, replicating SIESTA's `CMakeLists.txt` 85–102 block, and read its tags.
+> **How the SIESTA binary finds its libraries, measured 2026-09-19** — simple
+> enough to repeat: build a probe under `conda run` in this env, replicating
+> SIESTA's `CMakeLists.txt` 85–102 block, and read its tags.
 >
 > 1. **SIESTA discards the recipe's rpath.** Under `option(SIESTA_SET_RPATH ON)`
 >    it does a plain, non-`CACHE` `set(CMAKE_INSTALL_RPATH …)`, and a normal
@@ -1035,8 +1022,7 @@ that was a hand-run of the same commands into a scratch prefix — the first
 >    install rpath. Ordering the components first is not ours to decide there.
 > 3. **It is `DT_RUNPATH`, not `DT_RPATH`.** SIESTA appends
 >    `-Wl,--enable-new-dtags` after conda's `--disable-new-dtags`, and the last
->    flag wins. `RUNPATH` is searched **after** `LD_LIBRARY_PATH`, so
->    *"no second chance further down"* was backwards.
+>    flag wins. `RUNPATH` is searched **after** `LD_LIBRARY_PATH`.
 >
 > **So the activate hook is the mechanism that decides, not a convenience copy.**
 > Its ordering is real and is what the block below verifies. Nothing breaks on a
@@ -1069,20 +1055,17 @@ turns out not to hold:
   modules *before* any `-I`, and cmake passes `-Jfortran`, so the modules this
   build just wrote win over the env's. It is that `-J`/`-I` precedence that
   saves it, not an include-directory ordering.
-  (An autotools build of the same source *does* die there — which is where an
-  earlier version of this note got its evidence, and it was evidence about a build
-  system we do not use.)
+  (An autotools build of the same source *does* die there; this recipe builds it
+  with cmake.)
 - **The measured reason is the original failure, and it is enough.** SIESTA's
   *own* compile read `$CONDA_PREFIX/include/netcdf.mod` and died — verbatim in
   `logs/siesta.build.log`. SIESTA's compile has no `-J` pointing at a fresh
   netcdf module, so nothing rescues it the way the bullet above rescues this
   component's build.
-- **A load-time argument stood here and is withdrawn.** It claimed the two
-  libraries export `libnetcdff.so.7` *at different versions*. They do not:
-  measured, both are `libnetcdff.so.7.1.0`, same soname, both exporting 578
-  dynamic symbols with identical symbol lists. That makes loading the wrong copy
-  **undetectable** rather than harmful — a reason to keep one copy, but not a
-  demonstrated failure, and it should not have been written as one.
+- **Not a load-time conflict either**: both are `libnetcdff.so.7.1.0`, same
+  soname, the same 578 dynamic symbols, so loading the wrong copy is
+  **undetectable** rather than harmful — a reason to keep one copy, not a
+  demonstrated failure.
 
 One copy removes the question. Nothing in the fast test suite asserts this; the
 build's own verify step is what checks the outcome.
@@ -1126,11 +1109,11 @@ in the component list — `--rebuild=<c>` redoes everything positionally after `
 so `--rebuild=elpa` drags half a minute of NetCDF rather than the reverse
 dragging a quarter of an hour of ELPA.
 
-**Recovering an env built before 2026-09-19 takes `--clean`, and that is not a
-nicety.** Such an env has the conda `netcdf-fortran` installed, and `install`
-**never removes a package** — it closes absence only (`env-framework.md` § 4.4).
-A plain re-install would therefore leave that package in `$CONDA_PREFIX/include`
-beside the source build, which is the collision this section opened with.
+**An env that carries the conda `netcdf-fortran` takes `--clean`, and that is
+not a nicety.** `install` **never removes a package** — it closes absence only
+(`env-framework.md` § 4.4) — so a plain re-install leaves it in
+`$CONDA_PREFIX/include` beside the source build, which is the collision this
+section opened with.
 
 ```bash
 bash scripts/install-env.sh install molbuilder-siesta-gpu --clean --yes
@@ -1207,7 +1190,7 @@ fiber -seq=ATCGATCG /tmp/probe.pdb && head -5 /tmp/probe.pdb
 
 Then **run molbuilder from inside WSL** — only the WSL Python sees `fiber` and
 `$X3DNA`. Windows Python is fine for everything that doesn't need 3DNA
-(`smiles`, `peptide`, `fdf`, …); asking it for `--backend threedna` just fails
+(`smiles`, `peptide`, `name`, …); asking it for `--backend threedna` just fails
 the availability check with a clear `BackendUnavailable`. Files cross freely
 either way (Windows reaches WSL files at `\\wsl$\Ubuntu\home\<user>\…`), so a
 `.fdf` generated in WSL is editable from Windows tools.
@@ -1223,32 +1206,24 @@ env before any Python exists. The shim probes `mamba` → `micromamba` → `cond
 every tier: `PATH`, a `$CONDA_PREFIX` walk, and the common install roots on disk;
 its own header documents the three and its error text names all three.
 
-> **This section said micromamba could not run `bootstrap`** and offered a
-> hand-built host env as the workaround, until 2026-09-12. The shim had supported
-> it all along, so the advice sent micromamba users around the one path that
-> creates the host env from its one package list, `molbuilder/envs/host-env.txt`
-> ([`env-framework.md`](?doc=ops/env-framework.md) § 8).
-
 ## 9. Test map
 
-- `test_envs_recipes.py` — what every recipe must declare, no two recipes sharing
-  a name or an env, the default env names each having a recipe, and the host
-  env's psutil floor.
+- `test_envs_recipes.py` — the packages every recipe declares (python and git),
+  every default env name having a recipe, and psutil in the host env.
 - `test_the_machine_is_probed_on_first_use.py` — the project's default CUDA version
   when no driver answers, read off `envs install --dry-run` (what a real driver
   and the variable over it give is `tests/field/test_the_cuda_version.py`); and that
   a command needing neither the machine snapshot nor a recipe runs neither probe
-  (`env-framework.md` § 3, plan W36 ⑥).
+  (`env-framework.md` § 3).
 - `test_envs_siesta_gpu_recipe.py` — the GPU recipe's lines whose loss the build
   does not show, or shows only after a long wait: the toolchain pins and the gcc
   row of the SIESTA tag (§ 6.1), the one OpenMP runtime, the OpenMPI variants,
   ELPA's GPU flags, SIESTA's features and its MPI compilers, the submodule clone,
   the sysroot and readline lines, the argv templates in all five phases, and the
   activate and deactivate hooks sourced in a shell (the NFS shared-memory fix
-  among them). **The rpath is asserted nowhere, on purpose.** The two tests that
-  pinned `-DCMAKE_INSTALL_RPATH` were deleted on 2026-09-19 once that flag was
-  measured to be discarded by SIESTA's own cmake — they were green over something
-  inert, which is worse than no test. A test that restates a build option blocks
+  among them). **The rpath is asserted nowhere, on purpose**: SIESTA's own cmake
+  discards the recipe's install rpath (§ 6.4), so a test of that flag would pass
+  over something inert. A test that restates a build option blocks
   a legitimate change to it while proving nothing about whether the build works,
   so what checks the rest is the build itself (§ 6.4): its `verify` phase compiles
   `use netcdf` with the env's own compiler, and `siesta --version` closes the run.
@@ -1266,13 +1241,14 @@ its own header documents the three and its error text names all three.
   spec validation, sentinel resume, toolchain-fingerprint determinism, template
   substitution, preflight, `--rebuild`, the `activate.d` hook. Never runs a real
   35-45 min CUDA build.
-- `test_envs_doctor.py` — the doctor's report shape and its present/missing
-  logic, with a fake conda binary rather than real subprocesses.
+- `test_envs_doctor.py` — the verify accept rule, `repair` running the step the
+  installer would, and the audit telling which tree of a package is installed.
 - `test_envs_doctor_hints.py` — the rule that **every problem the doctor reports
   ends with the exact command that fixes it**, in the one spelling that works
   from a bare shell.
 - `test_envs_validate.py` — the verdict `envs validate` reaches (the part a
   person acts on). The probes themselves need a built GPU env and ~30 minutes,
   so they are not exercised here.
-- `test_envs.py` — subprocess dispatch into an env: `run_in_env` argv
-  construction and the no-conda error path.
+- `test_envs.py` — which env runs a tool: the routed env over host PATH, an
+  explicit env over both, a refusal naming what was tried, and `run_in_env`'s
+  refusal when no manager was found.

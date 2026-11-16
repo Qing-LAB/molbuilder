@@ -98,6 +98,20 @@ template = { restart = "continue" }
 run_sh = ['_mode="continues (engine will load']
 run_sh_lacks = ['_mode="clean (']
 
+# ...and what it says the deck reads is read off the calculation's OWN list,
+# as prep's carry is: a file a newer engine build writes, added there under
+# the deck keyword that reads it, is one the run script names.  THE SILENT
+# FAILURE: the run script reading molbuilder's list while prep read the
+# calculation's, its lines about restart files disagreeing with the carry.
+[[case]]
+name = "...and the files it says its deck reads are the calculation's own list's"
+own_warm_files = { add = [{ suffix = ".NEWSTATE", honoured_by = "DM.UseSaveDM" }] }
+template = { restart = "continue" }
+# (the sentence "...so SIESTA reads the .XV/.DM/.NEWSTATE/.CG left under its
+# label" -- the slash before it is that list's alone; the file loop names
+# every suffix in the list either way)
+run_sh = ["/.NEWSTATE"]
+
 
 # A failed run says what a launch again will do (`running-a-job.md` § 3.5),
 # and a stop at its wall says so first (§ 3.6) -- a run is one start, so the

@@ -56,7 +56,7 @@ accurate/accommodating" — "and which part is none of your business".)*
 | **Which rungs take the calculation's GPU?** | the catalogue — the rungs whose role reads `use_gpu` | a calculation-wide `use_gpu` and `gpu_count` reach only those rungs — never a transport ladder's transmission, whose `tbtrans` has no GPU path ([`job-request.md`](?doc=execution/job-request.md) § 3.2) |
 | **Are the job's cores bound to its GPUs?** | molbuilder: yes — the person may turn it off, `"gpu_binding": false` in `allocation` | sends `--gres-flags=enforce-binding` with every GPU ask, unless turned off (G9) |
 | **How do the ranks share the GPUs?** | the run script, at run time | spreads the ranks over the GPUs the job was given, starts MPS when ranks outnumber GPUs and says so ([`running-a-job.md`](?doc=execution/running-a-job.md) § 3.3); a rank away from its GPU is warned of (G10) |
-| **Can the deck run on a GPU there?** | the target's record — which environments exist | SIESTA: said at prep when the record lists no GPU build, the job prepared; PySCF: checked at run start (G6, G8) |
+| **Can the deck run on a GPU there?** | the target's record — which environments exist | SIESTA: said at prep when the record's environments do not include the GPU build, the job prepared; PySCF: checked at run start (G6, G8) |
 
 The rank and thread counts of a GPU job are the stated ones, as for any job
 ([`architecture.md`](?doc=execution/architecture.md) § 5.2).
@@ -177,12 +177,14 @@ CPU build, and a CPU deck never on the GPU one.
 
 - **SIESTA's GPU build is an environment**, and whether the target has it is the
   target's record's to say — the record is shown, never a veto (the user,
-  2026-10-17). When the record lists no `molbuilder-siesta-gpu`, **prep prepares
-  the job as asked and says so** in its notes: the env the run script enters at
-  its start and stops without, and the command that installs it
-  (`bash scripts/install-env.sh install molbuilder-siesta-gpu`, the one spelling
-  of an env command, `envs.hints.fix_cmd`). The person installs it, or turns
-  `Use GPU` off and preps again.
+  2026-10-17). When the record lists its environments and
+  `molbuilder-siesta-gpu` is not among them, **prep prepares the job as asked
+  and says so** in its notes: the env the run script enters at its start and
+  stops without, and the command that installs it
+  (`bash scripts/install-env.sh install molbuilder-siesta-gpu --yes`,
+  `envs.hints.install_cmd`, the one spelling of an env command). A record that
+  lists no environments at all does not know, and nothing is said. The person
+  installs it, or turns `Use GPU` off and preps again.
 - **PySCF's GPU is a device**, checked at run start: the script stops with the
   reason.
 - **A CPU-ELPA deck writes `Diag.ELPA.GPU .false.` explicitly**, never left to the

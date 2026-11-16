@@ -156,6 +156,7 @@ each *(user, 2026-10-04)*. A row says:
 | `kind` | source · input · derived · record · result · transient ([`project-layout.md`](?doc=execution/project-layout.md) § 5) |
 | `staged` · `engine` · `calculation` · `only` | whether its name carries the stage token; which engine and which kinds write it; the condition when it is written only sometimes |
 | `output` | whether it is evidence of how a run went ([`model/parse.md`](?doc=model/parse.md) § 5.5) |
+| `cut_from` | the output the run script cuts this file from, by its role (the SCF-timing log's: a SIESTA-family `.out`); the row's engine is that output's |
 | `fields` · `listed_by` · `counted_by` · `travels` | a templated name's fields; which atom index a file lists by; an engine input's numbering; whether it travels beside a deck into every folder the deck runs in |
 | `reads` · `stderr_apart` | for a file a reader of ours reads by its role, the reader that answers each question about it, `module:NAME` — how a run ended, its stops, its live reading pass, its loop's words, its SCF rows, its timing, the engine's log of what it read, the run record's fields, a deck's recorded settings (the questions, `runfiles.READ_QUESTIONS`); for a run output, whether its engine's stderr stays apart ([`running-a-job.md`](?doc=execution/running-a-job.md) § 3.5) |
 
@@ -224,8 +225,8 @@ offered first (`runfiles.result_roles`).
 
 **Why PySCF's stdout is `.pyscf.log`, not `.out`.** The run script captures
 both engines' stdout: SIESTA's into `<stem>.out`, through its tee, PySCF's
-into `<stem>.pyscf.log`. The Results tab picks a viewer by suffix, and a
-PySCF log named `.out` was handed to the SIESTA reader; the `.pyscf.` infix
+into `<stem>.pyscf.log`. The Results tab picks a viewer by suffix, so a
+PySCF log named `.out` would be handed to the SIESTA reader; the `.pyscf.` infix
 says which engine wrote it, and the distinct suffix lets the viewer choose
 correctly.
 
@@ -390,9 +391,9 @@ a different question with its own answer — the benchmark summary
 
 ### 2.4 Resolving a directory
 
-When a reader — the Results tab, `molbuilder watch` — is handed a folder
-instead of a file, the run door answers which one file opens
-(`runs.openable`, `runs.folder_answer`), by what the folder is
+When the Results tab is handed a folder instead of a file, the run door
+answers which one file opens (`runs.openable`, `runs.folder_answer`), by what
+the folder is
 ([`project-layout.md`](?doc=execution/project-layout.md) § 1.4a): a run of
 ours opens at the first role its calculation produces in which it has a file;
 a container opens its calculation's product, or nothing; a folder no
@@ -400,7 +401,8 @@ calculation claims tries the catalogue's roles, newest file first, and reads
 no label off a deck. The rule is
 [`model/parse.md`](?doc=model/parse.md) § 5.1–§ 5.2. The search's trail is the
 body of the refusal when nothing matched; a path that is a file is loaded
-directly.
+directly. `molbuilder watch` reads one file and refuses a folder, asking for
+the file inside it.
 
 ### 2.5 The projects tree and the canonical topics
 
@@ -524,9 +526,10 @@ A path that names a **calculation** is read from the projects root
 | omitted | the working directory |
 | anything else | read from the projects root — `<project>/<topic>/<calculation>` |
 
-**Either way it must be inside the tree.** `..` segments and absolute paths
-are resolved and then checked by the one fence, `projects.contain`, which the
-sidebar backend's own resolver calls too. So you need not stand in a
+**Either way it must be inside the tree.** A `..` segment is refused before
+anything resolves it, and an absolute path is resolved and then checked, by
+the one fence, `projects.contain`, which the sidebar backend's own resolver
+calls too. So you need not stand in a
 calculation to act on it: `jobset launch task --bundle
 Au-BDT-Au/optimization/Relax` works from anywhere. (The flag keeps the word
 *bundle* for the calculation folder.)
@@ -741,7 +744,6 @@ restore`) or the stage prepared again.
 
 | block | SIESTA `.fdf` | PySCF `.py` | TranSIESTA `.fdf` | run script `.run.sh` |
 |---|:--:|:--:|:--:|:--:|
-| HEADER | — | — | — | — |
 | PROVENANCE | ✅ | ✅ | ✅ | ✅ |
 | BENCH-MARKS | ✅ | — | — | — |
 | ATOM-METADATA | ✅ | ✅ | ✅ | — |
@@ -812,13 +814,16 @@ script:
   this against a run's other declarations is
   [`running-a-job.md`](?doc=execution/running-a-job.md) § 4.2.
 - **`generator-version`** is molbuilder's version and its git commit
-  (`script_emit.generator_version`). A later molbuilder compares versions
-  (`deck_record.written_by`): the version moves with every change to what
-  molbuilder writes ([`process/conventions.md`](?doc=process/conventions.md)
-  § 2), so a transport gather that meets an upstream deck written by another
-  version refuses, naming both and the
-  [changelog](?doc=process/changelog.md). A file written before 2.0.0 names
-  only its commit. A PySCF vibration script states the version again, for its
+  (`script_emit.generator_version`). A later molbuilder reads it
+  (`deck_record.written_by`): `jobset status` says a stage another molbuilder
+  prepared is *ready to launch (prepared by molbuilder X)*; the version moves
+  with every change to what molbuilder writes
+  ([`process/conventions.md`](?doc=process/conventions.md) § 2), and what
+  changed is the [changelog](?doc=process/changelog.md). Nothing refuses on
+  it: the transport gather asks whether the upstream run ran what its rung
+  renders now, by what the engine computes from the two decks
+  (`deck_record.same_calculation`), never by which molbuilder wrote them. A
+  file written before 2.0.0 names only its commit. A PySCF vibration script states the version again, for its
   result (`deck_record.BUILD_NAME`). Both are masked when two decks are compared
   (`deck_record.without_stamps`): which build wrote a deck is not what it
   computes.
@@ -841,7 +846,8 @@ script:
   *not recorded*.
 - **`resolved-defaults`** is the run script's, four keys always:
   `target_env`, `omp_threads`, `max_memory_mb` (`n/a` when none is stated) and
-  `mpi_np` (`n/a (PySCF is OMP-only)` for PySCF). Each is the stated value:
+  `mpi_np` (`n/a (PySCF runs one process)` for an engine that runs one
+  process). Each is the stated value:
   both engines refuse an unstated count at prep
   ([`architecture.md`](?doc=execution/architecture.md) § 5.2). A deck carries
   none.
@@ -882,9 +888,11 @@ Which engine-body fields a benchmark may override, and within what limits:
   ([`engines/template.md`](?doc=engines/template.md) § 8.1).
 - **`type`** is one of `int`, `float`, `str`, `pow2`, `enum`; `range=[a,b]`
   and `unit=` are advisory bounds for checking a requested override.
-- **A line is written only for a keyword the deck carries** (the example is a
-  relaxation deck whose `BlockSize` was set). `MD.Steps` appears only for a
-  deck that relaxes. `BlockSize` has two states: a value
+- **Every field line is written, `BlockSize`'s only when the deck carries
+  one, and a line carries `default=` only for a keyword the deck carries**
+  (the example is a relaxation deck whose `BlockSize` was set): `MD.Steps`
+  has its default only on a deck that relaxes, `Diag.Algorithm` none.
+  `BlockSize` has two states: a value
   you set or a benchmark measured, written verbatim with its line; or unset —
   SIESTA chooses — and **no `field BlockSize` line at all**. A tool treats an
   absent field as *not offered*, as § 3.1's *every block is optional*
@@ -958,14 +966,13 @@ it. The payload is the sidecar's schema
   one (`atom_permutation.PermutationError`), and `Structure.apply_atom_metadata` a block
   whose `n_atoms_total` disagrees with the structure (`MolstructPairingError`).
   The `.molstruct.json` file keeps its own version gate.
-- **Older decks still read.** A deck written before every deck carried the
-  block wrote it only when one predicate found something to say — a label, a
-  channel, a named value or an order record
-  (`structure.atom_metadata_has_something`), which its readers still ask: a
-  block with nothing to say reads as a deck that labels nothing and never
-  hides a sidecar. Such a deck, for a kind that reorders, states no
-  `atom_order`: a door that builds from its run refuses it by name, and a door
-  that shows it says so (`runs.Declared.order_unstated`).
+- **A block with nothing to say labels nothing.** The block is read through
+  one predicate (`structure.atom_metadata_has_something`): a block with
+  nothing to say — no label, channel, named value or order record — reads as
+  a deck that labels nothing and never hides a sidecar. A deck of a kind that
+  reorders whose block states no `atom_order` is refused by name by a door
+  that builds from its run, and a door that shows it says so
+  (`runs.Declared.order_unstated`).
 - **Frozen atoms are a label inside `regions`**, named by
   `structure.FROZEN_LABEL` (`frozen_atoms`), not a string typed here:
   transport looks up electrode, bridge and frozen membership in this block.
@@ -1004,9 +1011,10 @@ with the new file's own line endings (`script_emit.merge_user_custom`,
 | the zone may be absent | a file without it is valid; the next generation writes an empty one |
 | it carries no version | its content is not molbuilder's to version (§ 3.6) |
 
-**Which roads keep your text.** Every writer of a generated file goes through
-`script_emit.write_script`, which merges the zone from what it replaces — the
-file on disk, or the plan's copy of it:
+**Which roads keep your text.** Every writer of a generated file merges the
+zone from what it replaces: prep through `script_emit.write_script` (the file
+on disk, or the plan's copy of it), the web file write, on a fresh write,
+through `script_emit.merge_user_custom_from_target`:
 
 | road | your text |
 |---|---|
@@ -1118,12 +1126,12 @@ no row ([`engines/stages.md`](?doc=engines/stages.md) § 1.1a). The generated
 script carries the reads itself, which is why its rows have no `honoured_by`:
 
 ```python
-# SCF initial guess from a prior checkpoint, if present:
-mf.chkfile = _mb_outfile(JOB + ".chk")
-_chk = _mb_outfile(JOB + ".chk")
-if _os.path.exists(_chk) and _os.path.getsize(_chk) > 0:
+mf.chkfile = _mb_outfile(JOB + '.chk')
+# SCF initial guess from a prior checkpoint, on a rung that continues:
+_chk_path = _mb_outfile(JOB + '.chk')
+if _os.path.exists(_chk_path) and _os.path.getsize(_chk_path) > 0:
     mf.init_guess = "chkfile"
-    print(f"[molbuilder] continuation: SCF init guess from {_chk}")
+    print(f"[molbuilder] continuation: loading SCF init guess from {_chk_path}")
 
 # Geometry from a prior optimization, if present:
 #   <JOB>_optimized.xyz replaces the literal _atom_block before gto.M(...)
@@ -1300,10 +1308,11 @@ the description, the declaration and traits in `job-set.json`.
 edited there, answers for that calculation instead — to withhold `.DM` for one
 debugging ladder, declare a file a new engine build writes, or tighten a pair
 condition. The copy is made by hand: the shipped files open with where it
-goes, what each key means and what an edit does. Two guards keep a copy
-honest: the `honoured_by` agreement check reads whichever file is in effect,
-and `STAGE-PLAN.md` names the file that answered (`prep.py`), so a
-surprising carry is explained by the plan alone.
+goes, what each key means and what an edit does. The run script and prep
+read the copy in effect, and `STAGE-PLAN.md` names the file that answered
+(`prep.py`), so a surprising carry is explained by the plan alone. The
+`honoured_by` agreement check is a test of the shipped files; a
+calculation's own copy is not checked against its deck.
 
 **What stays code, and why:**
 
@@ -1344,7 +1353,7 @@ restart files of the list in effect (§ 4.2a) that lie in the run, each named
 | `clean (this deck reads no prior state; the files here are not read)` | restart files lie here, but the deck's `restart` is `clean` ([`run-identity.md`](?doc=execution/run-identity.md) § 4) |
 | `from the first step (this kind of run does not resume)` | restart files lie here, on a kind that does not resume (`resumes = false`): it runs from its first step, reading back only what that step saved |
 
-From a real run's session log (a 2.63.0 run; since 2.64.0 the banner's labels are padded to its longest):
+From a real run's session log — the banner's labels are padded to the longest it prints:
 
 ```
   Launch mode   : pure MPI (1 ranks; OMP setting irrelevant to this binary)
@@ -1388,12 +1397,12 @@ described.** Which files exist, by name and level, is the manifest
 **A reader refusing a key it does not know** — an ignored key is a file
 quietly different from the one written — **names every unknown key at once**,
 each with the known key it is close to, then the keys the record holds: one
-sentence, `persist.unknown_keys`, for every such reader to say it in
-*(2.69.56)*. A calculation's settings are too many to read in a refusal: a
+sentence, `persist.unknown_keys`, for every such reader to say it in. A
+calculation's settings are too many to read in a refusal: a
 name that is not one is named with the setting it is close to when one is,
 and the settings are not listed, but for a run card's and a benchmark row's
 few (`template.why_not_items`, [`engines/template.md`](?doc=engines/template.md)
-§ 3) *(2.69.59)*.
+§ 3).
 
 **Configuration and machine**
 
@@ -1442,6 +1451,7 @@ few (`template.why_not_items`, [`engines/template.md`](?doc=engines/template.md)
 | optical data | `<label>.optical.nc` at a SIESTA vibration run's root | `molbuilder/optical-data@3` | `spectra/optical_data.py` | [`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 |
 | displacement sweep | `<label>.fc-sweep.json` at the root | `molbuilder/fc-displacement-sweep@2` | `spectra/displacement_sweep.py` | [`engines/vibration.md`](?doc=engines/vibration.md) § 5.9 |
 | Raman view | a NetCDF file an export writes | `molbuilder/raman-view@2` | `spectra/raman.py` | [`model/datafiles.md`](?doc=model/datafiles.md) § 1 |
+| optimization data | `<label>.optimization.nc`, written by an export, never into the calculation | `molbuilder/optimization-data@1` | `optimization/datafile.py` | [`model/datafiles.md`](?doc=model/datafiles.md) § 1 |
 | transport result | `<label>.transport.json` at the root | `molbuilder/transport-result@16` | `transport/record.py` | [`engines/transport.md`](?doc=engines/transport.md) § 2a.12 |
 | transport data | `<label>.transport.nc` at the root | `molbuilder/transport-data@8` | `transport/datafile.py` | [`engines/transport.md`](?doc=engines/transport.md) § 2a.12 |
 | transmission point digest | `<label>.TBT.digest.nc` beside each point's TBtrans data (`.TBT_UP…`, `.TBT_DN…` for spin) | `molbuilder/tbt-digest@4` | `parse/engines/tbtrans_nc.py` | [`model/parse.md`](?doc=model/parse.md) § 5e |
@@ -1529,8 +1539,9 @@ disk's reader does (`Plan.read_object`, `Plan.read_text`: what has been
 written into it so far, otherwise the file, its bytes decoded by
 `persist.text_of`).
 
-**A run's status is not a file.** `run_status(run_dir)` answers it in memory
-(`parse/dirs/job.py`; its fields,
+**A run's status is not a file.** `run_status(run_dir, basename, launch=…)`
+answers it in memory (`parse/dirs/job.py`, asked through the run door's
+`runs.state_of(run)`; its fields,
 [`running-a-job.md`](?doc=execution/running-a-job.md) § 4.2, *The call*); a
 folder's served answer carries four of them — `state`, `detail`,
 `last_change_at`, `active_source` — and no version.
@@ -1617,10 +1628,9 @@ scheduler the stated value is the whole answer.
 
 **A `Resources` crosses a boundary whole** (rule **A8**,
 [`architecture.md`](?doc=execution/architecture.md) § 7). A door that renders
-from one takes the object, and no caller passes a subset: a run script whose
-thread default was `1` beside its own `.sbatch` asking `-c 8`, and an
-`.sbatch` with no `-c` beside a correct run script, were both a subset passed
-by hand.
+from one takes the object, and no caller passes a subset: a subset passed by
+hand lets a run script and its `.sbatch` disagree — a thread default of `1`
+beside `-c 8`, or an `.sbatch` with no `-c`.
 
 **`jobset.Resources` holds fifteen fields** — the job's request, nothing of
 what it computes: eight the scheduler reads, and seven riders that become no
@@ -1672,18 +1682,21 @@ it:
   `<label>.source.molstruct.json`.** Every identity is validated to
   `[A-Za-z0-9_-]`, no dot, so a dotted segment like `.source` names something
   no engine output can take: an engine names every file on an identity
-  (`WriteCoorXmol` writes `<SystemLabel>.xyz`). Without it, a SIESTA
-  relaxation run beside its source, its label matching the structure's stem,
-  overwrote its own input. The writers mark the pair (the hand-over and
+  (`WriteCoorXmol` writes `<SystemLabel>.xyz`). Without it, a SIESTA run
+  beside its source, its label matching the structure's stem, would overwrite
+  its own input. The writers mark the pair (the hand-over and
   `molbuilder describe`); every reader follows `task.json`'s
   `structure.source`.
 - **A sweep coordinate renders as one qualifier.** The token is the point's
-  axes in declaration order, each `<axis><value>`, concatenated with no
-  separator (`G1N4C6`); a value's `.` is spelled `p`; every other character
-  outside `[A-Za-z0-9_]` is dropped (`ELPA-1Stage` → `ELPA1Stage` — a value
-  axis carries an engine's spelling you cannot change); a rider the `G`
-  coordinate already states is left out; and a trial label past 48 characters
-  is refused (SIESTA truncates near 50, which merged two trials once). Two
+  axes in declaration order, joined with no separator: a machine axis as
+  `<axis><value>` (`G1N4C6`), a value axis as `<axis><value>`, or its value
+  alone when it is a string with a letter in it that no other axis shares; a
+  value's `.` is spelled `p`; every other character outside `[A-Za-z0-9_]` is
+  dropped (`ELPA-1Stage` → `ELPA1Stage` — a value axis carries an engine's
+  spelling you cannot change); a rider the `G` coordinate already states is
+  left out; and a trial label longer than its engine keeps whole is refused —
+  SIESTA's 48 characters (the engine record's `longest_label`): SIESTA cuts a
+  longer name, which would put two trials' files under one stem. Two
   points whose labels collide refuse the whole sweep at resolve. Built by
   `resolve.point_token` alone: the token is an identifier, never parsed — what
   varied travels as data, in `job-set.json`'s `point`.
@@ -1740,7 +1753,7 @@ start ([`project-layout.md`](?doc=execution/project-layout.md) § 1.6.1).
 | **run** | `run-<n>`, not padded | a count of starts that happened, not a designed sequence; `run-` is reserved and its members are numbers |
 | **benchmark** | `bench/` inside the stage it measures | a benchmark nests in what it measures |
 | **trial** | `bench-G<gpus>N<ranks>C<cores-per-rank>` — `N` the ranks in all, `G0` a CPU trial | a sweep has no order, so the name says what was tried — which lets `summarize` map a folder back to its point |
-| **bias point** | `v<V>`, the voltage as `%g`: `v0`, `v0.2`, `v-0.5` — `<NN>_<rung>/run-<n>/v<V>/`, and prep's decks at `<NN>_<rung>/v<V>/` | a point is a level inside one run, never a run of its own; one spelling, `task.bias_token` ([`engines/transport.md`](?doc=engines/transport.md) § 2a.11) |
+| **point of a run of points** | one level per axis that varies, inside one run: `f<NNN>` a frame (three digits, `paths.frame_token`), `v<V>` a voltage as `%g` (`task.bias_token`) — `<NN>_<rung>/run-<n>/f001/v0.2/`, prep's decks at `<NN>_<rung>/f001/v0.2/`; a SIESTA vibration's calls by their phase, `relax/`, `fc/`, `optical/f000/` | a point is a level inside one run, never a run of its own ([`runs-of-points.md`](?doc=execution/runs-of-points.md) § 2.4) |
 | **surface Green's functions** | `tsgf/` inside a device run — `tsgf/<label>.<v>.TSGF<lead>` | the vocabulary's `scratch_dir` (§ 4.2a): emptied by the walk, never saved, removed by a restore, emptied by `jobset scratch --empty` |
 | **launch group** | `launch/` in the folder its members share: the calculation's root for stages sent as one job, the stage's folder for a run of points' walk, the benchmark folder for its trials | the submission's own files apart from every run it starts (`runfiles.LAUNCH_DIR`) |
 

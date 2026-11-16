@@ -68,8 +68,8 @@ Every configuration file has exactly one kind of writer.
 
 | writer | means | files |
 |---|---|---|
-| **a person** | somebody decided it; nothing in the program overwrites it | `molbuilder.json` |
-| **a probe** | a machine was asked, and answered | `environment.json` |
+| **a person** | somebody decided it; molbuilder writes into it only what a person answered — `envs init-config` (the file, and an `env_init` it lacks) and `molbuilder auth-setup` (`auth.providers`; an existing list only with `--force`), each merged over what is there by `runtime_config.write_config_scope` | `molbuilder.json` |
+| **a probe** | a machine was asked, and answered — run on that machine; a calculation's first prep copies the record beside it, `jobset migrate` rewrites a copy an older molbuilder wrote, and a manager found broken is added to this machine's record (M-2) | `environment.json` |
 | **a producing verb** | `describe`, the hand-over or Task setup wrote down what a calculation *is* | `<label>.template.toml`, `task.json`, `job-request.json`, `task.1st.json` |
 | **the engine's package** | it ships with the code, as data | `catalogue.template.toml`, `<engine>/warm-files.toml` |
 
@@ -98,6 +98,7 @@ Two rules follow, and the code holds both:
 | `molbuilder.json` | 1. `$MOLBUILDER_CONFIG_DIR/molbuilder.json`, when set (§ 2.1c)<br>2. `$XDG_CONFIG_HOME/molbuilder/molbuilder.json`, when set<br>3. `~/.config/molbuilder/molbuilder.json` | **one file**: the branches choose a directory, and the file is the one in it |
 | `environment.json` | 1. `<calculation>/environment.json`<br>2. a named target, when one is asked for: `<config dir>/environments/<name>.json`<br>3. `<config dir>/environment.json` | **the whole record**, first found (M-3); when none answers, nothing — **no reader probes** (M-4) |
 | `catalogue.template.toml` | `molbuilder/data/` in the package | one file |
+| `report-cards.json` | 1. `<config dir>/report-cards.json`<br>2. `molbuilder/data/report-cards.json` | first found, whole |
 | `<engine>/warm-files.toml` | 1. `<calculation>/warm-files.toml`<br>2. `molbuilder/<engine>/warm-files.toml` | first found: a calculation's tuned copy is the list in effect for it, its `scratch_dir` included (`warmfiles.warm_list`) |
 | `<label>.template.toml`, `task.json`, `job-request.json` | the calculation folder, nowhere else | one calculation, one description |
 
@@ -359,8 +360,11 @@ be set before numpy loads.
 | a member of `mb_pyscf.pyz`, or the whole file | the PySCF script stops on its first lines, before PySCF computes anything: the import error, or the sentence saying the file is missing beside the script, is in the run's output, and the run reads failed |
 
 **A path is asked for, never assembled**: the directory from `config_dir`
-(§ 2.1c), the filename from the module that owns its format
-([`architecture.md`](?doc=execution/architecture.md) A11). § 3.1 is the tree
+(§ 2.1c), the filename from the one module that spells it — `runfiles` for a
+calculation's records and the machine record
+([`architecture.md`](?doc=execution/architecture.md) A11), and the module
+whose format it is for `molbuilder.json` (`runtime_config`) and the card
+layout (`report_cards`). § 3.1 is the tree
 with each resolver beside its entry. **There is no `retrieve_secret("name")`
 door**: a name-keyed registry would re-spell filenames their owners spell.
 
@@ -397,6 +401,8 @@ Sorted by writer (§ 1). Schema strings and owning modules are
 | file | writer | scope | what it answers |
 |---|---|---|---|
 | `molbuilder.json` | a person | machine | what you want from this installation, and `env_init` (§ 4) |
+| `report-cards.json` | a person | machine | the chat card's layout here; replaces the shipped `molbuilder/data/report-cards.json` whole |
+| `secrets/notify` | a person, or the This machine tab | machine | the run-report channels a job's monitor posts to ([`run-reports.md`](?doc=execution/run-reports.md) § 3) |
 | `environment.json` | a probe | machine *and* calculation (M-3) | what the target machine is — cores, GPUs, scheduler, the queues you can reach, how a shell enters an environment there (§ 5) |
 | `<label>.template.toml` | `describe`, the hand-over | calculation | every parameter of this calculation, with the value in force |
 | `task.json` | `describe`, Task setup's Save | calculation | what changes — the stages, what varies, the structure reference |
@@ -423,7 +429,7 @@ $MOLBUILDER_CONFIG_DIR, else $XDG_CONFIG_HOME/molbuilder, else ~/.config/molbuil
 │   ├── README                  written by `envs init-config`
 │   └── <name>.json             probed ON that machine, copied here   scheduler/record.named_environment_path()
 └── secrets/               EVERY kept credential                0700   config_dir.secrets_dir()
-    ├── README                  written by `envs init-config`
+    ├── README                  written by `envs init-config`  0600
     ├── secret_key         the session key            0600   config_dir.session_key()
     ├── <kind>_client_secret  an OAuth provider's secret  0600   config_dir.client_secret(kind)
     ├── notify             run-report channels        0600   monitor.default_notify_path()
@@ -448,14 +454,16 @@ $XDG_STATE_HOME/molbuilder, else ~/.local/state/molbuilder
     └── <address>.json          written at the launch, dropped once its end is said   joblist.write()
 
 $XDG_RUNTIME_DIR/molbuilder, else <state dir>/run
-│                                             config_dir.runtime_dir()
+│                                      0700   config_dir.runtime_dir()
 ├── serve-<port>.pid       the address stop/restart act on          config_dir.serve_pidfile()
 ├── jupyter-<port>.pid     the shepherd's — jupyter stop's address  config_dir.jupyter_pidfile()
 └── jupyter-<port>.json    where the notebook is AND ITS TOKEN 0600 config_dir.jupyter_runtime()
 ```
 
 **The modes above are `molbuilder/placement.py`'s table**: one `Place` per
-entry — the owner's resolver, the expected mode, why — with
+entry it polices — the owner's resolver, the expected mode, why;
+`report-cards.json`, `environments/README` and the four entries inside
+`jupyter-lab/` have no row and are not policed — with
 `config_dir.ensure_private_dir` the one creator and `placement.findings()` the
 audit that `envs doctor` prints and `machine_config_warnings` returns. The
 table is the authority and this tree cites it. A row with no mode requirement
@@ -598,7 +606,7 @@ machine takes:
 
 ```text
 Error: no --mode, and molbuilder.json sets no `launch.mode`.
-  'direct' runs it here with bash; 'submit' hands it to the scheduler.  Set launch.mode once for this machine (configuration.md § 4), or say the mode on the line:
+  'direct' runs it here with bash; 'submit' hands it to the scheduler.  Set launch.mode once for this machine, or say the mode on the line:
     …the launch as typed, once per mode
 ```
 
@@ -782,8 +790,9 @@ true | false}`: whether that manager's `run` entered an environment when tried
 [`ops/installation.md`](?doc=ops/installation.md) M4). *"Facts has only one
 version"* (user, 2026-10-18): the door that meets the broken case writes it into
 this machine's record there and then (`envs.builds.remember_manager_run`) — the
-one case a record is written by something other than a probe, adding a fact the
-probe would measure the same way, never creating a record. A record that says
+one change to a machine's own record outside the probe and `envs init-config`'s
+seeding through the probe's doors, adding a fact the probe would measure the
+same way, never creating a record. A record that says
 `run` is broken for the manager in hand sends every command through the
 activation hooks.
 

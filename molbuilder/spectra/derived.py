@@ -1,8 +1,9 @@
 """A mode's DERIVED values -- one derivation, for every writer of a result
 file and for the reader's check (`engines/vibration.md` § 6.6, I16).
 
-MODULE  spectra.derived (L1; the standard library and its siblings --
-        nothing that needs the package installed)
+MODULE  spectra.derived (L2 by the index, `architecture.md`; it imports
+        only the standard library and its siblings -- nothing that needs
+        the package installed)
 ROLE    from what a mode STATES -- its frequency, whether it is imaginary, its
         canonical eigenvector and its two strengths -- the values derived from
         them: the activity classes (`spectra.activity`, a decision against the

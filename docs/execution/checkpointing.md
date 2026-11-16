@@ -279,8 +279,8 @@ neither store, and no person's config names them:
 - **molbuilder's temporary files** — the rows the file catalogue
   (`runfiles.WRITTEN`) calls `transient`
   ([`project-layout.md`](?doc=execution/project-layout.md) § 5): a file being
-  written before it replaces its target, a sidecar's lock, a data file's
-  reading's claim, the per-rank GPU launcher.
+  written before it replaces its target, a data file's reading's claim, the
+  per-rank GPU launcher.
 
 The one answer for both is `warmfiles.never_carried(name)`; the save, the
 status, the restore and every reader of a MANIFEST ask it (S1).
@@ -418,10 +418,12 @@ arrows moving between the states, each state's words a button that opens its
 actions — *Restore to here* the next stop — as a click on the row does, named
 by what the row says, and kept open across a redraw; the pill is a button that
 reads the state again. A restore runs under
-the page-wide cover, as every heavy click does (§ 10 there) *(2.68.4)*.
-**Refresh is explicit**: the panel reads when you enter a directory and when you
-press Refresh, which asks the exact content question rather than the cheap one.
-There is no polling ([`web/projects.md`](?doc=web/projects.md)).
+the page-wide cover, as every heavy click does (§ 10 there).
+**Refresh is explicit**: the panel reads when you enter a directory, when you
+open it or press the pill, when you press Refresh — which asks the exact
+content question rather than the cheap one — and, while it is open, when a prep
+or Task setup's Save says it changed the folder shown. There is no polling
+([`web/projects.md`](?doc=web/projects.md)).
 
 Over HTTP: `GET /api/checkpoint/state` and `list`; `POST /api/checkpoint/init`,
 `save`, `tag` and `restore` ([`web/web-api.md`](?doc=web/web-api.md) § 5). The
@@ -790,7 +792,7 @@ first — every prep that writes, a group's first launch, Task setup's Save —
 because the state each saves is the one a redo restores. Each owns three
 things: **noticing** the moment, **saving** before it changes anything, and
 **saying so** — the terminal prints the state and its note, Task setup shows
-them, and the calculation's ledger records them
+them, and the calculation's ledger records a prep's and a launch's
 *(user, 2026-10-03: "always save through checkpoint, notify user, and make sure
 name of the checkpoint clearly shows timestamp")*. All of them call one
 function, `checkpoint.save_before`. **A save that fails stops the act**: prep
@@ -848,7 +850,7 @@ one a redo restores.
   `group.check_groups`). Stages that build on each other are separate groups,
   and each group's first launch saves.
 - **The run script and the monitor never save**
-  ([`running-a-job.md`](?doc=execution/running-a-job.md) § 3). The monitor sits
+  ([`running-a-job.md`](?doc=execution/running-a-job.md) § 6). The monitor sits
   beside the job, knows when the run has ended, reads the outputs and can notify
   you — it observes and tells, and never changes the calculation.
 - **After the last run** nothing saves, because no act follows. The sidebar's
@@ -872,7 +874,7 @@ sequenceDiagram
     M->>H: state · before launch task group 2 (…), holding group 1's runs
     M->>J: send group 2
     Note over J: runs and ends, saves nothing
-    Note over H: the pill reads N unsaved until the next save
+    Note over H: the pill reads N changed until the next save
 ```
 
 ### The note an act writes
@@ -884,7 +886,7 @@ the act is about to change, each group named by its number and its members:
 |---|---|
 | prep of groups | `2026-10-30 19:03:24 · before prep task group 1 (seed, electrode_L, electrode_R), group 2 (device), group 3 (transmission)` |
 | prep of a benchmark | `… · before prep bench coarse` |
-| prep of a transport calculation's older junction, no group named | `… · before prep task: the junction's order record` ([`engines/transport.md`](?doc=engines/transport.md) § 1.1) |
+| prep of a transport calculation's older junction, no group named | `… · before prep task: the citation's order record` ([`engines/transport.md`](?doc=engines/transport.md) § 1.1) |
 | prep copying a group in from a finished calculation | `… · before prep task group 1 (seed, electrode_L, electrode_R), copied in from <calculation>` ([`engines/transport.md`](?doc=engines/transport.md) § 2a.16) |
 | a group's first launch | `2026-10-31 21:19:11 · before launch task group 1 (coarse)` |
 | a group's first launch inside a sequence's job | `… · before launch task group 2 (medium), in job 4817 (sequence H2_sequence-01_coarse-02_medium)` — the job as `molbuilder jobs status` names it (a run here's walk, `<host>-<pid>`), and the sequence its header and launch record are named by |

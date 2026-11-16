@@ -2,7 +2,8 @@
 of each frame, and the one row a combination of its frames reads
 (`model/structure.md` § 2.2f).
 
-MODULE  frameset (L1; the Structure and the standard library)
+MODULE  frameset (L2 by the index, `architecture.md`; it imports only the
+        Structure and the standard library)
 ROLE    :func:`read` -- the structure's rows and each frame's as written, and
         each frame's ``weight``
 USED-BY the frames' post-process (`frame_average`: the weighted average, the

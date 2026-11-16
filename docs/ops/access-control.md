@@ -87,7 +87,7 @@ wrong for at least one of them.
 | **Does this traffic look hostile?** | the rate limiter | empty `429`, `Connection: close`, 1 h | `web/rate_limit.py` |
 | **May this person read and clear the block list?** | the `admin` list | `403` | `web/admin.py` |
 | **May this person stop the process everyone shares?** | supervisor **and** the `admin` list | `404` with no supervisor — the route **does not exist** — and `403` with one | `web/app.py` |
-| **May this person run arbitrary code on this machine?** | supervisor **and** the `admin` list — *or*, on a server with no sign-in, loopback asked by a loopback name | `404` with no supervisor to ask, `403` with one | `web/blueprints/jupyter.py` |
+| **May this person run arbitrary code on this machine?** | supervisor **and** the `admin` list — *or*, on a server with no sign-in, loopback asked by a loopback name | `404` unless a `serve start` supervisor holds this port (under `serve foreground` or `--no-supervise` there is none to ask), `403` with one | `web/blueprints/jupyter.py` |
 | **May this program write a run report?** | the listener's signature over the exact body — the route registered only where `notify_keys` names a route and holds keys; it takes no session (§ 3.2) | a plain `404`, whatever failed | `web/blueprints/notify.py` ([`execution/run-reports.md`](?doc=execution/run-reports.md) § 4.1) |
 
 Read rows three to five together: **one list answers all of them**, and they
@@ -95,17 +95,12 @@ refuse in two ways — a 403 for the block list, and 404-then-403 for the
 restart and the notebook: nothing there with no supervisor to ask, a refusal
 with one. § 5 and § 6 are why.
 
-### 2.0 The fifth gate — a live kernel *(added 2026-09-15)*
+### 2.0 The fifth gate — a live kernel
 
-**This document listed four gates while a fifth had shipped**, and the fifth is
-the one that hands out arbitrary code execution: `POST /api/jupyter/start`,
-`/stop`, and the notebook itself, passed through at `/jupyter/…`. The blueprint said so in its own docstring — *"a live kernel is
-arbitrary code execution as the account running the server — the same
-capability `POST /api/admin/reload` guards, arrived at from the other
-direction"* — and then cited `jupyter.md` § 6 rather than this page, which
-fixed the pointer and left the owning document without the rule. An operator
-asking *"who can run code on my server"* got an answer that was wrong and
-looked complete. *(`plan.md` § 5n.8.)*
+`POST /api/jupyter/start`, `/stop`, and the notebook itself, passed through at
+`/jupyter/…`, hand out arbitrary code execution as the account running the
+server. That is the capability `POST /api/admin/reload` guards, arrived at from
+the other direction, so who may use them is this page's rule.
 
 Three things make it differ from the restart gate, and each is deliberate:
 
@@ -127,6 +122,11 @@ Three things make it differ from the restart gate, and each is deliberate:
    conditions: a server *with* sign-in falls to the `admin` list even on
    loopback, and a server without sign-in gives nobody off-machine the button —
    which matters, because "no providers" does not force a loopback bind.
+   **Except through a reverse proxy on this machine**, which makes every
+   visitor a loopback caller asking by the name the proxy forwards: an
+   unauthenticated molbuilder behind one hands the notebook — and every file —
+   to everyone the proxy lets through. Behind a proxy, turn sign-in on
+   ([`deployment.md`](?doc=ops/deployment.md) § 3) *(the user, 2026-11-15)*.
 
 **And reaching the notebook is the same capability.** Using a running kernel is
 the same code execution as starting one, so the `/jupyter/…` pass-through asks
@@ -231,8 +231,7 @@ returns it there. Anything under `/api/` gets a clean JSON `401` carrying a
 to parse a login page as data. The pages do, in one place: the one reader of
 an answer ([`web/ui-contract.md`](?doc=web/ui-contract.md) § 12) says *signed
 out* once, its **Sign in** link the page itself in a new tab — the browser
-road above, which returns there — so the tab that asked keeps what it holds
-*(2.69.0)*.
+road above, which returns there — so the tab that asked keeps what it holds.
 
 ### 3.4 The session key lives outside the repo
 
@@ -240,27 +239,17 @@ Sessions are signed with a key at `<config dir>/secrets/secret_key` — one home
 not a configured path (`configuration.md` § 2.1e)
 (the config directory — [`configuration.md`](?doc=configuration.md) § 2.1c).
 Not in `molbuilder.json`, not in the
-tree, and never committed. Client secrets follow the same rule — one file per
-provider. See [`deployment.md`](?doc=ops/deployment.md) § 5.1.
+tree, and never committed. Client secrets follow the same rule: one file per
+provider kind, `<config dir>/secrets/<kind>_client_secret`. See
+[`deployment.md`](?doc=ops/deployment.md) § 5.1.
 
-**And so does the config that names them** (2026-08-30). `molbuilder auth-setup`
-writes to **the file the server will actually read** — which is the reader's own
-one answer: `$MOLBUILDER_CONFIG_DIR/molbuilder.json` if that variable is set,
-else `$XDG_CONFIG_HOME/molbuilder/molbuilder.json`, else
-`~/.config/molbuilder/molbuilder.json`.  A `./molbuilder.json` is not read
-(`configuration.md` § 2.1a).
-
-It defaulted to `./molbuilder.json` regardless, meaning *wherever the wizard was
-launched from* — for anyone running it inside a checkout, the git root. Two
-things were wrong with that, and the second is the one that bites:
-
-- the same command already wrote both **secrets** into the config directory, so
-  one command split its output across two conventions; and
-- on a machine that already had a `./molbuilder.json` elsewhere, a fresh
-  per-user file would have been **a config the reader never looks at** — the
-  wizard reporting success while sign-in stayed off.
-
-Asking the reader where it reads is what keeps the two from disagreeing.
+**And so does the config that names them.** `molbuilder auth-setup` writes the
+file the server reads (`$MOLBUILDER_CONFIG_DIR/molbuilder.json` if set, else
+`$XDG_CONFIG_HOME/molbuilder/molbuilder.json`, else
+`~/.config/molbuilder/molbuilder.json`), asked of the reader's own resolver. So
+the wizard can never report success into a file nothing consults, and its
+config and its secrets land in one directory. A `./molbuilder.json` is neither
+read nor written (`configuration.md` § 2.1a).
 
 > **The file is gitignored, and has never been committed** —
 > `molbuilder.json`, which holds `auth` and `tls`.
@@ -269,14 +258,14 @@ Asking the reader where it reads is what keeps the two from disagreeing.
 
 ## 4. Hostility — the limiter judges behaviour
 
-Always on, per IP, in process. It exists for one caller: **somebody enumerating
+On by default (`rate_limit.enabled: false` switches it off), per IP, in process. It exists for one caller: **somebody enumerating
 paths to find a weak point.** Everything about its shape follows from that.
 
 ### 4.1 The three signals
 
 | Signal | Trips on | Default |
 |---|---|---|
-| **Attack signature** | one match in the decoded path+query — `<script`, `<meta http-equiv`, `document.cookie`, `union select`, `; drop table`, `/etc/passwd`, `../../../` | always on |
+| **Attack signature** | one match in the decoded path+query — `<script`, `<meta http-equiv`, `document.cookie`, `union select`, `; drop table`, `/etc/passwd`, `../../../` | on whenever the limiter is: a threshold of 0 does not turn it off |
 | **404 storm** | `threshold_404` 4xx responses within `window_404_s` | 20 in 30 s |
 | **Total burst** | `threshold_total` requests within `window_total_s` | **off** (`0`) |
 
@@ -289,8 +278,11 @@ what is behind the door.
 
 ### 4.2 Two ways to never be counted, for two different reasons
 
-- **Allowlisted IPs** (loopback by default). On the shape the bind guard
-  enforces, a loopback request really is local — never the scanner.
+- **Allowlisted IPs** (loopback by default). With nothing in front of the
+  server, a loopback request really is local. Behind a reverse proxy on the
+  same host every request arrives from loopback, so set `auth.trust_proxy`
+  (with sign-in) or `rate_limit.trust_proxy`, or the limiter never counts
+  anyone.
 - **A logged-in session.** Somebody who came through the SSO gate has already
   been vouched for by an identity provider; the limiter is there to deflect
   anonymous probing, not to throttle a colleague who is mis-clicking.
@@ -304,18 +296,17 @@ That is not an implementation detail — it is the assumption that lets every
 static asset revalidate on every page load (§ 2 of
 [`server-reload-plan.md`](?doc=archive/2026-08-19-server-reload-plan.md)). ~170 assets asking
 "is my copy still good" answer 304, and 304 does not count. If the limiter is
-ever widened to count 3xx, ordinary use trips it;
-`tests/test_static_revalidates.py` pins the predicate for exactly that reason.
+ever widened to count 3xx, ordinary use trips it; `tests/test_rate_limit.py`'s
+`test_200s_do_not_count_toward_storm` pins the predicate for 200s.
 
 ### 4.4 Why total-burst ships disabled
 
-It was on, at 60 requests per 60 s, and it blocked real users: the Results tab
-polls system load once a second, so a legitimate open tab reached the ceiling
-within the minute. Counting **successes** toward an abuse signal punishes the
-traffic the tool exists to serve. The 404-storm signal already catches the
-canonical scanner, which generates 4xx and not 2xx. A paranoid deployment can
-switch it back on; the recommended floor is 600 (10/s sustained), well above any
-poll cadence.
+Total-burst counts **successes**, and the Results tab polls system load once a
+second, so a 60-per-60 s ceiling blocks a legitimate open tab within the minute.
+Counting successes toward an abuse signal punishes the traffic the tool exists
+to serve. The 404-storm signal already catches the canonical scanner, which
+generates 4xx and not 2xx. A paranoid deployment can switch it on; the
+recommended floor is 600 (10/s sustained), well above any poll cadence.
 
 ---
 
@@ -351,18 +342,13 @@ than a policy. The safety here comes from the required allow-list, not from
 asking an operator to name themselves again.
 
 **What that costs on a laptop: nothing.** Loopback is never rate-limited, so
-there is no block list to clear; and the restart button needs a supervisor
-before it exists at all.
+there is no block list to clear; and with no sign-in there is no Reload button
+at all, since it needs a session and a supervisor (`molbuilder serve restart`
+from a shell does the same).
 
-> **It lived under `rate_limit.admin_emails` until 2026-08-03**, where an empty
-> list meant *any signed-in user*. That is defensible for reading a block list
-> and wrong for stopping a shared process — so the restart route had to
-> **invert** it for itself: one value, two opposite readings, depending on which
-> subsystem asked. It was also reached through the rate limiter's own object, so
-> **turning the limiter off silently changed who was an admin** — a connection
-> nothing in the names would suggest. The old key is gone, not aliased: a config
-> that still sets it is refused by name, pointing here (since 2026-10-02 — until
-> then it was read as naming nobody).
+> **`rate_limit.admin_emails` is refused by name**, pointing at the `admin`
+> section. One list answers both questions, and it is installed apart from the
+> limiter, so turning the limiter off never changes who is an admin.
 
 ## 6. Stopping the process — absent without a supervisor, refused to a non-admin
 
@@ -371,9 +357,9 @@ for, so a fresh child starts with every Python module imported again. The design
 of that mechanism is [`server-reload-plan.md`](?doc=archive/2026-08-19-server-reload-plan.md);
 what belongs here is who may press it.
 
-`POST /api/admin/reload` **is registered only when a supervisor is running.** The
-default since 2026-08-04, so this normally holds; `--no-supervise` and `--debug`
-take it away. Without one nothing brings the server back, and an endpoint that
+`POST /api/admin/reload` **is registered only when a supervisor is running**:
+`serve start` always runs one, and `serve foreground` does unless
+`--no-supervise` or `--debug` takes it away. Without one nothing brings the server back, and an endpoint that
 stops an unsupervised server leaves a dead site with no way back from a browser —
 so without one the route does not exist: **404**, and the button is missing,
 which is what it is.
@@ -382,13 +368,6 @@ which is what it is.
 anyone who can sign in, unless the `admin` section names addresses, which
 narrows it. Anyone else gets **403**, in the one sentence `web/admin.py` owns,
 and anonymous is never an admin.
-
-*(This section said until 2026-10-02 that the route is not registered unless the
-`admin` section names somebody, and that no state of the config grants the
-capability by forgetting something. The rule changed when § 5 gave the list one
-meaning — `tests/test_admin_reload.py`'s
-`test_naming_nobody_means_anyone_who_signed_in` records it — and these
-paragraphs went on describing the old one.)*
 
 Two smaller decisions follow the same grain:
 
@@ -405,31 +384,26 @@ Two smaller decisions follow the same grain:
 
 ## 7. Where the gates touch, and where they rub
 
-Four honest sharp edges. Each is stated because finding one by surprise is worse
+Five honest sharp edges. Each is stated because finding one by surprise is worse
 than reading it here.
 
 **⚠ TLS is not authentication.** The bind guard checks *host + TLS* and never
-asks whether auth is on. `serve --host 0.0.0.0 --cert … --key …` passes it while
+asks whether auth is on. `molbuilder serve start --host 0.0.0.0 --cert … --key …` passes it while
 serving a **public, unauthenticated, fully read/write/delete `projects/` tree**.
 Encryption on the wire is not access control. A real deployment turns auth on
 (§ 3) or sits behind a proxy that authenticates.
 
 **⚠ The app can generate 4xx during ordinary use, and the limiter counts 4xx.**
-Two instances found so far, which is enough to make it a rule rather than a
-pair of bugs: **a 4xx should mean the request was wrong, not that the answer was
-empty.** One is fixed — asking the workspace "did I leave anything here?"
-answered `404` when the answer was simply "no", so a tab that restores its own
-state manufactured one 4xx per page load against its own user (it is a `200`
-with an empty result now). The other is below.
+So the rule is: **a 4xx means the request was wrong, not that the answer was
+empty.** Asking the workspace "did I leave anything here?" answers `200` with an
+empty result, so a tab restoring its own state never counts against its user;
+the auth gate's own answer is the other case, below.
 
-**An expired session used to look like an attack — fixed 2026-08-03.** The
-limiter counts 4xx, and the auth gate's *"I do not know who you are yet"* is a
-4xx. A session expiring with a tab open turned the page's own once-a-second poll
-into one 4xx per second: twenty in thirty seconds, and the visitor was blocked
-for an hour on every path, the sign-in page included. The app locking out its
-own user, silently.
-
-The gate now **marks its own answer** and the limiter skips it. Not "ignore 401
+**The sign-in check is not evidence.** The auth gate's *"I do not know who you
+are yet"* is a 4xx. A session expiring with a tab open would turn the page's
+once-a-second poll into twenty 4xx in thirty seconds, an hour's block on every
+path, the sign-in page included. So the gate marks its own answer and the
+limiter skips it. Not "ignore 401
 everywhere": a 401 from somewhere else has a different author and may mean
 something. Everything else is untouched — pinned by three tests: the polling tab
 is never blocked, a scanner walking for files still is, and an attack string is
@@ -445,8 +419,8 @@ that map to nothing and those reach the limiter untouched. Pinned as a known
 shape in `tests/test_rate_limit.py` rather than left to be rediscovered.
 
 **The admin API needs auth on.** With no `auth` section there is no session, so
-`is_admin_request()` is false for everyone and both admin routes answer `403`
-forever. On the default localhost shape that costs nothing — loopback is
+`is_admin_request()` is false for everyone: both block-list routes answer `403`
+forever, and so does the restart route, whose button is never drawn. On the default localhost shape that costs nothing — loopback is
 allowlisted and can never be blocked, so there is nothing to clear. If you want
 to *use* the admin API, turn auth on.
 
@@ -509,15 +483,15 @@ The transferable part. A new gate should be able to point at one of these.
 
 | What | Where |
 |---|---|
-| The limiter, signal by signal — signature · 404-storm · total-burst · TTL expiry · allowlist · `X-Forwarded-For` trust · the admin routes · the admin role gate · the authenticated bypass · disabled mode · LRU eviction | `tests/test_rate_limit.py` (11 classes) |
+| The limiter, signal by signal — signature · 404-storm · total-burst · TTL expiry · allowlist · `X-Forwarded-For` trust · the admin routes · the admin role gate · the sign-in check not counted · the authenticated bypass · disabled mode · LRU eviction | `tests/test_rate_limit.py` (12 classes) |
 | Auth config validation + provider entries | `tests/test_auth_config.py`, `tests/test_auth_setup.py` |
 | `--no-auth` refused off loopback | `tests/test_cli.py::test_serve_no_auth_refuses_non_loopback_host` |
 | TLS cert/key resolution (flags vs `molbuilder.json`, incomplete pairs fall back to HTTP) | `tests/test_cli_tls.py` |
 | The reload gate — **404** with no supervisor, **403** for a session that is not an admin's; the availability answer in four configurations; the respawn loop; the supervisor never importing the app; a reload refused, 409, while `molbuilder.json` cannot be read (`deployment.md` § 1.0b) | `tests/test_admin_reload.py` |
-| Revalidation staying invisible to the limiter (the § 4.3 assumption) | `tests/test_static_revalidates.py` |
+| Successes staying invisible to the limiter (the § 4.3 assumption) | `tests/test_rate_limit.py::TestStorm404::test_200s_do_not_count_toward_storm` |
 | No inline JavaScript on any page served — a `<script>` with no `src`, an `on…` attribute, a `javascript:` URL, each of which the CSP's `script-src 'self'` would block in silence; every page of the route map, the sign-in page included, parsed as the browser parses it | `tests/test_security_headers.py::test_no_page_served_carries_inline_javascript` |
-| The header values themselves — the CSP's directives, `nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: same-origin` on a page and on an API answer; HSTS over HTTPS (direct or `X-Forwarded-Proto`) and never over plain HTTP | `tests/test_security_headers.py` *(since 2026-09-29; a known gap until then)* |
-| The bind guard's refusal of a public interface without TLS (`serve --host 0.0.0.0`, no certificate), before anything binds | `tests/test_security_headers.py::test_a_public_bind_without_tls_is_refused` *(since 2026-09-29; pinned only through `--no-auth` until then)* |
+| The header values themselves — the CSP's directives, `nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: same-origin` on a page and on an API answer; HSTS over HTTPS (direct or `X-Forwarded-Proto`) and never over plain HTTP | `tests/test_security_headers.py` |
+| The bind guard's refusal of a public interface without TLS (`serve foreground --host 0.0.0.0`, no certificate), before anything binds | `tests/test_security_headers.py::test_a_public_bind_without_tls_is_refused` |
 
 ---
 

@@ -39,14 +39,14 @@ you ran) and its child, `serve foreground --host … --port …`, the server —
 marked supervised by the environment the supervisor starts it with
 (`reload_protocol.server_environment`, which also gives it its one numerical
 thread, § 1.0f). The many lines a thread view lists under the child are its
-threads, not processes. Three files, all under **your own** home (which is what makes
-every bit of this per-user):
+threads, not processes. Three files, each in a directory of **your own** account
+(which is what makes every bit of this per-user):
 
 | file | what |
 |---|---|
 | `$XDG_RUNTIME_DIR/molbuilder/serve-<port>.pid` | the supervisor's pid — the address `stop`/`restart`/`status` act on.  `<state>/run` when that variable is unset; a variable naming a directory that cannot be made here is refused before `start` detaches ([`configuration.md`](?doc=configuration.md) § 2.1d) |
 | `$XDG_STATE_HOME/molbuilder/logs/serve-<port>.log` | everything the server prints (default `~/.local/state/molbuilder/logs/`) |
-| `$XDG_STATE_HOME/molbuilder/logs/serve-<port>.stacks.log` | thread stacks, appended on `SIGUSR1` and before any forced child kill (§ 1.0c) |
+| `$XDG_STATE_HOME/molbuilder/logs/serve-<port>.stacks.log` | thread stacks, appended each time the server child receives `SIGUSR1` (§ 1.0c) |
 
 **The log is capped and rotated** *(user requirement, 2026-08-28)*:
 when it exceeds `--log-max-mb` (default 20) it is closed, gzipped to
@@ -65,7 +65,7 @@ stale, never signalled.
 
 * **`status`** answers two different questions separately: *is the
   process up* (the pidfile checks above) and *is it answering*
-  (`/api/health`) — yesterday's wedge was precisely a server that was up
+  (`/api/health`) — the 2026-08-28 wedge was precisely a server that was up
   and not answering, and a status that conflated the two would have
   called it healthy.
 * **`restart`** signals the supervisor (`SIGHUP`), which recycles the
@@ -114,7 +114,7 @@ probed for an answer, and says whether a notebook is held beside it; naming a
 port also names the servers that *are* up. **Two limits it states rather than
 implies:** a `serve foreground` writes no pidfile and cannot appear, and a
 stale file is reported stale, never signalled. `jupyter status` does the same
-for notebooks. *(User ruling 2026-09-15; `plan.md` § 5n, J14.)*
+for notebooks. *(User ruling 2026-09-15; [the archived plan](?doc=archive/2026-10-08-plan-consolidation.md) § 5n.4, J14.)*
 
 **The log is the record — and nothing more is built.** Every daemon
 event line (child start, respawn, flap give-up, stop) is timestamped,
@@ -159,7 +159,7 @@ different bugs:**
 
 ```bash
 ss -ltn | grep :8888        # Recv-Q > 0 and not falling = queued, never accepted
-kill -USR1 "$(pgrep -f 'serve foreground.*8888')"   # dump every thread's stack
+kill -USR1 "$(pgrep -n -f 'serve foreground.*8888')"   # the newest match, the server child: dump every thread's stack
 tail -40 ~/.local/state/molbuilder/logs/serve-8888.stacks.log
 ```
 
@@ -311,10 +311,15 @@ flowchart LR
 ```
 
 The recommended production setup is a **reverse proxy terminating TLS** in front
-of `molbuilder serve` bound to loopback. molbuilder supports this: set
-`auth.trust_proxy` so it installs `ProxyFix` (trusts one hop of
-`X-Forwarded-For`/`-Proto`), and it only emits **HSTS** once the request actually
-arrived over HTTPS. Direct TLS (`--cert/--key`) also works for simpler setups.
+of `molbuilder serve` bound to loopback. With sign-in on, set `auth.trust_proxy`
+so it installs `ProxyFix`, trusting one hop of `X-Forwarded-For`, `-Proto`,
+`-Host` and `-Prefix`. Exactly one proxy must sit in front, and it must drop what
+a client sends in those headers. **HSTS** is emitted only once the request
+arrived over HTTPS. `auth.trust_proxy` exists only beside `auth.providers`.
+Without sign-in, set `rate_limit.trust_proxy` so the limiter reads the client
+from `X-Forwarded-For`; otherwise every visitor arrives from the proxy's
+loopback address, which is allowlisted. Direct TLS (`--cert/--key`) also works
+for simpler setups.
 
 ## 3. Auth — turning on sign-in
 
@@ -338,8 +343,12 @@ reach your server.
 
    Use the host and port people type into their browser. Through an
    ssh tunnel that is `http://localhost:8888/oauth-callback/google`.
-   (`serve start` prints the exact URI whenever auth is on — copy it
-   from there instead of deriving it.)
+   (Once auth is on, the server prints a guess at each OAuth provider's
+   redirect URI, built from `--host` and `--port`: on the terminal under
+   `serve foreground`, into `serve-<port>.log` under `serve start`.
+   `auth-setup` ends by printing
+   `http://localhost:8888/oauth-callback/google`. On `0.0.0.0` or behind a
+   proxy, put your public host name in it.)
 4. Click **Create**. Google shows a client ID and a client secret —
    keep that page open for step 2.
 
@@ -371,15 +380,16 @@ python -m molbuilder auth-setup --provider asu
 ```
 
 No console, no secret — CAS has neither. The allowed user is your
-ASURITE; add lab members by editing `allowed_users` in
-`molbuilder.json`.
+ASURITE as an address, `<asurite>@asu.edu`: ASU CAS releases only the
+ASURITE and molbuilder adds `@asu.edu`. Add lab members the same way,
+`<their asurite>@asu.edu`, in `allowed_users` in `molbuilder.json`.
 
 ### 3.3 Changing things later
 
 | what changed | what to do |
 |---|---|
-| rotate / replace the client secret | make a new secret on the same console page → overwrite `<config dir>/secrets/google_client_secret` → `molbuilder serve restart` |
-| new host or port | add the new redirect URI in the console — `serve start` prints the exact URI to add |
+| rotate / replace the client secret | make a new secret on the same console page → overwrite `<config dir>/secrets/google_client_secret`; the server reads it again at the next sign-in, no restart |
+| new host or port | add `https://<new host>:<port>/oauth-callback/<provider id>` in the console; the server's start-up lines (terminal, or `serve-<port>.log`) show it built from `--host`/`--port` |
 | add / remove people | edit `allowed_users` in `molbuilder.json` → `molbuilder serve restart` |
 
 ### 3.4 Facts you may need
@@ -408,8 +418,9 @@ ASURITE; add lab members by editing `allowed_users` in
 > and the rules underneath — is [`access-control.md`](?doc=ops/access-control.md).**
 > This section is the operational half: the headers, the knobs, and the routes.
 
-Set on every response (via a header hook, using `setdefault` so a proxy can
-override):
+Set on every response that does not already carry the header (a header hook
+using `setdefault`, so a route's own header wins: the notebook passed through at
+`/jupyter/` keeps its own policy and `X-Frame-Options: SAMEORIGIN`):
 
 - **Content-Security-Policy** — `default-src 'self'`; **`script-src 'self'`**
   (no inline JS — a hard rule, enforced by a test); `style-src 'self'
@@ -422,13 +433,13 @@ override):
 - a **50 MiB request cap** — over it, a JSON `413` naming the cap, not Flask's HTML default.
 - **no CSRF token layer**: cross-site request forgery is defended by
   **`SameSite=Lax` cookies** (a third-party page can't ride your session on a
-  state-changing request) plus `form-action 'self'`; no CORS headers are emitted
-  (same-origin only). (`connect-src 'self'` limits where *molbuilder's own* pages
-  may connect out — it isn't the CSRF defense.)
+  state-changing request); no CORS headers are emitted (same-origin only).
+  (`connect-src 'self'` and `form-action 'self'` limit where *molbuilder's own*
+  pages may send; neither is the CSRF defense.)
 
 ### The rate limiter (the threat model `web-api.md` defers here)
 
-An **always-on, per-IP, in-process** limiter runs before every request. It blocks
+An **on-by-default** (`enabled`, below), **per-IP, in-process** limiter runs before every request. It blocks
 an IP for a **cooldown (default 1 hour)** on any of **three signals**:
 
 1. **Attack-string signature** — an immediate block. The path+query is
@@ -479,7 +490,7 @@ same answer (`access-control.md` § 5):
 > **Gotcha:** the admin API needs **auth on**. Without an `auth` section (or under
 > `--no-auth`) there's no session key, so those two routes always answer `403`.
 > On the default localhost/no-auth shape that's fine — loopback is allowlisted and
-> can never be blocked — but if you want to *use* the admin API, enable auth. (Recorded follow-up.)
+> can never be blocked — but if you want to *use* the admin API, enable auth.
 
 ### Restarting the server from the browser
 
@@ -537,14 +548,13 @@ The override is used **exactly as given** — no `molbuilder` component is
 appended, because the variable names *our* directory rather than a shared root.
 A malformed file refuses to start rather than silently misconfiguring.
 
-**`molbuilder auth-setup` writes the file the server would read**, by asking
-the reader's own resolver rather than writing to the directory it happens to be
-launched from — so the wizard cannot leave the auth block in a file nothing
-consults, which is what "always
-write the per-user one" would do on a machine that already has a `./` config.
+**`molbuilder auth-setup` writes the file the server reads**, asked of the
+reader's own resolver (`runtime_config.write_config_scope`, as a merge), so the
+wizard cannot leave the auth block in a file nothing consults; a
+`./molbuilder.json` in the launch directory is neither read nor written.
 
 **These are the server's sections.** The same file also carries what
-*calculations* need — `launch`, `envs`, `checkpoint` — which are
+*calculations* need — `launch`, `envs`, `env_init`, `checkpoint` — which are
 [`execution/running-a-job.md`](?doc=execution/running-a-job.md) § 5. Every key
 the file may hold, what it is for and who reads it is
 [`configuration.md`](?doc=configuration.md) § 4.
@@ -556,9 +566,15 @@ the file may hold, what it is for and who reads it is
 | `auth.trust_proxy` | install `ProxyFix` for a reverse proxy |
 | *(run reports)* | **nothing goes here.** `molbuilder notify-token`, or the *This machine* tab, writes `notify_keys` in the config directory, and **that file is the switch**: it carries its own route, and the listener is registered because the file exists and names one. `notify_keys_file` and `notify_route` were retired on 2026-08-31 and are now refused ([`run-reports.md`](?doc=execution/run-reports.md) § 4.3) |
 | `rate_limit: {…}` | tune the limiter (§4 defaults) |
+| `admin: {emails:[…]}` | who may clear the block list and restart the server (§ 4) |
+| `paths: {projects}` | where the projects tree lives (§ 6) |
 | `envs: {siesta, pyscf, …}` | the conda-env names for the backends |
 
-There are **no server environment-variable knobs** — in particular
+The server reads these environment variables: `MOLBUILDER_CONFIG_DIR` /
+`XDG_CONFIG_HOME` (where `molbuilder.json` and `secrets/` are),
+`XDG_STATE_HOME` / `XDG_RUNTIME_DIR` (logs and pidfiles, § 1.0a),
+`MOLBUILDER_PROJECTS` (the projects tree, ahead of `paths.projects`), and
+`MOLBUILDER_SERVE_PORT` (which molbuilder this is, when wrapped, § 1.1).
 `MOLBUILDER_LOG` appears in a code comment but is *not* wired, so don't rely on it.
 
 **No config file ships in this repository, deliberately**: a configuration
@@ -647,11 +663,11 @@ Notes:
 
 ## 6. What's on disk at runtime
 
-A running server keeps your work under **the projects tree** — `paths.projects`,
-else the checkout's `projects/` ([`installation.md`](?doc=ops/installation.md)
+A running server keeps your work under **the projects tree** — `$MOLBUILDER_PROJECTS`,
+else `paths.projects`, else the checkout's `projects/` ([`installation.md`](?doc=ops/installation.md)
 § 2.1) — the whole project/topic/structure/job tree. Config and secrets live in
 the config directory: `molbuilder.json` and `secrets/` (`0600`). The rate-limiter's blocklist is memory
-only. The server assumes a **writable working directory** and makes no
+only. The server writes nothing into its working directory and makes no
 shared-filesystem assumptions.
 
 ## 7. Test map

@@ -163,17 +163,22 @@ each release is its changelog row and its ledger section
   tidying no page shows (measured against `tabs.md` § 6 for O-STATE) and
   waits; so do the test framework's TF3–TF10 and the page tests on jsdom.
 
-**Last checked** (2.69.21): the fast batch, 5,959 passed; every e2e test,
-744 passed, on the release's final code (a change every road passes through,
-said first).
+**Last checked** (2.70.27, F10's first full e2e pass): every e2e test, 782
+of 783 passed; the one, a notebook test whose port another parallel test's
+server had taken, passed alone and is fixed in 2.70.28 (test servers take
+even ports below the system's own range).
 
 **What runs next**: the stretch above (*Left, in order*) -- F9's last
 step, its closing review rounds (the page-side test doors, the dead-code
 release and the tests owed done: 2.70.2–2.70.10, 2.70.20, 2.70.21) and
-the UI review's two left items (2.70.27) done; next F10, F11, F12. **Waiting on the user**: nothing now; TF5 brings one
-decision when it is reached (a test's own projects tree by default). F10's
-first full e2e pass and F12's walk of the three roads in the browser start
-only on the user's word, said to them first.
+the UI review's two left items (2.70.27) done; **F10 under way** (the user,
+2026-11-15: "start F10") -- its first full e2e pass done on 2.70.27; the
+chapters read whole against the code in waves, each a release: wave 1
+(2.70.28) the top-level chapters, ops and execution; wave 2 the engines and
+science; wave 3 the model and web. Then F11, F12. **Waiting on the user**:
+nothing now; TF5 brings one decision when it is reached (a test's own
+projects tree by default). F12's walk of the three roads in the browser
+starts only on the user's word, said to them first.
 
 **The test suite's guards** keep every test off the person's machine
 ([`process/testing.md`](?doc=process/testing.md) § 2b): test code loads only

@@ -46,8 +46,8 @@ copies them in, [`project-layout.md`](?doc=execution/project-layout.md)
 Two failures follow from getting the label wrong, and both are refused (§ 5):
 
 - **two calculations under one label in one folder** — the second would
-  warm-start from the first's geometry, and its MODE line would truthfully say
-  `CONTINUES` ([`job-contracts.md`](?doc=execution/job-contracts.md) § 4.4);
+  warm-start from the first's geometry, and its Mode line would truthfully say
+  `continues (engine will load …)` ([`job-contracts.md`](?doc=execution/job-contracts.md) § 4.4);
 - **a label edited between runs** — the restart files no longer match, and a
   run that should continue starts cold.
 
@@ -223,10 +223,11 @@ will have — `<label>_<NN>_<stage><role>`, with its longest stage token and the
 longest role — must fit the filesystem's 255-byte name limit. The longest role
 is asked of the file catalogue (`runfiles.longest_tail`); when the stages are
 not known yet, a 32-byte budget stands in for `_<NN>_<stage>`
-(`identity.MAX_LABEL_BYTES`), and once they are, the real longest token
-counts (`identity._cap_for`). A transport lead's longer label
-(`<label>_L-electrode`) is budgeted too. The cap is checked where the label is
-made, because rule 3 refuses rather than truncates.
+(`identity._STAGE_BUDGET`; the cap that leaves is `identity.MAX_LABEL_BYTES`),
+and once they are, the real longest token counts (`identity._cap_for`). A
+transport lead's longer label (`<label>_L-electrode`) is budgeted too. The cap
+is checked where the label is made, because rule 3 refuses rather than
+truncates.
 
 **The id's two halves are normalised apart.** `identity.run_id` normalises
 the label against the cap above and the formula (or citation) on its own,
@@ -279,10 +280,11 @@ sanitiser for a calculation's or a stage's name.
    - **an engine would cut it.** An engine that cuts the names of the files it
      writes states the longest label it keeps whole (the engine table's
      `longest_label`, [`architecture.md`](?doc=execution/architecture.md)
-     § 3.3): SIESTA's 48 — two benchmark trials whose labels differed only
-     past its cut were written to one stem (2026-08-24). A label, or a trial's
-     label, past it is refused at prep in that engine's words; an engine that
-     states none cuts nothing, and only the cap above binds it.
+     § 3.3): SIESTA's 48 — SIESTA cuts a longer label in the names of the
+     files it writes, so two labels that differ only past the cut would write
+     one stem. A label, or a trial's label, past it is refused at prep in that
+     engine's words; an engine that states none cuts nothing, and only the cap
+     above binds it.
 
 Each refusal says what failed — the letter or digit, nothing left, or the
 length against the cap — and cites § 3; a description whose name, formula and
@@ -308,9 +310,10 @@ surfaces that list calculations read `task.json` for that.
 
 ### 3.1 Normalisation, worked
 
-Each row shows one rule at work. It is copied row for row into
-`tests/data/run_identity.toml`, which runs each through `identity.run_id`:
-a rule that changes changes its row in both.
+Each row shows one rule at work. Each row is a row of
+`tests/data/run_identity.toml` — the 300-character name, which has no text to
+type there, is `tests/test_run_identity.py`'s own case — run through
+`identity.run_id`: a rule that changes changes its row in both.
 
 | what you type | label | which rule fired |
 |---|---|---|

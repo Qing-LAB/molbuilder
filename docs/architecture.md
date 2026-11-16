@@ -59,7 +59,7 @@ Two habits make the reuse rule work:
 | Change the unit cell · vacuum · axis kinds · the box's origin | **`POST /api/structure/periodicity`** (web; the ONE door, `molview.data.commitPeriodicityOp` client-side) or **`periodicity_gate.apply_edit`** (Python) — the ops `vacuum` · `axis_kind` · `cell` · `box_corner` · `block` | write `cell` / `engine_offset` / `vacuum` / `axis_kind` directly, or compute a box in JS | [`model/structure-periodicity.md`](?doc=model/structure-periodicity.md) § 6.1–6.2 |
 | Ask what box a structure actually has (to draw it, or to emit it) | `struct.resolve_cell()` — the box, a computed **view**; `cell.engine_offset(struct)` — where the atoms sit in it (the offset the structure states, else the rule's centring); `cell.to_engine(struct)` — the cell and coordinates every engine is handed; `Structure.to_wire`'s `box_corner` — where a viewer draws it | read raw `cell` / `engine_offset` and assume `(0,0,0)`, or re-derive a bbox yourself | [`model/structure-periodicity.md`](?doc=model/structure-periodicity.md) § 3, § 6.0 |
 | Parse an engine `.out` / sidecar into typed data | `parse.parse` / `parse.detect`; `runs.folder_answer` (a folder → what it is and holds, `model/parse.md` § 5) and `runs.run_of` (the run a file belongs to, `execution/architecture.md` § 3.2); `parse.dirs.job.run_status` (how a run dir is doing); an engine's output lines through its grammar and reading pass (`model/parse.md` § 4a) | write a bespoke parser, or a second pattern for a line the grammar already reads | [`model/parse.md`](?doc=model/parse.md); decoded-run view → [`execution/running-a-job.md`](?doc=execution/running-a-job.md) |
-| Run a *set* of related jobs (stage ladder / sweep) | the `jobset/` framework + `molbuilder describe` and `molbuilder jobset {prep,launch,status,summarize,scratch,probe,machines,migrate}` | reimplement dir isolation / sbatch chaining | [`execution/job-system.md`](?doc=execution/job-system.md) |
+| Run a *set* of related jobs (stage ladder / sweep) | the `jobset/` framework + `molbuilder describe` and `molbuilder jobset {prep,launch,status,summarize,scratch,probe,machines,migrate,export}` | reimplement dir isolation / sbatch chaining | [`execution/job-system.md`](?doc=execution/job-system.md) |
 | Read a calculation — its description, template and plan | `calculation.open(base)` → `Calculation`, opened once per verb and passed whole; each record through its owner's door, which takes the folder (`task.of`, `job_request.of`, `template_file.of`, `JobSet.of`) | join a record's name to a folder, or read `task.json` / `job-set.json` yourself | [`execution/architecture.md`](?doc=execution/architecture.md) § 3.2, rule A16 |
 | Know what a **stage** is, and what may vary between two of them | [`engines/stages.md`](?doc=engines/stages.md) — a stage is molbuilder's device, not the engine's; SIESTA has no idea a deck is the second of three | invent a per-tab notion of "stage" | [`engines/stages.md`](?doc=engines/stages.md) |
 | Lay out (or read) a whole **calculation directory** | [`execution/project-layout.md`](?doc=execution/project-layout.md) — the one layout (a directory per stage and per run), who writes each level, and what `prep` resolves on the target | compose a stage's or run's folder yourself, or finish a deck on the laptop | [`execution/project-layout.md`](?doc=execution/project-layout.md) |
@@ -97,8 +97,7 @@ What it prevents at run time shows up by itself: an upward import at a module's
 top fails every import of that module, and a file that ships beside a job and
 reaches into molbuilder fails there (`tests/test_monitor_watches_a_live_run_e2e.py`
 runs it). An upward import inside a function loads only when it is called, so
-no run shows it: review reads every import, a function's included (status:
-[`plans/plan.md`](?doc=plans/plan.md) § 1t).
+no run shows it: review reads every import, a function's included.
 
 ```mermaid
 flowchart TB
@@ -211,17 +210,16 @@ concerns leak into each other — see
 
 | Module | L | Role | Public API entry points | Doc |
 |---|---|---|---|---|
-| `jobset/` | L2 | engine-agnostic **staged execution**: a set of related jobs sharing a package | `prep_task` / `prep_bench` (the prep entries, both doors — the five steps, `plan_stage`, `prep_calculation` and its tail `prep_jobset`, take only their answer); `plan_launch` → `send_launch` (the one launch entry: the plan, shown and asked, then sent as shown); `jobset_status`; `render_plan`; `JobSet.of` / `write`; CLI `molbuilder jobset {prep,launch,status,summarize,scratch,probe,machines,migrate}` (describing is `molbuilder describe`, out of the group) | [`execution/job-system.md`](?doc=execution/job-system.md) |
+| `jobset/` | L2 | engine-agnostic **staged execution**: a set of related jobs sharing a package | `prep_task` / `prep_bench` (the prep entries, both doors — the five steps, `plan_stage`, `prep_calculation` and its tail `prep_jobset`, take only their answer); `plan_launch` → `send_launch` (the one launch entry: the plan, shown and asked, then sent as shown); `jobset_status`; `render_plan`; `JobSet.of` / `write`; CLI `molbuilder jobset {prep,launch,status,summarize,scratch,probe,machines,migrate,export}` (describing is `molbuilder describe`, out of the group) | [`execution/job-system.md`](?doc=execution/job-system.md) |
 | `bench/` | L2 | the `bench-result@1` reader the jobset sweep uses | the sweep itself is `molbuilder jobset prep bench` | [`execution/generator.md`](?doc=execution/generator.md), [`execution/job-system.md`](?doc=execution/job-system.md) |
 | `runwrap` | L2 | **launcher** emitter: `.run.sh` + `.sbatch` (env activation, MPI/OMP, memory, GPU pinning), and the bundles that travel beside a job — the monitor's, a SIESTA vibration's Python (`mb_vibration.pyz`, the steps around each call and the finish, `engines/vibration.md` § 5.11 § 3), and the code a PySCF script imports (`mb_pyscf.pyz`, `engines/pyscf.md` § 3) | `render_wrappers`, `write_run_wrapper`, `render_sbatch`; `monitor_bundle`, `vibration_bundle`, `pyscf_bundle` | [`execution/running-a-job.md`](?doc=execution/running-a-job.md), [`execution/job-system.md`](?doc=execution/job-system.md) |
 | `runtime_config` | L2 | reader for `molbuilder.json` (launch / envs / paths / the server's sections), and the door to a record's queues | `get_launch_mode`, `get_envs`, `get_paths`, `get_routing`, `write_config_scope` | [`configuration.md`](?doc=configuration.md) § 4 |
 | `diagnostics` | L2 | host capability detection + env-for-category routing | `get_capabilities().env_for_category(...)` | [`execution/running-a-job.md`](?doc=execution/running-a-job.md) |
 | `monitor` | L2 | stdlib-only progress/utilization sampler for every engine, shipped next to each job in one file with the readers it reads through (`mb_monitor.pyz`, `runfiles.MONITOR_BUNDLE`) | `"$_mb_py" mb_monitor.pyz …` (watch a run, on the job's python); `"$_mb_py" mb_monitor.pyz ending OUTPUT [--stderr FILE] [QUESTION]` (how it ended — the run script's `_mb_ending`); `"$_mb_py" mb_monitor.pyz deck READER DECK` (the deck as its engine reads it, by the engine's keyword reader); `molbuilder monitor` | [`execution/run-reports.md`](?doc=execution/run-reports.md) § 2–2.3 (what it reads and says), [`execution/running-a-job.md`](?doc=execution/running-a-job.md) § 4.1 |
 
-**The start-here map for *running* a molbuilder-generated job** on any target
-(single-task everywhere · JobSet from the CLI · the browser job system as the
-target) is [`execution/overview.md`](?doc=execution/overview.md) — the
-current → target status matrix.
+The way into running a job is [`execution/overview.md`](?doc=execution/overview.md)
+— a calculation's steps, each with the chapter that owns it, and the chapters
+found by question.
 
 ### Persistence, parsing, data exchange
 
@@ -230,7 +228,7 @@ current → target status matrix.
 | `persist` | L1 | shared **versioned-doc** schema check + atomic JSON IO | `schema_major`, `check_schema`, `read_object`, `read_json`, `write_json` | [`execution/job-contracts.md`](?doc=execution/job-contracts.md) |
 | `parse/` | L2 | unified **read stack**: FileParsers → typed `ParseResult`; under the engine parsers, stdlib grammar tables and reading passes that travel with the monitor | `parse.{detect,parse}`; `parse.dirs.job.run_status`; `parse.engines._run_ending.ending_of` | [`model/parse.md`](?doc=model/parse.md) |
 | `runs` | L2 | **the run a file belongs to, and its files** — what a folder is in its calculation, the run it speaks for, what each file is (the catalogue's row, read back with the run's label), and the directory door the Results tab asks | `runs.{place_of,run_of,state_of,record_of,about,openable,engine_at,folder_answer}` — one folder each (floor 2) | [`execution/architecture.md`](?doc=execution/architecture.md) § 3.2; [`model/parse.md`](?doc=model/parse.md) § 5 |
-| `sidecars/`, `script_emit` | L2 | write-side JSON sidecars + the reserved-block emitter | `sidecars.{to_dict,load,apply_to_structure}`; `script_emit.emit_*` | sidecar → [`model/structure-molstruct.md`](?doc=model/structure-molstruct.md); blocks → [`execution/job-contracts.md`](?doc=execution/job-contracts.md) |
+| `sidecars/`, `script_emit` | L2 | write-side JSON sidecars + the reserved-block emitter | `sidecars.molstruct.{to_dict,dumps,load,apply_to_structure}`; `script_emit.emit_*` | sidecar → [`model/structure-molstruct.md`](?doc=model/structure-molstruct.md); blocks → [`execution/job-contracts.md`](?doc=execution/job-contracts.md) |
 | `config/` | L1 | the engine-knob **dataclasses** (`SiestaConfig` / `PySCFConfig`) — the lingua franca | `config.siesta.SiestaConfig`, `config.pyscf.PySCFConfig` | [`engines/`](?doc=engines/overview.md); the JS form, built from the catalogue → [`web/form-schema.md`](?doc=web/form-schema.md) |
 
 ### Safety, checkpoints, validation
@@ -238,7 +236,7 @@ current → target status matrix.
 | Module | L | Role | Public API entry points | Doc |
 |---|---|---|---|---|
 | `checkpoint` | L2 | git-backed **snapshot/restore of a whole calculation folder**; files over a size limit are stored beside git in a content-named archive, and an engine's scratch in neither — a restore removes it (safety-critical) | `Repo.{init,save,restore,status,states,standing_at,resolve,tag,tags,classification,calculation}`; `save_before` (the save `prep`, Task setup's Save and a group's first launch call first); CLI `molbuilder checkpoint …`. **No `branch`** — a fork is what happens when you save from a restored state | [`execution/running-a-job.md`](?doc=execution/running-a-job.md) § 6 |
-| `validation/` | L2 | scientific-correctness analyzers + the per-engine `validate()` pass | `validation.validate(struct, cfg, prior=…)` (one gate per engine) | [`science/validation.md`](?doc=science/validation.md), [`science/chemistry-correctness.md`](?doc=science/chemistry-correctness.md) |
+| `validation/` | L2 | scientific-correctness analyzers + the per-engine `validate()` pass | `validation.validate(struct, cfg, calculation=…)` (one gate for every engine and kind) | [`science/validation.md`](?doc=science/validation.md), [`science/chemistry-correctness.md`](?doc=science/chemistry-correctness.md) |
 | `pseudos` | L2 | PSML pseudopotential parse + coverage/version checks (C1–C6) | `pseudos.check_coverage` | [`science/pseudopotentials.md`](?doc=science/pseudopotentials.md) |
 | `chemistry`, `residues` | L1 | structure analysis (the metals, charge, residues) | `chemistry.analyze_structure` (→ `ChemistryAnalysis`, facts) | [`model/chemistry.md`](?doc=model/chemistry.md), [`science/chemistry-correctness.md`](?doc=science/chemistry-correctness.md) |
 | `electronic_state` | L1 | the charge and spin a calculation carries — one class, every engine and kind | `electronic_state(struct, cfg, kind=)` (→ `ElectronicState`) | [`science/chemistry-correctness.md`](?doc=science/chemistry-correctness.md) § 2a |
@@ -249,7 +247,7 @@ current → target status matrix.
 |---|---|---|---|---|
 | `envs/` | L2 | the **environments toolkit** (presence + verify-cmd + GPU / CUDA / ELPA readiness) | `molbuilder envs {bootstrap,clean,doctor,init-config,install,list,repair,validate}` | [`ops/installation.md`](?doc=ops/installation.md); NEVER build a new doctor |
 | `siesta/`, `pyscf/` | L2 | per-engine input emitters + stage rendering | `siesta.input.spec_for` · `pyscf.input.spec_for` → a `script_emit.DeckSpec`, which `jobset prep` renders, writes and checks (`script_emit.prepare_deck`); both package markers re-export nothing, so a reader of what travels beside a job loads no deck writer | [`engines/siesta.md`](?doc=engines/siesta.md), [`engines/pyscf.md`](?doc=engines/pyscf.md) |
-| `builders/`, `peptide/`, `nucleic`, `smiles`, `pubchem` | L2 | structure synthesis | `build_peptide` / `build_dna` / `build_rna` / `build_from_smiles` / `build_from_name` | [`engines/builders.md`](?doc=engines/builders.md) |
+| `builders/`, `peptide`, `nucleic`, `smiles`, `pubchem` | L2 | structure synthesis | `build_peptide` / `build_dna` / `build_rna` / `build_from_smiles` / `build_from_name` | [`engines/builders.md`](?doc=engines/builders.md) |
 | `transport/` | L2 | TranSIESTA multi-run workflow — the composite: one citation → five rungs; a calculation that reuses a finished one (`reuse.py`, its describe), a point's energies and their one join (`energies.py`), a window fitted to a finished grid (`window.py`) | `molbuilder jobset …` (`--calculation transport`; there is no calculation-kind verb); `molbuilder describe --reuses` | [`engines/transport.md`](?doc=engines/transport.md) |
 
 ### Core types (L1) & surfaces (L3)
@@ -271,10 +269,12 @@ current → target status matrix.
 The concentrated registry of on-disk names + the `molbuilder/<name>@<major>`
 schema strings + the config↔scheduler parameter vocabulary is the **data
 vocabulary** in [`execution/job-contracts.md`](?doc=execution/job-contracts.md).
-New persisted artifacts MUST be read through `persist` — a JSON record by
-`read_object(path, schema=…)`, a TOML one by `check_schema` — and be
-registered there. The structure save file itself (`.molstruct.json`, its envelope and
-schema versions v3–v6) is [`model/structure-molstruct.md`](?doc=model/structure-molstruct.md).
+New persisted artifacts MUST be registered there; a JSON record is read by
+`persist.read_object(path, schema=…)`, a TOML one checked by
+`persist.check_schema`, a NetCDF data file through `ncdata`
+([`model/datafiles.md`](?doc=model/datafiles.md)). The structure save file itself
+(`.molstruct.json`, its envelope and schema versions — v7–v17 read) is
+[`model/structure-molstruct.md`](?doc=model/structure-molstruct.md).
 
 ---
 

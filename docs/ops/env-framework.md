@@ -4,8 +4,6 @@
 **Domain:** ops
 **Companions:** [`installation.md`](?doc=ops/installation.md) — the GUIDE a
 person installing molbuilder reads; this page owns the machinery underneath it.
-[`deployment.md`](?doc=ops/deployment.md) § 1.0a–1.0c — the supervisor
-discipline the runner's verify-before-signal rules were copied from.
 [`engines/template.md`](?doc=engines/template.md) — the catalogue, which is a
 different registry for a different thing (calculation parameters, not env
 packages) and must not be confused with this one.
@@ -16,14 +14,14 @@ packages) and must not be confused with this one.
 |---|---|
 | **Two state machines, and they answer different questions.** `EnvState` about the env before we touch it; `Outcome` about each step after we run it | § 2 |
 | **The registry is the only place that says what an env is.** Recipes are data | § 3 |
-| **The host env's package list is one file** — `envs/host-env.txt`, read by the bootstrap shim and by the registry; its `python` line is the python every env is built on | § 3.4 |
+| **The host env's package list is one file** — `molbuilder/envs/host-env.txt`, read by the bootstrap shim and by the registry; its `python` line is the python every env is built on | § 3.4 |
 | **A fact about one package lives ON that package.** No parallel `optional_*` lists — membership-by-name silently mis-declares | § 3.2 |
 | **A bare string is the ordinary case**, a record only when the package needs more than a name | § 3.1 |
 | **The sequence is forced by dependency**, not by list order, and the document says which orderings may never move | § 4.1 |
 | **Every situation is a FIELD on a record**, never a branch in the runner | § 4.2 |
 | **Optionality means different things to a solver and to a per-package installer** — a non-fatal step for pip, a degraded attempt for conda | § 4.3 |
-| **One door runs every step** — `run_step` — so no phase can grow its own dispatch again | § 5 |
-| **A step enters the env through the MANAGER's own mechanism**, and a manager's bug is a declared fallback rather than the default path | § 5.6 |
+| **One door runs every step** — `run_step` — so no phase has a dispatch of its own | § 5 |
+| **A step enters the env through the MANAGER's own mechanism**, and a manager's measured bug is worked around inside that one door, never on the default path | § 5.6 |
 | **Five outcomes, one transition rule**, and every step in a result carries one | § 5.1 |
 | **A step's success criteria ride on the STEP**, so the runner has no per-phase special cases | § 5.2 |
 | **The verdict is DERIVED from the steps**, never tracked beside them | § 5.3 |
@@ -39,8 +37,10 @@ recipes.py ── Recipe ──┬── CondaPackage(spec, optional, reason, op
                                     │
           ┌─────────────────────────┴──────────────────┐
    create_step_for · conda_packages_step_for ·        audit_packages
-   pip_step_for · verify_step_for                     (reads disk only)
-     conda_argv            pip_argv                              § 6
+   pip_steps_for · pip_step_for · extra_steps_for ·   (reads disk only)
+   verify_step_for · remove_step_for ·                           § 6
+   conda_step_for                                            │
+     conda_argv            pip_argv                          │
         (record  ->  InstallStep; the ONLY translators)      │
                     │                                        │
               plan_install            ── steps, no side      │
@@ -88,7 +88,8 @@ closed set of answers. Keeping them apart is the point: one is about the env
            FRESH             PRESENT        ORPHAN/GHOST/BROKEN
               │                 │                   │
         dispatch create      SKIPPED              FAILED
-                                              ("re-run --clean")
+                                      (ORPHAN, BROKEN: "rm -rf <prefix>";
+                                       GHOST: "re-run --clean")
                                 │
         ┌──────────────────── 2. Outcome ──────────────────────┐
         │   what became of ONE dispatched step                 │
@@ -104,10 +105,10 @@ closed set of answers. Keeping them apart is the point: one is about the env
 ### 2.1 `EnvState` — is this env installable-into?
 
 **The five are an enum (`EnvPresence`), and the label is derived from it**
-*(2026-09-13)*. They were a display string that `can_resume` compared with
-`==`, so renaming one for clarity would have turned it False — the same shape
-`StepRole` exists to remove, on the other machine, with the same consequence:
-the installer reads *"not resumable, not wreckage"* as "go ahead and create".
+*(2026-09-13)*: `can_resume` and `needs_cleanup` ask the enum, never a display
+string, because a renamed label compared with `==` would turn `can_resume`
+False, and the installer reads *"not resumable, not wreckage"* as "go ahead
+and create".
 
 
 Three cheap observations, combined into five states by `probe_env_state`. It is
@@ -118,9 +119,9 @@ diagnosed in a second instead of failing ten minutes into a `conda create`.
 |---|---|---|---|---|
 | no | no | — | **FRESH** | dispatch `conda create` |
 | yes | yes | yes | **PRESENT** | `SKIPPED` — resume into the existing env |
-| no | yes | yes | **ORPHAN** | `FAILED` — conda would refuse; name `--clean` |
-| yes | no | — | **GHOST** | `FAILED` — a registry entry with no directory |
-| — | yes | no | **BROKEN** | `FAILED` — a directory that is not an env |
+| no | yes | yes | **ORPHAN** | `FAILED` — the manager will neither create over it nor remove it; the remedy is the person's `rm -rf <prefix>`, then the install again |
+| yes | no | — | **GHOST** | `FAILED` — a registry entry with no directory; `--clean` restores it (the removal is skipped, the create runs) |
+| — | yes | no | **BROKEN** | `FAILED` — a directory that is not an env, which the manager will not remove; the remedy is the person's `rm -rf <prefix>`, then the install again |
 
 **One reader of the registry, and it answers with prefixes** *(2026-09-12)*.
 `diagnostics.conda_env_prefixes` is the only place `<mgr> env list --json` is
@@ -129,13 +130,10 @@ from that document's `envs_details`, which also flags the base installation so i
 is excluded by the manager's verdict rather than by a path pattern. A manager
 that reports no such details has everything it lists taken at face value: an env
 the registry names and this map omits reads as FRESH, and FRESH builds a second
-env beside the real one. There were three: this probe, the
-capabilities snapshot and `install._env_prefix`, and they disagreed — the
-snapshot kept only envs whose parent directory was literally called `envs`, so
-`caps.env_available` answered **no** about an env this probe called **PRESENT**,
-and `repair` said *"env does not exist. Install it first"* about a healthy one.
-The reading the snapshot already took is also what `_env_prefix` consults first:
-the read costs ~1.2 s and `doctor` was paying it once per recipe.
+env beside the real one. The probe, the capabilities snapshot and
+`install._env_prefix` all ask this one reader, so they cannot disagree about
+whether an env exists. `_env_prefix` consults the snapshot's reading first,
+because a fresh read costs ~1.2 s and `doctor` asks once per recipe.
 
 **"The directory" means the prefix the registry named**, not
 `<envs_dirs>/<name>`. An env created with `--prefix` outside any of conda's
@@ -165,19 +163,18 @@ for each argv in (step.argv, *step.fallbacks):
 return DEGRADED if the step is optional else FAILED
 ```
 
-Naming the states is not decoration; it is the fix for a bug class. The runner
-used to decide this with nested conditions — is the code zero, is it `None`
-because the process never launched, are there alternatives, is the step
-optional — and every edit lost a branch. Twice: a launch failure skipped the
-optional check and aborted an install it should have survived, and a recovered
-step was reported under the command that had failed.
+Naming the states keeps the rule in one place. Decided by nested conditions
+instead (is the code zero, is it `None` because the process never launched,
+are there alternatives, is the step optional), an edit loses a branch: a launch
+failure skips the optional check, or a recovered step is reported under the
+command that failed.
 
 Two predicates read these states, and they answer **different questions**:
 
 **One vocabulary for the five, on the state** *(2026-09-13)*: `Outcome.word` is
 what both the live line and the recap print, with `Outcome.note` adding the
-*why* where there is room. They used to disagree — `UNAVAILABLE -- optional,
-continuing` live, `degraded` in the recap of the same step.
+*why* where there is room, so the live line and the recap cannot name one
+step's outcome differently.
 
 | | asks about | answer for `DEGRADED` |
 |---|---|---|
@@ -201,9 +198,10 @@ else `13.*` (`_resolve_cuda_version`). `molbuilder-pySCF`'s `cupy-cuda<N>x` and
 driver its precondition names, carry it — so those two recipes are functions
 of it, and the registry is **`builtin_recipes()`, built on its first ask** and
 kept for the process (`recipe_by_name` asks it). The
-probe runs for a command that reads a recipe — `envs`, the notebook's start —
-and once at the server's start, so no request pays it; any other command runs
-none of it. It ran at import until 2026-09-29, on every command (plan W36 ⑥).
+probe runs for a command that reads a recipe — `envs`, the notebook's start,
+the prep of a sequence of groups (whose walk names molbuilder's own env by its
+recipe) — and once at the server's start, so no request pays it. Nothing builds
+it at import, so a command that reads no recipe never runs `nvidia-smi`.
 
 ### 3.1 One rule for both package kinds
 
@@ -226,20 +224,20 @@ that want them — conda's command line, the solver, the audit's pin parsing.
 
 ### 3.2 Optionality is a field, never a second list
 
-There used to be an `optional_conda_packages` list beside `conda_packages`, and
-an `optional_pip_packages` beside `pip_packages`. Both are gone, for two
-reasons that took real bugs to learn:
+There is no second list of optional names beside `conda_packages` or
+`pip_packages`, for two reasons:
 
-* **Membership matched by name fails silently.** An entry that matched nothing
-  did not raise — it left its package REQUIRED, and the first anyone heard was
-  the audit reporting it missing with nothing to explain why.
-* **It only reached the audit.** Every pip package went into one combined
-  install command, so a single unavailable GPU wheel aborted an otherwise
-  healthy CPU env *regardless* of how optional the recipe called it. The word
-  described the report and not the behaviour.
+* **A membership list matched by name fails silently.** An entry that matches
+  nothing leaves its package REQUIRED, and the first anyone hears is the audit
+  reporting it missing with nothing to explain why.
+* **Optionality has to reach the installer, not only the audit.** In one
+  combined pip command, a single unavailable GPU wheel would abort a healthy
+  CPU env however optional the recipe called it.
 
 `optional` on the record governs **both**: the audit reports absence as
-informational, and the installer gives the package its own non-fatal step.
+informational, and the installer does not let its failure abort the install:
+a non-fatal step of its own for pip, the fallback solve without it for conda
+(§ 4.4).
 
 #### 3.2b Two packages are in EVERY recipe, and that is a rule
 
@@ -250,8 +248,7 @@ neither can be left to "whatever that env happened to need":
 
 * **`python`** — every python a generated job runs is the activated env's
   own, `$CONDA_PREFIX/bin/python3` (`running-a-job.md` § 2), and a job whose
-  env holds none stops before it starts. `molbuilder-siesta` was such an env
-  until 2026-09-17. Its version is `host-env.txt`'s
+  env holds none stops before it starts. Its version is `host-env.txt`'s
   `python` line (§ 3.4). See [`installation.md`](?doc=ops/installation.md)
   *"Choosing the Python every env is built on"*.
 * **`git`** — `checkpoint.py`'s `GitNotInstalledError` tells the person to
@@ -262,9 +259,8 @@ neither can be left to "whatever that env happened to need":
   rule — every prep that writes, Task setup's Save and a group's first launch,
   never a running job's run script.
 
-*Stated here 2026-09-18. `git` had been declared in all six recipes by hand
-with the rule written nowhere, which is the arrangement that let `python` slip
-out of one of them.*
+*The rule is written here and held by a test, because a package every recipe
+declares by hand, with no rule written, is how one recipe comes to lack it.*
 
 ### 3.2a `opt_in` is a third thing, and it is not `optional` *(2026-09-18)*
 
@@ -294,9 +290,8 @@ with nothing extra to say still reads as an argv.
 
 **Why the test tooling is in the host env and not its own.** The `e2e` tests
 start the real server *in-process*, so the process running them needs
-molbuilder's whole import stack. A browser-tooling-only env was tried and
-deleted for exactly that (`molbuilder-tests`, 2026-07-13) — and a second *full*
-env is no answer either: the suite runs under whatever interpreter invokes
+molbuilder's whole import stack, which a browser-tooling-only env lacks — and a
+second *full* env is no answer either: the suite runs under whatever interpreter invokes
 `tools/testrun.py`, so a dev env would sit unused while `e2e` kept failing on
 "playwright not installed".
 
@@ -308,8 +303,9 @@ the `activate.d` hook that keeps it pointed there for the pytest process too
 (the manager performs the env's own activation — § 5.6). **No step may require
 elevated privilege**: `playwright install-deps` installs distro packages as
 root and is not run; a host missing those shared libraries is a host
-prerequisite, like conda itself. A test asserts both, on the step's command
-tokens rather than its text.
+prerequisite, like conda itself. A test runs the step against a stand-in
+prefix and asserts where the browser and the activation hook land, and that
+nothing reaches `~/.cache`.
 
 **The JS test packages are a step of the same kind** *(the user, 2026-11-14:
 "self-contained ... so that we don't have to contaminate the system")*: the
@@ -324,8 +320,8 @@ cache is kept inside the prefix by the step's environment, beside pip's
 (`env_for_step`, § 5.6); the person's own npm configuration — a site's
 registry mirror — is honoured, as pip's is; the packages are `dependencies`,
 not `devDependencies`, so no `omit` setting of the person's can leave them out.
-No hook is needed: a test reads the packages from that folder under the prefix
-of the env it runs in. A pin is changed in `package.json`, and the lockfile is
+No hook is needed: a test that uses them reads them from that folder under the
+prefix of the env it runs in. A pin is changed in `package.json`, and the lockfile is
 rewritten in that folder by the host env's own npm, its cache in that env:
 
 ```
@@ -341,8 +337,8 @@ the command that installs it.
 **An opt-in package that is absent is a choice, not a defect.** The audit
 reports it under its own kind (`*-missing-opt-in`) and it does not fail the
 health check — otherwise `doctor` would be red on every machine that simply did
-not want the tooling. It is still *reported*, with the command that adds it:
-absence nobody can see is how this came to be four commands in a help comment.
+not want the tooling. It is still *reported*, with the command that adds it,
+because an absence nobody can see is one nobody acts on.
 
 ### 3.3 What a pip record can say that a string cannot
 
@@ -378,8 +374,8 @@ molbuilder/envs/host-env.txt           one entry per line; `#` is a comment
     conda numpy                        a conda package, one spec
     pip PeptideBuilder <reason>        a pip package, optional, with why
 
-scripts/install-env.sh  ── reads it ──►  creates the host env (`bootstrap`)
-envs/recipes.py         ── reads it ──►  `_HOST`'s packages; every recipe's python
+scripts/install-env.sh     ── reads it ──►  creates the host env (`bootstrap`)
+molbuilder/envs/recipes.py ── reads it ──►  `_HOST`'s packages; every recipe's python
 ```
 
 * **One list, so nothing has to be kept in line.** Adding or removing a host
@@ -400,10 +396,8 @@ envs/recipes.py         ── reads it ──►  `_HOST`'s packages; every rec
 * **A line neither reader understands is refused**, naming the file — by the
   shim before it creates anything, by `recipes.py` at import.
 
-*(Until 2026-10-04 the shim held a second, hand-written copy of this list as
-bash arrays, kept equal to the recipe by a test, and the python default was
-written in both. User: "both bash and recipes.py can read one ... well
-formatted file that has one ... list".)*
+*(User: "both bash and recipes.py can read one ... well formatted file that
+has one ... list" — no second copy is kept equal by a test.)*
 
 ## 4. The pipeline
 
@@ -415,7 +409,7 @@ of the sequence is **forced by dependency**, and those orderings are rules:
 | # | stage | why it sits here |
 |---|---|---|
 | 1 | `conda create` | **Forced.** Nothing installs into an env that does not exist. It is also the one step needing no env prefix. It carries the recipe's **python spec and nothing else** — see 1b. |
-| 1b | `conda install` | **Forced after create**, and a step of its own so that an env which ALREADY EXISTS can still receive it. Welded to `create` — conda's CLI shape, which the planner used to mirror — the declared set could be applied exactly once, so a recipe that gained a package never reached a machine that had already bootstrapped. Dispatched only when the env is short of something; see § 4.4. |
+| 1b | `conda install` | **Forced after create**, and a step of its own so that an env which ALREADY EXISTS can still receive it. Welded to `create`, which is skipped for an env that exists, the declared set could be applied only once, so a recipe that gained a package would never reach a machine that had already bootstrapped. Dispatched only when the env is short of something; see § 4.4. |
 | 2 | pip, batched then per-package | **Forced after conda.** A forced pip install carries `--no-deps` *because* conda supplies numpy / scipy / h5py. Reorder this and `--no-deps` quietly installs a package with nothing under it. |
 | 3 | `extra_steps` | **Forced after packages.** They run tools the packages provide. |
 | 4 | `build_spec` | **Forced after conda+pip.** It needs the toolchain the solve installed. |
@@ -477,14 +471,13 @@ def run_install(recipe):
 
 `run_steps` is called twice with different step lists, and nothing it is
 passed changes what it *does* — the one stage-shaped parameter, `tag`, only
-labels the output. That is the test of whether the unification is real: verify
-used to need a loop of its own, and what made it special was policy read off
-the *recipe* at execution time. Moved onto the step, the difference vanishes.
+labels the output. That is the test of whether the unification is real: with
+policy moved onto the step, rather than read off the *recipe* at execution
+time, verify is an ordinary step.
 
-It branches on `StepRole`, never on `label`. The label is display text; four
-sites used to key control flow on it, so renaming one for clarity silently
-disabled the create-skip and every install then re-attempted `conda create` on
-an existing env.
+It branches on `StepRole`, never on `label`: the label is display text, and a
+branch on it would let a rename for clarity silently disable the create-skip,
+so every install would re-attempt `conda create` on an existing env.
 
 ### 4.3 How a field covers each situation
 
@@ -502,7 +495,7 @@ step the one door can run.
 | …whose source may be unreachable | `fallback_to_index=True` | the indexed build as a declared alternative, **flagless** | `RECOVERED` |
 | a tool that exits 0 while the thing we asked for is missing | `expect_contains="…"` | checked in addition to the exit code | `FAILED`, naming the substring |
 | the env already exists | — (`EnvState`) | create is not dispatched | `SKIPPED`, and no exit code |
-| the env is wreckage | — (`EnvState`) | nothing is dispatched | `FAILED`, naming `--clean` |
+| the env is wreckage | — (`EnvState`) | nothing is dispatched | `FAILED`, naming `rm -rf <prefix>` (ORPHAN, BROKEN) or `--clean` (GHOST) |
 | a binary that must be compiled | `build_spec=BuildSpec(…)` | `builds.py`'s own executor, results adapted | `FAILED` per phase |
 | "tell me, do not do it" | `--dry-run` | `plan_install` only; nothing dispatches | no outcome at all |
 
@@ -511,12 +504,10 @@ that is still a *plan*. Everywhere else, every step carries one.
 
 ### 4.4 The conda set is delivered, not conferred at birth *(2026-09-17)*
 
-`conda create -n <env> pkg…` does two jobs in one command. The planner mirrored
-that, so a recipe's conda list lived in the plan only as *arguments to the birth
-command* — and `create` is skipped for an env that exists, taking the list with
-it. Measured: `git` was declared in every recipe from 2026-06-25 and absent from
-four envs on 2026-09-17, while `install` reported success and dispatched no
-`conda install` at all. A recipe says *this env contains these packages*, not
+`conda create -n <env> pkg…` does two jobs in one command, and `create` is
+skipped for an env that exists, so a conda list carried only by the birth
+command never reaches an existing env while `install` reports success. A recipe
+says *this env contains these packages*, not
 *this env was born with these packages*.
 
 > **`conda create` carries the recipe's python spec and nothing else. Every
@@ -554,19 +545,16 @@ everything at once — an optional conda package cannot be its own step without
 paying a *second solve*, and a second solve may legitimately change versions for
 packages the first one already placed. So conda optionality is an **attempt**,
 not a step property: `conda_packages_step_for` tries the full solve, and on
-failure the same solve without the optional specs. (It lived on
-`create_step_for` until 2026-09-18, and moved with the specs it applies to when
-`create` stopped carrying them — § 4.4.) The env lands `RECOVERED` — created,
+failure the same solve without the optional specs. The env lands `RECOVERED` — created,
 minus something the recipe said it could live without.
 
 **One degradation step, not a search.** With *n* optional specs, "find the
 largest subset that still solves" is 2ⁿ solves at minutes each, so the rule is
 all of them or none. Nothing is lost silently: the audit then names exactly
 which optional packages are absent, with the recipe's `reason` beside each, and
-`repair --include-optional` installs them one at a time — paying the second
-solve there because the operator asked for it. A recipe with no optional conda
-package gets no fallback, so its plan is byte-identical to one written before
-this existed.
+`repair --include-optional` installs them in one batched `conda install`,
+paying the second solve there because the operator asked for it. A recipe with
+no optional conda package gets no fallback.
 
 **`fallback_to_index` carries no flags, deliberately.** Its job is to make sure
 the package EXISTS, not to replace what is there — with a force flag, an
@@ -577,20 +565,21 @@ with a worse indexed one.
 
 `plan_install` builds `InstallStep`s and runs nothing. `run_step` runs exactly
 one step. **Every step goes through it** — every install phase, `repair`, and
-`doctor`'s verify probe — which is what stops them from growing private
-dispatch again. They had: `repair` issued bare pip commands that knew nothing of
-a package's alternatives, the verify phase kept its own loop, and `doctor` kept a
-third copy. Each copy re-derived the same four things — prefix resolution, the
-way into the env, the launch-failure branch, the output trim — and `doctor`'s
-had already drifted to a different output limit.
+`doctor`'s verify probe. A private dispatch re-derives the same four things
+(prefix resolution, the way into the env, the launch-failure branch, the output
+trim), and each copy drifts; a bare pip command would know nothing of a
+package's alternatives.
 
 A record becomes a step in exactly one place per kind — `create_step_for` for
-the env itself, `pip_step_for` for a `PipPackage`, `verify_step_for` for a
-recipe's verify fields, `conda_step_for` for `repair`'s batched install. One
+the env itself, `conda_packages_step_for` for the recipe's conda set,
+`pip_steps_for` for its pip packages (the plain ones batched into one step, each
+other one through `pip_step_for`), `extra_steps_for` for its extra steps,
+`verify_step_for` for its verify fields, `remove_step_for` for `--clean`'s
+removal, and `conda_step_for` for `repair`'s batched conda install. One
 place writes each command line: `pip_argv` and `conda_argv`. So force flags,
 optionality, fallbacks and verify criteria are each read off one record by one
 reader, and the channel flags cannot sit before the specs in one caller and
-after them in another, which is what happened while `conda_argv` did not exist.
+after them in another.
 
 ### 5.1 What the five outcomes mean in a result
 
@@ -602,9 +591,8 @@ The states and the transition rule are § 2.2 — this is what they imply for th
 **Every step in an `InstallResult` carries an outcome** — including the ones
 decided *without* being dispatched (`_undispatched`): a skipped create, an env
 too broken to install into, an unresolvable prefix. Those keep `returncode =
-None`, because a step that did not run has no exit code; the skip used to report
-`0`, which made "I did not do this" indistinguishable from "I did this and it
-worked". The only step with no outcome is one that is still a *plan*, which is
+None`, because a step that did not run has no exit code, and "I did not do
+this" must not read as "I did this and it worked". The only step with no outcome is one that is still a *plan*, which is
 what `--dry-run` prints.
 
 `run_step` returns the argv that **actually ran**, so a recovered step can never
@@ -616,21 +604,19 @@ An exit code alone is not enough. **Every** recipe adds a substring its verify
 output must contain (`expect_contains`) — a tool can exit `0` while the thing we
 asked about is missing. **The exit code is never waived.** A tool that exits
 non-zero from a healthy start is given input that makes it stop cleanly —
-`tleap` gets a `quit` — rather than having its exit code ignored; ignoring it
-was how `*** Error` came to print under `verify: OK`. The rule rides on the
+`tleap` gets a `quit` — rather than having its exit code ignored, which would
+print a tool's `*** Error` under `verify: OK`. The rule rides on the
 **step** and is checked by `InstallStep.accepts`.
 
-They used to be read off the *recipe* inside the verify loop, which is precisely
-why verify needed a loop of its own. On the step, verify is an ordinary step and
-the runner needs no knowledge of which phase it is serving. A process that never
+On the step, verify is an ordinary step and the runner needs no knowledge of
+which phase it is serving. A process that never
 launched is never accepted.
 
 ### 5.3 The install's verdict is derived
 
 `succeeded` is `not any(step.outcome.stops_the_install ...)`, computed from the
-steps at the end. It used to be a `bool` tracked alongside them, and the two
-drifted: two *failures* announced themselves to the user as "SKIPPED" because the
-word printed and the verdict recorded came from different places.
+steps at the end. A verdict tracked beside the steps can drift from them (a
+failure announced as "SKIPPED"), so there is none.
 
 Note **which** predicate. `is_success` asks about one STEP — and is `False` for
 `DEGRADED`, because an optional package that could not be installed is honestly
@@ -655,8 +641,9 @@ their own output parsing, and they report a `ProbeResult`. The rule is that ever
 `builds.run_build_spec` is not a sequence of `InstallStep`s and does not become
 one: it has sentinel-based resume, which no install step has. What the installer
 does is **adapt** its results — each build phase becomes a step whose outcome
-comes from `Outcome.decide`, so build steps stop arriving with no outcome at
-all — while `builds.py` keeps its own verdict, which the installer reads rather
+is read from the build's own status by one mapping (ok → OK, fail → FAILED,
+skip → SKIPPED; a phase never reached is not recorded) — while `builds.py`
+keeps its own verdict, which the installer reads rather
 than re-derives.
 
 ### 5.6 How a step enters the env *(2026-09-12)*
@@ -665,8 +652,9 @@ than re-derives.
 reaches the env's packages — and the rule is that molbuilder does not answer
 that question itself.
 
-**The manager activates.** `conda_run_argv` is the one spelling —
-`<mgr> run -n <env> --no-capture-output …` — and the detected binary
+**The manager activates.** `_run_argv` is the one spelling —
+`<mgr> run -n <env> --no-capture-output …`, re-addressed at `--prefix` once the
+prefix is known — and the detected binary
 performs the activation its own envs expect, including `etc/conda/activate.d`
 hooks, which source-built recipes depend on (siesta-gpu puts binaries under
 `<prefix>/opt/…/bin`, not `<prefix>/bin`). Re-creating that by exporting `PATH`,
@@ -676,8 +664,7 @@ any manager whose activation does something we did not copy.
 
 **A manager's bug is MEASURED, and it is not a step outcome.** Some mambas' `run`
 (1.x; Sol's `mamba` module 2.9.0 too, 2026-10-18) emits a stub whose `exec --` bash
-rejects. Two things follow, and the second
-corrects how this section first stated it:
+rejects. Two things follow:
 
 * **Measured, not predicted.** The first dispatch that fails with that
   signature switches the process to `activation_wrapper` and says so once. A
@@ -705,8 +692,7 @@ corrects how this section first stated it:
 the prefix so `env remove` really cleans up, and `builds.build_subprocess_env()`'s stripping of host `CPATH` /
 `CFLAGS` / `CUDA_HOME` / `OMPI_*` leakage — is computed by `builds.env_for_step`
 inside `run_step` (and by `builds._build_env` for a build phase). A step does not
-choose its environment; `run_step` had an `env` parameter no caller passed, and it
-is gone.
+choose its environment; `run_step` takes none from its caller.
 
 **What this does NOT cover: a generated job script.** `runwrap.py` writes the
 activation line into a wrapper **verbatim from the target's record** (its
@@ -715,8 +701,9 @@ activation line into a wrapper **verbatim from the target's record** (its
 doing so. That script runs on a machine this process cannot probe -- a cluster
 node, after `module load`, possibly minutes or days later -- so the only
 correct source is what was declared for that machine
-([`configuration.md`](?doc=configuration.md) § 5 M-1). M1 is about the env
-manager **on this machine, now**; the wrapper's activation is a declared fact
+([`configuration.md`](?doc=configuration.md) § 5 M-1).
+[`installation.md`](?doc=ops/installation.md) M1 is about the env manager **on
+this machine, now**; the wrapper's activation is a declared fact
 of the target, and detecting it here would be the same error in the other
 direction.
 
@@ -727,20 +714,18 @@ M2, M3, M5.
 
 **Where it lives.** `dispatch_into_env`, `activation_wrapper`, `env_for_step`
 and the run speller are in `builds.py`, beside `run_streaming` and
-`build_subprocess_env` — the lowest layer, because **three** callers must enter
-an env identically: the step runner (`install.run_step`), the build executor
-(`builds._run_build_phase`) and the tool router (`_dispatch.run_in_env`). The
-third had no workaround at all while the workaround lived in the first, which is
-how `run_tool` came to be the one dispatch that simply failed on the machines the
-workaround existed for. One place writes the command line (`_run_argv`) and there
+`build_subprocess_env` — the lowest layer, because every caller must enter an
+env identically: the step runner (`install.run_step`), the build executor
+(`builds._run_build_phase`) and its installed-and-working gate, the tool router
+(`_dispatch.run_in_env`), and the notebook's start (`jupyter.py`, which passes
+no pipe and so gives up the automatic fallback). One place writes the command line (`_run_argv`) and there
 are two public addresses — `conda_run_argv` by name, for the planner, which has
 no prefix because `plan_install` runs nothing; `conda_run_prefix_argv` by prefix,
 for a caller that already has one and must not re-derive a name from a directory
 to use it.
 
-*Measured 2026-09-12 on conda 26.7.1:* `envs doctor` verifies all four present
-envs through the manager's own `run`, with no generated shell anywhere — the
-`[bypass]` lines every run used to print are gone.
+Where the manager's `run` works, `envs doctor` verifies every present env
+through it, with no generated shell.
 
 ## 6. The audit
 
@@ -760,11 +745,10 @@ A provenance mismatch the recipe *accepts* (`fallback_to_index`) is
 informational: the env is degraded, not broken.
 
 It iterates **records**, both kinds, so every issue names the package it came
-from and carries that package's `reason`. The conda half used to walk spec
-strings, which forced a name-set of the optional ones — the very mechanism
-§ 3.2 abolished for failing silently — left `name` empty so `repair` could not
-map a conda issue back to anything, and meant `CondaPackage.reason` could never
-reach a user. `optional` suffixes every conda kind, not only absence: an
+from and carries that package's `reason`. Walking spec strings would need a
+name-set of the optional ones (the mechanism § 3.2 forbids for failing
+silently), would leave `name` empty so `repair` could not map a conda issue back
+to its record, and would keep `CondaPackage.reason` from reaching a user. `optional` suffixes every conda kind, not only absence: an
 optional package resolving to the wrong build must not fail the health check for
 an env the recipe calls usable without it.
 
@@ -772,7 +756,7 @@ an env the recipe calls usable without it.
 installer does — built by `verify_step_for`, dispatched by `run_step`, judged by
 `accepts`. That is the only way the health report can agree with what `install`
 just said. It trims its excerpt tighter (2 KiB against the installer's 4) because
-it prints one block per env and there are a dozen envs; that is a display choice,
+it prints one block per env, six at most; that is a display choice,
 not a second rule.
 
 ## 7. Repair
@@ -800,11 +784,9 @@ pays a second solve, because the operator asked for one.
 
 Because it owns that one install, it has to honour one flag it otherwise just
 forwards: **`--dry-run` means nothing gets installed, including by the shim.**
-Creating the host env is the largest install in the flow, it used to happen
-before the Python layer that honours the flag, and on a fresh machine — the only
-case where a bootstrap dry run is interesting — "print the plan; do not install"
-performed several GB of conda create. Planning genuinely requires the env, so
-`bootstrap --dry-run` now refuses and names the command that makes it work.
+Creating the host env is the largest install in the flow, and planning needs
+that env, so where it is absent `bootstrap --dry-run` refuses and names the
+command that makes it work.
 The shim *consumes* two flags — `--gcc` and `--python` — and this one it reads
 and also passes on.
 
@@ -813,24 +795,18 @@ cannot know — `--gcc` and `--python`, which it consumes because `recipes.py`
 reads `MOLBUILDER_GCC` and `MOLBUILDER_PYTHON` at import time, and the two
 flags it reads and forwards — and
 points at `<subcommand> --help` for the rest. **A consumed flag is parsed
-before anything reads it** — `--python` also reaches a bash array (the host
-env's package list, which bash must build before any python exists to read a
-recipe), and while the parse sat at the bottom of the file
-`bootstrap --python 3.13` built the host env on 3.12 and every other env on
-3.13. `--gcc` never had that exposure, because `MOLBUILDER_GCC` is read only
-Python-side. *(Found and fixed 2026-09-14.)*
-It also points at `<subcommand> --help` for the rest. It used to re-specify every flag
-and had drifted in four places, including two flags the Python layer *prints as
-the command to run*: a second copy of a surface nothing can keep in sync is
-worse than no copy.
+before anything reads it**: `--python` reaches the bash array of the host env's
+packages, built before any python exists, so a later parse would build the host
+env on one python and every other env on another. `--gcc` is read only
+Python-side. The help does not re-specify Python's flags: a second copy of a
+flag surface nothing can keep in sync drifts, down to flags the Python layer
+prints as the command to run.
 
-**A PLAN IS NOT A CHANGE** *(2026-09-17)*. The confirmation keys on the VERB,
-and `install --dry-run`, `install --check` and `bootstrap --dry-run` change
-nothing — so all three exited 2 in any non-TTY with *"no TTY for confirmation"*,
-which is every way CI or a pipe would ask this program what it would do. The
-arg scan now implies `--yes` for `--dry-run` and `--check`, exactly as it does
-for `--help`, and for the same reason. The detected manager is still announced
-on the line above, so nothing is hidden.
+**A PLAN IS NOT A CHANGE** *(2026-09-17)*. `--dry-run`, `--check` and `--help`
+change nothing, so the arg scan implies `--yes` for each (otherwise every way CI
+or a pipe asks what this program would do stops at a confirmation with no TTY)
+and none of them performs the `--clean` wipe. The detected manager is still
+announced, so nothing is hidden.
 
 **`bootstrap --clean` is the shim's third owned concern** *(2026-09-17)*, and it
 is the host-env chicken-and-egg again rather than a new job: `dispatch` runs
@@ -846,21 +822,17 @@ it skips.
 **The env-manager confirmation is asked only by the verbs that CHANGE an env**
 *(2026-09-12)*. `require_conda` prompts *"use this env manager?"* — which exists
 for the case where an old `~/anaconda3` is picked over the Miniforge you meant —
-and that only matters when something is about to be created with it. It used to be
-asked by every verb, and with no TTY the shim exited 2 telling the person to
-*"pass `--yes`"* — a flag `doctor`, `list`, `validate` and `repair` **do not
-define**, so the remedy it printed was rejected by click. The canonical entry point
-could not run a health check in CI at all. `_verb_changes_envs` now names the two
-that confirm (`bootstrap`, `install`); both accept `--yes`, so the message stays
-true wherever it is still reached, and a read-only verb needs no flag.
+and that only matters when something is about to be created with it. So it is
+asked only by `bootstrap` and `install` (`_verb_changes_envs`). Both accept
+`--yes`, so the remedy printed with no TTY is runnable. A read-only verb
+(`doctor`, `list`, `validate`, `repair`) defines no `--yes` and needs none, so a
+health check runs in CI.
 
-**`--help` never installs.** It implies `--yes` — otherwise the pointer above stops
-at that prompt and, with no TTY, prints nothing — but suppressing the prompt was
-not enough on its own: the `bootstrap` arm then ran on and performed the multi-GB
-host-env create, with the confirmation deliberately silenced, before any help text
-appeared. A separate `MB_WANT_HELP` now stops that arm when the host env is absent
-and says why per-verb help needs it (the help comes from molbuilder itself, which
-lives in that env).
+**`--help` never installs.** It implies `--yes`, so with no TTY the pointer
+still prints, and `MB_WANT_HELP` stops the `bootstrap` arm when the host env is
+absent (creating a multi-GB env to answer a question about flags is the install
+nobody asked for) and says why per-verb help needs that env (the help comes from
+molbuilder itself, which lives in it).
 
 **It reads the host env's package list from the one file the registry reads**,
 `molbuilder/envs/host-env.txt` (§ 3.4), and creates the host env from it — it
@@ -883,7 +855,7 @@ conda (§ 4.3). pip installs one package; conda solves all of them.
 **Repair's granularity.** Per package for pip, batched for conda (§ 7), for the
 same reason.
 
-What is NOT asymmetric any more, and must not drift back: both kinds are a
+What is symmetric, and must stay so: both kinds are a
 record per package, both normalise from a bare string, both carry `optional` and
 `reason`, both are audited by iterating records, and both reach `repair` through
 a lookup by name.

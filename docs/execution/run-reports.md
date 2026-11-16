@@ -182,7 +182,7 @@ the job's start, never its own.
 - **No scheduler is asked**: the count is the same in a job that cannot reach its scheduler's commands. The
   launch record is read on each wake until it is there — the sender writes it as the scheduler answers, and a job
   can start first.
-- **Each `[STATUS]` line says the count** — *wall 4h: 21m left*. A run here says none: its launch record names no
+- **Each `[STATUS]` line says the count** — *time limit 4h: 21m left*. A run here says none: its launch record names no
   queue and so no wall, though its engine is told the wall its own job states
   ([`running-a-job.md`](?doc=execution/running-a-job.md) § 3.6).
 - A record or a wall that does not read, or a header that states no start, is said once in a `[WALL]` line, and
@@ -196,7 +196,7 @@ points left need more than the wall leaves at the pace its finished points measu
 ([`runs-of-points.md`](?doc=execution/runs-of-points.md) § 4.7) — *6h left before the time limit; the 120 optical calls
 left need about 10d at 2h each (1 done) -- the run may not finish before it*. Otherwise, when the time left falls
 below the longest step the run has taken so far (§ 2.2: a geometry move, a displacement, a PySCF step): *21m left;
-the longest of 3 steps so far took 46m -- the step underway may not finish before the wall*. A step's length runs
+the longest of 3 steps so far took 46m -- the step underway may not finish before the time limit*. A step's length runs
 from one step finishing to the next, the first from the monitor's start. The monitor writes one `[WALL]` record
 and says `wall_near`, which the channels the `notify` block names hear.
 
@@ -303,7 +303,7 @@ and tells it which run it watches — the label and the stage token — never a 
 `runfiles`, in the folder it is started in.
 
 **Its words are the framework's.** `state` is `running` while the watched PID lives; at the end it is
-`run_status`'s `finished` or `failed`, with its `detail`. A job the scheduler or a signal killed leaves no ending
+`run_status`'s `finished` or `failed`, with its `detail` — or `unreadable`, with why, when that read fails. A job the scheduler or a signal killed leaves no ending
 in its output and no `.concluded`; what it does leave is the monitor's closing record, `[MONITOR] job ended`,
 written before the monitor asks — and `run_status` reads that record as `failed`, *stopped before its end: no
 ending in its output and no exit recorded*. So the monitor's `finish` and the Results tab say the same thing from
@@ -359,8 +359,10 @@ stateDiagram-v2
     running --> finished: stopped - run_status says finished
     running --> failed: stopped - run_status says failed
     running --> failed: stopped - no ending, no .concluded, its own closing record
+    running --> unreadable: stopped - run_status could not be read
     finished --> [*]
     failed --> [*]
+    unreadable --> [*]
 ```
 
 A run directory's own states are [`running-a-job.md`](?doc=execution/running-a-job.md) § 4.2's. A report never
@@ -415,7 +417,7 @@ first report step, the index never seeing it end.
 |---|---|---|---|---|
 | `<stem>.monitor.log` | the monitor; at a run of points' root, the `notify` verb too | from its start to its closing lines | a person; `parse/instruments/monitor.py` ([`model/parse.md`](?doc=model/parse.md) § 5c.1); `run_status`, its closing record ([`running-a-job.md`](?doc=execution/running-a-job.md) § 4.2) | the monitor never started, or died loading (below) |
 | `<stem>.util.csv` | the monitor | a header and a first row at start, then change-gated rows (§ 2.1) | the bench summary; `utilisation` ([`model/parse.md`](?doc=model/parse.md) § 5c.1) | nothing was sampled |
-| `notified.json`, beside the run's launch record | every monitor; for a run of points, the `notify` verb | each event said for the run, with its time, and a failed part's reason | the member monitors; the `notify` verb (below) | no event said for the run |
+| `notified.json`, beside the run's launch record | every monitor; for a run of points, the `notify` verb | each event said for the run, with its time, and a failed part's reason | the member monitors; the `notify` verb (below); the Results tab, which lists it with the run through the registry's parser (`parse/sidecars/notified.py`) | no event said for the run |
 | `<state dir>/reports/<user>.jsonl` | the listener, on the server | one line per accepted report | `jq`, pandas (§ 4.1a) | no report reached the listener |
 
 - **A monitor log that is not there**: the monitor never started — the session log says why (*monitor: not started
@@ -468,11 +470,11 @@ A relaxation's log, shortened:
 ### 2.6 The command line, the environment and the signals
 
 The run script renders one line, the same for every engine (`runwrap._monitor_block`), from the job's
-`jobset.Resources` ([`job-contracts.md`](?doc=execution/job-contracts.md) § 6.2):
+`jobset.model.Resources` ([`job-contracts.md`](?doc=execution/job-contracts.md) § 6.2):
 
 ```bash
 nice -n 19 "$_mb_py" mb_monitor.pyz --label "<label>" --stage "<stage>" \
-    --util --cores "<cores>" [--gpu] --interval "${MB_MONITOR_INTERVAL:-10}" \
+    --util --cores "<cores>" [--gpu] [--member] --interval "${MB_MONITOR_INTERVAL:-10}" \
     [--notify-on-scf] [--notify-every-hours N] [--notify-channels "a,b"] \
     [--notify-report "f1,f2"] --watch-pid $$ >/dev/null 2>>"$_runwrap_log" &
 ```
@@ -594,7 +596,7 @@ a new clock or count is a report field.
 | **the parts of an engine's output** — the SCF, a TranSIESTA device's set-up, SIESTA's optical calculation | the engine's grammar (below) | the part underway in the reading pass's one sentence, and since when — *SIESTA's optical calculation -- it prints nothing until it ends (since 20:02)* ([`model/parse.md`](?doc=model/parse.md) § 2b, `doing`) |
 | **which part a fact belongs to** | each report field's `part` (`report_fields.FIELDS`, § 4.1a): `scf` for the SCF's iterations and rate, `run` for the rest | a part's facts said together: the part underway's as they stand, a part that has ended as ended — *its SCF converged in 6 iterations (33s), dDmax 5e-06 (tol 1e-05)* — never a finished SCF's last row as the row in flight |
 | **a run of points' position** | the run's index ([`runs-of-points.md`](?doc=execution/runs-of-points.md) § 2.3) | a member monitor says its run's count and its own point, in the kind's words (below) |
-| **the clocks** — the run's and, for a member, its point's | the run's start and the point's own monitor start; each a report field (§ 4.1a); the job's wall as § 2.1b counts it | each named — *the run 5h · this call 2h*, the wall beside them, *wall 12h: 7h left*; a run that is no member says *the run* alone |
+| **the clocks** — the run's and, for a member, its point's | the run's start and the point's own monitor start; each a report field (§ 4.1a); the job's wall as § 2.1b counts it | each named — *the run 5h · this call 2h*, the time limit beside them, *time limit 12h: 7h left*; a run that is no member says *the run* alone |
 
 - **The parts of an engine's output.** The SCF and a TranSIESTA device's set-up are read by their own rows
   (`siesta_grammar.scf_row`, the `ts:` facts). Every part that begins with a line of its own is a row of one
@@ -627,12 +629,13 @@ the run measured: it judges nothing, warns once (`wall_near`, § 2.1b) and stops
 row, said as it stands — and an engine part met in the field becomes a row of its grammar's table.
 
 **The summary line, in order** (`JobStatus.as_text`, § 4.1a): the state; where the run is in its run of points;
-the part underway and since when; the SCF's facts — as they stand while it is underway, as ended once another part
-is; the energy, the largest force and the step; TBtrans's loop; the pace and what is left, once a unit has
-finished; at the end how each phase converged and the exit; the clocks; the wall —
+the part underway and since when; the SCF's iterations — said with its residuals as ended once another part is
+underway; the energy; while the SCF is underway, its residuals; the largest force and the step; while the SCF is
+underway, its seconds per iteration; TBtrans's loop; the pace and what is left, once a unit has finished; at the
+end how each phase converged, whether the geometry relaxed, and the exit; the clocks; the time limit —
 
 ```text
-running | the run: fc done · optical 0 of 121 done | this call: the equilibrium | SIESTA's optical calculation -- it prints nothing until it ends (since 20:02) | its SCF converged in 6 iterations (33s), dDmax 5e-06 (tol 1e-05), dHmax 0.000449 eV (tol 0.001) | E -1211078.894214 eV | max force 0.3789 eV/Ang; 0.4714 eV/Ang on the held atoms | the run 5h · this call 2h | wall 12h: 7h left
+running | the run: fc done · optical 0 of 121 done | this call: the equilibrium | SIESTA's optical calculation -- it prints nothing until it ends (since 20:02) | its SCF converged in 6 iterations (33s), dDmax 5e-06 (tol 1e-05), dHmax 0.000449 eV (tol 0.001) | E -1211078.894214 eV | max force 0.3789 eV/Ang; 0.4714 eV/Ang on the held atoms | the run 5h · this call 2h | time limit 12h: 7h left
 ```
 
 ### 2.9 A run of points' milestones and failed parts
@@ -772,8 +775,9 @@ discarded and its stderr kept for a failure to start, so a notification problem 
 the run's own state:
 
 - **No file**: no notifier, and the run proceeds exactly as for everyone who has never set this up.
-- **A malformed file**, or the previous single-destination shape: not an error — refusing to watch a job because a
-  notification could not be configured would be the tail wagging the dog — but said.
+- **A malformed file**, or one with a top-level `url` and no `channels` (a single destination): not an error —
+  refusing to watch a job because a notification could not be configured would be the tail wagging the dog — but
+  said, the second with how to wrap it as named channels.
 - **One bad channel does not cost the others**: a file with three channels and a typo in the second reports on the
   first and the third, and the log names the second. Refusing the file whole would turn one mistake into total
   silence.
@@ -824,7 +828,7 @@ it sets policy and never sees a key ([`web/task-setup.md`](?doc=web/task-setup.m
 | **The file is written here**, on the machine molbuilder runs on *(user, 2026-09-01)*, by `auth_setup.write_secret_file` — mode set before the first byte — at `config_dir()`, the function the monitor reads through | the page and the monitor cannot name different directories |
 | **A save updates one channel, never the file**: keyed by name across channels, and within one the fields the page manages go over what the channel already holds | the key the page clears after each save, and a `headers` block it has no input for, survive — a lost key is refused by the listener with a `404`, which only a run's monitor log would say |
 | **Remove** is the only way a channel goes | removal is an act, never a side effect of a save |
-| a save clears the previous format's top-level `url`, `key` and `headers`, by name | once the file has `channels` nothing reads them, and a credential nothing reads is one nobody will rotate |
+| a save clears a top-level `url`, `key` and `headers` (a single-destination file's), by name | once the file has `channels` nothing reads them, and a credential nothing reads is one nobody will rotate |
 | **nothing reads a secret back**: a stored key reports only *present* or *absent*, and every address is masked ([`web/this-machine.md`](?doc=web/this-machine.md) § 2) | for Slack and Discord the URL is the credential |
 | **a key is shown once**, when it is issued (§ 4.3) | issuing a secret and displaying a stored one are different acts |
 | **nothing quotes an address back**: a refused save says the address rule's fault (`monitor.address_refusal`), a failed **Test** what failed (`monitor.delivery_failure`), a skipped channel its fault — never the address | an address can be the credential, and an exception's own text quotes the address it was sent to |
@@ -925,7 +929,7 @@ later with no session to ask:
 | `host` | the monitor | the node's own name |
 | `sent_at` | the monitor | the sender's clock, epoch seconds |
 | `event` | the monitor | `start`, `scf_converged`, `periodic`, `wall_near`, `milestone`, `part_failed` or `finish` (§ 2); `test` from the setup page's button (§ 4.1b) |
-| `state` | the monitor | `running`, then `finished` or `failed` (§ 2.3) |
+| `state` | the monitor | `running`, then `finished` or `failed` — or `unreadable` when how the run ended could not be read (§ 2.3); `test` on the setup page's Test report (§ 4.1b) |
 | `text` | the monitor | the summary line: the state and its detail, then every fact below that the run has stated, in words and units — what a chat card shows |
 | `call_unit` | the monitor | a point's name in its kind's word — `call` (a vibration), `point` (a transport sweep) — the label a card puts on `call_elapsed_s`; absent for a run that is no member |
 | `part` | the monitor | the part of the run underway, as the reading pass names it (§ 2.8) — absent while the SCF speaks and once the run has ended |
@@ -1013,8 +1017,9 @@ reads the same shipped file for the tab.
 `report_cards.layout_path()`). The config dir, because it travels with the
 monitor (`config_dir.py`). The monitor reads the copy on the machine that runs the job;
 the tab and the Test button read the server's. Each is the person's own file, never written by molbuilder, not a
-secret, any mode. A file that does not read is refused by its reason: the monitor at its start, in its log's line
-(§ 2.6), and the monitor stops there; the reports route and the Test button in their answer.
+secret, any mode. A file that does not read is refused by its reason: the monitor at its start, in its monitor
+log's line `[MONITOR] the card's layout is refused -- <reason>` (§ 2.5), and the monitor stops there; a run of
+points' `notify` verb in a `[NOTIFY]` line, sending nothing; the reports route and the Test button in their answer.
 
 ```json
 {"schema": "molbuilder/report-cards@1",
@@ -1034,7 +1039,7 @@ secret, any mode. A file that does not read is refused by its reason: the monito
 | `colors` | the card's bar, by the report's `state`, as `#RRGGBB`; `other` for a state the table does not name. The reader gives the number; each wire spells it (Slack `#RRGGBB`, Discord the number, the tab from the number) |
 | `receivers.<kind>` | one entry per receiver; a receiver with no entry is refused at load, by name |
 | `inline` | `true` sets the fields side by side — Slack's `short`, two to a line; Discord's `inline`, up to three; the tab's grid, three — `false` puts each on its own line |
-| `limit` | how many fields at most; `0` is no limit. A wire's own ceiling (§ 4.1b: Slack 10, Discord 25) is the most a receiver may say, and a larger one is refused at load |
+| `limit` | how many fields at most; `0` is no limit, which only the `web` receiver may say. A wire's own ceiling (§ 4.1b: Slack 10, Discord 25) is the most a receiver may say, and a larger one, or `0`, is refused at load |
 | `summary` | whether the summary line (`text`) is shown under the title |
 | `order.<event>` | **the fields, in the order the card shows them, for that event** — the seven of § 2 and `test`, the setup page's button (§ 4.1a); each a report field's name; `[]` is the title and the summary line alone |
 
@@ -1185,7 +1190,7 @@ the run's events they send (`notify`) ([`runs-of-points.md`](?doc=execution/runs
 | the question | the answer |
 |---|---|
 | which events this calculation's channels hear, which channels, with which fields | `job_request.Notify` — `job-request.json`'s `notify` block ([`job-request.md`](?doc=execution/job-request.md) § 3.5) |
-| how it reaches the run script | `jobset.Resources` ([`job-contracts.md`](?doc=execution/job-contracts.md) § 6.2) |
+| how it reaches the run script | `jobset.model.Resources` ([`job-contracts.md`](?doc=execution/job-contracts.md) § 6.2) |
 | how it reaches the monitor | the flags on the `mb_monitor.pyz` line (§ 2.6), rendered by `runwrap._monitor_block` |
 | which run it watches | `--label` / `--stage`; every file named through `runfiles` (§ 2.3) |
 | what it reads, and with what | the framework's own readers in `mb_monitor.pyz` — `runwrap.monitor_companions` (§ 2.3) |

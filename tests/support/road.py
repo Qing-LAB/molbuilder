@@ -1225,8 +1225,9 @@ def _road_own_warm_files(case, bundle) -> None:
     the shipped file says to make it (`job-contracts.md` § 4.2a): the
     engine's file copied beside ``task.json`` and edited -- ``withhold``
     takes the ``carry`` off those suffixes' rows, ``add`` appends a row
-    known and not carried for each, ``resumes`` states its one
-    section-level fact for every kind, in ``[base]``."""
+    known and not carried for each (a suffix, or ``{suffix, honoured_by}``
+    for one the deck keyword ``honoured_by`` reads), ``resumes`` states its
+    one section-level fact for every kind, in ``[base]``."""
     import re
     from molbuilder.task import of as task_of
     from molbuilder.warmfiles import FILENAME, warm_list
@@ -1238,8 +1239,10 @@ def _road_own_warm_files(case, bundle) -> None:
                          + r'"[^\n]*\n)carry\s*=\s*"when-continuing"[^\n]*\n')
         text, n = row.subn(r"\1", text)
         assert n == 1, f"no carried row for {suffix} to withhold"
-    for suffix in own.get("add", []):
-        text += f'\n[[base.file]]\nsuffix = "{suffix}"\n'
+    for row in own.get("add", []):
+        row = row if isinstance(row, dict) else {"suffix": row}
+        text += "\n[[base.file]]\n" + "".join(
+            f'{key} = "{value}"\n' for key, value in row.items())
     if "resumes" in own:
         first = text.index("[[base.file]]")
         text = (text[:first]

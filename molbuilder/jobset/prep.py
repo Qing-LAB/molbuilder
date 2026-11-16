@@ -209,7 +209,7 @@ def prep_jobset(jobset: JobSet, base_dir, *, calculation: str, plan,
                 # list first (`warmfiles.warm_list`, `job-contracts.md`
                 # § 4.2a): written into the script here, never read by it at
                 # import (plan W36 ⑧).
-                warm=warm_list(jobset.engine, None, base).suffixes,
+                warm=warm_list(jobset.engine, None, base),
                 # THE JOB'S LAST STEP, when its engine leaves no result
                 # (`Job.finish`, `engines/vibration.md` § 5.5): the wrapper
                 # runs it, and its bundle is written beside the deck.

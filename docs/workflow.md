@@ -19,9 +19,8 @@ directories).
 
 **It is the single contract for the WHOLE — what the parts are, and how they
 work together.** Every part has a contract of its own that says what that part
-*is* on the inside. Until this page existed, the sentence *"and here is how
-they compose"* had no home, so it was written partly in four places and fully
-in none.
+*is* on the inside. Without one home, the sentence *"and here is how they
+compose"* is written partly in many places and fully in none.
 
 | this document owns | it does not own |
 |---|---|
@@ -126,7 +125,7 @@ flowchart TB
       TMPL["<b>template</b> · <code>&lt;label&gt;.template.toml</code><br/><i>every setting, WITH its answer</i>"]
       TASK["<b>description</b> · <code>task.json</code><br/><i>the steps, and what differs between them</i>"]
       REQ["<b>job request</b> · <code>job-request.json</code><br/><i>how and where it runs</i>"]
-      XYZ["<b>structure pair</b><br/><code>&lt;label&gt;.source.xyz</code> + <code>&lt;label&gt;.source.molstruct.json</code><br/><i>the atoms, and where they came from —<br/>the .source segment is reserved, § 6.3</i>"]
+      XYZ["<b>structure pair</b><br/><code>&lt;label&gt;.source.xyz</code> + <code>&lt;label&gt;.source.molstruct.json</code><br/><i>the atoms, and where they came from —<br/>the .source segment is reserved, job-contracts.md § 6.3</i>"]
     end
 
     STRUCT --> XYZ
@@ -211,8 +210,8 @@ The ones you will actually meet:
 | `task.json` | the steps | **JSON** — mostly machine-written |
 | `job-request.json` | how and where it runs | **JSON** — mostly machine-written |
 | `<label>.source.xyz` + `.source.molstruct.json` | the atoms, plus where they came from | plain text + JSON sidecar |
-| `molbuilder.json` | what **you** want from this installation — how a launch is sent, the env names, where projects live, the server's settings — and how a shell enters an environment here (`env_init`) | JSON, hand-edited |
-| `environment.json` | what the target machine **is** | JSON, written by a probe |
+| `molbuilder.json` | what **you** want from this installation — how a launch is sent, the env names, where projects live, the server's settings — and how a shell enters an environment here (`env_init`) | JSON, written by you — or by `envs init-config` and `auth-setup` from your answers |
+| `environment.json` | what the target machine **is** | JSON, written by a probe on that machine; a calculation's copy by its first prep |
 | `job-set.json` | the jobs this folder amounts to | JSON |
 | `<label>_01_coarse.fdf` | the engine's input | the engine's own format |
 | `.run.sh` / `.sbatch` | run it / submit it | shell |
@@ -367,8 +366,7 @@ repo clone. That is the **supported form** — molbuilder is deliberately *not*
 pip-installed into its env ([`ops/installation.md`](?doc=ops/installation.md);
 a console-script entry point exists in `pyproject.toml` but is not the
 supported invocation). An evaluation that goes looking for `molbuilder` on
-`PATH` is testing an assumption this design never makes — made once,
-2026-08-19, which is why this section exists.
+`PATH` is testing an assumption this design never makes.
 
 ### 6.2 Telling a verb which job you mean
 
@@ -461,18 +459,10 @@ runs every deck of every engine through the same steps. Four of PySCF's
 answers are a recorded *nothing*, which is the design working: a decision a
 reader can check, not an arm nobody thought about.
 
-### Not yet — and it is a known, named gap
-
-**The WRAPPER writer still carries per-engine facts in its own body.**
-`runwrap.py` branches on which engine it is writing for — how the label is
-read back out of a deck, how the launch line is formed. Those facts belong beside the engine's other seam answers, and moving
-them is the recorded seam item **W1**
-([`backend-architecture.md § 5`](?doc=backend-architecture.md); its measured
-state, [`plans/plan.md`](?doc=plans/plan.md) § 2, **S1**). Until then, adding an
-engine edits `runwrap.py` — which is exactly what the engine seam's rule
-([`generator.md`](?doc=execution/generator.md) § 7, `architecture.md` A18:
-*"adding an engine adds records and a seam; no shared code branches on its
-name"*) exists to catch.
+**The wrapper too.** `runwrap.py` names no engine: every block of the run
+script is decided by the engine's record (`engine_table`) or asked of the
+parse layer by the output's role, so adding an engine adds records and a seam,
+and no shared code ([`execution/architecture.md`](?doc=execution/architecture.md) A18).
 
 **Every kind rides this pipeline.** A vibration is a calculation KIND —
 `render_deck` runs its deck like any other, and § 9's gates cover it — and
@@ -481,8 +471,6 @@ transport is a different KIND of job
 citation of a finished junction run, five derived stages — prepared,
 launched and summarized through the ordinary jobset verbs
 ([`engines/transport.md`](?doc=engines/transport.md) § 1, § 3.1).
-
-**Where this is tracked:** [`plans/plan.md`](?doc=plans/plan.md) § 2, S1.
 
 ---
 
@@ -518,9 +506,9 @@ flowchart TB
     subgraph DESCRIBE["describe it — the browser (or the CLI)"]
         CAT["<b>the catalogue</b> — <code>catalogue.template.toml</code><br/>every parameter defined ONCE; kinds narrow it<br/>(<code>engines</code> / <code>calculations</code> keys — template.md § 6.3)"]
         STRUCT["<b>structure preparation</b> — Build · Modify · MolView<br/>labels, regions (frozen atoms), cell ride the model<br/>and its sidecar (model/structure-molstruct.md)"]
-        FORM["<b>the calculation's form</b> — Build tab (optimization) ·<br/>Spectrum tab (vibration)<br/><code>/api/build/schema/&lt;engine&gt;?calculation=…</code>,<br/>one shared renderer (web/form-schema.md)"]
+        FORM["<b>the calculation's form</b> — Structure optimization tab ·<br/>Spectrum tab (vibration)<br/><code>/api/build/schema/&lt;engine&gt;?calculation=…</code>,<br/>one shared renderer (web/form-schema.md)"]
         DETECT["charge and spin — <code>/api/structure/analyze</code><br/>the one electronic state, for exactly what the form says,<br/>shown on the card; fills nothing (chemistry-correctness.md § 2a)"]
-        SEND["<b>Send to Task setup</b> — <code>lib/task-handover.js</code>,<br/>ONE door for every tab (web/handover-procedure.md)<br/>writes template + structure pair + <code>task.1st.json</code>"]
+        SEND["<b>Send to Task setup</b> — <code>lib/task-handover.js</code>,<br/>ONE door for every parameter tab (Transport writes<br/>its description directly; web/handover-procedure.md)<br/>writes template + structure pair + <code>task.1st.json</code>"]
         TS["<b>Task setup</b> — stages, bench axes<br/>(web/task-setup.md); saving writes <code>task.json</code><br/>— the described calculation — and <code>job-request.json</code>,<br/>how it runs (execution/job-request.md)"]
     end
     subgraph MACHINE["run it — the machine that will compute"]
@@ -553,14 +541,14 @@ this table exists to rule out)*:
 
 | gate | fires | refuses / warns on | owner |
 |---|---|---|---|
-| **① live preflight** | on every form edit, Build tab (`/api/build/preflight`) | the same `validate(struct, cfg)` verdict gate ④ will give — surfaced while the person is still at the form | [`science/validation.md`](?doc=science/validation.md) § 4 |
+| **① live preflight** | on every form edit, Structure optimization tab (`/api/build/preflight`) | the same `validate(struct, cfg)` verdict gate ④ will give — surfaced while the person is still at the form | [`science/validation.md`](?doc=science/validation.md) § 4 |
 | **② the cell gate** | at Send, on the exported envelope | a box the calculation cannot use (degenerate cell, left-handed axes); *notices* (thin vacuum) hold the navigation, never the write | [`web/handover-procedure.md`](?doc=web/handover-procedure.md) |
 | **③ task preflight** | at every describe — Task-setup save, `molbuilder describe` (its transport arm too), the Transport tab's Send — and at dispatch | a description that is not one: unknown keys, identity clashes (the § 6.6 check table), empty ladders (§ 6.5), bench entries that name no execution item and points that fit no item (`job-request.md` § 3.4; `generator.md` § 4.3a), a stage's value past its hard limit; it *warns* on a value, or a bias point, outside its recommended range ([`engines/template.md`](?doc=engines/template.md) § 5.3) | [`engines/stages.md`](?doc=engines/stages.md) §§ 6.5–6.8 |
 | **④ the science gate** | at `prep`, inside the conductor’s STEP 3.3 — **“here, and only here”**, so no deck route can forget it | cell + geometry + field ranges and choices (`validation/metadata.py`) + the electronic state's one family (charge, parity, open shell, what the engine can run — `validation/chemistry.py`) + the engine's and the kind's science (grid, amplitude — `validation/{siesta,pyscf,spectra}.py`); errors refuse the deck, warns reach stderr. And at the record step, the placement check: a spec with no engine frame, and any atom outside the cell along a non-periodic lattice vector, are refused (`cell.require_placed`, `model/structure-periodicity.md` § 6.0, check 3) | [`execution/script-preparation.md`](?doc=execution/script-preparation.md) §§ 3–4 (step 3.3) |
 | **⑤ the parse gates** | at every artifact read (Results tab, CLI) | a file the reader cannot vouch for: unknown schema version (readable **sets**, additive bumps read old files whole), malformed fields — each a **typed** refusal the UI can react to | [`web/spectra.md`](?doc=web/spectra.md) § 6, the parse layer |
 
 *(Every kind passes the same five gates: the Spectrum tab runs the same live
-check (①) Build does, and transport's decks render through prep like every
+check (①) the Structure optimization tab does, and transport's decks render through prep like every
 other kind's, its own science the KIND's — its record's `validator`,
 `validation/transport.py`, which fires on every rung.)*
 

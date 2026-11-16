@@ -711,6 +711,21 @@ complemntary and use should know that's not part of contract and it's a customiz
 
 ## F10 — The documents true (305)
 
+*Wave 1 (2.70.28): README, `docs/README.md`, `architecture.md`,
+`backend-architecture.md`, `configuration.md`, `design.md`, `workflow.md`,
+`ops/*` and `execution/*` read whole against the code by one reader each
+and applied by a second, who confirmed each row in the code first. Every
+item in those chapters' sections below is closed -- fixed in 2.70.28 or
+found fixed by an earlier release -- except where a row says otherwise.
+Found by wave 1 and owed to the code, done in 2.70.28: the checkpoint
+command's exit 2 for every refusal of the person's input; the run script
+reading a calculation's own restart-file list; the installer naming each
+broken env state's own remedy, and `--clean` restoring a ghost env instead of
+asking for itself again; three module headers that claimed L1 against the
+index. The notebook's loopback exception behind a same-host reverse proxy:
+said in `ops/access-control.md` § 2, sign-in the remedy, no code change (the
+user, 2026-11-15).*
+
 ### Inventory rows (the plan's own document items) (23)
 
 | id | kind | what | checked |

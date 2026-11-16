@@ -82,21 +82,31 @@ def serve(config=None):
         shutil.rmtree(own_docs, ignore_errors=True)
 
 
+#: WHERE A TEST'S `serve start` LISTENS: even ports below the system's
+#: ephemeral range (32768 and up on Linux).  Its notebook takes the port after
+#: (`jupyter.jupyter_port`), which nothing else in a parallel run can be
+#: handed: every port asked of the system (``bind(..., 0)``, the in-process
+#: servers, the browsers) comes from the ephemeral range, and every other
+#: test's serve port is even.  Found 2026-11-15: a free pair picked from the
+#: ephemeral range lost its notebook port to another worker's server a minute
+#: later, and the notebook refused to start.
+_SERVE_PORTS = range(20000, 32000, 2)
+
+
 def free_serve_port() -> int:
     """A port for `serve start` whose notebook port (`jupyter.jupyter_port`)
-    is free here too -- each found free on loopback, the pair asked again
-    when the notebook's is taken."""
+    is free here too -- an even one below the ephemeral range
+    (:data:`_SERVE_PORTS`), the pair found free on loopback."""
+    import random
     import socket
 
     from molbuilder.jupyter import jupyter_port
-    for _ in range(50):
-        with socket.socket() as s:
-            s.bind(("127.0.0.1", 0))
-            port = s.getsockname()[1]
-        with socket.socket() as s:
-            try:
-                s.bind(("127.0.0.1", jupyter_port(port)))
-            except OSError:
-                continue
+    for port in random.sample(_SERVE_PORTS, 50):
+        try:
+            for each in (port, jupyter_port(port)):
+                with socket.socket() as s:
+                    s.bind(("127.0.0.1", each))
+        except OSError:
+            continue
         return port
     raise RuntimeError("no free port pair")

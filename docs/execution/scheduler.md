@@ -219,7 +219,7 @@ nodes and it has GPUs. A record that lists no machines is read by its
 - *"2000 GB fits no node of htc -- 2000 GB is over htc's largest machine
   (1511.2 GB)"*
 - *"4 cores · 38m fits all 212 nodes of htc-debug -- 38m is over htc-debug's
-  wall (00:15:00)"*
+  time limit (00:15:00)"*
 
 The machines that hold it are named one per size, as the queue table groups
 them, with the cards at each size when it asks GPUs; a share is never rounded to
@@ -663,7 +663,9 @@ cases, and launch's refusal names which, each with its way on:
 2. **you asked for none** — `prep --no-sbatch`; then no queue, wall or memory is
    asked for, and the job runs here.
 
-A target with a queue otherwise always gets one. So *"I prepared and got no
+A run of points' points carry none beside their run scripts: the job is the
+walk, and its header is in the stage's `launch/` folder (§ 5.1). A target with a
+queue otherwise always gets one. So *"I prepared and got no
 `.sbatch`"* has those two answers. The launch mode itself is always stated,
 never derived from the scheduler — `--mode`, or `launch.mode` set once
 ([`configuration.md`](?doc=configuration.md) § 4).
@@ -814,9 +816,9 @@ placement = place(routing, req, named="htc")
 d = Directives(partition=placement.partition, qos=placement.qos,
                walltime="0-00:38:00", ntasks=64, cpus_per_task=1,
                gpus=2, mem="390G")
-d.header_lines(record.kind)   # what the .sbatch carries, wall included (R5),
-#   in the target's kind's language (§ 6a) -- at prep; the one rendering
-#   (R1): launch sends this header
+d.header_lines(kind(record.scheduler.kind))   # kinds.kind; what the .sbatch
+#   carries, wall included (R5), in the target's kind's language (§ 6a) -- at
+#   prep; the one rendering (R1): launch sends this header
 ```
 
 **The job names its queue; `place` chooses none** — the job request's

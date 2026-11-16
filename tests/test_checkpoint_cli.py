@@ -144,10 +144,39 @@ def test_init_on_a_folder_molbuilder_already_named_changes_nothing(mb, calc):
 # ------------------------------------------------------------------ #
 
 
-def test_save_without_a_note_is_refused(mb, calc):
+#: WHAT THE PERSON GOT WRONG, a row each: the command and the words its
+#: refusal says it in.  Each is theirs to fix, so each exits 2 -- 1 tells a
+#: script the machine is broken (`checkpointing.md` § 5, *Exit codes*).
+_THE_PERSONS_OWN = (
+    ("a state's note left blank", ("save", "-m", "   "), "needs a note"),
+    ("a tag's note left blank", ("tag", "good", "-m", " "), "needs a note"),
+    ("a tag name git cannot take", ("tag", "two words", "-m", "why"),
+     "is not a name git takes"),
+    ("a tag name in use", ("tag", "kept", "-m", "again"), "exists already"),
+    ("a state that does not exist", ("restore", "no-such-state"),
+     "does not name a state"),
+)
+
+
+@pytest.mark.parametrize("what,args,says", _THE_PERSONS_OWN,
+                         ids=[r[0] for r in _THE_PERSONS_OWN])
+def test_a_refusal_of_the_persons_own_input_exits_2(mb, calc, what, args,
+                                                     says):
+    """`checkpointing.md` § 5: *2 means your input … and 1 means the
+    machine* -- the refusal names what is wrong and the folder is as it was.
+
+    THE SILENT FAILURE: a blank note and a tag name in use exited 1, which a
+    script reads as a broken machine."""
     mb("init")
     (calc / "job.XV").write_text("x\n")
-    assert mb("save").exit_code != 0
+    assert mb("save", "-m", "the geometry I trust").exit_code == 0
+    assert mb("tag", "kept", "-m", "trusted").exit_code == 0
+    before = mb("list").output
+    result = mb(*args)
+    said = result.output + (result.stderr or "")
+    assert result.exit_code == 2, (what, result.exit_code, said)
+    assert says in said, (what, said)
+    assert mb("list").output == before, what
 
 
 def test_save_reports_the_state_it_made(mb, calc):
@@ -348,12 +377,6 @@ def test_restore_accepts_a_tag(mb, calc):
 
     assert mb("restore", "stage1-good").exit_code == 0
     assert (calc / "job.XV").read_text() == "good\n"
-
-
-def test_restore_of_an_unknown_state_fails_clearly(mb):
-    mb("init")
-    result = mb("restore", "no-such-state")
-    assert result.exit_code != 0
 
 
 # ------------------------------------------------------------------ #

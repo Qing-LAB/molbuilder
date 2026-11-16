@@ -1085,6 +1085,10 @@ def test_a_missing_git_is_its_own_error_and_says_how_to_fix_it(calc,
     assert "git" in message
     assert "install" in message or "conda" in message, (
         "a refusal a person is meant to resolve must say how")
+    # ...AND NEVER AS THE PERSON'S INPUT where a tag name is asked of git
+    # before the tag is written: a missing git is not "your name is wrong".
+    with pytest.raises(GitNotInstalledError):
+        calc.tag("good", "the geometry I trust")
 
 
 # ------------------------------------------------------------------ #

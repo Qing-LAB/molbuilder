@@ -172,8 +172,8 @@ projects/                                   the tree's root (job-contracts.md §
   rule is [`job-contracts.md`](?doc=execution/job-contracts.md) § 6.3.
 - **A run's files carry no counter.** The folder is the run, and it holds one
   start (§ 1.6.1).
-- **A run of points** — a bias sweep, a SIESTA vibration — holds a folder per
-  point inside its run (`run-1/f001/v0.2/`, `run-1/fc/`), and prep's decks for
+- **A run of points** — a transport stage over several frames or voltages, a
+  SIESTA vibration — holds a folder per point inside its run (`run-1/f001/v0.2/`, `run-1/fc/`), and prep's decks for
   them in folders below the stage. That branch, level by level, is
   [`runs-of-points.md`](?doc=execution/runs-of-points.md) § 2.4.
 
@@ -396,8 +396,8 @@ every input.
 A stage launched alone is started in its run folder — run here by `jobset
 launch`, or sent to a scheduler from that folder. A walk — a group of stages, a
 run of points, a benchmark's trials — is sent from the folder holding its
-`launch/`, and runs each member's script in that member's own run. No run
-script contains a `cd`. Everything the script and the
+`launch/`, and runs each member's script in that member's own run, entering it
+in a subshell (`( cd <run> && … )`). No member's run script contains a `cd`. Everything the script and the
 engine write — the output, the monitor's files, the conclusion marker — lands
 in the run ([`running-a-job.md`](?doc=execution/running-a-job.md) § 2.2a).
 
@@ -492,7 +492,8 @@ explicitly remove this. retry need re-run. period.")*
 | numbered by | the next unused `n` (§ 4.3) |
 | opened by | `prep` for a stage's first; `launch` for each one after (§ 1.6.2) |
 
-A run of points — a bias sweep's, a SIESTA vibration's — is one run too: its
+A run of points — a transport stage's over several frames or voltages, a SIESTA
+vibration's — is one run too: its
 points are folders inside it, each point started once in its run
 ([`runs-of-points.md`](?doc=execution/runs-of-points.md) § 2.4).
 
@@ -515,8 +516,8 @@ naming `jobset launch`, which opens the next run. A job its scheduler requeues
 meets that refusal when it starts again, and ends without running. The script's
 gates are [`running-a-job.md`](?doc=execution/running-a-job.md) § 5.5.
 
-**Runs written before this rule are not read.** Their files carry the try's
-number (`<stem>-run<N><role>`), and the run door reads such a run *unreadable*,
+**A run whose files carry a try's number is not read.** Its files are named
+`<stem>-run<N><role>`, and the run door reads such a run *unreadable*,
 naming `jobset migrate` (`runs.older_run`). `jobset migrate` names a run that
 started once anew, every byte kept, and leaves one that started more than once
 as it is, said with its reason
@@ -657,7 +658,7 @@ these files, and in what order of evidence, is
 | started | + the session log | `running` |
 | running | + the output, the engine's own files, the monitor's pair | `running` |
 | concluded | + `<base>.concluded` | `finished` (exit code 0) or `failed` |
-| stopped by force | as *running*, with no marker; the scheduler's line in the job's error file, `run.json`'s `ended`, or the monitor's closing record says it ended | `failed`, by that evidence |
+| stopped by force | as *running*, with no marker; the scheduler's line in the job's error file, `run.json`'s `ended`, the monitor's closing record, or nothing written for longer than the wall it was sent with, says it ended | `failed`, by that evidence |
 
 **Who reads them.** `launch` reads `run.json` to open the next run rather than
 run in a launched one; `run_status` builds a run's state on the marker through
@@ -749,13 +750,13 @@ a restore returns the whole folder to a saved state (row 16). In order:
 
 | | moment | who | where | what lands there |
 |---|---|---|---|---|
-| 1 | a project is made | the browser's Projects sidebar (`projects.populate_project_skeleton`) | ①, ② | the project, a `README.md`, and every topic folder with its own |
+| 1 | a project is made | the browser's Projects sidebar (New project), or `molbuilder describe` for a calculation whose project is not there yet (`projects.populate_project_skeleton`) | ①, ② | the project, a `README.md`, and every topic folder with its own |
 | 2 | a calculation is described | `molbuilder describe`, the Transport tab's describe door; or the browser's hand-over, then Task setup's Save | ③ | the template, the structure pair, `task.json`, `job-request.json` (`task.1st.json` while a hand-over waits for its stages); with `describe --psml-lib`, each `<species>.psml` loose at the root |
 | 3 | every save: before a Save with something to save, a prep that writes and a group's first launch; and yours | `checkpoint.save_before`; `molbuilder checkpoint init` / `save`, the checkpoint panel | ③ | `.git/`, `.binsnapshots/`, `.gitignore` — a new state only when the folder changed since the last |
 | 4 | the first prep | `prep` | ③ | `environment.json` — the machine record, copied once |
 | 5 | every prep | `prep` | ③; ④'s `launch/` for a run of points | `job-set.json`, `prepared-with.json`, `STAGE-PLAN.md`, the pipeline log; `pseudos/` — the root's pseudopotentials moved in, the missing ones copied from the library; a transport junction's records; the header of a group's or a sequence of groups' job in ③'s `launch/`, of a run of points' walk in its stage's |
 | 6 | every prep | `prep` | ④ | the stage folder: its deck, check, run script, bundles and pseudopotential copies; a run of points' prepared folders |
-| 7 | every prep, for a stage never launched | `prep` | ⑤ | `run-0/` opened and filled with copies of the stage's files |
+| 7 | every prep, for a stage never launched; for a group a transport calculation reuses | `prep` | ⑤ | `run-0/` opened and filled with copies of the stage's files; a reused group's every run copied in from the finished calculation, its `.copied-from` beside it and its `run.json` last ([`engines/transport.md`](?doc=engines/transport.md) § 2a.16) |
 | 8 | `prep bench <stage>` | `prep` | the stage's `bench/` | the benchmark's own `job-set.json` and `STAGE-PLAN.md`; each trial's deck and run script, in `bench-<point>/run-0/`; its shelves' headers in its `launch/` |
 | 9 | the send, after the yes | `launch` | ⑤; the `launch/` of its walk (③, ④ or `bench/`) | the first run filled again, or `run-<n+1>/` opened; what it takes; a run of points' index; a walk's script, and a sequence's launch record in ③'s `launch/` |
 | 10 | the send succeeded | `launch` | ⑤ | `run.json` |
@@ -961,7 +962,7 @@ the restart files of its own newest launched run (§ 1.6.5).
 
 | level | folder | named by | made by | holds | `what` · role (§ 1.4a) |
 |---|---|---|---|---|---|
-| ① **project** | `<project>/` | the person | the Projects sidebar, with every topic | its topics | — |
+| ① **project** | `<project>/` | the person | the Projects sidebar, or `molbuilder describe` for a project not there yet — with every topic | its topics | — |
 | ② **topic** | `<topic>/` | one of the canonical topics ([`job-contracts.md`](?doc=execution/job-contracts.md) § 2.5) | made with its project | calculations (a run topic), files (a storage topic), anything (`user`) | — |
 | ③ **calculation** | `<calculation>/` | the person, `[A-Za-z0-9_-]+` | the first write of its description | the description and job request, the structure pair, `pseudos/`, prep's and summarize's records, `launch/`, the saved states, its stages | `calculation` · none, a container |
 | ④ **stage** | `<NN>_<stage>/` | the stage's token (§ 4.1) | `prep` | its deck, run script and bundles, its runs, `bench/`, a run of points' prepared folders | `stage` · container |
@@ -973,7 +974,8 @@ The benchmark and the trial carry no circled number: they are containers nested
 in a stage (④), not levels of the tree.
 
 > **The description is written at ③ and names no machine. `prep` writes ③'s
-> plan records, every stage folder ④ and a never-launched stage's first run ⑤.
+> plan records, every stage folder ④, a never-launched stage's first run ⑤, and
+> the runs a transport calculation copies in from a finished one it reuses.
 > `launch` fills the run it sends, opens every later run and writes its
 > `run.json`. The run — the engine, its run script and its monitor — writes the
 > folder it was started in, once.**
@@ -1247,7 +1249,7 @@ a copy of each stage file it reads.
 | `<base>.concluded` | the marker the run script writes when the job ends | the run script, its last act; or its exit trap, when the script fails on its own before it | `runrecord.ending` | record |
 | `<base>.runtime_info.json` — only: a person runs `molbuilder runtime-info` | what a file of the run says about the run, as `molbuilder runtime-info` read it -- one per run | `molbuilder runtime-info`, in the folder of the file it reads | none | record |
 | `run.json` | the launch record: how, where and when the run was sent, and what it continued from | launch | `runrecord.launch_record` | record |
-| `notified.json` | the run's notification record: every event sent for the run -- start, a step, the periodic report, its time limit nearing, a milestone, a failed part and its reason, finish -- and when | `mb_monitor.pyz notify` (a run of points' start, milestones, failed parts and finish, sent by its points' report steps); a member's monitor, for every event it sends | `runrecord.read_notified` | record |
+| `notified.json` | the run's notification record: every event sent for the run -- start, a step, the periodic report, its time limit nearing, a milestone, a failed part and its reason, finish -- and when | the run's monitor, for every event it sends -- a member's into its run's folder; `mb_monitor.pyz notify` (a run of points' start, milestones, failed parts and finish, sent by its points' report steps) | `runrecord.read_notified` | record |
 | `.continued-from` — only: it continues from an earlier run | the run this one continues from -- a stage's run, a run of points, a point's start (a walked point's, a planned point's), a taken-over point's computing run (one hop) | launch, as it hands the run the files it takes; a planner's own step for each point it plans | `runrecord.read_continued_from` | record |
 | `.gathered-from` *(transport)* | what a stage took, from which upstream run | launch, as it hands the run what it takes -- a stage's first launch or a `--gather`, or a launch again keeping what its last run was given | `runrecord.read_gathered_from` | record |
 | `.copied-from` *(transport)* — only: a transport calculation that reuses a finished one | the finished calculation's run, or point, this one is a copy of, tree-relative | prep, copying a group in from the finished calculation it reuses, before the run's launch record; a stage of points' first launch, in each point it takes over and each point's `shared/`, written last | `runrecord.read_copied_from` | record |
@@ -1370,7 +1372,7 @@ folder; a run a sequence's group sent records the sequence's job.
 <!-- manifest:launch -->
 | file | what it is for | written by | the door | kind |
 |---|---|---|---|---|
-| `<group>.run.sh` | a launch group's sequencer: a benchmark's trials, a run of points' walk (a vibration's calls, a bias sweep's points), a task's stages sharing one job, or a task's groups launched one after another in one job, in order | launch, written again at each launch | none | derived |
+| `<group>.run.sh` | a launch group's sequencer: a benchmark's trials, a run of points' walk (a vibration's calls, a transport stage's frames and voltages), a task's stages sharing one job, or a task's groups launched one after another in one job, in order | launch, written again at each launch | none | derived |
 | `<group>.sbatch` — only: a machine whose scheduler has a queue, no `--no-sbatch` | its queue header — a task's group's, a run of points' walk's, a benchmark's shelf's, a sequence of groups' | prep, written again at each prep; launch sends it | none | derived |
 | `<scheduler>.<jobid>.out` — only: launched to a queue | the scheduler's own stdout for the job | the scheduler, as the group's header asks | none | record |
 | `<scheduler>.<jobid>.err` — only: launched to a queue | the scheduler's own stderr for the job | the scheduler, as the group's header asks | none | record |
@@ -1452,7 +1454,8 @@ repeated.
 
 6. **Each act writes only where § 2 says** (§ 2.6): the description is written
    at ③; `prep` writes ③'s plan records, the headers in a `launch/`, the stage
-   folders ④ and a never-launched stage's first run ⑤; `launch` writes into the
+   folders ④, a never-launched stage's first run ⑤ and the runs of a group its
+   calculation reuses, copied in whole (§ 1.6.2); `launch` writes into the
    run it sends and opens, its walk's script in a `launch/`, and a sequence's
    launch record; every save — before a Save with something to save, a prep
    that writes or a group's first launch, and the person's own — writes the
@@ -1490,10 +1493,11 @@ repeated.
    changes, and once saved it never differs from its recorded checksums but for
    what § 1.5 names ([`checkpointing.md`](?doc=execution/checkpointing.md) § 11,
    I2).
-9. **The description and its job request are the only sources at ③**; no prep,
-   launch or run writes them — only the person's acts do: `describe`, Task
-   setup's Save, `jobset migrate`
-   ([`checkpointing.md`](?doc=execution/checkpointing.md) § 11, S4).
+9. **The template, the description and its job request — and a restart-file
+   list a person wrote there (`warm-files.toml`) — are the only sources at ③**;
+   no prep, launch or run writes them — only the person's acts do: `describe`,
+   the browser's hand-over, Task setup's Save, `jobset migrate`, or the person's
+   own edit ([`checkpointing.md`](?doc=execution/checkpointing.md) § 11, S4).
 
 **Composition**
 

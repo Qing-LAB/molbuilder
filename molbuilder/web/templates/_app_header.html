@@ -44,9 +44,9 @@
         drawn hidden and revealed by app-reload.js, never the other way round --
         a control that flashes into view and then disappears reads as a
         permission being taken away.  The route exists only when the server runs
-        under a supervisor AND rate_limit.admin_emails names somebody, so for
-        almost every session this stays hidden and costs one GET.  See
-        docs/archive/2026-08-19-server-reload-plan.md § 4. -#}
+        under a supervisor, and answers only a session the `admin` list allows
+        (`web/admin.is_admin_request` -- every signed-in session while the list
+        names nobody); otherwise the button stays hidden and costs one GET. -#}
     <button type="button" id="app-reload" class="app-account__reload" hidden
             title="Restart the server so it picks up changed Python code.">
       Reload server

@@ -191,10 +191,10 @@ class Outcome(str, Enum):
                fatal: bool) -> "Outcome":
         """The transition rule, and the only place it is written.
 
-        :func:`run_step` decides a dispatched step with it, and the
-        build adapter decides a build phase's result with it.  A step
-        decided WITHOUT being dispatched does not come through here; see
-        :func:`_undispatched`.
+        :func:`run_step` decides a dispatched step with it; a build phase's
+        result is read through its own table (``_BUILD_STATUS_OUTCOME``).  A
+        step decided WITHOUT being dispatched does not come through here;
+        see :func:`_undispatched`.
         """
         if ok:
             return cls.OK if first_attempt else cls.RECOVERED
@@ -790,8 +790,21 @@ class EnvState:
         return self.state in (EnvPresence.ORPHAN, EnvPresence.GHOST,
                               EnvPresence.BROKEN)
 
+    @property
+    def removed_by_hand(self) -> bool:
+        """A directory the manager will not remove -- ORPHAN, BROKEN: `env
+        remove` refuses both addresses for a directory without
+        conda-meta/history (measured on conda 26.7.1, 2026-09-14), so
+        ``--clean`` cannot wipe it either.  The one remedy is the person's
+        ``rm -rf`` of the prefix, then the install again; a GHOST, whose
+        directory is gone, ``--clean`` restores (:meth:`describe`)."""
+        return self.state in (EnvPresence.ORPHAN, EnvPresence.BROKEN)
+
     def describe(self) -> str:
-        """Multi-line human description of the state + recommendation."""
+        """Multi-line human description of the state -- what it is and what
+        the manager will and will not do with it.  The remedy's commands are
+        printed once, by the step that refuses (`envs._cli`'s hard stop and
+        `--clean` refusal)."""
         s = self.state
         lines = [
             f"  Env name:           {self.name}",
@@ -811,8 +824,7 @@ class EnvState:
             lines.append("    track it.  conda create will refuse with `prefix already")
             lines.append("    exists`, and the manager will not remove a directory it")
             lines.append("    does not recognise either (measured: `env remove` needs")
-            lines.append("    conda-meta/history).  Remove it yourself, then re-run:")
-            lines.append(f"      rm -rf {self.prefix}")
+            lines.append("    conda-meta/history).")
         elif s is EnvPresence.GHOST:
             # Measured: `conda env remove -n <name>` refuses with
             # `EnvironmentLocationNotFound` -- it resolves the name to a prefix
@@ -825,15 +837,13 @@ class EnvState:
             lines.append("  → GHOST: the registry lists this env but the directory")
             lines.append("    it names is gone.  `conda env remove` will not clear")
             lines.append("    it -- with no directory to act on the manager refuses.")
-            lines.append("    Re-run with --clean: the removal step is skipped for")
-            lines.append("    this state, and the create that follows restores the")
+            lines.append("    `--clean` restores it: its removal step is skipped for")
+            lines.append("    this state, and the create that follows makes the")
             lines.append("    directory the entry names.")
         elif s is EnvPresence.BROKEN:
             lines.append("  → BROKEN: directory exists but is missing conda-meta/, so")
             lines.append("    it's not a real conda env -- residue from a failed")
             lines.append("    install, which the manager will not remove for you.")
-            lines.append("    Remove the directory yourself, then re-run:")
-            lines.append(f"      rm -rf {self.prefix}")
         return "\n".join(lines)
 
     def remove_cmd(self) -> str:
@@ -1064,7 +1074,8 @@ def _report(tag: str, done: InstallStep) -> None:
 
 def _create_decision(step: InstallStep, dispatcher: _Dispatcher, *,
                      force_resume: bool,
-                     state: Optional[EnvState] = None
+                     state: Optional[EnvState] = None,
+                     after_removal: bool = False
                      ) -> Optional[InstallStep]:
     """Whether ``conda create`` needs to run, as an outcome.
 
@@ -1072,9 +1083,11 @@ def _create_decision(step: InstallStep, dispatcher: _Dispatcher, *,
     what makes `install` idempotent (H8).  Three answers, each a state:
 
       * the env is usable   -> ``SKIPPED``, claiming no exit code;
-      * the env is wreckage -> ``FAILED``, carrying ``--clean`` as the
-        remedy (``conda create`` would refuse with "prefix already
-        exists" and the state probe has already classified why);
+      * the env is wreckage -> ``FAILED``, carrying the state's own remedy
+        -- ``rm -rf`` of a directory the manager will not remove,
+        ``--clean`` for a GHOST (:attr:`EnvState.removed_by_hand`;
+        ``conda create`` would refuse with "prefix already exists" and the
+        state probe has already classified why);
       * otherwise           -> ``None``, meaning dispatch it.
 
     ``state`` is the reading the CALLER already took, when it took one: the CLI
@@ -1098,11 +1111,19 @@ def _create_decision(step: InstallStep, dispatcher: _Dispatcher, *,
         return _undispatched(
             step, Outcome.SKIPPED,
             f"env `{dispatcher.env_name}` {why}; skipping create")
-    if state.needs_cleanup:
+    # AFTER `--clean`'s REMOVAL STEP a GHOST is what the create restores --
+    # the removal had no directory to act on, the registry's entry stands,
+    # and `conda create` makes the directory it names (`describe`).  A
+    # directory the manager will not remove is still the person's.
+    if state.needs_cleanup and not (after_removal
+                                    and not state.removed_by_hand):
         return _undispatched(
             step, Outcome.FAILED,
             f"env `{dispatcher.env_name}` is in state {state.state_label} "
-            f"-- re-run with --clean to wipe before installing.")
+            + (f"-- the manager will not remove it: remove {state.prefix} "
+               f"yourself (rm -rf), then install again."
+               if state.removed_by_hand else
+               "-- re-run with --clean to restore it before installing."))
     return None
 
 
@@ -1163,12 +1184,14 @@ def _run_steps(
     the build.
     """
     total = len(steps)
+    removed = False
     for i, step in enumerate(steps, start=1):
         where = f"{tag} {i}/{total}"
         if step.role is StepRole.CREATE:
             decided = _create_decision(
                 step, dispatcher,
-                force_resume=force_resume, state=env_state)
+                force_resume=force_resume, state=env_state,
+                after_removal=removed)
             if decided is not None:
                 executed.append(decided)
                 _report(where, decided)
@@ -1176,6 +1199,7 @@ def _run_steps(
                     return False
                 continue
         elif step.role is StepRole.REMOVE:
+            removed = True
             # ONE decision: is there a directory to remove?  The manager
             # refuses `env remove` for an env that is not there (exit 1,
             # measured on conda 26.7.1), so with no directory on disk the

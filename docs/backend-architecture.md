@@ -20,11 +20,9 @@ intro and cites this doc); [`README.md`](?doc=README.md) — the doc index.
 > on the load-bearing L1/L2/L3 import-direction rule (kept by review,
 > `process/code-audit.md` § 1c (e)) plus the four core types as a shared
 > vocabulary.
-> Data management and structure construction are well isolated. The one concern
-> that had genuine gaps was **scientific validation** — centralised for the
-> SIESTA/PySCF Build engines but scattered for Spectra/Transport; that gap was
-> closed in 2026-07 (§ 4). A handful of smaller execution↔engine couplings
-> remain, catalogued as known seams in § 5.
+> Data management and structure construction are well isolated. Scientific
+> validation is one pass for every engine and kind (§ 4). One execution seam
+> remains, W3 (§ 5).
 
 ---
 
@@ -51,8 +49,8 @@ tells you *what job it does*. Keep both straight.
 | Layer | Data management | Construction | Validation (science) | Execution (workflow) |
 |---|---|---|---|---|
 | **L3** surfaces | `web/blueprints/*` · `cli.py` — every surface is *deserialize → verb → serialize* | | | |
-| **L2** domain verbs | `parse/` · `sidecars/` · `workingcopy_structure` · `script_emit` · `projects` | `peptide` · `nucleic` · `smiles` · `pubchem` · `modify` · `builders/backends` | `validation/` (the pass; the electronic state's one family) · `electronic_state` (the one charge-and-spin answer) | `jobset/` · `bench/` · `runwrap` · `envs/` · `diagnostics` · `runtime_config` · `transport/` (compose · stages · record) |
-| **L1** core types | `structure` · `frame` · `selection` · `config/` · `trajectory_log` · `persist` · `issues` | *(none — construction is all L2 verbs)* | `chemistry` · `pseudos` · `residues` | `checkpoint` *(git-backed, parameterized glob tables)* |
+| **L2** domain verbs | `parse/` · `sidecars/` · `workingcopy_structure` · `script_emit` · `projects` | `peptide` · `nucleic` · `smiles` · `pubchem` · `modify` · `builders/backends` | `validation/` (the pass; the electronic state's one family) · `pseudos` | `jobset/` · `bench/` · `runwrap` · `envs/` · `diagnostics` · `runtime_config` · `transport/` (compose · stages · record) · `checkpoint` *(git-backed, parameterized glob tables)* |
+| **L1** core types | `structure` · `frame` · `selection` · `config/` · `trajectory_log` · `persist` · `issues` | *(none — construction is all L2 verbs)* | `chemistry` · `residues` · `electronic_state` (the one charge-and-spin answer) | |
 
 The four core types — `Structure`, `Frame`, `Config`, `Issue` — are the wire
 between concerns: **construction** emits a `Structure`; **validation** reads a
@@ -78,10 +76,10 @@ builds geometry, or runs a job.
 | `config/` | L1 | the engine-knob **dataclasses** (the lingua franca): a field's name, type, default and validators — every other fact is the catalogue's (`engines/template.md` § 2.1a) | `SiestaConfig`, `PySCFConfig` (the two engine configs; `config/stages.py` the stage strategies both share) |
 | `trajectory_log/` | L1 | the molwatch progress-log format, its vocabulary + writer | `format`, `keys`, `emitter` |
 | `persist.py` | L1 | versioned-doc schema check + atomic JSON IO | `schema_major`, `check_schema`, `read_object`, `read_json`, `write_json` |
-| `parse/` | L2 | the single **read-side** stack: File / Text → typed `ParseResult` (the Dir tier is specified but unbuilt, `model/parse.md` § 5) | `parse.registry.{parse,parse_text}`; `parse.dirs.job.run_status` — see [`model/parse.md`](?doc=model/parse.md) |
-| `sidecars/` | L2 | write-side `.molstruct` / `.spectra` / `.transport` JSON | `molstruct.{to_dict,dumps,load,apply_to_structure}` |
+| `parse/` | L2 | the single **read-side** stack: File → typed `ParseResult`; a folder is the run door's (`runs.folder_answer`, `model/parse.md` § 5) | `parse.{detect,parse}`; `parse.dirs.job.run_status` — see [`model/parse.md`](?doc=model/parse.md) |
+| `sidecars/` | L2 | write-side `.molstruct` / `.spectra` JSON | `molstruct.{to_dict,dumps,load,apply_to_structure}` |
 | `workingcopy_structure.py` | L2 | the paired `.xyz`+`.molstruct.json` file door — one generator, one adapter per destination | `StructureCodec.{pair,files,write,load}` — see [`model/structure.md`](?doc=model/structure.md) § 2.4 |
-| `script_emit.py` | L2 | write-side of the generated-script reserved blocks | `emit_provenance` / `emit_bench_marks` / `emit_atom_metadata` |
+| `script_emit.py` | L2 | write-side of the generated-script reserved blocks, and the deck conductor every engine's deck goes through | `DeckSpec`, `render_deck`, `prepare_deck`, `write_script`; `emit_*` |
 | `projects.py` | L2 | filesystem layout / naming authority | `validate_name`, `projects_root`, `project_dir`, `list_structures` |
 
 **Assessment: clean.** No data module imports execution, validation, or
@@ -95,10 +93,8 @@ with lazy imports). The structure-authority consolidation — one codec
 [`execution/job-contracts.md`](?doc=execution/job-contracts.md) (the data
 vocabulary).
 
-The CLI's load/save path goes through `StructureCodec` too — the residual gap
-this named (task #73) closed 2026-09-22, when `xv2xyz`, the last converter
-writing a lone geometry, moved onto it and the writers stopped taking a path
-(`plans/plan.md` W15).
+The CLI's load/save path goes through `StructureCodec` too — `xv2xyz`
+included.
 
 ---
 
@@ -161,39 +157,33 @@ asked once by `validate()` for every engine and kind
 `pseudos.check_coverage` is the single pseudopotential owner (C1–C6). No engine
 reimplements the chemistry.
 
-### What was scattered — fixed 2026-07
+### One pass for every engine and kind
 
-These gaps were the review's "do we need more separation? **yes**" answer — not
-a new module, but *finishing the one that exists*. All are shipped, and each has
-a pinning test:
-
-| # | Finding (was) | Fix shipped |
-|---|---|---|
-| V1 | **No single pass for Spectra/Transport** — each surface ran `validate(…) + engine.preflight(…)`; forget the second and the science silently skipped. | ~~`SpectraConfig` + `TransportConfig` are registered in `_ENGINE_VALIDATORS`~~ — **superseded.** Both classes retired with their rows (`SpectraConfig` 2026-08-22, `TransportConfig` 2026-10-02): a vibration's science is the kind's (`validate_vibration_kind`, its `validator`), and every transport rung resolves a `SiestaConfig`, so it passes the SIESTA validator and the transport kind's (`validate_transport_kind`, its `validator`) in the one `validate(struct, cfg, prior=prior)` call. |
-| V2 | **Transport science lived outside the registry** (`transport/transiesta.py::preflight`). | ~~dispatched to the engine's `preflight` via `get_engine(cfg.engine)`~~ — **superseded 2026-09-17.** There is no engine registry and no `get_engine`; `TransiestaEngine` and its `preflight` are deleted, and `test_validate_dispatches_transport_preflight` with them (`tests/validation/test_aggregator.py:222`). Every check it carried has a named holder: each transport rung resolves a `SiestaConfig` and goes through the SIESTA validator. *(Asserted in the present tense here until 2026-09-18.)* |
-| V3 | **A third type system** — the device↔electrode cross-run validator used `Check` / `PreflightReport`, not `Issue`. | Kept as a distinct **checklist** type (it reports passing "ok" gates that `Issue` can't model — a legitimately different role) but **bridged**: `PreflightReport.to_issues()` / `Check.to_issue()` map the problem-severity checks onto `Issue`, so it is no longer a *disconnected* third system. |
-| V4 | **A duplicated rule** — hybrid `grid_level < 4` in both `validation/pyscf.py` and the spectra engine (now `validation/spectra.py`) with different detectors. | One body: `validation.pyscf.is_hybrid_functional` + `check_hybrid_grid_level(cfg, context=…)`, called by both sites; the message is context-selected (opt forces vs Hessian frequencies). |
-| V5 | **Doc drift** — `chemistry-correctness` pointed at a non-existent `molbuilder/analyzer.py` / `analysis_notes`. | Repointed to `chemistry.py::analyze_structure` / field `warnings` / the real deterministic-analyzer test. |
+- **One `validate()` for every engine and kind.** A surface calls
+  `validate(struct, cfg, calculation=…)` once. A kind's science is its
+  record's `validator` in the kind table: every transport rung resolves a
+  `SiestaConfig` and passes the SIESTA validator and the transport kind's
+  `validate_transport_kind` in that one call; a vibration's science is
+  `validate_vibration_kind`.
+- **One grid-level check, shared by both PySCF sites.**
+  `validation.pyscf.check_dft_grid_level(cfg, context=…)`, called by the
+  optimization's check and the vibration's render gate; the message is
+  context-selected (opt forces vs Hessian frequencies).
 
 **The render gate is the science alone.** The vibration deck's gate is
 `validation/spectra.py::spectra_render_checks` (grid, amplitude, the held
 atoms; the charge and spin are the electronic state's family), run by the render path and by `validate()` through the
 kind's own step (`validation/spectra.validate_vibration_kind`, the kind
-table's `validator`). *(It once had
-a preflight-only sibling, `selector_checks`, for the `top_n` / `threshold`
-selectors' wish for prior Raman data, registered beside a `SpectraConfig`
-validator; the class went on 2026-08-22 and the two selectors on 2026-09-28 —
-`engines/vibration.md` § 4.8 — and the sibling with them.)*
+table's `validator`).
 
 ---
 
 ## 5. Workflow / execution
 
 **Job:** run a set of related jobs on any target — stage laddering, scheduling,
-env dispatch, launcher emission, checkpointing, benchmarking. *(It listed
-"run-bundle handoff" until 2026-09-17; that model retired 2026-08-29 — a
-calculation that builds on a finished run **cites** it, and `prep` composes from
-the citation.)*
+env dispatch, launcher emission, checkpointing, benchmarking. A calculation
+that builds on a finished run **cites** it, and `prep` composes from the
+citation.
 The design intent ([`execution/job-system.md`](?doc=execution/job-system.md)):
 **everything after the *producer* is engine-agnostic** — the core never parses a
 `.fdf`, and sees only opaque script filenames.
@@ -201,15 +191,14 @@ The design intent ([`execution/job-system.md`](?doc=execution/job-system.md)):
 | Module | L | Role | Engine knowledge? |
 |---|---|---|---|
 | `jobset/` (`model` / `materialize` / `prep` / `plan` / `submit` / `summarize` / `agreement` / `ledger` / `_cli`) | L2 | engine-agnostic staged-execution core | **none** (correct) |
-| `jobset/runstatus.py` | L2 | read-only per-stage status + warm-file inventory | none since U3 — derives from the § 4.2a rules files (W2 closed) |
+| `jobset/runstatus.py` | L2 | read-only per-stage status + warm-file inventory | none — derives from the engines' `warm-files.toml` ([`job-contracts.md`](?doc=execution/job-contracts.md) § 4.2a) |
 | `bench/` | L2 | the benchmark's result reader (`result.py`); `prep bench` is the producer ([`execution/architecture.md`](?doc=execution/architecture.md) § 0) | none of its own — the result reader reads a run through `parse/` |
-| `runwrap.py` | L2 | the `.run.sh` / `.sbatch` launcher emitter | **deep** (see W1) |
+| `runwrap.py` | L2 | the `.run.sh` / `.sbatch` launcher emitter | none of its own — every block is the engine record's (`engine_table`) |
 | `runtime_config.py` | L2 | `molbuilder.json` reader — one registry row per section (`configuration.md` § 4) | — (see W3) |
 | `diagnostics.py` | L2 | host capability snapshot + env-for-category routing | env-category tables (config, fine) |
 | `envs/` | L2 | conda-env dispatch + doctor / validate / install toolkit | — (clean) |
-| `checkpoint.py` | L1 | git-backed run-dir snapshot/restore + binary archiving | engine glob tables, *parameterized* (fine) |
+| `checkpoint.py` | L2 | git-backed run-dir snapshot/restore + binary archiving | engine glob tables, *parameterized* (fine) |
 | `monitor.py` | L2 | shipped standalone job-status tailer | siesta `.out` markers (by design — bare-env) |
-| ~~`transport/orchestrate.py`~~ | L2 | ~~3-run TranSIESTA driver~~ *deleted 2026-08-29 with the composite's P7 — `transport/compose.py` + `stages.py` + `record.py` are the replacement, inside the job system* | (W4 closed) |
 
 **Assessment: the core is exemplary; the edges couple to a specific engine.**
 The `jobset/` core is a model of the separation — pure engine-agnostic verbs, no
@@ -221,11 +210,12 @@ uniformly"), catalogued here so a future refactor knows where the seams are:
 
 | # | Seam | Where |
 |---|---|---|
-| W1 | ~~**`runwrap.py` is the coupling hotspot.**~~ **CLOSED (2.63.0):** one run script for every engine, each block decided by the engine's record (`engine_table`: `one_process`, `keyword_reader`, `environment`, `programs`) or asked of the parse layer by the output's role ([`execution/running-a-job.md`](?doc=execution/running-a-job.md) § 1); what a deck says of restart files is read through the catalogue's one reader of a deck's restart group (`script_emit.restart_group`, which a benchmark trial's cold check reads through too) and the warm-file rules, its orbital estimate through its BENCH-MARKS reader. | `runwrap.py` (`_deck_restart`) |
-| W2 | ~~**The one leak inside the "agnostic" core.**~~ **CLOSED (U3, 2026-08-13):** `jobset/runstatus.py`'s hardcoded warm-file table now derives from the engines' `warm-files.toml` rules files through the one loader (`job-contracts.md` § 4.2a) — the row stays so the seam's history is findable | `jobset/runstatus.py` |
-| W3 | **`runtime_config` leaks scheduler schema as untyped dicts** into `jobset/submit.py` and `runwrap.py` (`d["partition"]`, `d["qos"]`, …), and the module also bundles web-auth/TLS config with scheduler config — two concerns in one reader. | `runtime_config.py`; consumers `jobset/submit.py`, `runwrap.py` |
-| W4 | **CLOSED (2026-08-29)** — transport stayed its own kind exactly as decided (2026-08-11, user), and the composite is that kind built properly: `--calculation transport` cites a finished junction, derives its five stages, and runs them through the ordinary jobset verbs — no edges, no chained ladder, the hand-rolled bash driver deleted (`archive/2026-09-01-transport-design.md`) | *(orchestrate.py deleted)* |
-| W5 | **A module misfiled under "workflow."** `script_emit.py` is really a **data** serializer (it reaches into `parse.types`, `sidecars`, `structure`), not an execution verb — this doc files it under § 2 for that reason.  *(Its former sibling `bundle_writer.py` retired 2026-08-29 with the handoff it materialised.)* | `script_emit.py` |
+| W3 | `runtime_config` reads the web server's sections (`auth`, `tls`, `rate_limit`, `admin`) beside the calculations' (`launch`, `envs`, `env_init`, `checkpoint`, `paths`) — two concerns in one reader | `runtime_config.py` |
+| W5 | **A module misfiled under "workflow."** `script_emit.py` is really a **data** serializer (it reaches into `sidecars` and `structure`), not an execution verb — this doc files it under § 2 for that reason. | `script_emit.py` |
+
+The run script names no engine (`engine_table`); the warm-file table is the
+engines' `warm-files.toml`; transport is its own kind through the ordinary
+verbs.
 
 A scheduler is a kind: a block in `scheduler/kinds.toml` and its readers
 ([`execution/scheduler.md`](?doc=execution/scheduler.md) § 6a). The job's own
@@ -266,7 +256,7 @@ against a `Config`; the engine emitter (a construction-adjacent verb) renders th
 input text; **execution** runs it; **data management** parses the results back
 into `Frame` / `Trajectory`. **Data management owns the round-trip of every
 arrow to and from disk** — `StructureCodec` (`.xyz`+`.json`), the sidecars
-(`.molstruct` / `.spectra` / `.transport`), `script_emit` (the reserved blocks),
+(`.molstruct` / `.spectra`), `script_emit` (the reserved blocks),
 and `persist` (the `@major` schema check). The `Issue` list is advisory while
 editing and enforcing at generation — `report()` is the only hard gate.
 
@@ -278,8 +268,8 @@ editing and enforcing at generation — `report()` is the only hard gate.
 distinct homes, enforced downward by the L1/L2/L3 rule and wired by the four core
 types. Data management and structure construction are clean; scientific
 validation was the one concern with real gaps and they are now closed (§ 4). What
-remains is **completing** the separation at the execution edges (§ 5 W1–W4) and a
-little hygiene (§ 3 nits, § 2 residuals, W5) — deferred boundary debt, not
+remains is W3 at the execution edge (§ 5) and a little hygiene (§ 3 nits,
+W5) — deferred boundary debt, not
 load-bearing bugs. None of it changes the concern *homes*; it makes them
 uniform. If any of these are scheduled, they become entries in
 [`plans/plan.md`](?doc=plans/plan.md).

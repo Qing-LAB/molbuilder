@@ -358,7 +358,8 @@ def serve_log(port: int) -> Path:
 
 
 def serve_stacks_log(port: int) -> Path:
-    """Thread stacks, appended on ``SIGUSR1`` and before any forced child kill."""
+    """Thread stacks, appended by the server child's ``faulthandler`` on
+    ``SIGUSR1``."""
     return logs_dir() / f"serve-{port}.stacks.log"
 
 

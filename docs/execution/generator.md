@@ -668,17 +668,17 @@ the one shared file; an item with no `engines` list applies to every engine
 
 What an engine answers at each preparation step is
 [`script-preparation.md`](?doc=execution/script-preparation.md) § 4's table:
-sixteen questions, one row each, by the step that asks it — one at describe,
-one at step 2, fourteen inside step 3. An answer of *nothing* is a recorded
+one row for each question, by the step that asks it — one at describe, one at
+step 2, every other inside step 3. An answer of *nothing* is a recorded
 answer, never a gap.
 
 ### 7.2 Where the engines stand
 
-Counted in `data/catalogue.template.toml` (133 items):
+Counted in `data/catalogue.template.toml` (134 items):
 
 | `engines` | items |
 |---|---|
-| SIESTA only | 71 |
+| SIESTA only | 72 |
 | PySCF only | 45 |
 | both named | 12 |
 | no list (every engine) | 5 — `use_gpu`, `gpu_count`, `max_memory_mb`, `verbose_comments`, `write_molwatch_log` |

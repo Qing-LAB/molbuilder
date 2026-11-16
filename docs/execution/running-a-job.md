@@ -19,7 +19,7 @@
 | the rules for you: flags, a failed run, the wall, a run's state | § 3.4, § 3.5, § 3.6, § 4.2 |
 | why it is built this way | § 2 – § 2.2a, § 3.1a |
 | developer reference: routing, GPU mechanics, the readers | § 2.3, § 3.3, § 4.0, § 4.1, § 4.2 *The call*, *Which engine ran* |
-| configuration, the header, checkpoints (moved; numbered pointers kept) | § 5, § 6 |
+| configuration, the header, checkpoints — each owned by its own chapter, pointed to here | § 5, § 6 |
 
 ---
 
@@ -100,8 +100,8 @@ group, a run of points, a benchmark's shelf — sends or starts a walk script, w
 script in turn, with that member's counts ([`job-system.md`](?doc=execution/job-system.md) § 6.0); each run
 script then runs these steps in its own folder.
 
-A real start, from the session log of a SIESTA run started here (shortened; a 2.63.0 run — since 2.64.0
-every banner label is padded to the longest one the banner prints, so the colons stand one column further right):
+A real start, from the session log of a SIESTA run started here (shortened; every banner label is padded to the
+longest one the banner prints):
 
 ```text
 launched-by: jobset-launch
@@ -121,9 +121,9 @@ molbuilder: detected phys_cores=20, n_sockets=2, cores_per_socket=10
   Mode           : a clean start (no restart file here)
   Held atoms     : none held -- every atom free
   Command        :  mpirun -np 1  siesta H2_01_coarse.fdf > H2_01_coarse.out
-  Time limit     : 1800s from the job's start; SIESTA stops 600s before it (running-a-job.md 3.6)
+  Time limit     : 1800s from the job's start; SIESTA stops 600s before it
 [09:58:43-0700] [INFO ] monitor: mb_monitor.pyz started
-[09:58:43-0700] [INFO ] time limit: 1798s left of 1800s; SIESTA stops 600s before it (running-a-job.md 3.6)
+[09:58:43-0700] [INFO ] time limit: 1798s left of 1800s; SIESTA stops 600s before it
 [09:59:08-0700] [INFO ] benchmark: SIESTA wall 24.9s, 54 SCF rows in H2_01_coarse.scf-timing.log
 SIESTA completed:  mpirun -np 1  siesta H2_01_coarse.fdf > H2_01_coarse.out
 ```
@@ -138,7 +138,7 @@ road (shortened) — one process, a script deck on its environment's python:
   Mode        : a clean start (no restart file here)
   Held atoms  : none held -- every atom free
   Command     : /home/qqing/miniconda3/envs/molbuilder-pySCF/bin/python3 H2_01_coarse.py > H2_01_coarse.pyscf.log 2>&1
-  Time limit  : 1800s from the job's start; PySCF stops 600s before it (running-a-job.md 3.6)
+  Time limit  : 1800s from the job's start; PySCF stops 600s before it
 ```
 
 ---
@@ -225,7 +225,9 @@ The rule, at the two moments that matter:
 - **At prep**, T, M and C are resolved and **baked** into the run script as literals.
 - **At run time, on the node**, reading T, M or C is **forbidden**. Only **A** (the scheduler's grant) and
   **H** (the local hardware) may be read, and only to *tune* the launch (rank counts, GPU pinning) or to log —
-  never to decide whether the job can run.
+  never to decide whether the job can run. The node's own tools — `nice` for the monitor, `timeout` around the
+  program's version probe, `nvidia-cuda-mps-control` for MPS, `numactl` for the NUMA wrap and a rank's pin — are
+  asked for only to tune the launch or to log: one missing drops that tuning or that line, never the job.
 
 So at run time the script never runs `which conda`, never reads `molbuilder.json` and never uses `conda run`.
 It runs the activation **verbatim** (`conda activate <env>` or `source activate <env>`), then launches the
@@ -640,18 +642,17 @@ slack.
 
 | where | the line | when |
 |---|---|---|
-| the run script's banner, in the session log | `Time limit : 14400s from the job's start; SIESTA stops 600s before it (running-a-job.md 3.6)` — the label padded, as every banner label is, to the longest the banner prints | every run |
-| the session log | `time limit: 14382s left of 14400s; SIESTA stops 600s before it (running-a-job.md 3.6)` | a time limit told, to an engine that stops before it, as the engine starts |
+| the run script's banner, in the session log | `Time limit : 14400s from the job's start; SIESTA stops 600s before it` — the label padded, as every banner label is, to the longest the banner prints | every run |
+| the session log | `time limit: 14382s left of 14400s; SIESTA stops 600s before it` | a time limit told, to an engine that stops before it, as the engine starts |
 | SIESTA's output | `OUT_OF_TIME: Time is up.` | SIESTA stopped itself at its wall |
 | the session log | `stopped at its time limit: …` and what a launch again will do (§ 3.5) | that stop |
 | the run's state (`jobset status`, the Results tab) | *failed* — `stopped before its end: OUT_OF_TIME: Time is up.` | that stop |
-| the Results tab's *Reason* | `its wall (MaxWalltime): the engine stopped and saved its restart state` (the output family's words for the cause, `_run_ending.cause_words`) | that stop |
+| the Results tab's *Reason* | `its time limit (MaxWalltime): the engine stopped and saved its restart state` (the output family's words for the cause, `_run_ending.cause_words`) | that stop |
 | a PySCF relaxation's output | `WARNING: stopped before the time limit (the job's time limit less its slack): the geometry reached is kept; launch this stage again to continue from it`, then `# relaxed: no` in its trajectory log | the first step past the deadline |
 | a PySCF vibration's output | `RuntimeError: stopped before the time limit (the job's time limit less its slack) before the spectrum was written: launch this stage again` | a displaced SCF due past the deadline |
-| the monitor log | `[WALL] 21m left; the longest of 3 steps so far took 46m -- the step underway may not finish before the wall` | once, in a job sent to a queue |
+| the monitor log | `[WALL] 21m left; the longest of 3 steps so far took 46m -- the step underway may not finish before the time limit` | once, in a job sent to a queue |
 
-A program the item gives no words reads no wall: a TBtrans banner says `… TBtrans checks no clock and runs to it
-(running-a-job.md 3.6)`. A deck that is a script reads it from its environment, and its banner says the engine
+A program the item gives no words reads no wall: a TBtrans banner says `… TBtrans checks no clock and runs to it`. A deck that is a script reads it from its environment, and its banner says the engine
 stops before it — `… PySCF stops 600s before it …`. A run told no wall says
 `Time limit : none stated -- runs until done`. The clause after *stopped at its time limit:* is § 3.5's
 line for that run: a single run whose kind
@@ -790,8 +791,8 @@ The set is closed (`job.RUN_STATES`). Each state's **detail** is one line for a 
   - *stopped before its end: its process on &lt;machine&gt; ended without recording how (asked at …)*
   - *never started: its process on &lt;machine&gt; ended (asked at …)*, or *… the scheduler no longer listed job
     N …* — a run whose job ended before its start began
-  - *stopped before its end: nothing was written for longer than its wall (&lt;wall&gt;; last write &lt;when&gt;),
-    so the job is over; how it ended was not recorded*
+  - *stopped before its end: nothing was written for longer than its time limit (&lt;time limit&gt;; last write
+    &lt;when&gt;), so the job is over; how it ended was not recorded*
 - **`not run`** — *its run ended without starting it*; why the walk passed it by is its run's rows'
   (*it builds on &lt;words&gt;, which failed*, or *the walk ended before it reached this point* —
   [`runs-of-points.md`](?doc=execution/runs-of-points.md) § 4.5).
@@ -934,7 +935,7 @@ does not have to be repeated; if not, just check time stamp".)*
 A sent job cannot run longer than the wall it was sent with (`run.json`'s `placed_on.time`), and every file it
 writes is written while it runs. So a run whose **newest own write** is older than that wall is over, whichever
 machine reads the folder and whether or not its scheduler can be asked: *failed — stopped before its end:
-nothing was written for longer than its wall (1-00:00:00; last write 2026-10-19T16:53:10Z), so the job is over;
+nothing was written for longer than its time limit (1-00:00:00; last write 2026-10-19T16:53:10Z), so the job is over;
 how it ended was not recorded*.
 
 - **The job's own writes** are its outputs, the engine's files and its run script's and monitor's logs — the
@@ -993,7 +994,7 @@ stateDiagram-v2
 | a run directory — `run_status` | the states above | the order of evidence |
 | the Run panel ([`web/results.md`](?doc=web/results.md) § 3a) | `run_status`'s | the same |
 | a ladder row — `jobset status`, the Results ladder ([`web/results.md`](?doc=web/results.md) § 2.4) | `run_status`'s, and the stage's own words (below) | `jobset/runstatus.py` |
-| the trajectory badge ([`web/trajectory.md`](?doc=web/trajectory.md) § 4) | Running · Finished · Stopped | the open file's `run_state`: `ended` → Finished; `stopped`, `out_of_memory` → Stopped; else Running |
+| the trajectory badge ([`web/trajectory.md`](?doc=web/trajectory.md) § 4) | Finished · Stopped · Queued · Not launched · Not run · Record unreadable · Running | the state of the run the open file belongs to (`run_status`'s): `finished` → Finished, `failed` → Stopped, `queued` → Queued, `pending` → Not launched, `not run` → Not run, `unreadable` → Record unreadable, else Running; a file that belongs to no run, by its own `run_state`: `ended` → Finished; `stopped`, `out_of_memory` → Stopped; `unknown` → no badge; else Running |
 | the monitor's closing line ([`run-reports.md`](?doc=execution/run-reports.md) § 2.3) | `finished` · `failed` | `run_status`, asked after it writes its closing record |
 
 A ladder row adds the stage's own words ([`job-system.md`](?doc=execution/job-system.md), *Changed since
@@ -1002,8 +1003,9 @@ prepared, not launched, the ready door's *ready to launch* — *(prepared by mol
 molbuilder prepared it — or *waits for*, and *changed since prepared* with each value that differs; for one not
 prepared, `described` or *waits before it can be prepared*.
 
-The badge reads a **file** and the panel the **run**, so they can differ: an `.out` that ends `>> End of run`
-reads Finished while the run, its run script's last lines or its finish still to come, reads `running`.
+The badge and the panel read the same run's state, so they agree: an `.out` that ends `>> End of run` reads
+Running while its run, its run script's last lines or its finish still to come, reads `running`. Only a file that
+belongs to no run is badged by its own ending.
 
 #### Worked examples
 
@@ -1117,7 +1119,8 @@ rendered with the TARGET's two, this machine included (§ 2.2), and runs them ve
 - `preamble` is any shell, run before the activation; each absolute path it sources is checked on the node
   first (§ 2.0a).
 - Where the two are declared — that machine's own `molbuilder.json`, asked by `envs init-config` at install —
-  and how they reach a record (`jobset probe --write` copies them, asking about each difference) is
+  and how they reach a record (`jobset probe --write` copies them as they stand, asking nothing, and says when the
+copy changed) is
   [`configuration.md`](?doc=configuration.md) § 4 and [`ops/installation.md`](?doc=ops/installation.md) § 2.1.
 
 ### 5.3 The `.sbatch` header
@@ -1139,7 +1142,7 @@ ask and fills nothing ([`job-request.md`](?doc=execution/job-request.md) § 3.1a
 ### 5.4 `launch` and `envs`
 
 `launch.mode` — how `jobset launch` sends a job when no `--mode` is given (`direct` or `submit`; any other value
-and any other key refused by name, `runtime_config.get_launch_mode`) — and `envs`, the environment name per
+and any other key refused by name as `molbuilder.json` is read, `runtime_config._read_launch`) — and `envs`, the environment name per
 category (§ 2.3), are [`configuration.md`](?doc=configuration.md) § 4's.
 
 ### 5.5 The launch-door gate — who may start a run, and how the run proves it
@@ -1169,7 +1172,7 @@ flowchart TD
 
 - **The gate asks nothing and takes no override.** A start without the claim is refused, at a terminal or not:
   *ERROR: &lt;stem&gt;.run.sh was not started by its launch: a run is started by '&lt;the launch&gt;', which writes
-  its records; no other start is taken (job-contracts.md 2.6)*, then `launched-by: NONE -- refused at the
+  its records; no other start is taken.*, then `launched-by: NONE -- refused at the
   launch-door gate`, exit 2
   *(the user's reason, 2026-11-01: a script started by hand has no context — no launch record, nothing to read
   what it leaves — and molbuilder cannot assume the state of a folder it did not open)*. Nothing can ever sit

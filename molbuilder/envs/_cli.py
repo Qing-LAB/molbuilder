@@ -1340,6 +1340,29 @@ class _Aborted(Exception):
     """The person said no at a confirmation.  Not a failure."""
 
 
+def _install_again(recipe, name: str) -> str:
+    """The line that installs ``recipe`` again once its env is gone: the host
+    env by `bootstrap`, which makes the molbuilder this command needs; any
+    other by `install`."""
+    return (_fix_cmd("bootstrap", "--yes") if recipe.category is None
+            else _hints.install_cmd(name))
+
+
+def _remove_it_yourself(state, recipe, name: str) -> None:
+    """THE REMEDY FOR A DIRECTORY THE MANAGER WILL NOT REMOVE
+    (`EnvState.removed_by_hand`): the person's `rm -rf` of it, then the
+    install again -- from outside it when it is the env this process runs
+    from, whose interpreter the removal takes away."""
+    click.echo("Remove it yourself"
+               + (", from OUTSIDE it -- it is the env molbuilder is running "
+                  "from (deactivate it, or open a new shell)"
+                  if state.is_the_running_env() else "")
+               + ", then re-run:")
+    click.echo("")
+    click.echo(f"    rm -rf {state.prefix}")
+    click.echo("    " + _install_again(recipe, name))
+
+
 def _install_one(recipe, effective: str, caps, *,
                  auto_yes: bool = False,
                  clean: bool = False,
@@ -1398,27 +1421,18 @@ def _install_one(recipe, effective: str, caps, *,
         click.echo(f"    {mgr} deactivate          "
                    f"# or just open a new shell")
         click.echo(f"    {state.remove_cmd()}")
-        if recipe.category is None:
-            click.echo("    " + _fix_cmd("bootstrap", "--yes"))
-        else:
-            click.echo("    " + _hints.install_cmd(name))
+        click.echo("    " + _install_again(recipe, name))
         click.echo("")
         click.echo("  Nothing was removed.")
         raise _CannotInstall("--clean refused: that is the env we run from")
     # A directory the manager will not own -- ORPHAN, BROKEN -- cannot be
-    # wiped by `--clean` either: `env remove` refuses both addresses for a
-    # directory without conda-meta/history (measured on conda 26.7.1,
-    # 2026-09-14).  The one remedy is the person's `rm -rf`.
-    unremovable = state.state in (_install.EnvPresence.ORPHAN,
-                                  _install.EnvPresence.BROKEN)
-    if unremovable and clean:
+    # wiped by `--clean` either (`EnvState.removed_by_hand`).  The one remedy
+    # is the person's `rm -rf`.
+    if state.removed_by_hand and clean:
         click.echo("")
         click.echo(f"--clean refused: {state.state_label} -- the manager will "
                    f"not remove a directory it does not recognise.")
-        click.echo("Remove it yourself, then re-run:")
-        click.echo("")
-        click.echo(f"    rm -rf {state.prefix}")
-        click.echo("    " + _hints.install_cmd(name))
+        _remove_it_yourself(state, recipe, name)
         click.echo("")
         raise _CannotInstall("--clean refused: the manager will not remove "
                              "that directory")
@@ -1436,23 +1450,19 @@ def _install_one(recipe, effective: str, caps, *,
             "    " + _fix_cmd("install", name, "--force-resume", "--yes")
         )
         click.echo("")
-        click.echo("Copy-paste to fix (wipes + reinstalls):")
-        click.echo("")
-        click.echo(
-            "    " + _fix_cmd("install", name, "--clean", "--yes")
-        )
-        click.echo("")
-        click.echo("Or the manual equivalent:")
-        click.echo("")
-        # `effective`, not `name`: with an `envs.<category>` override the
-        # recipe name is not the env name, and
-        # every neighbouring line here already uses the effective one.  The
-        # LINE comes from the one speller (`remove_env_cmd`, M3).
-        click.echo("    " + _install.remove_env_cmd(caps.conda_binary,
-                                                    effective))
-        click.echo(
-            "    " + _hints.install_cmd(name)
-        )
+        # THE STATE'S OWN REMEDY, the one a fix command must be (M5: a
+        # command printed is a command that runs): a directory the manager
+        # will not remove is the person's `rm -rf` -- `--clean` and `env
+        # remove` both refuse it -- and a GHOST, whose directory is gone,
+        # `--clean` restores (`EnvState.removed_by_hand`, `describe`).
+        if state.removed_by_hand:
+            _remove_it_yourself(state, recipe, name)
+        else:
+            click.echo("Copy-paste to fix (restores the env, then installs):")
+            click.echo("")
+            click.echo(
+                "    " + _fix_cmd("install", name, "--clean", "--yes")
+            )
         raise _CannotInstall(
             f"env is {state.state_label}; conda create cannot recover it")
     # `can_resume`, not a string compare on the label.  The accessor is the

@@ -76,23 +76,18 @@ lower layer; lower layers must never import a higher one. This is the single
 most important architectural rule — without it the package recreates the
 registry/abstraction tangle that was deleted in favour of dataclass-driven
 introspection. Review keeps it (`process/code-audit.md` § 1c (e); user,
-2026-09-27: "a static code review problem") — until then `tests/test_layering.py`
-scanned every module's imports.
+2026-09-27: "a static code review problem").
 
-**Which layer a module belongs to is a question with an answer, not a
-judgement call.** Ask them in order and stop at the first yes:
-
-| | ask this about the module | if yes |
-|---|---|---|
-| 1 | Is it a **thing**, plus the operations that only make sense on that thing? Does it touch no filesystem, no scheduler, no subprocess, no workflow? | **L1** |
-| 2 | Does it **do something** — read files, run programs, render decks, build a workflow — using L1 things? | **L2** |
-| 3 | Is it a way a **person reaches** L2 — a command line, a web route? | **L3** |
+**Which layer a module is, is read, never judged** — L1 is exactly
+[`architecture.md`](?doc=architecture.md) § 3's index; L3 is `cli`, `web` and
+`__main__`; every other module is L2. A new module is placed by the object it
+owns (below), and the index is where that decision is written.
 
 L1 is *nouns and their codecs*: `structure` is a structure, `identity` is how a
 run id is written, `persist` is how a versioned document is written. L2 is
 *verbs*: `prep` renders, `submit` submits, `parse` reads a run's output. L3 is
-`cli.py` and `web/`, and they reach L2 only through the public package surface
-(`from molbuilder import …`).
+`cli.py` and `web/`; they call the same L2 verbs, each imported from its own
+module.
 
 **And an L1 module is named for the object it owns — every operation on that
 object lives in it.** This is the half that keeps L1 from becoming a bag. If
@@ -108,15 +103,13 @@ you need a new operation on a duration, it goes where durations live; it does
 > making their difference visible — and in 2026-08-24 the record reader was
 > called on a human-written value, `sbatch` was handed `-t 4h`, and it refused
 > the tool's own written value. Then `task.py` needed to canonicalise a time
-> and had to import the entire job-submission package to do it, which the
-> layering test caught as a circular dependency. **The import loop was the
+> and had to import the entire job-submission package to do it — a circular
+> import. **The import loop was the
 > symptom; the wrong home was the defect.** They now live together in
 > `scheduler/quantities.py` — one object, one module, all three dialects.
 
-**`scheduler/` is the one deliberate exception, and it is recorded rather than
-implicit.** By question 1 its `fit`/`place`/`emit` read as verbs, yet it is
-L1, and stdlib-only. Nothing in it is shipped beside a job (its own
-header): its machine records are JSON, read on this machine.
+**`scheduler/` is L1 by the index** — stdlib-only, and nothing in it is shipped
+beside a job: its machine records are JSON, read on this machine.
 
 **Four core types are the lingua franca**; everything else is a verb operating
 on them:
@@ -125,7 +118,7 @@ on them:
 |---|---|---|
 | `Structure` | geometry + metadata (the one codec + key-namer) | L1 |
 | `Frame` / `Trajectory` | a per-step physics record (energy / forces / lattice / scf) + its wrapper | L1 |
-| `Config` (`SiestaConfig` / `PySCFConfig` / …) | the engine-knob **dataclasses** that carry field metadata | L1 |
+| `Config` (`SiestaConfig` / `PySCFConfig` / …) | the engine-knob **dataclasses** — a field's name, type, default and validators; every other fact is the catalogue's | L1 |
 | `Issue` | a validation finding (`error` / `warn` / `info`) | L1 |
 
 Read the flow as: **construction** emits a `Structure`; **validation** reads a
@@ -177,14 +170,12 @@ is [`ops/deployment.md`](?doc=ops/deployment.md).
 
 These are load-bearing. Don't violate one without updating this document.
 
-1. **The dataclass is the lingua franca.** Every builder yields a `Structure`;
-   every generator consumes a `Structure`+`Config`; every parser returns a
-   `Trajectory`; every validator returns `List[Issue]`. Field metadata (label,
-   type, default, range, validator, UI hint) lives on the **dataclass field**,
-   never in parallel registries in the CLI or web layers — the CLI flags and the
-   HTML form are *generated* from the dataclass, not maintained in lockstep. A
-   previous custom registry framework was deleted because `dataclasses.fields()`
-   + click is the right tool. This extends to the client and wire: **one**
+1. **The catalogue is the one home of a parameter's facts.** Every builder
+   yields a `Structure`; every generator consumes a `Structure`+`Config`; every
+   validator returns `List[Issue]`. A parameter's label, unit, range, choices
+   and help live in `data/catalogue.template.toml`, and the form is generated
+   from it; a config class holds a field's name, type, default and validators.
+   This extends to the client and wire: **one**
    workspace store and **one** server response shape
    (`_shared.structure_answer`) — no code path may update part of the
    workspace and not the rest. See [`web/form-schema.md`](?doc=web/form-schema.md),
@@ -235,9 +226,9 @@ These are load-bearing. Don't violate one without updating this document.
    [`execution/job-contracts.md`](?doc=execution/job-contracts.md).
 8. **Don't reinvent wheels.** CLI parsing → click; routing → Flask Blueprints;
    numerics → NumPy; form rendering → vanilla HTML + the existing 3Dmol viewer
-   (no SPA framework); validation → plain functions over field metadata. Adding
-   a dependency is a decision, not a default — each new third-party dep needs a
-   one-line justification in the decisions log.
+   (no SPA framework); validation → plain functions over the catalogue's facts.
+   Adding a dependency is a decision, not a default — each new third-party dep
+   needs a one-line justification in this file's Decisions table.
 
 ---
 
@@ -252,12 +243,12 @@ Considered and rejected; do not reintroduce.
   (`StructureBuilder().with_atoms(…).build()`) — plain dataclasses + freestanding
   `build_*` functions stay.
 - **Generic plugin discovery via setuptools entry points** — a small known set
-  of formats/backends; an explicit `PARSERS = [...]` list is easier to audit.
-- **Parallel field-metadata tables** in CLI or web — read `dataclasses.fields()`.
+  of formats/backends; an explicit registry each package fills by `register()`
+  (`parse/registry.py`) is easier to audit.
+- **Parallel field-metadata tables** in CLI or web — read the catalogue
+  (`template.items_of`).
 - **Sync-from-async wrappers in the generated script** — it is a plain top-to-
   bottom Python file; no event loops, no observability imports.
-- **A separate config file format** (YAML / TOML / INI) for engine parameters —
-  the user edits the generated `.fdf` / `.py` directly; that is the contract.
 - **Parallel client-side state stores for the workspace structure** — three
   shipped in 2026-05/06 and caused every consistency bug in the June audit;
   extend the one workspace dispatcher instead.
@@ -294,7 +285,7 @@ now lives in full:
 | 2026-08-11 | **`BlockSize` is a tunable knob, not a derived value** — set it, leave it for `prep` to propose, or omit the keyword and let SIESTA use its own default. **Its bound is the ORBITAL count over ranks, not the atom count**; a contract had said atoms while its own PROVENANCE example said orbitals, a factor of ten apart | [`engines/tuning.md`](?doc=engines/tuning.md) § 2.11 |
 | 2026-08-11 | **The run directory is defined by what it does** — it hands the engine everything it needs and holds everything it produces. Every file in it is *rendered* from the description or *copied* in; a stage directory means the science changed, a `run-` directory beyond the first means you launched the stage again — warm, from its last run, or `--cold`, from nothing | [`execution/project-layout.md`](?doc=execution/project-layout.md) § 1.0, § 1.5b |
 | 2026-08-11 | **One workflow, flexible in the directions [`execution/architecture.md`](?doc=execution/architecture.md) § 0 names** — surface, environment, engine, calculation kind, job kind — where **every axis is a value read at one point, never a branch**. The two breaches this row once named are closed: `bench`'s duplicate of `jobset` MERGED (the 2026-08-12 fold — benchmarking is `prep` whose parameters are a set), and `transport` was **decided** to be a separate kind rather than a gap (2026-08-11, user — it is not getting edges) | [`execution/architecture.md`](?doc=execution/architecture.md) § 0 |
-| 2026-08-06 | **Stages do not chain.** Each is prepped and submitted on its own, after the user has looked at the previous one — because a stage is a long job, and a chain that continues by itself can spend a week computing from a geometry you would have rejected in a minute. Whatever a run continues from is a **real file copied in**, and *which* run is something the user says | [`execution/project-layout.md`](?doc=execution/project-layout.md) § 1.6, [`execution/job-system.md`](?doc=execution/job-system.md) § 1 |
+| 2026-08-06 | **Nothing starts a stage but you.** A group is prepped and launched when you say — alone, or in a sequence of groups you name at one launch — so a chain never continues by itself from a geometry you have not looked at. Whatever a run continues from is a **real file copied in**, and *which* run is something you say | [`execution/project-layout.md`](?doc=execution/project-layout.md) § 1.6, [`execution/job-system.md`](?doc=execution/job-system.md) § 1 |
 | 2026-08-06 | **The browser writes a portable package; `prep` on the target finishes it.** Forced, not stylistic: `BlockSize` is bounded by the orbital count over the rank count and written *inside* the `.fdf`, and the eigensolver picks both the numerics and the conda environment — so a deck finished on a laptop is guessing. `prep` is a **hub you return to**, not step four of a line | [`execution/project-layout.md`](?doc=execution/project-layout.md) § 2 |
 | 2026-08-06 | **bash is a bootstrap, not a program.** A wrapper does two things — make the environment right, and exec — because activation mutates the calling shell and the launcher must be its direct child. Everything that computes, decides or arranges files is Python's, on the host, before the wrapper is invoked | [`execution/running-a-job.md`](?doc=execution/running-a-job.md) § 2.2a |
 | 2026-08-06 | **The checkpoint system gets a contract, not just a guide** — **31 rules** (22 when it was written; the 2026-08-09 rework split and added to them), each written so a test can assert it: a history with a hole in it is worse than none, because the hole is invisible until somebody needs what was in it | [`execution/checkpointing.md`](?doc=execution/checkpointing.md) |
@@ -305,9 +296,9 @@ now lives in full:
 | 2026-06-17 | **HTTP four-bucket status semantics** (success / scientific-advisory / protocol error / server fault; the scientific-advisory case stays HTTP 200 + `ok:false`); ~~the **run-bundle handoff** (`POST /api/results/bundle`) closes the workflow-continuation gap~~ — **retired 2026-08-29**: citations replaced it (`job-contracts.md` § 5) | [`web/web-api.md`](?doc=web/web-api.md), [`execution/job-contracts.md`](?doc=execution/job-contracts.md) |
 | 2026-06-14/15 | **SIESTA-GPU build-env isolation** — CUDA toolkit lives in the env not on the host; build-from-source recipe via a `BuildSpec` extension | [`ops/installation.md`](?doc=ops/installation.md) |
 | 2026-06-13 | **Validator-package split** (the seven-module `validation/` package) + the test-strategy doc | [`science/validation.md`](?doc=science/validation.md), [`process/testing.md`](?doc=process/testing.md) |
-| 2026-06-07 | **Workspace state unification** — one client dispatcher, one server response shape, one sessionStorage key supersede the three drifting mirrors | [`web/workspace.md`](?doc=web/workspace.md), [`web/overview.md`](?doc=web/overview.md) |
+| 2026-06-07 | **Workspace state unification** — one client dispatcher, one server response shape, and the work kept as files on the server supersede the three drifting mirrors | [`web/workspace.md`](?doc=web/workspace.md), [`web/overview.md`](?doc=web/overview.md) |
 | 2026-05-01 | **Parser output is `Frame` / `Trajectory`, not `Structure`** — promoting parsers to yield `Structure` would silently drop energies/forces/lattice/scf | [`model/parse.md`](?doc=model/parse.md) |
-| 2026-05-01 | **Configs are L1 nouns** (`config/` package) — pure data + field metadata the CLI/form/validators all introspect, kept below the generators | [`web/form-schema.md`](?doc=web/form-schema.md), [`engines/overview.md`](?doc=engines/overview.md) |
+| 2026-05-01 | **Configs are L1 nouns** (`config/` package) — a field's name, type, default and validators; the catalogue holds the rest; kept below the generators | [`web/form-schema.md`](?doc=web/form-schema.md), [`engines/overview.md`](?doc=engines/overview.md) |
 | 2026-05-01 | **click + Flask Blueprints, no custom framework**; **self-contained generated scripts** ~~(emitter pasted, not imported)~~ — **amended 2026-10-05**: what is self-contained is the job's folder; the PySCF script imports the emitter from `mb_pyscf.pyz` beside it | [`process/conventions.md`](?doc=process/conventions.md), [`execution/job-contracts.md`](?doc=execution/job-contracts.md) |
 | 2026-04-30 | **Merge `molwatch` into `molbuilder`** — already coupled by file format, web stack, and author; one repo removes the drift surface | *(history — see the archived log)* |
 
@@ -331,8 +322,8 @@ decisions, the roadmap holds plans).
 - **Every commit keeps the suite green**: the tests the change touched pass
   before it is committed ([`process/testing.md` § 7](?doc=process/testing.md));
   no intermediate-broken-state commits — split a refactor finer instead.
-- **A new dependency needs a one-line justification** in the decisions log
-  naming the wheel it replaces; the default is to add none.
+- **A new dependency needs a one-line justification** in this file's
+  Decisions table naming the wheel it replaces; the default is to add none.
 
 The enforced, mechanical versions of these rules — the guard tests, the exit
 codes, the CLI surface — are in [`process/conventions.md`](?doc=process/conventions.md)

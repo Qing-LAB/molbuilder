@@ -3308,7 +3308,7 @@ def cmd_checkpoint_init(engine, note, calculation, path):
     several independent calculations would share a history and rewind together.
     """
     from molbuilder.checkpoint import (
-        Repo, CalculationNameError, CheckpointError, NestedRepoRefusedError)
+        Repo, CheckpointError, InputError)
     repo = Repo(_resolve_repo_path(path))
     already = repo.initialized
     # `init` IS THE REPAIR VERB, so it is called on an initialised folder too:
@@ -3319,11 +3319,11 @@ def cmd_checkpoint_init(engine, note, calculation, path):
     try:
         state = repo.init(engine=engine, note=note,
                           calculation=calculation)
-    # Exit 2 for both of these: they are the two things the person running the
-    # command fixes -- the folder holds several calculations or lies inside
-    # one, or the name needs repair.  Exit 1 is kept for a fault, so a script can tell "my input was
-    # wrong" from "the machine is broken".
-    except (NestedRepoRefusedError, CalculationNameError) as e:
+    # Exit 2 for what the person running the command fixes -- the folder
+    # holds several calculations or lies inside one, the name needs repair,
+    # the note is blank.  Exit 1 is kept for a fault, so a script can tell
+    # "my input was wrong" from "the machine is broken".
+    except InputError as e:
         click.echo(f"Error: {e}", err=True)
         sys.exit(2)
     except CheckpointError as e:
@@ -3352,7 +3352,7 @@ def cmd_checkpoint_save(note, path):
     The new state's parent is wherever the folder currently stands, so saving
     after a restore forks -- and both attempts stay listed.
     """
-    from molbuilder.checkpoint import CalculationNameError, CheckpointError
+    from molbuilder.checkpoint import CheckpointError, InputError
     repo = _repo_or_exit(path)
     # Say what is happening before it happens.  A save checksums every big file
     # to name the archive, so a folder with a few gigabytes of density matrices
@@ -3361,9 +3361,9 @@ def cmd_checkpoint_save(note, path):
     try:
         state = repo.save(note)
     # Exit 2, the same split `init` draws: this is the person's input, and the
-    # message names the command that fixes it.  Exit 1 is what a script reads
-    # as "the machine is broken".
-    except CalculationNameError as e:
+    # message names what fixes it.  Exit 1 is what a script reads as "the
+    # machine is broken".
+    except InputError as e:
         click.echo(f"Error: {e}", err=True)
         sys.exit(2)
     except CheckpointError as e:
@@ -3465,11 +3465,11 @@ def cmd_checkpoint_tag(name, note, at, path):
     Nothing tags a state on your behalf -- the namespace is yours alone, which
     is what makes your own tags easy to see.
     """
-    from molbuilder.checkpoint import CheckpointError, NoSuchRefError
+    from molbuilder.checkpoint import CheckpointError, InputError
     repo = _repo_or_exit(path)
     try:
         tag = repo.tag(name, note, at=at)
-    except NoSuchRefError as e:
+    except InputError as e:
         click.echo(f"Error: {e}", err=True)
         sys.exit(2)
     except CheckpointError as e:
@@ -3498,7 +3498,7 @@ def cmd_checkpoint_restore(state, force, path):
     still in the state that holds them.
     """
     from molbuilder.checkpoint import (
-        CheckpointError, DirtyWorkingTreeError, NoSuchRefError)
+        CheckpointError, DirtyWorkingTreeError, InputError)
     repo = _repo_or_exit(path)
     click.echo("verifying the archive, then checking what is unsaved here…",
                err=True)
@@ -3535,7 +3535,7 @@ def cmd_checkpoint_restore(state, force, path):
         except CheckpointError as e2:
             click.echo(f"Error: {e2}", err=True)
             sys.exit(1)
-    except NoSuchRefError as e:
+    except InputError as e:
         click.echo(f"Error: {e}", err=True)
         sys.exit(2)
     except CheckpointError as e:

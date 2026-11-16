@@ -4,7 +4,9 @@ and the tables every NetCDF file molbuilder writes or opens shares
 `engines/transport.md` § 2a.12, `engines/vibration.md` § 6.10.5,
 `model/parse.md` § 5e).
 
-MODULE  ncdata (L1; numpy, netCDF4 and persist)
+MODULE  ncdata (L2 by the index, `architecture.md`; it imports only numpy,
+        netCDF4 and L1's persist and atom_permutation, as it travels
+        beside a job)
 ROLE    :class:`Var` -- one variable: its dimensions, its kind (given, raw,
         derived, state, coordinate), its units, its words; :data:`AXES` --
         every axis of every data file, one name for one concept, which

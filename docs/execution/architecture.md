@@ -259,9 +259,10 @@ that failure. This is rule **W1** of
 [`script-preparation.md`](?doc=execution/script-preparation.md) (§ 2.3 there),
 stated here.
 
-- **The entries.** `jobset/prep.py`'s `prep_task` (a task's groups) and
-  `prep_bench` (one stage's benchmark) — what both prep doors call, each
-  appending the verb's decisions to the ledger.
+- **The entries.** `jobset/prep.py`'s `prep_task` is what both prep doors call,
+  with the kind: for a task's groups it preps them; for one stage's benchmark it
+  hands the work to `prep_bench`. Each appends the verb's decisions to the
+  ledger.
 - **The member planner.** `prep.plan_stage` plans one member — its inputs,
   step 2, its launch values stated and placed, the steps
   (`prep_calculation`) — into the prep's one plan. Both prep entries ask it;
@@ -467,7 +468,7 @@ One line per fact; the detail is in the linked chapter.
 | the plan | `JobSet.of(folder, plan=)` — the root's ladder, or a sweep's in its bench container (`materialize.sweep_set_dirs`); its path, `calcdirs.plan_path(folder)` (floor 1) | 3 | [`job-contracts.md`](?doc=execution/job-contracts.md) § 6.1 |
 | what a stage was prepared with, and what changed since | `prepared_with.values_of(calc, stage)`; `prepared_with.changes(calc, stage)` — renders and writes nothing | 4 | [`job-system.md`](?doc=execution/job-system.md), *Changed since prepared* |
 | the machine | `machine_for(base, target=)` — the record by its scopes, the calculation's copy first, saying which scope answered (`Environment.scope`); that copy alone, `calculation_environment(base)`; its machine's name, `calculation_machine(base)` | 1 | [`configuration.md`](?doc=configuration.md) § 5 |
-| the same calculation | `deck_record.same_calculation(engine, a, b)` → each difference, the run settings aside | 1 | [`job-request.md`](?doc=execution/job-request.md) § 5 |
+| the same calculation | `deck_record.same_calculation(engine, a, b)` → each difference, the run settings aside | 1 | [`job-request.md`](?doc=execution/job-request.md) § 6 |
 
 **Stages and the plan**
 
@@ -550,7 +551,7 @@ One line per fact; the detail is in the linked chapter.
 | a SIESTA deck's geometry — the counts, the lattice, the species, the coordinates | `siesta.deck_lines` — each block whole (`count_lines`, `lattice_block`, `species_block`, `coordinates_block`) and its rows; the SIESTA and TranSIESTA decks and a run's own coordinates file ask it; it travels beside a job | 1 | [`engines/siesta.md`](?doc=engines/siesta.md) § 3 |
 | what an engine's record answers for prep — a deck's suffix, the label written into its identity field, what a continuing stage takes from the run before | `runfiles.deck_role(engine)`; `engine_table.relabelled(engine, cfg, label)`; `jobset.model.warm_for(engine, label, cfg, kind, base)` — the warm-files table's rows, gated on the stage continuing — asked by the conductor with the engine's name, never through a seam member (A18) | 1; 3 | [`script-preparation.md`](?doc=execution/script-preparation.md) § 4 |
 | a calculation's electronic state — its charge, spin treatment, unpaired electrons and method, and whether its system is finite | `electronic_state.electronic_state(struct, cfg, kind=)` → `ElectronicState` (`finite` among its fields: the settings gate's dipole advisory reads it, works out no axes of its own); the charge a kind fixes is its record's (`kind_table.kind(k).charge`, a value and why), which the state's rule, the settings gate and the transport citation's refusal read | 1 | [`science/chemistry-correctness.md`](?doc=science/chemistry-correctness.md) § 2a |
-| a size in bytes, in words — a file's, a folder's, free disk, a cap | `units.size_words` — the largest binary unit it reaches, one decimal (`776.4 KiB`, `49.2 GiB`); a memory request is the scheduler's quantity, said in its own terms (`scheduler/quantities`) | 0 | [`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 9 |
+| a size in bytes, in words — a file's, a folder's, free disk, a cap | `units.size_words` — the largest binary unit it reaches, one decimal (`776.4 KiB`, `49.2 GiB`); a memory request is the scheduler's quantity, said in its own terms (`scheduler/quantities`) | 1 | [`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 9 |
 | a length of time, in words | a run's own — its wall time, a loop, the time left, how long since it last wrote — `report_fields.span_words`, the page's `timeSpan` rule in Python (`12s`, `5m`, `6h`); a benchmark's measured times keep the second (`summarize._fmt_duration`, `4m05s`), a measurement compared across trials, not a run's length | 1 | [`model/parse.md`](?doc=model/parse.md) § 2a; [`web/ui-contract.md`](?doc=web/ui-contract.md) § 4 |
 | the order of a structure's atoms, and the way back | the structure's `atom_order`; `transport.sort.sort_by` into an engine's order, `Structure.restored()` back | 1 | [`model/overview.md`](?doc=model/overview.md) § 2.2a |
 | a run's order record | its deck's ATOM-METADATA block, through `runs.declared(run)` | 2 | [`model/overview.md`](?doc=model/overview.md) § 2.2a |
@@ -897,7 +898,7 @@ molbuilder jobset launch task --group 2 --from 01_coarse/run-0
 | your words are read | **7 · surface** | asking and showing is its whole job |
 | the calculation is opened once (`calculation.open`): the description, the template, the job request and the plan prep wrote | **2 · description**, **3 · plan** | only the description knows what you asked; the plan, what prep made of it |
 | the calculation's own copy of its machine's record is read once (`calculation_environment`); a launch never probes | **1 · plain facts** | a fact about that machine |
-| *"tight"* and `01_coarse/run-0` are turned into a stage and a run | **1 · names** | a name, a number and a token reach the same stage |
+| group `2` and `01_coarse/run-0` are turned into the stage the group holds and the run it continues from | **2 · description** (the group, the job request's) and **1 · names** (the token) | a number, a name and a token reach the same stage |
 | what the stage takes is answered (`ready.first_launch_takes`, `continuation_answer`) | **4 · layout** | which run feeds which is the layout's |
 | the request is read off the header prep wrote — `--time` the one value a launch may restate; the job is told its wall (`MB_WALL_S`) | **5 · launch** | prep decided every value; launch sends what prep wrote |
 | the plan is shown and asked | **7 · surface** | so the send is a plain yes |
@@ -1260,7 +1261,7 @@ wish.
 | **A15** | **one door per fact.** Each fact in § 3.2 is answered by its door alone | **review**, and each door's case table |
 | **A16** | **a record is read through its owner's door, and the door takes the folder** (below) | **review** at every milestone; `tests/test_calculation_door.py` — the refusals through the one door |
 | **A17** | **two records, never read as each other.** The description says what is computed, the job request how and where it runs; a value of one is never taken for a value of the other ([`job-request.md`](?doc=execution/job-request.md)) | **review**, and the same-calculation door's case table |
-| **A18** | **a situation is a record, never a branch.** What differs between kinds, engines, folders and files is a field of its record (§ 3.3), read through its door; shared code compares no kind's or engine's name | **review**, against this row and § 3.3's *What stays code*; the tables' doors refuse what their file does not hold; the run script's engine branches found today are [`plans/plan.md`](?doc=plans/plan.md) F2's work |
+| **A18** | **a situation is a record, never a branch.** What differs between kinds, engines, folders and files is a field of its record (§ 3.3), read through its door; shared code compares no kind's or engine's name | **review**, against this row and § 3.3's *What stays code*; the tables' doors refuse what their file does not hold |
 
 **A16 in full.** The name of a record molbuilder writes into a calculation —
 `task.json`, `job-request.json`, `job-set.json`, the template, `run.json`, the
@@ -1352,7 +1353,7 @@ label.
 | ids | whose | what they are |
 |---|---|---|
 | **A1–A18** | this chapter | the rules above — the one meaning of an A-id in the execution chapters, but one: |
-| **A1–A6** | [`checkpointing.md`](?doc=execution/checkpointing.md) | its own rules about the saved history; `checkpoint.py`'s *A1*, *A5*, *A6* are checkpointing's, its *A11* this chapter's |
+| **A1–A6** | [`checkpointing.md`](?doc=execution/checkpointing.md) | its own rules about the saved history; `checkpoint.py`'s *A1*, *A5*, *A6* are checkpointing's |
 | *2026-08-12 plan A8* | none | a comment in `jobset/errors.py` and `jobset/prep.py` citing an old review programme |
 | **W1–W13** | [`script-preparation.md`](?doc=execution/script-preparation.md) | the preparation layer's rules |
 | **W14** and above | [`plans/plan.md`](?doc=plans/plan.md), or an old review programme | plan items cited in code and other chapters — W36, W37, W38, W52, W54, W55, W57 among them; never script-preparation's |

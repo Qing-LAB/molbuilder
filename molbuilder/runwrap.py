@@ -62,6 +62,7 @@ if TYPE_CHECKING:                       # floor 5 reading floor 3's object
     # `resolve.py` is the one builder).  A runtime import would also be legal
     # -- floor 5 may read floor 3 -- but it would be an import nothing calls.
     from .jobset.model import Resources
+    from .warmfiles import WarmList
 
 # Shell-safety guard for wrapper emission.  The wrapper interpolates
 # ``basename`` and ``script_name`` (the script's filename stem and
@@ -1347,7 +1348,7 @@ def _launch_again(resumes: bool, continues: bool,
             "saved -- or, " + back)
 
 
-def _deck_restart(engine: str, text: Optional[str]
+def _deck_restart(engine: str, text: Optional[str], warm: "WarmList"
                   ) -> Tuple[Optional[bool], Dict[str, Tuple[str, bool]]]:
     """What a deck whose settings are KEYWORDS (`engine_table`'s
     ``keyword_reader``) says of the state a previous run left -- read from
@@ -1359,7 +1360,8 @@ def _deck_restart(engine: str, text: Optional[str]
     deck's restart group (`script_emit.restart_group`) -- ``None`` where the
     deck states none or cannot be read.  ``reads``: FILE BY FILE, ``{suffix: (keyword, reads)}``
     for each restart file whose deck keyword (`warm-files.toml`'s
-    ``honoured_by``) the deck states.  One restart group may say yes to one
+    ``honoured_by``, in ``warm``, the list in effect) the deck states.  One
+    restart group may say yes to one
     file and no to another: a force-constant call reads the relaxed density,
     never a geometry (`siesta/vibration_deck.start_state_lines`).
 
@@ -1370,7 +1372,6 @@ def _deck_restart(engine: str, text: Optional[str]
     """
     from .engine_table import keywords
     from .script_emit import restart_group
-    from .warmfiles import warm_list
     group = restart_group(engine, text)
     if group is None:
         return None, {}
@@ -1380,7 +1381,7 @@ def _deck_restart(engine: str, text: Optional[str]
     honoured = next(iter(group.values()), None)
     return honoured, {
         r.suffix: (r.honoured_by, said[key(r.honoured_by)])
-        for r in warm_list(engine).rules
+        for r in warm.rules
         if r.honoured_by and key(r.honoured_by) in said}
 
 
@@ -2106,7 +2107,7 @@ def render_run_wrapper(script_path: Path, *,
                        resumes: bool,
                        relaunch_continues: bool,
                        trial: bool,
-                       warm: Optional[Sequence[str]] = None,
+                       warm: "WarmList",
                        deck_text: Optional[str] = None,
                        notes: Optional[list] = None,
                        point: Optional[PointOfRun] = None) -> str:
@@ -2328,7 +2329,11 @@ def render_run_wrapper(script_path: Path, *,
     # contradict the file it ships beside; a script deck reads what launch
     # copies in, and a stage set to start clean takes nothing
     # (`Job.relaunch_continues`).
-    _restart_honoured, _reads = _deck_restart(engine, deck_text)
+    # THE RESTART FILES IN EFFECT, WHOLE -- the list prep hands in, the
+    # calculation's own copy first (`warmfiles.warm_list`, `job-contracts.md`
+    # § 4.2a): what the script says the deck reads and what it looks for are
+    # the same file's rows.
+    _restart_honoured, _reads = _deck_restart(engine, deck_text, warm)
     # WHAT A LAUNCH AGAIN WILL DO -- one description (`_launch_again`),
     # said after a failure (`running-a-job.md` § 3.5), from the facts the
     # launch decides by and the deck's own restart answer.
@@ -2508,7 +2513,7 @@ def render_run_wrapper(script_path: Path, *,
             held=held, label=names.label, resumes=resumes,
             reads_prior=_restart_honoured,
             # the files the deck says it reads
-            warm=tuple(s for s in _warm_in_effect(engine, warm)
+            warm=tuple(s for s in warm.suffixes
                        if _reads.get(s, ("", True))[1]))
     )
 
@@ -3505,7 +3510,7 @@ def render_wrappers(script_path: Path, *,
                     resumes: bool,
                     relaunch_continues: bool,
                     trial: bool,
-                    warm: Optional[Sequence[str]] = None,
+                    warm: "WarmList",
                     deck_text: Optional[str] = None,
                     point: Optional[PointOfRun] = None) -> RenderedWrapper:
     """Render everything step 4 produces for *script_path*, and write nothing.
@@ -3597,19 +3602,6 @@ def render_wrappers(script_path: Path, *,
                            blobs=blobs, notes=tuple(_notes))
 
 
-def _warm_in_effect(engine: str, warm: Optional[Sequence[str]]
-                    ) -> Tuple[str, ...]:
-    """The restart files this script knows: ``warm``, the list in effect for
-    its calculation that ``prep`` hands in (`warmfiles.warm_list`,
-    `job-contracts.md` § 4.2a), or -- for a script rendered with no
-    calculation behind it -- the engine's own file, every section: the same
-    door asked with no folder.  PySCF's are SUFFIXES rather than extensions
-    -- ``_optimized.xyz`` -- which no plain extension match would catch."""
-    if warm is not None:
-        return tuple(warm)
-    from .warmfiles import warm_list
-    return warm_list(engine).suffixes
-
 
 def write_run_wrapper(script_path: Path, *,
                       names,
@@ -3625,7 +3617,7 @@ def write_run_wrapper(script_path: Path, *,
                       resumes: bool,
                       relaunch_continues: bool,
                       trial: bool,
-                      warm: Optional[Sequence[str]] = None,
+                      warm: "WarmList",
                       plan=None, notes: Optional[list] = None,
                       point: Optional[PointOfRun] = None) -> Path:
     """Write what :func:`render_wrappers` produced, and return the wrapper's path.

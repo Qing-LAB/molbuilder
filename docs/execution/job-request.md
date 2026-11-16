@@ -560,7 +560,7 @@ a linked kind's inputs), and the check reads it there. The check,
 Save — and its refusal names the way out:
 
 ```text
-`tight` is in group 2 with `medium`, which it builds on: one job runs its members one after another with nothing handed between them, so `tight` would start before you have looked at what `medium` produced (execution/job-request.md § 3.3).  Give `tight` a new group -- one more than the group above; or, for it to start from its own deck rather than from `medium`, set its `restart` override to `clean`.
+`tight` is in group 2 with `medium`, which it builds on: one job runs its members one after another with nothing handed between them, so `tight` would start before you have looked at what `medium` produced.  Give `tight` a new group -- one more than the group above; or, for it to start from its own deck rather than from `medium`, set its `restart` override to `clean`.
 ```
 
 The `restart: clean` way out is offered for an independent ladder (an
@@ -674,8 +674,8 @@ It travels with the calculation; what a channel name resolves to never does
 
 - `on_scf_converged`: anything but a JSON boolean;
 - `every_hours`: a string (`"6h"`), `0`, a negative or a non-finite number;
-- `channels`: a name that is not letters, digits, `-` and `_`; `"*"` beside a
-  name;
+- `channels`: a name that is not letters, digits, `-` and `_`, up to 64
+  characters; `"*"` beside a name;
 - `report`: a name that is not a report field, or one this calculation's runs
   can never state; `"*"` beside a name;
 - **a block that leaves a key out** — a block states all four, every time, so a
@@ -744,7 +744,7 @@ stay stated or refused ([`architecture.md`](?doc=execution/architecture.md)
 | the job request | *the stage's run card*, *the calculation's run card*, *the run card* (the launch shape as prep's fold records it), *the job request's allocation* |
 | a flag | *a prep flag* |
 | the catalogue | *the catalogue's default · not chosen* |
-| the description | *this stage's override*, *the template · …* |
+| the description | *this stage's override*, *the template · …*, *the stage's role* |
 | a benchmark | *a pin*, *a sweep point* |
 
 They are written in the deck's PROVENANCE `parameters:` rows for what the deck
@@ -843,6 +843,10 @@ record names (`same_calculation`, [`architecture.md`](?doc=execution/architectur
 - the transport gather — the upstream run computed what this rung's deck
   computes now ([`engines/transport.md`](?doc=engines/transport.md) § 6.1);
 - prep, of a launched stage (§ 5);
+- a transport calculation that reuses a finished one — whether a finished point
+  is the same calculation as the deck this calculation renders for that point
+  now, before its energies are shared
+  ([`engines/transport.md`](?doc=engines/transport.md) § 2a.16);
 - the run record's `current` and the run door's `Run.report` — whether the
   stage's deck, and the check written beside it, are still the calculation the
   run ran ([`model/parse.md`](?doc=model/parse.md) § 5d).
@@ -917,11 +921,12 @@ catalogue's (`runfiles.WRITTEN`):
 - **the reader** checks what the record says of itself against the description
   beside it — the schema, the stage names, the groups' order, each card's one
   value and each benchmark row's list of points, the allocation's spellings, the
-  reports, a card's `time` spelled and an unset key's `null` (§ 3.2);
+  reports, and a card's `time` and `domain` (§ 3.2a);
 - **the preflight** checks what needs the vocabulary or the ladder — through the
   setting door, each value on a card or a benchmark row one its item takes in
-  that home: a run setting the rung reads, of its type, among the choices the
-  kind offers, within its limits (`template.accepts`,
+  that home: a run setting the rung reads, of its type, `null` only where its
+  unset is an answer, among the choices the kind offers, within its limits
+  (`template.accepts`,
   [`template.md`](?doc=engines/template.md) § 5.4); and no stage sharing a job
   with one it builds on (`group.check_groups`, § 3.3).
 
@@ -963,6 +968,7 @@ calculation's copy of its machine's record, a run's files and the template.
 | a run setting a release retired | taken off (4) |
 | a job key nothing reads — `asked`, `written_at` | taken off (4a) |
 | older keys of `task.json` and `job-set.json` | written with the meaning their absence had (5) |
+| a stage its kind does not hold on its own — a SIESTA vibration's `relax` | folded into the other stages, its overrides carried, its job-request entry dropped (5a) |
 | the calculation's copy of its machine's record | today's shape (6) |
 | a run named by the try (`<stem>-run0<role>`) | each file named once (7) |
 | the template's older spellings | today's items (8) |
@@ -982,13 +988,17 @@ calculation's copy of its machine's record, a run's files and the template.
    out of each job's resources in `job-set.json`, saying why. A job set that
    held one names each group's prep again — a benchmark's prep anew where a
    trial is not yet launched.
-4a. `jobset.model.JOB_RETIRED_KEYS`: a job's `asked`, which 2.41.0 retired,
-   and its `written_at`, which 2.42.0 retired — read by nothing since, and
-   left in place by the migrations before 2.65.7. The job set's reader
-   refuses a job holding either, naming this command, which takes it out of
-   each job, saying so, the old file kept as written before 2.65.7.
+4a. `jobset.model.JOB_RETIRED_KEYS` — a job's `asked` and `written_at`, which
+   nothing reads: the job set's reader refuses a job holding either, naming
+   this command, which takes it out of each job, saying so, the old file kept
+   beside the new one (`job-set.json.pre-2.65.7`, when nothing earlier is
+   rewritten with it).
 5. Among them each stage's `group`, the program onto the job (`Job.program`),
    and a placement's source `description` as `allocation`.
+5a. A stage its kind does not hold on its own — a SIESTA vibration's
+   `relax`: folded into the other stages, its overrides carried, its
+   job-request entry dropped. The description's preflight refuses such a
+   stage, naming this command.
 6. Its scheduler as a block — the word it held becomes its kind, each command
    its kind's own name, run from PATH
    ([`configuration.md`](?doc=configuration.md) § 5, M-2) — and its environment
@@ -996,9 +1006,14 @@ calculation's copy of its machine's record, a run's files and the template.
 7. On its stage's stem, SIESTA's history under SIESTA's own name, a session log
    stamped with the clock as the one session log; every byte kept, each old name
    said and in the ledger.
-8. The electronic state's items, renamed items (`template.RENAMED_ITEMS`) and
-   retired ones (`Retired.runs`): each old value carried as a stated value; a
-   value that cannot run as before is refused by name.
+8. The electronic state's items; a `0` on the two NEGF broadenings that meant
+   *not set*, written blank
+   ([`engines/transport.md`](?doc=engines/transport.md) § 2a.13); a SIESTA
+   vibration's older Raman selector, stated as *Compute IR intensities*,
+   *Compute Raman intensities* and *Raman for*; renamed items
+   (`template.RENAMED_ITEMS`) and retired ones (`Retired.runs`): each old value
+   carried as a stated value; a value that cannot run as before is refused by
+   name.
 
 **A run it cannot name so is left as it is, said with its reason, and not
 read.** A run is decided whole — a run of points with every point of it — and

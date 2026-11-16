@@ -231,7 +231,7 @@ is [`job-system.md`](?doc=execution/job-system.md) § 5.0.
   launch's, not prep's ([`engines/transport.md`](?doc=engines/transport.md)
   § 6.1).
 
-**What a kind declares is one record, its rung** (`jobset/prep.py`, `Rung`,
+**What a kind declares is one record, its rung** (`jobset/rung.py`, `Rung`,
 built by the builder its part in the kind table names, `rung` —
 [`architecture.md`](?doc=execution/architecture.md) § 3.3). It is the structure
 step's answer, which every step after it reads:
@@ -299,10 +299,10 @@ re-check them**.
 section from what is already there, so the assembled text is an intermediate and
 the writer's output is the artifact. Check reads that output — the text the
 file will hold, decided before anything is written (§ 3.0). A block the deck
-reads from a file beside it is inlined first (`parse.fdf.read_deck`), so check
-sees what the engine sees. It reuses the existing machinery — the `Issue` type,
-its severity model and `report()` — so a refusal here reads like every other
-refusal in the tree.
+reads from a file beside it is inlined first, through the engine's keyword
+reader (`engine_table.read_deck`), so check sees what the engine sees. It
+reuses the existing machinery — the `Issue` type, its severity model and
+`report()` — so a refusal here reads like every other refusal in the tree.
 
 ### 3.2 The three rules inside step 3
 
@@ -315,7 +315,7 @@ refusal in the tree.
 > refused.** A missing pseudopotential costs one second to find at prep, where
 > the settings gate refuses it before anything is written
 > ([`science/pseudopotentials.md`](?doc=science/pseudopotentials.md) § 1, the
-> one door; the data-files step copies what is there, *2.69.64*); on the
+> one door; the data-files step copies what is there); on the
 > cluster it costs a queue wait plus MPI startup — and in
 > between sits a folder half-built, which reads to its owner as a folder that
 > worked.
@@ -361,6 +361,8 @@ blank row: this table is an engine author's checklist.
 | **3.13** declare | what may be reused from an earlier run | *the engine's warm-files table* — `jobset.model.warm_for(engine, …)`, gated on the stage continuing | no |
 | **3.13** declare | the facts its warm files are conditioned on — SIESTA's optimizer, so a `.CG` is handed only to a stage that runs the same one; PySCF's none | `traits_for` | no |
 | **3.13** declare | the bundle that finishes this deck's run, when the engine alone leaves no result — prep puts it on the job (`Job.finish`) ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.11) | `spec.finish` | **yes** |
+| **3.13** declare | the program that reads this deck, where it is not the engine's own — prep puts it on the job (`Job.program`) | `spec.program` | **yes** |
+| **3.13** declare | the scratch folder this deck's run keeps — prep puts it on the job (`Job.scratch_dir`) | `spec.scratch_dir` | **yes** |
 
 **Everything marked `spec.` arrives through ONE seam member** — `spec_for`,
 *(structure, config, names=…, calculation=…) → `DeckSpec`* — because they are
@@ -369,7 +371,7 @@ needs before or after the deck exists. **The kind is a render argument**
 (`calculation=`): the seam stays one per engine, and a kind's own module writes
 what is kind-specific (§ 4.4).
 
-**Fourteen of the questions are inside step 3, one is at step 2, and one is
+**Every question but two is inside step 3: one is at step 2, and one is
 asked before prep at all** — by the hand-over, which writes the calculation
 (`describe_findings` declares its `step`). **Step 3 is the engine's step; steps
 1, 4 and 5 are the framework's alone.** An engine author reads one section.
@@ -617,6 +619,8 @@ identity is the `SystemLabel` / `JOB` literal, which
 | `engine_frame` | the frame the deck's atoms were placed with, computed once and read by both the coordinate block and the ENGINE-OFFSET record |
 | `check_rules` | what a finished deck of this engine must satisfy |
 | `finish` | the bundle the job runs after its engine to finish the calculation; `None` when the engine's own run leaves the result |
+| `program` | the program that reads this deck, where it is not its engine's own — TBtrans, for a transmission deck; `None` otherwise |
+| `scratch_dir` | the scratch folder this deck's run keeps — a device's leads' Green's functions; `None` otherwise |
 | `created_by` | the producer recorded in ATOM-METADATA |
 
 > **Why a form and not a function.** A function can only be *called*; a form can
@@ -821,18 +825,18 @@ prep:
 
 ```
 ═══════════════════════════════════════════════════════════════════════
-  STEP 2 · RESOLVE — the values for this rung
+  STEP 2 · RESOLVE — the values for this stage
 ═══════════════════════════════════════════════════════════════════════
   in   h2_siesta.template.toml 88 fields
   in   stage                  coarse
   in   the ask                domain=cpu, time=0-01:00:00, mem=4G, mpi_np=1, cpus_per_task=1
 
 ───────────────────────────────────────────────────────────────────────
-  h2_siesta — what this rung decided
+  h2_siesta — what this stage decided
 ───────────────────────────────────────────────────────────────────────
   ⊕    mpi_np                 1                       <- a prep flag
   ⊕    omp_threads            1                       <- a prep flag
-  ⊕    write_coor_step        True                    <- the rung
+  ⊕    write_coor_step        True                    <- the stage's role
   …
 
 ───────────────────────────────────────────────────────────────────────

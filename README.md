@@ -15,8 +15,8 @@ read, keep, and run again.
 
 > **Status:** active research software. Structure building, SIESTA and PySCF
 > setup generation, Raman spectra, live trajectory viewing, checkpoints, and
-> CLI batch workflows are shipped. See [What is available now](#what-is-available-now)
-> for the current Transport and web-batch limits.
+> CLI batch workflows are shipped. See *What is available now* below for the
+> current list.
 
 ## Why use molbuilder?
 
@@ -101,16 +101,19 @@ rather than depending on hidden browser state.
 
 1. On the **Molbuilder** tab, build aspirin by name or open an XYZ file.
 2. Inspect the structure and save it to a project folder.
-3. On **Structure optimization**, generate a PySCF optimization script.
-4. Run the script where PySCF is available.
-5. On **Spectrum**, load the optimized structure and generate a spectrum script.
+3. On **Structure optimization**, choose PySCF and **Send to Task setup**.
+4. On **Task setup**, save the description and press **Prep**; launch it from a
+   terminal: `python -m molbuilder jobset launch task --bundle <project>/<topic>/<calculation>`.
+5. On **Spectrum calculation**, load the optimized structure, describe the
+   vibration, Send it to Task setup, and prep and launch it the same way.
 6. Open the resulting `.spectra.json` in **Results** to inspect peaks, modes,
    and the 3-D vibration animation.
 
 For a molecular-electronics workflow, molbuilder can also label bridge and
 electrode regions, derive a TranSIESTA setup, and prepare electrode input
 files. The **Transport** tab takes a bias list, not a single point: more than
-one value runs a scan, one attempt ladder per bias, launched as one chain job.
+one value is a bias sweep, in which the device and transmission stages each
+run once, with a point per bias.
 A finished conductance run is inspected in **Results**, which draws the
 transmission curve and carries the run's provenance chain.
 
@@ -140,16 +143,19 @@ environment for you. The job files preserve that backend choice when you run
 locally or transfer a prepared run directory to a cluster. The [installation guide](docs/ops/installation.md) covers SIESTA,
 PySCF, optional GPU SIESTA, and optional structure-building tools.
 
-## The six tabs
+## The nine tabs
 
 | Tab | Use it for |
 |---|---|
 | **Molbuilder** | Build, load, inspect, edit, and save a molecular structure. |
-| **Structure optimization** | Generate a SIESTA or PySCF relaxation script. |
-| **Spectrum** | Generate and monitor a Raman spectrum calculation. |
-| **Transport** | Generate a TranSIESTA device script from a region-labeled structure. |
-| **Results** | Open a structure, live optimization trajectory, or Raman spectrum. |
+| **Structure optimization** | Collect a SIESTA or PySCF relaxation's parameters and Send them to Task setup. |
+| **Spectrum calculation** | Describe a vibrational spectrum and Send it to Task setup; view a `.spectra.json`. |
+| **Transport calculation** | Cite a finished junction run, set the bias, and write the transport calculation's description. |
+| **Task setup** | Edit a calculation's stages and machine settings, save, and prep. |
+| **Results** | Open a structure, a trajectory, a spectrum or a transport report. |
+| **This machine** | This machine's notification channels and run-report listener. |
 | **Documents** | Read the in-app project documentation. |
+| **JupyterLab** | An optional notebook, in its own environment. |
 
 A useful rule of thumb: save a structure in Molbuilder before moving to another
 tab. The project sidebar then provides the same file to Structure optimization,
@@ -165,9 +171,8 @@ Spectrum, Transport, and Results.
 | Generate and view Raman spectra | Shipped |
 | Checkpoint and restore a run directory | Shipped |
 | CLI JobSets for staged runs, sweeps, benchmarking, and SLURM submission | Shipped |
-| JobSet controls, batch plan, and batch status in the web UI | Planned |
-| TranSIESTA zero-bias device-input generation | Shipped |
-| Transport output parsing, transmission charts, and multi-bias I-V scans | Planned |
+| Prepare a calculation's groups from the web UI (Task setup) | Shipped — launching stays at the terminal |
+| TranSIESTA transport: bias sweeps, the transmission curve and I-V in Results | Shipped |
 
 The [plan](docs/plans/plan.md) is the single source of truth for planned work.
 
@@ -212,8 +217,7 @@ configuration details.
   ```
   Everything lands inside that environment, including the browser, and no step
   needs root. See [testing](docs/process/testing.md).
-- **Current work:** [the plan](docs/plans/plan.md) and
-  [document migration audit](docs/archive/2026-07-28-document-migration.md)
+- **Current work:** [the plan](docs/plans/plan.md).
 
 ## License
 
