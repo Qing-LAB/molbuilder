@@ -2,8 +2,9 @@
 
 **Role:** reference
 **Domain:** process
-**Companions:** [`testing.md`](?doc=process/testing.md) — several audit invariants
-below have graduated into enforced artifact lints (§ 5 rule 5); [`conventions.md`](?doc=process/conventions.md)
+**Companions:** [`testing.md`](?doc=process/testing.md) — what a test may ask
+of the code, and why the invariants below are review steps (§ 1 rule 5);
+[`conventions.md`](?doc=process/conventions.md)
 — the conventions those tests gate; [`web/web-api.md`](?doc=web/web-api.md) — the
 response-envelope spec the API dimension checks against;
 [`science/validation.md`](?doc=science/validation.md) — the scientific-correctness
@@ -45,8 +46,9 @@ These hold regardless of which dimension you're auditing.
    same bug because the audit hadn't been generalised (fixed 2026-06-14, `e7651cb`).
 5. **Graduate an invariant into a test once it stops finding new violations.** The end
    state of a mature audit dimension is an **artifact lint** that fails the build —
-   see [`testing.md § 3a`](?doc=process/testing.md). Several of the traps below have
-   already made that jump (noted inline). When an audit stops turning up fresh
+   see [`testing.md § 3a`](?doc=process/testing.md). None of the traps below is
+   held by a test: the lints they had read source and were retired; what a
+   page shows is asked of the page as served (§ 3.1). When an audit stops turning up fresh
    violations, that's the signal to write the test and retire the manual pass.
 
    **An artifact lint is not a source pin, and this step means only the first.**
@@ -87,17 +89,17 @@ one" — an omitted argument says *I did not think about it*, an explicit
 > state (one record, no ambiguity), so nothing raised and the tests passed —
 > on any machine with a single record. On a machine holding two, `prep bench`
 > failed at the WRITE while its own PREVIEW succeeded, because preview
-> returns before that line. Signature is now `(base, target)`; the same call
-> is now a `TypeError` at the first execution.
+> returns before that line. Its signature is now
+> `bench_inputs(calc, target, …)` (`jobset/prep_inputs.py`); the same call is
+> now a `TypeError` at the first execution.
 
 **Corollary — a default is a decision, and decisions get written down.** If
 you cannot state in one sentence why the default is the *right answer* rather
 than merely a *safe-looking* one, it should not be a default. `warm_list(engine)`
 asked with no folder passes this test only for a folder no calculation
 describes — a folder molbuilder did not write, where the shipped rules ARE the
-answer. Status passed it for every folder until 2026-10-03 on the claim that a
-description may not be in hand, while it held the calculation's folder: the
-calculation's own list was ignored there (plan W36 ⑧).
+answer. A caller that holds the calculation's folder passes it: asked with no
+folder, the calculation's own list is ignored.
 
 ### D2 — Scope is stated, never achieved by construction
 
@@ -106,7 +108,8 @@ correctly is a trap for the next reader and the next refactor.
 
 > `_render_sbatch_for(base / f"{name}.sh", ...)` derived its config scope from
 > `script_path.parent`, and worked only because the path was chosen so the
-> parent was the bundle root. It now passes `project_dir=base` outright.
+> parent was the bundle root. It now takes the machine record
+> (`machine_record=`) outright.
 
 ### D3 — The UI answers its own preconditions; the server is not the validator
 
@@ -148,7 +151,7 @@ Three reviews were reported as complete having run only sweeps. The rules:
 
 **R1 — Read the full text of what you changed.** Every function you wrote,
 end to end, beside the signature of every function it calls. Compare the call
-against the definition, argument by argument. The `_bench_inputs` defect is
+against the definition, argument by argument. The `bench_inputs` defect is
 visible in two seconds this way and invisible to every grep.
 
 **R2 — Execute every path, not every function.** A door with modes (plan and
@@ -191,9 +194,9 @@ uncorrelated with the property it names. Two recorded cases:
   occurs in its own declaration.
 
 **The one legitimate reason to open a source file in a test** is to *execute*
-what you lift out of it: `_row_badge` and `_continue_tail` in
-`tests/test_task_setup_tab.py` slice a block of `viewer.js`, hand it its
-inputs, and run it under node. A refactor that keeps the rule keeps them
+what you lift out of it: `tests/test_task_setup_tab.py` loads
+`task-setup/viewer.js` under node as the page loads it, against the app's own
+routes, and asks what it does. A refactor that keeps the rule keeps it
 passing. Lifting to *read* is the pin; lifting to *run* is a test.
 
 ### 1c.1 The five questions that replace them
@@ -345,7 +348,7 @@ reference fact cannot tell apart the only two things that matter:
 Both read identically to every tool. Measured 2026-09-22: `stages.config_for`
 is ~90 lines implementing per-rung override bags with no production caller.
 That is equally consistent with *"per-rung overrides silently stopped applying"*.
-It was only settled as residue by reading `jobset/transport_rung.py::resolve_transport`
+It was only settled as residue by reading `transport/rung.py::resolve_transport`
 end to end and finding it does strictly more — provenance, and a refusal for a
 shared value posing as a per-stage override — plus `d6f0218d`'s message saying
 the projection was deliberately retired.
@@ -361,16 +364,13 @@ the projection was deliberately retired.
 4. Read the **test that keeps it alive**, and say whether it pins a contract
    that would lose coverage.
 
-A candidate list from a scan is a set of **leads**, and is recorded as leads.
-It is not a deletion plan, and a row written from one must say so — see
-`plans/plan.md` § 2 row **X1**, which is written that way on purpose.
+A candidate list from a scan is a set of **leads**, recorded as leads.
+It is not a deletion plan, and a row written from one says so.
 
-*Why this rule exists:* the same session produced a confident "nothing reads
-this, it looks like an offered control" about `TransportConfig.num_threads`,
-inferred from the presence of form metadata. The route that consumed that
-metadata then (`web/blueprints/transport.py:543`) filtered the field out by
-predicate, with a comment naming it. The claim was half wrong, and one file
-read would have caught it.
+*Why this rule exists:* a confident "nothing reads this, it looks like an
+offered control", inferred from the presence of form metadata, was half
+wrong — the route that consumed the metadata filtered the field out by
+predicate, with a comment naming it; one file read would have caught it.
 
 ### 1. Name what the deletion makes UNREACHABLE one layer away
 
@@ -402,12 +402,9 @@ sweep — which had already run its symbol searches four times.
 | **(b) the grep HITS, in a docstring, and the hit is dismissed** | a docstring hit reads as "just prose, not code" | `transport/__init__.py` named `:mod:.preflight`, `:mod:.engine_base`, `:mod:.results` — **three deleted modules** — plus `@register_engine`, a decorator that exists nowhere. A grep for any of those four **would have hit it, at five lines**. Every sweep did hit it. Nobody read it, and that docstring is the first thing anyone opening the package reads |
 | **(c) the symbol never existed at all** | the grep returns one hit — the prose inventing it — and "one hit, in a comment" reads as nothing | `registry.py` documented `parse_dir` as *"Used by JobMonitor, Results, and bundle handoff"*. **`JobMonitor` has never existed anywhere in the tree.** So did `transport.transiesta.validate` and `deck.py::_transport_view` |
 
-> ***The plan claimed all of these were shape (a)*** — *"every miss in the
-> 2026-09-17 sweep"* was said to be a prose name a symbol search could not
-> match. Re-derived 2026-09-18 against the actual misses: **(a) is the minority.**
-> Most were (b) — the search found them and the finding was skipped — and (c) is
-> a class a symbol search reports as *absence* when absence is the finding.
-> A protocol written against (a) alone catches almost none of them.
+> Most misses are (b): the search found them and the finding was skipped;
+> (c) is a class a symbol search reports as *absence* when absence is the
+> finding. A protocol written against (a) alone catches almost none of them.
 
 **So the rule is not "grep harder", it is: a hit inside a docstring or comment
 is a CLAIM, and a claim gets read.** The cheapest reliable form is to open the
@@ -415,16 +412,14 @@ package `__init__.py` and the module header of every file the deletion touched,
 and read them — they are short, they are where the design is stated, and they
 are the ones nobody opens.
 
-### 3. Re-run the membership asserts
+### 3. Check the two rosters by hand
 
-One command, and they exist for exactly this: `conventions.md` § 3's command
-roster and `presenters.md` § 1's viewer table are set-equal to `cli.commands`
-and to the `register()` calls
-([`plan.md` § 5p.3p](?doc=plans/plan.md) step 10). Deleting a command or a
-presenter now fails a named test that quotes the document.
+`conventions.md` § 3's command catalogue against `cli.commands`, and
+`presenters.md` § 1's viewer table against the `register()` calls; no test
+compares them.
 
-**They are necessary and not sufficient**, which is the whole reason this
-section exists beside them: no membership assert would have caught
+**That check is necessary and not sufficient**, which is the whole reason this
+section exists beside it: no roster check would have caught
 `TransiestaEngine`. The class was still imported, still registered, still
 green — it had simply become unreachable.
 
@@ -483,18 +478,13 @@ guard in the same commit:
 ```
 
 **Precedents.**
-- 2026-05-28 — `.issues-panel` (`style.css:357`).
+- 2026-05-28 — `.issues-panel`.
 - 2026-06-14 — `.ctab-panel label.check` (`trajectory-inspector.css`, commit `e7651cb`,
   the "ghost hide-frozen toggle").
 
-**Audit invariant — a review step again.** `tests/test_css_hidden_attribute_audit.py`
-cross-referenced the IDs JS toggles via `.hidden = …` against the CSS rules that target
-them, and failed on a non-`none` `display` without a `[hidden]` guard — until
-2026-09-10, when it was retired with the other tests that read source for where code
-lives (`082ba979`). So this is checked by hand, per sheet, as the list below says; the
+**Audit invariant — a review step.** Checked by hand, per sheet (§ 5.1); the
 behaviour it protects is asserted where a page test reads the COMPUTED style (e.g.
-`test_siesta_vibration_e2e.py::test_the_results_tab_shows_a_siesta_vibrations_free_atoms_infrared`, whose `.spectra-phase[hidden]` case is exactly this
-class).
+`test_siesta_vibration_e2e.py::test_the_results_tab_shows_a_siesta_vibrations_free_atoms_infrared`).
 
 ### 3.2 Per-feature option-dependency traversal
 
@@ -514,18 +504,15 @@ function in the should-fire list that doesn't reference it is a candidate.
 functions already use, then pin the regression **through the option itself**: toggle it
 in a browser and assert the dependent surface changed.
 
-> **Corrected 2026-09-03.** This step used to say "add a source-text invariant test
-> asserting each function's body references the option", and
-> `test_trajectory_hide_frozen_invariants_js.py` was written to it. That is a source
-> pin, not a lint — it greps for `"hide-frozen"` inside a named function body, so it
-> passes on a function that reads the option and then ignores it, and fails on a
-> correct refactor that renames the local. The observable is a **visible checkbox with
-> a visible effect** (frozen atoms' force arrows appear or don't), which is an e2e.
-> See [`testing.md § 3a`](?doc=process/testing.md).
+> A source-text test that a function body names the option is a pin, not a
+> lint: it passes on a function that reads the option and ignores it, and fails
+> on a rename. The observable is a **visible checkbox with a visible effect**
+> (frozen atoms' force arrows appear or don't) — an e2e
+> ([`testing.md § 3a`](?doc=process/testing.md)).
 
 **Precedents.**
 - 2026-06-14 — trajectory-inspector `refreshForcesStatus` ignored hide-frozen entirely
-  (fixed `65e8246`; the source pins added in `66dab9a` are retired 2026-09-03 -- see § 5 rule 5).
+  (fixed `65e8246`).
 - 2026-06-13 — a projection-toggle label inversion: a different bug, same
   audit-dimension gap (no per-feature traversal caught it).
 
@@ -690,9 +677,9 @@ change" from "the handler never ran."
 For each component CSS file:
 
 - [ ] Every class/id selector that sets `display: <not none>` has a matching `[hidden]`
-      guard (§ 3.1) — by hand: its test was retired 2026-09-10 (`082ba979`).
+      guard (§ 3.1) — by hand (§ 1c).
 - [ ] No full selector is defined in two CSS files (a cascade collision where the
-      later-loaded copy silently wins) — by hand: its test was retired the same day.
+      later-loaded copy silently wins) — by hand (§ 1c).
 - [ ] Every id used in HTML has a CSS rule *or* a JS reference; dead selectors get
       deleted.
 - [ ] Colour/spacing values come from the token sheet; raw hex literals outside
@@ -747,15 +734,6 @@ When a new bug class turns up:
    OUTCOME can reach it — what ships, asked as it ships, never the source it was
    made from ([`testing.md § 3a`](?doc=process/testing.md)). If one can, write it
    and name it here; if none can, the invariant stays a review item (§ 1c).
-
-> **Migration note.** Corrected against code during the docs migration: the `[hidden]`
-> invariant § 3.1 only *wished for* a test in the legacy copy — it then existed
-> (`test_css_hidden_attribute_audit.py`), as did the duplicate-selector guard
-> (`test_css_no_duplicate_selectors.py`), and both were marked enforced; both were
-> retired on 2026-09-10 (`082ba979`) and are review steps again. Test-layer
-> terminology was aligned to the current marker scheme (`unit`/`module`/`interface`/
-> `integration` + `e2e`, not the retired "L1–L5"). One precedent commit hash that no
-> longer resolves in history was dropped while keeping its lesson.
 
 ## Diagram faithfulness — a standing pass *(user, 2026-08-21)*
 

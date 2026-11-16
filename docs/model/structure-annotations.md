@@ -57,14 +57,8 @@ is how a second spelling gets into a second place. Assigning to it writes the
 label; assigning an empty set removes it, so "carries no label" and "carries an
 empty label" cannot both exist.
 
-> **Until 2026-07-31 this was a second storage** — `frozen_atoms` was its own
-> field, surfaced as a `flag` channel beside the labels. It cost two validators,
-> two remaps on every atom-count change, two keys in the saved file, and a live
-> inconsistency: the web layer sent the fact twice (a label AND an `is_frozen`
-> flag), so to stop the selection panel double-rendering it, the label was
-> supplied on `/api/selection/eval` and withheld on `/api/selection/atoms`. Two
-> routes, two answers about one structure. Folding it into the label store
-> removed all of it and added one accessor.
+> One store means one validator, one remap on every atom-count change, one key
+> in the saved file, and one answer on every route.
 
 ```mermaid
 classDiagram
@@ -106,8 +100,8 @@ This is a correctness requirement, not an add-on.
 
 ```python
 struct.annotations                       # {name: AtomChannel} — extensible extras
-struct.channels() -> {name: AtomChannel} # unified: every label (tag) + extras  (:745)
-struct.get_channel(name) -> AtomChannel | None                                       # (:759)
+struct.channels() -> {name: AtomChannel} # unified: every label (tag) + extras
+struct.get_channel(name) -> AtomChannel | None
 struct.atom_annotations(i) -> dict       # everything on atom i (for the UI / filter)
 struct.set_channel(name, AtomChannel(...))  # set an EXTENSIBLE channel; a name a
                                             # label already has -> rejected
@@ -116,10 +110,10 @@ struct.frozen_atoms                         # THE read for the reserved label (a
 ```
 
 Labels live in `.regions` and are *surfaced* as `tag` channels by `channels()`;
-extensible channels live in `.annotations`. There is no third place. Module helpers: `AtomChannel` (`:105`), `annotations_to_json` /
+extensible channels live in `.annotations`. There is no third place. Module helpers: `AtomChannel`, `annotations_to_json` /
 `annotations_from_json` (the JSON codec used by `metadata_to_dict` /
-`apply_metadata_dict` — see `structure.md § 2.2`), `copy_annotations` (`:199`),
-`remap_annotations` (`:204`).
+`apply_metadata_dict` — see `structure.md § 2.2`), `copy_annotations`,
+`remap_annotations`.
 
 ---
 
@@ -152,19 +146,16 @@ The channels persist **identically wherever a structure is saved**:
   The annotations field was **added at schema v4**; the current schema is
   `sidecars/molstruct.SCHEMA_VERSION`, and the versions read are
   `sidecars/molstruct.READABLE_VERSIONS` — cite the constants, never re-spell
-  them (this text said *v9* and *{7, 8, 9}* while the code had moved to 11).
+  them.
   v7 moved the reserved `frozen_atoms` label into `regions` and stopped writing
   a top-level key for it — one store means one key. **Schema 3–6 do not load**:
   the reader accepts nothing before 7, and `apply_metadata_dict`
-  raises on a top-level `frozen_atoms` because it is not a metadata field.
-  (This said the opposite — that v3–v6 still load and are folded in — until
-  2026-09-05. Nothing folded them: `METADATA_FIELDS` has never contained the
-  key, and the translation that did exist elsewhere was deleted the same day.) Envelope + version details
+  raises on a top-level `frozen_atoms` because it is not a metadata field. Envelope + version details
   are in `structure-molstruct.md`.
 - **The `.fdf` / `.py` ATOM-METADATA reserved comment block.** The *same* data
   embedded in the generated script's comment area — the script's
   engine-agnostic copy of the data model (a PySCF script carries the identical
-  block). `script_emit.emit_atom_metadata` (`:212`) writes it;
+  block). `script_emit.emit_atom_metadata` writes it;
   `Structure.apply_atom_metadata` reads it back.
 
 This is **data**, not engine setup — it records what the user labelled, nothing
@@ -182,12 +173,10 @@ carrier of the run's labels — through the block's one reader
 **Trusted fragment ≠ sidecar file:** the block omits the sidecar envelope's
 `geometry_hash`, so it is applied by that reader and never through
 `parse.sidecars.molstruct.load_text`, the validator for untrusted standalone files, which
-would reject the envelope-less block. *(The browser posted it back to
-`/api/build/load` beside a text until 2026-09-25.)*
+would reject the envelope-less block.
 
 **The block states the deck's order record, and the block is the serialiser's**
-*(2026-10-14 — [`model/overview.md`](?doc=model/overview.md) § 2.2a, plan
-§ 5ab R2)*. A deck written from a reordered copy states its `atom_order` in
+*([`model/overview.md`](?doc=model/overview.md) § 2.2a)*. A deck written from a reordered copy states its `atom_order` in
 this block (I5) — the run's one order record, read by the run door through
 `runs.declared` and nowhere else. **The block carries every metadata field
 but the box** — the labels, the channels, the customized rows, the order
@@ -200,8 +189,8 @@ its serialiser's fields. **One predicate decides the block has something to
 say** (`structure.atom_metadata_has_something`), and one reader takes it —
 the block's reader and the order record's dict reader — for
 `Structure.apply_atom_metadata`, `Declared.atom_metadata_for` and the finish alike
-(until 2026-10-14 `atom_metadata_for` counted only `regions` and
-`annotations`, so a deck stating only customized rows was dropped). A deck is
+— `atom_metadata_for` asks that predicate, so a deck stating only customized
+rows is read. A deck is
 one frame: read onto the several frames an engine wrote from it, its named
 values are the structure's rows and the first frame's. The bridge above then
 **marks** what it builds: the Results tab shows a reordered run's structure in
@@ -248,19 +237,11 @@ non-empty string — `Structure._validate_regions`).
 > is read from it, and every reader asks that — the emitter,
 > the lead extraction, the checks; the browser does not decide electrode-ness at
 > all, it carries the labels and the server reads them. *(User, 2026-10-02:
-> "these are just two matching names". Until that day any label ending
-> `-electrode`, `_electrode` or bare `electrode` was a lead, by
-> `is_electrode_label` — a pattern written 2026-06-18 for a multi-lead
-> transport the ladder never built, so a third such label passed the sort and
-> the device deck declared a lead no rung writes. The vocabulary sat in
-> `config/transport.py` until the same day, when that module's config class
-> retired and it moved to the module that owns the partition the labels make.)*
+> "these are just two matching names".)* A transport run is two-terminal, so
+> any other label — `tip-electrode` included — is not a lead.
 >
-> *(This cited a JS mirror, `region-label-definitions.js::isElectrodeLabel`,
-> "pinned to agree by `test_region_label_definitions_js.py`". Both files went in
-> `6bf22242`, when the UI stopped hand-listing labels and began choosing from
-> what a structure actually carries. Nothing replaced them, because nothing
-> needed to: one implementation cannot disagree with itself.)*
+> The browser holds no list of lead names, so there is no second
+> implementation to agree.
 
 The canonical labels the Modify tab ships and the emitter interprets:
 
@@ -316,12 +297,6 @@ the one place a free-text input names a region, and it stays there.
 *(User decision, 2026-09-07: "just for the electrodes … frozen_atoms is so
 clear we don't want to touch that.")*
 
-*(The marker was written 2026-09-07 against the `*-electrode` pattern, when any
-label ending `-electrode` was a lead and a PubChem search for `gold-electrode`
-would have labelled the whole molecule a TranSIESTA electrode — silently, at
-HTTP 200. The pattern retired 2026-10-02 (§ 5); the marker stays as
-molbuilder's signature.)*
-
 Measured to survive both persistence paths: the `.molstruct.json` pair, and the
 deck's ATOM-METADATA block — whose lines are already `#`-prefixed comments and
 whose readers strip a prefix rather than splitting on the character.
@@ -362,21 +337,11 @@ nothing. Translation to server rules is `rowToRule` (`stores.js`):
 1-based→0-based shift), `by_residue` → `by_residue_name`, and `by_label` →
 `by_region`. *(Not built in the browser: a `value` channel (`charge`, …) and
 its range predicate — `KIND` holds `category` and `tag` — and the kind menu
-read from `channelKinds` instead of a literal list in `ui.js`; plan § 8,
-rows 11 and 14.)*
+read from `channelKinds` instead of a literal list in `ui.js`.)*
 
 ---
 
 ## 7. Status
-
-**Shipped:** the channel model (`AtomChannel`, `channels()`, extensible
-`annotations`) + the index-remap; ONE label store with the reserved `frozen_atoms`
-label in it and `Structure.frozen_atoms` as its designated read (2026-07-31);
-sidecar persistence (annotations since v4, current v11) + the ATOM-METADATA block
-emit/apply + the Results recovery bridge;
-the two built-in engine translations (`frozen_atoms` → `Geometry.Constraints`, region
-tags → transport blocks); the region-label vocabulary + `ELECTRODE_LABELS`
-(Python, § 5); the JS L1/L2/L3 channel model + the generalized filter.
 
 **`mass_amu`, a mode's maker's channel** *(2026-10-10; 2026-10-18)* — each
 atom's mass, the one a mode's coordinate is weighted by, written by a mode's
@@ -385,15 +350,11 @@ Like every value channel it is the writer's: carried, remapped and shown
 (the transport data file keeps it as its `mass_amu` variable), never read for
 a meaning — no calculation reads a mass off a structure.
 
-**Open work** (`plans/plan.md` **W15**): **`value`-channel filtering and
+**Open work:** **`value`-channel filtering and
 display** — the server must resolve a `by_value` rule, and MolView must show a
 value channel. The channels already reach the browser on the load door
-(`/api/build/load`, inside the structure's own dict, `structure_answer`) and travel in MolView's model and back
-(this said they must still be brought there). *(This named
-`/api/selection/atoms` until 2026-09-07. That route is deleted — it read a file
-the browser had already loaded, which is the opposite of where this feature
-belongs: MolView holds the atoms, so a value channel travels with them.)* The
-first producer is a mode's frame set (`mass_amu`, above); no feature writes
+(`/api/build/load`, inside the structure's own dict, `structure_answer`) and travel in MolView's model and back. MolView holds the atoms, so a value
+channel travels with them. The first producer is a mode's frame set (`mass_amu`, above); no feature writes
 per-atom charge or spin yet. The **generic `fdf`-strategy
 registry** for translating *new* channels into engine blocks is the additive
 extension point above; only the two built-ins are wired today.

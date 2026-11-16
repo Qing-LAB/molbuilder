@@ -54,7 +54,7 @@ def outside_range(value, rng) -> list:
             and (v < lo or v > hi)]
 
 
-def _validate_config_metadata(cfg, refused=frozenset(),
+def validate_config_metadata(cfg, refused=frozenset(),
                               foreign=frozenset(),
                               inactive=frozenset()) -> List[Issue]:
     """The field metadata's own findings.  Three sets of fields have no
@@ -64,7 +64,7 @@ def _validate_config_metadata(cfg, refused=frozenset(),
     calculation does not carry: the kind narrows the catalogue (§ 6.3), so
     their values are not this calculation's to warn about
     (:func:`not_carried_by`) -- and ``inactive``, the settings that enter
-    nothing here (:func:`_inactive`), whose one line says so."""
+    nothing here (:func:`inactive_settings`), whose one line says so."""
     issues: List[Issue] = []
     if not is_dataclass(cfg):
         return issues
@@ -149,7 +149,7 @@ def not_carried_by(engine: str, calculation: str) -> frozenset:
                      if it.name not in carried)
 
 
-def _check_fixed_on_every_rung(cfg, calculation: str,
+def check_fixed_on_every_rung(cfg, calculation: str,
                                engine: str) -> List[Issue]:
     """A config holding another value for what every rung fixes alike
     (`engines/template.md` § 6.4) -- SIESTA's per-step forces and
@@ -177,7 +177,7 @@ def _check_fixed_on_every_rung(cfg, calculation: str,
     return issues
 
 
-def _check_values(cfg, calculation: str, engine: str) -> List[Issue]:
+def check_values(cfg, calculation: str, engine: str) -> List[Issue]:
     """A value that cannot stand for its item on this kind is refused, with
     the ONE clause the per-value door gives (`engines/template.md` § 5.3,
     ``template.why_not``): a component the kind fixes, a choice it does not
@@ -202,11 +202,11 @@ def _check_values(cfg, calculation: str, engine: str) -> List[Issue]:
     return issues
 
 
-def _inactive(cfg, calculation: str, engine: str, *,
+def inactive_settings(cfg, calculation: str, engine: str, *,
               refused: frozenset = frozenset()) -> Dict[str, str]:
     """The settings that enter nothing here, each with why
     (`template.inactive_settings`), whatever they hold.  Asked once by
-    ``validate``: the gate's one line about each (:func:`_check_inactive`),
+    ``validate``: the gate's one line about each (:func:`check_inactive`),
     and the advice that stands aside for them -- a recommended range, the
     probe's displacement -- since nothing they hold is run.  A value
     ``refused`` draws that refusal alone (`engines/template.md` § 5.3), and
@@ -220,10 +220,10 @@ def _inactive(cfg, calculation: str, engine: str, *,
                         for other, _ in one(cat, name).active_when)}
 
 
-def _check_inactive(cfg, calculation: str,
+def check_inactive(cfg, calculation: str,
                     inactive: Mapping[str, str]) -> List[Issue]:
     """A value given to a setting that enters nothing here (``inactive``,
-    :func:`_inactive`): said once, never refused for it, since nothing it
+    :func:`inactive_settings`): said once, never refused for it, since nothing it
     holds is run.  The form draws the same field greyed out, keeping its
     value, which is how the hand-over carries it; a value at the kind's
     default is nobody's statement and says nothing."""

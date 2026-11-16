@@ -129,8 +129,7 @@ class _ClientDisconnectSSLFilter:
     Filter returns ``True`` to keep the record at its declared
     level, ``False`` to drop it.  We don't mutate the record
     in-place because that would also drop it from any DEBUG-level
-    handler downstream that the user might attach (e.g. via
-    ``MOLBUILDER_LOG=DEBUG`` env var).  Drop is the right shape
+    handler downstream a person might attach.  Drop is the right shape
     for the WARNING-default deployment.
     """
 
@@ -192,9 +191,10 @@ def serve_port() -> int:
     1. **`app.config`** -- `cmd_serve` knows the number and says so at app
        build.  The ordinary case.
     2. **`$MOLBUILDER_SERVE_PORT`** -- for an EMBEDDING CALLER, which is not
-       an exotic case: `deployment.md` § 1.3 tells operators to run
-       `create_app()` under gunicorn behind nginx, and that path never
-       touches `app.config`.  Same key name, so there is one thing to know.
+       an exotic case: `deployment.md` § 1.1 says how a person wraps the
+       app -- under gunicorn or behind nginx, this variable set -- and that
+       path never touches `app.config`.  Same key name, so there is one
+       thing to know.
     3. **the `Host:` header** -- last, and only as a guess for an app built
        without either (tests). It is written ONCE, here.
     """

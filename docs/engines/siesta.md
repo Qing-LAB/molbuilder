@@ -62,19 +62,6 @@ flowchart LR
 ```
 
 
-> **`convert()` is DELETED (2026-09-17).** *(This document went on describing
-> it as live in **nine** further places until the tombstone was reconciled with
-> the body on 2026-09-18 — the public-API listing, its return shape, the
-> pseudopotential copy, both Makov-Payne mentions, the molwatch preview, the
-> emission guarantee and the test map. `engines/pyscf.md` had the identical
-> fault and was fixed a day earlier; nobody checked its twin. A tombstone that
-> contradicts the body it sits above is worse than no tombstone: it reads as a
-> caveat on something still true.)* It was the single-shot
-> "read a structure file, write a deck" worker behind `molbuilder fdf` (deleted 2026-08-11), and it had no
-> other production caller. A deck is written by `jobset prep` from a
-> description — `spec_for` → `prepare_deck`, the same three steps with the
-> description in front of them instead of a command line.
-
 - **Backend (Python).** `spec_for(struct, config, *, names, …)` returns the
   deck's `script_emit.DeckSpec` — its layout, how each setting is spelled, the
   values its record carries and the rules the finished deck must satisfy — and
@@ -86,11 +73,10 @@ flowchart LR
   siblings the deck's own text promises
   (`siesta/seam.py::_siesta_sibling_artifacts`).
 
-  > **The `molbuilder fdf` CLI verb is deleted** *(2026-08-11, user — obsolete residue from the flat-dir
-  > design; [`process/conventions.md § 3`](?doc=process/conventions.md))*. It let
-  > a person render a finished deck straight from flags, skipping the description
-  > and guessing at values only the target machine knows. A deck now comes from
-  > `molbuilder jobset prep`, which calls exactly these functions.
+  > **No engine has a verb of its own** *(the user, 2026-08-11;
+  > [`process/conventions.md § 3`](?doc=process/conventions.md))*: a deck comes
+  > from `molbuilder jobset prep`, which calls exactly these functions on the
+  > machine that will run it, so no value only that machine knows is guessed.
 - **Frontend (web).** The Structure-optimization tab **collects parameters and
   produces no artifact.** It makes two calls: `/api/build/schema/siesta`, which
   renders the form **from the catalogue** (`_shared.catalogue_to_form_schema`),
@@ -99,23 +85,14 @@ flowchart LR
   ([`science/validation.md`](?doc=science/validation.md)). It renders no deck
   and writes no file; a deck comes from `prep`.
 
-  > *(This bullet said the tab posts to `/api/build/fdf` and gets `.fdf` text
-  > back, and that **`SiestaConfig`'s field metadata drives the form**, until
-  > 2026-08-16. Both are stale and for different reasons: script generation left
-  > this tab on 2026-08-15, and the form has been catalogue-driven since — a
-  > parameter is on the page because the catalogue carries it, not because a
-  > Python class declares it ([`template.md`](?doc=engines/template.md) § 2.1).
-  > The `/api/build/fdf` route was DELETED 2026-08-17 (a browser renders
-  > no deck); `build.py` carries only its tombstone.)*
-
 ### 1.1 Where the config comes from — the emitter starts from the template
 
-*Stated 2026-08-11 (user). **✅ It is code**: `jobset/prep.py` takes the
+*(the user, 2026-08-11)* `jobset/prep.py` takes the
 description plus its template and emits one deck per element of the resolved
 `ParameterSet`, rebuilt into the class SIESTA's record names
 (`SiestaConfig`), through its seam's `spec_for`: the seam hands back the deck's **form**, a `DeckSpec`, and
 the framework renders, writes and checks it
-([`script-preparation.md § 4.3`](?doc=execution/script-preparation.md)).*
+([`script-preparation.md § 4.3`](?doc=execution/script-preparation.md)).
 
 > **The deck starts from the layered description** — the template's items,
 > resolved through this stage and this machine into an ordinary `SiestaConfig`,
@@ -151,7 +128,7 @@ flowchart LR
 
 | | what the emitter must stop doing | why |
 |---|---|---|
-| **1** ✅ | **reading anything outside the config.** `cfg.stage` and its five read sites are gone — `molbuilder/siesta/` reads no `.stage` at all today ([`stages.md § 1.1`](?doc=engines/stages.md): the emitter never learns the word) — and the USER-CUSTOM read-back merge cannot run at `prep` at all, since there is no previous deck to harvest from, so the text arrives as an **item** ([`template.md § 9.2`](?doc=engines/template.md)) | the template is meant to be complete. Anything the emitter fetches for itself is a value the description does not record, and therefore a deck nothing can reproduce |
+| **1** ✅ | **reading anything outside the config.** `molbuilder/siesta/` reads no `.stage` ([`stages.md § 1.1`](?doc=engines/stages.md): the emitter never learns the word) — and the USER-CUSTOM read-back merge cannot run at `prep` at all, since there is no previous deck to harvest from, so the text arrives as an **item** ([`template.md § 9.2`](?doc=engines/template.md)) | the template is meant to be complete. Anything the emitter fetches for itself is a value the description does not record, and therefore a deck nothing can reproduce |
 | **2** ✅ | **always computing, always emitting.** `BlockSize` has **two** states — a number you set or benchmarked, emitted verbatim, or **unset, in which case the keyword is not emitted at all** and SIESTA uses its own automatic ([`tuning.md § 2.11`](?doc=engines/tuning.md)) | an emitter that always writes a line cannot express the second, and the second is a legitimate scientific answer — the same shape as `Diag.Algorithm ScaLAPACK`, which § 7 also emits as nothing. Verified: an unset `block_size` produces no `BlockSize` line, and an explicit `24` is emitted as `24` rather than snapped to a power of two |
 | **3** | **seeing items that are not its own.** Only `kind` in `{engine, deck}` reaches the deck writer; `wrapper` and `produce` items belong to other layers ([`template.md § 6`](?doc=engines/template.md)) | *"a SIESTA producer must not try to emit a `wrapper` item as a keyword — SIESTA would not understand it"* |
 
@@ -160,10 +137,8 @@ spin contract (§ 5), the lattice and k-grid (§ 6), and the eigensolver rules
 (§ 7). Those are about turning a config into text, and that job is unchanged —
 which is exactly why the config object is the right seam to keep.
 
-The work was
-[`staged-runs-implementation-plan.md`](?doc=archive/2026-08-19-staged-runs-implementation-plan.md)
-P12 unit 6b, an archived record; anything still open on this seam is in the one
-plan, [`plans/plan.md`](?doc=plans/plan.md) (R3 — the contract holds the rule,
+Anything still open on this seam is in the one plan,
+[`plans/plan.md`](?doc=plans/plan.md) (R3 — the contract holds the rule,
 the plan holds the order).
 
 ---
@@ -175,9 +150,10 @@ the plan holds the order).
 class SiestaConfig: ...                                             # config/siesta.py
 
 spec_for(struct, config=None, *, names,
-         calculation="optimization", vibration=None,
-         part=None, state=None, trial=None) -> DeckSpec             # siesta/input.py
-copy_pseudopotentials(species, lib, dest_dir, *, plan=None) -> list[str]  # pseudos.py → the species labels whose <label>.psml was MISSING
+         calculation, vibration=None,
+         part=None, state=None, trial=None,
+         point=None, scratch_dir=None, contours=None) -> DeckSpec   # siesta/input.py
+copy_pseudopotentials(species, lib, dest_dir, *, plan=None, say=True) -> list[str]  # pseudos.py → the species labels whose <label>.psml was MISSING
 ```
 
 A deck is made on the road: `molbuilder describe` describes the calculation, and `prep`
@@ -204,16 +180,13 @@ NumberOfAtoms     42
 NumberOfSpecies   3
 ```
 
-**The pseudopotentials travel with the calculation, and the roles split**: **`describe --psml-lib` is what copies the
-pseudos into the calculation** (they are its data files and travel with it),
-and **`prep` refuses to render a deck whose pseudos are absent** — the
-render's own validation, surfaced as a clean refusal naming the elements
-(2026-08-12).  *(That refusal now also names WHERE it looked for the library,
-by the anchor rule the spelling asked for -- `job-contracts.md` § 2.5a.)*  A deck whose pseudopotentials are absent cannot run
-([`conventions.md § 3`](?doc=process/conventions.md)).  *(Until 2026-08-12
-this sentence claimed "`jobset prep` exits 2 on a non-empty `missing_psml`
-list" — prep never had that list; the copy is describe's and the refusal is
-the render's.)*
+**The pseudopotentials travel with the calculation**: `describe --psml-lib`
+copies them in (they are its data files), `prep` fetches from the same
+`psml_lib` any the folder still lacks — the folder wins — and refuses to
+render a deck whose pseudos are still absent, naming the elements and where it
+looked for the library (`job-contracts.md` § 2.5a). A deck whose
+pseudopotentials are absent cannot run
+([`conventions.md § 3`](?doc=process/conventions.md)).
 
 ---
 
@@ -223,9 +196,9 @@ The deck's spec lays these blocks out in order (`spec_for`'s layout), and
 `script_emit.render_deck` writes them in that order: the engine body IS the
 file's head (`job-contracts.md` § 3.1, physics-first order) — the file
 **begins at row 1 below**.  The shared script-contract blocks follow it as the
-tail, in § 3.1's order: `user-custom` placeholder, status banner,
-`provenance`, `bench-marks`, the optional `atom-metadata`, `engine-offset` on
-every deck, and `vibration` last on a force-constant deck — which is why
+tail, in § 3.1's order: `user-custom` placeholder, the machine-record banner,
+`provenance`, `bench-marks`, `atom-metadata` and `engine-offset` on every
+deck, and `vibration` last on a force-constant deck — which is why
 `tail -40` on any deck shows its record.  Parsers find every block by its
 MARKERS, never by position, so this order is ergonomics, not interface.
 `SystemLabel` is the basename SIESTA prefixes every output file with;
@@ -236,7 +209,7 @@ fineness (Ry); `PAO` = the pseudo-atomic-orbital basis.
 |---|---|---|---|
 | 1 | Header | `SystemName` / `SystemLabel` / atom + species counts | `SystemName` == `SystemLabel` == `cfg.system_label` (same value, default `"siesta"`) |
 | 2 | Lattice (3×3 Å) | `cell.to_engine` — the cell the structure states, or its vacuum box | § 6 |
-| 3 | Species table | `%block ChemicalSpeciesLabel`, ordered by Z | |
+| 3 | Species table | `%block ChemicalSpeciesLabel`, in the one species order every engine asks (`chemistry.species_order`: by atomic number, hydrogen placed as a chemist writes the formula; the `species_order` item, when set, verbatim — [`model/chemistry.md`](?doc=model/chemistry.md) § 3a) | |
 | 4 | Atomic coordinates | `%block AtomicCoordinatesAndAtomicSpecies` (Å) | every atom, no reorder — but a vibration's call: held atoms first, from a sorted copy of the structure, the block read from `coordinates.fdf` beside the deck (`< coordinates.fdf`, [`vibration.md`](?doc=engines/vibration.md) § 5.11 § 4) |
 | 5 | **Frozen atoms** | `%block Geometry.Constraints` (1-based indices) | only if `struct.frozen_atoms`; the 3-stage boundary carrier (see [`model/structure-annotations.md`](?doc=model/structure-annotations.md)) |
 | 6 | Basis & grid | `MeshCutoff`, `PAO.BasisSize`, `PAO.EnergyShift` | |
@@ -276,13 +249,14 @@ The charge is the electronic state's (`electronic_state.electronic_state`,
 [`science/chemistry-correctness.md`](?doc=science/chemistry-correctness.md) § 2a),
 resolved once per deck in the one order:
 
-- a stated `net_charge` → used as it stands (including `0`, which is a statement,
+- on a transport rung, 0 by rule — the leads set the electron number, and the
+  kind's charge is asked before anything else;
+- otherwise a stated `net_charge` → used as it stands (including `0`, which is a statement,
   not a blank);
 - otherwise the charge of the run the structure came out of, when it carries that
   record (ES7);
 - otherwise the phosphate rule, `formal_charge_from_phosphates(struct)` (the
-  DNA/RNA backbone, see [`model/chemistry.md`](?doc=model/chemistry.md));
-- on a transport rung, 0 by rule — the leads set the electron number.
+  DNA/RNA backbone, see [`model/chemistry.md`](?doc=model/chemistry.md)).
 
 `NetCharge ±N` is written **always**, at 0 too — nothing reaches the engine by
 omission ([`template.md`](?doc=engines/template.md) § 6.6) — with a comment naming
@@ -308,11 +282,9 @@ molecule in a simple, face- or body-centred cubic cell —
 atom at DZP) cannot reach across the gap, which is 2×vacuum.
 
 The check is a **validator** (`_check_siesta_vacuum_adequacy`, emitting
-`cell.vacuum_thin`), not a Python warning inside the emitter. It used to be
-`warnings.warn` in `input.py`, which reached the server's stderr and therefore no
-web user at all — a 2.5 Å box went to SIESTA with nothing said, and the user
-learnt of it only from SIESTA's own *"multiply-connected orbital pairs"* message.
-As an `Issue` the same advice reaches the browser panel and the CLI report alike;
+`cell.vacuum_thin`). It is not a Python warning inside the emitter, because a
+warning reaches only the server's stderr and no web user — a box far too thin
+would reach SIESTA with nothing said. As an `Issue` the same advice reaches the browser panel and the CLI report alike;
 that is clause **R5** of the delivery contract,
 [`science/validation.md`](?doc=science/validation.md) § 4.1.
 
@@ -332,7 +304,8 @@ converged.
 
 *(When the resolved charge ≠ 0, **`prep` writes** a `makov_payne_correction.py`
 post-process script beside every deck it writes — a stage's, each phase folder
-of a vibration's run, each point of a transport rung — `engines._siesta_sibling_artifacts` →
+of a vibration's run (a transport rung's charge is 0 by rule, so it never gets
+one) — `siesta/seam.py::_siesta_sibling_artifacts` →
 `siesta/makov_payne.py` — that estimates the residual image-charge energy after
 the run. It is not part of the `.fdf` itself: the deck's own text instructs
 `python3 makov_payne_correction.py`, and that file has to exist, which is why
@@ -356,8 +329,8 @@ two template items shared with PySCF, where a blank means *work it out*.
   single-line keyword** (`siesta/layout.SPIN_SPELLING`): `restricted` →
   `Spin non-polarized`, `unrestricted` → `Spin polarized`, `non-collinear` →
   `Spin non-colinear`, `spin-orbit` → `Spin spin-orbit`. `Spin` is written
-  **always**, `non-polarized` included. The v4 `SpinPolarized .true.` spelling is
-  retired. `spin-orbit` REQUIRES fully-relativistic pseudopotentials — the
+  **always**, `non-polarized` included. The v4 `SpinPolarized` keyword is never
+  written. `spin-orbit` REQUIRES fully-relativistic pseudopotentials — the
   catalogue help and the pseudopotential check say so. `restricted-open` is a
   formalism SIESTA does not have, refused by name (ES4).
 - `unpaired_electrons` — 2S, 0 to 10, or `free`. A pinned count beside
@@ -387,14 +360,14 @@ metal-driven count warned until it is stated (ES8)
 
 ## 6. Lattice & the k-point grid
 
-**Lattice (§2).** The box is the structure's own — the cell it states, or its vacuum
+**Lattice (§ 3, row 2).** The box is the structure's own — the cell it states, or its vacuum
 box (isolated axes = bbox + 2·vacuum) — with the atoms placed in it by the one
 placement door, `cell.to_engine`; the deck works out no box of its own, and a box
 with no volume is refused in the cell checker's one sentence. The per-axis / periodicity behaviour (which axes are
 periodic vs vacuum, `axis_kind`, `resolve_cell`) is the model's contract —
 [`model/structure-periodicity.md`](?doc=model/structure-periodicity.md).
 
-### 6.1 The k-point grid — one per stage, decided in one place *(2026-09-30, plan § 5w K3)*
+### 6.1 The k-point grid — one per stage, decided in one place
 
 **What a k-point is.** In a periodic structure the electrons' waves repeat
 from one copy of the cell to the next, apart from a phase shift; a k-point is
@@ -422,10 +395,7 @@ deck and carried in its derived context; or nothing, when a value it needs is
 not three numbers, which is the declared type's refusal to give. The deck's
 writer, the settings gate and the derived settings read that one object; none
 of them works the grid out again. A finished run's record keeps what its deck
-wrote, read back from the deck itself. *(Until 2026-09-30 nothing derived a
-k-point grid from the axes: four writers each built their own block from
-`cfg.kgrid`, the transport axis was forced to 1 in six places, and one fact
-carried two severities.)*
+wrote, read back from the deck itself.
 
 | the axis | role | count | offset | answered by |
 |---|---|---|---|---|
@@ -455,8 +425,7 @@ values (`kpoint_t.F90`); tbtrans reads its block only when a row carries the
 offset column — a row of three counts is not read, and T(E) is computed at Γ
 alone (`m_tbt_kpoint.F90`, `read_kgrid`) — so the column is written always.
 The list form, `TBT.k [3 3 1]`, carries no offset, so the block is written
-always too — one form whether or not the grid is displaced (plan § 5w.3's
-ruling asked for the block when displaced; one form serves both). The
+always too — one form whether or not the grid is displaced. The
 transmission deck carries two k-point grids: `TBT.k`, the transmission's own,
 and the ladder's shared SCF block, which tbtrans reads only when `TBT.k` is
 absent — kept as the deck keeps the other shared settings (TD12,
@@ -468,10 +437,9 @@ absent — kept as the deck keeps the other shared settings (TD12,
 as set and prep warns) — is counted on the grid the deck writes: a lead's
 `kx ky 100`, not the template's `kx ky 1`. The dipole advisory reads no grid:
 it asks the axes SIESTA computes on, a box of vacuum on every one
-([`model/structure-periodicity.md`](?doc=model/structure-periodicity.md) § 2.1;
-it read *every count 1* until 2026-10-01). A finished SIESTA run's recorded contract (`parse/contract.py`)
-records its counts (`kgrid`, all three — `k_mesh_transverse` until 2026-10-02)
-and since 2026-09-30 its offset (`kgrid_displacement`); a transport citation carries
+([`model/structure-periodicity.md`](?doc=model/structure-periodicity.md) § 2.1).
+A finished SIESTA run's recorded contract records its counts (`kgrid`, all three) and its offset (`kgrid_displacement`)
+(`parse/contract.py`, `K_MESH_RECORD_KEYS`); a transport citation carries
 both into the template, the transport axis laid on by the rule above.
 
 **What a kind fixes.** On a kind with leads — a transport calculation —
@@ -498,11 +466,12 @@ refused is not judged — that refusal stands alone).
 | a component a kind fixes, holding another value | refused | `kmesh.fixed` through `template.why_not` — every door |
 | a count at or below 0; `electrode_kz` at or below 1 | refused | the items' own limits, `above` (`template.md` § 5.3) — every door |
 | `electrode_kz` below 50 | warn — the SIESTA manual's floor ("at least >50 should easily be reachable"), not a proof of convergence: only raising it and seeing the lead's Fermi level stay put shows it has settled | its recommended `range` |
-| on a transport calculation, a transmission k-point grid the person set **above the Γ point while the shared k-point grid is Γ alone** (1 × 1, no offset) | warn, never refused *(user, 2026-10-17: "We should let tbtrans handle it. Prep can detect and warn but user decide what to do")* — a device computed at one k-point is saved in a form that works only there, so tbtrans stops as it starts on *"Transiesta calculation was a Gamma calculation while you request transmission k-points"* (`tbt_init.F90:166–171`); measured on the road's junction 2026-10-16; the cases, by example, and the two ways on are [`transport.md`](?doc=engines/transport.md) § 0.3b | `kmesh.check`, the settings gate, on the transmission's deck |
+| on a transport calculation, a transmission k-point grid the person set **above the Γ point while the shared k-point grid is Γ alone** (1 × 1, no offset) | warn, never refused *(user, 2026-10-17: "We should let tbtrans handle it. Prep can detect and warn but user decide what to do")* — a device computed at one k-point is saved in a form that works only there: tbtrans stops as it starts (*"Transiesta calculation was a Gamma calculation while you request transmission k-points"*, `tbt_init.F90`, its set-up) only when both its counts in the electrode plane are 3 or more; with a 1 or a 2 along x or y its grid starts at k = 0 and it runs on, every k-point given the k = 0 Hamiltonian, its T(E) invalid *(the user, 2026-10-20: "warn, worded truly")*; the cases, by example, and the two ways on are [`transport.md`](?doc=engines/transport.md) § 0.3b | `kmesh.check`, the settings gate, on the transmission's deck |
 | on a transport calculation, a transmission k-point grid the person set **coarser than the shared k-point grid** along x or y | warn — T(E) needs at least the k-points the density was converged on, and usually many more (the manual: "much denser"); a blank one is three times the shared grid and never coarser ([`transport.md`](?doc=engines/transport.md) § 0.3b) | `kmesh.check`, the settings gate, on the transmission's deck, which carries both grids |
+| on a transport calculation, one k-point (k = 1) along a periodic direction of the electrode plane (x, y) | warn — a single k-point there treats every sideways copy of the cell as in phase; known to add false peaks to T(E) and shift the conductance by tens of per cent *(the user, 2026-10-09; [`transport.md`](?doc=engines/transport.md) § 0.3b)*; said where the person sets the grid, never on a transmission grid worked out from the shared one | `kmesh.check`, the settings gate |
 
 `k = 1` on a periodic axis states nothing and is checked not at all *(user,
-2026-08-20; the "under-converged" warning it replaced is retired)*.
+2026-08-20)* — save on a transport calculation, the row above.
 
 ---
 
@@ -524,7 +493,7 @@ flowchart TD
     A -.->|"ScaLAPACK + use_gpu"| ASKED["emit NOTHING, the GPUs asked as stated<br/>env → molbuilder-siesta-gpu"]
 ```
 
-Two **orthogonal** decisions (contract rewritten 2026-06-29):
+Two **orthogonal** decisions:
 
 1. **`Diag.Algorithm` — the eigensolver, independent of hardware.** `ScaLAPACK`
    (SIESTA's default divide-and-conquer) / `ELPA-1STAGE` / `ELPA-2STAGE` (**ELPA** =
@@ -532,7 +501,7 @@ Two **orthogonal** decisions (contract rewritten 2026-06-29):
    (a hint, not a rule): GPU favours 1STAGE, CPU favours 2STAGE. **molbuilder's
    default is `ELPA-1STAGE`**, not SIESTA's own ScaLAPACK *(user, 2026-10-12:
    "we know that works better for most cases")* — so a deck states
-   `Diag.Algorithm ELPA-1stage` unless the person picks another.
+   `Diag.Algorithm ELPA-1STAGE` unless the person picks another.
 2. **`cfg.use_gpu` — an accelerator on top of an ELPA choice.** On → the ELPA
    solve runs on the GPU (`Diag.ELPA.GPU .true.`), GPU-only with no silent CPU
    fallback. Off with an ELPA algorithm → CPU-ELPA (`Diag.ELPA.GPU .false.`).
@@ -571,9 +540,11 @@ The practical guidance:
   (Multi-Process Service) so several MPI ranks share one GPU concurrently — via the
   GPU's **Hyper-Q** hardware queues — needed because the ELPA build doesn't link
   **NCCL** (NVIDIA's multi-GPU collective library), so without MPS the ranks serialise
-  on the GPU's driver context. MPS auto-enables when `Diag.ELPA.GPU .true.` is emitted,
-  `nvidia-cuda-mps-control` is on the host PATH (it ships with the NVIDIA driver, not
-  conda), *and* the run has more ranks than GPUs, so ranks share one (a GPU per
+  on the GPU's driver context. MPS starts when the run uses the GPU (its GPU
+  request, whatever the solver), it is allowed (`--no-mps`, or
+  `MOLBUILDER_USE_MPS` other than 1, turn it off), `nvidia-cuda-mps-control` is
+  on the host PATH (it ships with the NVIDIA driver, not conda), a GPU is
+  visible, *and* the run has more ranks than GPUs, so ranks share one (a GPU per
   rank needs no MPS). The rank count is the one the run states — there is no GPU default
   ([`running-a-job.md` § 3.3](?doc=execution/running-a-job.md)); about **4 ranks
   per GPU with MPS** is this no-NCCL build's tuned point
@@ -614,19 +585,19 @@ the binary through ELSI (279 defined ELPA symbols, zero undefined — the full
 `elpa_api` / `elpa1_compute` / `elpa2_compute` set). Only the GPU entry is
 absent, which is a **missing build option, not a missing device**.
 
-So: `runwrap` bumps `siesta → siesta-gpu` **only** for `Diag.ELPA.GPU true`.
+So: a run that uses the GPU — its GPU request, whatever the solver — enters
+the engine table's `gpu_environment` (`siesta-gpu`); every other run enters
+`siesta`.
 `molbuilder.json` `envs.*` overrides the concrete env name, and an env the user
 names always wins — the route is the fallback for *no choice given*, never an
 override. What is *available* is filtered by what is *needed*, and the user
 picks from what survives.
 
-> **Until 2026-08-13 this routed every ELPA deck to the source build**, on the
-> premise that the packaged SIESTA has no ELPA. On a site that cannot compile,
-> that refused a runnable calculation — telling the user to install an
-> environment they cannot build, for a solver the installed baseline already
-> has. **Knowing a keyword is not providing the capability:** the packaged
-> binary carries `ELPA-1stage`, `ELPA-2stage` and `Diag.ELPA.GPU` as strings
-> either way.
+> **The solver never decides the environment.** Routing ELPA to the source
+> build would refuse, on a site that cannot compile, a runnable calculation —
+> for a solver the packaged baseline already has. **Knowing a keyword is not
+> providing the capability:** the packaged binary carries `ELPA-1stage`,
+> `ELPA-2stage` and `Diag.ELPA.GPU` as strings either way.
 
 The `use_gpu` toggle is a *script-input* contract — it never queries env
 presence; prep reads the target's record for the env and, when it lists none,
@@ -647,22 +618,17 @@ what it produced, and then prepare the next
 verb names its stage, on a one-rung ladder exactly as on three
 ([`stages.md § 6.5`](?doc=engines/stages.md)).
 
-> **The `<basename>.run.sh` stage runner is gone** — `render_siesta_stages_runner`
-> and its `_warm_check` were deleted on 2026-08-10 with the rest of the chaining
-> machinery ([`job-contracts.md § 4.4`](?doc=execution/job-contracts.md)). There
-> is **one** wrapper emitter, `runwrap.render_run_wrapper`, and `prep` renders one
-> per deck. This section described the runner as shipped until 2026-08-11.
+> There is **one** wrapper emitter, `runwrap.render_run_wrapper`, and `prep`
+> renders one per deck; nothing chains the stages
+> ([`project-layout.md § 1.6`](?doc=execution/project-layout.md)).
 
 > **The ladder does not live in this engine's config, and that is the whole
-> shape of this section.** `SiestaConfig.stages` and `SiestaStageSpec` were
-> deleted on 2026-08-07 (P2 unit 2) — not reshaped. A stage is not a property
-> of a calculation, so an engine config carries no stage list; it is one
-> parameter set, and the ladder is the **user's** decision about what varies.
-> [`engines/stages.md`](?doc=engines/stages.md) § 1.1–1.2 is the contract.
-> **PySCF's ladder was deliberately untouched** while this was written — it ran
-> inside one process, so its stage list was also engine behaviour. Both halves of
-> that exception are now closed ([`stages.md § 1.1a`](?doc=engines/stages.md)):
-> the ladder is declared in `task.json` and executes as N decks and N jobs.
+> shape of this section.** A stage is not a property of a calculation, so an
+> engine config carries no stage list; it is one parameter set, and the ladder
+> is the **user's** decision about what varies
+> ([`engines/stages.md`](?doc=engines/stages.md) § 1.1–1.2). PySCF's is the
+> same: declared in `task.json`, run as N decks and N jobs
+> ([`stages.md § 1.1a`](?doc=engines/stages.md)).
 
 - **Data model.** A stage is `molbuilder/task.py::Stage`: **`name`** (→ the
   `<label>_<NN>_<name>.fdf` stem, ordinal and name together —
@@ -672,16 +638,14 @@ verb names its stage, on a one-rung ladder exactly as on three
   varyable as the four relaxation knobs, which is what
   [`stages.md`](?doc=engines/stages.md) § 1.2 means by *the catalogue is the
   schema's, the selection is the user's*. A field a stage does not name keeps
-  the template's value (§ 6.2's subset rule).
+  the template's value ([`stages.md`](?doc=engines/stages.md) § 6.2's subset rule).
 - **Resolution.** `molbuilder/resolve.py::effective_config(template,
-  overrides, *, where="")` is the **one** place a stage becomes a config:
+  overrides, *, where="", among=None)` is the **one** place a stage becomes a config:
   `dataclasses.replace(template, **overrides)`, refusing an unknown field **by
   name** and naming whoever supplied it. What it returns is an ordinary
   `SiestaConfig`, so the shipped validator and the shipped emitter both take it
-  unchanged (§ 4 R1). *(This bullet put the function in `siesta/input.py` until
-  2026-08-16. It is not engine-specific and never was — resolving a stage
-  against a backbone is floor 3's job, which is why it moved when `resolve.py`
-  landed.)*
+  unchanged (R1, [`stages.md`](?doc=engines/stages.md) § 4). It is not
+  engine-specific: resolving a stage against a backbone is floor 3's job.
 - **The shipped ladder.** The one ladder rule
   (`jobset/ladder.py::engine_ladder("siesta", strategy)`, [`tuning.md`](?doc=engines/tuning.md)
   § 4) builds it: one stage per tier of `SIESTA_STAGE_PRESETS`, that tier's four
@@ -694,18 +658,14 @@ verb names its stage, on a one-rung ladder exactly as on three
   are one table both engines read, `molbuilder/config/stages.py`'s
   `STAGE_STRATEGY_PRESETS`.
 - **Non-convergence policy does not exist for SIESTA**, and that is a decision
-  rather than an omission. Its entire effect was the scheduler edge between one
-  attempt and the next; a SIESTA ladder emits no edges
-  ([`project-layout.md § 1.6`](?doc=execution/project-layout.md)), so on
-  2026-08-10 the field was **removed from the producer rather than left inert**
-  ([`stages.md § 3`](?doc=engines/stages.md)). A stage that runs out of steps
-  simply stops, and you decide what to do — which is what you were doing between
-  stages anyway. **PySCF kept it** as one rung's own policy — what that deck
-  does when geomeTRIC reports its criteria unmet at the step budget
-  ([`pyscf.md` § 3](?doc=engines/pyscf.md)) — settled when its in-process loop
-  retired ([`stages.md § 1.1a`](?doc=engines/stages.md)).
+  rather than an omission: a SIESTA ladder emits no edges
+  ([`project-layout.md § 1.6`](?doc=execution/project-layout.md);
+  [`stages.md § 3`](?doc=engines/stages.md)), so a stage that runs out of steps
+  simply stops, and you decide. **PySCF has one** as one rung's own policy —
+  what that deck does when geomeTRIC reports its criteria unmet at the step
+  budget ([`pyscf.md` § 3](?doc=engines/pyscf.md)).
 - **Validation.** A stage is validated as a **resolved whole, never as a
-  diff** (§ 4 R2): the caller resolves it and runs the ordinary single-config
+  diff** (R2, [`stages.md`](?doc=engines/stages.md) § 4): the caller resolves it and runs the ordinary single-config
   validator on the result, so there is no parallel copy of the knob rules to
   drift. The check that is about the *ladder* rather than a member of it —
   duplicate names, a collision that would silently overwrite a per-stage
@@ -716,13 +676,7 @@ verb names its stage, on a one-rung ladder exactly as on three
   with a **single parameter set** — one stage named `coarse`, named and tokened
   like any other ([`stages.md § 6.5`](?doc=engines/stages.md)). Beyond the
   shipped ladders, the ladder is `task.json`'s `stages` list, written by the
-  surface or edited by hand; there is no flag that takes a ladder inline.
-  *(This bullet described `--stages-json` and a single-stage `--stage {1,2,3}`
-  overlay until 2026-08-16 — flags of the `molbuilder fdf` verb, deleted
-  2026-08-11 (§ 1). It then said both spellings survived on `molbuilder pyscf`;
-  that command was deleted 2026-09-17, so **neither spelling exists anywhere**.
-  A ladder is declared in `task.json` and built by `molbuilder describe
-  --stage-strategy …`.)* The
+  surface or edited by hand; there is no flag that takes a ladder inline. The
   `SystemLabel` stays unsuffixed across stages so SIESTA's `.XV`/`.DM`/`.CG`
   warm-restart files carry forward — which is what lets a later stage find an
   earlier one's geometry with nobody instructing it
@@ -730,12 +684,8 @@ verb names its stage, on a one-rung ladder exactly as on three
   then wrapped, sized and launched is `execution/`'s: `molbuilder jobset prep`
   renders the wrapper against the target machine, and `jobset launch` starts one
   stage ([`job-system.md § 5.3`](?doc=execution/job-system.md)).
-- **Form widget.** There is none, and its absence is the fix. The form-schema
-  generator answers *what settings exist and how is each drawn*; when
-  `SiestaConfig` carried a `List[SiestaStageSpec]` the generator walked into
-  it and published that class's field names as the columns a user is allowed
-  to vary — answering the *selection* question with the *catalogue*
-  machinery, and the reason a stage could vary exactly four values. The
+- **Form widget.** There is none on the engine's form: the form-schema
+  generator answers *what settings exist and how is each drawn*, and the
   per-stage grid belongs to the shared Task Setup tab, fed by the catalogue
   from here and the selection from `task.json`.
 
@@ -832,14 +782,10 @@ coordinates block); (3) emit invalid SIESTA syntax for any standard config — e
 variant tested must render end-to-end without raising.
 
 **Tests:** the SIESTA rows of `tests/data/the_deck.toml` (`tests/test_the_deck.py`),
-`test_review_fixes.py` (the thin-vacuum **warn** — D3, since `cell_padding`
-was removed 2026-07), `test_siesta_stages.py` (the ladder and its strategy
+`test_review_fixes.py` (the thin-vacuum warning), `test_siesta_stages.py` (the ladder and its strategy
 presets),
 `test_k_point_mesh.py` (§ 6.1's mesh on every rung, through `molbuilder describe`
-and `prep`), and `test_molwatch_preview.py` (the sibling log). *(This list named
-`test_cli_siesta_stages.py` and `test_siesta_form_schema_stage_table.py` until
-2026-08-16; neither file exists — they went with the `fdf` verb and the stage
-form widget § 8 records as deliberately absent.)*
+and `prep`), and `test_molwatch_preview.py` (the sibling log).
 
 ---
 

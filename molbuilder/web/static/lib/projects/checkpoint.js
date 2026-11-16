@@ -993,10 +993,9 @@ export async function init(dir, opts) {
 /**
  * Save the folder's current state.
  *
- * A NOTE IS REQUIRED.  `checkpointing.md` L4 retired automatic messages —
- * "a history where most tags are machine-made is one where your own are hard
- * to find" — so nothing writes one on your behalf, and this refuses rather
- * than inventing one.
+ * A NOTE IS REQUIRED (`checkpointing.md` L3: every state carries a note), so
+ * nothing writes one on your behalf, and this refuses rather than inventing
+ * one.
  *
  * `changed: false` is HONEST, not a failure: nothing differed from the state
  * the folder already stands at.

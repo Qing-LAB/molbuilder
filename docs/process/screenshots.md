@@ -5,29 +5,20 @@
 **Companions:** [`testing.md`](?doc=process/testing.md) ·
 [`web/tabs.md`](?doc=web/tabs.md) (what each tab actually shows)
 
-`docs/img/` holds 10 screenshots.  This doc is the capture guide: for
-each filename, the URL to open, the state to set, the zoom region, and
-what the image must communicate.  **Since the 2026-07-28 README
-rewrite, the README embeds only `hero-molbuilder.png`** — the other
+`docs/img/` holds 10 screenshots.  `scripts/capture-readme-screenshots.py`
+takes them all with Playwright; this page is the guide for taking one by
+hand: for each filename, the URL to open, the state to set, the zoom
+region, and what the image must communicate.  **The README embeds only
+`hero-molbuilder.png`** — the other
 nine are kept current per this manifest for docs embedding and any
 future README gallery.  Update this file whenever an embedding of one
 of these images changes.
 
-> **⚠ Known stale capture (2026-07-28, still stale 2026-09-01).**
-> `tab-bar.png` — and the nav strip inside `hero-molbuilder.png` — show
-> **five** tabs.  The shipped app has more: **Documents** landed after
-> these were taken, then **Task setup**, **This machine** and **JupyterLab**
-> ([`web/tabs.md § 1`](?doc=web/tabs.md) is the roster and the only place
-> the count is decided, so this note names none).  Both need a re-capture (the re-capture rule below
-> already mandates it: a new tab is exactly the trigger); the README's hero
-> alt text deliberately avoids naming a tab count until then.
->
-> Three tabs behind is the argument for the rule, not against it: each one
-> landed with a note like this and none triggered the capture, because a
-> note is not a mechanism.  The count had read *five · six · seven*
-> simultaneously across three documents, all of them restating `tabs.md`
-> § 1.  The **owner** is `tabs.md` § 1, the others point at it.  **The captures themselves are still
-> only a rule**: nothing can look at a PNG and count tabs in it.
+> `tab-bar.png` and the nav strip of `hero-molbuilder.png` show five tabs,
+> fewer than the app has ([`web/tabs.md § 1`](?doc=web/tabs.md) is the
+> roster). Both are owed a re-capture (the re-capture rule below: a new tab
+> is the trigger); the README's hero alt text names no tab count. A note is
+> not a mechanism: nothing can look at a PNG and count tabs in it.
 
 > **Demo data convention.**  Every screenshot uses the project at
 > `projects/BDT/` so the README reads as one continuous Au–BDT–Au
@@ -75,19 +66,17 @@ of these images changes.
 | 1 | `hero-molbuilder.png` | top of README | `/molbuilder` | Load `projects/BDT/structure/BDT-AuJunction_siestaStage1_optimized.xyz`; Junction panel open; default camera | Full content area (sidebar + main + the right-side commands stack) — exclude browser chrome | "This is molbuilder" — sidebar + tabs + viewer + commands in one frame |
 | 2 | `tab-bar.png` | § Feature tour intro | `/molbuilder` | — | Zoom: just the top tab strip (every tab — the roster and its order come from the one `TABS` list in `tabs.py`, `web/tabs.md` § 1).  ~1200 × 60 px | Names + order of every tab |
 | 3 | `sidebar-projects.png` | § Workflow + § Documentation | `/molbuilder` | Expand `BDT/` → `structure/`; cursor on `BDT-AuJunction_siestaStage1_optimized.xyz` so the paired `.molstruct.json` shows as a sidecar | Zoom: just the projects sidebar column.  ~360 × 700 px | Tree shape + the structure↔sidecar pairing |
-| 4 | `molbuilder-workspace.png` | § 1 Molbuilder tab | `/molbuilder` | Load the BDT junction; one atom selected in the viewer to show the amber **shape glow** (the only selection highlight — halos were removed, see [`web/molview.md`](?doc=web/molview.md)) + sync to the atom list on the left | Zoom: the `/molbuilder` content area (no sidebar, no top tab strip).  ~1080 × 760 px | The 3-panel layout: atom list + viewer + commands stack |
+| 4 | `molbuilder-workspace.png` | § 1 Molbuilder tab | `/molbuilder` | Load the BDT junction; one atom selected in the viewer to show the amber **shape glow** (the only selection highlight, [`web/molview.md`](?doc=web/molview.md)) + sync to the atom list on the left | Zoom: the `/molbuilder` content area (no sidebar, no top tab strip).  ~1080 × 760 px | The 3-panel layout: atom list + viewer + commands stack |
 | 5 | `structure-optimization-form.png` | § 2 Structure optimization | `/structure-optimization` | Pick `BDT-AuJunction_siestaStage1_optimized.xyz` from the sidebar; engine = SIESTA; default profile.  Issues panel will show INFO notices about Au-thiol detection | Zoom: the `/structure-optimization` content area (form on left, viewer on right, issues panel docked below).  ~1100 × 760 px | Schema-driven form + workflow-group cards + inline detection chip + issues |
-| 6 | `spectrum-form.png` | § 3 Spectrum calculation | `/spectrum-calculation` | Pick `projects/BDT/spectrum/BDT-only/spectra.spectra.py` *if* present — else use any small molecule. Default form values | Zoom: the form panel only.  ~520 × 700 px | The vertical workflow-group layout (Profile / Stage / Budget) |
-| 7 | `transport-form.png` | § 4 Transport calculation | `/transport-calculation` | Cite a finished junction attempt through **Choose junction attempt…** (a `run-N` folder); the viewer and chemistry analysis follow the citation | Zoom: card 1 (citation + viewer) + a slice of card 3's override lane.  ~1080 × 760 px | The composite's describe surface: the citation drives everything |
+| 6 | `spectrum-form.png` | § 3 Spectrum calculation | `/spectrum-calculation` | Load a small molecule's structure pair from the sidebar; default form values | Zoom: the form panel only.  ~520 × 700 px | The vertical workflow-group layout (Profile / Stage / Budget) |
+| 7 | `transport-form.png` | § 4 Transport calculation | `/transport-calculation` | Cite the junction through **Choose junction…** — a finished relaxation run's folder, or a structure pair saved from one; the viewer and chemistry analysis follow the citation | Zoom: card 1 (citation + viewer) + a slice of card 3's override lane.  ~1080 × 760 px | The composite's describe surface: the citation drives everything |
 | 8 | `results-trajectory.png` | § 5 Results | `/results` | Open ONE stage of the BDT optimisation: pick `BDT_02_medium.molwatch.log` from the file picker (stages are separate runs; the inspector shows the one you pick) | Zoom: the content area: viewer top, frame strip + scrub slider mid, energy / force / SCF-residual plots stacked on the right.  ~1100 × 800 px | Live trajectory inspector, one stage |
-| 9 | `results-spectra.png` | § 5 Results | `/results` | Open `projects/BDT/spectrum/BDT-only/spectra.spectra.json` | Zoom: the content area.  Show the Lorentzian-broadened spectrum chart + modes table + the 3-D viewer on a selected mode | The spectra inspector's two-panel layout |
+| 9 | `results-spectra.png` | § 5 Results | `/results` | Open a finished vibration's `<label>.spectra.json` in its `run-<n>/` folder | Zoom: the content area.  Show the Lorentzian-broadened spectrum chart + modes table + the 3-D viewer on a selected mode | The spectra inspector's two-panel layout |
 
 ## Naming + path convention
 
-- All PNGs land at `docs/img/<exact-filename>.png` as listed above.
-- The manifest is the whole of `docs/img/`: exactly these 9 files,
-  each referenced by the README.  A PNG nobody references doesn't
-  belong there.
+- All PNGs land at `docs/img/<exact-filename>.png`, the names listed above.
+  A PNG nobody names or captures doesn't belong there.
 
 ## Sizing rules
 
@@ -109,11 +98,8 @@ of these images changes.
   re-capture unless the change is the headline of the README
   paragraph.
 
-## Drift found 2026-09-07
+## A PNG with no row
 
-`docs/img/` holds **10** PNGs; this manifest lists **9**.
-`results-bundle-card.png` has no row here and is referenced by no document —
-which this file's own rule forbids: *a PNG nobody references doesn't belong
-there.* Either give it a row and a reference, or delete it. Left in place
-rather than deleted unasked, because a screenshot is cheap to re-take only if
-someone remembers what it showed.
+`results-bundle-card.png` is taken by the capture script (its tenth shot)
+and has no row here: it either gets one, or leaves both `docs/img/` and the
+script.

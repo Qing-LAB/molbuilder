@@ -1,8 +1,7 @@
 # The optical activity of a SIESTA vibration — infrared and Raman
 
-**Role:** science reference — a method; the charges are written since
-2.35.2, the infrared and the displacement reference built in 2.36.0, Raman's
-optical calls in 2.42.0–2.43.0 and its strength at a laser in 2.44.0
+**Role:** science reference — a method, built: the charges, the infrared,
+the displacement, Raman's optical calls and its strength at a laser
 ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.11)
 **Domain:** science
 **Companions:** [`engines/vibration.md`](?doc=engines/vibration.md) § 5.3 (the
@@ -10,7 +9,9 @@ force-constant input), § 5.10 ② (the charge each mode moves), ③ (a mode's
 frames) and § 5.11 (one run of points — Raman its optical phase); [`vibrational-averaging.md`](?doc=science/vibrational-averaging.md)
 § 5 and § 2a (the displacement); [`normal-modes.md`](?doc=science/normal-modes.md)
 § 4a.6, § 4b.7 (the infrared of the free atoms, and Raman on SIESTA at
-a metal surface); `plans/plan.md` § 1ac.
+a metal surface); [`plans/plan.md`](?doc=plans/plan.md), *After the finish
+line* (the proofs on Sol, the polarizability table, the measured intensity's
+factors).
 
 *Written 2026-10-24 at the user's request: "we need a new method document for
 this, science, procedure design, and quantitative explanation, all formula
@@ -59,7 +60,7 @@ the whole cell's (§ 3.1, § 3.4).
 |---|---|---|
 | the relaxed junction — its structure, labels and held atoms | everything | — |
 | the free atoms — every atom not held, the person's choice when describing the vibration | the modes and the infrared dipole | the structure's held atoms (`frozen_atoms`) |
-| the light's direction $\hat e$ | infrared and Raman | z on the spectrum viewer, which takes x, y, z or any vector *(the user, 2026-10-24)*; a script names it. None for a free molecule — nothing held — whose infrared is the orientation average (§ 2.3). The infrared takes any direction at no cost (§ 2.3); Raman takes one per optical run: z, the gap's axis, by default, another chosen before the run (`plans/plan.md` § 1ac, D-h) |
+| the light's direction $\hat e$ | infrared and Raman | z on the spectrum viewer, which takes x, y, z or any vector *(the user, 2026-10-24)*; a script names it. None for a free molecule — nothing held — whose infrared is the orientation average (§ 2.3). The infrared takes any direction at no cost (§ 2.3); Raman takes one per optical run: z, the gap's axis, by default, another chosen before the run (the item *Light along*, [`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 9) |
 | the charge partition | infrared | Hirshfeld (§ 1a) |
 | the modes to compute Raman for — fixed before the run, since a mode exists only after the force-constant run | Raman | every mode — *Raman for*, the setting both engines share: all modes, or the modes in a frequency range a chemist knows before the run ([`engines/vibration.md`](?doc=engines/vibration.md) § 3.1, § 5.11 § 9) |
 | the laser's wavelength | Raman, after the run — the polarizability is taken at its frequency (§ 3.1) | — |
@@ -69,10 +70,10 @@ the whole cell's (§ 3.1, § 3.4).
 
 | step | what runs | molbuilder today |
 |---|---|---|
-| **1. The vibration** | SIESTA's force-constant run on the relaxed junction, as today: each free atom nudged ±0.0212 Å along x, y and z, a self-consistent solution at each — $1 + 6\,n_{\mathrm{free}}$ of them; SIESTA prints every atom's Hirshfeld and Voronoi charge after each | **exists** — the charges since 2.35.2 |
-| **2. Infrared, every mode** | nothing more: the vibration's finish stores the charges of step 1; asked for a direction and a partition, one function derives each mode's dipole change — the free atoms' → its infrared strength $A_\nu(\hat e)$ and rank (§ 2; a worked example, § 2.4) | **built 2.36.0** — the spectrum viewer and `molbuilder.postprocess.infrared_view` |
-| **3. Raman, the chosen modes** | the vibration run's optical phase, after its force-constant phase in the same run: the geometries at $0$ and $\pm\delta Q$ along each chosen mode (§ 3.2); one SIESTA single point at each with its optical calculation (the `OpticalCalculation` option: the light-absorption spectrum from its own states, § 3.1) → the polarizability at each, at the laser's frequency the person enters after the run (static beside it) → its change → the Raman strength $R_\nu(\hat e)$ and rank (§ 3), from the whole cell's change (§ 3.4) | **built** — the optical phase 2.42.0–2.43.0, the strength at a laser 2.44.0: the spectrum viewer and `molbuilder.postprocess.raman_view` ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 10); in a cell holding metal, the value at the laser is the one to read and the static one is not defined (§ 3.1) |
-| **4. The displacement** | nothing: the frames' spread at the temperature the person states, and the outermost move — how far the outermost frames move the atom that moves most — from the vibration result (§ 4; an example, § 4.1) | **built 2.36.0** with a displacement as its input; the temperature as its input since 2.51.0, the user's ruling of 2026-10-28 ([`plans/plan.md`](?doc=plans/plan.md) § 1al F1) — the *Write frame set…* dialog and `molbuilder.postprocess.outermost_move` |
+| **1. The vibration** | SIESTA's force-constant run on the relaxed junction, as today: each free atom nudged ±0.0212 Å along x, y and z, a self-consistent solution at each — $1 + 6\,n_{\mathrm{free}}$ of them; with *Compute IR* on (the default), SIESTA prints every atom's Hirshfeld and Voronoi charge after each | **exists** |
+| **2. Infrared, every mode** | nothing more: the vibration's finish stores the charges of step 1; asked for a direction and a partition, one function derives each mode's dipole change — the free atoms' → its infrared strength $A_\nu(\hat e)$ and rank (§ 2; a worked example, § 2.4) | **built** — the spectrum viewer and `molbuilder.postprocess.infrared_view` |
+| **3. Raman, the chosen modes** | the vibration run's optical phase, after its force-constant phase in the same run: the geometries at $0$ and $\pm\delta Q$ along each chosen mode (§ 3.2); one SIESTA single point at each with its optical calculation (the `OpticalCalculation` option: the light-absorption spectrum from its own states, § 3.1) → the polarizability at each, at the laser's frequency the person enters after the run (static beside it) → its change → the Raman strength $R_\nu(\hat e)$ and rank (§ 3), from the whole cell's change (§ 3.4) | **built** — the optical phase and the strength at a laser: the spectrum viewer and `molbuilder.postprocess.raman_view` ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 10); in a cell holding metal, the value at the laser is the one to read and the static one is not defined (§ 3.1) |
+| **4. The displacement** | nothing: the frames' spread at the temperature the person states, and the outermost move — how far the outermost frames move the atom that moves most — from the vibration result (§ 4; an example, § 4.1) | **built** — the temperature its input *(the user, 2026-10-28)* ([`web/spectra.md`](?doc=web/spectra.md) § 4.3; [`vibrational-averaging.md`](?doc=science/vibrational-averaging.md) § 5): the *Write frame set…* dialog and `molbuilder.postprocess.outermost_move` |
 
 ```mermaid
 flowchart TD
@@ -92,8 +93,9 @@ flowchart TD
 displacement, nothing beyond the vibration already run; keeping the held gold
 in Raman, no SIESTA run either; Raman, $1 + 2\times$(the number of modes) SIESTA runs — frame 0 once,
 $\pm\delta Q$ for each mode — each one junction SCF and SIESTA's optical
-calculation: for five modes about 20–40 min of SCF on 64 ranks, against the
-vibration's 3.3 h; the optical calculation's own cost not yet measured.
+calculation: for five modes about 16–40 min of SCF on 64 ranks, against the
+vibration's 3.3 h; the optical calculation itself about two hours a call on
+that junction (measured on the AuBDTAu Raman run, 2026-10-28).
 
 **Which atoms.** The modes are defined on the **free set** $F$, every atom the
 vibration moves, and **the infrared is $F$'s**: its dipole made of the free
@@ -111,7 +113,7 @@ measured in § 2.5, as information.
 | number | file | written by |
 |---|---|---|
 | the modes $\omega_\nu$, $\mathbf L^{(\nu)}$, the masses | `<label>.spectra.json` | the vibration's finish (`engines/vibration.md` § 5.5) |
-| every atom's charge at every force-constant step | `<label>.spectra.json` (`partial_charges`), read from the run's output's *Hirshfeld* and *Voronoi Atomic Populations* blocks | SIESTA (asked by the input since 2.35.2), kept by the vibration's finish since 2.36.0 |
+| every atom's charge at every force-constant step | `<label>.spectra.json` (`partial_charges`), read from the run's output's *Hirshfeld* and *Voronoi Atomic Populations* blocks | SIESTA (asked by the input with *Compute IR* on), kept by the vibration's finish |
 | $\varepsilon_{2,\hat e\hat e}(\omega)$ at a frame | `<label>.optical.nc` (`eps2`), read from each call's `<label>.EPSIMG` | SIESTA's optical calculation, at each frame of the vibration run's optical phase, kept by the run's record step ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 8) |
 | the zero-point amplitude $Q_{\mathrm{zp}}$ | `<label>.spectra.json` (`zero_point_amplitude_amu12_ang`) | the vibration's finish |
 
@@ -374,10 +376,10 @@ it.
 The charges are those the force-constant run of § 7 printed: the toy junction,
 a straight chain of 22 hydrogen atoms, ten held on
 each side and the middle two (user indices 10, 11) free, the set $F$;
-$\hat e = \hat z$, along the chain. The run predates the result keeping its
-charges (2.36.0), so they were read from its output by the record step's own
-reading (`siesta_vibration.partial_charges_of`) and the built function
-derived the numbers.
+$\hat e = \hat z$, along the chain. Its result keeps no charges, so they
+were read from its output by the record step's own reading
+(`siesta_vibration.partial_charges_of`) and the built function derived the
+numbers.
 
 **The modes** (the run's result): two free hydrogen atoms give six modes. The
 four that move them off the chain's axis (along x or y) are imaginary (−666.35 and
@@ -569,7 +571,7 @@ strength, on both engines, and applies neither — decided 2026-10-26,
 the top of the photon-energy axis the calculation runs on — not a field, and
 not an energy given to the molecule: no field is applied (above). A pair of
 states whose gap lies above it is skipped — SIESTA computes no dipole element
-for it (`Src/transition_rate.F:250`, `Src/optical.F:566`) — and the spectrum
+for it (`Src/transition_rate.F`, `Src/optical.F`) — and the spectrum
 is written up to it. Each pair adds to $\alpha(\omega)$ its oscillator
 strength over $\Delta\varepsilon^2-\omega^2$ (atomic units), so at a
 visible laser a pair weighs about one over its gap squared: a pair at 40 eV
@@ -621,7 +623,7 @@ and it is kept: what is reported from it, and why, is § 3.4.
 **Beside a metal — what the published work says, and what one test showed**
 *(2026-10-27)*. SIESTA's $\varepsilon_2$ keeps every pair of states more than
 $10^{-3}$ Ry apart, each weighted by $f_i(1-f_j)$ — the lower state's
-occupation times the upper's emptiness (`Src/optical.F:574`), no emission
+occupation times the upper's emptiness (`Src/optical.F`), no emission
 term — and its momentum element divided by the gap (`Src/transition_rate.F`,
 `Src/optical.F`). A metal's response within one band, the free-electron
 (Drude) part, is not in it: SIESTA reports its plasma frequency apart, in
@@ -681,8 +683,9 @@ frequency step zero (`dw = smooth/10`, `Src/optical.F`).
   moved by $\pm\delta Q\,\mathbf L_k^{(\nu)}$,
   $\delta Q = \delta/\max_k\lvert\mathbf L_k^{(\nu)}\rvert$ — the atom that moves
   most by $\delta$ (`normal_modes.largest_move`, the one $\max_k\lvert\mathbf L_k\rvert$
-  the frame set's outermost move takes too), the force-constant run's own step read from its result
-  (`partial_charges.displacement_ang`, `engine_metadata.fc_displacement_ang`),
+  the frame set's outermost move takes too), the force-constant run's own step, read from its
+  `<label>.FC` header — the one source the finish reads, stated in the result
+  as `engine_metadata.fc_displacement_ang` —
   in the same linear range — and the step is stated beside the strengths. It
   is not the frame generator's spread, which is the motion to average over
   (§ 4), and its averaging weights do not enter.
@@ -695,12 +698,12 @@ frequency step zero (`dw = smooth/10`, `Src/optical.F`).
 - **The light's direction: z by default, another chosen before the run.** One
   optical run gives one direction's entry of the polarizability's change; any
   direction after the run would need the whole table — six optical runs a
-  geometry — decided once an optical run's cost on a junction frame is
-  measured (§ 5.1). The infrared, by contrast, takes any
+  geometry — new science, brought to the user as a design after the finish
+  line ([`plans/plan.md`](?doc=plans/plan.md), *After the finish line*). The infrared, by contrast, takes any
   direction after the run at no cost (§ 2.3).
 - **The settings the runs read are declared** — the optical keywords and
   *Compute IR*'s charges alike shown on Task setup and in each deck's
-  provenance, as every input is (`plans/plan.md` § 1ac, L4).
+  provenance, as every input is ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 9).
 
 Each geometry is one SIESTA single point with the optical calculation in
 its input — a call of the vibration run's optical phase (§ 5).
@@ -745,10 +748,10 @@ carries $\lvert\mathbf L\rvert$ = 0.7043 amu$^{-1/2}$); no Raman number is given
 here: the hydrogen chain's free atoms are links of its metal, which the
 derivative cannot follow (§ 3.1, § 7).
 
-### 3.2a From a laser wavelength to a Raman strength — the steps *(M4, 2026-10-26)*
+### 3.2a From a laser wavelength to a Raman strength — the steps
 
 **A new wavelength costs no calculation**: every step reads the absorption
-spectra the run already stored (`<label>.optical.nc`, one per geometry), so
+spectra the run already stored (`<label>.optical.nc`, one file holding each geometry's spectrum), so
 a laser changed on the page is a new number in a second
 ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 10).
 
@@ -904,7 +907,7 @@ mode part of the signal, not noise [Zayak2011, Oren2012], and splits no
 periodic cell's derivative into a molecule's share — junction theory
 projects the polarizability on the molecule instead [Galperin2008]. Whether $\alpha$ is
 taken static or at the laser's frequency is decided: both, the laser's the
-one the strength is ranked by (§ 3.1, D-f) — beside a metal, the laser's the
+one the strength is ranked by (§ 3.1) — beside a metal, the laser's the
 only one defined.
 
 ---
@@ -973,7 +976,7 @@ point — at each frame of a mode, with the optical calculation in its input.**
 | vibration | the force-constant run: $1 + 6\,n_{\mathrm{free}}$ nudged geometries | nudged and restored | the last displacement's only |
 | transport | electrodes and the device, for a current | fixed | not this question |
 | `electronic` (decided, not built) | one self-consistent solution per frame of a frame set | each frame, as given | each frame's |
-| **the vibration run's optical phase** (built 2.42.0) | **one single point per frame** | **$R_0$ and $R_0 \pm \delta Q\,\mathbf L$, from the force-constant run's modes** | **each frame's — what Raman needs** |
+| **the vibration run's optical phase** | **one single point per frame** | **$R_0$ and $R_0 \pm \delta Q\,\mathbf L$, from the force-constant run's modes** | **each frame's — what Raman needs** |
 
 - **The vibration cannot give it.** Its force-constant run does visit
   displaced geometries, but SIESTA computes the optical response once, after a
@@ -989,7 +992,7 @@ point per frame, the equilibrium once and $\pm\delta Q$ along each selected
 mode, each SIESTA call in its own folder of the run. Prep writes every deck
 with every setting, the optical keywords among them (`OpticalCalculation`,
 `Optical.PolarizationType polarized`, `Optical.Vector`, `Optical.Mesh`,
-`Optical.Broaden`, `Optical.NumberOfBands`, `Optical.EnergyMaximum`, each
+`Optical.Broaden`, `Optical.NumberOfBands`, `Optical.Energy.Maximum`, each
 checked against SIESTA's manual before it is written); the run writes only
 each call's coordinates, which SIESTA reads from a file beside the deck. How
 the phases are joined and where every record lies: [`engines/vibration.md`](?doc=engines/vibration.md) § 5.11. The
@@ -1030,12 +1033,12 @@ or about $11\times3.5 \approx 40$ min if every run started from scratch. So
 vibration's 3.3 h**,
 at the vibration's settings; a denser k-point grid for the SCF multiplies it.
 
-**Not measured: the optical calculation itself.** After each SCF it
-diagonalizes the 5,824-orbital Hamiltonian at every k-point of its own mesh
-(`Optical.Mesh`) and couples every occupied state with every empty one; a
-metal wants more k-points there than the vibration's single one. Its cost is
-measured on one junction frame, on the machine that runs it, before any
-batch.
+**The optical calculation itself**, measured on the AuBDTAu Raman run of
+2026-10-28: about two hours a call, nearly all in SIESTA's loop over pairs of
+states — it diagonalizes the 5,824-orbital Hamiltonian at every k-point of
+its own mesh (`Optical.Mesh`) and couples every occupied state with every
+empty one; a metal wants more k-points there than the vibration's single
+one.
 
 
 ---
@@ -1047,7 +1050,7 @@ nothing beyond reading what the runs wrote.
 
 | choice | proposed | check |
 |---|---|---|
-| $\delta$ (`FC.Displacement`) | the run's own, 0.0212 Å by default | where the person runs a displacement sweep (`engines/vibration.md` § 5.9), the charge derivatives are read at each of its steps, as the force constants are |
+| $\delta$ (`FC.Displacement`) | the run's own, 0.0212 Å by default | where the person runs a displacement sweep (`engines/vibration.md` § 5.9), each stage's result keeps its own charges: its infrared, opened stage by stage, is compared by the person — the sweep's summary compares the frequencies and the force constants only |
 | the charges' grain | Hirshfeld or Voronoi charges are integrated on SIESTA's real-space mesh, so an atom moved by $\delta$ against the mesh changes its charge a little even with no physics behind it | the same sweep, where it is run |
 | `MeshCutoff` | the vibration's own: its force constants and its charges are both taken on the mesh | a coarse mesh tells two equivalent atoms apart in the force constants, so their modes mix and a symmetry-forbidden mode borrows strength — measured on CO₂, the forbidden stretch at 0.5 % of the other at 150 Ry and $6.5\times10^{-8}$ at 500 Ry (§ 7) |
 | $\delta Q$ for Raman | $\delta/\max_k\lvert\mathbf L_k^{(\nu)}\rvert$ — the largest atom moved by $\delta$, the force constants' own linear range | — |
@@ -1063,7 +1066,7 @@ nothing beyond reading what the runs wrote.
 **Measured** (2026-10-24, the toy junction: a chain
 of 22 hydrogen atoms, its middle two free) — **the charges at every
 force-constant step**: the vibration `frequency/h-vib-q`, through jobset, its
-input asking for both partitions (2.35.2): 13 steps, 13 Hirshfeld and 13
+input asking for both partitions: 13 steps, 13 Hirshfeld and 13
 Voronoi blocks, every atom in each, each summing to zero within
 1.2 × 10⁻⁵ e. A free atom moved off the chain's axis (along x or y) leaves
 the charges unchanged both ways; moved along it (along z), it changes them
@@ -1075,7 +1078,7 @@ zero under both partitions, the allowed one does not — 0.1 and 47.2 km/mol
 for the free pair, the built function's numbers.
 
 **CO₂ with its carbon held, through jobset** (the SIESTA vibration e2e,
-`tests/test_siesta_vibration_e2e.py`, 2.36.0): on the relaxed molecule and on
+`tests/test_siesta_vibration_e2e.py`): on the relaxed molecule and on
 the unrelaxed one alike, under both partitions, a field along z sees neither
 bend, a field along x neither stretch; each stretch's dipole change along z
 opposes the oxygens' net motion — their charge is negative under both
@@ -1100,7 +1103,7 @@ under Voronoi. The same cutoff moves the bend from 281 to 325 cm⁻¹ and the
 stretches by 6 cm⁻¹. A residue of this kind is the calculation's mesh,
 read beside the values, never corrected (§ 6, the charges' grain).
 
-**CO₂'s Raman at 633 nm, through jobset** (the same e2e, 2.44.0, at its
+**CO₂'s Raman at 633 nm, through jobset** (the same e2e, at its
 150 Ry mesh): light along z, the stretch whose oxygens move apart reads
 $R(\hat z)$ = 45.1 Å⁴/amu and the one whose oxygens move together 0.23 —
 0.5 % of it, the in-phase share of the mixed pair above again: a centre of
@@ -1143,8 +1146,7 @@ nothing to the same value at both sides, and the four bends are imaginary
 the route's limit, not a junction's number: a free atom that is part of the
 metal, and the static value beside a metal (§ 3.1).
 
-**Not yet shown — the comparison owed** (the infrared built in 2.36.0 and
-Raman in 2.44.0 without it), the person's to run on their machine: on a
+**Not yet shown — the comparison owed**, the person's to run on their machine: on a
 molecule whose
 answer is known independently, SIESTA's infrared (§ 2) and Raman (§ 3)
 against PySCF's, which molbuilder computes already (`engines/vibration.md`

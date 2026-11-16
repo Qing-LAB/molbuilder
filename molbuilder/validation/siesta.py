@@ -14,7 +14,7 @@ import numpy as np
 from ..issues import Issue
 from ..runfiles import MAKOV_PAYNE_SCRIPT
 from ..structure import Structure
-from .sidecar import _check_frozen_atoms_consumed
+from .sidecar import check_frozen_atoms_consumed
 
 
 def _check_siesta_pseudo_coverage(struct: Structure, cfg,
@@ -603,7 +603,7 @@ def validate_siesta(struct: Structure, cfg,
     # (engines/transport.md § 1), so the frozen set holds nothing there.
     if not vibration and calculation != "transport":
         from ..template import inactive_settings
-        issues += _check_frozen_atoms_consumed(
+        issues += check_frozen_atoms_consumed(
             struct,
             engine=words,
             honored="relax_steps" not in inactive_settings(cfg, engine="siesta"),

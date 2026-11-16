@@ -39,7 +39,7 @@ calc = structure_dir("BDT", "optimization", "relaxed")   # the folder, names che
 list_runs(calc)                          # its runs, stage by stage
 ```
 
-A calculation holds a folder per stage (`01_coarse`, `02_fine`, …), each stage a
+A calculation holds a folder per stage (`01_coarse`, `02_medium`, …), each stage a
 folder per start (`run-0`, `run-1`, …): a run is one of those. The newest start
 of the last stage is where a ladder finished; `molbuilder jobset status --bundle
 <calculation>` says how each stands. `list_runs` is the ladder's order, not always

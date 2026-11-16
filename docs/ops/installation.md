@@ -1018,7 +1018,7 @@ that was a hand-run of the same commands into a scratch prefix — the first
 >    recipe's value nowhere in it.
 > 2. **The env leads regardless.** conda's activation puts
 >    `-Wl,-rpath,$CONDA_PREFIX/lib` in `LDFLAGS`
->    (`activate-gcc_linux-64.sh:64`), and cmake emits link flags ahead of the
+>    (conda's `activate-gcc_linux-64.sh`), and cmake emits link flags ahead of the
 >    install rpath. Ordering the components first is not ours to decide there.
 > 3. **It is `DT_RUNPATH`, not `DT_RPATH`.** SIESTA appends
 >    `-Wl,--enable-new-dtags` after conda's `--disable-new-dtags`, and the last

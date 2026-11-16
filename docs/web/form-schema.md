@@ -7,10 +7,10 @@
 [`engines/siesta.md`](?doc=engines/siesta.md) +
 [`engines/pyscf.md`](?doc=engines/pyscf.md) — the engines whose catalogue
 items these forms are drawn from; `web-api.md` — the
-`/api/build/schema/*` routes (web wave); [`plans/plan.md`](?doc=plans/plan.md) **W15** —
-the pending ES-module conversion.
+`/api/build/schema/*` routes (web wave).
 
-The long option forms on the Build, Spectra, and Transport tabs — mesh cutoff,
+The long option forms on the Structure optimization, Spectrum calculation and
+Transport calculation tabs — mesh cutoff,
 basis size, k-grid, the relaxation stages, and the rest — are **not written by
 hand**. They are **generated from the Python config object**. This module,
 `form-schema`, is what does the generating: it fetches a form's shape from the
@@ -22,19 +22,13 @@ server, draws the form, and reads the filled-in values back.
 > across stages* — that is the user's choice, made in the UI and recorded in
 > `task.json` (`engines/stages.md § 1.2`).
 >
-> The two got fused. `stages` was made a field of `SiestaConfig`, so this
-> generator walked into it and emitted one table column per field of
-> `SiestaStageSpec` — answering the *selection* question with the *catalogue*
-> machinery, and thereby fixing in a Python class the set of things a user is
-> allowed to vary. That is the whole reason a stage can vary four values today.
->
 > **An engine config carries no stage list**, so the generator never meets a
 > stage, and no field kind renders one.
 > The per-stage grid is the shared Task Setup tab's
 > ([`task-setup.md`](?doc=web/task-setup.md) § 5), fed by two inputs
 > from two sources: the **catalogue** from here, the **selection** from
-> `task.json`. PySCF still has a `stages` field and is a deliberate exception
-> until the SIESTA path works.
+> `task.json`. This holds for both engines, PySCF as SIESTA
+> ([`engines/stages.md`](?doc=engines/stages.md) § 1.1, § 1.1a).
 
 ## 1. The one idea: the CATALOGUE is the source of truth
 
@@ -43,36 +37,29 @@ server, draws the form, and reads the filled-in values back.
 ([`engines/template.md`](?doc=engines/template.md) § 4.3). It carries the name,
 the type, the default, the bounds, the prose, and the two things that decide
 where a control appears. **The form is built from that file.** Add an item to
-the catalogue and it shows up in the Build tab automatically — nobody edits any
+the catalogue and it shows up in the Structure-optimization tab automatically — nobody edits any
 HTML, and nobody edits Python. Remove it and it is gone. There is no second copy
 of the option list to keep in sync.
 
-> ⚠ **This section said the opposite until 2026-08-14** — *"there is a Python
-> dataclass for each engine's settings … the form is built from that class."*
-> That was the direction [`template.md`](?doc=engines/template.md) § 2.1
-> retired: it made the config classes the master, so enriching the parameter
-> list meant editing Python, and two engines' parameters could never share one
-> file. The classes are **translators** now — they carry a value on its way to
-> an engine, and nothing else.
+The config classes are **translators**: they carry a value on its way to an
+engine, and nothing else. The catalogue is the master
+([`template.md`](?doc=engines/template.md) § 2.1), so enriching the parameter
+list is an edit of the one file both engines share.
 
 ### 1.1 What the form takes from an item, and what it derives
-
-**The presentation does not change.** The CSS, the card layout, the help
-disclosure, the engine-key badge — all of it stays exactly as it is. What moves
-is where the *data* comes from.
 
 | the schema needs | from the item |
 |---|---|
 | `name` | the item's own name |
 | `label` · `help` · `unit` | the keys of the same name |
 | `default` | the item's default **for this kind** — the one default, `template.default_of` — or, on a surface drawn from a calculation's template, the value it holds for an item nobody chose (the row below) — a HINT beside a field with no value, never a value |
-| `default_words` | where that default comes from, in the words a blank field's caption leads it with — *recommended for a vibration*, *SIESTA's own default*, *default* (`template.default_words`, *(2.68.1)*); empty where the item has no default |
+| `default_words` | where that default comes from, in the words a blank field's caption leads it with — *recommended for a vibration*, *SIESTA's own default*, *default* (`template.default_words`); empty where the item has no default |
 | `value` · `source` | **the calculation's template**, when the surface is drawn from one (`catalogue_to_form_schema(template=)`): the item's value and where it came from (`engines/template.md` § 6.6 obligation 2). A value nobody chose (`default`) is not carried — that field is blank, its `default` the value the template holds, which is what runs. With no template, no field has a value. The words a source is said in ride once, as the schema's `source_words` (`template.SOURCE_WORDS`: *from the junction you cited* · *you set this* · *not chosen* · *not recorded*), and every surface says them from there |
 | `locked` | derived from the kind: an item the RUNG fixes (`role`, `engines/template.md` § 6.4), echoed read-only — `{value, why}`, the rung's answer (`template.role_answers`; on a form for the whole calculation, the answers every rung gives alike, `fixed_on_every_rung`) and the reason (`why_role`). Drawn disabled at its value with the reason beside it, never collected (§ 6.6 obligation 3: shown, never a control). The bias carries no value — each point of the description's list is its own (the item's `per_point_from`, `template.per_point_items`) *(2026-09-30, K7)* — and says so: `{value: null, why, per_point: true}`, and the page that holds the points shows them in the locked box (`showPoints`; the Transport tab's bias list, *0, 0.1, 0.2 V — one run per point*, kept current with it) *(2026-10-13)* |
 | `scope` | on the shared panel only, an item that is `shared` **and** names `stages`: which rungs its one value is for, in the template's words (`template.shared_scope_words` — *read by the device and transmission rungs only*; [`engines/template.md`](?doc=engines/template.md) § 5, TD11). Drawn as a hint line beside the field. An item every rung reads carries none — the panel's heading says it *(2026-10-11)* |
 | `choices` | the item's `choices`, **narrowed to what the kind offers** on this engine (`offered`, `template.offered` — [`engines/template.md`](?doc=engines/template.md) § 6.3a, 2026-09-30): a vibration's relaxation shows three relaxers; the part both engines of a kind share offers what either offers (`template.offered_by_any`, § 1.3) |
 | `min` / `max` | `range` |
-| `engine_key` | the item's **`engine_key`** — the full spelling. `expands` is the fallback for a `deck` item whose several keywords are the honest answer, and `anchor` the last resort. *(This said `anchor` first until 2026-08-15, and an anchor is deliberately the bare leading keyword — so the badge read `gto.M` on four different PySCF controls, `mf` on three more, and nothing at all on the eleven whose key is a molbuilder note.)* |
+| `engine_key` | the item's **`engine_key`** — the full spelling. `expands` is the fallback for a `deck` item whose several keywords are the honest answer, and `anchor` the last resort. *(An anchor is the bare leading keyword, so a badge drawn from it would read `gto.M` on several PySCF controls and say nothing for a key that is a molbuilder note.)* |
 | `card` | the card it is drawn in: its `result`'s for the kind, else its `group` (`template.card_of`, § 1.3) |
 | `active_when` | the item's `active_when`, as declared (§ 1.3) |
 | `active_words` | what it waits on, in words — *It takes effect only while Compute Raman intensities is on.* (`template.active_words`, the settings gate's own words) — shown beside the field while it is greyed out (§ 1.3) |
@@ -84,7 +71,7 @@ is where the *data* comes from.
 | `labels` (a triple's x/y/z) | derived from `type` — the k-point mesh's axis names (`kmesh.AXES`) |
 | `fixed` (a triple's locked components) | derived from the kind: the components it fixes, `{z: {value: 1, why: "…"}}` (`kmesh.fixed`, [`engines/siesta.md`](?doc=engines/siesta.md) § 6.1) — a transport calculation's third k component, which no rung reads. The triple draws each locked at its value with the reason beside it, and the value still travels, so the template states it *(2026-09-30)* |
 | `null_label` | on an optional item, the item's own words for its blank (`engines/template.md` § 5) — the blank option of a select and a tri-select, a blank box's hint and its caption |
-| `required` | derived from the kind — the item's `required` kinds ([`engines/template.md`](?doc=engines/template.md) § 5; no item declares one today) — or from what a transport citation asks of the person (a pair's pseudopotential directory, `citation_defaults.asked_of_the_person`): the control is drawn required, and red while it is empty. Only for a value the Send or the describe refuses blank whatever else the calculation holds; the refusal is theirs, beside the field *(2026-09-30; the SIESTA pseudopotential directory left it at 2.69.8, [`science/pseudopotentials.md`](?doc=science/pseudopotentials.md) § 1)* |
+| `required` | derived from the kind — the item's `required` kinds ([`engines/template.md`](?doc=engines/template.md) § 5; no item declares one today) — or from what a transport citation asks of the person (a pair's pseudopotential directory, `citation_defaults.asked_of_the_person`): the control is drawn required, and red while it is empty. Only for a value the Send or the describe refuses blank whatever else the calculation holds; the refusal is theirs, beside the field *(2026-09-30; the SIESTA pseudopotential directory is not one, [`science/pseudopotentials.md`](?doc=science/pseudopotentials.md) § 1)* |
 | `tier` · `pattern` · `optional` | **item keys added for this** — § 1.2 |
 
 **What every page names and offers a setting by is one record**
@@ -98,12 +85,12 @@ three states — and Task setup's run cards, stage columns and values shared
 by every stage are that record with theirs
 ([`task-setup.md`](?doc=web/task-setup.md) § 3, § 5.2, § 6.2b), so none of
 them states a fact of the setting its own way. Every key is on every
-record, empty where the item has none *(2.69.49)*. How a page then says a
+record, empty where the item has none. How a page then says a
 value is still each page's: a three-way select says *yes* / *no* (§ 4)
 where Task setup's cells say *on* / *off*.
 
-**One field state, drawn the same way on every surface** *(plan § 5w K7,
-2026-09-30)*. A field **holds** a value only where its surface is drawn from
+**One field state, drawn the same way on every surface**
+*([`archive/2026-10-09-plan-consolidation.md`](?doc=archive/2026-10-09-plan-consolidation.md) § 5w, K7; 2026-09-30)*. A field **holds** a value only where its surface is drawn from
 the template and edits it — the transport tab's shared panel: the template's
 `value`, named by its source. A surface of **overrides** over the template
 (`renderForm`'s `holds: "overrides"` — a transport rung's tab) holds the
@@ -218,21 +205,17 @@ about which field locks which: a relaxation's step settings wait on
 *Relaxation type* being a relaxer (`relax_type = ["CG", "Broyden", "FIRE"]`),
 and the solvent model on a solvent being chosen (`solvent = "set"`, an
 optional field holding any value) — the Structure-optimization tab's two
-locks, its own code until 2.65.0.
+locks.
 
-*The `group` row named `profile · stage · budget` until 2026-08-15 and had been
-wrong since `output` landed. Naming the members in two documents is what made
-that possible; § 5 owns them now.*
+*The `group` members are named in [`template.md`](?doc=engines/template.md)
+§ 5 alone: a second list of them goes stale when the vocabulary grows.*
 
-**`category` replaces `section`** in the inner legend, and that is the whole
-visible change: `section` was free text chosen per engine, so SIESTA's *"Basis &
-grid"* and PySCF's *"Method"* were unrelated words. The categories are
-shared, so the same card shows the same inner headings for both engines — which
-is what [`template.md`](?doc=engines/template.md) § 6.2 exists for.
+**`category` is the inner legend.** The categories are shared, so the same
+card shows the same inner headings for both engines — which is what
+[`template.md`](?doc=engines/template.md) § 6.2 exists for.
 
-**The outer cards are load-bearing.** They were introduced 2026-06-13 to fix a
-reported bug — the stage selector silently rewrote budget and system fields.
-Keeping `group` as the outer axis keeps that fix.
+**The outer cards are load-bearing**: they are how the form is read, and
+where advice about a field lands.
 
 **Folding is the caller's choice, drawn here** *(2026-09-24)*.
 `renderForm(container, schema, {foldable, folded})` draws each outer card as
@@ -276,12 +259,8 @@ sure the title and text in each panel for these stages are clear what these
 parameters are about so the user is not confused by the repetition"; "the UI
 design can use prefix to group different stage parameters")*.
 
-This said *"and are not touched"* until 2026-08-15, by which point three had
-been added: `output`, `staging` and `setup`. The sentence meant *the mechanism
-is not changed*, and that is still true — cards are still chosen by `group`,
-still drawn in the renderer's declared order. But read as *the set is closed in
-practice* it was simply false, and it is the reason two tables below it went
-stale unnoticed. **The vocabulary grows; the axis does not.**
+Cards are chosen by `group` and drawn in the declared order. **The
+vocabulary grows; the axis does not.**
 
 ## 1a. The field-metadata vocabulary — every tag, and the rule for adding one
 
@@ -289,27 +268,18 @@ stale unnoticed. **The vocabulary grows; the axis does not.**
 meaning, function and reader in a contract**, so that expanding the data set has
 rules rather than precedents.*
 
-**15 keys are carried by the two engine configs** *(a count held by review,
-re-derived when a config changes)*, and they split into two groups that this table conflated until
-2026-08-17 — when it listed fifteen and said *"this is all of them"*, while
-seven were in the tree with no entry anywhere. The rule above is what made that
-a defect rather than an oversight: a tag with no contract entry is a tag whose
-meaning is whatever the last person to add one assumed. *(It said twenty-two
-across four configs until 2026-10-02. `SpectraConfig` retired on 2026-08-22
-and `TransportConfig` on 2026-10-02, and the dataclass form builder went with
-the last of them. Four keys went that day because nothing read them any more:
-`section`, `id_suffix` and `step`, which only the builder read; `skip_cli`,
-unread since the click bridge's deletion on 2026-09-17; and `optional`, which
-the template takes from the field's `Optional[...]` type and the form from
-the catalogue — 136 declarations. `help` left the classes the same day: the
-catalogue is its one home.)*
+**Every tag is named here, in two groups**: the form's own, which the
+catalogue carries and every reader takes through `template.items_of`, and the
+catalogue's axes. A config class field carries one, `validate`. A tag with no
+contract entry is a tag whose meaning is whatever the last person to add one
+assumed.
 
 **Group 1 — the form's own tags.** They describe *how a field is presented*,
 and this document owns them. **The form reads them from the catalogue** (§ 1),
 and so does every other reader — the settings gate's messages, the description
 check, the form's coercion, finding placement — through `template.items_of`
 ([`engines/template.md`](?doc=engines/template.md) § 2.1a). *A config class
-carried copies of them until 2026-10-18; it carries none now.*
+carries none of them.*
 
 | Key | What it says | The form reads the catalogue's |
 |---|---|---|
@@ -336,27 +306,9 @@ reads none of them. **The one tag a class field still carries** is
 > handled*, never *what it means scientifically*; that belongs in `help` and in
 > [`engines/tuning.md`](?doc=engines/tuning.md).
 
-> ### ⚠ `section` no longer decides visibility on the two engine forms
->
-> **Changed 2026-08-15.** The SIESTA and PySCF forms are built from the
-> **catalogue** (§ 1), which has no `section` — an item is on the form because
-> the catalogue carries it, and § 7's membership rule makes that *every
-> parameter the schema declares*. So for those two classes `section` is read by
-> nothing, and a field without one is **not** internal.
->
-> That is not a technicality. `section` was an **opt-in**, and fifteen real
-> parameters never got one — `write_forces`, `species_order`, `copy_psml`,
-> PySCF's `ecp` / `auxbasis` / `diis_space` / `damp` and the rest. They were
-> invisible on the form while being perfectly ordinary settings that reach the
-> generated file. Building from the catalogue is what surfaced them. *(Two of
-> them, `write_forces` and `write_coor_step`, left the form again on
-> 2026-09-29 — by declaration, not by omission: the rung fixes both on every
-> SIESTA kind, [`template.md`](?doc=engines/template.md) § 6.4.)*
->
-> **`section` itself is gone** *(2026-10-02)*. The transport tab moved onto
-> the catalogue on 2026-09-24, which left the dataclass form builder no
-> caller; it was deleted with `TransportConfig`, and the 90 `section`
-> declarations still on the two engine classes went with it.
+An item is on a form because the catalogue carries it for the kind; one the
+rung fixes is never a control (`locked`, § 1.1;
+[`template.md`](?doc=engines/template.md) § 6.4).
 
 ### The rules a new field must satisfy
 
@@ -367,16 +319,14 @@ reads none of them. **The one tag a class field still carries** is
      loose below the cards and its findings fall to the residual panel instead
      of beside the field. **Guarded:**
      `tests/test_catalogue_agreement.py::test_every_catalogue_item_declares_a_panel`,
-     plus `tests/test_build_e2e.py::test_no_field_renders_loose_outside_a_card`
+     plus `tests/test_build_e2e.py::TestFormSchemasRender::test_no_field_renders_loose_outside_a_card`
      — because a card the renderer does not draw looks exactly like no card.
    * A finding about the field is placed by the same rule the form draws by
      (`template.card_of`, asked by `_shared.card_of_finding`), so a control
      and its warnings cannot land on two cards.
-2. **`group` and `result` are a default and a placement, never a
-   restriction.** They decide which card a field is drawn in and where its
-   advice lands, and `group` — for `stage` — whether its *vary per stage* box
-   starts ticked. It does **not**
-   decide what a user may vary: any field can be promoted
+2. **`group` and `result` are a placement, never a restriction.** They
+   decide which card a field is drawn in and where its advice lands. They do
+   **not** decide what a user may vary: any field can be promoted
    ([`engines/stages.md`](?doc=engines/stages.md) § 1.2–1.3).
 3. **The groups may overlap in meaning, and nothing downstream reads them to
    decide anything.** They serve user clarity and finding placement. A field can
@@ -389,32 +339,18 @@ reads none of them. **The one tag a class field still carries** is
 
 **The members and their meanings live in
 [`template.md`](?doc=engines/template.md) § 5's `group` row, and are not
-restated here.** They were, until 2026-08-15 — a three-row table naming
-`profile`, `stage` and `budget`. It went stale twice in one day without anyone
-noticing: `output` and `staging` were added earlier that day and never reached
-it, and `setup` followed the same afternoon. A restated closed vocabulary is a
-copy that only *looks* authoritative, and this document has no way to know when
-the vocabulary grows.
+restated here.** A restated closed vocabulary is a copy that only *looks*
+authoritative, and this document has no way to know when the vocabulary
+grows.
 
 What belongs here is the part `template.md` does not say — **how a form USES
 the axis**, which is § 1.3's table: `group` chooses the outer card, `category`
-the legend inside it. Two additional consequences are the form's own and are
+the legend inside it. One additional consequence is the form's own and is
 stated nowhere else:
 
-- **`stage` seeds the *vary per stage* checkboxes** — those boxes start ticked
-  for a `stage` item and clear for everything else.
 - **`staging` is not drawn at all.** `catalogue_to_form_schema` filters it,
   because the item is answered by the staging surface rather than by a
   parameter form. It is a real parameter that this page does not ask.
-
-> **Where the cards came from.** They were introduced 2026-06-13 to fix a
-> reported bug: the form mixed stage, budget and system fields inside the same
-> fieldsets, so **switching the stage preset silently rewrote budget and system
-> fields too**. The cards made *"the stage selector touches the stage card
-> only"* visible. The per-parameter checkbox
-> ([`web/task-setup.md`](?doc=web/task-setup.md)
-> § 7.6) removes the preset that caused it, so the grouping now stands on its two
-> remaining jobs: reading the form, and placing advice.
 
 ---
 
@@ -448,14 +384,14 @@ flowchart LR
 Because both directions start from the one catalogue, the form a user fills in
 and the config the server rebuilds can't drift apart.
 
-## 3. The nine calls
+## 3. The ten calls
 
 Everything is on `window.molbuilder.formSchema` (a plain global — it does not
 register with the runtime):
 
 | Call | What it does |
 |---|---|
-| `fetchSchema(engine, opts)` | Ask the server for a form's shape (`GET /api/build/schema/<engine>?calculation=<kind>`) — `engine` an engine's form or `"common"`, the settings every engine of the kind shares; `opts.surface` `"own"` narrows an engine's form to its own, and `"state"` the shared settings to their electronic state (§ 1.3). `opts.calculation` is required: every caller states its kind, and the server refuses a request that states none rather than giving it one (2026-10-06, plan W57 R10). |
+| `fetchSchema(engine, opts)` | Ask the server for a form's shape (`GET /api/build/schema/<engine>?calculation=<kind>`) — `engine` an engine's form or `"common"`, the settings every engine of the kind shares; `opts.surface` `"own"` narrows an engine's form to its own, and `"state"` the shared settings to their electronic state (§ 1.3). `opts.calculation` is required: every caller states its kind, and the server refuses a request that states none rather than giving it one (2026-10-06; [`archive/2026-10-09-plan-consolidation.md`](?doc=archive/2026-10-09-plan-consolidation.md) § 0c, W57). |
 | `renderForm(host, schema, opts)` | Draw the form from that shape into a host element. `opts.holds = "overrides"` draws a surface of overrides over the template — its fields blank, the template's value their hint (§ 1.1); `opts.foldable` folds the cards (§ 1.3); `opts.alongside` names the parts drawn with this one, where a field's `active_when` finds the fields it waits on (§ 1.3). |
 | `showPoints(host, text)` | Show `text` in the locked box of every field answered point by point (`locked.per_point`) — the page holds the points, the form only the place to say them; the box stays locked and is never collected *(2026-10-13)* |
 | `collectForm(host, schema, names?)` | Read what the form holds back into a plain values object (the schema tells it how to read each kind): **every field, a blank as `null`** — not chosen — each value read as its type. A value that will not read is refused: it throws an `Error` naming the field (`err.field`) (§ 1.1). A `locked` field is never read. `names` reads those fields alone. |
@@ -540,7 +476,7 @@ un-mapped item never disappears.
 
 ## 5. A worked example — why the SIESTA form has the fields it has
 
-1. The Build tab, with SIESTA selected, calls
+1. The Structure-optimization tab, with SIESTA selected, calls
    `formSchema.fetchSchema("siesta", {calculation: "optimization"})`.
 2. The server reads the catalogue's SIESTA items
    (`catalogue_to_form_schema`), turns each into a small description (mesh
@@ -550,12 +486,14 @@ un-mapped item never disappears.
    options **because the catalogue declares those items**, not because
    someone wrote a SIESTA form.
 4. The user edits, and `collectForm` reads the controls back into a values
-   object that is sent to generate the `.fdf`.
+   object that the Send hands to Task setup
+   ([`handover-procedure.md`](?doc=web/handover-procedure.md)); `prep` writes
+   the `.fdf` from the description.
 5. Later, reopening a saved config calls `setValues` to refill the same form.
 
 ## 6. Who uses it
 
-- **Build tab** (structure-optimization) — the full four-call cycle, for SIESTA
+- **Structure-optimization tab** — the full four-call cycle, for SIESTA
   and PySCF.
 - **Spectrum tab** — the same calls, against the kind's three parts: the
   charge and spin both engines share, once, in the chemistry card
@@ -566,10 +504,9 @@ un-mapped item never disappears.
   and the engine strip showing one ([`spectra.md`](?doc=web/spectra.md) § 5).
 - **Transport tab** — uses `renderForm` / `collectForm`, but fetches its shape
   from its own route (`GET /api/transport/schema`) rather than through
-  `fetchSchema` (which targets the Build engines).
+  `fetchSchema` (which asks the `/api/build/schema/*` routes).
 
 ## 7. Current → target: ES modules
 
-`form-schema.js` is a classic `window.molbuilder.*` script today. Converting it
-to an ES module is a planned pass ([`plans/plan.md`](?doc=plans/plan.md) **W15**); this
-note is dropped when that lands.
+`form-schema.js` is a classic `window.molbuilder.*` script; no item in
+`plans/plan.md` converts it.

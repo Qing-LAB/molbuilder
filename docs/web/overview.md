@@ -30,8 +30,8 @@ model, or API client — is an independent ES module** that is
 
 **MolView is the exemplar.** One module builds the entire 3D card — viewer,
 selection panel, view toggles, cell editor — and it is mounted **read-only** on
-Structure-optimization, Spectra, and Results, and **editable** on Molbuilder and
-Transport. Five tabs, one module, zero copy-paste. The projects sidebar and the
+Structure optimization, Spectrum calculation, Transport calculation and Results,
+and **editable** on Molbuilder. Five tabs, one module, zero copy-paste. The projects sidebar and the
 form builder are reused the same way. When a module *isn't* fully converted yet
 (some are still classic global scripts), its own doc carries a **current → target
 ESM note**, and § 6 below is the scorecard.
@@ -46,10 +46,8 @@ expose, you do *not* implement it tab-side and you do *not* reach around the
 module — no raw-3Dmol access, no bespoke overlay, no "temporary" tab-side copy of
 the module's state. You file the work against the module, naming the exact API,
 handle method, or data field it must add; the tab consumes it once the module
-ships it. This is the rule the MolView extraction was run under, and it is why
-the seal held. Every shortcut taken mid-migration becomes permanent, and one tab
-reaching past the door is how a reusable module quietly turns back into five
-copies.
+ships it. Every shortcut becomes permanent, and one tab reaching past the door
+is how a reusable module quietly turns back into five copies.
 
 ## 2. The layers
 
@@ -113,8 +111,8 @@ entry file for `import`/`export`.)
 | **presenters** | the Results-tab file-viewer registry | [presenters.md](?doc=web/presenters.md) | ○ classic² |
 | **spectra** | the Raman spectrum chart + mode table engine | [spectra.md](?doc=web/spectra.md) | ○ classic² |
 | **results** | the Results-tab dispatch shell + file picker | [results.md](?doc=web/results.md) | ○ classic² |
-| **form-schema** | builds engine-option forms from the config dataclass | [form-schema.md](?doc=web/form-schema.md) | ○ classic² |
-| **notify** | the app-wide notification framework (any tab, any caller) | [notifications.md](?doc=web/notifications.md) | ○ classic² → #105 |
+| **form-schema** | builds engine-option forms from the catalogue | [form-schema.md](?doc=web/form-schema.md) | ○ classic² |
+| **notify** | the app-wide notification framework (any tab, any caller) | [notifications.md](?doc=web/notifications.md) | ○ classic² |
 | **path helpers** | the browser's one path door: a path's name, its folder, a name joined to a folder, where it lies under a folder | [runtime.md](?doc=web/runtime.md) § 3 | ✅ full (mirrored on `window.molbuilder.path`) |
 | **runtime + primitives** | the load-order registry + the genuinely-shared helpers (markdownRender, the CodeMirror code-viewer, constants; the one confirm, warningModal, an ES module mirrored on its global) | [runtime.md](?doc=web/runtime.md) | ○ classic² |
 
@@ -124,12 +122,9 @@ global (trajectory) or self-mounts on page load (transport), rather than being a
 clean `export`.
 ² **classic** = a plain global-registered script, not yet an ES module.
 ³ **MolView and VibrationView are sibling modules, not one** — each a full ES
-module, and fully independent: they drew through one **shared 3Dmol embed
-surface** (`lib/viewer/`, borrowed by VibrationView via a transitional
-`window.molbuilder.viewer` global) until the separation (task #104) was done —
-`lib/viewer/` is gone and VibrationView carries its own concealed seal
-(`lib/vibrationview/_seal.js`; see [`vibrationview.md § 5`](?doc=web/vibrationview.md);
-re-read 2026-09-29).
+module, fully independent; VibrationView carries its own concealed seal
+(`lib/vibrationview/_seal.js`; see [`vibrationview.md`](?doc=web/vibrationview.md)
+§ 4).
 
 Two cross-cutting contracts round out the domain (not mountable modules, but the
 rules every tab obeys): [`web-api.md`](?doc=web/web-api.md) (the server routes) and
@@ -183,18 +178,9 @@ stack and some shared plumbing**:
   registry itself, and the loose primitives (`markdown-render`, `detection-chip`,
   `constants`).
 
-Finishing the conversion is tracked in two workstreams (`plans/plan.md` **W15**):
-
-- **#102** — convert the file-viewer registry to ESM **and rename `inspectors` →
-  `presenters`** in one pass. The same pass also converts the two **heavy engine
-  cores the registry mounts** — `lib/spectra/core.js` and `lib/trajectory/core.js`
-  — since converting them rewrites those files anyway. "Inspector" collided with
-  `mountInspector` and the viewers' own inspect panels, hence the rename.
-- **#103** — convert the remaining classic modules: the `results` module, the
-  runtime registry itself, `form-schema`, and the shared primitives.
-
-Until then, the runtime registry (§ 3) is what lets fully-ESM and classic modules
-coexist on the same page without a load-order race.
+No item in `plans/plan.md` tracks finishing the conversion; the list above is
+what remains. Meanwhile the runtime registry (§ 3) is what lets fully-ESM and
+classic modules coexist on the same page without a load-order race.
 
 **Why finish the conversion at all?** An ES module makes the concealment *real*: a
 top-level `const` or helper is invisible outside the file unless it's `export`ed, so

@@ -30,7 +30,7 @@ def spectra_render_checks(struct: Structure, cfg, *,
     Called from ``validation/__init__.py``'s vibration arm, over the
     deck's config view -- an ADAPTER over PySCFConfig, so ``cfg`` is
     duck-typed to the spectra vocabulary.  ``inactive`` names the settings
-    that enter nothing here (`metadata._inactive`): the probe's advice
+    that enter nothing here (`metadata.inactive_settings`): the probe's advice
     stands aside while its displacement is one of them."""
     issues: List[Issue] = []
 
@@ -595,7 +595,7 @@ def selector_issues(cfg, *, none_means: str) -> List[Issue]:
     is refused here, before a deck is written from it; an empty list is
     said now, not after the wall time -- ``none_means`` what the run then
     does not compute.  A window outside ``all`` is the generic check's,
-    from the items' ``active_when`` (`metadata._check_inactive`)."""
+    from the items' ``active_when`` (`metadata.check_inactive`)."""
     issues: List[Issue] = []
     selector = str(getattr(cfg, "es_mode_selection", ""))
     if selector == "all":

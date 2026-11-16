@@ -15,7 +15,7 @@ import numpy as np
 
 from ..issues import Issue
 from ..structure import Structure
-from .sidecar import _check_frozen_atoms_consumed
+from .sidecar import check_frozen_atoms_consumed
 
 
 #: The row-5 boundary (Kr, Z=36).  It is NOT a definition of "heavy" and
@@ -364,7 +364,7 @@ def validate_pyscf(struct: Structure, cfg,
         _drop_reason = ("" if _relaxes else
                         "cfg.optimize = False (single-point energy; "
                         "no relaxation)")
-        issues += _check_frozen_atoms_consumed(
+        issues += check_frozen_atoms_consumed(
             struct,
             engine=words,
             honored=_relaxes,

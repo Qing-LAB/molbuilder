@@ -30,8 +30,8 @@ Charge is resolved in **one** place so the SIESTA and PySCF emitters don't each
 carry their own logic: the charge step of the electronic-state class
 ([`science/chemistry-correctness.md`](?doc=science/chemistry-correctness.md) § 2a),
 `electronic_state(struct, cfg, kind=)`, which resolves the charge first and then
-the spin at that charge. Both engines' configs carry one field, `net_charge`
-(two names until the 2026-08-19 merge), and every deck writer and check reads
+the spin at that charge. Both engines' configs carry one field, `net_charge`,
+and every deck writer and check reads
 `state.net_charge` — the value, where it came from, and why.
 
 ```mermaid
@@ -182,9 +182,8 @@ un-canonical is what a **person typed**.
 **A caller emitting an engine input must let the `KeyError` propagate.** A
 species with no element is not something a calculation can run, and the
 alternative — quietly writing `Z=0`, which SIESTA accepts as a ghost species —
-means the run starts and is silently wrong. Two transport emitters did exactly
-that until 2026-09-09; the identical `KeyError → 0` shape had already been
-caught once in `pyscf/input.py` on 2026-05-26. One door is what stops a third.
+means the run starts and is silently wrong. One door is what keeps every
+emitter from writing `Z=0` for a label it cannot resolve.
 
 Emission is gated on `validate`, so the readable message comes first:
 `validation.chemistry.check_species_labels` reports an unresolvable label as an
@@ -199,19 +198,18 @@ orbital ordering inside SIESTA's `.DM` and `.TSHS`. Two runs that order
 species differently write files the next stage cannot read correctly
 (`engines/transport.md` § 2a.13 classes it a SHARED, binding value).
 
-**There was no single rule until now.** `siesta/input.py::_detect_species`
-sorted by atomic number and `transport/transiesta.py` sorted alphabetically,
-so the same structure got `H, C, S, Au` from one emitter and `Au, C, H, S`
-from the other.
+Two emitters ordering species by two rules give one structure `H, C, S, Au`
+in one deck and `Au, C, H, S` in the next — so there is one rule.
 
 **THE RULE.** Start from atomic number, then place hydrogen the way a chemist
 writes it. Three cases, in this order:
 
-1. **Carbon present** → carbon first, then hydrogen, then the rest by Z. The
-   organic convention, and it **wins outright**: methanol is CH₄O and acetic
-   acid C₂H₄O₂, never HC…
-2. **No carbon, but a group VI or VII element present** (O, S, Se, Te · F, Cl,
-   Br, I) → **hydrogen first**, where its atomic number already puts it.
+1. **Carbon present** → hydrogen right after carbon, the rest by Z — a
+   species lighter than carbon (Li, Be, B) stays ahead of it. The organic
+   convention, and it **wins outright**: methanol is CH₄O and acetic acid
+   C₂H₄O₂, never HC…
+2. **No carbon, but a group VI or VII element present** (O, S, Se, Te, Po ·
+   F, Cl, Br, I, At) → **hydrogen first**, where its atomic number already puts it.
    H₂O, HF, HCl, H₂S, HNO₃ — hydrogen is the electropositive partner here and
    is written first.
 3. **Neither** → hydrogen goes **last of the light elements**, immediately
@@ -241,14 +239,14 @@ boron, carbon, nitrogen, silicon, a metal). Carbon overrides because organic
 formulae are written Hill-style and a reader expects `C` first in anything
 with a carbon skeleton *(user, 2026-09-23)*.
 
-**WHERE THIS APPLIES — and where it deliberately does not.** Scanned
-2026-09-23; the rule governs every place a species list is **declared for an
-engine or listed for a reader**, and nothing else.
+**WHERE THIS APPLIES — and where it deliberately does not.** The rule
+governs every place a species list is **declared for an engine or listed for
+a reader**, and nothing else.
 
 | site | uses the rule? | |
 |---|---|---|
-| `siesta/input.py` | ✅ | the SIESTA deck's `ChemicalSpeciesLabel`. Its own `_detect_species` is **deleted** — a wrapper is a second name for one answer, and a second name is how a third rule appeared |
-| `transport/transiesta.py::_emit_geometry` | ✅ | every transport rung, **override included**. It sorted alphabetically until 2026-09-23 and could not see `cfg.species_order` at all, because the lifted block took no config — which the call site already had and dropped |
+| `siesta/input.py` | ✅ | the SIESTA deck's `ChemicalSpeciesLabel`, asked of the one entry — no wrapper: a second name for one answer is how a second rule appears |
+| `transport/transiesta.py::_emit_geometry` | ✅ | every transport rung, **override included** — it takes the config and hands `species_order` to the one entry |
 | `describe.pseudo_species`, `prep`'s pseudopotential copy | ✅ | so the pseudos a description names are listed in deck order |
 | PySCF's emitters | — | they write atoms in the structure's own order and declare no species table. Nothing to order |
 | **`Structure.formula`** | ❌ **never** | it is an **identifier**, not chemistry: compared for equality, normalised into a run id (`run-identity.md` § 2.0a) and recorded in `task.json` as a witness. Its own docstring says so. Re-ordering it would change every run id, and the alphabetical order is what makes it a stable key |
@@ -262,9 +260,8 @@ be stable? Then it is not, and forcing the rule on it would be churn.
 **The person may override it.** `species_order` is a catalogue row
 (`engine_key = "(molbuilder: the order of the ChemicalSpeciesLabel block)"`); set, it
 is honoured verbatim, and the rule above is the default beneath it. The
-override is resolved **inside the one entry**, not at each call site — it was
-spelled in two emitters and honoured by one, which is exactly the shape that
-let transport drift.
+override is resolved **inside the one entry**, not at each call site, so no
+emitter can honour it alone.
 
 An override that omits a species the structure uses is refused by the one
 entry, naming it, before any deck exists: *"species_order does not list X,
@@ -299,13 +296,12 @@ own element-column rules.
 ## 5. Not here — the scientific-correctness machinery
 
 `chemistry.py` also decides whether a *calculation setup* is physically valid.
-That is a **science** concern, documented in `science/` (migrating in the
-science wave), not the data model:
+That is a **science** concern, documented in `science/`, not the data model:
 
 | Function / type | What it decides | Doc |
 |---|---|---|
 | `check_spin_charge_parity(struct, charge, unpaired)` | is the (charge, 2S) pair electron-count-consistent? | `science/chemistry-correctness.md` |
-| `detect_transition_metals` | which transition metals are present (the basis-adequacy check) | `science/validation.md` |
+| `detect_transition_metals` | which transition metals are present (the basis-adequacy check) | — (its check: `validation/pyscf.py`'s basis adequacy for transition metals) |
 | `explain_metal_spin` | what a count means for a metal centre, in words | `science/chemistry-correctness.md` |
 | `analyze_structure(struct)` → `ChemistryAnalysis` | the structure's facts — the metals that bear on its spin and their usual spins — that the electronic state decides from | `science/validation.md` · `science/chemistry-correctness.md` § 2a |
 

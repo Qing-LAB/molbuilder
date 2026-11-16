@@ -17,10 +17,9 @@ the numbers behind it, and what each choice costs.
 along z is **$z_{\mathrm{span}} + d$** — the atoms' extent plus **one interlayer spacing of
 the electrode crystal** — never the extent alone.
 
-**Who applies it changed on 2026-08-31.** It is the number a person sets on the
-Cell page after measuring $d$ with the ruler (§ 6), not one a builder adds
-behind them. This document still owns *what the right value is*; § 6 owns *how
-it gets there*.
+**Who applies it.** It is the number a person sets on the Cell page after
+measuring $d$ with the ruler (§ 6); no builder adds it behind them. This
+document owns *what the right value is*; § 6 owns *how it gets there*.
 
 ---
 
@@ -61,7 +60,7 @@ builds, and agree to six decimals. Note that ASE's surface builders return
 `cell[2][2] = 0` for a slab (`pbc = [True, True, False]`), so **there is no
 z-period to copy from ASE**; it has to be computed.
 
-### 2.1 The three rows are one rule *(2026-09-22)*
+### 2.1 The three rows are one rule
 
 They look like a table of special cases and they are not. The spacing is the
 cubic $a / \sqrt{h^2 + k^2 + l^2}$ evaluated at the **first *allowed* reflection**
@@ -91,21 +90,16 @@ A crystal system with no rule here **refuses** rather than answering with the
 cubic formula: hexagonal needs $c/a$ and Miller–Bravais indices, and a
 plausible wrong number is worse than no number.
 
-**It is the backend's, and only the backend's.** Until 2026-09-22 the live
-implementation of this table was three literals in
-`web/static/modify/slab-panel.js` — crystallography in the layer that must not
-know any — and it was **short the (110) row**, so a person building fcc(110)
-was shown two spacings, neither of them the one § 6.1 tells them to type into
-the Cell page. The browser now asks `GET /api/modify/spacings`.
+**It is the backend's, and only the backend's.** The slab panel asks
+`GET /api/modify/spacings` and carries no spacing of its own, so it cannot
+show a table short of a row.
 
 ### 2.2 `a` is stated, never defaulted *(user, 2026-09-22)*
 
 $a$ comes from `molbuilder/data/fcc_lattice.json` — `a_experimental` and
-`a_pbe` per metal, plus whatever the person types. (This paragraph named a
-third column, `a_pbe_siesta_psml`; schema v3 dropped it, because nothing in
-the codebase could ever write it. A constant measured in someone's own setup
-belongs to **one run**, and is read from there — `POST
-/api/modify/lattice-from-run`.)
+`a_pbe` per metal, plus whatever the person types. A constant measured in
+someone's own setup belongs to **one run**, and is read from there — `POST
+/api/modify/lattice-from-run` — never kept in the table.
 
 **Every door that returns a spacing requires the reference explicitly** — the
 word `experimental`, the word `pbe`, or a number. There is no default. The two
@@ -182,9 +176,9 @@ there is nothing to choose. Measured against ASE, not assumed:
 | (111) | always | only when `n` is even |
 
 So the flag is a real choice on (111) alone, and even there it constrains
-`(m, n)`. Offering it as a free checkbox on all three is how a default request
-for a (100) slab came back a `400`: the panel's box starts unchecked, which is
-the one setting (100) cannot build.
+`(m, n)`. So the panel offers it only where the table has two shapes: a free
+checkbox, starting unchecked, would ask (100) for the one setting it cannot
+build.
 
 **The table lives in `modify.FCC_ORTHOGONAL_CHOICES`** and is served to the
 browser by `/api/modify/meta`, the same anti-drift route `STACKING_PERIOD`
@@ -260,35 +254,20 @@ operation fails it, and fails it identically.
 `add_slab(grow="-z", sequence="ABC")` places a slab by **mirroring**
 ($z \to -z$). A mirror maps the slab's outermost layer to the *other* slab's
 outermost layer — the same layer index — so both faces meeting at the cell
-boundary carry the **same in-plane registry** and are eclipsed. The deleted
-`add_electrode_slab` did this *unconditionally* for `side="-z"`, with no way
-to ask for anything else; `sequence="ACB"` is the alternative, and it is what
-`--electrode` now uses on that side.
+boundary carry the **same in-plane registry** and are eclipsed.
+`--electrode` walks `ACB` on the `-z` side (`_WALK_ALONG_GROWTH`); the walk
+alone does not change the registry at the seam (below).
 
-> **MEASURED FALSE, 2026-09-15** (F9/F10 of
-> the 2026-09-15 junction walkthrough, F15 — its findings live in
-> [`engines/transport.md`](?doc=engines/transport.md) § 4).
-> `sequence` alone does **not** change the registry at the seam. With the
-> documented `ABC`/`ACB` mapping and $c = z_{\mathrm{span}} + d$, every layer count this
-> document's § 3.1 table calls *continues* measures as **eclipsed** on
-> (100)/(110) and as a **twin** on (111). The control that does change it is
-> `add_slab`'s **`start_registry`**, which `--electrode` leaves at `0` on both
-> slabs and has no spec field for; giving the two sides different registries
-> (`+z = 1`, `−z = 0`) continues the crystal on both surfaces, with the
-> across-seam distance at the bulk $a/\sqrt{2}$. The web slab card exposes both
-> controls and returns the seam verdict at build time; the CLI took the
-> registry control on 2026-09-21 (below).
-> **This paragraph asserting the CLI was already correct is why the defect went
-> unnoticed** — fix the sentence and the CLI together.
+> `sequence` alone does **not** change the registry at the seam. The control
+> that does is `add_slab`'s **`start_registry`**: giving the two sides
+> different registries (`+z = 1`, `−z = 0`) continues the crystal on both
+> surfaces, the across-seam distance the bulk $a/\sqrt{2}$. The web slab card
+> exposes both controls and returns the seam verdict at build time.
 >
-> **CLI CLOSED, 2026-09-21.** `--electrode` takes an optional `registry=`
-> beside `contact=`, per flag because the two sides must differ:
+> `--electrode` takes an optional `registry=` beside `contact=`, per flag
+> because the two sides must differ:
 > `Au:111:3x3x3@contact=2.4:registry=B:+z=3`. It accepts `A`/`B`/`C` or an
-> index, and omitting it still means `0`, so existing command lines are
-> unchanged. `cli.py`'s `_CONTINUES_THE_CRYSTAL` was renamed
-> `_WALK_ALONG_GROWTH` in the same change: the `ABC`/`ACB` mapping is right
-> about the walk and was never what continues the crystal, and the old name
-> was exactly the claim this note measures false.
+> index; omitted, it is `0`.
 >
 > **The CLI returns no seam verdict, by decision** *(user, 2026-09-22: "people
 > working with CLI would know what they're doing… leave that out")*:
@@ -298,11 +277,8 @@ to ask for anything else; `sequence="ACB"` is the alternative, and it is what
 **`sequence` is read along the growth direction**, so "the crystal carries on"
 is the *forward* walk growing `+z` and the *backward* walk growing `−z` — which
 is why `--electrode` maps the side to the walk rather than passing a constant
-(`_WALK_ALONG_GROWTH` in `cli.py` — renamed from `_CONTINUES_THE_CRYSTAL`
-2026-09-22, because the walk is not what continues the crystal; see § 3.2).
-It replaced `stacking` on 2026-09-07:
-that argument named downward behaviour only and had no effect at all growing
-up, which left the mirrored *upward* slab unbuildable.
+(`_WALK_ALONG_GROWTH` in `cli.py`: the walk is not what continues the
+crystal; § 3.2).
 
 Choosing a different symmetry does not help, and the reason is structural rather
 than incidental: **each close-packed layer is itself a centrosymmetric 2-D
@@ -311,7 +287,7 @@ Measured, at (111) with 3, 4 and 6 layers per side:
 
 | operation for the `-z` slab | seam step | nearest across boundary | verdict |
 |---|---|---|---|
-| mirror $z \to -z$ (today) | $(0, 0)$ | $d$ | eclipsed |
+| mirror $z \to -z$ | $(0, 0)$ | $d$ | eclipsed |
 | C₂ about x, $(x, -y, -z)$ | $(0, 0)$ | $d$ | eclipsed |
 | inversion $(-x, -y, -z)$ | $(0, 0)$ | $d$ | eclipsed |
 | **translation, no flip** | one lattice step | $a/\sqrt{2}$ | continues (when § 3.1 holds) |
@@ -440,23 +416,20 @@ raises on a single layer, where there is no spacing to measure at all.
 
 **There is no statistic here, and that is the point** *(user ruling,
 2026-09-20)*. A lead is frozen bulk: `engines/transport.md` § 2a.9 —
-*"the lead atoms are frozen bulk by construction"* — and its § 2a.9 table,
-where the electrode region *"coincides exactly with the frozen-atom set the
-relaxation already carries"*. Its layers therefore sit where the builder put
+*"the lead atoms are frozen bulk by construction"* — and its § 2a.9 rule
+(*What makes a set citable*) that no electrode atom moved, within the citation
+door's frozen-atom tolerance (`wizard.FROZEN_TOL_ANG`). Its layers therefore sit where the builder put
 them, one spacing apart, and the honest operation is to check that and read the
 value off. Reading it off the *built* slab is also what makes it the LEAD's
 number rather than a recipe's: whatever the device was actually built with is
 what the self-energy has to tile.
 
-> **This said `median(Δlayer)` until 2026-09-20**, justified here as *"robust to
-> a slightly relaxed outermost layer"*. That is backwards under § 4 of the
-> transport contract: a relaxed layer **inside** an electrode region means the
-> region was mislabelled or was never frozen, and absorbing it hands back a
-> plausible spacing, a plausible period, and a deck built on a lead that is not
-> bulk. The condition to refuse cannot also be the condition to smooth over.
-> The median could not even see the case it was written for on a short lead —
-> with two spacings it *is* the mean, so `[0, 2.35, 5.35]` gave $d = 2.675$ and
-> a seam 0.33 Å too wide, silently.
+> **No median, no mean.** A relaxed layer **inside** an electrode region means
+> the region was mislabelled or never frozen; absorbing it would hand back a
+> plausible spacing, a plausible period and a deck built on a lead that is not
+> bulk. The condition to refuse cannot also be the condition to smooth over —
+> and on a short lead a median *is* the mean: `[0, 2.35, 5.35]` would give
+> $d = 2.675$, a seam 0.33 Å too wide.
 >
 > The tolerance is 1e-3 Å, and it exists only for the file round trip. A frozen
 > lead built by `add_slab` has its spacing exactly — the layer z-values are
@@ -469,21 +442,16 @@ what the self-energy has to tile.
 > The bound comes from the WRITER's format, not from any file on disk — a
 > number read off found data is a guess about what data will exist.
 >
-> *(It was briefly widened to 5e-3 on two arguments that do not survive contact
-> with the code — a 3-decimal PDB round trip, when a `.pdb` is not a citable
-> pair, and a lead spending the whole per-atom frozen budget, when real frozen
-> atoms come back at 5e-10. Both were constructed. What remains true is that
-> this is not `FROZEN_TOL_ANG`: that is a budget per atom, this is on a
+> This is not `FROZEN_TOL_ANG`: that is a budget per atom; this is on a
 > difference of differences of means, so a per-atom error $e$ shows up as $4e$
-> here. Equal by coincidence of scale, not by derivation.)*
+> here. Equal by coincidence of scale, not by derivation.
 
 **The one caller** is `transport.wizard.extract_electrode_model`, where this
 began — the electrode wizard has always used it to derive the bulk lead's
 z-period, with a note telling the user to confirm the layer count is a whole
 stacking period. It sits in `cell` (L1) so the rule has a home below the
-engine. *(This section named `modify.add_slab` as a second caller until
-2026-09-20. It is not one, and § 6 below says why: `add_slab` sets
-$c = z_{\mathrm{extent}}$ verbatim, so nothing there needs a spacing.)*
+engine. `modify.add_slab` is not a caller: it sets $c = z_{\mathrm{extent}}$
+verbatim (§ 6), so nothing there needs a spacing.
 
 **And the gate around it.** `extract_electrode_model` is the one place that
 decides whether a labelled block can serve as a lead, asking in order: every
@@ -514,26 +482,18 @@ from; then **evenly spaced**, which is the call above.
 > it in `ElectrodeModel.notes`, which `/api/transport/describe_attempt`
 > prefixes with the block name and draws on the card at its weight; the lead
 > rung's settings gate asks the same rule at every prep, which prints it and
-> writes it into the lead deck's `.validation.txt`. *(Until 2026-09-20 the note instead told the reader to "VERIFY …
-> a multiple of 3 for FCC(111) ABC" — homework, about a quantity this module
-> already measures — and no reader looked at `ElectrodeModel.notes` at all,
-> so it was computed on every compose and dropped. The person owns the
-> science; what they are owed is the measurement.)* *(Consolidated there on
-the user's ruling — "one unified check and gate/extraction process". Two of
-those decisions used to sit in `transport/compose.py`, one of them in a branch
-that only a cited relaxation reached, so a junction handed in as a finished
-`.xyz` + `.molstruct.json` pair was never asked whether its leads were frozen.)*
+> writes it into the lead deck's `.validation.txt`. *(One rule, on the user's
+> ruling — "one unified check and gate/extraction process" — so a junction
+> handed in as a finished `.xyz` + `.molstruct.json` pair is asked whether its
+> leads are frozen exactly as a cited relaxation is. The person owns the
+> science; what they are owed is the measurement.)*
 
-**The monolayer case.** A one-layer slab has no spacing to *measure* — there
-is only one layer to measure between. This mattered while the builder PADDED
-the cell for you; § 6 retired that on 2026-08-31 and `add_slab` sets
-$c = z_{\mathrm{extent}}$ verbatim, so nothing needs the spacing at build time any more.
-The probe below is how `add_electrode_slab` handled it, kept as the method
-for anyone who needs the number: ask the same ASE builder for a two-layer
-slab at the same `(m, n)` and
-`orthogonal` and reading $d$ off that; using the caller's own lateral size
-matters, since a probe at `(1, 1, 2)` would trip ASE's "second number must be
-even" constraint on orthogonal fcc(111).
+**The monolayer case.** A one-layer slab has no spacing to *measure*. The
+builder sets $c = z_{\mathrm{extent}}$ verbatim (§ 6), so nothing needs the spacing
+at build time; whoever needs the number can ask the same ASE builder for a
+two-layer slab at the same `(m, n)` and `orthogonal` and read $d$ off that — at
+the caller's own lateral size, since a probe at `(1, 1, 2)` would trip ASE's
+"second number must be even" constraint on orthogonal fcc(111).
 
 For a slab built through § 6's route the case does not arise as a *builder*
 problem: nobody is padding, so nothing needs a spacing it cannot measure. It
@@ -560,9 +520,8 @@ rather than asserting a verdict.
 
 ## 6. The `c` axis is measured and set, never invented
 
-*(Rewritten 2026-08-31 on the user's decision. This section described a
-checkbox — "**Pad cell by one layer spacing**", on by default — that built
-$c = z_{\mathrm{span}} + d$ for you. The switch is gone and so is the padding.)*
+*(The user's decision, 2026-08-31: the builder never pads $c$; the person sets
+it.)*
 
 **The builder sets what it knows and nothing else.**
 
@@ -600,29 +559,20 @@ a layer, `continues` if the crystal joins (§ 3). That closes the loop without
 anyone guessing. The Cell page's verdict is the slab build's, the same ids and
 words (`blueprints/modify.box_seam_notices`), measured on each fcc metal the
 builder makes that the structure holds, with the box's own collision said once;
-the plane is not known there, so the too-thin note (§ 4.1) is the build's alone
-*(built 2026-10-17, plan X3: until then committing $c$ there,
-`POST /api/structure/periodicity`, answered no seam verdict)*.
+the plane is not known there, so the too-thin note (§ 4.1) is the build's alone.
 
-### 6.2 Why the switch went
+### 6.2 Why the builder does not choose $d$
 
-It hid the decision it claimed to expose. On — the default — the builder chose
-$d$ for you and the note beside the switch deliberately *did not print the
-number*, on the grounds that quoting it would mean a second formula in
-JavaScript. So the one value that determined whether your junction was a
-crystal was computed out of sight and never shown.
+A builder-chosen $d$ would be computed out of sight, the one value that decides
+whether the junction is a crystal never shown. Measuring it with the ruler and
+typing it costs one gesture, puts the number on screen, and makes $c$ a thing
+you decided; the ruler is not a formula, it is the distance between two atoms
+you chose.
 
-Measuring it with the ruler and typing it costs one gesture, puts the number on
-screen, and makes $c$ a thing you decided. The second formula the old note
-feared is not needed either: the ruler is not a formula, it is the distance
-between two atoms you chose.
-
-**What still overwrites what.** Unchanged, and worth restating since the switch
-was tangled in it: building a slab *establishes* the in-plane lattice, so $a$
+**What overwrites what.** Building a slab *establishes* the in-plane lattice, so $a$
 and $b$ are overwritten by a build — the slab is what defines them. A $c$ you
 commit through the Cell page is an explicit cell and stands (`resolve_cell`
 branch 1, `structure-periodicity.md` § 4) until the next build replaces the
-in-plane pair. Editing the Cell tab is now the only way $c$ is ever set, which
-is the simplification: there is one door instead of a switch and a door.
+in-plane pair. The Cell page is the one way $c$ is set.
 
 ---

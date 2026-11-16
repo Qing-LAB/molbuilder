@@ -2,9 +2,10 @@
 
 **Role:** contract
 **Domain:** web
-**Companions:** [`spectra.md`](?doc=web/spectra.md) — the Spectrum tab, which is
-what drives this chart: where the modes come from, what a Raman activity is, and
-what else on the page moves when a mode is picked;
+**Companions:** [`spectra.md`](?doc=web/spectra.md) — the spectra viewer on the
+Results tab (`lib/spectra/core.js`, mounted by `lib/inspectors/spectra.js`),
+which drives this chart: where the modes come from, what a Raman activity is,
+and what else on the page moves when a mode is picked;
 [`vibrationview.md`](?doc=web/vibrationview.md) — the viewer beside it on that
 same tab: the mode a click here selects is the mode it animates, and the two never
 speak to each other directly; [`overview.md`](?doc=web/overview.md) — the register
@@ -17,8 +18,7 @@ which mode they meant.
 
 **This document is the design of that component** — what it is for, what it
 refuses to do, what it holds, what each API is for, and how its tests are derived.
-It is not a tour of the current code; the code it replaces is 345 lines inside a
-3,671-line tab controller. § 13 maps the parts to files and says which are built.
+It is not a tour of the code; § 13 maps the parts to files.
 
 > **Words used in this document.**
 >
@@ -166,12 +166,11 @@ asked what is drawn, what the axes are, or where a point landed on screen (§ 8.
 sealed at every edge.** It is imported by name, it reaches nothing else in the app
 by name, and nothing in the app can reach inside it.
 
-**Why this module in particular has to say so.** The code it replaced lived inside
-a 3,671-line tab controller where the drawing, the selection, the mode table and
-the watch poller all reached into one another's variables — which is why selecting
-a mode redrew the whole spectrum there (§ 5.1). Cutting 345 lines out of that
-is only worth doing if the cut holds, and a cut holds because the boundary is
-written down and tested, not because the files were moved to a new folder.
+**Why this module in particular has to say so.** When the drawing, the
+selection, the mode table and the watch poller can reach into one another's
+variables, selecting a mode redraws the whole spectrum (§ 5.1). The boundary
+holds only because it is written down and tested, not because the files sit in
+their own folder.
 
 **One entry point, and nothing else is importable.**
 
@@ -200,8 +199,10 @@ needs one thing at mount: an element to live in.
 appears on the handle. Inside this module the name `Plotly` occurs in exactly one
 file.
 
-**And the module brings what it needs.** Nothing else on the page loads Plotly and
-no template links a stylesheet: the sealed layer adds both at mount, once (§ 11).
+**And the module brings what it needs.** No template links its stylesheet, and
+no page has to load Plotly for it: the sealed layer links the sheet at mount,
+uses the library when the page already carries it, and fetches it when the page
+does not (§ 8.4, § 11).
 A dependency the host has to remember is a dependency some host will forget, and
 the result — an empty box or an unstyled one, no error, far from its cause — is
 found only by someone looking at the screen. If the library will not load, the
@@ -240,9 +241,9 @@ of work, so they are not the same call:
 **The measurement is why the rule is here.** When one function draws
 everything and selecting a mode calls it, a single click on the benzene-dithiol
 result, at the default broadening, recomputes an 806-point envelope from 36
-Lorentzians — **29,016 terms** — to change the colour of one stick (the tab's
-code before this module, § 13). The waste is not the point; the *coupling* is. A chart that cannot
-recolour without rebuilding has no way to be told a cheap thing, so every caller
+Lorentzians — **29,016 terms** — to change the colour of one stick. The waste
+is not the point; the *coupling* is. A chart that cannot recolour without
+rebuilding has no way to be told a cheap thing, so every caller
 pays for the expensive one and nobody can tell which they asked for.
 
 ### 5.2 One place holds each fact
@@ -277,16 +278,12 @@ chart's own frame's** (§ 11: the frame states its size, from the module's one
 value block), so a host draws no frame and states no height of its own around
 it.
 
-*(This section said "the host sizes the element … the module never sets one"
-until 2026-09-28, while § 11 and the module's sheet had the frame state its
-height all along. The Results tab's host stated a height of its own on top —
-420 px capping a frame of up to 460 — and on a tall screen the chart's bottom
-edge, x-axis included, was clipped. The host now gives the width alone. A host
-that needs a different height is a change to the module's value block, not a
-rule on the host.)*
+A host that states a height of its own around the frame clips it — the frame's
+height reaches 460 px (§ 11) — so a host gives the width alone. A host that
+needs a different height is a change to the module's value block, not a rule on
+the host.
 
-Three separate bugs came from breaking the box rules, all on 2026-08-05. They
-are written down where they can be enforced, as the box rules in § 11.
+The box rules are written where they can be enforced: § 11.
 
 ---
 
@@ -312,16 +309,14 @@ mode = {
 | `freq` | **yes** | cm⁻¹ | *(the record is refused)* | missing, or not a finite number |
 | `values[<channel key>]` | no | the channel's own | **not computed yet** — drawn as pending, never as zero (§ 6.2) | present but not a finite number |
 | `cls` | no | — | `"partial"` | never — an unknown string draws as `partial` |
-| `imaginary` | no | — | `false` | never — it is read as yes-or-no, so anything that is not `false`, `0`, `null` or missing counts as yes |
+| `imaginary` | no | — | `false` | never — it is read as yes-or-no (JavaScript truthiness): `false`, `0`, `""`, `NaN`, `null` and missing are no, anything else is yes |
 
-**A mode has heights, not a height** *(2026-09-11)*. It was a single
-`activity` until then, which is why the y-title could be the hardcoded string
-`"Raman activity (Å⁴/amu)"`: with one quantity there was nothing to choose
-between. One Hessian yields several property derivatives on one set of
-eigenvectors, so activity is an attribute of a mode **in a channel**, and the
-keys in `values` are the `key`s the caller declared at `mount` (§ 8.2). A key
-no channel declared is ignored; a channel with no value for a mode draws that
-mode as pending in **its own lane only**.
+**A mode has heights, not a height.** One Hessian yields several property
+derivatives on one set of eigenvectors, so activity is an attribute of a mode
+**in a channel**, and the keys in `values` are the `key`s the caller declared
+at `mount` (§ 8.2). A key no channel declared is not drawn, though a value
+under it that is not a number still refuses the list; a channel with no value
+for a mode draws that mode as pending in **its own lane only**.
 
 `cls` is the mode's activity class — `both`, `ir-only`, `raman-only`, `silent`
 or `partial` — **decided server-side** and passed through, never computed here
@@ -405,13 +400,9 @@ chosen for its animation and its electronic structure (§ 6.3):
 wave-number plot. this visualization can be useful in selecting different modes
 for showing animation and electronic structure, just like the pyscf case the
 only differene is that there is no 'peak fitting with lorentz shape or peak
-height', just bar/line to show where the mode is". For a few hours that day the
-chart was not mounted for such a result at all, on a reading of the user's
-earlier "no width or spectrum for siesta result" — which asked for no
-broadening and no strengths, not for no plot. And until that day a list with
-none known drew every stick at height one with a broadened curve over them — a
-frequency distribution, which read as an intensity spectrum wherever modes
-crowded; the curve is what goes, § 9.)*
+height', just bar/line to show where the mode is".)* A list with no strength
+draws no curve: lines of one height under a broadened curve would read as an
+intensity spectrum wherever modes crowd (§ 9).
 
 **The marking is drawn in the plot**, as the picture shows: the `×` on the
 axis. It is not a label beside the chart or a banner above it — a chart made of
@@ -422,9 +413,9 @@ controls" holds without an exception carved for it.
 names its quantity alone.** The reason — *not computed*, the caller's words
 (`setAbsentWords`, § 8.3), *no band* (`presentFloor`, § 8.2) — is as long as
 whoever wrote it made it, while a title along an axis is only as long as its
-panel is tall: the Spectrum page's Raman lane, *type the laser's wavelength —
-the strength depends on it* on its axis, ran past its panel into the
-infrared lane's title (the 2.49.0 walk). Written across the empty panel, the
+panel is tall: a reason as long as *type the laser's wavelength — the
+strength depends on it* would run past its panel into the next lane's title
+if it were written along the axis. Written across the empty panel, the
 reason has the panel's width, and the axis title is the label and the unit
 the caller declared.
 
@@ -457,15 +448,9 @@ nothing has to be moved or shrunk to keep it unambiguous — and because no band
 depends on its neighbours, there is **one width for the whole spectrum** rather
 than one per mode.
 
-> **This replaced a clamp, and the reason is worth keeping.** Each band used to
-> be cut back to half the distance to its nearer neighbour so that no two could
-> ever overlap. That was necessary while a click had to land on a *drawn mark* —
-> two marks over the same spot meant the answer depended on which was drawn last.
-> Reading a click as a position (§ 8.4) made "nearest" available, and the clamp
-> then cost exactly what it was meant to protect: in a crowded region it shrank
-> targets to a fraction of a pixel, so some peaks were easy to click and others
-> could not be hit at all. A rule that survives a change of mechanism should be
-> re-argued, not inherited.
+Bands are never cut back to keep neighbours apart. A click is read as a
+position (§ 8.4), so "nearest" settles any overlap, and a clamp would shrink
+crowded targets to a fraction of a pixel, leaving some peaks impossible to hit.
 
 **Two modes at the same frequency** cannot be told apart by any band. Both keep
 theirs, so both stay reachable; which of the two a click reports is undefined —
@@ -493,8 +478,8 @@ Three rules keep it honest and cheap:
 - **Nothing is redrawn until the answer changes**, and then only the part of it
   that did (§ 5.1). A pointer crossing the plot reports hundreds of times a
   second: sliding inside one band changes neither the colours nor the words and
-  costs nothing at all; crossing into a gap changes the words alone, and the
-  colours are not repainted to say so; pointing at the mode already chosen
+  costs nothing at all; crossing a gap from one mode's side to the next
+  changes the words alone, and the colours are not repainted to say so; pointing at the mode already chosen
   changes the words alone as well, because chosen outranks hovered.
 
 ### 6.4 An imaginary mode is drawn, marked, and left out of the curve
@@ -561,8 +546,7 @@ turn a dead chart into a silent one.
 **A library that will not load is a failed mount, not a broken page.** The module
 fetches Plotly itself (§ 4); if that fails — offline, blocked, the file not
 there — the mount resolves with `ok: false` and a message the tab can show. The
-mode table beside it still works, which is the behaviour the current code has and
-is worth keeping.
+mode table beside it still works.
 
 **The module owns the inside of its host, and nothing else about it.** `mount`
 empties the element it is given before it draws, so whatever was in there — a
@@ -588,7 +572,7 @@ One name. § 4.
 framework, no tab, nothing else from this app:
 
 ```html
-<div id="chart" style="width: 640px; height: 320px"></div>
+<div id="chart" style="width: 640px"></div>
 
 <script type="module">
 import { mount } from "/static/lib/spectrumchart/index.js";
@@ -624,7 +608,7 @@ mount(host, options) -> Promise<handle>
 | What is passed | What it is | Required | Default |
 |---|---|---|---|
 | `host` | the element the chart lives in. The **host gives its width** (§ 5.4); the module never writes a width or a height onto it — its own frame, inside, states the height (§ 11) | yes | — |
-| `options.channels` | the channels this chart draws, in order: `[{ key, label, unit, direction, relative?, valueUnit?, presentFloor? }]`. `direction` is `"up"` or `"down"` and decides which stacked panel a channel occupies — nothing else about layout. `relative: true` normalises that lane's drawn heights to its own strongest band, for a channel whose conventional axis is not the unit it was computed in; what the axis is CALLED still comes from `unit`, because this module names no quantity. `valueUnit` is the unit the measured value is read in — what the readout prints beside the number — `unit` when unsaid; a relative lane names its value's own (the infrared: axis *arb. units*, readout *km/mol*). `presentFloor` is the channel's band floor in that value unit: a lane whose strongest real value is at or below it has no band — every value residue — draws no stick and no curve, and says *no band* across its panel (§ 6.2), rather than scaling its residue to full height; the caller's number (the spectrum page's: `spectra/activity.py`'s floors, `engines/vibration.md` § 6.6), 0 when unsaid | no | one generic lane keyed `activity` — what a caller with a single quantity still means |
+| `options.channels` | the channels this chart draws, in order: `[{ key, label, unit, direction, relative?, valueUnit?, presentFloor? }]`. `direction` is `"up"` or `"down"` and picks the lane's colour (`--spectrumchart-lane-up` / `-down`). The panels stack in the order the channels are declared, the first on top. `relative: true` normalises that lane's drawn heights to its own strongest band, for a channel whose conventional axis is not the unit it was computed in; what the axis is CALLED still comes from `unit`, because this module names no quantity. `valueUnit` is the unit the measured value is read in — what the readout prints beside the number — `unit` when unsaid; a relative lane names its value's own (the infrared: axis *arb. units*, readout *km/mol*). `presentFloor` is the channel's band floor in that value unit: a lane whose strongest real value is at or below it has no band — every value residue — draws no stick and no curve, and says *no band* across its panel (§ 6.2), rather than scaling its residue to full height; the caller's number (the spectrum page's: `spectra/activity.py`'s floors, `engines/vibration.md` § 6.6), 0 when unsaid | no | one generic lane keyed `activity` — what a caller with a single quantity still means |
 | `options.onSelect` | `(index) => void`, called when a **user** clicks a mode. Never called by anything the tab does (§ 8.3) | no | nothing is reported |
 | `options.modes` | the first mode list, exactly as `setModes` takes it | no | empty — an empty chart, not an error |
 | `options.selected` | the first selection, exactly as `setSelected` takes it | no | none chosen |
@@ -755,7 +739,7 @@ picture = {
     lanes: [{                                     // one per channel, in order --
                                                   // or ONE, the positions, when no
                                                   // channel has a number (§ 6.2)
-        key, direction: "up" | "down",            // which half-plane it occupies
+        key, direction: "up" | "down",            // the lane's colour; its panel is its place in the list
         title,                                    // the words on ITS axis: the label,
                                                   // the unit included -- nothing else
         words,                                    // what the lane says across its own
@@ -776,24 +760,20 @@ picture = {
 }
 ```
 
-**Why lanes, and not one `sticks`** *(2026-09-11, plan W21)*. One Hessian
-yields several property derivatives on one set of eigenvectors, so activity is
-an attribute of a mode **in a channel** — never "the activity of a mode". A
-picture with a single `sticks` could therefore draw only one of the quantities a
-run computes, and the y-title had to name it, which is how a module that was
-otherwise quantity-agnostic came to carry the string `"Raman activity
-(Å⁴/amu)"`. Channels are declared at `mount`; each mode carries
-`values[key]`; this layer still learns nothing about what Raman or IR are, which
-is what leaves room for the next one.
+**Why lanes, and not one `sticks`.** Activity is an attribute of a mode in a
+channel, so a picture with a single `sticks` could draw only one quantity, and
+its y-title would have to name it. Channels are declared at `mount`, each mode
+carries `values[key]`, and this layer learns nothing about what Raman or IR
+are.
 
-`direction` and `positions` are the two things a lane says about layout.
-`positions` marks the lane of § 6.2's *none known* picture: its lines all stand
-at one height that means nothing, so the seal draws its y-axis with no numbers
-and no grid. Both channels peak at
-the same frequencies, so sharing one half-plane makes them collide — and
-absorption drawn downward reads the way absorption does. The seal gives each
-lane its own y-axis, because the quantities are incommensurate and forcing them
-onto one scale would make the taller **unit** look like the stronger physics.
+`positions` is what a lane says about layout: it marks the lane of § 6.2's
+*none known* picture, whose lines all stand at one height that means nothing,
+so the seal draws its y-axis with no numbers and no grid. Each lane is its own
+stacked panel, drawn upright on its own y-axis on the left, over one shared
+frequency axis, because both channels peak at the same frequencies and the
+quantities are incommensurate: sharing one panel would make them collide, and
+forcing them onto one scale would make the taller **unit** look like the
+stronger physics.
 
 **The rug is position and nothing else.** A mode active in neither channel has
 no height in either, so the sticks cannot show it at all — and giving it one
@@ -804,9 +784,9 @@ numerical residue is a judgement about a whole run, and a second copy of it
 here could not be tested against one.
 
 **A spectroscopically dark mode gets a line across the full height of every
-panel** *(2026-09-11)*. Being invisible to both techniques does not mean the
-molecule is still there — it is a real vibration, and a tick on the axis said
-the opposite: that it was a footnote to the spectra rather than one of the
+panel**. Being invisible to both techniques does not mean the
+molecule is still there — it is a real vibration, and a tick on the axis alone
+would say the opposite: that it was a footnote to the spectra rather than one of the
 modes they are spectra *of*. Full height is what makes the mark honest, because
 a line spanning the axis asserts a FREQUENCY and no intensity at all, where any
 finite bar height would be a claim about a quantity that is zero. Drawn as a
@@ -876,9 +856,9 @@ chart rather than from the design:
 
 **Vertical position is never consulted.** A spectrum is picked by frequency, so
 every point at that frequency is the same request: level with a peak's tip,
-halfway down it, or beside the axis. Bounding the plot area vertically to keep
-the toolbar out was a real mistake in the built chart — it answered a question
-about *identity* with *geometry*, and made the tick-label strip dead.
+halfway down it, or beside the axis. The toolbar is kept out by what was
+clicked, never by bounding the plot area vertically: that would answer a
+question about *identity* with *geometry* and leave the tick-label strip dead.
 
 **The seal takes the library as it finds it, and never assumes it is ready.**
 Two consequences, both found by building against this contract rather than by
@@ -943,10 +923,8 @@ has to mean the same thing the stick heights mean:
 
 **No imaginary mode is ever in the sum** (§ 6.4).
 
-*(Fixed with this rule, 2026-09-28: the sum used to fall back to unit heights
-where none was known, so the default PySCF run — Raman computed, infrared not
-— drew a curve in its infrared lane under the title "not computed". The curve
-now runs over known heights only, so a lane with none draws none.)*
+A lane with no known height draws no curve, so a run that computed Raman but
+not infrared shows no curve under the infrared lane's *not computed*.
 
 ---
 
@@ -989,7 +967,8 @@ invisibly, for exactly as long as the two agreed.
 
 Five rules, and they are the ones peculiar to *this* module:
 
-- **Its names are its own.** Every class starts `spectrumchart-`. Nothing else on
+- **Its names are its own.** Every class is `spectrumchart` (the frame) or
+  starts `spectrumchart-`. Nothing else on
   the page styles those names, and this sheet styles nothing else — the same
   boundary as `mount`, in another language.
 - **Its values sit in one block at the top** — the colours, the spacing, the
@@ -1007,15 +986,17 @@ Five rules, and they are the ones peculiar to *this* module:
   counts padding in; and the drawing then overflowed across the panel beside it.
 - **It reacts to its own box, never to the window.** The chart can sit in a
   full-width panel, a half-width tab, or beside a sidebar that collapses; all
-  change the box while the window sits still. There are no size rules in the sheet
-  at all — one surface filling one frame has nothing to re-arrange, so responding
-  is one thing: redraw at the box's new size.
+  change the box while the window sits still. There are no media queries in the
+  sheet: one surface filling one frame has nothing to re-arrange, so responding
+  is one thing: redraw at the box's new size. Its one window-dependent value is
+  the frame's height, 34 % of the window's height, kept between 220 and 460 px.
 
 **The repository's CSS conventions apply here as they do everywhere else** — one
 class per rule, no ids, no `!important`, no value written twice — and they are
 *not* restated in this contract. They live in
-[`css-system-plan.md`](?doc=archive/2026-09-01-css-system-plan.md), which is also where the
-page-versus-module boundary is argued. A rule that would be true of any stylesheet
+[`ui-contract.md`](?doc=web/ui-contract.md) (§ 1 the layers, § 1.1 a module
+owns its CSS, § 2 the tokens), which is also where the page-versus-module
+boundary is argued. A rule that would be true of any stylesheet
 in this repository does not belong in the design of a spectrum chart.
 
 The sheet stays a real `.css` file rather than a string inside JavaScript, so the
@@ -1112,78 +1093,35 @@ the difference, because § 8.4 is the whole of what it asks of that library.
 | § 9 — the curve ends rather than being cut off | at any broadening, the envelope at both ends of the grid is below 1% of the tallest peak |
 | § 11 — the sheet inherits nothing from the page | with every page stylesheet removed, the chart's own values still resolve and the colours handed to the library are unchanged; no page variable is named anywhere in the module |
 | § 11 — the values are declared, not sampled | every colour the seal hands the library was read from a `--spectrumchart-` value on the module's own element |
-| § 11 — the sheet stays this module's | every class it writes begins `spectrumchart-`, it styles the frame and the surface and nothing else, and its values are declared in one block rather than written into rules |
+| § 11 — the sheet stays this module's | every class it writes is `spectrumchart` (the frame) or begins `spectrumchart-`, it styles the frame and the surface and nothing else, and its values are declared in one block rather than written into rules |
 | § 11 — the box traps | the frame declares a height and never `auto`; the drawing surface carries no padding; nothing it draws spills outside the frame or scrolls the page sideways |
-| § 11 — the chart responds to its own box | no rule in the sheet is keyed to the window's size, and a box that changes size while the window does not causes a redraw at the new size |
+| § 11 — the chart responds to its own box | no media query in the sheet, and a box that changes size while the window does not causes a redraw at the new size |
 | § 11 — the mount waits for the sheet | the first chart on a cold page draws with its own colours, not with fallbacks |
 
 ---
 
 ## 13. The file map, and where the code stands
 
-Everything below lives under `lib/spectrumchart/`. **It is built and the Spectrum
-tab draws through it** (2026-08-05). This document was written before any of it
-moved, so the door was reviewed before anything depended on it — and the build
-then found five things prose could not: § 8.4's picture shape, how the library
-arrives, that a click cannot be read off a mark, that the grid must be bounded by
-the modes rather than the width, and that this app has no theme signal to follow.
+Everything below lives under `lib/spectrumchart/`; the spectra viewer on the
+Results tab draws through it.
 
-| File | Holds | Status |
-|---|---|---|
-| `index.js` | the handle, the state, and every draw it causes | **built** |
-| `_maths.js` | the envelope, the band widths — pure | **built**, from `spectra/core.js` (`_lorentzianEnvelope`, `_clickBandWidths`, `_clickTolerance`), **then satisfies rules those functions predate** |
-| `_seal.js` | the only file naming Plotly — it fetches the library, links the sheet, and reads the palette from the tokens | **built**, moving (`chartTheme`, the `Plotly.react` / `purge` / `Plots.resize` calls, `_watchChartWidth`), plus the two loaders, which are new |
-| `_style.css` | the module's own namespaced sheet | **built** |
-
-**Which parts of this are new specification, not relocation** — worth knowing
-before anyone sizes the work from the line counts below:
-
-| New | Where |
+| File | Holds |
 |---|---|
-| the four-step band rule, with the floor and the minimum as fixed numbers | § 6.3 |
-| the sum following the picture — no curve when no strength is known | § 9 |
-| imaginary modes marked, and kept out of the envelope | § 6.4, § 9 |
-| the grid stated as accuracy: eight samples a peak, ends below 1% | § 9 |
-| the selection recorded rather than refused | § 8.3 |
-| a refused list emptying the chart | § 6.1 |
-| the module fetching its own library and sheet | § 4, § 11 |
-
-**What came out of the tab: 287 lines**, leaving `lib/spectra/core.js` at 3,384.
-`renderSpectrumChart` (242 lines),
-`_lorentzianEnvelope` (37), `chartTheme` (22), `_watchChartWidth` (16),
-`_clickBandWidths` (15), `_onChartClick` (7), `_clickTolerance` (6) — 345 lines of
-`lib/spectra/core.js`, which is 3,671 lines today.
+| `index.js` | the handle, the state, and every draw it causes, and the box watcher |
+| `_maths.js` | the envelope, the band widths — pure |
+| `_seal.js` | the only file naming Plotly — it fetches the library when the page lacks it, links the sheet, reads the palette from the tokens, and turns a click into a position |
+| `_style.css` | the module's own namespaced sheet |
 
 **What stays.** The mode table, the filter, the CSV export, the selection and its
 consumers, the watch poller, the load path, the generator form, the
 electronic-structure panel.
 
-**What has been shown to work**, on the 36-mode benzene-dithiol result, in a real
-browser rather than against a stand-in:
-
-- the chart mounts, brings its own stylesheet, uses the Plotly the page already
-  carries, and draws the sticks and the envelope;
-- **a click 6 cm⁻¹ beside the 1131.8 peak — over empty space, on no mark —
-  selects mode 22**, which is § 6.3's whole purpose and the one thing a stand-in
-  could not have told us;
-- a click in a gap between bands changes nothing;
-- **a selection costs one recolour**, attributed per element: the spectrum is
-  never rebuilt to move a highlight. That is § 5.1, and it is what the extraction
-  was for — the old path recomputed an 806-point envelope from 36 Lorentzians,
-  29,016 terms, for every click;
-- the chart follows its own box: collapsing the panel beside it re-fits the
-  drawing, with the window never moving (§ 5.4, confirmed on screen — a
-  backgrounded tab gets no resize callbacks at all, so this one cannot be
-  measured from a driven page).
-
 **The electronic-structure level diagram is not part of this module** and is not a
 module. It is a small figure belonging to the electronic-structure panel, with
 different data and a different job; it stays where it is.
 
-**Sequencing.** This extraction comes **before** the planned conversion of
-`lib/spectra/core.js` into a module of its own (roadmap #102): converting first would convert the mess and
-then re-cut it, while extracting first leaves #102 a smaller file with its hardest
-part already sealed.
+Converting `lib/spectra/core.js` to an ES module is #102
+([`overview.md`](?doc=web/overview.md) § 6); its chart is already sealed here.
 
 **No general charting layer.** `_seal.js` is this module's seal over Plotly, not a
 shared abstraction waiting for consumers. If another module ever needs the same

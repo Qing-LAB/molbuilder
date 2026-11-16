@@ -2,12 +2,15 @@
 
 **Role:** contract
 **Domain:** web
-**Companions:** every web module registers with the runtime registry and is
-found through it — [`molview.md`](?doc=web/molview.md),
-[`projects.md`](?doc=web/projects.md), [`workspace.md`](?doc=web/workspace.md),
-[`presenters.md`](?doc=web/presenters.md). `form-schema.md` — the engine-config
-form builder (its own doc). [`plans/plan.md`](?doc=plans/plan.md) **W15** — the pending
-ES-module conversion of the registry and these primitives.
+**Companions:** the modules that register with the runtime registry and are
+found through it — [`projects.md`](?doc=web/projects.md),
+[`workspace.md`](?doc=web/workspace.md),
+[`notifications.md`](?doc=web/notifications.md), the one reader `server`, the
+one confirm, and the Molbuilder tab's structure panels (`structure.*`).
+MolView is reached through its `mount` import
+([`molview.md`](?doc=web/molview.md)), and the presenters through
+`window.molbuilder.inspectors` ([`presenters.md`](?doc=web/presenters.md)).
+`form-schema.md` — the engine-config form builder (its own doc).
 
 This doc covers the **runtime registry** — the small piece that lets the web
 modules find each other reliably — and a **catalogue of the shared building
@@ -18,8 +21,8 @@ and so on).
 
 A molbuilder page loads a mix of two kinds of script. Classic `<script>` tags
 run in order, *during* the page parse. A `<script type="module">` waits until
-*after* all the classic scripts and the parse are done. So a classic Build-tab
-script that runs early and reaches for `window.molbuilder.projects` can get
+*after* all the classic scripts and the parse are done. So a classic
+Structure-optimization script that runs early and reaches for `window.molbuilder.projects` can get
 **`undefined`** — because the projects module (loaded as a module) hasn't run
 yet. You could poll until it appears, but that just papers over the race.
 
@@ -39,14 +42,14 @@ registered — which is the whole point. No polling, no guessing script order.
 
 ```mermaid
 sequenceDiagram
-    participant C as Build sidebar script — runs first
+    participant C as Structure-optimization script — runs first
     participant R as Runtime registry
     participant P as Projects module — loads late
     C->>R: whenReady("projects")
     Note over R: not registered yet, so C gets a pending promise
     P->>R: register("projects", the projects API)
     R-->>C: resolves the promise with the projects API
-    Note over C: now the sidebar can safely use projects
+    Note over C: now the script can safely use projects
 ```
 
 ### The five calls
@@ -79,13 +82,13 @@ own microtask); still, attach your own `.catch()`.
 // PRODUCER — lib/projects/projects-sidebar.js (registers last, once the api is built)
 window.molbuilder.runtime.register("projects", projects);
 
-// CONSUMER — the Build tab, which may run before the projects module registered
+// CONSUMER — a classic Structure-optimization script, which may run before the projects module registered
 window.molbuilder.runtime.whenReady("projects").then((proj) => {
   // safe: proj is the fully-built projects API, whatever the load order
 });
 
 // DEVTOOLS
-molbuilder.runtime.listRegistered();  // e.g. ["molview","projects","viewer", …]
+molbuilder.runtime.listRegistered();  // e.g. ["notify","projects","server","structure.warningModal","workspace"]
 molbuilder.runtime.listPending();     // names still hung, if any
 ```
 
@@ -100,8 +103,8 @@ a `window.molbuilder.*` global (a couple also register with the runtime).
 | Building block | Reach it as | What it is |
 |---|---|---|
 | Notification bar | `molbuilder.notify` | The app-wide message framework — dismissible messages (dedup by id, × / Esc / Clear-all), any tab. A **first-class module with its own doc**: [`notifications.md`](?doc=web/notifications.md). |
-| The one confirm | `molbuilder.warningModal` | Every yes/no question the app asks (`ui-contract.md` § 11), loaded by the page header on every page. `confirmDiscardUnsaved()` is the "you have unsaved changes — discard them?" dialog, its wording fixed below; `confirm({title, body, confirmLabel})` asks any other — the sidebar's overwrite and delete (`projects/dialogs.js`'s `confirmDestructive` delegates to it), the preview editor's unsaved edits, the server restart. Each returns a yes/no promise. (`modify/structure/save-dialog.js` held a second overwrite confirm until it was retired on 2026-09-02.) |
-| Markdown renderer | `molbuilder.markdownRender` | The **one** place markdown becomes safe HTML (marked → DOMPurify; then lazy KaTeX for `$...$` and `$$...$$` math, set aside before the markdown pass and never read inside code, and lazy mermaid). The Documents tab and the Results markdown viewer both go through it. |
+| The one confirm | `molbuilder.warningModal` | Every yes/no question the app asks (`ui-contract.md` § 11), loaded by the page header on every page. `confirmDiscardUnsaved()` is the "you have unsaved changes — discard them?" dialog, its wording fixed below; `confirm({title, body, confirmLabel})` asks any other — the sidebar's overwrite and delete (`projects/dialogs.js`'s `confirmDestructive` delegates to it), the preview editor's unsaved edits, the server restart. Each returns a yes/no promise. |
+| Markdown renderer | `molbuilder.markdownRender` | The **one** place markdown becomes safe HTML (marked → DOMPurify; then lazy KaTeX for `$...$` and `$$...$$` math, set aside before the markdown pass and never read inside code, and lazy mermaid). The Documents tab goes through it. |
 | Path helpers | `import { … } from "lib/path-utils.js"`, or `molbuilder.path` from a classic script, read when called | **The browser's one path door**: what a page works out of a path, by one rule each — `basename` (its name), `dirname` (its folder), `stem` and `suffix` (its name without its extension, and the extension — Python's `Path.stem` / `Path.suffix`), `join(folder, name)` (one separator, however the folder ends), `relative(path, root)` (where it lies under a folder: `""` for the folder itself, the parts below it, `null` outside) and `isInside(path, root)`. Inside is the folder or below it, never a name that merely starts the same: `/a/projects2` is not inside `/a/projects`. Path strings only — no file system, no DOM, no server. An ES module the page header loads, mirrored on the global for a classic script (the pattern of `lib/server.js`). Which files are structures is the server's pairing rule, asked of the projects door (`projects.isStructureFile`, [`projects.md`](?doc=web/projects.md) § 5), never a suffix test of a page's own. MolView keeps its own: it is sealed ([`molview.md`](?doc=web/molview.md)). |
 | Shared constants | `molbuilder.constants` | The single source of truth for the custom-event names the modules agree on — a frozen object. The sidebar's selection is `projects/state.js`'s, read through its own door ([`projects.md`](?doc=web/projects.md) § 2) and kept through `pagePrefs`. |
 | What a page keeps in this browser | `molbuilder.pagePrefs` (`lib/page-prefs.js`, a classic script the page header loads before any page's own) | `read(name, {lasting})` / `write(name, value, {lasting})` — every key `molbuilder.` and its name; a value lasts this browser tab's session, the browser tab's own (a tab the browser duplicates starts with a copy), and `{lasting: true}` keeps it in this browser after it closes; `null` drops it; storage the browser refuses reads as nothing kept, and `write` answers false. **Everything a page keeps in the browser goes through it**: the browser tab's id the workspace names its files with, the sidebar's place, width, collapse and filter, the checkpoint panel's view and open state, the load monitor's collapse, the documents' reading theme, the reports last seen, the Structure-optimization and Spectrum tabs' forms (`formSchema.keepInTab`). |
@@ -142,50 +145,39 @@ Spectrum — has no canvas to lose: loading a structure replaces it without
 asking, and the parameters stay as typed *(user, 2026-10-12)*. `tests/test_structure_warning_modal_js.py` pins all four
 strings against this table, so a wording change has to update both together.
 
-*(A browser-level `beforeunload` guard for the canvas was part of the original
-design, was never shipped, and is **retired 2026-09-03** — closing the tab does
-not warn you, and will not, on any page. The modal above guards the actions
-that discard work inside the app, which is where the work is; a browser dialog
-on tab close is a different, coarser thing that the platform half-honours
-anyway. The Results markdown editor carried one of its own, removed
-2026-10-13; that editor mounts nowhere today (`results.md` § 3), and should
-it return, its unsaved text needs the in-app question the sidebar's preview
-editor asks — the one confirm — not a tab-close guard.)*
+*(No page asks before the browser tab closes — no `beforeunload` guard, on
+any page: the modal above guards the actions that discard work inside the
+app, which is where the work is. A Results markdown editor, should it return,
+asks the in-app question the sidebar's preview editor asks — the one
+confirm.)*
 
-**These are *not* runtime primitives** — they were catalogued here only because
-they share the `lib/` folder, but their substance lives with their real subject:
+**These share the `lib/` folder but are *not* runtime primitives**; their
+substance lives with their real subject:
 
 - **`detection-chip.js`** — *not a neutral UI widget.* It shows each form's own
   electronic state in one line on its Profile card — the answer the server's
   electronic-state class gave for what that form says — and advises nothing.
   Its home is the chemistry card's domain
-  (`science/chemistry-correctness.md` § 2.5). *(A Budget-card line of
-  atom-count × metal thresholds → "bump the caps" advice stood here until
-  2026-10-13: no contract stated it, so it was removed — CHIP, [`archive/2026-10-13-plan-rows.md`](?doc=archive/2026-10-13-plan-rows.md).)*
+  (`science/chemistry-correctness.md` § 2.5).
 - **`system-load-monitor.js`** — a self-mounting CPU/RAM/GPU sparkline strip on
   the **Results tab only**, not a shared block; documented with the Results tab.
-- **`region-label-definitions.js`** (+ its popover) — the transport **device-role
-  label vocabulary** (L/R-electrode, bridge, interface, with citations); belongs
-  with the transport / region-labels domain.
 - **`form-schema.js`** — a whole subsystem, its own doc **`form-schema.md`**.
 
 ## 4. Current → target: ES modules
 
 Most of this page — the runtime registry and the building blocks — is still a
 **classic `window.molbuilder.*` script** today. The one confirm
-(`warning-modal.js`) and the path helpers (`path-utils.js`) are ES modules, each
-mirrored on its global for the classic scripts that still call it.
+(`warning-modal.js`), the path helpers (`path-utils.js`) and the CodeMirror
+loader (`codemirror-load.js`, imported by every editor) are ES modules, the
+first two each mirrored on its global for the classic scripts that still call
+it.
 
-Converting the registry and these primitives to ES modules is a planned pass
-([`plans/plan.md`](?doc=plans/plan.md) **W15**) — grouped **by kind**, not lumped into one
+Converting the registry and these primitives to ES modules is not an item of
+`plans/plan.md`; if it is done, it is grouped **by kind**, not lumped into one
 "runtime" bag (a `path.basename` caller shouldn't drag in a notification bar):
 
-- **`notify`** → its own ESM framework ([`notifications.md`](?doc=web/notifications.md));
-  its feature half — auto-dismiss, a `ttl`, a `detail`, a `success` level — is
-  among § 0a's *smaller open items*.
+- **`notify`** → its own ESM framework ([`notifications.md`](?doc=web/notifications.md)).
 - **`markdownRender`** → ESM.
-- the **CodeMirror code-viewer/editor** (today set up twice — in the sidebar
-  preview and the markdown presenter) → one concealed ESM module + de-dup.
 - the **registry itself**, the `results` module, and the pure helper
   `constants`, which stays a small standalone
   ESM (not folded into the registry), as `path-utils` is. The

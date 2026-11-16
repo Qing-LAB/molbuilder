@@ -52,8 +52,9 @@ vector = np.asarray(mode["eigenvector_canonical"])   # (free atom, xyz), amu^-1/
 of_atom = dict(zip(free, vector))                    # your atom's row, by its index
 ```
 
-The Cartesian eigenvector is mass-weighted, so two modes are orthogonal with each
-atom's mass, which is a check that every row stands on its atom:
+The Cartesian eigenvector is normalised with each atom's mass — the sum over
+atoms of m|L|² is 1, m in amu — so two modes are orthogonal with each atom's
+mass, which is a check that every row stands on its atom:
 
 ```python
 E = np.array([np.asarray(m["eigenvector_canonical"]).ravel() for m in data["modes"]])
@@ -103,7 +104,7 @@ data["equilibrium"]["scf_energy_eh"]
 
 All in hartree, as the file's units say. `data["equilibrium"]` holds
 `scf_energy_eh`, `mo_energies_eh` and `homo_idx` where the engine reported them: a
-PySCF run's. On SIESTA they are `None` and empty, and the relaxation's energy is
+PySCF run's. On SIESTA all three are `None`, and the relaxation's energy is
 `read_steps`' (§ 7).
 
 ## 5. The charges, on your atoms
@@ -132,8 +133,9 @@ moved = np.asarray(call["position_ang"]) - reference           # side × dq × t
 
 ## 7. The relaxation and the force constants
 
-A SIESTA vibration runs its phases as runs of their own, its held atoms first, so
-**their files are in the engine's order**. `read_steps` hands back your order:
+A SIESTA vibration runs each phase as a SIESTA call of its own — a point of the
+one run, in its own folder (`relax`, `fc`) — on a copy sorted held atoms first,
+so **their files are in the engine's order**. `read_steps` hands back your order:
 
 ```python
 relax = read_steps("01_freq/run-0/relax")

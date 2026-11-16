@@ -2,7 +2,7 @@
 
 **Role:** contract
 **Domain:** web
-**Companions:** [`web-api.md`](?doc=web/web-api.md) § security — the CSP that
+**Companions:** [`web-api.md`](?doc=web/web-api.md) § 2 — the CSP that
 decides what markup may inline (§ 7 here). Every web module ships its own
 stylesheet under the rules below; this doc is the cross-cutting layer, not any
 one module.
@@ -21,7 +21,7 @@ partial, `templates/_page_head.html`, which a page's head includes right after
 its title: the tokens, the shell, and two components every page has — the one
 dialog and the page links' sheet, which name only their own classes, so they
 sit with the shell ahead of `form-components.css` — then the runtime and the
-status writer *(2.70.1; each page listed them by hand until then)*. A page
+status writer. A page
 adds its own sheets and scripts after it; the rest every page uses (the
 element builder, the page's kept values, the tab strip, the one list, the
 server's reader, the path door, the notifications, the one confirm) the shared
@@ -41,7 +41,7 @@ flowchart TD
 | Layer | Owns |
 |---|---|
 | `lib/tokens.css` | **only** the design tokens — every color, spacing, size, and type value (§ 2). Nothing else. |
-| `lib/page-shell.css` | the shell (`body`, `.app-header` — the banner, a class since 2026-09-28 because a bare `header` selector dressed every `<header>` on the page — `main`), the generic form controls and the button's two variants (`.primary`, `.danger` — *moved here from form-components 2026-10-13: a dialog opens on every page, and its answer wears one*, § 11), `.card`, the `.status` message severities, **the finding row (`.issues-panel`, `.issue-item[data-severity]`)** — *moved here from form-components 2026-09-11: one renderer for every surface needs one stylesheet on every surface, and `/results` loads no form sheet but mounts MolView, which draws notices through that renderer* — the app-shell + sidebar dock geometry, `.card-row`, the spinner, **the toggle button** (`.toggle-button`, a button that stays pressed — `aria-pressed`) and **the number table** (`.num-table`, numbers in columns — the transport report's tables, the frame-set card on the Transport tab and Task setup) *(2026-10-10)*. |
+| `lib/page-shell.css` | the shell (`body`, `.app-header` — the banner, a class, because a bare `header` selector would dress every `<header>` on the page — `main`), the generic form controls and the button's two variants (`.primary`, `.danger` — a dialog opens on every page, and its answer wears one, § 11), `.card`, the `.status` message severities, **the finding row (`.issues-panel`, `.issue-item[data-severity]`)** — one renderer for every surface needs one stylesheet on every surface, and `/results` loads no form sheet but mounts MolView, which draws notices through that renderer — the app-shell + sidebar dock geometry, `.card-row`, the spinner, **the toggle button** (`.toggle-button`, a button that stays pressed — `aria-pressed`) and **the number table** (`.num-table`, numbers in columns — the transport report's tables, the frame-set card on the Transport tab and Task setup) *(2026-10-10)*. |
 | `lib/form-components.css` | the **shared form-page widgets** — the form grid, hints, the viewer chrome, the engine strip (`.tabs` / `.tab-btn` / `.tab-panel`, whose behaviour is `lib/tab-strip.js`), the two-column page and its travelling rail (`.page-cols` / `.page-main` / `.page-aside`, Task setup's and the Transport tab's — `--page-aside-w`), and the one findings rule only a form can use (a finding sitting beside its `.schema-field` control). |
 | `lib/<module>/*.css` | one self-contained component each (the projects sidebar, the fused MolView card, the selection panel, the form renderer, the embed), class-prefixed so they don't collide. |
 | `<tab>/style.css` | **composition only** — arranging a page: max-width, centering, per-instance token values. |
@@ -64,13 +64,6 @@ nobody was thinking about goes visually wrong.
 checks that PAGE sheets do not name MODULE classes; it does not read the
 module sheets to judge them, because that is exactly the reach it exists to
 forbid.
-
-> **What this cost before it was a rule.** An inventory on 2026-08-02 found 20
-> rules in `results/style.css` styling `.inspector-card*` — elements built
-> entirely in JavaScript by `lib/inspectors/`. A module whose appearance was
-> half-owned by a page that could not see it. They live in
-> `lib/inspectors/inspector-card.css` since 2026-10-12, and the Results
-> fallback's markup reuses the card's title and note as they are.
 
 A page that needs a module to look different asks the module for a token or an
 option. It does not reach in — the same answer a tab gets when it wants the
@@ -107,15 +100,7 @@ Two naming tiers:
 > prefixed or not**. A name a component sets on its own element is not a
 > token: a per-instance size or weight (a card's basis, a chart's height), or
 > a name pointed at a token (the Documents reader's `--dr-*` at its light or
-> dark set) — never a colour written there. The rule is held by review since 2026-09-10, when
-> `test_css_no_hex_literals` was retired with the other tests that read
-> source for where code lives (`082ba979`). It used to exempt any
-> name that was not already canonical, on the reasoning that a per-file
-> namespaced palette is legitimate; what that exemption actually protected on
-> 2026-09-02 was three tokens with no prefix at all — `--page-max-width` and
-> `--focus-ring` in `modify/style.css`, `--shadow-soft` in the trajectory
-> inspector under the heading *"inspector-only token additions"*. All three
-> are here now.
+> dark set) — never a colour written there. The rule is held by review.
 
 **The embed-safety pattern.** A component that can be dropped into a foreign host
 (the 3D embed, an inspector) writes `var(--token, #fallback)` — the token if the
@@ -124,8 +109,8 @@ That is the main place a literal color appears. The only others are a tagged
 set of `/* exempt: */` colors that aren't UI palette at all: a WebGL scene
 color (the viewer's wireframe, its canvas clear color), a decorative
 gradient, and a couple of lightened text tints on dark severity rows.
-**40 of them as of 2026-08-25**, and 32 sit in `molview.css` alone — a
-WebGL scene's palette is its own, not the page's. Outside those documented
+Most of them sit in `molview.css` — a WebGL scene's palette is its own, not
+the page's. Outside those documented
 exceptions, a component never writes a raw palette color.
 
 ## 3. Responsive — content decides, not the viewport
@@ -141,9 +126,8 @@ hits a magic width. Three mechanisms carry most of it:
   side by side, with **no media query at all**, and a card alone on its line
   shrinks with the row but never below its minimum — so it never squeezes into
   its neighbor — nor past a row narrower than that minimum: the floor is
-  `min(--card-min, 100%)`, the grids' `min()` floor above *(corrected
-  2026-10-10: this said "wraps at the content minimum", which a flex line does
-  not do — it wraps on each card's basis, clamped by its minimum)*.
+  `min(--card-min, 100%)`, the grids' `min()` floor above: a flex line wraps
+  on each card's basis, clamped by its minimum.
 - **Container queries** — an embeddable sizes itself to *its own* width, not the
   page's. The fused MolView card flips from side-by-side to stacked at
   `@container (max-width: 692px)` (the sum of the viewer minimum, the rail, the
@@ -163,29 +147,22 @@ There are still a handful of real screen-width breakpoints for the things that
 genuinely depend on the whole viewport: **786px** (at and above, the projects
 sidebar docks in-flow; below, it becomes a slide-in **drawer**) — and that
 number is *derived*, not chosen: sidebar `18rem` + the shell's insets + the
-widest embed's own declared floor (`--molviewer-size-card-min-width`). It was
-641px until 2026-08-23, a value that predated the 3-D viewer having a floor,
-so between those widths the page docked a sidebar and then had less room than
-its content declared it needed — the viewer card, correctly refusing to shrink
-past its floor, overflowed its host by exactly the shortfall. A media query
+widest embed's own declared floor (`--molviewer-size-card-min-width`). A
+smaller number would dock the sidebar and leave less room than the content
+declares it needs, and the viewer card, refusing to shrink past its floor,
+would overflow its host by the shortfall. A media query
 cannot read a custom property, so the literal stays; the arithmetic lives
 beside it in `page-shell.css`, and the narrow side of it (`max-width:
 785px`) is also where a few pages trim their own padding. Also **960px**
 (form-components' two-column page, `.page-cols`, stacks its rail), **720px**
 (Task setup's rows and the Documents tab), **768px** (markdown), **480px**
 (the load monitor and MolView) and **40rem** (form-schema's recommended-value
-rows, Task setup's fit row). *(The spectra inspector's **900px** went on
-2026-10-10: it stacked the two thermochemistry figures by the window's width,
-which a sidebar changes nothing of; a `min()` grid floor stacks them by the
-panel's.)* All animation honors `prefers-reduced-motion`.
+rows, Task setup's fit row, This machine's rows). A pair of figures in a panel
+stacks by a `min()` grid floor, never by the window's width. All animation
+honors `prefers-reduced-motion`.
 
-*(Recounted 2026-10-12. Task setup's two — a row inside a card in a column
-beside the sidebar — are the `.ts-asks` case above, and want a container
-query.)*
-
-*(Recounted 2026-08-25. This listed `1100`, which is in no stylesheet, and
-omitted three that are — a doc inventory drifts silently because nothing
-fails when it does.)*
+Task setup's two breakpoints — a row inside a card in a column beside the
+sidebar — are the `.ts-asks` case above, and want a container query.
 
 ### 3.1 The app shell — who scrolls, and what a tab has to say to get it
 
@@ -213,9 +190,7 @@ column, in the right place on the *first* paint.
 A **`.dock-panel`** is the shared geometry for anything docked in that rail: a
 full-height flex column that scrolls internally, so the rail itself never does.
 An instance sets only its own width and palette. The projects aside is the one
-dock panel today — a checkpoint panel shared the rail from 2026-07-25 to
-2026-08-19, and the checkpoint UI now lives inside the projects sidebar — and
-the geometry stays shared for the next panel that docks.
+dock panel; the geometry stays shared for the next panel that docks.
 
 Two rules elsewhere in this document are about this shell, and are not repeated
 here: the width at which a panel docks in-flow rather than sliding in as a
@@ -229,18 +204,12 @@ own `[hidden]` guard (§ 6).
   tokens. See § 5 for why this matters.
 - **The issues panel** is the other severity surface — each issue gets a
   colored left bar and a leading glyph (⚠ / ✗ / i) from the same tokens, owned in
-  **page-shell** *(moved there 2026-09-11, for the reason § 5 gives about
-  `.status`: it is drawn on every surface, so it has to be styled on every
-  surface)*.
+  **page-shell** *(for the reason § 5 gives about `.status`: it is drawn on
+  every surface, so it is styled on every surface)*.
 - **Cards** — `.card` in page-shell is the canonical surface (background, border,
-  radius, padding, shadow), and **it is the only one**. Two tabs used to
-  restyle it "deliberately"; on inspection (2026-08-24) both copies restated
-  the shell's background / radius / shadow verbatim and *then* drifted — a
-  softer border in one, `--radius-lg` and its own padding in the other — so
-  one class had three looks and source order picked the winner. Deleting the
-  copies was the fix. *(`test_css_no_duplicate_selectors` enforced it until
-  2026-09-10, retired with the other source-reading tests, `082ba979`; the
-  rule is held by review.)*
+  radius, padding, shadow), and **it is the only one**: a page that restyles
+  it restates the shell and then drifts, so one class has several looks and
+  source order picks the winner. The rule is held by review.
 - **A card that folds is one component** (2026-10-13). A `<details
   class="fold">` whose `<summary>` is its head: the disclosure marker, the
   title, and `.fold-sum` — what it holds, said in a few words, so a folded
@@ -252,33 +221,19 @@ own `[hidden]` guard (§ 6).
   the page's rule; the component decides nothing. Cards of which one is open
   at a time share a `name` — the browser's own exclusive `<details>` group —
   rather than a script that closes the others.
-- **One owner survives a rename** (2026-08-31). That check asks whether one
-  *selector* has two homes, and there is a second shape it cannot see: the
-  same reasoning and the same declaration under two *different* selectors.
-  The MolView host's `overflow-x` rule was eighteen identical lines in
-  `structure-optimization/style.css` and `transport/style.css`, differing
-  only in the id — invisible to a per-selector check, because neither
-  selector was ever duplicated. It lives in the module sheet now
-  (`.molviewer-host`) and pages opt in with the class, so a third page needs
-  no third copy. *(`test_no_long_block_is_copied_between_stylesheets`
-  failed on ten identical non-blank lines shared by two sheets until
-  2026-09-10, retired with the other source-reading tests, `082ba979`; the
-  rule is held by review.)*
+- **One owner survives a rename.** The same declaration under two different
+  selectors is a second owner too, invisible to a per-selector check: it
+  lives in the module sheet and pages opt in with the class
+  (`.molviewer-host`), so a third page needs no third copy. The rule is held
+  by review.
 - **One inset per card** (2026-08-30). A card states its inset once, on
   itself; everything inside it — title, rule, tab row, fieldsets, form rows —
   **begins at that inset and adds none of its own**. A nested block may add
   *vertical* space; horizontal indentation is a deliberate signal of hierarchy,
   never a by-product of nesting.
 
-  Measured on `/molbuilder` the day this was written: six left edges inside one
-  600 px card — 18.8 (the card) · 34.8 (+ the panel's 16) · 38.8 (+ the header's
-  20) · 42.8 (+ the tab row's 8) · 51.6 (+ the fieldset's 16 and the legend's 4)
-  — so the card's title, the rule under it and its first form row each started
-  somewhere different, and **8.6 % of the card's width was accumulated left
-  margin**. Every one of those paddings is defensible alone; the sum was nobody's
-  decision, which is the whole failure mode this rule names. `/task-setup` is the
-  counter-example and the proof the rule is already the norm: five cards, five
-  titles, all at 18.8.
+  Every nested padding is defensible alone; their sum is nobody's decision,
+  which is the failure mode this rule names.
 
   It is a rule rather than a fix because a fix cannot hold. Subtracting the
   header's 20 lines up a header inside a `.card` and **breaks** one whose parent
@@ -286,23 +241,12 @@ own `[hidden]` guard (§ 6).
   has to serve both.
 - **One gutter per tab** (2026-08-30). Every top-level block on a page shares one
   left edge, one right edge and one max-width; nothing sits outside the page's
-  own container. The Molbuilder tab had its Init-structure card as a *sibling* of
-  `<main>` rather than a child, so it rendered flush while every card below it was
-  inset by main's padding — a 16 px step at a narrow window and a 506 px one at a
-  wide one, where only the inner row carried the max-width.
+  own container.
 - **One family, and the shorthand is where it escapes** (2026-08-30).
   `--font-sans` in `tokens.css` is the app's sans stack. **A `font:` shorthand
-  resets `font-family`**, so every rule that uses the shorthand has to retype the
-  stack — and retyping is how the app came to spell one typeface five ways:
-  the token, page-shell's hand-written body stack, `system-ui, sans-serif` in six
-  `modify` rules, `"Inter", system-ui, sans-serif` on the page title, and
-  `--font-sans` again in `task-setup` and `dialog`.
-
-  Measured on `/molbuilder` they all render **the same face** (289.98 px for one
-  string, every stack) — because the Apple and Windows names miss on that machine
-  and each stack falls through to `system-ui`. **That is agreement by luck.**
-  Five spellings can be edited independently, and on a machine where an earlier
-  name hits they stop agreeing, in a way no one is looking for. The rule: *a
+  resets `font-family`**, so every rule that uses the shorthand would have to
+  retype the stack, and spellings retyped independently stop agreeing on a
+  machine where an earlier name hits. The rule: *a
   `font:` shorthand names `var(--font-sans)`, or it is not written* — reach for
   the longhands instead, which leave the family alone.
 - **How long ago, said one way** (2026-10-13). An age shown to a person — a
@@ -310,8 +254,7 @@ own `[hidden]` guard (§ 6).
   This machine — comes from one helper, `lib/time-ago.js`
   (`window.molbuilder.timeAgo`): each unit until one and a half of the next
   (90 s, 90 min, 36 h), *just now* below that, past 30 days the date itself,
-  nothing when there is no moment. Two tabs had grown their own, and one said *7s ago* where the other
-  said *just now*. **A length of time a run says of itself is said one
+  nothing when there is no moment. **A length of time a run says of itself is said one
   way** *(user, 2026-10-16)* — the *6d left* an engine estimates, a run's
   wall time in the Run panel, a transmission's loop, the elapsed time and the
   time left in the monitor's status line and its messages: the same helper's
@@ -327,11 +270,10 @@ own `[hidden]` guard (§ 6).
   trajectory badge's *total* is a run's own length too, and takes it. **A benchmark's measured times keep the second** — its wall on the
   page, its monitored window in `summarize bench`'s table (*4m05s*): a
   measurement compared across trials, which a rounded length would hide.
-- **Focus: the glow and the ring are each one token** *(2.70.1)*. A text field
+- **Focus: the glow and the ring are each one token**. A text field
   being typed in glows (`--focus-ring`, the shell's input rule, which no field
   adds a ring to); the ring a control draws when the keys reach it is
-  `--focus-outline`, its offset its own — twelve rules wrote it by hand until
-  then. One ring keeps a colour of its own: the projects sidebar's edge tab,
+  `--focus-outline`, its offset its own. One ring keeps a colour of its own: the projects sidebar's edge tab,
   drawn in the accent, where an accent ring would not show. *Not yet one look
   for every control:* the sidebar's rows and its create buttons glow, its
   drawer toggle and the load monitor's toggle change their ground and draw no
@@ -339,14 +281,9 @@ own `[hidden]` guard (§ 6).
   the browser's own ring — which look each control wears is a look still to
   settle.
 - **Rhythm** — spacing, type sizes, and radii all come from the `--space-*` /
-  `--text-*` / `--radius*` scales. **Spacing is a 4px grid** (2026-08-23):
-  every step is a whole number of 4px units, so any two spacings are
-  commensurable and a rhythm is either kept or visibly broken. It ran
-  4 · 8 · 14 · 20 · 28 until then, and 14 was the only value off any grid —
-  the gaps it left were filled by hand, with 6, 10 and 12 appearing hundreds
-  of times as literals because the nearest token was wrong by enough to
-  matter. Two steps were added, one value moved, and ~350 literals were
-  rounded onto the grid.
+  `--text-*` / `--radius*` scales. **Spacing is a 4px grid**: every step is
+  a whole number of 4px units, so any two spacings are commensurable and a
+  rhythm is either kept or visibly broken.
 
   Two things are **not** rhythm and stay literal: a **hairline** (under 3px —
   a 1px nudge, a 2px inset under a border) is an optical adjustment, and
@@ -368,8 +305,7 @@ it is **one implementation**, `lib/tab-strip.js`, loaded once by the shared
 header, which mounts every strip in the app: a page names its tabs
 (`data-tab`) and says what it does when one is chosen; the strip keeps
 `aria-selected`, the tab stop, the keys and the ids, and each strip's sheet
-keys its look on `[aria-selected="true"]` *(2026-10-12; seven strips each
-carried their own copy until then)*. A strip inside a module that is disposed
+keys its look on `[aria-selected="true"]`. A strip inside a module that is disposed
 registers its listeners through its owner's listener scope (`listeners`, the
 inspector's `inspectorLifecycle.listeners()`), so the owner's dispose removes
 them with its own. A link that goes to another page is not
@@ -394,22 +330,21 @@ Enter opening a folder or selecting a file, and Enter on the selected file
 committing it, as the second click of a double-click does *(2026-10-13)* — and
 so are the spectrum's modes, Enter showing a mode, and the run history's saved
 states — each state's words a button that opens and closes its actions
-(`aria-expanded`), the buttons the list's items *(2.68.4; each with a stop per
-row or a click alone until then)*. A list drawn again with no item holds no
+(`aria-expanded`), the buttons the list's items. A list drawn again with no item holds no
 stop, and leaves the keys where they were. **A
 control that reads as the text it stands for** — a column's name that sorts, a
 folder's arrow — **is `button.plain`**, the page shell's: it looks as its text
 does, hovered too, and the focus ring says the keys are on it. A control that
-holds a state says so with `aria-pressed`. *(Written 2026-10-08 — B8 F7 /
-U14 / R1-12: the browser driver the walks use and a screen reader have the
-same blind spot, and a control without a name was found by both.)*
+holds a state says so with `aria-pressed`. A control without a name is lost
+to a screen reader and to the browser driver alike.
 
 ## 5. Why an error looks the same on every tab
 
 A validation error uses `class="status error"`. Only `lib/page-shell.css` defines
 `.status.error { color: var(--error) }`, and **every** page loads page-shell —
-so the same red (`--error`) appears whether the message is on the Build form, the
-Modify action row, the Spectra form, or the structure-optimization page. A page
+so the same red (`--error`) appears whether the message is on the Structure
+optimization tab's form, the Molbuilder tab's action row, the Spectrum or the
+Transport tab. A page
 sheet may nudge *where* the status sits (Modify right-aligns it) but never
 re-picks the color. Change `--error` once in `tokens.css` and every error on
 every tab moves together. That is the whole contract in one example: **one
@@ -417,7 +352,7 @@ owner, one token, consistent everywhere.**
 
 **A message with a layout of its own takes the same look.** A Task setup note,
 a prep answer, the Transport plan line, the benchmark foot's failed look, the
-file preview's line, Modify's timeline status — and *(2.70.1)* This machine's
+file preview's line, Modify's timeline status — and This machine's
 channel test, Task setup's unsaved flag, Modify's warning hints and its
 selection layer's failure, Task setup's *already here* on a file, the
 recommended-values panel's summary, the Results readout when it warns, the
@@ -451,17 +386,6 @@ difference matters.** Four sheets declare `.status` and three of them are
 | `margin-top`, `margin-left`, `min-height` — **where it sits, how much room it takes** | composition. Legal, and deleting it moves the page. |
 | `color`, `font-size`, `font-weight` — **what it looks like** | a second owner. Illegal, however sincere. |
 
-Both mistakes were live here until 2026-08-25. `modify/style.css` set
-`color: var(--text-muted)` + `font-size: var(--text-base)`, so every status
-on that page rendered `#6c7280`/15.2px where every other page rendered
-`#a8aebb`/14px — dimmer, on the page that shows the most of them, and
-unnoticed for months because each page looked internally consistent.
-`spectra/style.css` restated the shell's two values *verbatim*, which
-changes nothing until one of them drifts. And
-`structure-optimization/style.css` was nearly deleted as "a duplicate" when
-it declares only `margin-top` + `min-height` — pure composition; removing it
-would have shifted the page by 8px.
-
 So **read the properties, not the selector.** A duplicated selector is a
 prompt to look; only a re-picked *appearance* is the defect.
 
@@ -475,16 +399,6 @@ that shows findings mounts. One row shape
 draws its fields by), everything else lands in the
 page's residual panel, and **nothing is dropped**.
 
-This was four implementations until 2026-07-29 — one per tab plus the per-card
-panels `form-schema.js` creates — and the drift was not cosmetic. All three tab
-copies silently discarded a finding naming a card the form
-schema had not rendered (they iterated the card *panels*, so a bucket with no
-panel was built and never read); the Spectra copy also dropped any severity
-outside `error`/`warn`/`info`, re-ordered the rest, and carried a second row
-vocabulary (`div.issue` + `.badge`) plus a competing `.issues-panel {display:
-grid}` that beat the shared sheet on that one page. Deleting the copies fixed
-all of it at once.
-
 The full producer-to-panel contract — where the facts come from, how the finding
 travels, and what the UI must do with it — is
 [`science/validation.md` § 4.1](?doc=science/validation.md).
@@ -496,11 +410,8 @@ travels, and what the UI must do with it — is
 > own design system composes, it does not re-implement**: MolView's sheet sets
 > the row's type scale for its dense panel (`.molviewer-notices.issues-panel
 > .issue-item`) and owns nothing about the severity, which is § 5's rule one
-> layer up. It had two of the three severities from
-> 2026-08-01 (`b39ba6bc`) to 2026-09-11 and drew an error in the tone of a
-> remark; nothing noticed, because the guard for "one renderer"
-> checked two filenames instead of searching. "One renderer" is held by
-> review now ([`code-audit.md`](?doc=process/code-audit.md) § 1c), and each
+> layer up. "One renderer" is held by
+> review ([`code-audit.md`](?doc=process/code-audit.md) § 1c), and each
 > page that shows findings is asked to draw every one its check returned
 > ([`validation.md`](?doc=science/validation.md) § 4.1 R2).
 
@@ -514,14 +425,13 @@ the element never hides.
 
 The rule: whenever a class sets a non-`none` `display` on an element that gets
 toggled by `hidden`, **pair it with a guard** — `.dock-panel[hidden] { display:
-none }`. This is done consistently across the tree — **83 guards** as of
-2026-08-25, most with a comment explaining why. (It said "about thirty" until
-then: the rule kept being applied and the figure stopped describing it.)
+none }`. This is done consistently across the tree, most with a comment
+explaining why.
 
 ## 7. What may be inline — the CSP boundary
 
 The security policy (owned by the server — see
-[`web-api.md`](?doc=web/web-api.md) § security) draws a sharp line:
+[`web-api.md`](?doc=web/web-api.md) § 2) draws a sharp line:
 
 - **Inline `style=` is allowed** — the 3D embed and some inspector cards set a
   small amount of inline style (a viewer height, say). The risk is small (a CSS
@@ -549,14 +459,13 @@ The security policy (owned by the server — see
   them: `renderMathIn` hands KaTeX the TeX a document holds in its
   placeholder's attribute, and KaTeX builds the elements itself, `trust: false`
   so no command reaches a URL or raw HTML. The CSP stops an
-  injected script from running; this rule stops the injection — three sites
-  broke it until 2026-09-25, each passing a runtime message into `innerHTML`.
+  injected script from running; this rule stops the injection.
 
 ## 8. Is a rule dead? — how to tell, and how not to
 
 Unused CSS is worth removing and **very easy to get wrong**, because every
-cheap way of asking gives a confidently wrong answer. All four traps below
-produced one here on 2026-08-25, and two of them nearly deleted live styling.
+cheap way of asking gives a confidently wrong answer. Each of the four traps
+below gives one, and two of them would delete live styling.
 
 **Trap 1 — grepping for the class name.** A class can be *composed*:
 
@@ -565,14 +474,15 @@ produced one here on 2026-08-25, and two of them nearly deleted live styling.
 el("div", "schema-field-" + f.kind)                   // form-schema.js
 ```
 
-`.workflow-group--stage` appears in no JS file and is live on the Build form
-for **11 fields** — `stage` is a member of `template.GROUPS`. The same trick
+`.workflow-group--stage` appears in no JS file and is live on the parameter
+forms (Structure optimization, Spectrum, Transport) wherever a field is drawn
+in the `stage` card — `stage` is a member of `template.GROUPS`. The same trick
 had already hidden `.schema-field-checkbox` from an earlier sweep. A grep can
 only ever say *"no literal reference"*, which is not the question asked.
 
 **Trap 2 — one page, one state.** Most rules match nothing most of the time.
 `form-components.css` reports 42 of its 55 selectors unmatched on
-`/molbuilder` — because the Build form lives on other pages. Dialogs are
+`/molbuilder` — because the parameter forms live on other pages. Dialogs are
 closed, panels are collapsed, and error rules (`.structure-error`,
 `.source-body-error`) match only when something has *failed*, which no page
 walk reaches by accident.
@@ -617,11 +527,10 @@ before concluding anything.
 
 | rule | verdict | how it was settled |
 |---|---|---|
-| `.workflow-group--stage` | **live** | composed from the card key (`card`); 11 SIESTA fields carry it; 2 matches measured on the Build form |
-| `.mb-dialog-title`, `.mb-dialog-field` | **live** *(2026-10-13)* | `lib/dialog.js`'s parts (`dialogTitle`, `dialogField`) build every dialog of the one component (§ 11), and the one confirm wears the title. Until then they were declared API that no dialog used. |
+| `.workflow-group--stage` | **live** | composed from the card key (`card`); every form that draws the `stage` card carries it |
+| `.mb-dialog-title`, `.mb-dialog-field` | **live** *(2026-10-13)* | `lib/dialog.js`'s parts (`dialogTitle`, `dialogField`) build every dialog of the one component (§ 11), and the one confirm wears the title. |
 | `.mb-dialog::backdrop` | **live** | Trap 3 — not selectable, matches on every modal |
 | `.inspector-section{,-header,-hint}`, `.fdf-actions`, `.fdf-output`, `.disabled-tip`, `.structure-error`, `.source-body-error` | **no builder found — deliberately NOT deleted** | no literal reference and no composition prefix, but never observed in their own state either |
-| `.workflow-group-apply-btn` | **deleted 2026-09-29** | the "Apply suggestions" button a card's suggested defaults were applied with. It stood in the row above until the electronic state retired suggestions altogether ([`science/chemistry-correctness.md`](?doc=science/chemistry-correctness.md) § 2a: a blank field is the instruction, the chemistry card its answer, and nothing is filled in), so no builder can come back for it |
 
 ## 9. Checklist for changing the UI
 
@@ -640,9 +549,7 @@ before concluding anything.
   not valid CSS**: the minus does not bind to the function, so the browser
   discards the *whole declaration* — including any other values on the same
   line. Nothing errors, nothing renders differently enough to notice, and the
-  comment beside it goes on describing a layout that never shipped. One shipped
-  this way for months (`modify/style.css`'s op-tab strip, "bleed to card edges",
-  found 2026-08-30).
+  comment beside it goes on describing a layout that never shipped.
 - Behavior → a linked `.js` file; never an inline `<script>` or `onclick=`.
 - Text into the page → `textContent` on a `createElement`ed node; outside
   § 7's four producers, `innerHTML` only ever gets `""` or one fixed literal.
@@ -659,9 +566,7 @@ before concluding anything.
 ## 10. The page busy fence — one cover for every heavy click
 
 *(2026-08-28, user design: "blocking the window is going to block switching —
-make it simple".  Replaces the sidebar-scoped lock of 2026-05-27, which
-shipped a banner, a Cancel and three recovery layers and then never gained a
-production caller.)*
+make it simple".)*
 
 **The problem it solves.**  A user clicks something that makes the server
 work for seconds — generate 3-D coordinates from a SMILES, a multi-step
@@ -702,7 +607,7 @@ covered, so *everything* — tabs, sidebar, forms — is blocked by
 construction; nothing is wired per-control.  **The keyboard is fenced
 too**: a key pressed anywhere but on the cover, or in a dialog the operation
 itself opened, does nothing — Enter on the button just clicked does not send
-again.  **Focus comes back where the person left it** *(2.68.3)*. A control
+again.  **Focus comes back where the person left it**. A control
 that held focus as the fence went up — the button just clicked — gives it to
 the cover until the release puts it back. A fence that goes up while focus
 is moving — a field's change runs as Tab or a click leaves it, and the
@@ -737,7 +642,7 @@ going to, and the browser abandons the move (Task setup's `commitEdit` — a
 stage renamed — and the run cards drawn again after a queue or notify card's
 write).
 
-**The recovery contract** (carried over from the sidebar lock, verbatim):
+**The recovery contract**:
 `release()` sits in a `finally`, so a thrown operation still releases;
 the cancelers abort the in-flight request; and Cancel, shown when there
 are cancelers, is the human override, always clickable — it runs them but
@@ -764,10 +669,6 @@ user.  A second browser tab, or another user of a shared server, still
 reaches the backend — that class stays server-side, case by case.
 
 ## 11. Dialogs — one component, and never the browser's own
-
-*(2026-10-13, the CSS pass: two dialog vocabularies had grown — the shared
-`.mb-dialog` and the sidebar's own, grey with dark-blue and dark-red fills —
-and 27 native `prompt()` / `confirm()` / `alert()` calls stood beside them.)*
 
 **One component.** Its look is `lib/dialog.css` and its behaviour
 `lib/dialog.js`, beside it: `openDialog` shows a `<dialog>` modally and
@@ -807,7 +708,7 @@ a failure, an archive that came out incomplete — is a notification
 own status line. MolView's hosts already held this for a clear
 ([`molview.md`](?doc=web/molview.md) § 6.7a).
 
-## 12. A server's answer — one reader *(2.69.0)*
+## 12. A server's answer — one reader
 
 **Every question a page asks the server goes through one reader**, `ask` in
 `lib/server.js` — an ES module, imported by a module and mirrored on
@@ -837,9 +738,7 @@ const a = await ask(url, { method, body, signal, as });
 files layer's `{ok, …fields}` ([`projects.md`](?doc=web/projects.md) § 5), a
 door's result such as the structure save's `{ok, path, notices}` — and asks
 its routes from one place; **a page that asks a route itself reads the
-reader's `{ok, body}` and reshapes nothing** *(2.69.11: Task setup flattened
-its prep answer by hand, and the sidebar asked a files route past the files
-layer)*.
+reader's `{ok, body}` and reshapes nothing**.
 
 **Being signed out is said once, for the whole page**, by the reader: one
 notification ([`notifications.md`](?doc=web/notifications.md)), *"You are
@@ -852,7 +751,7 @@ its own refusal beside the control that asked, as it says any other. A request
 the browser makes itself — a download link, an image — is no question the
 reader can read.
 
-### 12.1 Its words, drawn — one renderer *(2.69.4)*
+### 12.1 Its words, drawn — one renderer
 
 **The server's sentences are written once, for the terminal and the page
 alike**, and drawn on a page by one renderer, `codeWords` in `lib/dom.js` —

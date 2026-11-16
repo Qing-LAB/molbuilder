@@ -612,6 +612,7 @@ arranges files belongs to Python on the host.
 | **Launch-door gate** | the guard that takes a start only from `jobset launch`, which says so in `MB_LAUNCHED_BY` |
 | **Session log** | `<stem>.runwrap.log`, the start's own log |
 | **The one exit trap** | the script's one EXIT trap, and one handler for every signal that stops a run (`runwrap._STOPPING_SIGNALS`); it writes the conclusion marker of a script that failed on its own ([`project-layout.md`](?doc=execution/project-layout.md) § 1.6.3) |
+| **Preamble preflight** | *(a preamble that sources files by absolute path)* each such file checked readable on the node before the preamble runs; one missing stops the run, naming the path, the record it was baked from and where to fix it ([`running-a-job.md`](?doc=execution/running-a-job.md) § 2.0a) |
 | **Baked preamble** | the target machine's own lines, verbatim from its record |
 | **Activation** | the record's one activation statement, verbatim |
 | the node's shape | the node's physical cores and sockets (`lscpu`), logged |

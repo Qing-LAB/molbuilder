@@ -152,8 +152,8 @@ AXES: Dict[str, Axis] = {a.name: a for a in (
     Axis("frame", "a frame set's frames", "1"),
     Axis("bias_v", "the voltages computed", "V"),
     Axis("iv_bias_v", "the I-V's voltages", "V"),
-    Axis("energy_ev", "energy relative to the leads' Fermi level at 0 V",
-         "eV"),
+    Axis("energy_ev", "energy relative to the device's Fermi level, the "
+         "zero TBtrans measures from", "eV"),
     Axis("spin", "spin channels", ""),
     Axis("lead", "the two leads", ""),
     Axis("region", "molbuilder's regions of the junction", ""),

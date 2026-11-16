@@ -3,9 +3,9 @@
 **Role:** contract
 **Domain:** science
 **Companions:** [`validation.md`](?doc=science/validation.md) (the SIESTA
-preflight that *runs* these checks); `engines/siesta.md` (the FDF emitter + the
-`psml_lib` config field — engines wave, named not linked yet); `overview.md`
-(the science contract — composed last).
+preflight that *runs* these checks); [`engines/siesta.md`](?doc=engines/siesta.md)
+(the FDF emitter + the `psml_lib` config field);
+[`overview.md`](?doc=science/overview.md) (the science contract).
 
 This is the **sole source of truth** for what molbuilder checks in a `.psml`
 pseudopotential set, **why**, and **how**. A **pseudopotential** is a stand-in for
@@ -21,16 +21,18 @@ specialised ones inline.)*
 
 ## Why this guard exists
 
-A **defective `S.psml` shipped silently** into a real run (2026-06-26): an
-`ONCVPSP-4.0.1` sulfur pseudo — **ONCVPSP** is a widely-used pseudopotential
-*generator program*, and `-4.0.1` its release — with a **dead p-channel**
-(`ekb = 0`: the projector strength for the p valence orbitals was zero, so those
-orbitals contribute nothing) sat among otherwise-`ONCVPSP-3.3.0` H/C/Au pseudos.
+A **defective `S.psml` shipped silently** into a real run (2026-06): PseudoDojo
+v0.5's sulfur — an `ONCVPSP-4.0.1` file (**ONCVPSP** is a widely-used
+pseudopotential *generator program*, and `-4.0.1` its release) among
+otherwise-`ONCVPSP-3.3.0` H/C/Au pseudos — whose valence p channel's
+Kleinman–Bylander projectors are written out as zeros (`ekb = 0`) with only the
+semilocal block carrying the channel, so SIESTA read sulfur with no p.
 It produced wrong sulfur bonding **and** crashed SIESTA at `propor: ERROR: IMAX=0`
 (a crash from a degenerate projector table) — but only at high MPI rank counts (=
 many parallel processes), so a low-process GPU run would have *silently* used it
 and reported plausible, wrong numbers. None of the pre-existing checks caught it.
-The checks below catch that class of defect **at preparation time**, before any
+§ 2a.2 (`semilocal_only`) and C5 (`dead_projector`, a zero channel nothing
+carries) catch that class of defect **at preparation time**, before any
 compute is spent and before any wrong number is trusted.
 
 Each check states its scientific basis, its false-positive risk, and its
@@ -100,7 +102,7 @@ says per species label whether that file comes from the folder or from `psml_lib
 **Where they come from is the gate's to refuse too** — no library named, one
 that is no folder, a file it lacks — so prep and the page say it in one set of
 words; SIESTA's data-files step at prep copies what is there and refuses
-nothing (`siesta.seam.siesta_provide_pseudos`) *(2.69.64)*. (A transport
+nothing (`siesta.seam.siesta_provide_pseudos`). (A transport
 calculation's cited run brings its own files, and one it lacks is refused by
 the transport rung's own data-files step, `transport.rung.provide_pseudos`,
 naming the citation's way out.) The severities:
@@ -108,16 +110,15 @@ naming the citation's way out.) The severities:
 | Severity | Statuses | Meaning |
 |---|---|---|
 | **ERROR** (blocks generation / non-zero CLI exit) | `missing`, `misnamed`, `dead_projector`, **`xc_family_mismatch`**, **`semilocal_only`** | the run **cannot be correct** — a file is absent or under a name SIESTA does not open (SIESTA won't start), or the file a species opens declares another element (C1a), a valence channel is physically missing (wrong Hamiltonian), the XC *family* is wrong, or a valence channel is present and **claims a strength of zero** (§ 2a.2). The last three are all *silently* wrong: the run completes and the answer is not right |
-| **WARN** (advisory) | `xc_mismatch`, `relativistic_mismatch`, `generator_mismatch`, `parse_warning` | a strong smell that *might* be intentional (curated mix, deliberate SR/FR choice) — surfaced loudly, but the user may proceed |
+| **WARN** (advisory) | `xc_mismatch`, `relativistic_mismatch`, `generator_mismatch`, `parse_warning`, `partial_projectors` | a strong smell that *might* be intentional (curated mix, deliberate SR/FR choice) — surfaced loudly, but the user may proceed |
 | `ok` | — | silent pass |
 
-**Settled before the folder exists — at the Send** *(plan § 5w K20; user,
-2026-09-30: "it seems user easily misses this in the first setup and only finds
-out after the script is generated")*. On the Build and Spectrum tabs' SIESTA
+**Settled before the folder exists — at the Send** *(user, 2026-09-30: "it
+seems user easily misses this in the first setup and only finds out after the
+script is generated")*. On the Build and Spectrum tabs' SIESTA
 form the directory is not drawn required: the `.psml` files already in the
 calculation's folder answer it too, so a blank one is no fault in itself
-*(2.69.8; it was drawn red while empty, and the Send then wrote,
-[`engines/template.md`](?doc=engines/template.md) § 5 `required`)*. The live check (the web preflight) warns while it is unset — naming the
+([`engines/template.md`](?doc=engines/template.md) § 5 `required`). The live check (the web preflight) warns while it is unset — naming the
 tree's `pseudopotential` folder when that folder covers every species of the
 structure, a suggestion and never a fill — and checks each species' file and its
 XC family once it is set. The Send asks the same check of the folder it writes
@@ -129,14 +130,9 @@ describe` asks the same before it writes
 reads no pseudopotentials) nor transport's (a cited run's come with it; a cited
 pair's from the directory `molbuilder describe --psml-lib` names, prep's door).
 
-> **History (2026-07).** Two changes produced the unified set above: (a) XC-*family*
-> mismatch was split off as `xc_family_mismatch` → **ERROR** (an earlier version
-> treated all XC mismatch as one WARN and left family-vs-author blocking "for
-> reviewer decision"); (b) the CLI's exit set — once narrower
-> (`{"missing", "dead_projector"}`, so an `xc_family_mismatch` slipped past with
-> exit 0 while the preflight blocked it) — was unified onto the shared
-> `ERROR_STATUSES`. Both pinned by
-> `tests/test_pseudos.py::TestErrorStatusesSharedBySurfaces`.
+One shared `pseudos.ERROR_STATUSES` decides what blocks on both surfaces, so
+the CLI never exits 0 on a file the preflight refuses
+(`tests/test_pseudos.py::TestErrorStatusesSharedBySurfaces`).
 
 ---
 
@@ -164,10 +160,9 @@ element → `misnamed`. A file another label opens is that label's: with `Au1`
 and `Au2` and only `Au1.psml`, `Au2` is `missing`. Verbatim, no case folding: a species written `Au1` needs
 `Au1.psml`, declaring gold ([`model/chemistry.md`](?doc=model/chemistry.md)
 § 3). **False positives:** none — the comparison is against the name SIESTA
-itself constructs. **Measured 2026-09-19:** a folder holding only `gold.psml`
-answered `ok`; zero instances across the 105 real `.psml` folders in
-`projects/`, because staged copies are named by `copy_pseudopotentials`. This
-guards the folder a person assembles by hand.
+itself constructs. A folder holding only `gold.psml` is `misnamed` for `Au`.
+Staged copies are named by `copy_pseudopotentials`, so this guards the folder a
+person assembles by hand.
 
 ### C2 — XC functional consistency · ERROR *(family)* / WARN *(author)*
 **What:** the pseudo's exchange-correlation functional matches the calculation's
@@ -216,8 +211,9 @@ from different releases). Hence WARN, not ERROR; the message says "confirm the
 odd-one-out is intended."
 
 ### C5 — Dead Kleinman-Bylander projector · ERROR · `dead_projector`
-**What:** no valence angular-momentum channel (the s / p / d / … orbital-momentum
-component of the valence) has its **entire** set of KB projectors at `ekb ≈ 0`.
+**What:** no angular-momentum channel (the s / p / d / … orbital-momentum
+component) present in the nonlocal block has its **entire** set of KB
+projectors at `ekb ≈ 0` with nothing else carrying it.
 **Why (scientific basis):** SIESTA represents the
 nonlocal pseudopotential in separable Kleinman-Bylander form [Kleinman & Bylander,
 *PRL* **48**, 1425 (1982)]: `V_NL = Σ_l |χ_l⟩ E_KB,l ⟨χ_l|`. The KB energy `E_KB`
@@ -237,13 +233,11 @@ only when **all three** hold:
    projector among several is fine; we flag only an *entirely* null channel; and
 3. there is **no** `<slps l=…>` semilocal potential for that `l`.
 
-**Condition 3 is essential and easy to miss.** ONCVPSP-4.0.1 / psml-4.0.1 pseudos
-write the nonlocal `<proj>` block as **zero placeholders** for channels that are
-instead carried by the `<semilocal-potentials>` block, from which SIESTA rebuilds
-the KB projector at read time. Standard, PseudoDojo-validated pseudos for **I, Xe,
-Rb, Ba** do exactly this for their p channel — so an `ekb=0` there is *not* a dead
-projector. Flagging them (the pre-2026-07 behaviour) was a **false positive that
-ERROR-blocked those common elements**; the `l not in semilocal_ls` guard fixes it.
+**Condition 3 is essential.** A channel whose `<proj>` entries are zeros and
+which a `<slps>` semilocal potential carries is not C5's: it is § 2a.2's
+`semilocal_only` (ERROR when the channel holds valence electrons — PseudoDojo
+v0.5's S, Ba, I, Rb, Xe), because SIESTA reads the zeros. C5 flags only a zero
+channel nothing carries.
 **Threshold:** `1e-6` (in the hartree-ish KB units of `ekb`) is heuristic — well
 below any physical `ekb` (real ones are O(0.1–20)) and just above
 exact-zero/round-off. **False positives:** believed none
@@ -398,11 +392,10 @@ For sulfur the affected channel is **p**, and S's valence is 3s² 3p⁴ — so t
 channel with nothing in it is one of the two that make sulfur bond. The run
 failed; replacing that one file with v0.4 fixed it.
 
-**The file is schema-valid and its VALUES ARE WRONG** *(corrected 2026-09-03,
-user: "why do you call this a valid shipment? with values obviously wrong?")*.
-An earlier draft of this section called the zeros a legitimate representation
-choice. They are not, and the difference is one this codebase already draws
-elsewhere:
+**The file is schema-valid and its VALUES ARE WRONG** *(user, 2026-09-03: "why
+do you call this a valid shipment? with values obviously wrong?")*: the zeros
+are not a legitimate representation choice, and the difference is one this
+codebase already draws elsewhere:
 
 > **absent ≠ present-but-zero.** A channel chosen as the local potential has
 > **no** `<proj>` at all — that is how PSML says *nothing to see here*.
@@ -488,20 +481,10 @@ verify:
 > downloaded PseudoDojo file needs a path that does not exist yet. See
 > [`plan.md`](?doc=plans/plan.md) § 9.2 for the open question. Until then the
 > claim above stands as written.
-> **One item left this list on 2026-09-07: mesh-cutoff adequacy.** It read
-> *"`PsmlInfo.suggested_mesh_ry` is parsed but not yet compared to
-> `cfg.mesh_cutoff`"* — which § 2a.1 of this same document had already
-> contradicted. It IS compared: `validation.siesta._declared_cutoff_ry` reads the
-> suggestion out of the PSML header and `_check_siesta_mesh_cutoff` raises
-> *"mesh_cutoff = X Ry is below Y Ry"* against it. A "what is not checked"
-> list that names a check the file itself documents elsewhere is worse than
-> no list.
 
 - **Basis ↔ pseudo consistency** — that the **PAO** (pseudo-atomic-orbital, SIESTA's
   numerical basis set) l-channels match the pseudo's. **Not checked, and not
-  planned**: the "science-validation tail" it belonged to was killed by the
-  user on 2026-09-10 (*"not open, not deferred: gone"* — plan N4, archived);
-  it said *Deferred* until 2026-09-29.
+  planned** *(the user, 2026-09-10: "not open, not deferred: gone")*.
 
 The guard catches **missing, mis-functionaled, mis-relativistic, version-strange,
 structurally-broken, or unparseable** pseudos. It does **not** certify that a
@@ -537,11 +520,12 @@ prints one line per species label (`[ERROR]` / `[WARN ]` / `[OK   ]`) then a sum
 and exits non-zero when any line is an ERROR — the shape a CI job greps / gates on:
 
 ```text
-  [ERROR] S        p-channel projectors all ekb=0 — dead Kleinman-Bylander projector
-  [WARN ] Au       generator ONCVPSP-4 differs from the set's ONCVPSP-3 — confirm intended
-  [OK   ] C
+  [OK   ] Au       Au.psml OK (GGA / PBE, scalar)
+  [OK   ] C        C.psml OK (GGA / PBE, scalar)
+  [ERROR] S        S.psml has a NULL Kleinman-Bylander projector for the 'p' channel (ekb=0): …
+  [WARN ] S        pseudopotential set mixes generator versions: ONCVPSP-3 (Au,C); ONCVPSP-4 (S).  … confirm the odd-one-out (S) is intended …
 
-3 checks: 1 error(s), 1 warning(s).          # process exits 1 (an ERROR was found)
+4 checks: 1 error(s), 1 warning(s).          # process exits 1 (an ERROR was found)
 ```
 
 The same check is one Python call:
@@ -574,6 +558,8 @@ check until clean.
 | C3 relativistic | WARN | `check_coverage` → `relativistic_mismatch` | `test_pseudos.py` |
 | C4 version | WARN | `check_coverage` + `_generator_key` | `test_pseudos.py` |
 | C5 dead projector | ERROR | `parse_psml_header` → `null_channels`, emitted by `check_coverage` | `test_pseudos.py` |
+| § 2a.2 semilocal-only channel | ERROR | `parse_psml_header` → `semilocal_only_channels`, emitted by `check_coverage` → `semilocal_only` | `test_pseudo_requirements_layer.py`, `test_pseudos.py` |
+| § 2a.2 one of two projectors zero | WARN | `parse_psml_header` → `partial_projector_channels` → `partial_projectors` | `test_pseudo_requirements_layer.py` |
 | C6 parse | WARN | `parse_psml_header` → `parse_warnings` | `test_pseudos.py` |
 | severity set (shared) | — | `pseudos.ERROR_STATUSES` → `validation.siesta._check_siesta_pseudo_coverage` (preflight) + `cli.cmd_pseudo_check` (CLI exit) | `tests/test_pseudos.py::TestErrorStatusesSharedBySurfaces` |
 

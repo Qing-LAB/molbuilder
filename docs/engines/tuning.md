@@ -61,14 +61,16 @@ flowchart TD
     Q3 -->|no| S["screening<br/>(is the geometry even sane?)"]
 ```
 
-Both engines ship a **three-rung ladder** that bakes these tiers into the default
-`coarse` / `medium` / `tight` rows (§ 4) — one vocabulary, both engines. The `tight`
-rung is **disabled by default**: most runs are `coarse` + `medium`, and `tight` is
-opted into for vib/IR/production work.
+Both engines ship three tiers as stage presets — `coarse` / `medium` / `tight`
+(§ 4), one vocabulary for both engines. A new description is ONE stage, named
+`coarse`, carrying no overrides: it runs the template's own values, not the
+coarse tier's. Naming a strategy writes the tiers it runs (`publishable`:
+coarse + medium; `loose-only`: coarse; `vib-quality`: all three), and a tier
+left out can be added later from Task setup's presets. No stage is switched
+off: a stage is in the description or it is not.
 
-**Three rungs, and a fourth is not coming** *(retired 2026-09-03, user: "retire
-all of them")*. A stage-4 "refinement" preset was named in the design and never
-built. `tight` already targets the SCF noise floor, so a rung past it would
+**Three rungs, and no fourth** *(the user, 2026-09-03: "retire all of
+them")*. `tight` already targets the SCF noise floor, so a rung past it would
 have to be tighter than the thing the tiers call tightest — and a ladder that
 loosens or repeats is worse than one that stops. What a specific study needs
 beyond `tight` is that study's own stage, written as an override, not a fourth
@@ -142,8 +144,8 @@ For calibration, Gaussian's `OPT` defaults its step cap to 0.30 Bohr (≈ 0.16 �
 unconstrained atom.
 
 **"Tight" means two different numbers depending on system type** — conflating them
-was a real bug (a 444-atom Au junction "tight" at 0.001 eV/Å never converges; a
-small-molecule "tight" at 0.01 eV/Å is too loose for vibrations):
+breaks one or the other: a 444-atom Au junction "tight" at 0.001 eV/Å never
+converges; a small-molecule "tight" at 0.01 eV/Å is too loose for vibrations:
 
 | System | Tight = | Why | Reference |
 |---|---|---|---|
@@ -194,11 +196,12 @@ code that disagrees with this table is a bug in the code.
 The publishable column is geomeTRIC's `GAU` preset; the very-tight column is
 `GAU_TIGHT` — ≈ 30× tighter on every gradient and displacement criterion (the energy
 step is unchanged). All five values flow end-to-end: a rung's deck hands them to
-geomeTRIC through its one relaxation call (`pyscf.md` § 3), **and** writes them
-into that rung's `.molwatch.log` as a
-`_CONVERGENCE_TARGETS` map (unit-converted to eV / eV·Å⁻¹), which the Results-tab
-trajectory inspector reads to draw the threshold lines — nothing the user sets is
-dropped before the plots.
+geomeTRIC through its one relaxation call (`pyscf.md` § 3), **and** the deck
+gathers them, with its two iteration caps, into a `_CONVERGENCE_TARGETS` map
+(forces in eV/Å, energy step in eV). The rung's `.molwatch.log` header carries
+it as `# convergence.` lines, which the Results tab's trajectory inspector reads
+to draw the threshold lines — nothing the user sets is dropped before the
+plots.
 [Wang & Song 2016]
 
 ### 2.5 SCF tolerance
@@ -281,7 +284,7 @@ hybrid DFT. `cfg.auxbasis` is `None` by default, so PySCF auto-picks the matchin
 JK-fit set — `def2-tzvp-jkfit` for a def2-TZVP orbital basis (the **JK** set, because
 the default B3LYP is a hybrid and needs both Coulomb *and* exchange fitting); set
 `cfg.auxbasis` to override. [Weigend 2005 (orbital basis); Weigend 2008 (JK-fit auxiliary)] SIESTA's
-numeric atomic-orbital basis (`PAO.Basis`) is a separate contract — see
+numeric atomic-orbital basis (`PAO.BasisSize`) is a separate contract — see
 [`siesta.md`](?doc=engines/siesta.md).
 
 ### 2.9 Functional + dispersion (DFT)
@@ -309,18 +312,14 @@ conventional form in prose ("ωB97M-V"); the spelling traps are in
 | **Geometry (outer)** | PySCF `geom_max_steps` | coarse **50**, medium **200**, tight **100** | a warm-up needing > 50 has a wrong starting geometry — stop and inspect; 200 is the publishable safety margin |
 | | SIESTA `relax_steps` | coarse **600**, medium **200**, tight **100** | written as `MD.Steps`, read for CG / Broyden / FIRE alike (5.4.2 lets it override `MD.NumCGsteps`); SIESTA's coarse budget is more generous than PySCF's |
 | **SCF (inner)** | PySCF `mf.max_cycle` | **100** | plenty for a well-conditioned SCF; hitting 100 means the *system* is the problem (broken-symmetry open shell, level-shift needed) — 500 won't help |
-| | SIESTA `MaxSCFIterations` | **1000** | a generous ceiling, the same value as SIESTA's own default (`read_options.F90`); each outer step runs at most this many inner cycles until `DM.Tolerance` is met. *(This row said 500 until 2026-08-16; the catalogue and `SiestaConfig` both say 1000, range 10–5000.)* |
+| | SIESTA `MaxSCFIterations` | **1000** | a generous ceiling, the same value as SIESTA's own default (`read_options.F90`); each outer step runs at most this many inner cycles until `DM.Tolerance` is met; the catalogue allows 10–5000. |
 
 ### 2.11 Block size (SIESTA — the ScaLAPACK / ELPA distribution block)
 
 > **Decided 2026-08-11 (user): `BlockSize` is a tunable parameter, measured by a
 > benchmark and then chosen — like the GPU and core assignment beside it.** It is
-> **not** a value molbuilder derives and hands you. Every other document that
-> described it as *"derived from the rank count"* is corrected to the **two**
-> states below. *(This line said "three states" until 2026-08-16 — written
-> before the middle state was retired on 2026-08-15, four subsections down. A
-> section that owns a rule and miscounts it in its own opening is how the
-> restatements elsewhere stayed wrong.)*
+> **not** a value molbuilder derives and hands you: it has the **two** states
+> below.
 
 **What it controls.** SIESTA distributes the Hamiltonian over MPI ranks in square
 blocks of `BlockSize` orbitals. It is the one knob here that is about **parallel
@@ -343,13 +342,9 @@ ceiling to stay under, not a target to aim at.
 
 > **Orbitals, not atoms** *(settled 2026-08-11, user)*. The block distributes the
 > **Hamiltonian**, whose dimension is the orbital count; SIESTA's DZP basis is
-> roughly ten orbitals per atom, which is why BENCH-MARKS records
-> `n_orbitals_est` beside `n_atoms` at all. `job-contracts.md § 3.3` declared the
-> bound as `n_atoms / mpi_np` while its own PROVENANCE example derived the value
-> from `10 × n_atoms` — a factor of ten, in the paragraph whose rule is that the
-> value and its bound come from one place. **The bound is now
-> `n_orbitals_est / mpi_np`** and the two agree; the code follow-up and its
-> mutation test are recorded there.
+> roughly ten orbitals per atom. So the bound is **`n_orbitals_est / mpi_np`**,
+> the same estimate BENCH-MARKS records beside `n_atoms` (`job-contracts.md`
+> § 3.3).
 
 **A consequence worth seeing, because it is the whole reason this is not a
 formula.** The ceiling moves with the **basis**, not only the hardware:
@@ -368,9 +363,7 @@ upgrading the basis on one system moves it again. That is why § 2.11 opens with
 
 > **Revised 2026-08-15 (user): *"SIESTA allows `auto` to be the value, so that's
 > what it should be as default. Otherwise, it is a manual explicit value and/or
-> benched result."*** This section previously defined THREE states; the middle
-> one is retired, and the paragraphs above explain why it should never have
-> existed.
+> benched result."***
 
 **`BlockSize` has two answers.**
 
@@ -379,30 +372,15 @@ upgrading the basis on one system moves it again. That is why § 2.11 opens with
 | **auto** — the default | *the keyword is not emitted at all* | SIESTA's own built-in automatic. The manual declares it: `BlockSize [integer] <automatic>` |
 | **a number** | `BlockSize <your value>` | you benchmarked it, or you know this machine. **Honoured verbatim** |
 
-**What the retired middle state was.** molbuilder computed a value — a power of
-two from the orbital count, the rank count and the GPU flag — and wrote *that*
-into the deck. It contradicted this section's own opening decision (*"not a value
-molbuilder derives and hands you"*, 2026-08-11) and it was reachable as the
-DEFAULT, while SIESTA's own automatic hid behind the sentinel `0`. So the
-ordinary user got a guess, and the engine's answer needed a magic number to
-request.
-
-Three things followed from it, all found 2026-08-15:
-
-- **It produced meaningless values.** Below four atoms the ladder returned
-  `BlockSize 1` — legal, and the exact opposite of the cache blocking the
-  parameter exists for.
-- **It forced a wrong type.** The item was declared `pow2`, which SNAPS a value
-  down to the nearest power of two — so a benchmarked 24 silently became 16. The
-  power-of-two rule is real but belongs elsewhere; see below.
-- **It needed a mirror in the browser.** The form previewed the guess by
-  hand-copying the rule into JavaScript, where it could only ever reproduce the
-  no-ranks branch — so the number shown was not the number that would be used.
+**molbuilder computes no BlockSize for the deck.** A computed value is
+meaningless on small systems (`BlockSize 1` below four atoms, the opposite of
+the cache blocking the parameter exists for); a power-of-two type would snap a
+benchmarked 24 down to 16; a preview in the browser would need a second copy of
+the rule.
 
 **Omitting a keyword is still a real answer** — the same shape as
 `Diag.Algorithm ScaLAPACK`, which [`siesta.md § 7`](?doc=engines/siesta.md) also
-emits as *nothing*. What changed is that it is now the DEFAULT answer rather than
-a third option behind a sentinel.
+emits as *nothing*. It is the default answer, and needs no sentinel.
 
 #### The power-of-two rule, and what it actually applies to
 
@@ -411,7 +389,7 @@ The manual states it **twice, and only inside the ELPA solver options**:
 > *"when using a **GPU-enabled version of ELPA** it is important to verify that
 > **`Diag.BlockSize`** is a power of 2; if not, ELPA will only run on CPU."*
 
-Three qualifiers the `pow2` type dropped:
+Three qualifiers it carries:
 
 1. it is **`Diag.BlockSize`** — a different keyword, which merely *defaults* to
    `BlockSize`;
@@ -430,21 +408,20 @@ Three qualifiers the `pow2` type dropped:
 diagonaliser's block a power of two itself.** A set value is written verbatim
 under every target (`siesta/input.py` `_parallel_facts`) and nothing in
 molbuilder rounds it; SIESTA 5.4.2 rounds `Diag.BlockSize` down under GPU ELPA
-(item 3 above), so a non-power-of-two value never moves ELPA to the CPU. Plan
-K17 SO-C3 (realign it at `prep`) is closed by that source fact.
+(item 3 above), so a non-power-of-two value never moves ELPA to the CPU.
 
-`use_gpu` and `mpi_np` are both answered on the **staging** surface rather than
-beside the physics, and they are not the same kind of answer. **`use_gpu` is the
-person's** — an ordinary explicit option with a real default, chosen at the Job
-Prep UI ([`task-setup.md`](?doc=web/task-setup.md) § 6.2, user ruling
-2026-08-16), and nothing derives it from the machine. The machine-answered set
-is a flag on the catalogue item read through one door, and it holds exactly
-`mpi_np`, `gpu_count`, `omp_threads`, `max_memory_mb`, `threads`.
+`use_gpu` and `mpi_np` are both answered on the **staging** surface, and both
+are the person's. `use_gpu` is an ordinary option with a real default, chosen
+on Task setup ([`task-setup.md`](?doc=web/task-setup.md) § 6.2, user ruling
+2026-08-16). `mpi_np` is stated on the run card or with `prep --np`, and
+refused at prep when stated nowhere. Nothing derives either from the machine.
+The launch counts `mpi_np`, `gpu_count`, `omp_threads`, `max_memory_mb` and
+`threads` carry one catalogue flag, `allocation`.
 
 | where | what happens to `BlockSize` |
 |---|---|
-| **the parameter form** | auto by default; an explicit value taken at face value. The rule is not enforced here because the hardware is not chosen here |
-| **`bench`** | sweeps the points the job request's `bench` block declares. `script_emit.py`'s BENCH-MARKS declares `BlockSize` as `pow2`, with a window derived from the deck's rank count (`_block_size_bounds`) |
+| **the run card** | auto by default; an explicit value taken at face value, never rounded — SIESTA rounds the GPU ELPA block itself (above) |
+| **`bench`** | sweeps the points the job request's `bench` block declares. The deck's BENCH-MARKS block (SIESTA's `BENCH_FIELDS`, `siesta/input.py`) declares `BlockSize` as `pow2`, with a window drawn from the deck's rank count (`_block_size_bounds`) — only when the deck carries a `BlockSize` |
 | **`prep`** | writes the value verbatim, or no `BlockSize` line when it is unset |
 
 The plain guidance in the table above (16 · 32 · 64 · 128) remains *guidance* for
@@ -467,8 +444,7 @@ it ([`job-system.md § 7`](?doc=execution/job-system.md)).
 
 ### 2.12 GPU + CPU coordination (SIESTA) — the background that guides a benchmark
 
-*(Consolidated 2026-08-21 from a live investigation for the Au–BDT–Au
-benchmark: the code paths, the manuals shipped inside this machine's own
+*(Sources: the code paths, the manuals shipped inside this machine's own
 `molbuilder-siesta-gpu` build, and the literature.  The launch mechanics
 live in [`running-a-job.md § 3.3`](?doc=execution/running-a-job.md); the
 declaration rule in [`generator.md § 4.3a`](?doc=execution/generator.md);
@@ -482,9 +458,10 @@ seconds per SCF iteration — the number every comparison ranks on.)*
 **What the GPU actually accelerates — one step, not the run.** SIESTA
 offloads exactly one thing to the GPU: solving the dense eigenvalue
 problem at the heart of each SCF iteration, and only through the ELPA
-solver (`use_gpu` requires an ELPA `diag_algorithm`; the deck writes
-`Diag.Algorithm` + `Diag.ELPA.GPU` —
-[`siesta.md § 7`](?doc=engines/siesta.md)). Everything else — building
+solver (with an ELPA `diag_algorithm` the deck writes `Diag.Algorithm` +
+`Diag.ELPA.GPU`; with ScaLAPACK it writes no `Diag.*` line and the GPU has no
+solve to run — the run is still prepared as asked,
+[`siesta.md`](?doc=engines/siesta.md) § 7). Everything else — building
 the Hamiltonian and overlap matrices on the real-space grid, updating the
 density, computing forces — stays on the CPU ranks. So a "GPU run" is
 really a CPU parallel run whose most expensive step (the O(N³)
@@ -504,8 +481,8 @@ asked for `-n N` ranks, `-c C` cores each, and — through `--gres`, the
 scheduler's request line for special resources such as GPUs — G devices.
 Ranks and devices are independent requests; the ranks each device carries,
 N/G, follow, and need not be whole. In the job request (`job-request.json`'s `bench`) you declare the portable
-half, and since 2026-08-21 that includes the device count itself
-(*"explicit is what we need"* — until then G was derived from divisors):
+half, the device count itself included (*"explicit is what we need"*, the
+user, 2026-08-21): G is never derived from the rank count.
 
 ```json
 "bench": {
@@ -518,7 +495,8 @@ half, and since 2026-08-21 that includes the device count itself
 ```
 
 — CPU trials at 32 and 64 total ranks; GPU trials at exactly 1, 2 and 4
-devices; both solvers rendered into every trial's input file. `mpi_np` is
+devices; each solver crossing every cell — a trial per cell and solver, each
+input file carrying its one solver. `mpi_np` is
 always the TOTAL rank count, N. The rules around `gpu_count` are
 refusals and fits said, never silent repairs: a device count past what the record says a node carries is
 **kept**, its fit saying so, the scheduler deciding
@@ -627,8 +605,7 @@ in § 2.11.
 run *inherits* it — there is no fixed CPU-to-GPU ratio anywhere:
 **(1)** the winner's whole shape, the device count included, is reported
 in what `summarize` prints, for you to write into `execution` — where
-a device count is stated as `gpu_count`, since no command-line flag
-states one, on purpose. **(2)** A GPU run states its device count —
+a device count is stated as `gpu_count`, or at prep with `--gpus`. **(2)** A GPU run states its device count —
 `gpu_count` on its run card, or `--gpus` at its prep — and one that states
 none is refused at prep: there is no default
 ([`execution/gpu.md`](?doc=execution/gpu.md) G5). **(3)** At launch, the wrapper
@@ -641,9 +618,9 @@ to the real allocation whatever the paperwork said.
 
 A trial costs its setup time plus 3 capped SCF iterations, and is killed if
 it exceeds the per-trial time bound — but **only when you state one**
-(`--trial-timeout`). Unstated, no per-trial bound exists: `submission.md` S2,
-amended 2026-08-24, because an unstated total once became fifteen invented
-minutes a trial and sent five 38-minute jobs to Sol. The rules below are each an economy: how to get the answer —
+(`--trial-timeout`). Unstated, no per-trial bound exists. Nothing is derived
+(`submission.md` S2), so no trial is killed by a bound nobody stated. The
+rules below are each an economy: how to get the answer —
 which configuration to run at — for the least machine time.
 
 - **Warm-up is already excluded *inside* one run — never pay for a second
@@ -663,18 +640,17 @@ which configuration to run at — for the least machine time.
   exactly ONE interval: iteration 2's, the one still adjacent to warm-up,
   which the reader discards whenever it can. **Three is the faithful
   minimum**: setup excluded by construction, the iteration-2 interval
-  dropped, iteration 3 the one clean sample. The cap stood at five (an
-  average of three samples) for two days on a noise argument; the user's
-  own five-iteration runs answered it — iterations 3–5 agree within
-  seconds on a 444-atom junction, and **the bench reads scaling and
-  dependency — where the curve bends — not tight rankings**, so two
-  configurations within a few seconds of each other are a tie to break by
-  other criteria (queue time, memory), never a ranking to defend with
-  more samples. Older five-iteration records still parse and average.
+  dropped, iteration 3 the one clean sample. Five buy nothing more:
+  iterations 3–5 agree within seconds on a 444-atom junction (the user's
+  measured runs), and **the bench reads scaling and dependency — where the
+  curve bends — not tight rankings**, so two configurations within a few
+  seconds of each other are a tie to break by other criteria (queue time,
+  memory), never a ranking to defend with more samples. A record with more
+  iterations averages every interval after the first.
 - **Do not declare rank counts far below where the run will live.**
   Seconds per iteration grows roughly as 1/ranks until the scaling
   saturates, so a much-too-small trial of a large system can outlast its
-  time bound — killed, recorded `incomplete`, machine time spent, nothing
+  time bound — killed, its state `failed`, machine time spent, nothing
   learned. Bracket `mpi_np` around where you intend to run. Small
   ranks-per-device does **not** require small totals: K = mpi_np/G, so on
   4-GPU nodes `mpi_np: [16, 32]` already samples K = 4…8 — the ELPA
@@ -689,15 +665,13 @@ which configuration to run at — for the least machine time.
   declares only the machine settings (ranks, devices) with the value
   settings held at one point each — that answers *what shape is fastest* —
   and round 2 declares the winning shape plus the value settings — that
-  answers *which solver and block size at that shape*. Re-running `prep
-  bench` replaces the stage's sweep record, so each round's verdict
-  stands on its own; round 2 re-measures the winning shape under each
-  value, which is precisely the comparison wanted; (c) when one side's
-  extra trials are the cost, bench one side at a time (`use_gpu` with
-  a single point per round). Worked on the § 6 junction's declared
-  matrix: the full cross product is 36 trials; dropping `block_size` to
-  automatic makes it 12; staging makes it 6 + 6 with the second round
-  already pinned to the shape that won.
+  answers *which solver and block size at that shape*. A prepared
+  benchmark is not prepared again: a second `prep bench` on the stage
+  refuses, naming the state saved before its prep. Round 2 goes back to
+  that state and prepares the benchmark anew; it re-measures the winning
+  shape under each value, which is precisely the comparison wanted;
+  (c) when one side's extra trials are the cost, bench one side at a time
+  (`use_gpu` with a single point per round).
 - **Nothing idles inside a submitted job** *(user, 2026-08-21: "lighter
   tasks scheduled for heavy resource idling for hours is not a good use
   of cpu time")*. Trials that ask for exactly the same resources — the
@@ -719,18 +693,19 @@ which configuration to run at — for the least machine time.
   a verdict need not wait for it. Watch `bench-group*.log` (each trial's
   start, finish, exit code and duration, live) or run `summarize bench`
   at any moment — **it is safe and honest while the bench runs**:
-  finished trials are ranked, unfinished ones are listed as
-  `incomplete`/`unknown` (never a failure of the set), and the coverage
+  finished trials are ranked, unfinished ones are listed with their own
+  state — queued, running, failed, not run — never a failure of the set,
+  and the coverage
   line states how partial the verdict is; a later summarize refreshes
   the record over the fuller evidence (and rewrites its report from it). When the curve has clearly bent, `scancel` the
   remaining jobs — or skip the formal verdict entirely and set the run
   parameters yourself: explicit flags outrank everything, and the record
   keeps whatever completed. The declared matrix is an *upper bound* on
   cost, not a commitment. One honest caveat: submission marks every
-  included trial as launched, so a trial you stopped before it ran is
-  re-measured individually by name (move its old directory aside first —
-  [`project-layout.md § 2.3.2`](?doc=execution/project-layout.md)),
-  never by re-submitting its job.
+  included trial as launched, and a trial is launched once. `launch bench`
+  passes over it, and refuses it when you name it. To measure it again, go
+  back to the state saved before the benchmark's prep and prepare it anew
+  ([`project-layout.md`](?doc=execution/project-layout.md) § 1.5a).
 
 **The record keeps what was asked AND what actually ran** *(user
 question, 2026-08-21)*. Values you never typed are not lost: every
@@ -782,7 +757,7 @@ flowchart TD
     Q2 -->|"PHB / PXB / SYS<br/>(the GPUs talk over PCIe)"| STOP2["Gains are modest over PCIe —<br/>probably not worth a rebuild."]
     Q2 -->|"NV#<br/>(NVLink — direct GPU wiring)"| Q3{"module spider nccl<br/>— a NCCL matching the<br/>CUDA toolkit available?"}
     Q3 -->|"no"| STOP3["Nothing to build against<br/>without installing it — an<br/>environment change, the user's call."]
-    Q3 -->|"yes"| GO["Rebuild molbuilder-siesta-gpu with<br/>--enable-gpu-ccl=nccl as an EXPERIMENT<br/>(user-approved environment change), then<br/>bench it as its own round — its numbers<br/>are its build's (§ 4.3a)."]
+    Q3 -->|"yes"| GO["Rebuild molbuilder-siesta-gpu with<br/>--enable-gpu-ccl=nccl as an EXPERIMENT<br/>(user-approved environment change), then<br/>bench it as its own round — its numbers<br/>are its build's (generator.md § 4.3a)."]
 ```
 
 **One last rule, stated once more**
@@ -798,10 +773,7 @@ scheduled* stays yours, and stays unmade until you write it down.
 
 ### 3.0 Tier ↔ tier — and the tiers do NOT line up numerically
 
-*Written 2026-08-11. [`pyscf.md`](?doc=engines/pyscf.md) § 7 had promised "the
-full tier↔tier mapping lives in `tuning.md`" and it did not — § 3.1 below is a
-**keyword** map, which is a different question. This is the table that was
-missing, and building it turned up something worth knowing.*
+*§ 3.1 below is a keyword map; this is the tier map.*
 
 **The same tier name means a different force threshold on each engine.** At
 1 Ha/Bohr = 51.42 eV/Å:
@@ -851,15 +823,18 @@ For users who know one engine and want the other's equivalent.
 | Max geometry steps | `MD.Steps` (universal) | `geom_max_steps` | integer |
 | Max SCF cycles | `MaxSCFIterations` | `mf.max_cycle` | integer |
 | Discretisation | `MeshCutoff` (Ry) | *(basis-determined)* | Ry / — |
-| Basis | NAO via `PAO.Basis` (default DZP) | `cfg.basis` (Gaussian, default def2-SVP) | string |
+| Basis | NAO via `PAO.BasisSize` (default DZP) | `cfg.basis` (Gaussian, default def2-SVP) | string |
 | k-grid | `kgrid_Monkhorst_Pack` | *(gas-phase only)* | tuple |
 
 ---
 
 ## 4. The shipped stage ladders
 
-Both engines ship a three-stage default ladder. Stage 3 is **disabled by
-default**.
+Both engines ship three tiers as stage presets. A description starts as one
+stage, `coarse`, carrying no overrides. `--stage-strategy` names the tiers it
+is written with (`publishable`: coarse + medium; `vib-quality`: all three;
+`loose-only`: coarse), and Task setup's presets add a tier later. No stage is
+switched off.
 
 **One rule builds it for every engine** (`jobset/ladder.py::engine_ladder(
 engine, strategy)`): one `task.Stage` per tier of the engine's stage presets
@@ -873,22 +848,16 @@ can drift from them; the Task setup tab's preset menu serves the same tiers
 the same way on both — N decks, N jobs
 ([`stages.md § 1.1a`](?doc=engines/stages.md)).
 
-> **Neither engine's ladder carries a non-convergence policy, and running out
-> of steps means the same thing in both: the rung stops, and you decide.** A
-> stage that exhausts its budget leaves its geometry behind; the next stage
+> **No ladder carries a policy between rungs: the next rung runs only when a
+> person launches it.** What a rung does at its step budget is its own: a
+> SIESTA rung stops; a PySCF rung follows its `on_nonconvergence` (`halt` by
+> default). A stage that exhausts its budget leaves its geometry behind; the next stage
 > exists only because somebody looked at that result and prepared it. That is
 > the judgement the policy was trying to encode, made where the evidence is.
 >
-> *`proceed` / `continue` / `halt` decided the **edge** between one attempt and
-> the next. A SIESTA ladder emits no edges
-> ([`project-layout.md § 1.6`](?doc=execution/project-layout.md)), so the field
-> was removed from its producer on 2026-08-10 rather than left inert
-> ([`stages.md § 3`](?doc=engines/stages.md)); PySCF kept it while its ladder
-> was a loop inside one process and the policy was real control flow, and that
-> loop was retired on 2026-08-18
-> ([`stages.md § 1.1a`](?doc=engines/stages.md)).*
->
-> **`on_nonconvergence` survives as a PySCF field with a narrower meaning**: what
+> A SIESTA ladder emits no edges
+> ([`project-layout.md`](?doc=execution/project-layout.md) § 1.6), so no field
+> decides one. **`on_nonconvergence` is a PySCF field of one deck**: what
 > THIS rung does when geomeTRIC reports its criteria unmet at the step budget —
 > stop, re-enter from the geometry reached, or take it. That is a property of one
 > deck, not of an edge between two, and it is
@@ -898,7 +867,7 @@ the same way on both — N decks, N jobs
 |---|---|---|
 | **stage 1** (loose preopt) | CG · 600 steps · force 0.05 eV/Å · Δx 0.20 Å | `geometric` · 50 steps · `gmax` 2×10⁻³ · `conv_tol` 1×10⁻⁷ |
 | **stage 2** (publishable) | Broyden · 200 · 0.04 eV/Å · 0.05 Å | `geometric` · 200 · `gmax` 4.5×10⁻⁴ · `conv_tol` 1×10⁻⁹ |
-| **stage 3** (tight, *off*) | Broyden · 100 · 0.01 eV/Å · 0.02 Å | `geometric` · 100 · `gmax` 2×10⁻⁴ · `conv_tol` 1×10⁻¹⁰ |
+| **stage 3** (tight) | Broyden · 100 · 0.01 eV/Å · 0.02 Å | `geometric` · 100 · `gmax` 2×10⁻⁴ · `conv_tol` 1×10⁻¹⁰ |
 
 > **These numbers restate the sections that own them, and each engine's
 > authority is a different section.** SIESTA's force tolerance is § 2.3's
@@ -915,27 +884,24 @@ the same way on both — N decks, N jobs
 
 **The geometry flows from each stage to the next, and the optimizer history is
 reset at the boundary (§ 5). Both engines flow it the same way: a rung ends, a
-person looks at it, and the next rung's launch takes the run they name.**
+person looks at it, and the next rung's launch takes the newest finished run of
+the rung before it, or the run named with `--from`.**
 
 ```mermaid
 flowchart LR
     S1["stage 1 · loose"] --> L1{{"you look at it"}}
     L1 -->|"launch task … --from &lt;attempt&gt;<br/>copies the geometry + density"| S2["stage 2 · publishable"]
-    S2 --> L2{{"you look at it"}} -->|"launch task …"| S3["stage 3 · tight (off)"]
+    S2 --> L2{{"you look at it"}} -->|"launch task …"| S3["stage 3 · tight"]
 ```
 
 What each engine copies at that boundary is its own vocabulary and the only thing
 that differs: SIESTA's `.XV` and `.DM`, PySCF's `<JOB>_optimized.xyz` and
 `<JOB>.chk` ([`job-contracts.md § 4.2a`](?doc=execution/job-contracts.md)).
 
-> **This drew two different ladders until 2026-08-18** — PySCF's as a loop
-> passing state *in memory* inside one process, SIESTA's as a workflow — and
-> called that *"the one place these two ladders are not the same thing"*. It was
-> the argument for why `on_nonconvergence` meant something on one engine and
-> nothing on the other. With the loop retired
-> ([`stages.md § 1.1a`](?doc=engines/stages.md)) they are the same thing, and the
-> on-running-out-of-steps column above is a PySCF-only behaviour whose future the
-> unit that retires the loop settles.
+Both ladders are N decks and N jobs
+([`stages.md`](?doc=engines/stages.md) § 1.1a); what a PySCF rung does at its
+step budget is that deck's `on_nonconvergence`
+([`pyscf.md`](?doc=engines/pyscf.md) § 3).
 
 What the values look like emitted. **Both engines emit one deck per rung**
 ([`stages.md` § 1.1a](?doc=engines/stages.md)), so what follows is the `medium`
@@ -971,11 +937,11 @@ MD.MaxForceTol    0.04 eV/Ang
 MD.MaxDispl     0.05 Ang
 ```
 
-Global knobs (not per-stage) carry their own shipped defaults, all verified
-against the catalogue 2026-08-16: SIESTA `DM.Tolerance` 1×10⁻⁵, `MeshCutoff`
-300 Ry, `MaxSCFIterations` **1000**, `PAO.BasisSize` DZP, `Diag.Algorithm`
-ScaLAPACK; PySCF `mf.max_cycle` 100, `def2-SVP`, `B3LYP`+`d3bj`, `density_fit`
-on. *(`MaxSCFIterations` read 500 here until 2026-08-16.)*
+Settings the shipped ladder leaves alone carry the catalogue's defaults: SIESTA
+`DM.Tolerance` 1×10⁻⁵, `MeshCutoff` 300 Ry, `MaxSCFIterations` 1000,
+`PAO.BasisSize` DZP, and the run setting `Diag.Algorithm` ELPA-1STAGE (SIESTA's
+own is ScaLAPACK); PySCF `mf.max_cycle` 100, `def2-SVP`, `B3LYP`+`d3bj`,
+`density_fit` on.
 
 ---
 
@@ -984,7 +950,7 @@ on. *(`MaxSCFIterations` read 500 here until 2026-08-16.)*
 | Scenario | SIESTA | PySCF |
 |---|---|---|
 | Resume from the last accepted step | `MD.UseSaveCG .true.` + `MD.UseSaveXV .true.` (keep CG history + geometry; `MD.UseSaveCG` is CG-only) | the geometry each step reached, kept in `_optimized.xyz` (written after every geomeTRIC step, as SIESTA's `.XV`), and `<JOB>.chk`, which a continuing rung reads (geometry and density) — so a rung stopped short, halted or killed, continues from where it got to; geomeTRIC's own step history starts afresh (`pyscf.md` § 3) |
-| Restart with the geometry but reset optimizer history | `MD.UseSaveXV .true.` + `MD.UseSaveCG .false.` | drop the chkfile, or launch the stage again cold (`jobset launch … --cold`, which copies nothing — it resets the engine state too) |
+| Restart with the geometry but reset optimizer history | not a setting: `restart` writes the group with one answer; a stage that is not CG reads no `.CG` (row 3) | a continuing rung already does this — geomeTRIC's step history always starts afresh; `--cold` copies nothing, the geometry included |
 | Switch optimizer at a stage boundary | Broyden and FIRE keep no history file; the deck writes `MD.UseSaveCG` for a CG stage only, so the old `.CG` is not read | not applicable — geomeTRIC is the one optimizer |
 
 **Why keep CG history on a resume but reset on a tier switch.** CG's conjugate basis

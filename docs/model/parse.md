@@ -9,23 +9,18 @@ parsers read — the SIESTA family's output lines are § 5d.5 here);
 [`execution/run-reports.md`](?doc=execution/run-reports.md) § 2.3 (what the
 monitor reads through this package's readers).  The **write** side (the inverse — turning data
 back into files) is `sidecars/molstruct.py` and `script_emit.py`, not this
-module.  *(A second DirParser, `BundleDirParser` → `BundleResult`, and the
-`bundle_writer.py` write half retired 2026-08-29 with calculation-to-calculation
-passing — a calculation that builds on a finished result CITES it and prep
-composes; `execution/job-contracts.md` § 5 holds the closure.)*
+module.  A calculation that builds on a finished result cites it and prep
+composes (`execution/job-contracts.md` § 5); nothing in this package hands a
+run folder to the next calculation.
 
 One package answers a single question: **"what is in this path, as a Python
 object?"** — for a file, a text body, or a whole run directory. It is the sole
 read-side source of truth; every consumer (web blueprints, CLI, tests) imports
 from here and queries the registry rather than knowing which parser to call.
 
-> **Why it exists.** Before this, molbuilder had **four parallel parsing
-> patterns** — a `TrajectoryParser` registry for engine output, ad-hoc
-> `load(path)` functions for sidecar JSON, ad-hoc `read_*` functions for
-> geometry, and ad-hoc `extract_*`/`decode_run_dir` for scripts and run dirs —
-> with three different return-type flavours and no shared base. Each new engine
-> or output type added another parallel path. This package collapses them into
-> **three ABCs, one frozen-dataclass result hierarchy, and one registry**.
+> **Why it exists.** One package reads every file, so a new engine or output
+> type is a parser in it, never a parallel path beside it: **one ABC, one
+> frozen-dataclass result hierarchy, one registry**.
 
 ### How results are organized — read this first
 
@@ -63,25 +58,9 @@ in every report that reads it.
 
 It declares `name` / `label` / `output` (the concrete `ParseResult` subclass it
 returns) and a `hint` (what to point at when `can_parse` is `False`). The
-registry refuses a directory by name.
-
-> **A `DirParser` stood beside it until 2026-10-04.** Its one subclass,
-> `JobDirParser`, answered a run directory — and to answer it read the
-> calculation's description raw and guessed the run's label from the decks,
-> which this floor must not (`execution/architecture.md` § 2.1: *`parse/` …
-> knows no calculation*). The directory door moved up to the run door,
-> `molbuilder.runs.folder_answer` (§ 5; plan B11, B14), and with it the ABC,
-> `registry.parse_dir` and `RunDirResult` went.
-
-> **There were THREE until 2026-09-05.** `TextParser` took a text body and had
-> **no detection** — the caller named the parser — which is the tell: an ABC in
-> a package whose reason to exist is *"query the registry rather than knowing
-> which parser to call."* All six of its implementations read molbuilder's OWN
-> generated blocks, where there is nothing to detect and the caller always knows
-> which block it wants, so each class wrapped a function in a ten-field result
-> it did not need. They moved to the module that WRITES those blocks
-> (`script_emit`'s extractors), which also removed a circular import the split
-> had forced. [`plans/plan.md` § 5d](?doc=plans/plan.md).
+registry refuses a directory by name: this floor knows no calculation
+(`execution/architecture.md` § 2.1), so a run folder is answered one level up,
+by the run door, `molbuilder.runs.folder_answer` (§ 5).
 
 ---
 
@@ -103,18 +82,13 @@ queries the registry rather than knowing which parser to call.*
 molbuilder writes it, into a file molbuilder generated, and every caller
 already knows which block it wants. There is nothing to detect, so applying
 detect-and-dispatch to a question with one possible answer buys ceremony and
-no safety: the retired `ProvenanceTextParser.parse` was one line building a
-ten-field result object to carry one dict. **A block belongs to its grammar**
+no safety: a block has one possible reader. **A block belongs to its grammar**
 — `script_emit` writes it, `deck_record` reads it (the person's USER-CUSTOM zone
 aside, which only a new generation reads back), and
 `execution/job-contracts.md` § 3.1 owns the format.
 
-*Established 2026-09-05 by retiring `parse/scripts/` — six `TextParser`
-classes and `ScriptResult` — and confirmed 2026-09-05 when the door built to
-replace it (`read_script`) was found carrying a version gate the live readers
-did not have: two answers for one block, and the door had zero callers for
-three weeks. It was deleted rather than adopted. The extractors are the way
-in.*
+*A block has one reader, its grammar's (`deck_record`); a second door onto the
+same block would be a second answer. The extractors are the way in.*
 
 ## 2. The `ParseResult` hierarchy
 
@@ -172,14 +146,10 @@ classDiagram
 ```
 
 **The four envelope fields are built in ONE place** —
-`ParseResult.envelope(parser_name, source)`. Each sub-package's
-`_helpers.py` filled them by hand until 2026-09-04, carrying four
-byte-identical copies of the timestamp helper; `instruments/` added a
-fifth without noticing, and `engines/siesta_mdnc.py` a sixth that bypassed
-even its own package's builder. They agreed, which is the only reason
-nothing had broken.
+`ParseResult.envelope(parser_name, source)`. Every result's envelope comes
+from it, so the timestamp and the source are written one way.
 
-Plus **`ParseWarning`** (`types.py:36`) — a fail-soft warning (`source`,
+Plus **`ParseWarning`** (`types.py`) — a fail-soft warning (`source`,
 `line_no`, `snippet`, `error`, `category`) any parser can attach to its result
 instead of raising.
 
@@ -189,10 +159,10 @@ is the last step's, or else the trajectory's (`runs.steps_of`).
 
 - **The discriminator.** Each concrete subclass sets `result_kind` to a fixed
   string (`"trajectory"`, `"structure"`, `"sidecar"`, `"instrument"`,
-  `"rundir"` — § 5.0 — `"engine-params"` — § 5d.3 — `"transmission"`
-  — § 5e — and `"dielectric"` — § 5f).
-  Consumers holding a `ParseResult` (cached, or sent over the wire)
-  `match` on it; JSON deserialisation reads it to pick a class. Adding a kind =
+  `"engine-params"` — § 5d.3 — `"transmission"` — § 5e — and
+  `"dielectric"` — § 5f).
+  A consumer narrows on it (`postprocess.parse` does); no reader rebuilds a
+  result from JSON. Adding a kind =
   a new subclass + a new discriminator value (rule below).
 - **Why frozen.** No defensive copies at API boundaries; hashable (dict/set
   usable); trivial `asdict()` serialisation; `result == expected` test pinning
@@ -238,11 +208,7 @@ takes a prefix naming itself: `monitored_elapsed_s` starts when the monitor
 starts and ends when the monitor stops, which is neither the run's start nor
 its end, so the prefix is what lets the suffix keep its promise. The prefix
 is not decoration and not a namespace — **if you cannot name the window, the
-field is not ready to be added.** *(Written down 2026-09-06. It was practised
-first: `wall_s` became `monitored_elapsed_s` on 2026-09-05 — a duration
-wearing a date's name — and plain `elapsed_s` would have been wrong the other
-way. The reasoning lived only in `util_csv.py`'s docstring, so a second
-windowed duration had no rule to follow.)*
+field is not ready to be added.**
 
 **What is pinned of the rendered format, and what is not.** P-T4 fixes the
 KIND — an epoch renders as a date, a duration as a duration. **A length of
@@ -277,15 +243,10 @@ home:
 
 No other layer computes either field.
 
-There is **no** cross-stage derivation, and there is no place for one: stages
-are separate runs and nothing joins them (`job-contracts.md` § 2.3). A row
-here named the Watch blueprint's multi-stage merge as the one home for
-`elapsed_s` "across chained stages" until 2026-09-05. That merge is
-deleted — and the arithmetic that row blessed was wrong anyway: each stage's
-log opens with a frame written at PREP time, so each stage's own elapsed
-already contained the whole queue wait, and summing them counted it once per
-stage. Measured: 61 minutes reported for a job that spanned 41 and computed
-12.
+There is **no** cross-stage derivation: stages are separate runs and nothing
+joins them (`job-contracts.md` § 2.3) — and summing stages' elapsed would
+count the queue wait once per stage, since each stage's log opens with a frame
+written at prep.
 
 **P-T4 — a consumer asks for the quantity it means, and takes `None` for an
 answer.** Epoch is formatted as a date, elapsed as a duration, and neither as
@@ -297,24 +258,13 @@ iteration are the timing instrument's, per phase (§ 5c), never a figure the
 browser computes — the viewer is served the run record's own reading
 (`parse.dirs.record.scf_timing_of`).
 
-> An accessor that returned *"whichever clock this cycle carries"* was written
-> during the first pass at this rule and looked reasonable — a DIFFERENCE
-> between two cycles really is the same either way, because the origin cancels.
-> But its one caller was dividing, not subtracting, and the helper had just made
-> molwatch cycles match a ladder that had always been SIESTA-only: a PySCF run
-> read **"~489276.7h/iter (from SIESTA iter-1 timer)"**. A convenience that
-> spans both clocks is a place for exactly this to happen; name the quantity
-> instead.
+> A convenience that spans both clocks is where a date gets divided by a
+> count: name the quantity instead.
 
-> **Why this exists.** `Frame.wall_time` was one bare float that molwatch filled
-> with an epoch and SIESTA filled with elapsed seconds. The field's docstring
-> said "Unix epoch"; the browser formatted it as a date; a SIESTA run 360 s in
-> displayed **"last result Dec 31, 5:06 PM"** — epoch zero plus six minutes.
-> Elapsed still looked right, because subtracting two numbers cancels the error
-> that made them wrong. A patch at the display would have left the same trap
-> for the next reader of the field, and the same bug one layer down in
-> `scf_history`, where the two engines had already diverged into
-> `wall_time` and `cumulative_walltime_s` for the same quantity.
+> **Why this exists.** One bare time field filled with an epoch by one engine
+> and with elapsed seconds by another renders a SIESTA run 360 s in as a date
+> at epoch zero, while differences still look right — so the field name
+> carries the clock.
 
 ---
 
@@ -333,7 +283,7 @@ closed, and each run-output role (§ 5.5) states it its own way:
 | value | means | SIESTA-family `.out` | PySCF stdout `.pyscf.log` | progress log `.molwatch.log` |
 |---|---|---|---|---|
 | `running` | not finished — no ending yet | no ending marker | no end line, no traceback | no footer |
-| `ended` | the engine reached its own end | `>> End of run` — that line only: SIESTA prints `Job completed` beside it, so a second marker adds nothing | the deck's end line (`pyscf/end_lines.py`), read at column 0 | `# concluded:` — and beside it `# relaxed: yes\|no`, the relaxation's own verdict (`RunEnding.relaxed`, the geometry column's; 2026-10-18) |
+| `ended` | the engine reached its own end | `>> End of run` — that line only: SIESTA prints `Job completed` beside it, so a second marker adds nothing | the deck's end line (`pyscf/end_lines.py`), read at column 0 | `# concluded:` — and beside it `# relaxed: yes\|no`, the relaxation's own verdict (`RunEnding.relaxed`, the geometry column's) |
 | `stopped` | it did not reach its end | a fatal marker (`siesta_grammar.FATAL_MARKERS`) | a Python traceback | `# error:` |
 | `out_of_memory` | the kernel or scheduler killed it for memory | an out-of-memory marker | — | — |
 | `unknown` | no evidence either way — a format with no ending markers at all, such as `.MD.nc` | — | — | — |
@@ -389,7 +339,7 @@ dispatch; its answer is one frozen record:
 | `scf_converged` | the LAST SCF phase's convergence (P-S2) |
 | `phases` | each SCF phase's, keyed `periodic` / `negf`, `True` / `False` / `None`: `SCF Convergence by …` is `True`; `SCF_NOT_CONV:` or `SCF did NOT converge` is `False`; `SCF cycle continued` is `None` again |
 | `relaxed` | `True` on `outcoor: Relaxed …`, `False` on `outcoor: Final (unrelaxed) …`, `None` for a run that relaxes nothing |
-| `doing` | **where a run still going is, in words** — the one sentence the monitor's status line and the run door's *running* detail say it in, composed by the reading pass's one rule (`SiestaReader._where_words`, read by its `now()` and its `finish()` alike; the words `parse/engines/transiesta.py`'s): the row in flight's phase and iteration, *periodic SCF iteration 3*, *negf SCF iteration 12* (`scf_words`); or, until a TranSIESTA device's first SCF row, its set-up (`setup_words`, from the `transiesta` facts): *checking the leads' cells* · *computing the R lead's surface Green's function (estimated 49.170 GB)* · *the L lead's surface Green's function computed* · *the leads' surface Green's functions computed* — or *reused*, a later frame's point at the same voltage reading the run's files (`engines/transport.md` § 2a.11) · *…; the charge distribution at the switch*, where a point starting from a `.TSDE` goes at once (a first point's periodic rows speak between its leads' files and that line). `None` when the output states none of it, and for a TBtrans output once its set-up speaks: its loop is `tbtrans.loop_words`'s, said where a surface asks for it (§ 5d.5), never set-up words — a transmission checks the leads' cells too and computes no file, so the set-up would read *checking the leads' cells* through its whole loop. A PySCF progress log's reading pass (`MolwatchReader.now`) says its last row's iteration in the same words, *SCF iteration 12* — PySCF's one SCF phase unnamed — for the monitor's line; its ending reads the footer alone, so the run door's *running* says none. *(user, 2026-10-19: Sol's device job spent its hours computing the leads' Green's functions, its row saying only* running*)* **A part that begins with a line of its own speaks once it begins** (2.48.0): a row of the grammar's table of an output's parts (`siesta_grammar.PARTS`, [`execution/run-reports.md`](?doc=execution/run-reports.md) § 2.8) — the part's words and its note, *SIESTA's optical calculation -- it prints nothing until it ends* — until the SCF's next row or the run's end; the reading pass's `part` names it (absent while the SCF speaks), and `scf_converged` states the last SCF's verdict, for the monitor *(the user, 2026-10-28: a Raman call two hours into it read* periodic SCF iteration 6*)* |
+| `doing` | **where a run still going is, in words** — the one sentence the monitor's status line and the run door's *running* detail say it in, composed by the reading pass's one rule (`SiestaReader._where_words`, read by its `now()` and its `finish()` alike; the words `parse/engines/transiesta.py`'s): the row in flight's phase and iteration, *periodic SCF iteration 3*, *negf SCF iteration 12* (`scf_words`); or, until a TranSIESTA device's first SCF row, its set-up (`setup_words`, from the `transiesta` facts): *checking the leads' cells* · *computing the R lead's surface Green's function (estimated 49.170 GB)* · *the L lead's surface Green's function computed* · *the leads' surface Green's functions computed* — or *reused*, a later frame's point at the same voltage reading the run's files (`engines/transport.md` § 2a.11) · *…; the charge distribution at the switch*, where a point starting from a `.TSDE` goes at once (a first point's periodic rows speak between its leads' files and that line). `None` when the output states none of it, and for a TBtrans output once its set-up speaks: its loop is `tbtrans.loop_words`'s, said where a surface asks for it (§ 5d.5), never set-up words — a transmission checks the leads' cells too and computes no file, so the set-up would read *checking the leads' cells* through its whole loop. A PySCF progress log's reading pass (`MolwatchReader.now`) says its last row's iteration in the same words, *SCF iteration 12* — PySCF's one SCF phase unnamed — for the monitor's line; its ending reads the footer alone, so the run door's *running* says none. *(user, 2026-10-19: Sol's device job spent its hours computing the leads' Green's functions, its row saying only* running*)* **A part that begins with a line of its own speaks once it begins**: a row of the grammar's table of an output's parts (`siesta_grammar.PARTS`, [`execution/run-reports.md`](?doc=execution/run-reports.md) § 2.8) — the part's words and its note, *SIESTA's optical calculation -- it prints nothing until it ends* — until the SCF's next row or the run's end; the reading pass's `part` names it (absent while the SCF speaks), and `scf_converged` states the last SCF's verdict, for the monitor *(the user, 2026-10-28: a Raman call two hours into it read* periodic SCF iteration 6*)* |
 | `cause` | what stopped it: the FIRST fatal line's marker — the lines after it are SIESTA's `die` cascade, and an out-of-memory marker outranks the rest — or `scf_not_conv` when SIESTA states the SCF's failure fatal, `(required)` |
 | `error_message` | the sentence a person reads: the `SCF_NOT_CONV:` line when it came before the stop — it names the cause, the fatal lines after it are `die`'s cascade — else the first fatal line, or where that is `die`'s own *Stopping Program from Node*, its reason, the line before it (`siesta_grammar.DIE_MARKER`); with what it may mean where the one table knows the message (`siesta_grammar.STOP_MEANINGS`, [`engines/transport.md`](?doc=engines/transport.md) § 6.3); for PySCF, the exception line |
 | `max_force` · `max_force_all` · `stress_voigt_kbar` · `forces_not_computed` | what the run's last step stated of its forces and stress — the reading pass's `now()` keys of those names (§ 4a), read with the ending in the one pass; `None` for an output that states none (a PySCF output, a progress log) |
@@ -453,8 +403,11 @@ TranSIESTA's own check of a lead, as the device starts
 
 ## 3. The registry + public API
 
-`molbuilder/parse/__init__.py` re-exports the whole surface; the dispatch lives
-in `registry.py`.
+`molbuilder/parse/__init__.py` re-exports the ABC, the registry, the errors and
+five results (`TrajectoryResult`, `StructureResult`, `SidecarResult`,
+`InstrumentResult`, `EngineParamsResult`); `TransmissionResult` and
+`DielectricResult` are imported from `molbuilder.parse.types`. The dispatch
+lives in `registry.py`.
 
 ```mermaid
 flowchart TD
@@ -468,7 +421,7 @@ flowchart TD
 
 | Function (`registry.py`) | Does |
 |---|---|
-| `detect(path)` | return the FileParser whose `can_parse(path)` is `True`; a directory is refused by name — a run folder is the run door's (`runs.folder_answer`, § 5); `UnknownFormatError` if none match / `AmbiguousFormatError` if more than one does, both listing every registered parser + the standard foot-gun hints |
+| `detect(path)` | return the FileParser whose `can_parse(path)` is `True`; a directory is refused by name — a run folder is the run door's (`runs.folder_answer`, § 5); `UnknownFormatError` if none match — listing every registered parser with its hint, and each parser's foot-gun nudge — / `AmbiguousFormatError` if more than one does, naming the parsers that claim it |
 | `parse(path)` | `detect` + `parse` in one call |
 | `register(parser)` | add a parser at module-init time (idempotent; not for runtime registration) |
 
@@ -490,6 +443,7 @@ gathers what is already there, one import for a person's script:
 | `projects_root()` · `project_dir` · `topic_dir` · `structure_dir` · `list_projects()` · `list_topics(project)` · `list_structures(project, topic)` | where a calculation is: the tree's own functions ([`execution/job-contracts.md`](?doc=execution/job-contracts.md) § 2.5), each name checked; `structure` means the calculation level |
 | `read_transport_data(path)` | a transport calculation's data file, `<label>.transport.nc` (`transport.datafile.read_data_file`), with its atom index map |
 | `read_spectra_data(path)` | a vibration result's data file, `<label>.spectra.nc` (`spectra.datafile.read_spectra_data`), with its atom index map |
+| `read_optimization_data(path)` | an optimization's data file, `<label>.optimization.nc` — what `jobset export` writes — (`optimization.datafile.read_data_file`), with its atom index map |
 | `infrared_view(path, *, direction="z", partition=None)` | the infrared the spectrum viewer derives: on a SIESTA result, the free atoms' — the atoms the vibration moved — from their charges, by partition (Hirshfeld when unsaid); on a PySCF result, the whole system's, from the dipole change it stored — along the direction where atoms are held, its orientation average where none is — no partition named (`spectra.infrared`, [`engines/vibration.md`](?doc=engines/vibration.md) § 4.6, § 5.10 ②) |
 | `read_optical_data(path)` | a SIESTA vibration's optical calls' data file, `<label>.optical.nc` (`spectra.optical_data.read_optical_data`), with its atom index map |
 | `raman_view(path, *, laser_nm, broaden_ev=None)` | the Raman of a SIESTA vibration result at a laser, from its optical calls' data file: the spectrum viewer's one derivation (`spectra.raman.raman_view_of`, [`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 10) |
@@ -511,12 +465,8 @@ documents ([`engines/optimization-postprocessing.md`](?doc=engines/optimization-
 **Errors** (`errors.py`): `UnknownFormatError` and `AmbiguousFormatError`, both on a `ParseError`
 base.
 
-*(These rows pinned a line number each until 2026-09-05. Three of the five
-were eight lines stale — the exact length of a docstring paragraph added
-the day before. A line number is a pin: it measures where a thing sits
-rather than what it does, and it rots on the next edit of a file this
-document does not own. The function name is the anchor and it is
-greppable.)*
+*A row names the function, never a line number: a line number measures where
+a thing sits and rots on the next edit of a file this document does not own.*
 
 ### Using it — worked examples
 
@@ -562,7 +512,7 @@ The worked examples for each kind are the post-processing documents:
 
 ```python
 r = parse(Path("water.molstruct.json"))       # -> SidecarResult
-print(r.schema, r.payload)                     # e.g. "molstruct/v6", {...}
+print(r.schema, r.payload)                     # e.g. "molstruct/v17", {...}
 ```
 
 **Ask how a run directory is doing** — not a parse, a small verb over
@@ -571,7 +521,7 @@ several parses (`running-a-job.md` § 4.2):
 ```python
 from molbuilder.parse.dirs import run_status        # the package's door (R-RO2)
 
-st = run_status(Path("projects/BDT/optimization/01_relax/run-0"))
+st = run_status(Path("projects/BDT/optimization/01_relax/run-0"), "BDT_01_relax")   # the run's stem
 st.state, st.detail          # ("finished", "ended, exit 0") -- a RunStatus
 st.active_source             # "BDT_01_relax.out"
 ```
@@ -598,8 +548,8 @@ read_provenance_block(fdf_text)   # the PROVENANCE block, or None
 ```
 molbuilder/parse/
 ├── base.py        # the ABC                   (FileParser)
-├── types.py       # ParseResult + 6 subclasses + ParseWarning
-├── registry.py    # _REGISTRY, detect/parse/register
+├── types.py       # ParseResult + 7 subclasses + ParseWarning
+├── registry.py    # _FILE_PARSERS, detect/parse/register
 ├── errors.py      # ParseError, UnknownFormatError, AmbiguousFormatError
 ├── contract.py    # what a DIRECTORY records about itself:
 │                  #   contract_of  — the electronic contract its deck states (§ 5b)
@@ -623,11 +573,13 @@ molbuilder/parse/
 │   ├── siesta_epsimg_reader.py # SIESTA's .EPSIMG, its one reader — numpy; travels in mb_vibration.pyz (§ 5f)
 │   ├── siesta_epsimg.py       # registered: an optical calculation's spectrum → DielectricResult (§ 5f)
 │   ├── transiesta.py          # where a run is, in words (§ 2b `doing`) — not registered; travels
+│   ├── siesta_contract.py     # a SIESTA deck's settings, for the recorded contract (§ 5b)
+│   ├── siesta_record.py       # the `.out`'s record fields: build, launch, solver, pseudopotentials, TBtrans's loop (§ 5d.1b)
 │   ├── siesta_fc.py           # SIESTA's .FC force constants, for the vibration kind
 │   └── _helpers.py            # Trajectory → TrajectoryResult · TrajectoryResult → the viewer's dict
 │
 ├── coords/        # geometry files → StructureResult (FileParsers)
-│   ├── siesta_xv.py           # .XV / .STRUCT_OUT (+ cell)
+│   ├── siesta_xv.py           # .XV (+ cell)
 │   ├── pyscf_geom.py          # *_optimized.xyz
 │   ├── pdb.py                 # .pdb
 │   ├── pair.py                # a .xyz with its .molstruct.json, read whole through the codec (below)
@@ -722,11 +674,13 @@ flowchart LR
 * **Stdlib only, and it travels.** The grammars, the passes, `_section_rules`,
   `scf_timing_rows`, `_run_ending`, `tbtrans` (TBtrans's loop in words, § 5d.5),
   `wrapper_log`, `monitor_log` and `dirs/job.py` import
-  nothing of ours but each other, `runfiles`, `identity`, `report_fields` (the
-  span rule's words), `engine_atom_index` (the held atoms' numbering),
-  `pyscf/end_lines`, and the floor every reader a catalogue row names is
+  nothing of ours but each other, `transiesta`, `runfiles`, `identity`,
+  `report_fields` (the span rule's words), `engine_atom_index` (the held atoms'
+  numbering), `trajectory_log.keys`, `pyscf/end_lines`, `parse/fdf` with
+  `constants` and `units`, and the floor every reader a catalogue row names is
   resolved through (`runfiles.reader` → `runpoints.part`, with `calcdirs`,
-  `paths`, `persist`, `runrecord`, `quantities`). They ship inside
+  `paths`, `persist`, `runrecord`, `quantities`) — each module naming what it
+  needs beside it in its `TRAVELS_WITH`. They ship inside
   `mb_monitor.pyz` beside every job (`runwrap.monitor_companions`), each
   importing the next from the package or from the bundle; what the monitor
   reads through them is [`execution/run-reports.md`](?doc=execution/run-reports.md) § 2.3's.
@@ -749,7 +703,7 @@ flowchart LR
 | `feed(line, line_no=None)` · `feed_text(text)` | one line without its newline · a whole text | the same |
 | the file | `siesta_reader.read_output(path, *, warn=None)` | `molwatch_reader.read_log(path)` — each THE ONE WAY its whole file is read: line by line, each line fed with its number, as UTF-8; a reader fed and not yet finished, so every reader of the whole file reads one version of it one way — a progress log's footer alone is scanned by the ending reader (`read_conclusion`), its stamped SCF rows alone by the timing figures (§ 5c) |
 | `now()` | where the run is, as read so far; commits nothing | the last finished step block |
-| `finish()` | `{steps, live_scf, lattice, run_state, scf_converged, error_message, runtime_info, held, warnings}` — `held`, the 1-based atoms the output says the run held, and `runtime_info.frozen_atoms` the same atoms 0-based through the engine index API (`engine_atom_index`), stated here once for every reader of the pass; `runtime_info.system_label`, the label the run read; `runtime_info.scf_criteria` and `.scf_residuals` among them, and `.forces_not_computed` for a run that computes none — with the last forces and stress as `now()` states them (`max_force` · `max_force_all` · `stress_voigt_kbar`, or `forces_not_computed`, below); each step's `forces`, `max_force` (every atom's), `max_force_constrained` (the free atoms'), `stress_voigt_kbar`, and `charges` — `{hirshfeld, voronoi}`, every atom's partial charge in the deck's order, for each block the step printed (`Charge.Hirshfeld` / `Charge.Voronoi`), `None` where it printed none | `{blocks, engine, run_state, error_message, runtime_info}` — `runtime_info.scf_criteria` and `.scf_residuals` among them |
+| `finish()` | `{steps, live_scf, doing, lattice, run_state, scf_converged, phases, relaxed, cause, error_message, runtime_info, held, warnings}` — `held`, the 1-based atoms the output says the run held, and `runtime_info.frozen_atoms` the same atoms 0-based through the engine index API (`engine_atom_index`), stated here once for every reader of the pass; `runtime_info.system_label`, the label the run read; `runtime_info.scf_criteria` and `.scf_residuals` among them, and `.forces_not_computed` for a run that computes none — with the last forces and stress as `now()` states them (`max_force` · `max_force_all` · `stress_voigt_kbar`, or `forces_not_computed`, below); each step's `forces`, `max_force` (every atom's), `max_force_constrained` (the free atoms'), `stress_voigt_kbar`, and `charges` — `{hirshfeld, voronoi}`, every atom's partial charge in the deck's order, for each block the step printed (`Charge.Hirshfeld` / `Charge.Voronoi`), `None` where it printed none | `{blocks, engine, run_state, error_message, runtime_info}` — `runtime_info.scf_criteria` and `.scf_residuals` among them |
 | also | `criteria(negf=None)` — each phase's `{column: {tolerance, unit, required}}` | `targets()` — the rung's convergence targets; its criteria are `molwatch_grammar.scf_criteria(runtime_info)` — `{"scf": {dE, \|g\|: {tolerance, unit, required}}}`, PySCF's `conv_tol` and `conv_tol_grad` as the deck read them back, in eV |
 
 **What each SCF row measures is declared once an engine** — `siesta_grammar.
@@ -776,6 +730,8 @@ declares ([`web/trajectory.md`](?doc=web/trajectory.md) § 3.0).
 | `scf_cycles` · `last_cycle` · `scf_rows` | — | the last step's SCF cycles, its last cycle, all rows so far |
 | `loop` | the program's own loop beside the SCF, as its output accounts for it — TBtrans's k-point × energy loop: its size, the spin passes it says it will make, and each pass begun — its channel, TBtrans's estimate while it runs, its measured time once it completed, its currents (§ 5d.5) | — |
 | `done_pct` · `eta_s` | the pass underway's: TBtrans's share of that pass done, in per cent, and the time it says that pass has left — its latest progress line, its first estimate `0` per cent done; absent when no pass is underway, a completed pass's estimate ending with it | — |
+| `doing` | where the run is, in words (§ 2b) | *SCF iteration N* |
+| `transiesta` | a TranSIESTA device's set-up facts, `runtime_info["transiesta"]`'s, once any was read (§ 5d.5) | — |
 | `part` · `scf_converged` | a part of the output that began with a line of its own and is underway — a row of `siesta_grammar.PARTS` by name (§ 5d.5), until the SCF's next row or the run's end; and the last SCF's verdict, `True` / `False` as its convergence line said — what the monitor says an ended SCF's facts by ([`execution/run-reports.md`](?doc=execution/run-reports.md) § 2.8) | — |
 
 The monitor feeds each file only what it gained since its last wake and picks
@@ -875,6 +831,7 @@ as a reader sees it — is floor 6's, served beside this answer by the route
 |---|---|---|
 | `place` | what the folder is — a run, a container, a run's scratch, or not ours — its calculation, and where it sits: what it is, its stage, run, trial and point (`calcdirs.where`, `execution/project-layout.md` § 1.4a, *Where am I*) | the Results page (the empty state, § 1.4a) |
 | `engine` · `openable` | which engine ran — the description's; which file the viewer loads | `/api/results/dir` → the Results viewer |
+| `engine_words` · `noun` | the engine's words and the calculation's noun, from the engine and kind tables — each `null` where the folder names none | the Results heading (`web/presenters.md` § 2) |
 | `status` | how it is doing (`running-a-job.md` § 4.2) — the run the folder speaks for, `null` for a container or a folder not ours | `/api/results/dir` — served, not yet shown for a run folder (`web/results.md` § 0.4) |
 | `attempts` | what was tried | `/api/results/dir` → the refusal a person reads |
 | `record` | what ran, with what, and how it went (§ 5d) | `/api/results/dir` → the Run panel (`web/results.md` § 3a) |
@@ -929,11 +886,6 @@ name (`runs.Run.file`).
 
 ### 5.2 `openable` — the CALCULATION decides, and the registry vets
 
-*(Rewritten 2026-09-18. This section described a four-rung ladder and was
-titled "unchanged in behaviour", which was true of the move out of the web
-layer and stopped being true the day the ladder was replaced. § 5.5 carries
-the rule; this is where it is applied.)*
-
 The run door's `openable` asks **five** questions of five owners, of the one
 folder it is handed, and the first one decides whether the others apply at
 all — a folder of ours is opened at its run's own result, read back with the
@@ -967,22 +919,10 @@ is read with beside it are floor 6's (`views_of`,
 | **a transmission point's `shared/`** | read with the point it lies in | the point it lies in (`point_of`) | what that point opens |
 | **a folder no calculation claims** | nothing claimed: read alone | — | nothing: its files are listed, each as the registry reads it, and the person picks one (`openable` is `null`) |
 
-> **THE FIRST QUESTION IS NEW, AND THE OTHERS WERE ASKED WITHOUT IT**
-> *(2026-09-19)*. This table had three rows and the first read *"what
-> calculation is this? — the **directory** — `task.json`"*. The code took that
-> at its word and read `task.json` from the handed directory, which is the
-> wrong place: `project-layout.md` § 1.0 puts the description above the
-> run-directory wall, two levels up. Every spectrum run therefore opened its
-> molwatch stub. The first repair walked up to the nearest ancestor holding `task.json`,
-> fenced by the `projects/` tree and a depth cap — a search with a tuned
-> number, standing in for a fact the tree could simply state. **`project-layout.md`
-> § 1.4a now has the directory state it**, and the walk and its
-> constant are deleted.
->
-> Asking *what is this directory* first is what stops the others being
-> asked of something that is not a run: § 1.4's container-or-run rule is
-> answerable now, so a stage directory is not parsed for a result it does not
-> hold, and a `pseudos/` folder is not reported as a calculation in progress.
+> **What the directory is comes first**: the description lies above the
+> run-directory wall (`project-layout.md` § 1.0), so a run folder is not asked
+> for `task.json`; the directory states what it is (§ 1.4a), and a stage folder
+> or a `pseudos/` folder is never parsed for a result it does not hold.
 
 **"I don't know" is one of its answers, and it narrows the others rather
 than refusing them** (`project-layout.md` § 1.4a). A directory with no record —
@@ -1002,23 +942,19 @@ roles in the catalogue; a transport calculation for its report, opened through
 its description, `task.json` — its kind's record (the record is composed on
 read; `<label>.transport.json` is `summarize task`'s copy). The same file is the
 live view during the run and the
-result after it, so nothing switches at conclusion — the old rung 1,
-*"any `.molwatch.log`, newest wins"*, was an optimization-shaped rule applied
-to every kind, and it sent every spectrum run's viewer to a progress log
-holding one `initial_preview` block.
+result after it, so nothing switches at conclusion: an optimization's rule
+applied to a spectrum run would open a progress log holding one
+`initial_preview` block.
 
 **A file `detect()` refuses is never offered.** That is § 5.5's two questions
-applied to one answer, and it is load-bearing: the chain used to return
-`<job>_<stage>.log` — PySCF's verbose logger, which no parser claims — and
-the caller's next step was `detect()`, which refused it.
+applied to one answer, and it is load-bearing: a file no parser claims would
+be refused by the caller's next step, `detect()`.
 
 **A directory that does not say what it is holds no run of ours** — no
 `calcdir.json` in it and no `task.json` at it (`execution/project-layout.md`
 § 1.4a). Its files are listed and the registry says which it can open; the door
 claims none of them as molbuilder's, opens none, reads no label off a deck and
-asks it no run state. *(Until 2026-10-04 the deck was read for a label and the label's
-files searched, then generic names — a search for a run molbuilder's wrapper
-did not run, input molbuilder does not take: user, 2026-10-03; plan B11.)*
+asks it no run state. *(the user, 2026-10-03: input molbuilder does not take)*
 Within a run of ours the run's label comes from its description through the
 run door, and its files are read back through `runfiles`.
 
@@ -1046,7 +982,7 @@ transport citation ask, and the codec reading an engine's own structure
 file.
 
 **And the order the atoms are in** *(2026-10-14 —
-[`model/overview.md`](?doc=model/overview.md) § 2.2a, plan § 5ab R2, R3)*. A
+[`model/overview.md`](?doc=model/overview.md) § 2.2a)*. A
 reordered run's files are in its engine's order; a parser reads them so and
 says nothing about it — the order is what the run declared, its deck's order
 record (`atom_order`), and the run door attaches it to every structure
@@ -1072,31 +1008,18 @@ the deck's order (the engine's, for a reordered run — decided 2026-10-14,
 the run door's order record says which): prep's preview writes it for either engine, and a PySCF
 run's script writes the same line when it starts. Each reader reads them as its
 own content (`runtime_info.frozen_atoms`); a reader of a PySCF trajectory file
-takes them from the run's progress log it already reads. *(A sidecar beside the
-output, then a deck in its folder, were tried until 2026-10-04 — plan B12, W56
-4c: the lookup's names missed the `_initial` / `_optimized` pairs a PySCF run
-writes, and two of them made its lone-sidecar fallback decline, so a PySCF run
-reported no held atom; and a SIESTA run holding a single constraint block -- an
-H2 with one atom held -- had its held atoms from the deck guess, the echo
-reader waiting for a header 5.4.2 prints only above several.)*
+takes them from the run's progress log it already reads.
 
-> **What this replaced** *(plan B12, user, 2026-10-04)*. This section licensed
-> a lookup by name: compose the exact name beside the artifact, then fall back to
-> a lone file of that kind in the folder — `_sidecar.read_frozen_atoms`,
-> `_siesta_fdf_path_for`, `siesta_mdnc.sibling_md_nc`. Measured on two real H₂
-> calculations of ours, it answered nothing: the structure pair sits at the
-> calculation root, named for its structure file, never beside a run's
-> output. The
-> guards that made it safe — a label prefix on a `_` boundary, *two candidates
-> decline* — were guards on a guess, and `xv2xyz --from-run` wrote an isolated
-> molecule's held atom away and its axes periodic (plan D19).
+> **No lookup by name for what a run declared**: a structure pair sits at the
+> calculation root, named for its structure, never beside a run's output, so a
+> name composed beside an artifact to find its held atoms finds nothing — the
+> run's own output and the run door answer instead.
 
 ### 5.4 The directory door must
 
 **walk** the directory, **compose readers that own their formats**, and
 **apply the cross-file rules** no single reader can see — the stage rule and
-the status state machine (atom-count consistency and lattice handedness were
-listed here until 2026-10-18; no door checks them, and none is asked to). It
+the status state machine. It
 must **never implement a format inline**: add the missing reader instead.
 
 **Which reader depends on the QUESTION, and there are two families.**
@@ -1106,20 +1029,10 @@ must **never implement a format inline**: add the missing reader instead.
 | *what typed result does this file hold?* | the **registry** — `detect`+`parse` | it is the only thing that may decide WHICH parser, so a registration change propagates |
 | *how did this run end?* | `parse/engines/_run_ending.py::ending_of` — one reader per ROLE | it is a substring scan, and the registry's answer costs a whole `Trajectory` to reach one string |
 
-*(This said "dispatch each file through the registry" for every file until
-2026-09-18, and the code stopped obeying it that day for a measured reason:
-`run_status` read each result through `detect(path).parse(path)`, building
-every Frame as numpy arrays and discarding them to keep one field — 8.5×
-slower over 119 real directories, and it opened a `ParseLogger` per file, so
-merely LOOKING at a folder wrote a `.parse.log` into it. The rule is
-corrected rather than the code, because the rule was the one that was wrong:
-"go through the registry" is the answer to WHICH PARSER, not to every
-question a directory asks about a file.)*
-
-*(A second parser, `BundleDirParser` → `BundleResult` — the run-dir →
-next-calculation handoff fuse — stood beside it until 2026-08-29 and retired
-with calculation-to-calculation passing: a calculation that builds on a
-finished result CITES it, and prep composes — `transport/compose.py`.)*
+*The registry answers WHICH PARSER; a question that needs one string of a
+file asks that file's role reader — building every Frame to keep one field is
+8.5× slower over 119 real folders, and opening a parse log per file would
+write into a folder merely looked at.*
 
 
 
@@ -1206,17 +1119,22 @@ run's `.concluded` code answers it (§ 2b).
 
 **R-RO1 — the vocabulary binds WRITERS AND READERS.** No code outside
 `runfiles` may spell a run-output role: not a tuple, not an `.endswith`, not
-a glob, **and not a line of generated text.** The writer half is not
-hypothetical — `pyscf/input.py:261` prints an instruction telling a person to
-redirect PySCF's stdout to `.out`, the one spelling that disagrees with the
-wrapper. A generated program (shell, an emitted script, browser JS) takes its
+a glob, **and not a line of generated text.** The writer half is real: the
+PySCF deck's header tells a person driving PySCF by hand where its stdout
+goes, and names that file from the catalogue's role
+(`pyscf/input.py::emit_run_with`, `PYSCF_STDOUT_ROLE`). A generated program (shell, an emitted script, browser JS) takes its
 roles from the Python site that renders it, and **that site is bound.**
 
 **R-RO2 — one import surface per question.** Everything asked about a run
 directory is imported from the package that owns it: `molbuilder.parse.dirs`
-for status, discovery and the directory's own account of itself;
-`molbuilder.parse.contract` for the engine and the recorded contract. Never
-from `parse.dirs.job` or `parse.dirs.rundir` directly.
+for status, discovery and the directory's own account of itself
+(`run_status`, `openable_in`, `run_state_of`); `molbuilder.parse.contract`
+for the engine and the recorded contract. The words a status is made of —
+the state sets (`LIVE_STATES`, `FINAL_STATES`, `NOT_ENDED_STATES`) and an
+ending's words — are imported from `parse.dirs.job`, where they are defined.
+Two modules take the doors from their own modules: the run door
+(`runs.py`), which composes the package's answers, and the monitor, which
+travels beside a job.
 
 #### What a viewer should open — the CALCULATION decides
 
@@ -1233,11 +1151,8 @@ again at the finish (`engines/vibration.md` § 5.11 § 3), so until then
 each call's own output is what opens, in the call's folder, and after it
 the spectrum. An
 optimization is for its trajectory. Neither switches
-at conclusion: *"an unconcluded progress log first"* was an
-**optimization-shaped rule generalised to every kind**, and it sent every
-spectrum run's viewer to a molwatch log holding one `initial_preview` block
-(measured on a CO2 spectrum run: 1340 bytes, header + one block + footer — a
-spectrum has no geometry sequence to log).
+at conclusion: a spectrum has no geometry sequence to log — its progress log
+holds one `initial_preview` block (1340 bytes on a CO2 spectrum run).
 
 **And within a kind, the engine's own output is offered before the seeded
 progress log** (`result_roles`: the roles naming the calculation, then the
@@ -1251,9 +1166,7 @@ log is still what opens.
 
 **The door never offers a file `detect()` refuses.** That is this section's
 two questions applied to one answer: *what is a run's output* is the
-catalogue's, *what can a person open* is the registry's. Until 2026-09-18 the
-chain returned `<job>_<stage>.log` — PySCF's verbose logger — and the
-caller's very next step was `detect()`, which refuses it.
+catalogue's, *what can a person open* is the registry's.
 
 #### The door, and the route through `detect()`
 
@@ -1315,7 +1228,7 @@ contract")*. A key is the setting's catalogue item — `basis_size`,
 `mesh_cutoff`, `pao_energy_shift`, `xc_functional`, `xc_authors`, `kgrid`,
 `kgrid_displacement`, `electronic_temperature`, the electronic state's
 `net_charge`, `spin_treatment`, `unpaired_electrons`, and how the run's SCF
-converged — `mixing_weight`, `pulay_history`, `dm_tolerance`,
+converged — `mixing_weight`, `pulay_history`, `dm_tolerance`, `h_tolerance`,
 `dm_energy_tolerance`, `scf_energy_converge` (`SCF_RECORD_KEYS`, 2026-10-09:
 TD6's starting values for every transport SCF stage, `transport.md` § 3.1) —
 in the catalogue's unit, so every reader takes it as it stands: the vibration
@@ -1330,10 +1243,8 @@ A deck that states no level of theory has no record, whatever its SCF
 settings. Which engine and which deck the values came from is the block's own
 `engine`, `source` and `source_sha256`.
 
-*(A record written before 2026-10-02 named four of them differently —
-`siesta_mesh_cutoff_ry`, `energy_shift_ry`, `electronic_temperature_k`,
-`k_mesh_transverse` — through a translation table that has gone. Nothing reads
-those names: user, "don't care about old projects".)*
+*Nothing reads any other name for these settings (the user: "don't care about
+old projects").*
 
 ### 5b.1 The relaxation record — what the run says about its final geometry
 
@@ -1347,7 +1258,7 @@ geometry it left**, from the run output a viewer has open — the
 | `n_steps` | the geometry steps the run took (the last frame's step index) |
 | `force_tolerance_ev_ang` | the run's **own** criterion, as the engine echoed it — `convergence_targets.max_force_tol_eV_per_A`, flat (SIESTA's `redata:` echo, a single-stage molwatch header) or nested one level by stage (a staged molwatch header; one stage is the run's, several is `None`) |
 | `max_force_ev_ang` · `max_force_free_ev_ang` | the last step that reported forces: the **largest absolute Cartesian component** over every atom, and over the atoms the run **moved** — the held set excluded, from that step's per-atom forces (the engine's own `Max` / `Max … constrained` lines, which are that same component, when the step carries no per-atom block). The component, not a per-atom norm: it is what SIESTA's `MD.MaxForceTol` tests and what both read-backs judge by (V1.30); a norm would call a run the engine converged "not converged" by up to √3 |
-| `held_atom_keys` | the atoms the run held (`runtime_info.frozen_atoms`), as their `Structure.geometry_lines()` — element and rounded position — which is how a consumer compares held sets, because a deck's copy may list the atoms in another order. The record names atoms by their lines, never by an atom index: an index in a reordered run's engine order would outlive a restore *(plan V1.42; the index list cut 2026-10-14, RMP R1)* |
+| `held_atom_keys` | the atoms the run held (`runtime_info.frozen_atoms`), as their `Structure.geometry_lines()` — element and rounded position — which is how a consumer compares held sets, because a deck's copy may list the atoms in another order. The record names atoms by their lines, never by an atom index: an index in a reordered run's engine order would outlive a restore *(plan V1.42)* |
 | `converged` | the moved atoms' largest component within the run's tolerance (when a run held nothing the two figures are one figure). A run whose last step reports no force at all has no record |
 | `run_state` | how the run ended (§ 2b) |
 | `geometry_sha256` | the **last frame's** `Structure.geometry_fingerprint()` — sha256 over the **sorted** `geometry_lines()` (element and position rounded to a millionth of an ångström, negative zero folded), so it is the same whatever order a copy lists the atoms in — so a consumer can tell whether the coordinates in front of it are the ones this record is about. A rigid shift is not folded in: a pair exported from a run carries the run's cell, and no deck shifts a structure that states one |
@@ -1357,9 +1268,7 @@ geometry it left**, from the run output a viewer has open — the
 its caller hands it — the run door's choice for a folder (`runs.openable`,
 what the Results tab opens) or the file a person pointed at — so it describes
 the file in front of them. `parse/` sits below the run door and searches for
-nothing itself *(it searched the folder with `dirs.openable_in` until
-2026-10-04, which no longer knows the calculation and could pick another file
-than the one on screen: plan B11, 3b.5)*. A run that relaxed nothing — a
+nothing itself. A run that relaxed nothing — a
 force-constant run, a single point, a seed nothing wrote into — echoes no
 force tolerance and has **no record**; no output, or one that does not parse,
 is `None`, never a guess.
@@ -1391,9 +1300,9 @@ a structure stated relaxed is checked against its own record —
 `validation/sidecar.py::check_relaxation_record`, the fingerprint first, then
 the engine and the recorded contract (`contract_fields_of(cfg)` puts the
 calculation about to run in the same vocabulary), then the largest remaining
-force against *that calculation's* tolerance, then the held set. *(Built
-2026-09-24; user direction: "if the info meta data is present, we should
-display it and check against tolerance of calculation.")*
+force against *that calculation's* tolerance, then the held set. *(the user:
+"if the info meta data is present, we should display it and check against
+tolerance of calculation.")*
 
 ## 5a. Sibling upgrade — when a second file sharpens the first
 
@@ -1442,8 +1351,8 @@ It matters because the `.out` is a Fortran-formatted text file: it prints
 `E_KS(eV) = -30.4405` — **four decimals**, coarser than the step-to-step energy
 change near convergence — and its fixed-width columns collide when values grow
 (`-1.929956131.029438`) or overflow to `**********`, which is why
-`engines/siesta.py` carries both a separator-inserting regex and a structural
-column slicer. Typed netCDF arrays have neither failure mode.
+the family's grammar (`siesta_grammar`) carries both a separator-inserting
+pattern and a structural column slicer (`scf_floats_by_columns`). Typed netCDF arrays have neither failure mode.
 
 **But a `.MD.nc` row is not a step.** Measured on a real relaxation
 (2026-08-15):
@@ -1479,7 +1388,7 @@ fixed ratio in every number downstream.
 Reading goes through the one door for every NetCDF file
 ([`model/datafiles.md`](?doc=model/datafiles.md) § 4, `ncdata.reading`), netCDF4's — which every env that reads it carries (the
 host's for the data files; `molbuilder-pySCF` since its result's data file,
-[`engines/vibration.md`](?doc=engines/vibration.md) § 6.10.6).
+[`engines/vibration.md`](?doc=engines/vibration.md) § 6.10, *Where it is written, and what that needs*).
 
 ---
 
@@ -1512,7 +1421,7 @@ sidecar what molbuilder serialised — not the shape of the payload.
 |---|---|---|
 | `*.scf-timing.log` | `scf-timing` · `scf_timing_rows.scf_timing_metrics` | `s_per_iter`, `iters_measured`, `rows` — the last phase's; with both phases, also `s_per_iter_<phase>`, `iters_measured_<phase>`, `rows_<phase>` |
 | `*.molwatch.log` — a PySCF run's stamped `scf_history` rows | `scf_timing_rows.progress_log_timing_metrics` | the same figures, in the run's one phase, `scf` |
-| `*.monitor.log` | `monitor-log` · `monitor_metrics` | `machine` {`node`, `cores`, `mem_gb`, `gpu`} from `[MACHINE]` (`scheduler.md` R12); `bound` (`gpu` / `host` / `mixed`), `stated_cpu_mean_pct` and `stated_gpu_sm_mean_pct` from `[UTIL-SUMMARY]`; `mem_basis`, `mem_peak_kernel_gb`, `mem_limit_gb` from `[UTIL-BASIS]` |
+| `*.monitor.log` | `monitor-log` · `monitor_metrics` | `machine` {`node`, `cores`, `mem_gb`, `gpu`} from `[MACHINE]` (`scheduler.md` R12); `bound` (`gpu` / `host` / `mixed`), `stated_cpu_mean_pct` and `stated_gpu_sm_mean_pct` from `[UTIL-SUMMARY]`; `mem_basis`, `mem_peak_kernel_gb`, `mem_limit_gb` from `[UTIL-BASIS]`; `ended_at`, `ended_why` from the monitor's closing record — absent for a monitor that never closed |
 | `*.util.csv` | `util-csv` · `util_csv_metrics` | the samples' `mem_peak_sampled_gb` (the largest sample of the job's memory), `monitored_elapsed_s`, `cpu_mean_pct`, `gpu_sm_mean_pct`, `gpu_vram_peak_gb` |
 | `reports/<user>.jsonl` | `reports-log` · `read_reports` | reports (newest first), total, skipped — the reports a run's monitor sent, as the listener received them |
 
@@ -1521,8 +1430,7 @@ sidecar what molbuilder serialised — not the shape of the payload.
 the file's role, and the run record, the trajectory viewer, the benchmark and
 the monitor all ask it). A row is `(epoch, phase, begins an SCF)`: from the tee
 for the SIESTA family, from a PySCF progress log's `scf_history` blocks — one
-block per SCF, its first row the one that begins it. *(Until 2026-09-27 only
-the tee was read, and a PySCF run stated no rate.)* **They are timed within one
+block per SCF, its first row the one that begins it. **They are timed within one
 phase.** Each tee line is
 `<epoch> <iscf> <the row as SIESTA printed it>`, and the row states its phase
 (§ 4b). A rate comes from consecutive rows of one phase within one SCF: the
@@ -1589,7 +1497,8 @@ window from its own input:
 | `elapsed_s` | since the **run** began | the frame epoch series, `t[i] − t[0]` | `parse/engines/_helpers.py::trajectory_result_to_legacy_dict` — the one home P-T3 allows | the badge's *total* while a run is going, and a file of no run's (`web/trajectory.md` § 4); `molbuilder watch parse` / `watch tail` |
 | `engine_elapsed_s` | the **engine**, launch to exit | the wrapper's `benchmark: <program> wall <s>s` line | `wrapper_log.read_wrapper_log` | the run record (§ 5d.2): the Run panel's wall, and the badge's *total* once a run has ended (`runstatus.run_answer`) |
 | `monitored_elapsed_s` | since the **monitor** started | `util.csv` rows, `epochs[-1] − epochs[0]` | `util_csv_metrics` | the bench table's `monitored` column |
-| `JobStatus.elapsed_s` | since the run began, **so far** | the live process clock, `now − start` | `monitor.py::run_monitor` | the notification card, `[MONITOR]` log lines |
+| `JobStatus.elapsed_s` | since the run began, **so far** | the live process clock, `now − start` — for a point of a run of points, since the run's first computed call (`monitor._run_clock`) | `monitor.py::run_monitor` | the notification card, `[MONITOR]` log lines |
+| `call_elapsed_s` | since this call or point began | the live process clock | `monitor.py` | the report card's *this call* / *this point* |
 | `run_start_local` · `run_end_local` | the run's two ends, as the node's local time of day | the `.out`'s `>> Start of run` / `>> End of run` | `siesta_grammar.read_launch_line` | the run record (§ 5d.2) |
 | `loop_elapsed_s` | one spin pass of TBtrans's k-point × energy **loop** — not the engine's wall: its set-up before the loop is outside it | the `.out`'s `tbt: Completed in S s`, one per pass | the reading pass, `now()["loop"]["passes"][i]["loop_elapsed_s"]` (§ 5d.5) | the progress words (`tbtrans.loop_words`); summed over a point's passes, the transport record's point `loop_elapsed_s` and the rung's `measured.loop_elapsed_s` — the rung row's time a finished point's loop took (`engines/transport.md` § 2a.12) |
 
@@ -1656,14 +1565,12 @@ named in those records (§ 1.6.3 there), never in a file's name.
 **A run's files are found by molbuilder's names, so the run is ours or it is
 not one.** A SIESTA run made by hand — `input.fdf`, `siesta.out` — or an output
 copied without its deck has no record: its output's name carries no label the
-folder's decks state. *(It was read as a run of its own, its deck guessed from
-SIESTA's `fdf` log, from 2026-09-27 until 2026-10-03 — input molbuilder does
-not take, user, 2026-10-03.)*
+folder's decks state. *(input molbuilder does not take — the user, 2026-10-03)*
 
 | part | the question | read by |
 |---|---|---|
 | **computation** | what ran, where, for how long, on how much | the Run panel |
-| **setup** | every parameter the engine read: the default, what the run asked for, what the engine used | the Run panel; the electronic-state read-back once it is built (`science/chemistry-correctness.md` ES10; plan § 5s, P5 — open) |
+| **setup** | every parameter the engine read: the default, what the run asked for, what the engine used | the Run panel; the electronic-state read-back once it is built (`science/chemistry-correctness.md` ES10 — after the finish line, `plans/plan.md` *Decided* 2) |
 | **deck** | which file ran, its hash, whether it is still the stage's deck, what it was gathered from | the Run panel; the transport record |
 | **verdict** | how it ended, whether each phase converged, what was asked and not used | the Run panel; the transport record |
 
@@ -1678,7 +1585,7 @@ check, and the panel shows nothing for it rather than a guess. **The launch
 part is `run.json`'s keys as written**, its nulls answers, never "could not
 check": no job id and no queue for a run here, nothing continued from — it
 started from the structure (`job-contracts.md` § 6.1) — and the panel says
-them *(they were dropped until 2026-10-06)*.
+them.
 
 ```text
 record
@@ -1697,7 +1604,7 @@ record
 │   │                    gpu_sm_mean_pct · mem_basis · mem_limit_gb
 │   └── exit             code · at · note (what the wrapper added: a failed finish, a finish that cannot load) — or, for a marker line that does not read, said (the line as it lies)
 ├── setup
-│   ├── rows             [{item, items, keys, default, asked, used, echo, differs}]
+│   ├── rows             [{item, items, keys, default, asked, used, differs}]
 │   ├── engine_only      [{key, value | readings, in_deck}]
 │   └── pseudopotentials [{species, file, uuid, sha256, xc_family, xc_authors, relativistic, generator}]
 ├── deck                 path · sha256 · current · gathered_from
@@ -1745,7 +1652,7 @@ nothing here (`record.contributors`).
 | `instruments` | the run's timing file (`scf_timing_rows.timing_file`: `.scf-timing.log`, a PySCF run its `.molwatch.log`'s stamped rows) · `.monitor.log` · `.util.csv` | the instruments, through `instruments.metrics_of` — a file that does not read tells less, a defect in a reader is not caught — and `utilisation` (§ 5c) | any | `computation.time.s_per_iter` · `iters_measured`, and per phase `s_per_iter_<phase>` · `iters_measured_<phase>` · `rows_<phase>` (`periodic`, `negf`) · `memory` · `host.machine` |
 | `.log` | `<base>.log`, PySCF's own logger | its row's `record` reader, `parse/engines/pyscf.record_fields` — its family's reader, `read_pyscf_sys_info` | the `.log`'s: PySCF | `computation.engine` (program, version, python) · `launch.threads_engine` |
 | `run-json` | `run.json` | `runrecord.launch_record` | any | `computation.launch` (mode, command, job_id, launched_at, placed_on, continued_from — the run it continued from, `execution/job-system.md` § 5.4 — started_from, a point's own `.continued-from` (`runrecord.read_continued_from`), present only where the marker is — and sequence, the sequence of groups whose job sent it, `execution/job-system.md` § 6.0) |
-| `concluded` | `<base>.concluded` | `runrecord.ending`, the one door, through `run_status` | any | `computation.exit` |
+| `concluded` | `<base>.concluded` | the marker `run_status` found through `runrecord.ending`, read by `runrecord.read_concluded` | any | `computation.exit` |
 | `deck` | the deck · `.gathered-from` | `deck_record.same_calculation` · `runrecord.read_gathered_from` | any | `deck` |
 | `setup` | the parameters fence (§ 5d.3a) · the deck · the engine's log of what it read — SIESTA's `fdf.<stamp>.log`, paired by its output's start (found by the output's row, its `used_log`) | `deck_record.read_parameters_fence` · `script_emit.parameter` · the `siesta-fdf-log` parser | any that writes the fence | `setup.rows` · `setup.engine_only` · `verdict.findings` |
 
@@ -1798,7 +1705,6 @@ recomputed from today's catalogue:
 | default | the wrapper's parameters fence (§ 5d.3a), which lists the catalogue's default of every item the rung reads, at launch — the one default for the calculation (`template.default_of`, [`engines/template.md`](?doc=engines/template.md) § 5.4: a vibration's relaxation at the tight values the kind recommends); a run from before the fence has none, and the column is empty | the deck's fence |
 | asked | the deck, per keyword and with its unit (`script_emit.parameter(..., deck_text=)`) | the deck's fence |
 | used | SIESTA's `fdf.<stamp>.log`, through the `siesta-fdf-log` parser: the value it read, or every reading of a key read to several values | the deck's fence, read off the live objects |
-| echo | what SIESTA says it RAN where it says so: the `redata:` / `ts:` echo and the `diag:` lines — `Number of poles = 42` beside the pole energy's two readings | — |
 
 **The rows** are the catalogue items the engine declares for this calculation
 and stage (`script_emit.declarations(engine, calculation=, stage=)`) that write
@@ -1814,9 +1720,11 @@ pseudopotentials**: per species, the file the `.out` says it read and its
 **`differs` is one rule**: the deck set the item, and the engine did not end up
 with it. The deck's spelling is compared with the log's `# above item
 originally:` where SIESTA converted it, numbers at fdf's printed precision,
-logicals in one vocabulary, blocks row by row. The launch rows — ranks,
-threads, the solver — are compared by `bench.compare_asked_to_ran`, the
-benchmark's own rule. **An item the deck does not set cannot differ**: its
+logicals in one vocabulary, blocks row by row. The launch — ranks, threads,
+the solver — is not compared here: the record states what was asked
+(`launch.ranks_asked`, `launch.threads`) beside what ran (`launch.ranks`,
+`solver`); the benchmark summary compares them by its own rule
+(`bench.result.compare_asked_to_ran`). **An item the deck does not set cannot differ**: its
 asked column reads *engine default*, and its used column is the engine's
 reading or readings.
 
@@ -1956,11 +1864,9 @@ set-up names; where the output names no passes, by its channel and its place
 alone — *spin up (pass 1)*, or *pass (pass 1)* with no channel named either.
 
 **A pass still to come is named, never timed**: TBtrans's estimate covers the
-pass underway, and only a pass already done is measured. *(Until 2026-10-16
-the pass read the latest progress line alone: a finished run's record still
-said 98 % done with 0 s left, a polarized run's second pass began again at 0 %
-with nothing saying which pass it was, and `read_tbtrans_out` walked the
-same output a second time for the passes and the currents.)*
+pass underway, and only a pass already done is measured. *Each pass is its
+own: a finished run's last progress line is short of 100 % (above), so a
+completed pass is said by its `Completed in`, never by its last percentage.*
 
 `tbtrans.py` is not a registered viewer file: it says TBtrans's loop and finds
 its transmission files; the output's lines are the reading pass's. It travels
@@ -2044,7 +1950,8 @@ mixing — and its couplings are negative: two symptoms of § 5d.6 at once.
 
 **The monitor reports the live state and warns on the live symptoms, and never
 stops a run** (`execution/run-reports.md` § 5). *The symptoms and the
-divergence verdict are plan § 5t.3's P4, not yet built.*
+divergence verdict are not built — after the finish line (`plans/plan.md`,
+Decided 2); the record's one finding is `asked-not-used`.*
 
 ### 5d.7 Where it is read
 
@@ -2063,13 +1970,14 @@ divergence verdict are plan § 5t.3's P4, not yet built.*
   peak and where it was read, the ranks and threads its wrapper launched and
   its node (`jobset.memory`, [`execution/job-request.md`](?doc=execution/job-request.md)
   § 3.1a) — those fields alone (§ 5d.1b).
-* **The electronic-state read-back** — to be built (plan § 5s, P5) — will
+* **The electronic-state read-back** — after the finish line (`plans/plan.md`
+  *Decided* 2) — will
   compare the state asked with the one used (`science/chemistry-correctness.md`
   ES10); nothing reads it yet.
 * **The monitor's reports** carry the same state, read by the same stdlib
   readers (§ 4a, `execution/run-reports.md` § 2.3).
 
-## 5e. TBtrans's files — one reader each, and a costly reading kept beside its file *(built 2.31.0 — plan § 1z)*
+## 5e. TBtrans's files — one reader each, and a costly reading kept beside its file
 
 *(The user, 2026-10-22: "make this part of the parser of siesta engine would
 be my feeling"; "we should use a unified api support rather than handcrafted
@@ -2087,12 +1995,10 @@ its **k-averaged text files**: `.TBT.AVTRANS_<pair>`, `.TBT.AVTEIG_<pair>`,
 `.TBT.AVDOS`, `.TBT.AVADOS_<lead>`, `.TBT.AVBDOS_<lead>`
 (`runfiles.TBTRANS_AVTRANS` …, by quantity `tbtrans.AVERAGED`) — written from the same variables, averaged
 over the k-points with the same weights (`m_tbt_save.F90`,
-`state_cdf2ascii`), their energies printed to five decimals. *(Until 2.31.0
-they were read outside this package: `transport/record.py` parsed the
-transmission text itself and `transport/tbtnc.py` read the data file through
-sisl once per quantity — on Sol's AuBDTAu point, a 1.6 GB data file whose
-tables are stored as 113 × 401 pieces each, 231,000 reads and four minutes a
-report on `/scratch`, 2026-10-22.)*
+`state_cdf2ascii`), their energies printed to five decimals. *Reading a data
+file once per quantity costs minutes: on Sol's AuBDTAu point, a 1.6 GB file
+stored as 113 × 401 pieces per table took 231,000 reads and four minutes a
+report on `/scratch` (2026-10-22) — so one reader, one pass.*
 
 **One reader per file, in the SIESTA family's engines:**
 
@@ -2175,11 +2081,7 @@ digest states `engine_index` and no user index, its `atom_index_why` saying
 so (F3). **A digest
 that states no user index for a file a run of ours holds reads as out of
 date** — the next reading writes it whole. **What it does not hold, it says**: each orbital's type
-is the device run's `<label>.ORB_INDX`, which the data file does not state. A
-digest of an earlier version — `@1` (2.31.x) without its map, `@2` (2.32.x)
-its axes named before [`model/datafiles.md`](?doc=model/datafiles.md) § 2a —
-reads as out of date, as any other version does, and the next reading writes
-it whole.
+is the device run's `<label>.ORB_INDX`, which the data file does not state.
 
 **One reading of a data file at a time, wherever it is asked** *(the user,
 2026-10-22: "how do you avoid accidental multiple digest generator to
@@ -2226,7 +2128,7 @@ the ones missing or out of date, saying so (`transport.tbtnc.read_points`). A
 running point's data file is TBtrans's while it writes, and a stopped one's
 is partial: neither is read.
 
-## 5f. An optical calculation's spectrum — SIESTA's `.EPSIMG` *(built with plan § 1ae M3)*
+## 5f. An optical calculation's spectrum — SIESTA's `.EPSIMG`
 
 **What SIESTA writes.** A deck with `OpticalCalculation true` makes SIESTA,
 after its SCF, compute the imaginary part of the dielectric function for a
@@ -2399,14 +2301,3 @@ These stop the next round of parallel parse paths:
 12. **The run record never builds a trajectory** (§ 5d.1). It reads what its
     rows' readers state; the SCF plots read the trajectory the viewer loads.
 
----
-
-## 8. History
-
-The unified stack replaced the four parallel patterns above (shipped
-incrementally 2026-06-19 → 06-21). The legacy `molbuilder/parsers/`,
-`script_contract.py`, and `script_bundle.py` are deleted; their **read** side is
-here, and their **write** side rehomed to `molbuilder/sidecars/` and
-`script_emit.py` (parsing and emitting are inverse concerns, kept in separate
-modules; the third rehome, `bundle_writer.py`, retired 2026-08-29 with the
-handoff it materialised).

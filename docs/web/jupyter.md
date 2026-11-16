@@ -124,7 +124,7 @@ Three things make that honest rather than mysterious:
 removing it, and letting Jupyter choose freely makes the runtime file
 authoritative for a port the pass-through derives — which is the design
 `port_retries = 0` was chosen against. *(User question 2026-09-15;
-`plan.md` § 5n, J15.)*
+[`archive/2026-10-08-plan-consolidation.md`](?doc=archive/2026-10-08-plan-consolidation.md) § 5n, J15.)*
 
 ## 3. The lifecycle
 
@@ -161,10 +161,8 @@ by itself — measured the same day by `kill -9` on the server, with the kernel
 gone in about a second and nothing orphaned.
 
 So what this layer guarantees is that **the server dies**, and the server
-dying is what collects the kernels. *(This section claimed the group reached
-the kernels directly, and a `/proc`-walking reaper was drafted to make that
-claim true before the measurement showed the backstop already works. Building
-it would have been a third copy of something Jupyter does and passes.)*
+dying is what collects the kernels. *(A reaper of molbuilder's own would be
+a third copy of something Jupyter does and passes.)*
 
 This composes with § 3.1: `PR_SET_PDEATHSIG` keys on *parent death*, not on
 group membership, so a new session does not disable it.
@@ -183,8 +181,7 @@ stop asks the shepherd's group to go and waits a grace before it takes it
 its own (`serve_daemon.stop_by_pidfile`, 5 s) and reports *"(forced)"* when it
 had to take it. Equal, the two would expire together and every polite stop of
 a server slow to go would read *forced*; so the shepherd's stays strictly
-under (both were 5.0 until 2026-09-14, `test_jupyter_contract.py` keeps them
-apart).
+under (`test_jupyter_contract.py` keeps them apart).
 
 ### 3.4 Parented to the supervisor, stopped with the server
 
@@ -209,18 +206,14 @@ then offers Start, on the code the server now runs.
 
 Opening the tab **probes and reports**; it starts nothing. Starting a notebook
 runs code as the account serving the page, so it is a thing a person asks for,
-with a button. *(Decided with the user 2026-09-13, against the earlier "starts
-on first open" written here: a tab that runs code because you clicked its name
-is a tab you cannot look at safely.)*
+with a button. *(Decided with the user 2026-09-13: a tab that runs code
+because you clicked its name is a tab you cannot look at safely.)*
 
 ### 4.0 The states — the table the tab is built from
 
-**This said "exactly four states" until 2026-09-15, while `render` carried
-thirteen `return`s** (`plan.md` § 5n, J7). The four with the most behaviour —
-the ones with a time budget and their own button — were the four it did not
-name. The code is now a literal table (`STATES` in `jupyternb/index.js`) and
-this is the same list in the same order. **First match wins**, so the order
-is the contract.
+The code is a literal table (`STATES` in `jupyternb/index.js`) and this is
+the same list in the same order. **First match wins**, so the order is the
+contract.
 
 | # | State | When | Shows | Waits |
 |---|---|---|---|---|
@@ -235,26 +228,18 @@ is the contract.
 | 9 | **idle** | installed, nothing running, and the person may ask | what starting gets you, and the Start button | 15 s heartbeat |
 | 10 | **unreachable** | the status endpoint could not be asked | the error, and a **Try again** button | that button |
 
-**EVERY STATE EITHER POLLS OR OFFERS A BUTTON**, and four of them did neither
-until 2026-09-15. A notebook started from a *terminal* was invisible to an
-open tab until somebody reloaded it, and a budget that ran out was a dead end
-— `render` returns before it schedules, so wedged and *"none started"* left a
-red sentence and no timer, and *"none started"* left an **empty** action row
-because the Start click had cleared it. `unreachable` had a **Try again** for
-exactly this reason and the other paths did not. *(`plan.md` § 5n.8.)*
+**EVERY STATE EITHER POLLS OR OFFERS A BUTTON**: a state that does neither
+leaves a notebook started from a *terminal* invisible to an open tab, and
+turns a budget that runs out into a dead end.
 `env-missing` polls slowest on purpose: it is the one poll that costs a
 subprocess, because a negative answer re-asks the env manager rather than
 trusting a snapshot bound at process start.
 
 **WAITING HAS ONE RULE.** A state declares how long it may last; entering it
-starts the clock, and entering is the only thing that resets it. Five
-independent mechanisms with three different clearing rules preceded this —
-one cleared inside a branch, one at the top of the render, and one never — so
-a notebook that went away later could make the tab print a red error about a
-start that had worked. Budgets are in **milliseconds, not polls**, because the
-three they replaced did not wake the same way: two polled at two different
-intervals and one waited on an event. Time is what they all meant, and saying
-it in time lets each state keep the wake-up that suits it.
+starts the clock, and entering is the only thing that resets it — so a
+notebook that goes away later never makes the tab report a failed start that
+worked. Budgets are in **milliseconds, not polls**, so each state keeps the
+wake-up that suits it.
 
 State 3 is the one to understand: it exists because Lab's Launcher creates a
 notebook **in the folder the frame is showing**, so framing before the root is
@@ -276,9 +261,7 @@ when nobody is using it.
 A Lab in a frame is not a Lab in a window, and four of its defaults are wrong
 here. molbuilder sets them in **`molbuilder/data/jupyter.toml`'s
 `[lab.overrides]`** — **defaults, not values**: every one is still a control
-the person can change inside Lab. *(They were a Python dict in `jupyter.py`
-until 2026-09-15; the table below and that file now say the same thing in the
-same place, which is what § 5n of the plan moved them for.)*
+the person can change inside Lab.
 
 | Setting | Why |
 |---|---|
@@ -289,8 +272,9 @@ same place, which is what § 5n of the plan moved them for.)*
 | **its own settings home** (`config_dir.jupyter_lab_home`) | `app_settings_dir` · `user_settings_dir` · `workspaces_dir`, all separate from `~/.jupyter`. Lab writes a user setting the first time it resolves one and a user setting BEATS an override, so a shared home let the framed Lab adopt whatever the person's standalone Lab had written — and let molbuilder's choices leak back into it |
 
 **It remembers your LAYOUT while the server runs, and forgets it when the
-server restarts.** *(User ruling 2026-09-15, superseding the 2026-09-14
-decision recorded below.)*
+server restarts.** *(The user, 2026-09-15: "we would like to have this
+persistent when switching tab, but do not need this when server get shutdown
+and restarted.")*
 
 Lab saves a **workspace** — which documents were open, which side panel was
 showing — and molbuilder empties that directory **once, when the notebook
@@ -302,26 +286,18 @@ server starts** (`jupyter.prepare_lab_home`). So:
 | reload `/jupyternb` | the same |
 | `jupyter restart`, `serve stop` + `start`, a new notebook server | clean |
 
-**What this replaced, and why it was wrong.** The frame URL used to carry
-Jupyter's `?reset` on *every load*. That was aimed at a real problem — a
-restored workspace argues with the folder the projects sidebar selects — but
-it was applied at the wrong moment: every **load**, when what was meant was
-every **start**. Leaving `/jupyternb` destroys the iframe, so a tab switch is
-a load, and switching away and back therefore threw away the notebook you had
-open **while its kernel was still running**. *(Reported by the user
-2026-09-15; `plan.md` § 5n, J13.)*
+**The reset happens when the server starts, never when the page loads.**
+Leaving `/jupyternb` destroys the iframe, so a tab switch is a load, and a
+reset there would throw away the notebook you had open **while its kernel is
+still running**. *(Reported by the user 2026-09-15.)*
 
-**The workspace is PER SERVER.** `config_dir.jupyter_lab_home()` is
-deliberately not port-keyed, and the reason was right while it held only
-defaults — *"the defaults do not differ between servers."* Session state
-does. So the layout lives in `workspaces/<serve port>/`, and `settings/` and
-`user-settings/` stay shared. Sharing the workspace re-created this very
-section's bug for anyone running two molbuilders: starting B's notebook
-emptied A's layout, so A's next tab switch lost the notebook whose kernel was
-still running; and B's saved layout made A's first framing believe there was
-something to restore, so A opened at the projects root instead of the
-selected folder. *(Found in review 2026-09-15, hours after this section was
-written.)*
+**The workspace is PER SERVER.** `config_dir.jupyter_lab_home()` is not
+port-keyed, because the defaults do not differ between servers; session state
+does, so the layout lives in `workspaces/<serve port>/`, and `settings/` and
+`user-settings/` stay shared. A shared workspace would let starting B's
+notebook empty A's layout, so A's next tab switch would lose the notebook
+whose kernel is still running. B's saved layout would also make A open at the
+projects root instead of the selected folder.
 
 **The folder is carried exactly once.** `status` reports `workspace_saved`,
 and the tab uses it to decide the URL: with no workspace this is the first
@@ -340,9 +316,7 @@ settings directory, `settings/overrides.json`, rewritten at every start; a
 person's own change to one of them is what Lab saves into `user-settings/`,
 and a user setting beats an override, so it sticks across every restart.
 Debugging *"why does my framed Lab look like this"* starts at
-`settings/overrides.json`. *(This paragraph sent readers to `user-settings/`
-for the defaults until 2026-09-15, and claimed `?reset` restored all four
-until the claim was checked before that.)*
+`settings/overrides.json`.
 
 ### 4.2 No `.ipynb_checkpoints` in the projects tree
 
@@ -364,9 +338,8 @@ executed Python, which is why the class can live there rather than on
 it must subclass jupyter-server's `AsyncCheckpoints` at class-definition time,
 and the shepherd runs in the HOST env, which does not have jupyter-server and
 must not need it — so it cannot be imported, and `inspect.getsource`, which
-reads an imported class, cannot reach it. Left as a string literal it was
-invisible to every tool, and an edit deleted it on 2026-09-14 and shipped a
-`NameError` on every notebook start. Being an absolute path, it is loaded *instead of* searching the
+reads an imported class, cannot reach it. A string literal is invisible to
+every tool: an edit can delete it with nothing to catch it. Being an absolute path, it is loaded *instead of* searching the
 config path, so the framed server does not read a personal
 `~/.jupyter/jupyter_server_config.py` either — the same isolation § 4.1 gives
 the settings home.
@@ -389,22 +362,18 @@ The projects sidebar still chooses where Lab *opens* (the frame URL is
 
 So the tab states the fact it can know rather than the one it would like to.
 `jupyter.open_notebooks` asks Jupyter's own `GET /api/sessions` and the control
-row lists **the full path of every notebook Lab has open**. The row used to
-claim "new notebooks are saved in `<the folder molbuilder selected>`", which is
-true for exactly as long as it takes to click a folder inside Lab — and with
-several notebooks open it is usually wrong. Naming the control that decides
-beats impersonating it. *(Asked for by the user 2026-09-14: "I want to make
+row lists **the full path of every notebook Lab has open**. For new
+notebooks it says only that they are saved in the folder Lab's own file
+browser is showing, and names no folder: a named one would hold only until a
+folder is clicked inside Lab, and with several notebooks open it is usually
+wrong.
+Naming the control that decides beats impersonating it. *(Asked for by the user 2026-09-14: "I want to make
 where those notebooks are saved clear and explicit".)*
 
 **Closing a notebook shuts its kernel down** — `kernelShutdown` in § 4.1.
-*(This paragraph said no such setting existed, until searching every shipped
-schema on 2026-09-14 found it.)*
 
 A page RELOAD is not a close: Lab restores the workspace and reconnects each
-document to its kernel, variables and all. *(This said the reload's own
-**workspace reset** was what closed the documents. That reset no longer
-happens on a load — § 4.1 moved it to the server start — so the reason was
-gone while the conclusion stayed true; corrected 2026-09-15.)* What catches the rest is the timeout culling above, and its
+document to its kernel, variables and all. What catches the rest is the timeout culling above, and its
 generosity is deliberate: the tab is an **iframe**, so switching to Results
 closes the kernel's socket. Culling promptly on a closed connection would mean
 a five-minute look at another tab costs you every variable in memory. Nothing
@@ -433,7 +402,7 @@ keeps for the server ([`ops/deployment.md`](?doc=ops/deployment.md) § 1.0b).
 ### 5.1 `GET /api/jupyter/status` — the payload, stated once
 
 **Sixteen keys, authored in two modules and read by a third**
-(`plan.md` § 5n, J5). `jupyter.status()` produces eight, the blueprint adds
+([`archive/2026-10-08-plan-consolidation.md`](?doc=archive/2026-10-08-plan-consolidation.md) § 5n, J5). `jupyter.status()` produces eight, the blueprint adds
 seven in one expression, `ok` is the envelope. `jupyternb/index.js` reads
 **fourteen** of them — `pid_state` and `url` are produced for the CLI's
 `jupyter status`, and the tab deliberately ignores `url` (see its row). This table is the
@@ -442,7 +411,7 @@ the shape is built.
 
 | key | from | meaning |
 |---|---|---|
-| `ok` | blueprint | the envelope. `false` never happens here — the tab treats its absence as *unreachable* |
+| `ok` | blueprint | the envelope. `false` never happens here. The tab shows *unreachable* for a refusal or an unreadable answer (`ask`, `lib/server.js`) |
 | `running` | `status()` | a pidfile naming a live shepherd of ours |
 | `pid` · `pid_state` | `status()` | which process, and `ours` / `foreign` / `dead` |
 | `port` | `status()` | Jupyter's own port on `127.0.0.1` — `serve + 1` (§ 2.1) |
@@ -475,11 +444,9 @@ registered** and answer:
 | **202** | the signal was delivered |
 | **409** | the supervisor refused it — or, on `start`, `molbuilder.json` cannot be read, in the file's own words (§ 5) |
 
-One gate, one refusal, both in `_refuse()`. They were registered behind an
-environment variable read at import until 2026-09-15, which made the app's
-URL map depend on how the process had been started — so no test could reach
-them, and the documented route count depended on which of the two you
-measured (`plan.md` § 5n, J3/J4).
+One gate, one refusal, both in `_refuse()`. They are always registered, so
+the app's URL map never depends on how the process was started, and a test
+reaches them.
 
 ## 6. What this exposes
 
@@ -535,8 +502,8 @@ JupyterLab server, the `ipykernel` a cell runs on, and the analysis stack —
 `numpy`, `scipy`, `pandas`, `matplotlib`. Jupyter is installed, activated and
 runs here. **No other env carries notebook tooling.**
 
-**And, since 2026-09-24, the file-level science libraries: `ase` and
-`sisl`** *(user ruling, revising the one below)*. **A notebook has to read
+**And the file-level science libraries: `ase` and `sisl`** *(user ruling,
+2026-09-24)*. **A notebook has to read
 the MD and trajectory formats calculations produce** — extended-XYZ, ASE's
 own `.traj`, plain xyz, pdb, cif, and the engine outputs ASE's readers cover
 — and `ase` is that reader; `sisl` is the same for what SIESTA and TBtrans
@@ -545,7 +512,8 @@ write. A frame set for transport is NOT made here
 made through molbuilder's own Structure API — the frame generator or a
 person's script, `with_frames` and `set_customized`, written by the codec with
 its sidecar (`model/structure.md` § 2.2e). A file `ase` writes carries no
-sidecar, and its comment line is never metadata (§ 2.3), so it reads as atoms
+sidecar, and its comment line is never metadata
+([`model/structure.md`](?doc=model/structure.md) § 2.3), so it reads as atoms
 and coordinates only.
 
 **And molbuilder itself — the one its server runs** *(the user, 2026-10-23:
@@ -561,7 +529,7 @@ this env, no second copy to drift. *(Measured 2026-10-23: outside the
 checkout, `import molbuilder` fails in this env; with the source on the path,
 `molbuilder.parse`, `runs`, `structure`, `atom_permutation` and both data
 files' readers import.)* **The layer imports with this env's packages** —
-numpy, netCDF4, sisl and xarray, the recipe's (xarray listed there since 2.32.0 — the user's yes, 2026-10-23; until then it came only as another package's dependency) — and a reader that needs more is not part of
+numpy, netCDF4, sisl and xarray, the recipe's (xarray listed for its own reason — the user's yes, 2026-10-23) — and a reader that needs more is not part of
 it.
 
 **It still holds no calculation engine** — no `pyscf`, `siesta` or `rdkit`.
@@ -572,13 +540,10 @@ and is **not checked** by the audit: both are bare conda-forge specs solved
 on the same channel, and the formats it reads are stable, so the exposure
 is bounded, not zero.
 
-*(The 2026-09-14 design said: no science backend at all — `ase`, `sisl`,
-`rdkit`, `pyscf` — because a second copy drifts and a notebook then stops
-reproducing what a calculation does. The earlier text before that — the
-stack in the host env, each calculation env offering itself as a kernel — was
-mine and was wrong: to be a kernel an env must carry `ipykernel`, which drags
-`debugpy`, `ipython`, `jupyter_client`, `pyzmq`, `tornado` and six more into an
-env whose only job is reproducible calculation. A job env stays a job env.)*
+*(No calculation env offers itself as a kernel: to be one, an env must carry
+`ipykernel`, which drags `debugpy`, `ipython`, `jupyter_client`, `pyzmq`,
+`tornado` and six more into an env whose only job is reproducible
+calculation. A job env stays a job env.)*
 
 ## 8. Status
 
@@ -593,13 +558,11 @@ import nothing of the application), `web/blueprints/jupyter.py` (status ·
 start · stop · the `/jupyter/` pass-through), and the **JupyterLab** tab at
 `/jupyternb`.
 
-There is deliberately **no kernel search path**. One stood here until
-2026-09-14, from the design where every env offered itself as a kernel; once
-that was withdrawn it contributed zero kernels and one cross-env leak — the
-host env's `share/jupyter` went on `JUPYTER_PATH` first, handing the framed Lab
-a `jupyterlab-plotly` extension built against a `plotly` the notebook env does
-not have. The kernel lives in the same prefix the server runs in, so Jupyter
-finds it through `sys.prefix` with no search path at all.
+There is deliberately **no kernel search path**. The kernel lives in the
+same prefix the server runs in, so Jupyter finds it through `sys.prefix`. A
+search path would be a cross-env leak: with the host env's `share/jupyter`
+first on `JUPYTER_PATH`, the framed Lab would get a `jupyterlab-plotly`
+extension built against a `plotly` the notebook env does not have.
 
 Held on the road by `tests/test_notebook_through_one_port_e2e.py`: `serve
 start` and `jupyter start` as a person types them, then a real browser on

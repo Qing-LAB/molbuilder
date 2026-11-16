@@ -45,8 +45,7 @@ There are **nine tabs**, and their order is defined in exactly one place — the
 > editor buffers, and **Save writes `task.json` and `job-request.json` through its own door**
 > (`POST /api/task-setup/save`) — the same reader and the same preflight the
 > CLI uses, so a description that fails its own checks is refused with the
-> findings, not repaired. *(It shipped read-only on 2026-08-16; the write
-> door landed with the U1 wave.)* Pinned by `tests/test_task_setup_tab.py`.
+> findings, not repaired. Pinned by `tests/test_task_setup_tab.py`.
 >
 > **Why it is not called "prep".** `prep` is the CLI verb that resolves the
 > machine and renders the deck — *exactly what this tab does not do* — so a user
@@ -54,10 +53,7 @@ There are **nine tabs**, and their order is defined in exactly one place — the
 > is taken twice over besides: a `Job` is a member of a `JobSet`, and it is the
 > scheduler's word. **Task** is the file the tab edits (`task.json`,
 > `molbuilder/task@2`, beside its job request), chosen for the same reason: it describes one task, and
-> the stage list is *how* that task is broken up. The reasoning is
-> `archive/2026-08-16-task-setup-plan.md` § 8. *(The tab shipped as "Job Prep"
-> for one commit on 2026-08-16 and was renamed the same day — the name was taken
-> off a mock-up's title without checking that record.)*
+> the stage list is *how* that task is broken up.
 
 **Molbuilder is the landing tab** — a bare `/` redirects to whatever is first in
 `TABS`. The tab nav bar itself is injected into every page from that one list (a
@@ -115,8 +111,9 @@ top, a **fused MolView card** in the middle, and a row of **Modify op-tabs**
 below. The controller code is deliberately thin glue:
 
 - **The 3D viewer is mounted by `selection-bootstrap.js`**, not by the tab's main
-  `viewer.js`. One call — `mount(host, workspace, {mode: "modify", owner:
-  "modify"})` — and the **MolView module builds the entire fused card itself**:
+  `viewer.js`. One call — `mount(host, workspace, {owner: "modify", …})`,
+  editable because it names no `mode` — and the **MolView module builds the
+  entire fused card itself**:
   the viewer, the selection panel, the view toggles, the cell panel. The tab
   hand-builds no viewer chrome. `selection-bootstrap.js` does only page glue:
   mount the module, turn a sidebar file-pick into a *candidate* (you still click
@@ -129,12 +126,6 @@ below. The controller code is deliberately thin glue:
   (`/api/modify/<op>`).
   Each op of `molbuilder/modify.py` returns a new `Structure` and leaves the one
   it was given as it was, so a script can keep the original.
-
-  *There was a fourth, **Junction (electrode)**, and it is gone: the panel with
-  the pair op (2026-08-31) and the per-side route with it (2026-09-01,
-  [`archive/2026-09-01-modify-redesign-plan.md`](?doc=archive/2026-09-01-modify-redesign-plan.md) § 3.4a — a plan,
-  for the history; this section is the rule). **Slab** is what replaced it, and it is
-  its own controller below.*
 - **`modify/slab-panel.js` is the Slab op-tab** — one fcc slab, placed from
   absolute coordinates rather than relative to a picked group, which is the
   whole point of the redesign. It is the one
@@ -145,7 +136,7 @@ below. The controller code is deliberately thin glue:
   number it will build with")*: picking a reference fills it, typing makes it
   *Custom*, and **Add slab with the box empty sends nothing** and says what
   to do — type the constant or pick a reference — rather than building with a
-  number the panel does not show *(2.68.2)*.
+  number the panel does not show.
 - **`modify/periodicity.js`** is the Cell op-tab — vacuum, per-axis periodicity,
   the unit cell, the cell origin — and commits through
   `molview.data.commitPeriodicityOp`, the cell's one door (`POST /api/structure/periodicity`; the server re-resolves the effective cell).
@@ -181,7 +172,7 @@ focus, and Enter or Escape takes it. **Clear** replaces the view with the file
 starting again — and the question says so when the view holds unsaved changes:
 an edit since the structure was last written or loaded, or a structure no file
 was ever written from — the page's own note (§ 6), never the viewer's
-timeline, whose points each edit lays down *(2.68.2)*.
+timeline, whose points each edit lays down.
 A file's pair is a whole structure — its labels, its cell, its recorded
 calculation — and adding it to another keeps the other's record, so the
 question is where the person chooses which they meant. With nothing open the
@@ -242,10 +233,10 @@ Results inspector — open a file through `projects.parser.openMolecule`, which
 replaces what the viewer holds after its own discard-unsaved check; the
 Molbuilder tab does not, because it adds.
 
-## 3. Structure optimization — generate a relaxation script
+## 3. Structure optimization — describe a relaxation and send it to Task setup
 
-`/structure-optimization` is a **three-card generator**: inspect a structure,
-read the charge and spin it will carry, describe the calculation. It mounts:
+`/structure-optimization` is **three cards**: inspect a structure, read the
+charge and spin it will carry, describe the calculation and Send it. It mounts:
 
 - a **read-only MolView** (`mode: "readonly", owner: "structure-opt"`) — you look,
   you don't edit;
@@ -261,11 +252,10 @@ read the charge and spin it will carry, describe the calculation. It mounts:
 
 The flow: **inspect** → **Charge and spin** (`POST /api/structure/analyze` with the
 structure the viewer holds and both forms' four state items, on every load,
-restore and edit) → ~~**Generate**~~ *(the two emit routes were **deleted**
-2026-08-17; a deck is rendered by `prep`, never by a browser)* →
-**Save to current dir**. There is no browser render route at all — both
-engines' were deleted with the same rule (a deck is rendered by `prep`).
-Live validation runs against `/api/build/preflight` as you edit.
+restore and edit) → **Send to Task setup** (`POST /api/task-setup/handover`,
+into the folder selected in the sidebar). No route renders a deck for a
+browser: a deck is rendered by `prep`. Live validation runs against
+`/api/build/preflight` as you edit.
 
 **The inspect card is the one the Spectrum tab shares**
 (`lib/structure-card.js`, `templates/_structure_card.html`): the read-only
@@ -300,12 +290,9 @@ and the check (`taskHandover.where`); the Spectrum tab does the same
 What the tab writes today is the DESCRIPTION, via Send to Task setup: the
 parameter template, the structure pair and the hand-over — written by the
 server, every file or none, the pair through the codec
-([`handover-procedure.md`](?doc=web/handover-procedure.md) § 2; until 2.69.10
-the page wrote each through `writeFile`).  Everything a run
+([`handover-procedure.md`](?doc=web/handover-procedure.md) § 2).  Everything a run
 needs beyond that — the deck, the pseudopotentials beside it, the `.run.sh`
-wrapper — is written by `prep` on the machine that runs it (the old
-`/api/siesta/install-pseudos` and `/api/run/install-wrapper` doors retired
-2026-08-21 with zero browser callers).
+wrapper — is written by `prep` on the machine that runs it.
 
 ## 4. Transport — the composite's describe surface
 
@@ -313,8 +300,7 @@ The tab writes a transport calculation's description itself — `task.json`,
 its job request and its template, into the folder the sidebar selects (no hand-over to Task setup:
 the five stages are fixed by design). What it is,
 rule by rule, lives in [`engines/transport.md`](?doc=engines/transport.md)
-§ 3.8; this section is the map of the page as built *(rewritten 2026-10-08,
-B8)*.
+§ 3.8; this section is the map of the page as built.
 
 **Five cards, driven by ONE fact — the citation** (an extension draws them
 as its five parts, below):
@@ -417,9 +403,7 @@ workspace's one door, each under the tab's own tag
 cited in its junction's place (`frame_set`) — and what the shared panel and each rung's tab hold
 (`transport:form` — one note, saved on every edit while a junction is cited
 and put back after each surface draws, for the junction it was typed for --
-or the finished calculation reused, its folder: the last one edited)
-*(2026-10-11; the rung tabs kept theirs in a browser slot of
-their own, and the shared panel kept nothing, until then)*. The bias list, its
+or the finished calculation reused, its folder: the last one edited). The bias list, its
 treatment and the electrode rename are not kept: a reload starts them over —
 an extension's at the finished calculation's voltages and treatment.
 
@@ -567,7 +551,7 @@ the tree.
 ### 5.5 The reading surface starts dark
 
 The app is dark, so the reader starts dark too — a document opening white
-inside a dark app was the 2026-08-23 defect. The bar's ◑/◐ button offers a
+inside a dark app would glare. The bar's ◑/◐ button offers a
 light reading surface (some people print from this pane), and that choice is a
 reading preference kept in this browser after it closes (`pagePrefs`,
 [`runtime.md`](?doc=web/runtime.md) § 3): a page opened later in the same
@@ -591,9 +575,9 @@ things and no more: **what** (the viewer's export) and **a suggested stem**.
 3. The door posts **`POST /api/structure/save`** with `{path, structure}`.
    **The server writes the pair** — `<stem>.xyz` +
    `<stem>.molstruct.json` — and stamps the sidecar's schema version and
-   structure hash itself. The browser never authors the sidecar (a past bug
-   wrote one the load door then rejected; the server-writes-it rule closed
-   it), and it assembles no bytes at all.
+   structure hash itself. The browser never authors the sidecar (a sidecar
+   the browser wrote is one the load door could reject), and it assembles no
+   bytes at all.
 4. An existing file answers **`409 {needsOverwrite: true, replaces}`**; the
    door confirms through `confirmOverwrite`, naming what a yes replaces, and
    retries with `overwrite: true`. On success
@@ -602,7 +586,7 @@ things and no more: **what** (the viewer's export) and **a suggested stem**.
    tone of the most severe — a warning's amber, a note the outcome's own
    ([`science/validation.md`](?doc=science/validation.md) R4) — composed by the
    one composer every save, load and upload line asks
-   (`validationFindings.outcome`) *(2.69.9; the line said the outcome alone)*.
+   (`validationFindings.outcome`).
 
 **What the tab keeps is the panel, not the pipeline**: the readout beside the
 button — *"Target: `<name>.xyz`"*, *"Unsaved — Target: …"* once you edit
@@ -611,7 +595,7 @@ the
 button's enabled state, and recording where the bytes went — the page's own
 note, because the viewer tracks contents and not files
 ([`molview.md` § 6.7](?doc=web/molview.md)). **Whether the view still holds
-what was written is that note's too** *(2.68.2)*: the page keeps the
+what was written is that note's too**: the page keeps the
 structure it last wrote — the payload the save sent, through Save to project
 or the viewer's own Export → Data → Save to project, which the page's door
 records alike (`savingThrough`, one door out) — or the one a file load
@@ -632,19 +616,6 @@ from or went to, and no note at all as edited.
 "pick a directory first": the directory is part of the question the dialog
 asks. A greyed-out Save whose reason is a selection somewhere else on the page
 is a control that cannot explain itself.
-
-> **Two implementations stood here, and this section described the older one.**
-> `modify/structure/save.js` was written before the front end had modules: it
-> could not `import`, so it took its collaborators off globals and grew its own
-> copy of the flow — its own name dialog, its own overwrite confirm, its own
-> refresh — while forcing the destination to the sidebar's current directory.
-> `molviewFiles` landed in 2026-08 on the modern path with the destination as a
-> question, and the Modify tab has mounted it into the viewer ever since; the
-> two reached the same route with the same body by two roads that were free to
-> drift, and had. The panel is now a panel and the door is the door.
->
-> *(This section also said the request carries a `blob`. It has not since the
-> browser stopped assembling bytes — the field is `structure`.)*
 
 ## 7. Data coherence — one rule, enforced server-side
 
@@ -689,31 +660,22 @@ So the Molbuilder tab's op-tab controllers are ES modules; the page
 controllers that mount MolView (`selection-bootstrap` and the two tab
 viewers) have one foot in ESM — they `import` the viewer — while their own
 bodies are still IIFEs reading globals; the structure-generation set plus the
-Documents controller are fully classic. Finishing these off is part of the "remaining classic modules" ESM
-workstream (`plans/plan.md` **W15**).
+Documents controller are fully classic. Finishing these off is not planned.
 
 ## 9. Test map
 
 - `test_tab_routes.py` — every canonical tab path renders + the nav contract
   (paths read from `TABS`).
-- `test_docs_tab.py` — the Documents tab: the list groups every `docs/*.md`,
-  `read` returns text + title, and the path-safety gate rejects traversal /
-  non-`.md` / outside-`docs`.
-- *(Four transport files stood here — `test_transport_render_endpoint.py`,
-  `test_transport_transiesta.py`, `test_transport_generate_e2e.py`,
-  `test_transport_preflight.py` — for "the transport render path, the engine,
-  end-to-end generate, preflight". **All four are absent from `tests/`**: the
-  render endpoint, the engine and the preflight were deleted 2026-09-17 and
-  this list was not swept. The transport surface is covered by
-  `test_transport_record.py`, `test_transport_cell.py`
-  and `test_transport_wizard.py`.)*
+- `test_docs_tab.py` — the Documents tab: the tree (`/api/docs/toc`) holds
+  every `docs/*.md` once, `read` returns text + title, and the path-safety
+  gate rejects traversal / non-`.md` / outside-`docs`.
+- `test_transport_record.py`, `test_transport_cell.py`,
+  `test_transport_wizard.py` — the transport surface.
 - `test_structure_save_endpoint.py` — the server end of § 6: the route, the
   pair it writes, and the `409 needsOverwrite` contract.
 - `test_molview_files_door_js.py` — the door § 6 goes through.
 - `test_structure_save_js.py` — the panel: that it delegates, and that it
-  records the path the server answered. *(`test_structure_save_dialog_js.py`
-  went with `save-dialog.js` on 2026-09-02 — the panel's second copy of the
-  name-and-overwrite flow.)*
+  records the path the server answered.
 - `test_smiles_fallback.py`, `test_structure_smiles_js.py` — the SMILES
   generator + the OpenBabel fallback.
 - `test_modify.py` — the Modify ops.

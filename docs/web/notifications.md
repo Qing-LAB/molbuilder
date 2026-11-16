@@ -5,7 +5,7 @@
 **Companions:** [`runtime.md`](?doc=web/runtime.md) — the registry it registers
 with, and the other shared building blocks; [`workspace.md`](?doc=web/workspace.md)
 — the one built-in source today (a failed save); [`overview.md`](?doc=web/overview.md)
-— the module registry; [`plans/plan.md`](?doc=plans/plan.md) **W15** — the pending ES-module pass.
+— the module registry.
 
 `notify` (`lib/app-notifications.js`, `window.molbuilder.notify`) is the **one
 consistent surface for system-level messages** that matter regardless of which
@@ -68,8 +68,7 @@ page, but Retract and a reload of this tab may not bring back everything."* A bu
 that one row rather than stacking. **A save that succeeds lowers it**: the
 dispatcher signals `molbuilder:persist-ok` after a write lands, and the row is
 cleared — only that row, the others stay — so a warning never outlives the
-recovery it warned about (measured 2026-09-05: until then the row stayed up
-after the disk came back).
+recovery it warned about.
 
 A **read** that fails — what a page saved, asked for back when it opens or on a
 Retract — comes on the same event and is a row of its own: *"What this page
@@ -79,11 +78,9 @@ the read could not.
 
 ## 4. Where the module stands (current → target ESM)
 
-Today `notify` is a **classic `window.molbuilder.*` script**. Converting it to an
-**ES module** — and, in the same pass, building it out as the framework it's meant
-to be — is part of the ES-module pass, [`plans/plan.md`](?doc=plans/plan.md) **W15**
-(its feature half — auto-dismiss, a `ttl`, a `detail`, a `success` level — is among
-§ 0a's *smaller open items*):
+Today `notify` is a **classic `window.molbuilder.*` script**, and
+`plans/plan.md` holds no item converting it or building it out. What
+converting it would take:
 
 - `export` the API; keep a transitional global door + the `persist-error` wiring
   for classic callers until they `import`.

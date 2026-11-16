@@ -32,7 +32,7 @@ can each stay focused on their own emitter.
 | [`builders.md`](?doc=engines/builders.md) | **Structure synthesis** — sequence / SMILES / name → a 3-D `Structure`; the pluggable nucleic-acid backend registry and per-backend quirk repairs. (Upstream of the emitters.) |
 | [`siesta.md`](?doc=engines/siesta.md) | The **SIESTA `.fdf` emitter** — the block set + emission order, charge / spin / cell / k-grid emission, and the `Diag.Algorithm` / GPU-ELPA / MPS eigensolver *setting*. |
 | [`pyscf.md`](?doc=engines/pyscf.md) | The **PySCF `.py` emitter** — output-file set, one deck per rung (a ladder is N decks and N jobs, `stages.md § 1.1a`), and the engine-agnostic **molwatch-log format** (which SIESTA also writes). |
-| [`transport.md`](?doc=engines/transport.md) | The **TranSIESTA / NEGF engine** — the transport COMPOSITE: one citation of a finished junction attempt → five derived stages (seed · electrode_L · electrode_R · device · transmission), and the cross-run consistency preflight (I1–I13). |
+| [`transport.md`](?doc=engines/transport.md) | The **TranSIESTA / NEGF engine** — the transport COMPOSITE: one citation of a finished junction attempt → five derived stages (seed · electrode_L · electrode_R · device · transmission), and the consistency contract across them (§ 5's invariants, held by construction or by the kind's own checks). |
 | [`tuning.md`](?doc=engines/tuning.md) | The **cross-engine VALUES guide** — the single owner of what number each convergence / quality knob should carry, per tier. Every other doc that names a tier value defers here. |
 | [`stages.md`](?doc=engines/stages.md) | What a **stage** is — molbuilder's idea, not any engine's — and `task.json`, the file that describes a ladder of them. |
 | [`template.md`](?doc=engines/template.md) | The **template** — a calculation's parameter catalogue: the TOML file holding every parameter with its value, the `kind` vocabulary that says which layer owns each one, and what *complete* and *lossless* mean for it. Shared by every engine; only the items differ. |
@@ -55,9 +55,7 @@ stay defined once. **Three** are defined in this document — the script wrapper
 (§ 2), the boundary-condition contract (§ 3) and the GPU contract (§ 3a) — and
 § 5 shows how a new engine plugs into them. § 4 is a **map** rather than a third definition: what the two
 ladders share is the **tier values**, and those are
-[`tuning.md`](?doc=engines/tuning.md) § 4's.  *(It counted three until
-2026-08-11, when the staged-optimization "policy" turned out to be PySCF's alone
-— see § 4.)* A fourth is large enough to
+[`tuning.md`](?doc=engines/tuning.md) § 4's. A fourth is large enough to
 have its own contract: the **template**
 ([`template.md`](?doc=engines/template.md)), the file that carries a calculation's
 parameters from a browser to whatever machine will run it.
@@ -67,20 +65,25 @@ parameters from a browser to whatever machine will run it.
 ## 2. The shared script-contract wrapper
 
 Every generated script — SIESTA `.fdf` *and* PySCF `.py` — is wrapped by the same
-blocks, emitted from one module (`molbuilder/script_emit.py`, imported as `_sc`) and
-called by both `siesta/input.py` and `pyscf/input.py`:
+blocks, which `script_emit.render_deck` writes after the engine body of every
+deck it renders — each engine's `spec_for` hands it the deck's form
+(`DeckSpec`), never a block:
 
 | Block | What it is | Emitted by |
 |---|---|---|
 | **provenance** header | molbuilder version + git SHA + generation timestamp, so a script is traceable back to what produced it | both (`emit_provenance`) |
 | **bench-marks** | a machine-readable metadata header (a `BenchField` set) for regression harnesses | SIESTA only (`emit_bench_marks`) — a PySCF deck declares no override surface, which is why a sweep cannot read one |
 | **ATOM-METADATA** block | the structure's `regions` + `frozen_atoms` as an in-body, round-trippable comment block (so the labels travel *with* the script) | both (`emit_atom_metadata`) |
-| **user-custom** placeholder | a marked region a user can edit. **Whether your text survives a re-generate depends on which surface writes the file** — the web Build tab reads it back, the CLI and `jobset prep` do not ([`job-contracts.md`](?doc=execution/job-contracts.md) § 3.5's table). *This row said "molbuilder preserves whatever the user put there" without qualification until 2026-08-17, which is true of one of the three paths* | both (`emit_user_custom_placeholder`) |
+| **ENGINE-OFFSET** | where the deck's atoms were placed | every deck (`emit_engine_offset`) |
+| **VIBRATION** | what a SIESTA force-constant deck's finish reads | SIESTA only (`emit_vibration_record`) |
+| **RUN-SETTINGS** | a PySCF script's run settings, live lines at its head | PySCF only (`pyscf.input.emit_run_settings_block`) |
+| **user-custom** placeholder | a marked region that is yours: every writer merges it from the file it replaces — `jobset prep` of a stage prepared before, the run script, the web Build tab — so your text survives a re-generate; a first prep has no earlier deck to read it from ([`job-contracts.md`](?doc=execution/job-contracts.md) § 3.5's table) | both (`emit_user_custom_placeholder`) |
 | post-processing hook | a commented-template section (in the engine body, emitted inline by each emitter — not a `_sc` block) where downstream steps attach | both (inline) |
 
 Because it is one module, a change to the wrapper contract lands in every engine at
-once. `siesta.md` § 3 and `pyscf.md` describe how their body sits *inside* this
-wrapper; the wrapper itself is defined here.
+once. `siesta.md` § 3 and `pyscf.md` describe how their body sits *inside* these
+blocks; the blocks themselves — which file carries which, in what order — are
+[`execution/job-contracts.md`](?doc=execution/job-contracts.md) § 3.1's.
 
 ---
 
@@ -97,12 +100,9 @@ issue**, never as silent absorption.
 > from config to actual calculation… if labels are not consistent or not recognized,
 > the script should give an explicit warning. No silent absorption of config."*
 
-**Reference instance — revised 2026-09-24.** The contract was first wired for
-the vibration kind on PySCF, when the held set was a **form field** seeded from
-the sidecar. That field retired at the spectra migration's P2 (2026-08-21), and
-the held set is now a **structure fact for every engine**: the `frozen_atoms`
-region of the `.molstruct.json` half of the pair, assigned in the viewer and
-never copied into a form. The three stages read today as:
+**Reference instance.** The held set is a **structure fact for every engine**:
+the `frozen_atoms` region of the `.molstruct.json` half of the pair, assigned in
+the viewer and never copied into a form. The three stages:
 
 ```mermaid
 flowchart LR
@@ -115,7 +115,8 @@ flowchart LR
 
 - **Stage 1 — intent is captured where the structure is.** The selection panel
   writes the labels into the sidecar's one `regions` store — `frozen_atoms` is
-  one of them, a *reserved* label rather than a key of its own (schema 7); the
+  one of them, a *reserved* label rather than a key of its own
+  ([`model/structure-molstruct.md`](?doc=model/structure-molstruct.md) § 2); the
   vocabulary (`L-electrode` / `bridge` / `interface` / `frozen_atoms`) is
   [`model/structure-annotations.md`](?doc=model/structure-annotations.md)'s.
   What is drawn held in the viewer is what the calculation holds: the Send
@@ -126,16 +127,16 @@ flowchart LR
   (`pyscf/vibration_deck.py`) into `FROZEN_ATOM_IDXS` — geomeTRIC's `$freeze`
   file for the relaxation, the free-atom Hessian after it; the SIESTA decks
   write `%block Geometry.Constraints` from `struct.frozen_atoms`, and the
-  vibration deck the FC range beside it; transport freezes the leads. No
+  vibration deck the FC range beside it; a transport calculation requires the
+  leads held, refusing a citation whose lead atoms are not. No
   emitter unions, infers or drops an index, and no generated script reads the
   sidecar at run time ([`engines/vibration.md`](?doc=engines/vibration.md)
   § 2.3, invariant I6).
 - **Stage 3 — labels are the user's.** molbuilder reads the labels it owns
   (the frozen label; a transport calculation's partition) and no other: any
   other label rides along untouched, and no preflight names it
-  ([`science/validation.md`](?doc=science/validation.md) § 5). The divergence
-  check that compared a form value against the sidecar retired with the form
-  value; with one source there is nothing to diverge.
+  ([`science/validation.md`](?doc=science/validation.md) § 5). With one
+  source — the region — there is nothing to diverge.
 
 Each surfaces as a structured `Issue` in the form's panel, and the vibration
 kind's checks add what holding means for the numbers: how many whole-body
@@ -148,14 +149,13 @@ motions survive the hold and are removed, and how many modes will be reported
 structure and the Issues panel and know exactly what will happen.
 
 **Per-engine label consumption** — which sidecar labels each engine actually
-uses. A label an engine doesn't consume is never silently absorbed: it is
-surfaced by the Stage-3 notice or round-tripped untouched in the script's
-ATOM-METADATA block:
+uses. A label an engine doesn't consume rides along untouched in the script's
+ATOM-METADATA block, read by nothing and named by no check:
 
 | Label | builders | siesta / pyscf opt | vibration (both engines) | transport |
 |---|---|---|---|---|
-| `frozen_atoms` | (sets it) | freezes in the relax (`Geometry.Constraints` / `$freeze`) | holds the relaxation and takes the Hessian over the free atoms only¹ | freezes the leads (union with lead regions) |
-| `regions` (`L-electrode`/`bridge`/…) | (sets it) | round-tripped in metadata (not consumed) | Stage-3 notice | **drives the whole derivation** |
+| `frozen_atoms` | — (the viewer's selection panel sets it) | freezes in the relax (`Geometry.Constraints` / `$freeze`) | holds the relaxation and takes the Hessian over the free atoms only¹ | requires every lead atom held — a citation whose lead atoms are not in `frozen_atoms` is refused |
+| `regions` (`L-electrode`/`bridge`/…) | — (the viewer's selection panel sets it) | round-tripped in metadata (not consumed) | round-tripped in metadata (not consumed) | **drives the whole derivation** |
 
 ¹ *partial Hessian* = second derivatives for the free atoms only, the block of
 the whole system's energy. What that saves, and what it cannot, is read from
@@ -163,32 +163,31 @@ the engines' own code in [`engines/vibration.md`](?doc=engines/vibration.md)
 § 4.4 and § 5.7 — on PySCF the response equations and the derivative
 integrals shrink with the free atoms and the exchange-correlation derivative
 matrices do not; on SIESTA the count of force evaluations shrinks and each
-stays whole-system. *(This footnote said "cuts the cost sharply" and "spectra
-consumes the form value" until 2026-09-24; both were false — the audit of
-2026-09-22 § 5.)*
+stays whole-system.
 
 ---
 
 ## 3a. The GPU contract — the user decides, every engine
 
-*Settled 2026-08-17 (user), and written here because it had no single home:
-SIESTA's mechanism is [`siesta.md`](?doc=engines/siesta.md) § 7–7.2, PySCF's was
-**undocumented entirely**, and the shared rule was nowhere. That is why the
-question kept being re-derived, and re-derived differently each time.*
+*Settled 2026-08-17 (user).* SIESTA's mechanism is
+[`siesta.md`](?doc=engines/siesta.md) § 7–7.2, PySCF's
+[`pyscf.md`](?doc=engines/pyscf.md) § 2a; the shared rule is this section.
 
 **Five rules. They hold for every engine, present and future.**
 
 > **G-1 — The GPU is a decision a person makes, and molbuilder never makes it
-> for them.** Each engine declares **one boolean item**, `kind = "engine"`,
-> `category = ["execution"]`, defaulting to **off**. Detected hardware never
+> for them.** **One boolean item serves every engine**, `use_gpu`:
+> `kind = "deck"`, `category = ["execution"]`, defaulting to **off**, its
+> `expands` naming each engine's reach (`Diag.ELPA.GPU`, `gpu4pyscf`). Detected hardware never
 > turns it on: a machine having a GPU is a fact about the machine, and wanting
 > to use it is a preference about this run — the same split
 > [`configuration.md`](?doc=configuration.md) § 5 M-1 draws for every other
 > machine fact.
 >
 > **Which surface asks is [`web/task-setup.md`](?doc=web/task-setup.md) § 6.2's**
-> — the Job Prep page, not a parameter tab (user, 2026-08-16). Both items sit
-> in `group = "staging"`, which `catalogue_to_form_schema` filters out, so a
+> — the run card on the Task setup tab, not a parameter tab *(user, 2026-08-16:
+> "use GPU or not is set up only at the Job Prep UI")*. The item sits in
+> `group = "staging"`, which `catalogue_to_form_schema` filters out, so a
 > parameter form cannot offer it even by accident.
 
 > **G-2 — It changes *where the work runs*, never the answer.** That is what
@@ -196,7 +195,7 @@ question kept being re-derived, and re-derived differently each time.*
 > ([`template.md`](?doc=engines/template.md) § 6.2): the knobs that change
 > speed and not the science. SIESTA's measured equivalence — ELPA-GPU and
 > ELPA-CPU agree to ~1e-6 eV on eigenvalues and ~1e-5 eV on the total energy
-> (§ 7.1) — is what earns the claim rather than assumes it.
+> ([`siesta.md`](?doc=engines/siesta.md) § 7.1) — is what earns the claim rather than assumes it.
 
 > **G-3 — Because of G-2 it is a legal benchmark axis, and it is the user's
 > to sweep.** A sweep may turn it on and off across trials for the same reason
@@ -204,7 +203,8 @@ question kept being re-derived, and re-derived differently each time.*
 > comparison is meaningful. Nothing else licenses sweeping a parameter.
 
 > **G-4 — How the engine *consumes* it never leaves that engine.** SIESTA emits
-> `Diag.ELPA.GPU` and gates it on an ELPA solver (§ 7); PySCF's script calls
+> `Diag.ELPA.GPU` and gates it on an ELPA solver
+> ([`siesta.md`](?doc=engines/siesta.md) § 7); PySCF's script calls
 > `mf.to_gpu()` through molbuilder's `runtime_info.to_gpu`. Neither spelling reaches any shared
 > layer — which is what `kind`'s vocabulary means by *the engine's own keyword*.
 
@@ -227,17 +227,17 @@ is decided by where the capability lives rather than by preference.
 
 | | **SIESTA** | **PySCF** |
 |---|---|---|
-| the item | `use_gpu` — **one merged item since 2026-08-23**, `kind="deck"`; it was `enable_gpu` here | `use_gpu` |
+| the item | `use_gpu` — the one item both engines share, `kind="deck"` | `use_gpu` |
 | what the flag turns on | `Diag.ELPA.GPU .true.` in the deck with an ELPA solver; with another the deck carries no `Diag.*` line, and the run is prepared as asked — the solver and the GPU are two of the person's choices | the script's SCF object moved onto the device after it is fully assembled (`runtime_info.to_gpu`, imported from `mb_pyscf.pyz`); a vibration script builds its SCF objects from gpu4pyscf's classes instead |
 | **where the capability lives** | in the **environment** — only `molbuilder-siesta-gpu`'s ELPA has the GPU codepath | in the **device**, plus `gpu4pyscf` + `cupy` |
 | **when it is checked** | **at `prep`** — an env is a fact the target's record states | **at run start** — you prep on a login node and run on a GPU node, so the device is not visible until the job is on it |
 | **what happens if it is missing** | **prep says so and prepares the job** — a note naming the env and how to install it; the run script stops at its start without it (`gpu.md` G6) | **the script exits** — `SystemExit` with the reason and the two ways out |
 
 **Neither engine can check at the other's moment**, which is why this is not an
-inconsistency to be flattened: SIESTA's env is knowable before queueing and its
-absence is fatal then; PySCF's device is *not* knowable before queueing, so the
-earliest honest refusal is the first second of the run. Both refuse. Neither
-downgrades.
+inconsistency to be flattened: SIESTA's env is knowable before queueing, so
+prep says so then and the run script stops at its start without it; PySCF's
+device is *not* knowable before queueing, so the earliest stop is the first
+second of the run. Both stop. Neither downgrades.
 
 > **G-5a — A benchmark reports what the run DID, never what it was asked for.**
 > With G-5 in place a completed PySCF trial that asked for the GPU *did* use
@@ -263,7 +263,6 @@ a GPU is present. G-5 governs *availability*, not *coverage*.
 
 | | |
 |---|---|
-| **one name** | ~~two spellings~~ **merged 2026-08-23.** `use_gpu` is one item, `kind="deck"`, `expands` naming both reaches — ruled 2026-08-13, landed when the catalogue merge and the rename went together (they could not be split: TOML cannot hold the key twice). A caller asking *"does this run want a GPU?"* now asks once |
 | **`read_by`** | `use_gpu` is one item and declares `read_by = ["wrapper"]` — SIESTA's half, because a GPU deck needs the source-built env and a GPU runtime the wrapper asks for; PySCF's half has no env routing in `runwrap` and checks the device at run start (the catalogue's `[item.use_gpu]`). Nothing consumes the declaration yet: no caller asks `select(read_by=…)` ([`template.md`](?doc=engines/template.md) § 12.1, row 4) |
 | **`gpu_used` read-back** | G-5a is a rule with no reader yet: nothing compares a PySCF trial's asked GPU against `_RUNTIME_INFO['gpu_used']` |
 
@@ -272,32 +271,16 @@ a GPU is present. G-5 governs *availability*, not *coverage*.
 ## 4. Staged optimization — what the two engines share, and what they do not
 
 Both the SIESTA and PySCF emitters ship a **three-stage relaxation ladder**, and
-**they share the tier values and nothing else.** The section title said *"the
-shared staged-optimization contract"* until 2026-08-11, which was true when the
-two halves were symmetric and has not been since 2026-08-07.
+**they share the tier values and nothing else.**
 
-> **The two halves separated on 2026-08-07, on purpose.** A stage is not a
-> property of a calculation, so an engine config carries no stage list:
-> `SiestaStageSpec` and `SiestaConfig.stages` were **deleted**, and the SIESTA
-> ladder lives in `task.json` as `task.py::Stage` — `name` and `overrides`
-> (how a stage runs is the job request's, `execution/job-request.md`); `overrides` may name **any** field of the shared schema
-> ([`engines/stages.md`](?doc=engines/stages.md) § 1.1–1.2). **PySCF kept a
-> stage list of its own** while the SIESTA path was being built: its ladder ran
-> inside one process, so there the list was also engine behaviour. The parity
-> tests that policed the old symmetry went with the SIESTA half.
->
-> **That exception closed 2026-08-17** ([`stages.md` § 1.1a](?doc=engines/stages.md)):
-> the ladder is declared in `task.json` for **both** engines. Where it is
-> *declared* and how it *runs* were two questions, and only the second was ever
-> PySCF's difference.
->
-> ⚠ **And the second closed 2026-08-18** (same section): a PySCF ladder is N decks
-> and N jobs, like SIESTA's. This paragraph ended *"and PySCF still executes it in
-> one process"* until then; the list is no longer engine behaviour either.
->
-> What the two still share is what this section is actually about — **the tier
-> values**, below. That was always the part worth keeping aligned; the
-> dataclass shape was not.
+> A stage is not a property of a calculation, so no engine config carries a
+> stage list: the ladder lives in `task.json` as `task.py::Stage` — `name` and
+> `overrides` (how a stage runs is the job request's,
+> `execution/job-request.md`); `overrides` may name **any** field of the shared
+> schema ([`engines/stages.md`](?doc=engines/stages.md) § 1.1–1.2). For both
+> engines a ladder is N decks and N jobs
+> ([`stages.md` § 1.1a](?doc=engines/stages.md)). What the two share is **the
+> tier values**, below.
 
 - **The tier *values*** (algorithm, steps, force / `gmax`, per stage) are owned by
   **[`tuning.md`](?doc=engines/tuning.md) § 4** — the single value table both emitters
@@ -312,45 +295,22 @@ two halves were symmetric and has not been since 2026-08-07.
   and its semantics live with the engine that has it,
   [`pyscf.md`](?doc=engines/pyscf.md) § 3.
 
-  *This bullet has been wrong twice, in opposite directions, and both times
-  because it restated a rule owned elsewhere. Until 2026-08-11 it said the
-  policy was **shared** — the fourth copy of a claim already corrected in
-  `stages.md` § 3, `job-contracts.md` § 6.2 and `job-system.md` § 4.1. Until
-  2026-08-19 it said PySCF keeps it **because its ladder is a loop inside one
-  process**, nineteen lines after this same file records that the loop was
-  retired ([`stages.md § 1.1a`](?doc=engines/stages.md)).*
-
-> **Why this one was worth catching rather than quietly editing.** A section
-> that says *"defined here"* is claiming to be the single owner, so a reader
-> checking the rule stops at it — and this one had been wrong for four days
-> about which engines it covered. **The tell was the sentence, not the
-> content:** the singularity claim is what made it worth verifying, and three
-> other documents already disagreed with it.
-
-`pyscf.md` § 3 owns `on_nonconvergence`'s per-rung semantics (its § 5 records
-that a ladder is N decks — the loop this line once pointed at is retired).
-`siesta.md` § 8 is where SIESTA's absence of one is recorded — **and it used to
-say "the runner side", a runner (`render_siesta_stages_runner`) deleted on
-2026-08-10.**
+`pyscf.md` § 3 owns `on_nonconvergence`'s per-rung semantics. `siesta.md` § 8
+is where SIESTA's absence of one is recorded.
 
 ---
 
 ## 5. Adding a new engine
 
-**There is no engine registry, and a new engine does not register.** Both
-existed and both are gone: spectra's retired at its migration's P3 (2026-08-21,
-the vibration kind rides the JobSet seam instead), and transport's —
-`transport/engine_base.py`, a `Protocol` with four declared members, one
-implemented, one engine and one caller — was deleted 2026-09-17. This paragraph
-told a reader to `@register_engine` against it for four weeks after the first
-went and for the hours after the second.
-
-A backend joins the way every calculation KIND joins: it is **described** (a
-`task.json` naming the kind, a template carrying its catalogue rows) and
-**rendered** through `spec_for` → `DeckSpec` → `prepare_deck`, which is floor
-3's one writer. A PySCF-NEGF transport engine is a `spec_for` arm and a set of
-catalogue rows, not a registration. To satisfy the contracts above, a new engine
-must:
+**A new engine is a record, not a registration.** It states what differs in
+the engine table ([`execution/architecture.md`](?doc=execution/architecture.md)
+§ 3.3; `molbuilder/data/engine_table.toml`, read by `engine_table.engine`) —
+its config class, validator, same-calculation reader, seam, environments and
+programs — and has a part on each kind it runs in the kind table. A
+calculation on it is **described** (a `task.json` naming the kind, a template
+carrying its catalogue rows) and **rendered** through its seam's `spec_for` →
+`DeckSpec` → `prepare_deck`, floor 3's one writer. To satisfy the contracts
+above, a new engine must:
 
 1. **Read only the labels molbuilder owns** (Stage 3: the frozen label; a
    transport calculation's partition) — every other label rides along

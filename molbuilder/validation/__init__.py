@@ -47,8 +47,8 @@ from ..structure import Structure
 # The checks this entry point runs.
 from .chemistry import check_electronic_state, check_species_labels
 from .geometry import validate_geometry
-from .metadata import (_check_fixed_on_every_rung, _check_inactive, _inactive,
-                       _check_values, _validate_config_metadata,
+from .metadata import (check_fixed_on_every_rung, check_inactive, inactive_settings,
+                       check_values, validate_config_metadata,
                        not_carried_by)
 
 
@@ -243,22 +243,22 @@ def validate(struct: Structure, cfg, *,
     # vibration cannot relax with -- a value past a hard limit -- a
     # displacement SIESTA divides by.  Reported after the metadata's own, in
     # the order this function has always emitted.
-    refusals = _check_values(cfg, calculation, engine)
+    refusals = check_values(cfg, calculation, engine)
     refused = frozenset(i.where.split(".", 1)[1] for i in refusals)
     # ...AND WHAT ENTERS NOTHING HERE -- a greyed-out field's (`engines/
     # template.md` § 5, `active_when`): said once below, and no advice is
     # given about it -- no recommended range, no probe's displacement.  A
     # value refused, and a setting waiting on it, draw that refusal alone.
-    inactive = _inactive(cfg, calculation, engine, refused=refused)
-    issues += _validate_config_metadata(
+    inactive = inactive_settings(cfg, calculation, engine, refused=refused)
+    issues += validate_config_metadata(
         cfg, refused=refused,
         foreign=not_carried_by(engine, calculation), inactive=frozenset(inactive))
     # WHAT EVERY RUNG FIXES ALIKE (`engines/template.md` § 6.4): a config
     # that skipped `resolve` holds whatever its caller put there.
-    issues += _check_fixed_on_every_rung(cfg, calculation, engine)
+    issues += check_fixed_on_every_rung(cfg, calculation, engine)
     issues += refusals
     # A VALUE THAT ENTERS NOTHING HERE: said once.
-    issues += _check_inactive(cfg, calculation, inactive)
+    issues += check_inactive(cfg, calculation, inactive)
     # THE ELECTRONIC STATE, judged by its one family of findings, for every
     # engine and every kind.
     issues += check_electronic_state(struct, cfg, calculation=calculation,

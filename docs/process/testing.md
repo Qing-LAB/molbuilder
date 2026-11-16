@@ -155,8 +155,10 @@ Config worth knowing (`pyproject.toml`): `testpaths=["tests"]`,
 
 `tests/` is **flat at the top** with a few topic subdirs (`tests/parse/`,
 `tests/spectra/`, `tests/validation/`, `tests/watch/`, and `tests/field/` — the
-field tests, collected only when a probed record is named, § 0); fixtures live in
-`tests/data/`. Naming is `test_*.py`.
+field tests, collected only when a probed record is named, § 0); the shared
+doors live in `tests/support/` (§ 8), the case tables and small inputs in
+`tests/data/`, an engine's real inputs in `tests/fixtures/` (§ 0). Naming is
+`test_*.py`.
 
 The one *structural* rule is **layering**, and **review keeps it, not a test**
 *(user, 2026-09-27: "a static code review problem")* — imports only point down:
@@ -165,9 +167,8 @@ The one *structural* rule is **layering**, and **review keeps it, not a test**
 - **L2** (domain verbs — builders, engines, parse, …) may import L1, not L3;
 - **L3** (the two *surfaces*, `cli.py` and `web/`) may import anything.
 
-`tests/test_layering.py` read every module's imports to check it until
-2026-09-27; a scan of the package's own source earns no place (*What does NOT
-earn a place*, below), and the two failures that matter at run time show up
+No test reads the package's imports: a scan of the package's own source earns
+no place (*What does NOT earn a place*, below), and the two failures that matter at run time show up
 without it — an upward import at a module's top fails every import of that
 module, and a file that ships beside a job and reaches into molbuilder fails
 there, which `tests/test_monitor_watches_a_live_run_e2e.py` runs. **The proof is a
@@ -230,10 +231,6 @@ raises `TouchedYourProjectsTree` (a `BaseException`, which `except Exception`
 cannot swallow) and fails the test at report time even if something swallowed
 it. The shared input library `projects/pseudopotential/` may be read, never
 written (§ 2b).
-*(Until 2026-10-16 an AST scan of the test files looked for the repository
-root joined to `projects`; it found thirteen sites in seven files, converted
-2026-09-06, and could not see the commoner road — a default reached through
-the code.)*
 
 **A fixture of your own that re-isolates `HOME` or `XDG_CONFIG_HOME` moves the
 machine scope out from under `conftest`'s.** If the test then preps, call
@@ -243,13 +240,11 @@ without a probed record (`running-a-job.md` § 3.1).
 ### 2b. A test never reaches the person's machine
 
 **What a test may touch is decided once, for the whole run, before anything is
-collected — never per test, and never by the helper that writes.** *(2026-11-02: a
-helper of this suite, run by hand from a script, wrote its test machine record
-into the person's real `~/.config/molbuilder/environment.json`, and every real
-run on that machine failed until it was probed again; the audit that followed
-found module fixtures, collection-time checks and child processes running outside
-the per-test isolation, and tests posting to Slack and solving against
-conda-forge — [`archive/audits/2026-11-02-test-audit`](?doc=archive/audits/2026-11-02-test-audit/README.md).)*
+collected — never per test, and never by the helper that writes.** *(A
+helper run outside the run's isolation can write a test machine record into
+the person's real `~/.config/molbuilder/environment.json`, and every real run
+there then fails until it is probed again —
+[`archive/audits/2026-11-02-test-audit`](?doc=archive/audits/2026-11-02-test-audit/README.md).)*
 
 `conftest.py` sets it up while it is imported:
 
@@ -419,9 +414,8 @@ answered every route with success, where the route refuses).
    failure uncausable**: a full storage quota looked like one, and Node
    enforces a real one (§ 4).
 
-Where the suite still breaks this, the finish-line review's O-TESTS row
-records the audit, by kind of fake, and the parts of the tests stretch that
-remove what is left.
+Where the suite still breaks this, [`plans/plan.md`](?doc=plans/plan.md)
+carries what is left (the tests stretch).
 
 ### Every test states its GOAL and its CONTRACT, in its first lines *(user, 2026-09-08)*
 
@@ -452,22 +446,16 @@ def test_a_run_script_refuses_a_second_start_in_its_run():
 obsolescence visible.** The audit that produced § 3b spent most of its effort
 reconstructing, from the body outward, what each test was *for* — and the
 verdicts that were hardest to reach were exactly the tests that never said.
-Several turned out to guard code that had been deleted: a `-stage<N>` filename
-spelling retired 2026-08-10, a `_mb_mem_est` block with zero hits in the
-package, a `MOLBUILDER_PREACTIVATE_CMDS` hook that no longer exists. **Each of
-those was one grep from being retired, and stayed for months, because the test
-never named the thing it was protecting.**
+**A test that never names what it protects outlives the code it guards: one
+grep from being retired, it stays for months.**
 
 A stated contract also fails usefully: when the contract moves, the citation
 goes stale and the test announces its own obsolescence instead of quietly
 pinning a retired design.
 
-> **The two guards that used to make that automatic are gone**, retired
-> 2026-09-10 in the sweep that cut 18 files asserting the shape of the
-> repository rather than a result. That was right by this page's own rule — *a
-> doc path still resolves* is a static-review finding, not a test. The cost is
-> worth stating plainly: **a retired guard moves the work to review, it does not
-> delete the work.**
+> **No test checks that a cited document still resolves** — *a doc path still
+> resolves* is a static-review finding, not a test. A rule review holds moves
+> the work to review; it does not delete the work.
 
 **The four questions a header should let a reader answer without reading the
 body:** what breaks if this goes; who owns the rule; has it ever actually
@@ -546,16 +534,9 @@ test_read_system_degrades_on_a_missing_bundle        -> summarize._read_system
 
 All four are callers of `runfiles.find_by_role`. If the door is right they all
 pass; if it is wrong they all fail together — **four tests carrying one bit**.
-*(None of the four is in the suite; the example stands as the pattern.)*
-
-> **The first one stopped being an example on 2026-09-18, and the reason is
-> this section's own rule.** `openable_in` still calls `find_by_role`, so the
-> claim above is still literally true of it — but it is no longer THIN: it
-> asks the catalogue which dotted roles to try (`_search_roles`, over
-> `runfiles.result_roles`), and the registry whether anything can open the
-> answer (`model/parse.md` § 5.2). Rules the door cannot know, so by the rule below it earns its own
-> tests. Left in place rather than swapped, because a caller *becoming* a
-> decider is the transition worth showing.
+*(An illustration; none of the four is in the suite — and `openable_in` today
+decides more than the door knows, asking the registry whether anything can
+open what it finds, so by the rule below it earns tests of its own.)*
 
 > **Test the DOOR's outcome. Test a caller only where the caller DECIDES
 > something the door cannot know.**
@@ -564,12 +545,12 @@ A caller earns its own test when it adds a rule of its own — and those are wor
 a lot, because that is where the real defects were:
 
 - the status door deciding *queued* vs *pending* from which roles are
-  present (then `runstatus`'s own, now `parse.dirs.run_status`) — the policy is the caller's, and a finished PySCF rung reported
+  present (`parse.dirs.run_status`) — the policy is the caller's, and a finished PySCF rung reported
   **queued** because `.pyscf.log` was not in the set it asked for;
 - `runrecord.ending` **degrading rather than raising** on a deck
   name it was handed — a reporter's contract, not the grammar's;
-- `parse.engines._sidecar.read_frozen_atoms` reconstructing a name instead of
-  asking by role — every staged run silently lost its frozen atoms.
+- a frozen-atom reader reconstructing a name instead of asking by role —
+  every staged run silently lost its frozen atoms.
 
 None of those three is visible from the door. All three are real, measured, and
 each is worth more than the twelve wrapper tests put together.
@@ -583,20 +564,13 @@ tests collapse into one door test plus the guard that keeps callers on the door.
 A unification that *adds* tests has usually not unified anything — it has added a
 layer and kept the old surface, and the test count is the first place that shows.
 
-*This section exists because the opposite happened. The paths framework
-(`plans/plan.md` § 5k) was undertaken to reduce complexity, and the migration
-shipped **five new test files in one day** — one test per migrated call site,
-alongside the guard that already made most of them unnecessary. The count is
-evidence: it went up while the API was being unified, which is precisely the
-signal this rule names.*
+*A unification that ships one test per migrated call site, beside the guard
+that already made most of them unnecessary, has raised the count while
+unifying — the signal this rule names.*
 
-> **And the follow-on proves the rule twice.** § 5l answered the same problem by
-> specifying a replacement API — one address, three verbs — and `ref.py` shipped
-> with a full test file and **no production caller at all**. For over a week the
-> repo carried a module and its tests that answered nothing, while the ~40
-> functions it was meant to replace kept being used. **A test file is not
-> evidence that a unification landed**; a retired call site is. The standard was
-> retired and both files deleted 2026-09-17 (`plans/plan.md` § 5l).
+> **A test file is not evidence that a unification landed; a retired call site
+> is**: a replacement API with a full test file and no production caller
+> answers nothing while the functions it was to replace stay in use.
 
 ### How to review a test for retirement
 
@@ -605,11 +579,10 @@ Ask in order, and stop at the first *yes*:
 1. **Is it subsumed?** Would another test already fail for this cause?
    **A subsumption verdict needs a MUTANT, not an argument** — break the code and
    watch the *coverer* go red too: `python tools/verify_subsumption.py pairs.json`.
-   Measured with a FIXED operator set 2026-09-09: this reasoning was **wrong on
-   9 of 19 candidates -- nearly half**. (The earlier figures of 1-in-5 and
-   1-in-3 were measured with a harness that had no operator for dropping a
-   clause from an `or`, which is the commonest shape in a validator: a guard is
-   `not isinstance(x, T) or not x` and its two tests reach ONE CLAUSE EACH.)
+   Measured 2026-09-09: this reasoning was **wrong on 9 of 19 candidates**.
+   The harness needs an operator that drops a clause from an `or` — the
+   commonest shape in a validator (`not isinstance(x, T) or not x`, whose two
+   tests reach one clause each).
    Coverage cannot rescue it either, because two tests can cover one line and
    still assert different things about it. A verdict of INCONCLUSIVE means the harness has no
    opinion — never that the cut is safe.
@@ -682,14 +655,12 @@ classes that carry them through their loaders (`test_catalogue_agreement.py`),
 a catalogue item with no panel to sit in
 (`test_every_catalogue_item_declares_a_panel`), and the notebook shepherd's
 stop grace overrunning the supervisor's
-(`test_the_shepherds_grace_stays_under_the_supervisors`). Three that read text until 2026-10-16 now ask the outcome or
-went to review: your `projects/` tree touched by the suite is watched while
-every test runs (the guard in `conftest.py`, § 2a); a vendored file shipped
-without its licence is asked of the built wheel
-(`test_wheel_ships_the_front_end.py`); a composed name found by hand is
-review's (`code-audit.md` § 1c (f)). Every other test
-that read a file for what is in it was retired or replaced by a test of the
-outcome (plan, TST, 2026-10-15 and 16).
+(`test_the_shepherds_grace_stays_under_the_supervisors`). Your `projects/`
+tree touched by the suite is watched while every test runs (the guard in
+`conftest.py`, § 2a); a vendored file shipped without its licence is asked
+of the built wheel (`test_wheel_ships_the_front_end.py`); a composed name
+found by hand is review's (`code-audit.md` § 1c (f)). No other test reads a
+file for what is in it.
 
 **What replaces a retired pin is REVIEW, not silence.** The claims those
 tests make are real; what is wrong is asking a grep to check them. The four
@@ -703,8 +674,7 @@ what each one looks like and why it cannot be seen at runtime.
 was trying to establish, then either **redesign** it to observe that through
 behaviour, or **retire** it because the intent has no observable consequence.
 Deleting without reading loses coverage that was real; keeping without reading
-keeps a check that cannot fail. B3 in [`plans/plan.md`](?doc=plans/plan.md)
-tracks the backlog.
+keeps a check that cannot fail.
 
 ### 3a.1 A test that admits it cannot see the behaviour has already failed
 
@@ -732,11 +702,6 @@ that is a claim to check, never to believe:
 | another test | **exists and drives the behaviour** | delete the pin — it is a duplicate |
 | another test | **does not exist** | the pin was the only coverage there ever was — write the e2e, *then* delete |
 | "a browser", no test named | — | write the e2e, then delete |
-
-On 2026-09-03 all three occurred. `test_this_machine_js.py` cited
-`test_config_dir_has_one_home`, which **had never been written**, and no
-browser test visited `/this-machine` at all — so a page nothing tested carried
-a docstring claiming it was tested elsewhere.
 
 **Why an admission is worse than an ordinary pin.** A pin that says nothing is
 merely weak. A pin that names its own replacement is *load-bearing
@@ -807,7 +772,7 @@ plus a handful of others. `tests/_node_esm.py` is **the harness to use**, and
 its `run_node(files, snippet)` loads an ordered list of module files via
 dynamic `import()` and then runs a JS snippet against them.
 
-**The browser's own storage** *(2.70.3)*: `run_node(..., storage=True)` runs
+**The browser's own storage**: `run_node(..., storage=True)` runs
 Node with its Web Storage (`--experimental-webstorage`, a `localStorage` file of
 the run's own, gone with it) — the `sessionStorage` and `localStorage` a page
 keeps values in (`lib/page-prefs.js`, `runtime.md` § 3), the real
@@ -846,8 +811,8 @@ rule) needs no server and is tested as it is.
 > `projects_render_sidebar`, `structure_page`, `structure_save`, `tab_strip`,
 > `task_setup_save_bar`) -- all but `structure_page` with a DOM of their
 > own -- and **2** drive a browser under a fast-tier name (`form_schema_diff`,
-> `form_schema_setvalues`). Converting them is the tests stretch's (the
-> finish-line review's O-TESTS). Reach for `run_node` in anything new.
+> `form_schema_setvalues`). Converting them is the tests stretch's
+> ([`plans/plan.md`](?doc=plans/plan.md)). Reach for `run_node` in anything new.
 
 **A classic script loads as CommonJS** under `run_node`: a file with no
 `import` or `export` is read by node's CommonJS loader, so a second
@@ -862,7 +827,8 @@ its `window.molbuilder.*` global as a side effect, and a converted ES module
 publishes the *same* global **and** exposes exports — a dynamic `import()` runs
 either kind. So a test that reads through the **global** (`window.molbuilder.X`)
 passes *before and after* its module converts to ESM — no per-module test churn at
-conversion time. (This is why the ESM tasks #103–#107 don't drag a test rewrite
+conversion time. (This is why the ESM conversions
+[`web/overview.md`](?doc=web/overview.md) § 6 lists drag no test rewrite
 behind them.)
 
 Reach for a JS unit test for anything you can express as "load these modules, call
@@ -874,12 +840,11 @@ The `*_e2e.py` tests use **Playwright** against a real headless Chromium, or a
 real engine — the name sorts them into the slow batch; a test that drives a
 browser skips without the browser plugin by the one rule (§ 4, *one rule for
 missing tooling*: it asks for one of the plugin's fixtures), whatever its file
-is named; an engine-less road test is tier 1 and named plainly *(2026-10-08,
-B8 S4: five such files lost the suffix)*. Each
+is named; an engine-less road test is tier 1 and named plainly. Each
 starts the app on a **live server** through `support.live_server.serve`, which
 stands on the test's own projects tree: a module's server asks
-`isolated_projects_root_module` (each e2e file's own fixture still, to be
-`app_at`, § 2a, when F10 runs them), a server started per test asks
+`isolated_projects_root_module` (a module starts its own, at the scope it
+chooses, or uses `app_at`, § 2a), a server started per test asks
 `isolated_projects_root`, a test serving a real run's tree points the door
 at it first (§ 2a), and with no tree pointed `serve` refuses. The test drives
 the `page` fixture (`page.goto(f"{base}/molbuilder")`, …).
@@ -920,7 +885,7 @@ These are the durable patterns — follow them and the e2e tests stay stable:
 ## 6. A few named test patterns
 
 - **Artifact lints** — kept only where § 3a names them; the rest are replaced
-  by tests of the outcome (plan, TST). A lint asserts a property that must hold
+  by tests of the outcome. A lint asserts a property that must hold
   across *every* file in a class, checked on the artifact rather than on a
   runtime. E.g.
   `test_security_headers.py::test_no_page_served_carries_inline_javascript`
@@ -940,16 +905,10 @@ These are the durable patterns — follow them and the e2e tests stay stable:
   care. Ask that of anything you add here.
 
   **A vocabulary survey cannot tell a retired design from an undocumented
-  one — and the two want opposite actions** *(2026-09-02)*. 58 tests were
-  proposed for retirement because their vocabulary (`fileState`, `fetchSeq`,
-  `uiPrefs`) appeared in no live document. It was the shipped code's own
-  structure: `lib/trajectory/core.js` is built exactly that way, `fileState`
-  alone appears 54 times in it, and retiring them would have deleted the ONLY
-  enforcement of `results.md` § 4. What was true is that the names had no live
-  home — so the fix was to WRITE the section, not to delete the tests. Before
-  retiring a test for naming something undocumented, open the code: an
-  undocumented rule that the code holds is a documentation gap, and the test
-  is the thing keeping it honest.
+  one — and the two want opposite actions.** Before retiring a test for
+  naming something undocumented, open the code: an undocumented rule the code
+  holds is a documentation gap — write the section — and the test is what
+  keeps it honest.
 - **A contract's cases are a TABLE, run down the road** *(user, 2026-10-01:
   "why can't test be just data/config file driven query kind of test?";
   "(1) query, allow or deny, (2) correctly produce slurm command/header, (3)
@@ -981,33 +940,21 @@ These are the durable patterns — follow them and the e2e tests stay stable:
   of a calculation nothing ran. **Nor a run saved from another day**: the
   run is made in the test's own session, so what it is read against is what
   molbuilder writes today — a saved run's records drift with every change to
-  their writers (the relaxation kept under `tests/fixtures` from 2026-09-24
-  had met 54 changes to the run script and 13 to the description by
-  2026-10-06), and its engine output belongs to the engine's version. A
+  their writers, and its engine output belongs to the engine's version
+  *(user, 2026-10-06: "when a test need siesta's output why is it not part of
+  a e2e test? ... what's different about the one that remains")*. A
   run's files may be replayed — the monitor shown the run's own output as it
-  grew, under its own names — when the run was made in the same pass
-  *(the measured fixtures and the frozen outputs of older runs left the suite
-  2026-10-06: user, "when a test need siesta's output why is it not part of
-  a e2e test? ... what's different about the one that remains")*. *(282 tests and 10 case-table rows were retired for it that
-  day, the transport suite's citation fixture and the run-ending and viewer
-  cases of plan W55 9b among them. The rest went on 2026-10-04 — user: "any
+  grew, under its own names — when the run was made in the same pass. **A
+  test that fakes output is kept only with its reason stated to the user
+  first** *(user, 2026-10-04: "any
   fucking faking tests should be retired"; "if you find any such tests, need
-  to carefuly justify why we need them" — 446 tests in 72 files, 16 of them
-  deleted whole: parser tests on made-up output text, refusals of
-  hand-edited result files, restart files planted for the cold start and the
-  carry, and the two fixtures that had been cut from their runs.)* **A test
-  that fakes output is kept only with its reason stated to the user first**
-  — and none is kept: the synthetic runtime-header lines, the parser's own
-  output saved as its expectation, an output cut to its first steps and the
-  templates edited back into an older shape went 2026-10-06. **No test
-  builds an older release's files** — a calculation, deck, template or
-  sidecar as an older molbuilder left it *(user, 2026-10-16: "you keep
+  to carefuly justify why we need them")*. **No test builds an older
+  release's files** — a calculation, deck, template or sidecar as an older
+  molbuilder left it *(user, 2026-10-16: "you keep
   working with old files … very soon we won't have anything to migrate.
   Having it or not doesn't impact our work. This is design")*: `jobset
   migrate` and the readers of an older release's records stay as they are,
-  and no work goes into them. The road runs turned back into 2.8.0's and
-  2.9.6's files — a calculation carried across the upgrade, a template
-  migrated, a deck stating no order — went that day.
+  and no work goes into them.
 - **API tests check what molbuilder prepares; end-to-end tests make the run**
   *(user, 2026-10-04: "you have to rely on more api and framework test rather
   than fucking e2e test. e2e test is only necessary when i say so";
@@ -1026,12 +973,8 @@ These are the durable patterns — follow them and the e2e tests stay stable:
   are supposed to verify mechanism ... a Au-BDT-Au is too much"*), each run
   made once a pass (tier 3: `tests/support/real_runs.py`,
   `tests/test_the_road_on_real_runs_e2e.py`,
-  `tests/test_transport_on_a_real_junction_e2e.py`).  *(From 2026-10-04 to
-  2026-10-08 the hand-overs and a launch's records were tested on a fake
-  `siesta` that ended as a row said and left a restart file — a design
-  written here under the user's quote above, though the user never asked
-  for a fake engine; plan § 5y.)* A browser or a real engine in a test is
-  for when the user asks for one.
+  `tests/test_transport_on_a_real_junction_e2e.py`). A browser or a real
+  engine in a test is for when the user asks for one.
 - **State-composition tests** — the molview class of bug: a value is correct in
   isolation but wrong once composed with a sibling piece of state. These get an
   explicit test that exercises the *combination*, not each part alone.
@@ -1064,13 +1007,9 @@ The working loop this enables: run the tests the change touched, read
 paying for a whole re-run. A whole batch is for a change that moves or removes a
 whole surface, not a step before every commit.
 
-> **Why this is documented so emphatically.** On 2026-07-29 a session ran three
-> full sweeps as `pytest … | tail -14`, saw 7 of 31 failures, inferred the rest
-> from whichever files it was already touching, and pushed two regressions as a
-> result — a half-migrated per-slot map in `warning-modal.js`, and a new embed
-> handle method missing from its documented-surface list. Both were sitting in
-> the 24 failures the `tail` had cut off. `status --fails` shows all of them in
-> one line each.
+> A truncated view hides failures: a `tail` shows a fraction of them, and
+> conclusions drawn from it ship regressions. `status --fails` shows every one,
+> a line each.
 
 **What `status` says is about what it ran, and it says so.** A `done` from other
 code reads `done, ON OTHER CODE`, with when it ran: a digest of every file git would
@@ -1101,9 +1040,8 @@ tests are collected:
    *when* such a file runs, never *how*. pytest itself moves the tests of a
    session-scoped parametrized fixture together across files — every browser
    test, by pytest-playwright's `browser_name` — so the collection hook puts
-   each file back together after it, in the order pytest gave its tests
-   *(found 2026-10-16: the e2e batch ran the junction's file in two pieces and
-   made its real runs twice; ten files of the suite were split)*. **Every other
+   each file back together after it, in the order pytest gave its tests: a
+   file split builds its shared fixtures twice, real runs among them. **Every other
    test runs on whichever worker is free**: its fixtures are its own, so where
    it runs changes nothing — a contract table's rows, each preparing its own
    calculation, run side by side *(the user, 2026-10-18: a 40-row table took a
@@ -1119,14 +1057,13 @@ tests are collected:
    the machine (§ 3) stated with it, and the collection hook marks every
    test that asks for one, directly or through another fixture.
    A hand `@pytest.mark.engine` stays only where a test's own body starts
-   the engine. *(Found by reading, 2026-11-14:
-   `test_keyboard_paths_e2e` asked for a session run with no hand mark, so
-   the worker its file ran on would make that run again, beside the engine
-   worker's.)* Two computations never overlap (the same one-at-a-time rule
+   the engine: a test that asks for a run with no mark would have the
+   worker its file runs on make that run again, beside the engine worker's.
+   Two computations never overlap (the same one-at-a-time rule
    as job submission), and an engine's threads never compete with another
    engine's.
 3. **A targeted set is handed to pytest ordered by directory**, stably
-   (`tools/testrun.py`, 2026-10-08, plan § 5x.7 F26). pytest parses a
+   (`tools/testrun.py`). pytest parses a
    subdirectory's `conftest.py` once, into the first collector it builds for
    that directory; a later bare file argument from the parent directory
    re-collects the parent and builds a second collector, and the files named
@@ -1145,8 +1082,7 @@ pytest's `--last-failed` would run every test.
 Every worker collects the whole run, and xdist refuses a run whose workers
 disagree on the list, order included — so a clock value, an unsorted set, a
 random draw, a pid or a temporary path belongs inside the test, never in its
-parameters. The first spread run (2026-09-30) stopped at collection on a
-timestamp in `test_notify_listener.py`'s parametrize ids.
+parameters.
 
 What a spread run keeps from a one-process run:
 
@@ -1283,14 +1219,10 @@ deliberately not installed there.
   (§ 4), never a `fetch` of its own.
 - `test_one_door_reads_a_structure.py` — the author's frozen atoms, regions
   and cell, saved as the `.xyz` + `.molstruct.json` pair, reach the deck
-  through `molbuilder describe → prep`, because the pair is one file. Written
-  2026-09-07 after four readers of that pair were found, one of which
-  (`molbuilder.load()`) dropped the sidecar entirely and cost `molbuilder describe`
-  the author's regions and frozen atoms. It scanned the package for direct
-  reader calls until 2026-09-26; it drives the road now, so a reader that
-  drops the sidecar anywhere on it shows up as the deck that relaxes every
-  atom.
+  through `molbuilder describe → prep`, because the pair is one file: a
+  reader that drops the sidecar anywhere on the road shows up as a deck that
+  relaxes every atom.
 - `conftest.py` — the `web_client` fixture (rate-limit-off) + the shared fixtures
   (`isolated_projects_root` and its module-scoped sibling, `app_at`,
-  `write_machine_record`); the e2e files still start their own servers,
-  to take `app_at` when F10 runs them.
+  `write_machine_record`); a module may start its own server
+  (`support.live_server.serve`) at the scope it chooses, or use `app_at`.

@@ -3441,8 +3441,8 @@ def _plan_stage(calc, jobset: JobSet, *, machine, mode: str,
     """
     base = Path(calc.base)
     named = [j for j in jobset.jobs if only is None or j.name == only]
-    # The no-chain rule, AT THE SEAM (U5, 2026-08-12): a guard only a
-    # surface applies is one the next surface forgets.
+    # The no-chain rule, AT THE SEAM: a guard only a surface applies is one
+    # the next surface forgets.
     if jobset.kind == KIND_LADDER and len(named) > 1:
         raise SubmitError(
             "a task's launch sends one job -- a group, or one stage "

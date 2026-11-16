@@ -15,9 +15,7 @@ artifact registry.
 
 **This is the general procedure, named once so every generating tab uses the
 same one** (user, 2026-08-16). Structure optimization is the worked case.
-**Spectrum sends since 2026-08-20** — the § 6 prerequisites landed with the
-spectra migration's P0–P2
-([`archive/2026-08-20-spectra-migration-plan.md`](?doc=archive/2026-08-20-spectra-migration-plan.md)).
+**Spectrum sends too** (§ 6).
 **Transport never joined, by design** (resolved 2026-08-29): the composite
 leaves no question open for Task setup to answer, so its tab describes
 directly — no hand-over exists for it (see the closing section). **Which a kind does is
@@ -89,11 +87,7 @@ rule it does not own.
 selection while it runs — and the server writes into it inside the projects
 roots (`_resolve_within_roots`), as every door does; the tab announces the
 folder written (`projects.md` § 2), as a writing door's does. One act on the
-server, so the fence offers no Cancel. *(Until 2.69.10 the server returned the
-texts and the tab wrote each through the content-blind file layer: the pair as
-two separate writes, a structure file written past the codec
-(`model/structure.md` § 2.4), and a folder half written when a later write
-failed.)*
+server, so the fence offers no Cancel.
 
 **Step 3 — finish, in Task setup.** It reads the folder, asks for what the
 parameter tab could not know, and on save writes `task.json` and
@@ -119,11 +113,10 @@ a finding both carry is shown once, and a refusal replaces what the live check
 said of the same field, the Send's verdict being the newer —
 says in the status line how many came
 back, and stays on the page. The Transport tab's describe hands back its description check's findings
-the same way. *(A tab does not decide for its user — `tabs.md`. The sender
-listed each notice as a bullet in the status line until 2026-09-30 — a
-second renderer.)*
+the same way. *(A tab does not decide for its user — `tabs.md`. The status line counts
+the notices and lists none: a second renderer of findings would drift.)*
 
-### 2.2 The pseudopotentials — covered before a SIESTA calculation is written *(plan § 5w K20)*
+### 2.2 The pseudopotentials — covered before a SIESTA calculation is written *([`archive/2026-10-09-plan-consolidation.md`](?doc=archive/2026-10-09-plan-consolidation.md) § 5w, K20)*
 
 **Step 1's render also asks the engine's describe findings of the folder the
 hand-over writes into** — its seam's `describe_findings`
@@ -162,13 +155,12 @@ doing work (`stages.md` § 6.5a is the contract):
 conveniences, and `fingerprint`, the description's pin. Those four are `task.json`'s own `_STRUCTURE_KEYS`, so the
 hand-over and the description say the same thing in the same words.
 
-> **This is where the hole was.** `source` used to hold the projects sidebar's
-> *selected file*, which is a second fact read at a second moment —
+> **The sender consults no sidebar for this.** The structure is in the
+> request body, and the names come from what was written —
 > [`molview.md § 9.3a`](?doc=web/molview.md): *the facts that leave together
-> were read together*. In a real folder the cursor sat on the calculation's own
-> `.template.toml`, so the hand-over said a calculation was OF its own
-> parameter file. Nothing in the sender may consult the sidebar for this: the
-> structure is in the request body, and the names come from what was written.
+> were read together*. The sidebar's selected file is a second fact read at a
+> second moment, and in a real folder it can be the calculation's own
+> `.template.toml`.
 
 **The sidecar is not named here.** It is found from the `.xyz` by the pairing
 rule, which has one home (`model/structure.md` § 2.4). Naming it would be a
@@ -187,9 +179,9 @@ The split is `projects.md`'s, not this document's invention:
 
 | | who | why |
 |---|---|---|
-| the structure's pair, the template, the hand-over | **the server**, the hand-over door, every file or none (`describe.publish`) — the pair through the codec; a transport calculation's template is its describe door's, with its `task.json` (row 3) | a structure file reaches disk only through the codec (`model/structure.md` § 2.4), and the three are one act. *(Until 2.69.10 the browser wrote them through the content-blind layer as a courier: the pair as two writes, and a folder half written when a later write failed.)* |
+| the structure's pair, the template, the hand-over | **the server**, the hand-over door, every file or none (`describe.publish`) — the pair through the codec; a transport calculation's template is its describe door's, with its `task.json` (row 3) | a structure file reaches disk only through the codec (`model/structure.md` § 2.4), and the three are one act. |
 | removing the hand-over | **the browser**, via `deleteEntry` | raw bytes, the content-blind layer — and **only after** the save succeeded: the reverse order loses the parameters if the save fails |
-| `task.json` and `job-request.json` | **the server**, via `/api/task-setup/save` (`task.from_text`, `job_request.from_text`) — or, for a transport calculation, `/api/transport/describe`, which writes the whole description and its job request in one act (§ 6) | a **content-aware door**, for the reason § 3 of `projects.md` gives about the sidecar: *"a browser-written sidecar had no schema stamp, so the load door rejected it — a save-then-reload trap"*. A description is validated through `task.task.from_text`, the same door `prep` uses, so the browser cannot become a second drifting writer |
+| `task.json` and `job-request.json` | **the server**, via `/api/task-setup/save` (`task.from_text`, `job_request.from_text`) — or, for a transport calculation, `/api/transport/describe`, which writes the whole description and its job request in one act (§ 6) | a **content-aware door**, for the reason § 3 of `projects.md` gives about the sidecar: *"a browser-written sidecar had no schema stamp, so the load door rejected it — a save-then-reload trap"*. A description is validated through `task.from_text`, the same door `prep` uses, so the browser cannot become a second drifting writer |
 
 ---
 
@@ -227,31 +219,21 @@ words.
 
 ---
 
-## 6. Extending it — the Spectrum case (landed 2026-08-20), Transport after
+## 6. Extending it — the Spectrum case; Transport describes on its own tab
 
 **Nothing in §§ 1–5 is specific to a relaxation.** The sender is *whatever tab
 collected parameters*; the hand-over carries the engine, the structure and the
 name; the receiver asks for what is missing.
 
-> ⚠ **This section claimed on 2026-08-16 that Spectrum's "rows in the catalogue
-> are already read by `catalogue_to_form_schema`". That is false**, and it was
-> written without checking. `spectra.py:161` calls
-> `dataclass_to_form_schema(SpectraConfig, "s")`; the catalogue declares
-> `engines = ["siesta", "pyscf"]` and carries **zero** spectra items. The
-> correction is recorded rather than quietly edited because the claim would
-> have made the next piece of work look like wiring a button.
+Spectrum is on this procedure by three facts:
 
-The three prerequisites named here landed with the spectra migration
-([`archive/2026-08-20-spectra-migration-plan.md`](?doc=archive/2026-08-20-spectra-migration-plan.md)):
-
-1. **Its parameters are in the catalogue** (P0) — fourteen items carrying
-   `calculations = ["vibration"]` beside the shared PySCF set
+1. **Its parameters are in the catalogue** — items carrying
+   `calculations = ["vibration"]`
    ([`engines/template.md`](?doc=engines/template.md) § 6.3: the key is
    `engines`' exact sibling; absent = every kind).
-2. **Its form is off the catalogue** (P2) — the tab renders
-   `GET /api/build/schema/pyscf?calculation=vibration` through the same
-   shared renderer as Build, and `dataclass_to_form_schema`'s spectra route
-   retires at P3.
+2. **Its form is drawn from the catalogue** in parts — the shared electronic
+   state, the other shared settings, each engine's own
+   ([`form-schema.md`](?doc=web/form-schema.md) § 1.3).
 3. **The decision was made** — a vibration calculation IS a description with
    a ladder of one stage, `freq` on both engines
    ([`engines/vibration.md`](?doc=engines/vibration.md) § 2.2, § 5.11), the
@@ -262,21 +244,16 @@ The three prerequisites named here landed with the spectra migration
    `jobset.ladder.fresh_stages`, which `molbuilder describe` asks too, each
    stage's group beside it by the one numbering rule
    (`jobset.group.fresh_groups`) — and Task setup shows it as what will be
-   written, deriving nothing *(until 2.15.3 the page re-derived it in
-   JavaScript, a second copy of the rule)*. **And what those stages vary** (`proposed_varies`, `task.varies_for` over their overrides — nothing for a fresh one-stage ladder): the proposal (§ 5) states it as its `varies`, and the page seeds no columns of its own, so the same hand-over makes the same description by either door (2026-10-18).
+   written, deriving nothing. **And what those stages vary** (`proposed_varies`, `task.varies_for` over their overrides — nothing for a fresh one-stage ladder): the proposal (§ 5) states it as its `varies`, and the page seeds no columns of its own, so the same hand-over makes the same description by either door (2026-10-18).
 
-**And the hand-over is now exactly what this section predicted**: a Send
-button on the same endpoint. One extension rode along — the body states
-`calculation`, and the hand-over file records it, every kind *(an
-optimization's was left out until 2026-10-06, plan W57 R10: the description
-states its kind)*; a request that states no engine or no calculation is
-refused by name, never given one. The sender
-itself moved into `lib/task-handover.js` when the second tab arrived: the
-guards and the notice handling are this procedure's contract,
-and two copies of a contract drift.
+**The Spectrum tab's Send is the same endpoint.** The body states
+`calculation` and the hand-over file records it, every kind; a request that
+states no engine or no calculation is refused by name, never given one. The
+sender is `lib/task-handover.js`, shared by the tabs: the guards and the
+notice handling are this procedure's contract, and two copies of a contract
+drift.
 
-**Transport does not use this procedure — resolved 2026-08-29, and not the
-way this section once predicted.**  A hand-over exists because Task setup
+**Transport does not use this procedure** *(resolved 2026-08-29)*.  A hand-over exists because Task setup
 owns questions the sending tab leaves open (stages, what varies).
 The composite leaves NONE open: its rungs are fixed by the kind (its part in the kind table, [`execution/architecture.md`](?doc=execution/architecture.md) § 3.3: all five, the seed among them), the
 electronic contract — its spin included — is
@@ -287,37 +264,18 @@ writes the complete description, the template, `task.json` and `job-request.json
 server in one act (`describe.write_description`, as `molbuilder describe`), into a
 folder that holds none — and **nothing is
 awaiting** ([`archive/2026-09-01-transport-design.md`](?doc=archive/2026-09-01-transport-design.md)
-P7b).  The `transport-handover@1` schema this section once proposed was
-never needed: with no open questions there is no hand-over payload to
+P7b).  There is no transport hand-over schema: with no open questions there is no hand-over payload to
 carry.  **Once written, Task setup is its editor, as every kind's** *(user,
 2026-10-11)*: each rung's own values in its Stages card — the rungs
 fixed, every one, `web/task-setup.md` § 5.3 —
 and the run's settings; what came over is what
 the calculation is: its citation names it — a different junction is a new
 description in a new folder — and its electrode rename and its bias are corrected
-in `task.json` itself, in Task setup's editor.  *(Until 2026-10-11 this said Task setup
-only READS the description, while its stage table edited the rungs' values,
-and the browser wrote the server's text.)*
+in `task.json` itself, in Task setup's editor.
 
 ---
 
 ## 7. How it is verified
-
-> ⚠ **This section asserted a verification it did not perform, from 2026-08-16
-> until 2026-08-17.** It listed four checks and concluded *"A tab is on this
-> procedure when those hold for it"* — and not one of them opened the structure
-> the hand-over names. The procedure was called proven end to end, and Spectrum
-> was told to clear this bar, while the hand-over carried a **formula and an
-> atom count** in place of the structure: the geometry crossed the wire from
-> `exportFile()` and was discarded, and `structure.source` recorded the
-> projects sidebar's *selected file* — which in a real folder pointed at the
-> calculation's own `.template.toml`.
->
-> A 444-atom Au(111) slab handed over its k-grid and lost the lattice that
-> k-grid indexes. The correction is recorded rather than quietly edited because
-> **the false assurance was worse than the defect**: § 1 of this document
-> already says *"nothing it shows depends on the sending tab still being
-> open"*, and that sentence was the test nobody wrote.
 
 **The bar is a round trip, not a shape check.** A check that reads what was
 written proves the hand-over carried something; only opening it proves *what*.
@@ -346,9 +304,4 @@ hand-over writes leaves every step returning `ok` and puts a *bounding box*
 — `[[8.885,0,0],[0,6,0],[0,0,10.755]]` — in the deck where the hexagonal
 lattice belongs, which is a different calculation that never announces itself.
 
-> This paragraph first claimed the chain was verified when it had only been
-> driven by hand in a browser — the same false assurance as the retraction
-> above, written the same day, one section apart. The test exists now.
-
-**A tab is on this procedure when those hold for it.** That is the bar Spectrum
-has to clear, and the reason to clear it before Transport is designed against it.
+**A tab is on this procedure when those hold for it.**

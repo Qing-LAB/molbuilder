@@ -10,12 +10,8 @@ under `docs/archive/2026-09-01-*.md` as records of what was decided and built.
 > plan folder or one plan file and stay with that file.")*
 
 **Consolidations** — each moved what was done or settled, verbatim under its
-verdict, to its archive (the list at the end): 2026-09-10, 2026-10-09,
-2026-10-13, 2026-10-14, 2026-10-18, 2026-10-20, 2026-10-27, 2026-10-28,
-2026-11-07 (the handover and the closed rows, at 2.67.10), 2026-11-10 (the
-handover's release-by-release history, 2.68.0–2.69.21, left to the changelog
-and the ledger, at 2.69.21), and
-**2026-10-31** *(the user, 2026-10-30: "consolidate with previous review
+verdict, to its archive (*Archived sections*, at the end). The one this plan
+stands on is **2026-10-31** *(the user, 2026-10-30: "consolidate with previous review
 results to unify a single plan to finish"; "go ahead, science after the
 finish line")*: a fresh review of the documents, the pages and the backend at
 2.56.1, every open item of this file and of the 2.54.1 and 2.55.1 reviews
@@ -30,9 +26,10 @@ as they stood.
 
 ## ▶ HANDOVER — where we are, and where to start *(2026-11-10)*
 
-**Where we are: 2.70.12.** F0–F8 and F7a are closed; F9, the tests through
-the road, has eight releases out (2.67.4–2.67.11) and four steps left (its
-row below). Since 2.67.11 three bodies of work the user put first have run;
+**Where we are: 2.70.28.** F0–F8 and F7a are closed; F9, the tests through
+the road, has the low-harm last items of its closing review left (*Left, in
+order*, below); F10 is under way — wave 1 shipped as 2.70.28, waves 2 and 3
+being applied (*What runs next*). Since 2.67.11 three bodies of work the user put first have run;
 each release is its changelog row and its ledger section
 ([`archive/2026-10-31-finish-line-review.md`](?doc=archive/2026-10-31-finish-line-review.md),
 *Found by …*):
@@ -45,103 +42,12 @@ each release is its changelog row and its ledger section
   every failure through the one builder.
 - **The codebase overlap review** *(the user, 2026-11-09: "Accept all,
   defects first"; about 170 findings by owning door, the ledger's *Found by
-  the codebase overlap review*)* — 2.69.13–2.69.21: every science and
+  the codebase overlap review*)* — 2.69.13–2.69.68, closed: every science and
   correctness defect (V-*), the path door (X-PATH), record reading (V-READ,
-  V-PANEL), the structure's reads and its wire (X-STRUCT; the user,
-  2026-11-10: *read the pair whole*, *one shape, sent once*, *show them while
-  editing*); 2.69.22, the trajectory route's copies; 2.69.23, the run's
-  record worked out once (the user, 2026-11-10: *build it*); 2.69.24, a
-  continued PySCF run keeps its labels — X-STRUCT closed; 2.69.25, every
-  record through one reader and one writer (X-PERSIST's first rows);
-  2.69.26, the workspace's calls name only their owner (the user,
-  2026-11-10: *a draft call*); 2.69.27, a page's own layout through one
-  door (the user, 2026-11-10: *split by what it is*); 2.69.28, everything a
-  page keeps in the browser through the one door (the user, 2026-11-11:
-  *unified API, no handcrafted reinvention*) — X-PERSIST closed, what no
-  failure was measured for taken out (the user, 2026-11-11: *detect any
-  invented problem*); 2.69.29, each browser tab its own saved work (the
-  user, 2026-11-11: *same module, one set per tab*), and an edit lost on a
-  reload since 2.69.26 fixed; 2.69.30, a run's progress log read through its
-  one read (X-PARSE's first rows); 2.69.31, every engine file through its
-  registered parser; 2.69.32, a run's state and engine through the run
-  door; 2.69.33, a call named in one wording, a file's version by the
-  ending reader's rule — X-PARSE closed; 2.69.34, the session's tests
-  brought to `process/testing.md` (a fresh reader's audit, the user,
-  2026-11-11: *use agent to review and discipline your tests*); 2.69.35,
-  a transport calculation refusing, when it is described, a cited run whose
-  job ended without concluding (the user, 2026-11-11: *refuse at describe
-  too*); 2.69.36, the step still being computed asked of a real run's
-  replay, and of runs that ended, its typed tests retired (TA-10); 2.69.37,
-  the workspace tests answered by the real routes, an order held, never
-  timed (TA-5, TA-6); 2.69.38, the subsumption tool run inside the
-  test sandbox (TA-18); 2.69.39, geomeTRIC's trajectory saying which logs
-  beside it its facts came from, or why none (`model/parse.md` § 5a, rule 4);
-  2.69.40, an optional setting's blank said in its own words (X-TMPL's one
-  defect; what is left of it, said there); 2.69.41, the sidebar's row
-  menu closed only by a scroll that moves its row (found by 2.69.40's e2e
-  run); 2.69.42, what a stage may override asked of its one door
-  (X-TMPL); 2.69.43, a setting nobody stated at the one default wherever
-  a calculation is described, judged or recorded (X-TMPL); 2.69.44, a
-  launched PySCF stage prepared again whatever its deck only reports, and
-  for any job request (2.69.43's regression, widened by the user); 2.69.45,
-  a PySCF deck's messages held in its words, the names it reports under
-  spelled once; 2.69.46, a kind's marker asked of the catalogue by the
-  kind (X-TMPL); 2.69.47, which control edits a setting decided once
-  (X-TMPL); 2.69.48, a form's fields read through the renderer, one walk and
-  one map of ids (X-TMPL); 2.69.49, a setting named, worded and offered by
-  one record on every page (X-TMPL, closed); 2.69.50, what Task setup
-  proposes to write, written by the server's writers (X-EXEC); 2.69.51, a
-  group's lines on Task setup asked of the doors that answer them (X-EXEC);
-  2.69.52, a launch that names no group sends none changed since its prep
-  (the user's ruling on 2.69.51's question); 2.69.53, a held group's refusal
-  said once, its stop a line of its own (X-EXEC); 2.69.54, a job's GPUs
-  read by the one door wherever a group's members, a sequence's groups or
-  a benchmark's trials are compared (X-EXEC); 2.69.55, a restore over
-  unsaved work asks through the one interface (X-EXEC); 2.69.56, a record's
-  unknown keys refused in one sentence (X-EXEC); 2.69.57, a SIESTA
-  vibration builds its result again (2.69.56's regression); 2.69.58, the
-  other readers' unknown keys refused in the one sentence (X-EXEC);
-  2.69.59, a name that is not a setting said by one door, with the setting
-  it is close to (the user's word); 2.69.60, a retired setting told the way
-  out the migration takes where it is written (X-EXEC); 2.69.61, where a
-  task stands said by the status door (X-EXEC's last item); 2.69.62, prep
-  warns of an inverted junction, as the Transport card does (X-ENG); 2.69.63,
-  a GPU field a card does not expose no longer drops the monitor's sample
-  (X-ENG); 2.69.64, a missing pseudopotential refused in one set of words
-  (X-ENG); 2.69.65, a box with no volume refused in one sentence, and the
-  room along each cell axis measured once (X-ENG); 2.69.66, sizes and a
-  run's lengths of time said in the one spelling (X-ENG); 2.69.67, the
-  electronic state's answers read from it, not worked out again (X-ENG);
-  2.69.68, the engine stretch's last unifications in one release: the bias
-  list's range test, one writer of a SIESTA deck's geometry, three seam
-  members gone to the engine's record (X-ENG); 2.69.69, the page doors'
-  first stretch -- a page says each state in the shell's one look, and the
-  Prep line answers by the one door (O-STATE, O-FIND, O-STATUS, X-UI 2);
-  2.70.0, one inspect card for the two describing tabs, the newest load
-  winning, and the Spectrum tab keeps its structure and forms across a
-  reload (X-UI 1, O-STATE; the user, 2026-11-14); 2.70.1, the shared look --
-  the messages that coloured their own words in the shell's tone, the
-  Documents reader's palette and the sidebar's shadows as tokens, the focus
-  ring one token, one page head (O-STATUS, O-KEYS, X-UI); 2.70.2, the
-  tests stretch's first part, taken next on the user's word (2026-11-14):
-  fakes with no reason retired or made the real thing (O-TESTS T0); 2.70.3,
-  the rule for fakes in the test contract and the browser's own storage
-  under the Node tests (O-TESTS T1, its storage part); 2.70.4, MolView's
-  test contract onto the real routes, its refusal tests first; 2.70.5, the
-  view lane's tests on the real routes and the real workspace; 2.70.6, the
-  MolView model's tests and the server-answer reader's on real answers;
-  2.70.7, the MolView card's mount tests on the real routes and the real
-  workspace, the stand-in server gone; 2.70.8, the last three MolView test
-  files that answered the server themselves on the real routes; 2.70.9,
-  four page-script test files on the one Node runner; 2.70.10, the test
-  harness's copies made one door each (the app serving, a page's
-  workspace, MolView's page); 2.70.11, a DOM library for the Node tests,
-  installed by the host recipe's opt-in test tooling beside Playwright,
-  and every Node test on the env's own Node; 2.70.12, one rule for a test
-  that needs the opt-in tooling; 2.70.13, the engine tests named by the
-  fixture that makes their run, never by hand beside it (TF1); 2.70.14,
-  what a test needs of the machine stated once and skipped for by one rule
-  (TF2).
+  V-PANEL), X-STRUCT, X-PERSIST, X-PARSE, X-TMPL, X-EXEC and X-ENG; then the
+  page doors' first stretch, 2.69.69–2.70.1 (O-STATE, O-FIND, O-STATUS,
+  O-KEYS, X-UI), and the tests stretch, 2.70.2–2.70.14 (O-TESTS T0–T1, the
+  test framework's TF1 and TF2) — each release's line in the changelog.
   X-ENG closed with 2.69.68 — its two items that change a generated
   program placed by the user with F10's end-to-end pass.
   **Left, in order** *(the user, 2026-11-15: "focus on real issues",
@@ -173,12 +79,18 @@ step, its closing review rounds (the page-side test doors, the dead-code
 release and the tests owed done: 2.70.2–2.70.10, 2.70.20, 2.70.21) and
 the UI review's two left items (2.70.27) done; **F10 under way** (the user,
 2026-11-15: "start F10") -- its first full e2e pass done on 2.70.27; the
-chapters read whole against the code in waves, each a release: wave 1
-(2.70.28) the top-level chapters, ops and execution; wave 2 the engines and
-science; wave 3 the model and web. Then F11, F12. **Waiting on the user**:
-nothing now; TF5 brings one decision when it is reached (a test's own
-projects tree by default). F12's walk of the three roads in the browser
-starts only on the user's word, said to them first.
+chapters read whole against the code: wave 1 (2.70.28) the top-level
+chapters, ops and execution; waves 2 and 3 (2.70.29) the engines, science,
+model, web and process chapters and this plan -- every live chapter read
+once. Next, the product defects those readings found in the pages (the
+VibrationView export, the MolView save's round trip, the spectrum chart's
+imaginary modes, the notebook tab's port clash), each measured in a browser
+then fixed; then F11, F12. **Waiting on the user**: whether prep's
+hand-written run-setting subsets become catalogue declarations or the rule
+names them (`engines/template.md` § 6.4, the user's 2026-08-17 ruling); TF5
+brings one decision when it is reached (a test's own projects tree by
+default). F12's walk of the three roads in the browser starts only on the
+user's word, said to them first.
 
 **The test suite's guards** keep every test off the person's machine
 ([`process/testing.md`](?doc=process/testing.md) § 2b): test code loads only
@@ -247,7 +159,7 @@ topic's test is confirmed present before the release ships *(the user,
 | **F7** | **§ 1am step 7 — the floors and the objects** | **Closed** — 2.65.14–2.65.17: what gave a wrong answer; floor 1 loading nothing above it; one read per answer, objects taken whole; dead code by role and history (`archive/audits/2026-11-05-2.65.17-removals.md`; the ledger's *Found by 2.65.14…2.65.17*). | 26 + 10 (F0a's review) + 6 (from F4) | — |
 | **F7a** | **A person reads a run's atoms by their own index** *(the user, 2026-11-05)* | **Closed** — 2.66.0–2.67.0: the atom map stated on every answer holding atoms; the steps a run finished in the person's order; an optimization's data file written by the export alone (`archive/audits/2026-11-05-postprocessing-api.md`; K2660-1…14). |
 | **F8** | **The pages — words and residue** | **Closed** — 2.67.1–2.67.3: what the pages got wrong; every word a person reads plain, no document cited in a message, frames from 1 (decided 7); one prep answer, the terminal's lines drawn on the page (the ledger's *Found by 2.67.1…2.67.3*). | 103 + 3 (F0a's review) | — |
-| **F9** | **Tests through the road** (§ 1ak S4) | **Eight releases out, 2.67.4–2.67.11** (the ledger's *Found by 2.67.4…2.67.11*): the audit's retire list judged test by test; a test validates what is correct *(the user, 2026-11-06; [`process/testing.md`](?doc=process/testing.md) § 3b)*; the tools' real output; one door per test helper; the prep-side tests through the real commands; runs that never happened made on the road; the page tests fed what the server answers; the four product defects those tests found, fixed (2.67.10); the server-side test doors (2.67.11) — one way to point a test at a projects tree (`conftest.point_the_one_door_at`), one maker of a described calculation, the support helpers public and none borrowed from a test file, one maker per real run, the audit's retire list finished (K2679-9's server half, TA-REWRITE, TA-ISOLATE, TA-RETIRE's rest). **Left, in order** *(the user, 2026-11-07: "continue", on the inventory of F9-6 split three ways)*: **2.67.12, the page-side test doors** — the page tests under node on the one runner and fed the server's answers, no browser in the fast tier, an order held where a time was waited, one collector of a page's errors, the pages asked of the app, the page's clock for its timers (K2679-9's page half), the hand-made workspace stand-ins and their typed answers (the 2026-11-11 test audit's TA-8's store, TA-9, TA-16); **2.67.13, the tests owed**, each on a real run (E2E-OWED, I2-087, B4-14's walk half, B4-15, B4-16) -- **done as 2.70.21**, I2-085 with them; **the dead-code release** -- **done as 2.70.20** — K2677-4, K2678-5, K2679-5, K27610-6, and the three states no road makes (E2E-Q, and E2E-OWED's monitor that dies loading and viewer that throws), its removal list shown first; **F9's closing review rounds**. Left as they are, said why in the ledger: each module's own server fixture (`testing.md` § 8 lets a module choose its scope), the e2e marker a file repeats (dropped when the file is touched), B1-31 (the form id prefix stated by the server and the page, the browser tests catching a drift). The ledger's rows still marked F9: I2-087, B4-14…B4-16, E2E-OWED, TA-REWRITE's page files, K2679-9's page half; B4-2, the sent-run pair, kept with its reason stated (decided 10). | 62 + 8 (F0a's review) + 4 (the test audit) | — |
+| **F9** | **Tests through the road** (§ 1ak S4) | **2.67.4–2.67.11** (the ledger's *Found by 2.67.4…2.67.11*): the audit's retire list judged test by test; a test validates what is correct *(the user, 2026-11-06; [`process/testing.md`](?doc=process/testing.md) § 3b)*; the tools' real output; one door per test helper; the prep-side tests through the real commands; runs that never happened made on the road; the page tests fed what the server answers; the four product defects those tests found, fixed (2.67.10); the server-side test doors (2.67.11) — one way to point a test at a projects tree (`conftest.point_the_one_door_at`), one maker of a described calculation, the support helpers public and none borrowed from a test file, one maker per real run, the audit's retire list finished (K2679-9's server half, TA-REWRITE, TA-ISOLATE, TA-RETIRE's rest). **Left, in order** *(the user, 2026-11-07: "continue", on the inventory of F9-6 split three ways)*: **the page-side test doors**, done as 2.70.2–2.70.10 (O-TESTS) — the page tests under node on the one runner and fed the server's answers, no browser in the fast tier, an order held where a time was waited, one collector of a page's errors, the pages asked of the app, the page's clock for its timers (K2679-9's page half), the hand-made workspace stand-ins and their typed answers (the 2026-11-11 test audit's TA-8's store, TA-9, TA-16); **the tests owed**, each on a real run (E2E-OWED, I2-087, B4-14's walk half, B4-15, B4-16), done as 2.70.21, I2-085 with them; **the dead-code release**, done as 2.70.20 — K2677-4, K2678-5, K2679-5, K27610-6, and the three states no road makes (E2E-Q, and E2E-OWED's monitor that dies loading and viewer that throws), its removal list shown first; **F9's closing review rounds**, 2.70.22–2.70.26, their low-harm last items left (the handover's *Left, in order*). Left as they are, said why in the ledger: each module's own server fixture (`testing.md` § 8 lets a module choose its scope), the e2e marker a file repeats (dropped when the file is touched), B1-31 (the form id prefix stated by the server and the page, the browser tests catching a drift). The ledger's rows still marked F9: TA-REWRITE's page files, K2679-9's page half; B4-2, the sent-run pair, kept with its reason stated (decided 10). | 62 + 8 (F0a's review) + 4 (the test audit) | — |
 | **F10** | **The documents true** | Each chapter rewritten against the code once — the untrue and stale sentences corrected, every link resolved, history inside a contract removed and each reason it carried kept as a rule; a chapter a release F0–F9 touches is brought true in that release; README R5 says why `--bundle` keeps its name (decided 8). ~300 items over 70 chapters. | 305 + 1 (F0a's review) | — |
 | **F11** | **The documents findable** (§ 7) | § 7's four indexes; `docs/README.md` the one index naming every live chapter (nine have no row today) and each domain overview listing its own; one place for each thing now stated in several. | 2 + § 7 | — |
 | **F12** | **Proven** (§ 1am step 8) | Each road — an optimization, a vibration on SIESTA and on PySCF, a transport calculation — driven start to finish in the browser on real runs; the full batch; two review rounds over F0–F11. | 8 | — |
@@ -299,7 +211,7 @@ text review to validate results")*, in this order:
 | 6 | The label palette's own copy of the lead names | served from the kind table | F3 |
 | 7 | Frame numbers: server sentences say *frame index 0 (of 3)*, the page's rows *Frame 1 of 3* | 1-based wherever a person reads; 0-based only in files *(the user, 2026-11-05, over an October rule of theirs: "From 1 in messages")* | F8, **done 2.67.2** |
 | 8 | `--bundle` on every `jobset` verb, a word README R5 retired for the calculation folder | the option keeps its name, and R5 says so (a rename would break the user's scripts) | F10 |
-| 9 | Release tags — conventions § 2: every release gets a git tag; the last was `v2.6.0` | each release is tagged again, from the next one | *How a release closes* |
+| 9 | Release tags — conventions § 2: every release gets a git tag; 2.7.0–2.56.1 have none | each release is tagged again, from the next one | *How a release closes* |
 | 10 | The sent-run test pair (B4-2): two basic tests write a launch record by hand, because the basic suite never submits | kept, their reason stated in them (testing.md § 6) | F9 |
 | 11 | How a builder hands back its findings (I2-134; `validation.md` § 4.1 R5: a finding is an `Issue`, never a Python warning) — (a) each builder returns one answer, structure, backend and findings, its Python API changed; or (b) the builders return the structure as now, and one check after the build says the findings: the structure's own (an aldehyde end, a duplex clash) read off what was built, a backend's limits (a form it cannot enforce, a terminal it ignores) a table of what each backend can do, shown on every builder panel through the one renderer | (b) *(the user, 2026-10-31: "go with b")* | F0b |
 | 12 | PDB files, and maybe later `.cif`: what more molbuilder reads of a structure file *(the user, 2026-11-04: "pdb (and maybe later .cif) file support should be a separate plan - these are not urgent for now")* | a plan of its own, not urgent; no more of it in the finish-line releases | *After* (the ledger's U-PDB) |
@@ -311,9 +223,9 @@ reader.
 
 Settled since it was asked: **build S3, or state the live road** — the finish
 line builds it (F1). **The citation door's *states no cell* refusal**, said to
-be reached by no road — a road may reach it (a saved relaxation whose cell is
-cleared, then cited); F1 walks it on the dev server before anything is
-decided.
+be reached by no road — a road reaches it (a saved relaxation whose cell is
+cleared, then cited), so F1 kept it (2.59.0), its words naming the way out,
+the Cell page.
 
 ---
 
@@ -395,16 +307,15 @@ Their pointers are under *Archived sections* below.
 
 ## 0. Rule R3, restated
 
-`docs/README.md` used to say **R3: `roadmap.md` is THE one plan.** That is now
-this file *(user, 2026-09-01: "the old roadmap and audit should be archived")*,
-and R3 reads:
+R3 ([`docs/README.md`](?doc=README.md)) *(user, 2026-09-01: "the old roadmap
+and audit should be archived")*:
 
 > **`plans/plan.md` is the one plan. Every open item lives there, and nowhere
 > else. A document that finds work records the evidence and sends the item
 > here.**
 
-That roadmap and the two audit reports are archived under
-`archive/2026-09-01-*`. They were 2044 lines between them.
+The old roadmap and the two audit reports are archived under
+`archive/2026-09-01-*`.
 
 **R3a — a plan section is kept current while its work runs** *(user,
 2026-09-16)*:
@@ -417,15 +328,9 @@ step that turned out to depend on something unlisted, a defect found while doing
 it: each goes in, with what was measured. **A plan written once describes an
 intention; a plan kept current describes the work.**
 
-**And R3 now means what it says: there is ONE table** *(2026-09-10)*. Until
-that day the open items sat in six tables across §§ 2, 3, 4, 4a, 5, 5b, 5f, 5l
-and 5m, which is how three different rows came to be numbered `P3`, how `W8`
-could cite line numbers for three endpoints that are not registered, and how
-`W9` could carry one sentence naming no behaviour for weeks. **The one plan
-is the list.** A design section keeps the *why* and sends its rows there; a row that
-is done, withdrawn or measured untrue leaves for
-[`archive/2026-09-10-plan-consolidation.md`](?doc=archive/2026-09-10-plan-consolidation.md)
-the same day, with what it turned out to be.
+**The one plan is the list.** A design section keeps the *why* and sends its
+rows there; a row done, withdrawn or measured untrue is marked with the
+release that closed it (*How a release closes*, step 6).
 
 ---
 
@@ -537,15 +442,11 @@ catalogue extension; **engine-specific**; and **the person is told the
 consequence**. Contract-first: this section is the design. **Not started.**
 No code has moved.)*
 
-*Re-checked 2026-10-09:* the measurements hold in shape, at new lines —
-`render_deck`'s concatenation is `script_emit.py:1429-1431`. Two of the known
-defects named below have moved: a stray marker no longer drops text silently —
-`check_deck` refuses a deck holding more than one pair of USER-CUSTOM markers
-(`script_emit.py:1567-1588`); and transport has the zone — its decks are
-rendered by `render_deck` like every other. § 3.5's *byte-for-byte* now reads
-*line for line, unchanged* (`job-contracts.md`). `engines/template.md` § 9.2
-still describes a `user_custom` catalogue item — the carrier this ruling
-rejected; it is corrected when this is built (§ 2, W47).
+`render_deck` concatenates the zone after the walk; `check_deck` refuses a
+deck holding more than one pair of USER-CUSTOM markers, so a stray marker
+drops no text silently; and transport decks are rendered by `render_deck`
+like every other. `engines/template.md` § 9.2 says what this ruling holds: a
+person's own text is no catalogue item.
 
 ### The need
 
@@ -559,7 +460,7 @@ the zone cannot carry the content anyway.
 
 ### Why the zone cannot carry it — measured, not argued
 
-`render_deck` assembles the deck like this (`script_emit.py:1429-1431`):
+`render_deck` assembles the deck like this (`script_emit.render_deck`):
 
 ```python
 text = (science + "\n\n" + emit_user_custom_placeholder()
@@ -582,7 +483,7 @@ Three consequences follow from that one fact, and they are not three bugs:
    occurrence, so *anything the deck already writes cannot be overridden from
    the zone*.
 3. **The engine's own rules refuse it.** SIESTA's `check_rules`
-   (`siesta/layout.py:451`, its refusal `:512-530`) splits the whole file and knows nothing of the
+   (`siesta/layout.py`) splits the whole file and knows nothing of the
    fence, so a duplicate raises **error** severity and `prep` refuses.
 
 The Lua case is decided by (2) and (3) together: SIESTA engages Lua with
@@ -631,12 +532,6 @@ the written file all stay exactly as they are, serving the relaxation decks
 they serve today. A task kind that does not exist yet cannot be a reason to
 disturb one that does.
 
-*(An earlier draft of this section claimed the design "deletes the read-back
-merge" and closes the transport gap. **Withdrawn.** That followed from the
-withdrawn assumption that additions would flow through the relaxation deck
-path. They do not, so those mechanisms are untouched; the three defects this
-draft named against them are closed since (the 2026-10-09 note above).)*
-
 **What it buys instead** is that the new need lands in its own layer:
 
 - nothing in the relaxation path changes to accommodate it;
@@ -647,7 +542,7 @@ draft named against them are closed since (the 2026-10-09 note above).)*
 
 ### THIS IS NOT A STAGED RUN, and must not be fitted into one
 
-*(Your correction, 2026-09-05, replacing what this section said first.)*
+*(Your correction, 2026-09-05.)*
 
 **Stages exist for one reason: a calculation that needs several steps to fit
 the computational resources and constraints** — coarse before tight, a ladder
@@ -657,19 +552,10 @@ A customised block is for **a specific task, on a structure that is already
 optimised**. It is the mechanism molbuilder EXPOSES for a future kind of task
 that needs it — not an extension of the relaxation path.
 
-So the following, which this section asserted in its first draft, is **wrong
-and withdrawn**:
+**An addition is not a staged run**: per-stage override is a stage concept,
+and an addition has no stages to override across.
 
-> ~~"An addition needs no new home: it follows the path a parameter already
-> takes — collected in Structure optimization, overridden per stage in Task
-> setup."~~
-
-That reasoned from the tabs that exist to the need, which is backwards: it took
-a mechanism for a *future task kind* and forced it into the ladder built for
-multi-step resource accommodation. Per-stage override is a stage concept, and
-this has no stages to override across.
-
-**What survives that correction, because it does not depend on staging:**
+**What holds, because it does not depend on staging:**
 
 - an addition is an **INPUT** to whatever writes the task's script, never text
   spliced into a written file (the whole of § 5e above);
@@ -761,14 +647,12 @@ half caused it.
    or show the resolved line before saving. (The consequence must be stated;
    whether it can be overridden is separate.)
 3. **Ordering among additions**, when two of them write to the same section.
-4. ~~Whether the include switch is per-stage~~ — withdrawn. There are no
-   stages here; see the correction above.
 
 ### Before any code
 
 This section is the contract. The measurements it rests on
-(`script_emit.py:1429-1431`'s concatenation, the 12/520/980-vs-1222 positions, the
-reproduced duplicate-keyword refusal, `Parameter.writes` — `script_emit.py:806`) are re-checkable, and
+(`render_deck`'s concatenation, the 12/520/980-vs-1222 positions, the
+reproduced duplicate-keyword refusal, `script_emit.Parameter.writes`) are re-checkable, and
 should be re-checked rather than trusted if this is picked up later.
 
 ## 5r. The structure API — the confirmed non-findings *(its order, 5r.1, is F7's ledger section now)*
@@ -782,22 +666,19 @@ Recorded so nobody fixes them by analogy. Re-read against the code 2026-10-08.
   order; `replace()` handles it by not re-passing it. **Not the defect `pbc`
   was** — the init-field spelling exists so `Structure(…, frozen_atoms=[…])`
   reaches the one place that spells the reserved label.
-- **`resolve_cell` is not the one resolver**:
-  `transiesta._compute_cell_from_extents` (`transiesta.py:184`, called
-  `:346` and `wizard.py:400`) computes one for a transport lead — X4 ③.
 - **The companion-lookup merge stays withdrawn.** What forbids it is a test
   pinning a deliberately more permissive guard, not `parse.md` § 5.3; a shared
   helper with the guard as a parameter would keep both.
-- **The second multi-frame XYZ reader is forced**, not duplicated: it
-  tolerates a torn final frame (`parse/engines/pyscf.py`, ~`:300-355`), which every
-  live geomeTRIC run has and ase refuses. Unifying it would break live-run
+- **The multi-frame XYZ reader is ours, not ase's**: it tolerates a torn
+  final frame (`parse/engines/xyz.read_frames`, which the geomeTRIC reader
+  `parse/engines/pyscf.py::_parse_pyscf_xyz` uses), which every live
+  geomeTRIC run has and ase refuses. Reading it with ase would break live-run
   viewing.
 - **Registry overlap: none** — 14 parsers against a 29-file synthetic run
   directory, no file claimed twice.
 - **Bare atom-index arithmetic in `parse/`: none that carries data**, and
   the transport half is done: since 2.32.0 `transport/transiesta.py`
-  numbers atoms through `engine_atom_index.siesta_numbering`
-  (`:35, 579-582, 674-675`).
+  numbers atoms through `engine_atom_index.siesta_numbering`.
 - **The CLI's seam verdict** was raised and dropped on the user's ruling
   (2026-09-22: *"people working with CLI would know what they're doing… leave
   that out"*). X3 is the browser half only.
@@ -814,12 +695,12 @@ one place.")*
 
 ### 7.1 What is actually wrong — measured 2026-09-07, re-measured 2026-10-08 and 2026-10-09
 
-**Coverage too, since 2026-10-08.** The 2026-09-07 measurement said every
-`/api/*` route was named in `web-api.md` and planned no sweep. The
-route-catalogue sweep (§ 0a *Unscheduled*) overturned it: **11** documented
-routes do not exist and **9** live ones are undocumented, against **86** unique `/api` routes live on 2026-10-09 (about 93 by a decorator count on 2026-10-28; 86 on 2026-10-18 —
-74 `@bp.route`, 10 `@bp.get` / `@bp.post`, 6 on the app itself, `app.py:658-718`, `rate_limit.py:565-571`; a naive path diff of `web-api.md` against the live routes on 2026-10-18 gives 19 documented-not-live and 26 live-not-documented, the checkpoint, files, modify and workspace-storage families among the latter — the exact counts depend on how the document names a family, re-derived when step 2 is taken)
-(`app.py:641-701`, `rate_limit.py:565-571`); the 71 counted only the first kind. And coverage was never truthfulness:
+**Coverage.** `web-api.md` and the live routes disagree: a path diff on
+2026-10-18 gave 19 documented routes not live and 26 live ones undocumented
+(the checkpoint, files, modify and workspace-storage families among them),
+against about 92 unique `/api` routes (the blueprints', the app's own in
+`app.py`, `rate_limit.py`'s); the counts are re-derived when step 2 is taken.
+And coverage was never truthfulness:
 the 2026-09-29 check read every live document against the code and found
 statements the code contradicts — § 5v holds that list, and the survey starts
 from it rather than repeating it.
@@ -829,19 +710,13 @@ from it rather than repeating it.
 information is there and a person cannot reach it.
 
 **The existing index has the problem it is meant to solve.** `README.md`
-§ Index (`docs/README.md:199`) is one row per DOCUMENT, and the longest row
-runs about 828 words (`:240`, 2026-10-28). To find out which document owns a fact you read
+§ Index is one row per DOCUMENT, and its longest row runs about 828 words
+(2026-10-28). To find out which document owns a fact you read
 essays about documents. It is a good map of the tree and a poor answer to
 "where is X".
 
-**Two documents contradicted themselves in one day** (2026-09-07), both found
-by accident while doing something else — `science/pseudopotentials.md` § 3
-listed a check as not-done that its own § 2a.1 documented as done (since
-corrected; § 3's note at `:468-479` records the removal), and
-`process/testing.md` § 6 quoted a number after telling the reader never to
-quote one (corrected since: `testing.md:702-704`). Neither is exotic.
-Nothing systematic would have found them, which is the survey's real
-justification.
+A document can contradict itself, and nothing systematic finds it — which is
+the survey's real justification.
 
 ### 7.2 The four indexes — organized by THING, not by document
 
@@ -853,7 +728,7 @@ survived its 2026-06-02 over-compression.)
 | index | one row per | the row answers | generated or written |
 |---|---|---|---|
 | **API** | route | what it answers · who calls it · which doc owns it | **generated** — the route list is derivable from the blueprints, and a generated index cannot drift. Two findings are the argument: W8 (2026-09-07: `web-api.md` claimed the Documents tab read `/api/docs/list`, which it has not since the commit after the one that added it) and the 2026-10-08 route sweep (11 documented routes that do not exist, 9 live ones undocumented) |
-| **Module** | module | its role · its layer (L1/L2/L3) · its doc | **generated** from `architecture.md` § 3's index, the one list of each module's layer (the scan that classified every module, `test_layering.py`, was retired 2026-09-27, `a291fbbf`) |
+| **Module** | module | its role · its layer (L1/L2/L3) · its doc | **generated** from `architecture.md` § 3's index, the one list of each module's layer |
 | **Data structure** | persisted file / schema | its shape · its version · its one reader and one writer | **written** — the doors are a design fact, not derivable. The substance for a calculation's files exists: `execution/project-layout.md` § 5, every file, who writes it, the one door that reads it — **generated** from `runfiles.WRITTEN` by `tools/manifest.py`, so the index points at it |
 | **Reference** | constant · citation | its value · its source · **why this value** | **written** — see 7.3 |
 
@@ -861,31 +736,31 @@ survived its 2026-06-02 over-compression.)
 
 Constants have one home already (`molbuilder/constants.py`), and the dialects
 a quantity is written in have theirs (`molbuilder/units.py`); the rule for both
-is `architecture.md` § 3.  There is no lint -- `082ba979` retired it in favour
-of that written rule. What has no home is the **reasoning**, and it is
-genuinely scientific. The worked example: `constants.py:106` defines
+is `architecture.md` § 3.  Review holds that rule; no test does. What has no
+home is the **reasoning**, and it is
+genuinely scientific. The worked example: `constants.py` defines
 `HARTREE_BOHR_EV_ANGSTROM_ASE = 51.42208619`, the ASE/NIST value, and says why
 the name carries the convention — `HARTREE_EV / BOHR_ANGSTROM` gives
 51.422067476, 0.36 ppm apart, and a force and the threshold line drawn over it
-must use the SAME one. The emitter imports it (`trajectory_log/emitter.py:44,
-210`) so emitted forces line up with what a person reads in ASE, VASP and QE
+must use the SAME one. The emitter imports it (`trajectory_log/emitter.py`)
+so emitted forces line up with what a person reads in ASE, VASP and QE
 logs. That is a real convention choice with a real justification, and it lives
 in a code comment nobody will find.
 
-Citations are split the same way: `science/references.bib` holds **80**
-entries (2026-10-28; 34 on 2026-10-09), **11** live documents cite it, and the
-rest cite literature in prose, if at all. Stokbro 2003 joined it in 2.46.3,
-and no live document cites Reed 2006 now (E14, closed 2026-10-28).
+Citations are split the same way: `science/references.bib` holds **94**
+entries (2026-11-16), about a dozen live documents cite it, and the rest cite
+literature in prose, if at all.
 
 So the reference index carries three things per row: the value, where it is
 defined, and the sentence saying why that value and not the neighbouring one.
 
 ### 7.4 Order, and the one risk
 
-1. **Survey first, and record findings without fixing them** — **done as
-   § 5v** (2026-09-29): every live doc read against the code, findings in one
-   list, an entry leaving it when its document is corrected. The route sweep
-   (§ 0a *Unscheduled*) is the same kind of finding for `web-api.md`.
+1. **Survey first, and record findings without fixing them** — **done** (§ 5v,
+   in [`archive/2026-10-09-plan-consolidation.md`](?doc=archive/2026-10-09-plan-consolidation.md)):
+   every live doc read against the code, findings in one list, an entry
+   leaving it when its document is corrected. The route sweep, kept there
+   too, is the same kind of finding for `web-api.md`.
 2. **The two generated indexes**, which are cheap and cannot go stale. Inputs:
    the live routes (about 93 on 2026-10-28); `architecture.md` § 3's module list.
 3. **The two written indexes**, from the survey's findings. Input for the
@@ -895,14 +770,9 @@ defined, and the sentence saying why that value and not the neighbouring one.
 4. **Only then** decide what merges. Fragmentation may be the symptom; the
    fix might be four indexes and no merges at all.
 
-**THE RISK IS THIS PLAN'S OWN HISTORY.** The 2026-09-01 consolidation merged
-nine documents and dropped § 5f entirely; a re-check on 2026-09-07 found
-**seven more** items lost (E12–E14, N5, W16–W18), from source documents
-credited with "nothing open" that were never checked row by row. A survey
-that reorganizes without a per-item carry-over check will do it again. The
-rule for step 4: **nothing moves until the thing it says is written where it
-is going**, which is the archive's substance-first rule, and it is the reason
-§ 5i could not be archived until `process/testing.md` § 2a existed.
+**The risk:** a survey that reorganizes without a per-item carry-over check
+loses items. The rule for step 4: **nothing moves until the thing it says is
+written where it is going** — the archive's substance-first rule.
 
 ---
 
@@ -914,8 +784,8 @@ is going**, which is the archive's substance-first rule, and it is the reason
 *(User, 2026-09-19.)* **§ 9.1 — done, archived 2026-10-08**: the user's two
 rules — the pseudopotentials are explicitly provided, and the file for element
 `E` is named `E.psml` — are refusals when the calculation is configured
-(`validation/siesta.py:20`, `:65`; `pseudos.py:75`; contract
-`science/pseudopotentials.md` § C1a, `:140`).
+(`validation/siesta.py::_check_siesta_pseudo_coverage`; `pseudos.check_coverage`;
+contract `science/pseudopotentials.md` § C1a).
 
 ### 9.2 ATOM as an optional extra layer — PLANNED, not started
 
@@ -938,7 +808,7 @@ design a copy rather than an invention:
 | in-tree `<repo_root>/x3dna*/`, version-agnostic glob | `<repo_root>/atom*/` |
 | completeness filter: `bin/fiber` executable **and** `config/` present | `atm` built, **and** `Tutorial/Utils/` present (the `pt.sh` driver lives there, not beside the binary) |
 | `$X3DNA`, then `fiber` on PATH | `$ATOM_PROGRAM` — which `pt.sh` already honours — then `atm` on PATH |
-| `x3dna*/` in `.gitignore` | `atom*/` likewise, added (`.gitignore:88`): the ignore has to exist *before* the folder does, or a redistribution-prohibited package lands in `git status` |
+| `x3dna*/` in `.gitignore` | `atom*/` likewise, beside `x3dna*/` in `.gitignore`: the ignore has to exist *before* the folder does, or a redistribution-prohibited package lands in `git status` |
 | `BackendUnavailable` names where to download | same, pointing at the SIESTA pseudopotential page |
 
 **How it gets there is the user's to do, once** (user, 2026-09-19), and it
@@ -957,7 +827,7 @@ greps as `&d`. That is **transferability**, measured rather than trusted. The
 AE-vs-PS **logarithmic derivatives** (`logder.f`, plotted per channel) are the
 standard **ghost-state** diagnostic. Those are precisely the two items
 [`science/pseudopotentials.md`](?doc=science/pseudopotentials.md) § 3 declares
-out of scope today (`:446-470`, which points back here), and the ATOM
+out of scope today (it points back here), and the ATOM
 tutorial's own warning is the argument for them: *"You should thoroughly test
 a pseudopotential before using it."*
 
@@ -985,7 +855,7 @@ That choice has not been made, and it decides whether this validates the
 library we have or the ones we could start accepting.
 
 **Also open:** whether `atm` is built as part of an env
-(`feedback_no_env_deployment_changes` — nothing is installed without asking),
+(nothing is installed into an env without asking),
 and whether the check runs per prep or on demand like `molbuilder pseudo
 check`.
 

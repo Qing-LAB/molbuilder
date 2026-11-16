@@ -56,7 +56,7 @@ Three typed boundaries:
 |---|---|---|
 | `analyze_structure(struct)` | `chemistry.py` | `Structure` → `ChemistryAnalysis` — facts, no decision |
 | `electronic_state(struct, cfg, *, kind)` | `electronic_state.py` | `Structure` + a config's four state items → `ElectronicState` |
-| `check_electronic_state(struct, cfg, *, calculation)` | `validation/chemistry.py` | the same → `List[Issue]`, one finding per fact |
+| `check_electronic_state(struct, cfg, *, calculation, engine, state)` | `validation/chemistry.py` | the state `validate()` worked out → `List[Issue]`, one finding per fact |
 
 ### 1.1 Three kinds of question, one door *(framework, 2026-09-03)*
 
@@ -135,18 +135,14 @@ not, because every reader goes on to count electrons, and a count with an atom
 left out is a wrong one. The metal lists are split once here, so no reader
 filters `metals` again.
 
-> *(Until 2026-09-28 it also carried a **suggested** charge, spin and treatment,
-> judged at charge 0 on the neutral structure whatever its cell — which is how a
-> formate ion at −1 and a bulk gold lead were both told to go open-shell. Deciding
-> moved to the electronic state; § 10.)*
+> *(The analyzer suggests nothing: judged at charge 0 on the neutral structure
+> whatever its cell, a suggestion tells a formate ion at −1 and a bulk gold lead
+> to go open-shell. Deciding is the electronic state's, § 3.)*
 
 ### 2.1 The noble-metal distinction — three categories, not one flat set
 
-The flat `OPEN_SHELL_METALS` set wrongly treated gold junctions as
-open-shell. The metals are split into three physically-grounded sets
-(`chemistry.py`). The flat set survived the split as a back-compat alias and
-was **deleted 2026-09-17**, once it turned out its only reader was the one
-function the split existed to correct — see § 5:
+The metals are split into three physically-grounded sets (`chemistry.py`), so a
+gold junction is never read as open-shell:
 
 | Set | Elements | Physics | What a blank spin becomes |
 |---|---|---|---|
@@ -184,7 +180,6 @@ explicit Kondo / spin-orbit physics), state the spin.
 ('restricted', 0)
 >>> st.spin_treatment.said
 'detected: metallic Au in a repeating cell: the s-band delocalises and no moment forms'
-# The retired flat OPEN_SHELL_METALS alias would have said open-shell here — WRONG.
 
 # --- OPEN: an Fe centre (open-d 3d metal), the spin fields blank ---
 >>> st = electronic_state(fe_porphyrin, PySCFConfig(), kind="optimization")
@@ -192,8 +187,9 @@ explicit Kondo / spin-orbit physics), state the spin.
 ('unrestricted', 2)          # Fe's usual count — a guess about coordination (ES8)
 
 # REVERSE — a closed shell stated on the open-shell Fe system:
->>> check_electronic_state(fe_porphyrin, PySCFConfig(spin_treatment="restricted"),
-...                        calculation="optimization")
+>>> cfg = PySCFConfig(spin_treatment="restricted")
+>>> check_electronic_state(fe_porphyrin, cfg, calculation="optimization", engine="pyscf",
+...                        state=electronic_state(fe_porphyrin, cfg, kind="optimization"))
 [Issue(severity='warn', message='The spin treatment is restricted (stated), and the
        structure implies unrestricted, 2S = 2: … converges to a fictitious state …',
        where='config.spin_treatment')]
@@ -223,11 +219,9 @@ where it sits in the machinery. Each value is a `Resolved(value, source, why)`
 with its phrasing `said`, so the deck comment, the prep report and the card say
 the same words.
 
-*(Until 2026-09-28 this layer was a per-engine **adapter registry** —
-`siesta/auto_defaults.py` and `pyscf/auto_defaults.py` translating one analysis
-into each engine's suggested fields, for an Auto-detect button to copy into the
-forms. Deleted with the button: the suggestion was judged at charge 0 on the
-neutral structure, and the copy overwrote the person's own values.)*
+*(No per-engine adapter suggests values for a form to copy: a copy overwrites
+the person's own values, and a suggestion judged at charge 0 on the neutral
+structure is wrong for an ion or a repeating cell.)*
 
 ---
 
@@ -259,30 +253,20 @@ one of the four items, and it **fills nothing in** — a blank is already the
 instruction "work it out", and the card is its answer. With no structure or no
 answer, the card is hidden.
 
-**The invariant** (`web-ui-coherence.md` Rule 1): the card, the chip, the checks
+**The invariant** ([`overview.md`](?doc=science/overview.md) § 5): the card, the chip, the checks
 and the deck read one class, so they cannot disagree — the remedy for two-surface
-drift is to delete the parallel path, not patch it. *(Until 2026-09-28 the
-forward side was the Auto-detect button — the analysis fired on load, and a click
-copied its suggestion into the forms — and the reverse side was
-`check_open_shell_metal`, which judged the neutral, non-repeating structure; the
-chip read one verdict for the whole page at charge 0.)*
+drift is to delete the parallel path, not patch it.
 
 ---
 
 ## 4.1 The delivery contract — facts in, findings out (decided 2026-07-29)
 
 A check that never runs, or runs on the wrong structure, or produces a finding
-nobody sees, is worse than no check: it reads as a clean bill of health. Three
-real failures forced this contract (all three were live on the dev workstation):
-
-* the min-atom-to-nearest-image check worked correctly and had **never once been
-  shown in the browser** — `validate()` skips cell-dependent checks when `cell`
-  is `None`, and every web caller omitted it;
-* the SIESTA thin-vacuum advice reached only the server's `stderr`, because it
-  was a Python `warnings.warn` rather than an `Issue`;
-* a Generate request could carry fresh labels, fresh periodicity and **stale
-  coordinates**, because one tab mirrored the geometry into a page-local
-  variable while reading the other facts live from the model.
+nobody sees, is worse than no check: it reads as a clean bill of health. The
+clauses below close the three ways that happens — a check skipped because a
+caller omitted an argument (F4), a finding sent to the server's stderr as a
+Python warning (R5), and a request mixing live labels with coordinates read
+from a page-local copy (F1).
 
 **The layer between a tab and validation owns both directions.** That layer is
 MolView's concealed data model (`molview.data`): the facts leave from it, the
@@ -296,19 +280,19 @@ nothing of its own. Everything below follows from that.
 | **F1** | **One fact holder, read once.** Coordinates, elements, labels (regions / frozen), periodicity and annotations are read from `molview.data` **at request time** — never from a page-local mirror, a second fetch, or a re-read of disk. **One call assembles the whole body**, so a tab can neither send a partial set nor send the same facts twice from two reads: `exportFile(range)` returns them together, in the server's words, for the frame on screen ([`web/molview.md`](?doc=web/molview.md) § 9.3a). A body that carries `frozen_atoms` / `regions` / `periodicity` *beside* the structure has read them again, at another moment; the server reads the envelope alone (`struct_from_body`), so they reach nothing. | `molview.data.exportFile()`; `tests/test_build_e2e.py`'s Sends — the frame on screen after the frame bar moved, and the held atoms of the file loaded after a click elsewhere |
 | **F2** | **No server-side second source.** The server builds its `Structure` from the request body alone — one seam applies the in-body labels and periodicity and runs the frame-contract gate. **The sidecar is never read for an emitted structure**, so a validated structure is never a body/disk mixture, and a body with no label keys declares *no labels*. No request names the structure's file: a hand-over's folder rides as `dest`, which anchors the pseudopotential check ([`web/handover-procedure.md`](?doc=web/handover-procedure.md) § 2.2) and is never a label source. | `struct_from_body` — the labels ride inside the envelope; `test_validation_delivery_contract.py` proves a sidecar on disk cannot reach an emitted deck |
 | **F3** | **The model is complete by construction.** The model always carries periodicity — defaults when the pair has none, full values otherwise — so a tab is never in a position where it must invent a fact. | [`model/structure-periodicity.md`](?doc=model/structure-periodicity.md) § 7; `TestTabEmitContract` |
-| **F4** | **Derived facts are derived from those facts, server-side.** The cell a check needs is `struct.resolve_cell()`, resolved inside `validate()` — never an argument a caller can forget. It is derived only when the structure actually **declares a box** (an explicit `cell`, a non-zero vacuum, or a non-isolated axis): a gas-phase molecule never asked for a lattice, and a *planar* one's bounding box has zero thickness, so checking it would report a degenerate cell for a calculation that has no cell. A check that cannot run says so as `info`; silence is never the answer. | `_structure_declares_a_box`; `validate()`'s cell default; contract tests |
+| **F4** | **Derived facts are derived from those facts, server-side.** The cell a check needs is `struct.resolve_cell()`, resolved inside `validate()` — never an argument a caller can forget. It is derived only when the structure actually **declares a box** (an explicit `cell`, a vacuum the structure states — an all-zero one included — or a non-isolated axis): a gas-phase molecule never asked for a lattice, and a *planar* one's bounding box has zero thickness, so checking it would report a degenerate cell for a calculation that has no cell. A check that cannot run says so as `info`; silence is never the answer. | `_structure_declares_a_box`; `validate()`'s cell default; contract tests |
 
 ### Findings (outbound)
 
 | # | Clause | Enforced by |
 |---|---|---|
 | **R1** | **One result type, web-shaped by construction.** Every finding is an `Issue` → `{severity, message, where, card?, stage?}` from the one serializer (`_shared.issues_to_json`). `where` is the **stable machine-readable identifier** (`geometry.min_distance`, `cell.image_distance`, `config.mesh_cutoff`) — the UI binds behaviour to it, carrying it on the row as `data-where` and never showing it, and never parses `message`, which is prose for humans and may be reworded freely. | `issues_to_json`; contract tests |
-| **R1a** | **A stage label rides beside `where`, never inside it** (added 2026-08-07; [`engines/stages.md`](?doc=engines/stages.md) § 4 R2). A stage is validated as a *resolved whole*, so the same check fires for a stage as for a single run and produces the **same** id — folding the stage into the id would give one check as many ids as the ladder has stages, and R1 says the UI binds to the id. `stage` is **absent** for a single run *and* for a finding about the **sequence** (§ 4 R3 — a ladder that loosens is a fact about the description, not about a member of it). | `issues_to_json` omits the key when unset; `test_validation_across_stages.py` |
+| **R1a** | **A stage label rides beside `where`, never inside it** ([`engines/stages.md`](?doc=engines/stages.md) § 4 R2). A stage is validated as a *resolved whole*, so the same check fires for a stage as for a single run and produces the **same** id — folding the stage into the id would give one check as many ids as the ladder has stages, and R1 says the UI binds to the id. `stage` is **absent** for a single run *and* for a finding about the **sequence** (`engines/stages.md` § 4 R3 — a ladder that loosens is a fact about the description, not about a member of it). | `issues_to_json` omits the key when unset; `test_validation_across_stages.py` |
 | **R2** | **One channel into the UI.** The layer that holds the facts also takes the result: a single client module (`lib/validation-findings.js`) receives `issues[]` and routes them — beside the control when the page hands it the ids its form rendered (`fieldIds` — each form's map from the renderer, `formSchema.fieldIds`, which the page assembles — keyed by stage first when one form holds several stages' controls, the finding's `stage` picking its map; a `where` outside `config.` such as `task.bias` looked up whole), on the card its field is drawn in where the finding names a config field, residual structure panel otherwise — and every page mounts it. No page implements its own renderer. | `validation-findings.js`; each page that shows findings draws every one its check returned, a row each and nothing besides — the optimization tab (`test_build_e2e.py`), the Spectrum tab (`test_spectrum_form_e2e.py`), the Transport tab (`test_transport_on_a_real_junction_e2e.py`, what a citation measured); one renderer held by review ([`code-audit.md`](?doc=process/code-audit.md) § 1c) |
-| **R2a** | **A NOTICE IS A FINDING** *(written down 2026-09-11, after it was not)*. `{severity, message, where, about}` beside `ok` ([`web/web-api.md`](?doc=web/web-api.md)) is the same row the same module draws — a different word for the same channel, and the different word is the whole of how a sixth renderer came to be written. `lib/molview/ui.js` grew its own `drawNotices` with a two-word severity map, so an error drew in the grey of a remark, and R2's guard could not see it because that guard asked two named files whether they delegated rather than asking the tree whether anyone else rendered. An outcome line that carries its notices — a save's, a load's, an upload's — takes them from the module too: `outcome(sentence, notices, tone)` gives the line's words and the tone of the most severe notice (R4), the one composer those lines ask. | held by review: a severity reaching markup outside the module is a finding ([`code-audit.md`](?doc=process/code-audit.md) § 1c) |
-| **R2b** | **Reuse is by IMPORT, downward, and it is not a breach of a module's boundary.** A module with its own design system may compose around the shared row — MolView sets its own type scale on `.issues-panel .issue-item` — but may not re-implement it: [`ui-contract.md § 5`](?doc=web/ui-contract.md) already rules that a surface owns *where* a message sits and never what a severity looks like. What a self-contained module may NOT do is take the renderer off a global: [`web/molview.md`](?doc=web/molview.md) § 4 is *"nothing it needs comes from a global"*, and mounting publishes nothing. So `lib/validation-findings.js` has **two delivery forms** — `export`s for the modules that import it, and `lib/validation-findings-global.js`, a separate entry point that publishes `molbuilder.validationFindings` for the classic scripts that cannot import. One implementation; the registration is not part of it. | `test_mounting_needs_only_a_host_and_a_workspace_door` |
+| **R2a** | **A NOTICE IS A FINDING.** `{severity, message, where, about}` beside `ok` ([`web/web-api.md`](?doc=web/web-api.md)) is the same row the same module draws — a different word for the same channel, never a reason for a renderer of its own. An outcome line that carries its notices — a save's, a load's, an upload's — takes them from the module too: `outcome(sentence, notices, tone)` gives the line's words and the tone of the most severe notice (R4), the one composer those lines ask. | held by review: a severity reaching markup outside the module is a finding ([`code-audit.md`](?doc=process/code-audit.md) § 1c) |
+| **R2b** | **Reuse is by IMPORT, downward, and it is not a breach of a module's boundary.** A module with its own design system may compose around the shared row — MolView sets its own type scale on `.issues-panel .issue-item` — but may not re-implement it: [`ui-contract.md § 5`](?doc=web/ui-contract.md) already rules that a surface owns *where* a message sits and never what a severity looks like. What a self-contained module may NOT do is take the renderer off a global: [`web/molview.md`](?doc=web/molview.md) § 4 is *"nothing it needs comes from a global"*, and mounting publishes nothing. So `lib/validation-findings.js` has **two delivery forms** — `export`s for the modules that import it, and `lib/validation-findings-global.js`, a separate entry point that publishes `molbuilder.validationFindings` for the classic scripts that cannot import. One implementation; the registration is not part of it. | `tests/test_molview_mount.py::test_mounting_needs_only_what_it_is_handed` |
 | **R3** | **Nothing is dropped.** Rendered count equals received count. An unknown or missing `card` falls to the residual panel; it is never skipped, and the list is never truncated. | contract tests |
-| **R4** | **Severity means the same everywhere.** `error` blocks generation and says why; `warn` renders without blocking; `info` is advisory. No surface downgrades a severity to keep a screen quiet, and the CLI prints the same three. | contract tests |
+| **R4** | **Severity means the same everywhere.** `error` blocks generation and says why; `warn` renders without blocking; `info` is advisory. No surface downgrades a severity to keep a screen quiet, and the CLI prints the same three. **One exception, named:** a door that loads, builds or modifies a structure answers an `error` as a `warn` notice beside the structure (`periodicity_gate.notices_for_report`) — a load that refused would leave the structure unopenable, and so unfixable ([`model/structure-periodicity.md`](?doc=model/structure-periodicity.md) § 8.2), and findings while editing never block ([`overview.md`](?doc=science/overview.md) § 3, the user's ruling); the same finding is an `error` at generation, where it refuses. | contract tests |
 | **R5** | **One channel means one channel.** A finding never travels as a Python `warnings.warn` — it cannot reach a web user. Code that wants to warn returns an `Issue` from a validator. **A builder's findings are one check after the build** *(decided with the user, 2026-10-31, (b))*: a builder returns the structure, and `validation.builders.check_built`, run by the one build door every surface builds through (`builders.build`), says what it found — the structure's own, read off what was built (a peptide's C-terminus with no `OXT`, an aldehyde; a built nucleic acid's steric clash, two atoms of different residues nearly on each other — on every DNA or RNA build, said and never repaired unasked, *decided with the user, 2026-10-31, (b)*), and what the backend that built it does not build of what was asked (a helical form, a terminal state), in each backend's own answer (`builders.backends.built`, beside the table its build reads). The build route answers them as notices beside the structure, every builder panel drawing them through R2's module, and the command line prints them as `report` prints every finding. | `tests/test_build_findings.py` — each finding through the route, none raised as a Python warning |
 | **R6** | **Visible before the irreversible step.** Findings accompany the artifact at render time *and* the preflight — before engine input is written or a job is submitted, never after. | endpoint tests |
 | **R7** | **A message cites no document** *(the user, 2026-11-05: "Remove from both")*. A sentence a person reads, on a page or in the terminal, says what is wrong and the way on in its own words, and names no chapter or section. References stay in the documents and in code comments. Text written into a deck, a run script or a data file's definitions is that file's own; a link on a page is a link. | review, over each release's messages |
@@ -324,12 +308,12 @@ either nagging or dangerous:
   tight-box run, or deliberately accepting image interaction. molbuilder states
   the number and the recommendation and gets out of the way — it never resizes
   the box and never refuses the run.
-* **Will this engine even USE the cell?** — `cell.periodic_in_gas_phase`
-  (added 2026-08-03). A **warning**, by the same rule: the PySCF renderer builds
+* **Will this engine even USE the cell?** — `cell.periodic_in_gas_phase`. A
+  **warning**, by the same rule: the PySCF renderer builds
   a molecular `gto.M()` with no lattice and no k-points, so a structure with a
   repeating axis produces an **isolated cluster** and the cell is dropped. That
   is not a rough version of what was asked for — it is a different calculation,
-  and it used to happen in silence. An isolated-cluster run of a periodic input
+  and it is said. An isolated-cluster run of a periodic input
   is legal and occasionally deliberate, so the user is told, not stopped: the
   finding names the repeating axes, the lattice being ignored, and what comes
   out instead.
@@ -342,11 +326,17 @@ either nagging or dangerous:
 
 * **Does the k-point mesh contradict the axes?** — `kmesh.check`, on every
   mesh a deck writes (`config.kgrid`, a transmission's `config.tbt_k_grid`),
-  **warnings**, under one rule *(user, 2026-08-20)*: **`k > 1` is the user's
+  **warnings**, save one refusal — a transport calculation's grid sampling an
+  isolated axis more than once while the other axis of the electrode plane is
+  periodic, which TranSIESTA stops on *(user, 2026-09-30)* — under one rule
+  *(user, 2026-08-20)*: **`k > 1` is the user's
   explicit statement — "sample a supercell along this axis" — so that is the
   only place a consistency question exists. `k = 1` states nothing** (correct
   for an isolated axis, a legitimate Γ-only choice for a periodic one) **and is
-  validated not at all.** The mesh and its roles are
+  validated not at all**, save on a transport calculation, where one k-point
+  along a direction the electrodes repeat in is warned
+  ([`engines/transport.md`](?doc=engines/transport.md) § 0.3b; *user,
+  2026-10-09*). The mesh and its roles are
   [`engines/siesta.md`](?doc=engines/siesta.md) § 6.1's.
 
   Where `k > 1`, two of the user's own statements can contradict it:
@@ -359,36 +349,30 @@ either nagging or dangerous:
 
   A transport calculation's own transport axis is not in this table: it is 1
   on the open rungs and a lead's own count on a lead, fixed by the mesh and
-  refused otherwise on every door. *(Until 2026-09-30 a `transport` axis was
-  warned here in every calculation, while the transport kind's validator
-  refused the same value — two severities for one fact.)*
+  refused otherwise on every door. One fact, one severity: the mesh fixes the
+  transport axis, and every door refuses another value.
 
-  *(This retired two earlier rules on 2026-08-20: a span-ratio heuristic
-  that judged intent geometrically even at `k = 1`, and an
-  "under-converged" warning on `k = 1` periodic axes — both validated an
-  axis about which the user had stated nothing. The historical failure
-  this rule exists for: a junction whose axis kinds were lost between
-  tabs kept its `2 2 1` k-grid, and nothing cross-checked the two — with
-  the rule, wrongly-isolated axes under `k = 2` earn two warnings.)*
+  *(Nothing judges an axis the user stated nothing about. A junction whose
+  axis kinds were lost between tabs and kept its `2 2 1` grid is still
+  caught: each wrongly-isolated axis sampled twice earns a warning.)*
 
-* **Can this cell exist at all?** — `cell.no_volume` and `cell.left_handed`,
-  both **errors**, from the one checker (`molbuilder/cell.py`), asked with
+* **Can this cell exist at all?** — `cell.no_volume`, `cell.left_handed` and
+  `cell.unfittable`, all **errors**, from the one checker (`molbuilder/cell.py`), asked with
   the geometry's own checks by `validation.structure_findings` — the
   structural half of `validate()`, which `molbuilder validate` asks with no
-  engine named, every finding of the box heard *(2026-10-17, plan A1.1: with
-  no `--engine` the box went unchecked, a mirrored cell exit 0 while
-  `--engine siesta` refused it)*. Upstream of
-  them the gate refuses the edit outright (§ 6.1). Not a judgement about
+  engine named, every finding of the box heard — a mirrored cell is an error
+  with or without `--engine`. Upstream of
+  them the gate refuses the edit outright (the frame contract,
+  [`model/structure-periodicity.md`](?doc=model/structure-periodicity.md)
+  § 6.1). Not a judgement about
   quality: a zero-volume lattice makes SIESTA fail when it builds reciprocal
   vectors, so emitting it with a warning would hand the user a
   guaranteed-failed run dressed as a choice.
 
-  **They were one id, `cell.determinant`, until 2026-08-03** — "degenerate or
-  left-handed", two faults with two different repairs under one name, so a flat
-  molecule was told to swap its lattice vectors. Split when the cell checks
-  became one process line; see
+  They are separate ids because they are separate faults with separate
+  repairs: a flat box needs volume, a mirrored one two vectors swapped.
   [`model/structure-periodicity.md`](?doc=model/structure-periodicity.md)
-  § 6.1a for the full id list and which surface each reaches.
+  § 6.1a lists every id and which surface each reaches.
 
 So: **adequacy is advisory, representability is blocking.** A check that reports
 "your box is small" must not stop the run; a check that reports "this box is not
@@ -405,17 +389,12 @@ flowchart LR
     P -->|"otherwise (R3)"| RES["residual structure panel"]
 ```
 
-**Worked example — the thin vacuum that reached SIESTA (2026-07-29).** A user
-generated `hemeC-dithiol` with 2.5 Å of vacuum per side. Two checks had
-something to say and neither arrived: `validate_geometry`'s image-distance check
-was skipped (no `cell` passed — F4), and the emitter's vacuum advice went to
-`stderr` (a `warnings.warn` — R5). SIESTA itself reported the consequence
-(*"Gamma-point calculation with multiply-connected orbital pairs"* — basis
-orbitals overlapping the periodic images), which is not an error but means the
-molecule interacted with its own copies. Under this contract the same run
-surfaces `cell.image_distance` (`warn`, "min atom-to-nearest-image distance is
-5.15 Å") in the structure panel *before* the deck is written, with the actionable
-number in the message.
+**Worked example — a thin vacuum.** `hemeC-dithiol` with 2.5 Å of vacuum per
+side surfaces `cell.image_distance` (`warn`, "min atom-to-nearest-image
+distance is 5.15 Å …") in the structure panel *before* the deck is written,
+with the actionable number in the message — the overlap SIESTA otherwise
+reports only as *"Gamma-point calculation with multiply-connected orbital
+pairs"*.
 
 ---
 
@@ -427,8 +406,7 @@ mask) and a transport calculation's partition (`L-electrode`, `R-electrode`,
 `bridge`, `buffer`, [`engines/transport.md`](?doc=engines/transport.md) § 4)
 — and no other. Any other label in `struct.regions` is the user's: it rides
 along untouched, and no gate refuses it, warns about it or gives it a meaning
-by its name *(user, 2026-10-02; the "unconsumed label" notice that said
-otherwise went with F25, 2026-10-08)*.
+by its name *(user, 2026-10-02)*.
 
 ---
 
@@ -446,8 +424,10 @@ otherwise went with F25, 2026-10-08)*.
    § 6.3a — no `free` among its counts if it cannot float a moment), with a
    `not_offered` row saying why for what it cannot. The form then offers exactly
    that, and `resolve` and the gate refuse the rest by name (ES4).
-2. Give its config the four state items from `config/state.py` (the factories
-   every engine's config uses), `method` if it has one, and the three rules
+2. Give its config the electronic state's three items — `net_charge`,
+   `spin_treatment`, `unpaired_electrons`, each blank by default and declared
+   once in the catalogue ([`engines/template.md`](?doc=engines/template.md)
+   § 6.3) — `method` if it has one, and the three rules
    the gate asks of every engine's config: why, under a spin treatment and
    kind, it cannot hold a stated number of unpaired electrons
    (`count_must_float`), what it does with an odd electron count under
@@ -479,12 +459,13 @@ validation/
 │                   # kind's science the part its kind table entry names; a
 │                   # junction's checks where the kind's deck relaxes
 ├── geometry.py     # validate_geometry + geometry checks
-├── metadata.py     # dataclass-field-driven config validation (range/validate)
+├── metadata.py     # the catalogue's ranges and the fields' validate= callables;
+│                   # what a kind fixes, does not offer, or leaves inactive
 ├── chemistry.py    # species labels; THE ELECTRONIC STATE'S ONE FAMILY
 │                   # (check_electronic_state); peptide protonation
-├── identity.py     # names and labels (run identity, basenames)
 ├── builders.py     # what a build says of what it built (`check_built`, R5)
-├── sidecar.py      # frozen-atoms-consumed check; the junction's boundary (§ 6.1c);
+├── sidecar.py      # frozen-atoms-consumed check; the junction's boundary
+│                   # (engines/transport.md § 6.1c);
 │                   # the relaxation-record check (engines/vibration.md § 2.2)
 ├── stages.py       # stage-ladder checks (shared by describe/dispatch)
 ├── task.py         # the TASK preflight — a description that is not one refuses
@@ -499,9 +480,6 @@ validation/
                     # validate_transport_kind, its validator
 ```
 
-*(This tree drifted once — it listed seven files while the package held
-eleven; reconciled 2026-08-21 during the diagram-faithfulness review.)*
-
 Two rules make this safe to extend: **the call order inside `validate_siesta` /
 `validate_pyscf` is the per-engine public contract** — load-bearing, since
 tests count issues by position — and a helper **loses its `_` prefix when it
@@ -514,18 +492,19 @@ the caller always states the kind. **The gate works out once what every check
 reads**: the config's engine (`engine_table.engine_of_config`), the box, and
 the electronic state the deck will be written from (`None` where a species
 label names no element — the label check owns that finding); each is handed
-to the engine's and the kind's checks, which compose none of their own. Tests
-mirror the layout under `tests/validation/`.
+to the engine's and the kind's checks, which compose none of their own. The
+engine and shared validators' own tests are under `tests/validation/`
+(geometry, chemistry, SIESTA, PySCF, the transport kind, the aggregator).
 
 **One fact, one finding.** The kind's validator owns the families the kind's
 science answers — on a vibration: the grid, the held atoms and what survives the
-freeze, and the region labels the run does not consume — and the engine
+freeze — and the engine
 validator, which
 receives `calculation`, **defers** those families on that kind rather than
 firing its own copy. Two findings for one fact is the failure this rule
 closes: the engine's copy is reasoned from the wrong calculation (a
 *"held fixed during relaxation"* line on a force-constant run that relaxes
-nothing — seen on the Spectrum tab, 2026-09-24). Both engine validators
+nothing). Both engine validators
 branch on the kind the same way (`validation/pyscf.py`, `validation/siesta.py`).
 The charge and spin are neither's: they are the electronic state's one family,
 asked once by `validate()` for every engine and kind (§ 4). **Nor is a
@@ -538,15 +517,12 @@ and its kind refuses the boundary itself.
 The same wrong calculation reached the transport kind: its rungs write no MD
 block — the junction was relaxed upstream and every rung computes at that
 geometry — so SIESTA's frozen-atom family is not asked there at all, rather
-than deferred to anyone (every junction rung said *"held fixed during SIESTA
-relaxation"*, 2026-09-25).
+than deferred to anyone.
 
-> *A registry keyed on a class is only as live as the callers that construct
-> that class: two such rows — `SpectraConfig` (retired 2026-08-22, a
-> vibration's science being the kind's) and `TransportConfig` (2026-09-17,
-> every transport rung resolving a `SiestaConfig`) — dispatched for nothing.
-> So a kind's science is its record's `validator`, and since 2.64.0 an
-> engine's checks are its record's part too.*
+> *A kind's science is its kind-table record's `validator` and an engine's
+> checks its engine-table record's, never a registry keyed on a config class:
+> such a registry is only as live as the callers that construct the class, and
+> every transport rung resolves a `SiestaConfig`.*
 
 ---
 
@@ -569,7 +545,9 @@ cross-engine consistency claim.
   transport rungs; PySCF optimization and vibration) carries the class's answer,
   each value beside its source, pinned through `jobset prep`:
   `tests/test_electronic_state.py` (the detection table on both engines, the
-  charge step on every deck, the refusals, the recorded step, the migration) and
+  charge step on every deck, the refusals),
+  `tests/test_an_edit_on_a_recorded_structure_e2e.py` (the recorded step, and
+  an edit voiding it) and
   `tests/test_transport_compose.py` (a blank spin decided once, on the junction).
 - **The card and the chip** — they answer for exactly what each form says, about
   the structure the page holds, fill nothing in, and hide with nothing to answer:
@@ -582,60 +560,6 @@ cross-engine consistency claim.
 - **Every field reaches the deck** — a state item changes what the ENGINE reads,
   not only the comment beside it: `tests/test_every_form_field_reaches_the_deck.py`.
 
-*(The adapter-agreement, adapter-purity, new-engine-registration and
-`check_open_shell_metal` invariants went with the adapters on 2026-09-28: one
-class leaves nothing to agree.)*
-
----
-
-## 10. Design history — why the machinery is shaped this way
-
-Three decisions produced this structure (fuller provenance in git history):
-
-- **The analyzer was hoisted out of the endpoint (2026-06-10).**
-  `/api/structure/analyze` first shipped (2026-05-23) with both engine
-  translations hardcoded inline in `web/blueprints/build.py` — duplication waiting
-  to drift, and no on-ramp for a new engine. Extracting `analyze_structure` + the
-  adapter registry realised the cross-engine consistency rule at the UI surface
-  too, not just the validators.
-- **`validation.py` became a package (2026-06-13).** The flat 1326-line module
-  became the 7-file `validation/` package (§ 7) so "where does a new check go?"
-  has a one-step answer. The split was mechanical — every function body,
-  signature, and per-engine call order moved *verbatim*, because the call order is
-  the load-bearing contract. The Spectra-preflight drift that motivated it came
-  from external engines rolling their own chemistry check for lack of a convenient
-  import.
-- **`OPEN_SHELL_METALS` split into three sets (2026-06-13).** So the analyzer
-  recommends closed-shell singlet for Au junctions (§ 2.1) and
-  `check_open_shell_metal` gates on `suggested_treatment` instead of the flat
-  `metals` list.
-- **The electronic state (2026-09-28, M6).** The analyzer's suggestion, its two
-  adapters, the Auto-detect button that copied them into the forms, and
-  `check_open_shell_metal` were replaced by one class, `electronic_state`, which
-  decides the charge and the spin at the calculation's own charge and
-  periodicity, for the form, the checks and every deck alike
-  ([`chemistry-correctness.md`](?doc=science/chemistry-correctness.md) § 2a).
-  Measured before it: a formate ion prepared at −1 and a bulk gold lead both told
-  to go open-shell; a blank charge written as 0 by the fill, switching the
-  phosphate rule off; a person's Hartree–Fock turned into DFT; `dft.RKS` with a
-  nonzero spin re-ruled by PySCF into ROKS without a word.
-- **The alias deleted, and the split finished (2026-09-17).** The 2026-06-13
-  entry above claimed to have killed the Au-BDT-Au chip-vs-validator
-  contradiction. It killed it on the **chip**. There were three readers of the
-  open-shell question, not two: `analyze_structure` and
-  `check_open_shell_metal` were both migrated, and
-  `detect_open_shell_metals` was left on the flat union behind the
-  "deprecation window" alias. So for three months `analyze_structure` called a
-  gold junction closed-shell while `validation/siesta.py` — reading the alias —
-  **refused to generate it**, advising 1 μB of spin on the system whose own
-  rationale cites the spin-restricted TranSIESTA benchmark. The window
-  preserved the bug rather than a caller, which is what the
-  no-backward-compat rule exists to prevent.  `detect_open_shell_metals` then
-  asked the structure: an open-d metal decided for everything, and a
-  nobles-only system was decided by electron parity — the same rule
-  `analyze_structure` reached (both retired with the electronic state, the
-  entry above).
-
 ---
 
 > **Note — the GPU eigensolver is not here.** The ELPA-CUDA / NVIDIA-MPS
@@ -643,6 +567,5 @@ Three decisions produced this structure (fuller provenance in git history):
 > equivalence claim, the MPS rank policy, the `envs validate` probes) is a
 > SIESTA-GPU engine/ops concern, documented in
 > [`engines/siesta.md`](?doc=engines/siesta.md) § 7.1 and
-> [`ops/installation.md`](?doc=ops/installation.md) (the old
-> `engines/siesta-gpu.md` split into those two on 2026-07-28). It rode in the
-> legacy `scientific-validation.md` but is not chemistry validation.
+> [`ops/installation.md`](?doc=ops/installation.md): it is not chemistry
+> validation.

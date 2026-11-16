@@ -1507,7 +1507,9 @@ def fermi_frames(stages: List[Dict]) -> Optional[Dict]:
                  f"periodic start's ts-Vha is in the folder, so its E_F, "
                  f"{dev['ef']:.6f} eV, stays in TranSIESTA's frame")
     note += ("; the leads' Hamiltonians are aligned to E_F ± V/2 inside "
-             "TranSIESTA and T(E) is measured relative to the leads' E_F.")
+             "TranSIESTA, and T(E) is measured from the device's E_F, which "
+             "TBtrans subtracts as it reads the device's Hamiltonian -- under "
+             "a bias the leads sit at ± V/2 from it.")
     out["note"] = note
     return out
 

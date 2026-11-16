@@ -6,9 +6,10 @@
 machinery that *runs* these checks — the analyzer, the electronic-state class,
 its consumers);
 [`model/chemistry.md`](?doc=model/chemistry.md) (the L1 charge/protonation/
-`add_hydrogens` helpers); `overview.md` (the science contract + the full
-validation-check catalog — composed last, named not linked yet); `pseudopotentials.md`
-(the heavy-atom pseudo/basis pass); the engine emitters (`engines/{siesta,pyscf,builders}.md`).
+`add_hydrogens` helpers); [`overview.md`](?doc=science/overview.md) (the
+science contract + the validation-check catalog);
+[`pseudopotentials.md`](?doc=science/pseudopotentials.md) (the heavy-atom
+pseudo pass); the engine emitters (`engines/{siesta,pyscf,builders}.md`).
 
 This is where to start when asking **"is molbuilder's chemistry right?"** It walks
 the path a structure takes from *"user types a sequence"* to *"engine emits a
@@ -42,17 +43,17 @@ flowchart TB
 
 | # | Control point | Owner | Deep doc |
 |---|---|---|---|
-| 1 | User input (CLI / web form) | shared dataclass dispatch | `engines/*` · `process/cli.md` |
+| 1 | User input (CLI / web form) | shared dataclass dispatch | `engines/*` · [`engines/builders.md`](?doc=engines/builders.md) |
 | 2 | Backend dispatcher | `builders/backends/__init__.py` | `engines/builders.md` |
 | 3 | Chemistry primitives (H + charge) | `chemistry.py` | [`model/chemistry.md`](?doc=model/chemistry.md) |
 | 4 | Facts, the electronic state, the checks | `chemistry.py` · `electronic_state.py` · `validation/` | § 2a · [`validation.md`](?doc=science/validation.md) |
 | 5 | Engine emission + pre-emit validate | `siesta/input.py` · `pyscf/input.py` · `script_emit.py` | `engines/{siesta,pyscf}.md` |
 
 The user doesn't pick a backend — they choose `--backend auto` (or accept the
-form default) and `dispatch(kind, sequence, *, backend="auto", …)`
-(`builders/backends/__init__.py:105`) runs the cascade **3DNA → AmberTools →
-RDKit** (first-available wins). `available_backends()` (`:65`) reports what's
-installed; `auto_backend_name()` (`:91`) reports what `auto` would pick (or
+form default) and `builders.backends.dispatch(kind, sequence, *, backend="auto", …)`
+runs the cascade **3DNA → AmberTools →
+RDKit** (first-available wins). `available_backends()` reports what's
+installed; `auto_backend_name()` reports what `auto` would pick (or
 `None` if nothing is available).
 
 ---
@@ -199,16 +200,10 @@ flowchart TD
   that omitted the open-shell-metal rule (it ran only from the Build tab's
   PySCF emitter); (3) the user had no form field to specify spin. Silent wrong
   default + no input surface + no surfaced advisory = the worst combination.
-- **Fixes that landed** — `charge` + `spin` added to `SpectraConfig` with help
-  text that enumerates the common Fe(II) / Fe(III) spin combinations, so the user has a starting
-  point without reading the literature; emitted in the script's `gto.M(...)`; the
-  open-shell-metal check added to **both** `_validate_pyscf` and `_validate_siesta`
-  (via the shared `check_open_shell_metal` — since 2026-09-28 the electronic
-  state's recommendation check, § 2a ES9) **and** the spectra preflight — triple
-  coverage; and `total_electrons` / `check_spin_charge_parity` /
-  `explain_metal_spin` promoted to standalone helpers for any future engine.
-  *(Today every form carries the four state items, a blank is decided by the one
-  class and shown on the chemistry card before anything runs — § 2a, § 2.5.)*
+- **What guards it now** — every form carries the electronic state's items; a
+  blank is decided by `electronic_state` and shown on the chemistry card before
+  anything runs; a count a metal decided is warned until stated (ES8); a stated
+  closed shell on an open-shell structure is warned (ES9) — § 2a, § 2.5.
 
 ### 2.4 The cross-engine consistency rule
 
@@ -262,51 +257,25 @@ structure implies is reported (ES9). The card and the chip read the same
 `ElectronicState` the checks and the deck writers read — see
 [`validation.md`](?doc=science/validation.md) § 4.
 
-*(Until 2026-09-28 this was an **Auto-detect** button that copied the
-analyzer's suggestion into the form — and the copy overwrote: a blank charge
-became 0, a person's Hartree–Fock became DFT. The amendment of § 2a retired the
-button; there is nothing left to copy.)*
+*(Nothing copies a suggestion into the form: a blank is the instruction to
+work it out, and a copy would turn a blank charge into 0 and a person's
+Hartree–Fock into DFT.)*
 
 ---
 
 ## 2a. The electronic state — one class, one answer per calculation *(decided 2026-09-25; amended 2026-09-28)*
 
-> **Status: CONTRACT, built (M6, 2026-09-28/29) — all but the read-back (ES10,
-> plan § 5s, P5).** Decided by the user on 2026-09-25
-> ("go with your recommendations on all seven", plan W34, § 5s.2, decisions
-> 1–7). **Amended 2026-09-28** — spin is decided the way charge already was:
-> *"spin/close-shell/open-shell can be handled by a similar class level/framework
-> level such that all engine can use to detect and decide"*, *"or maybe this
-> could be merged to that class too"*, *"go ahead with the contract, add free,
-> make sure api and users are unified"*. The amendment replaces decision 3
-> (Auto-detect filled the form) with ES8 below, and gives a blank count the
-> meaning *auto* — a floating moment is now the value `free`. Where this section
-> and the code disagree, the code is behind and plan § 5s names the phase that
-> closes the gap.
+> Decided by the user on 2026-09-25 (*"go with your recommendations on all
+> seven"*); amended 2026-09-28: *"spin/close-shell/open-shell can be handled by
+> a similar class level/framework level such that all engine can use to detect
+> and decide"*, *"or maybe this could be merged to that class too"*, *"go ahead
+> with the contract, add free, make sure api and users are unified"*. ES10, the
+> read-back, is designed and not built.
 
-Five failures, all live on one day, all the same defect:
-
-* a formate ion prepared at `NetCharge -1` (24 electrons, closed shell) was told
-  to switch to open-shell, because the check counted electrons as if the charge
-  were 0;
-* a bulk gold electrode (27 atoms, 2133 electrons per cell) was told to switch
-  to open-shell, because an odd count per *cell* was read as an unpaired
-  electron;
-* the Auto-detect button wrote `net_charge = 0` over a blank charge — which
-  switches the phosphate detection off — `spin_total = 0` beside a
-  non-polarized treatment, and RKS or UKS over a person's Hartree–Fock;
-* a transport calculation citing a relaxation started non-polarized whatever
-  the relaxation had run, under a caption saying the values came from it;
-* nothing read back what charge and spin the engine had actually used.
-
-Each layer read the raw fields and interpreted them itself — and the two halves
-of one state were not even decided the same way. **Charge** was resolved where
-it was used: `resolve_net_charge` — a stated value wins, a blank runs the
-phosphate rule — called by every deck writer and check. **Spin** was never
-resolved at all: the analyzer only *suggested* it, and a suggestion reached the
-deck only if someone clicked Auto-detect, which copied it into the form.
-**The fix is one class that decides all of it, the way the charge rule already
-decided the charge, and that every layer reads.**
+Every layer reads one class and none interprets the raw fields itself: read
+raw, a formate ion at −1 is judged as if neutral and told to go open-shell, a
+gold electrode's odd count per cell is read as an unpaired electron, and a
+transport calculation ignores the state its relaxation ran.
 
 ### 2a.1 What it is: four items, one class
 
@@ -318,7 +287,7 @@ item — the spelling is the generator's*):
 |---|---|---|---|---|---|
 | `net_charge` | how many electrons short (+) or extra (−), in \|e\| | an integer | **auto** — the phosphate rule (`model/chemistry.md` § 1) | `NetCharge ±N`, written at 0 too — nothing reaches the engine by omission (`engines/template.md` § 6.6); a transport deck writes none (the junction is neutral by rule) | `gto.M(charge=N)` |
 | `spin_treatment` | how the two spin channels are solved | `restricted` · `restricted-open` · `unrestricted` · `non-collinear` · `spin-orbit` | **auto** — `restricted` or `unrestricted`, from the structure (§ 2a.1b) | `Spin non-polarized` · *(not offered)* · `Spin polarized` · `Spin non-colinear` · `Spin spin-orbit` — always written, `non-polarized` included (§ 6.6) | the `R` · `RO` · `U` of the SCF class · *(not offered)* · *(not offered)* |
-| `unpaired_electrons` | 2S = N↑ − N↓ — **not** the multiplicity 2S+1 | an integer ≥ 0, or **`free`** — the moment floats to whatever the SCF finds | **auto** — the count the structure implies (§ 2a.1b) | a count: `Spin.Fix .true.` + `Spin.Total N` beside `Spin polarized` only — SIESTA stops on `Spin.Fix` at any other spin (`read_options.F90`), so `restricted`'s 0 (ES5) writes neither; `free` writes neither | `gto.M(spin=N)`; `free` is refused — PySCF always pins it (ES6) |
+| `unpaired_electrons` | 2S = N↑ − N↓ — **not** the multiplicity 2S+1 | an integer ≥ 0, or **`free`** — the moment floats to whatever the SCF finds | **auto** — the count the structure implies (§ 2a.1b) | a count: `Spin.Fix .true.` + `Spin.Total N`, written as stated whatever the treatment — where SIESTA stops on `Spin.Fix` (non-collinear, spin-orbit, unrestricted on a transport rung) the stop is said beforehand (ES6); `restricted`'s 0 (ES5) and `free` write neither | `gto.M(spin=N)`; `free` is refused — PySCF always pins it (ES6) |
 | `method` | which theory | `DFT` · `HF` | never blank — `DFT` unless stated | *(SIESTA is DFT)* | `dft.` · `scf.` |
 
 So PySCF's class is **composed, and written explicitly**: `dft.UKS(mol)` is
@@ -346,10 +315,10 @@ class Resolved:
     value:  Any          # the item's value, never blank
     source: str          # "stated" · "implied" · "recorded" · "detected" · "rule"
                          # · "default" (a form's blank method, below)
-    why:    str          # the reason in words — "three deprotonated phosphates",
+    why:    str          # the reason in words — "3 deprotonated phosphate groups",
                          # "Fe is an open-d metal: 2S = 2 is the starting guess; verify"
     said:   str          # (derived) where it came from, in words — "stated", or
-                         # "detected: three deprotonated phosphates": the ONE
+                         # "detected: 3 deprotonated phosphate groups": the ONE
                          # phrasing the deck comment, the prep report and the
                          # card share; it travels with the value to the page
 
@@ -431,7 +400,7 @@ answer. Decided per rung, a molecule with an open-d centre would polarize the
 device beside non-polarized leads.
 
 The source travels with the value, so every place that shows the state can say
-how it was decided: *"−3 — three deprotonated phosphates"*, *"unrestricted,
+how it was decided: *"−3 — detected: 3 deprotonated phosphate groups"*, *"unrestricted,
 2S = 2 — Fe is an open-d metal; verify against experiment"*, *"0 — follows from
 restricted"*.
 
@@ -457,9 +426,9 @@ the atoms as one gas-phase molecule whatever cell the structure carries
 finite: parity binds it (ES3; `gto.M` refuses a mismatch) and no moment floats
 (ES6). The engine table says which engines compute so (`computes_in = "free space"`, [`execution/architecture.md`](?doc=execution/architecture.md) § 3.3), and *finite* is read from the axes
 the engine computes with — every one isolated — through the one door,
-`cell.engine_axis_kinds` ([`model/structure-periodicity.md`](?doc=model/structure-periodicity.md) § 2.1). Judged by the axes alone, a
-periodic structure handed to PySCF was told to float an iron moment PySCF cannot
-float, and an odd count skipped the parity PySCF enforces (the M6 review).
+`cell.engine_axis_kinds` ([`model/structure-periodicity.md`](?doc=model/structure-periodicity.md) § 2.1). Judged by the structure's axes alone, a
+periodic structure handed to PySCF would be told to float an iron moment PySCF
+cannot float, and an odd count would skip the parity PySCF enforces.
 
 The first row that matches wins, so an open-d metal decides even beside gold.
 **A decision driven by a metal is never silent**: its `why` says to verify, and
@@ -480,8 +449,8 @@ nothing to say so.
 
 **ES2 · Every item resolves once, and says how.** The class resolves the four
 together (§ 2a.1a); the value, its source and the reason travel together, so a
-deck comment, a prep report and the form all say *"−3 (three deprotonated
-phosphates)"* rather than a bare number. Explicit wins, 0 included.
+deck comment, a prep report and the form all say *"−3 (detected: 3
+deprotonated phosphate groups)"* rather than a bare number. Explicit wins, 0 included.
 
 **ES3 · Parity binds a finite system only.** An odd electron count in a molecule
 needs at least one unpaired electron. In a repeating cell it does not: the count
@@ -500,8 +469,10 @@ from the structure is judged as a stated one is: a radical's detected
 `unrestricted` on a PySCF vibration is refused, saying where it came from.
 
 **ES5 · Restricted means closed-shell.** `restricted` with `unpaired_electrons >
-0` or `free` is refused, naming both ways out: `restricted-open` (spin-pure, one
-set of spatial orbitals) and `unrestricted` (the channels relax separately).
+0` or `free` is refused, naming the ways out the kind offers on its engine:
+`restricted-open` (spin-pure, one set of spatial orbitals) and `unrestricted`
+(the channels relax separately) — or, where it offers restricted alone, that
+the count is 0.
 
 **ES6 · `free` is a floating moment, and only SIESTA can float it.** `Spin
 polarized` without `Spin.Fix` — and always where `Spin.Fix` stops the run:
@@ -550,10 +521,11 @@ stated restricted; Fe suggests unrestricted, 2S = 2"*, the hemeC guard — and
 the same answer as restricted at twice the cost). A stated open-shell count on an
 even-electron structure is **not** a finding — triplet O₂ is exactly that, and
 parity cannot see it; the person is the authority. When a statement also breaks
-parity, the parity finding is the one reported (`validation.md` § 7). A detected
+parity, the parity finding is the one reported (the order of
+`validation/chemistry.py::check_electronic_state`). A detected
 value is never compared with itself.
 
-**ES10 · What ran is read back.** After a run the engine's own account of the
+**ES10 · What ran is read back** *(designed, not built)*. After a run the engine's own account of the
 state is recorded, compared with what was asked, and shown: SIESTA's
 `redata: Net charge of the system`, its fixed or converged spin moment; PySCF's
 `mol.charge`, `mol.spin`, the SCF class it built, ⟨S²⟩ for an unrestricted run
@@ -563,7 +535,7 @@ and used is a finding, not a footnote.
 ### 2a.3 What each engine can run — the capability table
 
 Declared once, on the two items (`offered` — [`engines/template.md`](?doc=engines/template.md)
-§ 6.3a, 2026-09-30; `electronic_state.CAPABILITY` held it in code until then),
+§ 6.3a),
 read by the form and the stage table, which offer only what the engine can
 run for the kind (the shared part of a form drawn in parts, what either engine can), by the description's own check, which refuses a stage's
 value outside it when the description is written, and by the settings gate,
@@ -611,13 +583,13 @@ above leans on:
 
 ### 2a.5 Where the state is read — every consumer calls the class
 
-| consumer | reads | replaces |
-|---|---|---|
-| the deck writers — SIESTA optimization, vibration and the five transport rungs; PySCF optimization and vibration | `electronic_state(...)`: each engine spells the four items its own way (§ 2a.1), and the deck comment names each value's source | the raw fields, `resolve_net_charge` inside each writer, PySCF's class spelled from `method` alone |
-| the settings gate | the state: parity for a finite system (ES3), restricted with a count (ES5), the capability table (ES4), a stated item against `recommended` (ES9), a metal-driven decision until it is stated (ES8), the charged-species checks keyed on `finite` | `check_open_shell_metal` at charge 0, parity at the typed charge only, the recommendation at charge 0 ignoring periodicity |
-| the hand-over | the run's own state, read back from its deck (`NetCharge`, `Spin`, `Spin.Fix`, `Spin.Total`, `parse/fdf.py`) into its recorded contract; a structure exported from it carries that record into the class's `recorded` step, and a transport citation writes it into the template (ES7) | nothing: transport's spin started at the class default, and no record carried a state |
-| the forms | `/api/structure/analyze` given the form's four items and the structure the page would hand over — the envelope its viewer holds, the one the preflight and the hand-over send: the state for exactly what the form says, on the chemistry card with each value's source, and in one line on each form's chip | the Auto-detect button and its fill, the per-engine adapters, a chip that never read the charge, a card that re-read the file from disk |
-| the read-back | the engine's own account against the state (ES10) | nothing was parsed |
+| consumer | reads |
+|---|---|
+| the deck writers — SIESTA optimization, vibration and the five transport rungs; PySCF optimization and vibration | `electronic_state(...)`: each engine spells the four items its own way (§ 2a.1), and the deck comment names each value's source |
+| the settings gate | the state: parity for a finite system (ES3), restricted with a count (ES5), the capability table (ES4), a stated item against `recommended` (ES9), a metal-driven decision until it is stated (ES8), the charged-species checks keyed on `finite` |
+| the hand-over | the run's own state, read back from its deck (`NetCharge`, `Spin`, `Spin.Fix`, `Spin.Total`, `parse/fdf.py`) into its recorded contract; a structure exported from it carries that record into the class's `recorded` step, and a transport citation writes it into the template (ES7) |
+| the forms | `/api/structure/analyze` given the form's four items and the structure the page would hand over — the envelope its viewer holds, the one the preflight and the hand-over send: the state for exactly what the form says, on the chemistry card with each value's source, and in one line on each form's chip |
+| the read-back | *(designed, not built)* the engine's own account against the state (ES10) |
 
 ## 2b. Species with charge and spin — what each needs
 
@@ -646,14 +618,14 @@ told to go open-shell.
   and the energy an image-charge error that decays only as 1/L. SIESTA corrects
   it itself for a molecule in a cubic cell (§ 2a.4) and not otherwise; molbuilder's
   `makov_payne_correction.py` must add only what SIESTA did not — it reads
-  `siesta: Emadel` first (plan W34). The vacuum is judged against 25 Å per side
+  `siesta: Emadel` first (`siesta/makov_payne.py`). The vacuum is judged against 25 Å per side
   rather than 8.
 * **In a gas-phase code (PySCF).** No images, no correction. An anion needs
   diffuse basis functions (`aug-`, or def2 `…D`) — without them the extra
   electron is squeezed into valence orbitals — and a gas-phase anion can have an
   unbound top orbital, which implicit solvent (PCM) repairs.
 * **The dipole** of an ion depends on the origin; molbuilder takes it about the
-  centre of mass (§ D8 of plan W33).
+  centre of mass (`chemistry.estimate_dipole_moment_debye`).
 * **Infrared strengths.** With a fixed origin the dipole's *derivative* does not
   depend on where the origin is, and a vibration with every atom free keeps the
   centre of mass still, so an ion's band strengths are well defined. With atoms
@@ -668,8 +640,8 @@ At least one unpaired electron, by parity. Two ways to solve it, now both
 explicit (ES5):
 
 * `unrestricted` — the two channels relax separately and capture spin
-  polarization; the price is spin contamination, which the read-back reports as
-  ⟨S²⟩ against S(S+1).
+  polarization; the price is spin contamination, ⟨S²⟩ against S(S+1), which
+  the read-back (ES10, not built) is to report.
 * `restricted-open` — spin-pure, but its orbital energies depend on a
   convention (the canonicalization), so a reported HOMO/LUMO is not unique; and
   PySCF cannot take its analytic Hessian, so a vibration refuses it (§ 2a.3).
@@ -746,14 +718,14 @@ backend doesn't break the cascade (3DNA still wins for DNA when present).
 **3.2 At the backend** — each backend strips/re-adds hydrogens consistently with
 the shared `add_hydrogens` (X3DNA's raw output has stylised hydrogens that need
 replacement); AmberTools/tleap runs the methylene-hydrogen fix
-(`_fix_methylene_hydrogens`, `builders/backends/_amber.py:174`); RDKit builds the
+(`builders.backends._amber._fix_methylene_hydrogens`); RDKit builds the
 polymer from the one-letter sequence (`MolFromSequence`), adds Hs with plain
 `Chem.AddHs`, embeds a conformer with ETKDGv3, and minimises with **UFF** — MMFF
-lacks parameters for nucleic acids (`builders/backends/_rdkit.py:86-106`).
+lacks parameters for nucleic acids (`builders.backends._rdkit.build`).
 
 **3.3 At the chemistry primitives** — `add_hydrogens` runs **once** per structure
-(never twice, never skipped): the nucleic-acid builder gate `_maybe_add_hydrogens`
-(`nucleic.py:312`) skips it when the structure is already protonated
+(never twice, never skipped): the nucleic-acid builder gate
+`nucleic._maybe_add_hydrogens` skips it when the structure is already protonated
 (`tests/test_nucleic.py::test_maybe_add_hydrogens_auto_skips_already_protonated`)
 and forces it when it isn't. (`add_hydrogens` normalises protonation via
 OpenBabel→RDKit, rebuilding the structure through a PDB round-trip; with
@@ -769,24 +741,28 @@ blank charge or spin is decided, and the chemistry card, the chip, the checks
 and the deck writers all read its answer (§ 2a.5) — a second decision anywhere
 is a defect, not a convenience.
 
-**3.5 At engine emission** — `validate(struct, cfg)` runs before render in *every*
-engine path (no "render that skips preflight"):
-`tests/test_web.py:435,459::test_preflight_returns_issues_for_{siesta,pyscf}`;
-findings serialised with a `card` route to the correct UI card
+**3.5 At engine emission** — `script_emit.render_deck` asks
+`report(validate(...))` before a line of any deck exists, every deck route
+ending there; the preflight route answers the same findings
+(`tests/test_web.py::test_preflight_returns_issues_for_siesta`); findings
+serialised with a `card` route to the correct UI card
 (`tests/test_issues_card.py`).
 
 ---
 
 ## 4. What this doc does NOT cover
 
-- **The full validation-check catalog** (min-distance / cell-volume / k-grid
+- **The validation-check catalog** (min-distance / cell-volume / k-grid
   / dipole thresholds, with their scientific rationale) and the
-  advisory-while-editing vs enforcing-at-generation contract → `overview.md`.
+  advisory-while-editing vs enforcing-at-generation contract →
+  [`overview.md`](?doc=science/overview.md).
 - **The "why" for each toolkit choice** (OpenBabel vs RDKit, X3DNA quirks) →
   `engines/builders.md`.
 - **The per-engine validator rule set + the analyzer and the class's
   machinery** → [`validation.md`](?doc=science/validation.md).
-- **The Issue → UI-card attachment rules** → `web-ui-coherence.md` (web wave).
+- **The Issue → UI-card attachment rules** →
+  [`validation.md`](?doc=science/validation.md) § 4.1 (R1–R3) and
+  [`web/ui-contract.md`](?doc=web/ui-contract.md) § 5.1.
 
 This doc is intentionally a navigation map. A detail you're tempted to add here
 probably belongs in one of the linked specialised docs.
@@ -795,11 +771,6 @@ probably belongs in one of the linked specialised docs.
 
 ## 5. Why this doc exists
 
-A 2026-06-14 audit nearly deleted `/api/modify/load` without first verifying that
-the chemistry guards weren't entangled with it (they weren't — it was a trivial
-3-line wrapper). Without a stitched overview, future audits would keep hitting
-the same risk: *"someone proposes deleting/refactoring something; nobody can
-quickly check whether the chemistry-correctness chain touches it."* This doc is
-the answer to **"where is the chain?"** — one entry point that walks the stack
-with links to each layer's deep doc. When a chemistry-adjacent change is
-proposed, run § 3 top-to-bottom.
+This doc answers **"where is the chain?"** — one entry point that walks the
+stack with links to each layer's deep doc. Before a chemistry-adjacent change,
+run § 3 top to bottom.

@@ -1,9 +1,10 @@
 # Reference full texts — what is here, and what is not
 
 Backing material for [`../normal-modes.md`](?doc=science/normal-modes.md).
-Every entry's bibliographic record was checked against Crossref and the
-publisher on **2026-09-21**; the result of each check is recorded beside the
-entry in `../references.bib`.
+Every article's bibliographic record below was checked against Crossref and
+the publisher on **2026-09-21** (`Wilson1955`, a book, carries an earlier
+mark); the result of each check is recorded beside the entry in
+`../references.bib`.
 
 Each article is stored as the PDF **and** as a `.txt` rendering, so the prose
 can be grepped and quoted without opening a reader. The `.txt` files are
@@ -50,8 +51,8 @@ Checked against Unpaywall on 2026-09-21; all returned `is_oa: false`.
 
 | key | record checked against | content |
 |---|---|---|
-| `Eckart1935` | Crossref **and** the APS record | abstract read; the citation was **narrowed** — it is cited for the separation of vibration from rotation, and no longer for the stationary-point condition, which is Wilson's |
-| `Head1997` | Crossref | added 2026-09-21 to **correct an attribution**: the contract had credited Li & Jensen with a method Head originated |
+| `Eckart1935` | Crossref **and** the APS record | abstract read; cited for the separation of vibration from rotation only — the stationary-point condition is Wilson's |
+| `Head1997` | Crossref | the **origin** of the partial-Hessian method, which Li & Jensen named and analysed |
 | `LiJensen2002` | Crossref | names and analyses the method rather than originating it |
 | `Ghysels2007` | Crossref | **abstract only** — see the gap below |
 | `Ghysels2008` | read directly | closes most of that gap: the same group, stating the three-versus-six fact outright |

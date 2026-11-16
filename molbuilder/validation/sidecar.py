@@ -13,7 +13,7 @@ from ..issues import Issue
 from ..structure import Structure
 
 
-def _check_frozen_atoms_consumed(struct: Structure, *,
+def check_frozen_atoms_consumed(struct: Structure, *,
                                    engine: str,
                                    honored: bool,
                                    reason_when_dropped: str = "",

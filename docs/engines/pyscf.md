@@ -13,7 +13,7 @@ This is how molbuilder turns a `Structure` + a `PySCFConfig` into a **runnable
 Python script**. Unlike SIESTA (a compiled binary reading an `.fdf`), PySCF is a
 Python library, so the emitter writes a `.py` file you run directly. The
 engine describes the deck — `spec_for(struct, config=None, *, names,
-calculation="optimization") -> DeckSpec` (`pyscf/input.py`) — and `jobset prep`
+calculation) -> DeckSpec` (`pyscf/input.py`) — and `jobset prep`
 hands that spec to `script_emit.prepare_deck`, which validates, renders
 (`script_emit.render_deck`), writes and checks it.
 
@@ -62,21 +62,11 @@ flowchart LR
 > [`engines/vibration.md`](?doc=engines/vibration.md) § 4; § 7a below is
 > the one rule of this document that deck depends on.
 
-> **`molbuilder pyscf` and `convert()` are both DELETED (2026-09-17).**
-> `convert()` was the single-shot "read a structure file, write a deck" worker;
-> `cmd_pyscf` was its command line. **No engine has a verb** — the ruling is
-> `conventions.md` § 3, decisions 7 and 34 (*"everything is a job set… a second
-> way in is a second way to lose your results"*, and *"there is no `molbuilder
-> fdf`"*), and this was `fdf`'s surviving twin: a structure plus every engine
-> field as a flag → a finished deck, skipping the description. `cli.py` had
-> claimed an exemption — *"`pyscf` keeps its own only because its ladder runs
-> inside one emitted script"* — and refuted it two comments later: *"THIS
-> COMMAND WRITES ONE DECK, AND A LADDER IS N DECKS."*
->
-> A deck is written by `jobset prep` from a description — `spec_for` →
-> `prepare_deck`, the same three steps with the description in front of them
-> instead of a command line; `pyscf/seam.py::pyscf_seam` builds a full
-> `EngineSeam` for PySCF, so nothing had to be built to replace the verb.
+> **No engine has a verb** — the ruling is `conventions.md` § 3, decisions 7
+> and 34 (*"everything is a job set… a second way in is a second way to lose
+> your results"*): a deck is written by `jobset prep` from a description —
+> `spec_for` → `prepare_deck` — and `pyscf/seam.py::pyscf_seam` builds
+> PySCF's `EngineSeam`.
 
 - **Backend.** `spec_for(struct, config, *, names, calculation=…)` returns the
   `.py` deck's `script_emit.DeckSpec` — its layout, how each setting is
@@ -99,28 +89,20 @@ flowchart LR
 
   **A ladder is N decks** (§ 1.1a), declared in `task.json` and built by
   `molbuilder describe --engine pyscf --stage-strategy …`, which is the one door
-  either engine's ladder is authored through. *(`--stage-strategy` was taken
-  off the deleted `pyscf` verb on 2026-08-18 for exactly this reason, which
-  was the first half of the argument that finished it.)*
+  either engine's ladder is authored through.
 
 - **Frontend.** The Structure-optimization tab **collects parameters and
   produces no artifact**: `/api/build/schema/pyscf` renders its form **from the
   catalogue** (`_shared.catalogue_to_form_schema`, the same generator SIESTA's
   form uses), and `/api/build/preflight` validates live. A script comes from
-  `prep` — there is no second producer, and since 2026-09-17 no second door.
+  `prep` — there is no second producer and no second door.
 
-  > *(This bullet said both tabs post to `/api/build/pyscf` and that
-  > **`PySCFConfig`'s field metadata drives the form**, until 2026-08-16.
-  > Neither holds: no page calls that route today — script generation left the
-  > tab on 2026-08-15 — and the form has been catalogue-driven since
-  > ([`template.md`](?doc=engines/template.md) § 2.1, the config class is a
-  > translator on the way out, not the source). **The Spectrum tab is the same
-  > catalogue door since the spectra migration's P2**: its form comes from
+  > The Spectrum tab's form comes from the same catalogue door:
   > `GET /api/build/schema/common?calculation=vibration&surface=state`,
   > `GET /api/build/schema/common?calculation=vibration` and
-  > `GET /api/build/schema/pyscf?calculation=vibration&surface=own` — the
-  > charge and spin both engines share, their other shared settings, then
-  > PySCF's own — and `SpectraConfig` no longer feeds any form.)*
+  > `GET /api/build/schema/<engine>?calculation=vibration&surface=own` — the
+  > charge and spin both engines share, their other shared settings, then the
+  > engine's own.
 
 ---
 
@@ -134,18 +116,14 @@ by the config flag in column 2):
 | `<job>_<NN>_<stage>.log` | `log_file` (default on) | the verbose PySCF log, one per rung, named on the rung's token as every file molbuilder names is ([`execution/job-contracts.md`](?doc=execution/job-contracts.md) § 6.3) |
 | `<job>.chk` | `chkfile` (default on) | PySCF checkpoint (density matrix, mol, energies) |
 | `<job>_initial.xyz` | `save_initial_xyz` | the input geometry, snapshotted right after `gto.M(...)`, before any optimization — in the engine's frame, as a pair carrying no run record of the input's either: its coordinates are the engine's, so the input's record's fingerprint does not describe them |
-| `<job>_optimized.xyz` | `save_optimized_xyz` AND `optimize` | the final relaxed geometry, as a pair — its `.molstruct.json` carries the structure's own facts (cell, kinds, regions, the engine's origin 0) and **no run record of the input's**: `info.relaxation` and `info.calculation` describe the run the input came out of, not this one, so they stay behind; this run's relaxation record (`info.relaxation`) is read from its own output by the one reader when the run is exported from the Results tab ([`model/parse.md`](?doc=model/parse.md) § 5b) — the deck writes no copy of it (V1.31, closed 2026-09-29: one reader, one record). **Its level of theory is recorded by no door yet**: `info.calculation` (the charge, spin, basis and functional a run carried) is read from a SIESTA deck only (`parse.contract.contract_of`), so neither this pair nor the Results tab's export of a PySCF run carries one, and a later calculation with a blank charge or spin works them out from the structure (`science/chemistry-correctness.md` § 2a) — state them when the molecule is charged or open-shell. The PySCF half of that reader is planned ([`plan.md`](?doc=plans/plan.md) § 5w K18). *(They were copied onto every pair until 2026-09-29, so a PySCF-relaxed geometry carried a SIESTA run's tolerance, force and level of theory — the M11 review, PS-C10.)* |
+| `<job>_optimized.xyz` | `save_optimized_xyz` AND `optimize` | the final relaxed geometry, as a pair — its `.molstruct.json` carries the structure's own facts (cell, kinds, regions, the engine's origin 0) and **no run record of the input's**: `info.relaxation` and `info.calculation` describe the run the input came out of, not this one, so they stay behind; this run's relaxation record (`info.relaxation`) is read from its own output by the one reader when the run is exported from the Results tab ([`model/parse.md`](?doc=model/parse.md) § 5b) — the deck writes no copy of it: one reader, one record, so a PySCF-relaxed geometry never carries another run's tolerance, force or level of theory. **Its level of theory is recorded by no door yet**: `info.calculation` (the charge, spin, basis and functional a run carried) is read from a SIESTA deck only (`parse.contract.contract_of`), so neither this pair nor the Results tab's export of a PySCF run carries one, and a later calculation with a blank charge or spin works them out from the structure (`science/chemistry-correctness.md` § 2a) — state them when the molecule is charged or open-shell. No reader of a PySCF script's level of theory is built. |
 | `<job>_<NN>_<stage>_geom_optim.xyz` | `optimize` + `write_trajectory` | streaming per-stage trajectory (multi-frame XYZ, one frame per accepted step) |
 | `<job>_<NN>_<stage>.molwatch.log` | `write_molwatch_log` + `optimize` | the per-step trajectory log (§ 4), one per rung; the Results-tab inspector's single-file input |
 
 > **The stage token sits immediately after the label, never inside the role**
-> ([`execution/job-contracts.md`](?doc=execution/job-contracts.md) § 2.2a).
-> These two rows read `<job>_geom_<stage>…` until 2026-09-08 — the spelling
-> from before the grammar was written down, and a name molbuilder has never
-> produced. § 2.2a's *"one file, six beliefs"* table counts the copies that
-> were fixed on 2026-09-02 and 09-07; this page was a seventh, missed because
-> it writes the placeholder as `<stage>` rather than the `*` that sweep
-> searched for. Build the name with `runfiles.compose`, never by hand.
+> ([`execution/job-contracts.md`](?doc=execution/job-contracts.md) § 2.2a):
+> `<job>_<NN>_<stage>_geom_optim.xyz`. Build the name with `runfiles.compose`,
+> never by hand.
 
 **The three per-run files are named once, on the stage's stem**: a run folder
 is one start ([`execution/project-layout.md`](?doc=execution/project-layout.md)
@@ -159,40 +137,23 @@ The script's header `Outputs:` block lists **exactly** this set for the active
 config — no under- or over-promising. `job_name` stays unsuffixed so
 `.chk`/`_optimized.xyz` transfer across stages.
 
-> **This changed on 2026-08-18 and the code has caught up.** A PySCF
-> ladder is N decks and N jobs, like SIESTA's
+> **A PySCF ladder is N decks and N jobs**, like SIESTA's
 > ([`stages.md § 1.1a`](?doc=engines/stages.md)): each rung writes its own log
 > under the deck's own token — `<label>_<NN>_<stage>.log` and
 > `<label>_<NN>_<stage>.molwatch.log`
-> ([`job-contracts.md § 6.3`](?doc=execution/job-contracts.md)) — and the two
-> engines name their outputs the same way (`gto.M(output=…)` and the molwatch
-> suffix both resolve through the one basename helper).
->
-> Until 2026-08-18 this paragraph read: *"PySCF writes ONE unified log, and that
-> is the difference from SIESTA. Its ladder runs inside a single process, so all
-> stages append to one `<job>.molwatch.log` with no per-stage suffix. A per-stage
-> name is only meaningful where a stage is a separate process."* The last sentence
-> was right, and it is now true of both engines.
->
-> **The stage token is a RENDER ARGUMENT, not a config field.**
-> `spec_for(struct, config, *, names=…)` carries it, in the stage's names
-> (`runfiles.RunNames`); the deck's log name and molwatch name resolve
-> through them, as every writer's do, so there is one rule and not two.
->
-> *(A `cfg.stage` field held the token transitionally, and this note called
-> it "a live catalogue item … safe to build on" until the U6 close — by
-> then C7 (2026-08-18) had deleted the field as the last of the retired
-> spellings, and neither `PySCFConfig` nor the catalogue carries a `stage`
-> entry.  `archive/2026-09-01-roadmap.md` records the closure.)*
+> ([`job-contracts.md § 6.3`](?doc=execution/job-contracts.md)). **The stage
+> token is a render argument, not a config field**:
+> `spec_for(struct, config, *, names=…)` carries it in the stage's names
+> (`runfiles.RunNames`), through which every name the deck writes resolves;
+> neither `PySCFConfig` nor the catalogue carries a `stage` entry.
 
 ---
 
 ## 2a. GPU — `use_gpu`, and the run-time probe
 
 > **The cross-engine rule is [`overview.md`](?doc=engines/overview.md) § 3a**
-> (G-1…G-5). **This section is PySCF's mechanism**, and it had none written
-> down until 2026-08-17 — which is why the GPU question kept being re-derived
-> from SIESTA's contract, where the answers are different.
+> (G-1…G-5). **This section is PySCF's mechanism**: its answers differ from
+> SIESTA's.
 
 **`use_gpu` is a user flag, off by default** (G-1). Turning it on makes the
 script probe the GPU when it starts and move its SCF object onto it — both
@@ -222,26 +183,21 @@ forced rather than chosen.
 **There is no CPU fallback** *(user, 2026-08-17)*. All three failure paths —
 `gpu4pyscf` not importable, no usable device, a failed `.to_gpu()` promotion —
 **exit**, with a message naming the cause and the two ways out (run where the
-GPU is, or set `use_gpu` to false on its run card). The script previously printed
-*"CPU fallback."* and carried on; that made a GPU run and a CPU run
-indistinguishable without reading the log, and it made a benchmark dishonest.
-
-**What the run did is still recorded**, and now as a record rather than a
-correction: `gpu_used`, `gpu_name`, `gpu_compute_capability` and `cuda_version`
-go into `_RUNTIME_INFO`, so a summary reads what happened instead of inferring
-it from what was asked.
+GPU is, or set `use_gpu` to false on its run card). A fallback would make a GPU
+run and a CPU run indistinguishable without reading the log, and a benchmark
+dishonest. **What the run did is recorded**: `gpu_used`, `gpu_name`,
+`gpu_compute_capability` and `cuda_version` go into `_RUNTIME_INFO`, so a
+summary reads what happened instead of inferring it from what was asked.
 
 **The helper is invoked AFTER the `mf` is fully assembled** — density fitting,
 dispersion and PCM all applied — because `.to_gpu()` mirrors the object it is
 handed. Promoting early hands it an incomplete one. `.newton()` is applied
 *after* the promotion instead, since gpu4pyscf's own SCF classes carry it.
 
-> **Benchmarking a PySCF GPU trial.** With the fallback gone, a trial that
-> *completed* and asked for the GPU used one — so § 3a's G-5a is now about
-> reading the record rather than catching a downgrade: report `gpu_used`,
-> never the flag. A trial that could not get the GPU **fails**, and a failed
-> trial is a missing point, which is visible; a silently-CPU trial was a wrong
-> point, which was not.
+> **Benchmarking a PySCF GPU trial.** A trial that *completed* and asked for
+> the GPU used one — so § 3a's G-5a is about reading the record: report
+> `gpu_used`, never the flag. A trial that could not get the GPU **fails**, and
+> a failed trial is a missing point, which is visible.
 
 > **The Raman block runs on the CPU even with the GPU on, and that is not a
 > fallback.** molbuilder's Raman block calls PySCF's CPU CPHF polarizability;
@@ -268,20 +224,17 @@ re-convergence at the relaxed geometry resets `mf` to it, `mf.reset(mol_eq)`);
 **Optimizer.** geomeTRIC is the one optimizer, a fact of the engine rather than a
 parameter: the `geometric` package is imported inside a `try/except ImportError`
 that raises `SystemExit` with an actionable message, not a traceback. `optimize=False` → a single-point `mf.kernel()`, no trajectory files.
-*`berny` was a second choice until 2026-09-29 and was retired (plan § 5w K17): the
-`pyberny` package is not in `molbuilder-pySCF`, and PySCF's berny driver takes
-neither this rung's criteria (its own are `gradientmax` / `gradientrms` / `stepmax`
-/ `steprms`, with no energy criterion), nor a constraints file, nor a trajectory
-prefix — so it could not honour the rung, the held atoms or the trajectory. (It
-does take a step callback, `berny_solver.kernel(…, callback=…)`.) With one choice left the
-`optimizer` item retired with it: a template that still names it is refused,
-naming `molbuilder jobset migrate`, which takes out `optimizer = "geometric"` —
-the one value that runs as before — and a blank one; any other value is
-refused, the person's to delete (`template.RETIRED_ITEMS`,
-`engines/template.md` § 3).*
+*PySCF's berny driver takes neither this rung's criteria (its own are
+`gradientmax` / `gradientrms` / `stepmax` / `steprms`, with no energy
+criterion), nor a constraints file, nor a trajectory prefix, and `pyberny` is
+not in `molbuilder-pySCF` — so geomeTRIC is the one optimizer and no item
+chooses it. A template that names the retired `optimizer` item is refused,
+naming `molbuilder jobset migrate`, which takes out `optimizer = "geometric"`
+and a blank one; any other value is the person's to delete
+(`template.RETIRED_ITEMS`, `engines/template.md` § 3).*
 
-**molbuilder's own code travels beside the script, in one file — `mb_pyscf.pyz`**
-*(since 2026-10-05)*. The script runs under `molbuilder-pySCF`, where molbuilder
+**molbuilder's own code travels beside the script, in one file — `mb_pyscf.pyz`**.
+The script runs under `molbuilder-pySCF`, where molbuilder
 is not installed, and everything of molbuilder's it runs it **imports** from
 `mb_pyscf.pyz`: a Python zip of those modules' own files
 (`runwrap.PYSCF_COMPANIONS`), built by the one builder the monitor's and the
@@ -310,7 +263,7 @@ result's record and its non-finite scrub (`spectra/results.py`, and
 (`sidecars/spectra.py`), with the derived values the writer states beside
 every mode and the activity rule they ask (`spectra/derived.py`,
 `spectra/activity.py`, [`vibration.md`](?doc=engines/vibration.md) § 6.6);
-the mode selector (§ 4.8); and the `constants` module,
+the mode selector ([`vibration.md`](?doc=engines/vibration.md) § 4.8); and the `constants` module,
 for the one factor its Raman block converts with. Prep writes the file beside
 every PySCF script and copies it into every run with the script. Its first
 lines, right after its docstring, put that file on the import path — when the
@@ -351,20 +304,11 @@ other members too, each reaching the next two ways: the package first, the
 bundle second; psutil inside the core count, where the env has it; and the
 host's packages only in functions the script never calls ([`configuration.md`](?doc=configuration.md) § 2.3). What moves is the job's
 folder — the script, its run script and the bundles beside it; a script copied
-on its own does not run. *(Until 2026-10-05 the script carried all of it as
-text: the progress-log writer, the relaxation, the HOMO and Hessian rules, the
-harmonic path, the thermochemistry and the hash pasted in by
-`inspect.getsource`; a hand-written copy of the selector, held equal to the real
-one by a test; and generated lines for the pair writer (with its own number
-format and JSON settings), the result's writer, the restart's XYZ reader, the
-log's end lines, two array helpers, the orbital window, the wavenumbers and the
-display form a second time beside the SIESTA route's, copies of the core
-count and of four constants, and the thread and GPU set-up — the last moved
-the same day at the user's word, *"yes to #1"*. User: "we could use one code base and maintain it
-rather than through generated python code"; "move the rest into the bundle";
-the fresh-eyes review the same day found what the first pass left.)*
+on its own does not run. *(The user, 2026-10-05: "we could use one code base
+and maintain it rather than through generated python code"; "move the rest
+into the bundle".)*
 
-**The run settings stand in one block, at the script's head** *(2.27.0)*. The
+**The run settings stand in one block, at the script's head**. The
 RUN-SETTINGS block ([`job-contracts.md`](?doc=execution/job-contracts.md)
 § 3.1) holds the names the script gives the run settings its run card states
 — `THREADS`, `USE_GPU`, `GPU_COUNT`, `MAX_MEMORY_MB`, `WALL_SLACK` — and every other line reads them by name: the thread caps,
@@ -391,8 +335,7 @@ driver catches it, and `geometric_solver.kernel` returns the flag with the geome
   step reached is kept** in `_optimized.xyz`, written after every geomeTRIC step
   as SIESTA writes its `.XV` *(user, 2026-10-06)* — so the rung launched again
   continues from where it got to, the step limit's stop and the wall's alike;
-  the converged geometry is written over it at the end. *(Until then nothing was
-  written before the end, and a rung launched again started from its input.)*
+  the converged geometry is written over it at the end.
   An error, as PySCF's own failures are, and not a `SystemExit`: Python hands a
   `SystemExit` to no `excepthook`, so the live log (§ 4) would have closed with
   `# concluded:` — a clean end — where it now writes `# error:`.
@@ -414,11 +357,7 @@ driver catches it, and `geometric_solver.kernel` returns the flag with the geome
 **Every step's SCF must converge, whatever the policy** (`assert_convergence=True`
 on every call): a gradient from an unconverged SCF is not a force, so an SCF that
 fails at a step stops the run with PySCF's own message under every policy — it is
-not a step budget the policy can extend. *(Until 2026-09-29 both decks called
-`optimize` and wired the policy to `assert_convergence`, which guards only that
-step SCF: a rung that ran out of steps was recorded converged and handed on under
-every policy, `continue` retried only an SCF failure and from the input geometry,
-and `proceed` turned the step guard off — found by the M11 review, plan § 5w K6.)*
+not a step budget the policy can extend.
 Both decks read the policy and its budget the one way (`relax_policy.policy_of`).
 
 **There is no last-rung override.** A deck is one rung and cannot see the others,
@@ -437,8 +376,6 @@ flowchart TD
 rung and cannot see the others, so there is no *"is this the last one?"*
 branch to take — and none is wanted: **stages are run by hand, one at a time,
 and a person reads each result before starting the next** *(user, 2026-08-18)*.
-The guarantee a last-rung force-halt used to provide was a property of the
-one-process loop, where nobody looked in between.
 
 *Budget example:* a `continue` stage with `geom_max_steps=200` and `geom_continue_retries=2`
 runs up to `200 × (1 + 2) = 600` steps before it finally halts.
@@ -481,26 +418,20 @@ patterns:
 | `["Au", "Pt"]` | both |
 
 `pyscf.ecp.resolve_ecp` — PySCF's own rule, asked by both PySCF decks and PySCF's validator — matches the
-patterns against the structure's own elements and returns `{element: ecp}`, or
-`None` when either half is empty. **Empty means empty** — it never means *pick
-one for me*.
+patterns against each species label the structure holds, or the element it
+names, and returns `{label: ecp}`, or `None` when either half is empty or
+nothing matches. **Empty means empty** — it never means *pick one for me*.
 
-> **Rewritten 2026-08-13.** The field was `str | dict | None` where `""`,
-> `"none"` and `None` meant three different things, and `None` silently added
-> `lanl2dz` whenever any element had **Z > 36** and the basis was not `def2-*`.
-> That heuristic is gone: *"there is no point to limit matching to heavy — who
-> defines heavy? there is no clear reasoning or standard … explicit is better
-> than implicit."* The `def2` special case went with it, so an ECP you name on a
-> `def2` basis is now **emitted** rather than silently discarded.
->
-> `validation` still **hints** when a structure looks like it wants an ECP and
-> none is declared — a hint a person confirms, not a choice the generator makes.
-> **On a `def2` basis too** *(since 2026-09-29)*: the basis files carry their
-> core potentials (`def2-svp.dat`: *Au nelec 60*), but PySCF applies one only
-> when `gto.M` is given `ecp` (PySCF 2.14 `gto/mole.py`, `build`) — so gold on
+> No element gets a core potential the person did not name *(the user: "there
+> is no point to limit matching to heavy — who defines heavy? there is no clear
+> reasoning or standard … explicit is better than implicit.")*, on a `def2`
+> basis as on any other. `validation` **hints** when a structure looks like it
+> wants an ECP and none is declared — a hint a person confirms, not a choice the
+> generator makes — on a `def2` basis too: the basis files carry their core
+> potentials (`def2-svp.dat`: *Au nelec 60*), but PySCF applies one only when
+> `gto.M` is given `ecp` (PySCF 2.14 `gto/mole.py`, `build`), so gold on
 > `def2-SVP` with none declared is every electron in a valence basis. The hint
-> names the basis's own: `ecp = 'def2-SVP'` with `ecp_atoms = ['Au']`. *(It
-> stayed quiet on `def2`, on the belief that the basis brought its own.)*
+> names the basis's own: `ecp = 'def2-SVP'` with `ecp_atoms = ['Au']`.
 
 ---
 
@@ -529,8 +460,8 @@ any of them absent, no deadline, and the deck runs until it is done.
 - **A vibration deck** checks it before each SCF it builds and after its
   relaxation (`relax_policy.stop_if_past_wall`, the one door); past it
   before the spectrum is written, it raises `RuntimeError: stopped before
-  the wall (the job's wall less its slack) before the spectrum was written:
-  launch this stage again` — the log's footer carries the error and the run
+  the time limit (the job's time limit less its slack) before the spectrum
+  was written: launch this stage again` — the log's footer carries the error and the run
   reads `failed` with that reason, since a spectrum half computed is no
   result; a launch runs it again from its start, the vibration deck keeping
   no geometry between runs ([`engines/vibration.md`](?doc=engines/vibration.md)
@@ -538,10 +469,12 @@ any of them absent, no deadline, and the deck runs until it is done.
 
 ## 4. The unified molwatch-log format
 
-`<job>.molwatch.log` is the engine-agnostic per-step trajectory log — **this is the
-format spec [`engines/siesta.md`](?doc=engines/siesta.md) § 9 points to** (SIESTA
-writes the same format, distinguished by the `# engine:` header). It's **additive**:
-`molwatch_log=False` only suppresses this file, nothing else changes. Written by
+`<job>_<NN>_<stage>.molwatch.log` is the engine-agnostic per-step trajectory log — **this is the
+format spec [`engines/siesta.md`](?doc=engines/siesta.md) § 9 points to** (prep
+writes the same format beside a SIESTA deck — its header and step-0 preview,
+distinguished by the `# engine:` header; a SIESTA run's steps are in its
+`.out`). It's **additive**: `write_molwatch_log = false` only suppresses this
+file, nothing else changes. Written by
 `MolwatchEmitter` (`trajectory_log/emitter.py`), which the script imports from
 `mb_pyscf.pyz` (§ 3); `pyscf/input.py::_emit_molwatch_emitter` writes the lines
 that construct it and close the log.
@@ -556,10 +489,10 @@ prefix, so there's no column-width fragility:
 # job: <job_name>
 # units: energy=eV, force=eV/Ang, coords=Ang
 # created: <ISO8601 local timestamp>
-# atom_index_map: {"atoms_listed_by": "engine_index", ...}   # which index the log's atoms are listed by (model/overview.md § 2.2b)
 # frozen_atoms: <i> <j> ...              # optional -- the atoms the run holds, by engine index, from 0
+# atom_index_map: {"atoms_listed_by": "engine_index", ...}   # optional -- which index the log's atoms are listed by (model/overview.md § 2.2b)
 # runtime.<key>: <value>                 # optional, repeated (threads, gpu, host, ...)
-# convergence.<key>: <value>             # optional, repeated -- the stage's targets
+# convergence.<token>.<key>: <value>     # optional, repeated -- the stage's targets, under its token
 
 ==== molwatch step 0 begin ====          # step 0 = the initial-state PREVIEW
 step_index: 0
@@ -609,16 +542,16 @@ says `gnorm(eV/Ang)` scaled it as a force, and the reader converts it back.
   relaxation's `callback=` (per geometry geomeTRIC evaluates — a rejected step and
   a re-entry's start included, § 3) — both documented PySCF/geomeTRIC extension
   points.
-- **The convergence-header key grammar**: flat `convergence.<leaf>` for an
-  one shape: nested `convergence.<token>.<leaf>`, every run being staged (`stages.md` § 6.5; a flat form stood here until 2026-10-18) — and the
+- **The convergence-header key grammar**: `convergence.<token>.<leaf>`, every
+  run being staged (`stages.md` § 6.5) — and the
   `<token>` is the stage's artifact token, **digit-first**
   (`01_coarse`, [`job-contracts.md` § 6.3](?doc=execution/job-contracts.md)),
   never an identifier-shaped `stageN`. One reader owns the grammar
-  (`parse/engines/molwatch_grammar.py::parse_convergence_line`); the two readers that
-  spelled it privately both assumed letter-first identifiers and silently
-  dropped every staged header (found 2026-08-19).
-- **The footer** is the run's conclusion: `# concluded: <stamp>` on a clean
-  end, `# error: <message>` on a failure — the engine-neutral end-of-run
+  (`parse/engines/molwatch_grammar.py::parse_convergence_line`), and no other
+  spells it.
+- **The footer** is the run's conclusion: `# error: <message>` when an
+  uncaught exception ended the run, then `# concluded: <stamp>` at every exit,
+  clean or not — the engine-neutral end-of-run
   marker `jobset status` and the Results page read
   ([`running-a-job.md` § 4](?doc=execution/running-a-job.md)). And, when the relaxation returns, `# relaxed: yes` or `# relaxed: no` (`FOOTER_RELAXED`, written by `MolwatchEmitter.relaxed` from the deck's own `_GEOM_CONVERGED`): the run's ending reads it as its geometry verdict, so a PySCF relaxation's *geometry yes / NO* is stated as SIESTA's is (`web/results.md` § 2.4; 2026-10-18).
 
@@ -650,17 +583,13 @@ in-script loop over stages, and no stage list in the engine config.
   [`job-contracts.md` § 4.2a](?doc=execution/job-contracts.md)'s warm-file rules.
   The script takes that geometry's coordinates through the codec, its own labels beside them (§ 3); a file
   it cannot read stops the run with the reader's words, rather than starting
-  again from the input geometry *(until 2026-10-05 a hand-written reader warned
-  and fell back to it)*.
+  again from the input geometry.
 
-  > **A `.chk` from somewhere else is not adopted** *(retired 2026-09-03, user:
-  > "retire all of them")*. "Smart chkfile detection" — a `--warm-restart-any`
-  > that would hunt for any usable checkpoint rather than the one the previous
-  > rung produced — was named in the design and never built, and it is not
-  > coming. A warm start is a declared hand-off between named rungs, so what
-  > gets read is decided by `restart`, not found by searching. A checkpoint that
-  > merely happens to be lying in the folder is a density from a calculation
-  > nobody said to continue.
+  > **A `.chk` from somewhere else is not adopted** *(user, 2026-09-03: "retire
+  > all of them")*: a warm start is a declared hand-off between named rungs, so
+  > what gets read is decided by `restart`, not found by searching; a checkpoint
+  > that merely lies in the folder is a density from a calculation nobody said
+  > to continue.
 - **What a deck decides on its own** is one rung's non-convergence policy:
   `on_nonconvergence` ∈ {`proceed`, `continue`, `halt`} with
   `geom_continue_retries` for the middle one. A deck cannot see the other rungs,
@@ -851,9 +780,7 @@ gpu4pyscf's GPU classes set `stability = NotImplemented` (gpu4pyscf 1.8.1
 `scf/uhf.py`, `scf/hf.py`, `scf/rohf.py`), and the check runs after the GPU
 promotion (§ 2a) — so on the GPU the script asks whether the mean field has
 one, and without one says **NOT CHECKED** and why, the outcome a check that
-cannot run always reports. *(It called it until 2026-09-29: calling
-`NotImplemented` raises a `TypeError` nothing expected, and every open-shell run
-on a GPU died before its first step — the M11 review, PO-C2.)*
+cannot run always reports.
 
 **Said before the run too, and never refused** *(the user, 2026-10-21: "a
 hint and information is enough")*: an unrestricted reference on the GPU is
@@ -874,7 +801,10 @@ and ended the run with a false warning.
 ### 7.4 Reading the outcome
 
 "Ran and found nothing" must never read the same as "never ran", so the script
-prints exactly one verdict line — quoted here verbatim from the emitter:
+prints one verdict line — two when the check could not run — each beginning
+`[molbuilder] `; the table gives each line's words (the WARNING line goes on to
+say the results may describe a saddle point, and to treat the geometry and any
+frequencies as provisional):
 
 | Line | Meaning |
 |---|---|
@@ -895,10 +825,7 @@ your run — but do not publish that geometry without looking at it.
 ## 7a. Every SCF is dressed by the one door *(contract, 2026-08-21)*
 
 **The rule this section exists to state: the framework never spells an SCF
-knob twice.**  It was written before the code that satisfies it (the user's
-process ruling: contract first, code checked against it), after the
-measurement that found the vibration deck showing nine SCF-machinery
-parameters it never read.
+knob twice** — so no deck shows an SCF parameter it does not read.
 
 **The layers, and who owns what:**
 
@@ -926,9 +853,6 @@ conditional — the Raman polarizability path forces non-DF), so the
 functional / grid / dispersion spellings cannot fork either. It is emitted
 on **every** deck and every construction calls it; on a Hartree–Fock deck it
 holds the dispersion line alone, or an explicit `pass` when that is `none`.
-*(It was `_mb_configure_dft`, emitted for DFT alone and skipped by the HF
-branches, until 2026-09-28 — which is how an HF run lost the dispersion its
-template asked for.)*
 
 **Hartree–Fock has no functional and no grid; it takes the dispersion
 correction like any method.** Whether the method is a density functional is
@@ -946,13 +870,9 @@ object through the energy, the gradient and the Hessian, reading the method
 as `hf` (`scf/dispersion.py`, `grad/rhf.py`, `hessian/rhf.py`, and the same
 in gpu4pyscf). So RHF with the default `d3bj` is HF-D3(BJ), said so in the
 deck's header and the Methods paragraph; `none` is plain Hartree–Fock.
-*(Until 2026-09-28 molbuilder dropped the correction under HF — silently at
-its default, with a warning otherwise — while recording the value as if it
-had run; that was molbuilder's choice, not the method's or the engine's.)*
 **`"none"` is the dispersion item's value for no correction, its one
-spelling:** until the same day the forms turned it into `None`, which is what
-an unset item reads as, so the template wrote the item valueless and `prep`
-filled the D3BJ default — a person who switched dispersion off ran D3BJ.
+spelling**: an unset item reads as blank, and `prep` fills a blank with the
+D3BJ default, so switching dispersion off writes `none`, never an empty value.
 
 **The role table** — what each construction site adds ON TOP of
 `_mb_configure_scf(mf)`, and why it is site-specific rather than shared:
@@ -960,7 +880,7 @@ filled the D3BJ default — a person who switched dispersion off ran D3BJ.
 | site | on top of the dresser | why |
 |---|---|---|
 | optimization `mf` | chkfile + continuation read; GPU promotion; `newton()` wrap; `on_nonconvergence` per config | as today (§ 7) |
-| vibration equilibrium | chkfile WRITE; GPU promotion; `newton()` wrap; halts UNCONDITIONALLY on non-convergence — `on_nonconvergence` is the RELAXATION phase's policy (proceed / continue / halt on geomeTRIC, per its own help text), not an SCF one; a mis-wiring that read it at this site lived for part of 2026-08-21 and this row is its correction | the equilibrium density feeds the Hessian, every intensity and the thermochemistry — no policy makes it optional |
+| vibration equilibrium | chkfile WRITE; GPU promotion; `newton()` wrap; halts UNCONDITIONALLY on non-convergence — `on_nonconvergence` is the RELAXATION phase's policy (proceed / continue / halt on geomeTRIC, per its own help text), not an SCF one | the equilibrium density feeds the Hessian, every intensity and the thermochemistry — no policy makes it optional |
 | vibration displaced point | `scf_init_guess` applies in full (measured 2026-08-21: the lifted code does NOT seed from the equilibrium density — `kernel()` is called bare; `dm0` seeding is a recorded future improvement, not a present fact); **no** chkfile (one file per point is churn); a failed point always halts | a silently-unconverged point poisons one column of the intensity derivatives ($d\alpha/dR$, $d\mu/dR$) and the per-mode probe — every mode's infrared and Raman from it are wrong; the frequencies, from the analytic Hessian, are not touched |
 | vibration relaxation | GPU promotion; `newton()` wrap; frozen atoms ride a geomeTRIC `$freeze` constraints file exactly as on the optimization deck (frozen means frozen through every phase — user ruling 2026-08-21); the `on_nonconvergence` policy applies HERE, through the one relaxation function of § 3 (halt stops before the Hessian; continue re-enters from the geometry reached; proceed takes it, with a warning in the artifact beside `converged`, the judged force's verdict) | the policy's own help text names geomeTRIC's criteria — this is the phase it governs |
 
@@ -983,12 +903,13 @@ PySCF "converged" structure generally stops later than a SIESTA one.
 > permissive; publishable is **0.023 vs 0.04** — 1.7× stricter; tight lands on
 > **0.0103 vs 0.01**, the same number. **The ladders cross over.** The full
 > table, and what to ask for when porting a calculation between the engines, is
-> [`tuning.md § 3.0`](?doc=engines/tuning.md) — which is where this paragraph
-> claimed the mapping lived before it existed.
+> [`tuning.md § 3.0`](?doc=engines/tuning.md).
 
-**Versioning.** A change to this contract is at least a minor bump; removing or
-renaming a promised output file is a **major** bump. Purely additive changes (a new
-optional field or output) are minor.
+**Versioning** is the project's one rule
+([`process/conventions.md`](?doc=process/conventions.md) § 2, *Versioning*): a
+change to what this emitter writes — a promised output file renamed or removed
+among them — moves the last number unless it is new functionality, and has its
+line in the changelog.
 
 **Tests:** the PySCF rows of `tests/data/the_deck.toml`, run by
 `tests/test_the_deck.py` — assertions over the deck `prep` writes (*"a PySCF

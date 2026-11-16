@@ -175,11 +175,8 @@ is `structure.md § 2.2`.
 > — while `[0, 0, 0]` means *no gap, deliberately*, and is used verbatim
 > ([`structure-periodicity.md`](?doc=model/structure-periodicity.md) § 6.1).
 >
-> A legacy reading briefly folded the second into the first, so that sidecars
-> written before the third state existed kept behaving as they had. It cost the
-> ability to express a deliberate zero at all, for compatibility with files that
-> are residue. Removed 2026-08-03 — a reader that cannot be told what it is
-> looking at is worse than one that refuses.
+> A reader that read a deliberate zero as unset would lose the ability to
+> express one, so each is read as written.
 
 ---
 
@@ -192,28 +189,28 @@ SCHEMA_VERSION    = 17                 # sidecars/molstruct.py
 READABLE_VERSIONS = frozenset({7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17})
 ```
 
-*(v17, 2026-11-04, plan F5.)* **`selection_rules` retired**: never written,
+*(v17.)* **`selection_rules` retired**: never written,
 read past (*Retired keys*). A v7–v16 file reads whole.
 
-*(v16, 2026-10-31, plan F0b.)* **Additive**: the optional
+*(v16.)* **Additive**: the optional
 **`species_labels`** (§ 1), each atom's species label where one is not the
 name its geometry file holds — the file holds an element symbol for every
 atom, which its readers require. A v7–v15 file states none, and its file's
 symbols are its labels.
 
-*(v15, 2026-10-23, plan § 1ab.)* **Additive**: **`atom_index_map`** (§ 1),
+*(v15.)* **Additive**: **`atom_index_map`** (§ 1),
 which index the atoms are listed by and each atom's indices
 ([`model/overview.md`](?doc=model/overview.md) § 2.2b) — written into every
 pair from v15 on. A v14 file states none, and its map is made from its
 `atom_order` as it is read; a v7–v13 file states no order at all, and is read
 as listed by user index, warned (`model/overview.md` § 2.2b, F4).
 
-*(v14, 2026-10-14, plan § 5ab R1.)* **Additive**: the optional
+*(v14.)* **Additive**: the optional
 **`atom_order`** (§ 1), `null` for a structure in the user order — which every
 pair a person's save writes is — and an engine's record's order record. A
 v7–v13 file states none and is read as the user order.
 
-*(v13, 2026-10-14, plan V1.9 / M2m.)* **The pin is the geometry hash**
+*(v13.)* **The pin is the geometry hash**
 (§ 3): `geometry_hash` replaces `structure_hash`, which a v7–v12 file still
 carries and the reader takes without comparing — a retired envelope key, never
 written again. A v7–v12 file has no geometry hash, so its pair opens unchecked:
@@ -281,11 +278,9 @@ than it saves:
 - every reader, every test and every debugging session has to hold two shapes in
   mind, and the second one is always the one nobody remembers;
 - a tolerant reader hands back a payload that **looks complete and quietly is
-  not** — which is exactly what happened. v3–v6 were in the readable list while
-  the reader had stopped looking at v3's top-level `frozen_atoms` key, so a real
-  junction loaded with its fifty frozen electrode atoms silently gone, and the
-  generated SIESTA input carried no `Geometry.Constraints` block. The run
-  converged on a structure nobody asked for;
+  not** — a key an older version kept elsewhere is never looked for, so (v3's
+  top-level `frozen_atoms`) the held electrode atoms vanish and the SIESTA
+  input carries no `Geometry.Constraints` block;
 - the data is cheap to regenerate. The confusion is not.
 
 **A version gate that admits a version the code cannot honour is worse than no
@@ -293,7 +288,7 @@ gate**, because it converts a loud failure into a quiet one.
 
 ### What "refused" means at each surface
 
-| Surface | On a non-v7 payload |
+| Surface | On a payload of a version it does not read (outside `READABLE_VERSIONS`) |
 |---|---|
 | `molstruct.load` / `parse.sidecars.molstruct.load_text` (the `.molstruct.json` sidecar) | raises `MolstructJsonError`; nothing is read |
 | the in-script `ATOM-METADATA` block, wherever it arrives from — a run directory, the transport composite, or `/api/build/load` — | **one reader**, `Structure.apply_atom_metadata`. The block is read as written today: a retired layout is not translated, so whatever it spells the current way applies and the rest simply is not there. The run still opens. The one refusal is a block whose `n_atoms_total` disagrees with the structure — `MolstructPairingError`, the same name the sidecar's identical guard uses |
@@ -329,9 +324,8 @@ A key that is neither a structure metadata field nor an envelope key is an
 **error**, at the point the payload is still whole. *A key nobody reads is
 metadata the writer thinks it saved.*
 
-That guard existed before and never fired, because the layer above it had already
-dropped the key silently — the check has to happen where the payload arrives, not
-downstream of a normaliser.
+The guard stands where the payload arrives whole (`load_text`, `unread_keys`),
+never downstream of a normaliser that would already have dropped the key.
 
 ### Version history
 
@@ -373,10 +367,9 @@ decision the reader enforces:
 
 ## 3. `geometry_hash` — the integrity pin
 
-*(v13, 2026-10-14: plan V1.9's rule, settled 2026-09-22, built as M2m. Until
-then the pin was `structure_hash`, the sha256 of the geometry file's bytes,
-and no reader compared it — compared, it would have refused a comment line a
-person edited, which `model/structure.md` § 2.2c lets them do.)*
+*(v13.)* The pin leaves the comment line out, so a title a person edits
+(`model/structure.md` § 2.2c) never breaks it; `structure_hash`, a hash of the
+file's bytes, is a retired key, read and never compared.
 
 The sidecar's labels are indexed by atom, and its cell is the box these atoms
 sit in. Applied to a geometry that changed after it was written, they land on
@@ -437,11 +430,12 @@ applied): labels are indexed by atom and `customized.frames` by frame, so a
 near-miss puts a fact on the wrong one — there is nothing to open. A v7–v10
 file states no frame count and holds nothing indexed by frame.
 
-**What it is not.** It is not the identity of a structure across calculations
-— whether two runs ran the same atoms, labels aside. That second hash, over the
-labels and identity columns, and the check when two runs are joined, are V1.9's
-remainder (plan § 2); until then a frame-set citation is pinned by its two files' sha256,
-as a cited run's files are (plan § 5z, Q17-c).
+**What it is not.** It is not the identity of a structure across
+calculations, and there is no second hash over the labels and identity
+columns: a cited pair — a frame-set citation among them — is pinned by its two
+files' sha256, as a cited run's files are, and refused when either changed
+afterwards; a calculation's structure edited between its stages is refused at
+prep (`engines/stages.md` § 6.3).
 
 ---
 
@@ -457,7 +451,7 @@ flowchart LR
     MD["metadata dict<br/>(structure.md §2.2)"]
     JSON[".molstruct.json<br/>on disk"]
     ST -- "metadata_to_dict()" --> MD
-    MD -- "to_dict(+envelope) → save()" --> JSON
+    MD -- "to_dict(+envelope) → dumps() → StructureCodec.write" --> JSON
     JSON -- "load() → parse/ load_text()" --> MD2["the payload"]
     MD2 -- "apply_to_structure()" --> ST
 ```
@@ -466,7 +460,7 @@ flowchart LR
 |---|---|
 | `sidecar_path_for(xyz)` | derive `<stem>.molstruct.json` from a geometry path — the one pairing rule |
 | `to_dict(fields, n_atoms_total, n_frames_total, geometry_hash, …)` | THE ONE BUILDER — the envelope + the validated metadata fields spread in, for a payload written and one read alike |
-| `save(path, …)` | atomic write (temp sibling + `os.replace`) |
+| `dumps(payload)` | the one serialisation — written with its geometry, both or neither, by `StructureCodec.write` |
 | `load(path)` — its text read by `parse.sidecars.molstruct.load_text(text)` | read + validate the version → the payload, through the one builder |
 | `renewed(sidecar, …)` · `stamp()` | a payload renewed for its moved geometry · the moment a sidecar is written, its `created_at` |
 | `apply_to_structure(struct, dict)` | apply the metadata onto a `Structure` (via `apply_metadata_dict`); guards `n_atoms_total` and `n_frames_total` |
@@ -515,7 +509,7 @@ cell would be a second source for it.
 
 | a reader that… | gets |
 |---|---|
-| asks for a structure (`load(path)`) | **frame 0**, with the sidecar applied and frame 0's rows as its own — today's behaviour, unchanged |
+| asks for a structure (`load(path)`) | **frame 0**, with the sidecar applied and frame 0's rows as its own |
 | asks for one frame (`load(path, frame=i)`) | frame `i` the same way |
 | asks for the set (`load(path, frames=True)`) | every frame, in file order, in one structure — the shared facts once, each frame's rows at its index |
 
@@ -523,14 +517,13 @@ This is what makes a multi-frame pair a legal input everywhere a structure is
 one, and a **frame set** where a door is frame-aware:
 [`engines/transport.md`](?doc=engines/transport.md) § 2a.9 defines the
 transport frame group as exactly this pair — frame 0 the base, frames 1…N the
-displacements, cited as § 3.1's pair (built 2026-10-09, plan § 5z Q17-c). The cell and the axis kinds are the sidecar's alone — the
+displacements, cited as § 3.1's pair. The cell and the axis kinds are the sidecar's alone — the
 document's comment line is never metadata (`structure.md` § 2.3) — which is
 one more reason the frames do not travel without it.
 
 **What is particular to one frame** — its displacement, its weight in an
 average — is the structure's `customized` section, one set of rows a frame
-(the mode the whole set samples is among the structure's own rows) (`model/structure.md` § 2.2d; plan W39, ruled
-2026-09-27/30, and § 5z.8 F), never `info`. The rows are written by what makes
+(the mode the whole set samples is among the structure's own rows) (`model/structure.md` § 2.2d), never `info`. The rows are written by what makes
 the frame set — the frame generator, a person's script, through
 `Structure.set_customized(…, frame=i)` — and never in the browser, which
 shows a frame set's rows read-only at the displayed frame. On the Molbuilder
@@ -553,9 +546,12 @@ transport calculation's partition) and no other, which ride along untouched
 and are named by no preflight
 ([`science/validation.md`](?doc=science/validation.md) § 5).
 
-**Sidecar consumers** (which code reads a `.molstruct.json`): the SIESTA and
-PySCF/spectra and TranSIESTA generators (at emit), the selection endpoints
-(`/api/selection/eval`, `/api/selection/atoms`), and the PySCF trajectory
-parser (reads the `frozen_atoms` label to mask pinned atoms from the
-max-force series).
+**Sidecar consumers** (which code reads a `.molstruct.json`): its one read
+door, `molstruct.load`, asked by the codec's read, `StructureCodec.load` —
+through which prep (`rung.structure_for`), `molbuilder describe`, the CLI, the
+load route and the parse registry's pair reader take a structure — and by
+`atom_index.atom_index_map` (a pair's atom index map); the registry's
+`molstruct-json` parser reads one alone. A deck's generator is handed the
+structure prep read; the selection route reads no file; a progress log states
+its held atoms in its own header.
 The engines-wave contract carries the full, current consumer list.

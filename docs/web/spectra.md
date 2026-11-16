@@ -13,14 +13,11 @@ registry that picks it for a `.spectra.json`; [`molview.md`](?doc=web/molview.md
 [`execution/running-a-job.md`](?doc=execution/running-a-job.md) — the run that
 produces the `.spectra.json`.
 
-> **Migration status (2026-08-21).** The compute side of this surface is
-> **framework-native**: the Send button hands over to Task setup, and the
-> vibration deck is a calculation KIND of either engine
-> ([`engines/vibration.md`](?doc=engines/vibration.md)), rendered by
-> `render_deck` through the same gates as an optimization deck and run
-> through `prep`/`launch`. (The old standalone-script path retired at the
-> spectra migration's P3.) The *viewing* half — the presenter, the chart,
-> the mode table — is unchanged.
+The compute side hands the description to Task setup: the vibration deck is a
+calculation kind of either engine
+([`engines/vibration.md`](?doc=engines/vibration.md)), rendered by
+`render_deck` through the same gates as an optimization deck and run through
+`prep`/`launch`.
 
 The spectra surface computes a **vibrational spectrum** for a molecule —
 frequencies and mode shapes, and on PySCF the infrared and Raman strengths
@@ -69,13 +66,13 @@ flowchart TD
 The chart is the sealed module `lib/spectrumchart/` — one importable `mount`,
 one file naming Plotly, a click that leaves as an event and returns as an
 instruction — whose contract is [`spectrumchart.md`](?doc=web/spectrumchart.md);
-the tab imports it (`core.js`). What this section describes is the tab's half.
+the spectra viewer imports it (`lib/spectra/core.js`, on the Results tab).
+What this section describes is the tab's half.
 
 
 The chart plots **frequency (cm⁻¹) on a shared x-axis against every channel the
 run computed** — one stacked panel each, its own y-axis on the left, one
-vertical stick per vibrational mode *(two panels since 2026-09-11; it was Raman
-alone before, which is why the y-title used to be a constant)*. A slider
+vertical stick per vibrational mode. A slider
 broadens each stick into a smooth **Lorentzian** peak (a single FWHM control,
 default 20 cm⁻¹) so overlapping modes read as one band — the broadened envelope
 is drawn over the sticks.
@@ -90,10 +87,9 @@ rug is never filtered. The chart's own contract is
 
 **Picking a mode does not mean hitting the line.** Each mode carries an invisible
 band, as wide as the broadening you set (with a floor of 8 cm⁻¹ so bare sticks
-stay reachable), and a click anywhere inside it selects that mode. Each band is
-clamped to half the distance to its nearer neighbour, so no two overlap and the
-band you are in is always the *nearest* mode — crowded regions get tighter
-targets, which is where being off by one mode matters. Two modes at the same
+stay reachable), and a click anywhere inside it selects that mode. Bands
+overlap where modes crowd, and a click takes the nearest mode; no band is
+narrower than 8 pixels on screen (`spectrumchart.md` § 6.3). Two modes at the same
 frequency (BDT's 31 and 32 are 0.011 cm⁻¹ apart) cannot be separated this way;
 that is what the table is for.
 
@@ -133,16 +129,15 @@ Two special cases are worth knowing:
   depends on it (in the bar above the chart)*, or the door's reason where
   it refused the laser — the bar's line's words — or, with a laser applied
   and no picked mode's sides both done yet, *no picked mode has both of its
-  sides done yet*; each part *not requested* where the run did not ask
+  sides done yet*, or, where Raman was asked over a range that kept no mode,
+  *no mode lay in the range Raman was asked for (the Methods paragraph says
+  which)*; each part *not requested* where the run did not ask
   for it -- the infrared's by the door's one reading, `infrared_asked`,
   Raman's by its phase); **they are still being
   computed** (a phase still to finish, § 7 — the spectrum drawn the moment
   a strength lands); or **the run asked and recorded none** (its log says
-  why) — where Raman was asked over a range that kept no mode, *no mode lay
-  in the range Raman was asked for* (the Methods paragraph says which). *(Until 2026-09-28 the chart drew every
-  mode as a unit-height stick with a broadened curve over them — a frequency
-  distribution, which read as an intensity spectrum wherever modes crowded;
-  and for a few hours that day it drew nothing at all.)*
+  why). No curve is drawn over mode positions: lines of one height under a
+  broadened curve would read as an intensity spectrum wherever modes crowd.
 
 ### 2.1 The bar above the chart — what the strengths are computed with *(the user, 2026-10-28)*
 
@@ -209,8 +204,8 @@ frequency, Raman activity, IR intensity, whether it is imaginary, and whether
 the per-mode orbital check reached it (*ES?*) — that you can **sort and
 filter**, export to CSV, and click a row to select a mode — each column's
 header a button that sorts by it, and the modes one list of choices: one tab
-stop, the arrows moving, Enter selecting the mode *(2.68.4;
-[`ui-contract.md`](?doc=web/ui-contract.md) § 4.1)*. Four more columns
+stop, the arrows moving, Enter selecting the mode
+*([`ui-contract.md`](?doc=web/ui-contract.md) § 4.1)*. Four more columns
 give that check's numbers: the HOMO, the LUMO, the gap and the gap's largest
 shift along the mode. **A column whose number needs its method said is
 named short, with a mark, and the mark's note sits under the table** *(the
@@ -260,11 +255,9 @@ then **scroll to zoom the energy axis, drag to pan, double-click to fit**. The
 energy axis is free; the horizontal axis is locked, because it is three
 geometries rather than a quantity and there is nothing between them.
 
-It is drawn by **Plotly**, the same library as the spectrum above it, and that
-choice replaced hand-rolled SVG on 2026-08-05. The SVG was right while the figure
-was static; once it needed zoom, pan, a reset and a hover readout, writing those
-four by hand beside a chart library already loaded on the page would have been
-inventing a wheel in view of the wheel. Plotly takes colours as values rather
+It is drawn by **Plotly**, the same library as the spectrum above it: zoom,
+pan, a reset and a hover readout are the library's, not written again beside
+it. Plotly takes colours as values rather
 than inheriting CSS, so the diagram takes its colours (`_esTheme` in
 `lib/spectra/core.js` — the HOMO and the LUMO the series palette's first and
 second, the thermochemistry's curves and bars in its order) from the one chart
@@ -278,10 +271,10 @@ each answers: where the levels sit, how the gap moves, and the electron–phonon
 coupling $\Delta E/(2A)$. The displacement $A$ itself is in the panel header, since it is
 the input every number below depends on rather than a result among them.
 
-**A fourth, run-level tab: Thermochemistry** *(v5 artifacts)*. Beside the
+**A fourth, run-level tab: Thermochemistry**. Beside the
 three per-mode views sits a tab that appears when the results carry a
-`thermo` block ([`archive/2026-08-20-spectra-migration-plan.md`](?doc=archive/2026-08-20-spectra-migration-plan.md)
-§ 2b): the headline numbers with the regime sentence, curves over the deck's
+`thermo` block ([`engines/vibration.md`](?doc=engines/vibration.md) § 4.7):
+the headline numbers with the regime sentence, curves over the deck's
 temperature grid, and the decomposition bar at the headline temperature. The
 **deck computes, the viewer draws, and the viewer derives nothing**: the
 electronic reference is the file's own equilibrium energy — PySCF's SCF
@@ -295,14 +288,11 @@ contributions alone ([`engines/vibration.md`](?doc=engines/vibration.md)
 | `vibrational-only` — atoms held, and every SIESTA result | $T$, ZPE, $\mathrm{ZPE} + U_{\mathrm{vib}}$, $S_{\mathrm{vib}}$, $F_{\mathrm{vib}}$, *vibrational contributions only* — no pressure, which enters only the gas-phase translation | $\mathrm{ZPE} + U_{\mathrm{vib}}$, $F_{\mathrm{vib}} = \mathrm{ZPE} + U_{\mathrm{vib}} - T\,S_{\mathrm{vib}}$, $T\,S_{\mathrm{vib}}$ | ZPE · $U_{\mathrm{vib}}$ · $-T\,S_{\mathrm{vib}}$ · $F_{\mathrm{vib}}$ |
 
 The writer's own `thermo.note` says what the numbers are good for and where
-they stop, beside them. *(Until 2026-09-28 the viewer recovered $E_{\mathrm{elec}}$ from the
-grid as `h − zpe − u_vib − k_B·T` — a $k_BT$ the vibrational sums do not
-contain, and without the translational and rotational energies the RRHO sums
-do — so both regimes' curves were shifted and neither bar summed to its total;
-and it printed `P = 1 atm` over results no pressure entered.)* The phase
-indicator gained a **Relaxation** dot the same way (data-driven off
-`phase_relaxation`), and an **Infrared** dot off `phase_ir` (2026-09-28 — the
-flag existed and was waited on, and no dot showed it); it shows no dot for a
+they stop, beside them. The viewer recovers nothing from the grid: a $k_BT$
+the vibrational sums do not contain would shift both regimes' curves and keep
+a bar from summing to its total; no pressure is printed over results no
+pressure entered. The phase indicator has a **Relaxation** dot (off
+`phase_relaxation`) and an **Infrared** dot (off `phase_ir`); it shows no dot for a
 strength or the probe the run did not ask for, by its own record on either
 engine — `not requested`: *Compute IR* or *Compute Raman* off, the probe at
 `skip` or on SIESTA — nor for one with no record (`""`, a file written
@@ -310,7 +300,7 @@ before its flag); the **Relaxation** dot shows always, *not requested* where
 the structure was stated relaxed; a v4 file simply shows it empty and hides
 the thermo tab.
 
-### 3.2 The infrared of a SIESTA result — the free atoms' *(built 2.36.0)*
+### 3.2 The infrared of a SIESTA result — the free atoms'
 
 A SIESTA result whose force-constant run printed its charges (`partial_charges`,
 [`engines/vibration.md`](?doc=engines/vibration.md) § 5.10 ②) carries what
@@ -430,7 +420,7 @@ A held PySCF result written before schema 12 keeps no vector: the column
 stays the orientation average, and the bar's line says the direction cannot
 be applied to it.
 
-### 3.3 The Raman of a SIESTA result, at a laser *(designed 2026-10-26, M4; built 2.44.0)*
+### 3.3 The Raman of a SIESTA result, at a laser
 
 A SIESTA result whose Raman route is `optical` — its optical calls ran
 ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 10) — offers
@@ -512,10 +502,10 @@ which bonds stretch or bend. This 3D box is **not** MolView — it's the conceal
 self-contained viewer built for exactly this one job (it owns the oscillation loop
 and greys out frozen atoms).
 
-> Two different 3D viewers live on the Spectra tab and it's easy to conflate
-> them: the **inspect card at the top** is a read-only *MolView* showing the
-> static input structure (§5); the **mode box** is *VibrationView* showing an
-> animated eigenvector. Different modules, different jobs.
+> Two different 3D viewers, on two tabs: the Spectrum calculation tab's
+> inspect card is a read-only *MolView* showing the input structure (§ 5); the
+> Results tab's mode box is *VibrationView* showing an animated eigenvector.
+> Different modules, different jobs.
 
 **The mode box belongs to one result.** It is built the first time a mode is
 shown, kept while you move between that result's modes, and built afresh against
@@ -546,8 +536,7 @@ from is the whole of this control.
 #### exaggerated — a drawing convention
 
 The eigenvector is rescaled so its largest absolute Cartesian component is 1
-(`eigenvector_display`, dimensionless — `engines/vibration.md` § 6.3; this said
-*the largest per-atom vector has length 1*, which the code has never done), and
+(`eigenvector_display`, dimensionless — `engines/vibration.md` § 6.3), and
 the slider states how many ångström that largest component swings. The default **0.15 Å** is roughly a tenth of a bond
 length: visible without looking dislocated.
 
@@ -588,8 +577,7 @@ below is served the same way: the load door derives each mode's
 (`temperature_k`, the request's), from the one function
 (`spectra.derived.thermal_spread_of`); when the number in the box changes, the
 tab asks the door again and takes what it says. The tab holds no constant and
-computes neither size. *(A second spelling of the constant lived in the tab until
-2026-09-24.)*
+computes neither size.
 
 and the Cartesian displacement of atom $i$ is $Q_{\mathrm{rms}}\times L_i$, with **$L$** the
 Cartesian eigenvector normalised so $\sum_i m_i\lvert L_i\rvert^2 = 1$ (`eigenvector_canonical`, in amu$^{-1/2}$).
@@ -655,10 +643,7 @@ pairs with each differs accordingly:
 Each pairing multiplies out to ångström of motion — but only within itself.
 Feeding a display eigenvector into a physical amplitude, or the reverse, produces
 a picture that is wrong **without looking wrong**, which is precisely why the
-backend ships two fields: schema v1 carried one `eigenvector_free` used for both
-animation and Raman projection, and that was recorded as a correctness bug when
-the two uses were separated (see the SCHEMA_VERSION history in
-`molbuilder/spectra/results.py`).
+backend ships two fields, one for each pairing.
 
 For the same reason an **export records which pairing produced it**
 ([`vibrationview.md`](?doc=web/vibrationview.md) § 12.2): the amplitude alone
@@ -699,16 +684,13 @@ phase of the oscillation, so it is a property of the mode and not of the instant
 you look at it. Either stored eigenvector gives the same answer: the two forms
 differ by one scalar per mode, and a scalar cancels in a ratio.
 
-> **Why mass-weight it at all — the trap this replaced.** The line used to name
-> the atom with the largest displacement. In the benzene-dithiol result that is a
-> hydrogen in **32 of 36 modes**, including the 1648 cm⁻¹ ring stretch, where the
-> hydrogens move 18% further than the carbons ($\lvert L\rvert$ = 1.15 against 0.98) and carry
-> **9%** of the motion. A light atom travels further for the same energy, and
-> hydrogen is the lightest thing in most molecules — so "which atom moves
-> furthest" answers *hydrogen* almost regardless of the mode, which is a true
-> sentence that tells you nothing. Weighting by mass asks the question worth
-> asking, and the answers agree with textbook assignments: 92% H for the C–H
-> stretches at 3175 cm⁻¹, 91% C for the ring stretch, 49% S for the 205 cm⁻¹ mode.
+> **Why mass-weight it.** Naming the atom that moves furthest would answer
+> *hydrogen* almost regardless of the mode: a light atom travels further for the
+> same energy. In the benzene-dithiol result it is a hydrogen in **32 of 36
+> modes**, including the 1648 cm⁻¹ ring stretch, where the hydrogens carry
+> **9%** of the motion. Weighting by mass agrees with textbook assignments: 92% H
+> for the C–H stretches at 3175 cm⁻¹, 91% C for the ring stretch, 49% S for the
+> 205 cm⁻¹ mode.
 
 **"nothing moves further than 0.173 Å from rest" — a ceiling, not a subject.**
 Every atom in the picture stays inside it. It is measured to *one extreme* of the
@@ -826,7 +808,7 @@ On `/spectrum-calculation` the page is a short vertical workflow:
    (relax first, or the box saying the structure is already relaxed),
    **Infrared** (*Compute IR intensities*), **Raman** (*Compute Raman
    intensities*, and *Raman for*: **All modes**, or **Modes in a frequency
-   range** with its *Min* and *Max* in cm⁻¹), **Thermochemistry** (the
+   range** with its *Raman from* and *Raman up to* in cm⁻¹), **Thermochemistry** (the
    temperature); then the output switches. These, with the charge and spin
    of step 2, are the settings every engine of the vibration shares — one
    meaning and one default on both — so they are drawn **once, before the
@@ -836,8 +818,8 @@ On `/spectrum-calculation` the page is a short vertical workflow:
    Raman off unless you say otherwise, and Raman is for all modes unless you
    give a range, on both engines
    ([`engines/vibration.md`](?doc=engines/vibration.md) § 3.1). *Raman for*
-   is greyed out until *Compute Raman* is ticked, *Min* and *Max* until
-   *Modes in a frequency range* is chosen — a greyed-out field keeps what
+   is greyed out until *Compute Raman* is ticked, *Raman from* and *Raman up
+   to* until *Modes in a frequency range* is chosen — a greyed-out field keeps what
    was typed, and enters nothing (`active_when`,
    [`form-schema.md`](?doc=web/form-schema.md) § 1.3). A range is chosen
    before any calculation, so it is the one choice that can be made then:
@@ -857,8 +839,7 @@ On `/spectrum-calculation` the page is a short vertical workflow:
    engine shows and why are [`engines/vibration.md`](?doc=engines/vibration.md)
    § 3.1). The strip's choice is the **description's engine** — what the
    live checks validate against and what the hand-over sends — and never a
-   parameter of the deck (the one-choice `engine` form item retired
-   2026-09-24). **The structure decides the default**: a structure that
+   parameter of the deck. **The structure decides the default**: a structure that
    repeats or continues along an axis switches the strip to SIESTA and says
    why, because PySCF computes a repeating structure as an isolated cluster
    — a note, not a refusal (`engines/vibration.md` § 3.3); a click on the
@@ -909,16 +890,13 @@ from the catalogue door — what both engines share, once: the charge and spin
 (`GET /api/build/schema/common?calculation=vibration&surface=state`, step 2)
 and the other settings (`GET /api/build/schema/common?calculation=vibration`,
 step 3) — and each engine's own
-(`GET /api/build/schema/<engine>?calculation=vibration&surface=own`);
-(the old `GET /api/build/schema/spectra` route retired at P3; frozen atoms
-travel with the structure now — § 8).
+(`GET /api/build/schema/<engine>?calculation=vibration&surface=own`).
+Frozen atoms travel with the structure, never as a form field (§ 8).
 
 ## 7. Live updating, and what a refresh does
 
 The file is the one picked in the Results tab's dropdown — the only route; a
-path box with *Load once*, *Start watching* and *Stop* stood above the panel
-until 2026-09-28, a second way to name a file, and a run picked while still
-going was shown as a snapshot unless someone pressed *Start watching*
+second way to name a file would be a second answer to which file is shown
 *(user, 2026-09-28: the dropdown is the only route, and a still-running result
 is followed until its phases finish)*. If you pick a spectrum whose calculation
 is still running, the viewer **follows it by itself — it polls
@@ -936,8 +914,8 @@ intensities with their own flag, `phase_ir`; a phase it never asked for reads
 `not requested` from the first write
 ([`engines/vibration.md`](?doc=engines/vibration.md) § 4.9) — and a run that
 stopped between phases says so on the status line, in the run's own words.
-*(It stopped once every asked-for phase reported complete until 2026-10-03, so
-a run killed mid-phase was followed until the page closed.)*
+A phase flag never stops the poll: a run killed mid-phase states no
+completion, and only the run's state says it has ended.
 
 **Coming back to the tab loads the file on screen once more**, live run or
 not, so a phase written while you were away is drawn; coming back is the page
@@ -953,8 +931,7 @@ specific here: your view **preferences** (the broadening width, the animation
 amplitude and speed and its pairing, the thermal temperature, the table's sort
 and filter, and the choices the bar applied (§ 2.1) — the infrared's
 direction and partition of § 3.2, the Raman's laser and width of § 3.3)
-**survive a page reload**, not just a file-switch (shipped 2026-09-10; a
-documented follow-up until then). **Read back, they are the file's ask**: the
+**survive a page reload**, not just a file-switch. **Read back, they are the file's ask**: the
 read is async, so once it lands the file on screen is loaded again with them
 where they ask something other than the load did — its thermal spreads, its
 references and its infrared at the remembered choices. **An answer to an
@@ -1027,11 +1004,9 @@ rule** — the count, why the leftovers are projected out before diagonalisation
 rather than spotted afterwards, and the acceptance test. Nothing here or in the
 emitters re-derives it.
 
-*(This paragraph used to end "— an anchored molecule does not rotate". A
-measured BDT run on 2026-09-21, both sulfurs frozen, reported a 36th mode that
-was exactly the ring turning about the S···S line: 100 % of that motion, at
-−0.93 cm⁻¹. An anchored molecule does not **translate**; whether it rotates
-depends on where its anchors are.)*
+An anchored molecule does not **translate**; whether it rotates depends on
+where its anchors are: with both sulfurs of BDT held, the ring still turns
+about the S···S line (a measured 36th mode at −0.93 cm⁻¹, 100 % that motion).
 
 **And the two lists must PARTITION the atoms — checked, not assumed.**
 `SpectraResults` refuses at construction unless `free_atom_idxs` and
@@ -1041,17 +1016,16 @@ per free atom. A result that fails either is a parser or programmer error,
 and catching it where the object is built beats meeting it when the viewer
 tries to draw a displacement.
 
-> **A count-only check is not the same test.** It passed `free=[0,1,5]`,
-> `frozen=[]`, `n=3` — three indices for three atoms, one of them not an atom
-> — and the frontend then silently dropped that displacement from the
-> scatter. Counting says *how many*; a partition says *which*.
+> A count is not a partition: `free=[0,1,5]`, `frozen=[]`, `n=3` has three
+> indices for three atoms, one of them not an atom, and that displacement would
+> be silently dropped from the scatter. Counting says *how many*; a partition
+> says *which*.
 
-The old form field (`frozen_indices`, pre-filled by the schema route from the
-sidecar) retired with the P2 substitution: a form default was a **second
+Frozen atoms are never a form field: a form default would be a **second
 copy** of a structure fact, editable into disagreement with the structure it
-described.
+describes.
 
-**The relaxation record travels the same way** *(2026-09-24)*. A pair exported
+**The relaxation record travels the same way**. A pair exported
 from the Results tab of a finished relaxation carries `info.relaxation` beside
 `info.calculation` ([`model/parse.md` § 5b.1](?doc=model/parse.md)); the tab
 reads nothing of it itself — the gate does, and its findings land on the
@@ -1067,7 +1041,7 @@ reusable ES module**. Spectra is **partway there**:
 
 | File | Role | ESM today |
 |---|---|---|
-| `static/spectra/viewer.js` | the standalone-tab controller | **yes** — a real ES module (it imports MolView) |
+| `static/spectra/viewer.js` | the standalone-tab controller | **yes** — a real ES module (it imports the structure card, `lib/structure-card.js`, which mounts MolView) |
 | `lib/spectra/core.js` | the shared engine (chart, table, animation, API) | **no** — still a classic global-registered script (`window.molbuilder.spectraInspector`) |
 | `lib/inspectors/spectra.js` | the Results-tab presenter | **yes** — a native ES module (it imports VibrationView's `mount`) that registers through the global `molbuilder.inspectors.register` |
 
@@ -1078,7 +1052,7 @@ together with the **`inspectors` → `presenters` rename** — one pass (task #1
 that does the file-viewer registry *and* the heavy engine cores it mounts (this
 `lib/spectra/core.js` among them), since converting them rewrites those files
 anyway. See [`presenters.md`](?doc=web/presenters.md) and
-[`plans/plan.md`](?doc=plans/plan.md) **W15**.
+[`overview.md`](?doc=web/overview.md) § 6 (#102).
 
 ## 9a. Which modes get the expensive treatment, and what the paper says
 
@@ -1098,7 +1072,7 @@ calculations, at $\pm\delta Q$ along it ([`engines/vibration.md`](?doc=engines/v
 | | picks |
 |---|---|
 | `all` *(the default)* | every mode |
-| `range` | the modes whose frequency lies in *Min*–*Max* (cm⁻¹, either may be blank) |
+| `range` | the modes whose frequency lies between *Raman from* and *Raman up to* (cm⁻¹, either may be blank) |
 
 PySCF's Raman is every mode at once, from its polarizability sweep, so on
 PySCF the choice narrows nothing and the settings gate says so in one line.
@@ -1117,7 +1091,11 @@ decision:
 | `all` | every mode, within the frequency window when one is given |
 | `explicit` | exactly the indices you list — numbers from an earlier run of the same structure |
 
-*(`top_n` and `threshold` were retired by decision on 2026-09-23 and removed on 2026-09-28, V1.6. Both ranked modes by **Raman activity**, and the probe measures how the gap moves along a mode — $\partial\varepsilon/\partial Q$, which follows its own selection rule: in a centrosymmetric molecule the Raman-bright modes are exactly the infrared-dark ones, so the filter kept one symmetry class and dropped the other every time. The frequency window is the cost control, and `all` is cheap where it matters — 8 SCFs for CO₂.)*
+Modes are never chosen by **Raman activity**: the probe measures how the gap
+moves along a mode — $\partial\varepsilon/\partial Q$, which follows its own
+selection rule — and in a centrosymmetric molecule the Raman-bright modes are
+exactly the infrared-dark ones. The frequency window is the cost control, and
+`all` is cheap where it matters — 8 SCFs for CO₂.
 
 **The frequency window filters `all` (`skip` selects nothing) and is IGNORED by `explicit`** —
 naming a mode by index is saying *that one*, and a window that silently
@@ -1143,9 +1121,7 @@ one sentence only the run can settle — which infrared route ran
 (`with_ir_route`, [`engines/vibration.md`](?doc=engines/vibration.md) § 4.10).
 **The engine fragment** is passed IN by the caller, because this composer is
 engine-ignorant on purpose; the one producer that has an engine knows which
-it is. *(An **after** form that re-composed the paragraph from the parsed
-results, which nothing in production called, was deleted on 2026-09-28 —
-V1.18; so was the preview modal it once also shipped in.)*
+it is.
 
 `extract_citation_keys` reads the bibliography keys back out of the rendered
 prose, so what is cited is what was actually said rather than a second list
@@ -1191,7 +1167,7 @@ compute a channel and for a run that did not ask for one:
 | the chart | **mode positions, not a spectrum**, when no mode carries a strength — a SIESTA result with neither an infrared nor a Raman view (§ 3.2, § 3.3): one line of one height at each mode, no curve, no height scale, no width or display-floor control, and one sentence above them saying which case it is (§ 2) *(user, 2026-09-28)*. With some strengths computed — a SIESTA result's infrared of the free atoms among them — a lane whose channel is missing says *not computed* across its panel, its axis naming the quantity alone — SIESTA's Raman, before a laser is applied, the words of § 3.3 (`spectrumchart.md` § 6.2) |
 | the rug | part of the chart: every mode, in the `partial` colour where nothing was computed for it — never `silent`, because nobody looked |
 | the modes table | **a column the file's route cannot compute is not shown** — the per-mode orbital columns on SIESTA, read BY ROLE: the file's own config carries no switch for them; the IR column and the charge-moved column on SIESTA only where the result states its charges (§ 3.2); the Raman column where the run asked for Raman — not where it was asked and none computed, a SIESTA range that kept no mode (§ 3.3). Within a route, a `—` in a cell, not a `0.00`; the CSV export follows the table |
-| the electronic-structure tab | on SIESTA: the electrons' response along a mode is the projected density of states at structures displaced along it — **planned** ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.10, plan W42), not built — and the tab says so; it never names the probe's *Mode selection*, which a SIESTA vibration does not have. On PySCF: *not requested* under `skip`, *not in the selection* for a mode the selector left out |
+| the electronic-structure tab | on SIESTA: the electrons' response along a mode is the projected density of states at structures displaced along it — **planned** ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.10, its decisions D1–D8), not built — and the tab says so; it never names the probe's *Mode selection*, which a SIESTA vibration does not have. On PySCF: *not requested* under `skip`, *not in the selection* for a mode the selector left out |
 | the run summary | *not computed on this route* for every channel the route lacks — the per-mode orbital energies on SIESTA — by the same rule; *not requested* where the run did not ask — the load door's one reading for the infrared (`infrared_asked`), its phase for the rest, on either engine, a run with *Compute IR* or *Compute Raman* off among them; a SIESTA result's Raman, where its optical calls ran, the route and $\delta$ with the view at the laser, *not given:* and the door's reason, or the laser asked for (§ 3.3), and where Raman was asked over a range that kept no mode, *none computed — the Methods paragraph says why*; a SIESTA result's infrared, where it states its charges, *from the run's charges* — the view (*the free atoms (20), along z, Hirshfeld*), or *not given:* and the door's reason — and where a result asked for one carries none, *none in this result*, the reason itself said once, in the bar's place (§ 3.2) |
 | the thermochemistry tab | labelled by its regime (§ 3): on SIESTA the vibrational contributions alone, with what they are good for and where they stop ([`engines/vibration.md`](?doc=engines/vibration.md) § 4.7) |
 | the write-up | names what was computed — on SIESTA the charges recorded and the Raman route, its optical calls or none requested; at load the infrared and Raman views shown, their citations among the result's keys (§ 3.2, § 3.3); the file and the viewer name what was not, so an absence cannot be read as a zero |
@@ -1199,13 +1175,10 @@ compute a channel and for a run that did not ask for one:
 **What the file carries for each engine** — the molecular-orbital block
 optional as a whole, the intensities `null` on every SIESTA mode, the routes
 recorded per run, the SIESTA metadata naming the `.FC` file and its range —
-is [`engines/vibration.md`](?doc=engines/vibration.md) § 6.5. *(What this
-tab had to learn from it — the equilibrium energy drawn as a dash rather than
-`0.00000000` when it is `null`, the Raman line said by route rather than by a
-phase flag, the change fingerprint, and an engine-neutral label in
-[`presenters.md`](?doc=web/presenters.md) — was done on 2026-09-24, V1.3 and
-V1.13; the fingerprint reads `phase_ir` since that flag has been written,
-2026-09-28.)*
+is [`engines/vibration.md`](?doc=engines/vibration.md) § 6.5. The tab draws a
+`null` equilibrium energy as a dash, never `0.00000000`, says the Raman line by
+route rather than by a phase flag, and reads `phase_ir` in the change
+fingerprint.
 
 ## 10. Test map
 

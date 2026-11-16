@@ -28,9 +28,8 @@ draws): a **scale** (Å per eV/Å), a **minimum** (hide arrows below a force),
 and **exclude frozen atoms** (skip the constraint-artifact forces on fixed
 atoms — this affects the arrows only; hiding atoms in the 3D box is MolView's).
 
-> **This is the trajectory surface, and there is no second one coming**
-> *(retired 2026-09-03, user: "retire all of them")*. A separate **MD
-> viewer/editor** was named in the design and never built. A relaxation and an
+> **This is the trajectory surface, and there is no second one**
+> *(the user, 2026-09-03: "retire all of them")*. A relaxation and an
 > MD run both arrive as frames with forces, which is exactly what this reads —
 > a second viewer would be a second answer to *show me the frames*, and the
 > thing that would actually differ (editing a trajectory) belongs to whatever
@@ -160,10 +159,9 @@ is quoted by the run's report and not drawn.
 badge). It carries what nothing else on the panel says: a load that was
 refused and why, a viewer that could not mount, an export's result — and, on
 an ordinary load, only where the unit cell came from when the run supplied
-it. It is otherwise empty. *(Added 2026-09-28: until then the partial had no
-such line and every one of those messages was dropped on the Results tab.
-It does not repeat the file's modification time or a frame count — the badge
-below carries the run's time, and the frame bar its frames.)*
+it. It is otherwise empty. It does not repeat the file's modification time or a
+frame count — the badge below carries the run's time, and the frame bar its
+frames.
 
 The **run badge** reads **the run** the file belongs to — the state the server
 sends with it ([`results.md`](?doc=web/results.md) § 4.1), the one the Run
@@ -175,14 +173,14 @@ started), *Record unreadable* (the reader's own words beneath, naming the file a
 way out), else *Running*. A file that belongs to no run — an upload — is read by its own
 ending (`run_state`, [`model/parse.md`](?doc=model/parse.md) § 2b): `ended` is
 *Finished*, `stopped` or `out_of_memory` *Stopped*, `unknown` -- a plain structure file, which states none -- no badge, anything else *Running*.
-*(It read the file alone until 2026-10-03, so an output that ended read
-Finished while its job was still deriving its result, and the Run panel said
-running.)* It carries a detail line beneath it with two different facts:
+*(Reading the run, not the file alone, keeps the badge and the Run panel
+from disagreeing while a job still derives its result after its output
+ended.)* It carries a detail line beneath it with two different facts:
 
 | detail | reads | where it comes from |
 |---|---|---|
 | **when** — "ended 14:32" | a *time of day* | for a run that has stopped moving, the end its output states — SIESTA's `>> End of run`, `run_end_local` — else the run's own per-step clock, else the file's modification time |
-| **total** — "total 2h" | a *duration*, said by the one span rule ([`ui-contract.md`](?doc=web/ui-contract.md) § 4) | a run that has ended: its own length, the engine's wall from launch to exit its record states — the Run panel's — served with the run's state (`runstatus.run_answer`; [`results.md`](?doc=web/results.md) § 4.1), none where its record states none (a PySCF run made before 2.56.2, whose run script wrote no wall); a run still going, or a file of no run: how far into the run its last step was — none where no step states a clock (a SIESTA `.out`) |
+| **total** — "total 2h" | a *duration*, said by the one span rule ([`ui-contract.md`](?doc=web/ui-contract.md) § 4) | a run that has ended: its own length, the engine's wall from launch to exit its record states — the Run panel's — served with the run's state (`runstatus.run_answer`; [`results.md`](?doc=web/results.md) § 4.1), none where its record states none; a run still going, or a file of no run: how far into the run its last step was — none where no step states a clock (a SIESTA `.out`) |
 
 **Those are two separate readings and neither substitutes for the other.** A
 PySCF run writes a real timestamp into its `.molwatch.log`, so it can say when.
@@ -194,9 +192,9 @@ prints `TS` too, after its first NEGF iteration). So an ended SIESTA run is date
 `>> End of run` — the node's clock, shown as written, since a time with no
 zone cannot be converted — and only a running one falls back to the file's
 mtime, the one evidence there is of its latest line. The mtime is when the
-FILE last changed, which a copy moves: until 2026-09-27 the badge dated every
-SIESTA run by it, and a run copied three days after it ended read "ended" at
-the copy's time. The two ends are in the run record too
+FILE last changed, which a copy moves, so a run that states its end is dated
+by that end, never by the mtime: a run copied three days after it ended would
+otherwise read "ended" at the copy's time. The two ends are in the run record too
 ([`model/parse.md`](?doc=model/parse.md) § 5d.2). The parser says *"this engine
 cannot tell you the time of day"* rather than handing over its elapsed seconds:
 a duration handed over as a time of day shows a run six minutes old as **"last
@@ -215,9 +213,7 @@ figure for the phase its current row is in — the number the Run panel shows
 its deck, in its progress log, and timed by the same rule; an output read alone
 has no stamped rows and shows none. A rate is never computed from a
 timestamp: a PySCF log carries epochs, and a date divided by a count is not a
-duration. *(Until 2026-09-27 the viewer estimated its own three ways — SIESTA's
-first-iteration timer, the browser's poll times, the output's modification
-times.)*
+duration.
 
 A **stopped** run — a crash, SIESTA stopping because its SCF had to converge
 and did not, a kill its monitor saw — settles like a finished one: the badge
@@ -258,9 +254,7 @@ hold); you see the brief "Updating view…" overlay. **The rebuild is the host
 replacing what its viewer shows**: the viewer is MolView mounted read-only,
 which takes a second install only when its host says it means it
 ([`molview.md`](?doc=web/molview.md) § 9.4, `enforce`), so every install this
-viewer makes says so. *(Until 2026-10-13 none did: every rebuild after the
-first load was refused in silence, the frame counter growing while the movie
-kept its old frames.)*
+viewer makes says so.
 
 **Coming back to the tab asks once.** A page shown again from the browser's
 cache, or a tab made visible again, sends one `GET /api/watch/data` at once —
@@ -321,13 +315,11 @@ header. The header's source-path line has the username redacted.
   error). All the "which state resets what" rules — why a file-switch clears the
   view but keeps your preferences, why Refresh is a full reload — live in that
   machine; `results.md § 4` has the plain-language summary.
-- **Where the module stands (current → target ESM).** The engine
-  `lib/trajectory/core.js` already `import`s MolView as an ES module, but its own
-  body is still a classic script that publishes `window.molbuilder.trajectoryInspector`
-  — a **hybrid**, not yet a clean module. It converts to a full ES module in the
-  file-viewer registry + `inspectors` → `presenters` pass
-  ([`plans/plan.md`](?doc=plans/plan.md) **W15**), the same pass that converts the sibling
-  spectra engine. See [`presenters.md`](?doc=web/presenters.md).
+- **Where the module stands.** The engine `lib/trajectory/core.js` loads as a
+  module, imports MolView, and keeps its body an IIFE that publishes
+  `window.molbuilder.trajectoryInspector` for the classic adapter
+  `lib/inspectors/trajectory.js` — a **hybrid**. `plans/plan.md` holds no item
+  converting it. See [`presenters.md`](?doc=web/presenters.md).
 
 ## 8. Test map
 
@@ -348,11 +340,8 @@ header. The header's source-path line has the username redacted.
   real runs) —
   `results.md` § 10 lists the server's half.
 - **Which file the viewer is showing, and why it is the log.**
-  *(Corrected 2026-09-04: an earlier note here said "the discovery chain
-  prefers the richer per-step log". That is wrong and was written from
-  observation instead of from the contract. `/api/watch/load` returns
-  exactly the file you ask for -- measured: 5 frames for the `.xyz`, 6 for
-  the `.molwatch.log`.)*
+  `/api/watch/load` returns exactly the file you ask for — measured: 5 frames
+  for the `.xyz`, 6 for the `.molwatch.log`.
 
   The reason a PySCF relaxation shows the log is **absorption**, not
   preference. `lib/inspectors/trajectory.js`'s `absorbs()` subsumes

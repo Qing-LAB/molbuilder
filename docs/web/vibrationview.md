@@ -17,8 +17,7 @@ file you can put in a talk or a paper.
 
 **This document is the design of that component** — what it is for, what it
 refuses to do, what it holds, how it is layered, what each API is for, and how its
-tests are derived. It is not a tour of the current code. § 15 says which parts are
-built.
+tests are derived. It is not a tour of the current code. § 15 maps the files.
 
 > **Words used in this document.**
 >
@@ -93,7 +92,7 @@ flowchart TB
     H -->|"export this"| X
     X -->|"where are the atoms at φ?"| A
     X -->|"draw it, then give me pixels"| SEAL
-    SEAL -->|"a PNG, or a video stream"| X
+    SEAL -->|"a picture: the molecule and its caption on one canvas"| X
 ```
 
 Four things to read off it:
@@ -137,26 +136,34 @@ of them directly has broken the module, not found a shortcut.
 
 **A directory is not a seal, so the concealment is made three ways.** Everything
 under `web/static/` is served, which means an internal file has a URL and any
-script could reach for it. Convention alone did not hold last time.
+script could reach for it. Convention alone does not stop a script that has the
+URL.
 
 - **Every internal file is underscore-prefixed** — `_maths.js`, `_export.js`. An
   import of `_maths.js` reads as a violation where it is written; an import of
   `maths.js` reads as ordinary code. The door is the one file without the mark.
 - **The module links its own stylesheet** (§ 13). No template names it, so no page
   can forget it and no page has to know it exists.
-- **A guard test asserts the boundary** — nothing outside the package may name any
-  path inside it but `index.js`. It runs in one direction and does not read the
-  module's own files, because that is the reach it exists to forbid.
+- **Review guards the boundary** — nothing outside the package may name any path
+  inside it but `index.js`. A test that read the source for it would measure
+  spelling, not behaviour, so it is review's
+  ([`process/code-audit.md`](?doc=process/code-audit.md) § 1c,
+  [`process/testing.md`](?doc=process/testing.md) § 3a).
 
-**Nothing it needs comes from a global, and nothing it holds is published to
-one.** It does not read `window.molbuilder` and it does not write to it. A viewer
-needs one thing at mount: an element to live in. Everything else arrives through
-the handle. The one thing the module keeps beyond a viewer is the sealed layer's
-**cleared windows** (§ 9.3a) — a resource of the page, holding nothing any viewer
-was given.
+**Nothing it needs comes from an app global, and nothing a viewer holds is
+published to one.** It does not read `window.molbuilder` and it does not write to
+it; the globals it touches are the vendor libraries' own — the drawing library the
+page loads, and the GIF encoder it loads on the first GIF export and caches on the
+window. A viewer needs one thing at mount: an element to live in. Its starting
+`amplitude`, `fps`, `cycleSec` and `showLabel` may come with it (§ 8); everything
+else arrives through the handle. What the module keeps beyond a viewer — the
+sealed layer's **cleared windows** (§ 9.3a), its stylesheet's `<link>`, and the
+loaded GIF encoder — are resources of the page, holding nothing any viewer was
+given.
 
-This is the rule the previous design broke in both directions, and the reason
-this document exists (§ 15).
+A module that reads an app global it does not publish mounts only on a page that
+happens to publish it — and a test that supplies the global itself passes while
+no page can mount the module.
 
 **Nothing leaks out.** No 3Dmol object, no DOM node, and no internal function ever
 appears on the handle. The name `3Dmol` occurs in exactly one file, which is also
@@ -288,8 +295,8 @@ Held inside one viewer, and nowhere else:
 
 ### 6.2 Amplitude has one home, and the caller decides what goes in it
 
-Amplitude is a handle-level setting written through `setAmplitude` and read fresh
-on every tick. It is **not** carried on a mode.
+Amplitude is a handle-level setting, given at mount or written through
+`setAmplitude`, and read fresh on every tick. It is **not** carried on a mode.
 
 That matters because the two normalizations want different amplitudes and would
 otherwise each need their own door: a display animation uses one amplitude for
@@ -351,10 +358,10 @@ a molecule that animates — partially, plausibly, and wrongly. So the door says
 and nothing is drawn.
 
 The refusal is this module's (`index.js` `showMode`: the scatter refuses, the
-viewer warns and draws nothing). The Spectrum tab still compares atom counts
-before it hands a mode over (`lib/spectra/core.js`), a guard this refusal makes
-redundant — and an atom count was never much of one: any two molecules of the
-same size pass it.
+viewer warns and draws nothing). The Spectrum tab hands each mode over without a
+count of its own (`lib/spectra/core.js` `_animationInputs`): this refusal is the
+guard, and an atom count would not be one — any two molecules of the same size
+pass it.
 
 ### 6.4 What a viewer does not hold
 
@@ -436,7 +443,8 @@ One name. § 4.
 setStructure({ elements, positions })      install the equilibrium; redraw + refit,
                                            and end whatever mode was running (§ 5.1)
 showMode({ index, displacements, basis?, norm?, label? })
-                                           scatter, mark what is held still, animate
+                                           scatter, mark what is held still, draw its
+                                           first frame (the clock is `play`'s)
 play()  pause()  isPlaying()               the clock
 setAmplitude(Å[, norm])                    live: the next frame reads it
 setFps(n)  setCycleSec(s)                  how smooth, and how long a cycle (§ 10.1)
@@ -458,11 +466,11 @@ writes that the running loop picks up on its next frame — no rebuild, no
 re-registration, and **a slider drag never stops the animation**.
 
 A rate change keeps the phase, by re-expressing the frame number against the new
-count. Where the new rate can express the old phase — every finer grid contains a
-coarser one's positions — the molecule does not move at all. Where it cannot, the
-phase lands on the **nearest frame the new rate has**, which is off by at most
-half a step and never accumulates, because each change re-anchors from the phase
-rather than from a running offset. Without any of this, nudging a smoothness
+count. Where the new rate can express the old phase — a frame count that is a
+whole multiple of the old one holds every one of its positions — the molecule does
+not move at all. Where it cannot, the phase lands on the **nearest frame the new
+rate has**, which is off by at most half a step and never accumulates, because
+each change re-anchors from the phase rather than from a running offset. Without any of this, nudging a smoothness
 slider would visibly throw the animation to a different part of its cycle.
 
 **`showMode` before a structure does nothing**, and says so; it is not an error and
@@ -501,8 +509,8 @@ restores the size and the background because it closed over them — so nothing 
 has to *ask* this layer how big it was or what colour it had, and those two
 questions can go on being refused like all the others.
 
-`snapshot` and `stream` take no size of their own for the same reason: the picture
-is of whatever is drawn, and changing what is drawn is `beginCapture`'s job.
+`compositeCanvas` takes no size of its own for the same reason: the picture is of
+whatever is drawn, and changing what is drawn is `beginCapture`'s job.
 
 `compositeCanvas` is how pixels leave: a request for a picture of what is already
 drawn, never a second render path (§ 5.3). It hands back a **picture, not a file**,
@@ -512,19 +520,19 @@ serves all three; a blob served one and made the other two ask again.
 
 It is also the door a recording needs. Video is captured from a live surface
 rather than asked for a frame at a time, so asking for the picture *is* the
-"repaint now" the encoder needs between frames — one door rather than the two an
-earlier draft guessed at.
+"repaint now" the encoder needs between frames — so one door serves a still and a
+recording.
 
-### 9.3a The windows are kept, and lent *(2026-10-16)*
+### 9.3a The windows are kept, and lent
 
 **A window is the drawing library's 3D view, living in an element the sealed
 layer owns.** The library has no way to take a window down: making one attaches
 listeners to the page — on its body and on the browser window — and an observer to
 the element it lives in, and holds one of the browser's graphics contexts, and
-none of it can be given back. Measured 2026-10-15: twenty viewers opened and
-closed left twenty windows in memory, sixty listeners on the page, and the
-graphics contexts climbing to sixteen — the browser's limit, past which it takes
-the oldest live one away, from whichever viewer holds it.
+none of it can be given back. Twenty windows made and dropped leave twenty windows
+in memory, sixty listeners on the page, and the graphics contexts climbing to
+sixteen — the browser's limit, past which it takes the oldest live one away, from
+whichever viewer holds it.
 
 **So the sealed layer keeps the windows it has made.** A mount takes a kept
 window — or a new one, when every window is in use — and puts its element in the
@@ -538,7 +546,7 @@ it, and the take sets each the way a new window has it:
 
 | left behind | at the take |
 |---|---|
-| the ground | the new host's own (§ 13) — another page, theme or host has its own |
+| the ground | the new host's own (§ 13) |
 | the camera | the view a new window opens with: no turn, no shift. `setStructure` fits it (§ 6.4) |
 
 **Its size is the library's to follow**: the library watches the element the
@@ -547,7 +555,7 @@ window given back in the middle of an export (§ 12) therefore needs nothing
 undone: it comes back at its new host's size, on its new host's ground.
 
 **Nothing above the sealed layer knows windows are kept** (§ 5.4). A mount asks
-for none; it gets its window as it always has.
+for none; it is given one.
 
 ---
 
@@ -572,24 +580,23 @@ Per frame, in order:
 identities and the bond topology are established once, when the structure is
 installed, and every frame after that is coordinates.
 
-**It is not free, though, and the document said otherwise until the drawing layer
-was written.** The library caches its representation meshes when a style is
-applied, so writing new coordinates updates the data and *not* the picture — the
-molecule stands perfectly still while the numbers advance underneath it. Making
-the new positions appear means re-applying the style, which regenerates the
-geometry. So a frame costs **one pass over the atoms**, not a constant: O(atoms),
-at the few hundred atoms this project works with, which is the difference between
-smooth and smooth. Recorded here because it is a property of the drawing library
-rather than a choice, and because the alternative reading — that a frame is free —
-is what let an animation sit motionless through ten rounds of fixes before anyone
-found the cause.
+**It is not free, though.** The library caches its representation meshes when a
+style is applied, so writing new coordinates updates the data and *not* the
+picture — the molecule stands perfectly still while the numbers advance underneath
+it. Making the new positions appear means re-applying the style, which regenerates
+the geometry. So a frame costs **one pass over the atoms**, not a constant:
+O(atoms), at the few hundred atoms this project works with, which is the
+difference between smooth and smooth. Recorded here because it is a property of
+the drawing library rather than a choice: a layer that writes the coordinates and
+skips the style pass shows a molecule standing still while its numbers advance,
+with no error anywhere.
 
 **What costs what:**
 
 | Change | Cost |
 |---|---|
 | a frame | one coordinate write and one style pass — O(atoms), no reload, no reparse |
-| `setAmplitude` / `setFps` / `setCycleSec` | a variable write; the next frame differs |
+| `setAmplitude` / `setFps` / `setCycleSec` | a variable write; a running animation shows it on its next frame, a paused one is redrawn at once |
 | `showMode` on the same structure | a scatter and a held-still mark — **no redraw, no refit** |
 | `setStructure` | a full redraw and a camera refit |
 
@@ -617,10 +624,11 @@ either does not make the other worse.
 
 **The default is 30 fps.** At 30 frames per cycle the phase moves 12° per frame,
 and the largest per-frame motion — at the zero crossing, where the atoms are
-moving fastest — is about **10% of the amplitude**: at the default 0.15 Å that is
-0.03 Å between frames, under a pixel at normal zoom. It is also the rate every
-encoder expects, it keeps a one-cycle export to 30 frames, and on a 60 Hz display
-it lands on every second repaint, so nothing beats against the refresh.
+moving fastest — is about **a fifth of the amplitude** (2·sin 6° ≈ 0.21): at the
+default 0.15 Å that is 0.03 Å between frames, under a pixel at normal zoom. It is
+also the rate every encoder expects, it keeps a one-cycle export to 30 frames, and
+on a 60 Hz display it lands on every second repaint, so nothing beats against the
+refresh.
 
 ```
    One cycle, and how the frames sit in it:
@@ -657,10 +665,11 @@ thousand-second cycle at 30 fps is 1200 frames, and comes back as forty seconds.
 
 **The rate is clamped, and the clamp is the module's.** `setFps(2)` is a
 slideshow; `setFps(10000)` burns a core drawing frames no display will show. So the
-door holds the value inside a band it can honour and the tab's control stays
-within it. This is not the module interpreting anything — it is a door refusing a
-value it cannot deliver, the same as the ones that refuse a mode which does not
-fit its structure (§ 6.3).
+door holds the value inside a band it can honour — 5 to 120 frames a second, 15 to
+1200 frames a cycle. The Spectrum tab offers no rate control; its viewer runs at
+the default 30 fps. This is not the module interpreting anything — it is a door
+refusing a value it cannot deliver, the same as the ones that refuse a mode which
+does not fit its structure (§ 6.3).
 
 **The clamp belongs wherever a rate is stored, not only where the frame count is
 worked out.** The rate drives two things — how many frames a cycle has, and when
@@ -698,8 +707,10 @@ for hertz.
 
 The Spectrum tab ([`spectra.md`](?doc=web/spectra.md)), and nothing else.
 
-The tab owns the spectrum chart, the mode list, the amplitude and smoothness
-controls, the caption switch, the play button and the export dialog. It reads a `.spectra.json`, cuts out the
+The tab owns the spectrum chart, the mode list, the amplitude and speed controls,
+the play button and the export controls. It offers no frame-rate control and no
+caption switch: its viewer runs at the default 30 fps with the caption shown. It
+reads a `.spectra.json`, cuts out the
 three things an animation needs, and hands them over:
 
 ```js
@@ -806,8 +817,9 @@ refused. Two captures would each resize the same canvas and each restore it to w
 *it* believed was the original, and the loser leaves the viewer wrong.
 
 **It reports progress and it can be cancelled.** Both matter more than they look:
-a five-second clip at 30 fps is 150 frames to encode, and a GIF encode holds the
-main thread. Without progress there is nothing to show a user who is waiting;
+a five-second clip at 30 fps is 150 frames, and for a GIF each is copied off the
+canvas on the page's thread before the encoder's two workers encode it. Without
+progress there is nothing to show a user who is waiting;
 without cancellation there is no way out of a wait they did not want. A cancelled
 export **rejects rather than resolving** — it never hands back a short file, and the
 next export begins as though it had not happened.
@@ -838,10 +850,10 @@ to make. That is a fact about the progress bar, not about the file.
 
 **GIF cannot express every rate.** Its per-frame delay is stored in hundredths of a
 second, so only rates that divide 100 are exact — 50, 25, 20, 10. At the default 30
-fps the delay is 3.33 hundredths and the encoder rounds it, so a GIF plays a few
-percent off the cycle length it was asked for. Invisible in practice, and not worth
-moving the default for; worth knowing before someone measures a GIF and reports it
-as a bug.
+fps the delay is 3.33 hundredths and the encoder rounds it to 3, so a GIF's cycle
+runs 10% short — a one-second cycle plays in 0.9 s. Invisible in practice, and not
+worth moving the default for; worth knowing before someone measures a GIF and
+reports it as a bug.
 
 **The background is a capture option, and it has three useful values:**
 
@@ -852,7 +864,8 @@ as a bug.
 | `"transparent"` | alpha, so the molecule drops onto any slide or page |
 
 There is no background control **on screen** — the module has no menu (§ 5.4), and
-its ground is the stylesheet's, following the app's light or dark theme. The choice
+its ground is the stylesheet's one dark ground, the same in the app's light and
+dark themes. The choice
 appears at export, which is the only place it changes an outcome.
 
 **Transparency and format interact, and only one pairing is clean.** A transparent
@@ -879,9 +892,13 @@ separate number, and the animation is the two multiplied together:
       far relative to others)
 
   ┌──────────────────────────────────────────────────────────────────────────┐
-  │  display-normalised      ×   0.15 Å                =  the biggest-moving │
-  │  (its largest row = 1)       (whatever the slider       atom swings       │
-  │                               says)                     0.15 Å           │
+  │  display-normalised      ×   0.15 Å                =  no atom's motion   │
+  │  (its largest                (whatever the slider     along any axis     │
+  │   component = 1)              says)                   exceeds 0.15 Å; an │
+  │                                                       atom moving        │
+  │                                                       off-axis swings up │
+  │                                                       to √3 × 0.15       │
+  │                                                       ≈ 0.26 Å           │
   │                                                                          │
   │                       exaggerated on purpose, so the motion is legible   │
   └──────────────────────────────────────────────────────────────────────────┘
@@ -900,10 +917,11 @@ separate number, and the animation is the two multiplied together:
 
 Two ways to choose the size, then, and they answer different questions:
 
-**Display** — the largest-moving atom swings by the slider value, whatever the
-mode. This is a drawing choice: real vibrational amplitudes are small, and a
-faithful one is often too subtle to read on screen, so the motion is exaggerated
-the way Jmol, Avogadro and Gaussian all exaggerate it. It uses the display-normalized
+**Display** — the largest Cartesian component of any atom's swing is the slider
+value, whatever the mode; an atom moving off-axis swings up to √3 times it. This
+is a drawing choice: real vibrational amplitudes are small, and a faithful one is
+often too subtle to read on screen, so the motion is exaggerated the way Jmol,
+Avogadro and Gaussian all exaggerate it. It uses the display-normalized
 eigenvector (its largest absolute Cartesian component is 1 — `engines/vibration.md`
 § 6.3, the one definition), and the amplitude in ångström is
 whatever the user dragged.
@@ -964,14 +982,14 @@ caption — free text, drawn in a corner of the picture:
 
 ```js
 vib.showMode({ …, label: "Mode 7 · 1584.2 cm⁻¹" });
-vib.setLabelVisible(false);     // the tab's switch
+vib.setLabelVisible(false);     // a tab's switch; the Spectrum tab offers none
 ```
 
 **It is an overlay over the canvas, and an export composites it in on purpose.**
 
-That is a correction. The design said to draw it *inside* the 3D scene, so that it
-would ride into an exported picture for free — and measured against a real browser
-that is not possible with this drawing library. A screen-positioned label draws
+Drawn *inside* the 3D scene it would ride into an exported picture for free, but
+measured against a real browser this drawing library cannot draw it there. A
+screen-positioned label draws
 **nothing at all**: the call returns an object, the render runs, and the pixels are
 byte-identical with the caption and without it, on screen and in a captured image
 alike. A label positioned in the *scene* does draw — and then swings away with the
@@ -979,8 +997,8 @@ camera, which is not a caption.
 
 So the caption is an ordinary element over the 3D window, exactly like MolView's
 "Unsaved changes" badge, and every export draws the window and the caption onto
-one surface before encoding. **The rule the design wanted is intact — the caption
-is in the file — and only the mechanism changed.** It is also the better mechanism
+one surface before encoding. **The caption is in the file because every export
+composites it**, not because it is part of the scene. It is also the better mechanism
 on its own terms: text drawn by the browser is crisper than text baked into a 3D
 scene, it takes its appearance from the stylesheet like everything else here, and
 a long caption wraps instead of running off the edge.
@@ -1018,8 +1036,9 @@ are easier to write down than to rediscover:
 rather than a handful of rules:
 
 - **One namespace.** Every class is `vibview-…`, so there is no bare name for a
-  page to collide with — and a page sheet reaching at one fails a guard, the same
-  way a script reaching past `mount` does.
+  page to collide with — and a page sheet reaching at one is a finding for review,
+  the same way a script reaching past `mount` is
+  ([`process/code-audit.md`](?doc=process/code-audit.md) § 1c).
 - **No value written twice, and none written in a rule.** Colours, spacing, type
   and depth are tokens declared on the module's own root; the rules below read
   them and carry no literals. Changing how the module looks is changing that
@@ -1039,19 +1058,18 @@ inside JavaScript, so the repository's existing CSS audits still read it.
 **And the mount waits for it.** A `<link>` loads asynchronously, so the tokens it
 declares are not readable the instant it is appended — and the drawing surface
 reads two of them, because a WebGL clear colour cannot be styled and has to be
-handed over as a value. Appending and carrying on gave every first mount the
-fallback instead of the token, invisibly, for exactly as long as the two agreed.
+handed over as a value. Appending and carrying on would give every first mount the
+fallback instead of the token — invisibly, for as long as the two agree.
 `mount` is asynchronous already (§ 8), so waiting costs a caller nothing.
 
 **What the host decides is the box**: how big it is and where it sits. Everything
 inside it is the module's. A host stylesheet that knew how the canvas positions
-itself would be the seal leaking into another language, which is what one did
-until this step.
+itself would be the seal leaking into another language.
 
 **The on-screen background lives here and only here** — declared in this
-stylesheet, read by the sealed layer at paint time, following the app's light or
-dark theme. There is no background setting on the handle and no picker in the
-viewer, because there is no menu to put one in (§ 5.4). The one place a background
+stylesheet, read by the sealed layer when a viewer is mounted, and the same in the
+app's light and dark themes. There is no background setting on the handle and no
+picker in the viewer, because there is no menu to put one in (§ 5.4). The one place a background
 is chosen rather than inherited is an export (§ 12.1), and that choice lasts as
 long as the capture does.
 
@@ -1068,12 +1086,12 @@ A stand-in takes the place of a level, so it must obey **that level's rules from
 this document**. A stand-in for the sealed layer that answers a question the
 sealed layer refuses to answer describes something this design forbids.
 
-One kind of test does read the source, and says so: a **structural invariant** —
-"this module names no physical constant", "this layer imports nothing outside the
-package". It is the same kind of check the repository already applies to layering
-and to file access. It is not an exception to the rule above, because it asserts
-nothing about behaviour; it guards a boundary that no behaviour can reveal until
-the day it is crossed.
+No test reads the source. A **structural invariant** — "this module names no
+physical constant", "nothing above the seal names a colour for a held-still atom,
+or a font, size or corner for the caption", "this layer imports nothing outside
+the package" — is review's ([`process/code-audit.md`](?doc=process/code-audit.md)
+§ 1c): a test that reads the source for it measures spelling, not behaviour
+([`process/testing.md`](?doc=process/testing.md) § 3a).
 
 | Level | Runs | Derived from | Shows |
 |---|---|---|---|
@@ -1087,13 +1105,13 @@ the day it is crossed.
 
 | The rule | A test must show |
 |---|---|
-| § 4 — self-contained | the module mounts given only a host element; it reads no global and writes none, so a page that never touched `window.molbuilder` animates normally |
+| § 4 — self-contained | the module mounts given only a host element; it reads no app global and writes none, so a page that never touched `window.molbuilder` animates normally |
 | § 4 — nothing else is importable | the entry point exports exactly `mount` |
 | § 4 — no test seam | the tests themselves reach the module only through `import` and the handle |
 | § 5.1 — the door says the cost | `showMode` on an installed structure issues no redraw and no refit; `setStructure` issues both |
 | § 5.1 — a new structure ends the mode | after `setStructure` the clock is stopped and nothing is animating, whatever was running before — so no eigenvector can survive onto a molecule it was not computed for |
 | § 5.1 — and it takes the caption with it | the caption names a mode, so a structure with no mode carries no caption; a label left standing would be a confident sentence about nothing |
-| § 5.2 — amplitude has one home | there is no way to set amplitude except `setAmplitude`, and what the tick uses is always what was last written there |
+| § 5.2 — amplitude has one home | amplitude is set only by mount's `amplitude` and by `setAmplitude` — a mode carries none — and what the tick uses is always what was last written there |
 | § 5.3 — what is animated is what is exported | frame *n* of an export holds exactly the positions frame *n* shows on screen, at every amplitude and every rate |
 | § 5.4 — no chrome | a mounted viewer contains no heading, button, menu or control of any kind |
 | § 6.2 — `norm` is carried, not interpreted | changing `norm` changes the export's metadata and **nothing** about what is drawn |
@@ -1105,9 +1123,9 @@ the day it is crossed.
 | § 9.3a — a window taken is a new one | a viewer on the window another left — turned by the mouse, on another ground, closed in the middle of an export at another size on a transparent ground — draws, in a host of another size, the pixels a viewer on a new window draws: empty, and with a structure and a mode |
 | § 8 — mount always resolves | a mount that cannot build a surface still resolves with `ok === false` **and** a working `dispose`; nothing rejects and nothing returns null |
 | § 8 — the handle is live | every door works on the first call after `await`, with no readiness wait and nothing deferred |
-| § 9.2 — the knobs are live | amplitude, fps and cycle-length changes take effect on the next frame, issue no call to the drawing surface, and never stop a running animation |
+| § 9.2 — the knobs are live | amplitude, fps and cycle-length changes take effect on the next frame, issue no call to the drawing surface while the animation runs (a paused viewer is redrawn at once, so its still picture shows the change), and never stop a running animation |
 | § 9.2 — the phase is continuous | pause then play resumes on the frame it stopped on |
-| § 9.2 — a rate change keeps the phase | going to a finer rate moves the atoms not at all, and going to a coarser one moves them by at most half a frame of phase — read off what is drawn, not off the frame number |
+| § 9.2 — a rate change keeps the phase | going to a rate whose frames per cycle are a whole multiple of the old moves the atoms not at all, and any other change moves them by at most half a frame of the new rate's phase — read off what is drawn, not off the frame number |
 | § 10.1 — a cycle is whole | a cycle is a whole number of frames at every rate, and frame 0 of the next cycle holds exactly the positions of frame 0 of this one — so a one-cycle export loops without a seam |
 | § 10.1 — the rounding lands on the duration | a rate whose frames-per-cycle is fractional is accepted, and what shifts is the cycle length, not the frame count; the shift does not grow over repeated cycles |
 | § 10.1 — the duration reported is the one that happened | the cycle length a viewer answers with is exactly its frames divided by its rate, for every rate including ones that were brought into range — never the figure that was requested |
@@ -1116,7 +1134,6 @@ the day it is crossed.
 | § 10.1 — the phase is the frame number | dropping or delaying a frame slows the animation and never skips a position; the sequence is the same one an export encodes |
 | § 10.1 — the chosen rate is the rate you get | on a display repainting faster than the rate asked for, the frames drawn per second are the ones requested — measured at the awkward case, where the interval is an exact multiple of the repaint and a strict comparison would silently fall to the next multiple down |
 | § 9.3 — the seal faces downward | coordinates, the current frame and the camera cannot be read out of it |
-| § 9.3 — appearance is the seal's | nothing above the seal names a colour for a held-still atom, or a font, size or corner for the caption |
 | § 9.2 — nothing animates with nothing to animate | `play()` before a mode is shown starts no clock and draws no frame |
 | § 10 — a tick moves atoms, it does not rebuild | an animating viewer issues one coordinate update per frame and no structure load |
 | § 10 — browsing modes keeps the camera | a mode change on an installed structure issues no refit |
@@ -1131,7 +1148,6 @@ the day it is crossed.
 | § 12.3 — the caption is in the file | a caption shown on screen appears in every exported frame; hidden, it appears in none — the export is not asked separately |
 | § 12.3 — the caption is text | a mode's label is drawn exactly as given: no rounding, no unit added, no sign reinterpreted |
 | § 12.1 — the zip explains itself | the manifest's frame count equals the number of PNGs in the zip |
-| § 12.2 — the two amplitudes are supplied by the caller | the module contains no frequency, no temperature and no physical constant |
 
 ---
 
@@ -1152,25 +1168,7 @@ is the door, everything else is a room.
 **Deliberately not listed:** the sealed layer. No consumer names its file and
 neither does this document (§ 4).
 
-> **What this replaced, and what is now gone.** The previous VibrationView
-> borrowed its drawing surface from a shared 3Dmol embed found at runtime through
-> a global. That global's publisher was loaded by no page, so **the module could
-> not mount at all** — every attempt returned a failure handle and the Spectrum
-> tab showed "vibration viewer unavailable". Its own tests passed because they
-> supplied the missing global themselves.
->
-> Both are deleted: the predecessor module and the 6,884-line embed it borrowed
-> from, along with the two source-pinning tests that guarded patterns inside code
-> no page loaded. What replaced the borrow is the sealed layer described above —
-> and the export machinery, which was the one thing in that embed still worth
-> having and is carried across rather than rewritten.
->
-> The animation export (GIF and WebM) is **carried, not invented** — it worked in
-> the retired embed and is brought across intact. **New** are the PNG sequence with
-> its manifest, and the caption (§ 12.3), which no previous version had in any
-> form.
->
-> The work was task #19 (#104), and it is done: `lib/viewer/` is gone and this
-> module carries its own seal (re-read 2026-09-29). The tab-side wiring it depended on —
-> handing `mount` to the code that owns the mode-viewer element on `/results` — in
-> [`archive/2026-09-21-audit-2026-08-05-tab-ui.md`](?doc=archive/2026-09-21-audit-2026-08-05-tab-ui.md) § A1.
+A module that borrows its drawing surface from a global is unmountable on every
+page that does not publish it, and its tests pass when they supply the global
+themselves — so this module carries its own sealed layer (§ 4), and its tests
+reach it only through `import` and the handle (§ 14).

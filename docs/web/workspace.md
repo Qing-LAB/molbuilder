@@ -27,22 +27,17 @@ One file: **`dispatcher.js`** — the front door, `window.molbuilder.workspace`.
 Every tab talks to this. It decides *where* saved bytes go and hands back what
 was saved.
 
-There was a second file that kept a copy in the browser's own short-term storage.
-Nothing ever restored from it — every restore went to the server anyway — so it
-cost a write on every edit and bought nothing. It is gone, and with it the only
-other place your work could be.
+There is no copy in the browser: every save and every restore goes to the
+server, so its files are the only place your work is.
 
 The server side is three small routes — `/api/workspace-storage/{write,read,prune}`
 in `workspace_storage.py` — described in § 9.
 
-> **They were called `/api/state-timeline/*`, in `state_timeline.py`, and the name
-> was wrong.** It named MolView's **timeline** — the sequence of saved points, the
-> position on it, the badge, and the policy of what a save records and what to
-> prune. None of that is on the server. That is `lib/molview/history.js`, and
-> nothing in these routes knows a sequence exists: no order, no position, no
-> notion that index 3 follows index 2. They store one opaque blob per
+> **The routes know no timeline.** MolView's timeline — the sequence of saved
+> points, the position on it, the badge, what a save records and what to prune —
+> is `lib/molview/history.js`'s. These routes store one opaque blob per
 > `{workspace_id, state_index}` for **any** tag — a page's settings as well as
-> a viewer's history. Renamed 2026-08-02 (§ 2a).
+> a viewer's history — with no order and no position (§ 2a).
 
 ## 2. Where your work is kept
 
@@ -102,13 +97,8 @@ had.
 | a **file** save | the Modify tab's Save panel + the projects doors (§ 8) | Saving to a project is a decision a user makes about a name and a place. The workspace saves what you did not ask it to save |
 | the **owner** of where `projects/` is | the app, through `Capabilities` | The root is resolved once for the whole app. Answering it separately here is exactly how the storage came to write somewhere the file picker was not looking |
 
-**The first row is the one that has actually cost time.** The server half was
-named `state_timeline.py`, serving `/api/state-timeline/*`, after a concept that
-lives entirely in the browser and entirely inside MolView. Reading the name
-instead of the callers led, on 2026-08-02, to two opposite wrong conclusions
-about the same file within an hour — that it was a shared domain module to be
-promoted out of the web layer, and that it was MolView-private plumbing to be
-hidden. It is neither: it is this module's storage, and this module is public.
+**The first row is the one most easily misread**: the server half
+(`workspace_storage.py`) is this module's storage, and this module is public.
 
 ---
 
@@ -193,11 +183,7 @@ of the difference, and it is worth spelling out what the other way does:
 Passing the tag with each call removes the window entirely: there is nothing to
 set first, so there is nothing to change underneath anyone.
 
-> **This is how the code works now** (changed 2026-08-02). Until then the tag was
-> that one variable, `persist` took no tag at all, and the browser-storage half
-> was published as a second door anyone could write through. All three are gone,
-> and `tests/test_workspace_tag_isolation.py` fails if a call stops taking its
-> tag.
+> `tests/test_workspace_tag_isolation.py` fails if a call stops taking its tag.
 
 ## 5. The public surface
 
@@ -241,10 +227,8 @@ read them, so everything that needs to *understand* what was saved is yours.
 - Decide when you should save.
 - Decide what a "step" means.
 
-There is no `workspace.getAtoms()` and there never will be. Two functions once
-broke that rule — they opened your saved bytes to answer "is there a molecule in
-here?" and "which file did it come from?" — and one of them got it wrong and wiped
-a molecule someone had just built (§ 7). Both are gone.
+There is no `workspace.getAtoms()`: a store that opened your bytes to answer
+*is there a molecule here?* would be reading data it does not understand (§ 7).
 
 ### What you have to do
 
@@ -297,13 +281,10 @@ Load, not something that happens because a name was still highlighted.
 **Do not decide by comparing file names.** A molecule you built from SMILES, or
 from a peptide sequence, was never in a file — so "which file did this come
 from?" answers *nothing* for it, and a tab that reads that as "there is no saved
-work" wipes the molecule you just built. That happened. Ask whether there is a
+work" wipes the molecule you just built. Ask whether there is a
 structure in your saved bytes, not where it came from.
 
-> The workspace used to answer both of those questions itself, by opening the
-> saved bytes and hunting for a molecule inside them. That is how the wipe
-> happened: it was reading data it does not understand. Both questions are yours
-> now — you wrote the bytes, so you know what is in them.
+Both questions are yours — you wrote the bytes, so you know what is in them.
 
 ## 8. A file save is not the workspace's job
 
@@ -367,13 +348,10 @@ are in the sequence; it does not decide how long the sequence may be.
 Because the floor moves without telling the client, **MolView's idea of the
 sequence can outrun what is on disk** — its position and highest-point live in
 memory. `load` already answers this honestly: it returns `null` when the point
-asked for is not there, which the caller must report as *there is nothing
-further back* rather than as a move. "Retracted to state #45" when nothing moved
-is worse than silence.
-
-> *(Task #47 landed: `retractState` reads `load`'s answer and reports "there
-> is nothing further back" at the floor instead of a move that did not
-> happen.)*
+asked for is not there, which the caller must report as nothing having
+moved, never as a move: `retractState` says *Nothing changed — that earlier
+state could not be brought back. A tab keeps its last 30 saves.* "Retracted to
+state #45" when nothing moved is worse than silence.
 
 **An id belongs to a browser tab and a tag, worked out from them.** The id the
 state files are named after (`<workspace_id>.<step>.wc.json`) is `"ws-"`, the
@@ -413,7 +391,3 @@ after the edit finds it.
 - `test_molview_model.py` / `test_molview_stores_history.py` — restore-at-mount
   through the real model (`load(0)` adopts; a restored session still receives
   frames).
-
-*(Four rows here used to name files that do not exist —
-`test_workspace_dispatcher_js.py` and kin.  A test map that names phantom
-files fails the reader exactly when they need it: corrected 2026-08-19.)*

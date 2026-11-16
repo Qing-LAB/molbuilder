@@ -48,16 +48,17 @@ browser's. **Launching stays at the terminal**: it spends a queue slot, one job
 per invocation, by hand. The task's Prep prepares the groups you pick, each
 group one job — the stages that share it, a transport ladder's seed and leads
 among them ([`project-layout.md`](?doc=execution/project-layout.md) § 1.6.6;
-§ 11). What the page writes:
+§ 11). What the page writes, with the hand-over that came before it:
 
 ```text
 projects/BDT-Au/optimization/au111-series/bdt_au/
 
-    BDT_Au_relax.template.toml   the parameters, with their values
-    task.json                    what varies, the stages
-    job-request.json             the run cards, the groups, the queue,
-                                 what to measure, the reports
-    Au.psml  S.psml  …           the data files
+    BDT_Au_relax.source.xyz             the structure it is of, and its
+    BDT_Au_relax.source.molstruct.json  sidecar (from the hand-over)
+    BDT_Au_relax.template.toml          the parameters, with their values
+    task.json                           what varies, the stages
+    job-request.json                    the run cards, the groups, the queue,
+                                        what to measure, the reports
 ```
 
 Then, on the machine that will run it (or with this tab's Prep, for a machine
@@ -120,16 +121,14 @@ order, and each tier is answered on its own terms:
 |---|---|---|
 | the **folder** | one door — `/api/task-setup/folder?dir=` | the selection moves; **replaced whole** |
 | the **engine** | `columns` · `presets` · `sweepable`, keyed on the engine | the engine does — shared across folders |
-| the **pair** | `bench-grid{dest, target}`, each stage's command lines (`commands{dest, kind, stage, target, …}`, § 11) and each stage's preview (`prep{…, plan: true}`, § 11.1) | *either* the folder or the machine moves |
+| the **pair** | `bench-grid{dest, target}`, each group's command lines (`commands{dest, kind, groups, target, …}`, `stages` for a benchmark, § 11) and the preview of the groups picked (`prep{…, plan: true}`, § 11.1) | *either* the folder or the machine moves |
 
 Naming the tiers is what keeps the rule precise: "no state of its own" forbids
 remembering a *folder's* facts, not caching the engine's vocabulary, and the
 pair is the case a single reset would get wrong.
 
 **Every folder fact the page shows is drawn from one per-folder state, built
-from the folder's answer and replaced whole** *(2.28.0, plan § 1w — the
-2.27.0 review found the previous folder's machine line, queue card and report
-period still on the page after another folder opened)*: the records as
+from the folder's answer and replaced whole**: the records as
 edited, the machine the calculation is set to, the queue and asks the job
 request names, the notify card's values, every card's rows. A card reads that
 state and nothing it drew before; a folder opened anew — a description, a
@@ -138,7 +137,7 @@ card with nothing to show for that folder is hidden. **Until the folder's
 answer has landed, Save is held**, said in the save bar: what the page holds
 then is the last folder's, and nothing of it is written into this one.
 
-**Another writer's change to the folder is read** *(2.68.5)*: a restore, a
+**Another writer's change to the folder is read**: a restore, a
 file renamed, moved, copied, uploaded or deleted from the sidebar, the file
 viewer's Save, a structure saved into it — each announced
 ([`projects.md`](?doc=web/projects.md) § 2) — and the page reads its folder
@@ -157,17 +156,11 @@ the half that clearing cannot cover: **there are two ways this page shows the
 wrong folder, state that LINGERS and an answer that LANDS LATE**, and a reset
 only ever addresses the first.
 
-> **This was written before it was kept.** The page assembled itself from
-> twelve endpoints, each painting its own card, and cleared the per-folder
-> ones with `_resetPerFolderState()` — a hand-written list of eight clears in
-> a module with twenty-five variables. Its very existence is the admission: a
-> page that held no state of its own would have nothing to reset. It had
-> already leaked once (a SIESTA description into the next folder, with Save
-> enabled over the wrong calculation); on 2026-09-19 it leaked again, and a
-> six-trial bench plan — `mpi_np` 4/8/16 × `omp` 1/2 — rode into a brand-new
-> calculation whose hand-over declares no `varies`, on a four-core box. There
-> was no `AbortController` anywhere among the twelve, so the late-answer half
-> was unguarded entirely.
+> Nothing of one folder survives into another's: the per-folder state is one
+> object, replaced whole when the folder changes, and an answer that lands for
+> a folder the page has left is discarded. Clearing alone could not do it —
+> state that lingers and an answer that lands late are two different ways to
+> show the wrong folder.
 
 ### 2.2 What this page asks, and what `calcdirs.described` asks
 
@@ -239,7 +232,7 @@ served; a Save that changes a kept row's values, its rename or its label
 is refused by name, as the Transport tab's Describe refuses it — measured against the
 folder's own description, so an extension the command line wrote saves; a
 Save of another junction is another calculation, refused by its id (§ 2). *(The user, 2026-10-22, 2026-10-23; built
-2.33.0, plan § 1aa.)* **A cited frame set says what its frames are**,
+2.33.0.)* **A cited frame set says what its frames are**,
 under them: its count and, for a mode's set, its mode line and a row per
 frame — the frame-set card the Transport tab's junction card draws, from the
 describe door's own door (`frame_average.answer`,
@@ -316,12 +309,11 @@ catalogue's markers for the folder's kind, and by nothing the page keeps
 ([`template.md § 6.4`](?doc=engines/template.md); `/api/task-setup/columns?engine=&calculation=`):
 the kind narrows them (`calculations`); **a run setting is not a column** —
 the catalogue's `execution` items, the machine's answers among them, are each
-rung's run card (§ 6.2b; `job-request.md` § 3.2, plan § 5w K5); a rung's role is
+rung's run card (§ 6.2b; `job-request.md` § 3.2); a rung's role is
 not a column (`role`); and **a value shared by
 every rung is not a column (`shared`)** — it is edited in the template, on the
 tab that owns it, and a column here would be a per-rung override `prep`
-refuses by name. *(Measured 2026-09-24: a transport folder's picker offered
-thirteen shared values, `mesh_cutoff` and `basis_size` among them.)* **A column
+refuses by name. **A column
 a rung does not read (`stages`, by the rung's ROLE) shows on that rung's row as
 a disabled cell naming the rungs that read it**, never as an editor — a
 transmission window on the seed's row — and the picker names those rungs beside the item (*read by
@@ -329,22 +321,21 @@ transmission*, 2026-10-11). **Each item is named by its label, as every form nam
 the picker's entry *Correct the device's charge — now: No correction · read by
 device*, the value now in force in the words its cells use, and the column's
 header *Correct the device's charge* — its catalogue name only in the hover,
-beside the keyword it writes, for a reader of `task.json` *(2.68.1)*. **And
+beside the keyword it writes, for a reader of `task.json`. **And
 everywhere else the page names a setting** — a run card's row, a benchmark's
 row, a status line (*Writing MPI ranks (np)…*), a refusal, the plan's lines
 (§ 7.1), and every control's spoken name (*value for MPI ranks (np)*) — **by
 the same label**, the catalogue's or, for the run's own two
-asks, the sweepable door's (`lane_asks`); its name only where neither has one
-*(2.69.2)*. Each item a route sends — a column, a run setting — is the
+asks, the sweepable door's (`lane_asks`); its name only where neither has one.
+Each item a route sends — a column, a run setting — is the
 setting's one record, the one a form field is built on
 ([`form-schema.md`](?doc=web/form-schema.md) § 1.1), with the route's own
 facts beside it. The payload carries each item's roles and, beside the columns, how the
 kind names its rungs' roles (`roles`, `template.stage_role_rule`), so the table
-maps each row to its role — the name matched in any case, as `stage_role`
-matches it (`stages.md` § 2) — and keeps no rule of its own; the description's own
-check and `resolve` refuse such an override on every road *(by role for every
-kind since 2026-09-30, plan § 5w K4; for transport's rungs, by name, since
-2026-09-24)*.
+maps each row to its role — the name matched in any case, as
+`template.stage_roles` matches it (`stages.md` § 2) — and keeps no rule of its own; the description's own
+check and `resolve` refuse such an override on every road, by the rung's
+role, for every kind.
 
 **Every row states its group** *(user, 2026-10-11:
 "the stages should have a group number assigned to it, either repeat the last
@@ -405,8 +396,8 @@ from the template (`template.md` § 6.6 obligation 2), and **this kind's**
 default (`template.default_of`; a vibration's relaxation is held tighter than
 an optimization's), never the general one, said by where it comes from as
 every form says it (`default_words`, [`form-schema.md`](?doc=web/form-schema.md)
-§ 1.1): *Recommended for a vibration*, *SIESTA's own default*, *Default*
-*(2.68.1)*. Somebody checking a description
+§ 1.1): *Recommended for a vibration*, *SIESTA's own default*, *Default*.
+Somebody checking a description
 before a week of compute should be able to see that the two are not the same.
 
 ### 5.2 The declaration decides the cell — both the widget and the value
@@ -417,8 +408,8 @@ at the value instead:
 
 | | asked by | answered by |
 |---|---|---|
-| which control edits this cell | `legalValues` — for the stage cells, the run card's rows and the Measure adder alike | the server's control, the one every form is drawn by (`_shared.control_for`, [`form-schema.md`](?doc=web/form-schema.md) § 4), carried by both routes as `control`: a switch, whether or not it may stand unanswered, or a fixed set of choices → a dropdown of the choices **this folder's kind offers** (the columns payload's `choices`, narrowed by the catalogue's `offered` on the folder's engine — [`engines/template.md`](?doc=engines/template.md) § 6.3a, 2026-09-30: a vibration's relaxation cell offers three relaxers), each **in the words every form uses** — the columns payload's `choice_labels`, the catalogue's own (*No correction*, *Correct the Fermi level*), a switch *on* or *off* — the value written the choice itself *(2.68.1)*; everything else a text box |
-| what the typed text **means** | the setting door, on the server — `POST /api/task-setup/value` (`template.read_text`, [`engines/template.md`](?doc=engines/template.md) § 5.4) | one reader per member of `template.TYPES`, the one every home reads with; the page keeps none *(2.28.0, plan § 1w: the page's own readers took `"0x10"` for a number and any text but `"true"` for `false`)* |
+| which control edits this cell | `legalValues` — for the stage cells, the run card's rows and the Measure adder alike | the server's control, the one every form is drawn by (`_shared.control_for`, [`form-schema.md`](?doc=web/form-schema.md) § 4), carried by both routes as `control`: a switch, whether or not it may stand unanswered, or a fixed set of choices → a dropdown of the choices **this folder's kind offers** (the columns payload's `choices`, narrowed by the catalogue's `offered` on the folder's engine — [`engines/template.md`](?doc=engines/template.md) § 6.3a, 2026-09-30: a vibration's relaxation cell offers three relaxers), each **in the words every form uses** — the columns payload's `choice_labels`, the catalogue's own (*No correction*, *Correct the Fermi level*), a switch *on* or *off* — the value written the choice itself; everything else a text box |
+| what the typed text **means** | the setting door, on the server — `POST /api/task-setup/value` (`template.read_text`, [`engines/template.md`](?doc=engines/template.md) § 5.4) | one reader per member of `template.TYPES`, the one every home reads with; the page keeps none: a reader of its own would read a value otherwise than the description's reader does |
 
 **A stored value this kind does not offer is shown as itself, marked** —
 *`none (not offered here)`* — beside the offered choices, never a blank cell over
@@ -426,16 +417,9 @@ an override the description still holds; prep refuses it by name
 ([`engines/template.md`](?doc=engines/template.md) § 6.3a), and the cell is
 where the person picks an offered one instead.
 
-Guessing either from the value's look is a bug this tab has had twice. A
-sweep row born as the number `1` made `use_gpu` a number box (fixed
-2026-08-20). And a cell that stored `Number(text)` when the text parsed and
-the **raw string** when it did not wrote `"kgrid": "4,4,1"` into a
-description — a string where the config declares `Tuple[int, int, int]`.
-`kgrid` is `int3`, `Number("4,4,1")` is `NaN`, and the four columns whose
-type is a sequence (`kgrid`, `kgrid_displacement`, `species_order`,
-`ecp_atoms`) all wrote text. It saved cleanly and failed at `prep`, hours
-later, inside a range check that could only call it *"a programmer bug"*
-(reported live 2026-08-25).
+Neither is guessed from the value's look: a cell that guessed would store
+text where the catalogue declares a number or a list (`kgrid` is `int3`), a
+value refused far from where it was typed.
 
 So: **every type in the vocabulary has a reader** — the setting door's, one
 per member of `template.TYPES` (`template.read_text`), the one every home
@@ -449,7 +433,7 @@ reader is *silent*, and a newly added item is exactly when nobody thinks to
 check. So **when such an item does land, the door already reads it** — `pow2`
 as a whole number (snapping is `template._shape`'s, not the reader's), `text`
 verbatim, and `intlist` as comma- or space-separated whole numbers (not the
-range syntax `0-35, 100` the Build form's own control takes — that is a
+range syntax `0-35, 100` MolView's atom expressions take — that is a
 different control's contract). Do not add a second path for them.
 
 A k-grid takes three spellings — `4,4,1`, `4x4x1`, `4 4 1` — and the list
@@ -507,10 +491,7 @@ the Stages card has:
 | **the window, fitted** | a calculation that reuses a finished one: under the table, the transmission's window **fitted to the finished grid** — the range asked and how many times finer, the fitted ends and count, and *use these*, which writes them on the transmission's row, adding their columns first as a preset does (`setRowValues`; `lib/transport/fit.js`, the one builder the Transport tab draws too; [`engines/transport.md`](?doc=engines/transport.md) § 2a.16) |
 
 What a kind fixes — its stages — is one answer, the kind's part on the engine in the kind table ([`execution/architecture.md`](?doc=execution/architecture.md) § 3.3), which the reader's check asks and
-the folder answer serves (`fixed`); the page keeps no list. *(Measured 2026-10-11 on
-`AuBDTAu/transport/transport_lowbias`: the card offered + Add stage, × on
-every rung, the refinement sentence and a picker naming no rung; and the
-reader accepted a ladder with a rung removed.)*
+the folder answer serves (`fixed`); the page keeps no list.
 
 ---
 
@@ -557,7 +538,7 @@ in the job request; no template carries one, and a template holding one is
 the catalogue already says whether the machine answers it, so asking that
 question sorts the group in two with nothing to keep in step. For SIESTA today
 that comes out as `use_gpu` · `diag_algorithm` · `block_size` · … on the
-first row and `mpi_np` · `omp_threads` · `max_memory_mb` on the second — but those are what
+first row and `mpi_np` · `omp_threads` · `gpu_count` · `max_memory_mb` on the second — but those are what
 the answer *is* right now, not what it is defined as.
 
 **`restart` is in the group and on neither row**: it says what a stage builds
@@ -569,9 +550,8 @@ tier presets are fetched for the description's engine — on a hand-over, the
 hand-over's — and while either is loaded the page assumes none; the loaders'
 own SIESTA fallback is reachable only on a page with neither, where no card
 is filled. One fetch per engine key at a time: a second caller for the same
-key awaits the fetch in flight rather than reading the previous folder's list. *(Until 2026-09-24 the pickers
-read only the saved description and fell back to SIESTA, so a PySCF hand-over
-was offered ScaLAPACK knobs and seeded a rank sweep its own preflight refused.)*
+key awaits the fetch in flight rather than reading the previous folder's list. So a PySCF hand-over
+is never offered SIESTA's settings, nor a sweep its own preflight refuses.
 
 So ranks, threads and memory in the **measure** card are always *points to
 try* — one of them is one trial, never an answer. What a run uses is the
@@ -599,9 +579,7 @@ each other.
 > request's**: choosing a machine — or one whose record lists no queues —
 > changes what the card offers, never what the job request says; a stated
 > queue that machine does not list is shown as stated, with that said, and
-> stays until the person changes it — choosing the chosen queue again unchooses it, the field being optional *(2.69.7)* *(the 2.27.0 review: a machine chosen after
-> the folder opened cleared the stated queue, and the next edit wrote the
-> allocation without it)*. A field stays empty until it is stated
+> stays until the person changes it — choosing the chosen queue again unchooses it, the field being optional. A field stays empty until it is stated
 > (`submission.md` S5) — and those are **not**
 > points to try. The distinction is the one § 3.1 of
 > [`job-request.md`](?doc=execution/job-request.md) draws: `max_memory_mb` above is a
@@ -621,11 +599,6 @@ each other.
 > including the one thing this page cannot tell you: **what happens when you
 > ask for a GPU and there is none.** The run stops; there is no CPU fallback,
 > in either engine, in a run or in a benchmark trial.
->
-> *Cross-linked 2026-08-17. Until then this was the only place the GPU
-> decision was written down, and it is a **web tab's** contract — so a reader
-> coming from the engine side never found it and re-derived the rule instead,
-> differently each time. That is why the question kept coming back.*
 
 Three things are true of it at once, and no parameter tab can know any of them:
 
@@ -697,9 +670,7 @@ Three rules make it trustworthy rather than merely convenient:
   to one call per pause, and a failed fetch says the check could not run,
   with the server's reason, and leaves the card working. **A surface that cannot get its nicety shows what it has;
   only one that cannot get its *substance* may refuse** — the rows are the
-  substance here. That rule was learned the hard way on 2026-08-23, when
-  an unguarded label fetch left the whole bench card absent and the report
-  was "the bench setup is gone".
+  substance here.
 
 It shows **what the scheduler decides on** — a wall, a core count, memory,
 a GPU count, a policy cap. It does not predict whether the calculation will
@@ -729,7 +700,7 @@ Whatever the grid varies appears here as a row, because the thing you measured
 is the thing you are deciding about — and the grid's points sit beside each
 field in grey (*measuring: 4, 8, 16*) as **information that fills nothing**.
 It carries its own *+ Add setting* for a knob no benchmark touched, since a
-run may want one a measurement did not. **The first point is typed before the row exists**: picking a setting offers its value in force in the box beside it (the calculation's card, else the catalogue's default) and a setting with neither leaves the box blank for the person to type; *+ Add setting* with an empty box is refused, saying so, and no number is invented (until 2026-10-19 a valueless setting's row was born at `1`). **Each row's class** — *chosen* (one point, the trials' value), *machine* (the grid's axis), *measured* (several points) — is the grid door's word (`/api/task-setup/bench-grid` `rows`, from prep's own split of the lane, `prep_inputs._declared_execution_pins`); the page paints it and decides none.
+run may want one a measurement did not. **The first point is typed before the row exists**: picking a setting offers its value in force in the box beside it (the calculation's card, else the catalogue's default) and a setting with neither leaves the box blank for the person to type; *+ Add setting* with an empty box is refused, saying so, and no number is invented. **Each row's class** — *chosen* (one point, the trials' value), *machine* (the grid's axis), *measured* (several points) — is the grid door's word (`/api/task-setup/bench-grid` `rows`, from prep's own split of the lane, `prep_inputs._declared_execution_pins`); the page paints it and decides none.
 
 **The launch rows stand on every rung's card from the start** *(user,
 2026-10-11: "show them and leave blank - explicit setting is better than
@@ -740,10 +711,9 @@ the other speed settings; for PySCF its threads, the GPU switch and count,
 the memory cap and the wall slack — each a row whether or not a benchmark
 names it, **blank until stated**, a speed setting's default shown as its
 placeholder and nothing proposed, written on the rungs that read it (the item's
-`stages`, by role, as the stage table's cells follow them). Before
-2026-10-11 the rows were the bench's, the condition's and those added by hand
-only, so a calculation with no benchmark — every transport calculation —
-showed none, and the values prep requires were met first as its refusal. They
+`stages`, by role, as the stage table's cells follow them). So a
+calculation with no benchmark — every transport calculation — shows every
+value prep requires before prep has to ask for it. They
 are the catalogue's `execution` category, served by
 `/api/task-setup/sweepable`; the page keeps no list.
 
@@ -799,11 +769,6 @@ not yet filled has one, which removes the row, and a value stated on a member
 that does not read it has its own *(user, 2026-10-12: "i clicked "x" and it
 stayed, just the value being cleared")*. A group of one stage is the same card
 with one member.
-*(Measured 2026-10-12 on `AuBDTAu/transport/lowbias`: each card listed only
-the rows its members read, so the transmission's card had no GPU switch; it
-offered a GPU count — every rung read `gpu_count` then — and prep's G5
-refusal named the switch that card could not show; a blank row read *not
-stated* where the template answered.)*
 
 **A run needs no benchmark.** Not executed, not summarized, not declared. Open
 a fresh calculation, type what you want, prep the run. That is the complaint
@@ -815,7 +780,7 @@ property of the data model rather than of this page.
 cores per rank, a GPU run's count — and on a target with a scheduler the
 queue, wall and memory — stated in no row and on no flag are refused at prep,
 and the Preview below the card shows that refusal, naming where to state the
-value (`architecture.md` § 5.2). **A benchmark never fills a blank row**: it
+value ([`architecture.md`](?doc=execution/architecture.md) § 5.2). **A benchmark never fills a blank row**: it
 reports, you decide.
 
 **Three states, and a row shows which one it is in.** They are the visible
@@ -843,22 +808,18 @@ it.
 
 > **A check that cannot run says so.** *"I don't know, and here is why"* is
 > one of the three answers, beside *fits* and *does not fit* — never a blank.
-> The grid card's panel used to hide itself on any failure, on the reasoning
-> that the rows above are the substance and the card must not break. That
-> produces the worst of the readings: an empty space where a verdict belongs
-> is indistinguishable from *everything fits* and from *this feature is
-> gone*, and the one thing it never says is the true one. The server's own
+> The grid card's panel never hides itself on a failure: an empty space
+> where a verdict belongs is indistinguishable from *everything fits* and
+> from *this feature is gone*, and never says the true thing. The server's own
 > words carry the reason — it knows why, and a paraphrase here would be a
 > second author for one sentence. *(User, 2026-09-02: "we can't have a fit
 > on. I just said, I don't know. Lack of information.")* Six combinations in
 the grid card and one decision in this card is the ordinary picture: a plan to
 measure, and a decision, side by side.
 
-> **A single card served both for one day** (2026-09-01), on the rule that
-> narrowing a `bench` row to one point *was* the decision. It could not
-> express the ordinary case: `{mpi_np: [4, 8, 16]}` and *"run at 8"* at the
-> same time. Narrowing the row to say what the run uses **destroyed the plan
-> to measure** — you could have a bench or a run decision, never both.
+> **Two cards, because one cannot say both.** Narrowing a `bench` row to one
+> point to say what the run uses would destroy the plan to measure:
+> `{mpi_np: [4, 8, 16]}` and *run at 8* must stand side by side.
 
 **What is typed on a card is read by the setting door** (§ 5.2,
 [`engines/template.md`](?doc=engines/template.md) § 5.4) in the card's home —
@@ -954,7 +915,7 @@ from what it says — what is computed, or how it runs:
 | a parameter's value | `<label>.template.toml` | the template holds every parameter with the value in force |
 | a column, its cells, the id | `task.json` | what *changes* |
 | a stage's group | `job-request.json`'s `stages` | the job it runs in ([`job-request.md`](?doc=execution/job-request.md) § 3.3) |
-| a **measure**-card setting | `job-request.json`'s `bench` | the points to try. A one-point NON-machine entry is the trials' value, laid over theirs alone *(user rule, 2026-08-20; trials only since 2026-09-30)*; a machine axis is only ever a point to measure |
+| a **measure**-card setting | `job-request.json`'s `bench` | the points to try. A one-point NON-machine entry is the trials' value, laid over theirs alone *(user rule, 2026-08-20)*; a machine axis is only ever a point to measure |
 | a **run**-card setting | `job-request.json`'s `execution` | **one value each** — what the run uses (`job-request.md` § 3.2). Independent of `bench`: a run needs no benchmark, and declaring a grid states nothing about the run. **Three destinations, chosen by the catalogue and never by a second key:** a machine item becomes the launch shape; `time` and `domain` are this run's own scheduler ask (`job-request.md` § 3.2a, and the row below); every other catalogue item is a run setting over the item's default |
 | the notify card | `job-request.json`'s `notify` | the reporting policy — when, to which channels **by name**, with which fields ([`job-request.md`](?doc=execution/job-request.md) § 3.5; the card is § 9b). Never an address or a key: those stay on the machine that runs the job ([`run-reports.md`](?doc=execution/run-reports.md) § 1) |
 | a queue, a wall, a memory ask, the GPU binding | `job-request.json`'s `allocation` | **what this calculation asks the scheduler for** (`job-request.md` § 3.1) — four fields, each optional here; a queue, wall or memory stated nowhere else is refused at prep on a target with a scheduler ([`architecture.md`](?doc=execution/architecture.md) § 5.2). The GPU binding is a tick-box, ticked by default: every GPU ask then carries `--gres-flags=enforce-binding`, and unticking writes `"gpu_binding": false` ([`gpu.md`](?doc=execution/gpu.md) G9). The card writes the block whole, which is why the switch is on it. Not the launch shape: that is a machine-card row, one row above. **And not the last word on two of them:** a run may state its OWN `time` and `domain` on the run card, because a benchmark and a run want different wall clocks and different queues (`job-request.md` § 3.2a). `mem` has no such second home, deliberately — a trial and a run hold about the same memory |
@@ -965,6 +926,7 @@ from what it says — what is computed, or how it runs:
   "engine": { "name": "siesta" },
   "shape":  "hierarchical",
   "run":    { "name": "BDT/Au relax", "id": "BDT_Au_relax_Au38C6H4S2" },
+  "calculation": "optimization",
   // `source` is FOLDER-RELATIVE — the .xyz beside this file, not a path from
   // anywhere else.  Its sidecar is found by the pairing rule, never named here.
   "structure": { "source": "bdt_au.xyz", "formula": "Au38C6H4S2", "atoms": 50 },
@@ -1054,12 +1016,10 @@ rung's card on the label its files carry, the rung's own stem
 (`naming.StageHome.label`: a transport lead's `<label>_L-electrode` /
 `<label>_R-electrode`, [`job-contracts.md`](?doc=execution/job-contracts.md)
 § 2.1 rule 2), the calculation's group on the calculation's label with no
-stage — and the browser only lays the answer out; the route keeps no list of its own *(a
-hand-kept list of the calculation's records stood beside the call until plan
-B13, 2026-10-04)*. That matters here more than anywhere: the card's whole use
-is that you can look for these files afterwards, so a name it invented would send
-you looking for something nothing wrote — which is exactly what four readers were
-doing about geomeTRIC's trajectory until the grammar was written down.
+stage — and the browser only lays the answer out; the route keeps no list of
+its own. That matters here more than anywhere: the card's whole use is that
+you can look for these files afterwards, so a name it invented would send you
+looking for something nothing wrote.
 
 The description says which calculation and which engine, and both narrow the
 list: a SIESTA run is not told about `.py`, and a relaxation is not promised a
@@ -1069,8 +1029,8 @@ but the engine, which the description names, filled. A
 file only an opt-in switch writes, or only a machine with a queue, says so on
 its line; a file only an older molbuilder wrote is not listed.
 
-**And which restart-file list the calculation follows** *(plan W36 ⑧,
-2026-10-03; user: "provide information on the task setup web ui")*. The card's
+**And which restart-file list the calculation follows** *(the user,
+2026-10-03: "provide information on the task setup web ui")*. The card's
 last group says whether this calculation follows molbuilder's list for its
 engine or its own `warm-files.toml` beside `task.json` — the one door's answer
 (`warmfiles.warm_list`, [`job-contracts.md`](?doc=execution/job-contracts.md)
@@ -1084,9 +1044,8 @@ edit does.
 
 ## 7a. The path a value takes, end to end *(2026-09-02)*
 
-**Every defect this tab had on 2026-09-02 was a break in this chain, and none
-of them was visible from the step either side of it.** So the chain is drawn
-once, here, and each step says what it reads and what it must say when it
+**A break anywhere in this chain is invisible from the step either side of
+it.** So the chain is drawn once, here, and each step says what it reads and what it must say when it
 fails.
 
 ```mermaid
@@ -1128,10 +1087,9 @@ Preview and a Prep all claim the page-wide fence
 page can start while a parameter is being written, and a save cannot begin
 inside an edit. **That is not a timing tolerance, it is a barrier**: a card
 edit is three writes that must land together (this rung's `execution` in the
-model, the buffer `Save` posts, and the panels rendered from both), and while
-it was merely *fast*, a second edit arriving inside it interleaved — type a
-memory value, blur, press *+ Add stage* straight away, and the block the
-first was writing was gone. *(User, 2026-09-02: "before the parameter is
+model, the buffer `Save` posts, and the panels rendered from both), and
+without the fence a second edit arriving inside it would interleave with it,
+and the block the first was writing would be lost. *(User, 2026-09-02: "before the parameter is
 ready or persistently saved, the user can't do anything … what the fuck do
 you care about half a second".)*
 
@@ -1147,14 +1105,14 @@ keeping its
 place. Both run under the fence through `pageBusy.run`, so the claim is
 taken in one way, never hand-rolled at a card. **Neither is drawn again
 after the fence**: the editor's read-back (§ 9a) redraws the cards from a
-hand edit in the editor only — a card's write drawn a second time, after the
-release, took the focus from the control the person had moved to *(2.68.3)*. A hand-over's first proposal
+hand edit in the editor only — a card's write drawn a second time after the
+release would take the focus from the control the person moved to. A hand-over's first proposal
 is not an edit: it builds the description from what came over (§ 3), under
 the same fence, and draws the cards from it.
 
-The save was the case § 10 already names as its own example — a multi-step
-operation — and only its own button was disabled, so the sidebar stayed live
-and switching directories mid-save retargeted the steps after the switch.
+A save is the multi-step operation [`ui-contract.md`](?doc=web/ui-contract.md)
+§ 10 names as its example: under the fence no folder can be picked between its
+steps.
 
 **The rule the whole tab hangs on:** `prep` reads `task.json` and
 `job-request.json` **from disk**, never the browser's buffer. The door takes a FOLDER and does
@@ -1189,28 +1147,18 @@ prepared.
 |---|---|---|
 | **1 checkpoint** | — the server's, always, for a Save that writes (§ 8) | *"No state was saved, so nothing was written"* — and it **stops**: the state is the one a redo restores |
 | **2 write** | the **buffer**, not the model | *"Not written — ⟨the server's words⟩"* |
-| **3 confirm** | — | **always**, in the bar beside the button, naming the file. A clean save is the ordinary one, and it is the one that used to say nothing |
+| **3 confirm** | — | **always**, in the bar beside the button, naming the file. A clean save is the ordinary one, and it says so too |
 | **4 re-open** | the folder, again | its own message. The file **is** written; a reload that throws must not swallow step 3 |
 | **preview** | the two files **on disk** | the server's refusal, verbatim |
 | **prep** | the two files **on disk** | the server's refusal, verbatim |
 
-**Four things this ordering forbids, each of which happened:**
+**Four rules this ordering keeps:**
 
-1. **An offer may not block the thing it is attached to.** The checkpoint tick
-   shipped `checked`, a ticked checkpoint requires a note
-   (`checkpointing.md` **L3**), and Save is disabled while it has none — so
-   **Save was disabled from the moment any folder opened**, with the reason in
-   a hint beside the greyed button. Nothing the page wrote ever reached disk.
-2. **Success is reported, not inferred.** Step 3 spoke only when the preflight
-   had notes, so a clean save was silent — indistinguishable from a dead
-   button.
-3. **A message about the write belongs to the write.** Step 3 sat *after*
-   step 4; a reload that threw skipped it, leaving the file written and the
-   page mute.
-4. **A preview and a write are two buttons.** One button that changed meaning
-   between clicks kept that meaning in a closure, and every repaint rebuilt
-   the button — so the click meant to write was a fresh preview
-   (§ 9a.2).
+1. **An offer never blocks the thing it is attached to.**
+2. **Success is reported, not inferred** — a clean save says so.
+3. **A message about the write belongs to the write**: step 3 comes before
+   step 4, so a reload that throws cannot swallow it.
+4. **A preview and a write are two buttons** (§ 11.1).
 
 ---
 
@@ -1242,19 +1190,10 @@ prep calls, `checkpoint.save_before`, before it writes; the state's note is the
 time it was taken and what Save is about to change —
 `2026-10-03 14:05:12 · before saving the description` — which is the note L3
 asks for (*"what you were about to do"*), and the confirmation beside the
-button names the state. *(Until 2026-10-03 it was offered: a box that started
-unticked, with a note you typed, run step by step by the page.)*
-
-*(This paragraph said the opposite until 2026-09-02 — "a timestamp is added
-either way, so every state is identifiable even when you type nothing" — and
-the tick shipped `checked`. Together they made Save disabled from the moment
-any folder opened, with the reason in a hint beside the greyed button. Nothing
-the page wrote ever reached disk, which is exactly how it was reported. The
-doc was wrong about the backend; the markup was wrong about the default.)*
+button names the state.
 
 **A file changed on disk since the page read it is never written over**
-*(2.28.0, plan § 1w — the user's choice of 2026-10-21; until then this section
-promised a handshake no code made)*. The page sends, with each record, what it
+*(the user's choice, 2026-10-21)*. The page sends, with each record, what it
 read — `read_as: {task, request}`, each the SHA-256 of the file's bytes as the
 folder answer served them, `null` for a file that was not there — and Save
 compares each with the file on disk before anything else: one that differs is
@@ -1303,10 +1242,10 @@ do on every kind.
 | **add a parameter column** | adds it to `varies` | **seeds every stage with the template's current value**, so adding a column changes nothing on screen. It is a statement about *structure*, never about values |
 | **remove a column** | drops it from `varies` | **every stage's value for it goes** — the page edits `task.json`, not the template — and the page says so *before* the click, a second click removing it: it names each stage's value that goes, to set in the template if one is to stay, and says *nothing is lost* only where no stage states one |
 | **add a stage** | appends a row | **copies the previous stage's overrides.** A refinement starts from what came before; a stage that inherits nothing is a different calculation, not a next step |
-| **remove a stage** | drops a row | **refused when it is the last one** — a job has at least one stage (§ 5). **A stage that left files and has not run** — prepared, as a run or a benchmark — is removed by the Save that writes the description: its files stay untouched and its number stays taken; one that has run is not removed (§ 8) ([`project-layout.md`](?doc=execution/project-layout.md) § 4.2) *(W38 F5)* |
+| **remove a stage** | drops a row | **refused when it is the last one** — a job has at least one stage (§ 5). **A stage that left files and has not run** — prepared, as a run or a benchmark — is removed by the Save that writes the description: its files stay untouched and its number stays taken; one that has run is not removed (§ 8) ([`project-layout.md`](?doc=execution/project-layout.md) § 4.2) |
 | **no reorder** | — | a stage's number is assigned once and stages append ([`project-layout.md`](?doc=execution/project-layout.md) § 4.2): its folder, its files and its runs carry it, so moving a stage would rename what it already wrote |
 | **edit a cell** | sets one stage's value | nothing else moves |
-| **apply a stage preset** | fills a row from a tier | a preset knows several fields. If some are not columns yet it **adds them first** — a preset that half-applied would be worse than one that refused. **And it is offered only where it CAN apply**: the menu holds a tier only when every field it carries may be a column of this folder's kind (`/api/task-setup/presets?calculation=`, the columns route's own membership rule), so an optimization's rows and a vibration ladder's rows carry `coarse / medium / tight` and a transport ladder's rows carry no menu at all — its rungs own none of those fields ([`engines/transport.md § 2a.7`](?doc=engines/transport.md): a rung carries its role's profile). *Until 2026-09-24 every transport rung offered the relaxation tiers (plan W31).* **And a preset fills only what the row's rung reads** (`template.stage_role_rule`, plan § 5w K4): a transport rung its role's values; a SIESTA vibration's one `freq` row every phase's, the relaxation tier's among them. |
+| **apply a stage preset** | fills a row from a tier | a preset knows several fields. If some are not columns yet it **adds them first** — a preset that half-applied would be worse than one that refused. **And it is offered only where it CAN apply**: the menu holds a tier only when every field it carries may be a column of this folder's kind (`/api/task-setup/presets?calculation=`, the columns route's own membership rule), so an optimization's rows and a vibration ladder's rows carry `coarse / medium / tight` and a transport ladder's rows carry no menu at all — its rungs own none of those fields ([`engines/transport.md § 2a.7`](?doc=engines/transport.md): a rung carries its role's profile). **And a preset fills only what the row's rung reads** (`template.stage_role_rule`): a transport rung its role's values; a SIESTA vibration's one `freq` row every phase's, the relaxation tier's among them. |
 | **add a measurement point** | turns a value into an axis | the value becomes the first point, so measuring never discards what you chose |
 | **open a folder** | replaces the whole page from that folder's description | a **load, not a merge**: values, columns, stages and order all come from the file, because a half-loaded description is one nobody can reason about. The id is read, never recomputed |
 
@@ -1514,8 +1453,9 @@ is saved (§ 7a). The Prep comes after the values it reads.
 answer `prep task` shows before it asks), each in the group answer's words
 (`GroupAnswer.said`, the state diagram's names) — *not prepared*; *prepared,
 never launched*; *prepared, its members changed*; *launched, its members
-fixed*; *launched, its members changed* — and for a
-group not preparable yet, what it waits for. **Every group has
+fixed*; *launched, its members changed*; or, while a sequence of groups
+still going holds it, *goes in job &lt;id&gt; — after group &lt;n&gt;* (or
+*its first group*) — and for a group not preparable yet, what it waits for. **Every group has
 a box, and the box is the group answer's** (`ready.GroupAnswer`,
 [`job-system.md`](?doc=execution/job-system.md), *The task*): enabled when the
 answer says the group may be prepared now, and when it may not, the answer's
@@ -1580,9 +1520,9 @@ functional bench setup")*. It writes that rung's card in the job request,
 (`job-request.md` § 3.2) — for a group, every member's; a field left blank takes
 the calculation's own block, which the field shows as its placeholder.
 
-There is exactly one such card per group and none anywhere else — it stood in
-the main column for part of 2026-09-02, among the cards that set up the
-benchmark, and read as part of the bench setup.
+There is exactly one such card per group and none anywhere else — in the
+main column, among the cards that set up the benchmark, it would read as part
+of the bench setup.
 
 **What the rung continues from is chosen in its tab too.** A group of one stage that
 continues from the stage before it — a continuing stage of an independent
@@ -1609,7 +1549,7 @@ and the commands that prepare and launch it. What it will produce is the
 rail's list; the Prep that prepares it is the next card.
 
 **A stage is either something to measure or something to run, and which is
-a decision only you can make** — unchanged from the card this replaces:
+a decision only you can make**:
 
 | | what it does | when |
 |---|---|---|
@@ -1624,7 +1564,7 @@ a hint rather than choosing.
 
 **The order is shown because it is load-bearing.** `summarize bench` writes a
 report you read; **you** then fill these rows, and `prep task` uses them.
-Skipping the middle step is no longer silent: the rows are right there, filled
+Skipping the middle step is never silent: the rows are right there, filled
 or blank, above the command that consumes them — and a blank launch row
 reads as *prep will refuse this* rather than as nothing.
 

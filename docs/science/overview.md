@@ -98,7 +98,7 @@ flowchart LR
   (`issues.py::ValidationError`) if any Issue is error-severity, stopping
   emission. **`report()` is the only gate.**
 
-Everything travels as the **L1** `Issue` dataclass (`issues.py:26`) — *L1* = the
+Everything travels as the **L1** `Issue` dataclass (`issues.py::Issue`) — *L1* = the
 lowest layer: pure data types with no I/O or engine logic:
 
 ```python
@@ -122,12 +122,14 @@ nobody said otherwise.
 
 **What may carry `error` severity** is deliberately narrow — only "physically
 impossible or wrong" (atoms overlapping, a degenerate cell, a missing or
-defective pseudopotential, a charge and spin the electron count cannot hold, or a
-spin state the engine cannot run). Everything advisory stays `warn` — including a
+defective pseudopotential, a spin treatment or count the kind does not offer on
+its engine, `restricted` with unpaired electrons, a charge on a transport
+calculation). Everything advisory stays `warn` — including a
 closed shell stated on an open-shell structure, and a spin count decided from a
 metal's usual count: both are strong warnings about the state the SCF is asked
-for, and neither stops it running. Pattern-B "noticed-but-unused" notes are
-`info`.
+for, and neither stops it running. A value given to a setting that enters
+nothing here, and held atoms the run will not honour, are `warn`; held atoms a
+relaxation honours are said as `info`.
 
 ---
 
@@ -143,10 +145,10 @@ states the *why* so the thresholds don't drift silently.
 |---|---|---|
 | min atom–atom distance < 0.3 Å | **error** | atoms on top of each other; SCF diverges |
 | min atom–atom distance 0.3–0.7 Å | warn | likely broken structure (failed protonation / bad backend output) |
-| H/heavy ratio, on every structure with a heavy non-metal atom | info | **a reference number, never a verdict** — `H/heavy non-metal atoms: 4/8 = 0.50 (for reference: organic molecules usually sit at 0.6-1.5)`, counted by element (`chemistry.is_atom`) against the heavy **non-metal** atoms only (`chemistry.NONMETALS`): the reference range is organic molecules', so a junction's gold is no part of the count, and a structure with no non-metal heavy atom — a gold lead — gets no note. Whether hydrogens are missing is the scientist's to judge: an oxide or graphene has none by construction *(the user, 2026-10-11: "maybe just provide that ratio as a reference"; a warning below 0.3 until then; against the non-metals since 2026-10-13, when a gold lead read 0/75 and a junction 4/440)* |
+| H/heavy ratio, on every structure with a heavy non-metal atom | info | **a reference number, never a verdict** — `H/heavy non-metal atoms: 4/8 = 0.50 (for reference: organic molecules usually sit at 0.6-1.5)`, counted by element (`chemistry.is_atom`) against the heavy **non-metal** atoms only (`chemistry.NONMETALS`): the reference range is organic molecules', so a junction's gold is no part of the count, and a structure with no non-metal heavy atom — a gold lead — gets no note. Whether hydrogens are missing is the scientist's to judge: an oxide or graphene has none by construction *(the user, 2026-10-11: "maybe just provide that ratio as a reference"; counted against the non-metals because a gold lead would read 0/75 and a junction 4/440)* |
 | polymer residue listing reversed / no preceding O3′–P bridge | warn | reversed or disconnected backbone — a likely backend regression |
 
-### Cell & periodicity (`geometry.py` + `siesta.py`)
+### Cell & periodicity (`cell.py::check` + `geometry.py` + `siesta.py`)
 | Check | Severity | Why |
 |---|---|---|
 | `cell.no_volume` (det ≈ 0) | **error** | the box has no volume — nothing to calculate in |
@@ -155,7 +157,7 @@ states the *why* so the thresholds don't drift silently.
 | cell volume / atom-bounding-volume < 3, on a box that is vacuum on all three axes | warn | cell suspiciously tight. Not asked of a crystal, a lead or a junction, which fill their cells by construction; a slab's or a wire's vacuum is measured per axis by the image-distance row below ([`model/structure-periodicity.md`](?doc=model/structure-periodicity.md) § 2) |
 | atom-to-nearest-image distance < 6 Å | warn | atoms interact with their own periodic images; suggest a larger vacuum box (`geometry.py`) |
 | charged supercell (Makov-Payne) | warn | image-charge bias padding alone doesn't remove |
-| net dipole > 1 D (debye, the dipole-moment unit), in a box of vacuum on every axis (each axis SIESTA computes on isolated — never the k count: a crystal or a junction sampled at Γ alone carries its images by design; [`model/structure-periodicity.md`](?doc=model/structure-periodicity.md) § 2.1) | warn | image–image dipole (~1/L³); the fix is a **larger vacuum box** — *not* a dipole correction (SIESTA's `SlabDipoleCorrection` is for a 2-D slab, not a 3-D molecule). Estimate from `chemistry.estimate_dipole_moment_debye` (`chemistry.py:1614`), ±50 % |
+| net dipole > 1 D (debye, the dipole-moment unit), in a box of vacuum on every axis (each axis SIESTA computes on isolated — never the k count: a crystal or a junction sampled at Γ alone carries its images by design; [`model/structure-periodicity.md`](?doc=model/structure-periodicity.md) § 2.1) | warn | image–image dipole (~1/L³); the fix is a **larger vacuum box** — *not* a dipole correction (SIESTA's `SlabDipoleCorrection` is for a 2-D slab, not a 3-D molecule). Estimate from `chemistry.estimate_dipole_moment_debye`, ±50 % |
 
 ### k-point grids (`kmesh.check`, on every k-point grid a deck writes)
 A k-point is one value of the electrons' wavevector: in a periodic structure
@@ -179,10 +181,9 @@ the electrode plane and z is the transport direction:
 | `electrode_kz` below 50 | warn | its recommended range, the SIESTA manual's floor — not a proof of convergence: only raising it and seeing the lead's Fermi level stay put shows it has settled |
 | a transmission k-point grid the person set coarser than the shared k-point grid along x or y | warn | T(E) needs at least the k-points the density was converged on, and usually many more; a blank one is three times the shared grid ([`engines/transport.md`](?doc=engines/transport.md) § 0.3b) |
 
-*(`k = 1` on a periodic axis is checked not at all — the "under-converged"
-warning was retired 2026-08-20. The three rows above about z (`kgrid[2]`,
-`electrode_kz`, `tbt_k_grid`) stood in the transport kind's validator until
-2026-09-30, beside a warning about the same axis here.)*
+*(`k = 1` states nothing and is checked not at all, save on a transport
+calculation, where one k-point along a direction the electrodes repeat in is
+warned ([`engines/transport.md`](?doc=engines/transport.md) § 0.3b).)*
 
 ### Spin & charge — the electronic state's one family (`validation/chemistry.py::check_electronic_state`, every engine and kind)
 
@@ -204,57 +205,55 @@ first that holds wins.
 | a charge on a transport calculation (ES7) | **error** | its boundaries are open and the leads set the electron number |
 
 A triplet O₂ stated as such is not a finding: an open shell on an even count is
-exactly what parity cannot see, and a person who stated it meant it. *(This table
-listed the retired `spin_total` rules and the analyzer's `check_open_shell_metal`
-until 2026-09-28; the `propor: ERROR: IMAX = 0` abort once blamed on a missing spin
-is a defective pseudopotential's, which the `dead_projector` row above blocks.)*
+exactly what parity cannot see, and a person who stated it meant it. *(A
+`propor: ERROR: IMAX = 0` abort is a defective pseudopotential's, not a missing
+spin's: [`pseudopotentials.md`](?doc=science/pseudopotentials.md) C5 and § 2a.2.)*
 
 ### Transport, the calculation KIND (`validation/transport.py::validate_transport_kind`)
 
-*(Added 2026-09-17. **This section was missing entirely** — seven shipped
-checks, none of them catalogued, found by a review that should have run before
-the two newest were written and did not. `engines/transport.md` § 5 is the
-science; this is where they sit in the pass.)*
+*([`engines/transport.md`](?doc=engines/transport.md) § 5 is the science; this
+is where its checks sit in the pass.)*
 
-Keyed on `task.calculation`, not on a config class — every rung resolves a
-`SiestaConfig`, so a rule keyed on `TransportConfig` would fire for none of
-them. **The transport axis's k-point sampling is not here**: it is the
+Keyed on the calculation kind — the part its kind-table record names
+(`validator`) — never on a config class: every rung resolves a `SiestaConfig`.
+**The transport axis's k-point sampling is not here**: it is the
 k-point grids section's, above, where the open axis, a lead's own count and the
 transmission's grid are one rule each.
 
 | Check | Severity | Why |
 |---|---|---|
-| `cell.transport_vacuum`: the room at the transport boundary above 1.5 of the lead's layer spacings | **error** | a junction's leads continue into the periodic image, so the room there is one layer spacing; more is a SEVERED lead, not padding — measured from the lead since M5 step 2 (it was a warning above a fixed 3 Å, `engines/transport.md` § 6.1c). **The reverse of what `cell.vacuum_thin` tells an isolated molecule**, which is why it is keyed on the kind: the two must never both fire |
-| `cell.transverse_vacuum`: a lead that does not reach across a transverse axis declared periodic — its nearest atom there above 1.5 of its own bond, each lead on its own | **error** | periodic says the crystal continues across the boundary; a wire or chain lead is declared isolated there instead, and its vacuum is then allowed (§ 6.1c) |
-| `net_charge != 0` | **error** | deferred by ruling (§ 2a.7) — an open boundary exchanges charge with the reservoirs, so a fixed excess is not the same quantity a closed calculation means by it |
-| `negf_eq_pole_ev` giving < 20 poles, 0 among them | **error** | TranSIESTA derives the pole COUNT from the energy, `int(E / (π·kT))`, and `die`s below 20 — so the refusal is a RELATION with the run's own temperature, not a fixed bound; an energy at or below 0 leaves TranSIESTA its 8-pole default, refused the same way |
-| `electronic_temperature < 10 K` on a transport calculation | **error** | TranSIESTA stops below 10 K before it counts a pole (`m_ts_options.F90`) |
+| `cell.transport_vacuum`: the room at the transport boundary above 1.5 of the lead's layer spacings | **error** | a junction's leads continue into the periodic image, so the room there is one layer spacing; more is a SEVERED lead, not padding — measured from the lead's own layer spacing; the room below 1/1.5 of it is refused too, as `cell.transport_collision` — the leads' end layers meet through the image. **The reverse of what `cell.vacuum_thin` tells an isolated molecule**, which is why it is keyed on the kind: the two must never both fire |
+| `cell.transverse_vacuum`: a lead that does not reach across a transverse axis declared periodic — its nearest atom there above 1.5 of its own bond, each lead on its own | **error** | periodic says the crystal continues across the boundary; a wire or chain lead is declared isolated there instead, and its vacuum is then allowed ([`engines/transport.md`](?doc=engines/transport.md) § 6.1c) |
+| `negf_eq_pole_ev` giving < 20 poles, 0 among them | info | TranSIESTA derives the pole count from the energy, `int(E / (π·kT))`, and stops below 20 after the queue wait — said before the run with the least energy at this temperature, never refused; an energy at or below 0 leaves TranSIESTA its own 8-pole count, said the same way |
+| `electronic_temperature < 10 K` on a transport calculation | info | TranSIESTA stops below 10 K before it counts a pole (`m_ts_options.F90`) — its stop, said beforehand |
 
-**I9 and I12 (`electrode_kz`, `transport_vacuum`) were re-homed here on
-2026-09-17** from a standalone CLI verb that compared two finished decks. Under
-the composite both decks derive from one citation, so they belong in the pass
-every prep runs rather than in a command somebody remembers. *(I9 moved again on
-2026-09-30, to the lead item's own limit and range, where every door reads it.)*
+A junction's boundary checks run in the pass every prep runs, not in a command
+somebody remembers: every deck of a transport calculation derives from one
+citation. A lead's own k-point count is its item's limit and range, read on
+every door (k-point grids, above).
 
 ### Config field ranges (`validation/metadata.py`)
-Every dataclass `Config` field carries `range` / `validate=` metadata; the generic
-metadata pass validates each field against it (e.g. `mesh_cutoff` below the
-150 Ry production floor → warn, `siesta.py:133`). A range is a recommendation,
+Every catalogue item may carry a `range`, and a config field a `validate=`
+callable; the generic metadata pass checks each value against them (e.g.
+`mesh_cutoff` outside 100–1000 Ry → warn; the 150 Ry production floor is
+SIESTA's own check, `validation/siesta.py::_check_siesta_mesh_cutoff`). A range is a recommendation,
 warned and never refused; a hard limit is the catalogue's `above`, refused on
 every door through `template.why_not` — and a value refused there draws that
-refusal alone, its range warning standing aside (`engines/template.md` § 5.3). **Adding a field with metadata
+refusal alone, its range warning standing aside (`engines/template.md` § 5.3). **Adding a catalogue item with a `range`
 auto-adds its check** — no separate validator code:
 
-```python
-# a SiestaConfig field (config/siesta.py:242) — the range metadata IS the check
-mesh_cutoff: float = field(default=300.0, metadata={
-    "range": (100.0, 1000.0), "tier": "basic",  # + label / help / …
-})
-# validation/metadata.py reads .range and emits a warn Issue if the value is out of range
+```toml
+# the catalogue item (data/catalogue.template.toml) — its range IS the check
+[item.mesh_cutoff]
+value = 300.0
+range = [100.0, 1000.0]
+tier  = "basic"            # + label / help / …
+# validation/metadata.py reads the item's range and emits a warn Issue if the value is outside it
 ```
 
-An item with `choices` is checked the same way, and more strictly: a value that is
-not one of them is an **error**, named — `method = "RKS"` under today's `DFT` /
+An item with `choices` is checked where its value is written, and more strictly:
+the setting door refuses a value that is not one of them, naming the choices
+(`template.accepts`) — `method = "RKS"` under today's `DFT` /
 `HF` vocabulary would otherwise have been read as Hartree–Fock without a word
 (2026-09-28).
 
@@ -301,28 +300,25 @@ is part of correctness:
 
 - **Verbose-comments mode** (default ON) emits inline tuning hints next to each
   parameter plus a troubleshooting block at end of file.
-- **Section headers** (`# --- Lattice ---`, `#  1. Build the molecule`, …) are
+- **Section headers** (`# --- Lattice ---`, `#  Build the molecule`, …) are
   mandatory.
-- **Every tunable parameter** appears with its default value visible and a
-  comment range (e.g. `# Range 0.001 - 0.5`) — never hidden behind a function
-  call.
+- **Every tunable parameter** appears with its value visible and the catalogue
+  item's own note beside it (`script_emit.deck_note`: what it is, its unit, a
+  tier ladder where the item has one) — never hidden behind a function call.
 - **Post-processing hook placeholders** (commented-out, ready to uncomment) go at
-  the end of every generated script / FDF.
+  the end of the SIESTA optimization and vibration `.fdf` and of the PySCF
+  optimization script; a transport rung's deck and the PySCF vibration script
+  carry none.
 
 ---
 
-## 7. History (closed — not a plan)
+## 7. Settled questions
 
-- **Ten science gaps** identified in the 2026-05-01 design review (the SIESTA
-  `SpinTotal` keyword form + the `SpinPolarized` form — two of the ten — dispersion emission, `mf.stability_analysis`
-  for open-shell, `PAO.EnergyShift` default, post-processing templates, version
-  pinning, ECP auto-emit, post-relax re-evaluation, `diis_space`/`damp` exposure)
-  are **all closed**. `tests/test_science_gaps.py` holds three (the
-  `PAO.EnergyShift` default, the version pin, ECP auto-emit); the dispersion
-  and the open-shell stability check are rows of `tests/data/the_deck.toml`.
-- **A false positive (2026-05-05 review):** a claim that geomeTRIC's
-  `convergence_*` kwargs raise `TypeError` was wrong — PySCF's `geometric_solver`
-  forwards them into `geometric.optimize.OptParams`.
+- `tests/test_science_gaps.py` pins the `PAO.EnergyShift` default and that a
+  def2 basis on gold asks for its core potential; the dispersion and the
+  open-shell stability check are rows of `tests/data/the_deck.toml`.
+- PySCF's `geometric_solver` forwards geomeTRIC's `convergence_*` keywords
+  into `geometric.optimize.OptParams`.
 
 ---
 
@@ -370,10 +366,8 @@ glosses its own specialised terms inline; this is the common core.)
   with. A polarized run given no initial moments starts every atom at its
   maximum atomic moment, aligned (`m_new_dm.F90`) — not at zero net spin, and
   not from `Spin.Total`, which under `Spin.Fix` pins N↑ − N↓ instead
-  (`siesta_init.F`); this line said otherwise until 2026-09-26. (It is *not*
-  built by `propor`, as this line said until 2026-09-17 — that is a
-  vector-proportionality helper in the matrix-element table code and has
-  nothing to do with the DM.)
+  (`siesta_init.F`). (It is not built by `propor`, a vector-proportionality
+  helper in the matrix-element table code.)
 
 **Periodic (crystal) calculations**
 

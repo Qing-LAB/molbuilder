@@ -10,7 +10,7 @@ one door, the tables) · `molbuilder/persist.py` (the atomic write) ·
 index a file's atoms are listed by) · each file's own chapter, which lists its
 variables and nothing of the framework: [`engines/transport.md`](?doc=engines/transport.md)
 § 2a.12 (the transport data file), [`engines/vibration.md`](?doc=engines/vibration.md)
-§ 6.10.5 (the vibration data file), [`model/parse.md`](?doc=model/parse.md)
+§ 6.10, *The data file* (the vibration data file), [`model/parse.md`](?doc=model/parse.md)
 § 5e (a TBtrans data file's kept reading) · the worked examples a person
 starts from, [`engines/transport-postprocessing.md`](?doc=engines/transport-postprocessing.md),
 [`engines/vibration-postprocessing.md`](?doc=engines/vibration-postprocessing.md),
@@ -28,7 +28,7 @@ does not control: its own pages and commands, a person's notebook (xarray,
 netCDF4, sisl, pandas), a script on another machine a year later. A **data
 file** is a NetCDF-4 file molbuilder writes so that every one of those
 readers gets the same answer from the file alone. The framework promises
-six things, each kept by one piece of code:
+seven things, each kept by one piece of code:
 
 | promise | kept by |
 |---|---|
@@ -49,7 +49,7 @@ by a second reader: it is that composition on its grid, for analysis.
 | file | what it is | written by | schema | its chapter |
 |---|---|---|---|---|
 | `<label>.transport.nc` | every result of a transport calculation on its grid | `jobset summarize task`; an export composes the same file | `molbuilder/transport-data@8` | `engines/transport.md` § 2a.12 |
-| `<label>.spectra.nc` | a vibration result, beside its JSON — the same payload, tied by the JSON's sha256 | the result's one writer, at every write on both engines | `molbuilder/spectra-data@8` (`@1`–`@7` read as they are) | `engines/vibration.md` § 6.10.5 |
+| `<label>.spectra.nc` | a vibration result, beside its JSON — the same payload, tied by the JSON's sha256 | the result's one writer, at every write on both engines | `molbuilder/spectra-data@8` (`@1`–`@7` read as they are) | `engines/vibration.md` § 6.10, *The data file* |
 | `<label>.TBT.digest.nc` (`.TBT_UP` / `.TBT_DN`) | a TBtrans data file's DOS per orbital, k-averaged once and kept | the reading of the `.TBT.nc` beside it | `molbuilder/tbt-digest@4` | `model/parse.md` § 5e |
 | `<label>.optical.nc` | a SIESTA vibration's optical calls — each frame's ε₂ on the photon energies, its mode, side and geometry, the settings the calls read: the record of the Raman phase so far | the run's own record steps — the force constants', every frame pending, then each optical call's — and its finish | `molbuilder/optical-data@3` (`@1`, `@2` read as they are) | `engines/vibration.md` § 5.11 § 8 |
 | `<label>.optimization.nc` | an optimization's every step on one grid — each atom's position and force, its charges where the run printed them, the energy, the stress, the largest force — and each run's own record: whether it converged, how it ended | an export alone (`optimization.export`), never into the calculation | `molbuilder/optimization-data@1` | `engines/optimization-postprocessing.md` § 6 |
@@ -57,7 +57,7 @@ by a second reader: it is that composition on its grid, for analysis.
 
 **An engine's NetCDF files molbuilder reads** come through the same door
 (§ 4): TBtrans's `<label>.TBT.nc` (through sisl, `sile=True`) and SIESTA's
-`<label>.MD.nc` history (`model/parse.md` § 5d). **Not data files**: the
+`<label>.MD.nc` history (`model/parse.md` § 5a). **Not data files**: the
 JSON records a calculation keeps (written whole by `persist.write_bytes`, the
 atom index map under `atom_index_map` where they hold atoms — `model/overview.md`
 § 2.2b), the text logs, the decks.
@@ -189,7 +189,7 @@ naming this section — in every file, every group, the root's included.
 **The rules:**
 
 1. **One concept, one name; one name, one concept** — in every file. The
-   energy relative to the leads' Fermi level at 0 V is `energy_ev` in the transport
+   energy relative to the device's Fermi level is `energy_ev` in the transport
    data file and in the digest alike; `xyz` is a Cartesian component wherever
    it appears, and never a cell vector's.
 2. **How a name is made**: lowercase, words joined by `_`, singular. The
@@ -228,7 +228,7 @@ naming this section — in every file, every group, the root's included.
 | `frame` | a frame set's frames — a transport calculation's structures, a vibration's optical calls (the reference geometry, then each mode's two sides) | from 0, as MolView's API counts | 1 | transport, optical |
 | `bias_v` | the voltages computed | each voltage | V | transport |
 | `iv_bias_v` | the I–V's voltages | each voltage | V | transport |
-| `energy_ev` | energy relative to the leads' Fermi level at 0 V — under a bias V the left lead's chemical potential sits at +V/2 on it and the right's at −V/2 | each energy, ascending | eV | transport, digest |
+| `energy_ev` | energy relative to the device's Fermi level, the zero TBtrans measures from — under a bias V the left lead's chemical potential sits at +V/2 on it and the right's at −V/2 | each energy, ascending | eV | transport, digest |
 | `spin` | spin channels | `up` and `down` — or, unpolarized, the one channel by the spin its deck states | — | transport, optical |
 | `lead` | the two leads | their names as TBtrans names them | — | transport, digest |
 | `region` | molbuilder's regions of the junction | `L-electrode`, `bridge`, `R-electrode` | — | transport |

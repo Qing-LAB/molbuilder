@@ -713,7 +713,7 @@ manual = "SIESTA 5.4.2 §7.5 'Output options for dynamics'"
 type = "bool"
 value = true
 default = true
-engine_default = { none = "nothing: SIESTA 5.4.2 reads no WriteForces", source = "SIESTA 5.4.2 Src/: no fdf read of WriteForces" }
+engine_default = { none = "LongOutput, else false", source = "SIESTA 5.4.2 read_options.F90:220,1858: outlng = fdf_get('LongOutput', .false.); writeF = fdf_get('Write.Forces', outlng) -- fdf reads WriteForces and Write.Forces as one name" }
 group = "output"
 label = "Write forces each step"
 help = """

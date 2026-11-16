@@ -5,12 +5,9 @@
 **Companions:** [`molview.md`](?doc=web/molview.md) — the structure viewer one
 presenter mounts; [`projects.md`](?doc=web/projects.md) — the file layer every
 presenter reads through. `results.md` — the Results tab that *uses* this
-registry (its file picker and viewer state live there; the Bundle card it also
-used to name retired 2026-08-29 with the whole hand-over model — a calculation
-CITES a finished run now); the
+registry (its file picker and viewer state live there); the
 trajectory-engine and spectra docs — the heavy rendering engines two presenters
-wrap. [`plans/plan.md`](?doc=plans/plan.md) **W15** — the pending ESM + rename of this
-module.
+wrap.
 
 When you open a file on the **Results** tab, something has to pick the right way
 to show it — a 3D structure for a `.xyz`, a trajectory movie for a
@@ -21,16 +18,14 @@ a `.fc-sweep.json`. This module is that switchboard: a small **registry** of
 mounts it. (A markdown editor and a plain text pane are registered too, and
 mount nowhere today — § 3.)
 
-> **Current → target.** In the code today this module is still
-> `window.molbuilder.inspectors` (in `lib/inspectors/`), and most of its files
-> are classic scripts. Two are further along — `structure.js` and the trajectory
-> engine `lib/trajectory/core.js` already `import` as modules, but both still
-> register through the global, so they are **hybrids**, not clean ES modules yet.
-> The module is being **renamed to `presenters`** and fully converted in one pass
-> ([`plans/plan.md`](?doc=plans/plan.md) **W15**) — the old term "inspector" collided with
-> `mountInspector` inside the engines and with the viewers' own inspect panels.
-> This doc uses the target name **presenter**; where it points at code it uses
-> today's `inspectors` names.
+> **In the code** this module is `window.molbuilder.inspectors` (in
+> `lib/inspectors/`), and most of its files are classic scripts; `structure.js`,
+> `spectra.js`, `transport.js` and the trajectory engine import as modules but
+> register through the global — **hybrids**. `plans/plan.md` holds no item for
+> the rename or the conversion. This doc uses the name **presenter**, because
+> "inspector" collides with `mountInspector` inside the engines and with the
+> viewers' own inspect panels; where it points at code it uses the
+> `inspectors` names.
 
 ## 1. The pieces — a switchboard and eight viewers
 
@@ -41,7 +36,7 @@ viewer for one kind of file. Today there are eight:
 |---|---|---|---|
 | `structure` | `.xyz`, `.pdb` | a read-only 3D structure (the MolView viewer) | yes — *Structure* |
 | `trajectory` | `.molwatch.log`, `.out`, `_geom_optim.xyz` | a trajectory **movie** + energy/force plots + SCF progress | yes — the engine's words and the calculation's noun, *SIESTA optimization* / *PySCF vibration*; else *Trajectory* (§ 2) |
-| `spectra` | `.spectra.json` | a modes table, the mode's animation and a **chart** — the spectrum where a strength was computed, the mode positions where none was (a SIESTA result; `spectra.md` § 2) | yes — *Vibrational spectrum* (either engine's; it said *PySCF spectrum* until 2026-09-24) |
+| `spectra` | `.spectra.json` | a modes table, the mode's animation and a **chart** — the spectrum where a strength was computed, the mode positions where none was (a SIESTA result; `spectra.md` § 2) | yes — *Vibrational spectrum* (either engine's) |
 | `bench-summary` | `job-set.json` (exact basename) | a **bench sweep** summary + chart, polled | yes — *Benchmark sweeps* |
 | `transport` | a transport calculation's `task.json` (the registry's `transport-task` parser; `<label>.transport.json` is `summarize`'s copy, opened as a file) | the transport **report**, composed on read: T(E) per channel, DOS and PDOS, the I–V, each rung's convergence and the provenance chain ([`results.md`](?doc=web/results.md) § 2.5) | yes — *Transport* |
 | `fc-sweep` | `*.fc-sweep.json` | a SIESTA vibration's **displacement sweep**: each force-constant stage — what it varied (with units), the displacement used, its stationarity, modes and SIESTA, and its own files — each mode's frequency per stage with the change, the shapes' overlap and the mode it matched, the force-constant changes, and the stages without a result with their state (`engines/vibration.md` § 5.9) | yes — *Spectrum* |
@@ -60,28 +55,14 @@ Results tab's file dropdown. The two that say "no" (markdown, plain text) are
 catch-alls — if they claimed a spot in the dropdown they would flood it with
 config files and READMEs.
 
-> *This table said **five** viewers and **three** results until 2026-09-17,
-> omitting `bench-summary` — a presenter with its own result category that had
-> been registering the whole time. Two of the four also never write
-> `isResult` at all: `trajectory` and `spectra` are built by
-> `makePartialInspector`, which **defaults it to `true`**, so reading the
-> registration alone under-counts them. The count here is now checked against
-> what the registry itself answers, not this table's memory.*
+> *`trajectory` and `spectra` are built by `makePartialInspector`, which
+> defaults `isResult` to `true`, so their registration alone does not show them
+> as results; the count here is what the registry answers.*
 
-> **The composite row landed 2026-09-18** (§ 5p.3p step 5). Before it, a
-> finished junction's `<label>.transport.json` matched no `isResult` presenter,
-> so the picker dropped it — the deliverable of a five-rung run was invisible on
-> this tab.
->
-> **What that row does NOT fix:** the rungs are still separate folders you
-> navigate into one at a time — the presenter summarises them, it does not
-> merge them. And the picker no longer guesses: `GET /api/results/dir`
-> answers *what is in this directory* over `parse.dirs`, and the picker is its
-> browser consumer (`results.md` § 2.3). What reaches a presenter as `meta` is
-> that answer. *(This said "no server door answers what is in this directory:
-> it decides from filenames, in the browser" until 2026-09-19, and before that
-> attributed the picker's question to `jobset_status`, the ladder door. The
-> route imports no `jobset` at all.)*
+> The rungs are separate folders you navigate into one at a time — the
+> presenter summarises them, it does not merge them. The picker asks
+> `GET /api/results/dir` what is in a directory (over `parse.dirs`;
+> `results.md` § 2.3), and what reaches a presenter as `meta` is that answer.
 
 ## 2. How a viewer is chosen — the presenter contract
 
@@ -105,10 +86,9 @@ that declares four things (and three optional ones), and calls `register` once:
   subsumes `other`"**: both are result-class files in the SAME directory and
   `other` is a working part of the run `master` reports, so only the master
   gets a dropdown entry
-  ([`results.md`](?doc=web/results.md) § 2.3). *This bullet was missing until
-  2026-09-17 and the count above said "two optional" — `absorbs` is what makes
-  one PySCF relaxation one menu line instead of five, and it is also the rule
-  that CANNOT express a five-directory transport ladder.*
+  ([`results.md`](?doc=web/results.md) § 2.3). *`absorbs` is what makes one
+  PySCF relaxation one menu line instead of five; it cannot express a
+  five-directory transport ladder.*
 
 **`meta` is the server's answer about this file**, and it is the last argument
 to `match`, `resultCategory` and `absorbs` alike: `{role, label, stage, parser,
@@ -146,15 +126,14 @@ reads the same as an answer without an engine: `trajectory`'s heading reads
 the engine's words and the calculation's noun, both served with the folder
 answer from the two tables (`engine_words`, `noun`) — *SIESTA optimization*,
 *PySCF vibration* — and *Trajectory* without them — the file is
-still named for what it IS, and neither the engine nor the kind is claimed
-(2.65.0: until then every run read *… optimization*). Guessing it from
-the suffix is what filed most SIESTA runs under *PySCF optimization* while the
-plot title, which asked the server, said SIESTA (2026-09-04), and what labelled
-a VASP directory's trajectory *PySCF optimization* by construction (2026-09-18).
+still named for what it IS, and neither the engine nor the kind is claimed.
+No engine is guessed from a suffix: a guess files a SIESTA run under *PySCF
+optimization* while the plot title, which asks the server, says SIESTA.
 
 The registry's own surface is small: `register`, `pick` (the first presenter
 whose `match` is true), `pickResult` (same but only presenters marked
-`isResult` — the file picker uses this), `mount`, and `list`. A `match` that
+`isResult` — the file picker uses this), `mount`, `list`, and
+`createDefaultContext(host)` — the standard `ctx` below. A `match` that
 throws is logged and skipped, so one broken presenter can't jam the switchboard;
 a `mount` that throws falls back to a clean error card in the panel.
 
@@ -196,8 +175,7 @@ viewer here except the dropdown ([`results.md`](?doc=web/results.md) § 2.1 —
 a double-click opens the sidebar's own file viewer). No other page loads the
 registry, so they mount nowhere; they are kept registered by decision
 (2026-09-28) until the user decides whether the markdown editor returns to the
-Results tab. This said they "just appear" until that day, a route removed on
-2026-09-19.
+Results tab.
 
 The registry is a **Results-tab** switchboard. Other tabs mount their viewers
 directly — the Modify/Spectra/Transport tabs call the MolView or spectra
@@ -261,29 +239,22 @@ sets `isResult: true` and gives a `resultCategory`.
 
 ## 7. What is ES-module-converted, and what isn't
 
-This module is the file-viewer registry that is being renamed and modernized
-(W15's presenters pass). Its current state:
+This module is the file-viewer registry. Its current state:
 
-| File | Today | After the W15 pass |
-|---|---|---|
-| `structure.js`, `spectra.js`, `transport.js` | hybrid — modules that import, but register via the global | clean ES modules, renamed to `presenters` |
-| `lib/trajectory/core.js` (engine) | hybrid — imports MolView, publishes a global | clean ES module, renamed |
-| `registry.js`, `_partial_inspector_factory.js`, `lifecycle.js`, `trajectory.js`, `bench-summary.js`, `fc-sweep.js`, `markdown.js`, `source.js` | classic scripts | converted to ES modules + renamed |
-| `lib/spectra/core.js` (engine) | classic script | converted |
+| File | Today |
+|---|---|
+| `structure.js`, `spectra.js`, `transport.js` | hybrid — modules that import, but register via the global |
+| `lib/trajectory/core.js` (engine) | hybrid — imports MolView, publishes a global |
+| `registry.js`, `_partial_inspector_factory.js`, `lifecycle.js`, `trajectory.js`, `bench-summary.js`, `fc-sweep.js`, `markdown.js`, `source.js` | classic scripts |
+| `lib/spectra/core.js` (engine) | classic script |
 
 So four of the module's **thirteen** files — the **eleven** in
-`lib/inspectors/` and the **two** engines outside it — already import as
-modules (still global-registered = hybrid), and the rest are classic;
-converting them all — plus the `molbuilder.inspectors` → `presenters` rename —
-is the pending pass. See [`plans/plan.md`](?doc=plans/plan.md) **W15**.
+`lib/inspectors/` and the **two** engines outside it — import as modules
+(still global-registered = hybrid), and the rest are classic; `plans/plan.md`
+holds no item converting them or renaming `inspectors`.
 
-> *This table listed seven files and said "nine" until 2026-09-17, omitting
-> `bench-summary.js` and `lifecycle.js`; and it said nine in
-> `lib/inspectors/` and two hybrids until 2026-10-16, after `fc-sweep.js` and
-> `transport.js` had joined and `spectra.js` had become a module.
-> `lifecycle.js` is not a presenter — it is the mount/listen/dispose helper
-> both engine cores share, which is why it was easy to leave out of a list of
-> viewers and why a list of FILES must not be written from a list of
+> *`lifecycle.js` is not a presenter — it is the mount/listen/dispose helper
+> both engine cores share; a list of files is never written from a list of
 > viewers.*
 
 ## 8. Test map

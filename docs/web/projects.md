@@ -36,7 +36,7 @@ Behind that one door are eleven small files, each with one concern:
 | `api.js` | the thin wrappers around the `/api/files/*` and `/api/projects/*` server calls |
 | `list.js` | the tree on screen — breadcrumb, the rows, the `⋯` menu |
 | `dialogs.js` | the pop-up dialogs (name a file, pick a folder, confirm a delete, pick a frame of a file holding several) |
-| `mutation-bar.js` | the header buttons — New project, New folder, Upload |
+| `mutation-bar.js` | the header buttons — New project, New folder, Upload, Download |
 | `preview.js` | the file preview/edit pop-up (any file to view; any but a structure file or its sidecar to edit) |
 | `checkpoint.js` | the run-history panel (git snapshots of a run folder) |
 | `parser.js` | the **one** door that understands molecules — open and save |
@@ -67,8 +67,7 @@ and forth should not be trouble")*: each slot is keyed by the page, so the
 Results tab keeps its run folder while Modify keeps its structure folder,
 and switching between them returns each to its own place. A tab you have
 never visited starts at the **most recent place anywhere** — every write
-also refreshes a shared most-recent slot, which is exactly the old
-behaviour, now the fallback. One reader owns the keying
+also refreshes a shared most-recent slot, and that is the fallback. One reader owns the keying
 (`projects.getCurrentDir()` / the module's own slot helpers); nothing reads
 the raw storage keys directly, because a second reader is how the keying
 would silently fork.
@@ -106,14 +105,12 @@ button) listens to `onChange`.
   *"which folder/file is picked"* — but a checkpoint **restore** rewrites a
   folder while the selection sits still, and can swap `task.json` for
   `task.1st.json` under an open tab. Neither existing channel fires: the
-  selection never moved, and nothing was committed. Task setup went on showing
-  stages and a bench the folder no longer had.
+  selection never moved, and nothing was committed — so without it a tab goes
+  on showing stages and a bench the folder no longer has.
 
   Anything that rearranges a folder behind an open tab **publishes**:
   `projects.publishFolderChanged(dir, by)`. The writer does not know which tabs
-  are open or what they cache, so it announces rather than reaching in — the
-  checkpoint panel's own refresh repaints only itself, which is precisely how
-  this was missed. **The file doors publish themselves** *(2.68.5)*: every
+  are open or what they cache, so it announces rather than reaching in. **The file doors publish themselves**: every
   write, upload, folder made, rename, move, copy and delete through
   `projects.*` announces, once it has succeeded, each folder whose contents it
   changed — and the path it took away — so no caller announces or re-lists by
@@ -178,10 +175,8 @@ If the `.molstruct.json` is missing, the file is read as atoms and coordinates
 — no cell, no labels — and the answer says so, quoting the comment line it did
 not read as metadata (`structure.lone_file`, `model/structure.md` § 2.3).
 
-**Saving — `projects.molviewFiles.save("project", stem, payload)`** *(it was
-`parser.saveMolecule(path)` until 2026-09-02; that door took a path it was
-given, so it needed a UI layer to decide one, and the tab's copy of that layer
-went with it — § 5):*
+**Saving — `projects.molviewFiles.save("project", stem, payload)`**, which
+asks where itself:
 
 0. It asks **where**: a folder, then a name (`chooseSavePath`, its `ext`
    the export's: `.xyz`, a picture's own). Cancel either and nothing is
@@ -317,8 +312,8 @@ touch it. The parts:
   where its row is, and closes on a click outside it, on Escape, or on a
   scroll that moves its row — the sidebar's list, or anything around it —
   never on another pane's: the tab's content scrolling leaves the row and its
-  menu where they are *(2.69.41: any scroll closed it, so a person's click
-  met nothing)*.
+  menu where they are — a scroll elsewhere that closed it would leave a
+  person's click meeting nothing.
 - **Dialogs** — the modal pop-ups for naming a file, choosing a destination
   folder, picking an upload, and confirming a delete, all the app's one dialog
   component ([`ui-contract.md`](?doc=web/ui-contract.md) § 11). Only one is
@@ -330,8 +325,7 @@ touch it. The parts:
 - **The preview pop-up** — a view/edit window for **any** file. Two things
   open it: the row's **View** item, and a **double-click on the Results tab**,
   whose "use this file" action is to show the file rather than mount it
-  (`results.md` § 2.1). *(This said "opened from View" — one opener — until
-  2026-09-19.)* It uses a code editor loaded on demand. Files up to **1 MB** are
+  (`results.md` § 2.1). It uses a code editor loaded on demand. Files up to **1 MB** are
   editable; larger files open **view-only** (and very large files are paged in
   as you scroll). Editing and Save use the file's on-disk timestamp so a
   concurrent change on disk is caught ("file changed on disk; reload") instead
@@ -344,10 +338,9 @@ touch it. The parts:
   changes, red = error). *Calculation folder* is not a depth: it is a folder
   that holds a `task.json` (`project-layout.md` invariant 2) or already holds
   a history, and `/api/checkpoint/state` answers both — `is_calculation` and
-  `initialized` — in the one request that fills the panel. The panel counted
-  path segments until 2026-09-19, so a project organised one folder deeper
-  lost the button with no explanation, and three loose `.xyz` files at the
-  right depth were offered a repository. Clicking it
+  `initialized` — in the one request that fills the panel. It is not a count
+  of path segments: a project organised one folder deeper keeps the button,
+  and loose `.xyz` files at some depth are offered no repository. Clicking it
   **swaps the file list for the checkpoint view** — status line, the
   checkpoint list, a **commit-graph viewer**, and Checkpoint-now / Tag /
   Restore — in the same space, and clicking again returns the files; the
@@ -359,21 +352,20 @@ touch it. The parts:
   what makes its color honest). Its behavior is owned by
   [`execution/checkpointing.md`](?doc=execution/checkpointing.md) — `§ 5` the
   workflow, § 11 the invariants; this doc owns where it sits.
-  *(Until 2026-08-19 this was a separate fixed-width panel to the right of
-  the sidebar, with no way to reclaim its space.)*
 - **Layout** — a drag handle resizes the sidebar (double-click resets), a toggle
   collapses it on desktop, and on a narrow screen it becomes a drawer. The
   width is kept in this browser after it closes, the collapse and the filter
-  for the session (`pagePrefs`, [`runtime.md`](?doc=web/runtime.md) § 3). A lock
-  banner covers the sidebar while an operation is in flight.
+  for the session (`pagePrefs`, [`runtime.md`](?doc=web/runtime.md) § 3). While
+  an operation is in flight the page's busy fence covers the whole window, the
+  sidebar with it (`lib/page-busy.js`, [`ui-contract.md`](?doc=web/ui-contract.md) § 10).
 
 ### 4.1 Four rules the file operations follow, and why
 
-**A structure file is written by the structure door, never as bytes**
-*(2.69.10)*: this layer's write refuses a `.xyz`, a `.pdb` or a
+**A structure file is written by the structure door, never as bytes**:
+this layer's write refuses a `.xyz`, a `.pdb` or a
 `.molstruct.json`, naming that door; its upload reads a structure file as an
 import and writes it as a pair through the save's path — a `.pdb` as
-`<stem>.xyz`, for a `.pdb` is read, never written *(2.69.17)*; a sidecar is
+`<stem>.xyz`, for a `.pdb` is read, never written; a sidecar is
 never uploaded alone; a `.pdb` holds no sidecar, so a rename, a move, a copy
 or a delete takes it alone; the preview shows such a file and edits it nowhere
 ([`model/structure.md`](?doc=model/structure.md) § 2.4). Saving is § 3's door;
@@ -460,18 +452,16 @@ and says why in its tree, and the notebook tab opens at the projects root
 ([`jupyter.md`](?doc=web/jupyter.md) § 4.0, state 3). Every page that asks
 carries the sidebar, so the wait always ends.
 
-**Taking a state — `projects.checkpoint`** (added 2026-08-16)
+**Taking a state — `projects.checkpoint`**
 
 A **sub-namespace on the one door**, the way `projects.parser` is: the run-history
 panel drives these from the sidebar, and a tab that must take a state before it
-writes calls the same three. Before this, the panel's save was a private click
-handler — so a tab needing it had two bad options, POST the route itself (a
-second caller with its own error handling and no sidebar refresh) or reach into
+writes calls the same three, never posting the route itself or reaching into
 the panel's DOM.
 
 | Call | What it does |
 |---|---|
-| `checkpoint.status(dir)` | `{ok, initialized, clean, ...}` — does this folder have a history, and does it differ from where it stands? Read-only. *(Served by `GET /api/checkpoint/state`; until 2026-08-19 this called a route that never existed and answered `ok:false` forever)* |
+| `checkpoint.status(dir)` | `{ok, initialized, clean, ...}` — does this folder have a history, and does it differ from where it stands? Read-only. *(Served by `GET /api/checkpoint/state`.)* |
 | `checkpoint.init(dir, {engine})` | start a history here. Refuses with a reason a caller can show (a nested repository, a folder that declares nothing, a folder inside a calculation's folder — `checkpointing.md` **L1**) |
 | `checkpoint.saveState(dir, note)` | save the folder's current state. **A note is required** — `checkpointing.md` **L3**: the note is yours, required and never generated, so nothing writes one on your behalf. Returns `{ok, changed}`; **`changed: false` is honest, not a failure** — nothing differed from the state the folder already stands at |
 
@@ -503,11 +493,12 @@ one it took away — § 2; the sidebar showing one re-lists it)
 | `mkdir(parent, name)` | `POST /api/files/mkdir` |
 | `deleteEntry(path, recursive)` | `DELETE /api/files/delete` |
 | `rename(path, newName)` / `move(path, dest)` / `copy(path, dest)` | rename / move / copy |
-| `upload(dir, file)` | `POST /api/files/upload` — a structure file written as a pair (§ 4.1). A name already in the folder answers `409 {needsOverwrite, replaces}`, and **the door itself asks**, as the save door does (§ 3; `dialogs.confirmOverwrite`, one question naming what a yes replaces), posting again with `overwrite` on a yes and answering `cancelled` on a no — the caller never sees the 409 *(2.69.10; 2.69.9 asked in the sidebar's button)*. The sidebar's Upload button **says where the file landed** — its path as the server wrote it, a `.pdb` imported as its `.xyz` — and what the server said of it, the gate's `notices` verbatim, in one notification, a warning when there are notices, as the Molbuilder save says them ([`tabs.md`](?doc=web/tabs.md) § 6 step 4) *(2.69.18; it said nothing on success)* |
+| `upload(dir, file)` | `POST /api/files/upload` — a structure file written as a pair (§ 4.1). A name already in the folder answers `409 {needsOverwrite, replaces}`, and **the door itself asks**, as the save door does (§ 3; `dialogs.confirmOverwrite`, one question naming what a yes replaces), posting again with `overwrite` on a yes and answering `cancelled` on a no — the caller never sees the 409. The sidebar's Upload button **says where the file landed** — its path as the server wrote it, a `.pdb` imported as its `.xyz` — and what the server said of it, the gate's `notices` verbatim, in one notification, a warning when there are notices, as the Molbuilder save says them ([`tabs.md`](?doc=web/tabs.md) § 6 step 4) |
 
-**Locking** (local, no network) — `lock(reason)` / `unlock()` / `isLocked()` /
-`getLockReason()` / `cancelLockedOperation()`: one operation at a time, with a
-Cancel hook.
+**One operation at a time** is the page's busy fence, not this door's:
+`pageBusy.claim(reason, cancelers)` / `release()` / `run(…)` / `isClaimed()` /
+`reason()` (`lib/page-busy.js`, [`ui-contract.md`](?doc=web/ui-contract.md) § 10);
+`setShared` and `navigateTo` refuse while it is claimed.
 
 **The molecule door** — `projects.parser.openMolecule(viewer, path, {confirmDiscard})`
 (§ 3). **There is no `parser.saveMolecule`** — saving is the files door below.
@@ -562,12 +553,10 @@ in the question, so every door that asks it names a file the same way: the
 MolView exports, and the spectrum viewer's *Write frame set…*
 ([`spectra.md`](?doc=web/spectra.md) § 4.3) *(the user, 2026-10-27: "make the
 name box take the name only")*. **One door for every flow that deposits
-artifacts under the root**: the MolView exports ride it today.  *(The
-transport calculation was the named future consumer; it shipped 2026-08-29
-consolidating NOTHING in the browser — the citation composes at `prep`, and
-the tab's describe door writes the description on the server (since
-2026-10-11; `engines/transport.md` § 3.8.2a), so this door gained no second
-caller.)*
+artifacts under the root**: the MolView exports ride it today. The
+transport calculation does not ask it: its citation composes at `prep`, and
+its describe door writes on the server
+([`engines/transport.md`](?doc=engines/transport.md) § 3.8.2a).
 
 *(Whole-file **download** is not a method here — it is a direct browser download
 from the row's `⋯` menu.)*

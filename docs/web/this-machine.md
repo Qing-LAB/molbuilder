@@ -25,27 +25,23 @@ the only surface in molbuilder where a secret is typed.
 
 ## 1. Why it is a tab and not a card
 
-It was the second half of Task setup's *Tell me how it is going* card until
-2026-08-31. Three things were wrong with that, and they are the reasons this
-page exists:
+It is a tab and not a Task setup card, for three reasons:
 
-- **It is not per-calculation.** One destination per machine, set on a page
-  that only opens with a calculation loaded. Changing it there changed it for
-  every run on the box, and the card had to say so in a hint.
-- **It put two files in one card**, which the template kept straight with a
-  comment: the ticks go into `task.json`, which travels; the address and key go
-  into `config_dir()/notify`, which must not. A rule held by a comment is a
+- **It is not per-calculation.** One destination per machine: set on a page
+  that only opens with a calculation loaded, it would still change for every
+  run on the box.
+- **One card would hold two files**, kept apart only by a comment: the ticks
+  go into the calculation's records, which travel; the address and key go into
+  `config_dir()/secrets/notify`, which must not. A rule held by a comment is a
   rule waiting to be broken by the next edit.
-- **There was nowhere to put the other half.** Issuing a listener key was
-  `molbuilder notify-token` and nothing else, so setting this up end to end
-  always dropped to a shell — which is what a person hit on 2026-08-31 and
-  reported as *"it seems the code is missing"*.
+- **Issuing a listener key needs a page** as well as `molbuilder
+  notify-token`, so setting this up end to end never drops to a shell
+  *(reported 2026-08-31 as "it seems the code is missing")*.
 
-Task setup now writes the calculation's two records — `task.json` and
+Task setup writes the calculation's two records — `task.json` and
 `job-request.json`, the ticks and the channel names in the second
 ([`execution/job-request.md`](?doc=execution/job-request.md) § 3.5) — and no
-secret. That rule is no longer maintained by discipline; there is no other file
-it can reach.
+secret: there is no other file it can reach.
 
 ---
 
@@ -63,11 +59,10 @@ So every response from every route here is built to be safe to look at:
 | a **newly issued** key | once, at the moment it is issued, and never again |
 | a refused save, a failed **Test** | the fault — the address rule's, or what failed — **never the address**, which an error's own text would quote (`run-reports.md` § 3) |
 
-The masking rule is not caution for its own sake. The route this replaced
-returned every stored URL in full until 2026-08-31 on the strength of *"an
-address, not a secret"* — true of the listener URL it was written for, false of
-the Slack webhook that was actually in the file, and readable by anyone signed
-in to the server.
+The masking rule is not caution for its own sake: *"an address, not a
+secret"* is true of a listener's URL and false of a Slack webhook, whose
+address is the credential and would be readable by anyone signed in to the
+server.
 
 **And it covers every address, not just a webhook's.** Masking only the kind
 that needs it means asking *which kind is this*, and § 3's answer is derived
@@ -106,7 +101,7 @@ differently and a person cannot be expected to infer it from a URL:
 - a **molbuilder listener** — a plain address plus a key that signs the body
   and never travels.
 
-**A name typed that is a stored channel's ticks its kind** *(2.69.9)*: a save
+**A name typed that is a stored channel's ticks its kind**: a save
 sends the kind ticked, so an edit of a listener's address under the form's
 first kind would have saved it as a webhook — every report then unsigned, and
 refused. Another kind can still be ticked after the name. The key is issued to
@@ -149,15 +144,10 @@ producing.
 runs on** *(user, 2026-09-01)*. There is no mode, no probe and no branch: this
 page writes `<config dir>/secrets/notify` on this box.
 
-> **It gated on `execution.mode != "submit"` until 2026-09-01** (the setting
-> is `launch.mode` since 2026-10-02), reading
-> `submit` as *"the jobs run somewhere this server cannot reach"* and refusing
-> to save. That is not what the setting means —
-> [`running-a-job.md`](?doc=execution/running-a-job.md) § 5.4 defines it as
-> `direct` (run in place) or through the scheduler, gating `.sbatch`
-> **on this machine**. So the gate refused a login node with SLURM, which is
-> precisely where the file belongs, and missed the real cross-machine case
-> entirely: a laptop preparing a bundle for a cluster is `direct`.
+The page writes the file whatever `launch.mode` says: that setting chooses
+how a job starts on this machine
+([`running-a-job.md`](?doc=execution/running-a-job.md) § 5.4), not where the
+jobs run.
 
 **The cross-machine case is real, and it is not this page's to solve.** A
 bundle is prepared here and copied to the machine that runs it
@@ -175,9 +165,7 @@ script will look for and where:
 | `<config dir>/secrets/notify` | the channels file, `0600`, same shape as here. A channel a job request ticks must exist there under the same name, or nothing is sent to it — the monitor log says which |
 | `<config dir>` is | `$MOLBUILDER_CONFIG_DIR` exactly as given; else `$XDG_CONFIG_HOME/molbuilder`; else `~/.config/molbuilder` — resolved **on that machine**, so it need not match this one's |
 
-It emits no shell and holds no key. An earlier version generated a
-copy-paste block that wrote the file with the key in it; that went with the
-gate that revealed it. Running molbuilder on the target and using this page
+It emits no shell and holds no key. Running molbuilder on the target and using this page
 is the simplest way to put the file in place — copying the file across works
 too.
 
@@ -185,7 +173,7 @@ too.
 
 ## 4. The listener
 
-The other half, and the reason the round trip used to need a terminal. This
+The other half. This
 section shows whether this server is receiving run reports at all: the route
 segment, who holds a key, and one action — **Issue a key**.
 
@@ -215,7 +203,7 @@ headline, the field grid, the state's colour). The card is laid out for the
 `web` receiver — the field order, whether the grid is three abreast — by the
 layout file (`run-reports.md` § 4.1c). A filter narrows by
 calculation, machine or event; while the tab is open the list follows the
-file (a poll every 30 s, the same as a results viewer follows a live run);
+file (a poll every 30 s);
 and the header shows how many arrived since you last looked (a per-browser
 convenience). Read through one door, `GET /api/notify/reports`, which reads
 the file through the reports reader (`parse/instruments/reports.py`) — the

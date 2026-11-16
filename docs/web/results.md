@@ -102,15 +102,17 @@ answers its own question — *which rung is next*, *which setting is fastest*,
 
 - **`status`**, on the same answer — how the run is doing — is served and not
   yet shown for a run folder beyond the Run panel's verdict; the trajectory
-  viewer's badge shows the open file's own ending.
+  viewer's badge shows the run's state as the server sends it with the file
+  (§ 4.1); only a file that belongs to no run shows its own ending.
 
 ## 1. What the page is
 
 `/results` renders a template and does the rest in the browser. Its controller
-(`results/viewer.js`) is deliberately tiny — it owns one mount point
-(`#inspector-host`), holds exactly one live viewer handle, and does only three
-things on each selection: **pick** the viewer for the file, **dispose** the
-previous one, and **mount** the new one. All the file-type knowledge lives in the
+(`results/viewer.js`) owns one mount point (`#inspector-host`) and one live
+viewer handle; on each selection it **picks** the viewer for the file,
+**disposes** the previous one and **mounts** the new one. Beside that it draws
+the header readout, the loading cover, and — at a calculation root — the
+ladder card, a run picked off it opened in place (§ 2.4). All the file-type knowledge lives in the
 viewers (the "presenters", [`presenters.md`](?doc=web/presenters.md)), not here —
 so adding a result type is a new presenter module, never an edit to this
 controller.
@@ -161,16 +163,12 @@ not flag it as a file outside the folder. A return to the tab, reading the
 folder again, keeps the point you picked since. The Run panel above it is the
 transmission run's record — TBtrans's loop among it (§ 3a) — and the file
 card knows the report: its row rides with the folder's files (§ 3b).
-*(Until 2026-10-16
-the folder opened the progress log the wrapper writes at launch — one preview
-frame, never updated by TBtrans — and a running transmission showed a
-structure and no plot.)*
+TBtrans never updates the progress log the wrapper seeds at launch, so a
+transmission run's folder never opens it.
 
-*(Both sentences above were the opposite until 2026-09-18: the picker listed
-through `/api/files/list`, ran seven filename predicates of its own, and took
-the newest survivor. Over 110 real run directories that guess offered 13 files
-no parser can read and hid 155 a parser handles, and it differed from the door's
-pick on 18 of 96.)*
+A filename guess cannot stand in for the door: over 110 real run directories
+it offered 13 files no parser reads, hid 155 a parser handles, and differed
+from the door's pick on 18 of 96.
 
 ### 2.1 The sidebar sets the scope; the dropdown decides what you see
 
@@ -188,56 +186,39 @@ tab has had, so the division is written out in full:
 | **Come back to the browser tab** | re-reads the folder already bound, **once**, so files written while you were away appear; it does **not** re-point. Coming back is the page turning visible, the browser's `visibilitychange` to `visible` — a tab brought to the front, or a page restored from the back/forward cache, which turns visible just before its `pageshow`. The picker and each viewer that asks on coming back listen to that one event |
 | **Open the tab** | binds the panel to the folder this tab was last pointed at and scans it **once**. `pageshow` fires on every load; on a fresh load it only binds a panel the mount found no folder for; a restore is a coming back (the row above) |
 
-**A double-click shows a file; it never mounts one here.** The interaction
-model (2026-06-07) says a double-click runs the active tab's *"use this file"*
-action. Molbuilder loads the structure onto the canvas, spectra loads the
-file; this tab had none, so the gesture did nothing at all. Its action is the
-**viewer**, not a mount: the panel is built from the
+**A double-click shows a file; it never mounts one here.** A double-click runs
+the active tab's *use this file* action; on this tab that action is the
+sidebar's file **viewer**, not a mount: the panel is built from the
 list and the list is re-read only when you ask, so a sidebar gesture that
 mounted something would put back the coupling Reload replaced. You can look
 inside any file you like without disturbing what you are reading.
 
-*(**Not every tab is supposed to have one.** This paragraph said "every other
-tab has one" until 2026-09-19, and the commit that added it said /results was
-"the only tab that ignored the commit gesture" — both false.
-`/transport-calculation` shows the sidebar and subscribes to **neither**
-channel, deliberately: the citation is that tab's one structure door, and a
-sidebar commit would be a second source for one fact (user, 2026-08-29). It is
-kept by review (`process/code-audit.md` § 1c).
-Read as written, the sentence would send someone to wire transport and reverse
-a recorded decision.)*
+Not every tab has a double-click action: `/transport-calculation` shows the
+sidebar and subscribes to **neither** channel, deliberately — the citation is
+that tab's one structure door, and a sidebar commit would be a second source
+for one fact (user, 2026-08-29). It is kept by review
+(`process/code-audit.md` § 1c).
 
 **The panel owns a folder; Reload is the only thing that moves it.** The
-button says *"Reload from the sidebar's folder"* and not *"Refresh"* for that
-reason — the old name described the effect on the listing and said nothing
-about *where from*, which is the only part you now have to know. Browsing
+button says *"Reload from the sidebar's folder"* and not *Refresh*: a name
+that described the effect on the listing would say nothing about *where
+from*, which is the part a person has to know. Browsing
 is browsing — scrolling the sidebar around to see what is where cannot disturb
 a result you are reading. What you get back is an explicit gesture.
 
 **The dropdown dictates the display within that folder.** The four plots, the
 run-state badge, the convergence-target card, the 3-D structure and the
 trajectory all render the dropdown's current selection and nothing else. There
-is no second route to a mounted viewer — the page-load shortcut that mounted a
-remembered file before the scan was removed 2026-09-19, because it was one.
+is no second route to a mounted viewer: nothing mounts a remembered file
+before the scan.
 
-> **The defect this prevents** (2026-08-04). The dropdown used to scope itself
-> once, when the tab mounted, and never again. Moving the sidebar to a different
-> run folder therefore left it enumerating the *previous* folder's files — so the
-> plots, the badge, the convergence targets and the structure all kept rendering
-> a different run, with nothing on screen saying so. A **live** job was displayed
-> as a finished one from another directory, and the numbers looked entirely
-> plausible. Reloading the page or re-picking in the dropdown fixed it, because
-> both make the picker speak; nothing else did.
->
-> **The fix chosen then was to follow the sidebar; the fix now is to say where
-> you are** *(2026-09-19)*. Read the note again and the fault is in one clause:
-> *with nothing on screen saying so*. Following was one way to keep the panel
-> honest, and it cost you your place every time you went looking for something.
-> Naming the folder in the header is the other way, and it is the one that
-> survives you scrolling around. The two are alternatives, not a pair — **if
-> the header readout ever goes away, the subscription has to come back.**
-> `results/style.css` carries the same warning where the CSS that hid it used
-> to be.
+> **Why the header names the folder.** A panel bound to one folder while the
+> sidebar shows another would draw another run's numbers with nothing on
+> screen saying so — a live job shown as a finished one, plausibly. The header
+> names the folder and says when the sidebar has moved on. Following the
+> sidebar is the other way to keep the panel honest; **if the header readout
+> ever goes away, the subscription has to come back** — `results/style.css`
+> carries the same warning.
 
 ### 2.2 One scan, one choice, one announcement
 
@@ -267,19 +248,12 @@ mounted viewer are two uses of one value, never two derivations of "the right
 one". Announcing without labelling — or labelling without announcing — is the
 bug, not an optimisation.
 
-> **Why this is spelled out.** The picker used to build two orderings of the same
-> files: a flat list, newest-first, ties broken **by file name**; and a grouped
-> list, ties broken **by category label**. It labelled the menu from the grouped
-> one and mounted from the flat one. Those agree right up until several results
-> share a timestamp — which is exactly what a job does when it finishes and
-> flushes its outputs in the same second. On 2026-08-04 a pySCF run with four
-> files stamped `10:31:08` showed `…molwatch.log` in the menu while displaying
-> `…_optimized.xyz`. Both orderings were individually correct; having two was the
-> defect.
->
-> The empty case failed the same way from the other side: a folder with no
-> results updated the menu and told nobody, so the previous folder's run stayed
-> on screen — plots, badge and all.
+> **Why one value.** Two orderings of the same files — ties broken by name in
+> one, by category in the other — agree until several results share a
+> timestamp, which is what a job does when it flushes its outputs in one
+> second; the menu would then name one file while another is shown. A folder
+> with no results must announce *nothing selected*, or the previous run stays
+> on screen.
 
 ### 2.3 A run is one result, not a pile of files
 
@@ -293,7 +267,9 @@ also says which files in the same folder that master subsumes; those do not get
 their own entry. So a PySCF relaxation is one line in the menu, not five.
 
 **Which files are one run is READ, never cut out of the names.** A run file is
-`<label>_<stage><role>`, and the boundary between the label and the rest cannot
+`<label>_<stage><role>`
+([`execution/job-contracts.md`](?doc=execution/job-contracts.md) § 2.2a), and
+the boundary between the label and the rest cannot
 be found from the string alone — a role may contain `_` (`_geom_optim.xyz`) and
 so may a label. The server reads each name back with its run's label — the
 description's, through the run door ([`execution/architecture.md`](?doc=execution/architecture.md)
@@ -317,12 +293,10 @@ under *Structure*, opened in the structure preview with the box its run had
 ([`model/structure-periodicity.md`](?doc=model/structure-periodicity.md)
 § 6.0).
 
-> The presenter used to cut the label itself, with a regular expression over
-> the master's stem. It matches leftmost, so a chemistry-shaped job name —
-> `au_2_bdt_02_fine` — was read as a label of `au`: none of the run's own
-> satellites matched, and the relaxation listed as four entries. A different
-> job in the same folder actually named `au` would have had **its** files
-> absorbed into this run and disappear from the menu. Measured 2026-09-19.
+> A label cut from a stem by pattern matches leftmost: `au_2_bdt_02_fine`
+> would read as label `au`, none of the run's satellites would match, and a
+> different job named `au` would have its files absorbed. So the label is the
+> server's reading, never a cut.
 
 Two rules keep this from hiding anything:
 
@@ -333,44 +307,6 @@ Two rules keep this from hiding anything:
 - **The sidebar still shows every file.** Absorption narrows *the result menu*,
   which is a question about what you'd want to inspect. It is not a permissions
   or visibility rule; open any file from the sidebar as always.
-
-> **What this fixes.** PySCF's generator already nominates a single result: its
-> own manifest calls `<label>.molwatch.log` the *"unified per-step log… coords,
-> energy (eV), forces (eV/Å), and SCF cycle history — single-file input for
-> molwatch"*. The picker ignored that and listed the run's internals beside it,
-> because the structure presenter claimed **every** `.xyz` and the trajectory
-> presenter claimed `*_optim.xyz` as well. One relaxation therefore appeared as
-> five results: the master log, the *input* coordinates, the warm-restart seed,
-> and geomeTRIC's two per-stage trajectories. The generator was right; the menu
-> was reading it at the wrong granularity.
->
-> Note the naming: a staged run's master is `<label>_<stage>.molwatch.log`
-> while its carried satellites are plain `<label>_*`, so matching a master to
-> its satellites means stripping the stage token first
-> (`execution/job-contracts.md § 2.2a`).
-
-> **And absorption cannot express a LADDER — transport is the first run that
-> needs it** *(2026-09-17)*. Everything above is about one directory: a master
-> and the satellites beside it. A transport run is **five directories that are
-> one result** — seed, both leads, device, transmission — each holding a real
-> SIESTA run with its own `.out` and `.molwatch.log`. Point the picker at one
-> and three things happen, none of which this section's rules can fix:
->
-> - its deliverable, `<label>.transport.json`, had **no presenter and no
->   Python reader** — the one result kind understood only in JavaScript;
-> - each rung's `.out` is claimed by the trajectory presenter, so the ladder
->   lists as five unrelated entries under *SIESTA optimization*;
-> - `absorbs` is asked *"does this master subsume that sibling?"* — a question
->   about one folder. It has no way to say *"these five folders are one run."*
->
-> **The first is closed**: `lib/inspectors/transport.js` is the presenter,
-> opened through the calculation's `task.json` (the registry's
-> `transport-task` parser, `task_reader.py`) and fed by
-> `/api/transport/record`, composed on read from the rungs; the copy
-> `<label>.transport.json` that `summarize task` writes has its own reader
-> (`parse/sidecars/transport.py`) and opens as a file. **The second and third are
-> not a presenter's to fix**, and the reason they looked unfixable was that
-> the picker had nothing to ask. It does now.
 
 #### The door the picker asks
 
@@ -409,19 +345,6 @@ Two rules keep this from hiding anything:
 > `views_of` ([`execution/architecture.md`](?doc=execution/architecture.md)
 > § 3.2): the route serves the folder's answer and those views beside it, and
 > decides none of it.
-
-> **✅ That rename landed on 2026-08-10 and this section was not updated
-> until 2026-09-08.** The trajectory log is named for **the deck that produced
-> it** — `<label>_<stage>.molwatch.log` — and the `-stage<N>` infix is gone
-> ([`execution/job-contracts.md`](?doc=execution/job-contracts.md) § 2.2a).
-> The consumer has already moved with it: `lib/inspectors/trajectory.js`'s
-> `absorbs()` matches the current grammar. Read the rest of this note as
-> history, not as a change to plan for.
-> **What that costs here:** the run decoder's stage regex keys on the hyphen
-> form, so it changes with the rename, and anything that groups a staged run's
-> logs by parsing `N` out of the filename must instead read the stage from the
-> deck's name or its directory. Worth knowing before building on the current
-> shape.
 
 - **A file-selected event is the single source of truth.** When you choose from
   the dropdown, it fires a `fileSelected` event that the controller listens for.
@@ -561,7 +484,7 @@ keeps its result. The server names both files, whole, on each run of
 not there is not drawn. So a transport calculation's every input — each
 rung's, each frame's and each voltage's — is one click from the ladder.
 
-### 2.5 A transport calculation's report *(the plan's § 5u.1 step 9, archived 2026-10-28; designed and built 2026-10-07)*
+### 2.5 A transport calculation's report
 
 > *"we need the result to render not just the single numbers, but plot the scf
 > converging process, display the structure of the device of the selected frame
@@ -580,36 +503,12 @@ it is now. The root opens it through its **description**, `task.json` (§ 0.1),
 which is there from `molbuilder describe` on — never through the record file, which
 exists only after a first `summarize task`.
 
-**Where it stands** *(2026-10-07)*: built — the record's fields
-(`transport/record.py`, `transport/tbtnc.py`), `/api/transport/record` and
-`/api/transport/pdos`, the one SCF plot (`lib/scfplot/scfplot.js`) with the
-trajectory viewer on it, the charts' theme (`lib/plot-theme.js`), the report
-(`lib/inspectors/transport.js`, a module, and its sheet), the ladder above the
-panel. **Checked on a real calculation** *(2026-10-07)*: a 16-atom carbon
-chain (six frozen atoms per
-lead, SZ, 100 Ry) run through `describe → prep → launch` for all five rungs at 0 and
-0.2 V, then `summarize task`: $T(E_F) = 2.0$, the cumulene's two π channels; the
-record's DOS, PDOS, both leads' bulk DOS, L's spectral DOS and four eigenchannels
-read from the real `.TBT.nc`; the device's NEGF E_F, dQ and charges; the
-selection PDOS by orbital type, $p_x = p_y =$ half the bridge's DOS at $E_F$ and $p_z$
-and $s$ zero, as a chain along z gives; both routes and the root's answer through
-the app. **The PDOS by region** shows only the regions whose atoms are in
-TBtrans's device region — here the bridge; a lead's atoms are its electrode, not
-the device. **Seen in a browser** *(2026-10-08, B8)*: the report drawn on the
-three walks, its tabs, the I–V picks and the ladder's rows opening it at a
-point. **The frame family** (below) built 2026-10-10 (plan § 5z, Q17-f) and
-**seen in a browser** the same day on an H2 frame set walked through the
-road — the junction and its mode's three frames written by scripts through
-the Structure API, cited on the Transport tab, handed to Task setup, the
-printed `prep` / `launch` run, read here: the ladder's rows and
-the points table named *Frame 2 of 3 · 0.2 V*, a row moving the frame bar,
-*all frames* on T(E) (the mode's average dashed, its numbers and
-assumptions under the card), the DOS and the device's convergence.
+**The PDOS by region** shows only the regions whose atoms are in TBtrans's
+device region; a lead's atoms are its electrode, not the device.
 
 **A spin-polarised calculation shows each spin and their total, told apart by
 colour and legend** *(the user, 2026-10-11: "use color/legend to correctly
-present up and down spin and total current"; built after the first polarised
-run)*. Every number is the record's
+present up and down spin and total current")*. Every number is the record's
 — the sums too — and the colours are the plot theme's (`plotTheme()`): spin
 up the first series colour, spin down the second, the total the ink, bold:
 
@@ -627,12 +526,12 @@ two and each spin's own total and eigenchannels kept beside
 (`tbtnc.point_dos`); a selection's PDOS is the two digests' sum. Under the low-bias approximation each
 spin's current is the record's own integral of that spin's T(E, 0),
 $I_\sigma = (e/h) \int T_\sigma(E, 0)\, [f(E - eV/2) - f(E + eV/2)]\, dE$, beside the total.
-**A non-polarized calculation is drawn as before**, its axes saying what its
-curves are — *T (each spin, ↑ = ↓)*, *DOS (states/eV, each spin)*: SIESTA and
+**A non-polarized calculation draws one curve per quantity**, its axes saying
+what its curves are — *T (each spin, ↑ = ↓)*, *DOS (states/eV, each spin)*: SIESTA and
 TBtrans compute one channel and treat the other as the same, TBtrans's T and
-DOS carry no spin factor (the DOS per orbital $-\mathrm{Im}\bigl[(G - G^\dagger)\,S\bigr]/2\pi$, which is $-\mathrm{Im}\,[G\,S]/\pi$, `m_tbt_tri_scat.F90:146–153`;
+DOS carry no spin factor (the DOS per orbital $-\mathrm{Im}\bigl[(G - G^\dagger)\,S\bigr]/2\pi$, which is $-\mathrm{Im}\,[G\,S]/\pi$, `m_tbt_tri_scat.F90`;
 the current's prefactor $e^2/h$, *"no spin degeneracy"*,
-`m_tbt_save.F90:2043`), $G = G_0 \cdot T(E_F)$ carries the spin's factor 2 in
+`m_tbt_save.F90`), $G = G_0 \cdot T(E_F)$ carries the spin's factor 2 in
 $G_0 = 2e^2/h$, and the total current is twice the channel's TBtrans printed — so
 a polarized run's $T_\uparrow + T_\downarrow$ and its DOS ↑ + ↓ stand where a non-polarized run's
 $2T$ and $2 \cdot \mathrm{DOS}$ would. A polarized DOS axis says *↑ + ↓ unless marked* on one
@@ -693,20 +592,20 @@ exists or is named here; nothing worked out in the browser:
 
 | part | data | door |
 |---|---|---|
-| ladder, rung states | `stages[]` — the status door's state and detail | `/api/transport/record` (built) |
+| ladder, rung states | `stages[]` — the status door's state and detail | `/api/transport/record` |
 | a transmission's loop | each point's TBtrans output through the reading pass, in its one sentence (`tbtrans.loop_words`, `model/parse.md` § 5d.5) — what the point's run record states as `computation.time.progress` · `estimated_at` (§ 5d.1b) | `/api/transport/record`: each point not finished whose run wrote its output — running, or stopped — carries `progress` `{said, estimated_at}`, `estimated_at` only while an estimate stands; the transmission rung carries its running point's, with that point (`frame`, `of`, `bias_v`), how many points are still to come after it (`after`) and the last finished point in the ladder's order with its loop (`measured`: its point and `loop_elapsed_s`, its passes' loops summed, `model/parse.md` § 5c.1). The rung's row: *at 0.2 V: unpolarized (1 of 1): 40 % done, about 3h left (TBtrans's estimate) · estimated 10m ago — 3 more points after it; the loop at 0 V took 6h*; the point's line: its `said` and the age. A point named as every page names one (`lib/results/point-words.js`), a time and an age as every page says them (`lib/time-ago.js`, [`ui-contract.md`](?doc=web/ui-contract.md) § 4) |
 | device structure | the device run's own structure — the composed junction with its `.molstruct.json` (labels, cell, `engine_offset`), the frame the engine had ([`model/structure-periodicity.md`](?doc=model/structure-periodicity.md) § 6.0) | MolView mounted read-only (`owner: "results:transport"`), the structure presenter's door (`projects.parser.openMolecule`, `lib/inspectors/structure.js`) — opened in the user order (`openMolecule(…, {restore: true})`, the load route's `restore`), its notice saying so — a junction whose order is not recorded (I9) opened as a viewer opens it, in TranSIESTA's order, marked — MolView's notice says so — and the record's way on below it (`order_way`); `junction.xyz` itself stays the engine's record ([`model/overview.md`](?doc=model/overview.md) § 2.2a) |
 | T(E) | per point and spin channel, from `.TBT.AVTRANS_<L>-<R>` (and `TBT_UP` / `TBT_DN`) | `points[].transmission` in the record — per spin channel, $(T_\uparrow + T_\downarrow)/2$ for a polarized point — each channel kept in `channels` and their sum in `transmission_total` (`record.point_transmission`) |
-| DOS and PDOS | from the transmission run's files, each read by the SIESTA family's parser ([`model/parse.md`](?doc=model/parse.md) § 5e; [`engines/transport.md`](?doc=engines/transport.md) § 2a.12): **DOS** — the device's total density of states, its Green-function DOS (`TBT.DOS.Gf`), from TBtrans's k-averaged `<label>.TBT.AVDOS`; the **left** lead's spectral DOS (`TBT.DOS.A`, `.TBT.AVADOS_<L>` — TBtrans writes it for the first electrode only unless `TBT.DOS.A.All`, which the catalogue does not carry yet, the plan's § 5u.1 step 7, archived 2026-10-28); both leads' bulk DOS (`TBT.DOS.Elecs`, `.TBT.AVBDOS_<lead>`); **PDOS** — the same DOS split by region, summing each label's orbitals (L-electrode, bridge, R-electrode — the labels molbuilder owns, [`molview.md`](?doc=web/molview.md) § 6.6), so the bridge's PDOS shows where the molecule's levels sit against E_F — from the point's **digest**, the data file `<label>.TBT.nc`'s device DOS per orbital, k-averaged once and kept beside it | per point in the record as `dos: {total, by_label: {label: [...]}, lead_spectral: {L: [...]}, lead_bulk: {L: [...], R: [...]}}` on the data file's energies, $E - E_F$ (`tbtnc.point_dos`) — `by_label` present only when the point's digest is kept; a block holding no curve is no DOS, its `dos_why` said instead (`tbtnc.NO_CURVE`: TBtrans wrote none, or not every part of a sharing point's grid holds one) |
-| a point's digest | each finished transmission point's data files, their reading kept or not — at the top of the DOS tab: one line per data file, *its point: its file (its size) — kept / not read yet / out of date / being read by whom, k-point i of n, since when*; **Read the DOS per orbital** when one is not kept and not being read, or its reading's process on this host is gone; **Read again** (every one, kept or not); **Take over** when one is being read on another host; while any reading runs — this tab's, another tab's, `summarize task`'s, another host's — the line is asked again every 2 s and the rest of the report stays in use; when it ends, the record is fetched again — the regions drawn, a selection's PDOS asked again | `GET /api/transport/digest?path=` the readings' states, nothing read; `POST /api/transport/digest` `{path, fresh, take_over}` reads them in the request (`tbtnc.read_points`); per point in the record as `digest` (since 2.31.0) |
+| DOS and PDOS | from the transmission run's files, each read by the SIESTA family's parser ([`model/parse.md`](?doc=model/parse.md) § 5e; [`engines/transport.md`](?doc=engines/transport.md) § 2a.12): **DOS** — the device's total density of states, its Green-function DOS (`TBT.DOS.Gf`), from TBtrans's k-averaged `<label>.TBT.AVDOS`; the **left** lead's spectral DOS (`TBT.DOS.A`, `.TBT.AVADOS_<L>` — TBtrans writes it for the first electrode only unless `TBT.DOS.A.All`, which the catalogue does not carry); both leads' bulk DOS (`TBT.DOS.Elecs`, `.TBT.AVBDOS_<lead>`); **PDOS** — the same DOS split by region, summing each label's orbitals (L-electrode, bridge, R-electrode — the labels molbuilder owns, [`molview.md`](?doc=web/molview.md) § 6.6), so the bridge's PDOS shows where the molecule's levels sit against E_F — from the point's **digest**, the data file `<label>.TBT.nc`'s device DOS per orbital, k-averaged once and kept beside it | per point in the record as `dos: {total, by_label: {label: [...]}, lead_spectral: {L: [...]}, lead_bulk: {L: [...], R: [...]}}` on the data file's energies, $E - E_F$ (`tbtnc.point_dos`) — `by_label` present only when the point's digest is kept; a block holding no curve is no DOS, its `dos_why` said instead (`tbtnc.NO_CURVE`: TBtrans wrote none, or not every part of a sharing point's grid holds one) |
+| a point's digest | each finished transmission point's data files, their reading kept or not — at the top of the DOS tab: one line per data file, *its point: its file (its size) — kept / not read yet / out of date / being read by whom, k-point i of n, since when*; **Read the DOS per orbital** when one is not kept and not being read, or its reading's process on this host is gone; **Read again** (every one, kept or not); **Take over** when one is being read on another host; while any reading runs — this tab's, another tab's, `summarize task`'s, another host's — the line is asked again every 2 s and the rest of the report stays in use; when it ends, the record is fetched again — the regions drawn, a selection's PDOS asked again | `GET /api/transport/digest?path=` the readings' states, nothing read; `POST /api/transport/digest` `{path, fresh, take_over}` reads them in the request (`tbtnc.read_points`); per point in the record as `digest` |
 | PDOS of a selection | the same per-orbital DOS, summed over **the atoms you choose**, optionally only their orbitals of one type — below | `GET /api/transport/pdos?path=&point=&frame=&atoms=&orbitals=` (`frame` a frame set's index) — stateless, read from that point's digest and the device run's `.ORB_INDX` on request, on the data file's energies, refused by name while the digest is not kept (`tbtnc.NOT_READ`) — the atoms chosen in the user order, as the junction is drawn, mapped into the junction's through its order record and the answer's atoms back (`transport.record.selection_pdos`); refused by name for a calculation whose junction's sidecar states no order record |
 | eigenchannels | `TBT.T.Eig` (4 by default): the transmission of each channel at each energy — eigenvalues only; TBtrans writes no channel wavefunctions with this deck | from TBtrans's k-averaged `<label>.TBT.AVTEIG_<L>-<R>`, on the data file's energies: per point `dos.eigenchannels: [[...], ...]`, drawn under T(E) on the same axis |
-| I–V | `iv` in the record | built (table); the curve is new, drawn from the same arrays |
-| convergence | each rung's SCF history, phase-tagged: `cycle, energy, delta_E, dDmax, dHmax, ef, phase` (`periodic` / `negf`), and on a NEGF row the charges, `dq` and `vha_ev` (the SIESTA reader, `siesta_reader.py`) | **new** in the record: per rung `scf: [...]`, read by the same parse the record already makes of each rung's output. `/api/watch/*` cannot serve it: it holds one file for the whole server, the trajectory viewer's |
-| device NEGF figures | the NEGF phase's E_F, iterations, and charge | **new** in the record's device stage, read from the same parse (the periodic start's never shown as the device's, § 2a.12) |
-| provenance chain | each rung's `.gathered-from` (`runrecord.read_gathered_from`) — and, a calculation that reuses a finished one, what each point is a copy of (`copied_from`, `runrecord.copied_of`) beside what it started from ([`engines/transport.md`](?doc=engines/transport.md) § 2a.16) | **new** in the record: `provenance.chain` |
-| export | the report's header: **Export** — *CSV* · *NetCDF* — every result of the calculation as it stands, downloaded: `<label>.transport.nc`, or the tables and their `README.txt` as `<label>.transport-csv.zip` ([`engines/transport.md`](?doc=engines/transport.md) § 2a.12, *Export*); beside the buttons, how many points export without their DOS by region and the way to read them (the DOS tab's *Read the DOS per orbital*), a refusal in its words, both buttons disabled while one runs; and a link, *How to read these in Python*, to [`engines/transport-postprocessing.md`](?doc=engines/transport-postprocessing.md) | `GET /api/transport/export?path=&format=` — composed on request from what is there (`transport.export`), no data file read; the file handed over by `projects.downloadExport`, the line beside the buttons written by the one status writer *(since 2.32.0)* |
-| what a point is a copy of, and what it shares | a calculation that reuses a finished one: each point's `copied_from` and `shared` — the finished point, the energies it holds and those its own run computed — said under the points table in the manifest's words ([`engines/transport.md`](?doc=engines/transport.md) § 2a.16) | `points[].copied_from`, `points[].shared` in the record (since 2.30.0) |
+| I–V | `iv` in the record | `/api/transport/record`: the table and the curve drawn from the same arrays |
+| convergence | each rung's SCF history, phase-tagged: `cycle, energy, delta_E, dDmax, dHmax, ef, phase` (`periodic` / `negf`), and on a NEGF row the charges, `dq` and `vha_ev` (the SIESTA reader, `siesta_reader.py`) | in the record: per rung `scf: [...]`, read by the same parse the record already makes of each rung's output. `/api/watch/*` cannot serve it: it holds one file for the whole server, the trajectory viewer's |
+| device NEGF figures | the NEGF phase's E_F, iterations, and charge | in the record's device stage, read from the same parse (the periodic start's never shown as the device's, § 2a.12) |
+| provenance chain | each rung's `.gathered-from` (`runrecord.read_gathered_from`) — and, a calculation that reuses a finished one, what each point is a copy of (`copied_from`, `runrecord.copied_of`) beside what it started from ([`engines/transport.md`](?doc=engines/transport.md) § 2a.16) | in the record: `provenance.chain` |
+| export | the report's header: **Export** — *CSV* · *NetCDF* — every result of the calculation as it stands, downloaded: `<label>.transport.nc`, or the tables and their `README.txt` as `<label>.transport-csv.zip` ([`engines/transport.md`](?doc=engines/transport.md) § 2a.12, *Export*); beside the buttons, how many points export without their DOS by region and the way to read them (the DOS tab's *Read the DOS per orbital*), a refusal in its words, both buttons disabled while one runs; and a link, *How to read these in Python*, to [`engines/transport-postprocessing.md`](?doc=engines/transport-postprocessing.md) | `GET /api/transport/export?path=&format=` — composed on request from what is there (`transport.export`), no data file read; the file handed over by `projects.downloadExport`, the line beside the buttons written by the one status writer |
+| what a point is a copy of, and what it shares | a calculation that reuses a finished one: each point's `copied_from` and `shared` — the finished point, the energies it holds and those its own run computed — said under the points table in the manifest's words ([`engines/transport.md`](?doc=engines/transport.md) § 2a.16) | `points[].copied_from`, `points[].shared` in the record |
 
 **PDOS of the atoms you choose** *(user, 2026-10-07: "what if we want to be
 able to show PDOS of selected atoms/labels? such as S atom, or carbon atoms or
@@ -732,7 +631,7 @@ read as if typing the name selected the atoms)*:
 2. **Which orbitals** — one menu: *all*, *s*, *p*, *d*, *p_x*, *p_y*, *p_z*.
    The curve is then the selected atoms' orbitals of that type. Each
    orbital's type is the device run's own `<label>.ORB_INDX`, which SIESTA
-   writes by default (`WriteOrbitalIndex`, `read_options.F90:1909`): one row
+   writes by default (`WriteOrbitalIndex`, read in `read_options.F90`): one row
    per orbital — its atom, species, `n`, `l`, `m`, zeta, whether it is a
    polarization orbital, and its name (`s`, `px`, `pz`, `dxy` …). **A π
    system** is the selected atoms' *p_x*, *p_y* or *p_z* — the one
@@ -767,13 +666,9 @@ is said below the drawing, in its words (`order_way`).
 
 **Shared, not copied** — what this needs from modules that exist:
 
-* **The SCF plots move out of the trajectory viewer into one module**,
-  `lib/scfplot/`, that draws into the element it is given (today
-  `trajectory/core.js` draws by document id, so two cannot share a page) and
-  takes the phase-tagged history it already receives. The trajectory viewer
-  and this report both mount it. It draws **each phase as its own trace** — what
-  [`trajectory.md`](?doc=web/trajectory.md) § 2 already states and the code does
-  not yet do — so the fix lands once, for both.
+* **One SCF plot**, `lib/scfplot/scfplot.js`, draws into the element it is
+  given, each phase its own trace; the trajectory viewer and this report both
+  draw through it.
 * **One Plotly theme**: every chart here reads its colours and its font from
   the tokens through one small helper, `lib/plot-theme.js` (`plotTheme()` —
   grid, axis, ink, the muted ink, the success colour of a target line, a hover
@@ -781,18 +676,12 @@ is said below the drawing, in its words (`order_way`).
   `themedLayout()`): the transport report's, the SCF plot, the bench chart, the
   trajectory's energy and force, and the spectra viewer's level diagram and
   thermochemistry (`_esTheme`). A token that is
-  not there is said, never covered by a second copy of its value *(one reader
-  since 2026-10-10, Q18; until then the trajectory, bench and spectra charts
-  each read the tokens their own way, with copied fallbacks, and the
-  trajectory's two plots drew on white)*. **One series palette**: a chart's
+  not there is said, never covered by a second copy of its value. **One series palette**: a chart's
   curves are told apart by `--series-1` … `--series-5` (blue, orange, green,
   pink, purple — distinct on the dark card and to the common colour-vision
   deficiencies), the n-th curve or bar the n-th colour, a chart of one curve
   the first; a severity keeps its meaning, the target line's success colour,
-  never one curve among others *(the user, 2026-10-10; the bench chart's
-  palette made the one — until then the trace palette was the accent and the
-  severities, the force chart's all-atoms curve was the error red and the
-  thermochemistry's total the warning)*. SpectrumChart keeps
+  never one curve among others *(the user, 2026-10-10)*. SpectrumChart keeps
   its own sealed palette ([`spectrumchart.md`](?doc=web/spectrumchart.md)
   § 11).
 * **One Plotly box**: every chart on this page — the transport report's, the
@@ -809,37 +698,26 @@ is said below the drawing, in its words (`order_way`).
   redrawn when **its box** changes — a
   sidebar folding, a tab shown, a grid reflowing — never on the window's
   resize alone, and a box with no size, in a hidden tab, is fitted when it is
-  shown. *(Until 2026-10-10 each viewer kept its own way or none: the
-  thermochemistry figures, drawn in their hidden tab at Plotly's default
-  700 px, never shrank back and pushed the decomposition past the card's
-  edge; the transport report's charts kept their first width through a
-  sidebar fold.)* SpectrumChart keeps its own sealed door to the same rules
+  shown: a chart drawn in a hidden tab at the library's default width never
+  shrinks back, and pushes what follows past the card's edge. SpectrumChart keeps its own sealed door to the same rules
   ([`spectrumchart.md`](?doc=web/spectrumchart.md) § 11).
 * **MolView unchanged**: mounted read-only, the frame through its own API. It
   does not colour atoms by label in the scene today; the labels are on its
   Selection page, and `by label` selects a region. Colouring the regions in
   the scene is MolView's to add if wanted — a separate decision, not part of
   this view.
-* **The state chip** is the ladder's (`inspectors.stateChip`).
+* **The state chip** is the ladder's (`molbuilder.stateChip`, `lib/state-chip.js`).
 
 **What it does not do.** It decides nothing about the physics: no fit, no
 smoothing, no number the record does not carry. A curve it cannot draw — a
 point not run, an output not written — is said in its card.
 
-**Built in this order**, each a milestone with its review: ① the record's new
-fields (DOS, eigenchannels, NEGF figures, the chain) and the SCF-plot module with
-the phase split, the trajectory viewer moved onto it; ② the report's cards and
-tabs, the two selections; ③ the frame family (plan § 5z, Q17-f — built and
-seen on the page 2026-10-10). Checked on the dev server against a real
-transport calculation, through the road.
-
-**The frame family — the frame an axis of every result** *(designed
-2026-10-09; the user, 2026-10-10: "frame is orthogonal to all those
+**The frame family — the frame an axis of every result** *(the user,
+2026-10-10: "frame is orthogonal to all those
 calculations so the logical way to present it is that each presentation of
 T(E), DOS etc would be able to either plot results from different frames in
 one plot with legends, or select a frame for display"; the record's half is
-[`engines/transport.md`](?doc=engines/transport.md) § 2a.12, built
-2026-10-10, Q17-e: each point names its frame and carries that frame's rows,
+[`engines/transport.md`](?doc=engines/transport.md) § 2a.12: each point names its frame and carries that frame's rows,
 the I–V a `frame` column, the record the mode's `average`)*. The frame is an
 axis, as the voltage is, and **every chart card carries the one frame control**
 — *one frame* or *all frames* — one component, shown only when the
@@ -890,8 +768,8 @@ cover lifts when the viewer signals it has painted, or failed to (a viewer
 that cannot load its file says so and signals too), or after a 15-second
 safety timeout.
 
-**A reordered run is shown in the engine's order, marked** *(2026-10-14 —
-[`model/overview.md`](?doc=model/overview.md) § 2.2a, plan § 5ab R2)*: a SIESTA vibration's stages and the transport rungs (all but
+**A reordered run is shown in the engine's order, marked**
+*([`model/overview.md`](?doc=model/overview.md) § 2.2a)*: a SIESTA vibration's stages and the transport rungs (all but
 the electrode rungs, which run on a cell of their own) run on a reordered
 copy; their frames, forces, held atoms and labels agree with each other in
 the engine's order, and the viewer says so above its tabs — *The atoms are
@@ -930,18 +808,10 @@ loads the registry, so they mount nowhere; they are kept registered by
 decision (2026-09-28) until you decide whether the markdown editor returns to
 this tab.
 
-*(This said "the three viewers" until 2026-09-17, "four" until 2026-09-19,
-and "five" until 2026-09-28, each time omitting a presenter that had been
-registering the whole time — bench-summary, transport, then the displacement
-sweep; and until the same day it said the markdown and text viewers mounted
-"when the tab reopens on a file you were already looking at", a route removed
-on 2026-09-19. `presenters.md` § 1 carries the list that is machine-checked
-against the registrations; this prose is not, which is why it drifted three
-times. Read it as a tour, and that table as the count.)*
+`presenters.md` § 1 carries the list checked against the registrations; this
+prose is a tour, and that table is the count.
 
 ## 3a. The Run panel — what ran, with what, and how it went
-
-**Built** (W35 P2, 2026-09-27): `lib/results/run-panel.js` and its sheet.
 
 **A viewer shows a file; the Run panel shows the run the files came from.**
 When the folder the picker is bound to is a run of ours — a run directory
@@ -983,8 +853,7 @@ keep their lines: a run directory copied out of its calculation keeps them too
 worrying about repeats")*. What must not happen is one fact computed from two
 kinds of evidence — a rate estimated from timestamps beside the SCF-timing
 instrument's, an end time taken from a file's modification time beside the
-output's own `>> End of run`. The trajectory viewer did both until
-2026-09-27 ([`trajectory.md`](?doc=web/trajectory.md) § 4).
+output's own `>> End of run`.
 
 **Closed, it is one line** — the engine and version, the ranks, the engine's
 wall time, how it ended, whether each phase converged, and how
@@ -1081,7 +950,7 @@ half-refreshed-state bugs. Two guards back it up: a **late response from a
 previous file can't write into the current view**, and **partial frames** the
 parser flags as in-progress are shown in the list but kept out of the plots.
 
-### 4.1 A viewer follows the run, and the server says how the run is doing *(W38 M2f, 2026-10-03)*
+### 4.1 A viewer follows the run, and the server says how the run is doing
 
 A viewer showing a file **follows the run the file belongs to**: it polls
 while the run is **live** — queued or running — and stops when it is not:
@@ -1102,22 +971,16 @@ Run panel's — or `null`) — or `null` for
 a file that belongs to no run, an upload. A run whose launch record does not
 read — or a run of points whose records do not, at its root — is
 `unreadable`, never live, the file named in its `detail` — the
-viewer stops and says it *(it carried a `problem` no page read beside the
-files' state until 2026-10-06, and a run with no output read `running`
-forever)*. **A viewer never decides from the
+viewer stops and says it. **A viewer never decides from the
 file's own ending**: an output that states its end belongs to a job that may
-still be deriving its result, and one killed mid-step states nothing at all —
-both viewers followed such a run until the page closed, until 2026-10-03.
+still be deriving its result, and one killed mid-step states nothing at all,
+so a viewer that decided by the file would follow it until the page closed.
 
 **The end is read before the file's last read.** When the server finds the
 run no longer live, it reads the file again if it has changed since the read
 before — so what a viewer stops on is the file's last state, in the answer
-that says the run is over. That is what the trajectory viewer's
-two-finished-ticks buffer approximated (*one tick can lie: the parser may
-still be flushing trailing output*) and what the spectra viewer's *every
-asked-for phase complete* stood in for; both are gone, and a run that stops —
-a crash, a kill its monitor saw — stops the polling in the same step as a
-finish.
+that says the run is over; a run that stops — a crash, a kill its monitor
+saw — stops the polling in the same step as a finish.
 
 **What a poll costs.** On the trajectory routes (`/api/watch/*`) the run's
 state is asked whenever the file has nothing new — a load, and a poll that
@@ -1137,11 +1000,11 @@ Read from `lib/trajectory/core.js`, which is the shipped implementation:
 |---|---|---|
 | `fileState` | path, mtime, format, label, the parsed data | replaced **atomically** on each `LOADING → LOADED` |
 | `viewState` | per-file interaction (first fit, picks) — **not the playhead**, MolView owns that | on a file switch |
-| `uiPrefs` | per-session knobs (hide-frozen, …) | never — this is the "survives a file switch" half |
+| `uiPrefs` | per-session knobs — empty on the trajectory viewer, whose playback knobs are MolView's; the spectra viewer's view preferences (`spectra.md` § 7) | never — this is the "survives a file switch" half |
 | `lifecycle` | the poll timer and the abort controllers | on `LOADING` |
-| `derived` | recomputed from `fileState` (the SCF poll history) | with `fileState` |
+| `derived` | recomputed from `fileState` — empty on both viewers today | with `fileState` |
 
-#### What "atomically" means, and what it did not mean until 2026-09-03
+#### What "atomically" means
 
 **A name and the data that belongs to it are written together, or neither
 is.** `transition("APPLY", …)` will not accept a payload without a `path`,
@@ -1154,15 +1017,6 @@ server read (below) — it may differ from the one asked for — and every later
 answer must name that one. A poll that finds nothing new (`changed: false`)
 carries no name: the viewer gives it the name of the file it polled for,
 read when the poll went out.
-
-That row said *atomically* from the day the state machine landed, and the
-code did not do it. Every caller passed `{results}` or `{mtime, data}` and
-let `path` stand — the trajectory core said so in a comment, *"format/label/
-path stay because the file identity didn't change"*, which is an assumption
-nothing verified. A watch tick fires for file A; the user clicks B; A's
-answer resolves and is written under B's name. So a **`fetchSeq` counter**
-was added: each caller snapshotted it before its fetch and re-checked it
-after, in five places, to notice it had written into the wrong file.
 
 **Where the name comes from — and it is NOT the same on both sides.**
 Getting this backwards would break a viewer completely, so it is spelled
@@ -1180,43 +1034,28 @@ because a number moved.
 > **Do not "tidy" the spectra side into using a server-echoed path.** There
 > is none to use, and adding one would not be equivalent:
 > `blueprints/spectra.py` resolves the request through
-> `_resolve_within_roots`, which expands `~`, expands `$VARS` and follows
-> symlinks. The echoed absolute path would then differ from the string the
-> viewer was handed for every one of those cases, `APPLY` would drop
+> `_resolve_within_roots`, which expands `~` and follows symlinks. The echoed
+> absolute path would then differ from the string the viewer was handed
+> whenever either applies, `APPLY` would drop
 > **every** payload, and the viewer would render nothing at all — in
 > silence, because a dropped payload is a `return`, not an error. The
 > spectra guard is correct precisely because one string feeds both sides.
 
-**`fetchSeq` is gone** (2026-09-04, a separate change from the correctness
-fix above, deliberately). The guards it served — the status banner, the
-consecutive-error count, `stopWatch` — ask the same question of the same
-fact now: *is `path` still `state.fileState.path`?*
-
-The replacement is **strictly stronger**, which is why this was a deletion
-and not a trade. `transition("IDLE")` never bumped the counter, so a fetch
-still in flight when the inspector was disposed passed the old guard; it
-fails the new one, because `fileState.path` is null by then. The one thing
-a path cannot do is tell two loads of the *same* file apart — and
-`signal.aborted`, checked beside it, always could, so both halves are kept
-and neither is redundant.
+**The guard is the path.** The status banner, the consecutive-error count and
+`stopWatch` each ask *is `path` still `state.fileState.path`?* A fetch still
+in flight when the viewer is put away fails it, because `fileState.path` is
+null by then. A path cannot tell two loads of the *same* file apart;
+`signal.aborted`, checked beside it, does.
 
 Two consequences worth stating, because they are the point:
 
 - **an anonymous write cannot be expressed.** `APPLY` throws without a
   path, so "write this data" with no file attached is not a thing a future
   caller can accidentally do;
-- **there is one door per panel to the load endpoint.** `spectra/core.js`
-  had two — `loadByPath` read the filename from the DOM input box and
-  `watchTick` read it from state, two sources of truth for *which file is
-  this*. Both now go through `fetchResults(path, signal)`, which returns
-  the answer paired with the name it asked for. *(The box itself went on
-  2026-09-28: `loadByPath(path)` takes the dropdown's pick as its argument,
-  and a run still going is followed without a button —
-  [`spectra.md`](?doc=web/spectra.md) § 7.)*
-
-*This was a static-review finding, not a test one: three tests asserted the
-old shape and all three failed on the correction, one of them because a
-non-greedy regex stopped at the new guard's `return`.*
+- **there is one door per panel to the load endpoint**: every load and every
+  poll goes through `fetchResults`, which returns the answer paired with the
+  name it asked for, and `loadByPath(path)` takes the dropdown's pick as its
+  argument.
 
 **Both halves are proved on runs the road made** *(user ruling, 2026-09-03:
 "e2e means you can calculate a CO2 molecule within 5 min and use that output
@@ -1248,18 +1087,15 @@ transitions.
 > did not. It is a bridge, not a second design: there is one home for each
 > value and the alias reads it.
 
-## 5. Sending a finished run to the next stage — RETIRED (2026-08-29)
+## 5. A finished run is cited, never bundled
 
-The always-visible **Bundle** card that stood below the viewer is gone,
-with the whole calculation-to-calculation passing model it served (user
-ruling): **one kind of job never bundles itself up for another.**  A
-calculation that builds on a finished result CITES it — the transport
-tab picks the junction attempt actively and prep fuses the final
-geometry with the labels itself, with the sort and the gates the bundle
-never had (`archive/2026-09-01-transport-design.md` § 4.1,
-`transport/compose.py`).  Structure → execution hand-overs
-(builder/modify → parameter tab → Task setup) are a different thing and
-remain.  History: `docs/archive/2026-08-29-handoff-bundle.md`.
+**One kind of job never bundles itself up for another** (user ruling): a
+calculation that builds on a finished result CITES it — the transport tab
+picks the junction attempt, and prep fuses the final geometry with the labels
+itself, with the sort and the gates
+([`engines/transport.md`](?doc=engines/transport.md) § 1,
+`transport/compose.py`). Structure → execution hand-overs (builder/modify →
+parameter tab → Task setup) are a different thing.
 
 ## 6. Watching the machine — the server-load strip
 
@@ -1270,10 +1106,11 @@ proceeds; putting it on every page meant every page paid for a 1 Hz hardware
 probe nobody was reading.
 
 **It is collapsed on your first visit.** You click the `≡` pill to open it, and
-that choice is remembered for the rest of the browser session (it resets when you
-close the browser — this is a transient view preference, not a setting). The
-default is deliberate: an expanded strip used to overlay the bottom of the plots
-on every fresh visit, so you opt in to it rather than it opting you in.
+that choice is kept while this browser tab is open (it resets when the tab
+closes, and another browser tab starts collapsed — a page's layout, not a
+setting). The default is deliberate: an expanded strip would cover the bottom
+of the plots on every fresh visit, so you opt in to it rather than it opting
+you in.
 
 While it is open, it asks the server for a fresh reading **once a second** and
 keeps the last **600 readings — ten minutes** — as a sparkline behind each
@@ -1296,9 +1133,9 @@ The GPU cells only appear when the server reports a usable GPU (§ 6.3).
 
 ### 6.2 The detail block is the part that diagnoses
 
-Under each number is a text block that is always on screen — it used to be a
-hover tooltip, which re-positioned itself on every 1 Hz redraw and was therefore
-unreadable. The blocks carry the numbers a percentage alone hides:
+Under each number is a text block that is always on screen, never a hover
+tooltip: a tooltip re-positions on every 1 Hz redraw and cannot be read. The
+blocks carry the numbers a percentage alone hides:
 
 - **CPU** — how many physical cores this box has, how many logical ones if SMT
   is on, and how many core-equivalents are busy right now. *Why it matters:*
@@ -1343,12 +1180,10 @@ have a GPU — and could not answer: its own words when it exits with an error, 
 that it timed out. Only the second case prints anything, because only the second
 case is something being wrong.
 
-That distinction was added on 2026-08-04 after the silent version cost real time:
-a driver upgrade on the development host left the userspace library ahead of the
-loaded kernel module, `nvidia-smi` was dead for five weeks, and all the monitor
-did was quietly show a tidy two-cell strip that read as "this machine has no
-GPU". The same broken driver would have failed any GPU calculation submitted in
-that window, since CUDA reaches the driver the same way.
+A silent empty strip reads as *this machine has no GPU*: a driver whose
+userspace library runs ahead of the loaded kernel module leaves `nvidia-smi`
+dead, and every GPU calculation submitted meanwhile fails, since CUDA reaches
+the driver the same way.
 
 **You do not have to open the card to find out.** A fault that is only visible
 inside a folded-away card is a fault nobody sees, and the card is folded by
@@ -1368,16 +1203,15 @@ fails, so it is also in the terminal you started the server from.
 
 ## 7. A worked example
 
-You just ran a SIESTA geometry optimization; its `*_optim.molwatch.log` sits in
-`projects/BDT/opt/`. Open the **Results** tab. The picker scans that folder, sees
-the log is a trajectory-class file, and auto-selects it. The controller mounts the
-**trajectory** viewer — a 3D movie of the relaxation plus energy and max-force
+You just ran a SIESTA geometry optimization; its run folder is
+`projects/BDT/<stage>/run-0/`. Open the **Results** tab and pick that folder:
+the picker opens what the run door answers, the run's `<label>_<stage>.out`,
+and the controller mounts the **trajectory** viewer — a 3D movie of the relaxation plus energy and max-force
 plots. The structure the viewer holds carries the run's own periodicity,
 composed on the server (`/api/watch/load`: the cell from the output logs, the
 axis kinds from the run's own deck, `runs.declared`) — so what the Cell
 page shows, and what an Export → Data writes, is the run's stated intent
-rather than a browser guess *(2026-08-20; before this, every trajectory
-export claimed all-isolated beside its own lattice)*. Because the run is
+rather than a browser guess. Because the run is
 still going, the viewer polls `/api/watch/data` every
 15 seconds and appends new frames live.
 
@@ -1386,17 +1220,11 @@ You open the tab that owns it (Transport, for a junction) and pick this attempt;
 `prep` fuses the final geometry with the labels itself, with the sort and the
 gates a hand-made copy never had (§ 5).
 
-> *This example ended **"you click Bundle, and Results writes `handoff.xyz` +
-> `handoff.molstruct.json`"** until 2026-09-17 — a button § 5 of this same
-> document records as deleted on 2026-08-29, three weeks earlier. § 5 was
-> written and the worked example was not swept, so the document said both
-> things at once. Nothing writes a `handoff/` directory today; the grep confirms
-> no Bundle card and no handoff route survives.*
-
 ## 8. When there's nothing to show
 
-If no presenter is registered at all, the tab shows a clear configuration warning
-rather than a blank panel. If the folder simply has no results yet, the picker
+If no presenter is registered at all, the error goes to the browser console
+and every file falls to the fallback card; if the registry did not load, the
+picker bar is hidden. Neither leaves a blank panel. If the folder simply has no results yet, the picker
 shows a placeholder and stays put — Reload remains one click away.
 
 ## 9. Where the module stands (current → target ESM)
@@ -1406,9 +1234,9 @@ The Results shell is still **classic**: `results/viewer.js` plus
 (`window.molbuilder.*`), not ES modules — they lean on the runtime registry to
 load in order. Converting them is the "remaining classic modules" pass,
 alongside the runtime registry and the shared primitives
-([`plans/plan.md`](?doc=plans/plan.md) **W15**). The heavy viewers this shell *mounts* are on
-a different track — the trajectory and spectra engines convert in W15's
-presenters pass (see [`presenters.md`](?doc=web/presenters.md)).
+([`overview.md`](?doc=web/overview.md) § 6, #103). The heavy viewers this shell *mounts* are on
+a different track — the trajectory and spectra engines convert in the
+presenters pass (#102, same section; see [`presenters.md`](?doc=web/presenters.md)).
 
 ## 10. Test map
 

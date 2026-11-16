@@ -6,7 +6,8 @@
 mode moves the current: the screen this average feeds);
 [`engines/transport.md`](?doc=engines/transport.md) § 2a.9 (the frame set a
 transport calculation is handed); [`engines/vibration.md`](?doc=engines/vibration.md)
-§ 5.10 ③ (the frame rule's fields); `plans/plan.md` § 5z (Q17, decision D5).
+§ 5.10 ③ (the frame rule's fields);
+[`archive/2026-10-10-q17.md`](?doc=archive/2026-10-10-q17.md) § 5z.1 (Q17, decision D5).
 
 *Written 2026-10-09 at the user's request: "add a discussion of this
 averaging as an independent document under science, expand the details".*
@@ -24,9 +25,10 @@ transmission of the relaxed geometry.
 A transport calculation on a frame set computes that average from a handful of
 **static frames**: the relaxed junction and copies of it displaced along
 **one** normal mode — one frame set per mode *(user, 2026-10-09: "i would
-rather let one multi-frame focus on one mode")*. Each frame is an ordinary
-transport calculation; the average is assembled afterwards from the weight
-each frame's own rows state (`model/structure.md` § 2.2f; the mode's rows are
+rather let one multi-frame focus on one mode")*. Each frame runs as an
+ordinary transport point, with its own device and transmission, inside the
+one transport calculation that cites the set. The average is assembled
+afterwards from the weight each frame's own rows state (`model/structure.md` § 2.2f; the mode's rows are
 carried and shown, and decide nothing in the average).
 
 ```mermaid
@@ -112,7 +114,7 @@ $\sigma = Q_{\mathrm{zp}}\sqrt{\coth(\hbar\omega/2k_BT_{\mathrm K})}$. At
 | 50 cm⁻¹ (a soft torsion) | 0.12 | 2.89 | thermally excited: three times wider |
 
 Soft modes move far — which is why each frame states its largest
-single-atom move against that atom's nearest-neighbour distance
+single-atom move, the number a person reads against that atom's bond length
 (`normal-modes.md` § 4c.5), and why § 7 names the harmonic picture's limit.
 
 **What matters for § 3: $P(Q)$ is symmetric, $P(-Q) = P(Q)$.** The molecule
@@ -674,8 +676,7 @@ the curvature's sign, read off the frames, not assumed.
 **The spread the frames sample is stated as a temperature** *(the user,
 2026-10-28: "shall we actually use the sigma as the reference to state how
 much we want the max displacement to be? this is statistically making more
-sense especially if we propose the value based on temperature"; it replaces
-the maximum displacement of 2026-10-24)*. The person names the temperature
+sense especially if we propose the value based on temperature")*. The person names the temperature
 $T_{\mathrm K}$ of the motion the frames sample — the junction's, or for a
 mode pumped out of equilibrium its effective temperature (§ 2a.1). The
 generator (`engines/vibration.md` § 5.10 ③) sets the mode's mean number of
@@ -864,7 +865,7 @@ A frame set is one mode at one rule, its weights summing to 1. So the check
 is a second set of the same mode, at the same temperature and another rule,
 and comparing the two is the person's.
 
-### 5.4 Re-averaging the frames over another motion *(the user, 2026-10-29; built 2.52.0)*
+### 5.4 Re-averaging the frames over another motion *(the user, 2026-10-29)*
 
 *(The user, 2026-10-29: "or this can be a parameter in post-processing?";
 "so essential information is in fact the deltaQ for each frame (normal mode
@@ -1008,8 +1009,9 @@ Each is stated beside the numbers it limits, never dropped:
    *skewed* distribution, $\langle Q\rangle \neq 0$ and $\langle Q^3\rangle\neq0$,
    and then the odd part of $T$ no longer cancels: a second source of
    asymmetry, the distribution's own, which a harmonic frame set does not
-   carry. The soft-mode displacement check of `normal-modes.md` § 4c.5 flags
-   where it may matter.
+   carry. Each frame's largest single-atom move, stated beside it
+   (`normal-modes.md` § 4c.5), is what a person reads to see where it may
+   matter.
 2. **Static frames (the electron is fast).** Each frame is a frozen geometry:
    the electron crosses the junction quickly against the vibration,
    $\hbar\omega \ll \max\big(|\varepsilon - E_F|,\ \Gamma\big)$. What a static

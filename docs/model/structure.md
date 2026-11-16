@@ -30,7 +30,8 @@ frontend.
 > **The one-object rule.** A structure's identity lives in three models that
 > must stay byte-identical as data crosses the wire. Exactly one component per
 > language may **name a field** or index a structure dict by key: the Python
-> `Structure` codec, and the JS `data-model.js` accessors. Everyone else
+> `Structure` codec, and the JS translators in `lib/molview/model-jobs.js`
+> (`structureFromServer` / `structureForServer`). Everyone else
 > carries the dict verbatim as an opaque envelope. This is what stops the
 > recurring "a field silently drops to its default on reload" bug (the
 > `cell_origin → 0` regression); the field set appears in source **once per
@@ -76,6 +77,8 @@ class Structure:
     #     (frozen_atoms is not a field: it is the reserved label's one
     #      designated read, a cut of regions)
     # customized — the structure's rows and each frame's      → § 2.2d
+    # atom_order — the order record of a structure in an engine's order → § 2.2
+    # order_unstated — the view's mark                          → § 2.2
     # ── beside the metadata ──
     # info — records that are not the structure (never hashed) → § 2.2a
     # ── frames (§ 2.2e) ──
@@ -112,8 +115,8 @@ Three methods on `Structure` (`structure.py`), all shipped:
 
 | Method | Purpose | Round-trips? |
 |---|---|---|
-| `to_dict()` → `dict` (`:1008`) | The ONE canonical serializer: coordinates + per-atom columns + the full metadata block (via `metadata_to_dict()`). | **Yes** — `from_dict(s.to_dict())` reproduces `s` exactly. |
-| `from_dict(d)` → `Structure` (`:1034`) | The ONE canonical deserializer: builds the object, then `apply_metadata_dict` (the same validator a fresh Structure runs). | inverse of `to_dict` |
+| `to_dict()` → `dict` | The ONE canonical serializer: coordinates + per-atom columns + the full metadata block (via `metadata_to_dict()`). | **Yes** — `from_dict(s.to_dict())` reproduces `s` exactly. |
+| `from_dict(d)` → `Structure` | The ONE canonical deserializer: builds the object, then `apply_metadata_dict` (the same validator a fresh Structure runs). | inverse of `to_dict` |
 | `to_wire()` → `dict` | What the server works out about the structure that `to_dict` does not carry, sent beside it in every structure answer (`web-api.md` § 1): `resolved_box` — `resolved_cell`, `box_corner`, `resolved_vacuum`, the box as it will be used, through the one resolver and placement rule, which the client must not recompute (`structure-periodicity.md` § 6.0) — and `atom_order_said`, the order the atoms are in, in words. Nothing `to_dict` carries | No — derived, read-only |
 
 ```python
@@ -125,6 +128,7 @@ Three methods on `Structure` (`structure.py`), all shipped:
     "atom_names": [...], "residue_ids": [...],
     "residue_names": [...], "chain_ids": [...],
     "metadata": self.metadata_to_dict(),   # the ONE metadata codec, nested verbatim
+    "info": {...},                         # the open store beside the metadata (§ 2.2a)
 }
 ```
 
@@ -145,8 +149,8 @@ The structure metadata (periodicity + region tags + per-atom annotations) has
 exactly **one** serialization authority: `Structure` itself.
 
 ```python
-Structure.metadata_to_dict()      -> dict   # struct → JSON metadata dict (THE writer, :885)
-Structure.apply_metadata_dict(d)  -> None   # JSON metadata dict → struct (THE reader, :939)
+Structure.metadata_to_dict()      -> dict   # struct → JSON metadata dict (THE writer)
+Structure.apply_metadata_dict(d)  -> None   # JSON metadata dict → struct (THE reader)
 ```
 
 - **Scope** = the dataclass's own metadata fields, named once as
@@ -166,8 +170,9 @@ Structure.apply_metadata_dict(d)  -> None   # JSON metadata dict → struct (THE
 - `apply_metadata_dict` is **full-replace**: an absent key resets that field
   to its default (absent `cell` → non-periodic; absent `regions` → none). It
   re-runs `__post_init__`, so validation is single-sourced. A caller holding
-  only part of the block — `transport/compose.py` applying a sidecar over a
-  `.XV`, `Structure.apply_atom_metadata` for a deck's label block —
+  only part of the block — the SIESTA vibration's finish applying its deck's
+  box (`spectra/siesta_vibration.equilibrium_structure`),
+  `Structure.apply_atom_metadata` for a deck's label block —
   **completes the block before applying it**, never patches the result; there
   is no partial door, and full-replace is what keeps *an absent key resets*
   legible.
@@ -184,24 +189,19 @@ survive the sidecar, bump `SCHEMA_VERSION` and add the new version to
 MolView carries every metadata key it does not shape whole, in
 `otherMetadata`, through its two translators (`web/molview.md` § 6.2) — only a
 key MolView must show or edit in a shape of its own joins
-`SHAPED_METADATA_KEYS` and is folded and unfolded there *(since 2026-10-14,
-plan § 5ab R1; before, the translators and `getStructure` each listed the
-keys, and an unlisted one was dropped on every save)*; (5) add a
+`SHAPED_METADATA_KEYS` and is folded and unfolded there; (5) add a
 save→load→apply round-trip test. You do **not** touch `to_dict`, the sidecar
 writer (`sidecars/molstruct.to_dict`), its reader
 (`parse/sidecars/molstruct.load_text`) or `apply_to_structure` — each SPREADS
 `FILE_FIELDS` through the two methods above, so it picks the field up for
-free; a field a file must not state is the view's, added to `VIEW_FIELDS`. *(Until 2026-10-09 the reader named the six fields by keyword, so a
-seventh would have been dropped on every load — found by the § 5z.8 review.)*
+free; a field a file must not state is the view's, added to `VIEW_FIELDS`.
 
 **To remove one:** delete it from the dataclass + both methods, and add its
 name to `RETIRED_METADATA_KEYS` — only when ignoring it loses nothing, or by a
 recorded decision. THREE gates REFUSE a key they do not know, and every sidecar
 on disk carries the key, so without that line every old pair would be refused;
 with it the key is read and ignored, and no writer emits it again
-(`structure-molstruct.md` § 2, *Retired keys*). This said *"old sidecars load
-fine (`apply_metadata_dict` ignores unknown keys)"* until 2026-09-25, which the
-code has never done — found by review when `cell_origin` was retired. Never
+(`structure-molstruct.md` § 2, *Retired keys*). Never
 leave a "read-but-never-write" half-migration — that is the drift this contract
 exists to prevent.
 
@@ -226,9 +226,8 @@ describe` reads and the description's one writer copies
 as its source does: nothing molbuilder writes claims what it does not know
 (F4).
 
-**The order record of a remapped structure** *(built 2026-10-14 in the model —
-[`model/overview.md`](?doc=model/overview.md) § 2.2a, plan § 5ab R1–R2:
-the model, the browser's road, the deck's block and `runs.view_of`)*. A ninth
+**The order record of a remapped structure**
+*([`model/overview.md`](?doc=model/overview.md) § 2.2a)*. A ninth
 field, **`atom_order`**: null for a structure in the user order; for one in an
 engine's order, its order record — an `atom_permutation.Permutation`: the key
 that made it (one of the keys `atom_permutation` names) and both directions,
@@ -273,7 +272,7 @@ part of the structure:
 - **Not in the hash.** `geometry_hash` is computed without it, so
   recording or removing a key never changes the identity of the
   coordinates (`structure-molstruct.md`).
-- **Not gated.** § 9.4's one question — *"does this change the structure
+- **Not gated.** `web/molview.md` § 9.4's one question — *"does this change the structure
   the calculation ran on?"* — answers *no* for `info`, which is what
   lets the read-only Results viewer attach a recorded contract before
   export.
@@ -331,9 +330,9 @@ one is TAKEN FROM A STATED OWNER:
 notes, shown on the page that asked): the addition's cell when the canvas has
 one, its stated origin, a label it renamed, each entry of the addition's
 `info` — a saved pair's calculation and relaxation records, which the canvas's
-`info` replaces — and each of its `customized` rows. A dropped record is otherwise invisible: the 2026-10-08 load
-of a relaxed junction onto an open SMILES build showed the build's metadata and
-none of the file's, with no word why (the Q16 measurement, [`archive/2026-10-09-plan-consolidation.md`](?doc=archive/2026-10-09-plan-consolidation.md) § 5z.1).
+`info` replaces — and each of its `customized` rows. A dropped record is otherwise invisible: a load onto an
+open build would show the build's metadata and none of the file's, with no
+word why.
 
 The first two rows are load-bearing and they point opposite ways on purpose.
 Taking the whole block from whoever carried a cell let a fragment replace a
@@ -363,134 +362,50 @@ does not judge, the doors that act do — not an outcome left for the user to
 notice.
 
 **Why row 2 is load-bearing for this.** If `axis_kind` rode in from the
-cell-carrier, the axes would be `periodic` and both `_unfittable` and
-`_contains` skip periodic axes — so the same geometry reports **nothing at
-all**. The silence the row prevents is the safety net for row 1.
+cell-carrier, the axes would be `periodic` and both `_unfittable` and the
+containment test (`contains_atoms`, which counts an atom outside only along a
+non-periodic axis) skip periodic axes — so the same geometry reports
+**nothing at all**. The silence the row prevents is the safety net for row 1.
 
-### 2.2c `title` — five sources, four writers, and no owner
+### 2.2c `title` — the geometry file's *(user, 2026-09-23)*
 
-**STATUS: SETTLED 2026-09-23 — `title` belongs to the GEOMETRY FILE**
-*(user)*. It is the `.xyz` comment line and the PDB `TITLE` record, and that
-is its only home. It remains a `Structure` FIELD and still rides `to_dict`
-and `replace`; what it stopped being is a column of the **sidecar**.
-Written because § 2.2b needed a `title` row and the field turned out to have
-no rule anywhere.
+**The geometry file owns `title`; the sidecar does not carry it.** It is the
+`.xyz` comment line and the PDB `TITLE` records, and that is its only home.
+It is a `Structure` field and rides `to_dict` and `replace`, but it is neither
+metadata nor lattice nor atom-indexed, and it is not one of the identity
+columns (`IDENTITY_FIELDS`). Nor is it carried by `_carry_nonatom()`: every
+op-helper that rebuilds a Structure spells `title=struct.title` by hand,
+beside what it carries.
 
-`title` is neither metadata nor lattice nor atom-indexed. It sat in
-`IDENTITY_FIELDS` beside `atom_names` / `residue_ids` / `residue_names` /
-`chain_ids` until the rule below took it out, because unlike those it is
-**also a field of the geometry file**. That was the whole problem.
-
-#### Where it came from — five sources, two of them now retired
-
-| source | where |
+| read from | how |
 |---|---|
-| the `.xyz` **comment line**, verbatim | `from_xyz:1686` `comment = lines[1].strip()`, `:1733` `title=comment` |
-| the PDB `TITLE` record | `from_pdb` |
-| ~~the **sidecar's identity block**~~ | **retired** by the rule below — `title` is in `RETIRED_IDENTITY_KEYS`: tolerated on read, never applied |
-| ~~the **upload filename**~~ | **retired** as a source: a text is read by the codec's one parse (`StructureCodec.read_document`), its title the file's own; the paste's answer shows the name as its `title` only when the file states none (`build.py`, the text branch) |
-| the **file stem** | `parse/coords/pyscf_geom.py` (`_read_optimized_xyz`) — *"mirror the file stem onto Structure.title"* |
+| the `.xyz` comment line | `from_xyz` takes the free text before the first `Lattice=` / `Properties=` / `pbc=` (`_EXTXYZ_KEY`). Only those three, so a sentence keeps its own `=`: *"anneal at T=300K, run 3"* survives whole. The line is read directly, because ASE's reader would shred a human comment into `{'water': True, 'molecule': True}`; the header is cut, because a header is not a name |
+| the PDB `TITLE` records | `from_pdb` joins them with one space |
+| a PySCF run's `_optimized.xyz` whose comment line is empty | its file stem (`parse/coords/pyscf_geom.py`, `_read_optimized_xyz`) |
 
-#### Where it went — four writers, one of them now retired
+A text pasted or uploaded is read the same way: its title is the text's own;
+the name it carries picks its format and names it in what the read says,
+never its title.
 
-| writer | form |
+| written to | how |
 |---|---|
-| `to_xyz:1958` | the comment line — `(comment or self.title or "Built by molbuilder")` |
-| ~~`to_extxyz`~~ | **retired** 2026-10-09 with the extended-XYZ writer (§ 2.3, *the comment line is never metadata*) |
-| `to_pdb` | the TITLE record, columns 11–80 — seventy characters a record; a longer title continues on further TITLE records, numbered in columns 9–10, broken between words, which `from_pdb` joins with one space — never cut, never past column 80 *(2026-10-17, plan PDB-T; it ran past column 80 until then)* |
-| ~~`identity_to_dict`~~ | **retired** — it no longer emits the title, so the sidecar never carries the comment line |
+| `to_xyz` | the comment line — `(comment or self.title or "Built by molbuilder")` |
+| `to_pdb` | the TITLE record, columns 11–80 — seventy characters a record; a longer title continues on further TITLE records, numbered in columns 9–10, broken between words, which `from_pdb` joins with one space — never cut, never past column 80 |
 
-#### It is not carried by the door that carries the others
+**The sidecar never carries it.** `identity_to_dict` does not emit it, so a
+comment line is never something the sidecar says; `apply_to_structure` leaves
+it alone — it neither applies a stored copy over the comment line nor resets
+it to `""` when the sidecar names none — so a comment line edited by hand is
+never overridden. `title` is a retired identity key (`RETIRED_IDENTITY_KEYS`),
+with the same three gates as `RETIRED_METADATA_KEYS`: tolerated on read, so a
+file the user already has is not refused as a stray key; never applied; and
+dropped on rewrite. All three gates know every retired key
+(`sidecars.molstruct.unread_keys`), so a payload built in code
+(`spectra.pyscf_vibration.equilibrium_structure`) and a file read from disk get
+one answer.
 
-`title` is **not** in `_carry_nonatom()`. Every op-helper that rebuilds a
-Structure therefore spells `title=struct.title` by hand, beside what it carries.
-
-#### Six measured defects — measured before the rule, all closed by it
-
-1. **`from_xyz` puts the ENTIRE comment line into `title`** — no keyword
-   stripping. Reading an extended XYZ gives
-   `title == 'Lattice="10.0 …" Properties=species:S:1:pos:R:3 pbc="T T T"'`,
-   while the cell is *also* parsed correctly into `cell`. The same fact, twice,
-   one copy mislabelled as a name.
-2. **The sidecar MASKS it.** Measured on one file: sidecar present →
-   `'my junction'`; sidecar moved aside → `'my junction Lattice="10.000000 …'`.
-   The bug is invisible in normal use and appears the moment the pair is
-   separated — or when any other tool reads the `.xyz`, which is the entire
-   reason for keeping that format.
-3. **The contaminated string is then persisted AS IDENTITY.** The sidecar's
-   identity block records the header text as the structure's name, beside a
-   correct 3×3 `cell`.
-4. **A comment line creates a sidecar file.** Non-empty title ⇒ non-empty
-   identity ⇒ `keep_sidecar` True. Measured: `a.xyz` with a comment →
-   `['a.molstruct.json', 'a.xyz']`; with an empty comment → `['b.xyz']`.
-   A `.molstruct.json` exists to hold one string already in the file beside it.
-5. **The sidecar silently overrides a hand-edited comment line.** Edit the
-   `.xyz` in an editor, reload, and the old title comes back with no word
-   said. This is § 1.13's condition — stated state overwritten by stored
-   state — on the one line of a structure file a person can obviously edit.
-6. **`to_pdb` wrote the TITLE record padded to 70 characters, never cut**
-   (`{self.title:<70s}`), so a contaminated title (90+ chars) ran past the
-   record's column 80. *(The rule cleaned the title; the record itself
-   continues a long one onto numbered TITLE records since 2026-10-17, plan
-   PDB-T.)*
-
-#### Everything that would be affected by a change
-
-* **Python consumers:** `modify.py` ×5, `chemistry.py` ×5 (carries);
-  `web/blueprints/build.py` ×5, `_shared.py`, `pyscf/input.py`,
-  `sidecars/molstruct.py`, `peptide.py`, the three `builders/backends/`.
-  *(`script_emit.py`'s `section.title` / `member.title` is a TEMPLATE
-  section's title and is unrelated — do not sweep it.)*
-* **The web layer already assumes it is unreliable** — `build.py` falls back
-  four different ways: `struct.title or kind`, `or _resolved.name`,
-  `or "restored structure"`, `or (filename or fmt)`.
-* **JS:** `lib/molview/ui.js` (11), `lib/projects/dialogs.js`,
-  `lib/projects/checkpoint.js`, `modify/viewer.js`, `lib/projects/list.js`.
-* **Tests:** assertions across several files, incl.
-  `test_structure_pair_one_generator.py`, `test_structure_envelope_protocol.py`,
-  `test_workingcopy_structure.py`
-  (`test_it_writes_utf8_regardless_of_the_platform_locale` round-trips a
-  non-ASCII title through the codec).
-
-#### THE RULE
-
-**The geometry file owns `title`. The sidecar does not carry it.**
-
-* **`from_xyz` cuts the structural keys.** The title is the free text BEFORE
-  the first `Lattice=` / `Properties=` / `pbc=` (`_EXTXYZ_KEY`). Only those
-  three, so a sentence keeps its own `=`: *"anneal at T=300K, run 3"*
-  survives whole. That protects what the verbatim read was FOR — ASE's reader
-  shreds a human comment into `{'water': True, 'molecule': True}` — while
-  refusing to call a header a name.
-* **`identity_to_dict` does not emit it**, so a comment line is never something
-  the sidecar says. *(It made `keep_sidecar` true, and a `.xyz` with a comment
-  got a `.molstruct.json` for it alone, until 2026-09-23; since v13 every pair
-  molbuilder writes has its sidecar, for its geometry hash, § 2.4.)*
-* **`apply_to_structure` does not touch it** — neither applying a stored copy
-  over the comment line nor, as it used to, **resetting it to `""`** when the
-  sidecar named none. That reset silently erased the comment line of every
-  pair whose sidecar had no title.
-* **Older files still open.** `title` joined `RETIRED_IDENTITY_KEYS`, which
-  gets the same three gates as `RETIRED_METADATA_KEYS` (`pbc`): tolerated on
-  read so a file the user already has is not refused as a stray key, never
-  applied, and dropped on rewrite. A stale contaminated title therefore
-  self-heals the next time the pair is written.
-
-  **The third gate was missed on the first attempt** (2026-09-23, fixed the
-  same day). `apply_to_structure`'s stray-key check did not know about
-  `RETIRED_IDENTITY_KEYS`, so a payload built in code — as
-  `transport/compose.py` and `web/blueprints/watch.py` do, rather than
-  loaded from a file — was **refused** with *"sidecar carries ['title']"*.
-  Exactly the shape `62cc76d0` fixed for `pbc` (*"the retirement reached one
-  gate of two"*), and the function's own comment four lines above the bug
-  says *"a guard that disagrees with its neighbours about what is retired is
-  how this bug happened in the first place"*.
-
-All six defects close. **Pinned by**
-`tests/…::TestTitleBelongsToTheGeometryFile` — one test for one rule, and
-both halves were mutation-checked: before it, reverting the keyword strip
-broke nothing across 116 tests and restoring the identity column broke
-nothing across 131.
+**Pinned by**
+`tests/test_structure_authority_roundtrip.py::TestTitleBelongsToTheGeometryFile`.
 
 ### 2.2d `customized` — named values the structure carries, its own and each frame's *(W39; `archive/2026-10-09-plan-consolidation.md` § 5z.8 F)*
 
@@ -719,7 +634,7 @@ Any other name's unit is carried as written:
 | | `q_amu12_ang` | derived | its position along the mode, the mass-weighted normal coordinate — ONE number for the whole mode, every atom displaced by `q · L_A` with `Σ_A m_A \|L_A\|² = 1` over the `mass_amu` masses: its size `√(Σ_A m_A \|ΔR_A\|²)`, its sign the side of frame 0 it sits on; the frames' node, `√2 σ x_f` | amu^½·Å | Position along the mode, q (amu½·Å) |
 | | `node_sigma` | derived | the same position in units of the spread, `q / σ` | — | q in units of σ |
 | | `weight` | given | the frame's share of the mode's average: the sampling rule's weight at this frame's node, the weights summing to 1, so `Σ_f weight_f X_f` is the rule's estimate of the Gaussian average of `X` (`sampling_rule`; `engines/transport.md` § 2a.12) | — | Weight |
-| `info.vibration` | `run` · `result_sha256` | given | the vibration run the mode was read from — its folder, read through the run door — and the sha256 of its result file (the geometry pin is a cited pair's, `structure-molstruct.md` § 3; a broad hash over the labels is V1.9's remainder) | — | — |
+| `info.vibration` | `run` · `result_sha256` | given | the vibration run the mode was read from — its folder, read through the run door — and the sha256 of its result file (the geometry pin is a cited pair's, `structure-molstruct.md` § 3; no hash over the labels is kept) | — | — |
 
 *On a page* is how a page says the row (`frame_average.ROWS`' `words` and page unit): the plain words, the stored name on hover (`engines/transport.md` § 3.8.1). *Given* is stated by the vibration result, the coordinates or the script;
 *measured* is computed from the coordinates alone, before any correction;
@@ -736,40 +651,23 @@ the temperature the person states sets (`engines/vibration.md` § 5.10 ③;
 |---|---|---|
 | `to_xyz(*, comment="")` | xmol XYZ **text** | one block per frame the structure holds (§ 2.2e): line 1 = `N`; line 2 = comment-or-title, and nothing else; then per atom its species label's name and `x y z` — `Au1` is written `Au` (`chemical_symbols`; `model/chemistry.md` § 3) |
 | `to_pdb()` | PDB ATOM records, as **text** | the element columns 77–78 each label's name, as `to_xyz` writes it; TITLE if set, continued onto numbered records past seventy characters (§ 2.2c); serial capped `99999` (overflow → `*****`); residue id capped `9999`; chain id truncated to 1 char |
-| `to_pyscf(*, as_string=False)` (`:2007`) | PySCF `gto.M` atom kwarg | `(symbol,(x,y,z))` tuples; multi-line string if `as_string=True` |
-| `to_ase()` (`:2034`) | `ase.Atoms` | each atom by its label's name, as `to_xyz` writes it; raises `ImportError` with install hint if ASE absent |
-| `from_xyz(text, *, title=None)` (`:1646`) | XYZ **text** | every frame of the document, one structure (§ 2.2e); see requirements below |
-| `from_pdb(text, *, title=None)` (`:1741`) | PDB **text** | reads `ATOM`/`HETATM`; first MODEL only; TER handling below |
+| `to_pyscf(*, as_string=False)` | PySCF `gto.M` atom kwarg | `(symbol,(x,y,z))` tuples; multi-line string if `as_string=True` |
+| `to_ase()` | `ase.Atoms` | each atom by its label's name, as `to_xyz` writes it; raises `ImportError` with install hint if ASE absent |
+| `from_xyz(text, *, title=None)` | XYZ **text** | every frame of the document, one structure (§ 2.2e); see requirements below |
+| `from_pdb(text, *, title=None)` | PDB **text** | reads `ATOM`/`HETATM`; first MODEL only; TER handling below |
 
-**The readers take a document, never a path** (`_require_text`, `:66`
+**The readers take a document, never a path** (`_require_text`
 — a `Path` raises `TypeError` naming the door instead). To read a *file*, call
 `StructureCodec().load(path)`: it reads the `.molstruct.json` beside the
 geometry, which a bare reader cannot.
 
-**And so do the writers, since 2026-09-22: they RETURN a document and cannot
-be handed a path.** `to_xyz`, the extended-XYZ writer and `to_pdb` each took an optional
-`path` and wrote a lone file to it. That is the half that loses data — the
-frozen atoms, the region labels and the explicit cell go on the floor,
-silently and at exit 0 — and it is the door every violation in this document's
-history walked through. To write a *file*, call
-`StructureCodec().write(struct, path)`, which writes the pair.
+**The writers return a document and cannot be handed a path.** A lone
+geometry file drops the frozen atoms, the labels and the explicit cell
+silently, so to write a *file* call `StructureCodec().write(struct, path)`,
+which writes the pair; a lone-geometry write is not a call anyone can express.
 
-The rule is now carried by the signatures rather than by this paragraph: a
-lone-geometry write is not a call anyone can express. Two production callers
-had to change for it, one of them the package's own front-page example.
-
-> **A guesser stood here until 2026-09-07.** `_resolve_source` tried
-> `os.path.isfile` first and fell back to "treat it as text", so `from_xyz`
-> and `from_pdb` each took a path *or* a document. Two costs. A mistyped path
-> was diagnosed as a malformed document — `from_xyz("/no/such.xyz")` answered
-> *"Expected xyz header but got: invalid literal for int()"*. And it gave the
-> project a second way to read a structure file, one that skipped the sidecar;
-> `molbuilder.load()`, deleted the same day, was built on it.
->
-> The rule it now follows is the one `model/parse.md` § 7 already states for
-> the block readers: **a reader takes a path or it takes text, never both**,
-> and a caller holding a path reads the file itself. `os` is no longer imported
-> by this module at all — reading stopped being a filesystem concern here.
+> A reader takes a path or text, never both (`model/parse.md` § 7):
+> `_require_text` refuses a path, naming the door that reads a file.
 
 **Round-trip guarantees.** XYZ: element symbols exact, positions to the six
 decimals `to_xyz` writes (1e-6 Å), every frame; metadata drops to defaults
@@ -781,9 +679,10 @@ carries what the geometry cannot: the sidecar holds the real identity
 columns and the species labels (`structure-molstruct.md` § 1), so a saved
 pair loses none of them.
 
-**`from_xyz` requirements:** line 1 = non-negative integer N; lines 2..N+2
-read; trailing blank/short lines tolerated; bad header or short atom line →
-`ValueError` with the offending line.
+**`from_xyz` requirements:** a document ASE's extended-XYZ reader reads; one
+it cannot read → `ValueError` carrying ASE's own diagnosis (*could not read
+XYZ: …*), an empty one *XYZ is empty: …*; a frame whose atom count, species
+or order differs from frame 0's → `ValueError` naming that frame.
 
 **A document of several frames is read whole, as one frame set** (§ 2.2e),
 and its frames must BE one: a frame `k` whose atom count, species or atom order
@@ -806,7 +705,7 @@ another tool's. What the line gives is the title, by § 2.2c's rule, and nothing
 else. The line does reach ASE's reader with the rest of the document — ASE
 lays out the atom lines by a `Properties=` key when the line has one, the plain
 `El x y z` layout when it has none — and of what ASE parses `from_xyz` takes
-each frame's species and positions and nothing more (`structure.py:1700-1735`),
+each frame's species and positions and nothing more (`Structure.from_xyz`),
 so no key on the line becomes metadata. And molbuilder writes nothing else there: a frame set is written as plain
 XYZ, one block per frame (§ 2.4), so the cell has one home, the sidecar.
 
@@ -820,8 +719,8 @@ one spanning multiple segments is disambiguated by appending the segment index
 truncate to first char), or crashing on a TER between ATOM blocks.
 
 **The one reading door.** `StructureCodec().load(path, *, frame=None,
-frames=False, retired_out=None, said_out=None, opened=(),
-in_user_order=False)` — `molbuilder/workingcopy_structure.py`. Dispatches on
+frames=False, retired_out=None, stated_out=None, said_out=None, opened=(),
+in_user_order=False, a_copy=False)` — `molbuilder/workingcopy_structure.py`. Dispatches on
 the extension (`.xyz` / `.pdb`, anything else refused by name) and applies a
 `.xyz`'s `.molstruct.json` (`molstruct.paired_sidecar`; a `.pdb` holds none,
 § 2.4) through `apply_to_structure`. **The pair is the
@@ -885,37 +784,10 @@ edit acts on one structure, and on the command line there is no one to ask
 which frame — a frame is taken out by a script (`load(path, frame=i)`) or in
 the Modify tab, which asks.
 
-> **`molbuilder.load()` stood here and is deleted** *(2026-09-07)*. It read
-> the geometry and not the sidecar — it predated the sidecar by two months and
-> was never swept when the codec landed. Its one production caller was
-> `molbuilder describe`, which therefore wrote descriptions with the author's regions,
-> frozen atoms and cell missing: the same failure `siesta/input.py` records
-> having fixed at its own door, *"the script relaxed every atom of a structure
-> whose author had frozen two."* A second name for the door is what let the
-> two drift.
-
-> **ASE owns the XYZ parse (2026-07-31).** `Structure.from_xyz` calls
-> `ase.io.read(..., format="extxyz")` rather than splitting lines itself. ASE is
-> a declared dependency **for this** — `pyproject.toml` names it *"XYZ I/O +
-> atomic-number table"* — and its extended-XYZ reader is a superset reader: it
-> takes the plain xmol layout and an extended-XYZ comment line alike (whose
-> keys molbuilder does not read, above), canonicalises an external tool's
-> `FE`/`ZN` to `Fe`/`Zn`, and reads **every** frame of a multi-frame document.
->
-> The hand-rolled parser it replaced read the atoms of the first block and
-> nothing else, so a file this class had itself written with `to_extxyz` came
-> back with **no cell, no pbc and one frame**. The project already knew: a
-> second reader existed at `siesta/input.py`, whose comment said ASE *"gives us
-> the lattice when present, which our hand-rolled parser doesn't"* — a correct
-> diagnosis fixed at one call site by adding a reader beside the lossy one,
-> while every other caller kept the lossy one. That second reader is now gone.
->
-> One thing stays ours, deliberately. The **title** is read from the comment
-> line directly, because ASE's reader parses that line as `key=value` pairs and
-> a human comment (`water molecule`) would come back as
-> `{'water': True, 'molecule': True}`. *(Until 2026-10-09 a `Lattice=` with a
-> periodic `pbc=` was also adopted as the cell; the comment line is no longer
-> metadata at all, above.)*
+> **ASE owns the XYZ parse:** `from_xyz` calls
+> `ase.io.read(..., format="extxyz")`, a superset reader (the plain xmol
+> layout and an extended comment line alike, `FE` → `Fe`, every frame); the
+> title alone is read from the comment line directly.
 >
 > `from_pdb` is still ours, and the one reader of a PDB, what the builders' tools
 > write included: PDB carries residue, chain and atom-name columns this model owns.
@@ -955,15 +827,10 @@ copy of any of them:
    and the one serialisation (`molstruct.dumps`);
 4. **the invariants** — **every pair molbuilder writes has its sidecar**, a
    structure with nothing to say about its atoms included, because the
-   sidecar carries the pin *(v13, 2026-10-14; until then a structure with
-   nothing to say was written as the geometry alone, so a plain molecule had
-   no pin)*; **both or neither on write** — both halves rendered first, so a
+   sidecar carries the pin; **both or neither on write** — both halves rendered first, so a
    sidecar its serialiser refuses (a NaN recorded in `info`) stops the write
    with the pair on disk as it was; then both staged to temp siblings, then
-   both put in place, the geometry first *(built 2026-10-17, plan V1.10;
-   until then the geometry was put in place before the sidecar was even
-   serialised, and such a sidecar left the new coordinates beside the old
-   one)*; and on read, a geometry with
+   both put in place, the geometry first; and on read, a geometry with
    no sidecar beside it is one molbuilder did not write as a pair — read as
    its atoms and coordinates (§ 2.3, *a lone file says what was read*). **An engine's own structure file** — SIESTA's `<label>.xyz`,
    written with no sidecar, read where its run is recorded — **is read
@@ -974,15 +841,12 @@ copy of any of them:
    a structure from an engine's output — its deck's labels and order record,
    and what it says about itself, whole: its contract from its deck and its
    relaxation record from the output a viewer opens in its folder
-   (`runs.openable`; `model/parse.md` § 5b.1) *(the frame 2026-09-27, plan § 0a M1, from
-   the run's own deck since 2026-10-04, plan B12; through the view, with the
-   labels and the order, 2026-10-14)*. A file molbuilder writes, or
+   (`runs.openable`; `model/parse.md` § 5b.1). A file molbuilder writes, or
    one in a folder no calculation marks, reads as before. **Not** a periodicity gate: reading does not judge
-   (`structure-periodicity.md` § 8.2) — see the `read` docstring below.
+   (`structure-periodicity.md` § 8.2) — see the `load` docstring below.
 
-   *2026-10-14* ([`model/overview.md`](?doc=model/overview.md) § 2.2a, plan
-   § 5ab R1–R2): **the order record
-   travels inside the pair** — a
+   **The order record travels inside the pair**
+   ([`model/overview.md`](?doc=model/overview.md) § 2.2a) — a
    remapped structure's `atom_order` is a field of its sidecar (v14), read and
    written by the codec with its atoms and nowhere else (I7). **The codec
    refuses to write a remapped structure**, naming `restored()` — `write`,
@@ -1023,10 +887,12 @@ class StructureCodec:                       # L2 (may use the L2 sidecar codec)
         `named(target)` and its sidecar. What `write` writes, without
         writing it."""
 
-    def write(self, struct, target) -> Path:
+    def write(self, struct, target, *, engine_record=False) -> Path:
         """TO DISK. The pair as one unit: geometry to `target`, and the
         sidecar, its geometry hash made over that geometry, to
         sidecar_path_for(target).
+        `engine_record`: the one door for an engine's record in its own
+        order -- the transport composer's junction.
         Both or neither: both halves rendered, then both staged to temp
         siblings, then both os.replace'd, geometry first -- a sidecar that
         cannot be written stops the write before anything is on disk; the
@@ -1048,10 +914,12 @@ class StructureCodec:                       # L2 (may use the L2 sidecar codec)
         """BACK IN, FROM TEXT. A geometry document's one parse -- the reader
         `fmt` picks (`format_of_text(text, name)`: the name's format, else
         the text's own), every frame, the title without an engine record's words;
-        atoms only. `read` (`load`) is this parse of a file's text, its
+        atoms only. `load` is this parse of a file's text, its
         sidecar applied; the web's paste and upload ask it for a text."""
 
-    def read(self, source_path, *, frame=None, frames=False) -> Structure:
+    def load(self, source_path, *, frame=None, frames=False,
+             retired_out=None, stated_out=None, said_out=None, opened=(),
+             in_user_order=False, a_copy=False) -> Structure:
         """BACK IN. Parse geometry (.pdb by extension, else .xyz) AND, for a
         .xyz, its paired sidecar (`molstruct.paired_sidecar`), applying metadata via molstruct.apply_to_structure
         to the whole set, then answering frame 0, frame `frame`, or with
@@ -1064,20 +932,8 @@ class StructureCodec:                       # L2 (may use the L2 sidecar codec)
         doors that ACT on it (`structure-periodicity.md` § 8.2, decided
         2026-08-03 -- raising here made such a file unopenable and therefore
         unfixable, since the Cell page cannot be reached without the
-        structure on screen). `load` is the same call under its read-side
-        name."""
+        structure on screen)."""
 ```
-
-> **Two sentences in the block above were wrong until 2026-09-23.** `write`
-> was said to swap geometry first *"so a reader never sees new geometry with
-> a stale sidecar"* -- which is exactly what geometry-first produces, and
-> what the code's own docstring names. And `read` was said to run a
-> periodicity gate that **was deliberately removed on 2026-08-03**; a reader
-> comparing this contract against the code would have concluded the guard was
-> missing and restored it, re-creating the unopenable-and-unfixable file that
-> removal was for. Both now describe what the code does. *(The write order
-> changed 2026-10-17 -- `plans/plan.md` V1.10: both halves rendered and staged
-> before either rename.)*
 
 > **The rule this shape exists to make checkable:** *every structure↔bytes
 > translation goes through the codec, and every adapter has exactly one door.*
@@ -1085,7 +941,7 @@ class StructureCodec:                       # L2 (may use the L2 sidecar codec)
 > fixes — so the question gets asked rather than answered by call count.
 >
 > **On the web too, a structure file reaches disk only through this door**
-> *(2.69.10; the user, 2026-11-09: "writing of structure files are always
+> *(the user, 2026-11-09: "writing of structure files are always
 > through one … unified api as we have designed")*. The content-blind file
 > layer writes no geometry file and no sidecar (`molstruct.is_geometry`,
 > `is_sidecar` — the pairing rule's own predicates): `/api/files/write`
@@ -1097,10 +953,7 @@ class StructureCodec:                       # L2 (may use the L2 sidecar codec)
 > written with its structure or not at all; the file read answers
 > `read_only` for both, so the preview shows them and edits neither; and the
 > hand-over's pair is written on the server
-> ([`handover-procedure.md`](?doc=web/handover-procedure.md) § 2). *(Until
-> 2.69.10 the sidebar's upload and the preview's editor wrote a structure's
-> bytes as they came, and a replaced `.xyz` kept the sidecar of other atoms,
-> which the next load refused as changed since it was written.)*
+> ([`handover-procedure.md`](?doc=web/handover-procedure.md) § 2).
 >
 > **`write` names the file; `files` does not.** The difference is who chose the
 > name. A project save was given an exact path through a picker, with an
@@ -1109,19 +962,11 @@ class StructureCodec:                       # L2 (may use the L2 sidecar codec)
 > and conflating them is how the pairing rule came to have a second
 > implementation in the browser (`web/molview.md` § 11.7).
 >
-> **Corrected 2026-07-31.** `pair` briefly named a range `.extxyz`, on the
-> reasoning that a name should say which format it holds. It should not, and it
-> could not: `read` dispatches on the extension and takes `.xyz` / `.pdb` only,
-> so a saved trajectory **could not be reopened** — the project record was
-> write-only for ranges, and no test noticed because the save test never read
-> its file back. Extended XYZ under `.xyz` is both the convention and the thing
-> that works.
+> One frame or many, the file is plain XYZ under `.xyz`, so `load` reads back
+> every file `write` makes.
 >
-> **Retired 2026-07-31:** `scratch_blob` / `from_scratch`, which round-tripped a
-> structure through an in-memory `{xyz, sidecar}` **text** blob. Their last
-> caller was `/api/structure/periodicity` before it took the envelope; a blob
-> means a coordinate document is written to ask a question about coordinates,
-> which is the thing `web/molview.md` § 11.7 forbids.
+> A coordinate document is never written to ask a question about coordinates
+> (`web/molview.md` § 11.7).
 
 > **Why the file door is L2, not a method on L1 `Structure`.** The layering
 > invariant (`architecture.md` § 3; kept by review) forbids an L1 module
@@ -1149,39 +994,12 @@ holds is refused, naming `--from-run` *(2026-10-14, plan § 5ab R1–R2)*.
 
 **Both sides of the CLI now go through the door.** Reads: `jobset prep`
 reads the calculation's structure through `StructureCodec().load`
-(`jobset/prep.py::_structure_for`); every deck is made from that structure,
+(`jobset/rung.py::structure_for`); every deck is made from that structure,
 so every emitter sees regions and frozen atoms (SIESTA writes
-`Geometry.Constraints` from them). *(SIESTA's own file reader,
-`siesta/input.py::_struct_from_file`, re-dispatched on the extension in front
-of the door, read a `.pdb` pair's cell as none, and had no caller; deleted
-2026-10-14.)* `pyscf/input.py` reads no file: it is handed the structure prep
-read. *(This named `molbuilder
-pyscf` and "the `fdf` path" as the two readers; both verbs are deleted — `fdf`
-2026-08-11, `pyscf` 2026-09-17 — and the door they went through is now reached
-only by `jobset prep`.)* Writes: `_emit` and
+`Geometry.Constraints` from them). `pyscf/input.py` reads no file: it is
+handed the structure prep read. Writes: `_emit` and
 `molbuilder modify` call `StructureCodec().write`, so a CLI save emits the
 **pair** — and the two surfaces now agree about what saving a structure means.
-
-> **Closed 2026-09-07 (was `plans/plan.md` W15).** The write side called bare
-> `struct.to_xyz()` / `to_pdb()`. Measured before the fix, on a device
-> carrying `L-electrode`, `frozen_atoms` and an explicit cell:
->
-> ```
-> $ molbuilder modify in.xyz out.xyz --rotate z:0     # a ZERO-degree rotation
-> Wrote out.xyz: 4 atoms (input had 4)
-> $ ls
-> in.molstruct.json  in.xyz  out.xyz                  # no out.molstruct.json
-> ```
->
-> The output `.xyz` carried no `Lattice=` either, so the box was not merely
-> unadopted on read — it was not in the file. `modify` READ the pair through
-> the codec and wrote back half of it, at exit 0, without a word. The same
-> applied to every builder via `_emit`.
->
-> Two earlier statements here were also wrong and are gone: that the readers
-> "never look for the sidecar" (they had moved to the codec weeks before, each
-> with a comment recording it), and the `cli.py` line citations, which had
-> drifted.
 
 > **What `write` writes, `load` reads back.** `write` writes the target
 > verbatim, and `load` dispatches on its suffix, so XYZ bytes under a `.pdb`
@@ -1200,15 +1018,9 @@ definition.
 
 ### 3.1 The open door — `projects.parser.openMolecule`
 
-> **There was a save door beside it until 2026-09-02.**
-> `parser.saveMolecule` took a path it was GIVEN and posted it, handing a
-> `needsOverwrite` back for the caller to deal with — so it always needed a UI
-> layer on top, and `modify/structure/save.js` was that layer. When the Save
-> panel moved onto `projects.molviewFiles.save("project", …)`, which asks WHERE
-> and owns the overwrite flow itself ([`tabs.md` § 6](?doc=web/tabs.md)), the
-> half-door had no caller and was deleted rather than kept as a second way to
-> write one file. **Opening needs the pairing rule; saving needs a
-> destination** — different questions, one door each.
+**Opening needs the pairing rule; saving needs a destination** — one door
+each: `openMolecule` opens a file, `projects.molviewFiles.save` asks where and
+owns the overwrite flow.
 
 It is **FILE-ONLY**: the door hands a `path` to the **server**, which owns file access, the
 `.xyz`↔`.molstruct.json` pairing, and the sidecar schema. The browser reads
@@ -1219,7 +1031,7 @@ task #75).
 
 | Door | Does | Server seam |
 |---|---|---|
-| `openMolecule(path, {confirmDiscard?, restore?})` | dirty-gate → `molview.data.installMolecule({path, restore, enforce: true})` — `restore` asks for a file in an engine's order put back in the user order ([`model/overview.md`](?doc=model/overview.md) § 2.2a) | `POST /api/build/load` (`build.py:596`) → `StructureCodec.load` |
+| `openMolecule(viewer, path, {confirmDiscard?, restore?})` | dirty-gate → `viewer.data.installMolecule({path, restore, enforce: true})` — `restore` asks for a file in an engine's order put back in the user order ([`model/overview.md`](?doc=model/overview.md) § 2.2a) | `POST /api/build/load` → `StructureCodec.load` |
 | *(saving)* `projects.molviewFiles.save("project", stem, exportFile(range))` | asks WHERE (`chooseSavePath`) → POST → confirms an overwrite → refreshes the sidebar | `POST /api/structure/save` → `struct_from_body` + `StructureCodec.write` (stamps `schema_version` + the `geometry_hash` of what it writes) |
 
 `openMolecule` is **only** for a project-file path. A generated structure
@@ -1240,7 +1052,7 @@ model layer stays DOM-free.
 `molview.data` (`lib/molview/model.js`) is the browser model:
 `installMolecule({path} | {structure} | {text, filename})`, `exportFile(range) → {name,
 structure}` — ONE envelope, the range's frames and their rows inside it
-(§ 2.2e) — and `markSaved(path)`. Named-key reads of the wire dict happen
+(§ 2.2e). Named-key reads of the wire dict happen
 in **one** place — the model's accessors (`getUnitCell`,
 `getUnitCellOrigin`, `getVacuum`, `getAxisKind`, …), the JS analogue of
 Structure's codec. The inbound translator composes `periodicity` from the
@@ -1248,9 +1060,9 @@ box keys of the structure's metadata (`BOX_METADATA_KEYS`, Python's
 `BOX_FIELDS`) and the resolved box beside them; every other metadata key rides
 whole in `otherMetadata`, so a server-added field survives persistence
 untouched — a box key the list does not name among them. The one
-deliberate write accessor, `setPeriodicity`, names only the lattice keys it
-*manages* (it is an editor, not a carry) and is spread-based, so it cannot
-drop an unlisted field.
+periodicity writer, `commitPeriodicityOp`, posts the op to the server's door
+and adopts the block it answers — it carries no key list of its own, so it
+cannot drop an unlisted field.
 
 ### 3.3 SETTLE-BEFORE-READY — one store write per load
 
@@ -1269,25 +1081,22 @@ sequenceDiagram
     D->>IM: { path }
     IM->>BL: POST { path }
     BL-->>IM: StructureCodec.load (.xyz + paired .molstruct.json) → atoms + periodicity + annotations
-    Note over IM: ONE synchronous write — model SETTLED. getNAtoms() = ready gate.
-    IM->>IM: await _anchorTimeline() (prune + persist)
+    Note over IM: ONE synchronous write — model SETTLED, the history anchored on it (recordFirstState)
     D-->>U: resolve — NO second store write
 ```
 
-> The 2026-07 regression that defined this: load used to install atoms (open
-> the ready gate), then `await adoptSession({selection:[]})` ~300 ms later,
-> wiping a click made in the gap. Fix: sidecar atoms ride in on the single
-> install; the trailing write is gone.
+> No second store write follows the install: one landing after "ready" would
+> clobber what a consumer did in between.
 
 ### 3.4 Consumer map (shipped)
 
 | Consumer | `file:function` | Call |
 |---|---|---|
 | Molbuilder tab — Load / dblclick | `modify/selection-bootstrap.js:_commitFile` | `POST /api/build/load`; on a file of several frames, which frame (1 … F, frame 1 offered) and a second load of that one (§ 2.2e — the tab holds one frame); with a structure open, the add-or-clear question (`tabs.md` § 2, *Creating a structure*); then `structurePage.loadIntoCanvas(…, {replace})` — *Add* merges through `/api/modify/append` (§ 2.2b), *Clear* installs the file over the view |
-| Molbuilder tab — Save panel | `modify/structure/save.js:save` | `projects.molviewFiles.save("project", stem, exportFile())` — the door asks WHERE and owns the overwrite flow (`tabs.md` § 6). **It does not go through `saveMolecule`**, and since 2026-09-02 nothing does |
-| Transport commit | `lib/transport/core.js:_showInMolview` | `openMolecule(path)` + `molview.mount` |
-| Results structure inspector | `lib/inspectors/structure.js` | `openMolecule(path)` + `molview.mount` |
-| Structure-optimization and Spectrum — Load / dblclick | `lib/structure-card.js:loadNow` | `openMolecule(path)` + `molview.mount`, one load on the canvas at a time, the newest asked winning (`tabs.md` § 3); reads state off the model |
+| Molbuilder tab — Save panel | `modify/structure/save.js:save` | `projects.molviewFiles.save("project", stem, exportFile())` — the door asks WHERE and owns the overwrite flow (`tabs.md` § 6) |
+| Transport report | `lib/inspectors/transport.js` | `molview.mount` + `openMolecule(handle, junction, {restore})` — in the user order, or marked where its order is not recorded |
+| Results structure inspector | `lib/inspectors/structure.js` | `molview.mount` + `openMolecule(handle, path)` |
+| Structure-optimization and Spectrum — Load / dblclick | `lib/structure-card.js:loadNow` | `molview.mount` + `openMolecule(handle, path)`, one load on the canvas at a time, the newest asked winning (`tabs.md` § 3); reads state off the model |
 | Generators (smiles/dna/…) | `modify/structure/*.js` → `page.js` | `molview.data.installMolecule({structure, filename})` (not a door) |
 | Trajectory inspector | `lib/trajectory/core.js` | `installMolecule({structure, filename, frames, forces})` + `reloadFrames(...)` — **the one exception to frames-in-the-envelope**: a run's frames are parsed by the tab from the run's own file, carry forces and no rows, and replace any frame axis the envelope had (`web/molview.md` § 11.7) |
 
@@ -1295,8 +1104,8 @@ sequenceDiagram
 > route was renamed to `/molbuilder`, but the directory name is historical.
 
 "Load + mount is ONE shared path": Transport, Spectra, and the Results
-inspector each open the picked file via `openMolecule(path)`, then
-`molview.mount(host, ws, {mode, owner})`. When each hand-rolled its own copy
+inspector each mount its viewer (`molview.mount(host, ws, {mode, owner})`)
+and open the picked file into it, `openMolecule(handle, path)`. When each hand-rolled its own copy
 they drifted (the inspector read raw XYZ and dropped the sidecar — the label
 bug). One path = the sidecar-correct load, for every tab.
 
@@ -1345,11 +1154,11 @@ dict, with `frames` in place of `positions` (§ 2.1) and every row in
 file holds (`web/web-api.md`). Its put-back branch, `{structure}` — a tab
 putting back the structure it showed before the page was left — is
 `exportFile`'s exact inverse: the envelope answered whole, a frame set with
-every frame, and no frame chosen (`build.py:674-699`).
+every frame, and no frame chosen (the load route's put-back branch).
 
 **Where the sidecar schema lives** (server, one home):
 `sidecars/molstruct.py` — `apply_to_structure(struct, dict)`, `load(path)`,
-`save(...)`, `sidecar_path_for(xyz)`, and its text's reader in `parse/`,
+`to_dict(…)`, `dumps(payload)`, `sidecar_path_for(xyz)`, and its text's reader in `parse/`,
 `parse.sidecars.molstruct.load_text`. The
 byte layer knows the pair only as "which bytes travel together"; interpreting
 it (parse + apply the schema) happens only inside the server seam. Clicking a
@@ -1381,7 +1190,7 @@ def _fully_populated_structure():
     return s
 
 # to_dict → from_dict preserves every field; to_dict carries the stated offset
-# and to_wire the box_corner it puts the box at; StructureCodec.write → read preserves
+# and to_wire the box_corner it puts the box at; StructureCodec.write → load preserves
 # metadata and writes the .molstruct.json pair.
 ```
 
@@ -1405,33 +1214,3 @@ the two codecs; a JS field whitelist that drops an unlisted key (a key the
 translators do not shape rides whole, `otherMetadata`); a second file stack or a
 browser-authored sidecar. Named-key access lives in exactly one place per
 language.
-
----
-
-## 6. Status
-
-**Shipped (2026-07):** the L1 codec (`to_dict`/`from_dict`/`to_wire`) + the L2
-`StructureCodec` (`pair` / `files` / `write` / `read`); the server seams
-(`/api/build/load`, `/api/structure/save`, `/api/structure/export`); the JS doors
-(`parser.js`) with every consumer above repointed; the JS periodicity
-field-whitelist replaced by verbatim deep-clone; the old `molview.data` file
-stack + `/api/workingcopy/*` door path removed. The web composer is
-`_shared.structure_answer` (`to_dict` + `to_wire`, 2.69.21).
-
-**Consolidated 2026-07-31.** Every adapter now has exactly one door: `write` →
-`/api/structure/save`, `files` → `/api/structure/export`, `read` →
-`/api/build/load`. The export door answers with the files **named**, so no caller
-derives a filename or re-serialises a sidecar; `scratch_blob` / `from_scratch`
-were retired with the `{xyz, sidecar}` blob shape that was their only reason to
-exist (§ 2.4).
-
-**Closed 2026-09-22 (was `plans/plan.md` **W15**, task #73).** The CLI's
-converters route through `StructureCodec`, so a CLI save emits the pair like
-the web save does — `modify` since 2026-09-07, `xv2xyz` with this change. And
-the door that made the violation reachable is shut rather than merely unused:
-the writers no longer accept a path at all (§ 2.3). Every surface obeys § 2.4.
-
-**Built 2026-10-09 (`archive/2026-10-09-plan-consolidation.md` § 5z.8 F, steps 1–3):** `customized` (§ 2.2d), frames
-inside the structure (§ 2.2e), the frame options of `load` (§ 2.3, § 2.4),
-sidecar schema 11, and MolView's half (`web/molview.md` § 6.1–6.2, § 8.4a,
-§ 9.3–9.4, § 11.7). Pinned by `tests/data/frame_sets.toml`.

@@ -15,8 +15,7 @@ This document owns **one fact**: *how many of the numbers a vibrational
 calculation produces are vibrations, and how the rest are identified and
 removed.* Every place in the codebase that counts modes, warns about modes, or
 decides what goes into a spectrum or a thermochemistry sum reads its rule from
-here. Before 2026-09-21 that fact had no home, was re-derived in three places,
-and was wrong in all three (§ 8).
+here. It has one home, so no other place re-derives it (R1).
 
 > **Vocabulary.** *Hessian* — the table of second derivatives of the energy with
 > respect to moving each atom in each direction; its eigenvalues give the
@@ -92,7 +91,9 @@ rotation is due to Eckart [Eckart1935].
 **How it is done in practice.** You do not count — you *remove*. Write the six
 motions out as explicit vectors at the current geometry, project them out of the
 Hessian, and diagonalise what remains. PySCF's `harmonic_analysis` does exactly
-this, and molbuilder's all-atoms-free path calls it:
+this (below); molbuilder does the same in its one harmonic path,
+`spectra/normal_modes.py::vibrational_modes`, for a free run and a held one
+alike:
 
 ```python
 TR = _get_TR(mass, atom_coords)            # the six motions, from coordinates
@@ -232,8 +233,7 @@ modelled — has fewer:
   the same way — a different structure, a different energy. There is no
   rotational invariance to exploit, and **no rotational null vectors to remove**.
 
-**The rule has no cases** *(stated case-free 2026-09-23; a two-row table stood
-here and got a wire wrong)*: a rotation generator is an antisymmetric matrix
+**The rule has no cases** — a rule with cases gets a wire wrong: a rotation generator is an antisymmetric matrix
 $A$, and the rotation is a symmetry of the energy only if it maps every lattice
 vector onto itself — $A\cdot a = 0$ for every lattice vector $a$ of a `periodic`
 axis. The space of such $A$ has dimension **3, 1, 0, 0** for **0, 1, 2, 3**
@@ -283,8 +283,7 @@ engine that builds the molecule in free space (PySCF's `gto.M`) uses no box at
 all, so its answer is a free molecule's whatever the structure states. One door
 answers both, `cell.engine_axis_kinds`
 ([`model/structure-periodicity.md`](?doc=model/structure-periodicity.md)
-§ 2.1), and the deck, its Methods paragraph and the settings check all ask it —
-they counted the structure's own on PySCF until 2026-10-01 (plan § 5w K8).
+§ 2.1), and the deck, its Methods paragraph and the settings check all ask it.
 
 > **Do not "restore" the rotations for a molecule in a large periodic box.**
 > They are near-symmetries there, broken by the box, so the corresponding
@@ -591,14 +590,12 @@ molecule anchored at one or two atoms the constrained model is a small change;
 for a molecule on a metal represented by a finite cluster, the cluster screens
 differently from the metal and the field at the molecule is not the incident
 one (§ 4b.7). The number is computed; how much it means is the reader's
-judgement, and § 4b.7 says what to weigh. *(Until 2026-09-24 this paragraph
-said the band strength lost "the charge flow through the anchor"; it does not —
-the anchor's electrons answer every free-atom displacement.)*
+judgement, and § 4b.7 says what to weigh.
 
 ### 4a.5b The SIESTA route
 
-Built 2026-09-23 and described with the PySCF route, side by side, in § 4b.4
-and step by step in § 4b.6:
+Described with the PySCF route, side by side, in § 4b.4 and step by step in
+§ 4b.6:
 force constants by central differences of SIESTA's forces over the free atoms
 only, derived by the job itself right after the run (`vibration.md` § 5.5) through the same harmonic path.
 Its infrared comes from the run's own charges, the free atoms';
@@ -656,11 +653,10 @@ deck, the pseudocode, the cost read from the code — is
 [`engines/vibration.md`](?doc=engines/vibration.md) §§ 4–5; every gap named
 here is a row of its § 10 and of the plan.
 
-*(§ 4b.1 and § 4b.2 are as written on 2026-09-23. § 4b.3 onward was written on
-2026-09-24 against the discussion's update, with every code claim read from
-the code text that day — `spectra/normal_modes.py`, `parse/engines/siesta_fc.py`,
-`spectra/from_siesta.py` (since 2026-09-28 `spectra/vibrational_analysis.py` and `spectra/siesta_vibration.py`, run by the job itself), `pyscf/vibration_emitters.py` — and one gap measured
-on a run.)*
+*(Every code claim below is read from the code text:
+`spectra/normal_modes.py`, `parse/engines/siesta_fc.py`,
+`spectra/vibrational_analysis.py`, `spectra/siesta_vibration.py`,
+`pyscf/vibration_emitters.py`.)*
 
 ### 4b.1 The theory, in five lines
 
@@ -740,7 +736,7 @@ flowchart LR
   end
   P4 --> M["spectra/normal_modes.vibrational_modes<br/>mass-weight H_AA · remove the surviving whole-body<br/>motions (the rank of § 3.1) · diagonalise"]
   S4 --> M
-  M --> R["&lt;label&gt;.spectra.json — the one artifact:<br/>modes · what was removed · thermochemistry ·<br/>intensities (PySCF) or null (SIESTA)"]
+  M --> R["&lt;label&gt;.spectra.json (its data file .spectra.nc beside it):<br/>modes · what was removed · thermochemistry ·<br/>infrared and Raman — SIESTA's from the run's<br/>charges and optical calls"]
 ```
 
 ### 4b.2 A two-atom example with real numbers
@@ -801,14 +797,14 @@ $$
 $$
 
 *(For a DC readout the first derivative averages away and the second is
-the one that survives — § 4c.4, proposed 2026-09-28.)*
+the one that survives — § 4c.4.)*
 
 The two engines serve different links, and the discussion's division of
 labour is reproduced here with a third column — what this tool does today.
 
 | question | PySCF | SIESTA / TranSIESTA | in this tool, 2026-10-09 |
 |---|---|---|---|
-| the natural model | a molecule, or a finite metal–molecule cluster | a periodic surface or junction | the Spectrum tab sends an isolated structure to PySCF and one that repeats along an axis to SIESTA (`vibration.md` § 2.1) |
+| the natural model | a molecule, or a finite metal–molecule cluster | a periodic surface or junction | the person picks the engine on the Spectrum tab; a structure that repeats along an axis switches it to SIESTA, saying why, unless the person already chose (`vibration.md` § 2.1) |
 | fixed atoms | selected nuclear coordinates left out of the active set | frozen substrate layers | one fact, `frozen_atoms` on the structure, read by both engines (§ 4b.4) |
 | fixed atoms electronically present | yes | yes | yes on both: every atom is in `gto.M` and in the SIESTA cell |
 | the Hessian | analytic, for supported methods | finite displacement of the forces | `hess_elec` + `hess_nuc` over the free atoms plus the dispersion block; `MD.TypeOfRun FC` over the free range |
@@ -902,8 +898,7 @@ optimiser is skipped and the deck checks the gradient instead, warning above
 `geom_gmax` itself on the largest force component over the free atoms
 (`vibration.md` § 4.3) — the statement answered with a number rather than
 believed, by the same rule the SIESTA finish applies to `relax_force_tol`
-(one rule for both routes, V1.30, closed 2026-09-24; it was ten times the
-criterion before). geomeTRIC's own `gmax` is a per-atom norm, so the deck's
+(one rule for both routes). geomeTRIC's own `gmax` is a per-atom norm, so the deck's
 component test is the looser reading of the same number (a component never
 exceeds the vector it belongs to, by up to $\sqrt{3}$) — chosen knowingly for
 V1.30, because the component is what SIESTA's own convergence test reads and
@@ -1005,7 +1000,7 @@ flowchart LR
   C --> D["D/E · H_AA · mass-weight ·<br/>remove surviving motions · diagonalise"]
   D --> F["F · enlarge the active region<br/>A: molecule · B: +1 layer · C: +2"]
   D --> G["G · displace along a mode:<br/>PDOS(E,Q) · ε_r(Q) · Γ(Q) · Δρ_ν(r) · T(E,Q)"]
-  D --> R["&lt;label&gt;.spectra.json<br/>(frequencies and patterns; no strengths)"]
+  D --> R["&lt;label&gt;.spectra.json<br/>(frequencies, patterns, the infrared<br/>from the charges, Raman when asked)"]
 ```
 
 **A — construct and relax.** *Discussion:* partition the atoms into frozen
@@ -1016,15 +1011,14 @@ person's explicit choice (`vibration.md` § 2.2): with the box unticked the
 run's `relax` phase comes first — an ordinary SIESTA relaxation holding the
 set, then the force constants at the geometry it left, in the cell it ran
 in, one run (`vibration.md` § 5.11) — and with it ticked the force constants
-alone measure at the geometry as given. **What the tool measured, 2026-09-24:** the finish
-(then the host read-back) reads the forces SIESTA evaluated at its FC step 0 into the artifact and
+alone measure at the geometry as given. **What the tool measures:** the finish
+reads the forces SIESTA evaluated at its FC step 0 into the artifact and
 judges the largest component on the free atoms against the description's
 own `relax_force_tol` — 0.01 eV/Å at the kind's recommendation — (R5 on both
 routes; `vibration.md` § 5.5); a structure exported from a finished
 relaxation carries that run's record, and the gate reads it against the
-calculation about to run (`vibration.md` § 2.2, the record table). The H₂ fixture at the experimental 0.741 Å, sent through the whole
-road before that judgement existed, carried **1.27 eV/Å** on its reference
-step with nothing said and reported **3358 cm⁻¹**; relaxed through an
+calculation about to run (`vibration.md` § 2.2, the record table). The H₂ fixture at the experimental 0.741 Å, unrelaxed, carries
+**1.27 eV/Å** on its reference step and reports **3358 cm⁻¹**; relaxed through an
 optimization calculation to 0.02 eV/Å and exported from the Results tab as a
 pair it reports **3024.4**, and relaxed to 0.001 eV/Å, **3022.3** at the same
 step. A tenth of the frequency from the missing relaxation, two wavenumbers
@@ -1054,7 +1048,7 @@ stages at different geometries the summary refuses), each stage's job
 derives its own modes, and
 `jobset summarize task` compares them into `<label>.fc-sweep.json` — each
 mode's frequency per stage, matched by shape, and the force constants
-themselves from the raw `.FC` (`vibration.md` § 5.9). The symmetry diagnostic is recorded since 2026-09-24 —
+themselves from the raw `.FC` (`vibration.md` § 5.9). The symmetry diagnostic is recorded —
 `engine_metadata.fc_asymmetry_max_ev_ang2`, $\max\lvert H_{ij} - H_{ji}\rvert$ over the free
 block before the finish symmetrises it — and on a block whose off-diagonals
 vanish by symmetry it says nothing (10⁻¹² eV/Å² on H₂ along its axis); an atom
@@ -1109,7 +1103,9 @@ a metal-connected molecule has no clean HOMO and LUMO, the projected density
 of states $\mathrm{PDOS}(E, Q)$, the molecular resonance energies $\varepsilon_r(Q)$ and widths
 $\Gamma(Q)$, the charge redistribution $\Delta\rho(r, Q)$, and with TranSIESTA the
 transmission $T(E, Q)$; then $\partial\varepsilon_r/\partial Q$ and $\partial T(E)/\partial Q$, which is the detector
-question directly. *Tool:* not built. The displaced frames are written by
+question directly. *Tool:* built for $T(E, Q)$ and the device's PDOS — a
+transport calculation citing the frame set computes both at each frame;
+$\varepsilon_r(Q)$, $\Gamma(Q)$ and $\Delta\rho(r, Q)$ are not. The displaced frames are written by
 the frame-set generator (V1.25, a module of its own), as one multi-frame pair:
 frame 0 the relaxed structure, the displaced frames through the structure's
 own doors — `with_frames` for the coordinates, `set_customized(…, frame=i)`
@@ -1202,9 +1198,9 @@ is for light in vacuum, the field at the molecule taken as the incident one,
 an assumption the method states — and Raman brings in the metal's
 frequency-dependent dielectric response: its route is built
 ([`vibration.md`](?doc=engines/vibration.md) § 5.11), and how the
-metal's part behaves is measured with it (plan § 1ac, R1).
+metal's part behaves is measured with it.
 
-**6. What this means for a held atom on PySCF — a correction to § 4a.5.**
+**6. What this means for a held atom on PySCF.**
 With atoms held, the infrared derivative is $\sum_k (\partial\mu/\partial R_k)\cdot L_k$ over the
 free atoms, and $\partial\mu/\partial R_k$ for a free atom carries the *whole* system's
 electronic response to that atom moving — the held atoms' electrons
@@ -1212,8 +1208,7 @@ included, since they are in every SCF. What is absent is only the held
 nuclei's own motion, which the model sets to zero on purpose. So the band
 strength does not lose "the charge flow through the anchor"; what it loses is
 what the model is: a finite cluster screens differently from the metal, and
-the field at the molecule is not the incident one (problems 1, 3 and 5). § 4a.5
-now says this.
+the field at the molecule is not the incident one (problems 1, 3 and 5).
 
 ### 4b.8 The discussion, point by point — the same, differs, not built
 
@@ -1225,7 +1220,7 @@ implementation sections cited are [`engines/vibration.md`](?doc=engines/vibratio
 | keep every metal atom in the quantum calculation; take the Hessian only with respect to the coordinates allowed to move ($H_{AA}$); "deleting the frozen rows" means deleting *degrees of freedom*, not atoms | **the same**, and it is the built behaviour on both engines (`vibration.md` § 4.4, § 5.5); on PySCF the response equations are never solved for the held rows, while the nuclear and dispersion terms are computed in full and sliced (`vibration.md` § 4.4) |
 | `hess.kernel(atmlst = active_atoms)` | **differs, by measurement**: `kernel(atmlst=)` adds a full-size dispersion term and the density-fitted Hessian class refuses the list, so the deck sums `hess_elec + hess_nuc + D3[A,A]` on a plain mean field (`vibration.md` § 4.4) |
 | mass-weight $H_{AA}$ and diagonalise; the eigenvectors are the modes; at most $3\,N_A$ of them | **goes further**: the surviving whole-body motions are removed first (R3, § 3.1), and the count is $3\,N_A - n_{\mathrm{rigid}}(F)$. For a slab or three anchors off a line nothing survives and the two agree; for one or two held atoms the difference is measured — water with its oxygen held reported six numbers, three of them turns, and the two loudest infrared bands were among them (§ 8; `vibration.md` § 11) |
-| the condition is $\nabla_A E = 0$; the frozen atoms may carry force | **the same** (R5) — and it was a live defect here until 2026-09-23: the check read every atom and warned on every converged constrained minimum |
+| the condition is $\nabla_A E = 0$; the frozen atoms may carry force | **the same** (R5) |
 | the constrained Hessian makes the substrate infinitely rigid; converge the answer by enlarging the active region (Models A, B, C) and watching the molecular and interface modes | **the same judgement, and it is the person's**: the artifact records the free set and `hessian_scope`, so two runs that differ only in the held set are comparable by their own files; the matching of a mode across two runs is **not built** (§ 4b.9) |
 | frozen is not cheap electronically — "a 200-Au cluster remains a 200-Au electronic-structure problem" | **the same, and sharpened from the code** (`vibration.md` § 4.4, § 5.7): on PySCF the response equations and the derivative integrals shrink with the free atoms, the exchange-correlation derivative matrices do not, and at hundreds of atoms those matrices are the wall; on SIESTA the count of force evaluations shrinks and each stays whole-system |
 | PySCF is a finite-system code; a metal surface is a periodic solid | **the same, and it is why there are two routes**: the isolated molecule goes to PySCF, the slab or junction to SIESTA, and both hand the same block to the same harmonic path |
@@ -1235,7 +1230,7 @@ implementation sections cited are [`engines/vibration.md`](?doc=engines/vibratio
 | infrared and Raman for the constrained system "depends on the property implementation" (first turn); for a finite cluster, obtainable by displacing along $\pm Q_\nu$ and differentiating (later turn) | **settled** (§ 4a; `vibration.md` § 4.6): with atoms held the analytic dipole route takes no atom list, so infrared goes by central differences of the dipole and Raman by central differences of the polarizability — over the free atoms' Cartesian coordinates, projected onto every mode at once, rather than one displaced pair per selected mode: the same derivative, organised per coordinate |
 | $R(Q_\nu) = R_0 + Q_\nu\,e_\nu$ with the mass-weighting conversion, at five points, the held coordinates unchanged | **differs in the coordinate and the count**: two points along the display eigenvector at a peak displacement $A$; the held atoms unchanged; the conversion to the discussion's $\partial\varepsilon/\partial Q_\nu$ and to the coupling per zero-point amplitude is § 4b.5 F, and the five-point sample is owed |
 | a metal-connected molecule has no clean HOMO and LUMO; use the projected density of states and resonances | **the same**; the probe is PySCF's and records the cluster's own window — a molecule-projected quantity is owed, and nothing of this exists on SIESTA (§ 4b.6 G) |
-| on SIESTA, relax with $\Delta R_F = 0$ first; $F_A \approx 0$, $F_F$ need not vanish | **the same, as the `relax` phase of one run** when the box is unticked (§ 4b.6 A), and since 2026-09-24 the tool **verifies** it: the reference-step forces are read back and judged, and the assertion `already_relaxed` is asked on this engine too (§ 4b.6 A) |
+| on SIESTA, relax with $\Delta R_F = 0$ first; $F_A \approx 0$, $F_F$ need not vanish | **the same, as the `relax` phase of one run** when the box is unticked (§ 4b.6 A), and the tool **verifies** it: the reference-step forces are read back and judged, and the assertion `already_relaxed` is asked on this engine too (§ 4b.6 A) |
 | one $\pm\delta$ pair per column; only the active coordinates displaced; 90 columns rather than 900 for 30 of 300 atoms | **the same** (`FC.First..FC.Last` on the sorted copy): six whole-system SCFs per free atom, stated by the pre-run check (`vibration.md` § 5.8) |
 | converge $\delta$: $\Delta F \gg \sigma_F$, $H(\delta) \approx H(\delta/2)$, $H_{ij} \approx H_{ji}$, $\omega(\delta) \approx \omega(\delta/2)$ | **built, but for $\Delta F \gg \sigma_F$**: the range and the noise-floor note are on the item; the ladder is describable, a later stage taking the first stage's relaxation over — two stages at different geometries refused — and `summarize task` compares the stages — $\omega$ per mode matched by shape and $H(\delta)$ from the raw `.FC` — into `<label>.fc-sweep.json` (`engines/vibration.md` § 5.9); the asymmetry is recorded per stage. The force change against the SCF's own noise is not estimated |
 | mode-displaced structures on SIESTA for $\mathrm{PDOS}(E, Q)$, $\varepsilon_r(Q)$, $\Gamma(Q)$, $\Delta\rho(r, Q)$, $T(E, Q)$ | **built for transport, on both engines**: one mode as one multi-frame pair — frame 0 the Hessian's geometry, then the Gauss–Hermite nodes of a Gaussian along the mode, its spread set by the temperature the person states, the held atoms unmoved (`vibration.md` § 5.10 ③; `spectra.mode_frames.frameset_from_mode`, `molbuilder frameset from-mode`, the Spectrum tab's *Write frame set…*); a transport calculation citing it computes $T(E, Q)$ and the device's PDOS at each frame; $\varepsilon_r(Q)$, $\Gamma(Q)$ and $\Delta\rho(r, Q)$ are not built (V1.26) |
@@ -1253,45 +1248,35 @@ file cannot be read as a PySCF file with zero intensities.
 ### 4b.9 What this cross-check leaves owed
 
 Each row is registered under **V1** in [`plans/plan.md`](?doc=plans/plan.md)
-and in [`engines/vibration.md`](?doc=engines/vibration.md) § 10; the first
-two are defects against rules already written, the rest are features to be
-designed as one each and need a decision.
+and in [`engines/vibration.md`](?doc=engines/vibration.md) § 10, and needs a
+decision.
 
 | | what | why it is owed | rule or section |
 |---|---|---|---|
-| ~~V1.21~~ | **built 2026-09-24** — the forces at FC step 0 are read into `relaxation.max_force_eh_bohr` over the free atoms and judged against the description's own `relax_force_tol`; `already_relaxed` is asked on SIESTA | R5 held on one route only; measured 1.27 eV/Å with nothing said (§ 4b.6 A) | R5 |
-| ~~V1.22~~ | **built 2026-09-24** — `engine_metadata.fc_asymmetry_max_ev_ang2`; no warning threshold yet | on an axial block the off-diagonals vanish by symmetry (§ 4b.6 C) | § 4b.6 C |
-| ~~V1.30~~ | **built 2026-09-24** — one stationarity rule for both routes: the largest absolute force component over the free atoms against the template's own tolerance (`geom_gmax` on PySCF, `relax_force_tol` on SIESTA), a plain warning above it | the two routes answer the same assertion by different rules (§ 4b.5 A, § 4b.6 A) | R5 |
-| ~~V1.28~~ | **built 2026-09-24** — `info.relaxation` beside `info.calculation` on a pair exported from the Results tab (`model/parse.md` § 5b.1): engine, the run's tolerance, the largest remaining force component, the held atoms, the geometry's fingerprint; both kinds' gates read it against the calculation about to run (`vibration.md` § 2.2, the record table). The PySCF deck's own pair recording it is V1.31 | the assertion was the person's memory of a run the tree already held | § 4b.6 A |
-| ~~V1.29~~ | **built 2026-09-24** — the mass-calibrated displacement per mode: `zero_point_amplitude_amu12_ang` and `zero_point_displacement_ang`, derived by one function, written by both engines from schema 7 and checked on read (`vibration.md` § 6.3, § 6.6) | the transport step displaces along this, not along the display form | § 4b.5 F |
-| V1.23 | **a δ-convergence report**: two stages at $\delta$ and $\delta/2$, and a comparison of $\omega_\nu$ and $e_\nu$ between them printed by a verb | **built 2026-09-28**: `jobset summarize task` → `<label>.fc-sweep.json` and the printed table (`engines/vibration.md` § 5.9); the mesh pairing is a stage the person describes | § 4b.6 C |
+| V1.22 | **a warning threshold** for the asymmetry `engine_metadata.fc_asymmetry_max_ev_ang2` records | on an axial block the off-diagonals vanish by symmetry (§ 4b.6 C) | § 4b.6 C |
 | V1.24 | **mode matching across runs**: the overlap of eigenvectors in the shared free subspace, mass-weighted, between Model A/B/C runs or between a PySCF and a SIESTA run of the same molecule | the active-region convergence test and the cross-engine comparison are both this one calculation | § 4b.6 F, § 4b.3 |
-| ~~V1.25~~ | **built 2.35.0** — a mode's frame set, both engines: the Gauss–Hermite nodes along one mode, the held atoms unmoved; its spread set by the temperature the person states, with three, five or seven frames (the user's ruling of 2026-10-28, built 2.51.0, `vibration.md` § 5.10 ③; until then by a maximum displacement) — the structure a transport calculation cites | level one of `vibration.md` § 5.6 | § 4b.6 G |
 | V1.26 | **$\Delta\rho_\nu(r)$ maps**: SIESTA's density grid at $\pm Q_\nu$, differenced | the discussion's intermediate quantity; two SCFs per mode on the displaced pair | § 4b.7 |
 | V1.27 | **the PySCF probe**: five points per mode; the coupling per zero-point amplitude $g_\nu$ in meV beside $\Delta E/(2A)$; a molecule-projected frontier quantity for a cluster | § 4b.5 F–G | § 4b.5 |
 
 Born-effective-charge infrared on SIESTA stays where it was recorded
 (`vibration.md` § 5.6, V1.15): a feature of its own.
 
-§ 4c (proposed 2026-09-28) folds V1.24–V1.27 into one design for ranking
-modes by what they do to the current — `engines/vibration.md` § 5.10, plan
-W42.
+§ 4c folds V1.24–V1.27 into one design for ranking modes by what they do to
+the current — [`engines/vibration.md`](?doc=engines/vibration.md) § 5.10.
 
 ---
 
-## 4c. Which mode moves the current — from the electrons' response to the conductance *(proposed 2026-09-28)*
+## 4c. Which mode moves the current — from the electrons' response to the conductance
 
 *Written from the discussion of 2026-09-28 — "we fix most of the metal atoms,
 and leave the molecule and the anchoring Au for vibrational mode calculation
 with siesta, but need a way to find the best vibration mode for next step of
-transport calculation" — and checked against it point by point. **Proposed, not
-agreed:** the design it motivates is [`engines/vibration.md`](?doc=engines/vibration.md)
-§ 5.10, whose decisions are the user's (plan **W42**). § 4b.3's chain is the
-frame; this section makes its third link specific enough to rank modes by.
-No reference is added here yet: the two results it leans on that § 11 does not
-list — the Breit–Wigner line shape and Gauss–Hermite quadrature — are textbook,
-and each gets an entry in `references.bib`, checked the way § 11's were, when
-the section is agreed.*
+transport calculation" — and checked against it point by point. The design it
+motivates is [`engines/vibration.md`](?doc=engines/vibration.md) § 5.10, whose
+decisions are the user's. § 4b.3's chain is the frame; this section makes its
+third link specific enough to rank modes by. The two textbook results it leans
+on that § 11 does not list are Gauss–Hermite quadrature [AbramowitzStegun1964]
+and the Breit–Wigner line shape, whose entry in `references.bib` is owed.*
 
 ### 4c.1 The question, and why the HOMO–LUMO gap does not answer it at a metal
 
@@ -1513,7 +1498,7 @@ level alignment — a sentence the ranking should carry.
 | what | from | cost |
 |---|---|---|
 | **the mode's character** — each element's share of the mode's motion among the free atoms, $\sum_{k\in X} m_k\lvert L_k\rvert^2$ (the viewer's composition, `web/spectra.md` § 4.2); how much of the free atoms' motion is whole-body — the free part sliding or rocking as a unit against the held anchor, the molecule's tilt among it; how far each bond from a free atom to a held one, and each bond between elements inside the free part (Au–S), stretches at $\sigma$ | the result file alone: it already carries the free and held atoms, the elements and the geometry | nothing — derived when the result is read |
-| **the charge each mode moves between the anchor and the free part**, $\partial q_{\mathrm{free}}/\partial Q_\nu$ (and per element), for every mode | the force-constant run's own displaced SCFs, if SIESTA prints the populations at each step: per free coordinate $\bigl(q(R_k + \delta) - q(R_k - \delta)\bigr) / 2\delta$, projected onto every mode — the organisation the PySCF infrared route uses for $\partial\mu/\partial R$ (§ 4b.5 D). A molecular dipole is undefined in a periodic metal (§ 4b.7); the charge on a set of atoms, by a stated partition, is not | an output switch on the force-constant run — whether SIESTA prints the populations at every step is to be measured |
+| **the charge each mode moves between the anchor and the free part**, $\partial q_{\mathrm{free}}/\partial Q_\nu$ (and per element), for every mode | the force-constant run's own displaced SCFs, if SIESTA prints the populations at each step: per free coordinate $\bigl(q(R_k + \delta) - q(R_k - \delta)\bigr) / 2\delta$, projected onto every mode — the organisation the PySCF infrared route uses for $\partial\mu/\partial R$ (§ 4b.5 D). A molecular dipole is undefined in a periodic metal (§ 4b.7); the charge on a set of atoms, by a stated partition, is not | the force-constant run's own charges, recorded at every step (§ 4a.6) — built |
 | **$E_F$, $\mathrm{PDOS}_{\mathrm{free}}(E)$ and per element, the free atoms' own levels and the charges at each frame** | one periodic SCF per frame, in the force-constant run's own cell and at its settings, so the modes and the screen share one model | two SCFs per mode at three nodes, four at five, plus one base: screening **every** mode at three nodes costs $2\,(3\,n_{\mathrm{free}} - n_{\mathrm{rigid}}) + 1$ SCFs, the order of the force-constant run's own $1 + 6\,n_{\mathrm{free}}$ |
 | **$T(E)$ and the open system's DOS on the free atoms** — the true widths, and whether a mode moved the level or the coupling (a Breit–Wigner fit per frame, where one resonance fits) | the transport ladder on the frame set: the device and the transmission per frame, the leads and the seed once (`engines/transport.md` § 2a.9) | one TranSIESTA device SCF per frame, for the modes the screen chose |
 
@@ -1561,9 +1546,9 @@ at a few cm⁻¹ and would be thrown away.
 no information. The Hessian is symmetric by construction, so *every* mode is
 orthogonal to every other; that is as true of a C–H stretch as of the rotation.
 Point-group labels would not separate them either — a rotation and a real
-vibration can share an irreducible representation — and they are unavailable in
-any case, because the deck turns symmetry off (displacements leave the point
-group).
+vibration can share an irreducible representation — and they are not in the
+results: the displaced points leave the point group, and no irrep label is
+written.
 
 **"It changes no bond length."** This one is real, and it is worth seeing why it
 does not help. The set of displacements that leave every interatomic distance
@@ -1591,9 +1576,10 @@ Three reasons, each independent:
    minimum the turning motion is 96.5 % in one mode and **3.5 % spread across
    four others**. Removing the offender leaves that 3.5 % in the modes you keep.
    Projecting first gives 35 clean vibrations.
-3. **It is already what the free path does.** § 2's code listing is the
-   all-atoms-free path of this very codebase. Freezing an atom should not change
-   the *kind* of calculation being done.
+3. **It is what the free calculation does.** With nothing held the same
+   function removes the six (or five) motions before diagonalising — there is
+   no second path (R3). Freezing an atom does not change the *kind* of
+   calculation being done.
 
 **Is it legitimate to project off a stationary point, where the direction is not
 an exact zero?** Yes, and for a stated reason: the whole-body motions are known
@@ -1676,7 +1662,7 @@ For a structure with held atoms:
 | CO₂ | — | 5 | straight, with no linearity flag anywhere |
 | a lone atom | — | 3 | an atom does not vibrate |
 | water | O | **3** | half of six reported numbers are not vibrations |
-| water | O + one H | **1** | two held atoms leave one turn that moves the free hydrogen — the old two-branch code reported 3 here where R2 gives 2 |
+| water | O + one H | **1** | two held atoms leave one turn that moves the free hydrogen — R2 gives 2 |
 | CO₂ | both O | **0** | ⚠ the table of § 3 says 1 |
 | acetylene | both C | **0** | ⚠ the same trap, all four atoms on the axis |
 | NH₃ | three H | 0 | three anchors not in a row pin everything |
@@ -1695,70 +1681,14 @@ held-oxygen water run through the whole described road in
 
 ## 8. Why this document exists
 
-*(This section is the record of what was found on 2026-09-21. Every defect it
-names was fixed by 2026-09-23, and the addendum's by 2026-09-24 — [`engines/vibration.md`](?doc=engines/vibration.md)
-§ 10 says what stands — and the present tense below is the record's, kept so
-the reason for each rule stays visible.)*
-
-On 2026-09-21 an end-to-end run of BDT — free, then with both sulfurs held, at
-one shared geometry, driven through the web UI — measured the spurious mode
-directly (§ 1, § 4.1). Three places in the codebase claimed to know how many
-such modes there were. All three disagreed with each other and with the
-measurement:
-
-| site | said | truth |
-|---|---|---|
-| `pyscf/vibration_emitters.py` | *"the 6 (or 5) zero-frequency modes … simply do not exist here. **All 3·N_FREE eigenvalues are physical.**"* | one of them is a rotation |
-| `spectra/methods.py::_mode_count` | `3·n_free − (5 if linear else 6)` → **30** | 35 vibrations among 36 numbers |
-| `validation/spectra.py` | `6 − 2·len(frozen)` → *"2-ish spurious near-zero modes"* | **1** |
-
-The emitter's claim is the root: it treats "some atoms are held" as a switch that
-removes all six motions, when what is removed depends on **where** the held atoms
-are. The other two are independent guesses at a number nothing owned.
-
-Three further consequences fell out of the same gap, and each is a rule above:
-
-* the spurious mode reaches the reported spectrum (R4);
-* the thermochemistry drops it only because numerical noise happened to put it
-  at −0.93 rather than +0.93 cm⁻¹ — a mode at +0.93 cm⁻¹ contributes
-  **$6.4\,k_B \approx 12.7$ cal mol⁻¹ K⁻¹** of entropy, about 3.8 kcal/mol in $-TS$ at
-  298 K, from a motion that is not a vibration (R4);
-* the stationarity check read the force on every atom including the held ones,
-  so a correctly-converged constrained minimum was reported as *"not a
-  stationary point"* (R5; fixed 2026-09-23).
-
-**One more promise the code does not keep**, found in the same review and
-recorded here because it is what a user *buys* when they freeze an atom.
-`engines/overview.md` and the preflight advisory both said freezing cuts the
-cost sharply. For a frequencies-or-IR run it did not: `dipole_derivatives`
-called `mf.Hessian().kernel()`, the **full** $N\times N\times 3\times 3$ solve, and the
-held rows were discarded afterwards at `HESS[_free_idx][:, _free_idx]`. Only
-the Raman finite-difference loop scaled with the free count.
-
-The saving was real and achievable — and it was not implemented until
-2026-09-23, when the Hessian became the free atoms' block
-([`engines/vibration.md`](?doc=engines/vibration.md) § 4.4). Q-Chem's manual
-describes the same feature working the other way: *"only the part of the
-Hessian matrix comprising the second derivatives of a subset of the atoms
-defined by the user is computed … This results in a significant decrease in the
-cost of the calculation"* [QChemPHVA]. Measured here, before the fix: 10.6 s
-free versus 10.1 s with 2 of 14 atoms held. Either the code earns the claim or
-the claim goes; **R8** decides which is acceptable, and now reads the claim
-from the code.
-
-**The lesson is the one `constants.py` already records**: a fact about the
-physical world belongs in one place. Eight spellings of the Bohr radius put the
-same file 4 × 10⁻⁷ Å apart from itself; three derivations of the rigid-motion
-count put the same run's mode budget 6 apart from itself.
-
-**2026-09-24 — the discussion's update, and one more measurement.** The
-discussion this work started from was extended into a chain of three outputs
-and an explicit treatment of fixed atoms on each engine; § 4b.3–4b.9 restate it
-systematically and check every point against the code text. One gap was
-measured on the road that day: the SIESTA route judges no stationarity — R5
-holds on the PySCF route only — and the H₂ fixture's force-constant run carried
-1.27 eV/Å on its reference step with nothing said. It was built the same day (§ 4b.6 A), with the δ ladder
-measured beside it; what the cross-check still leaves owed is § 4b.9.
+Three derivations of one count disagree with each other and with the run; one
+derivation cannot (R1). A spurious mode at +0.93 cm⁻¹ would add
+**$6.4\,k_B \approx 12.7$ cal mol⁻¹ K⁻¹** of entropy — about 3.8 kcal/mol in
+$-TS$ at 298 K — from a motion that is not a vibration (R4). A stationarity
+check that reads the held atoms reports every converged constrained minimum as
+not stationary (R5). A cost claim not read from the code is a promise the code
+does not keep (R8). A fact about the physical world belongs in one place, as
+`constants.py` already records.
 
 ---
 
@@ -1836,8 +1766,10 @@ Under R3 it is removed before diagonalisation and the run reports 35.
 Cited by key; entries live in
 `references.bib`.
 
-All five were checked against Crossref and the publishers' records on
-2026-09-21; the bibliography records each check. Access status and the one full
+Each entry's check is recorded beside it in `references.bib`: eleven were
+checked on 2026-09-21, against Crossref, the publisher's record or the text read
+directly; Wilson1955 (a book), Galperin2007 and Frederiksen2007 carry the
+2026-05-11 mark. Access status and the one full
 text we may redistribute are in [`refs/README.md`](?doc=science/refs/README.md).
 
 * **[Wilson1955]** Wilson, Decius & Cross, *Molecular Vibrations* (McGraw-Hill,
