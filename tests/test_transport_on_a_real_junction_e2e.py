@@ -2970,6 +2970,11 @@ def test_the_data_file_holds_every_point_beside_its_frames_definition(
     def at(f, v):
         return f"points/f{f:03d}/{bias_token(v)}"
     assert list(S["frame"]) == list(range(_N_FRAMES))
+    # THE ONE SPIN CHANNEL OF A JUNCTION THAT IS NOT SPIN-POLARIZED, as every
+    # data file names it (`model/datafiles.md` § 2a), and what the energies
+    # are measured from.
+    assert list(S["spin"]) == ["unpolarized"], S["spin"]
+    assert got["attrs"]["energies_relative_to_fermi_level"] == 1
     assert list(J["frame_token"]) == [f"f{f:03d}" for f in range(_N_FRAMES)]
     assert list(S["bias_v"]) == list(_BIAS)
     assert list(S["iv_bias_v"]) == list(_BIAS)
@@ -3027,7 +3032,11 @@ def test_the_data_file_holds_every_point_beside_its_frames_definition(
     for p in device["by_point"]:
         f, b = p["frame"], list(_BIAS).index(p["bias_v"])
         D = V(at(f, p["bias_v"]) + "/device")
-        assert D["ef_ev"] == p["negf"]["ef"] == S["device_ef_ev"][f, b]
+        assert D["fermi_level_ev"] == p["negf"]["ef"] == S["device_fermi_level_ev"][f, b]
+        # ITS ENERGY AND UNCONSERVED CHARGE BY THEIR NAMES (§ 9.1), the
+        # record's beside them.
+        assert D["total_energy_ev"] == p["negf"]["energy"]
+        assert S["device_dq_e"][f, b] == p["negf"]["dq"]
         assert D["vha_ev"] == p["negf"]["vha_ev"] == S["device_vha_ev"][f, b]
     for f, v, i in zip(rec["iv"]["frame"], rec["iv"]["voltages_v"],
                        rec["iv"]["current_a"]):
@@ -3163,16 +3172,19 @@ def test_the_data_file_holds_every_runs_convergence_on_its_grid(junction):
         assert list(D["scf_phase"][:len(rows)]) == [
             r["phase"] for r in rows], cell
         assert np.isnan(D["scf_ddmax"][len(rows):]).all(), cell
+        np.testing.assert_array_equal(
+            np.asarray(D["scf_fermi_level_ev"][:len(rows)], dtype=float),
+            np.asarray([r.get("ef", np.nan) for r in rows], dtype=float))
         assert D["state"] == p["state"], cell
         assert D["scf_converged"] == int(p["scf_converged"])
         charges = p["negf"]["charges"]
         parts = list(D["charge_part"])
-        assert {k: D["charge"][parts.index(k)]
+        assert {k: D["charge_e"][parts.index(k)]
                 for k in charges} == charges, cell
         # EVERY NEGF ROW'S CHARGES, and the run's phases.
         for c, r in enumerate(rows):
             for k, q in (r.get("charges") or {}).items():
-                assert D["scf_charge"][c][parts.index(k)] == q
+                assert D["scf_charge_e"][c][parts.index(k)] == q
         assert D["scf_phases"] == p["scf_phases"]
     # THE BRIDGE'S CHARGE FROM 0 V -- each frame against its own 0 V point,
     # the D column (engines/transport.md § 2a.12, *The device's charges*).
@@ -3181,8 +3193,8 @@ def test_the_data_file_holds_every_runs_convergence_on_its_grid(junction):
         d = list(zero["charge_part"]).index("D")
         for v in _BIAS:
             D = device_of(f, v)
-            assert D["d_change_from_0v"] == pytest.approx(
-                D["charge"][d] - zero["charge"][d], abs=1e-9), (f, v)
+            assert D["d_change_from_0v_e"] == pytest.approx(
+                D["charge_e"][d] - zero["charge_e"][d], abs=1e-9), (f, v)
     assert sorted(k for k in G if k.startswith("stages/")) == [
         "stages/electrode_L", "stages/electrode_R", "stages/seed"]
     for name in ("seed", "electrode_L", "electrode_R"):
@@ -3191,7 +3203,8 @@ def test_the_data_file_holds_every_runs_convergence_on_its_grid(junction):
         assert R["scf_cycles"] == len(rows), name
         assert list(R["scf_energy_ev"][:len(rows)]) == [
             c["energy"] for c in rows], name
-        assert R["fermi_ev"] == by[name]["fermi_ev"], name
+        assert R["fermi_level_ev"] == by[name]["fermi_ev"], name
+        assert R["total_energy_ev"] == by[name]["energy_ev"], name
         assert R["state"] == by[name]["state"], name
     for p in rec["points"]:
         P = V(f"points/f{p['frame']:03d}/{bias_token(p['bias_v'])}")
@@ -3318,7 +3331,7 @@ def test_an_export_reads_no_data_file_and_says_what_is_missing(
         # ONE STRUCTURE'S POINT, named by its voltage alone.
         P = G[f"points/{bias_token(v)}"]["variables"]
         assert "not read yet" in str(P["dos_per_orbital_reading"]["data"])
-        assert np.isnan(np.asarray(P["dos_region"]["data"], float)).all()
+        assert np.isnan(np.asarray(P["dos_region_per_ev"]["data"], float)).all()
         # NOT KEPT, SO NOT KNOWN: which atoms its DOS covers is the fill.
         assert (np.asarray(P["dos_atom"]["data"]) == -1).all()
 
@@ -3489,8 +3502,8 @@ def test_the_data_file_holds_the_calculations_own_records(junction):
     from molbuilder.task import bias_token
     for p in rec["points"]:
         P = got["groups"][f"points/{bias_token(p['bias_v'])}"]["variables"]
-        assert P["tbt_k_points"]["data"] == p["k_points"], p
-        assert P["tbt_k_method"]["data"] == p["k_method"], p
+        assert P["tbt_kpoints"]["data"] == p["k_points"], p
+        assert P["tbt_kpoint_method"]["data"] == p["k_method"], p
 
 
 def test_a_ladder_without_a_transmission_exports_what_exists(
@@ -3905,14 +3918,44 @@ def test_summarize_keeps_each_points_reading_and_its_digest_reads_alone(
             assert ds.data_file == data.name
             assert int(ds.data_file_size) == data.stat().st_size
             assert list(ds["energy_ev"][:]) == p["dos"]["energy_ev"]
-            dos = np.asarray(ds["DOS"][:], dtype=float)
+            dos = np.asarray(ds["orbital_dos_per_ev"][:], dtype=float)
             assert np.allclose(dos.sum(axis=1), p["dos"]["total"],
                                rtol=_PRINTED_AND_SINGLE_RTOL, atol=0)
             assert (set(ds["device_orbital_atom"][:])
                     <= set(ds["device_atom"][:]))
             assert list(ds["element"][:]) == ["H"] * len(_LISTED)
-            assert ds["position"].shape == (len(_LISTED), 3)
+            assert ds["position_ang"].shape == (len(_LISTED), 3)
             assert list(ds["transmission"][:]) == p["transmission"]
+            # EACH LEAD'S DOS OVER THE LEAD AXIS (`model/datafiles.md`
+            # § 9.6): a lead's row as the record reads TBtrans's file; the
+            # last lead's spectral row the fill, TBtrans writing none.
+            # THE SILENT FAILURE: a row under another lead's name.
+            leads = [str(x) for x in ds["lead"][:]]
+            for name, key in (("lead_spectral_dos_per_ev", "lead_spectral"),
+                              ("lead_bulk_dos_per_ev", "lead_bulk")):
+                rows = np.asarray(ds[name][:], dtype=float)
+                stated = p["dos"].get(key) or {}
+                for k, lead in enumerate(leads):
+                    if lead in stated:
+                        assert np.allclose(rows[k], stated[lead]), (name, lead)
+                    else:
+                        assert np.isnan(rows[k]).all(), (name, lead)
+            assert leads[-1] not in (p["dos"].get("lead_spectral") or {})
+            # ITS K-POINTS, LEADS AND DEVICE (`model/datafiles.md` § 9.6), as
+            # the contract states them: the weights sum to 1; each atom's
+            # first orbital, from 0, one past the last; the left lead's
+            # chemical potential at +V/2, the right's at -V/2.
+            assert float(np.sum(ds["kpoint_weight"][:])) == pytest.approx(1.0)
+            assert ds["kpoint_reduced"].shape == (
+                len(ds.dimensions["kpoint"]), 3)
+            first = [int(x) for x in ds["first_orbital"][:]]
+            assert first[0] == 0 and first == sorted(first)
+            assert len(first) == len(_LISTED) + 1
+            assert np.allclose(ds["lead_mu_ev"][:],
+                               [p["bias_v"] / 2, -p["bias_v"] / 2])
+            assert (np.asarray(ds["lead_kt_ev"][:]) > 0).all()
+            assert float(ds["device_eta_ev"][...]) >= 0
+            assert "data_file_gamma" in ds.ncattrs()
 
 
 def _held(data, parse):

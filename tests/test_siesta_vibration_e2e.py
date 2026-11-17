@@ -250,6 +250,17 @@ def _the_optical_record(run, computed_in, n: int = 0):
         assert np.array_equal(got.energy_ev, grid), c.rel
         assert np.array_equal(f["eps2"], got.eps2), c.rel
         assert np.array_equal(ds["eps2"].values[k], got.eps2.T), c.rel
+        # ITS SCF COUNT AND DRUDE TERM BY THEIR NAMES IN THE FILE
+        # (`model/datafiles.md` § 9.3): the SCF rows of the call's own
+        # output's last step, as the SIESTA parser reads them, and the
+        # call's own .EPSIMG header.
+        from molbuilder.parse.engines.siesta_reader import read_output
+        steps = read_output(run_of(folder / c.rel).stdout).finish()["steps"]
+        last = next(s for s in reversed(steps) if s.get("coords"))
+        assert int(ds["scf_cycles"].values[k]) == \
+            len(last.get("scf_history") or ()), c.rel
+        assert np.allclose(ds["drude_wp2_eh2"].values[k],
+                           got.drude_wp2_ha2), c.rel
     # THE ENGINE THAT COMPUTED THE CALLS, said once (`model/datafiles.md`
     # § 3a): the version every call's own output states, in the file's
     # `engine_version` and its source.  THE SILENT FAILURE: a file naming
@@ -906,13 +917,46 @@ def test_the_raman_at_a_laser_holds_co2s_symmetry_and_exports_whole(
     with xarray.open_dataset(out / f"{label}.raman.nc", group="modes") as ds:
         assert [rows[int(m)]["strength_laser_a4_amu"]
                 for m in ds["mode"].values] == pytest.approx(
-            ds["strength_laser_a4_amu"].values.tolist(), rel=1e-12)
+            ds["strength_laser_ang4_per_amu"].values.tolist(), rel=1e-12)
     tables = tmp_path / f"{label}.vibration-csv" / f"{label}.raman"
     assert (tables / "README.txt").is_file()
     with (tables / "modes" / "mode.csv").open() as fh:
         table = list(csv.DictReader(fh))
     column = next(k for k in table[0]
-                  if k.startswith("strength_laser_a4_amu"))
+                  if k.startswith("strength_laser_ang4_per_amu"))
+    # THE VIEW'S NUMBERS BY THEIR NAMES IN THE FILE (`model/datafiles.md`
+    # § 9.4), the view's own fields beside them: the reader hands back the
+    # fields, the file holds the names.  THE SILENT FAILURE: a writer still
+    # naming them by the fields -- a script by the catalogue finds nothing.
+    root = xarray.load_dataset(out / f"{label}.raman.nc")
+    assert float(root.cell_volume_ang3) == view["cell_volume_a3"]
+    assert float(root.band_floor_ang4_per_amu) == \
+        CHANNEL_PRESENT_FLOOR_RAMAN_A4_AMU
+    alpha = xarray.load_dataset(out / f"{label}.raman.nc", group="equilibrium")
+    for name, field in (("alpha_static_ang3", "alpha_static_a3"),
+                        ("alpha_laser_real_ang3", "alpha_laser_real_a3"),
+                        ("alpha_laser_imag_ang3", "alpha_laser_imag_a3")):
+        assert float(alpha[name]) == pytest.approx(view[field], rel=1e-12)
+    # THE VIBRATION RESULT'S OWN DATA FILE, by the catalogue's names
+    # (§ 9.2), the result's keys' values beside them.
+    def same(got, want):
+        np.testing.assert_array_equal(
+            np.asarray(got, dtype=float),
+            np.asarray(np.nan if want is None else want, dtype=float))
+    held = xarray.load_dataset(out / spectra_nc.name, group="modes")
+    for k, m in enumerate(d["modes"]):
+        same(held.ir_intensity_km_per_mol.values[k], m["ir_intensity_km_mol"])
+        same(held.raman_activity_ang4_per_amu.values[k],
+             m["raman_activity_a4_amu"])
+    charges = xarray.load_dataset(out / spectra_nc.name,
+                                  group="partial_charges")
+    assert float(charges.fc_displacement_ang) == \
+        d["partial_charges"]["displacement_ang"]
+    top = xarray.load_dataset(out / spectra_nc.name)
+    for key, value in (d.get("relaxation") or {}).items():
+        if key in ("max_force_eh_bohr", "max_force_all_atoms_eh_bohr"):
+            same(top[f"relaxation_{key.replace('eh_bohr', 'eh_per_bohr')}"],
+                 value)
     assert {int(r["mode"]): float(r[column]) for r in table} == \
         pytest.approx({m: rows[m]["strength_laser_a4_amu"]
                        for m in _PICKED_MODES}, rel=1e-12)

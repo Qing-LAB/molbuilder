@@ -710,3 +710,31 @@ def test_every_axis_is_a_coordinate_a_reader_selects_by(real_water_probed):
     modes = xr.load_dataset(nc, group="modes")
     assert float(modes.frequency_cm1.sel(mode=2)) == \
         d["modes"][1]["frequency_cm1"]
+    # EVERY NAME THE FILE GIVES OTHERWISE THAN THE RESULT KEYS IT, as the
+    # catalogue states it (`model/datafiles.md` § 9.2), the result's value
+    # beside it.  THE SILENT FAILURE: a writer still naming them by the
+    # result's keys -- a script reading by the catalogue finds nothing.
+    eq = xr.load_dataset(nc, group="equilibrium")
+    assert float(eq.total_energy_eh) == d["equilibrium"]["scf_energy_eh"]
+    assert int(eq.attrs["homo_index"]) == d["equilibrium"]["homo_idx"]
+    assert np.array_equal(
+        modes.eigenvector_canonical_per_amu12.sel(mode=2).values,
+        np.asarray(d["modes"][1]["eigenvector_canonical"]))
+    thermo = xr.load_dataset(nc, group="thermo")
+    assert float(thermo.temperature_k) == th["temperature_K"]
+    assert float(thermo.s_eh_per_k) == th["s_eh_k"]
+    probe = xr.load_dataset(nc, group="modes/electronic_structure")
+    probed = next(m for m in d["modes"] if m["electronic_structure"])
+    row = probe.sel(probed_mode=probed["index_1based"])
+    assert float(row.total_energy_eq_eh) == \
+        probed["electronic_structure"]["scf_energy_eq_eh"]
+    assert np.array_equal(row.mo_energy_eq_eh.values,
+                          probed["electronic_structure"]["mo_energies_eq_eh"])
+    for k, m in enumerate(d["modes"]):
+        for name, key in (("ir_intensity_km_per_mol", "ir_intensity_km_mol"),
+                          ("raman_activity_ang4_per_amu",
+                           "raman_activity_a4_amu")):
+            np.testing.assert_array_equal(
+                np.asarray(modes[name].values[k], dtype=float),
+                np.asarray(np.nan if m[key] is None else m[key],
+                           dtype=float))

@@ -2744,46 +2744,14 @@ calculation: ε₂(ω) for a field along ê, first-order perturbation over
 independent states, at the equilibrium geometry and at ±δQ along each
 selected mode*; every SIESTA parameter the calls read under `/settings`
 (`spectra/optical_data.py`, schema
-`molbuilder/optical-data@4`; `@1` — `delta_ang` an attribute — `@2` and
-`@3` read as they are, the one Fermi level a frame both kept (written only
-where SIESTA printed one `Ef`) each channel's, and the engine's version
-`@1`–`@3` name `siesta_version` read as `engine_version`; the framework's
-rules are
-[`model/datafiles.md`](?doc=model/datafiles.md), every group titled):
+`molbuilder/optical-data@5`; `@1` — `delta_ang` an attribute — to `@4`
+read as they are — in `@1` and `@2`, the one Fermi level a frame kept (written only
+where SIESTA printed one `Ef`) each channel's, the engine's version
+`@1`–`@3` name `siesta_version` read as `engine_version`, and `@1`–`@4`'s
+`drude_wp2_ha2` and `scf_iterations` read as `drude_wp2_eh2` and
+`scf_cycles`; the framework's rules are [`model/datafiles.md`](?doc=model/datafiles.md), every group titled). Every
+group, variable and attribute it holds, with what it is: [`model/datafiles.md`](?doc=model/datafiles.md) § 9.3.
 
-```text
-/                     attributes: title -- the calculation in words, schema,
-                      molbuilder_version, source -- "computed by SIESTA
-                      <version> in <run>", Conventions, unit_meanings,
-                      engine_version, label, run
-/settings             delta_ang -- angstrom, of no dimension
-                      attributes: keywords (JSON: each Optical.* key and
-                      OpticalCalculation as written), direction, selection
-                      (JSON: asked, applied), deck_name, deck_text,
-                      deck_sha256
-/structure            the framework's one structure layout
-                      (ncdata.write_structure_group, model/datafiles.md
-                      3a): atom(atom) -- the user index, element,
-                      position_ang, mass_amu, held, cell_ang,
-                      axis_kind(cell_vector), user/engine_atom_index;
-                      structure_json
-/frames               frame(frame) -- 0 the reference, then each mode's +dQ
-                      and -dQ  atom(atom)  xyz(xyz)
-                      photon_energy_ev(photon_energy_ev) -- eV, as written
-                      spin(spin) -- unpolarized, or up and down: the
-                      channels the optical deck's spin computes
-                      call(frame) -- optical/f000 ...  mode(frame) -- -1 at 0
-                      frequency_cm1(frame)  side(frame)  dq_amu12_ang(frame)
-                      position_ang(frame, atom, xyz) -- the user order
-                      state(frame)  computed_in(frame)  scf_iterations(frame)
-                      total_energy_ev(frame)
-                      fermi_level_ev(frame, spin) -- each channel's own
-                      (Ef_up, Ef_dn) under Spin.Fix, else the one Ef they
-                      share
-                      engine_elapsed_s(frame) -- the call's session log
-                      f_sum(frame, spin)  drude_wp2_ha2(frame, spin)
-                      eps2(frame, photon_energy_ev, spin) -- raw, <label>.EPSIMG
-```
 
 A frame not run yet is a row of fills beside its state `pending`, and one
 its run's ended walk never started beside `not run` — never `failed`
@@ -2969,7 +2937,7 @@ laser named**: `<label>.spectra.nc` and, on a SIESTA run with an optical
 phase, `<label>.optical.nc`, each copied as its writer wrote it, and, when a
 laser is named, `<label>.raman.nc`, the view composed now through the
 data-file framework ([`model/datafiles.md`](?doc=model/datafiles.md) § 1,
-`molbuilder/raman-view@3`), citing the two files it was derived from by name
+`molbuilder/raman-view@4`), citing the two files it was derived from by name
 and sha256. **NetCDF**: the files; **CSV**: each file's tables and README
 (`ncdata.as_tables`) — flat for one file, a folder each for several. A
 download is one zip
@@ -2988,29 +2956,10 @@ ledger has no line of it.
 **`<label>.raman.nc`** (`spectra/raman.py`'s variable table; written only by
 an export):
 
-```text
-/            laser_nm  photon_energy_ev  broaden_ev  run_broaden_ev
-             delta_ang  cell_volume_a3  band_floor_a4_amu -- each of no
-             dimension, its unit stated
-             attributes: title -- the Raman strengths of a SIESTA
-             vibration's picked modes at a laser, derived from its optical
-             calls' eps2, and how; schema, molbuilder_version, source --
-             "derived from" the files and the SIESTA that computed them,
-             Conventions, unit_meanings, label, direction, spins (the
-             channels summed), run, engine_version, derived_from (JSON:
-             each data file's name and sha256)
-/equilibrium alpha_static_a3  alpha_laser_real_a3  alpha_laser_imag_a3 --
-             frame 0's, angstrom^3
-/modes       mode(mode) -- the result's numbering
-             frequency_cm1(mode)  dq_amu12_ang(mode)
-             dalpha_dq_static_a2_per_amu12(mode)
-             dalpha_dq_laser_real_a2_per_amu12(mode)
-             dalpha_dq_laser_imag_a2_per_amu12(mode)
-             strength_static_a4_amu(mode)  strength_laser_a4_amu(mode)
-             relative(mode)  state(mode)  why(mode)
-```
+Every group, variable and attribute it holds, with what it is: [`model/datafiles.md`](?doc=model/datafiles.md)
+§ 9.4.
 
-A view of any schema but `raman-view@3` is refused by its reader with the
+A view of any schema but `raman-view@4` is refused by its reader with the
 way back: the view exported again.
 
 
@@ -3529,8 +3478,8 @@ calculation compares it ([`model/structure.md`](?doc=model/structure.md)
 
 **The same result, as structured data**: NetCDF-4 — one of the data-file
 framework's files ([`model/datafiles.md`](?doc=model/datafiles.md): each
-variable stating itself, the one writer, the one door; this section lists its
-groups and variables) — written by the result's one writer
+variable stating itself, the one writer, the one door; its groups and
+variables, with what each is: [`model/datafiles.md`](?doc=model/datafiles.md) § 9.2) — written by the result's one writer
 (`write_spectra_payload`) at every write, from the payload the JSON is written
 from — one source, two files, both through `persist`'s one atomic writer (a
 temporary beside each, then a rename): no writer of its own writes the
@@ -3549,71 +3498,8 @@ Every axis is a coordinate of its own name, each a row of
 [`model/datafiles.md`](?doc=model/datafiles.md) § 2a, so a reader selects by
 value — `.sel(mode=7)`, `.sel(temperature_k=298.15)`.
 
-```text
-/                     each group its own dims -- atom, cell_vector and xyz in
-                      /structure, free_atom, mode, removed and xyz in /modes,
-                      mo in /equilibrium, es and window in
-                      /modes/electronic_structure, temperature_k in /thermo/grid
-                      ir_fd_step_ang  raman_fd_step_ang
-                      relaxation_max_force_eh_bohr
-                      relaxation_max_force_all_atoms_eh_bohr -- the scalar
-                      blocks' numbers, each of no dimension
-                      attributes: title, schema "molbuilder/spectra-data@9",
-                      molbuilder_version, source -- the engine and its
-                      version, Conventions, unit_meanings, json_sha256,
-                      spectra_schema_version 14, engine, engine_version,
-                      timestamp, label, methods_text, bibliography_keys; the
-                      scalar blocks' texts, counts and flags -- phase_*,
-                      ir_route, raman_route, hessian_scope,
-                      n_atoms_in_hessian, hessian_density_fit,
-                      relaxation_<key> for the relaxation block's;
-                      config, engine_metadata, runtime_info, optical and
-                      relaxation_record as JSON text
-/structure            the framework's one structure layout
-                      (ncdata.write_structure_group, model/datafiles.md 3a):
-                      atom(atom) -- the user index  xyz(xyz)  cell_vector(cell_vector)
-                      element(atom)  position_ang(atom, xyz)  mass_amu(atom)
-                      held(atom)  cell_ang(cell_vector, xyz)
-                      axis_kind(cell_vector) -- each lattice vector's periodicity
-                      user_atom_index(atom)  engine_atom_index(atom)
-                      attributes atoms_listed_by "user_index",
-                      atom_index_base 0 -- the atom index map
-                      attribute structure_json: Structure.to_dict(), whole
-/equilibrium          scf_energy_eh -- of no dimension  mo(mo)  mo_energy_eh(mo)
-                      attribute homo_idx
-/modes                mode(mode) -- 1-based, the JSON's index_1based
-                      xyz(xyz)  removed(removed)  frequency_cm1(mode)
-                      free_atom(free_atom)     -- which atom each row is,
-                                                  by user index
-                      eigenvector_canonical(mode, free_atom, xyz)
-                      eigenvector_display(mode, free_atom, xyz)
-                      zero_point_amplitude_amu12_ang(mode)
-                      zero_point_displacement_ang(mode, free_atom, xyz)
-                      ir_intensity_km_mol(mode)  raman_activity_a4_amu(mode)
-                      dipole_derivative_d_per_ang_amu12(mode, xyz) -- v12, where kept
-                      ir_active(mode)  raman_active(mode)  activity_class(mode)
-                      has_imag(mode)
-                      removed_motion(removed, free_atom, xyz)
-    /modes/electronic_structure   the probe of § 4.8, one row per selected mode:
-                      es(es) -- the mode's 1-based index  window(window)
-                      homo_index_in_window(es)  amplitude_ang(es)
-                      scf_energy_{eq,minus,plus}_eh(es)
-                      mo_energies_{eq,minus,plus}_eh(es, window)
-/thermo               temperature_K  pressure_atm  zpe_eh  h_eh  s_eh_k  g_eh
-                      -- each of no dimension
-                      attributes regime, n_modes, n_imag_excluded,
-                      n_rigid_removed, note
-    /thermo/grid      temperature_k(temperature_k) in K: every curve of § 4.7,
-                      of no temperature where the result draws none; attribute
-                      curves -- the ones it holds
-/partial_charges      the force-constant run's charges (§ 5.10 ②), when the result
-                      states them: fc_step(fc_step) -- 0 the reference  atom(atom)
-                      displaced_atom(fc_step) -- by user index  displaced_axis(fc_step)
-                      displaced_side(fc_step)  hirshfeld_charge_e(fc_step, atom)
-                      voronoi_charge_e(fc_step, atom)  displacement_ang -- of
-                      no dimension  attribute partitions -- the partitions it
-                      holds
-```
+Every group, variable and attribute it holds, with what it is: [`model/datafiles.md`](?doc=model/datafiles.md)
+§ 9.2.
 
 Every group states its title, and every number its unit
 ([`model/datafiles.md`](?doc=model/datafiles.md) § 2b–2c): the canonical
@@ -3627,7 +3513,9 @@ hold no `/partial_charges`; `@1`–`@5` no `dipole_derivative_d_per_ang_amu12`;
 `/equilibrium`'s `scf_energy_eh` and `/partial_charges`' `displacement_ang`
 as attributes, read from there, and state no title or source; `@1`–`@8`
 state `/structure`'s `axis_kind` over `xyz` — the reader takes the structure
-from `structure_json`, so each reads as it is.
+from `structure_json`, so each reads as it is; `@1`–`@9` name some variables
+and attributes by the result's keys (`scf_energy_eh`, `homo_idx`,
+`temperature_K` …), read by them (each variable's `key` and `earlier`, `ncdata.Var`).
 
 **The atoms are listed by user index, and the file says so**
 *([`model/overview.md`](?doc=model/overview.md) § 2.2b)*: `/structure`

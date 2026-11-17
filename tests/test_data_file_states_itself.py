@@ -58,6 +58,14 @@ def _write(variables, *, title="the group", stated=True, attrs=None,
     {"variables": (_E, Var("x", ("energy_ev",), "given", "Angstrom", "x",
                            "a length")),
      "says": ["variable x states the unit 'Angstrom'", "datafiles.md 2c"]},
+    {"variables": (_E, Var("width", ("energy_ev",), "given", "eV", "a width",
+                           "the window's width")),
+     "says": ["variable width states the unit 'eV' and does not end with it",
+              "_ev"]},
+    {"variables": (_E, Var("width_per_ev", ("energy_ev",), "given", "eV",
+                           "a width", "the window's width")),
+     "says": ["variable width_per_ev states the unit 'eV' and does not end "
+              "with it"]},
     {"variables": (_E, Var("t", ("energy_ev",), "raw", "1", "T(E)",
                            "as the run printed it")),
      "says": ["variable t is raw and states no source"]},
@@ -72,7 +80,9 @@ def _write(variables, *, title="the group", stated=True, attrs=None,
      "says": ["the file states no title, schema, molbuilder_version, source"]},
     {"variables": (_E,), "attrs": {"delta_ang": 0.01},
      "says": ["/g/ keeps the number delta_ang as an attribute"]},
-], ids=["no definition", "no long name", "another spelling", "a raw value "
+], ids=["no definition", "no long name", "another spelling",
+        "a unit its name does not end with", "a unit its name inverts",
+        "a raw value "
         "with no source", "a text with a unit", "a group with no title",
         "a group made with no title", "a file not stated",
         "a quantity as an attribute"])
@@ -87,7 +97,7 @@ def test_the_writer_refuses_a_file_that_does_not_state_itself(case):
 
 def test_a_file_that_states_itself_says_what_its_units_mean():
     from molbuilder.ncdata import UNITS, reading
-    data = _write((_E, Var("dos", ("energy_ev",), "raw", "1/eV", "the DOS",
+    data = _write((_E, Var("dos_per_ev", ("energy_ev",), "raw", "1/eV", "the DOS",
                            "summed over the device", source="T.TBT.AVDOS"),
                    Var("count", (), "given", "1", "a count", "of things"),
                    Var("word", ("energy_ev",), "given", "", "a word",

@@ -795,8 +795,9 @@ def data_file_variables(Var) -> Tuple[Any, ...]:
             "average_conductance_g0 is taken"),
         Var("average_why", ("bias_v",), "state", "",
             "why the frames' average is none",
-            "at every voltage, why there is no average (one structure, the "
-            "weights not stated); or the frames this voltage's waits for",
+            "why there is no average at this voltage: one structure, or "
+            "the weights not stated; or the frames whose point at this "
+            "voltage is not done yet",
             dtype=str),
         Var("average_conductance_why", ("bias_v",), "state", "",
             "why the averaged conductance or its change is none",

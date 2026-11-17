@@ -1,6 +1,6 @@
 """A SIESTA VIBRATION'S OPTICAL CALLS AS STRUCTURED DATA -- ``<label>.optical.nc``
 at the run's root, the record of the Raman phase so far (`engines/vibration.md`
-§ 5.11 § 8).
+§ 5.11 § 8; every name it holds, `model/datafiles.md` § 9.3).
 
 MODULE  spectra.optical_data (L2; numpy, netCDF4 and the shared variable
         record; it travels beside the job, `runwrap.VIBRATION_COMPANIONS`)
@@ -41,7 +41,7 @@ import numpy as np
 try:                                        # inside molbuilder
     from ..atom_permutation import AtomIndexMap
     from ..ncdata import (NC_LOCK, Var, as_bytes, axis_values, checked,
-                          coordinate, empty, in_memory,
+                          coordinate, empty, in_memory, key_of, named_in,
                           json_attr, number_attr, read_variables,
                           state, unjson_attr, unnumber_attr, write_group)
     from ..persist import unknown_keys, write_bytes
@@ -52,7 +52,8 @@ try:                                        # inside molbuilder
 except ImportError:                         # beside a job, in mb_vibration.pyz
     from atom_permutation import AtomIndexMap  # type: ignore[no-redef]
     from ncdata import (NC_LOCK, Var, as_bytes,  # type: ignore[no-redef]
-                        axis_values, checked, coordinate, empty,
+                        axis_values, checked, coordinate, empty, key_of,
+                        named_in,
                         in_memory, json_attr, number_attr, read_variables,
                         state, unjson_attr, unnumber_attr, write_group)
     from persist import unknown_keys, write_bytes  # type: ignore[no-redef]
@@ -63,13 +64,14 @@ except ImportError:                         # beside a job, in mb_vibration.pyz
         read_structure_group, write_structure_group)
     from spectra_datafile import UNSTATED  # type: ignore[no-redef]
 
-DATA_SCHEMA = "molbuilder/optical-data@4"
+DATA_SCHEMA = "molbuilder/optical-data@5"
 #: ``@1`` kept ``δ`` as an attribute of ``/settings``, read as it is; ``@1``
 #: and ``@2`` kept one Fermi level a frame, read as the level of each of its
 #: channels -- they were written only where SIESTA printed one ``Ef``.
 READABLE_DATA_SCHEMAS = ("molbuilder/optical-data@1",
                          "molbuilder/optical-data@2",
-                         "molbuilder/optical-data@3", DATA_SCHEMA)
+                         "molbuilder/optical-data@3",
+                         "molbuilder/optical-data@4", DATA_SCHEMA)
 
 #: WHAT THE CALCULATION IS, in words -- the file's own title.
 WHAT = ("SIESTA's optical calculation: the imaginary part of the dielectric "
@@ -144,15 +146,19 @@ def _frame_vars(label: str) -> Tuple[Var, ...]:
             "the geometry the call computed at, in the user order; NaN for a "
             "call that wrote none", source=out),
         Var("state", ("frame",), "state", "", "the call's state",
-            "finished, failed or pending, by the run's one done rule "
-            "(engines/vibration.md 5.11 6)", dtype=str),
+            "by the run's one done rule (engines/vibration.md 5.11 6): "
+            "finished; not done -- it ran to its end and is not done; "
+            "failed -- it ran and ended with an error; not run -- its run's "
+            "walk ended before starting it; pending -- not run yet, its row "
+            "the fill", dtype=str),
         Var("computed_in", ("frame",), "state", "", "the run that computed it",
             "the run's folder below the calculation -- this run's, or the "
             "one a warm launch took the call over from; empty while pending",
             dtype=str),
-        Var("scf_iterations", ("frame",), "raw", "1", "the SCF's iterations",
+        Var("scf_cycles", ("frame",), "raw", "1", "the SCF's cycles",
             "the cycles of the call's SCF; -1 where it wrote none",
-            dtype="i4", fill=-1, source=out),
+            dtype="i4", fill=-1, source=out,
+            key="scf_iterations", earlier=("scf_iterations",)),
         Var("total_energy_ev", ("frame",), "raw", "eV", "the total energy",
             "E_KS of the call's SCF", source=out),
         Var("fermi_level_ev", ("frame", "spin"), "raw", "eV",
@@ -170,10 +176,11 @@ def _frame_vars(label: str) -> Tuple[Var, ...]:
             "when the interband transitions are in the range; the Drude "
             "term is left out of eps2",
             source=f"{epsimg}, its header"),
-        Var("drude_wp2_ha2", ("frame", "spin"), "raw", "Eh^2",
+        Var("drude_wp2_eh2", ("frame", "spin"), "raw", "Eh^2",
             "the Drude plasma frequency squared",
             "the intraband term SIESTA computes beside eps2 and leaves out "
-            "of it", source=f"{epsimg}, its header"),
+            "of it", source=f"{epsimg}, its header",
+            key="drude_wp2_ha2", earlier=("drude_wp2_ha2",)),
         Var("eps2", ("frame", "photon_energy_ev", "spin"), "raw", "1",
             "the imaginary part of the dielectric function",
             "for a field along /settings' direction, each transition spread "
@@ -266,16 +273,18 @@ def write_optical_data(payload: Mapping[str, Any], path) -> Path:
             if f.get("position_ang") is not None:
                 values["position_ang"][k] = np.asarray(f["position_ang"],
                                                        dtype=float)
-            if f.get("scf_iterations") is not None:
-                values["scf_iterations"][k] = int(f["scf_iterations"])
+            cycles = key_of(FRAME["scf_cycles"])
+            if f.get(cycles) is not None:
+                values["scf_cycles"][k] = int(f[cycles])
             for name in ("total_energy_ev", "engine_elapsed_s"):
                 values[name][k] = number_attr(f.get(name))
-            for name in ("fermi_level_ev", "f_sum", "drude_wp2_ha2"):
-                if f.get(name) is not None:
-                    v = np.asarray(f[name], dtype=float)
+            for name in ("fermi_level_ev", "f_sum", "drude_wp2_eh2"):
+                key = key_of(FRAME[name])
+                if f.get(key) is not None:
+                    v = np.asarray(f[key], dtype=float)
                     if v.shape != (len(spins),):
                         raise OpticalDataError(
-                            f"frame {f['call']}: {name} holds {v.size} "
+                            f"frame {f['call']}: {key} holds {v.size} "
                             f"value(s); the file states {len(spins)} spin "
                             f"channel(s), one each")
                     values[name][k] = v
@@ -344,8 +353,12 @@ def read_optical_data(path, *, data=None) -> Dict[str, Any]:
             fermi = np.broadcast_to(
                 np.asarray(fv["fermi_level_ev"]["data"][k], dtype=float),
                 (len(out["spin"]),))
-            drude = np.asarray(fv["drude_wp2_ha2"]["data"][k], dtype=float)
-            iters = int(fv["scf_iterations"]["data"][k])
+            # A FILE BEFORE @5 names them as the record does, read so
+            # (each variable's ``earlier``).
+            drude = np.asarray(
+                fv[named_in(fv, FRAME["drude_wp2_eh2"])]["data"][k],
+                dtype=float)
+            iters = int(fv[named_in(fv, FRAME["scf_cycles"])]["data"][k])
             frames.append({
                 "call": str(fv["call"]["data"][k]),
                 "mode": None if mode < 0 else mode,
@@ -373,3 +386,9 @@ def read_optical_data(path, *, data=None) -> Dict[str, Any]:
 
 __all__ = ["DATA_SCHEMA", "READABLE_DATA_SCHEMAS", "OpticalDataError", "WHAT",
            "write_optical_data", "read_optical_data"]
+
+
+#: The frames' variables by name -- what the writer asks a variable's record
+#: key of, and the reader its name in an older file (`ncdata.key_of`,
+#: `ncdata.named_in`).
+FRAME = {v.name: v for v in _frame_vars("label")}

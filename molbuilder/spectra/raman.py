@@ -1,6 +1,7 @@
 """THE RAMAN OF A SIESTA VIBRATION, AT A LASER -- derived on request from the
 optical calls' eps2 (`engines/vibration.md` § 5.11 § 10;
-`science/vibrational-optical-response.md` § 3, § 3.2a).
+`science/vibrational-optical-response.md` § 3, § 3.2a; every name its data
+file holds, `model/datafiles.md` § 9.4).
 
 MODULE  spectra.raman (L2; numpy, the optical calls' data file, the variable
         record)
@@ -49,7 +50,7 @@ from ..runpoints import NOT_RUN
 from .activity import CHANNEL_PRESENT_FLOOR_RAMAN_A4_AMU, relative_to_strongest
 
 #: The view's data file, written only by an export (`model/datafiles.md` § 1).
-RAMAN_SCHEMA = "molbuilder/raman-view@3"
+RAMAN_SCHEMA = "molbuilder/raman-view@4"
 READABLE_RAMAN_SCHEMAS = (RAMAN_SCHEMA,)
 
 #: What a page or a script asks (:func:`read_ask`).
@@ -76,7 +77,7 @@ WHAT = ("the Raman strengths of a SIESTA vibration's picked modes at a "
         "width at half height 2 sqrt(ln 2) s -- its real part by "
         "Kramers-Kronig at the laser's photon energy and at zero; the "
         "polarizability alpha = V/4pi (eps - 1) of the cell of volume "
-        "cell_volume_a3, complex at the laser (its imaginary part V/4pi "
+        "cell_volume_ang3, complex at the laser (its imaginary part V/4pi "
         "eps2); dalpha/dQ = [alpha(+dQ) - alpha(-dQ)] / 2dQ and the strength "
         "R = |dalpha/dQ|^2 for light along direction -- a strength, not an "
         "intensity: no laser-frequency or temperature factor")
@@ -517,15 +518,14 @@ def read_ask(raw: Any) -> Dict[str, Any]:
 #  The view as a data file -- ``<label>.raman.nc``, an export's          #
 # --------------------------------------------------------------------- #
 
-def _mode_numbers() -> Tuple[str, ...]:
-    """Each mode's numbers, as the file's own table names them -- the
-    view's fields of the same names."""
-    return tuple(v.name for v in _mode_vars() if v.dtype == "f8")
+def _mode_numbers():
+    """Each mode's numbers -- their variables, the file's own table's."""
+    return tuple(v for v in _mode_vars() if v.dtype == "f8")
 
 
 def _view_vars():
-    """The view's own numbers, on the root -- the view's fields of the same
-    names."""
+    """The view's own numbers, on the root -- each the view's field its
+    variable's key names (`ncdata.key_of`)."""
     from ..ncdata import Var
     return (
         Var("laser_nm", (), "given", "nm", "the laser's wavelength",
@@ -545,34 +545,34 @@ def _view_vars():
             "the displacement of the atom that moves most",
             "each frame moves the mode's largest atom by delta: "
             "dQ = delta / max_k |L_k|, max_k |L_k| the length of the largest atom's displacement vector"),
-        Var("cell_volume_a3", (), "derived", "angstrom^3",
+        Var("cell_volume_ang3", (), "derived", "angstrom^3",
             "the cell's volume V", "the reference structure's, in "
-            "alpha = V/4pi (eps - 1)"),
-        Var("band_floor_a4_amu", (), "given", "angstrom^4/amu",
+            "alpha = V/4pi (eps - 1)", key="cell_volume_a3"),
+        Var("band_floor_ang4_per_amu", (), "given", "angstrom^4/amu",
             "the Raman channel's band floor",
             "at or below it the strongest mode sets no relative scale: "
             "relative is NaN -- set on the Placzek activity's scale, which "
-            "runs above the strength R"),
+            "runs above the strength R", key="band_floor_a4_amu"),
     )
 
 
 def _equilibrium_vars():
-    """Frame 0's polarizability -- the view's fields of the same names."""
+    """Frame 0's polarizability -- the view's fields, each its variable's key."""
     from ..ncdata import Var
     return (
-        Var("alpha_static_a3", (), "derived", "angstrom^3",
+        Var("alpha_static_ang3", (), "derived", "angstrom^3",
             "the polarizability, static", "V/4pi (eps1 - 1) at zero "
             "frequency, light along the direction; eps1 by Kramers-Kronig "
-            "over the stored spectrum, cut at its highest energy"),
-        Var("alpha_laser_real_a3", (), "derived", "angstrom^3",
+            "over the stored spectrum, cut at its highest energy", key="alpha_static_a3"),
+        Var("alpha_laser_real_ang3", (), "derived", "angstrom^3",
             "the polarizability at the laser, its real part",
             "V/4pi (eps1 - 1) at the laser's frequency; eps1 by "
             "Kramers-Kronig over the stored spectrum, cut at its highest "
-            "energy"),
-        Var("alpha_laser_imag_a3", (), "derived", "angstrom^3",
+            "energy", key="alpha_laser_real_a3"),
+        Var("alpha_laser_imag_ang3", (), "derived", "angstrom^3",
             "the polarizability at the laser, its imaginary part",
             "V/4pi eps2 at the laser's frequency -- zero off any electronic "
-            "transition"),
+            "transition", key="alpha_laser_imag_a3"),
     )
 
 
@@ -586,32 +586,35 @@ def _mode_vars():
             "the displacement along the mode",
             "dQ = delta / max_k |L_k|, max_k |L_k| the length of the largest atom's displacement vector: the atom that moves most "
             "moves by delta"),
-        Var("dalpha_dq_static_a2_per_amu12", ("mode",), "derived",
+        Var("dalpha_dq_static_ang2_per_amu12", ("mode",), "derived",
             "angstrom^2/amu^1/2", "the polarizability's change, static",
-            "[alpha(+dQ) - alpha(-dQ)] / 2dQ at zero frequency"),
-        Var("dalpha_dq_laser_real_a2_per_amu12", ("mode",), "derived",
+            "[alpha(+dQ) - alpha(-dQ)] / 2dQ at zero frequency", key="dalpha_dq_static_a2_per_amu12"),
+        Var("dalpha_dq_laser_real_ang2_per_amu12", ("mode",), "derived",
             "angstrom^2/amu^1/2",
             "the polarizability's change at the laser, its real part",
             "[alpha1(+dQ) - alpha1(-dQ)] / 2dQ at the laser's frequency, "
-            "alpha1 = V/4pi (eps1 - 1)"),
-        Var("dalpha_dq_laser_imag_a2_per_amu12", ("mode",), "derived",
+            "alpha1 = V/4pi (eps1 - 1)", key="dalpha_dq_laser_real_a2_per_amu12"),
+        Var("dalpha_dq_laser_imag_ang2_per_amu12", ("mode",), "derived",
             "angstrom^2/amu^1/2",
             "the polarizability's change at the laser, its imaginary part",
             "[alpha2(+dQ) - alpha2(-dQ)] / 2dQ at the laser's frequency, "
-            "alpha2 = V/4pi eps2 -- zero off any electronic transition"),
-        Var("strength_static_a4_amu", ("mode",), "derived",
+            "alpha2 = V/4pi eps2 -- zero off any electronic transition", key="dalpha_dq_laser_imag_a2_per_amu12"),
+        Var("strength_static_ang4_per_amu", ("mode",), "derived",
             "angstrom^4/amu", "the Raman strength, static",
-            "R = (dalpha/dQ)^2 at zero frequency, light along the direction"),
-        Var("strength_laser_a4_amu", ("mode",), "derived",
+            "R = (dalpha/dQ)^2 at zero frequency, light along the direction", key="strength_static_a4_amu"),
+        Var("strength_laser_ang4_per_amu", ("mode",), "derived",
             "angstrom^4/amu", "the Raman strength at the laser",
             "R = |dalpha/dQ|^2 = real^2 + imag^2 at the laser's frequency, "
-            "light along the direction"),
+            "light along the direction", key="strength_laser_a4_amu"),
         Var("relative", ("mode",), "derived", "1",
-            "the strength over the strongest real mode's",
-            "at the laser; NaN when the strongest is at or below the Raman "
-            "channel's band floor, band_floor_a4_amu"),
+            "the strength over the strongest mode's",
+            "at the laser, over the strongest such strength among the modes "
+            "whose frequency is real, not imaginary; NaN for every mode when "
+            "that strongest is at or below band_floor_ang4_per_amu"),
         Var("state", ("mode",), "state", "", "the mode's state",
-            "finished, or not ended/failed with a side not done", dtype=str),
+            "finished; or, a side not done, that side's state -- failed, "
+            "not run, not done or not ended -- its numbers then the fill",
+            dtype=str),
         Var("why", ("mode",), "state", "", "why a value is missing",
             "the side not done and its state; empty when finished",
             dtype=str),
@@ -627,7 +630,7 @@ def raman_data_bytes(view: RamanView, *, label: str) -> Tuple[str, bytes]:
     ``/modes`` each mode's numbers."""
     from .. import __version__
     from ..ncdata import (NC_LOCK, as_bytes, empty, in_memory, json_attr,
-                          number_attr, state, write_group)
+                          key_of, number_attr, state, write_group)
     name = f"{label}{RAMAN_FILE}"
     numbers = {**view.__dict__,
                "band_floor_a4_amu": CHANNEL_PRESENT_FLOOR_RAMAN_A4_AMU}
@@ -651,7 +654,7 @@ def raman_data_bytes(view: RamanView, *, label: str) -> Tuple[str, bytes]:
                  "reference geometry: static, and at the laser its real and "
                  "imaginary parts")):
             write_group(g, {}, vars_,
-                        {v.name: np.asarray(number_attr(numbers[v.name]))
+                        {v.name: np.asarray(number_attr(numbers[key_of(v)]))
                          for v in vars_}, title=title)
         g = ds.createGroup("modes")
         vars_ = _mode_vars()
@@ -659,8 +662,8 @@ def raman_data_bytes(view: RamanView, *, label: str) -> Tuple[str, bytes]:
         values = {v.name: empty(v, sizes) for v in vars_}
         for k, m in enumerate(view.modes):
             values["mode"][k] = m.index_1based
-            for key in _mode_numbers():
-                values[key][k] = number_attr(getattr(m, key))
+            for v in _mode_numbers():
+                values[v.name][k] = number_attr(getattr(m, key_of(v)))
             values["state"][k] = m.state
             values["why"][k] = m.why
         write_group(g, sizes, vars_, values,
@@ -674,7 +677,8 @@ def read_raman_data(path) -> Dict[str, Any]:
     """``<label>.raman.nc`` back as data -- its attributes, its numbers,
     frame 0's alpha and each mode's row; a schema it does not read refused
     by name, with the way back: the view exported again."""
-    from ..ncdata import checked, read_variables, unjson_attr, unnumber_attr
+    from ..ncdata import (checked, key_of, read_variables, unjson_attr,
+                          unnumber_attr)
     with checked(path, schemas=READABLE_RAMAN_SCHEMAS, error=RamanError,
                  way="export the view again (jobset export)") as (ds, attrs):
         out: Dict[str, Any] = {
@@ -686,15 +690,15 @@ def read_raman_data(path) -> Dict[str, Any]:
         for g, vars_ in ((ds, _view_vars()),
                          (ds["equilibrium"], _equilibrium_vars())):
             held = read_variables(g)
-            out.update({v.name: unnumber_attr(held[v.name]["data"])
+            out.update({key_of(v): unnumber_attr(held[v.name]["data"])
                         for v in vars_})
         mv = read_variables(ds["modes"])
         rows: List[Dict[str, Any]] = []
         for k in range(int(mv["mode"]["data"].shape[0])):
             rows.append({
                 "mode": int(mv["mode"]["data"][k]),
-                **{key: unnumber_attr(mv[key]["data"][k])
-                   for key in _mode_numbers()},
+                **{key_of(v): unnumber_attr(mv[v.name]["data"][k])
+                   for v in _mode_numbers()},
                 "state": str(mv["state"]["data"][k]),
                 "why": str(mv["why"]["data"][k])})
         out["modes"] = rows

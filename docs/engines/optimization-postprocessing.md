@@ -67,7 +67,8 @@ with is none, and neither is a step still being computed or one the run stopped
 inside, whose energy is no result: `said` says so, and `parse` shows it as it stands
 (§ 5). A run that has finished none is refused by name. **A SIESTA relaxation's last
 row is the final geometry it wrote, which states no energy of its own**:
-`energy_ev[-1]` is NaN there, and `final_energy_ev` answers the step before it. A
+`energy_ev[-1]` is NaN there (the file's `total_energy_ev`), and `final_energy_ev`
+(the file's `final_total_energy_ev`) answers the step before it. A
 PySCF run's last step states its energy.
 
 **Is its force within its tolerance?** The run's own record, on both engines:
@@ -199,7 +200,7 @@ molbuilder jobset export --bundle <calculation> --format csv --to <folder>      
 data = read_optimization_data("exported/J.optimization.nc")
 data["atom_index_map"].listed_by          # 'user_index'
 steps = data["variables"]
-steps["energy_ev"]["data"]                # by step, run by run
+steps["total_energy_ev"]["data"]          # by step, run by run
 steps["run_of_step"]["data"]              # the run each step is of
 steps["position_ang"]["attrs"]["units"]   # 'angstrom': every variable says what it is
 ```
@@ -213,7 +214,7 @@ crash it, so close one first
 import xarray as xr
 ds = xr.load_dataset("exported/J.optimization.nc")
 ds.position_ang.sel(atom=0, xyz="z")      # your atom 0's z, by step
-ds.energy_ev.where(ds.run_of_step == "01_coarse/run-0", drop=True)
+ds.total_energy_ev.where(ds.run_of_step == "01_coarse/run-0", drop=True)
 ds.force_within_tolerance.sel(run="01_coarse/run-0") == 1
 ```
 
@@ -224,23 +225,7 @@ NaN; a table as `1`, `0` and an empty cell. **Test `== 1`**, which means yes on
 every road: `bool(-1)` and `bool(NaN)` are true, so `bool(...)` or `.all()` reads a
 rung that died as passed.
 
-| variable | over | what it holds |
-|---|---|---|
-| `element` | `atom` | each atom's chemical symbol |
-| `position_ang`, `force_ev_per_ang` | `step`, `atom`, `xyz` | § 3's rows; NaN where a step states none |
-| `energy_ev` | `step` | § 3's energy |
-| `max_force_ev_per_ang`, `max_force_free_ev_per_ang` | `step` | the largest force, over every atom and over the atoms the run moved |
-| `hirshfeld_charge_e`, `voronoi_charge_e` | `step`, `atom` | as the run printed them. SIESTA prints them where its deck asks, which a vibration's force constants do and an optimization's deck does not of itself: NaN then |
-| `stress_kbar` | `step`, `voigt` | as the run printed it |
-| `run_of_step` | `step` | the run each step is of, as the `run` axis names it |
-| `rung_of_run`, `output_file`, `continued_from` | `run` | the stage's name, the file its steps were read from, and the run it continued from, by its own record. The `run` axis is the ladder's order, and the file holds no times |
-| `final_energy_ev` | `run` | the last energy of a step it finished |
-| `force_tolerance_ev_per_ang`, `force_within_tolerance` | `run` | the run's own record, a force test alone (§ 3); NaN and not stated for a run that relaxed nothing |
-| `scf_converged`, `run_state`, `said` | `run` | § 3's; `said` also why a run gives no step |
-| `held` | `run`, `atom` | whether the run's output says it holds the atom |
-| `applied_offset_ang` | `run`, `xyz` | what prep moved the structure it was handed by (§ 3) |
-| `cell_ang` | `run`, `cell_vector`, `xyz` | the cell the run ended in, else the box its deck placed the atoms in, which on an isolated axis is no lattice |
-| `axis_kind` | `run`, `cell_vector` | each cell vector's periodicity — periodic, isolated or transport, as the run's structure states it |
+Every variable and attribute it holds — its axes, kind, units and what it is: [`model/datafiles.md`](?doc=model/datafiles.md) § 9.5.
 
 The framework it follows, and what every data file promises:
 [`model/datafiles.md`](?doc=model/datafiles.md).

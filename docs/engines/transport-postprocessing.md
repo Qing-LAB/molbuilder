@@ -127,7 +127,7 @@ n = int(d.scf_cycles)
 d.scf_ddmax.isel(scf_cycle=slice(0, n)).plot()
 d.scf_phase.isel(scf_cycle=slice(0, n)).values       # periodic / negf
 seed = xr.load_dataset("T.transport.nc", group="stages/seed")
-float(seed.fermi_ev), seed.attrs["engine_version"]    # its E_F, the SIESTA that ran it
+float(seed.fermi_level_ev), seed.attrs["engine_version"]  # its E_F, the SIESTA that ran it
 ```
 
 ### 3.4 The CSV export
@@ -160,7 +160,7 @@ junction.regions                    # every label and its atoms, yours among the
 `.spectra.nc` holds the same variables, its `position_ang` one geometry's
 (`atom`, `xyz`) where this file's runs over its frames.
 
-`dos_region` is the DOS per orbital summed over the atoms of a region that
+`dos_region_per_ev` is the DOS per orbital summed over the atoms of a region that
 the point's DOS covers (`atom_region`, `dos_atom`); a sum over atoms you
 choose is yours to form, from the point's digest (§ 5).
 
@@ -252,7 +252,7 @@ mine = atoms.map_to_user_index(dg.device_atom.values.tolist())
 # the PDOS of two of them: their engine indices, their orbitals
 wanted = atoms.map_to_engine_index(mine[:2])
 theirs = dg.device_orbital_atom.isin(wanted).values
-pdos = dg.DOS.isel(device_orbital=theirs).sum("device_orbital")  # per energy
+pdos = dg.orbital_dos_per_ev.isel(device_orbital=theirs).sum("device_orbital")  # per energy
 pdos.plot(x="energy_ev")
 ```
 

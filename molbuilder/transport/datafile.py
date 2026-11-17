@@ -1,5 +1,6 @@
 """THE TRANSPORT DATA FILE -- ``<label>.transport.nc``, the record's results
-as data on their grid (`engines/transport.md` § 2a.12, *the data file*).
+as data on their grid (`engines/transport.md` § 2a.12, *the data file*;
+every name it holds, `model/datafiles.md` § 9.1).
 
 MODULE  transport.datafile (L2; numpy, netCDF4 and molbuilder's own doors)
 ROLE    one NetCDF-4 file per transport calculation, in groups -- the
@@ -50,7 +51,7 @@ from .stages import same_volts
 
 #: The file's schema, stated in it: an older file is refused by its
 #: version, and `summarize task` writes it again.
-DATA_SCHEMA = "molbuilder/transport-data@11"
+DATA_SCHEMA = "molbuilder/transport-data@12"
 
 #: THE ATTRIBUTES THIS FILE WRITES AS JSON TEXT, on its root and the
 #: summary (`ncdata.json_attr`, :func:`data_file_bytes`;
@@ -104,13 +105,13 @@ _SCF_COLUMNS = (
      "dDmax, as SIESTA printed it", "f8", None),
     ("dHmax", "dhmax_ev", "raw", "eV", "the Hamiltonian's largest change",
      "dHmax, as SIESTA printed it", "f8", None),
-    ("ef", "ef_ev", "raw", "eV", "the cycle's Fermi level",
+    ("ef", "fermi_level_ev", "raw", "eV", "the cycle's Fermi level",
      "Ef, as SIESTA printed it", "f8", None),
 )
 #: The columns a device's NEGF rows add -- TranSIESTA's unconserved charge
 #: and boundary Hartree potential -- and each row's phase.
 _NEGF_SCF_COLUMNS = (
-    ("dq", "dq", "raw", "e", "the charge not conserved",
+    ("dq", "dq_e", "raw", "e", "the charge not conserved",
      "dQ of the ts-q: line (NEGF rows): every column summed less the "
      "neutral count -- the charge the open boundaries did not conserve, "
      "not a change between cycles", "f8", None),
@@ -138,9 +139,10 @@ def _variables() -> Tuple[Var, ...]:
         coordinate("frame", more=(
             "the frame set's, as MolView's API counts; a message and the "
             "page number it from 1 (model/structure.md 2.2e)")),
-        Var("frame_token", ("frame",), "coordinate", "", "the frame's folder",
-            "its index: f000 is frame index 0 (engines/transport.md 2a.11); "
-            "empty for one structure, which has no frame level",
+        Var("frame_token", ("frame",), "given", "", "the frame's folder",
+            "the name of its folder: f000 is frame 0's "
+            "(engines/transport.md 2a.11); empty for one structure, which "
+            "has no frame level",
             dtype=S, auxiliary=True),
         Var("bias_v", ("bias_v",), "coordinate", "V", "bias voltage",
             "the voltage the device and the transmission ran at -- the "
@@ -150,7 +152,8 @@ def _variables() -> Tuple[Var, ...]:
             f"point's {shown(TBTRANS_NC, tbt=_TBT)}, ascending; TBtrans's "
             "text files, printed to 5 decimals, put on it within half that "
             "decimal")),
-        coordinate("spin", more="the record's"),
+        coordinate("spin", more="the channels TBtrans wrote for the "
+                                "point"),
         Var("iv_bias_v", ("iv_bias_v",), "coordinate", "V",
             "the I-V's voltage",
             "the description's voltage list, in its order"),
@@ -186,7 +189,7 @@ def _variables() -> Tuple[Var, ...]:
         Var("atom_region", ("atom",), "given", "", "the atom's region",
             "the region molbuilder owns that it lies in -- L-electrode, "
             "bridge, R-electrode -- from the composed junction's labels "
-            "(record.device_regions); empty for an atom in none.  dos_region "
+            "(record.device_regions); empty for an atom in none.  dos_region_per_ev "
             "sums the atoms of a region that a point's DOS covers "
             "(dos_atom); the region axis names the three",
             dtype=S, auxiliary=True),
@@ -207,7 +210,7 @@ def _variables() -> Tuple[Var, ...]:
                                                        pair="<L>-<R>")
                     + " (TBT_UP / TBT_DN polarized)")),
         Var("transmission", ("frame", "bias_v", "energy_ev"), "derived", "1",
-            "transmission per spin channel",
+            "the transmission of one spin channel",
             "the one channel, or (T_up + T_down) / 2 -- what G is computed "
             "from"),
         Var("conductance_g0", ("frame", "bias_v"), "derived", "G0",
@@ -255,7 +258,7 @@ def _variables() -> Tuple[Var, ...]:
             "a polarized calculation's, each spin's as the record states it; "
             "the fill value for a non-polarized one, whose spins carry half "
             "the total each"),
-        Var("device_ef_ev", ("frame", "bias_v"), "raw", "eV",
+        Var("device_fermi_level_ev", ("frame", "bias_v"), "raw", "eV",
             "the device point's Fermi level",
             "its NEGF phase's last cycle, in TranSIESTA's frame",
             source="the device point's SIESTA output"),
@@ -265,31 +268,34 @@ def _variables() -> Tuple[Var, ...]:
             "-- a value, not the shift between the device's zero and the "
             "seed's, which is the periodic start's (`fermi_frames`)",
             source="the device point's SIESTA output"),
-        Var("dos_total", ("frame", "bias_v", "energy_ev"), "raw", "1/eV",
+        Var("dos_total_per_ev", ("frame", "bias_v", "energy_ev"), "raw", "1/eV",
             "the device's density of states", "its Green-function DOS, "
             "k-averaged: a non-polarized point's one spin's, a polarized "
             "point's up + down",
             source=_from(shown(TBTRANS_AVDOS, tbt=_TBT))),
-        Var("dos_total_by_spin", ("frame", "bias_v", "spin", "energy_ev"),
+        Var("dos_total_by_spin_per_ev", ("frame", "bias_v", "spin", "energy_ev"),
             "raw", "1/eV", "the device's density of states, by spin channel",
             "each channel's Green-function DOS, k-averaged -- a "
             "non-polarized point's one channel",
             source=("<label>" + shown(TBTRANS_AVDOS, tbt=_TBT)
                     + " (TBT_UP / TBT_DN polarized)")),
-        Var("dos_region", ("frame", "bias_v", "region", "energy_ev"), "raw",
+        Var("dos_region_per_ev", ("frame", "bias_v", "region", "energy_ev"), "raw",
             "1/eV", "the device DOS by region",
-            "summed over the region's atoms in the device: a non-polarized "
+            "the point's DOS per orbital summed over the orbitals of the "
+            "atoms whose atom_region is the region and whose dos_atom is 1 "
+            "-- the atoms of it the point's DOS covers: a non-polarized "
             "point's one spin's, a polarized point's up + down",
             source=_from(shown(ROLE_TBT_DIGEST, tbt=_TBT)
                          + ", the data file's DOS per orbital")),
-        Var("lead_spectral_dos", ("frame", "bias_v", "lead", "energy_ev"), "raw",
+        Var("lead_spectral_dos_per_ev", ("frame", "bias_v", "lead", "energy_ev"), "raw",
             "1/eV", "the device's DOS from a lead's states",
             "TBT.DOS.A, k-averaged: the device's spectral DOS of the states "
-            "coming in from this lead, not the lead's own (lead_bulk_dos); "
+            "coming in from this lead, not the lead's own (lead_bulk_dos_per_ev); "
             "a non-polarized point's one spin's, a polarized point's up + "
-            "down",
+            "down; TBtrans computes it for every lead but the last "
+            "(TBT.DOS.A.All not set), whose row is the fill",
             source=_from(shown(TBTRANS_AVADOS, tbt=_TBT, lead="<lead>"))),
-        Var("lead_bulk_dos", ("frame", "bias_v", "lead", "energy_ev"), "raw",
+        Var("lead_bulk_dos_per_ev", ("frame", "bias_v", "lead", "energy_ev"), "raw",
             "1/eV", "a lead's bulk DOS", "TBT.DOS.Elecs, k-averaged: a "
             "non-polarized point's one spin's, a polarized point's up + "
             "down",
@@ -319,11 +325,11 @@ def _variables() -> Tuple[Var, ...]:
             "why a done point has no DOS",
             "in its reader's words -- its DOS variables the fill value",
             dtype=S),
-        Var("tbt_k_points", ("frame", "bias_v"), "raw", "1",
+        Var("tbt_kpoints", ("frame", "bias_v"), "raw", "1",
             "the transmission's transverse k-points",
             "as the point's TBtrans run states it", dtype="i4", fill=-1,
             source="the transmission point's TBtrans output"),
-        Var("tbt_k_method", ("frame", "bias_v"), "raw", "",
+        Var("tbt_kpoint_method", ("frame", "bias_v"), "raw", "",
             "how those k-points were chosen",
             "as the point's TBtrans run states it", dtype=S,
             source="the transmission point's TBtrans output"),
@@ -338,7 +344,9 @@ def _variables() -> Tuple[Var, ...]:
             "(engines/transport.md 2a.16)", dtype=S),
         Var("shared_from", ("frame", "bias_v"), "state", "",
             "the finished point whose energies a point shares",
-            "engines/transport.md 2a.16", dtype=S),
+            "that point's folder, in the calculation it reuses "
+            "(engines/transport.md 2a.16); empty for a point that shares "
+            "none", dtype=S),
         Var("shared_held", ("frame", "bias_v"), "state", "1",
             "the energies a point shares", "how many the finished point "
             "holds", dtype="i4", fill=-1),
@@ -356,15 +364,16 @@ def _variables() -> Tuple[Var, ...]:
             "a JSON list: each digest's path from the calculation's folder "
             "-- where this file lies -- its channel, and the version of the "
             "data file it states, [its size in bytes, its modification time "
-            "in ns] when it was read: the reading dos_region is summed from, "
+            "in ns] when it was read: the reading dos_region_per_ev is summed from, "
             "which postprocess.pdos reads back; empty where none is kept",
             dtype=S, json=True),
         Var("dos_per_orbital_reading", ("frame", "bias_v"), "state", "",
-            "the point's data-file reading, the DOS by region's",
-            "kept, or each data file's state in its words -- a reading just "
-            "tried that failed, or that another reading holds, in that "
-            "reading's -- dos_region the fill value where it is not kept "
-            "(model/parse.md 5e)", dtype=S),
+            "the state of the point's DOS-per-orbital reading",
+            "kept -- read and kept beside its data file, which "
+            "dos_region_per_ev is summed from -- or why not, in the "
+            "reading's own words: not read yet, out of date, being read, "
+            "or why a reading just tried failed; dos_region_per_ev is the "
+            "fill where it is not kept (model/parse.md 5e)", dtype=S),
         # EVERY RUN'S STATE AND CONVERGENCE, on the grid it varies over.
         Var("rung", ("rung",), "coordinate", "", "stage",
             "the stages that run once, by their names", dtype=S),
@@ -374,8 +383,12 @@ def _variables() -> Tuple[Var, ...]:
             dtype="i4"),
         Var("charge_part", ("charge_part",), "coordinate", "",
             "TranSIESTA's charge column",
-            "as its ts-q: header names them: D the device, E1 C1 ... each "
-            "electrode and its coupling", dtype=S),
+            "a column of TranSIESTA's ts-q: line, as its header names it: "
+            "D the bridge -- TranSIESTA's device region; E1, E2 each "
+            "electrode block; C1, C2 the overlap population across each "
+            "electrode's boundary with the bridge; O the rest; B the buffer "
+            "atoms, where there are some (engines/transport.md 2a.12)",
+            dtype=S),
         Var("point_state", ("frame", "bias_v"), "state", "",
             "the transmission point's state",
             "the run door's word for its run (finished, failed, not run, "
@@ -390,31 +403,32 @@ def _variables() -> Tuple[Var, ...]:
         Var("device_scf_converged", ("frame", "bias_v"), "state", "1",
             "the device point's SCF converged",
             "1 converged, 0 not, -1 not stated", dtype="i1", flag=True),
-        Var("device_last_energy_ev", ("frame", "bias_v"), "raw", "eV",
-            "the NEGF phase's last energy",
-            "never compared across points or calculations "
-            "(engines/transport.md 1.1)",
+        Var("device_total_energy_ev", ("frame", "bias_v"), "raw", "eV",
+            "the NEGF phase's total energy",
+            "E_KS of its last SCF cycle, converged where its run's "
+            "scf_converged says so; never compared across points or "
+            "calculations (engines/transport.md 1.1)",
             source="the device point's SIESTA output"),
         Var("device_negf_cycles", ("frame", "bias_v"), "raw", "1",
             "how many NEGF cycles ran",
             "the NEGF rows of the run's SCF history -- TranSIESTA's loop, "
             "after the periodic start", source="the device point's SIESTA "
             "output", dtype="i4", fill=-1),
-        Var("device_dq", ("frame", "bias_v"), "raw", "e",
+        Var("device_dq_e", ("frame", "bias_v"), "raw", "e",
             "the last NEGF cycle's charge not conserved",
             "dQ of its ts-q: line: every column summed less the neutral "
             "count -- the charge the open boundaries did not conserve",
             source="the device point's SIESTA output"),
-        Var("device_charge", ("frame", "bias_v", "charge_part"), "raw", "e",
+        Var("device_charge_e", ("frame", "bias_v", "charge_part"), "raw", "e",
             "the last NEGF cycle's Mulliken populations", "electrons, "
             "column by column, as TranSIESTA printed them: a net population "
             "for a region, an overlap population across a boundary -- "
             "positive, electrons counted, not a net charge",
             source="the device point's SIESTA output"),
-        Var("device_d_change_from_0v", ("frame", "bias_v"), "derived", "e",
+        Var("device_d_change_from_0v_e", ("frame", "bias_v"), "derived", "e",
             "the bridge's population change from 0 V",
             "D(V) - D(0 V): the bridge's net Mulliken population (the D "
-            "column of device_charge) at this voltage less the same "
+            "column of the device's charge_e) at this voltage less the same "
             "frame's at 0 V; not stated where the frame has no finished "
             "0 V point; positive where the bridge gained electrons "
             "(engines/transport.md 2a.12)"),
@@ -436,7 +450,7 @@ def _variables() -> Tuple[Var, ...]:
             dtype="i4", fill=-1),
         *_scf_vars("device", ("frame", "bias_v", "scf_cycle"),
                    _SCF_COLUMNS + _NEGF_SCF_COLUMNS),
-        Var("device_scf_charge", ("frame", "bias_v", "scf_cycle",
+        Var("device_scf_charge_e", ("frame", "bias_v", "scf_cycle",
                                   "charge_part"), "raw", "e",
             "every NEGF row's Mulliken populations", "electrons, column by "
             "column, as TranSIESTA printed them",
@@ -452,10 +466,12 @@ def _variables() -> Tuple[Var, ...]:
         Var("rung_scf_converged", ("rung",), "state", "1",
             "the stage's SCF converged", "1 converged, 0 not, -1 not stated",
             dtype="i1", flag=True),
-        Var("rung_last_energy_ev", ("rung",), "raw", "eV",
-            "the stage's last energy",
-            "its run's last energy", source="the stage's SIESTA output"),
-        Var("rung_fermi_ev", ("rung",), "raw", "eV", "the stage's Fermi level",
+        Var("rung_total_energy_ev", ("rung",), "raw", "eV",
+            "the stage's total energy",
+            "E_KS of its run's last SCF cycle, as SIESTA printed it -- "
+            "converged where scf_converged says so",
+            source="the stage's SIESTA output"),
+        Var("rung_fermi_level_ev", ("rung",), "raw", "eV", "the stage's Fermi level",
             "its last SCF cycle's E_F, in its own run's frame -- how the "
             "frames relate, fermi_frames", source="the stage's SIESTA output"),
         Var("rung_scf_cycles", ("rung",), "state", "1",
@@ -487,8 +503,8 @@ VARIABLES: Tuple[Var, ...] = _variables()
 def _summary() -> Tuple[str, ...]:
     from ..frame_average import SUMMARY_PART
     return ("done", "point_state", "conductance_g0", "current_a",
-            "current_by_spin_a", "current_from", "device_ef_ev",
-            "device_vha_ev", "device_dq", "device_d_change_from_0v",
+            "current_by_spin_a", "current_from", "device_fermi_level_ev",
+            "device_vha_ev", "device_dq_e", "device_d_change_from_0v_e",
             "device_scf_converged", "transmission",
             "iv_current_a", "iv_current_by_spin_a", "iv_kt_ev",
             "iv_window_lowest_ev", "iv_window_highest_ev", *SUMMARY_PART)
@@ -497,8 +513,9 @@ def _summary() -> Tuple[str, ...]:
 SUMMARY: Tuple[str, ...] = _summary()
 
 #: THE PREFIX A VARIABLE DROPS in the group its path names
-#: (`engines/transport.md` § 2a.12: ``rung_fermi_ev`` is a stage's
-#: ``fermi_ev``, ``point_why`` a point's ``why``).
+#: (`engines/transport.md` § 2a.12): ``rung_fermi_level_ev`` is a stage's
+#: ``fermi_level_ev``, ``point_why`` a point's ``why`` -- the internal
+#: ``rung`` axis is cut away before any group is written.
 _PREFIX = {"stage": "rung_", "point": "point_", "device": "device_"}
 
 #: THE JUNCTION'S AXES: a variable over these alone -- an atom, an orbital,
@@ -542,10 +559,10 @@ _HOMES: Dict[str, str] = {v.name: _home(v) for v in VARIABLES
 #: A POINT'S OWN PLACE on the summary's axes, in its group: its frame and its
 #: voltage, each the axis's value there (`engines/transport.md` § 2a.12).
 _POINT_AT = (
-    Var("frame", (), "coordinate", "1", "frame index",
+    Var("frame", (), "given", "1", "frame index",
         "the point's frame, counted from 0 -- the summary's frame axis at "
         "this point", dtype="i4"),
-    Var("bias_v", (), "coordinate", "V", "bias voltage",
+    Var("bias_v", (), "given", "V", "bias voltage",
         "the point's voltage -- the summary's bias_v axis at this point"),
 )
 
@@ -660,12 +677,18 @@ def data_file_bytes(calc, record: Dict, *,
                 f"{p['point']}'s transmission is on another "
                 f"energy grid than the first point's -- every point's "
                 f"transmission deck is the one template's")
-    # THE SPIN CHANNELS, by the record's names: a polarized point's two
-    # channels, or the one channel of the spin its deck states.
+    # THE SPIN CHANNELS: a polarized point's two, by the record's names,
+    # or the one channel of the spin its deck states.
     polarized = any(p.get("spin") == "polarized" for p in done_points)
+    # EACH CHANNEL BY ITS NAME, the one table of a spin's channels
+    # (`conductance.SPIN_CHANNELS`): a non-polarized deck's one channel is
+    # ``unpolarized``, as every data file names it -- never the spin
+    # option's own word.
+    from .conductance import SPIN_CHANNELS
     spins = (list(next(p["channels"] for p in done_points
                        if p.get("channels"))) if polarized
-             else list(dict.fromkeys(p["spin"] for p in done_points)))
+             else list(dict.fromkeys(c for p in done_points
+                                     for c in SPIN_CHANNELS[p["spin"]])))
     leads = list(LEAD_NAMES)
 
     def by_spin(p) -> List[Dict]:
@@ -797,8 +820,8 @@ def data_file_bytes(calc, record: Dict, *,
                 values["current_by_spin_a"][f, b, s] = printed[name]
         # THE TRANSMISSION'S OWN SETTINGS AND TIME, what it shares and what
         # it is a copy of, and its DOS per orbital's reading.
-        _copied(p, (("k_points", "tbt_k_points"),
-                    ("k_method", "tbt_k_method"),
+        _copied(p, (("k_points", "tbt_kpoints"),
+                    ("k_method", "tbt_kpoint_method"),
                     ("loop_elapsed_s", "loop_elapsed_s"),
                     ("copied_from", "copied_from")), (f, b), values)
         _shared_facts(p, (f, b), values)
@@ -825,17 +848,17 @@ def data_file_bytes(calc, record: Dict, *,
         if sources:
             values["dos_per_orbital_files"][f, b] = sources
         dos = p.get("dos") or {}
-        _copied(dos, (("total", "dos_total"),), (f, b), values)
+        _copied(dos, (("total", "dos_total_per_ev"),), (f, b), values)
         for r, region in enumerate(DEVICE_REGIONS):
             if region in (dos.get("by_label") or {}):
-                values["dos_region"][f, b, r] = dos["by_label"][region]
-        for key, name in (("lead_spectral", "lead_spectral_dos"),
-                          ("lead_bulk", "lead_bulk_dos")):
+                values["dos_region_per_ev"][f, b, r] = dos["by_label"][region]
+        for key, name in (("lead_spectral", "lead_spectral_dos_per_ev"),
+                          ("lead_bulk", "lead_bulk_dos_per_ev")):
             for k, lead in enumerate(leads):
                 if lead in (dos.get(key) or {}):
                     values[name][f, b, k] = dos[key][lead]
         for s, channel in enumerate(by_spin(p)):
-            _copied(channel, (("total", "dos_total_by_spin"),), (f, b, s),
+            _copied(channel, (("total", "dos_total_by_spin_per_ev"),), (f, b, s),
                     values)
             for k, curve in enumerate(channel.get("eigenchannels") or ()):
                 values["eigenchannel_transmission"][f, b, s, k] = curve
@@ -872,8 +895,8 @@ def data_file_bytes(calc, record: Dict, *,
         if (by_stage.get(name) or {}).get("engine_version"):
             versions["stage"][name] = str(by_stage[name]["engine_version"])
         _run_facts(by_stage.get(name) or {}, "rung", (r,), values,
-                   _SCF_COLUMNS, also=(("energy_ev", "rung_last_energy_ev"),
-                                       ("fermi_ev", "rung_fermi_ev"),
+                   _SCF_COLUMNS, also=(("energy_ev", "rung_total_energy_ev"),
+                                       ("fermi_ev", "rung_fermi_level_ev"),
                                        ("copied_from", "rung_copied_from")))
     average = record.get("average") or {}
 
@@ -886,9 +909,9 @@ def data_file_bytes(calc, record: Dict, *,
             record.get("low_bias_approximation"))),
         "treatment_note": str(record.get("treatment_note") or ""),
         "current_means": json_attr(record.get("current_means") or {}),
-        "energies_relative_to_ef": 1,
+        "energies_relative_to_fermi_level": 1,
         "caveat": str(record.get("caveat") or ""),
-        "frames": int(n_frames),
+        "n_frames": int(n_frames),
         # WHERE EACH RESULT CAME FROM: each rung's run and what it was
         # gathered from, a run of points' points (`record._chain`).
         "provenance_chain": json_attr(
@@ -1109,10 +1132,10 @@ def _device_facts(device: Dict, runs: Sequence[Dict],
         negf = p.get("negf") or {}
         contour = negf.get("contour") or {}
         line = contour.get("neq_line") or {}
-        _copied(negf, (("ef", "device_ef_ev"), ("vha_ev", "device_vha_ev"),
-                       ("energy", "device_last_energy_ev"),
-                       ("cycles", "device_negf_cycles"), ("dq", "device_dq"),
-                       ("d_change_from_0v_e", "device_d_change_from_0v")),
+        _copied(negf, (("ef", "device_fermi_level_ev"), ("vha_ev", "device_vha_ev"),
+                       ("energy", "device_total_energy_ev"),
+                       ("cycles", "device_negf_cycles"), ("dq", "device_dq_e"),
+                       ("d_change_from_0v_e", "device_d_change_from_0v_e")),
                 cell, values)
         _copied(contour, (("poles", "device_contour_poles"),), cell, values)
         _copied(line, (("emin_ev", "device_neq_emin_ev"),
@@ -1120,14 +1143,14 @@ def _device_facts(device: Dict, runs: Sequence[Dict],
                        ("points", "device_neq_points")), cell, values)
         for k, part in enumerate(parts):
             if part in (negf.get("charges") or {}):
-                values["device_charge"][cell + (k,)] = negf["charges"][part]
+                values["device_charge_e"][cell + (k,)] = negf["charges"][part]
         _run_facts(p, "device", cell, values,
                    _SCF_COLUMNS + _NEGF_SCF_COLUMNS)
         # EVERY NEGF ROW'S CHARGES, column by column.
         for c, row in enumerate(p.get("scf") or ()):
             for k, part in enumerate(parts):
                 if part in (row.get("charges") or {}):
-                    values["device_scf_charge"][cell + (c, k)] = (
+                    values["device_scf_charge_e"][cell + (c, k)] = (
                         row["charges"][part])
 
 

@@ -52,7 +52,9 @@ each release is its changelog row and its ledger section
   the framework across the kinds' data files in 2.72.2 -- one structure
   layout, one engine version, declared JSON records, axis coordinates from
   their rows, one schema door and one group walk (`model/datafiles.md`
-  § 3a), with Python 3.12 declared as the floor; next the exports across
+  § 3a), with Python 3.12 declared as the floor; every data-file name in one
+  catalogue and made by one naming rule in 2.72.3 (`model/datafiles.md`
+  § 9, § 2a rule 2, § 2c; the user, 2026-11-16); next the exports across
   the kinds -- one /api/export route from typed rows, one export bar, the
   vibration Export in the top line, `pdos` and the re-average moved to
   their kinds;

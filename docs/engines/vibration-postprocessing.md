@@ -71,7 +71,7 @@ The same, as labelled arrays — the file states every variable's unit and meani
 
 ```python
 ds = xr.load_dataset("01_freq/run-0/v-molecule.spectra.nc", group="modes")
-ds.eigenvector_canonical.sel(mode=7, free_atom=free[0])
+ds.eigenvector_canonical_per_amu12.sel(mode=7, free_atom=free[0])   # the result's eigenvector_canonical, by its name in the file
 ds.frequency_cm1.attrs["units"], ds.frequency_cm1.attrs["long_name"]
 ```
 

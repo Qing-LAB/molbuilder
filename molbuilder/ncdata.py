@@ -1,8 +1,7 @@
 """THE DATA-FILE FRAMEWORK -- the variable record, the one writer, the one door
 and the tables every NetCDF file molbuilder writes or opens shares
-(`model/datafiles.md`; each file's variables are its chapter's:
-`engines/transport.md` § 2a.12, `engines/vibration.md` § 6.10.5,
-`model/parse.md` § 5e).
+(`model/datafiles.md`; every name each file holds, with what it is, is its
+catalogue, § 9 there; each file's science, its chapter's).
 
 MODULE  ncdata (L2 by the index, `architecture.md`; it imports only numpy,
         netCDF4 and L1's persist, atom_permutation and structure, as it
@@ -86,12 +85,12 @@ class Var:
     ``measured`` -- read off the structures, a frame set's rows
     (`model/structure.md` § 2.2f) --, ``derived``, ``state``), ``units``, ``long_name``, ``definition`` and,
     for a raw one, ``source`` -- the file it was read from.  A
-    ``coordinate`` names a dimension's points: the dimension's own values
-    when it is named as the dimension (a NetCDF coordinate variable), else
-    a label of them.  An ``auxiliary`` variable labels the points of its one
-    dimension -- each variable over that dimension names it in its CF
+    ``coordinate`` is a dimension's own values, named as the dimension (a
+    NetCDF coordinate variable).  An ``auxiliary`` variable labels the
+    points of its one dimension, of the kind its value is (``given``,
+    ``raw``) -- each variable over that dimension names it in its CF
     ``coordinates`` attribute, so a NetCDF reader opens it as a
-    coordinate.  ``fill`` is an integer variable's fill value, where a cell
+    coordinate (`model/datafiles.md` § 2).  ``fill`` is an integer variable's fill value, where a cell
     can be not stated (a flag of a run that did not run: neither 0 nor 1);
     a number's is NaN, a text's the empty string.  A boolean variable is
     an ``int8`` with ``flag=True``: ``flag_values 0 1`` beside it.  A
@@ -115,16 +114,23 @@ class Var:
     flag: bool = False
     atom_index: bool = False
     json: bool = False
+    #: The record key the value is written from and read back to, where it
+    #: is not the name -- a file's names follow its rules (§ 2a rule 2), a
+    #: record's keys its own contract (`model/datafiles.md` § 9).
+    key: str = ""
+    #: The names earlier schemas wrote it under, newest first: an older
+    #: file read as it is (§ 2a rule 5).
+    earlier: Tuple[str, ...] = ()
 
 
 #: The map's two columns as variables on the atom axis -- labels of its
 #: points, so a NetCDF reader opens them as coordinates.
 _MAP_VARS = (
-    Var(FIELD_USER, (ATOM_AXIS,), "coordinate", "1", "the atom's user index",
+    Var(FIELD_USER, (ATOM_AXIS,), "given", "1", "the atom's user index",
         "its index in the structure the user built or cited, from 0 -- the "
         "structure's own view numbers it user index + 1 "
         "(model/overview.md 2.2b)", dtype="i4", auxiliary=True),
-    Var(FIELD_ENGINE, (ATOM_AXIS,), "coordinate", "1",
+    Var(FIELD_ENGINE, (ATOM_AXIS,), "given", "1",
         "the atom's engine index",
         "its index in the order the engine ran -- its deck's, from 0 "
         "(model/overview.md 2.2b)", dtype="i4", auxiliary=True),
@@ -177,19 +183,19 @@ AXES: Dict[str, Axis] = {a.name: a for a in (
     Axis("iv_bias_v", "the I-V's voltages", "V"),
     Axis("energy_ev", "energy relative to the device's Fermi level, the "
          "zero TBtrans measures from", "eV",
-         "E - E_F: E_F the leads' Fermi level at 0 V; under a bias V the "
-         "left lead's chemical potential sits at +V/2 on this axis and the "
+         "E - E_F, E_F the device's Fermi level, which TBtrans subtracts "
+         "-- the leads' common Fermi level at 0 V; under a bias V the left "
+         "lead's chemical potential sits at +V/2 on this axis and the "
          "right's at -V/2"),
     Axis("spin", "spin channels", "",
-         "a spin channel: the one channel of a calculation that is not "
-         "spin-polarized, or up and down"),
+         "a spin channel: unpolarized, the one channel of a calculation "
+         "that is not spin-polarized, or up and down"),
     Axis("lead", "the two leads", "",
          "a lead of the junction, by the name TranSIESTA and TBtrans give "
          "it"),
     Axis("region", "molbuilder's regions of the junction", ""),
     Axis("eigenchannel", "transmission eigenchannels", "1",
          "counted from 0, as TBtrans orders them"),
-    Axis("rung", "the stages that run once", ""),
     Axis("scf_cycle", "a run's SCF rows", "1"),
     Axis("charge_part", "TranSIESTA's charge columns", ""),
     Axis("mode", "vibrational modes", "1",
@@ -197,7 +203,8 @@ AXES: Dict[str, Axis] = {a.name: a for a in (
          "frequency (its index_1based)"),
     Axis("removed", "the rigid motions removed", "1"),
     Axis("mo", "molecular orbitals", "1"),
-    Axis("es", "the modes the electronic-structure probe ran on", "1"),
+    Axis("probed_mode", "the modes the electronic-structure probe ran on",
+         "1"),
     Axis("window", "an orbital's place in the probe's window", "1"),
     Axis("temperature_k", "the thermochemistry's temperatures", "K"),
     Axis("fc_step", "a SIESTA force-constant run's steps", "1"),
@@ -275,13 +282,49 @@ UNITS: Dict[str, str] = {
                             "square-root amu",
     "angstrom^4/amu": "angstrom to the fourth per amu",
 }
+#: EACH UNIT AS A NAME SPELLS IT (`model/datafiles.md` § 2a rule 2, § 2c's
+#: last column): a number's name ends with it -- ``force_ev_per_ang`` -- and a
+#: number of no unit (``1``) carries none.  The one writer refuses a name that
+#: does not (:func:`check_said`).
+UNIT_IN_NAME: Dict[str, str] = {
+    "1": "",
+    "%": "percent",
+    "s": "s",
+    "K": "k",
+    "V": "v",
+    "A": "a",
+    "e": "e",
+    "eV": "ev",
+    "eV/angstrom": "ev_per_ang",
+    "kbar": "kbar",
+    "1/eV": "per_ev",
+    "Eh": "eh",
+    "Eh^2": "eh2",
+    "Eh/K": "eh_per_k",
+    "Eh/bohr": "eh_per_bohr",
+    "atm": "atm",
+    "G0": "g0",
+    "nm": "nm",
+    "cm-1": "cm1",
+    "km/mol": "km_per_mol",
+    "angstrom": "ang",
+    "angstrom^3": "ang3",
+    "amu": "amu",
+    "amu^1/2 angstrom": "amu12_ang",
+    "amu^-1/2": "per_amu12",
+    "angstrom^2/amu^1/2": "ang2_per_amu12",
+    "D/(angstrom amu^1/2)": "d_per_ang_amu12",
+    "angstrom^4/amu": "ang4_per_amu",
+}
 
 
 def check_said(var: Var) -> None:
     """A VARIABLE SAYS WHAT IT IS (`model/datafiles.md` § 2): its long name
     and its definition stated; a raw one where it was read from; a number in
-    one of :data:`UNITS`' spellings (``1`` where it has no unit); a text with
-    no unit -- else refused, naming the variable."""
+    one of :data:`UNITS`' spellings (``1`` where it has no unit), its name
+    ending with that unit as a name spells it (:data:`UNIT_IN_NAME` -- never
+    its inverse, ``_per_ev`` for eV); a text with no unit -- else refused,
+    naming the variable."""
     if not var.long_name.strip() or not var.definition.strip():
         raise ValueError(
             f"variable {var.name} states no "
@@ -296,6 +339,16 @@ def check_said(var: Var) -> None:
             raise ValueError(
                 f"variable {var.name} is text and states the unit "
                 f"{var.units!r}: a text has no unit (model/datafiles.md 2c)")
+    elif var.units in UNITS and UNIT_IN_NAME[var.units] and (
+            not (var.name == UNIT_IN_NAME[var.units]
+                 or var.name.endswith("_" + UNIT_IN_NAME[var.units]))
+            or (not UNIT_IN_NAME[var.units].startswith("per_")
+                and var.name.endswith("_per_" + UNIT_IN_NAME[var.units]))):
+        raise ValueError(
+            f"variable {var.name} states the unit {var.units!r} and does "
+            f"not end with it: a name ends with its unit as "
+            f"model/datafiles.md 2c spells it in a name, "
+            f"_{UNIT_IN_NAME[var.units]}")
     elif var.units not in UNITS:
         raise ValueError(
             f"variable {var.name} states the unit {var.units!r}, which is "
@@ -620,6 +673,27 @@ def state(ds, *, title: str, schema: str, molbuilder_version: str,
                   "Conventions": CONVENTIONS})
 
 
+def earliest(held: Mapping[str, Any], names: Sequence[str]
+             ) -> Optional[str]:
+    """The first of ``names`` -- a name as this schema writes it, then as
+    earlier schemas wrote it, newest first -- that ``held`` (a group's
+    variables or attributes) holds; ``None`` where it holds none: an older
+    file read as it is (`model/datafiles.md` § 2a rule 5)."""
+    return next((n for n in names if n in held), None)
+
+
+def named_in(held: Mapping[str, Any], var: "Var") -> Optional[str]:
+    """The name ``held`` -- a group's variables -- holds ``var`` under: its
+    own, or one an earlier schema wrote (``var.earlier``,
+    :func:`earliest`); ``None`` where it holds it under none."""
+    return earliest(held, (var.name, *var.earlier))
+
+
+def key_of(var: "Var") -> str:
+    """The record key ``var`` is written from: its ``key``, else its name."""
+    return var.key or var.name
+
+
 def groups(group, path: str = ""):
     """``group`` and every group below it, each with its path -- ``""`` the
     root, ``points/v0.2`` below it: the one walk of a file's groups
@@ -764,7 +838,7 @@ def as_tables(data: bytes, name: str) -> Tuple[Dict[str, str], str]:
     ``modes/mode.csv``; ``scalars.csv`` for none); one row per point of those
     axes, each axis a column of its coordinate's values under its own name (a
     dimension with no coordinate, its index), each variable a column named
-    with its units (``dos_total [1/eV]``), a value not stated -- its fill --
+    with its units (``dos_total_per_ev [1/eV]``), a value not stated -- its fill --
     an empty cell.  And the README: the file's attributes, then table by
     table each column's long name, units, kind, definition and source, and
     where the file's fill is an empty cell.  Returns ``({table's path: its
@@ -1110,6 +1184,7 @@ __all__ = ["Var", "Axis", "AXES", "UNITS", "CONVENTIONS", "ROOT_FACTS",
            "in_memory",
            "as_bytes", "read_variables", "EXPORT_FORMATS", "ExportError",
            "coordinate", "axis_values", "groups", "checked", "read_file",
+           "earliest", "named_in", "key_of", "UNIT_IN_NAME",
            "STRUCTURE_JSON",
            "structure_vars", "structure_values", "structure_attrs",
            "write_structure_group", "read_structure_group",

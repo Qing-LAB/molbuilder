@@ -1,6 +1,7 @@
 """THE DATA FILE OF AN OPTIMIZATION -- ``<label>.optimization.nc``: every step
 its runs finished, on one grid, and each run's own record
-(`engines/optimization-postprocessing.md` § 6; `model/datafiles.md` § 1).
+(`engines/optimization-postprocessing.md` § 6; every name it holds,
+`model/datafiles.md` § 9.5).
 
 MODULE  optimization.datafile (L4)
 ROLE    :func:`data_file_bytes` -- the file composed now from what the runs
@@ -24,7 +25,7 @@ from ..spectra.results import PARTITIONS
 DATA_FILE = ".optimization.nc"
 
 #: Which file this is, at which version (`model/datafiles.md` § 2b).
-DATA_SCHEMA = "molbuilder/optimization-data@2"
+DATA_SCHEMA = "molbuilder/optimization-data@3"
 
 #: The stress's components, in SIESTA's order: its ``Voigt[x,y,z,yz,xz,xy]``.
 VOIGT = ("xx", "yy", "zz", "yz", "xz", "xy")
@@ -40,7 +41,8 @@ _VARS = (
     Var("run", ("run",), "coordinate", "", "a run",
         "its folder below the calculation, stage by stage and each stage's starts "
         "in turn -- the ladder's order, not always the order they ran in "
-        "(continued_from); a run with no step is here too, said says why",
+        "(continued_from); a run with no step is here too, its said "
+        "saying why",
         dtype=str),
     Var("step", ("step",), "coordinate", "1", "a step",
         "from 0, run by run: each geometry step a run finished, and the final "
@@ -50,7 +52,7 @@ _VARS = (
     Var("run_of_step", ("step",), "given", "", "the run the step is of",
         "that run's folder, as the run axis names it", dtype=str,
         auxiliary=True),
-    Var("rung_of_run", ("run",), "given", "", "the stage the run is of",
+    Var("stage_of_run", ("run",), "given", "", "the stage the run is of",
         "the stage's name", dtype=str, auxiliary=True),
     Var("continued_from", ("run",), "given", "", "the run it continued from",
         "that run's folder, as the run axis names it, by the run's own record; "
@@ -65,7 +67,7 @@ _VARS = (
     Var("force_ev_per_ang", ("step", "atom", "xyz"), "raw", "eV/angstrom",
         "the force on the atom",
         "in the user order; NaN where the step states none", source=_OUTPUT),
-    Var("energy_ev", ("step",), "raw", "eV", "the step's energy",
+    Var("total_energy_ev", ("step",), "raw", "eV", "the step's total energy",
         "SIESTA's E_KS, which its output prints to 0.0001 eV and its .MD.nc "
         "history holds in full for the steps between; PySCF's SCF total "
         "energy; NaN where the step states none, as a SIESTA relaxation's "
@@ -89,8 +91,10 @@ _VARS = (
     Var("stress_kbar", ("step", "voigt"), "raw", "kbar",
         "the step's stress tensor",
         "as the run printed it; NaN where it printed none", source=_OUTPUT),
-    Var("final_energy_ev", ("run",), "derived", "eV", "the run's final energy",
-        "the last energy of a step it finished, as energy_ev states it; NaN "
+    Var("final_total_energy_ev", ("run",), "derived", "eV",
+        "the run's final total energy",
+        "the last energy of a step it finished, as total_energy_ev states "
+        "it; NaN "
         "where none states one"),
     Var("force_tolerance_ev_per_ang", ("run",), "raw", "eV/angstrom",
         "the tolerance the run's relaxation was to reach",
@@ -104,7 +108,7 @@ _VARS = (
         "and a run still going moves on (run_state); not stated for a run that "
         "relaxed nothing",
         dtype="i1", flag=True),
-    Var("scf_converged", ("run",), "raw", "1", "whether its last SCF converged",
+    Var("scf_converged", ("run",), "state", "1", "whether its last SCF converged",
         "as the run says it; not stated where it cannot say", dtype="i1",
         flag=True, source=_OUTPUT),
     Var("run_state", ("run",), "state", "", "how the run ended, as its file says",
@@ -198,7 +202,7 @@ def data_file_bytes(calc) -> Tuple[str, bytes, str]:
         values[axis][:] = axis_values(axis, atoms.n_atoms)
     values["voigt"][:] = list(VOIGT)
     values["run"][:] = [row["run"] for row in read]
-    values["rung_of_run"][:] = [row["rung"] for row in read]
+    values["stage_of_run"][:] = [row["rung"] for row in read]
     values["continued_from"][:] = [row["continued_from"] for row in read]
     values["said"][:] = [row["why"] for row in read]
     values["step"][:] = np.arange(n_steps)
@@ -213,7 +217,7 @@ def data_file_bytes(calc) -> Tuple[str, bytes, str]:
         values["run_of_step"][where] = row["run"]
         values["position_ang"][where] = steps.positions_ang
         values["force_ev_per_ang"][where] = steps.forces_ev_per_ang
-        values["energy_ev"][where] = steps.energy_ev
+        values["total_energy_ev"][where] = steps.energy_ev
         values["max_force_ev_per_ang"][where] = steps.max_force_ev_per_ang
         values["max_force_free_ev_per_ang"][where] = (
             steps.max_force_free_ev_per_ang)
@@ -224,7 +228,7 @@ def data_file_bytes(calc) -> Tuple[str, bytes, str]:
         values["output_file"][r] = steps.output_file
         record = steps.relaxation or {}
         if steps.final_energy_ev is not None:
-            values["final_energy_ev"][r] = steps.final_energy_ev
+            values["final_total_energy_ev"][r] = steps.final_energy_ev
         if record:
             values["force_tolerance_ev_per_ang"][r] = record[
                 "force_tolerance_ev_ang"]

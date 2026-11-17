@@ -1,5 +1,6 @@
 """TBtrans's data file -- ``<label>.TBT.nc`` -> :class:`TransmissionResult`,
-its reading kept beside it (`model/parse.md` § 5e).
+its reading kept beside it (`model/parse.md` § 5e; every name the kept
+reading holds, `model/datafiles.md` § 9.6).
 
 **What the file holds, and what is read.**  Every quantity per k-point,
 energy and orbital: on a 3000-orbital junction 1.6 GB a point, each table
@@ -66,7 +67,7 @@ from .tbtrans import PRINTED_HALF_DECIMAL_EV, averaged_files, read_averaged
 _UNPOLARIZED_NC = tail(TBTRANS_NC, tbt=dict(_G.TBT_CHANNELS)["unpolarized"])
 
 #: The digest's schema, stated in it.
-DIGEST_SCHEMA = "molbuilder/tbt-digest@4"
+DIGEST_SCHEMA = "molbuilder/tbt-digest@5"
 #: The claims THIS PROCESS holds -- the readings its threads run, each by
 #: its claim's path and when it began: a claim naming this process and
 #: absent here is no reading of ours (a copy, a restored state).
@@ -116,7 +117,8 @@ class Kept:
         said = {"kept": "kept",
                 "missing": "not read yet",
                 "out of date": "out of date -- not a reading of its data "
-                               "file as it is now"}.get(self.state)
+                               "file as it is now, or a digest of an "
+                               "earlier layout: read again"}.get(self.state)
         if self.state == "being read":
             said = "being read " + claim_words(self.claim or {})
             if (self.claim or {}).get("alive") is False:
@@ -317,8 +319,9 @@ def kept(path, *, need_user: bool = False) -> Optional[TransmissionResult]:
 #: What a kept reading is read back from: the digest's variables -- those
 #: every reading holds, then the rest (a data file with no device DOS has
 #: no columns).
-_HELD = ("energy_ev", "firsto")
-_READING = _HELD + ("DOS", "device_orbital", "device_orbital_atom")
+_HELD = ("energy_ev", "first_orbital")
+_READING = _HELD + ("orbital_dos_per_ev", "device_orbital",
+                     "device_orbital_atom")
 
 
 def _digest(path: Path, part: Tuple[str, ...], *, need_user: bool = False
@@ -391,10 +394,11 @@ def _as_reading(path: Path, got: Dict[str, Any]) -> TransmissionResult:
         **ParseResult.envelope(TBTransNcFileParser.name, path),
         channel=got["channel"],
         energy_ev=tuple(float(e) for e in got["energy_ev"]),
-        dos=got["DOS"].astype(float) if "DOS" in got else None,
+        dos=(got["orbital_dos_per_ev"].astype(float)
+             if "orbital_dos_per_ev" in got else None),
         orbital=tuple(int(o) for o in got.get("device_orbital", ())),
         atom=tuple(int(a) for a in got.get("device_orbital_atom", ())),
-        firsto=tuple(int(o) for o in got["firsto"]),
+        firsto=tuple(int(o) for o in got["first_orbital"]),
         version=got["version"], kept=True,
         atom_index_map=got["atom_index_map"])
 
@@ -531,9 +535,9 @@ def _digest_variables(path: Path, result: TransmissionResult,
              "the device orbital", "its index in the geometry, from 0 -- "
              "one DOS column each, in sisl's sorted order", dtype="i4"),
          np.asarray(result.orbital, dtype="i4")),
-        (Var("device_orbital_atom", ("device_orbital",), "coordinate", "1",
+        (Var("device_orbital_atom", ("device_orbital",), "raw", "1",
              "each device orbital's atom", "its engine index, from 0",
-             dtype="i4", auxiliary=True, atom_index=True),
+             source=data, dtype="i4", auxiliary=True, atom_index=True),
          np.asarray(result.atom, dtype="i4")),
         (coordinate("atom"), axis_values("atom", n_atoms)),
         (Var("atom_bound", ("atom_bound",), "coordinate", "1",
@@ -541,17 +545,17 @@ def _digest_variables(path: Path, result: TransmissionResult,
              "is atom i's first orbital, the last one past the last "
              "orbital", dtype="i4"),
          np.arange(n_atoms + 1, dtype="i4")),
-        (Var("firsto", ("atom_bound",), "raw", "1",
+        (Var("first_orbital", ("atom_bound",), "raw", "1",
              "the geometry's first orbital of each atom",
              "0-based, and one past the last orbital", source=data,
              dtype="i4"),
          np.asarray(result.firsto, dtype="i4")),
         *((coordinate(axis), axis_values(axis, 3))
           for axis in ("xyz", "cell_vector", "reciprocal_vector")),
-        (Var("position", ("atom", "xyz"), "raw", "angstrom",
+        (Var("position_ang", ("atom", "xyz"), "raw", "angstrom",
              "each atom's position", "x, y, z", source=data),
          np.asarray(meta["xyz"], dtype=float)),
-        (Var("cell", ("cell_vector", "xyz"), "raw", "angstrom",
+        (Var("cell_ang", ("cell_vector", "xyz"), "raw", "angstrom",
              "the cell's three vectors", "one a row", source=data),
          np.asarray(meta["cell"], dtype=float)),
         (Var("device_atom", ("device_atom",), "coordinate", "1",
@@ -562,44 +566,44 @@ def _digest_variables(path: Path, result: TransmissionResult,
         (Var("kpoint", ("kpoint",), "coordinate", "1", "k-point index",
              "from 0, in the data file's order", dtype="i4"),
          np.arange(len(meta["wkpt"]), dtype="i4")),
-        (Var("kpt", ("kpoint", "reciprocal_vector"), "raw", "1",
+        (Var("kpoint_reduced", ("kpoint", "reciprocal_vector"), "raw", "1",
              "the k-points averaged over", "fractions of the cell's "
              "reciprocal vectors b1, b2, b3", source=data),
          np.asarray(meta["kpt"], dtype=float)),
-        (Var("wkpt", ("kpoint",), "raw", "1", "each k-point's weight",
+        (Var("kpoint_weight", ("kpoint",), "raw", "1", "each k-point's weight",
              "the data file's own; they sum to 1", source=data),
          np.asarray(meta["wkpt"], dtype=float)),
         (coordinate("lead", more="as its TS.Elecs block names it",
                     source=data),
          np.asarray(meta["electrodes"], dtype=object)),
-        (Var("lead_mu", ("lead",), "raw", "eV",
+        (Var("lead_mu_ev", ("lead",), "raw", "eV",
              "each lead's chemical potential", "on the energy axis's "
              "scale, as the data file states it", source=data),
          np.asarray(meta["mu_ev"], dtype=float)),
-        (Var("lead_kT", ("lead",), "raw", "eV",
+        (Var("lead_kt_ev", ("lead",), "raw", "eV",
              "each lead's electronic temperature",
              "k_B T of the lead's Fermi distribution, as the data file "
              "states it", source=data),
          np.asarray(meta["kT_ev"], dtype=float)),
-        (Var("device_eta", (), "raw", "eV",
+        (Var("device_eta_ev", (), "raw", "eV",
              "the device region's eta",
              "the imaginary part added to the energy of the device's "
              "Green's function, as the data file states it", source=data),
          np.asarray(meta["eta_ev"], dtype=float)),
     ]
     if meta["elements"]:
-        rows.append((Var("element", ("atom",), "coordinate", "",
+        rows.append((Var("element", ("atom",), "raw", "",
                          "each atom's element", "not stated by the data "
                          "file: read from the Hamiltonian TBtrans read, of "
                          "this geometry", source=hsx, dtype=str,
                          auxiliary=True),
                      np.asarray(meta["elements"], dtype=object)))
     if result.dos is not None:
-        rows.append((Var("DOS", ("energy_ev", "device_orbital"), "derived",
+        rows.append((Var("orbital_dos_per_ev", ("energy_ev", "device_orbital"), "derived",
                          "1/eV",
                          "the device's DOS per device orbital",
                          "averaged over the k-points: each k-point's DOS "
-                         "times its weight (wkpt), summed in double "
+                         "times its weight (kpoint_weight), summed in double "
                          "precision, kept in TBtrans's single", source=data,
                          dtype="f4"),
                      np.asarray(result.dos, dtype="f4")))
@@ -607,7 +611,7 @@ def _digest_variables(path: Path, result: TransmissionResult,
     # file (`tbtrans.read_averaged`, § 5e).
     for key, name, what in (
             ("transmission", "transmission", "the k-averaged transmission"),
-            ("dos", "dos_total", "the device's k-averaged DOS")):
+            ("dos", "dos_total_per_ev", "the device's k-averaged DOS")):
         if key in av:
             rows.append((Var(name, ("energy_ev",), "raw",
                              "1/eV" if key == "dos" else "1", what,
@@ -624,16 +628,28 @@ def _digest_variables(path: Path, result: TransmissionResult,
                          "TBtrans's own average, as it printed it",
                          source=files["eigenchannels"]),
                      np.asarray(av["eigenchannels"], dtype=float)))
+    # EACH LEAD'S DOS over the lead axis, as TBtrans printed it -- the
+    # fill for a lead it wrote none of: its spectral DOS is every lead's
+    # but the last (TBT.DOS.A.All not set, engines/transport.md).
+    leads = list(meta["electrodes"])
     for key, what in (("lead_spectral", "spectral DOS -- the device's DOS "
-                       "of the states coming in from it"),
+                       "of the states coming in from it. TBtrans writes it "
+                       "for every lead but the last; the last lead's row is "
+                       "the fill"),
                       ("lead_bulk", "bulk DOS")):
-        for lead, values in av.get(key, {}).items():
-            rows.append((Var(f"{key}_dos_{lead}", ("energy_ev",), "raw",
-                             "1/eV",
-                             f"the {lead} lead's k-averaged {what}",
+        by_lead = av.get(key, {})
+        if by_lead:
+            block = np.full((len(leads), len(result.energy_ev)), np.nan)
+            for k, lead in enumerate(leads):
+                if lead in by_lead:
+                    block[k] = np.asarray(by_lead[lead], dtype=float)
+            rows.append((Var(f"{key}_dos_per_ev", ("lead", "energy_ev"),
+                             "raw", "1/eV", f"each lead's k-averaged {what}",
                              "TBtrans's own average, as it printed it",
-                             source=files[key][lead]),
-                         np.asarray(values, dtype=float)))
+                             source="; ".join(files[key][lead]
+                                              for lead in leads
+                                              if lead in by_lead)),
+                         block))
     return dims, [v for v, _ in rows], {v.name: x for v, x in rows}
 
 
@@ -657,7 +673,7 @@ def _write_digest(path: Path, result: TransmissionResult,
         "data_file_size": str(result.version[0]),
         "data_file_mtime_ns": str(result.version[1]),
         # WHAT THE DATA FILE STATES OF ITSELF (its program, its date).
-        **{f"data_file_{k}": v for k, v in meta["stated"].items()},
+        **{f"data_file_{k.lower()}": v for k, v in meta["stated"].items()},
         "channel": result.channel,
         "spin": ("TBtrans's T and DOS carry no spin factor: a non-polarized "
                  "run's (channel unpolarized) are each spin's, up = down; a "
