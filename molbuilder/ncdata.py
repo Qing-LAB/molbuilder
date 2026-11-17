@@ -1091,8 +1091,9 @@ def read_structure_group(group, *, source: str) -> Dict[str, Any]:
 #: THE FORMS AN EXPORT TAKES -- a calculation's data files as they are, or
 #: their tables (:func:`as_tables`): a transport calculation's and a
 #: vibration's alike (`engines/transport.md` § 2a.12, *Export*;
-#: `engines/vibration.md` § 5.11 § 10).
-EXPORT_FORMATS = ("netcdf", "csv")
+#: `engines/vibration.md` § 5.11 § 10) -- each by its name, with the words the
+#: page's button says.
+EXPORT_FORMATS = {"netcdf": "NetCDF", "csv": "CSV"}
 
 
 class ExportError(ValueError):

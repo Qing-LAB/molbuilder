@@ -497,8 +497,21 @@ no value left out. Both refuse, first, together and as the person wrote
 them, the asks the calculation's kind does not take, naming the kinds that
 take them; and a kind with no export (`kind_table.export_of`). The answer is the route's one
 attachment (`_shared.sent_export`), what the export holds without said
-beside it. *(The pages name their asks themselves until one export bar
-draws them from the rows.)*
+beside it.
+
+**The page's one Export bar** *(the user, 2026-11-16: "Every kind")* is
+drawn from the same rows. **A calculation's offer** — `GET
+/api/export/offer?path=` — is what its kind's export takes: the forms, each
+with the words its button says (`ncdata.EXPORT_FORMATS`); its asks' rows —
+**a flag** with the one form it goes with (`form`; asked with another,
+refused by `export_asks_of`, on the command line alike) and its button's
+words (`button`), **a number** the value the page shows; and the document
+that says how to read the export in Python (`export_doc`, which a kind that
+exports names). A path in no calculation, or in one whose kind exports
+nothing, has none — an answer, not a refusal. What the bar draws from it is
+its builder's ([`web/projects.md`](?doc=web/projects.md) § 5); where it is
+drawn, the Results tab's top line ([`web/results.md`](?doc=web/results.md)
+§ 1.1).
 
 ## 6. One import — `molbuilder.postprocess`
 

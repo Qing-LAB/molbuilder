@@ -186,6 +186,14 @@ name = "path"
 request = { query = { path = "{outside_dir}", format = "csv" } }
 
 [[route]]
+rule = "/api/export/offer"
+method = "GET"
+[[route.path]]
+where = "query"
+name = "path"
+request = { query = { path = "{outside_dir}" } }
+
+[[route]]
 rule = "/api/files/copy"
 method = "POST"
 [[route.path]]

@@ -133,7 +133,7 @@ optimization* while the plot title, which asks the server, says SIESTA.
 The registry's own surface is small: `register`, `pick` (the first presenter
 whose `match` is true), `pickResult` (same but only presenters marked
 `isResult` — the file picker uses this), `mount`, `list`, and
-`createDefaultContext(host, header)` — the standard `ctx` below, `header` the page's top line (`placeInHeader`). A `match` that
+`createDefaultContext(host, onExportAsks)` — the standard `ctx` below, `onExportAsks` the page's hand for what a presenter's export takes (`exportAsks`). A `match` that
 throws is logged and skipped, so one broken presenter can't jam the switchboard;
 a `mount` that throws falls back to a clean error card in the panel.
 
@@ -143,13 +143,15 @@ projects file layer ([`projects.md`](?doc=web/projects.md)) — `readFile`,
 `readRange` (a byte window, for large files), and `writeFile` (timestamp-safe,
 so a concurrent edit on disk is caught); the fourth, `showError`, just renders an
 error card in the panel. Presenters never hand-roll their own `/api/files/*`
-calls; that shared reader is the one file door. The fifth, **`placeInHeader(node)`**,
-puts what a presenter offers for the **whole calculation** — a transport
-report's Export — in the page's top line, beside the folder and the kind, where
-it is seen as the result opens *(the user, 2026-11-16: the transport Export
-"sits … below the 5-stage ladder", moved to the top line)*: one place, its
-content replaced by each call, emptied by the page whenever it puts a presenter
-away, so a result's actions never outlive it.
+calls; that shared reader is the one file door. The fifth,
+**`exportAsks(fn)`**, hands the page what the presenter shows that its
+calculation's Export takes — `fn()` the values of its kind's number asks as
+they are on screen (the vibration's laser and width, as its Raman view
+applied them; `{}` while none is applied) — read by the page's one Export
+bar as a button is pressed ([`results.md`](?doc=web/results.md) § 1.1)
+*(the user, 2026-11-16: "Every kind" -- the Export the page's, in its top
+line, drawn from the kind's rows)*. A presenter draws no Export of its own;
+the page forgets what it handed over whenever it puts the presenter away.
 
 ## 3. How the switchboard runs
 

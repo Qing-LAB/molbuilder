@@ -2782,35 +2782,6 @@
         _withChart(c => c.setSelected(state.selectedMode));
     }
 
-    // ----- The calculation's data files --------------------------
-    /* THE CALCULATION'S DATA FILES, downloaded (web/spectra.md § 3.3;
-     * engines/vibration.md § 5.11 § 10): its vibration data files as they
-     * are and, when a laser is applied, the Raman view on screen -- at the
-     * laser and width the bar applied (§ 2.1) -- composed by the server (`GET /api/export`), one zip;
-     * a refusal in its words beside the buttons, and what the export holds
-     * without.  The table's own CSV, below, stays the rows on screen. */
-    async function exportDataFiles(fmt) {
-        const path = state.fileState.path;
-        if (!path) return;
-        const q = new URLSearchParams({ path: path, format: fmt });
-        const ask = _ramanOptical(state.results)
-            ? _ramanAsk(state.uiPrefs).raman : null;
-        if (ask) {
-            q.set("laser_nm", String(ask.laser_nm));
-            if (ask.broaden_ev != null)
-                q.set("broaden_ev", String(ask.broaden_ev));
-        }
-        const buttons = [els.exportCsv, els.exportNetcdf];
-        buttons.forEach(b => { if (b) b.disabled = true; });
-        setStatus(els.exportStatus, "Composing the export.", "muted");
-        // THE FILE LAYER'S ONE EXPORT DOOR (`projects.downloadExport`).
-        const got = await root.molbuilder.projects.downloadExport(
-            "/api/export?" + q.toString());
-        buttons.forEach(b => { if (b) b.disabled = false; });
-        setStatus(els.exportStatus, got.ok ? got.said : got.error,
-                  got.ok ? "muted" : "warn");
-    }
-
     // ----- CSV export ------------------------------------------
     function exportCSV() {
         if (!state.results) return;
@@ -4443,9 +4414,6 @@
         els.noteCharge          = $("note-charge");
         els.noteRaman           = $("note-raman");
         els.noteRamanStatic     = $("note-raman-static");
-        els.exportCsv           = $("spectra-export-csv");
-        els.exportNetcdf        = $("spectra-export-netcdf");
-        els.exportStatus        = $("spectra-export-status");
 
         // --- Generate-side wiring (only present on /spectra) -------
         //
@@ -4555,8 +4523,6 @@
                               els.ramanBroaden])
                 _on(el, "input", onBarInput);
             _on(els.viewUpdate,    "click", onViewUpdate);
-            _on(els.exportCsv,     "click", () => exportDataFiles("csv"));
-            _on(els.exportNetcdf,  "click", () => exportDataFiles("netcdf"));
         }
 
         if (hasGenerateSide) {
@@ -4572,6 +4538,15 @@
     // default announced during init cannot overwrite the saved value on its
     // way in.  Nothing awaits it -- a slow read must not delay the form.
     _prefsRestore();
+
+    /* WHAT THE CALCULATION'S EXPORT TAKES FROM THIS VIEW (web/spectra.md
+     * § 3.3; presenters.md § 2): the laser and width the Raman bar applied,
+     * where the result's Raman is its optical calls' -- handed to the
+     * Results tab's one Export bar, read as its button is pressed. */
+    if (opts && typeof opts.exportAsks === "function") {
+        opts.exportAsks(() => (_ramanOptical(state.results)
+            && _ramanAsk(state.uiPrefs).raman) || {});
+    }
 
     // The file the caller mounted us for -- /results passes the
     // dropdown's pick as opts.file, the one route to a file.  Guarded on

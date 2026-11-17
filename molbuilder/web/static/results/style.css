@@ -4,8 +4,8 @@
  *   * .results-main          -- page layout container
  *   * .results-status        -- header above the inspector: WHICH FOLDER
  *                              these results came from (+ the file), and
- *                              what the viewer offers for the whole
- *                              calculation (.results-file-actions)
+ *                              the calculation's Export
+ *                              (.results-file-actions, results.md § 1.1)
  *   * .results-inspector-host -- the mount-point frame
  *   * .results-fallback      -- empty state when no file is picked
  *
@@ -104,9 +104,9 @@
 }
 .results-file-kind:empty { display: none; }
 
-/* A viewer's actions on the whole calculation (presenters.md § 2,
- * `placeInHeader`): always a line of their own under the folder, so a long
- * status sentence beside the buttons never crowds the path. */
+/* The calculation's Export (results.md § 1.1): always a line of its own
+ * under the folder, so a long status sentence beside the buttons never
+ * crowds the path. */
 .results-file-actions {
     flex: 1 1 100%;
     min-width: 0;

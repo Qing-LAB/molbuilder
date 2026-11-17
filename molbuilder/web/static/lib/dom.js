@@ -4,7 +4,8 @@
  * `el(tag, cls, text)`: a new element with a class and, when given, its
  * text -- written as textContent, never as HTML, so a record's strings
  * cannot become markup.  The benchmark-sweep, transport and displacement-
- * sweep viewers and the Run panel use this one copy.
+ * sweep viewers, the Run panel and the Export bar (projects/downloads.js)
+ * use this one copy.
  *
  * `codeWords(text)`: the server's words, drawn for a page
  * (`ui-contract.md` § 12.1) -- written once for the terminal and the page

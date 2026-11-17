@@ -58,6 +58,12 @@
     // element + the standard /api/files/read wrapper.  Inspectors
     // read showError + readFile off this object.
     let mountContext = null;
+    /* WHAT THE MOUNTED VIEWER SHOWS THAT ITS CALCULATION'S EXPORT TAKES
+     * (`ctx.exportAsks`, presenters.md § 2), forgotten as it is put away;
+     * and the Export bar's own count, so a slower offer never lands over a
+     * newer selection's. */
+    let shownAsks = null;
+    let exportSeq = 0;
     //: What is on screen right now -- the comparison the re-announce guard
     //: in `_onSelectionChange` makes.  `currentHandle` alone cannot answer
     //: it: it says something is mounted, not which file it is showing.
@@ -524,15 +530,40 @@
         host.hidden = false;
     }
 
-    /* PUT THE MOUNTED VIEWER AWAY -- its handle disposed and what it placed
-     * in the top line (`ctx.placeInHeader`, presenters.md § 2) emptied with
-     * it, so a result's actions never outlive the result. */
+    /* PUT THE MOUNTED VIEWER AWAY -- its handle disposed and what it handed
+     * the Export (`ctx.exportAsks`, presenters.md § 2) forgotten with it. */
     function _putAway() {
         if (currentHandle) {
             try { currentHandle.dispose(); } catch (_) { /* swallow */ }
             currentHandle = null;
         }
-        if (els.actions) els.actions.replaceChildren();
+        shownAsks = null;
+    }
+
+    /* THE CALCULATION'S EXPORT, in the top line (results.md § 1.1): the one
+     * bar (`projects.exportBar`) for the calculation ``path`` lies in, drawn
+     * from its offer; none where it lies in no calculation, or in one whose
+     * kind exports nothing.  The bar on screen stays while the selection
+     * stays in its calculation -- what its last export said with it; what
+     * the mounted viewer shows is read as a button is pressed. */
+    function _drawExport(path) {
+        const seq = ++exportSeq;
+        const proj = (window.molbuilder || {}).projects;
+        if (!els.actions) return;
+        if (!path || !proj || typeof proj.exportBar !== "function") {
+            els.actions.replaceChildren();
+            return;
+        }
+        proj.exportBar(path, { asks: () => (shownAsks ? shownAsks() : {}) })
+            .then((bar) => {
+                if (seq !== exportSeq) return;
+                const shown = els.actions.firstElementChild;
+                const same = bar && shown && bar.dataset.calculation
+                    && shown.dataset.calculation === bar.dataset.calculation;
+                if (!same) els.actions.replaceChildren(...(bar ? [bar] : []));
+            }, () => {
+                if (seq === exportSeq) els.actions.replaceChildren();
+            });
     }
 
     function _showFallback(file, place, points) {
@@ -628,6 +659,7 @@
             _clearMounted();
             _showFallback(file, place, sel && sel.points);
             _renderStatus("", "", scope);
+            _drawExport(file || scope.dir);
             return;
         }
         /* THE SAME FILE IS NOT A NEW MOUNT.  The picker announces its choice
@@ -651,6 +683,7 @@
             } catch (_) { /* older headless runners */ }
             return;
         }
+        _drawExport(file || scope.dir);
         // Dispatch on THE SERVER'S ANSWER when the picker sent one
         // (`{role, parser, engine}` from `/api/results/dir`), not on
         // the filename.  `null` outside the Results flow, where each
@@ -758,7 +791,8 @@
         // closure variable it captures; future inspectors that
         // need it just call ctx.showError / ctx.readFile).
         mountContext = reg && reg.createDefaultContext
-            ? reg.createDefaultContext(els.host, els.actions)
+            ? reg.createDefaultContext(els.host,
+                                       (fn) => { shownAsks = fn; })
             : null;
 
         // Detach the fallback from the DOM so the inspector can

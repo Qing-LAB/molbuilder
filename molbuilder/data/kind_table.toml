@@ -47,8 +47,10 @@
 # folder, **asks)` and `name_of(calc, fmt, **asks)`, named whole -- where it
 # has one (`kind_table.export_of`; `jobset export`, `GET /api/export`); its
 # `export_asks`, what that export asks beyond the form, a row each: its
-# `type` (number, flag) and the `words` a person reads (model/datafiles.md
-# § 5a).
+# `type` (number, flag) and the `words` a person reads, and a flag's `form`,
+# the one form it goes with, and `button`, the words of the page's button
+# that asks it; its `export_doc`, the document that says how to read the
+# export in Python (model/datafiles.md § 5a).
 #
 # A part's `relaxation`: what relaxes the structure first, in a person's
 # words, where the pair relaxes before it measures.  Its `atom_order`: the
@@ -105,6 +107,7 @@ topic = "optimization"
 handover = "structure-optimization"
 relaxes = true
 export = "molbuilder.optimization.export"
+export_doc = "engines/optimization-postprocessing.md"
 
 [optimization.on.siesta]
 
@@ -119,6 +122,7 @@ handover = "spectrum-calculation"
 # record (engines/vibration.md § 3).
 validator = "molbuilder.validation.spectra:validate_vibration_kind"
 export = "molbuilder.spectra.export"
+export_doc = "engines/vibration-postprocessing.md"
 roles = [
     { name = "relaxation",      computes = "scf" },
     { name = "force_constants", computes = "scf" },
@@ -218,9 +222,12 @@ description_checks = "molbuilder.validation.transport:check_description"
 # (engines/transport.md § 6.1c).
 validator = "molbuilder.validation.transport:validate_transport_kind"
 export = "molbuilder.transport.export"
+export_doc = "engines/transport-postprocessing.md"
 
 [transport.export_asks.dos_per_orbital]
 type = "flag"
+form = "netcdf"
+button = "NetCDF with DOS per orbital"
 words = "a transport calculation, as netcdf: each point's DOS per orbital beside the data file, at the path the point names -- what molbuilder.postprocess.pdos reads a PDOS of chosen atoms from."
 
 [transport.charge]

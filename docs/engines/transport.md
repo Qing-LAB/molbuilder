@@ -3337,7 +3337,8 @@ deliverable.
   by region, as said above: every variable with its units, definition and
   source, the calculation's specifics as its attributes.
 - **NetCDF with the DOS per orbital** — the NetCDF form's choice (the
-  report's third button, `--dos-per-orbital`, `dos_per_orbital=1`): a
+  Export's *NetCDF with DOS per orbital*, `--dos-per-orbital`,
+  `dos_per_orbital=1`): a
   folder `<label>.transport-netcdf/`, one zip as a download — the data
   file and, at the paths its points name (`dos_per_orbital_files`), each
   digest of a point whose readings are all kept, its bytes copied and never
@@ -3363,8 +3364,8 @@ deliverable.
 
 **Asked two ways, one composition** (`transport.export`, through the one
 composer every export shares, `ncdata.exported`), so both give the
-same files: the transport report's **Export** (*CSV* · *NetCDF* · *NetCDF
-with DOS per orbital*), a download
+same files: the calculation's **Export** in the Results tab's top line
+(*NetCDF* · *NetCDF with DOS per orbital* · *CSV*), a download
 (`GET /api/export`, [`web/results.md`](?doc=web/results.md) § 2.5;
 handed over by the file layer's export door, `projects.downloadExport`) — the tables as one zip,
 `<label>.transport-csv.zip` — the points whose DOS by region is not in it
@@ -3375,9 +3376,9 @@ file with its digests as `<label>.transport-netcdf/` — the same points said on
 line; refused, before anything is composed, where the name is there already,
 and for a folder inside the calculation.
 **Refused by name**: a form that is not one of the two, and the DOS per
-orbital asked with the CSV form; on the report's
-route, a calculation that is not transport (the command exports each kind
-through its own export); one whose results do not lay out on one grid — the data
+orbital asked with the CSV form (its row's one form,
+[`model/datafiles.md`](?doc=model/datafiles.md) § 5a); one whose results do
+not lay out on one grid — the data
 file's own refusal (`DataFileError`), in its words. The command's line says
 what it wrote and its size; the calculation's ledger has no line of it, an
 export changing nothing of the calculation.

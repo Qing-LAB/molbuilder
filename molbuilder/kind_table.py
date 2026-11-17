@@ -76,7 +76,7 @@ ROLE_OPENS = ("report",)
 _KIND_KEYS = ("noun", "topic", "roles", "results", "description",
               "charge", "no_benchmark", "handover", "relaxes",
               "root_opens", "validator", "export", "export_asks",
-              "regions",
+              "export_doc", "regions",
               "description_checks", "on")
 _PART_KEYS = ("words", "stage_roles", "points", "rung",
               "inputs", "gather", "continues", "sum", "retired", "ladder",
@@ -219,10 +219,14 @@ class ExportAsk:
     """ONE THING A KIND'S EXPORT ASKS BEYOND ITS FORM (`model/datafiles.md`
     § 5a) -- its ``name`` (the request's key, the command line's
     ``--name``), its ``type`` (:data:`EXPORT_ASK_TYPES`) and the ``words`` a
-    person reads beside it."""
+    person reads beside it; a flag's ``form``, the one form it is asked
+    with, and its ``button``, the words of the page's button that asks
+    it."""
     name: str
     type: str
     words: str
+    form: Optional[str] = None
+    button: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -367,6 +371,9 @@ class CalculationKind:
     export: Optional[str] = None
     #: What its export asks beyond the form, a row each (:class:`ExportAsk`).
     export_asks: Tuple["ExportAsk", ...] = ()
+    #: The document that says how to read its export in Python -- a path
+    #: below ``docs/``, the page's *How to read these in Python*.
+    export_doc: Optional[str] = None
     #: The labels besides its leads that it reads on its structure's atoms,
     #: each with its sentence (:class:`Region`), in order.
     regions: Tuple[Region, ...] = ()
@@ -731,19 +738,37 @@ def _kind(name: str, body: object, engines: Tuple[str, ...]
     if body.get("root_opens", ROOT_OPENS[0]) not in ROOT_OPENS:
         _refuse(where, f"root_opens is one of {', '.join(ROOT_OPENS)}")
     asks = body.get("export_asks") or {}
-    if asks and not body.get("export"):
-        _refuse(where, "export_asks with no export -- what an export asks "
-                       "is its kind's export's")
+    for key in ("export_asks", "export_doc"):
+        if body.get(key) and not body.get("export"):
+            _refuse(where, f"{key} with no export -- it is its kind's "
+                           f"export's")
+    doc = body.get("export_doc")
     for ask, row in asks.items():
         if ask in EXPORT_ASK_RESERVED:
             _refuse(where, f"export_asks.{ask} is a surface's own name "
                            f"({', '.join(EXPORT_ASK_RESERVED)})")
-        if not (isinstance(row, dict) and set(row) == {"type", "words"}
+        # A FLAG IS A BUTTON OF ITS OWN on the page, asking the one form
+        # it goes with; a number is the value the page shows.
+        keys = ({"type", "words", "form", "button"}
+                if isinstance(row, dict) and row.get("type") == "flag"
+                else {"type", "words"})
+        if not (isinstance(row, dict) and set(row) == keys
                 and row["type"] in EXPORT_ASK_TYPES
-                and isinstance(row["words"], str) and row["words"]):
-            _refuse(where, f"export_asks.{ask} is {{type, words}} -- type "
-                           f"one of {', '.join(EXPORT_ASK_TYPES)}, words "
-                           f"the sentence a person reads")
+                and all(isinstance(row[k], str) and row[k] for k in keys)):
+            _refuse(where, f"export_asks.{ask} is {{type, words}}, a flag's "
+                           f"with its form and its button -- type one of "
+                           f"{', '.join(EXPORT_ASK_TYPES)}, words the "
+                           f"sentence a person reads")
+    # A KIND THAT EXPORTS NAMES THE DOCUMENT that says how to read its
+    # export, a path below docs/ -- the page's *How to read these in Python*.
+    if body.get("export") and not doc:
+        _refuse(where, "export with no export_doc -- the document that says "
+                       "how to read the export")
+    if doc is not None and not (
+            isinstance(doc, str) and doc.endswith(".md")
+            and not doc.startswith("/") and ".." not in doc.split("/")):
+        _refuse(where, "export_doc is a document below docs/, its path from "
+                       "there ending .md")
     on = body.get("on") or {}
     if not on:
         _refuse(where, "no part on any engine -- the engines it runs on are "
@@ -773,9 +798,9 @@ def _kind(name: str, body: object, engines: Tuple[str, ...]
                            validator=body.get("validator"),
                            export=body.get("export"),
                            export_asks=tuple(
-                               ExportAsk(name=k, type=v["type"],
-                                         words=v["words"])
+                               ExportAsk(name=k, **v)
                                for k, v in asks.items()),
+                           export_doc=doc,
                            regions=tuple(regions),
                            description_checks=body.get("description_checks"),
                            parts=parts)
@@ -1018,19 +1043,20 @@ def export_of(calculation: str) -> Any:
 
 
 def export_asks_of(calculation: str, given: Mapping[str, Any], *,
-                   spell=lambda name: name, named: str = "this"
+                   fmt: str, spell=lambda name: name, named: str = "this"
                    ) -> Dict[str, Any]:
     """THE ASKS ``given`` -- each ask's name and its value, as a request or
     a command line holds it -- that ``calculation``'s export takes, each
     read by its row's type (:class:`ExportAsk`, `model/datafiles.md`
     § 5a): a number as a finite float, its meaning the kind's to judge (a
     laser's wavelength positive, `spectra.raman.read_ask`); a flag set by
-    ``1`` (or true), not set by ``0`` (or false); an ask with no value --
-    absent, empty -- left out.  Every ask with a value the calculation's
-    kind does not take is refused first and together, spelled as the person
-    wrote it (``spell``), naming the kinds whose export takes them and what
-    ``named`` is; then a value not its type, naming the ask
-    (``ValueError``)."""
+    ``1`` (or true), not set by ``0`` (or false), asked with the one form
+    its row names (``fmt`` the export's); an ask with no value -- absent,
+    empty -- left out.  Every ask with a value the calculation's kind does
+    not take is refused first and together, spelled as the person wrote it
+    (``spell``), naming the kinds whose export takes them and what ``named``
+    is; then a value not its type, or a flag asked with another form, naming
+    the ask (``ValueError``)."""
     rows = [(row, given.get(row.name)) for row in export_asks()]
     rows = [(row, value) for row, value in rows
             if not (value is None or value == ""
@@ -1051,6 +1077,10 @@ def export_asks_of(calculation: str, given: Mapping[str, Any], *,
             if value not in (True, "1"):
                 raise ValueError(f"{spell(row.name)} is a flag, 1 or 0 -- "
                                  f"not {value!r}")
+            if fmt != row.form:
+                raise ValueError(f"{spell(row.name)} goes with the "
+                                 f"{row.form} form, not {fmt} -- export as "
+                                 f"{row.form}")
             out[row.name] = True
             continue
         try:

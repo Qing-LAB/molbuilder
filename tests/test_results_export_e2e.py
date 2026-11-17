@@ -20,6 +20,11 @@ codec every load goes through and compared with the engine's own statement of
 its frame: the output as the Results door parses it (``parse.detect``), or
 the record in the deck it ran.
 
+The calculation's Export in the Results tab's top line
+(`web/results.md` § 1.1) is read here for an optimization -- the kind whose
+Export the page offers since 2.73.0 -- its download read back through its
+reader.
+
 The PySCF trajectory open also reads the run's heading in the picker
 (`web/presenters.md` § 2): *"the engine's words and the calculation's noun,
 both served with the folder answer"* -- *PySCF optimization*; a SIESTA
@@ -193,3 +198,42 @@ def test_a_pyscf_trajectory_saves_the_box_its_deck_recorded(
                     tree=root, folder=_SAVED_IN)
     _holds_the_engines_frame(root / _SAVED_IN / "pyscf-trajectory.xyz", cell,
                              frames[-1].structure.positions)
+
+
+def test_an_optimization_exports_from_the_top_line(
+        real_h2_pyscf, page, flask_server, monkeypatch, tmp_path):
+    """`web/results.md` § 1.1 *(the user, 2026-11-16: "Every kind")*: the
+    Results tab's top line carries the calculation's Export for an
+    optimization as for every kind that exports -- its forms, nothing its
+    kind does not ask, and its kind's *How to read these in Python* -- and
+    *NetCDF* hands over the optimization's data file.
+
+    THE SILENT FAILURE: an optimization's results reachable from the
+    command line alone, the page offering no Export."""
+    from molbuilder.runs import run_of
+    log = run_of(real_h2_pyscf.attempt("coarse")).file(".molwatch.log")
+    _open(page, flask_server, monkeypatch, real_h2_pyscf, log)
+    bar = page.locator(".results-status .export-bar")
+    bar.wait_for(timeout=60000)
+    assert bar.get_by_role("button").all_inner_texts() == ["NetCDF", "CSV"]
+    assert bar.get_by_role("link").get_attribute("href") == (
+        "/documents?doc=engines/optimization-postprocessing.md")
+    with page.expect_download(timeout=120000) as got:
+        bar.get_by_role("button", name="NetCDF", exact=True).click()
+    assert got.value.suggested_filename.endswith(".optimization.nc"), (
+        got.value.suggested_filename)
+    # THE FILE HANDED OVER, saved under the name it is handed over with, as
+    # a person saves it, and read through its reader: every step the runs
+    # finished, the person's atoms.
+    from molbuilder.postprocess import read_optimization_data, read_steps
+    saved = tmp_path / got.value.suggested_filename
+    got.value.save_as(saved)
+    data = read_optimization_data(saved)
+    assert data["atom_index_map"].listed_by == "user_index"
+    got = {k: v["data"] for k, v in data["variables"].items()}
+    coarse = real_h2_pyscf.attempt("coarse")
+    steps = read_steps(coarse)
+    mine = [i for i, r in enumerate(got["run_of_step"])
+            if r == coarse.relative_to(real_h2_pyscf.bundle).as_posix()]
+    assert len(mine) == len(steps.energy_ev) > 0, got["run_of_step"]
+    assert np.allclose(got["position_ang"][mine], steps.positions_ang)

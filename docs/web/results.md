@@ -111,9 +111,8 @@ answers its own question — *which rung is next*, *which setting is fastest*,
 (`results/viewer.js`) owns one mount point (`#inspector-host`) and one live
 viewer handle; on each selection it **picks** the viewer for the file,
 **disposes** the previous one and **mounts** the new one. Beside that it draws
-the header readout — the folder, the kind, and what the mounted viewer offers
-for the whole calculation (`ctx.placeInHeader`), emptied as that viewer is put
-away — the loading cover, and — at a calculation root — the
+the header readout — the folder, the kind, and the calculation's Export
+(§ 1.1) — the loading cover, and — at a calculation root — the
 ladder card, a run picked off it opened in place (§ 2.4). All the file-type knowledge lives in the
 viewers (the "presenters", [`presenters.md`](?doc=web/presenters.md)), not here —
 so adding a result type is a new presenter module, never an edit to this
@@ -130,6 +129,25 @@ flowchart TD
   ENG -. "if the run is still going" .-> POLL["it polls for new data — every 15s (trajectory) / 2s (spectra)"]
   POLL -. "new data" .-> ENG
 ```
+
+### 1.1 The calculation's Export, in the top line
+
+*(The user, 2026-11-16: "Every kind" -- one Export bar, the Results page's
+own.)* **Whatever the selection shows — a calculation's root, a run, a
+result file — the top line carries its calculation's Export**, beside the
+folder and the kind, when the calculation's kind exports: a transport
+calculation, a vibration, an optimization. The controller asks the
+calculation's offer for the selection's path (`GET /api/export/offer`,
+[`model/datafiles.md`](?doc=model/datafiles.md) § 5a) and draws the one bar
+(`projects.exportBar`, what it holds [`projects.md`](?doc=web/projects.md)
+§ 5). A selection in no calculation, or in one whose kind exports nothing,
+has none; an offer that did not read is said in its place. **One bar stays while the selection stays in its calculation**, what its last export said beside it. **What a viewer shows that the export takes
+is the viewer's to hand over** — the vibration's laser and width, as its
+Raman view applied them (`ctx.exportAsks`,
+[`presenters.md`](?doc=web/presenters.md) § 2) — read as a button is
+pressed, so the export is of what is on screen. The bar is put away with the
+selection: a newer selection's answer replaces it, and a viewer put away
+takes what it handed over with it.
 
 ## 2. Picking a file
 
@@ -606,7 +624,7 @@ exists or is named here; nothing worked out in the browser:
 | convergence | each rung's SCF history, phase-tagged: `cycle, energy, delta_E, dDmax, dHmax, ef, phase` (`periodic` / `negf`), and on a NEGF row the charges, `dq` and `vha_ev` (the SIESTA reader, `siesta_reader.py`) | in the record: per rung `scf: [...]`, read by the same parse the record already makes of each rung's output. `/api/watch/*` cannot serve it: it holds one file for the whole server, the trajectory viewer's |
 | device NEGF figures | the NEGF phase's E_F, iterations, and charge | in the record's device stage, read from the same parse (the periodic start's never shown as the device's, § 2a.12) |
 | provenance chain | each rung's `.gathered-from` (`runrecord.read_gathered_from`) — and, a calculation that reuses a finished one, what each point is a copy of (`copied_from`, `runrecord.copied_of`) beside what it started from ([`engines/transport.md`](?doc=engines/transport.md) § 2a.16) | in the record: `provenance.chain` |
-| export | the Results tab's top line, beside the folder and the kind (`ctx.placeInHeader`, [`presenters.md`](?doc=web/presenters.md) § 2), seen as the report opens: **Export** — *CSV* · *NetCDF* · *NetCDF with DOS per orbital* — every result of the calculation as it stands, downloaded: `<label>.transport.nc`, or the tables and their `README.txt` as `<label>.transport-csv.zip`, or the data file with each point's digest as `<label>.transport-netcdf.zip` — what a PDOS of chosen atoms is read from in a notebook ([`engines/transport.md`](?doc=engines/transport.md) § 2a.12, *Export*); beside the buttons, how many points export without their DOS by region and the way to read them (the DOS tab's *Read the DOS per orbital*), a refusal in its words, every button disabled while one runs; and a link, *How to read these in Python*, to [`engines/transport-postprocessing.md`](?doc=engines/transport-postprocessing.md) | `GET /api/export?path=&format=` (`&dos_per_orbital=1` with `netcdf`) — composed on request from what is there (`transport.export`), no data file read; the file handed over by `projects.downloadExport`, the line beside the buttons written by the one status writer |
+| export | the calculation's **Export**, in the Results tab's top line (§ 1.1), seen as the report opens — for a transport calculation *NetCDF* · *NetCDF with DOS per orbital* · *CSV* — every result of the calculation as it stands, downloaded: `<label>.transport.nc`, or the tables and their `README.txt` as `<label>.transport-csv.zip`, or the data file with each point's digest as `<label>.transport-netcdf.zip` — what a PDOS of chosen atoms is read from in a notebook ([`engines/transport.md`](?doc=engines/transport.md) § 2a.12, *Export*); the server's sentence beside the buttons, how many points export without their DOS by region and the way to read them (the DOS tab's *Read the DOS per orbital*) — the bar itself [`projects.md`](?doc=web/projects.md) § 5 | `GET /api/export?path=&format=` (`&dos_per_orbital=1` with `netcdf`) — composed on request from what is there (`transport.export`), no data file read |
 | what a point is a copy of, and what it shares | a calculation that reuses a finished one: each point's `copied_from` and `shared` — the finished point, the energies it holds and those its own run computed — said under the points table in the manifest's words ([`engines/transport.md`](?doc=engines/transport.md) § 2a.16) | `points[].copied_from`, `points[].shared` in the record |
 
 **PDOS of the atoms you choose** *(user, 2026-10-07: "what if we want to be

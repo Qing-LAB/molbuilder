@@ -196,6 +196,10 @@ molbuilder jobset export --bundle <calculation> --format netcdf --to <folder>   
 molbuilder jobset export --bundle <calculation> --format csv --to <folder>      # <label>.optimization-csv/
 ```
 
+The Results tab's Export, in its top line, hands over the same files —
+*NetCDF* the data file, *CSV* its tables as one zip
+([`web/results.md`](?doc=web/results.md) § 1.1).
+
 ```python
 data = read_optimization_data("exported/J.optimization.nc")
 data["atom_index_map"].listed_by          # 'user_index'

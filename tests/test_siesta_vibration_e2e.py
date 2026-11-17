@@ -1480,9 +1480,12 @@ def test_the_page_asks_the_raman_at_a_laser_and_exports_it(
         assert "; at 633 nm, broadened to " in summary("Raman"), \
             summary("Raman")
 
-        # EXPORT: the run's data files and the view the page shows.
+        # EXPORT, the calculation's, in the Results tab's top line
+        # (`web/results.md` § 1.1): the run's data files and the view the
+        # page shows, the laser and width the viewer hands it.
         with page.expect_download() as caught:
-            page.click("#spectra-export-netcdf")
+            page.locator(".results-status .export-bar").get_by_role(
+                "button", name="NetCDF", exact=True).click()
         download = caught.value
         assert download.suggested_filename == \
             f"{label}.vibration-netcdf.zip", download.suggested_filename

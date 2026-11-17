@@ -4,7 +4,7 @@
  * dance and the cleanup-walk dispose shape.
  *
  * Future inspectors that follow the same pattern (a server-rendered
- * Jinja partial + a separately-loaded ``core.mount(host, {file})``
+ * Jinja partial + a separately-loaded ``core.mount(host, {file, exportAsks})``
  * module) can call ``makePartialInspector(...)`` and get the same
  * scaffold for free.
  *
@@ -16,7 +16,9 @@
  *        name          string  registry key (e.g. "trajectory")
  *        displayName   string  user-facing label
  *        coreApiKey    string  ``window.molbuilder[coreApiKey]``
- *                              MUST expose ``mount(host, {file})``
+ *                              MUST expose ``mount(host, {file,
+ *                              exportAsks})`` -- ``exportAsks`` the
+ *                              context's (presenters.md § 2)
  *        partialUrl    string  GET endpoint that returns the partial
  *                              HTML
  *        match         function(file) -> bool
@@ -111,7 +113,7 @@
             inspector.absorbs = opts.absorbs;
         }
 
-        inspector.mount = function (host, file, _ctx) {
+        inspector.mount = function (host, file, ctx) {
             const cleanups = [];
 
             // Per-engine core must self-register on
@@ -153,8 +155,13 @@
                     // with no user input; same content the per-tab
                     // pages (e.g. /spectra) include via Jinja.
                     host.innerHTML = partialHtml;
-                    innerHandle = api.mount(host,
-                        Object.assign({ file: file }, provide));
+                    // WHAT THE VIEWER SHOWS THAT ITS CALCULATION'S
+                    // EXPORT TAKES, handed on to the page
+                    // (`ctx.exportAsks`, presenters.md § 2).
+                    innerHandle = api.mount(host, Object.assign(
+                        { file: file,
+                          exportAsks: (fn) => ctx.exportAsks(fn) },
+                        provide));
                     cleanups.push(() => {
                         try { innerHandle.dispose(); }
                         catch (_) { /* already torn down */ }

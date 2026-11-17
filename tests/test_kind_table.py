@@ -66,7 +66,15 @@ def test_every_part_a_kind_names_resolves(calculation, key):
     FAILURE: a kind's export or check moved, found only when a person
     exports or prepares."""
     if key == "export":
+        from molbuilder import repo_root
+        from molbuilder.ncdata import EXPORT_FORMATS
+        k = kind_table.kind(calculation)
         assert kind_table.export_of(calculation) is not None
+        # ITS PAGE'S BAR: each flag's button asks a form there is, and
+        # *How to read these in Python* opens a document there is.
+        assert {r.form for r in k.export_asks if r.type == "flag"} <= set(
+            EXPORT_FORMATS), k.export_asks
+        assert (repo_root() / "docs" / k.export_doc).is_file(), k.export_doc
     else:
         ref = getattr(kind_table.kind(calculation), key)
         assert kind_table.part(ref, record=calculation, key=key) is not None
@@ -90,26 +98,32 @@ def test_every_part_a_kind_names_resolves(calculation, key):
     ("vibration", {"laser_nm": "abc", "dos_per_orbital": "1"},
      "dos_per_orbital is asked by the export of a transport calculation; "
      "this is a vibration"),
+    ("transport", {"dos_per_orbital": "1", "format": "csv"},
+     "dos_per_orbital goes with the netcdf form, not csv"),
 ], ids=["a number", "a flag set", "a flag not set",
         "a number the kind judges", "another kind's asks, every one",
         "an ask of a kind that asks none", "not a finite number",
         "not a flag", "a flag not set on a kind that asks none",
-        "another kind's ask before a value"])
+        "another kind's ask before a value", "a flag asked with another form"])
 def test_an_export_takes_what_its_kind_asks(calculation, given, want):
     """`model/datafiles.md` § 5a: what an export asks beyond its form is its
     kind's declared rows, read through one door (`kind_table.export_asks_of`)
     by the command line and the page's one route -- a number as a finite
     float, its meaning the kind's to judge (0 passed on); a flag set by 1,
-    not by 0; one not given left out; every ask the calculation's kind does
-    not take refused first and together, naming the kinds that take them.  THE SILENT FAILURE: a
-    laser asked of a transport export, taken and ignored, the person
-    believing the view is in it."""
+    not by 0, and asked with the one form its row names (``format``, the
+    export's -- NetCDF where a row gives none); one not given left out;
+    every ask the calculation's kind does not take refused first and
+    together, naming the kinds that take them.  THE SILENT FAILURE: a laser
+    asked of a transport export, taken and ignored, the person believing the
+    view is in it; the DOS per orbital asked with CSV, where it has no
+    place."""
     import re
+    fmt = given.pop("format", "netcdf")
     if isinstance(want, dict):
-        assert kind_table.export_asks_of(calculation, given) == want
+        assert kind_table.export_asks_of(calculation, given, fmt=fmt) == want
     else:
         with pytest.raises(ValueError, match=re.escape(want)):
-            kind_table.export_asks_of(calculation, given)
+            kind_table.export_asks_of(calculation, given, fmt=fmt)
 
 
 #: A kind's export as it resolves, wrong one way each: a row its export
@@ -117,7 +131,7 @@ def test_an_export_takes_what_its_kind_asks(calculation, given, want):
 #: a kind that exports nothing, asked to.
 _EXPORT_ROWS = [
     ("an ask its export does not take",
-     'export = "molbuilder.optimization.export"\n'
+     'export = "molbuilder.optimization.export"\nexport_doc = "d.md"\n'
      '[k.export_asks.laser_nm]\ntype = "number"\nwords = "w"\n',
      kind_table.KindTableError,
      "k's export, 'molbuilder.optimization.export', takes no laser_nm"),
@@ -133,7 +147,7 @@ def test_a_kind_s_export_is_refused_as_it_resolves(
     table = tmp_path / "kind_table.toml"
     table.write_text('[j]\nnoun = "j"\ntopic = "j"\n'
                      'export = "molbuilder.optimization.export"\n'
-                     '[j.on.siesta]\n'
+                     'export_doc = "d.md"\n[j.on.siesta]\n'
                      f'[k]\nnoun = "k"\ntopic = "k"\n{lines}[k.on.siesta]\n')
     monkeypatch.setattr(kind_table, "TABLE_FILE", table)
     kind_table._table.cache_clear()
@@ -318,8 +332,22 @@ _KIND_ROWS = [
      'description = {carries = ["reuses"], extension = "m:f", '
      'reuse = "m:f", describe = "m"}\n[k.on.siesta]\n',
      "description.reuse is 'm:f' -- a reuse part is a module, named whole"),
-    ("an export ask named as a surface's own",
+    ("a flag stating no form and no button",
+     '[k]\nnoun = "k"\ntopic = "k"\nexport = "m"\nexport_doc = "d.md"\n'
+     '[k.export_asks.f]\ntype = "flag"\nwords = "w"\n[k.on.siesta]\n',
+     "export_asks.f is {type, words}, a flag's with its form and its button"),
+    ("an export naming no document",
+     '[k]\nnoun = "k"\ntopic = "k"\nexport = "m"\n[k.on.siesta]\n',
+     "export with no export_doc"),
+    ("an export document outside docs/",
      '[k]\nnoun = "k"\ntopic = "k"\nexport = "m"\n'
+     'export_doc = "../secret.md"\n[k.on.siesta]\n',
+     "export_doc is a document below docs/"),
+    ("an export document with no export",
+     '[k]\nnoun = "k"\ntopic = "k"\nexport_doc = "a.md"\n[k.on.siesta]\n',
+     "export_doc with no export"),
+    ("an export ask named as a surface's own",
+     '[k]\nnoun = "k"\ntopic = "k"\nexport = "m"\nexport_doc = "d.md"\n'
      '[k.export_asks.format]\ntype = "flag"\nwords = "w"\n[k.on.siesta]\n',
      "export_asks.format is a surface's own name"),
 ]

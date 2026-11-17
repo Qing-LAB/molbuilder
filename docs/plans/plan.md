@@ -60,8 +60,10 @@ each release is its changelog row and its ledger section
   an older file's names read through one door (`ncdata.named_now`) and
   the transport summary opened through the one door in
   2.72.5 (`model/datafiles.md` § 2a rule 5, `model/parse.md` § 5e);
-  next one export bar, the vibration Export in the Results top line, then
-  `pdos` and the re-average moved to their kinds;
+  one Export bar for every kind, the Results page's, drawn from the
+  calculation's offer in 2.73.0 (`web/results.md` § 1.1; the user,
+  2026-11-16: "Every kind"); next `pdos` and the re-average moved to
+  their kinds;
   (C)
   every chart's own export — a picture, its drawn data as CSV and NetCDF;
   the PDOS of a mixed selection from the data file and each point's digest

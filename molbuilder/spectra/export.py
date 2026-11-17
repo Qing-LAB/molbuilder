@@ -4,7 +4,7 @@ them, and the Raman view at a laser composed now, as files or as their tables
 calculation*).
 
 MODULE  spectra.export (L4)
-ROLE    :func:`export` -- the one composition the spectrum viewer's Export
+ROLE    :func:`export` -- the one composition the Results tab's Export
         (`GET /api/export`) and `molbuilder jobset export` ask alike,
         on the calculation as the transport export takes it, in the export's
         one shape (`ncdata.exported`): ``<label>.spectra.nc`` and, on a
@@ -65,7 +65,7 @@ def result_path(calc, folder=None) -> Path:
         raise ExportError(
             f"{name} sweeps the displacement over {len(task.stages)} stages, "
             f"each holding its own result: an export is of one result -- "
-            f"export it from the spectrum viewer, which opens one stage's run")
+            f"export it from the Results tab with one stage's run open")
     attempt, got = newest_on_label(
         stage_home(calc.base, task, task.stages[0].name).dir, ROLE_SPECTRA)
     if attempt is None:

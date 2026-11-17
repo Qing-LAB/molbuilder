@@ -2427,7 +2427,7 @@ def export_cmd(bundle: str, fmt: str, to: str, **given) -> None:
     try:
         module = export_of(calc.task.calculation)
         asks = export_asks_of(
-            calc.task.calculation, given,
+            calc.task.calculation, given, fmt=fmt,
             spell=lambda name: "--" + name.replace("_", "-"),
             named=_P(calc.base).name)
         name = module.name_of(calc, fmt, **asks)

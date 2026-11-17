@@ -10,6 +10,9 @@ Routes:
     GET /api/export                         a calculation's results as they
                                             stand, as NetCDF or as tables
                                             (`model/datafiles.md` § 5a)
+    GET /api/export/offer                   what a calculation's export
+                                            takes, which the page's one
+                                            Export bar is drawn from
     GET /partials/spectra-inspector         rendered spectra inspector HTML
                                             (consumed by
                                             ``lib/inspectors/spectra.js``)
@@ -106,7 +109,7 @@ def api_export():
     refused."""
     from molbuilder.calculation import NotACalculation, at
     from molbuilder.kind_table import export_asks_of, export_of
-    from molbuilder.ncdata import ExportError
+    from molbuilder.ncdata import ExportError, export_format
     from ._shared import sent_export
     from .files import _existing, _resolve_within_roots
     path = _existing(_resolve_within_roots(str(request.args.get("path")
@@ -114,13 +117,54 @@ def api_export():
     try:
         calc = at(path)
         kind = calc.task.calculation
+        fmt = export_format(str(request.args.get("format") or ""))
         got = export_of(kind).export(
-            calc, str(request.args.get("format") or ""),
-            folder=path if path.is_dir() else path.parent,
-            **export_asks_of(kind, request.args))
+            calc, fmt, folder=path if path.is_dir() else path.parent,
+            **export_asks_of(kind, request.args, fmt=fmt))
     except (NotACalculation, ExportError, ValueError, OSError) as exc:
         return err(str(exc), 400)
     return sent_export(got)
+
+
+@bp.route("/api/export/offer", methods=["GET"])
+def api_export_offer():
+    """WHAT A CALCULATION'S EXPORT TAKES (`model/datafiles.md` § 5a) --
+    ``?path=`` its folder or a file or folder below it: ``offer`` the forms
+    (`ncdata.EXPORT_FORMATS`, each with its words), its kind's asks' rows and
+    the document that says how to read the export in Python, which the
+    page's one Export bar is drawn from (`projects.exportBar`) -- ``null``
+    for a path in no calculation, or in one whose kind exports nothing: an
+    answer, not a refusal.  A description that does not read is refused
+    with its way on, as the export is (400); a kind whose export does not
+    resolve is the table's defect, said (`kind_table.export_of`, 500).
+    ``offer.calculation`` -- the calculation's folder -- is what the page
+    keeps one bar across."""
+    from dataclasses import asdict
+    from molbuilder.calculation import NotACalculation, at
+    from molbuilder.kind_table import KindTableError, export_of, kind as kind_of
+    from molbuilder.ncdata import EXPORT_FORMATS
+    from .files import _existing, _resolve_within_roots
+    path = _existing(_resolve_within_roots(str(request.args.get("path")
+                                               or "")))
+    try:
+        calc = at(path)
+    except NotACalculation:
+        return jsonify({"ok": True, "offer": None})
+    except ValueError as exc:
+        return err(str(exc), 400)
+    try:
+        kind = kind_of(calc.task.calculation)
+        if kind.export is None:
+            return jsonify({"ok": True, "offer": None})
+        export_of(calc.task.calculation)
+    except KindTableError as exc:
+        return err(str(exc), 500)
+    return jsonify({"ok": True, "offer": {
+        "calculation": str(calc.base),
+        "forms": [{"name": name, "words": words}
+                  for name, words in EXPORT_FORMATS.items()],
+        "asks": [asdict(r) for r in kind.export_asks],
+        "doc": kind.export_doc}})
 
 
 @bp.route("/api/results/dir", methods=["GET"])

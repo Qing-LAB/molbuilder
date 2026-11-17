@@ -3,7 +3,7 @@ stands when asked, as its data file or as that file's tables
 (`engines/transport.md` § 2a.12, *Export*).
 
 MODULE  transport.export (L4)
-ROLE    :func:`export` -- the one composition the transport report's Export
+ROLE    :func:`export` -- the one composition the Results tab's Export
         (`GET /api/export`) and `molbuilder jobset export` ask
         alike: the record composed now, as the Results tab reads a ladder
         in progress (`record.collect_record`, ``partial``), the data file's
@@ -81,16 +81,13 @@ def export(calc, fmt: str, *, folder=None,
     table's (`kind_table.export_of`).
     ``dos_per_orbital``: the NetCDF form with each point's kept digest beside
     it, at the path the point names, its bytes copied and never read -- what
-    `postprocess.pdos` reads a PDOS of chosen atoms from, anywhere."""
+    `postprocess.pdos` reads a PDOS of chosen atoms from, anywhere; asked
+    with that form alone, its row's (`kind_table.export_asks_of`)."""
     from ..ncdata import export_format, exported
     from .compose import ComposeError
     from .datafile import DataFileError, data_file_bytes
     from .record import RecordError, collect_record
     export_format(fmt)
-    if dos_per_orbital and fmt != "netcdf":
-        raise ExportError("the DOS per orbital goes with the NetCDF form, "
-                          "beside the data file it is read with -- export "
-                          "as netcdf")
     try:
         # WHAT EXISTS, as the Results tab reads a ladder in progress: a
         # point not done is the fill value (`done` 0).

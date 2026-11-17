@@ -26,7 +26,12 @@ import xarray as xr
 | `read_steps(path)` | the relaxation's or the force constants' steps, in your atoms' order (§ 7) |
 
 The result sits in the run's folder: `01_freq/run-0/<label>.spectra.nc`, with its
-JSON beside it. **Every row of the result is in your atoms' order**, listed by user
+JSON beside it. The Results tab's Export, in its top line
+([`web/results.md`](?doc=web/results.md) § 1.1), hands over, as *NetCDF*,
+the same files as one zip — `<label>.spectra.nc`, the optical calls'
+`<label>.optical.nc` where the run made them, and, with a laser applied in
+the Raman view, `<label>.raman.nc`, the view at that laser, read with
+`postprocess.read_raman_data` — and, as *CSV*, their tables. **Every row of the result is in your atoms' order**, listed by user
 index, each atom's engine index beside it.
 
 ## 2. The modes, atom by atom

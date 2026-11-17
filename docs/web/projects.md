@@ -537,9 +537,21 @@ Content-Disposition, handed to the person under that name through
 sentence beside the file (`X-Molbuilder-Said`) or `""`; or `{ok: false,
 error}` with the route's own refusal, the HTTP status where it said none, or
 why the request failed. A file the route did not name is refused, never
-named by the page. Every report's Export asks it: the transport report
-([`engines/transport.md`](?doc=engines/transport.md) § 2a.12, *Export*) and
-the vibration result ([`web/spectra.md`](?doc=web/spectra.md) § 3.3).
+named by the page. **The one Export bar — `projects.exportBar(path,
+{asks})`** asks it, drawn from the calculation's offer for `path` (`GET
+/api/export/offer`, [`model/datafiles.md`](?doc=model/datafiles.md) § 5a):
+*Export every result as it stands:* — a button for each form, in the words
+it is served with, and beside its form's a button for each flag its kind
+declares (a transport calculation's *NetCDF with DOS per orbital*); the
+server's sentence beside them — what the export holds without — or its
+refusal, every button disabled while one runs; and *How to read these in
+Python*, the kind's document. `asks()` — the values the page shows that the
+export takes (a vibration's laser and width) — is read as a button is
+pressed, only the offer's numbers sent. Resolves the bar; a line saying why
+where the offer did not read — never taken for none; or `null` where the
+path lies in no calculation or its calculation exports nothing. The bar
+names its calculation (`data-calculation`, the offer's), so a page keeps one
+bar across the selections in it.
 
 **The unified save-where question — `projects.chooseSavePath(opts)`**
 *(2026-08-19, user)*: the move-to dialog composed with the name dialog, from

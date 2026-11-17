@@ -485,13 +485,16 @@ the route, $\hat e$, $\delta$, the laser, the width, *independent states, no
 local field* — its citation among the result's keys (§ 9b.3). The laser and
 the width are remembered with the other view preferences (§ 7).
 
-**Export** — in the Results section's header, *CSV* · *NetCDF*: the
+**Export** — the calculation's one Export bar
+([`model/datafiles.md`](?doc=model/datafiles.md) § 5a), in the Results
+tab's top line ([`web/results.md`](?doc=web/results.md) § 1.1) — *NetCDF* ·
+*CSV*: the
 calculation's vibration data files and, when a laser is applied, the Raman
-view on screen — at the laser and width the bar applied (§ 2.1) — downloaded through the projects module's one
-export door (`projects.downloadExport`, `GET /api/export`; what is in
-it, § 5.11 § 10 of the vibration contract); beside the buttons the server's
-sentence — the view not in it, where no laser is applied — or a refusal in its
-words. The table's own *CSV* of the rows on screen stays as it is.
+view on screen — at the laser and width the bar applied (§ 2.1), handed to
+the Export by this viewer (`ctx.exportAsks`; what is in it, § 5.11 § 10 of
+the vibration contract); beside the buttons the server's sentence — the
+view not in it, where no laser is applied — or a refusal in its words. The
+table's own *CSV* of the rows on screen stays as it is.
 
 ## 4. Clicking a mode — the 3D animation
 

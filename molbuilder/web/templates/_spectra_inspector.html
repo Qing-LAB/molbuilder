@@ -66,17 +66,6 @@
     <div id="results-summary" class="spectra-section results-summary" hidden>
       <header class="spectra-section-header">
         <h2>Results</h2>
-        {#- THE CALCULATION'S DATA FILES (docs/web/spectra.md § 3.3): the
-            vibration data files as they are, and the Raman view at the
-            laser applied -- composed by the server, one zip; a refusal in its
-            words beside the buttons. -#}
-        <div id="spectra-export" class="spectra-inline-row">
-          <span>Export the data files:</span>
-          <button id="spectra-export-csv" type="button">CSV</button>
-          <button id="spectra-export-netcdf" type="button">NetCDF</button>
-          <span id="spectra-export-status" class="status muted" role="status"
-                aria-live="polite"></span>
-        </div>
       </header>
       <dl id="results-summary-list" class="results-meta"></dl>
 

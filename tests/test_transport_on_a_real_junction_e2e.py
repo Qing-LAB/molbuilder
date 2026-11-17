@@ -3307,6 +3307,26 @@ def test_an_export_is_the_data_file_and_its_tables(junction, monkeypatch,
              if k.startswith("points/") and "done" in v["variables"]}
     assert named and {f"{label}.transport-netcdf/{d}" for d in named} <= set(
         names), names
+    # THE OFFER THE PAGE'S ONE EXPORT BAR IS DRAWN FROM (`model/datafiles.md`
+    # § 5a): the forms with their words, this kind's flag with its one form
+    # and its button, its document; a folder in no calculation, none -- an
+    # answer, not a refusal.
+    client = create_app(config={}).test_client()
+    offer = client.get(f"/api/export/offer?path={run.bundle / 'task.json'}"
+                       ).get_json()["offer"]
+    assert [(f["name"], f["words"]) for f in offer["forms"]] == [
+        ("netcdf", "NetCDF"), ("csv", "CSV")], offer
+    assert [(a["name"], a["form"], a["button"]) for a in offer["asks"]] == [
+        ("dos_per_orbital", "netcdf", "NetCDF with DOS per orbital")], offer
+    assert offer["doc"] == "engines/transport-postprocessing.md", offer
+    none = client.get(f"/api/export/offer?path={run.bundle.parent}")
+    assert none.status_code == 200 and none.get_json()["offer"] is None, (
+        none.get_json())
+    # A FORM THAT IS NOT ONE is refused as a form, before what goes with it.
+    bad = client.get(f"/api/export?path={run.bundle / 'task.json'}"
+                     f"&format=&dos_per_orbital=1")
+    assert bad.status_code == 400 and "an export is netcdf or csv" in (
+        bad.get_json()["error"]), bad.get_json()
 
 
 def test_an_export_reads_no_data_file_and_says_what_is_missing(
@@ -4099,16 +4119,16 @@ def test_the_report_draws_the_junction_in_the_user_order(junction, page,
 
 def test_the_calculations_export_is_in_the_tabs_top_line(junction, page,
                                                         monkeypatch):
-    """`web/results.md` § 2.5 *export*, `web/presenters.md` § 2
-    (`placeInHeader`): the report's Export -- every result of the
-    calculation -- sits in the Results tab's top line, beside the folder and
-    the kind, seen as the report opens; it downloads the data file from
-    there; and it leaves with the report when a run is opened in its place.
+    """`web/results.md` § 1.1: the calculation's Export -- every result of
+    it -- sits in the Results tab's top line, beside the folder and the
+    kind, seen as the report opens; it
+    downloads the data file from there; and a run of the calculation opened
+    in the report's place shows the same calculation's Export.
 
     THE SILENT FAILURE (the user, 2026-11-16, "I don't see the button
     there"): the bar drawn in the report's own header, below the ladder --
-    a screen down, never seen; or left in the top line after the report is
-    put away, exporting a calculation no longer shown."""
+    a screen down, never seen; or gone as a run of the calculation is
+    opened, the calculation it lies in no longer exportable from it."""
     from conftest import point_the_one_door_at
     from support.live_server import serve
     from support.sidebar import results_on
@@ -4121,12 +4141,11 @@ def test_the_calculations_export_is_in_the_tabs_top_line(junction, page,
             "  '#results-file-picker-select option')]"
             "  .some(o => o.value === want)", arg=str(task), timeout=30000)
         page.select_option("#results-file-picker-select", value=str(task))
-        bar = page.locator(".results-status .transport-export")
+        bar = page.locator(".results-status .export-bar")
         bar.wait_for(timeout=60000)
-        assert page.locator("#inspector-host .transport-export").count() == 0
         seen = page.evaluate(
             "() => { const r = document.querySelector("
-            "'.results-status .transport-export').getBoundingClientRect();"
+            "'.results-status .export-bar').getBoundingClientRect();"
             " return { top: r.top, bottom: r.bottom, screen: innerHeight,"
             " scrolled: scrollY }; }")
         assert seen["scrolled"] == 0 and seen["bottom"] <= seen["screen"], (
@@ -4136,13 +4155,30 @@ def test_the_calculations_export_is_in_the_tabs_top_line(junction, page,
             bar.get_by_role("button", name="NetCDF", exact=True).click()
         assert got.value.suggested_filename.endswith(".transport.nc"), (
             got.value.suggested_filename)
+        # ITS FLAG'S OWN BUTTON asks the NetCDF form with the flag: the
+        # data file with each point's digest, one zip.
+        with page.expect_download(timeout=120000) as got:
+            bar.get_by_role("button",
+                            name="NetCDF with DOS per orbital").click()
+        assert got.value.suggested_filename.endswith(
+            ".transport-netcdf.zip"), got.value.suggested_filename
         page.locator(".results-ladder-open[aria-pressed]").first.click()
         page.wait_for_function(
             "() => !document.querySelector('#inspector-host .transport-record')",
             timeout=30000)
-        assert page.locator(".results-status .transport-export").count() == 0, (
-            "the calculation's Export stayed in the top line after its "
-            "report was put away")
+        # A RUN OF THE CALCULATION shows its calculation's Export alike
+        # (`web/results.md` § 1.1): the bar is the calculation's, not the
+        # report's.
+        page.locator(".results-status .export-bar").get_by_role(
+            "button", name="NetCDF with DOS per orbital").wait_for(
+                timeout=60000)
+        # ...AND A FOLDER IN NO CALCULATION has none: the bar leaves with
+        # the calculation.
+        from support.sidebar import reload_from
+        reload_from(page, junction.from_pair.bundle.parent)
+        page.wait_for_function(
+            "() => !document.querySelector('.results-status .export-bar')",
+            timeout=30000)
 
 
 # --------------------------------------------------------------------- #

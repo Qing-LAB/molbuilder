@@ -175,10 +175,6 @@ const WORKSPACE_TAG = "results:transport";
             + (failed.length ? " · " + failed.length + " failed" : "")
             + (rec.energies_relative_to_ef ? " · energies relative to E_F"
                                            : "")));
-        /* THE CALCULATION'S EXPORT, in the page's top line, seen as the
-         * report opens (presenters.md § 2, `placeInHeader`; web/results.md
-         * § 2.5 *export*). */
-        state.ctx.placeInHeader(_exportBar(file));
         wrap.appendChild(head);
 
         /* ROW 1: the device beside the curves. */
@@ -274,54 +270,6 @@ const WORKSPACE_TAG = "results:transport";
         panel.insertBefore(frameAxisControl(root.document, state.frameMode[key],
             (m) => { state.frameMode[key] = m; _redraw(state); }),
             panel.firstChild);
-    }
-
-    /* THE EXPORT -- every result as it stands, as the data file or its
-     * tables (`engines/transport.md` § 2a.12, *Export*): composed by the
-     * server from what is already there, no data file read, and handed over
-     * by the file layer's one export door (`projects.downloadExport`);
-     * beside the buttons the server's own sentence -- the points it holds
-     * without their DOS by region and how to read them -- or a refusal,
-     * through the one status writer, and the post-processing document's
-     * link. */
-    function _exportBar(file) {
-        const bar = _el("div", "fdf-actions transport-export");
-        bar.appendChild(_el("span", "hint",
-                            "Export every result as it stands:"));
-        const msg = _el("span", "status");
-        msg.setAttribute("role", "status");
-        const say = (text, kind) => root.molbuilder.status.set(msg, text, kind);
-        /* THE THIRD: the NetCDF with each point's DOS per orbital beside
-         * it -- what a PDOS of chosen atoms is read from in a notebook
-         * (`engines/transport.md` § 2a.12, *NetCDF with the DOS per
-         * orbital*). */
-        const buttons = [["CSV", { format: "csv" }],
-                         ["NetCDF", { format: "netcdf" }],
-                         ["NetCDF with DOS per orbital",
-                          { format: "netcdf", dos_per_orbital: "1" }]].map(
-            ([label, ask]) => {
-                const b = _el("button", null, label);
-                b.type = "button";
-                b.addEventListener("click", () => run(ask));
-                bar.appendChild(b);
-                return b;
-            });
-        const run = async (ask) => {
-            buttons.forEach((b) => { b.disabled = true; });
-            say("Composing the export.", "muted");
-            const got = await root.molbuilder.projects.downloadExport(
-                "/api/export?" + new URLSearchParams(
-                    Object.assign({ path: file }, ask)).toString());
-            buttons.forEach((b) => { b.disabled = false; });
-            say(got.ok ? got.said : got.error, got.ok ? "muted" : "warn");
-        };
-        bar.appendChild(msg);
-        const how = _el("a", null, "How to read these in Python");
-        how.href = "/documents?doc=engines/transport-postprocessing.md";
-        how.target = "_blank";
-        how.rel = "noopener";
-        bar.appendChild(how);
-        return bar;
     }
 
     /* EACH POINT'S DOS PER ORBITAL, READ ON THE PERSON'S WORD
@@ -1470,8 +1418,7 @@ const WORKSPACE_TAG = "results:transport";
                             unsubFrame: null, unsubPlay: null, drawn: false,
                             disposed: false, file: file, dir: dirname(file),
                             nFrames: 1, average: {}, pendingFrame: null,
-                            frameMode: { te: ONE, dos: ONE, iv: ONE, conv: ONE },
-                            ctx: ctx };
+                            frameMode: { te: ONE, dos: ONE, iv: ONE, conv: ONE } };
             /* THE POINTS READ AGAIN -- once a data file's DOS per orbital
              * is read (`_digestCard`): their regions, and a selection's
              * PDOS asked again; the page around them stays as it is. */
