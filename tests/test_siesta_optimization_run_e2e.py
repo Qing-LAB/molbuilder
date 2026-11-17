@@ -559,7 +559,7 @@ def test_the_export_holds_what_the_runs_steps_hold(real_h2_layered, monkeypatch)
     failure: a row of one run read as another's, or an atom's as another's."""
     from conftest import point_the_one_door_at
     from molbuilder.parse.engines.siesta_grammar import STRESS_VOIGT
-    from molbuilder.postprocess import read_optimization_data, read_steps
+    from molbuilder.postprocess import read_steps, read_steps_data
     from molbuilder.runs import RunStepsError, run_of
     bundle = real_h2_layered.bundle
     point_the_one_door_at(real_h2_layered.tree.parent, monkeypatch.setenv)
@@ -567,14 +567,22 @@ def test_the_export_holds_what_the_runs_steps_hold(real_h2_layered, monkeypatch)
     said = molbuilder("jobset", "export", "--format", "netcdf", "--to", to,
                       "--bundle", bundle)
     assert said.exit_code == 0, said.output
-    got = {k: v["data"] for k, v in read_optimization_data(
-        next(to.glob("*.optimization.nc")))["variables"].items()}
+    data = read_steps_data(next(to.glob("*.optimization.nc")))
+    got = {k: v["data"] for g in ("runs", "steps")
+           for k, v in data["groups"][g]["variables"].items()}
+    scf = {k: v["data"] for k, v in
+           data["groups"]["steps/scf"]["variables"].items()}
     at = 0
     for r, run in enumerate(got["run"]):
         try:
             steps = read_steps(bundle / run)
-        except RunStepsError as refused:
-            assert got["said"][r] == str(refused)
+        except RunStepsError:
+            # ITS REFUSAL, named as the file names the run.
+            with monkeypatch.context() as here:
+                here.chdir(bundle)
+                with pytest.raises(RunStepsError) as refused:
+                    read_steps(run)
+            assert got["said"][r] == str(refused.value)
             continue
         k = len(steps.energy_ev)
         where = slice(at, at + k)
@@ -583,6 +591,28 @@ def test_the_export_holds_what_the_runs_steps_hold(real_h2_layered, monkeypatch)
                                    steps.positions_ang)
         np.testing.assert_allclose(got["force_ev_per_ang"][where],
                                    steps.forces_ev_per_ang)
+        # EACH STEP'S SCF (`model/datafiles.md` § 9.0.6, § 9.5): a step
+        # with an energy ran one, its last row's energy the step's to the
+        # 0.0001 eV SIESTA's output prints (§ 2a rule 2); the final geometry
+        # a relaxation ends on ran none; each row as the run door hands it
+        # back, as SIESTA's declaration names its columns.
+        for s, rows in enumerate(steps.scf_rows):
+            i = at + s
+            if np.isfinite(got["total_energy_ev"][i]):
+                assert scf["scf_cycles"][i] == len(rows) > 0, (run, s)
+                np.testing.assert_allclose(
+                    scf["scf_energy_ev"][i, len(rows) - 1],
+                    got["total_energy_ev"][i], atol=1e-4)
+            else:
+                assert scf["scf_cycles"][i] == -1 and not rows, (run, s)
+            for column, key in (("scf_iscf", "cycle"),
+                                ("scf_energy_ev", "energy"),
+                                ("scf_ddmax", "dDmax"),
+                                ("scf_dhmax_ev", "dHmax"),
+                                ("scf_fermi_level_ev", "ef")):
+                np.testing.assert_allclose(
+                    scf[column][i, :len(rows)],
+                    [np.nan if r.get(key) is None else r[key] for r in rows])
         # THE STRESS AS THE RUN PRINTED IT, its line read here by the grammar.
         out = run_of(bundle / run).stdout
         printed = [[float(v) for v in m.group(1).split()]

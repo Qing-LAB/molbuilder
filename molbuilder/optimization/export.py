@@ -4,14 +4,18 @@ when asked, as its data file or as that file's tables
 
 MODULE  optimization.export (L4)
 ROLE    :func:`export` -- what `molbuilder jobset export` and `GET
-        /api/export` ask (`kind_table`, ``export``): the data file composed
-        now from what the runs hold (`datafile.data_file_bytes`), and for
+        /api/export` ask (`kind_table`, ``export``): the data file of its
+        runs and their steps composed now from what the runs hold
+        (`stepsdata.data_file_bytes`, `model/datafiles.md` § 9.5), and for
         CSV its tables and README
         (`ncdata.as_tables`).  **Nothing is written into the calculation.**
 """
 from __future__ import annotations
 
 from ..ncdata import ExportError, Exported
+
+#: What an optimization's data file is named on its label.
+DATA_FILE = ".optimization.nc"
 
 
 def _stem(calc) -> str:
@@ -26,8 +30,7 @@ def name_of(calc, fmt: str, **_asks) -> str:
     nothing beyond its form (no ``export_asks`` in the kind table), the
     export surface's ``name_of(calc, fmt, **asks)`` (`kind_table`)."""
     from ..ncdata import export_name
-    from .datafile import data_file_name
-    return export_name(_stem(calc), fmt, data_file_name(calc))
+    return export_name(_stem(calc), fmt, f"{calc.task.label}{DATA_FILE}")
 
 
 def export(calc, fmt: str, *, folder=None) -> Exported:
@@ -37,14 +40,15 @@ def export(calc, fmt: str, *, folder=None) -> Exported:
     :class:`ExportError` names a form that is not one, and what does not read
     or does not lay out on one grid, in its owner's words."""
     from ..ncdata import export_format, exported
-    from .datafile import data_file_bytes
+    from ..stepsdata import data_file_bytes
     export_format(fmt)
+    name = f"{calc.task.label}{DATA_FILE}"
     try:
-        name, data, said = data_file_bytes(calc)
+        data, said = data_file_bytes(calc, name)
     except (OSError, ValueError) as exc:
         raise ExportError(str(exc)) from exc
     return exported({name: data}, fmt, stem=_stem(calc), one_file=True,
                     said=said)
 
 
-__all__ = ["export", "name_of"]
+__all__ = ["DATA_FILE", "export", "name_of"]

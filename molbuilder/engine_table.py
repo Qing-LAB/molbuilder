@@ -5,7 +5,8 @@
 its name as a person reads it, the setting that names its files, its config
 class, its own settings checks, its reading of *the same calculation* and
 its seam, the longest label it keeps whole, the reader of its keyword deck,
-what it computes the atoms in and how its runs run -- the
+the columns of its SCF history, what it computes the atoms in and how its
+runs run -- the
 environment they enter and the programs they start, which the one run
 script reads (`runwrap`, `running-a-job.md` § 1).  A fact
 another declaration holds stays there -- an engine's files are the file
@@ -39,7 +40,7 @@ COMPUTES_IN = ("cell", "free space")
 #: The keys an engine's table states, each required ...
 _KEYS = ("words", "identity_field", "config", "validator",
          "same_calculation", "seam", "computes_in", "one_process",
-         "benchmark", "presets", "environment")
+         "benchmark", "presets", "environment", "scf_columns")
 #: ... and those it states where it has one.
 _OPTIONAL = ("method", "gpu_environment", "programs", "longest_label",
              "keyword_reader")
@@ -105,6 +106,11 @@ class Engine:
     #: -- or ``None``: its deck is a script whose values are its own
     #: (PySCF's).
     keyword_reader: Optional[str] = None
+    #: ``module:NAME`` of THE COLUMNS OF ITS SCF HISTORY -- each with its
+    #: name, kind, units and words, the one declaration every data file
+    #: holding a run's SCF cycles is written with (`model/datafiles.md`
+    #: § 9.0.6).
+    scf_columns: str = ""
 
     @property
     def program(self) -> Optional[str]:
@@ -164,7 +170,7 @@ def _engine(name: str, body: object) -> Engine:
     # EVERY PART IS NAMED ALIKE, ``module:NAME``, and resolved by the floor
     # that asks (`execution/architecture.md` § 3.3).
     for key in ("config", "validator", "same_calculation", "seam",
-                "presets", "keyword_reader"):
+                "presets", "keyword_reader", "scf_columns"):
         ref = body.get(key)
         if ref is not None and (not isinstance(ref, str) or ":" not in ref):
             raise EngineTableError(f"{where}: {key} is \"module:NAME\"")
@@ -203,7 +209,8 @@ def _engine(name: str, body: object) -> Engine:
                   programs=tuple(programs.items()),
                   method=body.get("method"),
                   longest_label=longest,
-                  keyword_reader=body.get("keyword_reader"))
+                  keyword_reader=body.get("keyword_reader"),
+                  scf_columns=str(body["scf_columns"]))
 
 
 @lru_cache(maxsize=1)
@@ -299,6 +306,16 @@ def read_deck(name: str, path, *, read=None) -> str:
             else p.read_text(encoding="utf-8-sig", errors="replace"))
 
 
+def scf_columns(name: str) -> tuple:
+    """Engine ``name``'s SCF columns, ``((key, name, kind, units, long name,
+    definition, dtype, fill), ...)`` -- the part its record names
+    (``scf_columns``, floor 1), resolved here."""
+    from .kind_table import part
+    rec = engine(name)
+    return part(rec.scf_columns, record=f"engine {rec.name}",
+                key="scf_columns")
+
+
 def stage_presets(name: str) -> dict:
     """Engine ``name``'s stage presets, ``{tier: {item: value}}`` -- the part
     its record names (``presets``, floor 1, `config/`), resolved here."""
@@ -309,4 +326,4 @@ def stage_presets(name: str) -> dict:
 
 __all__ = ["TABLE_FILE", "COMPUTES_IN", "EngineTableError", "Engine",
            "engines", "engine", "config_class", "relabelled", "engine_of_config",
-           "keywords", "read_deck", "stage_presets"]
+           "keywords", "read_deck", "scf_columns", "stage_presets"]

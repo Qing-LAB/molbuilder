@@ -13,8 +13,8 @@ ROLE    ``parse`` -- an engine's file, a run's file → its result (the
         atoms are listed by, and both indices of each (`atom_index`);
         ``read_transport_data`` / ``read_spectra_data`` /
         ``read_optical_data`` -- the data files a calculation writes, each
-        with its atom index map, and ``read_optimization_data`` -- an exported
-        optimization -- ``read_raman_data`` -- an exported Raman view; ``infrared_view`` -- the free atoms' infrared from a
+        with its atom index map, and ``read_steps_data`` -- an exported
+        calculation's runs and their steps -- ``read_raman_data`` -- an exported Raman view; ``infrared_view`` -- the free atoms' infrared from a
         SIESTA vibration result's charges (`spectra.infrared`);
         ``raman_view`` -- a SIESTA vibration's Raman at a laser, from its
         optical calls (`spectra.raman`); ``pdos`` -- a transport point's PDOS
@@ -170,12 +170,15 @@ def read_optical_data(path) -> Dict[str, Any]:
     return {**_read(path), MAP_KEY: atom_index_map(path)}
 
 
-def read_optimization_data(path) -> Dict[str, Any]:
-    """An optimization's data file, ``<label>.optimization.nc`` -- what `jobset
-    export` writes -- as data (`optimization.datafile.read_data_file`: its
-    attributes and every variable with its words) and ``atom_index_map``, its
-    atoms listed by user index (`engines/optimization-postprocessing.md` § 6)."""
-    from .optimization.datafile import read_data_file
+def read_steps_data(path) -> Dict[str, Any]:
+    """A calculation's runs and their steps -- an optimization's data file,
+    ``<label>.optimization.nc``, or a vibration's ``<label>.steps.nc``, what
+    an export writes -- as data (`stepsdata.read_data_file`: its attributes
+    and its groups ``runs``, ``steps``, ``steps/scf``, every variable with its
+    words) and ``atom_index_map``, its atoms listed by user index
+    (`model/datafiles.md` § 9.5; `engines/optimization-postprocessing.md`
+    § 6)."""
+    from .stepsdata import read_data_file
     return {**read_data_file(path), MAP_KEY: atom_index_map(path)}
 
 
@@ -294,7 +297,7 @@ def outermost_move(path, *, mode: int, temperature_k: float,
 
 __all__ = ["AtomIndexMap", "AtomIndexUnknown", "RunStepsError", "atom_index_map",
            "infrared_view", "list_runs", "parse", "raman_view", "read_optical_data",
-           "read_optimization_data", "read_raman_data", "read_spectra_data", "read_steps",
+           "read_steps_data", "read_raman_data", "read_spectra_data", "read_steps",
            "read_structure", "read_transport_data", "read_xv", "read_xv_cell", "reaveraged",
            "pdos",
            "outermost_move", "projects_root", "project_dir", "topic_dir",

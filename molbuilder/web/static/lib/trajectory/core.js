@@ -92,41 +92,6 @@ import { outcome } from "../validation-findings.js";
      *                 inspector is already mounted -- avoids a
      *                 full unmount/remount cycle.
      */
-    /**
-     * Redact the user-identifying prefix from an absolute path so
-     * the CSV export header carries enough structure for scientific
-     * provenance ("the file lived under projects/BDT/optimization/")
-     * without leaking the OS-level username.  Module-level so the
-     * IIFE-level export at the bottom of this file can reach it.
-     *
-     * Patterns redacted:
-     *   /home/<user>/...                  -> ~/...
-     *   /Users/<user>/...                 -> ~/...        (macOS)
-     *   /tmp/pytest-of-<user>/...         -> <tmp>/...
-     *   C:\Users\<user>\...               -> ~\...        (Windows)
-     *
-     * Everything past the user-named segment is preserved verbatim
-     * so the reader can still tell where in the user's tree the
-     * file lived (project layout / staged-relaxation structure) --
-     * only the username segment is replaced with ``~`` or ``<tmp>``.
-     */
-    function _redactSourcePath(p) {
-        if (typeof p !== "string" || !p) return p;
-        // POSIX home (Linux + macOS).  ``/home/u/foo`` ->
-        // ``~/foo``; ``/Users/u/foo`` -> ``~/foo``.  The
-        // ``[^/]+`` segment is the username.
-        p = p.replace(/^\/(home|Users)\/[^/]+\//, "~/");
-        // POSIX tmp dirs with embedded username.  pytest writes
-        // ``/tmp/pytest-of-u/...``; the username-bearing first
-        // segment under /tmp is replaced with ``<tmp>``.
-        p = p.replace(/^\/tmp\/[^/]*-of-[^/]+\//, "<tmp>/");
-        // Windows home.  Case-insensitive on the drive letter +
-        // ``Users``; the username segment is everything between
-        // ``Users\`` and the next backslash.
-        p = p.replace(/^[A-Za-z]:\\Users\\[^\\]+\\/i, "~\\");
-        return p;
-    }
-
     function mountInspector(rootEl, opts) {
     opts = opts || {};
 
@@ -632,7 +597,7 @@ import { outcome } from "../validation-findings.js";
     function setStatus(msg, kind) {
         // The inspector's own status line (`_trajectory_inspector.html`
         // #trajectory-status): a refused load, a viewer that could not
-        // mount, the cell's provenance, an export.  A mount without the
+        // mount, the cell's provenance.  A mount without the
         // partial has none, and this returns.  On this viewer's host, as
         // every lookup of its panel is.
         const line = $("trajectory-status");
@@ -649,123 +614,6 @@ import { outcome } from "../validation-findings.js";
     /* ------------------------------------------------------------------ */
     /*  3Dmol rendering                                                    */
     /* ------------------------------------------------------------------ */
-
-    /**
-     * Build a CSV bundling every column drawn across the
-     * 4 trajectory plots.  Self-describing header (``#``-comments)
-     * carries source file, parser, mtime, and the generation
-     * timestamp so the file can be re-traced later without external
-     * notes.
-     *
-     * Layout
-     * ------
-     * Header block (lines starting with ``#``):
-     *   * generation context (timestamp, source path, parser,
-     *     source mtime, n_frames)
-     *   * column legend pointing at unit + meaning
-     *   * a one-line schema reminder for whoever opens the file in
-     *     Excel a year later
-     *
-     * Data block:
-     *   step, energy_eV, max_force_eVperA, max_force_constrained_eVperA,
-     *   scf_cycle, scf_cycle_energy_eV, scf_cycle_gnorm_eV
-     *
-     * The trailing SCF columns repeat the per-step value for the
-     * cycle that's currently shown in the SCF plots (last cycle of
-     * that step's SCF run) — same value the SCF gnorm/energy plots
-     * graph for that point.  Empty when no SCF history.
-     *
-     * Numbers use repr-precision (Number.toString()) so the round-
-     * trip through CSV is lossless.  Empty cells for missing values
-     * (Plotly's connectgaps: false skips them visually).
-     */
-    function _buildPlotCsv(ctx) {
-        var data       = ctx.data || {};
-        var sourcePath = _redactSourcePath(
-            ctx.sourcePath || "(unknown)");
-        var format     = ctx.format     || "(unknown)";
-        var label      = ctx.label      || format;
-        var mtime      = (typeof ctx.mtime === "number")
-            ? new Date(ctx.mtime * 1000).toISOString()
-            : "(unknown)";
-        var generated  = new Date().toISOString();
-
-        var iterations   = data.iterations    || [];
-        var energies     = data.energies      || [];
-        var maxForces    = data.max_forces    || [];
-        var maxForcesC   = data.max_forces_constrained || [];
-        var scfHistory   = data.scf_history   || [];
-        var nFrames      = (data.frames || []).length;
-
-        function _esc(v) {
-            // Empty string for missing (Plotly's skipped-gap value
-            // is null).  Numbers via toString() keep IEEE precision.
-            if (v === null || v === undefined) return "";
-            if (typeof v === "number") {
-                if (!isFinite(v)) return "";
-                return v.toString();
-            }
-            // Quote any text containing commas / quotes / newlines.
-            var s = String(v);
-            if (/[",\n]/.test(s)) {
-                s = '"' + s.replace(/"/g, '""') + '"';
-            }
-            return s;
-        }
-
-        var lines = [];
-        lines.push("# molbuilder — trajectory plot data export");
-        lines.push("# generated:    " + generated);
-        lines.push("# source path:  " + sourcePath);
-        lines.push("# parser:       " + format);
-        lines.push("# label:        " + label);
-        lines.push("# source mtime: " + mtime);
-        lines.push("# n_frames:     " + nFrames);
-        lines.push("#");
-        lines.push("# Column legend:");
-        lines.push("#   step                          — CG / opt step index (engine numbering)");
-        lines.push("#   energy_eV                     — total energy in eV");
-        lines.push("#   max_force_eVperA              — Max |F| across ALL atoms (eV/Å); informational");
-        lines.push("#   max_force_constrained_eVperA  — Max |F| EXCLUDING frozen atoms (eV/Å); convergence-gating");
-        lines.push("#                                   when constraints exist, otherwise empty.");
-        lines.push("#   scf_cycle                     — last SCF iteration index for this step");
-        lines.push("#   scf_cycle_energy_eV           — energy at that SCF cycle (eV)");
-        // ONE COLUMN PER RESIDUAL THE RUN DECLARES (`web/trajectory.md` § 3.0).
-        const residuals = _scfResiduals();
-        const residualColumn = (r) => "scf_cycle_" + r.key
-            + (r.unit ? "_" + r.unit : "");
-        residuals.forEach((r) => {
-            lines.push("#   " + residualColumn(r) + " — " + r.name
-                       + " at that cycle" + (r.unit ? " (" + r.unit + ")" : "")
-                       + ".");
-        });
-        lines.push("#");
-        lines.push("# Empty cells mean the engine didn't emit that value at that step.");
-        lines.push("#");
-        lines.push([
-            "step", "energy_eV",
-            "max_force_eVperA", "max_force_constrained_eVperA",
-            "scf_cycle", "scf_cycle_energy_eV",
-            ...residuals.map(residualColumn),
-        ].join(","));
-
-        for (var i = 0; i < nFrames; i++) {
-            var step = iterations[i];
-            if (step === undefined) step = i;
-            var scfRun = scfHistory[i] || [];
-            var lastCycle = scfRun[scfRun.length - 1] || {};
-            lines.push([
-                _esc(step),
-                _esc(energies[i]),
-                _esc(maxForces[i]),
-                _esc(maxForcesC[i]),
-                _esc(lastCycle.cycle),
-                _esc(lastCycle.energy),
-                ...residuals.map((r) => _esc(lastCycle[r.key])),
-            ].join(","));
-        }
-        return lines.join("\n") + "\n";
-    }
 
     // Style, unit-cell display, atom-index labels, and background are all
     // MolView's (its Cell page + knob bar): the periodicity on the envelope
@@ -2382,39 +2230,6 @@ import { outcome } from "../validation-findings.js";
     _on($("force-min"),     "input",  drawForces);
     _on($("hide-frozen"),   "change", drawForces);
 
-    /* ---- Export all plot data as CSV ---------------------------- */
-    /* Bundles every column displayed across the 4 trajectory plots
-       (energy + max forces + SCF cycle / energy / gnorm) into one
-       CSV.  Header carries source attribution + parser + timestamp
-       so the file is self-describing — the user can re-trace what
-       it came from months later without external bookkeeping.
-       This handler gathers state, builds the file through
-       _buildPlotCsv above, and triggers the browser download. */
-    _on($("trajectory-export-csv-btn"), "click", function () {
-        if (!state.data || !state.data.frames
-                || state.data.frames.length === 0) {
-            setStatus("No trajectory loaded — nothing to export.",
-                      "error");
-            return;
-        }
-        var fileStem = (state.label
-                && state.label.replace(/[^A-Za-z0-9._-]+/g, "_"))
-            || state.format
-            || "trajectory";
-        var csv = _buildPlotCsv({
-            data:      state.data,
-            sourcePath: state.path || "",
-            format:    state.format || "",
-            label:     state.label || "",
-            mtime:     state.mtime || null,
-        });
-        // THE FILE LAYER'S ONE DOWNLOAD (`projects.download`).
-        var name = fileStem + "_plots.csv";
-        window.molbuilder.projects.download(
-            name, new Blob([csv], { type: "text/csv;charset=utf-8" }));
-        setStatus("Exported " + name + ".", "ok");
-    });
-
     // Viewer resize: the embed installs its own ResizeObserver on the
     // canvas host so 3Dmol's WebGL viewport stays in sync as the card
     // resizes (clamp(360px, 52vh, 500px)).  No window-resize wiring
@@ -2503,10 +2318,6 @@ import { outcome } from "../validation-findings.js";
     root.molbuilder = root.molbuilder || {};
     root.molbuilder.trajectoryInspector = {
         mount: mountInspector,
-        // Exported so tests/test_trajectory_csv_redaction_js.py can
-        // pin the redaction patterns without driving a browser.
-        // Not part of the inspector's public API; tests-only.
-        _redactSourcePath: _redactSourcePath,
     };
 
 })(typeof window !== "undefined" ? window : this);

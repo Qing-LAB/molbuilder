@@ -157,7 +157,7 @@ is quoted by the run's report and not drawn.
 
 **First, the panel's own status line** (`#trajectory-status`, above the
 badge). It carries what nothing else on the panel says: a load that was
-refused and why, a viewer that could not mount, an export's result — and, on
+refused and why, a viewer that could not mount — and, on
 an ordinary load, only where the unit cell came from when the run supplied
 it. It is otherwise empty. It does not repeat the file's modification time or a
 frame count — the badge below carries the run's time, and the frame bar its
@@ -295,9 +295,13 @@ run.
 
 ## 6. Export
 
-One button, **Export all plot data (CSV)**, writes every plotted column (step,
-energy, both max-force traces, and the SCF-cycle values) with a self-describing
-header. The header's source-path line has the username redacted.
+A run's steps and each step's SCF cycles are the calculation's: its
+**Export**, in the Results tab's top line
+([`web/results.md`](?doc=web/results.md) § 1.1), hands them over — every run's
+steps on one grid and each step's SCF rows, as NetCDF or as tables
+([`model/datafiles.md`](?doc=model/datafiles.md) § 9.5) *(the user,
+2026-11-17: "Into the calculation Export")*. The viewer writes no file of its
+own.
 
 ## 7. Under the hood, briefly
 
@@ -323,7 +327,6 @@ header. The header's source-path line has the username redacted.
 
 ## 8. Test map
 
-- `test_trajectory_csv_redaction_js.py` — the CSV export + path redaction.
 - `test_siesta_run_in_the_viewer_e2e.py` — § 4 on a SIESTA relaxation the road
   makes: the SCF line's rate is the run record's (the timing log, one reader),
   and the badge dates the run by its `>> End of run` and says its *total* as

@@ -193,11 +193,21 @@ def test_a_deck_lists_its_atoms_in_its_pair_s_order(calculation, engine,
 def test_every_part_an_engine_names_resolves(engine):
     """Its config class and its seam resolve -- and the environments its
     runs enter are categories an environment is registered for
-    (`configuration.md` § 4), so its prep finds one."""
+    (`configuration.md` § 4), so its prep finds one -- and its SCF columns
+    resolve into the framework's one SCF history, each variable saying what
+    it is (`ncdata.scf_history_vars`, `ncdata.check_said`;
+    `model/datafiles.md` § 9.0.6): the silent failure, an engine's SCF
+    history no export can write, found only as a person exports."""
     from molbuilder.diagnostics import DEFAULT_ENV_NAMES
     from molbuilder.jobset.engines import EngineSeam, engine_seam
+    from molbuilder.ncdata import check_said, scf_history_vars
     assert isinstance(engine_table.config_class(engine), type)
     assert isinstance(engine_seam(engine), EngineSeam)
+    columns = engine_table.scf_columns(engine)
+    assert columns
+    for var in scf_history_vars(columns, ("step",), whose="a step",
+                                source="the run's own output"):
+        check_said(var)
     eng = engine_table.engine(engine)
     for category in filter(None, (eng.environment, eng.gpu_environment)):
         assert category in DEFAULT_ENV_NAMES, category
@@ -458,7 +468,8 @@ def test_an_engine_record_that_does_not_hold_together_is_refused(
         + (lines if "no validator" in lines
            else lines + '\nvalidator = "m:v"')
         + ("" if "benchmark" in lines else "\nbenchmark = false")
-        + '\npresets = "m:P"\nenvironment = "pyscf"\n')
+        + '\npresets = "m:P"\nenvironment = "pyscf"\n'
+        'scf_columns = "m:S"\n')
     table = tmp_path / "engine_table.toml"
     table.write_text(text)
     monkeypatch.setattr(engine_table, "TABLE_FILE", table)

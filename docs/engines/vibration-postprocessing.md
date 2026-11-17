@@ -31,7 +31,11 @@ JSON beside it. The Results tab's Export, in its top line
 the same files as one zip — `<label>.spectra.nc`, the optical calls'
 `<label>.optical.nc` where the run made them, and, with a laser applied in
 the Raman view, `<label>.raman.nc`, the view at that laser, read with
-`postprocess.read_raman_data` — and, as *CSV*, their tables. **Every row of the result is in your atoms' order**, listed by user
+`postprocess.read_raman_data` — and `<label>.steps.nc`, its runs' every step
+and each step's SCF cycles (its relaxation, its force constants, its optical
+calls; `postprocess.read_steps_data`,
+[`model/datafiles.md`](?doc=model/datafiles.md) § 9.5) — and, as *CSV*, their
+tables. **Every row of the result is in your atoms' order**, listed by user
 index, each atom's engine index beside it.
 
 ## 2. The modes, atom by atom
@@ -150,11 +154,11 @@ relax.relaxation["converged"]             # its largest force within its toleran
 fc = read_steps("01_freq/run-0/fc")       # one step per displacement
 ```
 
-A PySCF vibration is one run, whose folder's result is the spectrum, so name the log
-holding its relaxation:
+A PySCF vibration is one run, whose folder's result is the spectrum; its folder
+gives the relaxation's steps from the log beside it, as naming the log does:
 
 ```python
-relax = read_steps("01_freq/run-0/J_01_freq.molwatch.log")
+relax = read_steps("01_freq/run-0")       # or "01_freq/run-0/J_01_freq.molwatch.log"
 ```
 
 What a step is, the force figures, the energy and where the coordinates stand are

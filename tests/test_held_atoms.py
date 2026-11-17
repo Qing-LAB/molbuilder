@@ -31,13 +31,13 @@ def test_a_run_states_the_atoms_it_holds(case, tmp_path, monkeypatch):
     run_road_case(TABLE, case, tmp_path, monkeypatch)
 
 
-def test_a_data_file_of_another_schema_is_not_read_as_an_optimizations(tmp_path):
+def test_a_data_file_of_another_schema_is_not_read_as_a_steps_file(tmp_path):
     """`model/datafiles.md` § 8: a data file's reader refuses another schema by
     name.  The silent failure: another kind's file, or another version's, read
     with this one's meanings.  The file is the one writer's own."""
     from molbuilder.ncdata import NC_LOCK, as_bytes, in_memory, state
-    from molbuilder.postprocess import read_optimization_data
-    from molbuilder.optimization.datafile import DataFileError
+    from molbuilder.postprocess import read_steps_data
+    from molbuilder.stepsdata import DataFileError
     other = tmp_path / "other.nc"
     with NC_LOCK:
         ds = in_memory(other.name)
@@ -45,7 +45,7 @@ def test_a_data_file_of_another_schema_is_not_read_as_an_optimizations(tmp_path)
               molbuilder_version="0", derived_from="this test")
         other.write_bytes(as_bytes(ds))
     with pytest.raises(DataFileError, match="molbuilder/other@1"):
-        read_optimization_data(other)
+        read_steps_data(other)
 
 
 def test_an_export_before_any_run_has_finished_a_step_is_refused(tmp_path,

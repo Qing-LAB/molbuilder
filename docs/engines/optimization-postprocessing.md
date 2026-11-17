@@ -14,7 +14,7 @@ same from its checkout.
 
 ```python
 from molbuilder.postprocess import (parse, read_steps, read_structure, read_xv,
-                                    read_optimization_data, list_runs,
+                                    read_steps_data, list_runs,
                                     atom_index_map, list_projects, list_topics,
                                     list_structures, structure_dir)
 ```
@@ -26,7 +26,7 @@ from molbuilder.postprocess import (parse, read_steps, read_structure, read_xv,
 | `parse(path)` | one file as it stands, **in the file's own order**, `result.atom_index_map` saying whose (§ 5) |
 | `read_xv(path)` | SIESTA's own `.XV`, **in the engine's order** (§ 4) |
 | `atom_index_map(path)` | which index a file's atoms are listed by, and both indices of each (§ 5) |
-| `read_optimization_data(path)` | the file `jobset export` writes, every run's steps on one grid (§ 6) |
+| `read_steps_data(path)` | the file `jobset export` writes, every run's steps on one grid and each step's SCF cycles, in groups (§ 6) |
 | `list_projects()`, `list_topics(p)`, `list_structures(p, t)`, `structure_dir(p, t, s)`, `list_runs(calc)` | where a calculation and its runs are (§ 2) |
 
 ## 2. Finding the calculation
@@ -59,6 +59,8 @@ steps.held_atoms                          # the atoms the run says it held, by y
 steps.charges_e                           # each partition it printed: (step, atom), e
                                           # SIESTA prints them where its deck asks (§ 6)
 steps.stress_voigt_kbar                   # (step, component), kbar, SIESTA's order
+steps.scf_rows[0]                         # the first step's SCF rows, each its engine's columns
+steps.scf_criteria                        # what its SCFs had to reach
 steps.said                                # what it says beside the numbers
 ```
 
@@ -186,10 +188,12 @@ any other.
 
 ## 6. The whole calculation, as one file
 
-`jobset export` lays every run's steps on one grid, for a notebook, a spreadsheet or
-another machine, and writes outside the calculation. A run that gives no step stands
-on the `run` axis at its fill, `said` saying why, so a rung that died is never read
-as one that was not asked.
+`jobset export` lays every run's steps on one grid, each step's SCF cycles beside
+them, for a notebook, a spreadsheet or another machine, and writes outside the
+calculation — in groups: `/runs` each run's record, `/steps` every step,
+`/steps/scf` each step's SCF rows. A run that gives no step stands on the `run`
+axis at its fill, `said` saying why, so a rung that died is never read as one that
+was not asked.
 
 ```
 molbuilder jobset export --bundle <calculation> --format netcdf --to <folder>   # <label>.optimization.nc
@@ -201,12 +205,16 @@ The Results tab's Export, in its top line, hands over the same files —
 ([`web/results.md`](?doc=web/results.md) § 1.1).
 
 ```python
-data = read_optimization_data("exported/J.optimization.nc")
+data = read_steps_data("exported/J.optimization.nc")
 data["atom_index_map"].listed_by          # 'user_index'
-steps = data["variables"]
+steps = data["groups"]["steps"]["variables"]
 steps["total_energy_ev"]["data"]          # by step, run by run
 steps["run_of_step"]["data"]              # the run each step is of
 steps["position_ang"]["attrs"]["units"]   # 'angstrom': every variable says what it is
+scf = data["groups"]["steps/scf"]["variables"]
+scf["scf_energy_ev"]["data"][0, :int(scf["scf_cycles"]["data"][0])]   # step 0's SCF energies
+runs = data["groups"]["runs"]["variables"]
+runs["scf_criteria"]["data"][0]           # what run 0's SCF had to reach
 ```
 
 The same as labelled arrays, read whole with `xr.load_dataset`. An `xr.open_dataset`
@@ -216,13 +224,14 @@ crash it, so close one first
 
 ```python
 import xarray as xr
-ds = xr.load_dataset("exported/J.optimization.nc")
-ds.position_ang.sel(atom=0, xyz="z")      # your atom 0's z, by step
-ds.total_energy_ev.where(ds.run_of_step == "01_coarse/run-0", drop=True)
-ds.force_within_tolerance.sel(run="01_coarse/run-0") == 1
+steps = xr.load_dataset("exported/J.optimization.nc", group="steps")
+steps.position_ang.sel(atom=0, xyz="z")   # your atom 0's z, by step
+steps.total_energy_ev.where(steps.run_of_step == "01_coarse/run-0", drop=True)
+runs = xr.load_dataset("exported/J.optimization.nc", group="runs")
+runs.force_within_tolerance.sel(run="01_coarse/run-0") == 1
 ```
 
-**A flag has three states**, yes, no and not stated. `read_optimization_data` gives
+**A flag has three states**, yes, no and not stated. `read_steps_data` gives
 them as the file stores them, `1`, `0` and `-1`
 ([`model/datafiles.md`](?doc=model/datafiles.md) § 3a); xarray as `1.0`, `0.0` and
 NaN; a table as `1`, `0` and an empty cell. **Test `== 1`**, which means yes on

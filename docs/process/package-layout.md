@@ -42,7 +42,7 @@ The shared "nouns" and the cross-engine chemistry:
 ### Engine emitters → [`engines/`](?doc=engines/overview.md)
 
 - **`siesta/`** — `.fdf` generation ([`siesta.md`](?doc=engines/siesta.md)); **`pyscf/`** — `.py` script generation ([`pyscf.md`](?doc=engines/pyscf.md)); **`spectra/`** — the harmonic-vibration Spectra engine; **`transport/`** — the TranSIESTA transport engine ([`transport.md`](?doc=engines/transport.md)); **`builders/`** (+ `builders/backends/` = amber/rdkit/3dna) — the structure-build backends ([`builders.md`](?doc=engines/builders.md)).
-- **`optimization/`** — an optimization's data file and its export ([`optimization-postprocessing.md`](?doc=engines/optimization-postprocessing.md) § 6).
+- **`optimization/`** — an optimization's export ([`optimization-postprocessing.md`](?doc=engines/optimization-postprocessing.md) § 6); its data file, a calculation's runs and their steps, is **`stepsdata.py`**'s ([`model/datafiles.md`](?doc=model/datafiles.md) § 9.5).
 - Write-side glue: **`script_emit.py`** (the reserved-block emitter), **`annotations_fdf.py`**, **`runtime_info.py`**.
 
 ### Execution + job harness → [`execution/`](?doc=execution/overview.md)

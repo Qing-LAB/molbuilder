@@ -81,8 +81,8 @@ def test_the_export_holds_the_steps_and_says_why_a_run_holds_none(
     why, never read as a rung that was not asked.  Refused inside the
     calculation's folder."""
     from conftest import point_the_one_door_at
-    from molbuilder.postprocess import (list_runs, read_optimization_data,
-                                        read_steps)
+    from molbuilder.postprocess import (list_runs, read_steps,
+                                        read_steps_data)
     from molbuilder.runs import run_of
     run = real_held_water_pyscf
     bundle = run.bundle
@@ -102,7 +102,8 @@ def test_the_export_holds_the_steps_and_says_why_a_run_holds_none(
     assert unstarted == run.attempt("medium")
     steps = read_steps(finished)
     label = run_of(finished).label
-    assert (to / f"{label}.optimization-csv" / "step_atom_xyz.csv").is_file()
+    assert (to / f"{label}.optimization-csv" / "steps"
+            / "step_atom_xyz.csv").is_file()
     # THE ONE EXPORT ROUTE serves an optimization as it serves every kind
     # that exports (`model/datafiles.md` § 5a): its data file, by its name.
     from molbuilder.web import create_app
@@ -111,9 +112,31 @@ def test_the_export_holds_the_steps_and_says_why_a_run_holds_none(
     assert answer.status_code == 200, answer.get_json()
     assert f"{label}.optimization.nc" in \
         answer.headers["Content-Disposition"]
-    data = read_optimization_data(to / f"{label}.optimization.nc")
+    data = read_steps_data(to / f"{label}.optimization.nc")
     assert data["atom_index_map"].listed_by == "user_index"
-    got = {k: v["data"] for k, v in data["variables"].items()}
+    got = {k: v["data"] for g in ("runs", "steps") for k, v in data["groups"][g]["variables"].items()}
+    # EACH STEP'S SCF (`model/datafiles.md` § 9.0.6, § 9.5): every PySCF
+    # step ran one, and its last row's energy is the step's -- the converged
+    # total energy is its last SCF cycle's (§ 2a rule 2), the two read from
+    # two lines of the log; each row as the run door hands it back, column
+    # by column as PySCF's declaration names them, the rows past it the fill;
+    # the group says each step's run, so it reads whole alone; what its SCFs
+    # had to reach, as the run states it.
+    scf = {k: v["data"] for k, v in
+           data["groups"]["steps/scf"]["variables"].items()}
+    assert list(scf["run_of_step"]) == list(got["run_of_step"])
+    for k, rows in enumerate(steps.scf_rows):
+        assert scf["scf_cycles"][k] == len(rows) > 0, (k, scf["scf_cycles"])
+        np.testing.assert_allclose(scf["scf_energy_ev"][k, len(rows) - 1],
+                                   got["total_energy_ev"][k], atol=1e-6)
+        for column, key in (("scf_iscf", "cycle"), ("scf_energy_ev", "energy"),
+                            ("scf_delta_e_ev", "delta_E"),
+                            ("scf_gnorm_ev", "gnorm"), ("scf_ddm", "ddm")):
+            np.testing.assert_allclose(
+                scf[column][k, :len(rows)],
+                [np.nan if r.get(key) is None else r[key] for r in rows])
+        assert np.isnan(scf["scf_energy_ev"][k, len(rows):]).all(), k
+    assert got["scf_criteria"][0] == steps.scf_criteria
     assert list(got["run"]) == [p.relative_to(bundle).as_posix()
                                 for p in (finished, unstarted)]
     assert list(got["stage_of_run"]) == ["coarse", "medium"]

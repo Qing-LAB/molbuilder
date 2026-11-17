@@ -10,6 +10,10 @@ ROLE    :class:`Var` -- one variable: its dimensions, its kind (given, raw,
         derived, state, coordinate), its units, its words; :data:`AXES` --
         every axis of every data file, one name for one concept, which
         :func:`check_axes` holds every group to (`model/datafiles.md` § 2a);
+        :func:`scf_history_vars` / :func:`scf_history_values` -- an SCF
+        history, one layout in every file: its count (:func:`scf_cycles_var`,
+        the one declaration of a count of SCF rows) and the columns its
+        engine declares (§ 3a);
         :data:`UNITS` -- every unit's one spelling and its meaning, which
         :func:`check_said` holds every variable to (§ 2c); :func:`state`
         -- the file's own title, schema, molbuilder version and source
@@ -28,7 +32,7 @@ ROLE    :class:`Var` -- one variable: its dimensions, its kind (given, raw,
         atom axis, read back; :func:`as_tables` -- a data file as long CSV
         tables and a README, every word the file's own; :class:`Exported`
         -- an export's one shape, the data files or their tables
-USED-BY the optimization data file (`optimization.datafile`), the transport data file (`transport.datafile`: written and read) and
+USED-BY a calculation's runs and their steps (`stepsdata`), the transport data file (`transport.datafile`: written and read) and
         the exports (`transport.export`, `spectra.export`); the vibration result's
         data file (`spectra.datafile`), beside the job in both bundles
         (`runwrap.VIBRATION_COMPANIONS`, `runwrap.PYSCF_COMPANIONS`); a
@@ -196,7 +200,9 @@ AXES: Dict[str, Axis] = {a.name: a for a in (
     Axis("region", "molbuilder's regions of the junction", ""),
     Axis("eigenchannel", "transmission eigenchannels", "1",
          "counted from 0, as TBtrans orders them"),
-    Axis("scf_cycle", "a run's SCF rows", "1"),
+    Axis("scf_cycle", "an SCF's rows", "1",
+         "an SCF row's index, from 0, in the order the engine printed the "
+         "rows; past the SCF's own count, its scf_cycles, the fill"),
     Axis("charge_part", "TranSIESTA's charge columns", ""),
     Axis("mode", "vibrational modes", "1",
          "the mode's 1-based index in the vibration result, ascending "
@@ -218,8 +224,8 @@ AXES: Dict[str, Axis] = {a.name: a for a in (
 def coordinate(axis: str, *, more: str = "", source: str = "") -> "Var":
     """THE COORDINATE OF AN AXIS MORE THAN ONE FILE RUNS OVER -- the atoms
     by the file's map, a Cartesian component, a cell vector, a frame, an
-    energy, a spin channel, a lead, an eigenchannel, a mode -- made from its
-    row of
+    energy, a spin channel, a lead, an eigenchannel, a mode, an SCF row --
+    made from its row of
     :data:`AXES` (`model/datafiles.md` § 3a): its meaning the row's, once;
     ``more`` what the file adds of where its points come from, and
     ``source`` the file a raw one was read from.  Its type is the row's
@@ -234,6 +240,54 @@ def coordinate(axis: str, *, more: str = "", source: str = "") -> "Var":
                source=source,
                dtype=("i4" if row.units == "1" else str if row.units == ""
                       else "f8"))
+
+
+def scf_cycles_var(over: Tuple[str, ...], *, whose: str, prefix: str = "",
+                   key: Optional[str] = None,
+                   earlier: Tuple[str, ...] = ()) -> "Var":
+    """HOW MANY SCF ROWS ``whose`` SCF HOLDS, at each point of ``over`` --
+    one declaration wherever a file counts an SCF's rows, its history beside
+    it (:func:`scf_history_vars`) or alone (the optical calls'); ``key`` and
+    ``earlier`` the record key and older names of a file that keeps them."""
+    return Var(f"{prefix}scf_cycles", tuple(over), "state", "1",
+               f"how many SCF rows {whose} holds",
+               "each row its output printed that its reader read -- a row "
+               "whose values do not read as numbers is not among them; where "
+               "the rows are held, a row past it the fill; -1 where none "
+               "ran, 0 being a count",
+               dtype="i4", fill=-1, key=key, earlier=earlier)
+
+
+def scf_history_vars(columns, over: Tuple[str, ...], *, whose: str,
+                     source: str, prefix: str = "") -> Tuple["Var", ...]:
+    """AN SCF HISTORY, ONE LAYOUT IN EVERY FILE (`model/datafiles.md` § 3a):
+    ``scf_cycles`` -- how many rows ``whose`` SCF holds, at each point of
+    ``over`` -- and a variable per column its engine declares over ``over``
+    and ``scf_cycle`` (``columns``, the engine table's ``scf_columns``:
+    ``(key, name, kind, units, long name, definition, dtype, fill)``),
+    ``source`` the output its rows were read from, each column's key the
+    record key it is written from; ``prefix`` scopes the names while a
+    writer holds several owners' histories in one table before it writes
+    each in its own group (the transport file's ``rung_``, ``device_``)."""
+    over = tuple(over)
+    return (scf_cycles_var(over, whose=whose, prefix=prefix),
+            *(Var(f"{prefix}{name}", over + ("scf_cycle",), kind, units,
+                  long_name, definition, source=source, dtype=dtype,
+                  fill=fill, key=key)
+              for (key, name, kind, units, long_name, definition, dtype,
+                   fill) in columns))
+
+
+def scf_history_values(values: Mapping[str, Any], columns, rows,
+                       at: Tuple[int, ...], *, prefix: str = "") -> None:
+    """One SCF's ``rows`` into the variables :func:`scf_history_vars` made,
+    at ``at`` on its ``over``: how many, and each row's value under its
+    column's key -- a value the row does not state stays the fill."""
+    values[f"{prefix}scf_cycles"][at] = len(rows)
+    for c, row in enumerate(rows):
+        for (key, name, *_rest) in columns:
+            if row.get(key) is not None:
+                values[f"{prefix}{name}"][at + (c,)] = row[key]
 
 
 def axis_values(axis: str, size: int) -> np.ndarray:
@@ -1197,7 +1251,8 @@ __all__ = ["Var", "Axis", "AXES", "UNITS", "CONVENTIONS", "ROOT_FACTS",
            "unnumber_attr", "json_attr", "unjson_attr", "write_group",
            "in_memory",
            "as_bytes", "read_variables", "EXPORT_FORMATS", "ExportError",
-           "coordinate", "axis_values", "groups", "checked", "read_file",
+           "coordinate", "axis_values", "scf_cycles_var", "scf_history_vars",
+           "scf_history_values", "groups", "checked", "read_file",
            "named_now", "key_of", "UNIT_IN_NAME",
            "STRUCTURE_JSON",
            "structure_vars", "structure_values", "structure_attrs",

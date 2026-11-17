@@ -111,6 +111,28 @@ SCF_RESIDUALS = (
     {"name": "ddm", "key": "ddm",     "unit": "",   "criterion": None},
 )
 
+#: THE SCF ROW, column by column -- what each of a PySCF run's SCF rows holds
+#: (:func:`scf_history_row`'s keys but its clock), each with the name every
+#: data file gives it -- SIESTA's where the concept is the same -- its kind,
+#: units and words: ``(key, name, kind, units, long name, definition, dtype,
+#: fill)``.  ONE DECLARATION of the columns a data file holds: the engine
+#: table names it (``scf_columns``; `model/datafiles.md` § 9.0.6).
+SCF_COLUMNS = (
+    ("cycle", "scf_iscf", "raw", "1", "the cycle's number",
+     "PySCF's own cycle number, from 1", "i4", -1),
+    ("energy", "scf_energy_ev", "raw", "eV", "the cycle's energy",
+     "PySCF's SCF total energy", "f8", None),
+    ("delta_E", "scf_delta_e_ev", "derived", "eV", "the energy's change",
+     "the energy minus the cycle before's; at cycle 1, minus the initial "
+     "guess's (PySCF's last_hf_e); 0 where PySCF stated no energy before it "
+     "(the log's writer's convention)", "f8", None),
+    ("gnorm", "scf_gnorm_ev", "raw", "eV", "the orbital gradient's norm",
+     "|g|, as the run's log states it", "f8", None),
+    ("ddm", "scf_ddm", "raw", "1", "the density matrix's change",
+     "|ddm|, as the run's log states it -- reported, not converged on",
+     "f8", None),
+)
+
 #: The one SCF phase of a run this log records -- the key its
 #: :func:`scf_criteria` are stated under, beside SIESTA's ``periodic`` and
 #: ``negf`` (`web/trajectory.md` § 3).

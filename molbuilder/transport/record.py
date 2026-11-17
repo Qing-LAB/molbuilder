@@ -86,10 +86,12 @@ CAVEAT = (
     "magnitude.  Read T(E) for where the levels are and how they couple, "
     "not for an absolute conductance.")
 
-#: The SCF row fields the report draws (`web/results.md` § 2.5) -- the
-#: SIESTA reader's own names; a NEGF row carries its charge too.
-_SCF_FIELDS = ("cycle", "energy", "delta_E", "dDmax", "dHmax", "ef",
-               "phase", "dq", "vha_ev", "charges")
+def _scf_fields() -> tuple:
+    """The SCF row fields the report keeps (`web/results.md` § 2.5): every
+    key SIESTA's rows hold, by its one declaration (the engine table's
+    ``scf_columns``), and a NEGF row's charges."""
+    from ..engine_table import scf_columns
+    return tuple(c[0] for c in scf_columns("siesta")) + ("charges",)
 
 
 class RecordError(Exception):
@@ -666,7 +668,8 @@ def _science(out: Path) -> Dict:
     # the frames' note -- is reasoned on, so it
     # enters the record as None, never as a NaN that compares and prints.
     hist = json_safe(frames[-1].scf_history or []) if frames else []
-    fact["scf"] = [{k: c[k] for k in _SCF_FIELDS if k in c} for c in hist]
+    keep = _scf_fields()
+    fact["scf"] = [{k: c[k] for k in keep if k in c} for c in hist]
     if info.get("scf_criteria"):
         fact["scf_criteria"] = info["scf_criteria"]
     if info.get("scf_residuals"):

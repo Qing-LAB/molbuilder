@@ -73,6 +73,51 @@ SCF_RESIDUALS = (
     {"name": "dQ",    "key": "dq",    "unit": "e",  "criterion": "dq"},
 )
 
+#: THE SCF ROW, column by column -- every key SIESTA's reader gives a row
+#: (:data:`SCF_COLUMN_KEYS`' columns, the change it derives, a TranSIESTA
+#: row's charge, potential and phase), each with the name every data file
+#: gives it, its kind, units and words: ``(key, name, kind, units, long
+#: name, definition, dtype, fill)``.  ONE DECLARATION of the columns a data
+#: file holds: the engine table names it (``scf_columns``), and every file
+#: holding a run's SCF rows writes them with it (`ncdata.scf_history_vars`;
+#: `model/datafiles.md` § 9.0.6).
+SCF_COLUMNS = (
+    ("cycle", "scf_iscf", "raw", "1", "the cycle's number",
+     "SIESTA's own cycle number (iscf), from 1 in each phase -- a row "
+     "SIESTA printed and its reader could not read leaves its number out",
+     "i4", -1),
+    ("energy", "scf_energy_ev", "raw", "eV", "the cycle's energy",
+     "E_KS, the Kohn-Sham energy", "f8", None),
+    ("delta_E", "scf_delta_e_ev", "derived", "eV", "the energy's change",
+     "E_KS minus the row before's, in the same phase; 0 at a phase's first "
+     "row its reader read (the SIESTA reader's convention)", "f8", None),
+    ("dDmax", "scf_ddmax", "raw", "1", "the density matrix's largest change",
+     "dDmax, as SIESTA printed it", "f8", None),
+    ("dHmax", "scf_dhmax_ev", "raw", "eV", "the Hamiltonian's largest change",
+     "dHmax, as SIESTA printed it", "f8", None),
+    ("ef", "scf_fermi_level_ev", "raw", "eV", "the cycle's Fermi level",
+     "Ef, as SIESTA printed it: the one level every spin channel shares; "
+     "NaN under a fixed spin (Spin.Fix), which prints each channel's own",
+     "f8", None),
+    ("ef_up", "scf_fermi_level_up_ev", "raw", "eV",
+     "the up channel's Fermi level",
+     "Ef_up, as SIESTA printed it under a fixed spin (Spin.Fix); NaN "
+     "otherwise", "f8", None),
+    ("ef_dn", "scf_fermi_level_down_ev", "raw", "eV",
+     "the down channel's Fermi level",
+     "Ef_dn, as SIESTA printed it under a fixed spin (Spin.Fix); NaN "
+     "otherwise", "f8", None),
+    ("dq", "scf_dq_e", "raw", "e", "the charge not conserved",
+     "dQ of a TranSIESTA NEGF row's ts-q: line: every column summed less the "
+     "neutral count -- the charge the open boundaries did not conserve, not "
+     "a change between cycles; NaN on a periodic row", "f8", None),
+    ("vha_ev", "scf_vha_ev", "raw", "eV", "the boundary Hartree potential",
+     "ts-Vha, on a TranSIESTA NEGF row; NaN on a periodic row", "f8", None),
+    ("phase", "scf_phase", "state", "", "the cycle's phase",
+     "periodic -- every row of a run that is not a TranSIESTA device's, and "
+     "a device's start -- or negf", str, None),
+)
+
 PHASE_PERIODIC = "periodic"
 PHASE_NEGF = "negf"
 

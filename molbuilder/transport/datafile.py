@@ -40,7 +40,8 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 
-from ..ncdata import (Var, coordinate, json_attr, structure_attrs,
+from ..ncdata import (Var, coordinate, json_attr, scf_history_values,
+                      scf_history_vars, structure_attrs,
                       structure_values, structure_vars)
 from ..runfiles import (ROLE_TBT_DIGEST, TBT_CHANNEL_TAGS, TBTRANS_AVADOS,
                         TBTRANS_AVBDOS, TBTRANS_AVDOS, TBTRANS_AVTEIG,
@@ -91,47 +92,12 @@ class DataFileError(ValueError):
     disagrees, ready to surface verbatim."""
 
 
-#: THE SCF ROW, column by column -- the record's names (`record._SCF_FIELDS`,
-#: the SIESTA reader's) and the file's, each with its unit, kind and words,
-#: for every run's history alike: ``(key, suffix, kind, units, long name,
-#: definition, dtype, fill)``.
-_SCF_COLUMNS = (
-    ("cycle", "iscf", "raw", "1", "the cycle's number",
-     "SIESTA's own cycle number (iscf), from 1 in each phase", "i4", -1),
-    ("energy", "energy_ev", "raw", "eV", "the cycle's energy",
-     "E_KS, the Kohn-Sham energy", "f8", None),
-    ("delta_E", "delta_e_ev", "derived", "eV", "the energy's change",
-     "E_KS minus the cycle before's, in the same phase; 0 at a phase's "
-     "first cycle (the SIESTA reader's convention)", "f8", None),
-    ("dDmax", "ddmax", "raw", "1", "the density matrix's largest change",
-     "dDmax, as SIESTA printed it", "f8", None),
-    ("dHmax", "dhmax_ev", "raw", "eV", "the Hamiltonian's largest change",
-     "dHmax, as SIESTA printed it", "f8", None),
-    ("ef", "fermi_level_ev", "raw", "eV", "the cycle's Fermi level",
-     "Ef, as SIESTA printed it", "f8", None),
-)
-#: The columns a device's NEGF rows add -- TranSIESTA's unconserved charge
-#: and boundary Hartree potential -- and each row's phase.
-_NEGF_SCF_COLUMNS = (
-    ("dq", "dq_e", "raw", "e", "the charge not conserved",
-     "dQ of the ts-q: line (NEGF rows): every column summed less the "
-     "neutral count -- the charge the open boundaries did not conserve, "
-     "not a change between cycles", "f8", None),
-    ("vha_ev", "vha_ev", "raw", "eV", "the boundary Hartree potential",
-     "ts-Vha (NEGF rows)", "f8", None),
-    ("phase", "phase", "state", "", "the cycle's phase",
-     "periodic -- the start -- or negf", str, None),
-)
-
-
-def _scf_vars(prefix: str, dims: Tuple[str, ...],
-              columns) -> Tuple[Var, ...]:
-    """A run's SCF history over ``dims``, a variable per column."""
-    return tuple(Var(f"{prefix}_scf_{suffix}", dims, kind, units, long_name,
-                     definition, source="the run's SIESTA output",
-                     dtype=dtype, fill=fill)
-                 for (_key, suffix, kind, units, long_name, definition,
-                      dtype, fill) in columns)
+def _scf_columns() -> tuple:
+    """THE SCF ROW, column by column: SIESTA's -- every stage and device run
+    is SIESTA's (TranSIESTA's) -- declared once, named by the engine table
+    (``scf_columns``; `model/datafiles.md` § 9.0.6)."""
+    from ..engine_table import scf_columns
+    return scf_columns("siesta")
 
 
 def _variables() -> Tuple[Var, ...]:
@@ -379,10 +345,9 @@ def _variables() -> Tuple[Var, ...]:
         # EVERY RUN'S STATE AND CONVERGENCE, on the grid it varies over.
         Var("rung", ("rung",), "coordinate", "", "stage",
             "the stages that run once, by their names", dtype=S),
-        Var("scf_cycle", ("scf_cycle",), "coordinate", "1", "SCF row",
-            "an SCF row's index within its run, from 0: every row of the "
-            "run's last step, the periodic start and the NEGF loop alike",
-            dtype="i4"),
+        coordinate("scf_cycle", more=(
+            "every row of the run's last step, a device's periodic start "
+            "and its NEGF loop alike")),
         Var("charge_part", ("charge_part",), "coordinate", "",
             "TranSIESTA's charge column",
             "a column of TranSIESTA's ts-q: line, as its header names it: "
@@ -446,12 +411,10 @@ def _variables() -> Tuple[Var, ...]:
         Var("device_neq_points", ("frame", "bias_v"), "raw", "1",
             "the non-equilibrium line's points", "under a bias",
             source="the device point's SIESTA output", dtype="i4", fill=-1),
-        Var("device_scf_cycles", ("frame", "bias_v"), "state", "1",
-            "how many SCF rows the device point holds",
-            "the cycles beyond it are the fill value; -1 where none ran",
-            dtype="i4", fill=-1),
-        *_scf_vars("device", ("frame", "bias_v", "scf_cycle"),
-                   _SCF_COLUMNS + _NEGF_SCF_COLUMNS),
+        *scf_history_vars(_scf_columns(), ("frame", "bias_v"),
+                          whose="the device point",
+                          source="the run's SIESTA output",
+                          prefix="device_"),
         Var("device_scf_charge_e", ("frame", "bias_v", "scf_cycle",
                                   "charge_part"), "raw", "e",
             "every NEGF row's Mulliken populations", "electrons, column by "
@@ -476,11 +439,8 @@ def _variables() -> Tuple[Var, ...]:
         Var("rung_fermi_level_ev", ("rung",), "raw", "eV", "the stage's Fermi level",
             "its last SCF cycle's E_F, in its own run's frame -- how the "
             "frames relate, fermi_frames", source="the stage's SIESTA output"),
-        Var("rung_scf_cycles", ("rung",), "state", "1",
-            "how many SCF rows the stage holds",
-            "the cycles beyond it are the fill value; -1 where none ran",
-            dtype="i4", fill=-1),
-        *_scf_vars("rung", ("rung", "scf_cycle"), _SCF_COLUMNS),
+        *scf_history_vars(_scf_columns(), ("rung",), whose="the stage",
+                          source="the run's SIESTA output", prefix="rung_"),
         Var("rung_scf_phases", ("rung",), "state", "", "the stage's phases",
             "what each had to reach and how it ended, JSON", dtype=S,
             json=True),
@@ -897,7 +857,7 @@ def data_file_bytes(calc, record: Dict, *,
         if (by_stage.get(name) or {}).get("engine_version"):
             versions["stage"][name] = str(by_stage[name]["engine_version"])
         _run_facts(by_stage.get(name) or {}, "rung", (r,), values,
-                   _SCF_COLUMNS, also=(("energy_ev", "rung_total_energy_ev"),
+                   also=(("energy_ev", "rung_total_energy_ev"),
                                        ("fermi_ev", "rung_fermi_level_ev"),
                                        ("copied_from", "rung_copied_from")))
     average = record.get("average") or {}
@@ -1146,8 +1106,7 @@ def _device_facts(device: Dict, runs: Sequence[Dict],
         for k, part in enumerate(parts):
             if part in (negf.get("charges") or {}):
                 values["device_charge_e"][cell + (k,)] = negf["charges"][part]
-        _run_facts(p, "device", cell, values,
-                   _SCF_COLUMNS + _NEGF_SCF_COLUMNS)
+        _run_facts(p, "device", cell, values)
         # EVERY NEGF ROW'S CHARGES, column by column.
         for c, row in enumerate(p.get("scf") or ()):
             for k, part in enumerate(parts):
@@ -1166,7 +1125,7 @@ def _shared_facts(point: Dict, cell: Tuple, values: Dict[str, Any]) -> None:
 
 
 def _run_facts(run: Dict, prefix: str, cell: Tuple, values: Dict[str, Any],
-               columns, also: Sequence[Tuple[str, str]] = ()) -> None:
+               also: Sequence[Tuple[str, str]] = ()) -> None:
     """One run's state and its sentence, convergence and SCF history into
     ``prefix``'s variables at ``cell`` -- a rung's index, or a device
     point's (frame, voltage) -- and ``also`` its run's own facts, each
@@ -1184,12 +1143,8 @@ def _run_facts(run: Dict, prefix: str, cell: Tuple, values: Dict[str, Any],
     # -1, never 0, which is a count (§ 2a.12).
     if "scf" not in run:
         return
-    rows = run["scf"] or ()
-    values[f"{prefix}_scf_cycles"][cell] = len(rows)
-    for c, row in enumerate(rows):
-        for (key, suffix, *_rest) in columns:
-            if row.get(key) is not None:
-                values[f"{prefix}_scf_{suffix}"][cell + (c,)] = row[key]
+    scf_history_values(values, _scf_columns(), run["scf"] or (), cell,
+                       prefix=f"{prefix}_")
 
 
 def read_data_file(path) -> Dict[str, Any]:

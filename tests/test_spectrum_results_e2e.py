@@ -417,6 +417,42 @@ def test_each_elements_share_is_its_part_of_the_mass_weighted_motion(
 # --------------------------------------------------------------------- #
 
 
+def test_a_pyscf_vibrations_export_holds_its_relaxations_steps(
+        real_water_vibration, tmp_path, monkeypatch):
+    """`model/datafiles.md` § 9.5: a vibration's export holds its runs'
+    steps.  On PySCF one process relaxes the water and then computes its
+    Hessian: its run folder opens the result, and the relaxation's steps are
+    in the run's log beside it (`runs.steps_at`).  Every step ran an SCF, its
+    last row's energy the step's (§ 2a rule 2, § 9.0.6).
+
+    THE SILENT FAILURE: the export saying the vibration's runs hold no step
+    while its relaxation took several."""
+    from conftest import point_the_one_door_at
+    from molbuilder.postprocess import read_steps_data
+    from molbuilder.task import of as task_of
+    from support.road import jobset
+    run = real_water_vibration
+    point_the_one_door_at(run.tree.parent, monkeypatch.setenv)
+    said = jobset("export", "--bundle", run.bundle, "--format", "netcdf",
+                  "--to", tmp_path)
+    assert said.exit_code == 0, said.output
+    label = task_of(run.bundle).label
+    data = read_steps_data(
+        tmp_path / f"{label}.vibration-netcdf" / f"{label}.steps.nc")
+    runs = data["groups"]["runs"]["variables"]
+    assert list(runs["run"]["data"]) == [
+        run.attempt("freq").relative_to(run.bundle).as_posix()]
+    steps = data["groups"]["steps"]["variables"]
+    scf = data["groups"]["steps/scf"]["variables"]
+    energy = steps["total_energy_ev"]["data"]
+    assert len(energy) > 0
+    for k, e in enumerate(energy):
+        n = scf["scf_cycles"]["data"][k]
+        assert n > 0, (k, n)
+        np.testing.assert_allclose(
+            scf["scf_energy_ev"]["data"][k, int(n) - 1], e, atol=1e-6)
+
+
 def test_a_file_of_another_version_is_refused_by_that_version(
         real_water_probed, web_client, tmp_path, monkeypatch):
     """`engines/vibration.md` § 6.7, § 6.1, K2674-3: what the writer writes, its

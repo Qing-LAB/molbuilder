@@ -769,6 +769,10 @@ the one door, naming the engines it runs on.
 - the programs its runs start, each with its name as the run's log says it —
   `siesta` (*SIESTA*), the engine's own, and `tbtrans` (*TBtrans*) — or none,
   where its deck is a script the job's own python runs (`programs`);
+- the columns of its SCF history, each with its name, kind, units and
+  words — the one declaration every data file that holds a run's SCF cycles
+  is written with ([`model/datafiles.md`](?doc=model/datafiles.md) § 3a,
+  § 9.0.6) (`scf_columns`, `module:NAME`);
 - its stage presets (`presets`, read by the one ladder rule,
   `jobset.ladder.engine_ladder`), and whether it has a benchmark lane
   (`benchmark`) — only an engine whose deck states keywords has one, since a

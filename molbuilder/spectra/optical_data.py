@@ -43,7 +43,8 @@ try:                                        # inside molbuilder
     from ..ncdata import (NC_LOCK, Var, as_bytes, axis_values, checked,
                           coordinate, empty, in_memory, key_of,
                           named_now, json_attr, number_attr, read_variables,
-                          state, unjson_attr, unnumber_attr, write_group)
+                          scf_cycles_var, state, unjson_attr, unnumber_attr,
+                          write_group)
     from ..persist import unknown_keys, write_bytes
     from ..runfiles import ROLE_SIESTA_OUT, SIESTA_EPSIMG, compose
     from ..structure import Structure as _Structure
@@ -54,8 +55,8 @@ except ImportError:                         # beside a job, in mb_vibration.pyz
     from ncdata import (NC_LOCK, Var, as_bytes,  # type: ignore[no-redef]
                         axis_values, checked, coordinate, empty, key_of,
                         named_now, in_memory, json_attr, number_attr,
-                        read_variables, state, unjson_attr, unnumber_attr,
-                        write_group)
+                        read_variables, scf_cycles_var, state,
+                        unjson_attr, unnumber_attr, write_group)
     from persist import unknown_keys, write_bytes  # type: ignore[no-redef]
     from runfiles import (  # type: ignore[no-redef]
         ROLE_SIESTA_OUT, SIESTA_EPSIMG, compose)
@@ -157,10 +158,8 @@ def _frame_vars(label: str) -> Tuple[Var, ...]:
             "the run's folder below the calculation -- this run's, or the "
             "one a warm launch took the call over from; empty while pending",
             dtype=str),
-        Var("scf_cycles", ("frame",), "raw", "1", "the SCF's cycles",
-            "the cycles of the call's SCF; -1 where it wrote none",
-            dtype="i4", fill=-1, source=out,
-            key="scf_iterations", earlier=("scf_iterations",)),
+        scf_cycles_var(("frame",), whose="the call's SCF",
+                       key="scf_iterations", earlier=("scf_iterations",)),
         Var("total_energy_ev", ("frame",), "raw", "eV", "the total energy",
             "E_KS of the call's SCF", source=out),
         Var("fermi_level_ev", ("frame", "spin"), "raw", "eV",

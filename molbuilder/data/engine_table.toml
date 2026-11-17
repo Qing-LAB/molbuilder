@@ -57,6 +57,10 @@ presets = "molbuilder.config.siesta:SIESTA_STAGE_PRESETS"
 # includes -- which a run's setup rows, the run script and the benchmark's
 # trial check read the deck back by (floor 1, travels beside a job).
 keyword_reader = "molbuilder.parse.fdf:KEYWORDS"
+# The columns of its SCF history, each with its name, kind, units and words:
+# the one declaration every data file holding a run's SCF cycles is written
+# with (model/datafiles.md § 9.0.6).
+scf_columns = "molbuilder.parse.engines.siesta_grammar:SCF_COLUMNS"
 # The environment its runs enter: a category of configuration.md § 4
 # (`diagnostics.DEFAULT_ENV_NAMES`, overridable in `envs`) ...
 environment = "siesta"
@@ -90,6 +94,8 @@ one_process = true
 benchmark = false
 presets = "molbuilder.config.pyscf:PYSCF_STAGE_PRESETS"
 # No keyword reader: a Python script, its settings the script's own values.
+# The columns of its SCF history (model/datafiles.md § 9.0.6).
+scf_columns = "molbuilder.parse.engines.molwatch_grammar:SCF_COLUMNS"
 environment = "pyscf"
 # No GPU environment: PySCF's GPU is a device its deck checks at its start
 # (execution/gpu.md G8).  No program: the deck is a script the job's own

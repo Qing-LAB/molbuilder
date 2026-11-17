@@ -688,7 +688,12 @@ class StepsTable:
     ``Voigt[x,y,z,yz,xz,xy]``; ``output_file`` is the file read.  ``elements``
     are the atoms' chemical symbols; ``first`` and ``last`` the first and last geometry as
     ``Structure``s, with the run's labels and box; ``held_atoms`` the atoms the
-    run's own output says it holds, by the same index."""
+    run's own output says it holds, by the same index.  ``scf_rows`` are each
+    step's SCF rows as the run's reader gives them (`frame.Frame.scf_history`:
+    the engine's keys, its columns declared once, `engine_table.scf_columns`),
+    ``()`` where it printed none; ``scf_criteria`` what its SCFs had to reach,
+    as the run states it (`web/trajectory.md` § 3), ``None`` where it states
+    none."""
     atom_index_map: Any
     elements: Tuple[str, ...]
     positions_ang: Any
@@ -708,6 +713,8 @@ class StepsTable:
     scf_converged: Optional[bool]
     said: Tuple[str, ...]
     output_file: str
+    scf_rows: Tuple[Tuple[Dict[str, Any], ...], ...]
+    scf_criteria: Optional[Dict[str, Any]]
 
 
 #: What a run's steps say of a step that is not among them, by what it is.
@@ -792,48 +799,63 @@ def steps_table(run: Run, output) -> StepsTable:
             atoms.said, info.get("forces_not_computed"),
             *(words for flag, words in _NOT_A_STEP
               if any(getattr(fr, flag) for fr in traj.frames))) if w),
-        output_file=output.name)
+        output_file=output.name,
+        scf_rows=tuple(tuple(fr.scf_history or ()) for fr in done),
+        scf_criteria=info.get("scf_criteria"))
 
 
-def steps_at(path) -> StepsTable:
+def steps_at(path, *, named: Optional[str] = None) -> StepsTable:
     """THE STEPS A RUN FINISHED, from a path a person names (`postprocess.
-    read_steps`, an optimization's data file): a run's folder, by the file it
+    read_steps`, a calculation's steps file): a run's folder, by the file it
     holds to read (:func:`openable`), or its output.  :class:`RunStepsError`
     for a path that is not there or no run of ours holds, a file the run does
     not write its steps into, a run whose result holds none, and what
-    :func:`steps_table` refuses."""
+    :func:`steps_table` refuses -- each naming the path as ``named`` says,
+    the way its asker names it (a steps file's run by its folder below the
+    calculation), else as it was given."""
     from molbuilder.atom_index import AtomIndexUnknown, atom_index_map
     from molbuilder.parse import detect
     from molbuilder.parse.errors import ParseError
     from molbuilder.parse.types import answers_a_trajectory
     p = Path(path)
+    shown = named or p
     if not p.exists():
-        raise RunStepsError(f"{p} is not there")
+        raise RunStepsError(f"{shown} is not there")
     run = run_of(calcdirs.read_with(p) if p.is_dir() else p)
     if run is None:
         try:
             atom_index_map(p)               # a folder: it names the runs it holds
         except AtomIndexUnknown as exc:
             raise RunStepsError(str(exc)) from None
-        raise RunStepsError(f"{p} is no run's file: parse() reads it as it "
+        raise RunStepsError(f"{shown} is no run's file: parse() reads it as it "
                             f"stands, read_structure() a structure pair in "
                             f"the user order")
     chosen = p if p.is_file() else openable(p)[0]
     if chosen is None:
-        raise RunStepsError(f"{p} holds no file of its run's steps yet")
+        raise RunStepsError(f"{shown} holds no file of its run's steps yet")
     chosen = Path(chosen)
-    try:
-        holds_steps = (_rf.role_of(chosen)
-                       in _rf.run_output_roles(run.place.task.engine)
-                       and answers_a_trajectory(detect(chosen)))
-    except ParseError:
-        holds_steps = False
-    if not holds_steps:
+
+    def holds_steps(f: Path) -> bool:
+        try:
+            return (_rf.role_of(f) in _rf.run_output_roles(run.place.task.engine)
+                    and answers_a_trajectory(detect(f)))
+        except ParseError:
+            return False
+    if p.is_dir() and not holds_steps(chosen):
+        # A RUN WHOSE FOLDER OPENS ITS RESULT -- a PySCF vibration's one
+        # process, its relaxation's steps in the log beside the result --
+        # gives them from its own output that holds steps, in the
+        # catalogue's order of a run's outputs: the engine's own account
+        # before the progress log prep seeds (`runfiles.result_roles`).
+        chosen = next((f for f in map(run.file, _rf.result_roles(None))
+                       if f is not None and holds_steps(f)), chosen)
+    if not holds_steps(chosen):
         raise RunStepsError(
             f"{p.name} is no file its run writes its steps into: parse() reads "
             f"a file as it stands"
             if p.is_file() else
-            f"{p} holds no run's steps: what it holds to read is {chosen.name}")
+            f"{shown} holds no run's steps: what it holds to read is "
+            f"{chosen.name}")
     return steps_table(run, chosen)
 
 

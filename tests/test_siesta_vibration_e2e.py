@@ -880,7 +880,40 @@ def test_the_raman_at_a_laser_holds_co2s_symmetry_and_exports_whole(
     spectra_nc = result.with_name(f"{label}.spectra.nc")
     out = tmp_path / f"{label}.vibration-netcdf"
     assert sorted(f.name for f in out.iterdir()) == sorted(
-        [spectra_nc.name, optical.name, f"{label}.raman.nc"])
+        [spectra_nc.name, optical.name, f"{label}.raman.nc",
+         f"{label}.steps.nc"])
+    # ITS RUNS' STEPS (`model/datafiles.md` § 9.5): its relaxation's, its
+    # force constants' and each optical call's run, by its calls' own file;
+    # a step with an energy ran an SCF, its last row's energy the step's
+    # (§ 2a rule 2, § 9.0.6); each row as the run door hands it back.
+    from molbuilder.postprocess import read_steps, read_steps_data
+    from molbuilder.spectra.optical_data import read_optical_data as calls_of
+    steps_file = read_steps_data(out / f"{label}.steps.nc")
+    by = {g: {k: v["data"] for k, v in
+              steps_file["groups"][g]["variables"].items()}
+          for g in ("runs", "steps", "steps/scf")}
+    ran = [str(r) for r in by["runs"]["run"]]
+    freq = folder.relative_to(run.bundle).as_posix()
+    assert sorted(ran) == sorted(
+        [f"{freq}/relax", f"{freq}/fc"]
+        + [f"{freq}/{f['call']}" for f in calls_of(optical)["frames"]]), ran
+    energy, scf = by["steps"]["total_energy_ev"], by["steps/scf"]
+    at = 0
+    for name in ran:            # every run finished: each gives its steps
+        mine = read_steps(run.bundle / name)
+        for s, cycles in enumerate(mine.scf_rows):
+            i = at + s
+            if np.isfinite(energy[i]):
+                assert scf["scf_cycles"][i] == len(cycles) > 0, (name, s)
+                np.testing.assert_allclose(
+                    scf["scf_energy_ev"][i, len(cycles) - 1], energy[i],
+                    atol=1e-4)
+            else:       # the final geometry a relaxation ends on ran none
+                assert scf["scf_cycles"][i] == -1 and not cycles, (name, s)
+            np.testing.assert_allclose(scf["scf_energy_ev"][i, :len(cycles)],
+                                       [c["energy"] for c in cycles])
+        at += len(mine.energy_ev)
+    assert at == len(by["steps"]["step"]) > 0
     for kept in (spectra_nc, optical):
         assert (out / kept.name).read_bytes() == kept.read_bytes(), kept
     # THE OPTICAL CALLS' FILE, exported, reads through the script's door
@@ -1496,7 +1529,8 @@ def test_the_page_asks_the_raman_at_a_laser_and_exports_it(
             names = sorted(z.namelist())
             z.extract(f"{folder}/{label}.raman.nc", got)
         assert names == sorted(f"{folder}/{n}" for n in (
-            f"{label}.spectra.nc", optical.name, f"{label}.raman.nc")), names
+            f"{label}.spectra.nc", optical.name, f"{label}.raman.nc",
+            f"{label}.steps.nc")), names
         # ...THE VIEW ON SCREEN, read back through its reader: the laser
         # applied, the run's own width.
         from molbuilder.postprocess import read_raman_data
@@ -2200,6 +2234,55 @@ def test_a_fixed_spin_optical_call_keeps_each_channels_fermi_level(
         assert printed[0] > printed[1], (f["call"], printed)
         assert np.allclose(f["fermi_level_ev"], printed), (
             f["call"], f["fermi_level_ev"], printed)
+
+def test_a_fixed_spin_vibrations_steps_keep_each_channels_fermi_level(
+        fixed_spin_raman, tmp_path, monkeypatch):
+    """`model/datafiles.md` § 9.0.6: under `Spin.Fix` SIESTA prints each
+    channel's own Fermi level on every SCF row and none they share -- O2's
+    triplet, seven electrons up and five down.  The vibration's steps file
+    keeps both on every row it holds, the shared column NaN; each optical
+    call's last row holds the two levels its optical calls' file states for
+    the call (§ 9.3, `fermi_level_ev(frame, spin)`).
+
+    THE SILENT FAILURE: the two levels dropped from every row and the shared
+    column NaN with no word -- a fixed-spin run's SCF read as stating no
+    Fermi level."""
+    from conftest import point_the_one_door_at
+    from molbuilder.postprocess import read_steps_data
+    from molbuilder.runfiles import ROLE_OPTICAL
+    from molbuilder.runs import on_label_at
+    from molbuilder.spectra.optical_data import read_optical_data
+    from molbuilder.task import of as task_of
+    from support.road import jobset
+    run = fixed_spin_raman
+    point_the_one_door_at(run.tree.parent, monkeypatch.setenv)
+    said = jobset("export", "--bundle", run.bundle, "--format", "netcdf",
+                  "--to", tmp_path)
+    assert said.exit_code == 0, said.output
+    label = task_of(run.bundle).label
+    data = read_steps_data(
+        tmp_path / f"{label}.vibration-netcdf" / f"{label}.steps.nc")
+    scf = {k: v["data"] for k, v in
+           data["groups"]["steps/scf"]["variables"].items()}
+    counts = scf["scf_cycles"]
+    assert (counts > 0).any(), counts
+    for k in np.flatnonzero(counts > 0):
+        n = counts[k]
+        assert np.isfinite(scf["scf_fermi_level_up_ev"][k, :n]).all(), k
+        assert np.isfinite(scf["scf_fermi_level_down_ev"][k, :n]).all(), k
+        assert np.isnan(scf["scf_fermi_level_ev"][k, :n]).all(), k
+    folder = run.attempt("freq")
+    calls = read_optical_data(on_label_at(folder, ROLE_OPTICAL))
+    assert calls["frames"], calls
+    for f in calls["frames"]:
+        name = (folder / f["call"]).relative_to(run.bundle).as_posix()
+        k = np.flatnonzero(np.asarray(scf["run_of_step"]) == name)[-1]
+        n = counts[k]
+        np.testing.assert_allclose(
+            [scf["scf_fermi_level_up_ev"][k, n - 1],
+             scf["scf_fermi_level_down_ev"][k, n - 1]],
+            f["fermi_level_ev"], err_msg=name)
+
 
 def test_a_script_reads_a_steps_charges_on_the_persons_atoms(real_co2_vibration):
     """`runs.StepsTable`: the force-constant call, whose atoms SIESTA ran held

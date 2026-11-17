@@ -9,9 +9,10 @@ ROLE    :func:`export` -- the one composition the Results tab's Export
         on the calculation as the transport export takes it, in the export's
         one shape (`ncdata.exported`): ``<label>.spectra.nc`` and, on a
         SIESTA run with an optical phase, ``<label>.optical.nc``, each copied
-        as it is and read first through its reader; when a laser is named,
-        ``<label>.raman.nc``, the view (`spectra.raman`) composed now from
-        the same bytes.  :func:`result_path` -- the result an export is of:
+        as it is and read first through its reader; ``<label>.steps.nc``,
+        its runs' steps and each step's SCF cycles composed now
+        (`stepsdata`); when a laser is named, ``<label>.raman.nc``, the
+        view (`spectra.raman`) composed now from the same bytes.  :func:`result_path` -- the result an export is of:
         the one in the folder the viewer shows, else the calculation's
         stage's newest run's.  **Nothing is written into the calculation**,
         and the ledger has no line of it.
@@ -23,6 +24,10 @@ from typing import Dict, Optional
 
 from ..ncdata import ExportError, Exported
 
+
+#: What a vibration's runs' steps are named on its label, beside its own data
+#: files in its export (`model/datafiles.md` § 9.5).
+STEPS_FILE = ".steps.nc"
 
 def _stem(calc, result: Path) -> str:
     """An export's stem, ``<label>.<kind>``: the label the result is named
@@ -80,11 +85,15 @@ def export(calc, fmt: str, *, folder=None, laser_nm: Optional[float] = None,
            broaden_ev: Optional[float] = None) -> Exported:
     """The vibration result of ``calc`` (:func:`result_path`, ``folder`` the
     run the viewer shows), as ``fmt``: its data files as their writers wrote
-    them -- each read once, through its reader -- and, when ``laser_nm`` is
-    named, the Raman view at it (`spectra.raman.raman_view_of`) from the
-    same bytes, as ``<label>.raman.nc``; ``csv``: each file's tables and
-    ``README.txt`` in a folder of its own.  On a SIESTA result with optical
-    calls and no laser named, ``said`` says the view is not in it.
+    them -- each read once, through its reader -- its runs' steps and each
+    step's SCF cycles, ``<label>.steps.nc`` (`stepsdata.data_file_bytes`),
+    and, when ``laser_nm`` is named, the Raman view at it
+    (`spectra.raman.raman_view_of`) from the same bytes, as
+    ``<label>.raman.nc``; ``csv``: each file's tables and ``README.txt`` in
+    a folder of its own.  ``said`` says, on a SIESTA result with optical
+    calls and no laser named, that the view is not in it; which runs give
+    no step, and why; and, where no run has finished one, that the steps
+    file is not in it.
     :class:`ncdata.ExportError` names a form that is not one, a width named
     with no laser, a laser named for a result whose Raman is not the optical
     route, the view's own refusals, and a data file that does not read -- in
@@ -151,7 +160,19 @@ def export(calc, fmt: str, *, folder=None, laser_nm: Optional[float] = None,
         said = (f"the Raman view is not in it: its strengths depend on the "
                 f"laser -- name one (the page's laser box, `--laser-nm`) to "
                 f"add {label}{RAMAN_FILE}")
+    # ITS RUNS' STEPS AND EACH STEP'S SCF CYCLES -- its relaxation's, its
+    # force constants', its optical calls' -- composed now, beside its own
+    # data files (`stepsdata`, `model/datafiles.md` § 9.5).
+    from ..stepsdata import DataFileError, data_file_bytes
+    try:
+        files[f"{label}{STEPS_FILE}"], gave = data_file_bytes(
+            calc, f"{label}{STEPS_FILE}")
+    except DataFileError as exc:
+        gave = f"no {label}{STEPS_FILE}: {exc}"
+    except (OSError, ValueError) as exc:
+        raise ExportError(str(exc)) from exc
+    said = "; ".join(w for w in (said, gave) if w)
     return exported(files, fmt, stem=_stem(calc, path), said=said)
 
 
-__all__ = ["export", "name_of", "result_path"]
+__all__ = ["STEPS_FILE", "export", "name_of", "result_path"]

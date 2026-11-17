@@ -56,7 +56,7 @@ by a second reader: it is that composition on its grid, for analysis.
 | `<label>.spectra.nc` | a vibration result, beside its JSON — the same payload, tied by the JSON's sha256 | the result's one writer, at every write on both engines | `molbuilder/spectra-data@10` (`@1`–`@9` read as they are) | `engines/vibration.md` § 6.10, *The data file* · § 9.2 |
 | `<label>.TBT.digest.nc` (`.TBT_UP` / `.TBT_DN`) | a TBtrans data file's DOS per orbital, k-averaged once and kept | the reading of the `.TBT.nc` beside it | `molbuilder/tbt-digest@5` | `model/parse.md` § 5e · § 9.6 |
 | `<label>.optical.nc` | a SIESTA vibration's optical calls — each frame's ε₂ on the photon energies, its mode, side and geometry, the settings the calls read: the record of the Raman phase so far | the run's own record steps — the force constants', every frame pending, then each optical call's — and its finish | `molbuilder/optical-data@5` (`@1`–`@4` read as they are) | `engines/vibration.md` § 5.11 § 8 · § 9.3 |
-| `<label>.optimization.nc` | an optimization's every step on one grid — each atom's position and force, its charges where the run printed them, the energy, the stress, the largest force — and each run's own record: whether it converged, how it ended | an export alone (`optimization.export`), never into the calculation | `molbuilder/optimization-data@3` | `engines/optimization-postprocessing.md` § 6 · § 9.5 |
+| `<label>.optimization.nc` · `<label>.steps.nc` | a calculation's runs and their steps (§ 9.5): every step its runs finished on one grid — each atom's position and force, its charges where the run printed them, the energy, the stress, the largest force — each step's SCF cycles, and each run's own record: whether it converged, how it ended; an optimization's data file, and a vibration's runs beside its own data files | an export alone (`stepsdata`, through `optimization.export` and `spectra.export`), never into the calculation | `molbuilder/run-steps@1` | `engines/optimization-postprocessing.md` § 6, `engines/vibration-postprocessing.md` § 1 · § 9.5 |
 | `<label>.raman.nc` | a SIESTA vibration's Raman view at the laser and width a person named — per picked mode `∂α/∂Q` and the strength, at the laser and static, and the equilibrium `α`; what it was derived from by name and sha256 — the result, `<label>.spectra.json`, and the optical calls' data file | an export alone (`spectra.export`), never into the calculation | `molbuilder/raman-view@4` | `engines/vibration.md` § 5.11 § 10 · § 9.4 |
 
 **An engine's NetCDF files molbuilder reads** come through the same door
@@ -214,7 +214,9 @@ naming this section — in every file, every group, the root's included.
    `homo`, `zpe` (zero-point energy), `vib`, `fc` (force constant), `es`
    (electronic structure), `eq` (equilibrium), `neq` (non-equilibrium),
    `negf`, `tbt` (TBtrans), `vha`, `kt` (k_B T), `ddmax` / `dhmax`
-   (SIESTA's own), `imag` (imaginary), `fd` (finite difference), `iscf`,
+   (SIESTA's own), `gnorm` / `ddm` (PySCF's own: the orbital gradient's
+   norm, the density matrix's change), `imag` (imaginary), `fd` (finite
+   difference), `iscf` (an SCF cycle's own number),
    `max`, `mtime`, `n_` (the number of). A count says what it counts
    (`scf_cycles`, `n_modes`, `removed_motions_count`). An axis or a variable of a physical
    quantity ends with its unit, spelled as § 2c's last column says
@@ -229,7 +231,7 @@ naming this section — in every file, every group, the root's included.
    `stage`; the one spin channel of a calculation that is not
    spin-polarized `unpolarized`. A name a group's prefix scopes keeps it
    where values of several owners sit together (the transport summary's
-   `device_…` and `point_state`, the optimization file's `run_state`). **A
+   `device_…` and `point_state`, the steps file's `run_state`). **A
    record a file keeps whole as JSON text** (`current_means`,
    `fermi_frames`) keeps the keys its own contract gives it; every other
    name — variables, attributes, axes — is the file's and follows this
@@ -262,14 +264,14 @@ naming this section — in every file, every group, the root's included.
 
 | axis | its points | its coordinate's values | units (— labels) | files |
 |---|---|---|---|---|
-| `atom` | the atoms | each atom's index by the file's atom index map — the user index in the transport, vibration, optical and optimization files, the engine index in the digest (`atoms_listed_by`), from 0 | 1 | transport, vibration (`/structure`), optical, optimization, digest |
+| `atom` | the atoms | each atom's index by the file's atom index map — the user index in the transport, vibration, optical and steps files, the engine index in the digest (`atoms_listed_by`), from 0 | 1 | transport, vibration (`/structure`), optical, steps, digest |
 | `free_atom` | the atoms a vibration moves | their atom indices, from 0 | 1 | vibration |
 | `device_atom` | the atoms of TranSIESTA's device region | their atom indices, from 0 | 1 | digest |
 | `atom_bound` | each atom's first orbital, and one past the last | from 0 to the atom count | 1 | digest |
 | `device_orbital` | the device region's orbitals, one DOS column each | each orbital's index in the geometry, from 0; its atom beside it (`device_orbital_atom`) | 1 | digest |
 | `orbital` | the junction's basis orbitals, every atom's, in the device run's order | each orbital's index in the geometry, from 0 — the digest's `device_orbital` names a subset of them; its atom, quantum numbers and type beside it (`orbital_atom` …) | 1 | transport (`/structure`) |
-| `xyz` | a Cartesian component | `x`, `y`, `z` | — | transport, vibration, optical, optimization, digest |
-| `cell_vector` | the cell's three vectors | `a`, `b`, `c` | — | transport, vibration, optical (`/structure`), optimization, digest |
+| `xyz` | a Cartesian component | `x`, `y`, `z` | — | transport, vibration, optical, steps, digest |
+| `cell_vector` | the cell's three vectors | `a`, `b`, `c` | — | transport, vibration, optical (`/structure`), steps, digest |
 | `reciprocal_vector` | the reciprocal cell's three vectors — a k-point's reduced components | `b1`, `b2`, `b3` | — | digest |
 | `kpoint` | the k-points a reading averaged over | from 0 | 1 | digest |
 | `frame` | a frame set's frames — a transport calculation's structures, a vibration's optical calls (the reference geometry, then each mode's two sides) | from 0, as MolView's API counts | 1 | transport, optical |
@@ -280,7 +282,7 @@ naming this section — in every file, every group, the root's included.
 | `lead` | the two leads | their names as TBtrans names them | — | transport, digest |
 | `region` | molbuilder's regions of the junction | `L-electrode`, `bridge`, `R-electrode` | — | transport |
 | `eigenchannel` | transmission eigenchannels | from 0, as TBtrans orders them | 1 | transport, digest |
-| `scf_cycle` | a run's SCF rows | from 0 | 1 | transport |
+| `scf_cycle` | an SCF's rows | from 0, in the order the engine printed the rows; past the SCF's own count (`scf_cycles`) the fill | 1 | transport, steps |
 | `charge_part` | TranSIESTA's charge columns | `D`, `E1`, `C1`, … as its `ts-q:` header names them | — | transport |
 | `mode` | vibrational modes | 1-based, ascending frequency | 1 | vibration, Raman view |
 | `removed` | the rigid motions removed | from 0 | 1 | vibration |
@@ -290,9 +292,9 @@ naming this section — in every file, every group, the root's included.
 | `temperature_k` | the thermochemistry's temperatures | each temperature | K | vibration |
 | `fc_step` | a SIESTA force-constant run's steps | from 0, step 0 the reference geometry, then each displacement in SIESTA's order | 1 | vibration (`/partial_charges`) |
 | `photon_energy_ev` | the light's energy, ħω — a concept apart from `energy_ev`, which is an electron's energy relative to the device's Fermi level at 0 V | each photon energy as SIESTA wrote it, ascending | eV | optical |
-| `run` | a calculation's runs, stage by stage and each stage's starts in turn | each run's folder below the calculation (`01_coarse/run-0`) | — | optimization |
-| `step` | those runs' steps, run by run | from 0; the run each is of beside it (`run_of_step`) | 1 | optimization |
-| `voigt` | a stress tensor's six components | `xx`, `yy`, `zz`, `yz`, `xz`, `xy`, SIESTA's order | — | optimization |
+| `run` | a calculation's runs, stage by stage and each stage's starts in turn | each run's folder below the calculation (`01_coarse/run-0`) | — | steps |
+| `step` | those runs' steps, run by run | from 0; the run each is of beside it (`run_of_step`) | 1 | steps |
+| `voigt` | a stress tensor's six components | `xx`, `yy`, `zz`, `yz`, `xz`, `xy`, SIESTA's order | — | steps |
 
 **Files written before these names** read as rule 5 says: the vibration
 data file's reader takes `@1`–`@3`'s names for the new ones, and `@1`–`@9`'s
@@ -347,10 +349,25 @@ component's (§ 2a rule 1); and the attribute `structure_json`,
 of them by hand**, read back as its dict by the framework. A kind adds its
 own variables to the same group in the same write (the transport file: each
 atom's region, the basis orbitals, each frame's rows); a reader asks the
-structure's labels of `Structure.from_dict(structure_json)`. The
-optimization file is not laid out so: its geometry is a trajectory, each
-step's positions and each run's held atoms and cell, stated beside its steps
-(`engines/optimization-postprocessing.md` § 6).
+structure's labels of `Structure.from_dict(structure_json)`. A
+calculation's runs and their steps (§ 9.5) are not laid out so: their
+geometry is a trajectory, each step's positions and each run's held atoms
+and cell, stated beside its steps (`engines/optimization-postprocessing.md`
+§ 6).
+
+**An SCF history, one layout in every file.** A run's SCF rows — a
+transport stage's and device point's (§ 9.1), each step's of a
+calculation's runs (§ 9.5) — are written by one door,
+`ncdata.scf_history_vars` with its values `scf_history_values`: the count
+`scf_cycles` (`−1` where none ran, `0` being a count) and a variable per
+column the engine declares, over `scf_cycle` and the points the history is
+of. **An engine's columns are declared once**, each with the name every file
+gives it, its kind, units and words (the engine table's `scf_columns`:
+SIESTA's `parse.engines.siesta_grammar.SCF_COLUMNS`, PySCF's
+`parse.engines.molwatch_grammar.SCF_COLUMNS`) — one concept, one name, on
+both engines (`scf_iscf`, `scf_energy_ev`, `scf_delta_e_ev`); a record that
+keeps a run's rows keeps the declaration's keys (the transport record). Every
+name and what it is: § 9.0.6.
 
 **A record held as text says so.** A variable whose text is a record — a
 JSON list or object (a frame's rows, a run's phases, a point's digests) — is
@@ -364,12 +381,13 @@ hand. The tables (§ 5) keep the text as the file holds it.
 **An axis more than one file runs over has its coordinate from its row.**
 Its row of `ncdata.AXES` carries its coordinate's meaning, once — the atoms
 by the file's map; `xyz`, `cell_vector`, `reciprocal_vector` with their fixed
-labels; `frame`, `energy_ev`, `spin`, `lead`, `eigenchannel`, `mode` — and
+labels; `frame`, `energy_ev`, `spin`, `lead`, `eigenchannel`, `mode`,
+`scf_cycle` — and
 `ncdata.coordinate(axis, more=, source=)` makes the coordinate variable, a
 file adding only where its points come from and, for a raw one, its source;
 `ncdata.axis_values` gives a fixed axis's values. An axis one kind alone
-runs over (a vibration's `fc_step`, a transport run's `scf_cycle`) has its
-coordinate declared once, in that kind's writer.
+runs over (a vibration's `fc_step`; the steps file's `run`, `step`,
+`voigt`) has its coordinate declared once, in that kind's writer.
 
 **The engine, said once.** `ncdata.state(…, engine=, engine_version=,
 computed_in=)` writes `source` in one sentence — *computed by SIESTA 5.4.2
@@ -381,7 +399,7 @@ computed (the Raman view), both, in one sentence. One name,
 `engine_version`, wherever a file states an engine's version (the optical
 calls and the Raman view named it `siesta_version` until 2.72.2); a file
 that states
-only what it was derived from (the optimization file, a TBtrans digest)
+only what it was derived from (the steps file, a TBtrans digest)
 states none.
 
 **A file read back by one door.** Every reader opens a data file through
@@ -389,12 +407,12 @@ states none.
 `persist.check_schema`, the one door of the schema convention for every
 record and every data file: a schema it does not read is refused by name,
 the schemas it reads listed, and the way on where a command writes the file
-again (the transport file's `summarize task`, the optimization file's and
-the Raman view's export). A TBtrans digest is not refused: one of another
+again (the transport file's `summarize task`, the steps file's and the
+Raman view's export). A TBtrans digest is not refused: one of another
 version is out of date and read again (`model/parse.md` § 5e). A file's
 groups are walked by one walk, `ncdata.groups`, a group after its parent —
 the tables (§ 5), the atom index door, the file's own statement. A file read
-back as variables alone — the transport data file, the optimization file —
+back as variables alone — the transport data file, the steps file —
 is `ncdata.read_file(path, schemas=)`: `{attrs, groups: {path: {attrs,
 variables}}}`, the root under `""`, its records decoded and its flags as the
 file stores them — `1` yes, `0` no, `-1` not stated (xarray masks the last
@@ -406,7 +424,7 @@ the same doors.
 Each file moves its schema with this, and its chapter says which older ones
 it still reads: the vibration result's and the optical calls', which a run
 wrote and nothing writes again, are read as they are; the transport and
-optimization files and the Raman view, which an export or `summarize`
+steps files and the Raman view, which an export or `summarize`
 writes, are refused by version, their writer's command writing them again.
 
 ## 4. Reading — one door, one access, one handle
@@ -435,7 +453,7 @@ read. **The door is the only opener** of a NetCDF file
 in molbuilder's code — each data file's reader (`transport.datafile.
 read_data_file`, `spectra.datafile.read_spectra_data`,
 `spectra.optical_data.read_optical_data`, `spectra.raman.read_raman_data`,
-`optimization.datafile.read_data_file`, the digest's), the
+`stepsdata.read_data_file`, the digest's), the
 TBtrans parser, the `.MD.nc` reader, the atom index map's reader — kept so by
 review; sisl reads an engine's other files (`.TS.HSX`, `.ORB_INDX`), which
 are not NetCDF, through its own doors. **Every reader gives the map back with
@@ -518,7 +536,7 @@ drawn, the Results tab's top line ([`web/results.md`](?doc=web/results.md)
 A person's script reads every data file with the functions molbuilder's own
 doors ask (`model/parse.md` § 3, *One layer*): `read_transport_data`,
 `read_spectra_data`, `read_optical_data` — each with its atom index map —
-`read_optimization_data` for an exported optimization, also with its map,
+`read_steps_data` for an exported calculation's runs and their steps, also with its map,
 `read_raman_data` for an exported Raman view, `infrared_view` and
 `raman_view` for the spectrum viewer's two derivations, `atom_index_map(path)`,
 `read_structure(path)` for a structure pair in the user order with the map
@@ -684,7 +702,7 @@ A variable marked **atom indices** counts by this map.
 
 Every dimension is a row of § 2a's axes, with a coordinate of its own name;
 the coordinates of `atom`, `xyz`, `cell_vector`, `reciprocal_vector`, `frame`,
-`energy_ev`, `spin`, `lead`, `eigenchannel` and `mode` are made from their row
+`energy_ev`, `spin`, `lead`, `eigenchannel`, `mode` and `scf_cycle` are made from their row
 (`ncdata.coordinate`), the same words in every file, and § 2a says what each
 is. A file adds, in the coordinate's `definition`, where its points come
 from — said in its home group. An axis one file alone runs over is described
@@ -693,8 +711,9 @@ there.
 #### 9.0.5 A structure, one layout — `/structure` (§ 3a)
 
 The geometry a file is about, in the vibration result (9.2), the optical calls
-(9.3) and the transport file (9.1). The optimization file states its geometry
-as a trajectory instead (9.5), the digest as its data file states it (9.6).
+(9.3) and the transport file (9.1). A calculation's runs and their steps
+state their geometry as a trajectory instead (9.5), the digest as its data
+file states it (9.6).
 
 *Axes* `atom`, `xyz`, `cell_vector` (9.0.4) · *Labels* `element`,
 `user_atom_index`, `engine_atom_index` (9.0.3)
@@ -713,6 +732,34 @@ as a trajectory instead (9.5), the digest as its data file states it (9.6).
 | `title` | which geometry this is (the file's section names it) |
 | `atoms_listed_by` · `atom_index_base` · `atom_index_why` | 9.0.3 |
 | `structure_json` | **record**: the structure whole, `Structure.to_dict()` — its elements, positions, cell, its labels (the held atoms among them as `frozen_atoms`), its identity columns and `info` — read back by `Structure.from_dict`; a label is read from here, never encoded a second time |
+
+
+#### 9.0.6 An SCF history, one layout — `scf_cycles` and its engine's columns (§ 3a)
+
+A run's SCF rows wherever a file holds them — a transport stage's and device
+point's (9.1), each step's of a calculation's runs (9.5) — over the points
+the history is of and, for a row's value, `scf_cycle` (9.0.4); the count
+alone where a file keeps no rows (the optical calls', 9.3), one declaration
+(`ncdata.scf_cycles_var`). **The columns are the engine's own, declared
+once** (the engine table's `scf_columns`), the same name for one concept on
+both engines, each stating the key of the reader's row it is written from.
+Every column is *from the run's own output*.
+
+| name | engine | over | kind | units | what it is |
+|---|---|---|---|---|---|
+| `scf_cycles` | both | — | state | 1 | how many SCF rows it holds: each row its output printed that its reader read — a row whose values do not read as numbers (SIESTA prints a value it cannot fit as stars) is not among them; where the rows are held, the rows past it the fill; `−1` where none ran (`0` is a count) |
+| `scf_iscf` | both | scf_cycle | raw | 1 | the engine's own cycle number: SIESTA's iscf, from 1 in each phase — a row it printed and its reader could not read leaves its number out; PySCF's, from 1; `−1` fill · *the row's key* `cycle` |
+| `scf_energy_ev` | both | scf_cycle | raw | eV | the cycle's energy: SIESTA's E_KS, PySCF's SCF total energy · *the row's key* `energy` |
+| `scf_delta_e_ev` | both | scf_cycle | derived | eV | the energy less the row before's — SIESTA's in the same phase, `0` at a phase's first row its reader read; PySCF's at cycle 1 less the initial guess's (its `last_hf_e`), `0` where PySCF stated no energy before it · *the row's key* `delta_E` |
+| `scf_ddmax` | SIESTA | scf_cycle | raw | 1 | dDmax — the density matrix's largest change · *the row's key* `dDmax` |
+| `scf_dhmax_ev` | SIESTA | scf_cycle | raw | eV | dHmax — the Hamiltonian's largest change · *the row's key* `dHmax` |
+| `scf_fermi_level_ev` | SIESTA | scf_cycle | raw | eV | Ef — the one Fermi level every spin channel shares; NaN under a fixed spin (`Spin.Fix`), which prints each channel's own · *the row's key* `ef` |
+| `scf_fermi_level_up_ev` · `scf_fermi_level_down_ev` | SIESTA | scf_cycle | raw | eV | Ef_up, Ef_dn — each channel's own Fermi level under a fixed spin; NaN otherwise · *the row's keys* `ef_up`, `ef_dn` |
+| `scf_dq_e` | SIESTA | scf_cycle | raw | e | on a TranSIESTA NEGF row, its `ts-q:` line's `dQ` — the charge the open boundaries did not conserve, not a change between cycles; NaN on a periodic row · *the row's key* `dq` |
+| `scf_vha_ev` | SIESTA | scf_cycle | raw | eV | on a NEGF row, the boundary Hartree potential `ts-Vha`; NaN on a periodic row · *the row's key* `vha_ev` |
+| `scf_phase` | SIESTA | scf_cycle | state | — | the row's phase: `periodic` — every row of a run that is not a TranSIESTA device's, and a device's start — or `negf` · *the row's key* `phase` |
+| `scf_gnorm_ev` | PySCF | scf_cycle | raw | eV | \|g\|, the orbital gradient's norm, as the run's log states it · *the row's key* `gnorm` |
+| `scf_ddm` | PySCF | scf_cycle | raw | 1 | \|ddm\|, the density matrix's change, as the run's log states it — reported, not converged on · *the row's key* `ddm` |
 
 ---
 
@@ -850,23 +897,16 @@ none; its `definition` is the meaning the frame set writes for it (its
 
 | name | over | kind | units | what it is |
 |---|---|---|---|---|
-| `scf_cycle` | scf_cycle | coordinate | 1 | an SCF row's index within its run, from 0 — every row of the run's last step, a device's periodic start and its NEGF loop alike; a run of fewer rows padded with the fill |
+| `scf_cycle` | scf_cycle | coordinate | 1 | 9.0.4 — every row of the run's last step, a device's periodic start and its NEGF loop alike |
 | `state` | — | state | — | the stage's run state, as molbuilder words a run's state (`finished`, `failed`, `not run`, `pending` …) |
 | `detail` | — | state | — | molbuilder's sentence for that state |
 | `scf_converged` | — | state | 1 | **flag**: whether the stage's SCF converged |
 | `total_energy_ev` | — | raw | eV | the stage's total energy: the Kohn–Sham energy E_KS of its run's last SCF cycle — converged where `scf_converged` says so — *from the stage's SIESTA output* |
 | `fermi_level_ev` | — | raw | eV | the stage's Fermi level at its last SCF cycle, in its own run's frame — how the frames relate is `fermi_frames` (`/`) — *from the stage's SIESTA output* |
-| `scf_cycles` | — | state | 1 | how many SCF rows the run holds — the rows beyond are the fill; `−1` where none ran (`0` is a count) |
-| `scf_iscf` | scf_cycle | raw | 1 | SIESTA's own cycle number (iscf), from 1 in each phase; `−1` fill |
-| `scf_energy_ev` | scf_cycle | raw | eV | the cycle's Kohn–Sham energy E_KS |
-| `scf_delta_e_ev` | scf_cycle | derived | eV | E_KS less the cycle before's, in the same phase; 0 at a phase's first cycle |
-| `scf_ddmax` | scf_cycle | raw | 1 | dDmax — the density matrix's largest change |
-| `scf_dhmax_ev` | scf_cycle | raw | eV | dHmax — the Hamiltonian's largest change |
-| `scf_fermi_level_ev` | scf_cycle | raw | eV | the cycle's Fermi level Ef |
+| `scf_cycles` | — | | | how many SCF rows the run's last step holds — 9.0.6 |
+| SIESTA's SCF columns | scf_cycle | | | the run's last step's SCF rows — 9.0.6 |
 | `scf_phases` | — | state | — | **record**: the run's phases (`periodic`; a device's `negf` too) — for each, what it had to reach and how it ended: its cycles and whether it converged |
 | `copied_from` | — | state | — | the run this stage's newest run is a copy of, in a calculation that reuses a finished one ([`engines/transport.md`](?doc=engines/transport.md) § 2a.16); empty otherwise |
-
-The `scf_*` rows over `scf_cycle` are *from the run's SIESTA output*.
 
 | attribute | what it says |
 |---|---|
@@ -946,10 +986,7 @@ transmission done or not.
 | `contour_poles` | — | raw | 1 | the equilibrium contour's pole count, as TranSIESTA echoed it |
 | `neq_emin_ev` · `neq_emax_ev` | — | raw | eV | under a bias, the non-equilibrium line's lower and upper ends |
 | `neq_points` | — | raw | 1 | under a bias, the non-equilibrium line's points |
-| `scf_cycles` · `scf_iscf` · `scf_energy_ev` · `scf_delta_e_ev` · `scf_ddmax` · `scf_dhmax_ev` · `scf_fermi_level_ev` · `scf_phases` | | | | the run's SCF history and phases, as a stage's (`/stages/<stage>`) |
-| `scf_dq_e` | scf_cycle | raw | e | on a NEGF row, its `ts-q:` line's `dQ` — the charge the open boundaries did not conserve, not a change between cycles |
-| `scf_vha_ev` | scf_cycle | raw | eV | on a NEGF row, the boundary Hartree potential `ts-Vha` |
-| `scf_phase` | scf_cycle | state | — | the row's phase: `periodic` — the start — or `negf` |
+| `scf_cycles` · SIESTA's SCF columns · `scf_phases` | | | | the run's SCF history and phases, as a stage's — 9.0.6 |
 | `scf_charge_e` | scf_cycle, charge_part | raw | e | every NEGF row's Mulliken populations, column by column as TranSIESTA printed them |
 
 Every raw variable here is *from the device point's SIESTA output*.
@@ -1241,7 +1278,7 @@ order, with the result's masses.
 | `position_ang` | frame, atom, xyz | raw | angstrom | the geometry the call computed at, in the user order; NaN for a call that wrote none — *from the call's output, `<label>_<stage>.out`* |
 | `state` | frame | state | — | the call's state by the run's one done rule: `finished`; `not done` — it ran to its end and is not done; `failed` — it ran and ended with an error; `not run` — its run's walk ended before starting it; `pending` — not run yet, its row the fill |
 | `computed_in` | frame | state | — | the run that computed the call, its folder below the calculation — this run's, or the one a warm launch took it over from; empty while pending |
-| `scf_cycles` | frame | raw | 1 | how many cycles the call's SCF ran; `−1` where it wrote none — *from its output* · *the record's key* `scf_iterations` |
+| `scf_cycles` | frame | state | 1 | how many SCF rows the call's SCF holds — 9.0.6; `−1` where it wrote none · *the record's key* `scf_iterations` |
 | `total_energy_ev` | frame | raw | eV | the Kohn–Sham energy E_KS of the call's SCF — *from its output* |
 | `fermi_level_ev` | frame, spin | raw | eV | each channel's Fermi level at the call's last SCF cycle: its own (Ef_up, Ef_dn) under `Spin.Fix`, else the one Ef every channel shares — *from its output* |
 | `engine_elapsed_s` | frame | raw | s | SIESTA's wall time, launch to exit, as the call's session log measured it — *from its benchmark line* |
@@ -1316,48 +1353,53 @@ science: [`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 10,
 
 ---
 
-### 9.5 `<label>.optimization.nc` — an optimization's steps
+### 9.5 `<label>.optimization.nc` · `<label>.steps.nc` — a calculation's runs and their steps
 
-Every step an optimization's runs finished, on one grid, and each run's own
-record. Written only by an export (`jobset export`, `optimization.export`),
-never into the calculation; schema `molbuilder/optimization-data@3`, any other
-refused — export again. One group, `/`, and no `/structure`: the geometry is a
-trajectory, each step's positions and each run's held atoms and cell (§ 3a).
-The file holds no times. Its charges are what the runs printed: SIESTA prints
-them where its deck asks, which an optimization's deck does not of itself — NaN
-then.
-The science and examples: [`engines/optimization-postprocessing.md`](?doc=engines/optimization-postprocessing.md)
-§ 3, § 6.
+*(The user, 2026-11-17: "Into the calculation Export"; "Yes, in C1"; "Groups,
+as transport".)* **Every step a calculation's runs finished, on one grid, each
+step's SCF cycles, and each run's own record — one layout, one composition
+(`stepsdata.data_file_bytes`) and one reader (`stepsdata.read_data_file`;
+`postprocess.read_steps_data`)** for every kind whose runs take steps: an
+optimization's data file, `<label>.optimization.nc`, and a vibration's,
+`<label>.steps.nc` — its relaxation's, its force constants' and its optical
+calls' runs — beside its own data files in its export. Schema
+`molbuilder/run-steps@1`, any other refused — export again. Written only by an
+export (`jobset export`, the Results tab's Export), never into the calculation.
+Its runs are every run of the calculation's ladder, a run of points' every
+point (`jobset.runstatus.runs_of`); a run that gives no step stands on the
+`run` axis at its fill, its `said` saying why, so a run that died is never read
+as one that was not asked. No `/structure`: the geometry is a trajectory, each
+step's positions and each run's held atoms and cell (§ 3a). The file holds no
+times. Its charges are what the runs printed — NaN where they printed none.
+The science and examples:
+[`engines/optimization-postprocessing.md`](?doc=engines/optimization-postprocessing.md)
+§ 3, § 6; [`engines/vibration-postprocessing.md`](?doc=engines/vibration-postprocessing.md)
+§ 1.
 
-#### `/`
+#### `/` — the file's own statement
 
-*Axes* `atom`, `xyz`, `cell_vector` (9.0.4), `run`, `step`, `voigt` · *Labels*
-`element`, `user_atom_index`, `engine_atom_index` (atom); `run_of_step`
-(step); `stage_of_run` (run)
+| attribute | what it says |
+|---|---|
+| `title` · `schema` · `molbuilder_version` · `source` · `Conventions` · `unit_meanings` · `label` | 9.0.1 — no `engine_version`; `source` *derived from <engine>'s output of each run, named by its output_file* |
+| `engine` | the engine the runs ran: `siesta` or `pyscf` — whose SCF columns `/steps/scf` holds |
+
+#### `/runs` — each run's record
+
+*Axes* `run`, `atom`, `xyz`, `cell_vector` (9.0.4) · *Labels* `stage_of_run`
+(run); `user_atom_index`, `engine_atom_index` (atom) · `atoms_listed_by`
+`user_index`, `atom_index_base` `0` (9.0.3)
 
 | name | over | kind | units | what it is |
 |---|---|---|---|---|
-| `run` | run | coordinate | — | a run, by its folder below the calculation (`01_coarse/run-0`): stage by stage and each stage's starts in turn — the order of the calculation's stages, not always the order they ran in; a run that gave no step is listed too, `said` saying why |
-| `step` | step | coordinate | 1 | a step, from 0, run after run: each geometry step a run finished, and the final geometry a SIESTA relaxation ends on |
-| `voigt` | voigt | coordinate | — | a stress component: `xx`, `yy`, `zz`, `yz`, `xz`, `xy`, SIESTA's order |
-| `element` | atom | given | — | **label**: the atom's chemical symbol, in the user order |
-| `run_of_step` | step | given | — | **label**: the run the step is of, as `run` names it |
+| `run` | run | coordinate | — | a run, by its folder below the calculation (`01_coarse/run-0`, a run of points' point `01_freq/run-0/relax`): stage by stage and each stage's starts in turn — the order of the calculation's stages, not always the order they ran in; a run that gave no step is listed too |
 | `stage_of_run` | run | given | — | **label**: the stage the run is of, by its name |
-| *each step*: | | | | |
-| `position_ang` | step, atom, xyz | raw | angstrom | each atom's position, the coordinates the engine ran, in the user order — they hold the move `applied_offset_ang` states |
-| `force_ev_per_ang` | step, atom, xyz | raw | eV/angstrom | the force on each atom, in the user order; NaN where the step states none |
-| `total_energy_ev` | step | raw | eV | the step's total energy: SIESTA's E_KS — its output prints it to 0.0001 eV, its `.MD.nc` history holds the steps between in full — or PySCF's SCF total energy; NaN where the step states none, as a SIESTA relaxation's last row, the final geometry |
-| `max_force_ev_per_ang` | step | derived | eV/angstrom | the largest absolute Cartesian force component on any atom; NaN where the step states no force |
-| `max_force_free_ev_per_ang` | step | derived | eV/angstrom | the same over the atoms the run moved — what a relaxation's tolerance tests; NaN where the step states no force or the run holds every atom |
-| `hirshfeld_charge_e` · `voronoi_charge_e` | step, atom | raw | e | each atom's Hirshfeld, Voronoi charge: its valence charge less the electrons the partition gives it — positive where electrons left it — in the user order; NaN where the run printed none (SIESTA prints them where its deck asks) |
-| `stress_kbar` | step, voigt | raw | kbar | the step's stress tensor, as the run printed it; NaN where it printed none |
-| *each run*: | | | | |
 | `continued_from` | run | given | — | the run it continued from, as `run` names it, by the run's own record; empty for a run that started from the structure |
 | `output_file` | run | state | — | the file its steps were read from — the run's own output |
-| `final_total_energy_ev` | run | derived | eV | the last energy of a step it finished, as `total_energy_ev` states it; NaN where none states one |
+| `final_total_energy_ev` | run | derived | eV | the last energy of a step it finished, as `/steps` `total_energy_ev` states it; NaN where none states one |
 | `force_tolerance_ev_per_ang` | run | raw | eV/angstrom | the force tolerance the run's relaxation was to reach, as the run states it; NaN for a run that relaxed nothing |
-| `force_within_tolerance` | run | derived | 1 | **flag**: whether the run's largest force component on the atoms it moved, at the last step stating one, is within its tolerance — SIESTA's own test; geomeTRIC tests each atom's force length beside other criteria. A run still going moves on: read it with `run_state`. `−1` for a run that relaxed nothing |
+| `force_within_tolerance` | run | derived | 1 | **flag**: whether the run's largest force component on the atoms it moved, at the last step stating one, is within its tolerance — SIESTA's own test; geomeTRIC tests each atom's force length beside other criteria, and a run still going moves on (`run_state`); not stated for a run that relaxed nothing |
 | `scf_converged` | run | state | 1 | **flag**: whether its last SCF converged, as the run says it; `−1` where it cannot say |
+| `scf_criteria` | run | raw | — | **record**: what each of the run's SCFs had to reach, as the run states it — `{phase: {residual: {tolerance, unit, required}}}` ([`web/trajectory.md`](?doc=web/trajectory.md) § 3); empty where it states none |
 | `run_state` | run | state | — | how the run ended, as its file says: `ended`, `stopped`, `out_of_memory`, or `running` — the file shows no ending, which a slow run and one that died with no word both are |
 | `said` | run | state | — | what the run says beside its numbers: why it holds no step here; a step still being computed or stopped inside, which is not among the steps; forces it does not compute |
 | `held` | run, atom | raw | 1 | **flag**: whether the run's output says it holds the atom fixed |
@@ -1365,15 +1407,37 @@ The science and examples: [`engines/optimization-postprocessing.md`](?doc=engine
 | `cell_ang` | run, cell_vector, xyz | given | angstrom | the cell the run ended in, a row per lattice vector: the output's own, else the box its deck placed the atoms in, which on an isolated axis is no lattice; NaN for none |
 | `axis_kind` | run, cell_vector | given | — | each lattice vector's periodicity — `periodic`, `isolated` or `transport` — as the run's structure states it |
 
-Every raw variable is *from the run's own output, named by `output_file`, and
-for SIESTA's coordinates and energies the `.MD.nc` history beside it, for the
-steps it holds*.
+#### `/steps` — every step, run after run
 
-| attribute | what it says |
-|---|---|
-| `title` · `schema` · `molbuilder_version` · `source` · `Conventions` · `unit_meanings` · `label` | 9.0.1 — no `engine_version`; `source` *derived from <engine>'s output of each run, named by output_file* |
-| `engine` | the engine the runs ran: `siesta` or `pyscf` |
-| `atoms_listed_by` · `atom_index_base` | 9.0.3: `user_index`, `0` |
+*Axes* `step`, `atom`, `xyz`, `voigt` · *Labels* `element`,
+`user_atom_index`, `engine_atom_index` (atom); `run_of_step` (step) ·
+`atoms_listed_by` `user_index`, `atom_index_base` `0`
+
+| name | over | kind | units | what it is |
+|---|---|---|---|---|
+| `step` | step | coordinate | 1 | a step, from 0, run after run: each geometry step a run finished, and the final geometry a SIESTA relaxation ends on |
+| `voigt` | voigt | coordinate | — | a stress component: `xx`, `yy`, `zz`, `yz`, `xz`, `xy`, SIESTA's order |
+| `element` | atom | given | — | **label**: the atom's chemical symbol, in the user order |
+| `run_of_step` | step | given | — | **label**: the run the step is of, as `/runs` `run` names it |
+| `position_ang` | step, atom, xyz | raw | angstrom | each atom's position, the coordinates the engine ran, in the user order — they hold the move `/runs` `applied_offset_ang` states |
+| `force_ev_per_ang` | step, atom, xyz | raw | eV/angstrom | the force on each atom, in the user order; NaN where the step states none |
+| `total_energy_ev` | step | raw | eV | the step's total energy: SIESTA's E_KS — its output prints it to 0.0001 eV, its `.MD.nc` history holds the steps between in full — or PySCF's SCF total energy; NaN where the step states none, as a SIESTA relaxation's last row, the final geometry it wrote |
+| `max_force_ev_per_ang` | step | derived | eV/angstrom | the largest absolute Cartesian force component on any atom; NaN where the step states no force |
+| `max_force_free_ev_per_ang` | step | derived | eV/angstrom | the same over the atoms the run moved — what a relaxation's tolerance tests; NaN where the step states no force or the run holds every atom |
+| `hirshfeld_charge_e` · `voronoi_charge_e` | step, atom | raw | e | each atom's Hirshfeld, Voronoi charge: its valence charge less the electrons the partition gives it — positive where electrons left it — in the user order; NaN where the run printed none |
+| `stress_kbar` | step, voigt | raw | kbar | the step's stress tensor, as the run printed it; NaN where it printed none |
+
+#### `/steps/scf` — each step's SCF
+
+*Axes* `step`, `scf_cycle` (9.0.4) · *Labels* `run_of_step` (step) — so the
+group read alone is whole.
+
+| name | over | kind | units | what it is |
+|---|---|---|---|---|
+| `step` · `run_of_step` | step | coordinate · given | 1 · — | the step, and the run it is of — as `/steps` states them |
+| `scf_cycle` | scf_cycle | coordinate | 1 | 9.0.4 — the step's own rows |
+| `scf_cycles` | step | | | how many SCF rows each step holds — 9.0.6; `−1` for a step that ran none, a SIESTA relaxation's final geometry |
+| the engine's SCF columns | step, scf_cycle | | | each step's SCF rows — 9.0.6 |
 
 ---
 

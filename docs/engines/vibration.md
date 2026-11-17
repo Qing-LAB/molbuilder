@@ -2922,7 +2922,7 @@ sentence at load — the route, $\hat e$, $\delta$, the laser, the width, and
 | door | asks | answers |
 |---|---|---|
 | the load door, `POST /api/spectra/load` | `raman: {laser_nm, broaden_ev?}` beside `infrared`, read by `spectra.raman.read_ask` | `results.raman`, the view; a view the result cannot give — no optical route, no optical call finished yet, a deck stating no width, a width below the run's, a laser outside the stored spectrum, a data file with no cell — `results.raman_said`, the result still loading |
-| the export, `GET /api/export` and `molbuilder jobset export` | `format` `netcdf` or `csv`; `laser_nm`, `broaden_ev` (the page's Raman view, as it applied them; the command's `--laser-nm`, `--broaden-ev`) | the calculation's vibration data files as they are, and the view composed now (below) |
+| the export, `GET /api/export` and `molbuilder jobset export` | `format` `netcdf` or `csv`; `laser_nm`, `broaden_ev` (the page's Raman view, as it applied them; the command's `--laser-nm`, `--broaden-ev`) | the calculation's vibration data files as they are, the view composed now (below), and its runs' steps and each step's SCF cycles, `<label>.steps.nc` ([`model/datafiles.md`](?doc=model/datafiles.md) § 9.5) |
 | a script, `molbuilder.postprocess` | `raman_view(path, laser_nm=, broaden_ev=None)`; `read_optical_data(path)`; `read_raman_data(path)` | the same view; the optical calls' data file as data, with its atom index map; an exported view as data |
 | a notebook, with no molbuilder | `xarray.open_dataset(path, group="frames")` | every data file reads as NetCDF-4 alone (`model/datafiles.md` § 0) |
 
@@ -2934,9 +2934,13 @@ else its stage's newest run's (`result_path`) — through the one composer
 both exports share (`ncdata.exported`, one `Exported` shape for both) —
 **what is already there, and the view at the
 laser named**: `<label>.spectra.nc` and, on a SIESTA run with an optical
-phase, `<label>.optical.nc`, each copied as its writer wrote it, and, when a
-laser is named, `<label>.raman.nc`, the view composed now through the
-data-file framework ([`model/datafiles.md`](?doc=model/datafiles.md) § 1,
+phase, `<label>.optical.nc`, each copied as its writer wrote it;
+`<label>.steps.nc`, its runs' steps and each step's SCF cycles — its
+relaxation's, its force constants', its optical calls' — composed now
+([`model/datafiles.md`](?doc=model/datafiles.md) § 9.5), the runs that give
+none said, and where none has finished a step, the file not in it and that
+said; and, when a laser is named, `<label>.raman.nc`, the view composed now
+through the data-file framework ([`model/datafiles.md`](?doc=model/datafiles.md) § 1,
 `molbuilder/raman-view@4`), citing the two files it was derived from by name
 and sha256. **NetCDF**: the files; **CSV**: each file's tables and README
 (`ncdata.as_tables`) — flat for one file, a folder each for several. A

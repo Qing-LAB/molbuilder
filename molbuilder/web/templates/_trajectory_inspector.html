@@ -68,7 +68,7 @@
      the badge and the plots row, structurally part of the metadata
      band). -->
 <!-- THE INSPECTOR'S OWN STATUS LINE: a refused load, a viewer that could
-     not mount, the cell's provenance, an export's result.  core.js writes
+     not mount, the cell's provenance.  core.js writes
      it through setStatus.  Namespaced: a bare `#status` is the page-level banner some pages carry
      (modify.html), and this partial must not collide with one. -->
 <p id="trajectory-status" class="status trajectory-status" role="status" aria-live="polite"></p>
@@ -146,19 +146,6 @@
     <span id="scf-status" class="scf-status"></span>
   </div>
 </section>
-
-<!-- Plot-row toolbar — single Export All button at the
-     header so users can grab every plotted column (step, energy,
-     max force, max force constrained, SCF cycle / energy / gnorm)
-     in one CSV.  Header carries source-file metadata as ``#``
-     comments so the file is self-describing. -->
-<div class="plots-toolbar">
-  <button type="button" id="trajectory-export-csv-btn"
-          class="plots-toolbar-btn"
-          title="Download a CSV with every column from the four plots, plus a header recording source file + parser + timestamp.">
-    ↓ Export all plot data (CSV)
-  </button>
-</div>
 
 <!-- Pre-data status banner.  Visible only when the run has produced
      no usable per-step data yet (fresh-start window between the

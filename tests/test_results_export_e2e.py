@@ -225,12 +225,12 @@ def test_an_optimization_exports_from_the_top_line(
     # THE FILE HANDED OVER, saved under the name it is handed over with, as
     # a person saves it, and read through its reader: every step the runs
     # finished, the person's atoms.
-    from molbuilder.postprocess import read_optimization_data, read_steps
+    from molbuilder.postprocess import read_steps, read_steps_data
     saved = tmp_path / got.value.suggested_filename
     got.value.save_as(saved)
-    data = read_optimization_data(saved)
+    data = read_steps_data(saved)
     assert data["atom_index_map"].listed_by == "user_index"
-    got = {k: v["data"] for k, v in data["variables"].items()}
+    got = {k: v["data"] for g in ("runs", "steps") for k, v in data["groups"][g]["variables"].items()}
     coarse = real_h2_pyscf.attempt("coarse")
     steps = read_steps(coarse)
     mine = [i for i, r in enumerate(got["run_of_step"])

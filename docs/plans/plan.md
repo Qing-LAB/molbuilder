@@ -65,7 +65,11 @@ each release is its changelog row and its ledger section
   2026-11-16: "Every kind"); `pdos`, the re-average, a reading's order
   record and a mode's lookup moved to their owners in 2.73.1, the
   post-processing layer adding no rule of its own (`model/parse.md` § 3);
-  (C)
+  an optimization's and a vibration's Export holding every run's steps
+  and each step's SCF cycles, one layout in groups, and every file's SCF
+  history one layout, in 2.74.0 (`model/datafiles.md` § 9.5, § 9.0.6;
+  the user, 2026-11-17: "Into the calculation Export", "Groups, as
+  transport"); next (C)
   every chart's own export — a picture, its drawn data as CSV and NetCDF;
   the PDOS of a mixed selection from the data file and each point's digest
   (`postprocess.pdos`, the user's option 3, designed with B). Then a

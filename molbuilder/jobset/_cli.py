@@ -2401,12 +2401,13 @@ def export_cmd(bundle: str, fmt: str, to: str, **given) -> None:
     ``<label>.transport-csv/`` -- from what is already there, no data file
     read: the points without their DOS by region said; a ladder in progress
     exports what exists, a point short of done an empty cell.  A VIBRATION calculation: its
-    stage's newest result's data files as they are, and with ``--laser-nm``
+    stage's newest result's data files as they are, its runs' steps and
+    each step's SCF cycles (``<label>.steps.nc``), and with ``--laser-nm``
     the Raman view at that laser, ``<label>.vibration-netcdf/`` or
     ``<label>.vibration-csv/``.  An
-    OPTIMIZATION: every step its runs have finished, its data file
-    ``<label>.optimization.nc`` or the same as tables,
-    ``<label>.optimization-csv/``, the runs with none said.  What is
+    OPTIMIZATION: every step its runs have finished and each step's SCF
+    cycles, its data file ``<label>.optimization.nc`` or the same as
+    tables, ``<label>.optimization-csv/``, the runs with none said.  What is
     there already under that name is refused before anything is composed,
     naming it."""
     from pathlib import Path as _P

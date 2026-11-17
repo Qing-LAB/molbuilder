@@ -123,7 +123,7 @@ there).
 
 ```python
 d = xr.load_dataset("T.transport.nc", group="points/v0.2/device")
-n = int(d.scf_cycles)
+n = int(d.scf_cycles)                                 # a point that ran one; xarray reads -1, none ran, as NaN
 d.scf_ddmax.isel(scf_cycle=slice(0, n)).plot()
 d.scf_phase.isel(scf_cycle=slice(0, n)).values       # periodic / negf
 seed = xr.load_dataset("T.transport.nc", group="stages/seed")
