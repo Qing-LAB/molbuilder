@@ -528,10 +528,13 @@ MolView holds no file route; this door is where its exports become files.
 *(2026-10-22)*: the one browser download of bytes a page holds — the four
 lines of DOM that make one, in this module because where files may go is its
 knowledge. `molviewFiles` hands its exports over through it, the spectra
-viewer its modes' CSV and the trajectory viewer its plots' CSV.
+viewer its modes' CSV, and each chart's own Export its picture
+([`results.md`](?doc=web/results.md) § 1.2).
 
-**An export a server composes — `projects.downloadExport(url)`**
-*(2026-10-26)*: a GET route answering the file itself, named in its
+**An export a server composes — `projects.downloadExport(url, body)`**
+*(2026-10-26)*: a route answering the file itself — asked with GET, or
+POSTed `body` where one is given (a chart's drawn data, `POST
+/api/export/chart`, [`results.md`](?doc=web/results.md) § 1.2) — named in its
 Content-Disposition, handed to the person under that name through
 `projects.download` — resolves `{ok: true, said}`, `said` the server's
 sentence beside the file (`X-Molbuilder-Said`) or `""`; or `{ok: false,

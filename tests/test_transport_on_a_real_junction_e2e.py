@@ -4117,6 +4117,110 @@ def test_the_report_draws_the_junction_in_the_user_order(junction, page,
         assert page.locator(".molviewer-order").is_hidden()
 
 
+def test_each_chart_of_the_report_exports_what_it_draws(junction, page,
+                                                        monkeypatch,
+                                                        tmp_path):
+    """`web/results.md` § 1.2, `model/datafiles.md` § 9.7: each chart of the
+    transport report carries its own Export, and its file holds what the
+    chart draws, held to the calculation's data file: T(E) at the frame
+    shown, a curve each voltage, each the transmission of its point; the
+    DOS, the device's total DOS of the point chosen; the I-V, the current at
+    each voltage; the convergence card's SCF energy, its stage's rows --
+    each file naming the chart and what was chosen.
+
+    THE SILENT FAILURE: a file whose numbers are another voltage's or
+    another stage's, or a chart that exports nothing."""
+    import numpy as np
+    from conftest import point_the_one_door_at
+    from molbuilder.postprocess import read_chart_data
+    from molbuilder.task import bias_token
+    from molbuilder.task import of as task_of
+    from molbuilder.transport.datafile import data_file_path, read_data_file
+    from support.live_server import serve
+    from support.pages import chart_exported
+    from support.sidebar import results_on
+    run = junction.from_pair
+    point_the_one_door_at(junction.tree.parent, monkeypatch.setenv)
+    G = read_data_file(data_file_path(run.bundle,
+                                      task_of(run.bundle).label))["groups"]
+
+    def V(group):
+        return {k: v["data"] for k, v in G[group]["variables"].items()}
+    task = (run.bundle / "task.json").resolve()
+    with serve() as base:
+        results_on(page, base, run.bundle)
+        page.wait_for_function(
+            "(want) => [...document.querySelectorAll("
+            "  '#results-file-picker-select option')]"
+            "  .some(o => o.value === want)", arg=str(task), timeout=30000)
+        page.select_option("#results-file-picker-select", value=str(task))
+        card = page.locator(".transport-curves-card")
+        card.wait_for(timeout=60000)
+
+        def chart(tab):
+            card.get_by_role("tab", name=tab, exact=True).click()
+            box = card.locator(".panel-tabpanel:not([hidden]) .plot-box")
+            box.locator(".chart-export-open").wait_for(timeout=60000)
+            return chart_exported(page, box, "NetCDF", tmp_path)
+
+        def curves(path, group):
+            """The file read back through its reader, and each curve of
+            ``group``: its x and y up to its last point, and its name."""
+            data = read_chart_data(path)
+            v = data["groups"][group]["variables"]
+            x_name = next(k for k in v if k not in (
+                group, "curve", "curve_point", "curve_name", "curve_hidden"))
+            out = []
+            for k, y in enumerate(v[group]["data"]):
+                n = int(np.isfinite(y).sum())    # the padding the fill
+                out.append((v[x_name]["data"][k][:n], y[:n],
+                            str(v["curve_name"]["data"][k]),
+                            v["curve_hidden"]["data"][k] == 1))
+            return data, out
+
+        data, te = curves(chart("T(E)"), "transmission")
+        assert (data["attrs"]["chart"], data["attrs"]["shown"]) == (
+            "transmission", "task.json"), data["attrs"]
+        chosen = data["attrs"]["chosen"]
+        assert chosen["voltage_v"] in _BIAS, chosen
+        # EACH VOLTAGE'S CURVE ITS POINT'S TRANSMISSION, one to one.
+        at = {v: V(f"points/f000/{bias_token(v)}") for v in _BIAS}
+        matched = sorted(next(v for v, p in at.items()
+                              if np.allclose(y, p["transmission"])
+                              and np.allclose(x, p["energy_ev"]))
+                         for x, y, _name, _hidden in te)
+        assert matched == sorted(_BIAS), [c[2] for c in te]
+
+        path = chart("DOS")
+        _, total = curves(path, "dos_total_per_ev")
+        np.testing.assert_allclose(total[0][1],
+                                   at[chosen["voltage_v"]]["dos_total_per_ev"])
+        # THE LEADS' CURVES, drawn hidden, exported flagged hidden.
+        _, leads = curves(path, "lead_spectral_dos_per_ev")
+        assert leads and all(hidden for *_, hidden in leads), leads
+
+        _, iv = curves(chart("I–V"), "current_a")
+        summary = V("summary")
+        biases = [float(b) for b in summary["bias_v"]]
+        x, y = iv[0][0], iv[0][1]
+        assert len(x), iv
+        for v, i in zip(x, y):
+            assert i == pytest.approx(
+                summary["current_a"][0][biases.index(float(v))]), v
+
+        # A STAGE THAT RUNS ONCE: its SCF energy, its stage alone chosen.
+        conv = page.locator(".transport-conv-card")
+        energy = conv.locator(".panel-tabpanel:not([hidden]) .plot-box").first
+        data, scf = curves(chart_exported(page, energy, "NetCDF", tmp_path),
+                           "scf_energy_ev")
+        assert list(data["attrs"]["chosen"]) == ["stage"], data["attrs"]
+        rows = V(f"stages/{data['attrs']['chosen']['stage']}")
+        n = int(rows["scf_cycles"])
+        np.testing.assert_allclose(
+            np.sort(np.concatenate([y for _x, y, *_ in scf])),
+            np.sort(rows["scf_energy_ev"][:n]))
+
+
 def test_the_calculations_export_is_in_the_tabs_top_line(junction, page,
                                                         monkeypatch):
     """`web/results.md` § 1.1: the calculation's Export -- every result of

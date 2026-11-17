@@ -1,8 +1,32 @@
 """The pages the app serves, as the browser receives them -- for a test that
 reads what was served rather than the templates it was rendered from --
-what a page's request is served of a result (:func:`spectra_served`), and
-a server sentence as a page draws it (:func:`drawn`)."""
+what a page's request is served of a result (:func:`spectra_served`), a
+server sentence as a page draws it (:func:`drawn`), and what a chart's own
+Export hands over (:func:`chart_exported`)."""
 from __future__ import annotations
+
+from pathlib import Path
+
+
+def chart_exported(page, box, form: str, to) -> Path:
+    """WHAT A CHART'S OWN EXPORT HANDS OVER (`web/results.md` § 1.2): the
+    Export button in ``box`` -- a locator of the chart's box -- opened and
+    ``form`` (``PNG``, ``SVG``, ``NetCDF``, ``CSV``) pressed, as a person
+    presses them; the download saved in ``to`` under the name it was handed
+    over with, its path answered."""
+    from playwright.sync_api import TimeoutError as NoDownload
+    box.locator(".chart-export-open").click()
+    try:
+        with page.expect_download(timeout=120000) as got:
+            box.locator(".chart-export-items").get_by_role(
+                "button", name=form, exact=True).click()
+    except NoDownload:
+        said = box.locator(".chart-export-said").inner_text()
+        raise AssertionError(f"{form}: no download; the chart's Export "
+                             f"said {said!r}") from None
+    saved = Path(to) / got.value.suggested_filename
+    got.value.save_as(saved)
+    return saved
 
 
 def drawn(said: str) -> str:

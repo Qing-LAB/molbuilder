@@ -14,7 +14,8 @@ ROLE    ``parse`` -- an engine's file, a run's file → its result (the
         ``read_transport_data`` / ``read_spectra_data`` /
         ``read_optical_data`` -- the data files a calculation writes, each
         with its atom index map, and ``read_steps_data`` -- an exported
-        calculation's runs and their steps -- ``read_raman_data`` -- an exported Raman view; ``infrared_view`` -- the free atoms' infrared from a
+        calculation's runs and their steps -- ``read_raman_data`` -- an exported Raman view;
+        ``read_chart_data`` -- what one chart drew, its own Export's file; ``infrared_view`` -- the free atoms' infrared from a
         SIESTA vibration result's charges (`spectra.infrared`);
         ``raman_view`` -- a SIESTA vibration's Raman at a laser, from its
         optical calls (`spectra.raman`); ``pdos`` -- a transport point's PDOS
@@ -182,6 +183,16 @@ def read_steps_data(path) -> Dict[str, Any]:
     return {**read_data_file(path), MAP_KEY: atom_index_map(path)}
 
 
+def read_chart_data(path) -> Dict[str, Any]:
+    """What one chart drew, ``<label>.<chart>.nc`` -- its own Export's file
+    (`model/datafiles.md` § 9.7) -- as data (`chartdata.read_data_file`): its
+    attributes, ``chosen`` the record of what was chosen, and every group by
+    its path -- a group per kind of curve, a row per curve; the thresholds on
+    the root, under ``""``."""
+    from .chartdata import read_data_file
+    return read_data_file(path)
+
+
 def read_raman_data(path) -> Dict[str, Any]:
     """An exported Raman view, ``<label>.raman.nc``, back as data
     (`spectra.raman.read_raman_data`): the laser, the widths, the light's
@@ -298,6 +309,7 @@ def outermost_move(path, *, mode: int, temperature_k: float,
 __all__ = ["AtomIndexMap", "AtomIndexUnknown", "RunStepsError", "atom_index_map",
            "infrared_view", "list_runs", "parse", "raman_view", "read_optical_data",
            "read_steps_data", "read_raman_data", "read_spectra_data", "read_steps",
+           "read_chart_data",
            "read_structure", "read_transport_data", "read_xv", "read_xv_cell", "reaveraged",
            "pdos",
            "outermost_move", "projects_root", "project_dir", "topic_dir",

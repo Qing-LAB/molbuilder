@@ -2209,6 +2209,17 @@ rigid-shift estimate against the explicit curvature.
 > run (§ 1 below): three SIESTA calls in one directory would write over each
 > other's `.DM` and `.XV`.
 
+**Why "optical".** The word is SIESTA's. A Raman *optical call* is one SIESTA
+run with `OpticalCalculation` on, which computes the molecule's optical
+response — ε₂(ω), the imaginary part of its dielectric function: how it
+absorbs light at each photon energy. molbuilder runs one such call at the
+reference geometry and one on each side of every picked mode, and a mode's
+Raman strength is how that response changes as the molecule moves along it
+([`science/vibrational-optical-response.md`](?doc=science/vibrational-optical-response.md)
+§ 3). So `optical/` is the folder holding those calls, `[optical]` the
+settings they read, and `<label>.optical.nc` their one data file
+([`model/datafiles.md`](?doc=model/datafiles.md) § 9.3).
+
 #### 1. The shape — PySCF's run, in SIESTA's calls
 
 **One stage, `freq`, on both engines: one prep, one launch, one run, one

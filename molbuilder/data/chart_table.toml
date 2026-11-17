@@ -1,0 +1,189 @@
+# THE CHART TABLE -- what each chart on the Results page draws, as a data file
+# holds it (model/datafiles.md § 5b, § 9.7; web/results.md § 1.2).  Read by
+# `molbuilder.chartdata` and nowhere else.
+#
+# [charts.<chart>]  a chart that exports: its `words` -- what it shows -- and
+#                   the `tags` of the curves and the `marks` of the threshold
+#                   lines it may draw; any other is refused.
+# [xs.<x>]          what a curve runs along, the variable named <x>.
+# [tags.<tag>]      a kind of curve: its `y` and the [xs] row it runs along,
+#                   `x`; or a kind of threshold line: its `mark`.
+#
+# A VARIABLE IS ITS OWNER'S WHERE ONE DECLARES IT -- one concept, one name,
+# one statement (§ 2a rule 1):
+#   { of = "<module:NAME>", name = "<variable>" }  a data file's declaration,
+#                                                  its words, kind, units and
+#                                                  source as they are there;
+#   { of = "scf", name = "<variable>" }            the calculation's engine's
+#                                                  SCF column (the engine
+#                                                  table's `scf_columns`);
+#   { of = "axis" }                                an [xs] row: the axis's own
+#                                                  row of ncdata.AXES;
+# and only what no file declares is stated here, whole: `name`, `kind`,
+# `units`, `long_name`, `definition`, and a raw one's `source`.
+
+[charts.total-energy]
+words = "the energy at each geometry step of the run shown"
+tags = ["total_energy"]
+marks = []
+
+[charts.max-force]
+words = "the largest force at each geometry step, and the run's tolerance"
+tags = ["max_force", "max_force_free"]
+marks = ["force_tolerance"]
+
+[charts.scf-energy]
+words = "an SCF's energy at each cycle -- a step's, a stage's, or each run of a frame set"
+tags = ["scf_energy"]
+marks = []
+
+[charts.scf-residuals]
+words = "an SCF's residuals at each cycle, and their tolerances"
+tags = ["dDmax", "dHmax", "dq", "delta_E", "gnorm"]
+marks = ["dDmax", "dHmax", "dq", "delta_E", "gnorm"]
+
+[charts.transmission]
+words = "the transmission T(E) of the points drawn"
+tags = ["transmission", "transmission_by_spin", "transmission_total", "average_transmission", "eigenchannel_transmission"]
+marks = []
+
+[charts.dos]
+words = "the density of states of the points drawn"
+tags = ["dos_total", "dos_total_by_spin", "dos_region", "lead_spectral_dos", "lead_bulk_dos", "pdos"]
+marks = []
+
+[charts.iv]
+words = "the current against the bias"
+tags = ["current", "current_by_spin", "iv_current", "iv_current_by_spin"]
+marks = []
+
+# ---- what the curves run along -------------------------------------------------------------
+
+[xs.step_index]
+units = "1"
+long_name = "the step's number"
+definition = "the geometry step's number in the run's output, as the chart counts it"
+
+[xs.scf_iscf]
+of = "scf"
+
+[xs.energy_ev]
+of = "axis"
+
+[xs.bias_v]
+of = "molbuilder.transport.datafile:VARIABLES"
+
+[xs.iv_bias_v]
+of = "molbuilder.transport.datafile:VARIABLES"
+
+# ---- a step's energy and force, the steps file's ---------------------------------------------
+
+[tags.total_energy]
+x = "step_index"
+y = { of = "molbuilder.stepsdata:STEP_VARS", name = "total_energy_ev" }
+
+# The viewer draws the largest force AS THE ENGINE STATES IT -- on PySCF a
+# per-atom magnitude, not the steps file's component -- so its own name.
+[tags.max_force]
+x = "step_index"
+y = { name = "stated_max_force_ev_per_ang", kind = "raw", units = "eV/angstrom", long_name = "the largest force, over every atom, as the engine states it", definition = "as the engine states it: SIESTA's Max line, its largest absolute Cartesian component; a PySCF run's largest per-atom magnitude, |F| -- the figure the run's reader gives (the steps file's max_force_ev_per_ang is the component, recomputed from the forces)", source = "the run's own output" }
+
+[tags.max_force_free]
+x = "step_index"
+y = { name = "stated_max_force_free_ev_per_ang", kind = "raw", units = "eV/angstrom", long_name = "the largest force, over the atoms the run moved, as the engine states it", definition = "SIESTA's Max ... constrained, the value it compares with MD.MaxForceTol; a PySCF run's largest per-atom magnitude over the atoms it moves", source = "the run's own output" }
+
+[tags.force_tolerance]
+mark = { of = "molbuilder.stepsdata:RUN_VARS", name = "force_tolerance_ev_per_ang" }
+
+# ---- an SCF's rows, the engine's columns; what only the chart draws, its own -----------------
+
+[tags.scf_energy]
+x = "scf_iscf"
+y = { of = "scf", name = "scf_energy_ev" }
+
+[tags.dDmax]
+x = "scf_iscf"
+y = { of = "scf", name = "scf_ddmax" }
+mark = { name = "scf_ddmax_tolerance", kind = "raw", units = "1", long_name = "dDmax's tolerance", definition = "the tolerance the SCF on screen had to reach", source = "the run's stated SCF criteria" }
+
+[tags.dHmax]
+x = "scf_iscf"
+y = { of = "scf", name = "scf_dhmax_ev" }
+mark = { name = "scf_dhmax_tolerance_ev", kind = "raw", units = "eV", long_name = "dHmax's tolerance", definition = "the tolerance the SCF on screen had to reach", source = "the run's stated SCF criteria" }
+
+[tags.dq]
+x = "scf_iscf"
+y = { name = "scf_dq_abs_e", kind = "derived", units = "e", long_name = "the charge not conserved, its size", definition = "|dQ| of a TranSIESTA NEGF row (the engine's scf_dq_e), as the log axis draws it" }
+mark = { name = "scf_dq_tolerance_e", kind = "raw", units = "e", long_name = "dQ's tolerance", definition = "the tolerance the SCF on screen had to reach", source = "the run's stated SCF criteria" }
+
+[tags.delta_E]
+x = "scf_iscf"
+y = { name = "scf_delta_e_abs_ev", kind = "derived", units = "eV", long_name = "the energy's change, its size", definition = "|dE| (the engine's scf_delta_e_ev), as the log axis draws it" }
+mark = { name = "scf_delta_e_tolerance_ev", kind = "raw", units = "eV", long_name = "dE's tolerance", definition = "the tolerance the SCF on screen had to reach", source = "the run's stated SCF criteria" }
+
+[tags.gnorm]
+x = "scf_iscf"
+y = { of = "scf", name = "scf_gnorm_ev" }
+mark = { name = "scf_gnorm_tolerance_ev", kind = "raw", units = "eV", long_name = "|g|'s tolerance", definition = "the tolerance the SCF on screen had to reach", source = "the run's stated SCF criteria" }
+
+# ---- a transport point's curves, the transport file's; the two spins summed, the chart's -----
+
+[tags.transmission]
+x = "energy_ev"
+y = { of = "molbuilder.transport.datafile:VARIABLES", name = "transmission" }
+
+[tags.transmission_by_spin]
+x = "energy_ev"
+y = { of = "molbuilder.transport.datafile:VARIABLES", name = "transmission_by_spin" }
+
+[tags.transmission_total]
+x = "energy_ev"
+y = { name = "transmission_total", kind = "derived", units = "1", long_name = "the two spins' transmission summed", definition = "T_up + T_down, a polarized point's two channels (transmission_by_spin) summed" }
+
+[tags.average_transmission]
+x = "energy_ev"
+y = { of = "molbuilder.transport.datafile:VARIABLES", name = "average_transmission" }
+
+[tags.eigenchannel_transmission]
+x = "energy_ev"
+y = { of = "molbuilder.transport.datafile:VARIABLES", name = "eigenchannel_transmission" }
+
+[tags.dos_total]
+x = "energy_ev"
+y = { of = "molbuilder.transport.datafile:VARIABLES", name = "dos_total_per_ev" }
+
+[tags.dos_total_by_spin]
+x = "energy_ev"
+y = { of = "molbuilder.transport.datafile:VARIABLES", name = "dos_total_by_spin_per_ev" }
+
+[tags.dos_region]
+x = "energy_ev"
+y = { of = "molbuilder.transport.datafile:VARIABLES", name = "dos_region_per_ev" }
+
+[tags.lead_spectral_dos]
+x = "energy_ev"
+y = { of = "molbuilder.transport.datafile:VARIABLES", name = "lead_spectral_dos_per_ev" }
+
+[tags.lead_bulk_dos]
+x = "energy_ev"
+y = { of = "molbuilder.transport.datafile:VARIABLES", name = "lead_bulk_dos_per_ev" }
+
+[tags.pdos]
+x = "energy_ev"
+y = { name = "pdos_per_ev", kind = "derived", units = "1/eV", long_name = "a chosen selection's projected DOS", definition = "the density of states projected on the orbitals the person chose (postprocess.pdos), a curve each selection; a polarized point's two channels summed" }
+
+[tags.current]
+x = "bias_v"
+y = { of = "molbuilder.transport.datafile:VARIABLES", name = "current_a" }
+
+[tags.current_by_spin]
+x = "bias_v"
+y = { of = "molbuilder.transport.datafile:VARIABLES", name = "current_by_spin_a" }
+
+[tags.iv_current]
+x = "iv_bias_v"
+y = { of = "molbuilder.transport.datafile:VARIABLES", name = "iv_current_a" }
+
+[tags.iv_current_by_spin]
+x = "iv_bias_v"
+y = { of = "molbuilder.transport.datafile:VARIABLES", name = "iv_current_by_spin_a" }

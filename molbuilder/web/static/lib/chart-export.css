@@ -1,0 +1,35 @@
+/* A chart's own Export (lib/chart-export.js; web/results.md § 1.2): the
+ * button in the box's top corner, always shown, and the forms it opens --
+ * inside the box, which clips what passes its edge (lib/plot-box.css), so
+ * they open downward over the chart.  Its buttons are the page's own, and
+ * its words go through the one status writer (lib/status.js), as the
+ * calculation's Export bar's do. */
+.chart-export {
+    position: absolute;
+    top: var(--space-xs);
+    right: var(--space-xs);
+    z-index: 2;
+    font-size: var(--text-sm);
+}
+.chart-export-open {
+    cursor: pointer;
+    padding: 0 var(--space-sm);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-sm);
+    background: var(--bg-card);
+    list-style: none;
+}
+.chart-export-open::-webkit-details-marker { display: none; }
+.chart-export-items {
+    margin-top: var(--space-xs);
+    padding: var(--space-sm);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-sm);
+    background: var(--bg-card);
+}
+.chart-export-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+}
+.chart-export-what { min-width: 4.5em; color: var(--text-muted); }

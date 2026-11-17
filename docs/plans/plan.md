@@ -69,8 +69,10 @@ each release is its changelog row and its ledger section
   and each step's SCF cycles, one layout in groups, and every file's SCF
   history one layout, in 2.74.0 (`model/datafiles.md` § 9.5, § 9.0.6;
   the user, 2026-11-17: "Into the calculation Export", "Groups, as
-  transport"); next (C)
-  every chart's own export — a picture, its drawn data as CSV and NetCDF;
+  transport"); each chart's own Export — a picture, its drawn data as
+  CSV and NetCDF — for the trajectory and transport charts in 2.75.0
+  (`web/results.md` § 1.2; the user, 2026-11-17: "Go ahead"); next the
+  vibration's charts and the bench chart (2.76.0);
   the PDOS of a mixed selection from the data file and each point's digest
   (`postprocess.pdos`, the user's option 3, designed with B). Then a
   full-text review of the result summary and data export code *(the user,

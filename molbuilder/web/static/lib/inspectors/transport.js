@@ -86,14 +86,29 @@ const WORKSPACE_TAG = "results:transport";
             + (tail ? " — " + tail : "");
     }
 
-    function _plot(node, traces, layout) {
+    function _plot(node, traces, layout, exported) {
         if (!root.Plotly) {
             node.textContent = "Plotly is not loaded on this page.";
             return;
         }
         root.molbuilder.plotBox.draw(node, traces,
                                      root.molbuilder.themedLayout(layout),
-                                     { displayModeBar: false });
+                                     { displayModeBar: false }, exported);
+    }
+
+    /* A CHART'S OWN EXPORT (web/results.md § 1.2): ``chart`` its name in
+     * the chart table, drawn from this calculation; what the person chose,
+     * read as a button is pressed -- the frame, the voltage and one frame
+     * or all (``key``'s) where the chart is of a point; ``also`` beside them
+     * (a convergence chart's stage). */
+    function _exported(state, chart, key, also) {
+        return {
+            chart: chart, path: () => state.file,
+            chosen: () => Object.assign(key === null ? {} : {
+                frame: _frame(state), voltage_v: state.bias,
+                frames: state.nFrames > 1 ? state.frameMode[key] : ONE,
+            }, also || {}),
+        };
     }
 
     /* PANEL TABS -- the page's `.panel-tabs` markup, driven by the one tab
@@ -694,7 +709,11 @@ const WORKSPACE_TAG = "results:transport";
             if (any) {
                 root.molbuilder.scfPlot.draw(e, r, runs, {
                     criteria: src.scf_criteria || {},
-                    residuals: src.scf_residuals || [] });
+                    residuals: src.scf_residuals || [],
+                    // A STAGE THAT RUNS ONCE is of no point: its stage
+                    // alone; a device's, the point it is of.
+                    exported: _exported(state, null, pts ? "conv" : null,
+                                        { stage: st.stage }) });
             }
         });
     }
@@ -961,14 +980,14 @@ const WORKSPACE_TAG = "results:transport";
                 const f = _pf(q);
                 const on = f === frame;
                 te.push({ x: q.energy_ev, y: q.transmission, mode: "lines",
-                          name: frameWords(f, n),
+                          name: frameWords(f, n), tag: "transmission",
                           line: { color: col(f), width: on ? 2.5 : 1 },
                           opacity: on ? 1 : 0.6, meta: { frame: f, bias: q.bias_v } });
             });
             const a = (state.average.at || []).find((e) => e.bias_v === state.bias);
             if (a && Array.isArray(a.transmission)) {
                 te.push({ x: a.energy_ev, y: a.transmission, mode: "lines",
-                          name: "mode average",
+                          name: "mode average", tag: "average_transmission",
                           line: { color: t.ink, width: 2, dash: "dash" } });
             }
             /* THE RECORD'S NUMBERS for the average, or why there is none. */
@@ -999,22 +1018,26 @@ const WORKSPACE_TAG = "results:transport";
                     // THE SELECTED POINT: each spin, and their total.
                     te.push({ x: q.energy_ev, y: q.channels.up, mode: "lines",
                               name: "T↑ · " + at, meta: meta,
+                              tag: "transmission_by_spin",
                               line: { color: UP, width: 1.75 } });
                     te.push({ x: q.energy_ev, y: q.channels.down, mode: "lines",
                               name: "T↓ · " + at, meta: meta,
+                              tag: "transmission_by_spin",
                               line: { color: DOWN, width: 1.75 } });
                     te.push({ x: q.energy_ev, y: q.transmission_total,
                               mode: "lines", name: "T↑ + T↓ (total) · " + at,
+                              tag: "transmission_total",
                               meta: meta, line: { color: t.ink, width: 2.5 } });
                 } else if (q.channels) {
                     // ANOTHER VOLTAGE: its total, quiet.
                     te.push({ x: q.energy_ev, y: q.transmission_total,
                               mode: "lines", name: "T↑ + T↓ · " + at,
+                              tag: "transmission_total",
                               meta: meta, opacity: 0.55,
                               line: { color: t.muted, width: 1 } });
                 } else {
                     te.push({ x: q.energy_ev, y: q.transmission, mode: "lines",
-                              name: at,
+                              name: at, tag: "transmission",
                               line: { color: col(i), width: on ? 2.5 : 1 },
                               opacity: on ? 1 : 0.55, meta: meta });
                 }
@@ -1031,6 +1054,7 @@ const WORKSPACE_TAG = "results:transport";
                     nEig += 1;
                     te.push({ x: p.dos.energy_ev, y: ch, mode: "lines",
                               name: "channel " + (k + 1) + (mark ? " " + mark : ""),
+                              tag: "eigenchannel_transmission",
                               line: { color: color, width: 1, dash: "dot" } });
                 }));
             state.nodes.eig.textContent = p && !nEig
@@ -1047,7 +1071,8 @@ const WORKSPACE_TAG = "results:transport";
                 : (all("te") ? "(T↑ + T↓)/2" : "T");
             _plot(state.nodes.te, te, { ...axes,
                 yaxis: { title: { text: tTitle, standoff: 4 }, type: "log",
-                         automargin: true, exponentformat: "power" } });
+                         automargin: true, exponentformat: "power" } },
+                  _exported(state, "transmission", "te"));
             _onClick(state.nodes.te, state);
         } else {
             root.molbuilder.plotBox.say(state.nodes.te, nothingYet());
@@ -1063,7 +1088,7 @@ const WORKSPACE_TAG = "results:transport";
                 if (!d || !Array.isArray(d.energy_ev) || !d.total) return;
                 const f = _pf(q);
                 tr.push({ x: d.energy_ev, y: d.total, mode: "lines",
-                          name: frameWords(f, n) + " (total)",
+                          name: frameWords(f, n) + " (total)", tag: "dos_total",
                           line: { color: col(f), width: f === frame ? 2.5 : 1 } });
             });
             if (tr.length) {
@@ -1073,7 +1098,8 @@ const WORKSPACE_TAG = "results:transport";
                     yaxis: { title: { text: spinRun ? "DOS (states/eV, ↑ + ↓)"
                                           : "DOS (states/eV, each spin)",
                                       standoff: 4 },
-                             automargin: true } });
+                             automargin: true } },
+                      _exported(state, "dos", "dos"));
             } else {
                 // THE TRANSMISSIONS THERE, THEIR DOS NOT: said in the
                 // record's words; no transmission at all, said so.
@@ -1103,28 +1129,33 @@ const WORKSPACE_TAG = "results:transport";
                         ([mark, color, d]) => {
                             if (d && Array.isArray(d.total)) tr.push({
                                 x: dos.energy_ev, y: d.total, mode: "lines",
-                                name: "device " + mark,
+                                name: "device " + mark, tag: "dos_total_by_spin",
                                 line: { color: color, width: 1.5 } });
                         });
                 }
                 if (dos.total) tr.push({ x: dos.energy_ev, y: dos.total, mode: "lines",
                     name: bySpin ? "device total (↑ + ↓)" : "device (total)",
+                    tag: "dos_total",
                     line: { color: t.ink, width: 2 } });
                 Object.keys(dos.by_label || {}).forEach((lab) => tr.push({
                     x: dos.energy_ev, y: dos.by_label[lab], mode: "lines",
-                    name: lab, line: { color: other(i++), width: 1.5 } }));
+                    name: lab, tag: "dos_region",
+                    line: { color: other(i++), width: 1.5 } }));
                 Object.keys(dos.lead_spectral || {}).forEach((e) => tr.push({
                     x: dos.energy_ev, y: dos.lead_spectral[e], mode: "lines",
                     name: "spectral " + e, visible: "legendonly",
+                    tag: "lead_spectral_dos",
                     line: { color: other(i++), width: 1, dash: "dash" } }));
                 Object.keys(dos.lead_bulk || {}).forEach((e) => tr.push({
                     x: dos.energy_ev, y: dos.lead_bulk[e], mode: "lines",
                     name: "bulk " + e, visible: "legendonly",
+                    tag: "lead_bulk_dos",
                     line: { color: other(i++), width: 1, dash: "dot" } }));
                 state.pdos.forEach((s) => {
                     if (!s.curve || s.at !== _pointKey(frame, state.bias)) return;
                     tr.push({ x: s.curve.energy_ev, y: s.curve.pdos,
                         mode: "lines", name: s.name + " (" + s.orbitals + ")",
+                        tag: "pdos",
                         line: { color: other(i++), width: 2 } });
                 });
                 _plot(state.nodes.dos, tr, { ...axes,
@@ -1132,7 +1163,8 @@ const WORKSPACE_TAG = "results:transport";
                                           ? "DOS (states/eV, ↑ + ↓ unless marked)"
                                           : "DOS (states/eV, each spin)",
                                       standoff: 4 },
-                             automargin: true } });
+                             automargin: true } },
+                      _exported(state, "dos", "dos"));
             }
         }
         _drawPdosList(state);
@@ -1158,6 +1190,9 @@ const WORKSPACE_TAG = "results:transport";
                 mode: "lines+markers",
                 name: n > 1 ? frameWords(f, n)
                             : (computed ? "I computed from T(E, 0)" : "I (total)"),
+                // TBtrans's current, or the one computed from T(E, 0): the
+                // file names which (`iv_current_a`, data/chart_table.toml).
+                tag: computed ? "iv_current" : "current",
                 line: { color: col(f),
                         width: all("iv") && f === frame ? 2.5 : 1.5,
                         dash: computed ? "dash" : "solid" },
@@ -1184,11 +1219,13 @@ const WORKSPACE_TAG = "results:transport";
                 up: state.iv.current_up_a[k],
                 down: (state.iv.current_down_a || [])[k] }))
                 .filter((q) => (q.frame == null ? 0 : q.frame) === frame);
+            const bySpin = computed ? "iv_current_by_spin" : "current_by_spin";
             [["up", "I↑" + how, UP], ["down", "I↓" + how, DOWN]].forEach(([key, name, color]) => {
                 const got = rows.filter((q) => q[key] !== null && q[key] !== undefined);
                 if (!got.length) return;
                 ivTraces.push({ x: got.map((q) => q.bias_v),
                     y: got.map((q) => q[key]), mode: "lines+markers", name: name,
+                    tag: bySpin,
                     line: { color: color, width: 1.5, dash: computed ? "dash" : "solid" },
                     marker: { size: 6 },
                     meta: got.map((q) => ({ frame: frame,
@@ -1203,7 +1240,7 @@ const WORKSPACE_TAG = "results:transport";
                          automargin: true, exponentformat: "e" },
                 showlegend: ivTraces.length > 1,
                 legend: { orientation: "h", y: -0.2 },
-            });
+            }, _exported(state, "iv", "iv"));
             _onClick(state.nodes.iv, state);
         } else {
             root.molbuilder.plotBox.say(state.nodes.iv, "No current yet.");

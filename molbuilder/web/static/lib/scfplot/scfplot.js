@@ -51,6 +51,12 @@
         return x.name + (x.unit ? " (" + x.unit + ")" : "");
     }
 
+    /* A chart's own Export, where the host asked for one. */
+    function _as(chart, o) {
+        return o.exported ? Object.assign({}, o.exported, { chart: chart })
+                          : null;
+    }
+
     function _name(ph) {
         return ph === "negf" ? "NEGF" : (ph ? ph : "SCF");
     }
@@ -66,7 +72,9 @@
      * run's last phase shown and its earlier ones a legend click away.  Answers ``{phases,
      * residuals}`` -- what was drawn, for the caller's status line -- or
      * ``null`` when there is nothing to draw (the caller hides its
-     * section). */
+     * section).  ``opts.exported`` -- ``{path, chosen}`` -- gives both
+     * charts their own Export (web/results.md § 1.2), each by its name in
+     * the chart table, each curve tagged with what it is. */
     function draw(energyEl, residualEl, runs, opts) {
         const o = opts || {};
         const Plotly = root.Plotly;
@@ -101,7 +109,7 @@
             y: tr.group.rows.map((c) => c.energy),
             mode: "lines+markers", marker: { size: 4 },
             line: { color: tr.colour, width: tr.width },
-            name: tr.name, visible: shown(tr),
+            name: tr.name, visible: shown(tr), tag: "scf_energy",
         })), layoutOf({
             title: { text: o.energyTitle || "SCF energy", font: { size: 12 } },
             margin: { l: 8, r: 12, t: 28, b: energyLegend.bottom },
@@ -112,7 +120,7 @@
             yaxis: Object.assign({ title: { text: "E (eV)", standoff: 4 },
                                    zeroline: false, automargin: true,
                                    nticks: 5 }, window.molbuilder.energyAxis),
-        }, theme), { displayModeBar: false });
+        }, theme), { displayModeBar: false }, _as("scf-energy", o));
 
         const phases = Array.from(new Set(traces.map((tr) => tr.group.phase)));
         const all = given.reduce((rows, run) => rows.concat(run.rows), []);
@@ -144,6 +152,9 @@
                 // THE PHASE OR RUN NAMED only where there are several.
                 name: (several && tr.name ? tr.name + " · " : "") + _said(x),
                 visible: shown(tr),
+                // WHAT THE CURVE IS: the residual's key, a row of the chart
+                // table (`data/chart_table.toml`).
+                tag: x.key,
             });
         }));
         /* EACH RESIDUAL'S CRITERION, for the phase on screen, where the
@@ -161,7 +172,7 @@
             const mark = root.molbuilder.thresholdMark(
                 c.tolerance, x.name + " tol " + c.tolerance.toExponential(1)
                              + (x.unit ? " " + x.unit : ""),
-                many ? theme.success : colour(i), true);
+                many ? theme.success : colour(i), true, x.key);
             shapes.push(mark.shape);
             notes.push(mark.note);
         });
@@ -180,7 +191,7 @@
                      type: "log", zeroline: false, tickformat: ".0e",
                      automargin: true, nticks: 5 },
             shapes: shapes, annotations: notes,
-        }, theme), { displayModeBar: false });
+        }, theme), { displayModeBar: false }, _as("scf-residuals", o));
         return { phases: phases, residuals: residuals.map((x) => x.name) };
     }
 

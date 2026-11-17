@@ -54,8 +54,11 @@
     }
 
     /** Draw ``traces`` with ``layout`` into ``el`` and keep it to its box.
-     *  ``config`` is Plotly's, less ``responsive``, which this door owns. */
-    function draw(el, traces, layout, config) {
+     *  ``config`` is Plotly's, less ``responsive``, which this door owns.
+     *  ``exported`` -- ``{chart, path, chosen}`` -- names a chart the
+     *  chart table knows: its own Export goes in the box's corner
+     *  (`lib/chart-export.js`, web/results.md § 1.2). */
+    function draw(el, traces, layout, config, exported) {
         if (!el.classList.contains(BOX)) {
             throw new Error("plotBox.draw: #" + (el.id || "?") + " is not a"
                 + " plot box -- its markup carries no '" + BOX + "' class");
@@ -67,6 +70,7 @@
             Object.assign({}, config, { responsive: false }));
         live.add(el);
         _watch(el);
+        if (exported) root.molbuilder.chartExport.install(el, exported);
         return drawn;
     }
 

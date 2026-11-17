@@ -594,6 +594,14 @@ import { outcome } from "../validation-findings.js";
         setStatus(said.text.trim(), said.tone);
     }
 
+    /* A CHART'S OWN EXPORT (web/results.md § 1.2): ``chart`` its name in
+     * the chart table, drawn from the file this viewer shows; ``chosen``
+     * what it is of beyond the file -- the SCF charts', the step they draw. */
+    function _exported(chart, chosen) {
+        return { chart: chart, path: () => state.fileState.path || "",
+                 chosen: () => chosen || {} };
+    }
+
     function setStatus(msg, kind) {
         // The inspector's own status line (`_trajectory_inspector.html`
         // #trajectory-status): a refused load, a viewer that could not
@@ -1106,6 +1114,7 @@ import { outcome } from "../validation-findings.js";
             line: { color: theme.palette[0], width: 1.5 },
             marker: { size: 6 },
             name: "E_KS",
+            tag: "total_energy",
             connectgaps: false,
         }], window.molbuilder.themedLayout({
             title: { text: "Total energy", font: { size: 13 } },
@@ -1123,7 +1132,7 @@ import { outcome } from "../validation-findings.js";
             yaxis: Object.assign({ title: { text: "E_KS (eV)", standoff: 4 },
                                    zeroline: false, automargin: true,
                                    nticks: 5 }, window.molbuilder.energyAxis),
-        }, theme), { displayModeBar: false });
+        }, theme), { displayModeBar: false }, _exported("total-energy"));
 
         // A TRANSIESTA DEVICE COMPUTES NO FORCES, and says so: the reading
         // pass's sentence stands in the plot's place (web/trajectory.md § 2).
@@ -1163,6 +1172,7 @@ import { outcome } from "../validation-findings.js";
                 line: { color: theme.palette[0], width: 2 },
                 marker: { size: 6 },
                 name: "free atoms",
+                tag: "max_force_free",
                 hovertemplate: "step %{x}<br>Max |F| (free atoms): "
                              + "%{y:.4r} eV/A"
                              + "<extra>convergence-gating</extra>",
@@ -1177,6 +1187,7 @@ import { outcome } from "../validation-findings.js";
                     dash: hasBothTraces ? "dash" : "solid" },
             marker: { size: hasBothTraces ? 4 : 6 },
             name: hasBothTraces ? "all atoms" : "Max |F|",
+            tag: "max_force",
             hovertemplate: "step %{x}<br>Max |F| (all atoms): "
                          + "%{y:.4r} eV/A<extra></extra>",
             connectgaps: false,
@@ -1205,7 +1216,7 @@ import { outcome } from "../validation-findings.js";
             // threshold mark).
             const mark = window.molbuilder.thresholdMark(
                 tol, "target " + tol.toFixed(3) + " eV/Å", theme.success,
-                forceYType === "log");
+                forceYType === "log", "force_tolerance");
             forceShapes.push(mark.shape);
             forceAnnotations.push(mark.note);
         }
@@ -1234,7 +1245,7 @@ import { outcome } from "../validation-findings.js";
             legend:      forceLegend.legend,
             shapes:      forceShapes,
             annotations: forceAnnotations,
-        }, theme), { displayModeBar: false });
+        }, theme), { displayModeBar: false }, _exported("max-force"));
 
         renderScfProgress();
     }
@@ -1371,6 +1382,11 @@ import { outcome } from "../validation-findings.js";
             criteria: _scfCriteria(),
             residuals: _scfResiduals(),
             energyTitle: "SCF energy (current step)",
+            // THE STEP THE CHARTS DRAW, by the number the energy chart
+            // shows it under.
+            exported: _exported(null, { step_index:
+                ((state.fileState.data || {}).iterations || [])[stepIdx]
+                ?? stepIdx }),
         });
     }
 

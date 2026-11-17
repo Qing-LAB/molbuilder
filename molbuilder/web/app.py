@@ -226,13 +226,16 @@ def serve_port() -> int:
 #: loading more or beaconing out.  ``'unsafe-inline'`` for STYLE only: 3Dmol
 #: and the inspector cards set a little inline ``style=`` (a structure card's
 #: height), and the risk is CSS injection at worst.  ``img-src data:`` covers
-#: Plotly's data-URI tiles; ``connect-src 'self'`` our ``/api/*`` fetches, and
+#: Plotly's data-URI tiles, ``blob:`` the image Plotly makes in the page's
+#: memory to draw a chart's PNG (a chart's own Export, `web/results.md`
+#: § 1.2; the user, 2026-11-17: "Allow it") -- an image the page itself
+#: made, nothing from elsewhere; ``connect-src 'self'`` our ``/api/*`` fetches, and
 #: is the CSRF defence: a cross-origin fetch is blocked.
 _CSP = (
     ("default-src", "'self'"),
     ("script-src", "'self'"),
     ("style-src", "'self' 'unsafe-inline'"),
-    ("img-src", "'self' data:"),
+    ("img-src", "'self' data: blob:"),
     ("connect-src", "'self'"),
     ("font-src", "'self'"),
     ("object-src", "'none'"),

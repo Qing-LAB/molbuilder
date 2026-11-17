@@ -300,8 +300,10 @@ A run's steps and each step's SCF cycles are the calculation's: its
 ([`web/results.md`](?doc=web/results.md) § 1.1), hands them over — every run's
 steps on one grid and each step's SCF rows, as NetCDF or as tables
 ([`model/datafiles.md`](?doc=model/datafiles.md) § 9.5) *(the user,
-2026-11-17: "Into the calculation Export")*. The viewer writes no file of its
-own.
+2026-11-17: "Into the calculation Export")*. Each of the viewer's four charts
+— the energy, the largest force, the SCF energy and residuals — carries its
+own Export besides: its picture, and the numbers it draws, as it draws them
+([`web/results.md`](?doc=web/results.md) § 1.2).
 
 ## 7. Under the hood, briefly
 

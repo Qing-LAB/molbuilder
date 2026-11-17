@@ -424,8 +424,8 @@ using `setdefault`, so a route's own header wins: the notebook passed through at
 
 - **Content-Security-Policy** — `default-src 'self'`; **`script-src 'self'`**
   (no inline JS — a hard rule, enforced by a test); `style-src 'self'
-  'unsafe-inline'` (the 3D viewers need inline style); `img-src 'self' data:`
-  (Plotly); `font-src 'self'` (KaTeX's math fonts, which ship in the vendor
+  'unsafe-inline'` (the 3D viewers need inline style); `img-src 'self' data:
+  blob:` (Plotly, and the image it makes in memory for a chart's PNG); `font-src 'self'` (KaTeX's math fonts, which ship in the vendor
   folder, `installation.md` § 3); `object-src 'none'`; `frame-ancestors 'none'`; `base-uri`/`form-action`
   `'self'`.
 - `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`,

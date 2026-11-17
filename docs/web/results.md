@@ -100,6 +100,13 @@ answers its own question — *which rung is next*, *which setting is fastest*,
 
 ### 0.4 Designed, not built yet
 
+- **The vibration's charts' and the bench chart's own Export** (§ 1.2), in
+  2.76.0 *(the user, 2026-11-17: "Go ahead", two releases)*: the spectrum —
+  through SpectrumChart's one read-only door of what it draws, its module
+  sealed (`web/spectrumchart.md`) — the orbital levels, the two
+  thermochemistry charts and the bench sweep, each a row of the chart table
+  and its tags; Plotly's own hover button off on them, as on the others.
+
 - **`status`**, on the same answer — how the run is doing — is served and not
   yet shown for a run folder beyond the Run panel's verdict; the trajectory
   viewer's badge shows the run's state as the server sends it with the file
@@ -148,6 +155,42 @@ Raman view applied them (`ctx.exportAsks`,
 pressed, so the export is of what is on screen. The bar is put away with the
 selection: a newer selection's answer replaces it, and a viewer put away
 takes what it handed over with it.
+
+### 1.2 Each chart's own Export
+
+*(The user, 2026-11-17: "Own menu, always seen"; "Server, one composition"; "Go ahead"; "need clear api separation instead of code directly inserted everywhere".)* **Every chart drawn
+through the plot box with a name carries an *Export ▾* button in its top
+corner, always shown.** *Picture* — PNG or SVG, the chart as it stands on
+screen (Plotly's own image of it); *Data* — NetCDF or CSV, the numbers the
+chart draws now, after the person's choices (a frame, a voltage, one frame
+or all), **exactly as drawn**: a residual's absolute value as its log axis
+plots it, a polarized point's T↑ + T↓ as the curve is, each column's words
+saying how it was made. Curves the legend hides are in it, flagged hidden.
+Plotly's own hover button is off on these charts, so there is one way.
+
+**One exporter, one table, one writer — a chart only says what it draws:**
+
+| part | where | knows |
+|---|---|---|
+| the button, the picture, reading the curves, sending them | `lib/chart-export.js` | no chart |
+| what each kind of curve is — its name, units and words, and its x's | the chart table, `data/chart_table.toml` (`chartdata`) | no page |
+| the file | `POST /api/export/chart`, `chartdata.export` through the data-file framework ([`model/datafiles.md`](?doc=model/datafiles.md) § 5b) | the table |
+| a chart | its own drawing code | its name, the selection it was drawn from and the person's choices, handed to the one draw it makes (`plotBox.draw(el, traces, layout, config, {chart, path, chosen})`); each curve's tag, on the curve it builds (`tag`); a threshold's tag, through the one threshold door (`thresholdMark(…, tag)`) |
+
+**What is read**, as the button is pressed: each curve of the chart with a
+tag — its x and y values as Plotly holds them, its legend name, whether the
+legend hides it — and each threshold line with a tag, its value; a curve
+with none (a tie line, a decoration) is no data. **What is sent**: the
+selection the chart was drawn from (`path`), the chart's name, the choices
+(`chosen()`) — only what the chart is of: a stage that runs once its
+stage alone, a device's stage its point, the trajectory's SCF charts the
+step they draw — the curves and the thresholds. The answer is downloaded as
+the calculation's Export is: `<label>.<chart>.nc`, or its tables as one zip
+`<label>.<chart>-csv.zip`, `<label>` the calculation's; a picture is named
+alike, `<label>.<chart>.png`, the label as the calculation's Export offer
+states it (`GET /api/export/offer`). A refusal is said beside the button,
+through the one status writer. A chart drawn without a name has no button: the
+vibration's and the bench's, until 2.76.0 (§ 0.4).
 
 ## 2. Picking a file
 
@@ -707,7 +750,8 @@ is said below the drawing, in its words (`order_way`).
 * **One Plotly box**: every chart on this page — the transport report's, the
   SCF plot, the spectra tab's level diagram and thermochemistry, the bench
   chart, the trajectory's energy and force — is drawn through one door,
-  `lib/plot-box.js` (`molbuilder.plotBox.draw`, `say`, `release` — `say` the
+  `lib/plot-box.js` (`molbuilder.plotBox.draw`, `say`, `release` — `draw`
+  taking, for a chart that exports, its name, path and choices (§ 1.2); `say` the
   sentence a box shows in place of its chart, why there is none), into a box that
   states its size: the module's markup makes the element a box (the
   `plot-box` class beside its own — `draw` refuses any other), so it stands

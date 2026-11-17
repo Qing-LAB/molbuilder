@@ -44,7 +44,7 @@ _RUN_OF_STEP = Var("run_of_step", ("step",), "given", "",
                    auxiliary=True)
 
 #: ``/runs`` -- each run's record.
-_RUN_VARS = (
+RUN_VARS = (
     coordinate("atom"), coordinate("xyz"), coordinate("cell_vector"),
     Var("run", ("run",), "coordinate", "", "a run",
         "its folder below the calculation, stage by stage and each stage's "
@@ -110,7 +110,7 @@ _RUN_VARS = (
 )
 
 #: ``/steps`` -- every step, run after run.
-_STEP_VARS = (
+STEP_VARS = (
     coordinate("atom"), coordinate("xyz"),
     Var("voigt", ("voigt",), "coordinate", "", "stress component",
         "xx, yy, zz, yz, xz or xy, SIESTA's order", dtype=str),
@@ -226,8 +226,8 @@ def data_file_bytes(calc, name: str) -> Tuple[bytes, str]:
     step_dims = {"atom": atoms, "xyz": 3, "voigt": len(VOIGT),
                  "step": n_steps}
     scf_dims = {"step": n_steps, "scf_cycle": n_cycles}
-    runs = {v.name: empty(v, run_dims) for v in _RUN_VARS}
-    steps_v = {v.name: empty(v, step_dims) for v in _STEP_VARS}
+    runs = {v.name: empty(v, run_dims) for v in RUN_VARS}
+    steps_v = {v.name: empty(v, step_dims) for v in STEP_VARS}
     scf = {v.name: empty(v, scf_dims) for v in scf_vars}
     for values in (runs, steps_v):
         for axis in ("atom", "xyz"):
@@ -297,12 +297,12 @@ def data_file_bytes(calc, name: str) -> Tuple[bytes, str]:
               derived_from=(f"{engine}'s output of each run, named by its "
                             f"output_file"))
         ds.setncatts({"label": str(calc.task.label), "engine": engine})
-        write_group(ds.createGroup("runs"), run_dims, _RUN_VARS, runs,
+        write_group(ds.createGroup("runs"), run_dims, RUN_VARS, runs,
                     title="each run's own record: how it ended, what it "
                           "held, what its SCFs and its relaxation had to "
                           "reach")
         g = ds.createGroup("steps")
-        write_group(g, step_dims, _STEP_VARS, steps_v,
+        write_group(g, step_dims, STEP_VARS, steps_v,
                     title="every step the runs finished, run after run: "
                           "each atom's position and force, the energy, the "
                           "stress, the largest force")
@@ -330,5 +330,5 @@ def read_data_file(path) -> Dict[str, Any]:
             "groups": {k: v for k, v in got["groups"].items() if k}}
 
 
-__all__ = ["DATA_SCHEMA", "DataFileError", "VOIGT", "data_file_bytes",
-           "read_data_file"]
+__all__ = ["DATA_SCHEMA", "DataFileError", "RUN_VARS", "STEP_VARS",
+           "VOIGT", "data_file_bytes", "read_data_file"]

@@ -57,6 +57,7 @@ by a second reader: it is that composition on its grid, for analysis.
 | `<label>.TBT.digest.nc` (`.TBT_UP` / `.TBT_DN`) | a TBtrans data file's DOS per orbital, k-averaged once and kept | the reading of the `.TBT.nc` beside it | `molbuilder/tbt-digest@5` | `model/parse.md` § 5e · § 9.6 |
 | `<label>.optical.nc` | a SIESTA vibration's optical calls — each frame's ε₂ on the photon energies, its mode, side and geometry, the settings the calls read: the record of the Raman phase so far | the run's own record steps — the force constants', every frame pending, then each optical call's — and its finish | `molbuilder/optical-data@5` (`@1`–`@4` read as they are) | `engines/vibration.md` § 5.11 § 8 · § 9.3 |
 | `<label>.optimization.nc` · `<label>.steps.nc` | a calculation's runs and their steps (§ 9.5): every step its runs finished on one grid — each atom's position and force, its charges where the run printed them, the energy, the stress, the largest force — each step's SCF cycles, and each run's own record: whether it converged, how it ended; an optimization's data file, and a vibration's runs beside its own data files | an export alone (`stepsdata`, through `optimization.export` and `spectra.export`), never into the calculation | `molbuilder/run-steps@1` | `engines/optimization-postprocessing.md` § 6, `engines/vibration-postprocessing.md` § 1 · § 9.5 |
+| `<label>.<chart>.nc` | what one chart on the Results page draws, as drawn: each curve of each tag, the thresholds, what the person had chosen | an export alone (`chartdata`, `POST /api/export/chart`), never into the calculation | `molbuilder/chart-data@1` | `web/results.md` § 1.2 · § 9.7 |
 | `<label>.raman.nc` | a SIESTA vibration's Raman view at the laser and width a person named — per picked mode `∂α/∂Q` and the strength, at the laser and static, and the equilibrium `α`; what it was derived from by name and sha256 — the result, `<label>.spectra.json`, and the optical calls' data file | an export alone (`spectra.export`), never into the calculation | `molbuilder/raman-view@4` | `engines/vibration.md` § 5.11 § 10 · § 9.4 |
 
 **An engine's NetCDF files molbuilder reads** come through the same door
@@ -215,7 +216,8 @@ naming this section — in every file, every group, the root's included.
    (electronic structure), `eq` (equilibrium), `neq` (non-equilibrium),
    `negf`, `tbt` (TBtrans), `vha`, `kt` (k_B T), `ddmax` / `dhmax`
    (SIESTA's own), `gnorm` / `ddm` (PySCF's own: the orbital gradient's
-   norm, the density matrix's change), `imag` (imaginary), `fd` (finite
+   norm, the density matrix's change), `abs` (an absolute value, as a log
+   axis draws it), `imag` (imaginary), `fd` (finite
    difference), `iscf` (an SCF cycle's own number),
    `max`, `mtime`, `n_` (the number of). A count says what it counts
    (`scf_cycles`, `n_modes`, `removed_motions_count`). An axis or a variable of a physical
@@ -295,6 +297,8 @@ naming this section — in every file, every group, the root's included.
 | `run` | a calculation's runs, stage by stage and each stage's starts in turn | each run's folder below the calculation (`01_coarse/run-0`) | — | steps |
 | `step` | those runs' steps, run by run | from 0; the run each is of beside it (`run_of_step`) | 1 | steps |
 | `voigt` | a stress tensor's six components | `xx`, `yy`, `zz`, `yz`, `xz`, `xy`, SIESTA's order | — | steps |
+| `curve` | a chart's curves of one tag | from 0, in the order the chart drew them; each one's legend name beside it (`curve_name`) | 1 | chart |
+| `curve_point` | a curve's points | from 0, in the order the chart drew them; a curve of fewer points padded with the fill | 1 | chart |
 
 **Files written before these names** read as rule 5 says: the vibration
 data file's reader takes `@1`–`@3`'s names for the new ones, and `@1`–`@9`'s
@@ -531,13 +535,56 @@ its builder's ([`web/projects.md`](?doc=web/projects.md) § 5); where it is
 drawn, the Results tab's top line ([`web/results.md`](?doc=web/results.md)
 § 1.1).
 
+## 5b. A chart's drawn data — one table, one route, one writer
+
+*(The user, 2026-11-17: "Own menu, always seen"; "Server, one composition"; "Go ahead"; "need clear api separation instead of code directly inserted everywhere".)* What a chart on the Results page draws,
+as it draws it ([`web/results.md`](?doc=web/results.md) § 1.2): composed on
+request from what the page sends and written outside the calculation, never
+into it, in the one export shape (§ 5a, `ncdata.exported`).
+
+**The chart table** (`data/chart_table.toml`, read by `chartdata`) is the
+one declaration of what a chart's curves are. `[charts.<chart>]` — a chart
+that exports: its `words`, what it shows, and the `tags` of the curves and
+the `marks` of the threshold lines it may draw. `[xs.<x>]` — what curves
+run along, the variable `<x>`. `[tags.<tag>]` — a kind of curve, its `y` and
+the `[xs]` row it runs along (`x`); or of threshold line, its `mark`. **A
+variable is its owner's where a file declares it** — one concept, one name,
+one statement (§ 2a rule 1): `{of = "<module:NAME>", name}` a data file's
+table (the transport file's `VARIABLES`, the steps file's `STEP_VARS` and
+`RUN_VARS`), its kind, units, words and source as they are there; `{of =
+"scf", name}` the calculation's engine's SCF column (the engine table's
+`scf_columns`, § 9.0.6); `{of = "axis"}` an axis's own row of
+`ncdata.AXES`; and only what no file declares is stated in the table, whole
+— the two spins' transmission summed, a residual's absolute value as a log
+axis draws it, a residual's tolerance line, a chosen selection's PDOS, the
+viewer's step number. A page draws a curve with its tag (`tag`), a
+threshold with its tag (`thresholdMark`), and names a chart by its row:
+none of them states a name, a unit or a word of the file. The table is
+checked whole as it loads (`chartdata.table`): every key known
+(`persist.unknown_keys`), every chart's tags and marks rows of their kind,
+no two curves of one chart one variable, and every variable one the one
+writer takes (`ncdata.check_said`) — an owner's resolved by the kind
+table's one door to a part a record names (`kind_table.part`).
+
+**The route**, `POST /api/export/chart?format=netcdf|csv`, takes the JSON
+record `{path, chart, chosen, curves: [{tag, name, hidden, x, y}], marks:
+[{tag, value}]}`; **the writer**, `chartdata.export`, lays it out (§ 9.7)
+through `write_group`; **the reader**, `chartdata.read_data_file` —
+`postprocess.read_chart_data` (§ 6) — reads it back, another schema refused
+by name. Refused, naming what: a chart not in the table; a tag or a mark
+the chart does not draw; a curve whose x and y differ in length, or hold
+what is not a number; two marks of one tag; a chart that drew nothing; a
+tag's curves padded past `chartdata.MAX_CELLS` cells — more than any chart
+draws, so no request holds the server's memory; a path in no calculation.
+
 ## 6. One import — `molbuilder.postprocess`
 
 A person's script reads every data file with the functions molbuilder's own
 doors ask (`model/parse.md` § 3, *One layer*): `read_transport_data`,
 `read_spectra_data`, `read_optical_data` — each with its atom index map —
 `read_steps_data` for an exported calculation's runs and their steps, also with its map,
-`read_raman_data` for an exported Raman view, `infrared_view` and
+`read_raman_data` for an exported Raman view, `read_chart_data` for what
+one chart drew (§ 9.7), `infrared_view` and
 `raman_view` for the spectrum viewer's two derivations, `atom_index_map(path)`,
 `read_structure(path)` for a structure pair in the user order with the map
 of the structure it returns, `parse(path)` for an engine's file in its own order
@@ -619,7 +666,7 @@ engine chapters keep the science and link here.
 
 ### 9.0 How to read it, and what every file shares
 
-**A file** (9.1–9.6) opens with what it is, who writes it, its `schema` and the
+**A file** (9.1–9.7) opens with what it is, who writes it, its `schema` and the
 chapter that explains its science. **Its groups** follow by path — `/` the
 root, `/structure` a group below it, `<point>` a name that varies. **A group's
 variables** are a table:
@@ -659,7 +706,7 @@ the group that is their home; the coordinates more than one file shares are
 | `schema` | the root | which file this is, at which version: `molbuilder/<file>@<n>`; a reader refuses a version it does not read, by name |
 | `molbuilder_version` | the root | the molbuilder that wrote the file — for a file a job writes (the vibration result, the optical calls), the one that ran the job |
 | `source` | the root | how its data were made, one sentence: *computed by* the engine and its version *in* where it ran; *derived from* the files it was read from; or both, for a view derived from files an engine computed. *Its version not stated by its output* where the engine's output states none |
-| `engine_version` | the root, where an engine computed the data; each run's group in the transport file | the engine's version, as its output's build header states it (`5.4.2` for SIESTA, `2.14.0` for PySCF); empty where its output states none. A file that states only what it was derived from (9.5, 9.6) has none |
+| `engine_version` | the root, where an engine computed the data; each run's group in the transport file | the engine's version, as its output's build header states it (`5.4.2` for SIESTA, `2.14.0` for PySCF); empty where its output states none. A file that states only what it was derived from (9.5, 9.6, 9.7) has none |
 | `Conventions` | the root | `CF-1.8` |
 | `unit_meanings` | the root | *JSON text*: each unit spelling the file's variables use, and what it means in words (§ 2c) |
 | `label` | the root, every file but the digest | the calculation's label, the `<label>` of its files' names |
@@ -1224,7 +1271,9 @@ charges (*Compute IR*); absent on PySCF.
 
 ### 9.3 `<label>.optical.nc` — a SIESTA vibration's optical calls
 
-The record of a SIESTA vibration's Raman phase so far: every optical call's ε₂
+*Optical* is SIESTA's word: an optical call is one SIESTA run with
+`OpticalCalculation` on, at the reference geometry or one side of a picked
+mode ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.11). The record of a SIESTA vibration's Raman phase so far: every optical call's ε₂
 on the photon energies, its mode, side and geometry, its state and SCF facts,
 and the settings the calls read. Written at the run's root by the run's own
 record steps — the force constants' (every frame pending), each optical
@@ -1505,3 +1554,79 @@ Each value is the data file's channel's (`channel`), with no spin factor
 | `spin` | in words: TBtrans's T and DOS carry no spin factor — a non-polarized run's are each spin's, up = down; a polarized run's are this file's channel alone |
 | `energies_held` | in words: the energies this data file holds are its run's own; a point that shares energies with a finished one holds the others in its `shared/` folder, beside their own digest |
 | `orbital_types` | in words: the data file does not state each orbital's type — the device run's `<label>.ORB_INDX` names its l and m, in the same order |
+
+### 9.7 `<label>.<chart>.nc` — what one chart draws
+
+What one chart on the Results page drew, as it drew it (§ 5b;
+[`web/results.md`](?doc=web/results.md) § 1.2). Schema
+`molbuilder/chart-data@1`. Written only by an export, never into the
+calculation. Its words are the chart table's (`data/chart_table.toml`): a
+tag's `y` and `x` are the variables below, a mark's a variable on the root.
+
+#### `/` — the file's own statement
+
+| attribute | what it says |
+|---|---|
+| `title` · `schema` · `molbuilder_version` · `source` · `Conventions` · `unit_meanings` | 9.0.1 — `source` says the chart it was drawn on and the file it was drawn from |
+| `label` | the calculation's label |
+| `chart` | the chart's name in the chart table |
+| `shown` | the file or folder the chart was drawn from, below the calculation |
+| `chosen` | **record**: what the person had chosen as the chart was drawn — a frame, a voltage, one frame or all, a stage — the chart's own keys |
+
+| name | over | kind | units | what it is |
+|---|---|---|---|---|
+| each mark's `name` | — | its `kind` | its `units` | a threshold line the chart drew: its value — `force_tolerance_ev_per_ang`, an SCF residual's tolerance (below) |
+
+#### `/<y>` — every curve of one tag, the group named by the tag's `y`
+
+*Axes* `curve`, `curve_point` · *Labels* `curve_name` (curve)
+
+| name | over | kind | units | what it is |
+|---|---|---|---|---|
+| `curve` | curve | coordinate | 1 | a curve, from 0, in the order the chart drew it |
+| `curve_point` | curve_point | coordinate | 1 | a curve's point, from 0 |
+| `curve_name` | curve | given | — | **label**: the curve's legend name, as the chart showed it |
+| `curve_hidden` | curve | state | 1 | **flag**: whether the legend hid the curve |
+| the tag's `x` | curve, curve_point | given | its units | the values the curve runs along; the fill past its last point |
+| the tag's `y` | curve, curve_point | its kind | its units | the curve's values, as drawn; the fill past its last point |
+
+#### The charts and their tags (2.75.0)
+
+Each chart's `tags` and `marks`, as the table lists them; a curve's
+variable, where a file declares it, is that file's — its words in its own
+entry.
+
+| chart | what it shows | its tags · marks |
+|---|---|---|
+| `total-energy` | the energy at each geometry step of the run shown | `total_energy` |
+| `max-force` | the largest force at each geometry step, and the run's tolerance | `max_force`, `max_force_free` · `force_tolerance` |
+| `scf-energy` | an SCF's energy at each cycle — a step's, a stage's, or each run of a frame set | `scf_energy` |
+| `scf-residuals` | an SCF's residuals at each cycle, and their tolerances | `dDmax`, `dHmax`, `dq`, `delta_E`, `gnorm` — each a curve and a mark |
+| `transmission` | the transmission T(E) of the points drawn | `transmission`, `transmission_by_spin`, `transmission_total`, `average_transmission`, `eigenchannel_transmission` |
+| `dos` | the density of states of the points drawn | `dos_total`, `dos_total_by_spin`, `dos_region`, `lead_spectral_dos`, `lead_bulk_dos`, `pdos` |
+| `iv` | the current against the bias | `current`, `current_by_spin`, `iv_current`, `iv_current_by_spin` |
+
+| tag | `y` — the group's name | whose | `x` |
+|---|---|---|---|
+| `total_energy` | `total_energy_ev` | the steps file's (9.5, `/steps`) | `step_index` (1): the geometry step's number in the run's output, as the chart counts it |
+| `max_force` · `max_force_free` | `stated_max_force_ev_per_ang` · `stated_max_force_free_ev_per_ang` | the chart's: raw, eV/angstrom — the largest force over every atom, over the atoms the run moved, **as the engine states it**: SIESTA's `Max` line, its largest Cartesian component (`Max … constrained`); a PySCF run's largest per-atom magnitude — the run's reader's figure, so not the steps file's `max_force_ev_per_ang`, the component recomputed from the forces — *from the run's own output* | `step_index` |
+| `scf_energy` · `dDmax` · `dHmax` · `gnorm` | `scf_energy_ev` · `scf_ddmax` · `scf_dhmax_ev` · `scf_gnorm_ev` | the calculation's engine's SCF columns (9.0.6) | `scf_iscf`, the engine's column (9.0.6) |
+| `dq` | `scf_dq_abs_e` | the chart's: derived, e — \|dQ\| of a TranSIESTA NEGF row, as the log axis draws it | `scf_iscf` |
+| `delta_E` | `scf_delta_e_abs_ev` | the chart's: derived, eV — \|dE\|, as the log axis draws it | `scf_iscf` |
+| `transmission` · `transmission_by_spin` · `average_transmission` · `eigenchannel_transmission` | the same names | the transport file's (9.1) | `energy_ev`, its axis's row (§ 2a) |
+| `transmission_total` | `transmission_total` | the chart's: derived, 1 — T↑ + T↓, a polarized point's two channels summed | `energy_ev` |
+| `dos_total` · `dos_total_by_spin` · `dos_region` · `lead_spectral_dos` · `lead_bulk_dos` | `dos_total_per_ev` · `dos_total_by_spin_per_ev` · `dos_region_per_ev` · `lead_spectral_dos_per_ev` · `lead_bulk_dos_per_ev` | the transport file's (9.1) | `energy_ev` |
+| `pdos` | `pdos_per_ev` | the chart's: derived, 1/eV — the DOS projected on the orbitals the person chose (`postprocess.pdos`), a curve each selection; a polarized point's two channels summed | `energy_ev` |
+| `current` · `current_by_spin` | `current_a` · `current_by_spin_a` | the transport file's (9.1) | `bias_v`, the transport file's |
+| `iv_current` · `iv_current_by_spin` | `iv_current_a` · `iv_current_by_spin_a` — computed from T(E, 0) under the low-bias approximation | the transport file's (9.1) | `iv_bias_v`, the transport file's |
+
+| mark | name | whose |
+|---|---|---|
+| `force_tolerance` | `force_tolerance_ev_per_ang` | the steps file's (9.5, `/runs`) |
+| `dDmax` · `dHmax` · `dq` · `delta_E` · `gnorm` | `scf_ddmax_tolerance` (1) · `scf_dhmax_tolerance_ev` · `scf_dq_tolerance_e` · `scf_delta_e_tolerance_ev` · `scf_gnorm_tolerance_ev` | the chart's: raw — the tolerance the SCF on screen had to reach, *from the run's stated SCF criteria* |
+
+A curve's legend name says which point, spin, region, lead or channel it
+is. **A variable from a file keeps that file's statement whole** — its words
+and its source; a word that names another of that file's variables
+(`current_from`, `iv_computed`) is read in that file (9.1).
+

@@ -10,6 +10,9 @@ Routes:
     GET /api/export                         a calculation's results as they
                                             stand, as NetCDF or as tables
                                             (`model/datafiles.md` § 5a)
+    POST /api/export/chart                  what one chart draws, as NetCDF
+                                            or as tables (`model/datafiles.md`
+                                            § 5b)
     GET /api/export/offer                   what a calculation's export
                                             takes, which the page's one
                                             Export bar is drawn from
@@ -126,6 +129,37 @@ def api_export():
     return sent_export(got)
 
 
+@bp.route("/api/export/chart", methods=["POST"])
+def api_export_chart():
+    """WHAT ONE CHART DRAWS, for the person to keep (`model/datafiles.md`
+    § 5b, `web/results.md` § 1.2) -- ``?format=`` ``netcdf`` or ``csv``;
+    the JSON body ``{path, chart, chosen, curves, marks}``: the selection
+    the chart was drawn from, the chart's name in the chart table, the
+    choices it was drawn with, each curve ``{tag, name, hidden, x, y}`` and
+    each threshold ``{tag, value}`` -- one attachment, composed on request
+    (`chartdata.export`), nothing written into the calculation.  400 names
+    what is refused."""
+    from molbuilder.calculation import NotACalculation, at
+    from molbuilder.chartdata import export
+    from molbuilder.ncdata import ExportError
+    from ._shared import sent_export
+    from .files import _existing, _resolve_within_roots
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict) or not body.get("path"):
+        return err("the body is a JSON record {path, chart, chosen, curves, "
+                   "marks}: path the selection the chart was drawn from", 400)
+    path = _existing(_resolve_within_roots(str(body["path"])))
+    try:
+        got = export(at(path), str(request.args.get("format") or ""),
+                     path=path, chart=str(body.get("chart") or ""),
+                     chosen=body.get("chosen") or {},
+                     curves=body.get("curves") or [],
+                     marks=body.get("marks") or [])
+    except (NotACalculation, ExportError, ValueError, OSError) as exc:
+        return err(str(exc), 400)
+    return sent_export(got)
+
+
 @bp.route("/api/export/offer", methods=["GET"])
 def api_export_offer():
     """WHAT A CALCULATION'S EXPORT TAKES (`model/datafiles.md` § 5a) --
@@ -161,6 +195,7 @@ def api_export_offer():
         return err(str(exc), 500)
     return jsonify({"ok": True, "offer": {
         "calculation": str(calc.base),
+        "label": str(calc.task.label),
         "forms": [{"name": name, "words": words}
                   for name, words in EXPORT_FORMATS.items()],
         "asks": [asdict(r) for r in kind.export_asks],

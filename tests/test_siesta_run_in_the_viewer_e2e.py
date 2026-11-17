@@ -125,6 +125,96 @@ def test_the_scf_plot_draws_both_tests_siesta_requires(
     assert "dDmax=" in scf and "dHmax=" in scf, scf
 
 
+def test_each_chart_exports_what_it_draws(finished, real_h2_layered, page,
+                                          flask_server, monkeypatch,
+                                          tmp_path):
+    """`web/results.md` § 1.2, `model/datafiles.md` § 9.7: each of the
+    viewer's four charts carries its own Export, and its file holds what the
+    chart draws -- the run's own numbers: each step's energy and largest
+    force the run door's (`read_steps`), to the 0.0001 eV SIESTA prints; the
+    force tolerance the run's record's, and both SCF tolerances the deck's;
+    the SCF energy of the step shown the run door's rows of that step.  Its
+    picture is a PNG; its tables lie beside their README.
+
+    THE SILENT FAILURE: a file whose numbers are not the chart's -- another
+    step's, a curve or a threshold lost -- or one naming no chart."""
+    import io
+    import zipfile
+
+    import numpy as np
+    from molbuilder.parse.fdf import parse_fdf_params
+    from molbuilder.postprocess import read_chart_data, read_steps
+    from molbuilder.runs import run_of
+    from support.pages import chart_exported
+    steps = read_steps(finished)
+    deck = parse_fdf_params(run_of(finished).deck.read_text(),
+                            source="the deck")
+    _open(page, flask_server, finished, real_h2_layered.tree, monkeypatch)
+
+    def drawn(path, group):
+        """The file read back through its reader (`read_chart_data`): its
+        root, and each curve of ``group`` -- its finite values, whether
+        hidden."""
+        data = read_chart_data(path)
+        v = data["groups"][group]["variables"]
+        return data, [(y[np.isfinite(y)], hidden == 1) for y, hidden in
+                      zip(v[group]["data"], v["curve_hidden"]["data"])]
+
+    def held(values):
+        return values[np.isfinite(values)]
+    energy = chart_exported(page, page.locator("#energy-plot"), "NetCDF",
+                            tmp_path)
+    assert energy.name.endswith(".total-energy.nc"), energy.name
+    data, [(curve, _)] = drawn(energy, "total_energy_ev")
+    assert data["attrs"]["chart"] == "total-energy", data["attrs"]
+    np.testing.assert_allclose(curve, held(steps.energy_ev), atol=1e-4)
+
+    force = chart_exported(page, page.locator("#force-plot"), "NetCDF",
+                           tmp_path)
+    # SIESTA's Max line is its largest Cartesian component: the figure the
+    # run door recomputes from the forces (`model/datafiles.md` § 9.7).
+    data, curves = drawn(force, "stated_max_force_ev_per_ang")
+    np.testing.assert_allclose(curves[0][0],
+                               held(steps.max_force_ev_per_ang), atol=1e-4)
+    root = data["groups"][""]["variables"]
+    assert float(root["force_tolerance_ev_per_ang"]["data"]) == (
+        pytest.approx(steps.relaxation["force_tolerance_ev_ang"]))
+
+    residuals = chart_exported(page, page.locator("#scf-gnorm-plot"),
+                               "NetCDF", tmp_path)
+    data, _ = drawn(residuals, "scf_ddmax")
+    root = data["groups"][""]["variables"]
+    assert float(root["scf_ddmax_tolerance"]["data"]) == pytest.approx(
+        deck.dm_tolerance)
+    assert float(root["scf_dhmax_tolerance_ev"]["data"]) == pytest.approx(
+        deck.h_tolerance_ev)
+    assert drawn(residuals, "scf_dhmax_ev")[1]
+
+    # THE STEP THE SCF CHARTS DRAW, named in the file: its rows the run's.
+    scf = chart_exported(page, page.locator("#scf-energy-plot"), "NetCDF",
+                         tmp_path)
+    data, curves = drawn(scf, "scf_energy_ev")
+    shown = [c for c, hidden in curves if not hidden]
+    last = [k for k, rows in enumerate(steps.scf_rows) if rows][-1]
+    assert "step_index" in data["attrs"]["chosen"], data["attrs"]["chosen"]
+    np.testing.assert_allclose(np.concatenate(shown),
+                               [r["energy"] for r in steps.scf_rows[last]])
+
+    picture = chart_exported(page, page.locator("#energy-plot"), "PNG",
+                             tmp_path)
+    assert picture.read_bytes()[:8] == b"\x89PNG\r\n\x1a\n", picture.name
+    vector = chart_exported(page, page.locator("#force-plot"), "SVG",
+                            tmp_path)
+    assert vector.name.endswith(".max-force.svg"), vector.name
+    assert vector.read_text().lstrip().startswith("<svg"), vector.name
+    tables = chart_exported(page, page.locator("#energy-plot"), "CSV",
+                            tmp_path)
+    names = zipfile.ZipFile(io.BytesIO(tables.read_bytes())).namelist()
+    assert any(n.endswith("README.txt") for n in names), names
+    assert any(n.endswith("total_energy_ev/curve_curve_point.csv")
+               for n in names), names
+
+
 def test_every_element_the_viewer_draws_into_is_on_its_panel(
         finished, real_h2_layered, page, flask_server, monkeypatch):
     """Every element the trajectory viewer looks up on its panel answers, one

@@ -57,15 +57,16 @@ calculation.
 | `catalogue.template.toml` | `molbuilder/template@2` | `molbuilder.template.read_template` | **new 2026-08-14 — the parameter catalogue** |
 | `jupyter.toml` | `molbuilder/jupyter@1` | `molbuilder.jupyter.load_rules` | **new 2026-09-15 — the framed notebook's settings** |
 | `report-cards.json` | `molbuilder/report-cards@1` | `molbuilder.report_cards.load` — and the monitor beside a job, from its bundle | **2026-10-19 — the chat card's layout per receiver**. Its override is `<config dir>/report-cards.json`: the config dir travels with the monitor (`run-reports.md` § 4.1c) |
+| `chart_table.toml` | — (a rule table) | `molbuilder.chartdata.table` | **new 2026-11-17 — what each chart on the Results page draws, as a data file holds it** (`model/datafiles.md` § 5b, § 9.7) |
 | `jupyter_server_config.py` | — (executed Python) | **nothing imports it** — `molbuilder.jupyter.prepare_lab_home` COPIES it into the Lab home at every notebook start | **new 2026-09-15** |
 
-> **Two of these are not "fundamental physical data", and that is deliberate.**
+> **Four of these are not "fundamental physical data", and that is deliberate.**
 > This directory is also where molbuilder keeps an authored RULE TABLE it ships
-> (`catalogue.template.toml`, `jupyter.toml`) and one file of real Python that
+> (`catalogue.template.toml`, `jupyter.toml`, `chart_table.toml`) and one file of real Python that
 > is copied rather than imported — `jupyter_server_config.py` subclasses a
 > jupyter-server class the host env does not have, so it must never be
 > importable, and a directory with no `__init__.py` is what guarantees that.
-> Both are carried into a wheel by `pyproject.toml`'s `data/*.toml` and
+> All are carried into a wheel by `pyproject.toml`'s `data/*.toml` and
 > `data/*.py`. *(The table above listed neither, nor `contact_distance.json`,
 > until 2026-09-15.)*
 
@@ -201,6 +202,21 @@ measures the nearest-neighbour distance and reports
 
 **The loader reads v3 alone**, the shape this file has: a table that is
 not v3, or does not read, is refused with its path.
+
+---
+
+## `chart_table.toml` — what each chart draws, as a data file holds it
+
+**An authored rule table, like `catalogue.template.toml`: no measured value
+in it.** Each chart that exports (`[charts.<chart>]`: its words, the curves
+and thresholds it may draw), what curves run along (`[xs.<x>]`), and each
+kind of curve or threshold line a page tags (`[tags.<tag>]`) — a variable a
+data file declares, named there, or, where none does, the variable stated
+whole. The page puts a tag on what it draws and names nothing else;
+`chartdata` reads the table once, checks every name and unit against the
+data-file rules as it loads, and lays a chart's drawn data out by it
+(`model/datafiles.md` § 5b, § 9.7). A new chart or curve is a row here and
+its row in § 9.7, in the same change.
 
 ---
 

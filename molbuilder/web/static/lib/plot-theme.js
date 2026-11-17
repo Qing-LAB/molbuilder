@@ -90,10 +90,12 @@
      * the y-axis is logarithmic, where Plotly places a shape by the value
      * and an annotation by its log10 -- so the label is put on its line,
      * not at 10^value (`web/trajectory.md` § 3). */
-    function thresholdMark(value, text, colour, log) {
+    function thresholdMark(value, text, colour, log, tag) {
         return {
+            // ``tag``: what the line is, in the chart table -- the chart's
+            // Export reads it (lib/chart-export.js).
             shape: { type: "line", xref: "paper", x0: 0, x1: 1,
-                     yref: "y", y0: value, y1: value,
+                     yref: "y", y0: value, y1: value, tag: tag,
                      line: { color: colour, width: 1.5, dash: "dash" } },
             note: { xref: "paper", x: 1, xanchor: "right", yref: "y",
                     y: log ? Math.log10(value) : value, yanchor: "bottom",

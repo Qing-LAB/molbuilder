@@ -218,6 +218,8 @@ AXES: Dict[str, Axis] = {a.name: a for a in (
     Axis("run", "a calculation's runs", ""),
     Axis("step", "those runs' steps, run by run", "1"),
     Axis("voigt", "a stress tensor's six components", ""),
+    Axis("curve", "a chart's curves of one tag", "1"),
+    Axis("curve_point", "a curve's points", "1"),
 )}
 
 

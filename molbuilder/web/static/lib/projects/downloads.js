@@ -6,8 +6,9 @@
  *           route composed and named.  Where files may go is the projects
  *           module's knowledge, so every page that hands a person a file
  *           asks here.
- * Called by: the MolView files door (`molview-doors.js`), the spectra and
- *           trajectory viewers' CSVs, and the Results tab's one Export bar.
+ * Called by: the MolView files door (`molview-doors.js`), the spectra
+ *           viewer's CSV, the Results tab's one Export bar, and each chart's
+ *           own Export (`lib/chart-export.js`): its picture and its data.
  *
  * NEVER: name a file the server did not name; throw — an export answers
  *        `{ok, ...}` like every public method of the module (projects.md
@@ -42,14 +43,16 @@ function _sentName(headers) {
 }
 
 /* AN EXPORT THE SERVER COMPOSES, handed to the person
- * (`projects.downloadExport`): ``url`` a GET route answering the file
- * itself, named.  Resolves ``{ok: true, said}`` -- ``said`` what the server
+ * (`projects.downloadExport`): ``url`` a route answering the file itself,
+ * named -- asked with GET, or POSTed ``body`` where one is given (a chart's
+ * drawn data, `POST /api/export/chart`).  Resolves ``{ok: true, said}`` -- ``said`` what the server
  * said beside it (``X-Molbuilder-Said``), or "" -- once the download is
  * handed to the browser; ``{ok: false, error}`` in the words of the one
  * reader of an answer (ui-contract.md § 12) -- the route's own refusal, or
  * why it could not be read.  Never throws. */
-export async function downloadExport(url) {
-    const a = await ask(url, { as: "file" });
+export async function downloadExport(url, body) {
+    const a = await ask(url, body === undefined ? { as: "file" }
+                                                : { as: "file", method: "POST", body });
     if (!a.ok) return { ok: false, error: a.error, aborted: a.aborted };
     const name = _sentName(a.headers);
     if (!name) return { ok: false, error: url + " sent a file it did "
