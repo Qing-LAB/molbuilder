@@ -310,7 +310,7 @@ const WORKSPACE_TAG = "results:transport";
             buttons.forEach((b) => { b.disabled = true; });
             say("Composing the export.", "muted");
             const got = await root.molbuilder.projects.downloadExport(
-                "/api/transport/export?" + new URLSearchParams(
+                "/api/export?" + new URLSearchParams(
                     Object.assign({ path: file }, ask)).toString());
             buttons.forEach((b) => { b.disabled = false; });
             say(got.ok ? got.said : got.error, got.ok ? "muted" : "warn");

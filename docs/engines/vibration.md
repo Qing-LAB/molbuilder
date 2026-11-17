@@ -2922,7 +2922,7 @@ sentence at load — the route, $\hat e$, $\delta$, the laser, the width, and
 | door | asks | answers |
 |---|---|---|
 | the load door, `POST /api/spectra/load` | `raman: {laser_nm, broaden_ev?}` beside `infrared`, read by `spectra.raman.read_ask` | `results.raman`, the view; a view the result cannot give — no optical route, no optical call finished yet, a deck stating no width, a width below the run's, a laser outside the stored spectrum, a data file with no cell — `results.raman_said`, the result still loading |
-| the export, `GET /api/spectra/export` and `molbuilder jobset export` | `format` `netcdf` or `csv`; `laser_nm`, `broaden_ev` (the page's boxes; the command's `--laser-nm`, `--broaden-ev`) | the calculation's vibration data files as they are, and the view composed now (below) |
+| the export, `GET /api/export` and `molbuilder jobset export` | `format` `netcdf` or `csv`; `laser_nm`, `broaden_ev` (the page's boxes; the command's `--laser-nm`, `--broaden-ev`) | the calculation's vibration data files as they are, and the view composed now (below) |
 | a script, `molbuilder.postprocess` | `raman_view(path, laser_nm=, broaden_ev=None)`; `read_optical_data(path)`; `read_raman_data(path)` | the same view; the optical calls' data file as data, with its atom index map; an exported view as data |
 | a notebook, with no molbuilder | `xarray.open_dataset(path, group="frames")` | every data file reads as NetCDF-4 alone (`model/datafiles.md` § 0) |
 
@@ -2977,7 +2977,7 @@ way back: the view exported again.
 | **the job's Python** | `spectra/siesta_vibration.py` (`plan`, `record`, `finish-run` — the vibration's own steps, run by each call's report steps, `runwrap.PointOfRun`; `finish`, the analysis by hand), the `.EPSIMG`'s one reader (`parse/engines/siesta_epsimg_reader.py`, travelling) and its registered parser (`parse/engines/siesta_epsimg.py`), the coordinates writer (`siesta/deck_lines.py`), the displacement rule's one function; `selection`, `calcdirs`, `paths`, `vibration_phases`, `runpoints` in the bundle |
 | **the result** | `spectra/results.py`: `optical`, `raman_route` `optical`, `raman_fd_step_ang`, `phase_raman` on SIESTA (schema 13; an optical frame `not done` or `not run`, schema 14) — `phase_ir` and `ir_route` `charges`; `spectra/datafile.py`; `spectra/optical_data.py` (its `Var` table); `ncdata.AXES`; the record step's refusal of a `vibration` block without `raman` |
 | **the reader of decks** | `parse/fdf.py`: `read_deck` inlines `%block Label < Filename`, as libfdf reads it, for every reader of a deck's file |
-| **the view** | `spectra/raman.py` (the derivation, its ask's reader, the `raman.nc` variable table); the load door (`raman` view, its asks); `spectra/export.py` and `GET /api/spectra/export`, `jobset export` for a vibration; `postprocess.raman_view`, `read_optical_data`, `read_raman_data`; `methods`; the viewer — `_ramanOf`, the two boxes, the Export buttons, and every gate read by route (§ 8) |
+| **the view** | `spectra/raman.py` (the derivation, its ask's reader, the `raman.nc` variable table); the load door (`raman` view, its asks); `spectra/export.py` and `GET /api/export`, `jobset export` for a vibration; `postprocess.raman_view`, `read_optical_data`, `read_raman_data`; `methods`; the viewer — `_ramanOf`, the two boxes, the Export buttons, and every gate read by route (§ 8) |
 | **the catalogue** | the optical items; *Compute IR*, *Compute Raman* and *Raman for* on both engines, under their results' cards (§ 3.1) |
 | **the sweep** | `displacement_sweep.collect_sweep` reads each stage's `fc` call below its run; `jobset migrate` turns a description of the earlier `relax → freq` ladder into the one stage (§ 9) |
 
@@ -3651,7 +3651,7 @@ Each names where it holds and what pins it.
 | `molbuilder/validation/spectra.py` · `validation/__init__.py` | the two kinds' checks and the dispatch (§ 3.3) |
 | `molbuilder/jobset/prep.py` · `jobset/_cli.py` · `jobset/materialize.py` | the sort at prep, the phases' decks and the finish onto the stage's job; `molbuilder describe`'s kind gate; the bundle brought into each attempt |
 | `molbuilder/runwrap.py` | the run wrapper — its banner names the held atoms from the deck's one spelling, and it runs each call's two report steps, which run its plan and record steps, the finish among them (`PointOfRun`, `_point_block`); `VIBRATION_BUNDLE` / `VIBRATION_COMPANIONS`, what travels for the finish (§ 5.5); `PYSCF_BUNDLE` / `PYSCF_COMPANIONS`, what the PySCF script imports (`engines/pyscf.md` § 3); `bundles_for`, the one list of what travels beside a deck |
-| `molbuilder/web/blueprints/spectra.py` · `build.py` | the tab page, `/api/spectra/load` and `_loaded`, `/api/spectra/export`; the schema, preflight and hand-over doors |
+| `molbuilder/web/blueprints/spectra.py` · `build.py` · `results.py` | the tab page, `/api/spectra/load` and `_loaded`; the schema, preflight and hand-over doors; the one export route, `/api/export` (`model/datafiles.md` § 5a) |
 | `molbuilder/web/static/lib/inspectors/fc-sweep.js` | the sweep record's presenter on the Results tab (§ 5.9) |
 | `molbuilder/web/static/spectra/viewer.js` · `lib/spectra/core.js` · `lib/inspectors/spectra.js` · `lib/spectrumchart/` · `lib/vibrationview/` · `lib/task-handover.js` · `task-setup/viewer.js` | the tab, the shared engine, the presenter, the chart, the animation, the hand-over, the rung tab that prints the commands |
 
@@ -3693,7 +3693,7 @@ flowchart TB
 | `POST /api/task-setup/handover` | render and write `<label>.template.toml`, `task.1st.json` and the structure pair for the kind into the folder the person chose, every file or none |
 | `POST /api/task-setup/save` · `/prep` | write `task.json` and `job-request.json`; run `prep` for the groups picked, each one job, on a named machine — the function the terminal's `prep task` runs |
 | `POST /api/spectra/load` | parse an existing `.spectra.json` into display data, with the infrared and Raman views asked (§ 5.10 ②, § 5.11 § 10); typed errors |
-| `GET /api/spectra/export` · `molbuilder jobset export` | a vibration calculation's data files and its Raman view at a laser, one zip or a folder (§ 5.11 § 10) |
+| `GET /api/export` · `molbuilder jobset export` | a vibration calculation's data files and its Raman view at a laser, one zip or a folder (§ 5.11 § 10) |
 | `molbuilder.postprocess` | a script's readers of the result, its data files and the views (§ 5.11 § 10) |
 | `molbuilder describe / prep / launch` | the same road from a terminal (§ 2.1); the run ends with the result |
 | `molbuilder jobset summarize task [--tolerance-cm1 X]` | a SIESTA displacement sweep's comparison, `<label>.fc-sweep.json` (§ 5.9) |

@@ -3,17 +3,15 @@ when asked, as its data file or as that file's tables
 (`engines/optimization-postprocessing.md` § 6).
 
 MODULE  optimization.export (L4)
-ROLE    :func:`export` -- what `molbuilder jobset export` asks (`kind_table`,
-        ``export``): the data file composed now from what the runs hold
-        (`datafile.data_file_bytes`), and for CSV its tables and README
+ROLE    :func:`export` -- what `molbuilder jobset export` and `GET
+        /api/export` ask (`kind_table`, ``export``): the data file composed
+        now from what the runs hold (`datafile.data_file_bytes`), and for
+        CSV its tables and README
         (`ncdata.as_tables`).  **Nothing is written into the calculation.**
 """
 from __future__ import annotations
 
 from ..ncdata import ExportError, Exported
-
-#: What an optimization's export asks beyond its form: nothing.
-ASKS: tuple = ()
 
 
 def _stem(calc) -> str:
@@ -25,14 +23,14 @@ def _stem(calc) -> str:
 def name_of(calc, fmt: str, **_asks) -> str:
     """What an export of ``calc`` as ``fmt`` is named -- the data file itself,
     or its tables' folder -- known before anything is composed; it asks
-    nothing beyond its form (:data:`ASKS`), the export surface's
-    ``name_of(calc, fmt, **asks)`` (`kind_table`)."""
+    nothing beyond its form (no ``export_asks`` in the kind table), the
+    export surface's ``name_of(calc, fmt, **asks)`` (`kind_table`)."""
     from ..ncdata import export_name
     from .datafile import data_file_name
     return export_name(_stem(calc), fmt, data_file_name(calc))
 
 
-def export(calc, fmt: str) -> Exported:
+def export(calc, fmt: str, *, folder=None) -> Exported:
     """Every step the optimization ``calc`` (`calculation.open`) has finished,
     as ``fmt`` -- ``netcdf``: the data file, ``{name: bytes}``; ``csv``: its
     tables and ``README.txt`` -- the runs that give no step said, and why.
@@ -49,4 +47,4 @@ def export(calc, fmt: str) -> Exported:
                     said=said)
 
 
-__all__ = ["ASKS", "export", "name_of"]
+__all__ = ["export", "name_of"]

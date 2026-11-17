@@ -2786,7 +2786,7 @@
     /* THE CALCULATION'S DATA FILES, downloaded (web/spectra.md § 3.3;
      * engines/vibration.md § 5.11 § 10): its vibration data files as they
      * are and, when a laser is applied, the Raman view on screen -- at the
-     * laser and width the bar applied (§ 2.1) -- composed by the server (`GET /api/spectra/export`), one zip;
+     * laser and width the bar applied (§ 2.1) -- composed by the server (`GET /api/export`), one zip;
      * a refusal in its words beside the buttons, and what the export holds
      * without.  The table's own CSV, below, stays the rows on screen. */
     async function exportDataFiles(fmt) {
@@ -2805,7 +2805,7 @@
         setStatus(els.exportStatus, "Composing the export.", "muted");
         // THE FILE LAYER'S ONE EXPORT DOOR (`projects.downloadExport`).
         const got = await root.molbuilder.projects.downloadExport(
-            "/api/spectra/export?" + q.toString());
+            "/api/export?" + q.toString());
         buttons.forEach(b => { if (b) b.disabled = false; });
         setStatus(els.exportStatus, got.ok ? got.said : got.error,
                   got.ok ? "muted" : "warn");

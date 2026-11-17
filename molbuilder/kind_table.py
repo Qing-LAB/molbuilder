@@ -12,8 +12,9 @@ benchmark, the tab that hands it over or where it describes itself, its
 topic -- the folder a new project lays down for it -- whether its deck
 relaxes the structure, what its root opens and what a rung's folder opens
 where that is not a run's own result, its science checks (a part) and the
-module that exports its results, the labels its regions are with what each
-is for, the checks its description takes (a part), the kind its citation
+module that exports its results and what that export asks (its typed
+rows), the labels its regions are with what each is for, the checks its
+description takes (a part), the kind its citation
 is a run of, and the code the shared doors ask of a kind that cites or
 extends -- its description's parts;
 and on each engine it runs on, the
@@ -36,6 +37,7 @@ resolved by the floor it lives on, through :func:`part`.
 from __future__ import annotations
 
 import importlib
+import math
 import tomllib
 from dataclasses import dataclass
 from functools import lru_cache
@@ -73,7 +75,8 @@ ROLE_OPENS = ("report",)
 
 _KIND_KEYS = ("noun", "topic", "roles", "results", "description",
               "charge", "no_benchmark", "handover", "relaxes",
-              "root_opens", "validator", "export", "regions",
+              "root_opens", "validator", "export", "export_asks",
+              "regions",
               "description_checks", "on")
 _PART_KEYS = ("words", "stage_roles", "points", "rung",
               "inputs", "gather", "continues", "sum", "retired", "ladder",
@@ -102,10 +105,17 @@ REUSE_DOORS = ("decide", "copy_in", "takes_over", "take_into",
 #: `molbuilder describe`: the describe itself, what it does not take, and
 #: its refusal.
 DESCRIBE_DOORS = ("describe", "not_taken", "NotDescribed")
-#: THE DOORS AN ``export`` PART PROVIDES, asked by `jobset export`: the
-#: export itself, the name it writes, and the options it asks beyond the
-#: form (``ASKS``).
-EXPORT_DOORS = ("export", "name_of", "ASKS")
+#: THE DOORS AN ``export`` PART PROVIDES, asked by `jobset export` and the
+#: page's one export route: the export itself and the name it writes --
+#: what it asks beyond the form is the kind's declared data, its
+#: ``export_asks`` (`model/datafiles.md` § 5a).
+EXPORT_DOORS = ("export", "name_of")
+#: THE TYPES AN EXPORT'S ASK TAKES: a number, or a flag set or not.
+EXPORT_ASK_TYPES = ("number", "flag")
+#: THE NAMES NO ASK TAKES: a surface's own -- the route's ``path`` and
+#: ``format``, the command's ``--to`` and ``--bundle``, the door's
+#: ``folder``.
+EXPORT_ASK_RESERVED = ("path", "format", "to", "bundle", "folder")
 #: THE PARTS NAMED AS A MODULE WHOLE -- a description's ``describe`` and
 #: ``reuse``, a kind's ``export`` -- each with the doors it provides: read
 #: as the table loads (named whole, never ``module:NAME``) and as the part
@@ -202,6 +212,17 @@ class Description:
     #: each ``module:NAME``, or a module named whole
     #: (:data:`WHOLE_MODULE_PARTS`).
     parts: Mapping[str, str] = None  # type: ignore[assignment]
+
+
+@dataclass(frozen=True)
+class ExportAsk:
+    """ONE THING A KIND'S EXPORT ASKS BEYOND ITS FORM (`model/datafiles.md`
+    § 5a) -- its ``name`` (the request's key, the command line's
+    ``--name``), its ``type`` (:data:`EXPORT_ASK_TYPES`) and the ``words`` a
+    person reads beside it."""
+    name: str
+    type: str
+    words: str
 
 
 @dataclass(frozen=True)
@@ -340,10 +361,12 @@ class CalculationKind:
     #: the settings gate on every deck of it (`validation.validate`) -- or
     #: ``None``: its engine's checks are its science.
     validator: Optional[str] = None
-    #: The module that exports its results -- ``export(calc, fmt,
-    #: **asks)``, ``name_of(calc, fmt, **asks)``, ``ASKS`` -- or ``None``: it
+    #: The module that exports its results -- ``export(calc, fmt, *,
+    #: folder, **asks)``, ``name_of(calc, fmt, **asks)`` -- or ``None``: it
     #: exports nothing (:func:`export_of`).
     export: Optional[str] = None
+    #: What its export asks beyond the form, a row each (:class:`ExportAsk`).
+    export_asks: Tuple["ExportAsk", ...] = ()
     #: The labels besides its leads that it reads on its structure's atoms,
     #: each with its sentence (:class:`Region`), in order.
     regions: Tuple[Region, ...] = ()
@@ -707,6 +730,20 @@ def _kind(name: str, body: object, engines: Tuple[str, ...]
         _refuse(where, "relaxes is true or false")
     if body.get("root_opens", ROOT_OPENS[0]) not in ROOT_OPENS:
         _refuse(where, f"root_opens is one of {', '.join(ROOT_OPENS)}")
+    asks = body.get("export_asks") or {}
+    if asks and not body.get("export"):
+        _refuse(where, "export_asks with no export -- what an export asks "
+                       "is its kind's export's")
+    for ask, row in asks.items():
+        if ask in EXPORT_ASK_RESERVED:
+            _refuse(where, f"export_asks.{ask} is a surface's own name "
+                           f"({', '.join(EXPORT_ASK_RESERVED)})")
+        if not (isinstance(row, dict) and set(row) == {"type", "words"}
+                and row["type"] in EXPORT_ASK_TYPES
+                and isinstance(row["words"], str) and row["words"]):
+            _refuse(where, f"export_asks.{ask} is {{type, words}} -- type "
+                           f"one of {', '.join(EXPORT_ASK_TYPES)}, words "
+                           f"the sentence a person reads")
     on = body.get("on") or {}
     if not on:
         _refuse(where, "no part on any engine -- the engines it runs on are "
@@ -735,6 +772,10 @@ def _kind(name: str, body: object, engines: Tuple[str, ...]
                            root_opens=body.get("root_opens"),
                            validator=body.get("validator"),
                            export=body.get("export"),
+                           export_asks=tuple(
+                               ExportAsk(name=k, type=v["type"],
+                                         words=v["words"])
+                               for k, v in asks.items()),
                            regions=tuple(regions),
                            description_checks=body.get("description_checks"),
                            parts=parts)
@@ -864,11 +905,9 @@ def _whole_module(ref: str, *, record: str, key: str) -> Any:
     except ImportError as exc:
         raise KindTableError(
             f"{record}'s {key}, {ref!r}, does not import: {exc}") from exc
-    # A DOOR IS CODE -- a function or a class -- or, as an export's
-    # ``ASKS``, the tuple of names it asks.
-    lacks = [d for d in doors
-             if not (callable(v := getattr(module, d, None))
-                     or isinstance(v, tuple))]
+    # A DOOR IS CODE -- a function or a class; what an export asks is its
+    # kind's declared data (`export_asks`).
+    lacks = [d for d in doors if not callable(getattr(module, d, None))]
     if lacks:
         raise KindTableError(
             f"{record}'s {key}, {ref!r}, provides no {', '.join(lacks)} -- "
@@ -932,15 +971,97 @@ def part_of(calculation: str, engine: str, key: str) -> Any:
     return part(ref, record=f"{calculation} on {engine}", key=key)
 
 
+def export_asks() -> Tuple["ExportAsk", ...]:
+    """EVERY KIND'S EXPORT ASKS, each name once, in the table's order --
+    what `jobset export` offers as its options.  A name two kinds ask is one
+    ask: two rows of it that differ are refused, naming both kinds."""
+    seen: Dict[str, Tuple[str, ExportAsk]] = {}
+    for name, k in _table().items():
+        for row in k.export_asks:
+            if row.name in seen and seen[row.name][1] != row:
+                raise KindTableError(
+                    f"export_asks.{row.name} differs between "
+                    f"{seen[row.name][0]} and {name} -- one ask, one row")
+            seen.setdefault(row.name, (name, row))
+    return tuple(row for _, row in seen.values())
+
+
 def export_of(calculation: str) -> Any:
     """THE MODULE THAT EXPORTS ``calculation``'s results -- its kind's
-    ``export``, imported now by the floor that asks -- or ``None``: the
-    kind exports nothing.  A module that does not import, or provides not
-    every door :data:`EXPORT_DOORS` lists, is refused naming the kind."""
+    ``export``, imported now by the floor that asks (`jobset export`, `GET
+    /api/export`; `model/datafiles.md` § 5a).  A module that does not
+    import, provides not every door :data:`EXPORT_DOORS` lists, or takes
+    not every ask its kind declares as a keyword is the table's defect,
+    refused naming the kind (:class:`KindTableError`); a kind that exports
+    nothing is the person's ask, refused naming the kinds that do
+    (``ValueError``)."""
     ref = kind(calculation).export
     if ref is None:
-        return None
-    return _whole_module(ref, record=calculation, key="export")
+        exporting = [k for k in kinds() if kind(k).export]
+        raise ValueError(f"a {calculation} calculation has no export -- "
+                         f"{' and '.join(exporting)} calculations do")
+    module = _whole_module(ref, record=calculation, key="export")
+    # EVERY ASK ITS KIND DECLARES, A KEYWORD ITS EXPORT TAKES BY NAME ONLY
+    # -- the declared rows and the code held to each other as the part
+    # resolves; a positional parameter (``calc``, ``fmt``) is no ask's.
+    import inspect
+    taken = inspect.signature(module.export).parameters.values()
+    if not any(p.kind is p.VAR_KEYWORD for p in taken):
+        named = {p.name for p in taken if p.kind is p.KEYWORD_ONLY}
+        lacks = [r.name for r in kind(calculation).export_asks
+                 if r.name not in named]
+        if lacks:
+            raise KindTableError(
+                f"{calculation}'s export, {ref!r}, takes no "
+                f"{', '.join(lacks)} -- which its export_asks declare")
+    return module
+
+
+def export_asks_of(calculation: str, given: Mapping[str, Any], *,
+                   spell=lambda name: name, named: str = "this"
+                   ) -> Dict[str, Any]:
+    """THE ASKS ``given`` -- each ask's name and its value, as a request or
+    a command line holds it -- that ``calculation``'s export takes, each
+    read by its row's type (:class:`ExportAsk`, `model/datafiles.md`
+    § 5a): a number as a finite float, its meaning the kind's to judge (a
+    laser's wavelength positive, `spectra.raman.read_ask`); a flag set by
+    ``1`` (or true), not set by ``0`` (or false); an ask with no value --
+    absent, empty -- left out.  Every ask with a value the calculation's
+    kind does not take is refused first and together, spelled as the person
+    wrote it (``spell``), naming the kinds whose export takes them and what
+    ``named`` is; then a value not its type, naming the ask
+    (``ValueError``)."""
+    rows = [(row, given.get(row.name)) for row in export_asks()]
+    rows = [(row, value) for row, value in rows
+            if not (value is None or value == ""
+                    or (row.type == "flag" and value in (False, "0")))]
+    takes = {r.name for r in kind(calculation).export_asks}
+    stray = [row.name for row, _ in rows if row.name not in takes]
+    if stray:
+        asking = [kind(k).with_article for k in kinds()
+                  if any(r.name in stray for r in kind(k).export_asks)]
+        raise ValueError(
+            f"{', '.join(spell(n) for n in stray)} "
+            f"{'is' if len(stray) == 1 else 'are'} asked by the export of "
+            f"{' or '.join(asking)}; {named} is "
+            f"{kind(calculation).with_article}")
+    out: Dict[str, Any] = {}
+    for row, value in rows:
+        if row.type == "flag":
+            if value not in (True, "1"):
+                raise ValueError(f"{spell(row.name)} is a flag, 1 or 0 -- "
+                                 f"not {value!r}")
+            out[row.name] = True
+            continue
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            number = math.nan
+        if not math.isfinite(number):
+            raise ValueError(f"{spell(row.name)} is a finite number, not "
+                             f"{value!r}")
+        out[row.name] = number
+    return out
 
 
 def part(ref: str, *, record: str, key: str) -> Any:
@@ -957,7 +1078,9 @@ def part(ref: str, *, record: str, key: str) -> Any:
             f"{record}'s {key}, {ref!r}, does not resolve: {exc}") from exc
 
 
-__all__ = ["TABLE_FILE", "COMPUTES", "DESCRIPTION_FIELDS", "ROOT_OPENS",
+__all__ = ["ExportAsk", "EXPORT_ASK_TYPES", "EXPORT_ASK_RESERVED",
+           "export_asks", "export_asks_of",
+           "TABLE_FILE", "COMPUTES", "DESCRIPTION_FIELDS", "ROOT_OPENS",
            "ROLE_OPENS", "PART_REFS", "FINISHED", "WALL_ONE", "WALL_EACH", "WALLS", "STEP_MOMENTS",
            "RunOfPoints", "run_of_points", "Description", "FixedCharge", "carrying", "KindTableError", "Role", "Result",
            "Retired", "KindOnEngine", "CalculationKind", "kinds", "kind",

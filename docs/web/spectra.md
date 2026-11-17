@@ -58,7 +58,7 @@ flowchart TD
   ENG["lib/spectra/core.js — the whole spectra viewer<br/>form · chart · mode table · excited-state panel · 3D mode animation"]
   TAB["/spectrum-calculation<br/>(spectra/viewer.js — describe and Send; no result)"] --> ENG
   RES["Results tab<br/>(inspectors/spectra.js — view a *.spectra.json)"] --> ENG
-  ENG --> API["GET /api/build/schema/common?calculation=vibration&surface=state — the charge and spin; /common?calculation=vibration — the other shared settings; /pyscf and /siesta?calculation=vibration&surface=own — each engine's own<br/>POST /api/build/preflight — the form checked as you edit<br/>POST /api/task-setup/handover — hand the description to Task setup (lib/task-handover.js)<br/>POST /api/spectra/load — read a finished .spectra.json<br/>GET /api/spectra/export — its data files and the Raman view<br/>POST /api/spectra/frameset — a mode as a frame set"]
+  ENG --> API["GET /api/build/schema/common?calculation=vibration&surface=state — the charge and spin; /common?calculation=vibration — the other shared settings; /pyscf and /siesta?calculation=vibration&surface=own — each engine's own<br/>POST /api/build/preflight — the form checked as you edit<br/>POST /api/task-setup/handover — hand the description to Task setup (lib/task-handover.js)<br/>POST /api/spectra/load — read a finished .spectra.json<br/>GET /api/export — its data files and the Raman view<br/>POST /api/spectra/frameset — a mode as a frame set"]
 ```
 
 ## 2. The spectrum chart
@@ -488,7 +488,7 @@ the width are remembered with the other view preferences (§ 7).
 **Export** — in the Results section's header, *CSV* · *NetCDF*: the
 calculation's vibration data files and, when a laser is applied, the Raman
 view on screen — at the laser and width the bar applied (§ 2.1) — downloaded through the projects module's one
-export door (`projects.downloadExport`, `GET /api/spectra/export`; what is in
+export door (`projects.downloadExport`, `GET /api/export`; what is in
 it, § 5.11 § 10 of the vibration contract); beside the buttons the server's
 sentence — the view not in it, where no laser is applied — or a refusal in its
 words. The table's own *CSV* of the rows on screen stays as it is.
@@ -881,7 +881,7 @@ catalogue schema + hand-over doors (§ 5):
 | Route | Does | Returns |
 |---|---|---|
 | `POST /api/spectra/load` | parses an existing `.spectra.json` into display data — with `temperature_k`, each mode's thermal spread at it (§ 4.1); with `frameset_temperature_k` — the frame-set dialog's, the run's thermochemistry temperature when not asked — each mode's `frameset`: its mean number of quanta, its spread and that spread against its zero-point one, and the outermost frames' largest atom move for three, five and seven frames at it (§ 4.3); with `infrared: {direction, partition}`, the free atoms' infrared at those choices — along z by Hirshfeld charges when not asked, and derived with every load of a result that states its charges (§ 3.2); with `raman: {laser_nm, broaden_ev?}`, the Raman at that laser (§ 3.3) | `{ok, results}`, `results.infrared` the infrared view where the result has one, `results.raman` the Raman view when asked, `infrared_said` and `raman_said` the door's reason where it could not give one — or a **typed** error carrying a `kind` string (missing → 404, wrong schema version → 422, malformed or bad-field → 400) so the UI can react without reading the message |
-| `GET /api/spectra/export` | `?path=` the result the viewer shows, `format=` `netcdf` or `csv`, `laser_nm=` and `broaden_ev=` the view's — the calculation's vibration data files and the Raman view, one zip (§ 3.3) | the zip, its name the server's, a sentence beside it in `X-Molbuilder-Said` — or `{ok: false, error}`, 400 naming what is refused, 404 for nothing there |
+| `GET /api/export` | `?path=` the result the viewer shows, `format=` `netcdf` or `csv`, `laser_nm=` and `broaden_ev=` the view's — the calculation's vibration data files and the Raman view, one zip (§ 3.3) | the zip, its name the server's, a sentence beside it in `X-Molbuilder-Said` — or `{ok: false, error}`, 400 naming what is refused, 404 for nothing there |
 | `POST /api/spectra/frameset` | `{path, mode, temperature_k, nodes, out}` — the loaded result, whose folder the server takes as its run's, the frame count one of the load's `constants.frameset_nodes` (`spectra.mode_frames.NODES`, § 4.3), and the pair to write (the tree picker's choice), each fenced inside the tree as `/api/spectra/load`'s path is — through the one generator (`engines/vibration.md` § 5.10 ③) | `{ok, path, frames: [{q_sigma, max_atom_displacement_ang, weight}], said}` — or the generator's refusal in its words |
 
 Each follows the app's `{ok: …}` envelope convention, the export's file

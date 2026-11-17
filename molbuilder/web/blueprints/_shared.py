@@ -281,8 +281,8 @@ def err(msg: str, code: int = 400, **fields):
 def sent_export(got):
     """An export (`ncdata.Exported`) as one attachment -- its data file, or
     its files as one zip -- what it holds without said in the response's
-    ``X-Molbuilder-Said`` header: every export route's answer (the
-    transport report's and the spectrum viewer's)."""
+    ``X-Molbuilder-Said`` header: the one export route's answer
+    (`GET /api/export`)."""
     import io
     from flask import send_file
     body, name, mime = got.download()

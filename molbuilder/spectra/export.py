@@ -5,7 +5,7 @@ calculation*).
 
 MODULE  spectra.export (L4)
 ROLE    :func:`export` -- the one composition the spectrum viewer's Export
-        (`GET /api/spectra/export`) and `molbuilder jobset export` ask alike,
+        (`GET /api/export`) and `molbuilder jobset export` ask alike,
         on the calculation as the transport export takes it, in the export's
         one shape (`ncdata.exported`): ``<label>.spectra.nc`` and, on a
         SIESTA run with an optical phase, ``<label>.optical.nc``, each copied
@@ -22,10 +22,6 @@ from pathlib import Path
 from typing import Dict, Optional
 
 from ..ncdata import ExportError, Exported
-from .raman import ASK_KEYS
-
-#: What a vibration export asks beyond its form: the Raman view's own asks.
-ASKS = ASK_KEYS
 
 
 def _stem(calc, result: Path) -> str:
@@ -39,8 +35,8 @@ def name_of(calc, fmt: str, **_asks) -> str:
     """What an export of ``calc`` as ``fmt`` is named -- the folder its files
     lie in (`ncdata.export_name`), on the label the result it is of
     (:func:`result_path`) is named on, known before anything is composed;
-    the same whatever is asked (:data:`ASKS`) -- the Raman view at a laser
-    is one more file in that folder."""
+    the same whatever is asked (the kind table's ``export_asks``) -- the
+    Raman view at a laser is one more file in that folder."""
     from ..ncdata import export_name
     return export_name(_stem(calc, result_path(calc)), fmt)
 
@@ -158,4 +154,4 @@ def export(calc, fmt: str, *, folder=None, laser_nm: Optional[float] = None,
     return exported(files, fmt, stem=_stem(calc, path), said=said)
 
 
-__all__ = ["ASKS", "export", "name_of", "result_path"]
+__all__ = ["export", "name_of", "result_path"]

@@ -8,9 +8,6 @@ Routes:
                                         the typed SpectraResults shape
     POST /api/spectra/frameset          a mode of the result shown, as a
                                         frame set
-    GET  /api/spectra/export            a vibration result's data files and
-                                        its Raman view at a laser, as
-                                        NetCDF or as tables -- one zip
 
 The tab's compute half renders the CATALOGUE's vibration form (``GET /api/build/schema/pyscf?calculation=
 vibration``, build.py) and hands the description to Task setup
@@ -378,7 +375,7 @@ def api_spectra_load():
 
 
 # ===================================================================== #
-# /api/spectra/frameset · /api/spectra/export                           #
+# /api/spectra/frameset                                                 #
 # ===================================================================== #
 
 
@@ -397,7 +394,8 @@ def api_spectra_frameset():
     from molbuilder.projects import projects_root
     from .files import _resolve_within_roots, _writable
     body = request.get_json(silent=True) or {}
-    # THE RUN IS THE RESULT'S FOLDER, derived here as the export's is.
+    # THE RUN IS THE RESULT'S FOLDER, derived here as the one export
+    # route's is (`GET /api/export`).
     run = _resolve_within_roots(str(body.get("path") or "")).parent
     # THE PAIR'S .xyz, WHERE A FILE MAY BE WRITTEN (the files layer's one
     # write-path check).
@@ -420,34 +418,6 @@ def api_spectra_frameset():
     except FrameSetError as exc:
         return err(str(exc), 400)
     return jsonify({"ok": True, **got.to_wire(root)})
-
-
-@bp.route("/api/spectra/export", methods=["GET"])
-def api_spectra_export():
-    """A VIBRATION RESULT'S DATA FILES AND ITS RAMAN VIEW, for the person to
-    keep (`engines/vibration.md` § 5.11 § 10) -- ``?path=`` the result the
-    viewer shows, its folder, or the calculation's folder; ``format=``
-    ``netcdf`` or ``csv``; ``laser_nm=`` and ``broaden_ev=`` for the view --
-    one zip, composed on request (`spectra.export`), nothing written into
-    the calculation; a view not in it said in ``X-Molbuilder-Said``.  400
-    names what is refused."""
-    from molbuilder.calculation import NotACalculation, at
-    from molbuilder.ncdata import ExportError
-    from molbuilder.spectra.export import export
-    from molbuilder.spectra.raman import ASK_KEYS
-    from ._shared import finite_float, sent_export
-    from .files import _existing, _resolve_within_roots
-    raw_path = str(request.args.get("path") or "")
-    path = _existing(_resolve_within_roots(raw_path))
-    try:
-        calc = at(path)
-        asked = {key: finite_float(key, request.args.get(key))
-                 for key in ASK_KEYS if request.args.get(key) not in (None, "")}
-        got = export(calc, str(request.args.get("format") or ""),
-                     folder=path if path.is_dir() else path.parent, **asked)
-    except (NotACalculation, ExportError, ValueError, OSError) as exc:
-        return err(str(exc), 400)
-    return sent_export(got)
 
 
 # ===================================================================== #

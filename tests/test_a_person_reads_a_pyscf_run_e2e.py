@@ -103,6 +103,14 @@ def test_the_export_holds_the_steps_and_says_why_a_run_holds_none(
     steps = read_steps(finished)
     label = run_of(finished).label
     assert (to / f"{label}.optimization-csv" / "step_atom_xyz.csv").is_file()
+    # THE ONE EXPORT ROUTE serves an optimization as it serves every kind
+    # that exports (`model/datafiles.md` § 5a): its data file, by its name.
+    from molbuilder.web import create_app
+    answer = create_app(config={}).test_client().get(
+        f"/api/export?path={bundle}&format=netcdf")
+    assert answer.status_code == 200, answer.get_json()
+    assert f"{label}.optimization.nc" in \
+        answer.headers["Content-Disposition"]
     data = read_optimization_data(to / f"{label}.optimization.nc")
     assert data["atom_index_map"].listed_by == "user_index"
     got = {k: v["data"] for k, v in data["variables"].items()}

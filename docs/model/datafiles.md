@@ -454,6 +454,44 @@ in the variables' own words — every variable's definition and source, the
 file's attributes, the atom axis's `atoms_listed_by` and `atom_index_base`.
 The atom axis's own table (`atom.csv`; a group's under its path, the transport file's `structure/atom.csv`) carries both index columns.
 
+## 5a. An export — one door per kind, one route, one command
+
+*(The user, 2026-11-16: "One /api/export"; "make sure the code discipline of
+unified api and framework level implementation is honored with no
+duplicated/redundant code or design".)*
+
+**An export** is a calculation's results as they stand, as NetCDF — its data
+files — or as CSV — their tables (§ 5) — composed on request in one shape
+(`ncdata.Exported`, `ncdata.exported`, named by `ncdata.export_name`) and
+written outside the calculation, never into it. **A kind that exports names
+its module in the kind table** (`export`, `kind_table.export_of`), and the
+module provides two doors: `export(calc, fmt, *, folder=None, **asks)`, the
+composition — `folder` the folder it was asked at, which a vibration's
+export reads as the result the viewer shows and the other kinds' do not
+need — and `name_of(calc, fmt, **asks)`, its name, known before anything
+is composed.
+
+**What a kind's export asks beyond the form is declared data, in the kind
+table** — a row each, `[<kind>.export_asks.<name>]` with its `type`
+(`number`, `flag`) and its `words` (`kind_table.ExportAsk`): the transport
+calculation's `dos_per_orbital`, the vibration's `laser_nm` and
+`broaden_ev`. The table refuses, as it loads, a row named as a surface's
+own (`path`, `format`, `to`, `bundle`, `folder`); and, as the export
+resolves (`kind_table.export_of`), a row its `export` does not take by
+name. **The command line and the page's route read those
+rows**: `jobset export` offers an option for each (`--dos-per-orbital`,
+`--laser-nm`, `--broaden-ev`), its help the row's words; the one route, `GET
+/api/export?path=&format=&<asks>`, takes each row's name. Both read a value
+through one door (`kind_table.export_asks_of`): **a number** as a finite number
+— its meaning the kind's to judge (a laser's wavelength positive,
+`spectra.raman.read_ask`) — **a flag** set by `1`, not by `0`; an ask with
+no value left out. Both refuse, first, together and as the person wrote
+them, the asks the calculation's kind does not take, naming the kinds that
+take them; and a kind with no export (`kind_table.export_of`). The answer is the route's one
+attachment (`_shared.sent_export`), what the export holds without said
+beside it. *(The pages name their asks themselves until one export bar
+draws them from the rows.)*
+
 ## 6. One import — `molbuilder.postprocess`
 
 A person's script reads every data file with the functions molbuilder's own

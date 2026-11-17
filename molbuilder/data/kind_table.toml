@@ -43,9 +43,12 @@
 # run's own result -- "report", its calculation's report at the point the
 # folder is (web/results.md § 0.1).  Its `validator`: its science checks, a
 # part, where it has its own (validation.validate runs them on every deck).
-# Its `export`: the module that exports its results -- `export(calc, fmt,
-# **asks)`, `name_of(calc, fmt)` and `ASKS`, named whole -- where it has one
-# (`kind_table.export_of`; `jobset export`).
+# Its `export`: the module that exports its results -- `export(calc, fmt, *,
+# folder, **asks)` and `name_of(calc, fmt, **asks)`, named whole -- where it
+# has one (`kind_table.export_of`; `jobset export`, `GET /api/export`); its
+# `export_asks`, what that export asks beyond the form, a row each: its
+# `type` (number, flag) and the `words` a person reads (model/datafiles.md
+# § 5a).
 #
 # A part's `relaxation`: what relaxes the structure first, in a person's
 # words, where the pair relaxes before it measures.  Its `atom_order`: the
@@ -132,6 +135,14 @@ results = [
     { key = "probe", title = "Orbital energies along a mode", line = "How the frontier orbital energies move when the molecule is pushed along a mode -- two extra SCFs per mode picked." },
 ]
 
+[vibration.export_asks.laser_nm]
+type = "number"
+words = "a SIESTA vibration with optical calls: the laser's wavelength in nm the Raman view is composed at, added as <label>.raman.nc."
+
+[vibration.export_asks.broaden_ev]
+type = "number"
+words = "a vibration, with the laser: the electronic broadening in eV the Raman view is taken at -- the run's own when omitted, never below it."
+
 [vibration.on.siesta]
 # Its one stage is one run in three phases, and carries every phase's role
 # (`engines/vibration.md` § 5.11 § 9).
@@ -207,6 +218,10 @@ description_checks = "molbuilder.validation.transport:check_description"
 # (engines/transport.md § 6.1c).
 validator = "molbuilder.validation.transport:validate_transport_kind"
 export = "molbuilder.transport.export"
+
+[transport.export_asks.dos_per_orbital]
+type = "flag"
+words = "a transport calculation, as netcdf: each point's DOS per orbital beside the data file, at the path the point names -- what molbuilder.postprocess.pdos reads a PDOS of chosen atoms from."
 
 [transport.charge]
 value = 0

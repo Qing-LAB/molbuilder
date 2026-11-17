@@ -7,6 +7,9 @@ Routes:
                                             HTML, for in-place mount inside
                                             ``#inspector-host`` (consumed by
                                             ``lib/inspectors/trajectory.js``)
+    GET /api/export                         a calculation's results as they
+                                            stand, as NetCDF or as tables
+                                            (`model/datafiles.md` § 5a)
     GET /partials/spectra-inspector         rendered spectra inspector HTML
                                             (consumed by
                                             ``lib/inspectors/spectra.js``)
@@ -89,6 +92,35 @@ def partial_spectra_inspector():
     resp.headers["Content-Type"]  = "text/html; charset=utf-8"
     resp.headers["Cache-Control"] = "private, no-cache"
     return resp
+
+
+@bp.route("/api/export", methods=["GET"])
+def api_export():
+    """A CALCULATION'S RESULTS AS THEY STAND, for the person to keep
+    (`model/datafiles.md` § 5a) -- ``?path=`` its folder or a file or folder
+    below it (the result a viewer shows), ``format=`` ``netcdf`` or ``csv``,
+    and what its kind's export asks, by name (`kind_table.export_asks`) --
+    one attachment, composed on request by its kind's export
+    (`kind_table.export_of`), nothing written into the calculation; what it
+    holds without said in ``X-Molbuilder-Said``.  400 names what is
+    refused."""
+    from molbuilder.calculation import NotACalculation, at
+    from molbuilder.kind_table import export_asks_of, export_of
+    from molbuilder.ncdata import ExportError
+    from ._shared import sent_export
+    from .files import _existing, _resolve_within_roots
+    path = _existing(_resolve_within_roots(str(request.args.get("path")
+                                               or "")))
+    try:
+        calc = at(path)
+        kind = calc.task.calculation
+        got = export_of(kind).export(
+            calc, str(request.args.get("format") or ""),
+            folder=path if path.is_dir() else path.parent,
+            **export_asks_of(kind, request.args))
+    except (NotACalculation, ExportError, ValueError, OSError) as exc:
+        return err(str(exc), 400)
+    return sent_export(got)
 
 
 @bp.route("/api/results/dir", methods=["GET"])

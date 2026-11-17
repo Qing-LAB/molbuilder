@@ -2365,17 +2365,20 @@ def migrate_cmd(bundle: str) -> None:
         click.echo(f"  {line}")
 
 
-def _export_of(calc):
-    """The export module of ``calc``'s kind -- the kind table's ``export``
-    (`kind_table.export_of`) -- or refused naming the kinds that export."""
-    from ..kind_table import export_of, kind, kinds
-    module = export_of(calc.task.calculation)
-    if module is None:
-        exporting = [k for k in kinds() if kind(k).export]
-        raise click.ClickException(
-            f"a {calc.task.calculation} calculation has no export -- "
-            f"{' and '.join(exporting)} calculations do")
-    return module
+def _export_asks(command):
+    """EVERY KIND'S EXPORT ASKS AS OPTIONS of ``command``
+    (`kind_table.export_asks`, `model/datafiles.md` § 5a) -- a number's an
+    option of its value, a flag's a switch, each one's help its row's
+    words."""
+    from ..kind_table import export_asks
+    for row in reversed(export_asks()):
+        flag = "--" + row.name.replace("_", "-")
+        command = (click.option(flag, row.name, is_flag=True, default=False,
+                                help=row.words)
+                   if row.type == "flag" else
+                   click.option(flag, row.name, type=float, default=None,
+                                help=row.words))(command)
+    return command
 
 
 @jobset_group.command("export",
@@ -2389,23 +2392,9 @@ def _export_of(calc):
 @click.option("--to", "to", required=True, type=click.Path(file_okay=False),
               help="the folder it is written into -- never one inside the "
                    "calculation.")
-@click.option("--laser-nm", "laser_nm", type=float, default=None,
-              help="a SIESTA vibration with optical calls: the laser's "
-                   "wavelength in nm the Raman view is composed at, added "
-                   "as <label>.raman.nc.")
-@click.option("--broaden-ev", "broaden_ev", type=float, default=None,
-              help="with --laser-nm: the electronic broadening in eV the "
-                   "view is taken at -- the run's own when omitted, never "
-                   "below it.")
-@click.option("--dos-per-orbital", "dos_per_orbital", is_flag=True,
-              default=False,
-              help="a transport calculation, as netcdf: each point's DOS "
-                   "per orbital beside the data file, at the path the point "
-                   "names -- what molbuilder.postprocess.pdos reads a PDOS "
-                   "of chosen atoms from.")
+@_export_asks
 @_bundle_option()
-def export_cmd(bundle: str, fmt: str, to: str, laser_nm: Optional[float],
-               broaden_ev: Optional[float], dos_per_orbital: bool) -> None:
+def export_cmd(bundle: str, fmt: str, to: str, **given) -> None:
     """A calculation's results as they stand, written into the folder named,
     never into the calculation.  A TRANSPORT calculation: every result, its
     data file ``<label>.transport.nc`` or the same as tables,
@@ -2431,27 +2420,18 @@ def export_cmd(bundle: str, fmt: str, to: str, laser_nm: Optional[float],
             f"{to} is inside the calculation -- an export is written "
             f"outside it, its own records untouched; name another folder "
             f"with --to")
-    # THE KIND'S EXPORT (`_export_of`): what it asks beyond its form, and its
-    # name, known before anything is composed.
-    module = _export_of(calc)
-    asks = {k: v for k, v in (("laser_nm", laser_nm),
-                              ("broaden_ev", broaden_ev),
-                              ("dos_per_orbital", dos_per_orbital or None))
-            if v is not None}
-    stray = [k for k in asks if k not in module.ASKS]
-    if stray:
-        # WHOSE EXPORT ASKS IT, read from the kind table (A18).
-        from ..kind_table import export_of, kinds
-        asked_by = [k for k in kinds() if (m := export_of(k)) is not None
-                    and any(a in m.ASKS for a in stray)]
-        raise click.ClickException(
-            f"{', '.join('--' + k.replace('_', '-') for k in stray)} "
-            f"{'is' if len(stray) == 1 else 'are'} asked by the export of a "
-            f"{' or a '.join(asked_by)} calculation; {_P(calc.base).name} "
-            f"is a {calc.task.calculation} calculation")
+    # THE KIND'S EXPORT AND WHAT IT ASKS (`kind_table.export_of`,
+    # `export_asks_of`), and its name, known before anything is composed;
+    # each refusal a ValueError, the export's own (`ExportError`) one too.
+    from ..kind_table import export_asks_of, export_of
     try:
+        module = export_of(calc.task.calculation)
+        asks = export_asks_of(
+            calc.task.calculation, given,
+            spell=lambda name: "--" + name.replace("_", "-"),
+            named=_P(calc.base).name)
         name = module.name_of(calc, fmt, **asks)
-    except ExportError as exc:
+    except ValueError as exc:
         raise click.ClickException(str(exc)) from None
     dest = dest_dir / name
     if dest.exists():

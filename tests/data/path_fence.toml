@@ -178,6 +178,14 @@ method = "GET"
 takes_no_path = "Nothing; it reads the repo's own docs/toc.json (`root_readme` is a key of that file, not a parameter)."
 
 [[route]]
+rule = "/api/export"
+method = "GET"
+[[route.path]]
+where = "query"
+name = "path"
+request = { query = { path = "{outside_dir}", format = "csv" } }
+
+[[route]]
 rule = "/api/files/copy"
 method = "POST"
 [[route.path]]
@@ -439,14 +447,6 @@ name = "path"
 request = { json = { path = "{outside_file}" } }
 
 [[route]]
-rule = "/api/spectra/export"
-method = "GET"
-[[route.path]]
-where = "query"
-name = "path"
-request = { query = { path = "{outside_dir}", format = "csv" } }
-
-[[route]]
 rule = "/api/spectra/frameset"
 method = "POST"
 [[route.path]]
@@ -642,14 +642,6 @@ method = "POST"
 where = "json"
 name = "path"
 request = { json = { path = "{outside_dir}" } }
-
-[[route]]
-rule = "/api/transport/export"
-method = "GET"
-[[route.path]]
-where = "query"
-name = "path"
-request = { query = { path = "{outside_dir}", format = "csv" } }
 
 [[route]]
 rule = "/api/transport/fit"

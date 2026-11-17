@@ -72,6 +72,79 @@ def test_every_part_a_kind_names_resolves(calculation, key):
         assert kind_table.part(ref, record=calculation, key=key) is not None
 
 
+@pytest.mark.parametrize("calculation, given, want", [
+    ("vibration", {"laser_nm": "532", "broaden_ev": ""}, {"laser_nm": 532.0}),
+    ("transport", {"dos_per_orbital": "1"}, {"dos_per_orbital": True}),
+    ("transport", {"dos_per_orbital": "0"}, {}),
+    ("vibration", {"laser_nm": "0"}, {"laser_nm": 0.0}),
+    ("transport", {"laser_nm": "532", "broaden_ev": "0.1"},
+     "laser_nm, broaden_ev are asked by the export of a vibration; this is "
+     "a transport calculation"),
+    ("optimization", {"dos_per_orbital": "1"},
+     "dos_per_orbital is asked by the export of a transport calculation; "
+     "this is an optimization"),
+    ("vibration", {"laser_nm": "nan"}, "laser_nm is a finite number"),
+    ("transport", {"dos_per_orbital": "true"},
+     "dos_per_orbital is a flag, 1 or 0"),
+    ("optimization", {"dos_per_orbital": "0"}, {}),
+    ("vibration", {"laser_nm": "abc", "dos_per_orbital": "1"},
+     "dos_per_orbital is asked by the export of a transport calculation; "
+     "this is a vibration"),
+], ids=["a number", "a flag set", "a flag not set",
+        "a number the kind judges", "another kind's asks, every one",
+        "an ask of a kind that asks none", "not a finite number",
+        "not a flag", "a flag not set on a kind that asks none",
+        "another kind's ask before a value"])
+def test_an_export_takes_what_its_kind_asks(calculation, given, want):
+    """`model/datafiles.md` § 5a: what an export asks beyond its form is its
+    kind's declared rows, read through one door (`kind_table.export_asks_of`)
+    by the command line and the page's one route -- a number as a finite
+    float, its meaning the kind's to judge (0 passed on); a flag set by 1,
+    not by 0; one not given left out; every ask the calculation's kind does
+    not take refused first and together, naming the kinds that take them.  THE SILENT FAILURE: a
+    laser asked of a transport export, taken and ignored, the person
+    believing the view is in it."""
+    import re
+    if isinstance(want, dict):
+        assert kind_table.export_asks_of(calculation, given) == want
+    else:
+        with pytest.raises(ValueError, match=re.escape(want)):
+            kind_table.export_asks_of(calculation, given)
+
+
+#: A kind's export as it resolves, wrong one way each: a row its export
+#: does not take by name -- found otherwise as a page's Export answers 500;
+#: a kind that exports nothing, asked to.
+_EXPORT_ROWS = [
+    ("an ask its export does not take",
+     'export = "molbuilder.optimization.export"\n'
+     '[k.export_asks.laser_nm]\ntype = "number"\nwords = "w"\n',
+     kind_table.KindTableError,
+     "k's export, 'molbuilder.optimization.export', takes no laser_nm"),
+    ("a kind that exports nothing", "", ValueError,
+     "a k calculation has no export -- j calculations do"),
+]
+
+
+@pytest.mark.parametrize("what, lines, error, words", _EXPORT_ROWS,
+                         ids=[r[0] for r in _EXPORT_ROWS])
+def test_a_kind_s_export_is_refused_as_it_resolves(
+        tmp_path, monkeypatch, what, lines, error, words):
+    table = tmp_path / "kind_table.toml"
+    table.write_text('[j]\nnoun = "j"\ntopic = "j"\n'
+                     'export = "molbuilder.optimization.export"\n'
+                     '[j.on.siesta]\n'
+                     f'[k]\nnoun = "k"\ntopic = "k"\n{lines}[k.on.siesta]\n')
+    monkeypatch.setattr(kind_table, "TABLE_FILE", table)
+    kind_table._table.cache_clear()
+    try:
+        with pytest.raises(error) as got:
+            kind_table.export_of("k")
+        assert words in str(got.value)
+    finally:
+        kind_table._table.cache_clear()
+
+
 #: (calculation, engine, stage, the order its deck lists atoms in) -- the
 #: pair's word (`execution/architecture.md` § 3.3: a SIESTA vibration's held
 #: atoms first, a transport calculation's TranSIESTA order), none on a lead
@@ -245,6 +318,10 @@ _KIND_ROWS = [
      'description = {carries = ["reuses"], extension = "m:f", '
      'reuse = "m:f", describe = "m"}\n[k.on.siesta]\n',
      "description.reuse is 'm:f' -- a reuse part is a module, named whole"),
+    ("an export ask named as a surface's own",
+     '[k]\nnoun = "k"\ntopic = "k"\nexport = "m"\n'
+     '[k.export_asks.format]\ntype = "flag"\nwords = "w"\n[k.on.siesta]\n',
+     "export_asks.format is a surface's own name"),
 ]
 
 

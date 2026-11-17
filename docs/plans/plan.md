@@ -54,10 +54,11 @@ each release is its changelog row and its ledger section
   their rows, one schema door and one group walk (`model/datafiles.md`
   § 3a), with Python 3.12 declared as the floor; every data-file name in one
   catalogue and made by one naming rule in 2.72.3 (`model/datafiles.md`
-  § 9, § 2a rule 2, § 2c; the user, 2026-11-16); next the exports across
-  the kinds -- one /api/export route from typed rows, one export bar, the
-  vibration Export in the top line, `pdos` and the re-average moved to
-  their kinds;
+  § 9, § 2a rule 2, § 2c; the user, 2026-11-16); one export door per
+  kind, its asks declared in the kind table, one /api/export route and
+  `jobset export` from the rows in 2.72.4 (`model/datafiles.md` § 5a);
+  next one export bar, the vibration Export in the Results top line, then
+  `pdos` and the re-average moved to their kinds;
   (C)
   every chart's own export — a picture, its drawn data as CSV and NetCDF;
   the PDOS of a mixed selection from the data file and each point's digest

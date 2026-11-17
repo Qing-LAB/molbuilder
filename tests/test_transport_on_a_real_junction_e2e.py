@@ -3279,8 +3279,16 @@ def test_an_export_is_the_data_file_and_its_tables(junction, monkeypatch,
     assert "summary/frame_bias_v_energy_ev.csv" in readme and (
         "transmission:" in readme)
     answer = create_app(config={}).test_client().get(
-        f"/api/transport/export?path={run.bundle / 'task.json'}&format=csv")
+        f"/api/export?path={run.bundle / 'task.json'}&format=csv")
     assert answer.status_code == 200, answer.get_json()
+    # THE ONE ROUTE TAKES WHAT THE KIND ASKS (`model/datafiles.md` § 5a): a
+    # vibration's laser asked of this transport export is refused, naming
+    # the kind that asks it.
+    refused = create_app(config={}).test_client().get(
+        f"/api/export?path={run.bundle / 'task.json'}&format=csv"
+        f"&laser_nm=532")
+    assert refused.status_code == 400 and "vibration" in \
+        refused.get_json()["error"], refused.get_json()
     assert (f"{label}.transport-csv.zip"
             in answer.headers["Content-Disposition"])
     names = zipfile.ZipFile(io.BytesIO(answer.data)).namelist()
@@ -3289,7 +3297,7 @@ def test_an_export_is_the_data_file_and_its_tables(junction, monkeypatch,
             in names)
     # THE NETCDF WITH EACH POINT'S DIGESTS, at the paths its points name.
     answer = create_app(config={}).test_client().get(
-        f"/api/transport/export?path={run.bundle / 'task.json'}"
+        f"/api/export?path={run.bundle / 'task.json'}"
         f"&format=netcdf&dos_per_orbital=1")
     assert answer.status_code == 200, answer.get_json()
     names = zipfile.ZipFile(io.BytesIO(answer.data)).namelist()

@@ -3365,7 +3365,7 @@ deliverable.
 composer every export shares, `ncdata.exported`), so both give the
 same files: the transport report's **Export** (*CSV* · *NetCDF* · *NetCDF
 with DOS per orbital*), a download
-(`GET /api/transport/export`, [`web/results.md`](?doc=web/results.md) § 2.5;
+(`GET /api/export`, [`web/results.md`](?doc=web/results.md) § 2.5;
 handed over by the file layer's export door, `projects.downloadExport`) — the tables as one zip,
 `<label>.transport-csv.zip` — the points whose DOS by region is not in it
 said beside the buttons; and **`molbuilder jobset export --bundle <calc>

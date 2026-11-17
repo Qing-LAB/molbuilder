@@ -627,7 +627,9 @@ loads, and a name with no record is refused naming the file and the key.
 - the module that exports its results, where it has one (`export`, a
   module named whole, providing every door `kind_table.EXPORT_DOORS`
   lists, refused naming a door it lacks as it resolves:
-  `kind_table.export_of`; `jobset export`);
+  `kind_table.export_of`), and what that export asks beyond its form
+  (`export_asks`, a typed row each) -- read by `jobset export` and `GET
+  /api/export` ([`model/datafiles.md`](?doc=model/datafiles.md) § 5a);
 - the results it gives, in the order a person decides them, each a card a form
   of the kind draws ([`engines/template.md`](?doc=engines/template.md) § 6.2a);
 - what its root opens where that is not one of its runs' results

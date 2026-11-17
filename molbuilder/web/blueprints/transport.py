@@ -33,8 +33,6 @@ hand-over — nothing is awaiting, so the tab selects and decides):
                                           file reading, and how far a
                                           reading under way is
     POST /api/transport/digest            read them, on the person's word
-    GET  /api/transport/export            every result as it stands, as
-                                          the data file or its tables
     POST /api/transport/describe          writes the FINISHED description
                                           into the chosen folder -- the
                                           web spelling of `molbuilder describe
@@ -55,7 +53,6 @@ from ._shared import (
     err,
     catalogue_to_form_schema,
     issues_to_json as _issues_to_json,
-    sent_export,
 )
 
 
@@ -581,31 +578,6 @@ def api_transport_digest_read() -> Any:
     return jsonify({**_readings_answer(calc), "outcomes": outcomes})
 
 
-@bp.route("/api/transport/export", methods=["GET"])
-def api_transport_export() -> Any:
-    """EVERY RESULT OF A TRANSPORT CALCULATION, AS IT STANDS
-    (`engines/transport.md` § 2a.12, *Export*) -- ``?path=`` the
-    calculation's ``task.json`` or folder, ``format=`` ``netcdf`` or
-    ``csv``, ``dos_per_orbital=1`` with ``netcdf`` for each point's digest
-    beside the data file -- an attachment: its data file, or its files as
-    one zip; composed on request from what is there (`transport.export`), no
-    data file read and nothing written into the calculation's folder; the
-    points it holds without their DOS by region said in the response's
-    ``X-Molbuilder-Said`` header.  400 names what is refused."""
-    from molbuilder.ncdata import ExportError
-    from molbuilder.transport.export import export
-    calc, refusal = _transport_calc(str(request.args.get("path") or ""))
-    if refusal is not None:
-        return refusal
-    try:
-        got = export(calc, str(request.args.get("format") or ""),
-                     dos_per_orbital=request.args.get("dos_per_orbital")
-                     == "1")
-    except ExportError as exc:
-        return err(str(exc), 400)
-    return sent_export(got)
-
-
 @bp.route("/api/transport/pdos", methods=["GET"])
 def api_transport_pdos() -> Any:
     """The PDOS of the atoms a person selected, at one point -- a frame
@@ -618,7 +590,7 @@ def api_transport_pdos() -> Any:
     outside_device, orbitals}``.  400 names what is missing."""
     from molbuilder.transport.record import RecordError, selection_pdos
     # THE CALCULATION, through its one door (`calculation.open`, A16), as
-    # the record, the digest and the export routes open it.
+    # the record, the digest and the one export route open it.
     calc, refusal = _transport_calc(str(request.args.get("path") or ""))
     if refusal is not None:
         return refusal

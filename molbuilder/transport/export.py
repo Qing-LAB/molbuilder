@@ -4,7 +4,7 @@ stands when asked, as its data file or as that file's tables
 
 MODULE  transport.export (L4)
 ROLE    :func:`export` -- the one composition the transport report's Export
-        (`GET /api/transport/export`) and `molbuilder jobset export` ask
+        (`GET /api/export`) and `molbuilder jobset export` ask
         alike: the record composed now, as the Results tab reads a ladder
         in progress (`record.collect_record`, ``partial``), the data file's
         bytes from its own writer (`datafile.data_file_bytes`), and for CSV
@@ -24,11 +24,6 @@ from __future__ import annotations
 from typing import Dict
 
 from ..ncdata import ExportError, Exported
-
-#: What a transport export asks beyond its form: whether each point's DOS
-#: per orbital goes with the data file (`engines/transport.md` § 2a.12,
-#: *Export*, *NetCDF with the DOS per orbital*).
-ASKS: tuple = ("dos_per_orbital",)
 
 
 def _data_file_name(calc) -> str:
@@ -74,7 +69,8 @@ def missing_dos_said(record: Dict) -> str:
             f"is not read yet -- {READ_WAY}, then export again")
 
 
-def export(calc, fmt: str, *, dos_per_orbital: bool = False) -> Exported:
+def export(calc, fmt: str, *, folder=None,
+           dos_per_orbital: bool = False) -> Exported:
     """Every result of the transport calculation ``calc`` (`calculation.open`)
     as it stands, as ``fmt`` -- ``netcdf``: the data file, ``{name: bytes}``;
     ``csv``: its tables and ``README.txt`` -- from what is already there, no
@@ -120,4 +116,4 @@ def export(calc, fmt: str, *, dos_per_orbital: bool = False) -> Exported:
                     said=missing_dos_said(record))
 
 
-__all__ = ["ASKS", "export", "missing_dos_said", "name_of"]
+__all__ = ["export", "missing_dos_said", "name_of"]
