@@ -49,8 +49,8 @@ import numpy as np
 try:                                        # inside molbuilder
     from ..atom_permutation import MAP_KEY, AtomIndexMap
     from ..ncdata import (NC_LOCK, Var, as_bytes, axis_values, checked,
-                          coordinate, earliest, empty, flag, in_memory,
-                          json_attr, key_of, named_in,
+                          coordinate, empty, flag, in_memory,
+                          json_attr, key_of, named_now,
                           number_attr, read_structure_group, read_variables,
                           state, unflag, unjson_attr, unnumber_attr,
                           write_group, write_structure_group)
@@ -58,8 +58,8 @@ try:                                        # inside molbuilder
 except ImportError:                         # beside a job, in a bundle
     from atom_permutation import MAP_KEY, AtomIndexMap  # type: ignore[no-redef]
     from ncdata import (NC_LOCK, Var, as_bytes, axis_values, checked,
-                        coordinate, earliest, empty, flag, in_memory,
-                        json_attr, key_of, named_in,
+                        coordinate, empty, flag, in_memory,
+                        json_attr, key_of, named_now,
                         number_attr, read_structure_group, read_variables,
                         state, unflag, unjson_attr, unnumber_attr,
                         write_group, write_structure_group)
@@ -113,7 +113,7 @@ def _number(name: str, kind: str, units: str, long_name: str,
             definition: str, source: str = "", earlier=()) -> Var:
     """A block's number: a variable of no dimension, NaN where the result
     states none (`model/datafiles.md` § 2); ``earlier`` the names an older
-    schema wrote it under."""
+    schema wrote it under -- its record key is the block table's."""
     return Var(name, (), kind, units, long_name, definition, source=source,
                earlier=tuple(earlier))
 
@@ -200,38 +200,73 @@ _THERMO = {
     "n_modes": "int",
     "n_imag_excluded": "int", "n_rigid_removed": "int", "note": "text",
 }
-#: The thermo grid's curves (`normal_modes.vibrational_thermo_grid`).
+#: ``/equilibrium``'s block: its energy, a variable (an attribute before
+#: @8), and its HOMO's index, an attribute (:data:`_ROOT`'s form).
+_EQUILIBRIUM = {
+    "scf_energy_eh": _number(
+        "total_energy_eh", "raw", "Eh", "the total energy",
+        "the converged SCF's total energy, E_SCF, at the equilibrium "
+        "geometry; NaN where the engine reports none -- the orbital "
+        "energies with it", source="the equilibrium SCF",
+        earlier=("scf_energy_eh",)),
+    "homo_idx": ("int?", "homo_index"),
+}
+#: ``/partial_charges``' block: the force-constant step, a variable (an
+#: attribute before @8).
+_CHARGES = {
+    "displacement_ang": _number(
+        "fc_displacement_ang", "given", "angstrom",
+        "the force-constant step's displacement",
+        "each step but 0 moves its atom by it, either way, along its axis",
+        earlier=("displacement_ang",)),
+}
+#: The geometries the probe computes at: equilibrium and either way along
+#: the mode.
+_PROBED_AT = (
+    ("eq", "equilibrium", "at the equilibrium geometry"),
+    ("minus", "-amplitude", "displaced by -amplitude along the mode"),
+    ("plus", "+amplitude", "displaced by +amplitude along the mode"),
+)
+#: The thermo grid's curves (`normal_modes.vibrational_thermo_grid`),
+#: each from its key in the grid block.
 _GRID_CURVES = (
-    ("zpe_eh", "zpe_eh", "Eh", "the zero-point energy", "the harmonic ZPE at this temperature"),
-    ("u_vib_eh", "u_vib_eh", "Eh", "the vibrational thermal energy", "U_vib at this temperature, the zero-point energy excluded"),
-    ("h_eh", "h_eh", "Eh", "the enthalpy, as the regime sums it", "at this temperature: rrho H; vibrational-only the vibrational sums above the electronic energy, not an enthalpy (engines/vibration.md 4.7)"),
-    ("s_eh_k", "s_eh_per_k", "Eh/K", "the entropy", "S at this temperature, as the regime defines it"),
-    ("g_eh", "g_eh", "Eh", "the free energy", "G = H - T*S at this temperature"),
+    Var("zpe_eh", ("temperature_k",), "derived", "Eh",
+        "the zero-point energy", "the harmonic ZPE at this temperature"),
+    Var("u_vib_eh", ("temperature_k",), "derived", "Eh",
+        "the vibrational thermal energy",
+        "U_vib at this temperature, the zero-point energy excluded"),
+    Var("h_eh", ("temperature_k",), "derived", "Eh",
+        "the enthalpy, as the regime sums it",
+        "at this temperature: rrho H; vibrational-only the vibrational sums "
+        "above the electronic energy, not an enthalpy (engines/vibration.md "
+        "4.7)"),
+    Var("s_eh_per_k", ("temperature_k",), "derived", "Eh/K", "the entropy",
+        "S at this temperature, as the regime defines it", key="s_eh_k",
+        earlier=("s_eh_k",)),
+    Var("g_eh", ("temperature_k",), "derived", "Eh", "the free energy",
+        "G = H - T*S at this temperature"),
 )
-#: A mode's electronic-structure probe (`engines/vibration.md` § 4.8).
+#: A mode's electronic-structure probe (`engines/vibration.md` § 4.8):
+#: its numbers and its orbital windows, each from its key in the probe's
+#: block -- a name otherwise than the key the name an older file wrote.
 _ES_SCALARS = (
-    ("amplitude_ang", "amplitude_ang", "given", "angstrom",
-     "the displacement amplitude",
-     "the push each way along the mode's display form: its largest "
-     "Cartesian component moves by it (engines/vibration.md 4.8)"),
-    ("scf_energy_eq_eh", "total_energy_eq_eh", "raw", "Eh",
-     "the total energy at equilibrium",
-     "E_SCF at the equilibrium geometry"),
-    ("scf_energy_minus_eh", "total_energy_minus_eh", "raw", "Eh",
-     "the total energy at -amplitude",
-     "E_SCF displaced by -amplitude along the mode"),
-    ("scf_energy_plus_eh", "total_energy_plus_eh", "raw", "Eh",
-     "the total energy at +amplitude",
-     "E_SCF displaced by +amplitude along the mode"),
+    Var("amplitude_ang", ("probed_mode",), "given", "angstrom",
+        "the displacement amplitude",
+        "the push each way along the mode's display form: its largest "
+        "Cartesian component moves by it (engines/vibration.md 4.8)"),
+    *(Var(f"total_energy_{at}_eh", ("probed_mode",), "raw", "Eh",
+          f"the total energy at {where}", f"E_SCF {geometry}",
+          source="the probe's SCFs", key=f"scf_energy_{at}_eh",
+          earlier=(f"scf_energy_{at}_eh",))
+      for at, where, geometry in _PROBED_AT),
 )
-_ES_WINDOWS = (
-    ("mo_energies_eq_eh", "mo_energy_eq_eh",
-     "the orbital energies at equilibrium"),
-    ("mo_energies_minus_eh", "mo_energy_minus_eh",
-     "the orbital energies at -amplitude"),
-    ("mo_energies_plus_eh", "mo_energy_plus_eh",
-     "the orbital energies at +amplitude"),
-)
+_ES_WINDOWS = tuple(
+    Var(f"mo_energy_{at}_eh", ("probed_mode", "window"), "raw", "Eh",
+        f"the orbital energies at {where}",
+        "the orbital window's energies, ascending",
+        source="the probe's SCFs", key=f"mo_energies_{at}_eh",
+        earlier=(f"mo_energies_{at}_eh",))
+    for at, where, _ in _PROBED_AT)
 
 
 def _encode(kind: str, value):
@@ -297,21 +332,28 @@ def _block_numbers(block: Mapping[str, Any], table: Mapping[str, Any]
             {v.name: np.asarray(number_attr(block[k])) for k, v in held})
 
 
+def _numbers(table: Mapping[str, Any]) -> Tuple[Var, ...]:
+    """A block table's numbers -- its variables."""
+    return tuple(v for v in table.values() if isinstance(v, Var))
+
+
 def _block_back(attrs: Mapping[str, Any], held: Mapping[str, Any],
                 table: Mapping[str, Any], prefix: str) -> Dict[str, Any]:
     """The block back from a group's attributes and its variables
-    ``held`` (`ncdata.read_variables`): a number from its variable -- or,
-    in a file before ``@8``, its attribute ``prefix + key``."""
+    ``held`` -- read with the table's numbers (`ncdata.read_variables`) --
+    each under its name now (`ncdata.named_now`): a number from its
+    variable; an attribute by its name, one the file names otherwise than
+    the result's key named by the key before ``@10``."""
+    attrs = named_now(attrs, {prefix + kind[1]: (prefix + k,)
+                              for k, kind in table.items()
+                              if isinstance(kind, tuple)})
     out: Dict[str, Any] = {}
     for k, kind in table.items():
-        number = named_in(held, kind) if isinstance(kind, Var) else None
-        attr = earliest(attrs, (prefix + _attr_name(k, kind), prefix + k))
-        if number is not None:
-            out[k] = unnumber_attr(held[number]["data"])
-        elif isinstance(kind, Var) and attr is not None:
-            out[k] = unnumber_attr(attrs[attr])
-        elif attr is not None:
-            out[k] = _decode(_kind(kind), attrs[attr])
+        if isinstance(kind, Var):
+            if kind.name in held:
+                out[k] = unnumber_attr(held[kind.name]["data"])
+        elif prefix + _attr_name(k, kind) in attrs:
+            out[k] = _decode(_kind(kind), attrs[prefix + _attr_name(k, kind)])
     return out
 
 
@@ -324,10 +366,6 @@ def _partial_charge_vars(partitions: Sequence[str]) -> Tuple[Var, ...]:
     (`engines/vibration.md` § 5.10 ②): the steps, and every atom's charge at
     each, one variable per partition the result states."""
     return (
-        Var("fc_displacement_ang", (), "given", "angstrom",
-            "the force-constant step's displacement",
-            "each step but 0 moves its atom by it, either way, along its "
-            "axis", key="displacement_ang", earlier=("displacement_ang",)),
         Var("fc_step", ("fc_step",), "coordinate", "1",
             "the force-constant step",
             "from 0: 0 the reference geometry, then each displacement in "
@@ -356,13 +394,9 @@ def _partial_charge_vars(partitions: Sequence[str]) -> Tuple[Var, ...]:
 
 
 def _equilibrium_vars() -> Tuple[Var, ...]:
-    return (Var("total_energy_eh", (), "raw", "Eh", "the total energy",
-                "the converged SCF's total energy, E_SCF, at the "
-                "equilibrium geometry; NaN where the engine "
-                "reports none -- the orbital energies with it",
-                source="the equilibrium SCF", key="scf_energy_eh",
-                earlier=("scf_energy_eh",)),
-            Var("mo", ("mo",), "coordinate", "1", "the orbital's index",
+    """``/equilibrium``'s orbital energies -- its energy and HOMO are its
+    block's (:data:`_EQUILIBRIUM`)."""
+    return (Var("mo", ("mo",), "coordinate", "1", "the orbital's index",
                 "from 0, ascending energy", dtype="i4"),
             Var("mo_energy_eh", ("mo",), "raw", "Eh", "the orbital energies",
                 "every MO energy at the equilibrium SCF, ascending",
@@ -441,16 +475,6 @@ def _mode_vars() -> Tuple[Var, ...]:
     )
 
 
-def _renamed(key: str, name: str) -> Dict[str, Any]:
-    """A variable the file names ``name`` while the result keys it ``key``:
-    its key, and the key as the name an older file wrote it under."""
-    return {} if key == name else {"key": key, "earlier": (key,)}
-
-
-#: The renamed attribute of ``/equilibrium`` (:data:`_ROOT`'s form).
-_EQUILIBRIUM_ATTRS = {"homo_idx": ("int?", "homo_index")}
-
-
 def _es_vars() -> Tuple[Var, ...]:
     return (
         Var("probed_mode", ("probed_mode",), "coordinate", "1",
@@ -463,26 +487,19 @@ def _es_vars() -> Tuple[Var, ...]:
             "the HOMO's index in the window",
             "0-based index of the HOMO among the window's orbitals",
             dtype="i4"),
-        *(Var(name, ("probed_mode",), kind, units, long_name, definition,
-              source="the probe's SCFs" if kind == "raw" else "",
-              **_renamed(key, name))
-          for key, name, kind, units, long_name, definition in _ES_SCALARS),
-        *(Var(name, ("probed_mode", "window"), "raw", "Eh", long_name,
-              "the orbital window's energies, ascending",
-              source="the probe's SCFs", **_renamed(key, name))
-          for key, name, long_name in _ES_WINDOWS),
+        *_ES_SCALARS, *_ES_WINDOWS,
     )
+
+
+#: The thermo grid's axis, from its key in the grid block.
+_GRID_TEMPERATURE = Var(
+    "temperature_k", ("temperature_k",), "coordinate", "K", "the temperature",
+    "each temperature the curves are drawn at", key="temperatures_K",
+    earlier=("temperature", "temperatures_K"))
 
 
 def _grid_vars() -> Tuple[Var, ...]:
-    return (
-        Var("temperature_k", ("temperature_k",), "coordinate", "K",
-            "the temperature", "each temperature the curves are drawn at",
-            earlier=("temperature", "temperatures_K")),
-        *(Var(name, ("temperature_k",), "derived", units,
-              long_name, definition, **_renamed(key, name))
-          for key, name, units, long_name, definition in _GRID_CURVES),
-    )
+    return (_GRID_TEMPERATURE, *_GRID_CURVES)
 
 
 # --------------------------------------------------------------------- #
@@ -568,11 +585,11 @@ def write_spectra_data(payload: Mapping[str, Any], path, *,
         # /equilibrium -- the energy subgroup, whole or not at all (§ 6.2).
         g = ds.createGroup("equilibrium")
         mo = eq.get("mo_energies_eh")
-        g.setncatts(_block_attrs({"homo_idx": eq.get("homo_idx")},
-                                 _EQUILIBRIUM_ATTRS, "", "the equilibrium"))
-        vars_ = _equilibrium_vars()
-        values = _fill(vars_, {"mo": len(mo or ())})
-        values["total_energy_eh"][...] = number_attr(eq.get("scf_energy_eh"))
+        block = {k: eq.get(k) for k in _EQUILIBRIUM}
+        g.setncatts(_block_attrs(block, _EQUILIBRIUM, "", "the equilibrium"))
+        numbers, held = _block_numbers(block, _EQUILIBRIUM)
+        vars_ = numbers + _equilibrium_vars()
+        values = {**_fill(vars_, {"mo": len(mo or ())}), **held}
         values["mo"][:] = np.arange(len(mo or ()))
         if mo:
             values["mo_energy_eh"][:] = np.asarray(mo, dtype=float)
@@ -586,7 +603,7 @@ def write_spectra_data(payload: Mapping[str, Any], path, *,
         n_free = len(free)
         dims = {"mode": len(modes), "free_atom": n_free,
                 "removed": len(patterns), "xyz": 3}
-        vars_ = _mode_vars()
+        vars_ = tuple(MODE.values())
         values = _fill(vars_, dims)
         values["free_atom"][:] = free
         values["xyz"][:] = axis_values("xyz", 3)
@@ -595,7 +612,8 @@ def write_spectra_data(payload: Mapping[str, Any], path, *,
             values["mode"][k] = int(m["index_1based"])
             values["frequency_cm1"][k] = float(m["frequency_cm1"])
             values["eigenvector_canonical_per_amu12"][k] = np.asarray(
-                m["eigenvector_canonical"], dtype=float)
+                m[key_of(MODE["eigenvector_canonical_per_amu12"])],
+                dtype=float)
             values["eigenvector_display"][k] = np.asarray(
                 m["eigenvector_display"], dtype=float)
             values["has_imag"][k] = flag(m.get("has_imag"))
@@ -623,7 +641,8 @@ def write_spectra_data(payload: Mapping[str, Any], path, *,
         # /modes/electronic_structure -- one row per probed mode.
         probed = [m for m in modes
                   if m.get("electronic_structure") is not None]
-        windows = {len(m["electronic_structure"]["mo_energies_eq_eh"])
+        # ONE WINDOW, its size the equilibrium's.
+        windows = {len(m["electronic_structure"][key_of(_ES_WINDOWS[0])])
                    for m in probed}
         if len(windows) > 1:
             raise SpectraDataError(
@@ -638,10 +657,10 @@ def write_spectra_data(payload: Mapping[str, Any], path, *,
             es = m["electronic_structure"]
             values["probed_mode"][k] = int(m["index_1based"])
             values["homo_index_in_window"][k] = int(es["homo_index_in_window"])
-            for key, name, *_ in _ES_SCALARS:
-                values[name][k] = float(es[key])
-            for key, name, _ in _ES_WINDOWS:
-                values[name][k] = np.asarray(es[key], dtype=float)
+            for v in _ES_SCALARS:
+                values[v.name][k] = float(es[key_of(v)])
+            for v in _ES_WINDOWS:
+                values[v.name][k] = np.asarray(es[key_of(v)], dtype=float)
         write_group(ge, {"probed_mode": len(probed), "window": window}, vars_,
                     values,
                     title="the electronic-structure probe: per probed mode, "
@@ -657,25 +676,24 @@ def write_spectra_data(payload: Mapping[str, Any], path, *,
                     title="the harmonic thermochemistry at one temperature, "
                           "as its regime defines it")
         gg = g.createGroup("grid")
-        said = unknown_keys(grid, ("temperatures_K",
-                                   *(k for k, *_ in _GRID_CURVES)),
+        said = unknown_keys(grid, [key_of(v) for v in _grid_vars()],
                             note=UNSTATED)
         if said:
             raise SpectraDataError(f"the thermo grid: {said}")
-        temps = [float(t) for t in grid.get("temperatures_K") or ()]
+        temps = [float(t) for t in grid.get(key_of(_GRID_TEMPERATURE))
+                 or ()]
         vars_ = _grid_vars()
         values = _fill(vars_, {"temperature_k": len(temps)})
         values["temperature_k"][:] = temps
-        for key, name, *_ in _GRID_CURVES:
-            if key in grid:
-                values[name][:] = np.asarray(grid[key], dtype=float)
+        for v in _GRID_CURVES:
+            if key_of(v) in grid:
+                values[v.name][:] = np.asarray(grid[key_of(v)], dtype=float)
         write_group(gg, {"temperature_k": len(temps)}, vars_, values,
                     title="the thermochemistry drawn over temperature; "
                           "curves names the ones the result holds")
         if grid:
-            gg.setncattr("curves", json_attr([name for key, name, *_
-                                              in _GRID_CURVES
-                                              if key in grid]))
+            gg.setncattr("curves", json_attr([v.name for v in _GRID_CURVES
+                                              if key_of(v) in grid]))
 
         # /partial_charges -- the force-constant run's, when the result
         # states them (`engines/vibration.md` § 5.10 ②).
@@ -684,9 +702,12 @@ def write_spectra_data(payload: Mapping[str, Any], path, *,
             g = ds.createGroup("partial_charges")
             steps = list(charges["steps"])
             partitions = list(charges["charges_e"])
-            vars_ = _partial_charge_vars(partitions)
+            numbers, held = _block_numbers(
+                {k: charges[k] for k in _CHARGES}, _CHARGES)
+            vars_ = numbers + _partial_charge_vars(partitions)
             dims = {"fc_step": len(steps), "atom": atoms}
-            values = _fill(vars_, {"fc_step": len(steps), "atom": n_atoms})
+            values = {**_fill(vars_, {"fc_step": len(steps), "atom": n_atoms}),
+                      **held}
             values["fc_step"][:] = np.arange(len(steps))
             values["atom"][:] = axis_values("atom", n_atoms)
             for i, s in enumerate(steps):
@@ -697,8 +718,6 @@ def write_spectra_data(payload: Mapping[str, Any], path, *,
             for name in partitions:
                 values[f"{name}_charge_e"][:] = np.asarray(
                     charges["charges_e"][name], dtype=float)
-            values["fc_displacement_ang"][...] = float(
-                charges["displacement_ang"])
             write_group(g, dims, vars_, values,
                         title="the force-constant run's atomic charges at "
                               "each of its steps, one variable per "
@@ -721,7 +740,7 @@ def read_spectra_data(path, *, data=None) -> Dict[str, Any]:
     with checked(path, schemas=READABLE_DATA_SCHEMAS, error=SpectraDataError,
                  data=data) as (ds, attrs):
         out["schema_version"] = int(attrs["spectra_schema_version"])
-        held = read_variables(ds)
+        held = read_variables(ds, _numbers(_ROOT) + _numbers(_RELAXATION))
         out.update(_block_back(attrs, held, _ROOT, ""))
         relaxation = _block_back(attrs, held, _RELAXATION, "relaxation_")
         out["relaxation"] = relaxation
@@ -740,46 +759,34 @@ def read_spectra_data(path, *, data=None) -> Dict[str, Any]:
             out[MAP_KEY] = st["atoms"].to_dict()
         # /equilibrium
         g = ds["equilibrium"]
-        qv = read_variables(g)
-        # ITS ENERGY, a variable from @8 -- an attribute before.
-        energy = named_in(qv, EQUILIBRIUM["total_energy_eh"])
-        scf = unnumber_attr(qv[energy]["data"] if energy is not None
-                            else g.getncattr("scf_energy_eh"))
-        mo = qv["mo_energy_eh"]["data"]
-        eq: Dict[str, Any] = {
-            "scf_energy_eh": scf,
-            "mo_energies_eh": (None if scf is None
-                               else [float(x) for x in mo]),
-            **_block_back({k: g.getncattr(k) for k in g.ncattrs()}, {},
-                          _EQUILIBRIUM_ATTRS, ""),
-        }
+        qv = read_variables(g, _numbers(_EQUILIBRIUM))
+        eq: Dict[str, Any] = _block_back(
+            {k: g.getncattr(k) for k in g.ncattrs()}, qv, _EQUILIBRIUM, "")
+        eq["mo_energies_eh"] = (
+            None if eq.get("scf_energy_eh") is None
+            else [float(x) for x in qv["mo_energy_eh"]["data"]])
         if masses is not None:
             eq["masses_amu"] = masses
         out["equilibrium"] = eq
         # /modes
         g = ds["modes"]
-        mv = read_variables(g)
-        out["free_atom_idxs"] = [int(i) for i in
-                                 mv[named_in(mv, MODE["free_atom"])]["data"]]
-        n_modes = int(mv[named_in(mv, MODE["mode"])]["data"].shape[0])
+        mv = read_variables(g, tuple(MODE.values()))
+        out["free_atom_idxs"] = [int(i) for i in mv["free_atom"]["data"]]
+        n_modes = int(mv["mode"]["data"].shape[0])
         es_rows: Dict[int, Dict[str, Any]] = {}
-        ge = g["electronic_structure"]
-        ev = read_variables(ge)
-        for k, idx in enumerate(
-                ev[named_in(ev, PROBE["probed_mode"])]["data"]):
+        ev = read_variables(g["electronic_structure"], _es_vars())
+        for k, idx in enumerate(ev["probed_mode"]["data"]):
             es_rows[int(idx)] = {
-                "amplitude_ang": float(ev["amplitude_ang"]["data"][k]),
-                **{key: [float(x) for x in
-                         ev[named_in(ev, PROBE[name])]["data"][k]]
-                   for key, name, _ in _ES_WINDOWS},
+                **{key_of(v): [float(x) for x in ev[v.name]["data"][k]]
+                   for v in _ES_WINDOWS},
                 "homo_index_in_window": int(
                     ev["homo_index_in_window"]["data"][k]),
-                **{key: float(ev[named_in(ev, PROBE[name])]["data"][k])
-                   for key, name, *_ in _ES_SCALARS[1:]},
+                **{key_of(v): float(ev[v.name]["data"][k])
+                   for v in _ES_SCALARS},
             }
         modes = []
         for k in range(n_modes):
-            idx = int(mv[named_in(mv, MODE["mode"])]["data"][k])
+            idx = int(mv["mode"]["data"][k])
             # THE DERIVATION'S RULE (`spectra.derived`): an imaginary mode
             # has no zero-point amplitude and no displacement.
             amplitude = unnumber_attr(
@@ -787,15 +794,12 @@ def read_spectra_data(path, *, data=None) -> Dict[str, Any]:
             m: Dict[str, Any] = {
                 "index_1based": idx,
                 "frequency_cm1": float(mv["frequency_cm1"]["data"][k]),
-                "raman_activity_a4_amu": unnumber_attr(
-                    mv[named_in(mv, MODE["raman_activity_ang4_per_amu"])]
-                    ["data"][k]),
-                "ir_intensity_km_mol": unnumber_attr(
-                    mv[named_in(mv, MODE["ir_intensity_km_per_mol"])]
-                    ["data"][k]),
-                "eigenvector_canonical": mv[named_in(
-                    mv, MODE["eigenvector_canonical_per_amu12"])]["data"][k]
-                .tolist(),
+                **{key_of(MODE[name]): unnumber_attr(
+                    mv[name]["data"][k])
+                   for name in ("raman_activity_ang4_per_amu",
+                                "ir_intensity_km_per_mol")},
+                key_of(MODE["eigenvector_canonical_per_amu12"]):
+                    mv["eigenvector_canonical_per_amu12"]["data"][k].tolist(),
                 "eigenvector_display": mv["eigenvector_display"]["data"][k]
                 .tolist(),
                 "has_imag": bool(unflag(mv["has_imag"]["data"][k])),
@@ -826,27 +830,28 @@ def read_spectra_data(path, *, data=None) -> Dict[str, Any]:
         # /thermo
         g = ds["thermo"]
         thermo = _block_back({k: g.getncattr(k) for k in g.ncattrs()},
-                             read_variables(g), _THERMO, "")
+                             read_variables(g, _numbers(_THERMO)), _THERMO,
+                             "")
         gg = g["grid"]
         if "curves" in gg.ncattrs():
-            gv = read_variables(gg)
-            grid = {"temperatures_K": [float(t) for t in
-                                       gv[named_in(gv, GRID["temperature_k"])]
-                                       ["data"]]}
-            for name in unjson_attr(gg.getncattr("curves")):
-                # A CURVE BY ITS NAME IN THE FILE, or -- an older file --
-                # by its key, which it was named by then.
-                var = next(v for v in _grid_vars()
-                           if name in (v.name, *v.earlier))
-                grid[key_of(var)] = [float(x) for x in
-                                     gv[named_in(gv, var)]["data"]]
+            gv = read_variables(gg, _grid_vars())
+            grid = {key_of(_GRID_TEMPERATURE): [float(t) for t in
+                                       gv["temperature_k"]["data"]]}
+            # THE CURVES THE FILE NAMES, each under its name now
+            # (`ncdata.named_now`).
+            named = named_now(
+                dict.fromkeys(unjson_attr(gg.getncattr("curves"))),
+                {v.name: v.earlier for v in _GRID_CURVES})
+            for v in _GRID_CURVES:
+                if v.name in named:
+                    grid[key_of(v)] = [float(x) for x in gv[v.name]["data"]]
             thermo["grid"] = grid
         out["thermo"] = thermo
         # /partial_charges, where the file holds them (from @5).
         out["partial_charges"] = None
         if "partial_charges" in ds.groups:
             g = ds["partial_charges"]
-            pv = read_variables(g)
+            pv = read_variables(g, _numbers(_CHARGES))
             partitions = unjson_attr(g.getncattr("partitions"))
             steps = []
             for i in range(int(pv["fc_step"]["data"].shape[0])):
@@ -856,11 +861,8 @@ def read_spectra_data(path, *, data=None) -> Dict[str, Any]:
                               or None,
                               "side": int(pv["displaced_side"]["data"][i])})
             out["partial_charges"] = {
-                # A variable from @8 -- an attribute before.
-                "displacement_ang": float(
-                    pv[named_in(pv, CHARGES["fc_displacement_ang"])]["data"]
-                    if named_in(pv, CHARGES["fc_displacement_ang"]) is not None
-                    else g.getncattr("displacement_ang")),
+                **_block_back({k: g.getncattr(k) for k in g.ncattrs()}, pv,
+                              _CHARGES, ""),
                 "steps": steps,
                 "charges_e": {name: pv[f"{name}_charge_e"]["data"].tolist()
                               for name in partitions}}
@@ -871,10 +873,6 @@ __all__ = ["DATA_SCHEMA", "SpectraDataError", "UNSTATED", "write_spectra_data",
            "read_spectra_data"]
 
 
-#: Each group's variables by name -- what a reader asks a variable's name
-#: in the file, or an older one's, of (`ncdata.named_in`).
-EQUILIBRIUM = {v.name: v for v in _equilibrium_vars()}
+#: The modes' variables by name -- what the writer and the reader ask a
+#: variable's record key of (`ncdata.key_of`).
 MODE = {v.name: v for v in _mode_vars()}
-PROBE = {v.name: v for v in _es_vars()}
-GRID = {v.name: v for v in _grid_vars()}
-CHARGES = {v.name: v for v in _partial_charge_vars(())}

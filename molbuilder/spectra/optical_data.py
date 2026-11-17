@@ -41,8 +41,8 @@ import numpy as np
 try:                                        # inside molbuilder
     from ..atom_permutation import AtomIndexMap
     from ..ncdata import (NC_LOCK, Var, as_bytes, axis_values, checked,
-                          coordinate, empty, in_memory, key_of, named_in,
-                          json_attr, number_attr, read_variables,
+                          coordinate, empty, in_memory, key_of,
+                          named_now, json_attr, number_attr, read_variables,
                           state, unjson_attr, unnumber_attr, write_group)
     from ..persist import unknown_keys, write_bytes
     from ..runfiles import ROLE_SIESTA_OUT, SIESTA_EPSIMG, compose
@@ -53,9 +53,9 @@ except ImportError:                         # beside a job, in mb_vibration.pyz
     from atom_permutation import AtomIndexMap  # type: ignore[no-redef]
     from ncdata import (NC_LOCK, Var, as_bytes,  # type: ignore[no-redef]
                         axis_values, checked, coordinate, empty, key_of,
-                        named_in,
-                        in_memory, json_attr, number_attr, read_variables,
-                        state, unjson_attr, unnumber_attr, write_group)
+                        named_now, in_memory, json_attr, number_attr,
+                        read_variables, state, unjson_attr, unnumber_attr,
+                        write_group)
     from persist import unknown_keys, write_bytes  # type: ignore[no-redef]
     from runfiles import (  # type: ignore[no-redef]
         ROLE_SIESTA_OUT, SIESTA_EPSIMG, compose)
@@ -82,17 +82,19 @@ WHAT = ("SIESTA's optical calculation: the imaginary part of the dielectric "
         "(engines/vibration.md 5.11; science/vibrational-optical-response.md "
         "3)")
 
-#: The payload's keys, and its frames' -- a key this file does not know is
-#: refused by name rather than dropped.
+#: The payload's keys, and its settings' -- a key this file does not know
+#: is refused by name rather than dropped; a frame's keys are its
+#: variables' (:data:`FRAME`, :func:`_checked`).
 _PAYLOAD_KEYS = ("label", "run", "engine_version", "molbuilder_version",
                  "settings", "structure", "atom_index_map", "masses_amu",
                  "photon_energy_ev", "spin", "frames")
 _SETTINGS_KEYS = ("keywords", "direction", "selection", "delta_ang",
                   "deck_name", "deck_text", "deck_sha256")
-_FRAME_KEYS = ("call", "mode", "frequency_cm1", "side", "dq_amu12_ang",
-               "position_ang", "state", "computed_in", "scf_iterations",
-               "total_energy_ev", "fermi_level_ev", "engine_elapsed_s",
-               "f_sum", "drude_wp2_ha2", "eps2")
+
+
+#: The root's attributes an older file names otherwise: the engine's
+#: version, ``siesta_version`` before @4.
+_EARLIER_ATTRS = {"engine_version": ("siesta_version",)}
 
 
 class OpticalDataError(ValueError):
@@ -197,8 +199,11 @@ def _checked(payload: Mapping[str, Any]) -> None:
         said = unknown_keys(block, keys, note=UNSTATED)
         if said:
             raise OpticalDataError(f"{where}: {said}")
+    # A FRAME'S KEYS: each variable's of a frame -- its record key -- the
+    # axes the frames lie on aside.
+    frame_keys = [key_of(v) for v in FRAME.values() if v.kind != "coordinate"]
     for i, f in enumerate(payload.get("frames") or ()):
-        said = unknown_keys(f, _FRAME_KEYS, note=UNSTATED)
+        said = unknown_keys(f, frame_keys, note=UNSTATED)
         if said:
             raise OpticalDataError(f"frame {i}: {said}")
 
@@ -313,23 +318,17 @@ def read_optical_data(path, *, data=None) -> Dict[str, Any]:
     out: Dict[str, Any] = {}
     with checked(path, schemas=READABLE_DATA_SCHEMAS, error=OpticalDataError,
                  data=data) as (ds, attrs):
+        attrs = named_now(attrs, _EARLIER_ATTRS)
         for key in ("label", "run", "engine_version", "molbuilder_version"):
             out[key] = str(attrs.get(key, ""))
-        # A FILE BEFORE @4 names the engine's version ``siesta_version``,
-        # read as it is -- every older layout is read as it was written
-        # (above), by what it holds.
-        if "engine_version" not in attrs:
-            out["engine_version"] = str(attrs.get("siesta_version", ""))
         g = ds["settings"]
         sa = {k: g.getncattr(k) for k in g.ncattrs()}
-        held = read_variables(g)
+        held = read_variables(g, _SETTINGS_VARS)
         out["settings"] = {
             "keywords": unjson_attr(sa["keywords"]),
             "direction": unjson_attr(sa["direction"]),
             "selection": unjson_attr(sa["selection"]),
-            "delta_ang": unnumber_attr(held["delta_ang"]["data"]
-                                       if "delta_ang" in held
-                                       else sa["delta_ang"]),
+            "delta_ang": unnumber_attr(held["delta_ang"]["data"]),
             "deck_name": str(sa["deck_name"]),
             "deck_text": str(sa["deck_text"]),
             "deck_sha256": str(sa["deck_sha256"])}
@@ -339,7 +338,7 @@ def read_optical_data(path, *, data=None) -> Dict[str, Any]:
         out["atom_index_map"] = (st["atoms"].to_dict()
                                  if st["atoms"] is not None else None)
         out["masses_amu"] = st["masses"]
-        fv = read_variables(ds["frames"])
+        fv = read_variables(ds["frames"], tuple(FRAME.values()))
         out["photon_energy_ev"] = [float(x) for x in
                                    fv["photon_energy_ev"]["data"]]
         out["spin"] = [str(s) for s in fv["spin"]["data"]]
@@ -353,12 +352,8 @@ def read_optical_data(path, *, data=None) -> Dict[str, Any]:
             fermi = np.broadcast_to(
                 np.asarray(fv["fermi_level_ev"]["data"][k], dtype=float),
                 (len(out["spin"]),))
-            # A FILE BEFORE @5 names them as the record does, read so
-            # (each variable's ``earlier``).
-            drude = np.asarray(
-                fv[named_in(fv, FRAME["drude_wp2_eh2"])]["data"][k],
-                dtype=float)
-            iters = int(fv[named_in(fv, FRAME["scf_cycles"])]["data"][k])
+            drude = np.asarray(fv["drude_wp2_eh2"]["data"][k], dtype=float)
+            iters = int(fv["scf_cycles"]["data"][k])
             frames.append({
                 "call": str(fv["call"]["data"][k]),
                 "mode": None if mode < 0 else mode,
@@ -369,15 +364,16 @@ def read_optical_data(path, *, data=None) -> Dict[str, Any]:
                                  and pos.size else None),
                 "state": str(fv["state"]["data"][k]),
                 "computed_in": str(fv["computed_in"]["data"][k]),
-                "scf_iterations": None if iters < 0 else iters,
+                key_of(FRAME["scf_cycles"]): None if iters < 0 else iters,
                 **{name: unnumber_attr(fv[name]["data"][k])
                    for name in ("total_energy_ev", "engine_elapsed_s")},
                 "fermi_level_ev": (fermi.tolist() if fermi.size
                                    and np.isfinite(fermi).all() else None),
                 "f_sum": (f_sum.tolist() if f_sum.size
                           and np.isfinite(f_sum).all() else None),
-                "drude_wp2_ha2": (drude.tolist() if drude.size
-                                  and np.isfinite(drude).all() else None),
+                key_of(FRAME["drude_wp2_eh2"]): (
+                    drude.tolist() if drude.size and np.isfinite(drude).all()
+                    else None),
                 "eps2": (eps2 if eps2.size and np.isfinite(eps2).all()
                          else None)})
         out["frames"] = frames
@@ -388,7 +384,7 @@ __all__ = ["DATA_SCHEMA", "READABLE_DATA_SCHEMAS", "OpticalDataError", "WHAT",
            "write_optical_data", "read_optical_data"]
 
 
-#: The frames' variables by name -- what the writer asks a variable's record
-#: key of, and the reader its name in an older file (`ncdata.key_of`,
-#: `ncdata.named_in`).
+#: The frames' variables by name -- what the writer asks a variable's
+#: record key of (`ncdata.key_of`), and the reader reads the frames with,
+#: an older file's names under its own (`ncdata.read_variables`).
 FRAME = {v.name: v for v in _frame_vars("label")}

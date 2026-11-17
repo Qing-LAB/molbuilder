@@ -357,9 +357,10 @@ def pdos(data_file, point, *, atoms=(), labels=(), regions=(),
             if got is None:
                 raise TbtError(
                     f"{s['digest']} is not the reading {path.name} was "
-                    f"composed from -- not there, or read again from "
-                    f"another run of its data file: summarize or export "
-                    f"again")
+                    f"composed from -- not there, read again from another "
+                    f"run of its data file or by another molbuilder, "
+                    f"damaged, or stating no atom's user index: summarize or "
+                    f"export again")
             readings.append((Path(s["digest"]).name, got))
         return summed_pdos(readings, basis,
                            [engine[a] for a in sorted(chosen)], orbitals,

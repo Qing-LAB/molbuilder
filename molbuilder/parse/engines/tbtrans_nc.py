@@ -319,9 +319,8 @@ def kept(path, *, need_user: bool = False) -> Optional[TransmissionResult]:
 #: What a kept reading is read back from: the digest's variables -- those
 #: every reading holds, then the rest (a data file with no device DOS has
 #: no columns).
-_HELD = ("energy_ev", "first_orbital")
-_READING = _HELD + ("orbital_dos_per_ev", "device_orbital",
-                     "device_orbital_atom")
+_READING = ("energy_ev", "first_orbital", "orbital_dos_per_ev",
+            "device_orbital", "device_orbital_atom")
 
 
 def _digest(path: Path, part: Tuple[str, ...], *, need_user: bool = False
@@ -338,29 +337,37 @@ def _digest(path: Path, part: Tuple[str, ...], *, need_user: bool = False
     return _digest_at(digest, _version(path), part, need_user=need_user)
 
 
+class _AnotherLayout(ValueError):
+    """A digest of another schema -- an earlier molbuilder's, or one naming
+    none (`model/parse.md` § 5e)."""
+
+
 def _digest_at(digest: Path, version: Tuple[int, int], part: Tuple[str, ...],
                *, need_user: bool = False) -> Optional[Dict[str, Any]]:
     """The digest at ``digest`` when it is a reading of the data file at
     ``version`` -- its size and modification time -- (:func:`_digest`'s
-    answer), ``None`` otherwise."""
+    answer), ``None`` otherwise: another version's, one stating no user
+    index where ``need_user``, and -- opened through the one door every
+    data file is (`ncdata.checked`) -- one of another schema or one that
+    does not open, damaged; any other error is an error, never a silent
+    reading again."""
     import numpy as np
     from molbuilder.atom_permutation import FIELD_USER
-    from molbuilder.ncdata import read_atom_index_map, reading
+    from molbuilder.ncdata import checked, read_atom_index_map
     try:
-        with reading(digest) as ds:
-            if (getattr(ds, "schema", "") != DIGEST_SCHEMA
-                    or (int(ds.data_file_size), int(ds.data_file_mtime_ns))
-                    != version
-                    or not all(v in ds.variables for v in _HELD)
+        with checked(digest, schemas=(DIGEST_SCHEMA,),
+                     error=_AnotherLayout) as (ds, attrs):
+            if ((int(attrs["data_file_size"]),
+                 int(attrs["data_file_mtime_ns"])) != version
                     or (need_user and FIELD_USER not in ds.variables)):
                 return None
             ds.set_auto_mask(False)
-            return {"channel": str(ds.channel), "version": version,
+            return {"channel": str(attrs["channel"]), "version": version,
                     "atom_index_map": read_atom_index_map(
                         ds, source=digest.name),
                     **{v: np.asarray(ds[v][...]) for v in part
                        if v in ds.variables}}
-    except (OSError, RuntimeError, KeyError, AttributeError, ValueError):
+    except (_AnotherLayout, OSError, RuntimeError):
         return None
 
 
@@ -771,7 +778,7 @@ def energies(path) -> Tuple[float, ...]:
     kept reading's, or the file's own energy list (a small read)."""
     from molbuilder.ncdata import reading
     got = _digest(Path(path), part=("energy_ev",))
-    if got is not None and "energy_ev" in got:
+    if got is not None:
         return tuple(float(e) for e in got["energy_ev"])
     with reading(path, sile=True) as tbt:
         return tuple(sorted(float(e) for e in tbt.E))

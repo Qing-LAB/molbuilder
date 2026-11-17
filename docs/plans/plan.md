@@ -57,6 +57,9 @@ each release is its changelog row and its ledger section
   § 9, § 2a rule 2, § 2c; the user, 2026-11-16); one export door per
   kind, its asks declared in the kind table, one /api/export route and
   `jobset export` from the rows in 2.72.4 (`model/datafiles.md` § 5a);
+  an older file's names read through one door (`ncdata.named_now`) and
+  the transport summary opened through the one door in
+  2.72.5 (`model/datafiles.md` § 2a rule 5, `model/parse.md` § 5e);
   next one export bar, the vibration Export in the Results top line, then
   `pdos` and the re-average moved to their kinds;
   (C)

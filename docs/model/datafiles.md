@@ -249,10 +249,16 @@ naming this section — in every file, every group, the root's included.
    of every file that uses it. A reader that reads its older files as they
    are (the vibration result's, the optical calls' — § 1) keeps reading
    the old name as the new one, each variable stating the names older
-   files wrote it under (`ncdata.Var.earlier`, read by `ncdata.named_in`);
-   a file refused by its version (§ 3a) is written again by its command; a
-   kept reading is out of date at another version and made again from its
-   source (the digest, `model/parse.md` § 5e).
+   files wrote it under (`ncdata.Var.earlier`). **An older file's names are
+   read through one door** (`ncdata.named_now`) — its variables', its
+   attributes' and the names it lists — so a reader asks only for the names
+   its schema writes. The one reader of variables, handed a group's
+   variables (`ncdata.read_variables(group, variables)`), applies it, and
+   takes a number an older file stated as an attribute — every file before
+   2.47.0 did — as the variable it is now. A file refused by its version (§ 3a) is
+   written again by its command; a kept reading is out of date at another
+   version and made again from its source (the digest, `model/parse.md`
+   § 5e).
 
 | axis | its points | its coordinate's values | units (— labels) | files |
 |---|---|---|---|---|
@@ -433,7 +439,9 @@ read_data_file`, `spectra.datafile.read_spectra_data`,
 TBtrans parser, the `.MD.nc` reader, the atom index map's reader — kept so by
 review; sisl reads an engine's other files (`.TS.HSX`, `.ORB_INDX`), which
 are not NetCDF, through its own doors. **Every reader gives the map back with
-the data**: `read_variables(group)` and `read_atom_index_map(group)` — the
+the data**: `read_variables(group, variables)` — each of `variables` under
+its name now, an older file's included (§ 2a rule 5) — and
+`read_atom_index_map(group)` — the
 map's one reader, `AtomIndexMap.from_dict`, checked as it is read.
 
 **Outside molbuilder's process** — a notebook, a person's script —

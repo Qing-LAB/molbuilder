@@ -673,20 +673,19 @@ def state(ds, *, title: str, schema: str, molbuilder_version: str,
                   "Conventions": CONVENTIONS})
 
 
-def earliest(held: Mapping[str, Any], names: Sequence[str]
-             ) -> Optional[str]:
-    """The first of ``names`` -- a name as this schema writes it, then as
-    earlier schemas wrote it, newest first -- that ``held`` (a group's
-    variables or attributes) holds; ``None`` where it holds none: an older
-    file read as it is (`model/datafiles.md` § 2a rule 5)."""
-    return next((n for n in names if n in held), None)
-
-
-def named_in(held: Mapping[str, Any], var: "Var") -> Optional[str]:
-    """The name ``held`` -- a group's variables -- holds ``var`` under: its
-    own, or one an earlier schema wrote (``var.earlier``,
-    :func:`earliest`); ``None`` where it holds it under none."""
-    return earliest(held, (var.name, *var.earlier))
+def named_now(held: Mapping[str, Any],
+              earlier: Mapping[str, Sequence[str]]) -> Dict[str, Any]:
+    """``held`` -- a group's variables or attributes, or the names a file
+    lists -- with each name of ``earlier`` it holds only under one of that
+    name's earlier names (newest first) put under the name now: THE ONE
+    DOOR an older file's names are read through, so a reader asks only for
+    the names its schema writes (`model/datafiles.md` § 2a rule 5)."""
+    out = dict(held)
+    for name, olds in earlier.items():
+        old = next((n for n in olds if n in out), None)
+        if name not in out and old is not None:
+            out[name] = out.pop(old)
+    return out
 
 
 def key_of(var: "Var") -> str:
@@ -799,11 +798,16 @@ def read_atom_index_map(group, *, source: str,
                                   source=source, said=said)
 
 
-def read_variables(group) -> Dict[str, Dict[str, Any]]:
+def read_variables(group, variables: Sequence["Var"] = ()
+                   ) -> Dict[str, Dict[str, Any]]:
     """Every variable of ``group`` as ``{name: {"dims", "data", "attrs"}}``
     -- its values as a numpy array (the fill value as written; a record's
     the records it holds, its fill ``None``, § 3a), its attributes but the
-    fill value."""
+    fill value; each of ``variables`` an older file holds otherwise under
+    its name now (:func:`named_now`, `model/datafiles.md` § 2a rule 5) --
+    under an earlier name, or, a number of no dimension, as the group's
+    attribute of its name or an earlier one, as every file before 2.47.0
+    stated a number."""
     group.set_auto_mask(False)
     out = {}
     for name, v in group.variables.items():
@@ -815,6 +819,15 @@ def read_variables(group) -> Dict[str, Dict[str, Any]]:
             data = _records(data)
         out[name] = {"dims": tuple(v.dimensions), "data": data,
                      "attrs": attrs}
+    earlier = {v.name: v.earlier for v in variables}
+    out = named_now(out, earlier)
+    numbers = [v for v in variables if not v.dims and v.name not in out]
+    if numbers:
+        attrs = named_now({k: group.getncattr(k) for k in group.ncattrs()},
+                          earlier)
+        out.update({v.name: {"dims": (), "data": np.asarray(attrs[v.name]),
+                             "attrs": {}}
+                    for v in numbers if v.name in attrs})
     return out
 
 
@@ -1184,7 +1197,7 @@ __all__ = ["Var", "Axis", "AXES", "UNITS", "CONVENTIONS", "ROOT_FACTS",
            "in_memory",
            "as_bytes", "read_variables", "EXPORT_FORMATS", "ExportError",
            "coordinate", "axis_values", "groups", "checked", "read_file",
-           "earliest", "named_in", "key_of", "UNIT_IN_NAME",
+           "named_now", "key_of", "UNIT_IN_NAME",
            "STRUCTURE_JSON",
            "structure_vars", "structure_values", "structure_attrs",
            "write_structure_group", "read_structure_group",

@@ -2048,8 +2048,8 @@ A digest is written through the variable record every NetCDF file
 molbuilder writes shares (`ncdata`: each variable's kind, units, words and
 source — [`model/datafiles.md`](?doc=model/datafiles.md) § 2–3) and handed
 whole to the one writer (`persist.write_bytes`), so a
-reading cut short leaves none; a digest of another version, or one that
-does not hold a reading, is no kept reading. Whether one is current is
+reading cut short leaves none; a digest of another version is no kept
+reading. Whether one is current is
 read from its attributes alone, never its tables.
 
 **The digest describes itself, so a person's own script may read it alone**
@@ -2064,8 +2064,11 @@ data file states no elements); the k-points and their weights; each lead's
 name, chemical potential and temperature; TBtrans's own k-averaged
 transmission, eigenchannels, total DOS and the leads' DOS, each naming the
 text file it came from; and the data file's name, size, time and what it
-states of itself. Every variable and attribute, with what it is: [`model/datafiles.md`](?doc=model/datafiles.md) § 9.6. A digest of
-an earlier schema is no kept reading: the next reading writes it anew. **Its atoms are listed by engine index** — TBtrans's geometry,
+states of itself. Every variable and attribute, with what it is: [`model/datafiles.md`](?doc=model/datafiles.md) § 9.6. A digest is
+opened through the one door every data file is (`ncdata.checked`): one of
+an earlier schema, or one that does not open — damaged — is no kept
+reading, and the next reading writes it anew; any other error is an error,
+never a silent reading again. **Its atoms are listed by engine index** — TBtrans's geometry,
 TranSIESTA's order, the device run's — **and it carries its atom index map**
 ([`model/overview.md`](?doc=model/overview.md) § 2.2b):
 `atoms_listed_by` `engine_index`, `atom_index_base` `0`, and per atom
