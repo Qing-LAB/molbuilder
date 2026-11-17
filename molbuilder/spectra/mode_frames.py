@@ -10,10 +10,13 @@ ROLE    :func:`frameset_from_mode` -- the one generator, and
         :func:`outermost_move` and :func:`at_temperature` -- what a
         temperature means for a mode before its set is written: its mean
         number of quanta, its spread and the outermost frames' largest atom
-        move for each rule (`science/vibrational-averaging.md` § 5)
-USED-BY the command line (`molbuilder frameset from-mode`) and the spectrum
+        move for each rule (`science/vibrational-averaging.md` § 5), and of a
+        result's mode by its number (:func:`outermost_move_of`);
+        :func:`mode_at` -- where a mode is, by its number, the one lookup
+USED-BY the command line (`molbuilder frameset from-mode`), the spectrum
         viewer's doors (`POST /api/spectra/frameset`; what a temperature
-        means, at `POST /api/spectra/load`)
+        means, at `POST /api/spectra/load`) and the post-processing layer
+        (`postprocess.outermost_move`)
 
 **Its extent is the person's: a temperature** (the user, 2026-10-28) --
 the junction's, or for a mode pumped out of equilibrium its effective one.
@@ -261,12 +264,7 @@ def frameset_from_mode(run_folder, *, mode: int, temperature_k: float,
             f"{result.name} states no masses (a result before schema 7): "
             f"the mode's coordinate is weighted by them -- run the "
             f"vibration again with this molbuilder")
-    found = [m for m in res.modes if int(m.index_1based) == int(mode)]
-    if not found:
-        raise FrameSetError(
-            f"{result.name} holds modes 1 to {len(res.modes)}; there is no "
-            f"mode {mode}")
-    m = found[0]
+    m = res.modes[mode_at(res, mode, result.name)]
     q_zp = zero_point_amplitude_amu12_ang(m.frequency_cm1, m.has_imag)
     if q_zp is None:
         raise FrameSetError(
@@ -369,5 +367,41 @@ def frameset_from_mode(run_folder, *, mode: int, temperature_k: float,
                       frames=tuple(frames), said=tuple(said))
 
 
+def mode_at(res, mode, name: str) -> int:
+    """WHERE MODE ``mode`` IS among the vibration result ``res``'s modes
+    (`sidecars.spectra.parse_spectra_json`) -- its number as the result
+    numbers its modes, a whole number -- or refused naming the modes there
+    are (:class:`FrameSetError`); ``name`` the result's file name."""
+    import numbers
+    if (isinstance(mode, bool) or not isinstance(mode, numbers.Real)
+            or int(mode) != mode):
+        raise FrameSetError(f"a mode is named by its number, a whole number "
+                            f"-- not {mode!r}")
+    found = [k for k, m in enumerate(res.modes)
+             if int(m.index_1based) == int(mode)]
+    if not found:
+        raise FrameSetError(f"{name} holds modes 1 to {len(res.modes)}; "
+                            f"there is no mode {mode}")
+    return found[0]
+
+
+def outermost_move_of(result, *, mode, temperature_k: float,
+                      nodes: int = NODES[0]) -> Optional[float]:
+    """THE OUTERMOST MOVE of mode ``mode`` (its number) of the vibration
+    result ``result`` (``<label>.spectra.json``) at ``temperature_k`` for
+    ``nodes`` frames, in Angstrom (:func:`outermost_move`) --
+    ``postprocess.outermost_move``'s question, answered here; ``None`` for
+    an imaginary mode, which has no spread."""
+    from ..sidecars.spectra import SpectraJsonError, parse_spectra_json
+    result = Path(result)
+    try:
+        res = parse_spectra_json(result)
+    except SpectraJsonError as exc:
+        raise FrameSetError(f"{result.name}: {exc}") from exc
+    row = res.to_dict()["modes"][mode_at(res, mode, result.name)]
+    return outermost_move(row, temperature_k, nodes)
+
+
 __all__ = ["NODES", "SAMPLING_RULE", "FrameSetError", "ModeFrames",
-           "at_temperature", "frameset_from_mode", "outermost_move"]
+           "at_temperature", "frameset_from_mode", "mode_at",
+           "outermost_move", "outermost_move_of"]

@@ -3056,7 +3056,8 @@ another mode's set — is the analysis's, made on the data file below, where
 every frame's values sit beside its rows; so is **an average over another
 motion than the set's** — a bell curve at another temperature, or a swing
 added by a push in step with the mode — re-weighted from each frame's
-position along the mode (`molbuilder.postprocess.reaveraged`,
+position along the mode (`molbuilder.postprocess.reaveraged`, answered by
+`frame_average.reaveraged`,
 [`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md)
 § 5.4), never written into the record. **The weights are read as
 written** (`model/structure.md` § 2.2f): their sum and the tolerance are stated beside the average,
@@ -3242,13 +3243,14 @@ and the data file says where it is and what each orbital is:
   sha256 ([`model/datafiles.md`](?doc=model/datafiles.md) § 2b).
 
 **`postprocess.pdos(data_file, point, *, atoms=(), labels=(), regions=(),
-orbitals="all")`** — the PDOS of a selection at one point (`"v0.2"`,
+orbitals=None)`** — the PDOS of a selection at one point (`"v0.2"`,
 `"f003/v0.2"`, the point group's name), **a mixed selection**: atoms by user
 index, every atom carrying a label as the junction writes it (matched as
 written, never interpreted), every atom of a region molbuilder owns —
 their union, an atom named twice counted once — narrowed to one orbital
-type. It reads the selection against `/structure`, the point's digest through
-its door (`tbtrans_nc.kept_at`), and sums with **the one function the
+type (every orbital, unsaid). Answered by the transport package (`tbtnc.pdos_from_files`), it reads
+the selection against `/structure`, the point's digest through its door
+(`tbtrans_nc.kept_at`), and sums with **the one function the
 report's PDOS of a selection sums with** (`tbtnc.summed_pdos`), a point
 that shares energies joined as the report joins it, so a notebook's curve
 is the page's. It answers as `reaveraged` does, a dict — `energy_ev`,

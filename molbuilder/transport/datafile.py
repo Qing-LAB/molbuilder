@@ -18,8 +18,10 @@ ROLE    one NetCDF-4 file per transport calculation, in groups -- the
         it; :func:`read_data_file` is its door
 USED-BY `jobset summarize task`, beside `record.write_record`; an export
         (`transport.export`), which hands the bytes out; a person's script
-        through `postprocess` -- `read_transport_data`, `reaveraged`,
-        `pdos` -- which reads them through :func:`read_data_file`
+        through `postprocess.read_transport_data`; the PDOS from the files
+        (`tbtnc.pdos_from_files`) and the re-average
+        (`frame_average.reaveraged`) -- each reading through
+        :func:`read_data_file`
 
 **One shape for every transport calculation** (user, 2026-10-10: "doing a
 derivative is trivial if the result are saved with these parameter and

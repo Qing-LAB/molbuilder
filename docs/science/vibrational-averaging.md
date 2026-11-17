@@ -959,7 +959,8 @@ re-averaged to a bell curve of $1.5\sigma$ give 2.0517 against the true
 
 **Where.** The re-averaging is the post-process's, on the transport
 calculation's data file, where every frame's $q_f$ and $T_f(E)$ sit
-(`molbuilder.postprocess.reaveraged`, [`model/parse.md`](?doc=model/parse.md)
+(`frame_average.reaveraged`, asked as `molbuilder.postprocess.reaveraged`,
+[`model/parse.md`](?doc=model/parse.md)
 § 3; [`engines/transport-postprocessing.md`](?doc=engines/transport-postprocessing.md)
 § 3.2). It writes nothing: the record and its data file keep the set's own
 average (§ 8). Each voltage is averaged by the record's own rule, the one

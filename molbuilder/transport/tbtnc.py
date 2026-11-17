@@ -9,7 +9,16 @@ averages from TBtrans's k-averaged text files, on the data file's own
 energies (`tbtrans_nc.point_averages`); the DOS per orbital from the data
 file's kept reading (`tbtrans_nc.kept`), summed here over a region's atoms or
 a selection's, narrowed to an orbital type by the device run's own
-``<label>.ORB_INDX``.  No file's format is read here: the parser reads them.
+``<label>.ORB_INDX``; from the files (:func:`pdos_from_files`), the digests a
+data file names (`tbtrans_nc.kept_at`), narrowed by its orbital table.  No
+file's format is read here: the parser reads them.
+
+USED-BY the transport record (`record`), its data file (`datafile`), its
+        sum (`sum`), its export (`export`), its energies (`energies`), the
+        transport routes (`web/blueprints/transport.py`), and a person's
+        script's PDOS from the files (`postprocess.pdos`, through
+        :func:`pdos_from_files`)
+
 **A reading not kept is no region's DOS and no PDOS** -- said, never read
 here: a data file is read on the person's word
 (`tbtrans_nc.TBTransNcFileParser.parse`).
@@ -254,7 +263,7 @@ def selection_pdos(folder, label: str, orb_indx: Optional[Path],
     not kept (:data:`NOT_READ`), a device DOS not written, a reading whose
     atom index map is not ``expected``, the composed junction's (F7).  The
     sum is :func:`summed_pdos`'s, which a PDOS from the files sums with too
-    (`postprocess.pdos`)."""
+    (:func:`pdos_from_files`)."""
     from ..parse.engines.tbtrans_nc import data_files, kept
     from ..runfiles import SIESTA_ORB_INDX
     files = data_files(folder, label)
@@ -389,7 +398,7 @@ def _orbitals_of(firsto: Sequence[int], basis: List[List[Tuple[int, int]]],
     """The geometry's orbital indices of ``atoms`` of type ``kind`` -- each
     atom's basis, ``(l, m)`` per orbital in the device run's order
     (:func:`per_atom` of the ``.ORB_INDX``'s :func:`basis_table`, or of a
-    data file's orbital table, `postprocess.pdos`).
+    data file's orbital table, :func:`pdos_from_files`).
     Its orbital counts must be the reading's, atom by atom (its ``firsto``),
     or the two are not of one run and the answer is refused."""
     l_want, m_want = ORBITAL_TYPES[kind]
@@ -515,3 +524,121 @@ def read_points(calc, *, fresh: bool = False, take_over: bool = False,
                 out.append({"file": rel, "state": "kept", "said": said})
             tell(said)
     return out
+
+
+def pdos_from_files(data_file, point, *, atoms=(), labels=(), regions=(),
+                    orbitals="all") -> Dict[str, Any]:
+    """THE PDOS OF A MIXED SELECTION FROM THE FILES -- ``postprocess.pdos``'s
+    question, answered here (its words there; `engines/transport.md`
+    § 2a.12, *A PDOS of the atoms you choose, from the files*): the point
+    ``point`` of the data file ``data_file``, the union of ``atoms`` (user
+    indices), every atom carrying one of ``labels`` and every atom of
+    ``regions``, narrowed to ``orbitals``; each digest the file names read as
+    the reading the file was composed from (`tbtrans_nc.kept_at`) and summed
+    by the report's one sum (:func:`summed_pdos`), a point that shares
+    energies joined as the report joins it.  :class:`TbtError` names what
+    cannot answer."""
+    from ..atom_index import atom_index_map
+    from ..atom_permutation import AtomIndexError, checked_indices
+    from ..parse.engines.tbtrans_nc import kept_at
+    from ..structure import Structure
+    from .datafile import read_data_file
+    from .energies import joined, restricted
+    path = Path(data_file)
+    here = path.parent
+    groups, amap = read_data_file(path)["groups"], atom_index_map(path)
+    # A POINT IS A GROUP THAT SAYS WHETHER IT IS DONE -- not a frame's group
+    # of points, nor a point's device run.
+    held = sorted(k[len("points/"):] for k in groups
+                  if k.startswith("points/")
+                  and "done" in groups[k]["variables"])
+    if point not in held:
+        raise TbtError(f"{point} is not one of {path.name}'s points: "
+                       f"{', '.join(held)}")
+    J = {k: v["data"] for k, v in groups["structure"]["variables"].items()}
+    P = {k: v["data"] for k, v in
+         groups[f"points/{point}"]["variables"].items()}
+    if int(P["done"]) != 1:
+        why = str(P["why"]) or "no transmission yet"
+        raise TbtError(f"{point} is not done: {why}")
+    n = len(J["atom"])
+    # THE SELECTION, a union -- each part naming at least one atom; an
+    # index through the map's one bounds check (`checked_indices`).
+    try:
+        chosen = set(checked_indices(atoms, n, "user index"))
+    except AtomIndexError as exc:
+        raise TbtError(str(exc)) from exc
+    # THE JUNCTION'S LABELS, the structure's own (`structure_json`, read
+    # through its door): matched as written, never read for meaning.
+    carried = Structure.from_dict(
+        groups["structure"]["attrs"]["structure_json"]).regions or {}
+    for label in labels:
+        members = [int(a) for a in carried.get(label, ())]
+        if not members:
+            raise TbtError(f"no atom of the junction carries the label "
+                           f"{label!r}")
+        chosen.update(members)
+    owned = sorted({str(r) for r in J["atom_region"] if str(r)})
+    for region in regions:
+        if region not in owned:
+            raise TbtError(f"region {region!r}: one of {', '.join(owned)}")
+        chosen.update(a for a in range(n) if str(J["atom_region"][a]) == region)
+    if not chosen:
+        raise TbtError("no atoms selected")
+    # THE DIGESTS THE FILE NAMES -- only a point every reading of which was
+    # kept and named when it was written (`datafile`): none named, its why.
+    sources = P["dos_per_orbital_files"]
+    if not sources:
+        why = (str(P["dos_why"]) or str(P["dos_per_orbital_reading"])
+               or "not read")
+        raise TbtError(f"{point}: {path.name} names no reading of its DOS "
+                       f"per orbital ({why}) -- {READ_WAY}, then summarize "
+                       f"or export again")
+    if orbitals != "all" and not len(J["orbital"]):
+        why = groups["structure"]["attrs"].get("orbitals_why", "")
+        raise TbtError(f"{path.name} holds no orbital table ({why}), so "
+                       f"its orbitals' types are not known")
+    # THE FILE'S ATOMS AS ITS DIGESTS LIST THEM, by engine index (F7), and
+    # its orbital table as each atom's (l, m) -- the page's own shape.
+    expected = amap.as_listed_by_engine()
+    engine = dict(zip(range(n), amap.map_to_engine_index(list(range(n)))))
+    basis = None if orbitals == "all" else per_atom(
+        [(engine[int(J["orbital_atom"][o])], int(J["orbital_n"][o]),
+          int(J["orbital_l"][o]), int(J["orbital_m"][o]),
+          int(J["orbital_zeta"][o])) for o in range(len(J["orbital"]))])
+
+    def read(folder):
+        mine = [s for s in sources if (here / s["digest"]).parent == folder]
+        readings = []
+        for s in mine:
+            got = kept_at(here / s["digest"], s["version"], need_user=True)
+            if got is None:
+                raise TbtError(
+                    f"{s['digest']} is not the reading {path.name} was "
+                    f"composed from -- not there, read again from another "
+                    f"run of its data file or by another molbuilder, "
+                    f"damaged, or stating no atom's user index: summarize or "
+                    f"export again")
+            readings.append((Path(s["digest"]).name, got))
+        return summed_pdos(readings, basis,
+                           [engine[a] for a in sorted(chosen)], orbitals,
+                           expected=expected,
+                           basis_said=f"{path.name}'s orbital table")
+    own = here / str(P["folder"])
+    # JOINED AS THE REPORT JOINS IT, on the point's own grid -- the file's.
+    got = restricted(joined(own, read, window_of=lambda _f: None),
+                     [float(e) for e in P["energy_ev"]])
+    return {"point": point, "energy_ev": got["energy_ev"],
+            "pdos": got["pdos"], "units": "1/eV",
+            "selection": {"atoms": sorted({int(a) for a in atoms}),
+                          "labels": list(labels), "regions": list(regions)},
+            "atoms": sorted(amap.map_to_user_index(got["atoms"])),
+            "outside_device": sorted(
+                amap.map_to_user_index(got["outside_device"])),
+            "orbitals": orbitals,
+            "digests": [s["digest"] for s in sources],
+            "said": ("the DOS per orbital of the digests named, summed over "
+                     "the orbitals of the atoms selected -- their union -- "
+                     "that the point's DOS covers; a polarized point's two "
+                     "channels summed.  The selection, and so the sum, is "
+                     "the person's.")}

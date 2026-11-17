@@ -410,7 +410,7 @@ the other:
 `read_xv(path)` is the file alone, in the engine's order, its docstring saying
 so. The registry's own `parse` (`molbuilder.parse`) stays below the run door and
 knows no run: it states a map only where a file states one of itself, a progress
-log's header, or the layer hands it one, a TBtrans data file's kept reading.
+log's header, or the atom index hands it one (`atom_index.parsed`), a TBtrans data file's kept reading.
 
 **One reader for a person's script and molbuilder alike —
 `atom_index_map(path)`**, on the run door's floor, since it reads a run's

@@ -4,7 +4,8 @@
 MODULE  postprocess (above the parse package and the run door; gathers what
         is already there, a second reader of nothing)
 ROLE    ``parse`` -- an engine's file, a run's file → its result (the
-        registry's), in the file's own order, the map on the answer;
+        registry's), in the file's own order, the map on the answer
+        (`atom_index.parsed`);
         ``read_steps`` -- a run's steps, in the user order; ``list_runs`` -- a
         calculation's runs;
         ``read_structure`` -- a structure pair, in the user
@@ -18,15 +19,18 @@ ROLE    ``parse`` -- an engine's file, a run's file → its result (the
         ``raman_view`` -- a SIESTA vibration's Raman at a laser, from its
         optical calls (`spectra.raman`); ``pdos`` -- a transport point's PDOS
         of a mixed selection from its data file and digests, summed as the
-        report sums (`tbtnc.summed_pdos`); ``reaveraged`` -- a frame set's
-        transport calculation averaged over another motion
-        (`frame_average.motion_weights`); ``outermost_move`` -- how far
+        report sums (`tbtnc.pdos_from_files`); ``reaveraged`` -- a frame
+        set's transport calculation averaged over another motion
+        (`frame_average.reaveraged`); ``outermost_move`` -- how far
         a mode's frame set at a temperature moves its atom that moves most
         (`spectra.mode_frames`); ``read_xv`` / ``read_xv_cell`` -- SIESTA's
         own ``.XV``, IN THE ENGINE'S ORDER, as its docstring says; and where
         a calculation is: ``projects_root``, ``project_dir``, ``topic_dir``,
         ``structure_dir``, ``list_projects``, ``list_topics``,
         ``list_structures`` (`projects`)
+        -- each name handing its question to the doors that own it, no
+        rule of the layer's own, a keyword unsaid left to its owner's
+        default (`model/parse.md` § 3)
 USED-BY a notebook's kernel, which imports the molbuilder its server runs
         (`web/jupyter.md` § 7), and the post-processing documents' examples
 
@@ -38,8 +42,6 @@ floors.
 """
 from __future__ import annotations
 
-from dataclasses import replace
-from pathlib import Path
 from typing import Any, Dict
 
 from .atom_index import AtomIndexUnknown, atom_index_map
@@ -52,8 +54,8 @@ from .runs import RunStepsError
 
 def parse(path, **kwargs):
     """The registry's ``parse`` (`model/parse.md` § 3), **in the file's own
-    order**, with what this layer knows that the registry does not: whose
-    order that is, ``result.atom_index_map``, on a reading of a structure or of
+    order**, with what the atom index knows that the registry does not
+    (`atom_index.parsed`): whose order that is, ``result.atom_index_map``, on a reading of a structure or of
     a run's steps (a run's ``.out``, its ``.XV``, a trajectory log, a
     geometry), and the same on each ``Structure`` it holds, whose
     ``map_to_user_index`` and ``restored`` then answer for the run's order.  A
@@ -66,49 +68,8 @@ def parse(path, **kwargs):
     (:func:`atom_index_map`), so the reading it keeps states both columns
     (§ 5e); a file no run of ours holds is read with none, its reading saying
     why."""
-    from .atom_index import of_reading
-    from .parse import detect
-    parser = detect(path)
-    if parser.keeps_atom_index_map and "atoms" not in kwargs:
-        try:
-            kwargs["atoms"] = atom_index_map(path)
-        except AtomIndexUnknown:
-            pass
-    res = parser.parse(Path(path), **kwargs)
-    if (res.result_kind == "trajectory"
-            or (res.result_kind == "structure" and res.structure is not None)):
-        atoms = of_reading(path, res)
-        return replace(_on_the_order_record(res, path, atoms),
-                       atom_index_map=atoms)
-    return res
-
-
-def _on_the_order_record(res, path, atoms):
-    """``res`` with the order record of the file ``path`` on each structure it
-    reads (`model/overview.md` § 2.2a, I5) -- a file listed by engine index, the
-    record its run's deck states, of the atoms that record is over; a
-    mid-flight placeholder is not.  Nothing else of the run is put on it: this
-    is the file's reading.  A pair's reading carries its sidecar's record
-    already: every reader of a `.xyz` with its sidecar reads it through the
-    codec (`structure-pair`, `pyscf-geom`; `model/parse.md` § 4)."""
-    from .atom_permutation import LISTED_BY_ENGINE
-    from .runs import declared, run_of
-    from .sidecars.molstruct import paired_sidecar
-    if atoms.listed_by != LISTED_BY_ENGINE or atoms.user is None:
-        return res
-    p = Path(path)
-    if paired_sidecar(p) is not None:
-        return res
-    run = run_of(p)
-    order = declared(run).atom_order if run is not None else None
-    if order is None or order.n_atoms != atoms.n_atoms:
-        return res
-    if res.result_kind == "structure":
-        return replace(res, structure=res.structure.replace(atom_order=order))
-    for fr in res.frames:
-        if fr.structure.n_atoms == order.n_atoms:
-            fr.structure = fr.structure.replace(atom_order=order)
-    return res
+    from .atom_index import parsed
+    return parsed(path, **kwargs)
 
 
 def read_steps(path):
@@ -239,11 +200,17 @@ def raman_view(path, *, laser_nm: float, broaden_ev: "float | None" = None):
     return raman_view_of(path, laser_nm=laser_nm, broaden_ev=broaden_ev)
 
 
-def infrared_view(path, *, direction="z",
-                  partition: "str | None" = None):
+def _said(**asks) -> Dict[str, Any]:
+    """THE KEYWORDS A PERSON SAID -- each one unsaid (``None``) left to the
+    door that owns the question, its default there and nowhere else."""
+    return {k: v for k, v in asks.items() if v is not None}
+
+
+def infrared_view(path, *, direction=None, partition=None):
     """THE INFRARED of a vibration result ``<label>.spectra.json``, as the
     spectrum viewer asks it (`spectra.infrared`): ``direction`` ``x``,
-    ``y``, ``z`` or a vector; on a SIESTA result, the free atoms' -- the
+    ``y``, ``z`` or a vector (:data:`spectra.infrared.DEFAULT_DIRECTION`
+    when unsaid); on a SIESTA result, the free atoms' -- the
     atoms the vibration moved -- from their charges, by ``partition``,
     ``hirshfeld`` or ``voronoi`` (:data:`spectra.infrared.DEFAULT_PARTITION`
     when unsaid); on a PySCF result, the whole system's, from the dipole
@@ -252,13 +219,13 @@ def infrared_view(path, *, direction="z",
     response.md` § 2.3) -- the spectrum viewer's own door
     (`spectra.infrared.infrared_view_of`)."""
     from .sidecars.spectra import parse_spectra_json
-    from .spectra.infrared import DEFAULT_PARTITION, infrared_view_of
-    return infrared_view_of(parse_spectra_json(path), direction=direction,
-                            partition=partition or DEFAULT_PARTITION)
+    from .spectra.infrared import infrared_view_of
+    return infrared_view_of(parse_spectra_json(path),
+                            **_said(direction=direction, partition=partition))
 
 
-def pdos(data_file, point, *, atoms=(), labels=(), regions=(),
-         orbitals="all") -> Dict[str, Any]:
+def pdos(data_file, point, *, atoms=None, labels=None, regions=None,
+         orbitals=None) -> Dict[str, Any]:
     """THE PDOS OF A MIXED SELECTION at one point of a transport
     calculation, from its data file ``<label>.transport.nc`` and the
     point's digests beside it (`engines/transport.md` § 2a.12, *A PDOS of
@@ -268,132 +235,34 @@ def pdos(data_file, point, *, atoms=(), labels=(), regions=(),
     union of ``atoms`` (user indices), every atom carrying one of ``labels``
     as the junction writes it (matched as written), and every atom of
     ``regions`` (``L-electrode``, ``bridge``, ``R-electrode``) -- an atom
-    named twice counted once -- narrowed to ``orbitals`` (``all`` or a type
-    of the file's ``orbital_type``).  Each digest is read as the reading the
+    named twice counted once -- narrowed to ``orbitals`` (``all``, unsaid,
+    or a type of the file's ``orbital_type``).  Each digest is read as the reading the
     file was composed from (`tbtrans_nc.kept_at`: the data file's version it
     states, no ``.TBT.nc`` needed) and summed by the report's one sum
     (`tbtnc.summed_pdos`), a point that shares energies joined as the report
-    joins it -- so the curve is the report's.
+    joins it -- so the curve is the report's.  Answered by the transport
+    package (`tbtnc.pdos_from_files`).
 
     Answers ``{point, energy_ev, pdos, units, selection, atoms,
     outside_device, orbitals, digests, said}``; :class:`tbtnc.TbtError`
     names what cannot answer -- a point the file does not hold, an atom,
     label or region that names none, an empty selection, a digest not kept
     when the file was written or not the reading it names."""
-    from .atom_permutation import AtomIndexError, checked_indices
-    from .parse.engines.tbtrans_nc import kept_at
-    from .structure import Structure
-    from .transport.energies import joined, restricted
-    from .transport.tbtnc import READ_WAY, TbtError, per_atom, summed_pdos
-    path = Path(data_file)
-    here = path.parent
-    data = read_transport_data(path)
-    groups, amap = data["groups"], data[MAP_KEY]
-    # A POINT IS A GROUP THAT SAYS WHETHER IT IS DONE -- not a frame's group
-    # of points, nor a point's device run.
-    held = sorted(k[len("points/"):] for k in groups
-                  if k.startswith("points/")
-                  and "done" in groups[k]["variables"])
-    if point not in held:
-        raise TbtError(f"{point} is not one of {path.name}'s points: "
-                       f"{', '.join(held)}")
-    J = {k: v["data"] for k, v in groups["structure"]["variables"].items()}
-    P = {k: v["data"] for k, v in
-         groups[f"points/{point}"]["variables"].items()}
-    if int(P["done"]) != 1:
-        why = str(P["why"]) or "no transmission yet"
-        raise TbtError(f"{point} is not done: {why}")
-    n = len(J["atom"])
-    # THE SELECTION, a union -- each part naming at least one atom; an
-    # index through the map's one bounds check (`checked_indices`).
-    try:
-        chosen = set(checked_indices(atoms, n, "user index"))
-    except AtomIndexError as exc:
-        raise TbtError(str(exc)) from exc
-    # THE JUNCTION'S LABELS, the structure's own (`structure_json`, read
-    # through its door): matched as written, never read for meaning.
-    carried = Structure.from_dict(
-        groups["structure"]["attrs"]["structure_json"]).regions or {}
-    for label in labels:
-        members = [int(a) for a in carried.get(label, ())]
-        if not members:
-            raise TbtError(f"no atom of the junction carries the label "
-                           f"{label!r}")
-        chosen.update(members)
-    owned = sorted({str(r) for r in J["atom_region"] if str(r)})
-    for region in regions:
-        if region not in owned:
-            raise TbtError(f"region {region!r}: one of {', '.join(owned)}")
-        chosen.update(a for a in range(n) if str(J["atom_region"][a]) == region)
-    if not chosen:
-        raise TbtError("no atoms selected")
-    # THE DIGESTS THE FILE NAMES -- only a point every reading of which was
-    # kept and named when it was written (`datafile`): none named, its why.
-    sources = P["dos_per_orbital_files"]
-    if not sources:
-        why = (str(P["dos_why"]) or str(P["dos_per_orbital_reading"])
-               or "not read")
-        raise TbtError(f"{point}: {path.name} names no reading of its DOS "
-                       f"per orbital ({why}) -- {READ_WAY}, then summarize "
-                       f"or export again")
-    if orbitals != "all" and not len(J["orbital"]):
-        why = groups["structure"]["attrs"].get("orbitals_why", "")
-        raise TbtError(f"{path.name} holds no orbital table ({why}), so "
-                       f"its orbitals' types are not known")
-    # THE FILE'S ATOMS AS ITS DIGESTS LIST THEM, by engine index (F7), and
-    # its orbital table as each atom's (l, m) -- the page's own shape.
-    expected = amap.as_listed_by_engine()
-    engine = dict(zip(range(n), amap.map_to_engine_index(list(range(n)))))
-    basis = None if orbitals == "all" else per_atom(
-        [(engine[int(J["orbital_atom"][o])], int(J["orbital_n"][o]),
-          int(J["orbital_l"][o]), int(J["orbital_m"][o]),
-          int(J["orbital_zeta"][o])) for o in range(len(J["orbital"]))])
-
-    def read(folder):
-        mine = [s for s in sources if (here / s["digest"]).parent == folder]
-        readings = []
-        for s in mine:
-            got = kept_at(here / s["digest"], s["version"], need_user=True)
-            if got is None:
-                raise TbtError(
-                    f"{s['digest']} is not the reading {path.name} was "
-                    f"composed from -- not there, read again from another "
-                    f"run of its data file or by another molbuilder, "
-                    f"damaged, or stating no atom's user index: summarize or "
-                    f"export again")
-            readings.append((Path(s["digest"]).name, got))
-        return summed_pdos(readings, basis,
-                           [engine[a] for a in sorted(chosen)], orbitals,
-                           expected=expected,
-                           basis_said=f"{path.name}'s orbital table")
-    own = here / str(P["folder"])
-    # JOINED AS THE REPORT JOINS IT, on the point's own grid -- the file's.
-    got = restricted(joined(own, read, window_of=lambda _f: None),
-                     [float(e) for e in P["energy_ev"]])
-    return {"point": point, "energy_ev": got["energy_ev"],
-            "pdos": got["pdos"], "units": "1/eV",
-            "selection": {"atoms": sorted({int(a) for a in atoms}),
-                          "labels": list(labels), "regions": list(regions)},
-            "atoms": sorted(amap.map_to_user_index(got["atoms"])),
-            "outside_device": sorted(
-                amap.map_to_user_index(got["outside_device"])),
-            "orbitals": orbitals,
-            "digests": [s["digest"] for s in sources],
-            "said": ("the DOS per orbital of the digests named, summed over "
-                     "the orbitals of the atoms selected -- their union -- "
-                     "that the point's DOS covers; a polarized point's two "
-                     "channels summed.  The selection, and so the sum, is "
-                     "the person's.")}
+    from .transport.tbtnc import pdos_from_files
+    return pdos_from_files(data_file, point,
+                           **_said(atoms=atoms, labels=labels,
+                                   regions=regions, orbitals=orbitals))
 
 
-def reaveraged(path, *, temperature_k, swing_quanta=0.0) -> Dict[str, Any]:
+def reaveraged(path, *, temperature_k, swing_quanta=None) -> Dict[str, Any]:
     """A FRAME SET'S TRANSPORT CALCULATION AVERAGED OVER ANOTHER MOTION
     (`science/vibrational-averaging.md` § 5.4), from its data file
     ``<label>.transport.nc``: the bell curve at ``temperature_k`` -- the
     junction's, or a randomly pumped mode's effective one -- with a swing
     adding ``swing_quanta`` quanta on it, each frame weighted from its
     position along the mode alone (`frame_average.motion_weights`).  Nothing
-    is computed again and nothing is written.
+    is computed again and nothing is written.  Answered by the frames'
+    post-process (`frame_average.reaveraged`).
 
     Answers ``{motion, frames, weights, reach, bias_v, energy_ev,
     transmission, conductance_g0, conductance_change_percent, said}``: at
@@ -404,87 +273,23 @@ def reaveraged(path, *, temperature_k, swing_quanta=0.0) -> Dict[str, Any]:
     them -- and what is said beside them.  Refused by name
     (`frame_average.ReaverageError`): what `motion_weights` refuses, and a
     data file of another schema (`transport.datafile.DataFileError`)."""
-    import numpy as np
-    from .frame_average import at_voltage, motion_weights
-    from .transport.datafile import read_data_file
-    groups = read_data_file(path)["groups"]
-    # THE FRAMES' ROWS ARE THE JUNCTION'S, the points' figures the
-    # summary's (`engines/transport.md` § 2a.12, *The calculation as
-    # groups*).
-    data = {**groups["structure"]["variables"],
-            **groups["summary"]["variables"]}
-
-    def value(name):
-        got = data.get(name)
-        return None if got is None else np.asarray(got["data"])
-
-    def scalar(name):
-        got = value(name)
-        return float(got) if got is not None and got.size == 1 else None
-    q = value("q_amu12_ang")
-    got = motion_weights(
-        q if q is not None else [], temperature_k=temperature_k,
-        swing_quanta=swing_quanta, frequency_cm1=scalar("frequency_cm1"),
-        zero_point_amplitude_amu12_ang=scalar(
-            "zero_point_amplitude_amu12_ang"))
-    weights = list(got["weights"])
-    n = len(weights)
-    bias = [float(v) for v in value("bias_v")]
-    energy = [float(e) for e in value("energy_ev")]
-    curves = np.asarray(value("transmission"), dtype=float)
-    g = np.asarray(value("conductance_g0"), dtype=float)
-    done = np.asarray(value("done")) == 1
-    # THE DONE POINTS AS THE RECORD HOLDS THEM, each on the file's one grid,
-    # its conductance ``None`` where the file keeps none.
-    points = [{"frame": f, "bias_v": v, "energy_ev": energy,
-               "transmission": curves[f, b, :],
-               "conductance_g0": (float(g[f, b]) if np.isfinite(g[f, b])
-                                  else None)}
-              for b, v in enumerate(bias) for f in range(n) if done[f, b]]
-    said = list(got["said"])
-    transmission = np.full((len(bias), len(energy)), np.nan)
-    conductance = np.full(len(bias), np.nan)
-    change = np.full(len(bias), np.nan)
-    for b, v in enumerate(bias):
-        # EACH VOLTAGE BY THE RECORD'S RULE, with these weights: no value
-        # where it has none, its reason said (`engines/transport.md`
-        # § 2a.12) -- the file's own axis, so a voltage is its own index.
-        at = at_voltage(v, n, weights, points, [], lambda a, c: a == c)
-        for why in (at["why"], at["conductance_why"]):
-            if why:
-                said.append(f"at {v:g} V: {why}")
-        if at["transmission"] is not None:
-            transmission[b] = at["transmission"]
-        if at["conductance_g0"] is not None:
-            conductance[b] = at["conductance_g0"]
-        if at["conductance_change_percent"] is not None:
-            change[b] = at["conductance_change_percent"]
-    return {"motion": got["motion"],
-            "frames": [{"frame": f, "q_amu12_ang": float(q[f]),
-                        "weight": float(weights[f])} for f in range(n)],
-            "weights": weights, "reach": got["reach"],
-            "bias_v": bias,
-            "energy_ev": energy,
-            "transmission": transmission, "conductance_g0": conductance,
-            "conductance_change_percent": change, "said": said}
+    from .frame_average import reaveraged as _reaveraged
+    return _reaveraged(path, temperature_k=temperature_k,
+                       **_said(swing_quanta=swing_quanta))
 
 
 def outermost_move(path, *, mode: int, temperature_k: float,
-                   nodes: int = 3):
+                   nodes=None):
     """THE OUTERMOST MOVE of mode ``mode`` (its number, as the result
     numbers its modes) of the vibration result ``<label>.spectra.json`` at
     ``temperature_k`` for ``nodes`` frames, in Angstrom -- the largest atom's
     move at the outermost frames of the set the frame generator writes
     there, read through the result's own reader (`spectra.mode_frames.outermost_move`);
-    ``None`` for an imaginary mode, which has no spread."""
-    from .spectra.mode_frames import FrameSetError, outermost_move as _move
-    from .sidecars.spectra import parse_spectra_json
-    rows = parse_spectra_json(path).to_dict()["modes"]
-    row = next((m for m in rows if m["index_1based"] == mode), None)
-    if row is None:
-        raise FrameSetError(f"{path} holds modes 1..{len(rows)}, not mode "
-                            f"{mode!r}")
-    return _move(row, temperature_k, nodes)
+    ``None`` for an imaginary mode, which has no spread.  ``nodes`` unsaid, the frame generator's
+    first rule (`spectra.mode_frames.NODES`)."""
+    from .spectra.mode_frames import outermost_move_of
+    return outermost_move_of(path, mode=mode, temperature_k=temperature_k,
+                             **_said(nodes=nodes))
 
 
 __all__ = ["AtomIndexMap", "AtomIndexUnknown", "RunStepsError", "atom_index_map",

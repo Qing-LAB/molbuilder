@@ -62,8 +62,9 @@ each release is its changelog row and its ledger section
   2.72.5 (`model/datafiles.md` § 2a rule 5, `model/parse.md` § 5e);
   one Export bar for every kind, the Results page's, drawn from the
   calculation's offer in 2.73.0 (`web/results.md` § 1.1; the user,
-  2026-11-16: "Every kind"); next `pdos` and the re-average moved to
-  their kinds;
+  2026-11-16: "Every kind"); `pdos`, the re-average, a reading's order
+  record and a mode's lookup moved to their owners in 2.73.1, the
+  post-processing layer adding no rule of its own (`model/parse.md` § 3);
   (C)
   every chart's own export — a picture, its drawn data as CSV and NetCDF;
   the PDOS of a mixed selection from the data file and each point's digest

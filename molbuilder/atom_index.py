@@ -7,8 +7,11 @@ ROLE    :func:`atom_index_map` -- the map a file states of itself (F1), its
         ``stated_by`` and ``said``; molbuilder's own doors and a person's
         notebook alike (`molbuilder.postprocess`), and ``molbuilder
         atom-index``; :func:`of_reading` -- the map a reader states of a file
-        it read, where nothing may be refused
-USED-BY postprocess, cli (``atom-index``)
+        it read, where nothing may be refused; :func:`parsed` -- a file's
+        parse with whose order it is, each structure on its run's order
+        record
+USED-BY postprocess, cli (``atom-index``), the transport package's PDOS
+        from the files (`transport.tbtnc`)
 
 **Never a guess**: a file is answered by what states its atoms' indices --
 the file itself, the sidecar beside it, a deck's own block, the deck of the
@@ -55,6 +58,58 @@ def atom_index_map(path) -> AtomIndexMap:
     if atoms is None:
         atoms = _of_run(p, p.parent)
     return _counted(p, atoms)
+
+
+def parsed(path, **kwargs):
+    """A FILE'S PARSE WITH WHOSE ORDER IT IS -- ``postprocess.parse``'s
+    question, answered here (its words there; `model/overview.md` § 2.2b):
+    the registry's parse in the file's own order, a parser that keeps its
+    reading handed the run's map (:func:`atom_index_map`), and on a reading
+    of a structure or of a run's steps the map of that reading
+    (:func:`of_reading`) and each structure on its run's order record
+    (:func:`_on_the_order_record`)."""
+    from .parse import detect
+    parser = detect(path)
+    if parser.keeps_atom_index_map and "atoms" not in kwargs:
+        try:
+            kwargs["atoms"] = atom_index_map(path)
+        except AtomIndexUnknown:
+            pass
+    res = parser.parse(Path(path), **kwargs)
+    if (res.result_kind == "trajectory"
+            or (res.result_kind == "structure" and res.structure is not None)):
+        atoms = of_reading(path, res)
+        return replace(_on_the_order_record(res, path, atoms),
+                       atom_index_map=atoms)
+    return res
+
+
+def _on_the_order_record(res, path, atoms):
+    """``res`` with the order record of the file ``path`` on each structure it
+    reads (`model/overview.md` § 2.2a, I5) -- a file listed by engine index, the
+    record its run's deck states, of the atoms that record is over; a
+    mid-flight placeholder is not.  Nothing else of the run is put on it: this
+    is the file's reading.  A pair's reading carries its sidecar's record
+    already: every reader of a `.xyz` with its sidecar reads it through the
+    codec (`structure-pair`, `pyscf-geom`; `model/parse.md` § 4)."""
+    from .atom_permutation import LISTED_BY_ENGINE
+    from .runs import declared, run_of
+    from .sidecars.molstruct import paired_sidecar
+    if atoms.listed_by != LISTED_BY_ENGINE or atoms.user is None:
+        return res
+    p = Path(path)
+    if paired_sidecar(p) is not None:
+        return res
+    run = run_of(p)
+    order = declared(run).atom_order if run is not None else None
+    if order is None or order.n_atoms != atoms.n_atoms:
+        return res
+    if res.result_kind == "structure":
+        return replace(res, structure=res.structure.replace(atom_order=order))
+    for fr in res.frames:
+        if fr.structure.n_atoms == order.n_atoms:
+            fr.structure = fr.structure.replace(atom_order=order)
+    return res
 
 
 def of_reading(path, reading) -> AtomIndexMap:
@@ -397,4 +452,4 @@ def _of_log(p: Path) -> Optional[AtomIndexMap]:
     return replace(map_of_block(block, p.name), stated_by=str(p))
 
 
-__all__ = ["AtomIndexUnknown", "atom_index_map", "map_of_block", "of_reading"]
+__all__ = ["AtomIndexUnknown", "atom_index_map", "map_of_block", "of_reading", "parsed"]

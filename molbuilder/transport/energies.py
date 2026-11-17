@@ -6,7 +6,7 @@ record in its deck (:class:`Contours`); and **the one door that reads a
 point's energies and every value on them** -- from its own run and its
 ``shared/``, recursively, in the grid's order (:func:`joined`), put on a
 point's grid (:func:`restricted`) -- asked by the record, the report's
-selection PDOS, a PDOS from the files (`postprocess.pdos`) and the sharing
+selection PDOS, a PDOS from the files (`tbtnc.pdos_from_files`) and the sharing
 test alike.
 
 Two energies are one when they lie within :data:`SAME_ENERGY_EV`: the
@@ -340,7 +340,7 @@ def restricted(answer: Dict, energies: Sequence[float]) -> Dict:
     """``answer`` -- a reader's, every value along its ``energy_ev`` --
     restricted to ``energies``, each within :data:`SAME_ENERGY_EV`: a
     joined answer put on the grid its point describes (:func:`joined`; a
-    PDOS from the files on the point's own energies, `postprocess.pdos`)."""
+    PDOS from the files on the point's own energies, `tbtnc.pdos_from_files`)."""
     want = sorted(energies)
     e = answer["energy_ev"]
     keep = [i for i, x in enumerate(e) if _index(want, x) is not None]

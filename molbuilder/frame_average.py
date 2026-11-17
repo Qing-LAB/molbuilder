@@ -3,7 +3,7 @@ combined and read as, after the calculation has run (`engines/transport.md`
 § 2a.12; `model/structure.md` § 2.2f).
 
 MODULE  frame_average (L2; the frames' rows (`frameset`), the transport
-        stages' voltage rule, numpy)
+        stages' voltage rule and its data file's groups, numpy)
 ROLE    the post-process over a multi-frame transport calculation, kept out of
         its execution: the frames' weighted average at each voltage
         (:func:`average_block`) and its summary lines (:func:`summary_lines`),
@@ -12,7 +12,8 @@ ROLE    the post-process over a multi-frame transport calculation, kept out of
         :func:`fill_data_file`), what a page is answered of the frames
         (:func:`answer`) and what is said of their rows
         (:func:`warnings_of`); another motion's weights, the frames
-        re-averaged after the run (:func:`motion_weights`) -- with the
+        re-averaged after the run (:func:`motion_weights`,
+        :func:`reaveraged`) -- with the
         interpretation a mode's frame set's
         maker writes its rows in: the vocabulary's page words and meanings
         (:data:`ROWS`) and what a harmonic mode's average assumes
@@ -20,7 +21,8 @@ ROLE    the post-process over a multi-frame transport calculation, kept out of
 USED-BY the frame generator (`spectra.mode_frames`: the vocabulary it writes in),
         the transport record (`transport.record`), the data file
         (`transport.datafile`), the describe door and Task setup's folder
-        answer (`web/blueprints/transport.py`, `web/blueprints/build.py`)
+        answer (`web/blueprints/transport.py`, `web/blueprints/build.py`),
+        the post-processing layer (`postprocess.reaveraged`)
 
 **Transport runs the frames and keeps every point; this combines and reads
 them** (the user, 2026-10-18: "how to interpret and present the data is
@@ -909,6 +911,80 @@ def fill_data_file(values: Dict[str, Any], attrs: Dict[str, Any],
                 list(average.get("assumptions") or ()))
 
 
+def reaveraged(path, *, temperature_k, swing_quanta=0.0) -> Dict[str, Any]:
+    """A FRAME SET'S TRANSPORT CALCULATION AVERAGED OVER ANOTHER MOTION, from
+    its data file ``path`` (`transport.datafile.read_data_file`) --
+    ``postprocess.reaveraged``'s question, answered here (its words there;
+    `science/vibrational-averaging.md` § 5.4): each frame weighted by
+    :func:`motion_weights` from its position along the mode alone, each
+    voltage by the record's own rule (:func:`at_voltage`) with those weights.
+    Nothing is computed again and nothing is written; refused by name as
+    :func:`motion_weights` refuses (:class:`ReaverageError`), and a data
+    file of another schema (`transport.datafile.DataFileError`)."""
+    import numpy as np
+    from .transport.datafile import read_data_file
+    groups = read_data_file(path)["groups"]
+    # THE FRAMES' ROWS ARE THE JUNCTION'S, the points' figures the
+    # summary's (`engines/transport.md` § 2a.12, *The calculation as
+    # groups*).
+    data = {**groups["structure"]["variables"],
+            **groups["summary"]["variables"]}
+
+    def value(name):
+        got = data.get(name)
+        return None if got is None else np.asarray(got["data"])
+
+    def scalar(name):
+        got = value(name)
+        return float(got) if got is not None and got.size == 1 else None
+    q = value("q_amu12_ang")
+    got = motion_weights(
+        q if q is not None else [], temperature_k=temperature_k,
+        swing_quanta=swing_quanta, frequency_cm1=scalar("frequency_cm1"),
+        zero_point_amplitude_amu12_ang=scalar(
+            "zero_point_amplitude_amu12_ang"))
+    weights = list(got["weights"])
+    n = len(weights)
+    bias = [float(v) for v in value("bias_v")]
+    energy = [float(e) for e in value("energy_ev")]
+    curves = np.asarray(value("transmission"), dtype=float)
+    g = np.asarray(value("conductance_g0"), dtype=float)
+    done = np.asarray(value("done")) == 1
+    # THE DONE POINTS AS THE RECORD HOLDS THEM, each on the file's one grid,
+    # its conductance ``None`` where the file keeps none.
+    points = [{"frame": f, "bias_v": v, "energy_ev": energy,
+               "transmission": curves[f, b, :],
+               "conductance_g0": (float(g[f, b]) if np.isfinite(g[f, b])
+                                  else None)}
+              for b, v in enumerate(bias) for f in range(n) if done[f, b]]
+    said = list(got["said"])
+    transmission = np.full((len(bias), len(energy)), np.nan)
+    conductance = np.full(len(bias), np.nan)
+    change = np.full(len(bias), np.nan)
+    for b, v in enumerate(bias):
+        # EACH VOLTAGE BY THE RECORD'S RULE, with these weights: no value
+        # where it has none, its reason said (`engines/transport.md`
+        # § 2a.12) -- the file's own axis, so a voltage is its own index.
+        at = at_voltage(v, n, weights, points, [], lambda a, c: a == c)
+        for why in (at["why"], at["conductance_why"]):
+            if why:
+                said.append(f"at {v:g} V: {why}")
+        if at["transmission"] is not None:
+            transmission[b] = at["transmission"]
+        if at["conductance_g0"] is not None:
+            conductance[b] = at["conductance_g0"]
+        if at["conductance_change_percent"] is not None:
+            change[b] = at["conductance_change_percent"]
+    return {"motion": got["motion"],
+            "frames": [{"frame": f, "q_amu12_ang": float(q[f]),
+                        "weight": float(weights[f])} for f in range(n)],
+            "weights": weights, "reach": got["reach"],
+            "bias_v": bias,
+            "energy_ev": energy,
+            "transmission": transmission, "conductance_g0": conductance,
+            "conductance_change_percent": change, "said": said}
+
+
 __all__ = ["ASSUMPTIONS", "AverageError", "FRAME_ROWS", "INFO_KEY",
            "JSON_ATTRS", "SUMMARY_PART",
            "MASS_CHANNEL", "ROWS", "ReaverageError", "Row", "STRUCTURE_ROWS",
@@ -916,4 +992,4 @@ __all__ = ["ASSUMPTIONS", "AverageError", "FRAME_ROWS", "INFO_KEY",
            "answer", "at_voltage", "average_block", "average_said",
            "citation_block",
            "data_file_variables", "fill_data_file", "motion_weights",
-           "summary_lines", "warnings_of", "with_meanings"]
+           "reaveraged", "summary_lines", "warnings_of", "with_meanings"]
