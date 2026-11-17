@@ -4,9 +4,10 @@
  *          nothing outside lib/spectrumchart/ may import this file.
  *
  * THE ONLY FILE IN THIS MODULE THAT NAMES PLOTLY. Commands go down, one number
- * comes up. It answers no question about what is drawn, and it does not know
- * what a mode is: a click leaves here as a position on the frequency axis, and
- * working out which mode that means is the handle's job.
+ * comes up -- and, asked, the drawing as an image (`image`, for the chart's
+ * own Export). It answers no question about what is drawn, and it does not
+ * know what a mode is: a click leaves here as a position on the frequency
+ * axis, and working out which mode that means is the handle's job.
  *
  * Contract: docs/web/spectrumchart.md § 8.4, § 4 (it brings the library and the
  * stylesheet itself) and § 11 (it reads the module's own values for colour).
@@ -118,7 +119,7 @@ const colourFor = (state, palette) => (
 );
 
 /**
- * Build the drawing surface inside `host` and return the five doors.
+ * Build the drawing surface inside `host` and return its doors (§ 8.4).
  *
  * Resolves once the stylesheet and the library are both there — the mount above
  * is asynchronous anyway, so waiting costs a caller nothing and the palette is
@@ -480,27 +481,9 @@ export async function openSurface(host) {
      * VERTICAL POSITION IS NOT CONSULTED. A spectrum is picked by frequency, so
      * anywhere in the chart at that frequency means the same thing — clicking
      * level with a peak's tip and clicking down near the axis are the same
-     * request. What is excluded is the library's own toolbar, and that is
-     * excluded by WHAT was clicked rather than by where: a button is a button
-     * wherever it sits.
+     * request.
      */
-    const onToolbar = (event) => {
-        let node = event.target;
-        while (node && node !== surface) {
-            /* A class name is not one kind of value: HTML gives a string, SVG
-             * gives an object holding one, and either can be reached through the
-             * attribute instead. A plot is drawn in SVG inside an HTML box, so
-             * both turn up here. */
-            const raw = (node.getAttribute && node.getAttribute("class")) || node.className;
-            const cls = typeof raw === "string" ? raw : (raw && raw.baseVal) || "";
-            if (/\bmodebar/.test(cls)) return true;
-            node = node.parentNode;
-        }
-        return false;
-    };
-
     const positionOf = (event) => {
-        if (onToolbar(event)) return null;
         const area = plotArea();
         const axis = surface._fullLayout && surface._fullLayout.xaxis;
         if (!area || !axis || !Array.isArray(axis.range)) return null;
@@ -559,9 +542,10 @@ export async function openSurface(host) {
             readoutIndex = picture.note ? 1 : 0;
             lastReadout = picture.readout || "";
             Plotly.react(surface, traces, layoutFor(picture), {
-                displaylogo: false,
+                // ONE WAY OUT: the chart's own Export, in the wrap around
+                // the module (web/results.md § 1.2) -- no toolbar of Plotly's.
+                displayModeBar: false,
                 responsive: false,
-                modeBarButtonsToRemove: ["select2d", "lasso2d", "autoScale2d"],
             });
         },
 
@@ -589,6 +573,15 @@ export async function openSurface(host) {
         resize() {
             if (disposed) return;
             Plotly.Plots.resize(surface);
+        },
+
+        /** The drawing as an image, at the size it stands at -- the data
+         * URL Plotly makes of it (§ 8.3, `drawn`). */
+        image(format) {
+            if (disposed) return Promise.reject(
+                new Error("the spectrum chart was disposed"));
+            return Plotly.toImage(surface, { format: format,
+                width: surface.clientWidth, height: surface.clientHeight });
         },
 
         /** One number goes up: where the click landed on the frequency axis. */

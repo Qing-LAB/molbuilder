@@ -869,10 +869,16 @@ def read_spectra_data(path, *, data=None) -> Dict[str, Any]:
     return out
 
 
-__all__ = ["DATA_SCHEMA", "SpectraDataError", "UNSTATED", "write_spectra_data",
-           "read_spectra_data"]
+__all__ = ["DATA_SCHEMA", "GRID_VARS", "MODE", "MODE_VARS",
+           "SpectraDataError", "UNSTATED",
+           "write_spectra_data", "read_spectra_data"]
 
 
 #: The modes' variables by name -- what the writer and the reader ask a
 #: variable's record key of (`ncdata.key_of`).
-MODE = {v.name: v for v in _mode_vars()}
+MODE_VARS = _mode_vars()
+MODE = {v.name: v for v in MODE_VARS}
+
+#: The modes' and the thermochemistry grid's variables -- the tables
+#: `data/chart_table.toml` points at, as every data file's.
+GRID_VARS = _grid_vars()

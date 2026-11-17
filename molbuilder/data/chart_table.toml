@@ -11,9 +11,10 @@
 #
 # A VARIABLE IS ITS OWNER'S WHERE ONE DECLARES IT -- one concept, one name,
 # one statement (§ 2a rule 1):
-#   { of = "<module:NAME>", name = "<variable>" }  a data file's declaration,
-#                                                  its words, kind, units and
-#                                                  source as they are there;
+#   { of = "<module:NAME>", name = "<variable>" }  a data file's table of
+#                                                  variables, its words, kind,
+#                                                  units and source as they
+#                                                  are there;
 #   { of = "scf", name = "<variable>" }            the calculation's engine's
 #                                                  SCF column (the engine
 #                                                  table's `scf_columns`);
@@ -57,6 +58,31 @@ words = "the current against the bias"
 tags = ["current", "current_by_spin", "iv_current", "iv_current_by_spin"]
 marks = []
 
+[charts.spectrum]
+words = "a vibration's Raman and IR spectrum -- each lane's bands and its broadened curve"
+tags = ["raman_strength", "raman_curve", "ir_intensity", "ir_curve"]
+marks = []
+
+[charts.levels]
+words = "a mode's frontier orbitals at its two displaced geometries and at equilibrium"
+tags = ["mo_energy"]
+marks = []
+
+[charts.thermo]
+words = "the thermochemistry over temperature"
+tags = ["thermo_g", "thermo_h", "thermo_ts"]
+marks = []
+
+[charts.thermo-parts]
+words = "the thermochemistry's parts at one temperature"
+tags = ["thermo_part"]
+marks = []
+
+[charts.bench]
+words = "a benchmark sweep's trials: the time per SCF iteration, the memory peaks, how busy the CPU and the GPU were"
+tags = ["s_per_iter", "mem_peak_gb", "gpu_vram_peak_gb", "cpu_mean_pct", "gpu_sm_mean_pct"]
+marks = []
+
 # ---- what the curves run along -------------------------------------------------------------
 
 [xs.step_index]
@@ -75,6 +101,32 @@ of = "molbuilder.transport.datafile:VARIABLES"
 
 [xs.iv_bias_v]
 of = "molbuilder.transport.datafile:VARIABLES"
+
+[xs.frequency_cm1]
+of = "molbuilder.spectra.datafile:MODE_VARS"
+
+[xs.curve_frequency_cm1]
+units = "cm-1"
+long_name = "the frequency the curve is evaluated at"
+definition = "a point of the broadened curve, in cm-1"
+
+[xs.mode_displacement_ang]
+units = "angstrom"
+long_name = "the displacement along the mode"
+definition = "-A, 0 and +A: the geometries the electronic-structure probe ran at, A its amplitude (amplitude_ang)"
+
+[xs.temperature_k]
+of = "molbuilder.spectra.datafile:GRID_VARS"
+
+[xs.thermo_part]
+units = ""
+long_name = "a part of the thermochemistry"
+definition = "ZPE, U_vib, trans + rot + pV (full RRHO), -T*S, and their sum: G - E_elec, or F_vib on vibrational contributions only"
+
+[xs.bench_setting]
+units = ""
+long_name = "the trial's setting"
+definition = "the trial's value of the setting the sweep varies, as the chart lists it"
 
 # ---- a step's energy and force, the steps file's ---------------------------------------------
 
@@ -187,3 +239,63 @@ y = { of = "molbuilder.transport.datafile:VARIABLES", name = "iv_current_a" }
 [tags.iv_current_by_spin]
 x = "iv_bias_v"
 y = { of = "molbuilder.transport.datafile:VARIABLES", name = "iv_current_by_spin_a" }
+
+# ---- a vibration's spectrum, its levels and its thermochemistry, as the charts draw them -----
+
+[tags.raman_strength]
+x = "frequency_cm1"
+y = { name = "raman_strength_ang4_per_amu", kind = "derived", units = "angstrom^4/amu", long_name = "a mode's Raman strength, as drawn", definition = "SIESTA's at the laser named (the Raman view's strength_laser_ang4_per_amu; the laser in the root's chosen) or PySCF's activity (raman_activity_ang4_per_amu); a gap where no band is drawn -- hidden by the display floor, the lane below its band floor, or no value" }
+
+[tags.raman_curve]
+x = "curve_frequency_cm1"
+y = { name = "raman_curve_ang4_per_amu", kind = "derived", units = "angstrom^4/amu", long_name = "the Raman lane's broadened curve", definition = "a Lorentzian of each real band drawn -- its height the band's, its full width at half maximum the broadening chosen -- summed; an imaginary mode's band is drawn and left out of the curve" }
+
+[tags.ir_intensity]
+x = "frequency_cm1"
+y = { name = "ir_intensity_relative_percent", kind = "derived", units = "%", long_name = "a mode's IR intensity, as drawn", definition = "the run's km/mol -- the infrared view's, from its charges or from its dipoles where it held atoms, or the result's own -- as a percentage of the lane's strongest real band (an imaginary mode's may pass 100); a gap where no band is drawn -- hidden by the display floor, the lane below its band floor, or no value" }
+
+[tags.ir_curve]
+x = "curve_frequency_cm1"
+y = { name = "ir_curve_relative_percent", kind = "derived", units = "%", long_name = "the IR lane's broadened curve", definition = "a Lorentzian of each real band drawn, its height the band's percentage of the strongest real band, its full width at half maximum the broadening chosen -- summed; an imaginary mode's band is drawn and left out of the curve" }
+
+[tags.mo_energy]
+x = "mode_displacement_ang"
+y = { name = "mo_energy_ev", kind = "derived", units = "eV", long_name = "an orbital's energy", definition = "the probe's mo_energy_minus_eh, mo_energy_eq_eh and mo_energy_plus_eh, in eV: a curve each orbital of the window, named by its place beside the HOMO and LUMO" }
+
+[tags.thermo_g]
+x = "temperature_k"
+y = { name = "free_energy_above_electronic_kcal_per_mol", kind = "derived", units = "kcal/mol", long_name = "the free energy above the electronic energy", definition = "G - E_elec on the full RRHO, F_vib on vibrational contributions only: the grid's g_eh less the equilibrium SCF energy, in kcal/mol" }
+
+[tags.thermo_h]
+x = "temperature_k"
+y = { name = "enthalpy_above_electronic_kcal_per_mol", kind = "derived", units = "kcal/mol", long_name = "the enthalpy above the electronic energy", definition = "H - E_elec on the full RRHO, ZPE + U_vib on vibrational contributions only: the grid's h_eh less the equilibrium SCF energy, in kcal/mol" }
+
+[tags.thermo_ts]
+x = "temperature_k"
+y = { name = "temperature_times_entropy_kcal_per_mol", kind = "derived", units = "kcal/mol", long_name = "the temperature times the entropy", definition = "T*S, or T*S_vib on vibrational contributions only: T times the grid's s_eh_per_k, in kcal/mol" }
+
+[tags.thermo_part]
+x = "thermo_part"
+y = { name = "part_kcal_per_mol", kind = "derived", units = "kcal/mol", long_name = "a part's value", definition = "each part at the grid temperature nearest the headline one (the root's chosen), in kcal/mol: ZPE the grid's zpe_eh; U_vib its u_vib_eh; trans + rot + pV (full RRHO) its h_eh less the equilibrium SCF energy, less ZPE and U_vib; -T*S its -T*s_eh_per_k; and G - E_elec (F_vib) its g_eh less the equilibrium SCF energy" }
+
+# ---- a benchmark sweep's trials, as the sweep's summary states them ------------------------------
+
+[tags.s_per_iter]
+x = "bench_setting"
+y = { name = "scf_iteration_time_s", kind = "derived", units = "s", long_name = "the time per SCF iteration", definition = "the trial's mean seconds per SCF iteration, molbuilder's from the run's SCF timing (its record's s_per_iter)" }
+
+[tags.mem_peak_gb]
+x = "bench_setting"
+y = { name = "memory_peak_gib", kind = "raw", units = "GiB", long_name = "the memory peak", definition = "the trial's memory peak (its record's mem_peak_gb, 2^30 bytes despite the name)", source = "the trial's utilisation log" }
+
+[tags.gpu_vram_peak_gb]
+x = "bench_setting"
+y = { name = "gpu_memory_peak_gib", kind = "raw", units = "GiB", long_name = "the GPU memory peak", definition = "the trial's GPU memory peak (its record's gpu_vram_peak_gb, 2^30 bytes despite the name)", source = "the trial's utilisation log" }
+
+[tags.cpu_mean_pct]
+x = "bench_setting"
+y = { name = "cpu_busy_percent", kind = "derived", units = "%", long_name = "how busy the CPU was", definition = "the trial's mean CPU use over its run, molbuilder's from its utilisation log (its record's cpu_mean_pct)" }
+
+[tags.gpu_sm_mean_pct]
+x = "bench_setting"
+y = { name = "gpu_busy_percent", kind = "derived", units = "%", long_name = "how busy the GPU was", definition = "the trial's mean GPU streaming-multiprocessor use over its run, molbuilder's from its utilisation log (its record's gpu_sm_mean_pct)" }

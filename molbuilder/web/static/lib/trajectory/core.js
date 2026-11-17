@@ -1132,7 +1132,7 @@ import { outcome } from "../validation-findings.js";
             yaxis: Object.assign({ title: { text: "E_KS (eV)", standoff: 4 },
                                    zeroline: false, automargin: true,
                                    nticks: 5 }, window.molbuilder.energyAxis),
-        }, theme), { displayModeBar: false }, _exported("total-energy"));
+        }, theme), {}, _exported("total-energy"));
 
         // A TRANSIESTA DEVICE COMPUTES NO FORCES, and says so: the reading
         // pass's sentence stands in the plot's place (web/trajectory.md § 2).
@@ -1245,7 +1245,7 @@ import { outcome } from "../validation-findings.js";
             legend:      forceLegend.legend,
             shapes:      forceShapes,
             annotations: forceAnnotations,
-        }, theme), { displayModeBar: false }, _exported("max-force"));
+        }, theme), {}, _exported("max-force"));
 
         renderScfProgress();
     }

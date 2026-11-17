@@ -168,6 +168,8 @@ there, in the change that first writes it.
 | `nm` | nanometre | `nm` |
 | `cm-1` | wavenumber, per centimetre | `cm1` |
 | `km/mol` | kilometre per mole | `km_per_mol` |
+| `kcal/mol` | kilocalorie per mole, 4.184 kJ/mol — a chart's thermochemistry (§ 9.7) | `kcal_per_mol` |
+| `GiB` | gibibyte, 2^30 bytes — a benchmark trial's memory peaks (§ 9.7) | `gib` |
 | `angstrom` | ångström, 10⁻¹⁰ m | `ang` |
 | `angstrom^3` | cubic ångström | `ang3` |
 | `amu` | the unified atomic mass unit (dalton), 1.66053907e-27 kg | `amu` |
@@ -218,7 +220,7 @@ naming this section — in every file, every group, the root's included.
    (SIESTA's own), `gnorm` / `ddm` (PySCF's own: the orbital gradient's
    norm, the density matrix's change), `abs` (an absolute value, as a log
    axis draws it), `imag` (imaginary), `fd` (finite
-   difference), `iscf` (an SCF cycle's own number),
+   difference), `iscf` (an SCF cycle's own number), `cpu` / `gpu`,
    `max`, `mtime`, `n_` (the number of). A count says what it counts
    (`scf_cycles`, `n_modes`, `removed_motions_count`). An axis or a variable of a physical
    quantity ends with its unit, spelled as § 2c's last column says
@@ -550,14 +552,18 @@ run along, the variable `<x>`. `[tags.<tag>]` — a kind of curve, its `y` and
 the `[xs]` row it runs along (`x`); or of threshold line, its `mark`. **A
 variable is its owner's where a file declares it** — one concept, one name,
 one statement (§ 2a rule 1): `{of = "<module:NAME>", name}` a data file's
-table (the transport file's `VARIABLES`, the steps file's `STEP_VARS` and
-`RUN_VARS`), its kind, units, words and source as they are there; `{of =
+table of variables, a tuple or a mapping by name (the transport file's
+`VARIABLES`, the steps file's `STEP_VARS` and `RUN_VARS`, the vibration
+file's `MODE` and `GRID`), its kind, units, words and source as they are
+there; `{of =
 "scf", name}` the calculation's engine's SCF column (the engine table's
 `scf_columns`, § 9.0.6); `{of = "axis"}` an axis's own row of
 `ncdata.AXES`; and only what no file declares is stated in the table, whole
 — the two spins' transmission summed, a residual's absolute value as a log
 axis draws it, a residual's tolerance line, a chosen selection's PDOS, the
-viewer's step number. A page draws a curve with its tag (`tag`), a
+viewer's step number, what only a chart computes of a vibration and a
+benchmark; an own variable in units `""` is a category's labels, written as
+text (the thermochemistry's parts, a sweep's settings). A page draws a curve with its tag (`tag`), a
 threshold with its tag (`thresholdMark`), and names a chart by its row:
 none of them states a name, a unit or a word of the file. The table is
 checked whole as it loads (`chartdata.table`): every key known
@@ -1571,7 +1577,7 @@ tag's `y` and `x` are the variables below, a mark's a variable on the root.
 | `label` | the calculation's label |
 | `chart` | the chart's name in the chart table |
 | `shown` | the file or folder the chart was drawn from, below the calculation |
-| `chosen` | **record**: what the person had chosen as the chart was drawn — a frame, a voltage, one frame or all, a stage — the chart's own keys |
+| `chosen` | **record**: what the person had chosen that the chart is of — the transport charts' `frame`, `voltage_v`, `frames`, a convergence chart's `stage`; the trajectory's SCF charts' `step_index`; the spectrum's `fwhm_cm1`, `display_floor_percent` and the asks its page sends (`infrared`: direction, partition; `raman`: `laser_nm`, `broaden_ev`); the levels' `mode`; the thermochemistry's `regime` and its parts' `temperature_k`; the bench's `setting` and `grouped_by` |
 
 | name | over | kind | units | what it is |
 |---|---|---|---|---|
@@ -1590,7 +1596,7 @@ tag's `y` and `x` are the variables below, a mark's a variable on the root.
 | the tag's `x` | curve, curve_point | given | its units | the values the curve runs along; the fill past its last point |
 | the tag's `y` | curve, curve_point | its kind | its units | the curve's values, as drawn; the fill past its last point |
 
-#### The charts and their tags (2.75.0)
+#### The charts and their tags
 
 Each chart's `tags` and `marks`, as the table lists them; a curve's
 variable, where a file declares it, is that file's — its words in its own
@@ -1605,6 +1611,11 @@ entry.
 | `transmission` | the transmission T(E) of the points drawn | `transmission`, `transmission_by_spin`, `transmission_total`, `average_transmission`, `eigenchannel_transmission` |
 | `dos` | the density of states of the points drawn | `dos_total`, `dos_total_by_spin`, `dos_region`, `lead_spectral_dos`, `lead_bulk_dos`, `pdos` |
 | `iv` | the current against the bias | `current`, `current_by_spin`, `iv_current`, `iv_current_by_spin` |
+| `spectrum` | a vibration's Raman and IR spectrum — each lane's bands and its broadened curve | `raman_strength`, `raman_curve`, `ir_intensity`, `ir_curve` |
+| `levels` | a mode's frontier orbitals at its two displaced geometries and at equilibrium | `mo_energy` |
+| `thermo` | the thermochemistry over temperature | `thermo_g`, `thermo_h`, `thermo_ts` |
+| `thermo-parts` | the thermochemistry's parts at one temperature | `thermo_part` |
+| `bench` | a benchmark sweep's trials: the time per SCF iteration, the memory peaks, how busy the CPU and the GPU were | `s_per_iter`, `mem_peak_gb`, `gpu_vram_peak_gb`, `cpu_mean_pct`, `gpu_sm_mean_pct` |
 
 | tag | `y` — the group's name | whose | `x` |
 |---|---|---|---|
@@ -1619,6 +1630,13 @@ entry.
 | `pdos` | `pdos_per_ev` | the chart's: derived, 1/eV — the DOS projected on the orbitals the person chose (`postprocess.pdos`), a curve each selection; a polarized point's two channels summed | `energy_ev` |
 | `current` · `current_by_spin` | `current_a` · `current_by_spin_a` | the transport file's (9.1) | `bias_v`, the transport file's |
 | `iv_current` · `iv_current_by_spin` | `iv_current_a` · `iv_current_by_spin_a` — computed from T(E, 0) under the low-bias approximation | the transport file's (9.1) | `iv_bias_v`, the transport file's |
+| `raman_strength` · `ir_intensity` | `raman_strength_ang4_per_amu` · `ir_intensity_relative_percent` | the chart's: derived — a mode's band as drawn: SIESTA's Raman strength at the laser named (in the root's `chosen`) or PySCF's activity, Å⁴/amu; the IR intensity — the infrared view's or the result's own km/mol — as a percentage of the lane's strongest real band; a gap where no band is drawn (the display floor, the lane's band floor, no value) | `frequency_cm1`, the vibration file's (9.2) |
+| `raman_curve` · `ir_curve` | `raman_curve_ang4_per_amu` · `ir_curve_relative_percent` | the chart's: derived — the lane's broadened curve, a Lorentzian of each real band drawn (its height the band's, its full width at half maximum the broadening chosen), summed; an imaginary mode's band is drawn and left out | `curve_frequency_cm1` (cm-1): a point of the curve |
+| `mo_energy` | `mo_energy_ev` | the chart's: derived, eV — the probe's orbital energies at −A, 0, +A, a curve each orbital of the window, named by its place beside the HOMO and LUMO | `mode_displacement_ang` (angstrom): −A, 0, +A, A the probe's amplitude |
+| `thermo_g` · `thermo_h` · `thermo_ts` | `free_energy_above_electronic_kcal_per_mol` · `enthalpy_above_electronic_kcal_per_mol` · `temperature_times_entropy_kcal_per_mol` | the chart's: derived, kcal/mol — G − E_elec (F_vib), H − E_elec (ZPE + U_vib) and T·S (T·S_vib) from the vibration file's grid | `temperature_k`, the vibration file's (9.2) |
+| `thermo_part` | `part_kcal_per_mol` | the chart's: derived, kcal/mol — each part at the grid temperature nearest the headline one: ZPE, U_vib, trans + rot + pV (what is left of H − E_elec), −T·S, G − E_elec (F_vib) | `thermo_part` (labels): the parts' names |
+| `s_per_iter` · `cpu_mean_pct` · `gpu_sm_mean_pct` | `scf_iteration_time_s` · `cpu_busy_percent` · `gpu_busy_percent` | the chart's: derived — each trial's mean seconds per SCF iteration, and its mean CPU and GPU use in %, molbuilder's from the run's SCF timing and its utilisation log | `bench_setting` (labels): the trial's value of the setting the sweep varies |
+| `mem_peak_gb` · `gpu_vram_peak_gb` | `memory_peak_gib` · `gpu_memory_peak_gib` | the chart's: raw, GiB — each trial's memory and GPU memory peaks, 2^30 bytes despite the record's names, *from its utilisation log* | `bench_setting` |
 
 | mark | name | whose |
 |---|---|---|

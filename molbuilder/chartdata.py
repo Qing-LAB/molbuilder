@@ -129,9 +129,11 @@ def _variable(spec: Mapping[str, Any], dims: Tuple[str, ...], *,
                    + (() if kind else ("kind",)) if k not in spec]
         if missing:
             raise _refuse(where, f"it states no {', '.join(missing)}")
+        # AN OWN VARIABLE IN UNITS "" is a category's labels: text.
         var = Var(name, dims, kind or str(spec["kind"]), str(spec["units"]),
                   str(spec["long_name"]), str(spec["definition"]),
-                  source=str(spec.get("source", "")))
+                  source=str(spec.get("source", "")),
+                  dtype=str if str(spec["units"]) == "" else "f8")
     elif of == "axis":
         if AXES.get(name) is None:
             raise _refuse(where, f"{name!r} is no axis of ncdata.AXES")
@@ -220,6 +222,14 @@ def table() -> Table:
     return Table(charts=charts, tags=tags)
 
 
+def _labels(values: Any, what: str) -> List[str]:
+    """``values`` as labels -- a category axis's (a variable in units ``""``)
+    -- a gap (``None``) the empty label."""
+    if not isinstance(values, (list, tuple)):
+        raise ExportError(f"{what} is not a list")
+    return ["" if v is None else str(v) for v in values]
+
+
 def _numbers(values: Any, what: str) -> List[float]:
     """``values`` as numbers, a gap (``None``) the fill -- refused as
     ``what`` where one is not a finite number's spelling."""
@@ -265,6 +275,7 @@ def data_file_bytes(calc, path: Path, *, chart: str,
                           f"(data/chart_table.toml): "
                           f"{', '.join(table().charts)}")
     engine = str(calc.task.engine)
+    x_of: Dict[str, Var] = {}
     by_tag: Dict[str, List[Dict[str, Any]]] = {}
     for k, c in enumerate(curves):
         c = _record(c, f"curve {k}")
@@ -273,7 +284,12 @@ def data_file_bytes(calc, path: Path, *, chart: str,
             raise ExportError(f"the {chart} chart draws no curve tagged "
                               f"{tag!r}: its curves are "
                               f"{', '.join(got.tags)}")
-        x = _numbers(c.get("x"), f"curve {k}'s x")
+        if tag not in x_of:
+            row = table().tags[tag]
+            x_of[tag] = _variable(row.x, _CURVE, engine=engine, kind="given",
+                                  where=f"[xs.{row.x['name']}]")
+        x = (_labels if x_of[tag].dtype is str else _numbers)(
+            c.get("x"), f"curve {k}'s x")
         y = _numbers(c.get("y"), f"curve {k}'s y")
         if len(x) != len(y):
             raise ExportError(f"curve {k} ({c.get('name')!r}) has {len(x)} "
@@ -321,8 +337,7 @@ def data_file_bytes(calc, path: Path, *, chart: str,
             write_group(ds, {}, tuple(held.values()), values)
         for tag, rows in by_tag.items():
             row = table().tags[tag]
-            x = _variable(row.x, _CURVE, engine=engine, kind="given",
-                          where=f"[xs.{row.x['name']}]")
+            x = x_of[tag]
             y = _variable(row.y, _CURVE, engine=engine,
                           where=f"[tags.{tag}] y")
             dims = {"curve": len(rows),
@@ -335,6 +350,9 @@ def data_file_bytes(calc, path: Path, *, chart: str,
                 v["curve_name"][r] = curve["name"]
                 v["curve_hidden"][r] = int(curve["hidden"])
                 for var, got in ((x, curve["x"]), (y, curve["y"])):
+                    if var.dtype is str:          # a category's labels
+                        v[var.name][r, :len(got)] = got
+                        continue
                     # A GAP ON A WHOLE-NUMBER VARIABLE is its fill.
                     cells = np.asarray(got, dtype=float)
                     if np.issubdtype(v[var.name].dtype, np.integer):

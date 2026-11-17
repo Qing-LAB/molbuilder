@@ -337,6 +337,8 @@ UNITS: Dict[str, str] = {
     "D/(angstrom amu^1/2)": "debye (3.33564e-30 C m) per angstrom per "
                             "square-root amu",
     "angstrom^4/amu": "angstrom to the fourth per amu",
+    "kcal/mol": "kilocalorie per mole, 4.184 kJ/mol",
+    "GiB": "gibibyte, 2^30 bytes",
 }
 #: EACH UNIT AS A NAME SPELLS IT (`model/datafiles.md` § 2a rule 2, § 2c's
 #: last column): a number's name ends with it -- ``force_ev_per_ang`` -- and a
@@ -371,6 +373,8 @@ UNIT_IN_NAME: Dict[str, str] = {
     "angstrom^2/amu^1/2": "ang2_per_amu12",
     "D/(angstrom amu^1/2)": "d_per_ang_amu12",
     "angstrom^4/amu": "ang4_per_amu",
+    "kcal/mol": "kcal_per_mol",
+    "GiB": "gib",
 }
 
 

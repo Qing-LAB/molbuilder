@@ -97,7 +97,7 @@
         { title: "s / iter", series: [
             { key: "s_per_iter", name: "s/iter", digits: 1,
               from: (t) => t.s_per_iter } ] },
-        { title: "GB", series: [
+        { title: "GiB", series: [
             { key: "mem_peak_gb", name: "peak RAM", digits: 1,
               from: (t) => (t.metrics || {}).mem_peak_gb },
             { key: "gpu_vram_peak_gb", name: "peak VRAM", digits: 1,
@@ -109,7 +109,7 @@
               from: (t) => (t.metrics || {}).gpu_sm_mean_pct } ] },
     ];
 
-    function drawChart(hostEl, data) {
+    function drawChart(hostEl, data, file) {
         const varied = data.varied || [];
         if (!varied.length || !root.Plotly) return false;
         const timed = (data.trials || [])
@@ -260,6 +260,9 @@
                 traces.push({
                     x: pts.map((t) => String(at(t))),
                     y: pts.map(ser.from),
+                    // WHAT THE BARS ARE: the series' record key, a row of
+                    // the chart table (`data/chart_table.toml`).
+                    tag: ser.key,
                     /* THE VALUE, ON THE BAR (2026-08-25, user).  A dozen
                        bars is few enough to label every one, and a printed
                        number beats an axis tick plus an estimate --
@@ -339,8 +342,9 @@
             ticks: "outside", ticklen: 4,
             tickfont: { size: 14 },
         };
-        root.molbuilder.plotBox.draw(hostEl, traces, layout,
-                                     { displayModeBar: false });
+        root.molbuilder.plotBox.draw(hostEl, traces, layout, {}, {
+            chart: "bench", path: () => file,
+            chosen: () => ({ setting: axis, grouped_by: groupKeys }) });
         return true;
     }
 
@@ -459,7 +463,7 @@
         return card;
     }
 
-    function render(host, data) {
+    function render(host, data, file) {
         // The chart of the poll before goes with its box (lib/plot-box.js).
         host.querySelectorAll(".plot-box").forEach(
             (c) => root.molbuilder.plotBox.release(c));
@@ -593,7 +597,7 @@
         wrap.appendChild(foot);
 
         host.appendChild(wrap);
-        if (!drawChart(chart, data)) chart.remove();
+        if (!drawChart(chart, data, file)) chart.remove();
     }
 
     const inspector = {
@@ -636,7 +640,7 @@
                     "/api/bench/summary?path=" + encodeURIComponent(file));
                 if (state.disposed) return;
                 if (answer.ok) {
-                    render(host, answer.body);
+                    render(host, answer.body, file);
                     if (!state.drawn) {
                         state.drawn = true;
                         /* FIRST RENDER ON SCREEN: the picker drops its

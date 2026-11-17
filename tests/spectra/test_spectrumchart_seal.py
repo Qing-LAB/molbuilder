@@ -58,12 +58,6 @@ globalThis.Plotly = {
         area.className = "nsewdrag";
         area.getBoundingClientRect = () => ({ left: 100, width: 400, top: 50, height: 200 });
         el.appendChild(area);
-        const bar = document.createElement("div");
-        bar.className = "modebar-container";
-        const button = document.createElement("a");
-        bar.appendChild(button);
-        el.appendChild(bar);
-        globalThis.__toolbarButton = button;
         el.querySelector = (sel) => (sel === ".nsewdrag" ? area : null);
         el._fullLayout = { xaxis: { range: [0, 4000] } };
     },
@@ -174,19 +168,6 @@ class TestTheDoors:
         )
         assert got == [1000, 1000, 1000, 1000, 1000]
 
-    def test_the_librarys_toolbar_is_not_the_picture(self):
-        """A button is a button wherever it sits: pressing "zoom" must not select
-        the mode behind it. Excluded by WHAT was clicked, not by where."""
-        got = seal(
-            "const seen = [];\n"
-            "surface.onClick((at) => seen.push(at.x));\n"
-            "surface.draw(picture);\n"
-            "const el = host.children[0].children[0];\n"
-            "el.dispatch('click', { clientX: 200, clientY: 150, target: __toolbarButton });\n"
-            "console.log(JSON.stringify(seen));"
-        )
-        assert got == []
-
     def test_a_drag_does_not_pick_a_mode(self):
         """§ 8.4 — the library's own drag-to-zoom ends in a click."""
         got = seal(
@@ -269,9 +250,11 @@ class TestTheDoors:
         assert got == {"calls": ["purge"], "left": 0}
 
     def test_the_seal_answers_no_question_about_what_is_drawn(self):
-        """§ 8.4 — the seal faces downward: six doors, and nothing to read back."""
+        """§ 8.4 — the seal faces downward: its doors, and nothing to read
+        back but the drawing as an image."""
         got = seal("console.log(JSON.stringify(Object.keys(surface).sort()));")
-        assert got == ["draw", "onClick", "onHover", "purge", "recolour", "resize"]
+        assert got == ["draw", "image", "onClick", "onHover", "purge",
+                       "recolour", "resize"]
 
     def test_the_pointer_position_comes_up_continuously(self):
         """§ 8.4 — the same conversion as a click, so the layer above can show
@@ -283,11 +266,10 @@ class TestTheDoors:
             "const el = host.children[0].children[0];\n"
             "el.dispatch('mousemove', { clientX: 200, clientY: 150, target: el });\n"
             "el.dispatch('mousemove', { clientX: 300, clientY: 150, target: el });\n"
-            "el.dispatch('mousemove', { clientX: 200, clientY: 20, target: __toolbarButton });\n"
             "el.dispatch('mouseleave', {});\n"
             "console.log(JSON.stringify(seen));"
         )
-        assert got == [1000, 2000, None, None]
+        assert got == [1000, 2000, None]
 
     def test_the_frame_and_the_surface_are_the_only_markup(self):
         """§ 11 — the sheet styles the frame and the surface and nothing else."""

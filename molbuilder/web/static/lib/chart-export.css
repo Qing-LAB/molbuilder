@@ -4,6 +4,9 @@
  * they open downward over the chart.  Its buttons are the page's own, and
  * its words go through the one status writer (lib/status.js), as the
  * calculation's Export bar's do. */
+/* The element the button sits in -- a chart's box, or the wrap around a
+ * sealed chart -- is its positioned ancestor. */
+.chart-export-host { position: relative; }
 .chart-export {
     position: absolute;
     top: var(--space-xs);

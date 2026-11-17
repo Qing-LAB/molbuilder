@@ -155,8 +155,10 @@ time and out of step exactly when a selection is refused.
 does this broadening make, and how wide may each band be — with numbers, for
 anyone who asks.
 
-**Nothing flows back up past the seal** except a click. The sealed layer is never
-asked what is drawn, what the axes are, or where a point landed on screen (§ 8.4).
+**Nothing flows back up past the seal** except a click — and, asked, the drawing
+as an image, for the chart's own Export (§ 8.4). The sealed layer is never asked
+what is drawn, what the axes are, or where a point landed on screen; what is
+drawn is read from the handle's one read-only door, `drawn` (§ 8.3).
 
 ---
 
@@ -263,10 +265,10 @@ of a number the tab displays.
 ### 5.3 The controls are not ours
 
 SpectrumChart draws **no controls** — no heading, no broadening box, no export
-button. It fills the element it was given with a spectrum. The drawing library
-brings a small toolbar of its own (zoom, reset, save); that is the library's, not
-a control this module offers, and what appears on it is decided in the sealed
-layer and nowhere else.
+button. It fills the element it was given with a spectrum. The drawing library's
+own toolbar is off: the chart's Export is the page's, in the wrap around the
+module ([`results.md`](?doc=web/results.md) § 1.2), reading the module through its
+one read-only door (§ 8.3).
 
 ### 5.4 The host gives the width; the chart's frame states its height
 
@@ -594,7 +596,8 @@ if (chart.ok) {                   // the one branch every caller makes (§ 7)
 </script>
 ```
 
-That is the whole surface: **seven doors and one callback.** The page above styles
+That is the whole surface: **seven doors in, one that reads back what is
+drawn, and one callback.** The page above styles
 a box, hands over four numbers per mode, and gets a spectrum it can click. There
 is no stylesheet `<link>` and no library `<script>` — the module brings both
 (§ 4) — so this really is the whole page.
@@ -642,14 +645,17 @@ setDisplayFloor(pct)         hide bands below this percentage of the
 setAbsentWords(key, words)   what a lane with no value says across its panel
                              in place of "not computed" -- the caller's reason,
                              such as what the person must name first
+drawn()                      what is drawn -- the one door that reads back
+                             (below); nothing goes in through it
 refit()                      re-measure the box and redraw at its size
 dispose()                    release, disconnect, empty
 ```
 
-Seven doors, and **every fact the chart holds arrives through exactly one of
-them.** There is no property to assign, no options object to mutate after the
+Seven doors in, and **every fact the chart holds arrives through exactly one
+of them.** There is no property to assign, no options object to mutate after the
 fact, no global to publish into, and no second path that "also" sets something.
-Data goes in one way; nothing comes back out but a click.
+Data goes in one way; what comes back out is a click, and — asked, through
+`drawn` — what is drawn.
 
 **Each door, precisely:**
 
@@ -660,6 +666,7 @@ Data goes in one way; nothing comes back out but a click.
 | `setBroadening` | a width in cm⁻¹, $\ge 0$. Zero means *no curve*: bare sticks, and click bands at their floor (§ 6.3) | a negative number or a value that is not a number — the width already set stands, because substituting a default would hide a caller's bug | nothing |
 | `setDisplayFloor` | a percentage, `0`–`100`, of each channel's strongest peak; `0` hides nothing | a value outside `0`–`100` or not a number — the floor already set stands, for the same reason | nothing |
 | `setAbsentWords` | a channel's key and the words its lane says across its panel while no mode has a value in it (§ 6.2) — *type the laser's wavelength …* where the strength waits on what the person names (`web/spectra.md` § 3.3); `null` restores *not computed*; the words already set, given again, draw nothing. The module names no quantity and knows no reason: the caller's words, drawn as given | words that are not a non-empty string or `null` — the words already set stand | nothing |
+| `drawn` | — | — | `{lanes: [{key, sticks: {x, y}, curve}], image(fmt)}`: each lane's bands' frequencies and drawn values — `null` for a band not drawn, a relative lane's values its screen percentages — and its broadened curve (`null` at zero width); `image` the drawing's data URL, made inside the seal; after `dispose`, no lanes and an image that refuses |
 | `refit` | — | — | nothing |
 | `dispose` | — | — | nothing; safe to call twice |
 
@@ -680,10 +687,19 @@ appears without the tab having to say it again.
 > which is the exact drift § 5.2 exists to prevent. And the mistake a refusal was
 > meant to catch, choosing a mode that is not there, still shows: as no highlight.
 
-**Nothing is read back.** There is deliberately no `getModes`, no `getSelected`,
-no `getBroadening` and no accessor of any kind: every one of those values was
-written by the caller, so a second copy inside the module would be a second place
-to believe something (§ 5.2). What the module knows that the caller does not is
+**Nothing the caller wrote is read back.** There is deliberately no `getModes`,
+no `getSelected`, no `getBroadening` and no accessor of any kind: every one of
+those values was written by the caller, so a second copy inside the module would
+be a second place to believe something (§ 5.2). **One door reads back what the
+caller never had — what is drawn**: `drawn()` answers each lane's `key`, its
+bands' frequencies and drawn values (`sticks`: a band the display floor hides is
+`null`; a relative lane's values are its screen percentages) and its broadened
+curve as the module computed it (`curve`, or `null`), and `image(fmt)`, the
+drawing's data URL, which the seal makes (`image`, § 8.4) — so a chart's own
+Export reads the chart without opening the seal *(the user, 2026-11-17: "Add the
+one door"; [`results.md`](?doc=web/results.md) § 1.2)*. The module names no
+quantity: the caller tags each lane it declared. Plotly's own hover button is
+off — the chart's Export, in the wrap around it, is the one way out. What the module knows that the caller does not is
 *where the marks landed on screen*, and that is the seal's business and never
 leaves it (§ 8.4).
 
@@ -728,6 +744,8 @@ onClick(cb)                     the user clicked: hand up where it landed on
                                 the frequency axis, and what a pixel is worth there
 onHover(cb)                     the pointer moved: the same, continuously, or
                                 null over nowhere in particular
+image(format)                   the drawing as an image -- its data URL, at
+                                the size it stands at (the chart's own Export)
 purge()                         release the surface
 ```
 
@@ -850,15 +868,11 @@ chart rather than from the design:
   drag-to-zoom ends in one, and the chart would otherwise select whatever sat
   under the release. A pick is a click that stayed within a few pixels of where
   it went down.
-- **The library's toolbar is not the picture.** Pressing *zoom* must not select
-  the mode behind the button — and that is settled by **what** was clicked, never
-  by where it was. A button is a button wherever it sits.
 
 **Vertical position is never consulted.** A spectrum is picked by frequency, so
 every point at that frequency is the same request: level with a peak's tip,
-halfway down it, or beside the axis. The toolbar is kept out by what was
-clicked, never by bounding the plot area vertically: that would answer a
-question about *identity* with *geometry* and leave the tick-label strip dead.
+halfway down it, or beside the axis — never bounded by the plot area
+vertically, which would leave the tick-label strip dead.
 
 **The seal takes the library as it finds it, and never assumes it is ready.**
 Two consequences, both found by building against this contract rather than by
@@ -1060,7 +1074,6 @@ the difference, because § 8.4 is the whole of what it asks of that library.
 | § 6.3.1 — pointing costs only what changed | sliding inside one band makes no call at all; a move that changes the words alone does not repaint a colour |
 | § 6.3.1 — what you picked does not flicker | a chosen mode keeps its colour under the pointer |
 | § 8.4 — a drag is not a pick | a press and a release far apart report nothing; a click a pixel or two from the press still reports |
-| § 8.4 — the toolbar is not the picture | a click whose target is inside the library's toolbar reports nothing, wherever it sits |
 | § 8.4 — vertical position is not consulted | clicks at one frequency and different heights — including beside the axis — all report the same number |
 | § 8.4 — the scale comes up with the position | what goes up says both where the pointer was and what one pixel is worth there |
 | § 6.4 — an imaginary mode is drawn and clickable | it appears at its own frequency and a click on it reports its index, exactly like any other mode |
@@ -1073,7 +1086,8 @@ the difference, because § 8.4 is the whole of what it asks of that library.
 | § 8.2 — a host that is not an element is the one refusal | `mount(null)` and `mount("#chart")` each resolve with `ok === false` and a message, and neither throws |
 | § 8.2 — a mount option is the first write | `mount({ broadening: 20 })` and `mount()` then `setBroadening(20)` leave the chart in the same state, and no "initial" value survives a later write |
 | § 8.3 — one way in | the handle exposes no settable property and no options object; changing a fact is possible only by calling its door |
-| § 8.3 — nothing is read back | there is no `getModes`, `getSelected` or `getBroadening`, and nothing else hands those values back either |
+| § 8.3 — nothing the caller wrote is read back | there is no `getModes`, `getSelected` or `getBroadening`, and nothing else hands those values back either; the handle's keys are its doors and `drawn` |
+| § 8.3 — `drawn` reads back what is drawn | a band the display floor hides comes back `null`, a drawn band its value, and the curve the one on screen — at zero width none |
 | § 8.3 — order does not matter | selecting before any modes exist, broadening an empty chart, and re-selecting the same index each leave a coherent chart and no error |
 | § 8.3 — the selection is recorded, not refused | `setSelected(3)` before any modes exist, followed by a `setModes` containing 3, draws 3 as chosen with no second call; an index no list ever holds highlights nothing and raises nothing |
 | § 8.3 — a new list keeps the recorded selection | `setModes` with a list that still holds the selected index leaves it drawn as chosen; with a list that does not, nothing is drawn as chosen and the recorded value stands |
@@ -1081,7 +1095,7 @@ the difference, because § 8.4 is the whole of what it asks of that library.
 | § 8.3 — an empty list is a state, not a failure | `setModes([])` draws an empty chart and does not error |
 | § 8.3 — an empty click is silent | a click landing in no band calls `onSelect` **not at all** — not with `null` — and changes nothing on screen |
 | § 8.3 — refit redraws at the box's size | a chart whose box was zero-sized when drawn fills its box after `refit`, with no other call |
-| § 8.4 — the seal faces downward | what is drawn, how it is laid out and what the axes span cannot be read out of it |
+| § 8.4 — the seal faces downward | what is drawn, how it is laid out and what the axes span cannot be read out of it; its one answer upward beside a click is the drawing as an image (`image`) |
 | § 8.4 — a picture carries words, never colours | the object handed down names states (`chosen`, `pending`, `imaginary`) and carries every axis title, unit and note; no colour and no mode index appears in it |
 | § 8.4 — a click asked for before the first draw still arrives | `onClick` then `draw` reports a click, in that order as well as the other |
 | § 8.4 — a click comes up as a position | the seal reports where the click landed on the frequency axis and nothing more; a click in empty space beside a peak still reaches the handle |

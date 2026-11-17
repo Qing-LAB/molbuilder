@@ -20,8 +20,6 @@
  *   * `overflow: hidden`: a drawing waiting for its resize never paints over
  *     its neighbour. */
 .plot-box {
-    /* The chart's own Export sits in its corner (lib/chart-export.css). */
-    position: relative;
     box-sizing: content-box;
     height: var(--plot-box-h);
     min-width: 0;

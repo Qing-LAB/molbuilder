@@ -84,6 +84,55 @@ def _put_away(page):
     reload_from(page, projects_root())
 
 
+def test_the_sweeps_chart_exports_each_trials_numbers(page, real_h2_bench,
+                                                       monkeypatch, tmp_path):
+    """`web/results.md` § 1.2, `model/datafiles.md` § 9.7: the sweep's chart
+    exports each trial's seconds per SCF iteration as the sweep's summary
+    states it (`GET /api/bench/summary`, what the chart draws from), by the
+    setting the sweep varies, that setting named in what was chosen -- on
+    the real benchmark of two trials.
+
+    THE SILENT FAILURE: a chart of category bars exporting nothing, or its
+    numbers under another trial's setting."""
+    import io
+    import math
+    import zipfile
+    from conftest import point_the_one_door_at
+    from molbuilder.postprocess import read_chart_data
+    from molbuilder.web import create_app
+    from support.live_server import serve
+    from support.pages import chart_exported
+    folder = real_h2_bench.bundle / "01_coarse" / "bench"
+    point_the_one_door_at(real_h2_bench.tree.parent, monkeypatch.setenv)
+    with serve() as base:
+        _open(page, base, folder)
+        box = page.locator(".bench-chart")
+        box.locator(".chart-export-open").wait_for(timeout=60000)
+        path = chart_exported(page, box, "NetCDF", tmp_path)
+        tables = chart_exported(page, box, "CSV", tmp_path)
+    summary = create_app(config={}).test_client().get(
+        f"/api/bench/summary?path={folder / 'job-set.json'}").get_json()
+    data = read_chart_data(path)
+    setting = data["attrs"]["chosen"]["setting"]
+    assert setting in summary["varied"], (setting, summary["varied"])
+    want = {str(t["point"][setting]): t["s_per_iter"]
+            for t in summary["trials"]
+            if isinstance(t.get("s_per_iter"), (int, float))}
+    v = data["groups"]["scf_iteration_time_s"]["variables"]
+    got = {}
+    for labels, times in zip(v["bench_setting"]["data"],
+                             v["scf_iteration_time_s"]["data"]):
+        got.update({str(a): t for a, t in zip(labels, times)
+                    if a and not math.isnan(t)})
+    assert got == pytest.approx(want), (got, want)
+    # ITS TABLES name each trial by its setting too.
+    with zipfile.ZipFile(io.BytesIO(tables.read_bytes())) as z:
+        table = next(n for n in z.namelist()
+                     if n.endswith("scf_iteration_time_s/curve_curve_point.csv"))
+        text = z.read(table).decode()
+    assert all(label in text for label in want), (want, text[:300])
+
+
 def test_the_page_says_when_it_last_looked(page, server, sweep):
     """B4's other half.  "The page is live, AND SAYS WHEN IT LAST LOOKED" --
     a sweep is watched precisely while it runs, so a silently stale verdict

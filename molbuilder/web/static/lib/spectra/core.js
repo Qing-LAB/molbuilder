@@ -2966,11 +2966,15 @@
         } else {
             const fig = _renderLevelDiagram({
                 minus: minus, eq: eq, plus: plus,
-                homo_idx: hi, lumo_idx: li,
+                homo_idx: hi, lumo_idx: li, amplitude: es.amplitude_ang,
             });
             fig.layout.yaxis.range = [yMin, yMax];
+            // ITS OWN EXPORT: drawn as dashes, so it hands its data, the
+            // curves its builder made beside the drawing.
             root.molbuilder.plotBox.draw(els.esBarDiagram, fig.traces,
-                                         fig.layout, fig.config);
+                                         fig.layout, fig.config,
+                _exported("levels", () => ({ mode: m.index_1based }), {
+                    data: () => ({ curves: fig.curves, marks: [] }) }));
         }
 
         /* THE NUMBERS, GROUPED BY THE QUESTION THEY ANSWER.
@@ -3093,8 +3097,25 @@
         const nLevels = Math.max(opts.eq.length, opts.minus.length, opts.plus.length);
         const crowd = { x: [], y: [] }, ties = { x: [], y: [] };
         const traces = [];
+        /* WHAT IS DRAWN, as data: each orbital across -A, 0, +A, named by
+         * its place beside the frontier pair -- the chart's own Export
+         * takes these (web/results.md § 1.2), not the dashes. */
+        const A = opts.amplitude;
+        const place = (i) => (i === opts.homo_idx ? "HOMO"
+            : i === opts.lumo_idx ? "LUMO"
+            : i < opts.homo_idx ? "HOMO−" + (opts.homo_idx - i)
+            : "LUMO+" + (i - opts.lumo_idx));
+        const curves = [];
 
         for (let i = 0; i < nLevels; i++) {
+            // ``legend``: the entry it is drawn under, whose hiding the
+            // chart's Export reads (lib/chart-export.js).
+            curves.push({ tag: "mo_energy", name: place(i),
+                          legend: i === opts.homo_idx ? "HOMO"
+                              : i === opts.lumo_idx ? "LUMO" : "other levels",
+                          x: [-A, 0, A],
+                          y: cols.map((c) => (c.arr[i] === undefined
+                                              ? null : c.arr[i])) });
             const seg = _levelSegments(cols, i, centre, HALF);
             const tie = _tieSegments(cols, i, centre, HALF);
             const frontier = (i === opts.homo_idx) ? "homo"
@@ -3171,15 +3192,14 @@
             showlegend: true,
         };
 
+        // No toolbar: the chart's own Export is the way out (the plot box).
         const config = {
-            displaylogo: false,
             scrollZoom: true,          // wheel over the plot zooms the energy axis
-            modeBarButtonsToRemove: ["select2d", "lasso2d", "zoom2d", "toggleSpikelines"],
         };
         // THE ONE CHART THEME'S LAYOUT -- its font, its axes' colours, the
         // card showing through -- under this diagram's own keys.
         return { traces: traces, layout: root.molbuilder.themedLayout(layout),
-                 config: config };
+                 config: config, curves: curves };
     }
 
     // ----- Mode-animation viewer (§ 9.2.3) ---------------------
@@ -4094,12 +4114,63 @@
         // "Raman", not "Raman activity": the lane draws PySCF's activity or
         // SIESTA's strength at a laser, and the column beside it names
         // which (web/spectra.md § 3.3).
+        // `tags`: what the lane's bands and curve are in the chart table
+        // (data/chart_table.toml), for the chart's own Export.
         { key: "raman", label: "Raman",           unit: "Å⁴/amu", direction: "up",
-          floorKey: "raman_present_floor_a4_amu" },
+          floorKey: "raman_present_floor_a4_amu",
+          tags: { sticks: "raman_strength", curve: "raman_curve" } },
         { key: "ir",    label: "IR absorption",   unit: "arb. units",
           valueUnit: "km/mol", direction: "down", relative: true,
-          floorKey: "ir_present_floor_km_mol" },
+          floorKey: "ir_present_floor_km_mol",
+          tags: { sticks: "ir_intensity", curve: "ir_curve" } },
     ];
+
+    /* A CHART'S OWN EXPORT (web/results.md § 1.2): ``chart`` its name in the
+     * chart table, drawn from the file on screen; ``chosen()`` what the
+     * person chose that it is of, read as a button is pressed; ``more`` --
+     * a chart whose data Plotly does not hold -- its ``data`` and
+     * ``picture``. */
+    function _exported(chart, chosen, more) {
+        return Object.assign({ chart: chart,
+                               path: () => state.fileState.path || "",
+                               chosen: chosen }, more || {});
+    }
+
+    /* WHAT DECIDES THE SPECTRUM'S NUMBERS, for its own Export: the width
+     * and the floor the person set, and the views the load answered with --
+     * the infrared from the charges, its direction and partition; the Raman
+     * at a laser, its laser, width and direction -- only where it did. */
+    function _spectrumChosen() {
+        const r = state.results || {};
+        return Object.assign({
+            fwhm_cm1: state.broadeningFWHM || 0,
+            display_floor_percent: Number(
+                els.displayFloor && els.displayFloor.value) || 0,
+        }, r.infrared ? { infrared: { direction: r.infrared.direction,
+                                      partition: r.infrared.partition } } : {},
+           r.raman ? { raman: { laser_nm: r.raman.laser_nm,
+                                broaden_ev: r.raman.broaden_ev,
+                                direction: r.raman.direction_name } } : {});
+    }
+
+    /* WHAT THE SPECTRUM DRAWS, as its own Export takes it, read through the
+     * sealed chart's one door: each lane this page declared, its bands and
+     * curve tagged as its row says; a lane that draws no band -- not
+     * computed, or the mode positions alone -- holds nothing to export. */
+    function _spectrumData(handle) {
+        const curves = [];
+        handle.drawn().lanes.forEach((lane) => {
+            const c = CHART_CHANNELS.find((ch) => ch.key === lane.key);
+            if (!c || !lane.sticks.y.some((v) => v !== null)) return;
+            curves.push({ tag: c.tags.sticks, name: c.label + " bands",
+                          hidden: false, x: lane.sticks.x, y: lane.sticks.y });
+            if (lane.curve) {
+                curves.push({ tag: c.tags.curve, name: c.label + " curve",
+                              hidden: false, x: lane.curve.x, y: lane.curve.y });
+            }
+        });
+        return { curves: curves, marks: [] };
+    }
 
     function _chartModes(modes) {
         // The tab's record in the shape the chart takes: one value per
@@ -4202,17 +4273,17 @@
         const hRel = grid.h_eh.map((h) => kcal(h - eElec));
         const gRel = grid.g_eh.map((g) => kcal(g - eElec));
         const ts   = T.map((Ti, i) => kcal(Ti * grid.s_eh_k[i]));
-        const config = {
-            displaylogo: false,
-            modeBarButtonsToRemove: ["select2d", "lasso2d",
-                                     "toggleSpikelines"],
-        };
+        // No toolbar: the chart's own Export is the way out (the plot box).
+        const config = {};
         root.molbuilder.plotBox.draw(els.thermoCurves, [
             { x: T, y: gRel, name: rrho ? "G − E_elec" : "F_vib",
+              tag: "thermo_g",
               mode: "lines", line: { color: t.series[0], width: 2 } },
             { x: T, y: hRel, name: rrho ? "H − E_elec" : "ZPE + U_vib",
+              tag: "thermo_h",
               mode: "lines", line: { color: t.series[1], width: 2 } },
             { x: T, y: ts, name: rrho ? "T·S" : "T·S_vib", mode: "lines",
+              tag: "thermo_ts",
               line: { color: t.series[2], width: 2 } },
         ], root.molbuilder.themedLayout({
             // NO height -- the .thermo-chart box owns it.
@@ -4227,7 +4298,7 @@
                                          : "kcal/mol, vibrational contributions",
                               font: { size: 10 } },
                      gridcolor: t.grid, zeroline: false },
-        }), config);
+        }), config, _exported("thermo", () => ({ regime: th.regime })));
 
         // --- The decomposition at the grid point nearest the headline T --
         // Every bar is read off the grid; the parts sum to the last bar.
@@ -4249,7 +4320,8 @@
             : { x: ["ZPE", "U_vib", "−T·S_vib", "F_vib"],
                 y: [zpe, uvib, mts, gnet] };
         root.molbuilder.plotBox.draw(els.thermoDecomp, [{
-            type: "bar", x: bars.x, y: bars.y,
+            type: "bar", x: bars.x, y: bars.y, tag: "thermo_part",
+            name: "kcal/mol at " + Math.round(T[i0]) + " K",
             marker: { color: bars.x.map((_, i) => t.series[i % t.series.length]) },
         }], root.molbuilder.themedLayout({
             margin: { t: 8, r: 8, b: 34, l: 52 },
@@ -4261,7 +4333,8 @@
                               font: { size: 10 } },
                      gridcolor: t.grid, zeroline: true,
                      zerolinecolor: t.axis },
-        }), config);
+        }), config, _exported("thermo-parts", () => ({
+            regime: th.regime, temperature_k: T[i0] })));
     }
 
     function renderSpectrumChart(modes) {
@@ -4284,6 +4357,16 @@
                         return null;
                     }
                     chart = handle;
+                    // ITS OWN EXPORT, in the wrap around the sealed chart
+                    // (web/results.md § 1.2): what decides its numbers
+                    // chosen -- the width, the floor, and the views the
+                    // server answered with (the infrared's direction and
+                    // partition, the Raman's laser), only where it did --
+                    // its data and picture through the chart's one door.
+                    root.molbuilder.chartExport.install(els.spectrumWrap,
+                        _exported("spectrum", () => _spectrumChosen(), {
+                            data: () => _spectrumData(handle),
+                            picture: (fmt) => handle.drawn().image(fmt) }));
                     return handle;
                 })
                 .catch((err) => {
@@ -4335,6 +4418,7 @@
         els.methodsCopy    = $("methods-copy");
         els.methodsNote    = $("methods-copy-note");
         els.displayFloor   = $("display-floor");
+        els.spectrumWrap   = $("spectrum-chart-wrap");
         els.displayFloorOut = $("display-floor-out");
         els.modesTbody     = $("modes-tbody");
         els.spectrumChart  = $("spectrum-chart");

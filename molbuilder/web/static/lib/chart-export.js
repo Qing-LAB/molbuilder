@@ -10,14 +10,23 @@
  *           chart table.  It knows no chart: a chart's name, its path and
  *           its choices are handed in (`install`), its curves say what they
  *           are (`tag`).
- * Called by: the plot box (`lib/plot-box.js`), for a chart drawn with a name.
+ * Called by: the plot box (`lib/plot-box.js`), for a chart drawn with a
+ *           name; the spectra page, in the wrap around the sealed spectrum.
  * NEVER:    name a curve's quantity, its unit or its words (the chart
  *           table's); hand a file to the browser itself (`projects`).
  *
  * Exports (on window.molbuilder.chartExport):
- *   install(el, {chart, path, chosen}) -- the button in ``el``, the chart's
- *       box; ``path()`` the selection it was drawn from, ``chosen()`` what
- *       the person had chosen, each read as a button is pressed.
+ *   install(el, {chart, path, chosen, data?, picture?}) -- the button in
+ *       ``el``, the chart's box or the wrap around it; ``path()`` the
+ *       selection it was drawn from, ``chosen()`` what the person had
+ *       chosen, each read as a button is pressed.  Two for a chart whose
+ *       curves Plotly does not hold as data: ``data()`` -- ``{curves,
+ *       marks}`` in the route's shape, where the chart draws its data as
+ *       shapes (the orbital levels' dashes) or holds it sealed (read through
+ *       SpectrumChart's one read-only door), a curve naming the legend entry
+ *       it is drawn under (``legend``) hidden as that entry is -- and
+ *       ``picture(fmt)``, the image's data URL, where the drawing is sealed.
+ *       Neither given, both are read from ``el``, the chart.
  */
 (function (root) {
     "use strict";
@@ -29,14 +38,28 @@
     function _num(v) {
         return typeof v === "number" && isFinite(v) ? v : null;
     }
+    /* An x as the route takes it: a number, a category's label, or a gap. */
+    function _x(v) {
+        return typeof v === "string" ? v : _num(v);
+    }
 
     /* EVERY CURVE THE CHART CARRIES A TAG ON, as Plotly holds it: its
      * values, its legend name, whether the legend hides it. */
     function curvesOf(el) {
         return (el.data || []).filter((t) => t && t.tag).map((t) => ({
             tag: t.tag, name: t.name || "", hidden: t.visible === "legendonly",
-            x: Array.from(t.x || [], _num), y: Array.from(t.y || [], _num),
+            x: Array.from(t.x || [], _x), y: Array.from(t.y || [], _num),
         }));
+    }
+
+    /* WHAT A CHART HANDS ITSELF (``data()``), each curve that names the
+     * legend entry it is drawn under hidden as that entry is. */
+    function _handed(el, got) {
+        const hidden = (name) => (el.data || []).some(
+            (t) => t && t.name === name && t.visible === "legendonly");
+        return { marks: got.marks || [], curves: (got.curves || []).map(
+            ({ legend, ...c }) => (legend === undefined ? c
+                : Object.assign(c, { hidden: hidden(legend) }))) };
     }
 
     /* EVERY THRESHOLD LINE WITH A TAG (`thresholdMark`), its value. */
@@ -77,8 +100,9 @@
 
     /* THE CHART AS IT STANDS, at the size it stands at. */
     async function _picture(el, how, fmt) {
-        const url = await root.Plotly.toImage(el, {
-            format: fmt, width: el.clientWidth, height: el.clientHeight });
+        const url = how.picture ? await how.picture(fmt)
+            : await root.Plotly.toImage(el, {
+                format: fmt, width: el.clientWidth, height: el.clientHeight });
         root.molbuilder.projects.download(await _pictureName(how, fmt),
                                           _blobOf(url));
         return { ok: true, said: "" };
@@ -86,11 +110,13 @@
 
     /* WHAT THE CHART DRAWS, composed by the server and named by it. */
     function _data(el, how, fmt) {
+        const drawn = how.data ? _handed(el, how.data())
+                               : { curves: curvesOf(el), marks: marksOf(el) };
         return root.molbuilder.projects.downloadExport(
             "/api/export/chart?format=" + encodeURIComponent(fmt), {
                 path: how.path(), chart: how.chart,
                 chosen: how.chosen ? how.chosen() : {},
-                curves: curvesOf(el), marks: marksOf(el) });
+                curves: drawn.curves || [], marks: drawn.marks || [] });
     }
 
     function _build(el) {
@@ -132,9 +158,11 @@
     }
 
     /** The Export button in ``el``'s corner, for what ``how`` names --
-     *  ``{chart, path, chosen}`` -- kept to the box's last draw. */
+     *  ``{chart, path, chosen, data?, picture?}`` (above) -- kept to the
+     *  box's last draw. */
     function install(el, how) {
         asked.set(el, how);
+        el.classList.add(MENU + "-host");
         if (!el.querySelector(":scope > ." + MENU)) el.appendChild(_build(el));
     }
 

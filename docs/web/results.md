@@ -100,13 +100,6 @@ answers its own question — *which rung is next*, *which setting is fastest*,
 
 ### 0.4 Designed, not built yet
 
-- **The vibration's charts' and the bench chart's own Export** (§ 1.2), in
-  2.76.0 *(the user, 2026-11-17: "Go ahead", two releases)*: the spectrum —
-  through SpectrumChart's one read-only door of what it draws, its module
-  sealed (`web/spectrumchart.md`) — the orbital levels, the two
-  thermochemistry charts and the bench sweep, each a row of the chart table
-  and its tags; Plotly's own hover button off on them, as on the others.
-
 - **`status`**, on the same answer — how the run is doing — is served and not
   yet shown for a run folder beyond the Run panel's verdict; the trajectory
   viewer's badge shows the run's state as the server sends it with the file
@@ -167,6 +160,10 @@ or all), **exactly as drawn**: a residual's absolute value as its log axis
 plots it, a polarized point's T↑ + T↓ as the curve is, each column's words
 saying how it was made. Curves the legend hides are in it, flagged hidden.
 Plotly's own hover button is off on these charts, so there is one way.
+**The twelve charts** (2.75.0, 2.76.0): the trajectory viewer's energy,
+largest force, SCF energy and residuals; the transport report's T(E), DOS,
+I–V and convergence card; the vibration's spectrum, orbital levels and
+thermochemistry over temperature and in parts; the bench sweep.
 
 **One exporter, one table, one writer — a chart only says what it draws:**
 
@@ -175,7 +172,18 @@ Plotly's own hover button is off on these charts, so there is one way.
 | the button, the picture, reading the curves, sending them | `lib/chart-export.js` | no chart |
 | what each kind of curve is — its name, units and words, and its x's | the chart table, `data/chart_table.toml` (`chartdata`) | no page |
 | the file | `POST /api/export/chart`, `chartdata.export` through the data-file framework ([`model/datafiles.md`](?doc=model/datafiles.md) § 5b) | the table |
-| a chart | its own drawing code | its name, the selection it was drawn from and the person's choices, handed to the one draw it makes (`plotBox.draw(el, traces, layout, config, {chart, path, chosen})`); each curve's tag, on the curve it builds (`tag`); a threshold's tag, through the one threshold door (`thresholdMark(…, tag)`) |
+| a chart | its own drawing code | its name, the selection it was drawn from and the person's choices, handed to the one draw it makes (`plotBox.draw(el, traces, layout, config, {chart, path, chosen})`); each curve's tag, on the curve it builds (`tag`); a threshold's tag, through the one threshold door (`thresholdMark(…, tag)`); where Plotly does not hold its data, `data()` and a sealed drawing's `picture(fmt)` (below) |
+
+**A chart whose curves Plotly does not hold as its data** hands them
+itself, in the same shape, through two optional members of what it gives
+the draw: `data()` — `{curves, marks}` — and, for a sealed drawing,
+`picture(fmt)`. A spectrum drawn as mode positions alone draws no value:
+its Data has nothing to export, and says so; the modes' frequencies are the
+vibration's data file's. The orbital levels draw each level as dashes, so they hand
+each orbital across −A, 0, +A; SpectrumChart is sealed, so the spectra page
+installs the button in the wrap around it (`chartExport.install`) and reads the
+module's one read-only door, `drawn()` ([`spectrumchart.md`](?doc=web/spectrumchart.md)
+§ 8.3), tagging each lane's bands and curve by the lane it declared.
 
 **What is read**, as the button is pressed: each curve of the chart with a
 tag — its x and y values as Plotly holds them, its legend name, whether the
@@ -189,8 +197,7 @@ the calculation's Export is: `<label>.<chart>.nc`, or its tables as one zip
 `<label>.<chart>-csv.zip`, `<label>` the calculation's; a picture is named
 alike, `<label>.<chart>.png`, the label as the calculation's Export offer
 states it (`GET /api/export/offer`). A refusal is said beside the button,
-through the one status writer. A chart drawn without a name has no button: the
-vibration's and the bench's, until 2.76.0 (§ 0.4).
+through the one status writer. A chart drawn without a name has no button.
 
 ## 2. Picking a file
 

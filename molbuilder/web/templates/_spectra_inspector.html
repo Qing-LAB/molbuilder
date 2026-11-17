@@ -197,8 +197,12 @@
           pick one from.  Named by the section's heading, which says which
           picture is drawn -- the spectrum or the mode positions
           (web/spectra.md § 2). -#}
-        <div id="spectrum-chart" class="spectrum-chart"
-             aria-labelledby="spectrum-heading"></div>
+        {#- The wrap around the sealed chart: its own Export sits in the
+            wrap's top strip, outside the module (web/results.md § 1.2). -#}
+        <div id="spectrum-chart-wrap" class="spectrum-chart-wrap">
+          <div id="spectrum-chart" class="spectrum-chart"
+               aria-labelledby="spectrum-heading"></div>
+        </div>
       </div>
 
       {#- ONE SELECTION, THREE VIEWS.

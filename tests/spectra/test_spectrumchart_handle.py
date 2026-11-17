@@ -167,10 +167,35 @@ def test_a_box_that_changes_size_redraws_while_the_window_sits_still():
 # --- § 8.3  the doors --------------------------------------------------------
 
 def test_the_handle_is_the_doors_and_nothing_else():
-    """§ 4 — no hidden way in; § 8.3 — nothing is read back."""
+    """§ 4 — no hidden way in; § 8.3 — nothing the caller wrote is read back,
+    and one door reads back what is drawn."""
     got = drive("console.log(JSON.stringify(Object.keys(chart).sort()));")
-    assert got == ["dispose", "ok", "refit", "setAbsentWords", "setBroadening",
-                   "setDisplayFloor", "setModes", "setSelected"]
+    assert got == ["dispose", "drawn", "ok", "refit", "setAbsentWords",
+                   "setBroadening", "setDisplayFloor", "setModes",
+                   "setSelected"]
+
+
+def test_what_is_drawn_is_read_back_through_its_one_door():
+    """§ 8.3 `drawn` -- each lane's bands as drawn and its curve as computed:
+    a band the display floor hides comes back null, the others their
+    values, and the curve reaches the strongest band; at zero width there is
+    no curve.  The silent failure: a chart's export holding a band the
+    person hid, or a curve that is not the one on screen."""
+    got = drive(
+        "chart.setModes(MODES);\nchart.setBroadening(20);\n"
+        "chart.setDisplayFloor(30);\n"
+        "const d = chart.drawn();\nchart.setBroadening(0);\n"
+        "const bare = chart.drawn();\n"
+        "console.log(JSON.stringify({ keys: d.lanes.map(l => l.key),"
+        " x: d.lanes[0].sticks.x, y: d.lanes[0].sticks.y,"
+        " peak: Math.max(...d.lanes[0].curve.y),"
+        " same: d.lanes[0].curve.x.length === d.lanes[0].curve.y.length,"
+        " bare: bare.lanes[0].curve, image: typeof d.image }));")
+    assert got["keys"] == ["activity"], got
+    assert got["x"] == [100.0, 500.0, 900.0], got
+    assert got["y"] == [4.0, 9.0, None], got        # 2 < 30 % of 9: hidden
+    assert got["same"] and 9.0 <= got["peak"] < 9.1, got
+    assert got["bare"] is None and got["image"] == "function", got
 
 
 def test_an_empty_lane_says_the_callers_words_until_restored():

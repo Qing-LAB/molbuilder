@@ -453,6 +453,147 @@ def test_a_pyscf_vibrations_export_holds_its_relaxations_steps(
             scf["scf_energy_ev"]["data"][k, int(n) - 1], e, atol=1e-6)
 
 
+def test_each_vibration_chart_exports_what_it_draws(real_water_probed, page,
+                                                     monkeypatch, tmp_path):
+    """`web/results.md` § 1.2, `model/datafiles.md` § 9.7: the vibration's four
+    charts each export what they draw, held to the run's result file: the
+    spectrum -- a sealed chart, read through its one door -- each mode's IR
+    band at its frequency as a percentage of the strongest, and its curve
+    reaching the strongest; the probed mode's orbitals, each at -A, 0, +A,
+    the probe's energies in eV; the thermochemistry over temperature, the
+    grid less E_elec in kcal/mol; its parts at the headline temperature, the
+    last the free energy.
+
+    THE SILENT FAILURE: a sealed chart that exports nothing, a level diagram
+    exporting its dashes, a thermochemistry in hartree."""
+    from conftest import point_the_one_door_at
+    from molbuilder import constants as C
+    from molbuilder.postprocess import read_chart_data
+    from molbuilder.runfiles import ROLE_SPECTRA
+    from molbuilder.runs import on_label_at
+    from support.live_server import serve
+    from support.pages import chart_exported
+    from support.sidebar import results_on
+    run = real_water_probed
+    folder = run.attempt("freq")
+    spectrum = str(on_label_at(folder, ROLE_SPECTRA))
+    d = _read(_final(run))
+    kcal = C.HARTREE_EV / C.KCAL_MOL_EV
+    point_the_one_door_at(run.tree.parent, monkeypatch.setenv)
+
+    def curves(path, group):
+        """The file read back through its reader: each curve of ``group``,
+        its x and y, and its name."""
+        v = read_chart_data(path)["groups"][group]["variables"]
+        x = next(k for k in v if k not in (group, "curve", "curve_point",
+                                           "curve_name", "curve_hidden"))
+        return [(v[x]["data"][k], np.asarray(v[group]["data"][k], float),
+                 str(v["curve_name"]["data"][k]))
+                for k in range(len(v[group]["data"]))]
+
+    def exported(box):
+        box.locator(".chart-export-open").wait_for(timeout=60000)
+        return chart_exported(page, box, "NetCDF", tmp_path)
+    with serve() as base:
+        results_on(page, base, folder)
+        page.wait_for_function(
+            "(want) => [...document.querySelectorAll("
+            "  '#results-file-picker-select option')]"
+            "  .some(o => o.value === want)", arg=spectrum, timeout=60000)
+        page.select_option("#results-file-picker-select", value=spectrum)
+        page.wait_for_selector("#modes-tbody tr", state="attached",
+                               timeout=60000)
+        spec = exported(page.locator("#spectrum-chart-wrap"))
+        # THE SEALED PICTURE, made inside the seal.
+        png = chart_exported(page, page.locator("#spectrum-chart-wrap"),
+                             "PNG", tmp_path)
+        page.locator('#modes-tbody tr[data-mode="1"]').click()
+        page.locator('[aria-controls="mode-tab-es"]').click()
+        levels = exported(page.locator("#es-bar-diagram"))
+        page.locator('[aria-controls="mode-tab-thermo"]').click()
+        thermo = exported(page.locator("#thermo-curves"))
+        parts = exported(page.locator("#thermo-decomp"))
+
+    assert png.read_bytes()[:8] == b"\x89PNG\r\n\x1a\n", png.name
+    modes = d["modes"]
+    ir = np.array([m["ir_intensity_km_mol"] for m in modes], float)
+    (x, y, _name), = curves(spec, "ir_intensity_relative_percent")
+    np.testing.assert_allclose(x, [m["frequency_cm1"] for m in modes])
+    np.testing.assert_allclose(y, ir / ir.max() * 100)
+    (_x, line, _name), = curves(spec, "ir_curve_relative_percent")
+    assert np.nanmax(line) >= 100 - 1e-9, np.nanmax(line)
+
+    block = modes[0]["electronic_structure"]
+    A = block["amplitude_ang"]
+    sides = [np.asarray(block[f"mo_energies_{s}_eh"]) * C.HARTREE_EV
+             for s in ("minus", "eq", "plus")]
+    drawn = curves(levels, "mo_energy_ev")
+    assert len(drawn) == len(sides[1]), [c[2] for c in drawn]
+    for i, (x, y, name) in enumerate(drawn):
+        np.testing.assert_allclose(x, [-A, 0, A])
+        np.testing.assert_allclose(y, [side[i] for side in sides])
+    assert drawn[block["homo_index_in_window"]][2] == "HOMO"
+
+    grid = d["thermo"]["grid"]
+    T = np.asarray(grid["temperatures_K"], float)
+    E = d["equilibrium"]["scf_energy_eh"]
+    for group, want in (
+            ("free_energy_above_electronic_kcal_per_mol",
+             (np.asarray(grid["g_eh"]) - E) * kcal),
+            ("enthalpy_above_electronic_kcal_per_mol",
+             (np.asarray(grid["h_eh"]) - E) * kcal),
+            ("temperature_times_entropy_kcal_per_mol",
+             T * np.asarray(grid["s_eh_k"]) * kcal)):
+        (x, y, _name), = curves(thermo, group)
+        np.testing.assert_allclose(x, T)
+        np.testing.assert_allclose(y, want)
+    (labels, y, _name), = curves(parts, "part_kcal_per_mol")
+    i0 = int(np.argmin(np.abs(T - d["thermo"]["temperature_K"])))
+    # EACH PART BY ITS NAME, the zero-point energy first, the free energy last.
+    zpe = grid["zpe_eh"][i0] * kcal
+    assert str(labels[0]) == "ZPE" and y[0] == pytest.approx(zpe), (labels, y)
+    assert str(labels[-1]) in ("G − E_elec", "F_vib"), labels
+    assert y[-1] == pytest.approx((grid["g_eh"][i0] - E) * kcal), (labels, y)
+
+
+def test_a_raman_spectrums_bands_are_each_modes_activity(real_water_vibration,
+                                                          page, monkeypatch,
+                                                          tmp_path):
+    """`web/results.md` § 1.2, `model/datafiles.md` § 9.7: a PySCF water
+    vibration asked for Raman -- its spectrum's Raman bands export each
+    mode's activity at its frequency, the result file's, in angstrom^4/amu.
+    THE SILENT FAILURE: the Raman lane exported scaled, or under another
+    lane's name."""
+    from conftest import point_the_one_door_at
+    from molbuilder.postprocess import read_chart_data
+    from molbuilder.runfiles import ROLE_SPECTRA
+    from molbuilder.runs import on_label_at
+    from support.live_server import serve
+    from support.pages import chart_exported
+    from support.sidebar import results_on
+    run = real_water_vibration
+    folder = run.attempt("freq")
+    spectrum = str(on_label_at(folder, ROLE_SPECTRA))
+    d = _read(_final(run))
+    point_the_one_door_at(run.tree.parent, monkeypatch.setenv)
+    with serve() as base:
+        results_on(page, base, folder)
+        page.wait_for_function(
+            "(want) => [...document.querySelectorAll("
+            "  '#results-file-picker-select option')]"
+            "  .some(o => o.value === want)", arg=spectrum, timeout=60000)
+        page.select_option("#results-file-picker-select", value=spectrum)
+        wrap = page.locator("#spectrum-chart-wrap")
+        wrap.locator(".chart-export-open").wait_for(timeout=60000)
+        path = chart_exported(page, wrap, "NetCDF", tmp_path)
+    v = read_chart_data(path)["groups"]["raman_strength_ang4_per_amu"][
+        "variables"]
+    np.testing.assert_allclose(v["frequency_cm1"]["data"][0],
+                               [m["frequency_cm1"] for m in d["modes"]])
+    np.testing.assert_allclose(v["raman_strength_ang4_per_amu"]["data"][0],
+                               [m["raman_activity_a4_amu"] for m in d["modes"]])
+
+
 def test_a_file_of_another_version_is_refused_by_that_version(
         real_water_probed, web_client, tmp_path, monkeypatch):
     """`engines/vibration.md` § 6.7, § 6.1, K2674-3: what the writer writes, its

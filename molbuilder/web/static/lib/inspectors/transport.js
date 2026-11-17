@@ -93,7 +93,7 @@ const WORKSPACE_TAG = "results:transport";
         }
         root.molbuilder.plotBox.draw(node, traces,
                                      root.molbuilder.themedLayout(layout),
-                                     { displayModeBar: false }, exported);
+                                     {}, exported);
     }
 
     /* A CHART'S OWN EXPORT (web/results.md § 1.2): ``chart`` its name in

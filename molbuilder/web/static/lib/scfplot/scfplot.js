@@ -120,7 +120,7 @@
             yaxis: Object.assign({ title: { text: "E (eV)", standoff: 4 },
                                    zeroline: false, automargin: true,
                                    nticks: 5 }, window.molbuilder.energyAxis),
-        }, theme), { displayModeBar: false }, _as("scf-energy", o));
+        }, theme), {}, _as("scf-energy", o));
 
         const phases = Array.from(new Set(traces.map((tr) => tr.group.phase)));
         const all = given.reduce((rows, run) => rows.concat(run.rows), []);
@@ -191,7 +191,7 @@
                      type: "log", zeroline: false, tickformat: ".0e",
                      automargin: true, nticks: 5 },
             shapes: shapes, annotations: notes,
-        }, theme), { displayModeBar: false }, _as("scf-residuals", o));
+        }, theme), {}, _as("scf-residuals", o));
         return { phases: phases, residuals: residuals.map((x) => x.name) };
     }
 

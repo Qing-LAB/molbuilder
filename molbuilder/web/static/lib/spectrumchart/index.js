@@ -3,7 +3,8 @@
  * CALLERS: any page that wants a vibrational spectrum. Today: the Spectrum tab.
  *
  * `mount` is the whole importable surface of this module. Everything else here
- * is reached through the object it hands back: seven doors in, one callback out.
+ * is reached through the object it hands back: seven doors in, one door that
+ * reads back what is drawn (`drawn`, § 8.3), one callback out.
  * The modes, the selection and the broadening each live here once; the drawing
  * library is not visible from this file at all.
  *
@@ -265,6 +266,8 @@ export async function mount(host, options = {}) {
              * in the units the run actually produced. */
             const toScreen = (v) => (
                 c.relative && lanePeak > 0 ? (v / lanePeak) * 100 : v);
+            const drawnValues = modes.map((m) => (shown(m)
+                ? toScreen(valueIn(m, c.key)) : null));
 
             return {
                 key: c.key,
@@ -283,11 +286,11 @@ export async function mount(host, options = {}) {
                 known,
                 sticks: {
                     x: modes.map((m) => m.freq),
-                    y: modes.map((m) => {
-                        const v = valueIn(m, c.key);
-                        if (v === null) return 0;
-                        return shown(m) ? toScreen(v) : 0;
-                    }),
+                    // A band not drawn stands at zero (above); `value`
+                    // says which were drawn, null for one that was not --
+                    // what `drawn` hands back (§ 8.3).
+                    y: drawnValues.map((v) => (v === null ? 0 : v)),
+                    value: drawnValues,
                     width: modes.map(() => stickWidth),
                     state: modes.map((m) => stateOf(m, known, c.key)),
                     // WHICH MODE IS IMAGINARY, beside its state: the state
@@ -496,6 +499,27 @@ export async function mount(host, options = {}) {
             redraw();
         },
 
+        /** WHAT IS DRAWN -- the one read-only door (§ 8.3): each lane's
+         * key, its bands' frequencies and drawn values, its broadened curve,
+         * as the chart computed them; and ``image(fmt)``, the drawing's
+         * data URL, made inside the seal. */
+        drawn() {
+            if (disposed) return { lanes: [], image: () => Promise.reject(
+                new Error("the spectrum chart was disposed")) };
+            const picture = pictureNow();
+            return {
+                lanes: picture.lanes.map((lane) => ({
+                    key: lane.key,
+                    // The mode positions draw no value: a gap at each.
+                    sticks: { x: lane.sticks.x.slice(),
+                              y: lane.sticks.value ? lane.sticks.value.slice()
+                                  : lane.sticks.x.map(() => null) },
+                    curve: lane.curve ? { x: lane.curve.x.slice(),
+                                          y: lane.curve.y.slice() } : null,
+                })),
+                image: (fmt) => surface.image(fmt),
+            };
+        },
         refit() {
             if (disposed) return;
             surface.resize();
