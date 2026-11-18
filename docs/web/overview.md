@@ -105,7 +105,7 @@ entry file for `import`/`export`.)
 | **MolView** | the embeddable 3D structure viewer + its data model | [molview.md](?doc=web/molview.md) | ✅ full |
 | **VibrationView** | the concealed normal-mode animator (a *sibling* of MolView, mounted by the spectra viewer) | [vibrationview.md](?doc=web/vibrationview.md) | ✅ full³ |
 | **SpectrumChart** | the vibrational-spectrum chart that turns a click into a mode (a sibling of VibrationView, drawn by the spectra viewer) | [spectrumchart.md](?doc=web/spectrumchart.md) | ✅ full |
-| **workspace** | session persistence + the Undo state timeline | [workspace.md](?doc=web/workspace.md) | ✅ full |
+| **workspace** | session persistence — the numbered points Undo walks back through and a draft, kept as files on the server; the timeline over them is MolView's | [workspace.md](?doc=web/workspace.md) | ✅ full |
 | **projects** | the sidebar file browser + the load/save doors | [projects.md](?doc=web/projects.md) | ✅ full |
 | **trajectory** | the optimization-run movie + convergence plots | [trajectory.md](?doc=web/trajectory.md) | ⬤ hybrid¹ |
 | **transport** | the transport composite's describe surface (cite → describe) | [tabs.md § 4](?doc=web/tabs.md) | ⬤ hybrid¹ |

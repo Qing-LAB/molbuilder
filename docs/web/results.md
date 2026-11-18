@@ -1305,9 +1305,9 @@ The Results shell is still **classic**: `results/viewer.js` plus
 (`window.molbuilder.*`), not ES modules — they lean on the runtime registry to
 load in order. Converting them is the "remaining classic modules" pass,
 alongside the runtime registry and the shared primitives
-([`overview.md`](?doc=web/overview.md) § 6, #103). The heavy viewers this shell *mounts* are on
+([`overview.md`](?doc=web/overview.md) § 6). The heavy viewers this shell *mounts* are on
 a different track — the trajectory and spectra engines convert in the
-presenters pass (#102, same section; see [`presenters.md`](?doc=web/presenters.md)).
+presenters pass (the same section; see [`presenters.md`](?doc=web/presenters.md)).
 
 ## 10. Test map
 

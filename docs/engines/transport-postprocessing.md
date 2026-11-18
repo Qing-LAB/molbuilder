@@ -1,5 +1,17 @@
 # Post-processing a transport calculation
 
+**Role:** guide
+**Domain:** engines
+**Companions:** [`engines/transport.md`](?doc=engines/transport.md) — the
+calculation these results come from;
+[`model/datafiles.md`](?doc=model/datafiles.md) — `<label>.transport.nc` and
+what every data file shares;
+[`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md) —
+a frame set's average; [`web/jupyter.md`](?doc=web/jupyter.md) § 7 — the
+notebook that imports this molbuilder;
+[`engines/optimization-postprocessing.md`](?doc=engines/optimization-postprocessing.md)
+— a run's steps (§ 3).
+
 *(The user, 2026-10-23: "the best way to do this is to give an example code
 … if user has already exported a data or want to read the data of the
 transmission or IV or other data, what does the Python script look like …

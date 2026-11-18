@@ -26,7 +26,7 @@ There are **nine tabs**, and their order is defined in exactly one place — the
 |---|---|---|---|
 | **Molbuilder** | `/molbuilder` | build / edit / assemble a structure | this doc § 2 |
 | **Structure optimization** | `/structure-optimization` | collect a SIESTA/PySCF relaxation's parameters and Send them to Task setup (the deck itself is written by `prep`, on the machine that runs it) | this doc § 3 |
-| **Spectrum calculation** | `/spectrum-calculation` | describe a vibrational-spectrum calculation (the vibration kind) and Send it to Task setup; view any `.spectra.json` | [`spectra.md`](?doc=web/spectra.md) |
+| **Spectrum calculation** | `/spectrum-calculation` | describe a vibrational-spectrum calculation (the vibration kind) and Send it to Task setup; a finished `.spectra.json` is read on the Results tab | [`spectra.md`](?doc=web/spectra.md) |
 | **Transport calculation** | `/transport-calculation` | describe the transport COMPOSITE: cite a finished junction attempt, set the bias, and write the finished `task.json` and `job-request.json` directly (no hand-over) | this doc § 4 |
 | **Task setup** | `/task-setup` | read a calculation folder's description — its stages, and the machine settings you chose or measured — and edit `task.json` and `job-request.json`, an editor tab each | [`task-setup.md`](?doc=web/task-setup.md) |
 | **Results** | `/results` | open a finished calculation | [`results.md`](?doc=web/results.md) |

@@ -1,5 +1,16 @@
 # Post-processing a vibration
 
+**Role:** guide
+**Domain:** engines
+**Companions:** [`engines/vibration.md`](?doc=engines/vibration.md) — the
+calculation these results come from, and its result file's contract (§ 6);
+[`model/datafiles.md`](?doc=model/datafiles.md) — the data files these calls
+read; [`web/results.md`](?doc=web/results.md) § 1.1 — the Export that hands
+them over;
+[`engines/optimization-postprocessing.md`](?doc=engines/optimization-postprocessing.md)
+and [`engines/transport-postprocessing.md`](?doc=engines/transport-postprocessing.md)
+— the same for an optimization and a transport calculation.
+
 What a finished vibration holds, which call answers what, and worked examples in
 Python: the modes atom by atom, the infrared and the Raman, the thermochemistry,
 the charges and the optical calls. Every example below ran on a real calculation

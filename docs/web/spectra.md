@@ -1050,12 +1050,13 @@ reusable ES module**. Spectra is **partway there**:
 
 So the engine still loads as a plain script and the presenter registers
 through `window.molbuilder`, relying on the runtime registry to sequence
-them. Converting both to ES modules alone is a tracked follow-up: they convert
-together with the **`inspectors` → `presenters` rename** — one pass (task #102)
-that does the file-viewer registry *and* the heavy engine cores it mounts (this
-`lib/spectra/core.js` among them), since converting them rewrites those files
-anyway. See [`presenters.md`](?doc=web/presenters.md) and
-[`overview.md`](?doc=web/overview.md) § 6 (#102).
+them. Converting both to ES modules is still to do, and no item in
+`plans/plan.md` holds it: they convert together with the **`inspectors` →
+`presenters` rename** — one pass that does the file-viewer registry *and* the
+heavy engine cores it mounts (this `lib/spectra/core.js` among them), since
+converting them rewrites those files anyway. See
+[`presenters.md`](?doc=web/presenters.md) and
+[`overview.md`](?doc=web/overview.md) § 6, which lists what remains.
 
 ## 9a. Which modes get the expensive treatment, and what the paper says
 

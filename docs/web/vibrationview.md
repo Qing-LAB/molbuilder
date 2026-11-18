@@ -67,7 +67,7 @@ drift across.
 | Not | Whose job it is | Why the boundary is there |
 |---|---|---|
 | a **structure viewer** | MolView | selecting, measuring, editing, trajectories, cells, labels. VibrationView shows one structure moving one way; anything a user does *to* a structure belongs next door |
-| a **spectroscopy calculator** | the server, and the Spectrum tab | where modes come from, what a frequency means, which normalization to use, what temperature to quote. VibrationView is handed numbers and a sentence; it moves atoms and draws the sentence |
+| a **spectroscopy calculator** | the server, and the spectra viewer on the Results tab | where modes come from, what a frequency means, which normalization to use, what temperature to quote. VibrationView is handed numbers and a sentence; it moves atoms and draws the sentence |
 | a **source** for a structure | whoever mounted it | it keeps one, to animate from — and answers no question about it. Nothing can read a structure, a mode or a camera back out (§ 6.4). A caller that needs to know what is loaded already knows: it did the handing |
 | a **control panel** | the tab | the sliders, the play button, the export dialog and the mode list are the tab's. VibrationView draws no controls (§ 5.4) |
 
@@ -78,7 +78,7 @@ drift across.
 ```mermaid
 flowchart TB
     subgraph outside["Outside VibrationView"]
-      TAB["the Spectrum tab<br/>the chart, the mode list, the sliders,<br/>the export dialog — and the numbers"]
+      TAB["the spectra viewer (Results tab)<br/>the chart, the mode list, the sliders,<br/>the export dialog — and the numbers"]
     end
     subgraph vv["One viewer — everything below belongs to one owner"]
       H["the handle<br/>the state, the clock,<br/>and every draw it causes"]
@@ -358,7 +358,7 @@ a molecule that animates — partially, plausibly, and wrongly. So the door says
 and nothing is drawn.
 
 The refusal is this module's (`index.js` `showMode`: the scatter refuses, the
-viewer warns and draws nothing). The Spectrum tab hands each mode over without a
+viewer warns and draws nothing). The spectra viewer hands each mode over without a
 count of its own (`lib/spectra/core.js` `_animationInputs`): this refusal is the
 guard, and an atom count would not be one — any two molecules of the same size
 pass it.
@@ -666,7 +666,7 @@ thousand-second cycle at 30 fps is 1200 frames, and comes back as forty seconds.
 **The rate is clamped, and the clamp is the module's.** `setFps(2)` is a
 slideshow; `setFps(10000)` burns a core drawing frames no display will show. So the
 door holds the value inside a band it can honour — 5 to 120 frames a second, 15 to
-1200 frames a cycle. The Spectrum tab offers no rate control; its viewer runs at
+1200 frames a cycle. The spectra viewer offers no rate control; its animation runs at
 the default 30 fps. This is not the module interpreting anything — it is a door
 refusing a value it cannot deliver, the same as the ones that refuse a mode which
 does not fit its structure (§ 6.3).
@@ -705,9 +705,12 @@ for hertz.
 
 ## 11. Who drives it
 
-The Spectrum tab ([`spectra.md`](?doc=web/spectra.md)), and nothing else.
+The spectra viewer on the Results tab (`lib/spectra/core.js`, mounted there by
+`lib/inspectors/spectra.js` — [`spectra.md`](?doc=web/spectra.md)), and nothing
+else. The Spectrum calculation tab loads the same script for its form and
+draws no mode.
 
-The tab owns the spectrum chart, the mode list, the amplitude and speed controls,
+The viewer owns the spectrum chart, the mode list, the amplitude and speed controls,
 the play button and the export controls. It offers no frame-rate control and no
 caption switch: its viewer runs at the default 30 fps with the caption shown. It
 reads a `.spectra.json`, cuts out the
@@ -723,7 +726,7 @@ if (!userPaused) vib.play();                          // the tab's policy, below
 
 **Whether a mode should be moving is the tab's decision, not this module's.**
 The module offers `play` and `pause` and never calls either on its own (§ 9.2) —
-which is what lets a tab hold a policy rather than fight one. The Spectrum tab's
+which is what lets a tab hold a policy rather than fight one. The spectra viewer's
 policy is that a vibration is the content, so it runs whenever there is a mode to
 show, and only an explicit Pause stops it.
 
@@ -739,7 +742,7 @@ through it. It is the only place allowed to know both what a spectra result look
 like and what a mode looks like, and that is what keeps the two ends apart:
 
 ```
-   .spectra.json  ──►   the Spectrum tab   ──►  VibrationView
+   .spectra.json  ──►   the spectra viewer ──►  VibrationView
    (the server's        knows both shapes,      (a structure, a mode,
     shape)              and is the only              an amplitude)
                         thing that does
@@ -941,7 +944,7 @@ the zero-point form as T → 0, which is the check that they are one expression 
 not two.
 
 Both are the **server's**: the zero-point amplitude is written in the result
-file, and the thermal spread is served by the spectrum tab's load door at the
+file, and the thermal spread is served by the spectra viewer's load door at the
 temperature the tab asked ([`web/spectra.md`](?doc=web/spectra.md) § 4.1). The
 tab passes the number on; VibrationView receives displacements and a number and
 animates them; the physics of how big a vibration is belongs with the spectrum,
@@ -982,7 +985,7 @@ caption — free text, drawn in a corner of the picture:
 
 ```js
 vib.showMode({ …, label: "Mode 7 · 1584.2 cm⁻¹" });
-vib.setLabelVisible(false);     // a tab's switch; the Spectrum tab offers none
+vib.setLabelVisible(false);     // a tab's switch; the spectra viewer offers none
 ```
 
 **It is an overlay over the canvas, and an export composites it in on purpose.**

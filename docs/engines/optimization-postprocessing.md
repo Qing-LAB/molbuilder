@@ -1,5 +1,16 @@
 # Post-processing an optimization
 
+**Role:** guide
+**Domain:** engines
+**Companions:** [`model/datafiles.md`](?doc=model/datafiles.md) — the data
+files these calls read, and every variable they hold (§ 9.5);
+[`model/parse.md`](?doc=model/parse.md) — the parsers behind them, and how a
+run's end is read (§ 2b); [`web/jupyter.md`](?doc=web/jupyter.md) § 7 — the
+notebook that imports this molbuilder;
+[`engines/vibration-postprocessing.md`](?doc=engines/vibration-postprocessing.md)
+and [`engines/transport-postprocessing.md`](?doc=engines/transport-postprocessing.md)
+— the same for a vibration and a transport calculation.
+
 What a finished — or a running — optimization holds, which call answers what,
 and worked examples in Python: the energy and the forces step by step, the final
 geometry, the SCF, the settings the run read, and how to find a calculation.

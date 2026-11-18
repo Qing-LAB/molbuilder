@@ -1373,8 +1373,9 @@ and so is the binary half: an archive is named by the sha256 of its own
 MANIFEST, and a large file whose content an earlier archive already holds is
 hard-linked into the new one, so a checkpoint of unchanged binaries costs no
 disk ([`checkpointing.md`](?doc=execution/checkpointing.md) § 3.1, I1, § 12
-*Disk cost*). That is what lets a mission be checkpointed at both of § 7.3's
-boundaries without paying for its `.DM` set twice per stage.
+*Disk cost*). That is what lets a mission be checkpointed before every act that
+changes it (§ 7.3; [`checkpointing.md`](?doc=execution/checkpointing.md) § 9)
+without paying for its `.DM` set again at each save.
 
 The warm files are never removed by any of this: they belong to the calculation,
 not to any one stage (`execution/run-identity.md § 6`).

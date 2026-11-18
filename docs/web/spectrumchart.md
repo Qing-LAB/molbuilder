@@ -112,7 +112,7 @@ drift across.
 | Not | Whose job it is | Why the boundary is there |
 |---|---|---|
 | a **mode viewer** | VibrationView | it draws no molecule and holds no geometry. It knows a mode by its index and its frequency, and it never learns where the atoms are |
-| a **spectroscopy calculator** | the server, and the Spectrum tab | what a Raman activity is, which normalization produced it, what temperature was assumed. SpectrumChart is handed numbers and draws them |
+| a **spectroscopy calculator** | the server, and the spectra viewer on the Results tab | what a Raman activity is, which normalization produced it, what temperature was assumed. SpectrumChart is handed numbers and draws them |
 | a **mode list** | the tab | the sortable table, the filter box, the CSV export. A chart shows a distribution; a table answers "what is mode 22?" — two jobs, two surfaces, and the tab owns the one made of rows |
 | the **selection itself** | the tab | it reports a click and is *told* what is selected. Two components that each believed they owned the selection is how the highlight and the viewer drift apart |
 | a **control panel** | the tab | the broadening box, the mode filter, the export buttons. SpectrumChart draws no controls (§ 5.3) |
@@ -124,7 +124,7 @@ drift across.
 ```mermaid
 flowchart TB
     subgraph outside["Outside SpectrumChart"]
-      TAB["the Spectrum tab<br/>the mode table, the broadening box,<br/>the viewer and the ES panel"]
+      TAB["the spectra viewer (Results tab)<br/>the mode table, the broadening box,<br/>the viewer and the ES panel"]
     end
     subgraph sc["One chart — everything below belongs to one owner"]
       H["the handle<br/>the modes, the selection,<br/>the broadening, and every draw"]
@@ -190,8 +190,11 @@ directly has broken the module, not found a shortcut.
   and there is nothing else on it to find.
 - **Every internal file is underscore-prefixed** — `_maths.js`, `_seal.js`. An
   import of `_maths.js` reads as a violation where it is written.
-- **A guard test asserts the boundary** — nothing outside the package may name any
-  path inside it but `index.js`.
+- **Review guards the boundary** — nothing outside the package may name any
+  path inside it but `index.js`. A test that read the source for it would
+  measure spelling, not behaviour, so it is review's
+  ([`process/code-audit.md`](?doc=process/code-audit.md) § 1c,
+  [`process/testing.md`](?doc=process/testing.md) § 3a).
 
 **Nothing it needs comes from the app's globals, and nothing it holds is published
 to one.** It does not read `window.molbuilder` and it does not write to it. A chart
@@ -944,8 +947,10 @@ not infrared shows no curve under the infrared lane's *not computed*.
 
 ## 10. Who drives it
 
-The Spectrum tab. It hands the chart a result, tells it what is selected, and
-listens for clicks:
+The spectra viewer on the Results tab (`lib/spectra/core.js`,
+[`spectra.md`](?doc=web/spectra.md)); the Spectrum calculation tab loads the same
+script for its form and draws no chart. It hands the chart a result, tells it
+what is selected, and listens for clicks:
 
 ```js
 const chart = await mount(host, { onSelect: (index) => tab.selectMode(index) });
@@ -1134,8 +1139,9 @@ electronic-structure panel.
 module. It is a small figure belonging to the electronic-structure panel, with
 different data and a different job; it stays where it is.
 
-Converting `lib/spectra/core.js` to an ES module is #102
-([`overview.md`](?doc=web/overview.md) § 6); its chart is already sealed here.
+Converting `lib/spectra/core.js` to an ES module is still to do, and no plan item
+holds it ([`overview.md`](?doc=web/overview.md) § 6 lists what remains); its chart
+is already sealed here.
 
 **No general charting layer.** `_seal.js` is this module's seal over Plotly, not a
 shared abstraction waiting for consumers. If another module ever needs the same

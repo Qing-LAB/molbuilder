@@ -61,10 +61,9 @@ the same category error as a tab reaching past `mount` — and it fails the same
 way, **late and far from its cause**: the module renames a part, and a page
 nobody was thinking about goes visually wrong.
 
-**The rule runs in one direction**, and the asymmetry is deliberate. The guard
-checks that PAGE sheets do not name MODULE classes; it does not read the
-module sheets to judge them, because that is exactly the reach it exists to
-forbid.
+**The rule runs in one direction**, and the asymmetry is deliberate: it binds
+PAGE sheets, which do not name MODULE classes; it never has a page judge a
+module's own sheet, because that is exactly the reach it exists to forbid.
 
 A page that needs a module to look different asks the module for a token or an
 option. It does not reach in — the same answer a tab gets when it wants the
