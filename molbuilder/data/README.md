@@ -129,7 +129,7 @@ All-electron (FHI-aims, tight settings, tier-2 basis sets), scalar-relativistic
 calculation's. The paper is open access, so every number can be checked against
 it.
 
-Cross-checked against **Csonka et al.**, Phys. Rev. B **79**, 155107 (2009),
+Cross-checked against **Csonka et al.** [`Csonka2009`], Phys. Rev. B **79**, 155107 (2009),
 Table II (all-electron, BAND), for the three metals it computes: Cu 3.628,
 Pd 3.942, Ag 4.147 — within 0.004 Å, the spread between two all-electron codes
 for the same functional.

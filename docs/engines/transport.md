@@ -6921,5 +6921,5 @@ judgement between results a person should read.
   Xu, Tao, *Nano Lett.* **4**, 267 (2004).
   doi:[10.1021/nl035000m](https://doi.org/10.1021/nl035000m)
 - **Au-BDT-Au geometry + the Au-electrode mesh requirement (≥ 250–300 Ry)** — Stokbro et al., *Comp. Mat. Sci.*
-  **27**, 151 (2003).
+  **27**, 151 (2003) [`Stokbro2003`].
   doi:[10.1016/S0927-0256(02)00439-1](https://doi.org/10.1016/S0927-0256%2802%2900439-1)

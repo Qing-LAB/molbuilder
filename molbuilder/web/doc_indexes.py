@@ -435,11 +435,13 @@ def _constants() -> List[List[str]]:
 
 def _references(app, docs: Dict[str, str]) -> str:
     """The constants with their reasons; the bibliography, each entry with
-    the chapters citing it -- or the code, where only the code does; and
-    the keys cited that it lacks."""
+    the chapters citing it -- or the package's own files (its code, its data
+    and their notes), where only they do; and the keys cited that it
+    lacks."""
     from ..references import citation_for, known_keys
     pkg = repo_root() / "molbuilder"
-    code = {**_texts(pkg, "*.py"), **_texts(pkg, "*.toml")}
+    code = {**_texts(pkg, "*.py"), **_texts(pkg, "*.toml"),
+            **_texts(pkg, "*.md"), **_texts(pkg, "*.json")}
     rows_c = []
     for n, v, why in _constants():
         word = re.compile(r"\b" + re.escape(n) + r"\b")
@@ -457,9 +459,9 @@ def _references(app, docs: Dict[str, str]) -> str:
         rows_b.append([f"`{key}`", _cell(got["title"]), _cell(got["text"]),
                        f"[{got['doi']}](https://doi.org/{got['doi']})"
                        if got.get("doi") else "—",
-                       _named_in(mine) or ("the code alone" if by_code else
-                                           "**neither a chapter nor the "
-                                           "code cites it**")])
+                       _named_in(mine) or (
+                           "the package's own files alone" if by_code else
+                           "**neither a chapter nor the package cites it**")])
     cited: Dict[str, Set[str]] = {}
     for c, text in docs.items():
         for key in _CITED_SHAPE.findall(text):
