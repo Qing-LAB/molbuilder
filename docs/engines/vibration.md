@@ -918,7 +918,9 @@ sets compared by frequency only).
 > polarizability loop. So with a solvent set, a PySCF vibration runs the
 > frequencies of a structure with no atoms held, with IR and Raman off; any
 > of the three is refused by name at `prep`, until those routes carry the
-> solvent and are measured.
+> solvent and are measured. **SMD and ddCOSMO are not offered**: PySCF's SMD
+> needs a solvent library its build here was compiled without, and ddCOSMO has
+> no Hessian in PySCF at all.
 
 **What an intensity is.** An infrared band is strong when the vibration moves
 charge: the quantity is the dipole's rate of change along the mode,

@@ -43,13 +43,14 @@ it.** The view runs no measurement and no arithmetic of its own:
 | which trials exist, and their coordinates | `job-set.json` via `summarize.discover_points_from_jobset` |
 | what each trial asked for, ran, and measured | `summarize.parse_point` → `BenchPoint` |
 | whether a trial is queued / running / finished / failed | `runstatus.jobset_status` → `StageStatus` |
+| the sweep's verdict — the winning trial and why, or why none wins | the bench record's `choice`, `bench.result.choose_winner`'s, read by `summarize.sweep_view` |
 | the per-trial plot (not built, § 3) | would come through `parse.registry.parse` → `trajectory_result_to_legacy_dict` — the same reader a single file already goes through |
 
 **B2 — a second path that computes the same figure is the defect, not the
 feature.** A summary that computes its own total a second way can show
 "170 minutes" for five 38-minute jobs. A page that
 compares six trials has six chances to do that, so it gets none: if a figure is
-not already produced by one of the four doors above, it does not appear here
+not already produced by one of the five doors above, it does not appear here
 until that door is the one that produces it.
 
 **B3 — a trial with nothing to show says so.** A failed or not-yet-started
@@ -107,6 +108,9 @@ implying one. That is the whole of the rule.
 ---
 
 ## 3. What you see
+
+The sweep's verdict comes first — the winning trial and why, or *No winner:*
+and why none wins (B1) — then the charts and each trial's card:
 
 ```
 ┌─ siesta-AuBDTAu ──────────────────── 6 trials · 6 done ─┐

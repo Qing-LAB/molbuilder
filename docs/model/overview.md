@@ -32,9 +32,11 @@ flowchart TD
     end
     C["chemistry.md"]
     PA["parse.md"]
+    DF["datafiles.md"]
     O --> STRUCT
     O --> C
     O --> PA
+    O --> DF
 ```
 
 | Doc | What it covers | Open it when you… |
@@ -45,6 +47,7 @@ flowchart TD
 | [`structure-molstruct.md`](?doc=model/structure-molstruct.md) | The `.molstruct.json` save file: envelope, schema versioning, the codec, and the `.xyz`↔sidecar pairing rule. | change what a saved structure carries, or the sidecar format |
 | [`chemistry.md`](?doc=model/chemistry.md) | Chemistry helpers on a `Structure`: the phosphate charge rule (the electronic state's charge step), protonation, `add_hydrogens`, clash relief, dipole (the charge and spin a calculation carries → `science/chemistry-correctness.md` § 2a). | resolve charge, add hydrogens, or clean up geometry |
 | [`parse.md`](?doc=model/parse.md) | The unified read stack: one ABC (`FileParser`), the `ParseResult` hierarchy, the registry, and how to add a parser. | read a file/dir/text body into typed data, or add a parser |
+| [`datafiles.md`](?doc=model/datafiles.md) | The data-file framework: every NetCDF file molbuilder keeps its results in — the variable record (`ncdata.Var`), the one writer, the one reading door (`ncdata.reading`), the tables (`ncdata.as_tables`), the export, the one import (`molbuilder.postprocess`), and the catalogue of every name a data file holds (§ 9). | write or read a results data file (`.nc`), add a data file, or look up what a group or variable in one is |
 
 The **atom-index convention** below is the one shared rule that cuts across all
 of these (and into the engines + the web UI), so it lives here.

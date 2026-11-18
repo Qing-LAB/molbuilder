@@ -497,11 +497,21 @@ same answer (`access-control.md` § 5):
 A **Reload server** button sits beside the signed-in email. Pressing it makes the
 server **exit with a sentinel code** that its supervisor is waiting for, so a
 fresh child starts with every Python module imported again; the page then polls
-`/api/health` and reloads itself, picking up new JS and CSS through the
-revalidation described in
-[`server-reload-plan.md`](?doc=archive/2026-08-19-server-reload-plan.md) § 2. There is no
+`/api/health` and reloads itself. There is no
 module-swapping — a new process is the whole mechanism, which is why it can't
-leave half the app running old code.
+leave half the app running old code. **A file watcher is rejected on purpose**:
+Werkzeug's reloader stat-polls every imported module each second and fires on
+any change of a file's time, so a chunked write or a `git checkout` reloads it
+against a half-written tree.
+
+**New JS and CSS reach the page by revalidation, never by a version in the
+URL.** The page's scripts and stylesheets are served `no-cache`
+(`SEND_FILE_MAX_AGE_DEFAULT = 0`, `web/app.py`): the browser asks *is my copy
+still good* on every load and the server answers 304, no body, when it is. A
+version stamped into each URL would reach only the references the templates
+write, never the imports written inside the JavaScript itself — so a page could
+run a new module beside an old one. A front-end change therefore needs no
+restart; a Python change does.
 
 **`POST /api/admin/reload` restarts the server only when two things are true** — absent
 (404) with no supervisor, refused (403) to a caller who is not an admin — so a

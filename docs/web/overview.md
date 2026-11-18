@@ -104,12 +104,14 @@ entry file for `import`/`export`.)
 |---|---|---|---|
 | **MolView** | the embeddable 3D structure viewer + its data model | [molview.md](?doc=web/molview.md) | ✅ full |
 | **VibrationView** | the concealed normal-mode animator (a *sibling* of MolView, mounted by the spectra viewer) | [vibrationview.md](?doc=web/vibrationview.md) | ✅ full³ |
+| **SpectrumChart** | the vibrational-spectrum chart that turns a click into a mode (a sibling of VibrationView, drawn by the spectra viewer) | [spectrumchart.md](?doc=web/spectrumchart.md) | ✅ full |
 | **workspace** | session persistence + the Undo state timeline | [workspace.md](?doc=web/workspace.md) | ✅ full |
 | **projects** | the sidebar file browser + the load/save doors | [projects.md](?doc=web/projects.md) | ✅ full |
 | **trajectory** | the optimization-run movie + convergence plots | [trajectory.md](?doc=web/trajectory.md) | ⬤ hybrid¹ |
 | **transport** | the transport composite's describe surface (cite → describe) | [tabs.md § 4](?doc=web/tabs.md) | ⬤ hybrid¹ |
 | **presenters** | the Results-tab file-viewer registry | [presenters.md](?doc=web/presenters.md) | ○ classic² |
 | **spectra** | the Raman spectrum chart + mode table engine | [spectra.md](?doc=web/spectra.md) | ○ classic² |
+| **bench-summary** | a benchmark sweep on one page: the comparison charts and a card per trial (the presenter for `job-set.json`) | [bench-summary.md](?doc=web/bench-summary.md) | ○ classic² |
 | **results** | the Results-tab dispatch shell + file picker | [results.md](?doc=web/results.md) | ○ classic² |
 | **form-schema** | builds engine-option forms from the catalogue | [form-schema.md](?doc=web/form-schema.md) | ○ classic² |
 | **notify** | the app-wide notification framework (any tab, any caller) | [notifications.md](?doc=web/notifications.md) | ○ classic² |
@@ -203,11 +205,15 @@ before and after conversion ([`testing.md § 4`](?doc=process/testing.md)).
 | If you want to… | Start with |
 |---|---|
 | understand a whole tab's behaviour | [`tabs.md`](?doc=web/tabs.md) |
+| write a calculation's stages, what to measure and what it runs with | [`task-setup.md`](?doc=web/task-setup.md) |
 | embed or drive the 3D viewer | [`molview.md`](?doc=web/molview.md) |
 | browse / open / save project files | [`projects.md`](?doc=web/projects.md) |
 | add or change an engine-option form | [`form-schema.md`](?doc=web/form-schema.md) |
+| send a parameter tab's work on to Task setup | [`handover-procedure.md`](?doc=web/handover-procedure.md) |
 | add a new result-file viewer | [`presenters.md`](?doc=web/presenters.md) |
 | call or add a server route | [`web-api.md`](?doc=web/web-api.md) |
+| run a notebook through molbuilder's own address | [`jupyter.md`](?doc=web/jupyter.md) |
 | keep a new page on-style | [`ui-contract.md`](?doc=web/ui-contract.md) |
 | make modules load in the right order | [`runtime.md`](?doc=web/runtime.md) |
 | persist a tab's in-progress work | [`workspace.md`](?doc=web/workspace.md) |
+| set this machine's notification channels and report listener | [`this-machine.md`](?doc=web/this-machine.md) |

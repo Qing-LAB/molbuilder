@@ -55,7 +55,8 @@ place, and other sheets don't redeclare them.
 
 **A page sheet may not name a module's classes.** MolView is sealed at
 `index.js`; `molview.css` is that same seal in another language, and
-`molviewer-*` is its private vocabulary. A page stylesheet reaching into it is
+`molviewer-*` is its private vocabulary — every class `molviewer-<area>-<part>`,
+each word spelled out, never abbreviated. A page stylesheet reaching into it is
 the same category error as a tab reaching past `mount` — and it fails the same
 way, **late and far from its cause**: the module renames a part, and a page
 nobody was thinking about goes visually wrong.
