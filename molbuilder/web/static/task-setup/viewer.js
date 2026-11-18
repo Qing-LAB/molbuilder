@@ -1736,12 +1736,14 @@ async function readFolder(projects, dir, opts) {
                  + " citation; the structure is the citation, composed "
                  + "at prep");
     }
-    // THE PAIR BY ITS RULE'S ONE HOME: the folder answer names both files.
+    // THE PAIR BY ITS RULE'S ONE HOME: the folder answer names both files --
+    // WRITTEN EITHER WAY, as the template's: a folder holding no
+    // calculation names none, and the last folder's names must not stay.
     const pair = said.structure_pair || {};
     const structName = pair.geometry || "";
     const sideName = pair.sidecar || "";
-    if (structName) $("ts-f-struct-name").textContent = structName;
-    if (sideName)   $("ts-f-side-name").textContent = sideName;
+    $("ts-f-struct-name").textContent = structName;
+    $("ts-f-side-name").textContent = sideName;
     markFile("ts-f-struct", structName && names.has(structName),
              "here — " + (ref.atoms || "?") + " atoms");
     markFile("ts-f-side", sideName && names.has(sideName),

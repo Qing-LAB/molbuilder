@@ -121,8 +121,29 @@ def test_opening_another_folder_leaves_nothing_of_the_first(
         "second")
 
 
+def _a_hand_over(umbrella):
+    """A hand-over the Structure-optimization tab left, its description not
+    yet finished -- and how the page shows it has read it: the proposal's
+    description names the new run."""
+    bare = umbrella / "optimization" / "bare-run"
+    _hand_over(bare, "barelabel")
+    return bare, lambda page: wait_for_file(page, "task", "barelabel")
+
+
+def _no_calculation(umbrella):
+    """The topic folder the two calculations sit in: no `task.json`, no
+    hand-over -- and how the page shows it has read it: it says the folder
+    holds no description (`task-setup.md` § 2.1)."""
+    return umbrella / "optimization", lambda page: page.wait_for_selector(
+        '#ts-state[data-state="empty"]', state="attached", timeout=WAIT_MS)
+
+
+@pytest.mark.parametrize("less", [
+    pytest.param(_a_hand_over, id="a hand-over"),
+    pytest.param(_no_calculation, id="a folder holding no calculation"),
+])
 def test_moving_to_a_folder_with_LESS_to_show_clears_what_the_last_one_had(
-        page, flask_server, two_calcs, isolated_projects_root):
+        page, flask_server, two_calcs, isolated_projects_root, less):
     """The discriminating case, and the one actually measured.
 
     Two DESCRIBED folders both have stages and filenames, so every card has
@@ -132,28 +153,33 @@ def test_moving_to_a_folder_with_LESS_to_show_clears_what_the_last_one_had(
     no `<label>_*` files yet.  A card with nothing to render is the one that
     keeps what it had, which is why *that* is where `bridgespec_initial.xyz`
     and a `freq` / `01_freq` row were still on screen under a heading naming
-    the new calculation.
+    the new calculation.  The 2026-11-18 one (F12's walk) was described ->
+    a folder holding NO calculation: *What gets written* still named the
+    last folder's `<label>.source.xyz` and its sidecar.
 
-    So: open the described one, then move to a folder that can say less.
-    The described one names a queue, which its queue card says; the
-    hand-over's proposal names none (the 2.27.0 review: the last folder's
-    queue stayed on the card, and a click on it wrote into no description).
+    So: open the described one, then move to a folder that can say less --
+    each such folder a row.  The described one names a queue, which its
+    queue card says; neither of the others names one (the 2.27.0 review:
+    the last folder's queue stayed on the card, and a click on it wrote into
+    no description).
 
     THE MACHINE IS THE PAGE'S PICK: this machine is the one listed, so no
     choice is required and the page picks it (`task-setup.md` § 6.4) --
     which the queue card needs before it says the queue.
 
-    MUTATION THIS MUST FAIL AGAINST: the read's reset not hiding *What
+    MUTATIONS THIS MUST FAIL AGAINST: the read's reset not hiding *What
     this calculation writes* (`hideWritten` in `_resetPerFolderState`):
     nothing a hand-over draws repaints that card, so the described folder's
-    file names -- `alphalabel_…` -- stay on the page.
+    file names -- `alphalabel_…` -- stay on the page; and the structure
+    pair's names written only when the folder answer names a pair: a folder
+    holding no calculation names none, so the last folder's
+    `alphalabel.source.xyz` stays in *What gets written*.
     """
     a, _b = two_calcs
     req = read_request(a)
     req["allocation"] = {"domain": "alphaqueue"}
     write_request(a, req)
-    bare = isolated_projects_root / "umbrella" / "optimization" / "bare-run"
-    _hand_over(bare, "barelabel")
+    bare, shown = less(isolated_projects_root / "umbrella")
 
     task_setup_on(page, flask_server, a)
     page.wait_for_function(
@@ -168,10 +194,11 @@ def test_moving_to_a_folder_with_LESS_to_show_clears_what_the_last_one_had(
 
     walk_to(page, bare)
     # WAIT FOR THE LOAD TO FINISH, not for the first card to paint: the
-    # folder's read ends with the hand-over's proposal landed, and the
-    # column says so (`aria-busy`, § 9a, which the editor's tab waits on)
-    # -- the proposal's description names the new run.
-    wait_for_file(page, "task", "barelabel")
+    # folder shown as its row says, and the read ended -- the column says
+    # so (`aria-busy`, § 9a).
+    shown(page)
+    page.wait_for_selector("#ts-main:not([aria-busy])", state="attached",
+                           timeout=WAIT_MS)
 
     text = every_card_text(page)
     assert "alphalabel" not in text, (
@@ -180,7 +207,8 @@ def test_moving_to_a_folder_with_LESS_to_show_clears_what_the_last_one_had(
     assert "alphastage" not in text, (
         "the described folder's stage survived a move to one that has none")
     assert "alphaqueue" not in text, (
-        "the described folder's queue card survived a move to a hand-over")
+        "the described folder's queue card survived a move to one that "
+        "names no queue")
 
 
 

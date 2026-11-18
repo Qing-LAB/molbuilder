@@ -24,12 +24,12 @@ as they stood.
 
 ---
 
-## ▶ HANDOVER — where we are, and where to start *(2026-11-10)*
+## ▶ HANDOVER — where we are, and where to start *(2026-11-18)*
 
-**Where we are: 2.70.28.** F0–F8 and F7a are closed; F9, the tests through
-the road, has the low-harm last items of its closing review left (*Left, in
-order*, below); F10 is under way — wave 1 shipped as 2.70.28, waves 2 and 3
-being applied (*What runs next*). Since 2.67.11 three bodies of work the user put first have run;
+**Where we are: 2.77.3.** F0–F11 and F7a are closed; F9's low-harm last
+items wait (*Left, in order*, below). F12, *Proven*, has walked its three
+roads in the browser on real runs, run the full batch and its two review
+rounds; its fix releases run next (*What runs next*). Since 2.67.11 three bodies of work the user put first have run;
 each release is its changelog row and its ledger section
 ([`archive/2026-10-31-finish-line-review.md`](?doc=archive/2026-10-31-finish-line-review.md),
 *Found by …*):
@@ -118,24 +118,28 @@ each release is its changelog row and its ledger section
   tidying no page shows (measured against `tabs.md` § 6 for O-STATE) and
   waits; so do the test framework's TF3–TF10 and the page tests on jsdom.
 
-**Last checked** (2.70.27, F10's first full e2e pass): every e2e test, 782
-of 783 passed; the one, a notebook test whose port another parallel test's
-server had taken, passed alone and is fixed in 2.70.28 (test servers take
-even ports below the system's own range).
+**Last checked** (2.77.2, F12's full batch, 2026-11-18): the fast tests
+6106 of 6106, the e2e 805 of 805.
 
-**What runs next**: the stretch above (*Left, in order*) -- F9's last
-step, its closing review rounds (the page-side test doors, the dead-code
-release and the tests owed done: 2.70.2–2.70.10, 2.70.20, 2.70.21) and
-the UI review's two left items (2.70.27) done; **F10 under way** (the user,
-2026-11-15: "start F10") -- its first full e2e pass done on 2.70.27; the
-chapters read whole against the code: wave 1 (2.70.28) the top-level
-chapters, ops and execution; waves 2 and 3 (2.70.29) the engines, science,
-model, web and process chapters and this plan -- every live chapter read
-once; the product defects those readings found in the pages measured and
-fixed (2.70.30, 2.70.31). Next F11, F12. **Waiting on the user**: nothing now; TF5
-brings one decision when it is reached (a test's own projects tree by
-default). F12's walk of the three roads in the browser starts only on the
-user's word, said to them first.
+**What runs next** -- **F12's fix releases** *(the user, 2026-11-18:
+"Harm first, by module")*. F12's two review rounds
+([`archive/audits/2026-11-18-f12-review/`](?doc=archive/audits/2026-11-18-f12-review/TRIAGE-round1.md))
+found, verified, 27 wrong results and 7 crashes (round 1, by module in
+`TRIAGE-round1.md`) and about 395 one-home findings (round 2,
+`TRIAGE-round2.md`), many of them the cause of a round-1 defect. Each
+release fixes its module's round-1 defects through the one-home redesign
+round 2 found for that module, every finding re-read when the module is
+read whole: (1) the builders build what was asked; (2) the deck writes the
+value set; (3) the person's files safe, with the test suite's refusing
+scheduler covering `squeue` and `scancel`; (4) a failure said in words,
+never a traceback; (5) the pages show the folder and run they say; (6)
+MolView; (7) the viewers; (8) the run script and the machine. Then the rest
+of round 2 module by module, then the 85 chapter sentences. Two answers
+for them *(the user, 2026-11-18)*: a SIESTA vibration's result keeps the
+structure's own notes, as PySCF's does ("Keep them, as PySCF does"); a
+report-cards copy that does not read stops only the monitor of a run that
+sends reports ("Only runs that send reports"). **Waiting on the user**:
+nothing now.
 
 **The test suite's guards** keep every test off the person's machine
 ([`process/testing.md`](?doc=process/testing.md) § 2b): test code loads only
@@ -207,7 +211,7 @@ topic's test is confirmed present before the release ships *(the user,
 | **F9** | **Tests through the road** (§ 1ak S4) | **2.67.4–2.67.11** (the ledger's *Found by 2.67.4…2.67.11*): the audit's retire list judged test by test; a test validates what is correct *(the user, 2026-11-06; [`process/testing.md`](?doc=process/testing.md) § 3b)*; the tools' real output; one door per test helper; the prep-side tests through the real commands; runs that never happened made on the road; the page tests fed what the server answers; the four product defects those tests found, fixed (2.67.10); the server-side test doors (2.67.11) — one way to point a test at a projects tree (`conftest.point_the_one_door_at`), one maker of a described calculation, the support helpers public and none borrowed from a test file, one maker per real run, the audit's retire list finished (K2679-9's server half, TA-REWRITE, TA-ISOLATE, TA-RETIRE's rest). **Left, in order** *(the user, 2026-11-07: "continue", on the inventory of F9-6 split three ways)*: **the page-side test doors**, done as 2.70.2–2.70.10 (O-TESTS) — the page tests under node on the one runner and fed the server's answers, no browser in the fast tier, an order held where a time was waited, one collector of a page's errors, the pages asked of the app, the page's clock for its timers (K2679-9's page half), the hand-made workspace stand-ins and their typed answers (the 2026-11-11 test audit's TA-8's store, TA-9, TA-16); **the tests owed**, each on a real run (E2E-OWED, I2-087, B4-14's walk half, B4-15, B4-16), done as 2.70.21, I2-085 with them; **the dead-code release**, done as 2.70.20 — K2677-4, K2678-5, K2679-5, K27610-6, and the three states no road makes (E2E-Q, and E2E-OWED's monitor that dies loading and viewer that throws), its removal list shown first; **F9's closing review rounds**, 2.70.22–2.70.26, their low-harm last items left (the handover's *Left, in order*). Left as they are, said why in the ledger: each module's own server fixture (`testing.md` § 8 lets a module choose its scope), the e2e marker a file repeats (dropped when the file is touched), B1-31 (the form id prefix stated by the server and the page, the browser tests catching a drift). The ledger's rows still marked F9: TA-REWRITE's page files, K2679-9's page half; B4-2, the sent-run pair, kept with its reason stated (decided 10). | 62 + 8 (F0a's review) + 4 (the test audit) | — |
 | **F10** | **The documents true** | Each chapter rewritten against the code once — the untrue and stale sentences corrected, every link resolved, history inside a contract removed and each reason it carried kept as a rule; a chapter a release F0–F9 touches is brought true in that release; README R5 says why `--bundle` keeps its name (decided 8). ~300 items over 70 chapters. | 305 + 1 (F0a's review) | — |
 | **F11** | **The documents findable** (§ 7) | § 7's four indexes — **done in 2.77.0**, built from the code each time they are read, the Documents tab's Indexes folder (`web/tabs.md` § 5.6; the user, 2026-11-17: "Live from the code"); `docs/README.md` the one index naming every live chapter, each row one line, and every domain overview listing all its own — **done 2026-11-17** (docs only: every row's facts checked against its chapter first, the five found nowhere else written into their chapters); the chapter mistakes the row check found — each verified against the code — corrected 2026-11-17 (docs only); and one place for each thing stated in several — 43 contradictions corrected to the code and 30 restatements made pointers, the archive's index whole — **done in 2.77.2**: F11 is closed. | 2 + § 7 | — |
-| **F12** | **Proven** (§ 1am step 8) | Each road — an optimization, a vibration on SIESTA and on PySCF, a transport calculation — driven start to finish in the browser on real runs; the full batch; two review rounds over F0–F11. | 8 | — |
+| **F12** | **Proven** (§ 1am step 8) | Each road — an optimization, a vibration on SIESTA and on PySCF, a transport calculation — driven start to finish in the browser on real runs; the full batch; two review rounds over F0–F11. **Walked, run and reviewed 2026-11-18** at 2.77.2: H₂ relaxed on PySCF; water's modes on PySCF and on SIESTA; a hydrogen-chain junction built and labelled on the Molbuilder tab, relaxed on SIESTA, its transport described on the Transport tab and run — G(E_F) = 0.9999 G₀; the batch 6106 + 805, none failed; the two rounds in `archive/audits/2026-11-18-f12-review/`. The walk's one defect (Task setup's *What gets written* keeping the last folder's structure names) fixed in 2.77.3; the rounds' fixes run as *What runs next* orders them. | 8 | — |
 
 **How a release closes** *(the user, 2026-09-27: "a consolidated persistent
 plan that get's updated at every milestone and reviewed with agent full code
