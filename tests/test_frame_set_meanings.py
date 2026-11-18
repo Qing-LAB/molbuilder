@@ -70,11 +70,10 @@ def test_a_row_the_vocabulary_does_not_know_keeps_its_own_meaning():
 def test_a_vocabulary_row_without_its_meaning_is_said_once_by_name(reader):
     """...beside the frames, at every reader, never refused: one line naming
     the row, however many frames write it without a note."""
-    import json
     from molbuilder.frame_average import (answer, average_block,
                                           data_file_variables, fill_data_file)
     from molbuilder.frameset import read
-    from molbuilder.ncdata import Var, empty
+    from molbuilder.ncdata import empty
     s = _frames(_OWN)
     for f in range(2):
         s.set_customized("displacement_ang", 0.1 * f, unit="angstrom",
@@ -86,9 +85,11 @@ def test_a_vocabulary_row_without_its_meaning_is_said_once_by_name(reader):
         attrs = {}
         # THE FRAME PART'S VALUES as the writer starts them, from its table.
         sizes = {"frame": 2, "atom": 2, "bias_v": 0, "energy_ev": 0}
-        values = {v.name: empty(v, sizes) for v in data_file_variables(Var)}
+        values = {v.name: empty(v, sizes) for v in data_file_variables()}
         fill_data_file(values, attrs, s, average, [], lambda v, vs: 0)
-        said = json.loads(attrs["frame_warnings"])
+        # THE RECORD AS THE FRAME PART HANDS IT to the file's writer, which
+        # writes it as JSON text (`transport.datafile.RECORD_ATTRS`).
+        said = attrs["frame_warnings"]
     else:
         said = answer(s)["definition"]["warnings"]
     assert len(said) == 1 and said[0].count("displacement_ang") == 1, said

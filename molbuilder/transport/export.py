@@ -31,34 +31,25 @@ def _data_file_name(calc) -> str:
     return data_file_path(calc.base, calc.task.label).name
 
 
-def _stem(calc, name: str) -> str:
-    """An export's stem, ``<label>.<kind>``: the label the data file is
-    named on, and the calculation's kind -- which `ncdata.export_name` gives
-    each format's ending (``<label>.transport-csv``)."""
-    from ..runfiles import ROLE_TRANSPORT_DATA, stem_before
-    return f"{stem_before(name, ROLE_TRANSPORT_DATA)}.{calc.task.calculation}"
-
-
 def name_of(calc, fmt: str, *, dos_per_orbital: bool = False) -> str:
     """What an export of ``calc`` as ``fmt`` is named -- the data file
     itself, or the folder its files lie in: its tables', or the data file's
     with each point's digest (``dos_per_orbital``; `ncdata.export_name`) --
     known before anything is composed."""
-    from ..ncdata import export_name
-    name = _data_file_name(calc)
-    return export_name(_stem(calc, name), fmt,
-                       None if dos_per_orbital else name)
+    from ..ncdata import export_name, export_stem
+    return export_name(export_stem(calc.task.label, calc.task.calculation),
+                       fmt,
+                       None if dos_per_orbital else _data_file_name(calc))
 
 
 def missing_dos_said(record: Dict) -> str:
     """How many finished points hold no DOS by region -- their DOS per
     orbital not kept (`model/parse.md` § 5e) -- and how to read them; ``""``
     when every one is kept."""
-    from .record import readings_kept
-    # A POINT WITH A DATA FILE whose reading is not whole -- one with none
-    # has nothing to read.
+    # A POINT WHOSE DOS PER ORBITAL IS NOT READ -- the record's one answer
+    # (`record.collect_record`).
     missing = [p for p in record.get("points") or ()
-               if p.get("digest") and not readings_kept(p["digest"])]
+               if p.get("per_orbital_unread")]
     if not missing:
         return ""
     n = len(missing)
@@ -72,8 +63,9 @@ def missing_dos_said(record: Dict) -> str:
 def export(calc, fmt: str, *, folder=None,
            dos_per_orbital: bool = False) -> Exported:
     """Every result of the transport calculation ``calc`` (`calculation.open`)
-    as it stands, as ``fmt`` -- ``netcdf``: the data file, ``{name: bytes}``;
-    ``csv``: its tables and ``README.txt`` -- from what is already there, no
+    as it stands, as ``fmt`` -- ``netcdf``: the data file; ``csv``: its
+    tables and ``README.txt``; one :class:`ncdata.Exported` -- from what is
+    already there, no
     data file read (:func:`missing_dos_said` in ``said``).
     :class:`ExportError` names a form that is not one, and results that do
     not read or do not lay out on one grid -- in their owners' words, as
@@ -83,7 +75,7 @@ def export(calc, fmt: str, *, folder=None,
     it, at the path the point names, its bytes copied and never read -- what
     `postprocess.pdos` reads a PDOS of chosen atoms from, anywhere; asked
     with that form alone, its row's (`kind_table.export_asks_of`)."""
-    from ..ncdata import export_format, exported
+    from ..ncdata import export_format, export_stem, exported
     from .compose import ComposeError
     from .datafile import DataFileError, data_file_bytes
     from .record import RecordError, collect_record
@@ -108,7 +100,8 @@ def export(calc, fmt: str, *, folder=None,
                         Path(calc.base) / src["digest"]).read_bytes()
         except OSError as exc:
             raise ExportError(str(exc)) from exc
-    return exported(files, fmt, stem=_stem(calc, name),
+    return exported(files, fmt,
+                    stem=export_stem(calc.task.label, calc.task.calculation),
                     one_file=not dos_per_orbital,
                     said=missing_dos_said(record))
 

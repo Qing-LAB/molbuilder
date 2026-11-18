@@ -542,22 +542,19 @@ def pdos_from_files(data_file, point, *, atoms=(), labels=(), regions=(),
     from ..atom_permutation import AtomIndexError, checked_indices
     from ..parse.engines.tbtrans_nc import kept_at
     from ..structure import Structure
-    from .datafile import read_data_file
+    from .datafile import STRUCTURE_GROUP, point_groups, read_data_file
     from .energies import joined, restricted
     path = Path(data_file)
     here = path.parent
     groups, amap = read_data_file(path)["groups"], atom_index_map(path)
-    # A POINT IS A GROUP THAT SAYS WHETHER IT IS DONE -- not a frame's group
-    # of points, nor a point's device run.
-    held = sorted(k[len("points/"):] for k in groups
-                  if k.startswith("points/")
-                  and "done" in groups[k]["variables"])
-    if point not in held:
+    # ITS POINTS, by the data file's own reading of them.
+    points = point_groups(groups)
+    if point not in points:
         raise TbtError(f"{point} is not one of {path.name}'s points: "
-                       f"{', '.join(held)}")
-    J = {k: v["data"] for k, v in groups["structure"]["variables"].items()}
-    P = {k: v["data"] for k, v in
-         groups[f"points/{point}"]["variables"].items()}
+                       f"{', '.join(sorted(points))}")
+    structure = groups[STRUCTURE_GROUP]
+    J = {k: v["data"] for k, v in structure["variables"].items()}
+    P = {k: v["data"] for k, v in points[point]["variables"].items()}
     if int(P["done"]) != 1:
         why = str(P["why"]) or "no transmission yet"
         raise TbtError(f"{point} is not done: {why}")
@@ -571,7 +568,7 @@ def pdos_from_files(data_file, point, *, atoms=(), labels=(), regions=(),
     # THE JUNCTION'S LABELS, the structure's own (`structure_json`, read
     # through its door): matched as written, never read for meaning.
     carried = Structure.from_dict(
-        groups["structure"]["attrs"]["structure_json"]).regions or {}
+        structure["attrs"]["structure_json"]).regions or {}
     for label in labels:
         members = [int(a) for a in carried.get(label, ())]
         if not members:
@@ -595,7 +592,7 @@ def pdos_from_files(data_file, point, *, atoms=(), labels=(), regions=(),
                        f"per orbital ({why}) -- {READ_WAY}, then summarize "
                        f"or export again")
     if orbitals != "all" and not len(J["orbital"]):
-        why = groups["structure"]["attrs"].get("orbitals_why", "")
+        why = structure["attrs"].get("orbitals_why", "")
         raise TbtError(f"{path.name} holds no orbital table ({why}), so "
                        f"its orbitals' types are not known")
     # THE FILE'S ATOMS AS ITS DIGESTS LIST THEM, by engine index (F7), and

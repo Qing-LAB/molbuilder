@@ -24,7 +24,11 @@ ROLE    :class:`Var` -- one variable: its dimensions, its kind (given, raw,
         the atom axis given as its atom index map, a group's title with
         them; :func:`in_memory` / :func:`as_bytes` -- the file built in
         memory and handed to the one atomic writer (`persist.write_bytes`)
-        once it states itself; :func:`reading` -- the one
+        once it states itself; :func:`copy_stated` -- a record's facts
+        onto a file's grid, each at its record key (:func:`stated`, a
+        dotted key a path); :func:`json_attrs` -- the attributes that hold
+        a record, as JSON text, read back by :func:`read_file`, a file whole;
+        :func:`reading` -- the one
         door every NetCDF file molbuilder opens goes through, one access and
         one handle at a time under :data:`NC_LOCK` (:class:`OpenedTwice` a
         file opened again inside its own access); :func:`read_variables` /
@@ -33,13 +37,17 @@ ROLE    :class:`Var` -- one variable: its dimensions, its kind (given, raw,
         tables and a README, every word the file's own; :class:`Exported`
         -- an export's one shape, the data files or their tables
 USED-BY a calculation's runs and their steps (`stepsdata`), the transport data file (`transport.datafile`: written and read) and
-        the exports (`transport.export`, `spectra.export`); the vibration result's
-        data file (`spectra.datafile`), beside the job in both bundles
+        the exports (`transport.export`, `spectra.export`,
+        `optimization.export`, a chart's `chartdata`, the route
+        `web/blueprints/results.py` and `jobset export`); the vibration result's
+        data file (`spectra.datafile`), its Raman and optical parts
+        (`spectra.raman`, `spectra.optical_data`), beside the job in both bundles
         (`runwrap.VIBRATION_COMPANIONS`, `runwrap.PYSCF_COMPANIONS`); a
         TBtrans data file and its digest (`parse.engines.tbtrans_nc`); a
-        relaxation's ``.MD.nc`` (`parse.engines.siesta_mdnc`); the atom index
+        relaxation's ``.MD.nc`` (`parse.engines.siesta_mdnc`) and SIESTA's
+        SCF columns (`parse.engines.siesta_grammar`); the atom index
         map's reader of a data file (`atom_index`); a frame set's rows in the
-        transport data file (`frame_average`, its JSON attributes)
+        transport data file (`frame_average`)
 
 **Encoding, so a round trip is exact**: a number's fill is NaN, a text's the
 empty string, an integer's its stated fill; a boolean is an ``int8`` with
@@ -120,7 +128,8 @@ class Var:
     json: bool = False
     #: The record key the value is written from and read back to, where it
     #: is not the name -- a file's names follow its rules (§ 2a rule 2), a
-    #: record's keys its own contract (`model/datafiles.md` § 9).
+    #: record's keys its own contract (`model/datafiles.md` § 9); a dotted
+    #: key a path through the record's nested blocks (``negf.contour.poles``).
     key: str = ""
     #: The names earlier schemas wrote it under, newest first: an older
     #: file read as it is (§ 2a rule 5).
@@ -519,6 +528,15 @@ def unjson_attr(text) -> Any:
     return json.loads(str(text))
 
 
+def json_attrs(attrs: Mapping[str, Any], names: Sequence[str]
+               ) -> Dict[str, Any]:
+    """``attrs`` as a group states them: each of ``names`` -- an attribute
+    that holds a record, its file's declared list -- as its JSON text
+    (:func:`json_attr`), every other as given; read back by
+    :func:`read_file` given the same ``names``."""
+    return {k: json_attr(v) if k in names else v for k, v in attrs.items()}
+
+
 def write_group(group, dims: Mapping[str, Any], variables: Sequence[Var],
                 values: Mapping[str, np.ndarray], *,
                 title: Optional[str] = None) -> None:
@@ -753,6 +771,31 @@ def key_of(var: "Var") -> str:
     return var.key or var.name
 
 
+def stated(record: Mapping, var: "Var") -> Any:
+    """The value ``record`` states for ``var`` -- at its record key
+    (:func:`key_of`), a dotted key a path through the record's nested blocks
+    -- ``None`` where it states none."""
+    at: Any = record
+    for part in key_of(var).split("."):
+        if not isinstance(at, Mapping) or at.get(part) is None:
+            return None
+        at = at[part]
+    return at
+
+
+def copy_stated(record: Mapping, variables: Sequence["Var"], cell: tuple,
+                values: Dict[str, Any]) -> None:
+    """A RECORD'S FACTS ONTO A FILE'S GRID (`model/datafiles.md` § 2a rule
+    2): each of ``variables`` given, at ``cell``, the value ``record``
+    states at its record key (:func:`stated`) -- a flag 1 or 0 from the
+    record's yes or no -- one it does not state keeping its fill.  Which
+    variables a record fills is its file's table."""
+    for v in variables:
+        got = stated(record, v)
+        if got is not None:
+            values[v.name][cell] = int(bool(got)) if v.flag else got
+
+
 def groups(group, path: str = ""):
     """``group`` and every group below it, each with its path -- ``""`` the
     root, ``points/v0.2`` below it: the one walk of a file's groups
@@ -778,21 +821,27 @@ def checked(path, *, schemas: Sequence[str], error=ValueError,
 
 
 def read_file(path, *, schemas: Sequence[str], error=ValueError,
-              way: str = "") -> Dict[str, Any]:
+              way: str = "", records: Sequence[str] = ()
+              ) -> Dict[str, Any]:
     """A DATA FILE READ BACK WHOLE (:func:`checked`): ``{"attrs": the
     root's, "groups": {path: {"attrs", "variables"}}}`` -- every group by
     its path (:func:`groups`), the root's under ``""``, each variable as
     :func:`read_variables` hands it (records decoded, flags as stored), and
-    the structure a ``/structure`` states (``structure_json``) as its
-    dict."""
+    every attribute that holds a record -- the structure a ``/structure``
+    states (``structure_json``), each of ``records`` (the file's own list,
+    as it wrote them, :func:`json_attrs`) -- as the block it holds."""
+    held = (STRUCTURE_JSON, *records)
+
+    def decoded(at: Dict[str, Any]) -> Dict[str, Any]:
+        return {k: unjson_attr(v) if k in held else v
+                for k, v in at.items()}
     with checked(path, schemas=schemas, error=error, way=way) as (ds, attrs):
         out = {}
         for where, g in groups(ds):
-            ga = {k: g.getncattr(k) for k in g.ncattrs()}
-            if STRUCTURE_JSON in ga:
-                ga[STRUCTURE_JSON] = unjson_attr(ga[STRUCTURE_JSON])
-            out[where] = {"attrs": ga, "variables": read_variables(g)}
-    return {"attrs": attrs, "groups": out}
+            out[where] = {"attrs": decoded({k: g.getncattr(k)
+                                            for k in g.ncattrs()}),
+                          "variables": read_variables(g)}
+    return {"attrs": decoded(attrs), "groups": out}
 
 
 def _check_stated(ds) -> None:
@@ -1218,6 +1267,14 @@ def export_format(fmt: str) -> str:
     return fmt
 
 
+def export_stem(label: str, what: str) -> str:
+    """AN EXPORT'S STEM, ``<label>.<what>`` -- the label a calculation's
+    files are named on, and what is exported: the calculation's kind, or a
+    chart's name -- which :func:`export_name` and :func:`exported` give each
+    format's ending (``<label>.transport-csv``, ``<label>.iv.nc``)."""
+    return f"{label}.{what}"
+
+
 def export_name(stem: str, fmt: str, one_file: Optional[str] = None) -> str:
     """What an export is named, known before it is composed: the one data
     file itself (``one_file``) as NetCDF, else ``<stem>-<fmt>`` -- the
@@ -1259,8 +1316,10 @@ __all__ = ["Var", "Axis", "AXES", "UNITS", "CONVENTIONS", "ROOT_FACTS",
            "as_bytes", "read_variables", "EXPORT_FORMATS", "ExportError",
            "coordinate", "axis_values", "scf_cycles_var", "scf_history_vars",
            "scf_history_values", "groups", "checked", "read_file",
-           "named_now", "key_of", "UNIT_IN_NAME",
+           "named_now", "key_of", "stated", "copy_stated", "json_attrs",
+           "UNIT_IN_NAME",
            "STRUCTURE_JSON",
            "structure_vars", "structure_values", "structure_attrs",
            "write_structure_group", "read_structure_group",
-           "Exported", "export_format", "export_name", "exported"]
+           "Exported", "export_format", "export_name", "export_stem",
+           "exported"]

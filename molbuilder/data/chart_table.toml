@@ -55,7 +55,7 @@ marks = []
 
 [charts.iv]
 words = "the current against the bias"
-tags = ["current", "current_by_spin", "iv_current", "iv_current_by_spin"]
+tags = ["current", "iv_current", "iv_current_by_spin"]
 marks = []
 
 [charts.spectrum]
@@ -227,10 +227,6 @@ y = { name = "pdos_per_ev", kind = "derived", units = "1/eV", long_name = "a cho
 [tags.current]
 x = "bias_v"
 y = { of = "molbuilder.transport.datafile:VARIABLES", name = "current_a" }
-
-[tags.current_by_spin]
-x = "bias_v"
-y = { of = "molbuilder.transport.datafile:VARIABLES", name = "current_by_spin_a" }
 
 [tags.iv_current]
 x = "iv_bias_v"

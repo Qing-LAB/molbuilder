@@ -10,7 +10,7 @@ by the binary's own rule, :func:`joined_currents`).  Both formats were pinned ag
 a REAL 5.4.2 run (the carbon-chain live walk, 2026-08-29).
 
 What lands on disk is ONE file at the calculation root,
-``<label>.transport.json`` (``molbuilder/transport-result@17``): T(E)
+``<label>.transport.json`` (``molbuilder/transport-result@18``): T(E)
 per point -- a frame and a voltage -- the I–V table per frame, the frames'
 average, their post-process's (`frame_average.average_block`), the junction's TOTAL
 current, with the
@@ -28,7 +28,8 @@ is a reader, and nothing is produced on a host that has produced nothing.
 
 **COMPOSED ON READ** (`engines/transport.md` § 2a.12): every rung's state is
 the one status door's (`runstatus.jobset_status`, what `jobset status` and
-the Results tab's ladder say), and every point's its run's (`run_status`);
+the Results tab's ladder say), and every point's its run's row there
+(`runs.concluded` for a run it has no rows for);
 the Results tab asks `/api/transport/record`, which composes the record
 each time it is opened, so a rung that ran since `summarize` is never shown
 as it was.
@@ -41,7 +42,7 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Sequence, Tuple
 from ..calcdirs import RunPlace
 from ..constants import BOLTZMANN_EV_K, CONDUCTANCE_QUANTUM_S
 from ..persist import json_safe
-from .conductance import at_fermi, per_spin_channel, spin_of
+from .conductance import SPIN_CHANNELS, at_fermi, per_spin_channel, spin_of
 from .energies import window_short_of
 from .run_words import PRODUCT
 
@@ -88,10 +89,11 @@ CAVEAT = (
 
 def _scf_fields() -> tuple:
     """The SCF row fields the report keeps (`web/results.md` § 2.5): every
-    key SIESTA's rows hold, by its one declaration (the engine table's
-    ``scf_columns``), and a NEGF row's charges."""
+    key the engine's rows hold, by its one declaration (the engine table's
+    ``scf_columns``, for the kind's engine), and a NEGF row's charges."""
     from ..engine_table import scf_columns
-    return tuple(c[0] for c in scf_columns("siesta")) + ("charges",)
+    from .stages import ENGINE
+    return tuple(c[0] for c in scf_columns(ENGINE)) + ("charges",)
 
 
 class RecordError(Exception):
@@ -191,19 +193,22 @@ def point_averages_of(where, label: str) -> Dict:
 def point_currents(now: Optional[Dict], spin: str) -> Dict:
     """The current TBtrans printed at one point -- its own Landauer integral,
     parsed, never recomputed -- as the record says it
-    (:data:`CURRENT_MEANS`): ``current_a_printed``, the first figure it
-    printed (one spin channel's); ``current_a``, the junction's total --
-    twice it for a non-polarized run, the two channels' sum for a polarized
-    one -- and the run's ``k_points`` / ``k_method`` and its
+    (:data:`CURRENT_MEANS`): ``printed_a``, every figure it printed by its
+    channel's name (`conductance.SPIN_CHANNELS`) -- a non-polarized run's
+    one, ``unpolarized``; a polarized run's ``up`` and ``down``, each also
+    ``current_by_spin_a``; ``current_a``, the junction's total -- twice the
+    one for a non-polarized run, the two channels' sum for a polarized one
+    -- and the
+    run's ``k_points`` / ``k_method`` and its
     ``loop_elapsed_s``, its passes' loops summed as TBtrans measured them
     (`model/parse.md` § 5c.1).  Read from ``now``, the point's output's
     reading through the family's one read -- the caller's
     (`collect_record`: one read per point) -- and its account of TBtrans's
     loop (`siesta_reader.read_output`, ``now()["loop"]``,
     `model/parse.md` § 5d.5): each pass's currents beside its channel;
-    ``None`` where the run printed none, and every figure ``None`` for a
-    point with no reading -- no output, or one that does not read."""
-    out: Dict = {"current_a": None, "current_a_printed": None}
+    ``current_a`` ``None`` and no ``printed_a`` where the run printed none,
+    or the point has no reading -- no output, or one that does not read."""
+    out: Dict = {"current_a": None}
     if now is None:
         return out
     loop = now.get("loop") or {}
@@ -224,9 +229,11 @@ def point_currents(now: Optional[Dict], spin: str) -> Dict:
             and r.get("current_a") is not None]
     if not mine:
         return out
-    out["current_a_printed"] = mine[0][1]["current_a"]
+    out["printed_a"] = (
+        {ch: r["current_a"] for ch, r in mine} if spin == "polarized"
+        else {SPIN_CHANNELS[spin][0]: mine[0][1]["current_a"]})
     if spin == "polarized":
-        by = {ch: r["current_a"] for ch, r in mine}
+        by = out["printed_a"]
         if "up" in by and "down" in by:
             out["current_a"] = by["up"] + by["down"]
             # EACH SPIN'S, as TBtrans printed it -- the I-V draws them
@@ -274,12 +281,22 @@ def landauer_current(energies: List[float], trans: List[float],
                  * np.sum(np.asarray(trans, dtype=float) * (f_l - f_r)))
 
 
+def channel_current(energies: List[float], trans: List[float],
+                    volts: float, kt_ev: float, spacing_ev: float) -> float:
+    """ONE SPIN CHANNEL'S CURRENT, (e/h) ∫ T(E) [f_L − f_R] dE -- what
+    TBtrans prints for a channel (`m_tbt_save.F90`): half
+    :func:`landauer_current`, whose G0 is both channels', the one rule a
+    polarized point's channel is computed by."""
+    return landauer_current(energies, trans, volts, kt_ev, spacing_ev) / 2.0
+
+
 def low_bias_iv(energies: List[float], trans: List[float],
                 voltages: List[float], kt_ev: float,
-                spacing_ev: float) -> Dict:
-    """The low-bias approximation's I-V: :func:`landauer_current` of the
-    one zero-bias slice, T(E, 0), at each listed voltage
-    (`engines/transport.md` § 2a.10), on the grid of spacing
+                spacing_ev: float, *, current=landauer_current) -> Dict:
+    """The low-bias approximation's I-V: ``current`` -- the junction's,
+    :func:`landauer_current`, or one spin channel's,
+    :func:`channel_current` -- of the one zero-bias slice, T(E, 0), at each
+    listed voltage (`engines/transport.md` § 2a.10), on the grid of spacing
     ``spacing_ev`` the slice's deck states.  A voltage whose window plus
     the Fermi tails (`energies.WINDOW_TAILS_KT`) reaches past the
     transmission's energies gets ``None`` and a note naming the reach --
@@ -295,8 +312,7 @@ def low_bias_iv(energies: List[float], trans: List[float],
             # by a spelling of the number a page would have to reproduce.
             notes[str(len(currents) - 1)] = short
             continue
-        currents.append(landauer_current(energies, trans, v, kt_ev,
-                                         spacing_ev))
+        currents.append(current(energies, trans, v, kt_ev, spacing_ev))
     return {"voltages_v": [float(v) for v in voltages],
             "current_a": currents,
             "computed": "low-bias-approximation", "kt_ev": kt_ev,
@@ -309,53 +325,27 @@ def joined_currents(read: Dict, volts: float, kt_ev: float,
     joined grid (`engines/transport.md` § 2a.16), TBtrans's printed one
     covering its own run's energies alone: :func:`landauer_current` of
     ``read`` (:func:`point_transmission`'s, joined) on its deck's grid; a
-    polarized point's each channel beside its total.  Its printed figure
-    is none."""
+    polarized point's each channel beside its total.  It printed no
+    figure of its current (``printed_a`` empty)."""
     e = read["energy_ev"]
-
-    def total(trans) -> float:
-        return landauer_current(e, trans, volts, kt_ev, spacing_ev)
-    out: Dict = {"current_a": total(read["transmission"]),
-                 "current_a_printed": None, "current_from": "joined"}
+    out: Dict = {"current_a": landauer_current(e, read["transmission"],
+                                               volts, kt_ev, spacing_ev),
+                 "printed_a": {}, "current_from": "joined"}
     chans = read.get("channels") or {}
     if "up" in chans and "down" in chans:
-        out["current_by_spin_a"] = {k: total(chans[k]) / 2.0
-                                    for k in ("up", "down")}
+        out["current_by_spin_a"] = {
+            k: channel_current(e, chans[k], volts, kt_ev, spacing_ev)
+            for k in ("up", "down")}
     return out
 
 
-def iv_notes_placed(iv: Dict) -> List[Dict]:
-    """The I-V's notes, each with the frame and the voltage it is about --
-    a voltage's (keyed by its row of the table, :func:`low_bias_iv`)
-    with both, a frame's own (keyed by the frame: its 0 V transmission not
-    run) with ``bias_v`` ``None``: how a file with no row axis states them
-    (`transport/datafile.py`, `engines/transport.md` § 2a.12)."""
-    notes = iv.get("notes") or {}
-    rows = iv_rows(iv)
-    out = [{"frame": f, "bias_v": v, "note": notes[str(k)]}
-           for k, f, v in rows if str(k) in notes]
-    for f in dict.fromkeys(f for _k, f, _v in rows):
-        if iv_frame_key(f) in notes:
-            out.append({"frame": f, "bias_v": None,
-                        "note": notes[iv_frame_key(f)]})
-    return out
-
-
-def iv_rows(iv: Dict) -> List[Tuple[int, Optional[int], float]]:
-    """THE I-V TABLE'S ROWS (:func:`_iv`'s), each ``(row, frame,
-    voltage)`` -- the frame ``None`` for one structure: the one reading of
-    the record's ``iv`` by its rows, which its notes are keyed by."""
+def iv_rows(iv: Dict) -> List[Tuple[Optional[int], float]]:
+    """THE I-V TABLE'S ROWS (:func:`_iv`'s), each ``(frame, voltage)`` --
+    the frame ``None`` for one structure: the one reading of the record's
+    ``iv`` by its rows."""
     volts = list(iv.get("voltages_v") or ())
     frames = list(iv.get("frame") or [None] * len(volts))
-    return list(zip(range(len(volts)), frames, volts))
-
-
-def iv_frame_key(frame: Optional[int]) -> str:
-    """The key a frame's own I-V note is under -- written by :func:`_iv`,
-    read by :func:`iv_notes_placed` and :func:`iv_table_text`: its folder
-    token, ``all`` for one structure."""
-    from ..paths import frame_token
-    return frame_token(frame) if frame is not None else "all"
+    return list(zip(frames, volts))
 
 
 def _output_of(where: Path) -> Optional[Path]:
@@ -409,10 +399,10 @@ def _stage_facts(calc, *, status) -> List[Dict]:
 
     * *seed* / *device* -- did the SCF converge, and at what energy.  The seed
       hands the device a density; the device hands TBtrans a Hamiltonian.
-    * *electrode_L* / *electrode_R* -- **the lead's Fermi level**, and this is
-      the number the whole junction is referenced to: a lead is a periodic
-      BULK run whose *"E_F is the reference energy"* (§ 2a.13), T(E) is
-      measured relative to it, and `G = G0 * T(E_F)` is evaluated at it.
+    * *electrode_L* / *electrode_R* -- **the lead's Fermi level**, as its
+      run computed it: a lead is a periodic BULK run, whose E_F places its
+      bands in the device; T(E)'s energies are measured from the device's
+      E_F, and `G = G0 * T(E_F)` is evaluated there (§ 2a.12).
     * *transmission* -- has its own `points` / `pending` / `failed` blocks.
 
     ``status`` is that door's answer, read once by the caller
@@ -424,10 +414,12 @@ def _stage_facts(calc, *, status) -> List[Dict]:
     base, task = Path(calc.base), calc.task
     by_name = {s.name: s for s in status.stages}
     tokens = {h.name: h.token for h in ladder_homes(base, task)}
-    # THE DEVICE RUN THE TRANSMISSION READ, when it has one -- the device
-    # facts shown beside T(E) are that run's, never the newest by itself
-    # (`engines/transport.md` § 2a.12).
-    device_run = gathered_device_run(calc)
+    # THE DEVICE RUNS THE TRANSMISSION READ, when it has read any -- the
+    # device facts shown beside T(E) are each point's own, never the newest
+    # by itself (`engines/transport.md` § 2a.12); the rung's run its first
+    # point's.
+    device_runs, device_unread = gathered_device_runs(calc)
+    device_run = gathered_device_run(device_runs)
     out: List[Dict] = []
     for name in TRANSPORT_STAGES:
         s = by_name.get(name)
@@ -455,6 +447,35 @@ def _stage_facts(calc, *, status) -> List[Dict]:
         # name (`stages.STAGE_FACT`).  The transmission's answer is its
         # points; TBtrans converges nothing and reports no total energy.
         answers = STAGE_FACT.get(name, "scf")
+        # THE RUN THE TRANSMISSION GATHERED answers for itself when it is not
+        # the stage's newest (§ 2a.12: the device facts beside T(E) are that
+        # run's): its state in its own words, and a detail naming both.
+        newest = base / s.dir / s.attempt if s.dir and s.attempt else None
+        another = run is not None and newest is not None and run != newest
+        per_point = bool(rung_points(task, name, frames=frames_of(base))
+                         and answers != PRODUCT)
+        several = len(set(device_runs.values())) > 1
+
+        def gathered_said(said: str) -> str:
+            whose = ("the run the transmission's first point gathered"
+                     if several else "the run the transmission gathered")
+            return (f"{said}; {whose} ({fact['attempt']}); the stage's "
+                    f"newest run is {s.dir}/{s.attempt}: {s.detail}")
+        if another:
+            # THE RUN IT IS A COPY OF, the gathered run's own -- never the
+            # newest run's beside the other's figures (§ 2a.16).
+            from ..runrecord import LaunchRecordError, copied_of
+            fact.pop("copied_from", None)
+            try:
+                copied = copied_of(base, run)
+            except LaunchRecordError as exc:
+                copied = None
+                _say_unreadable(fact, str(exc))
+            if copied:
+                fact["copied_from"] = copied
+        # A POINT WHOSE ``.gathered-from`` DOES NOT READ, said on the rung.
+        if name == "device" and device_unread:
+            _say_unreadable(fact, *device_unread)
         # EVERY SWEPT RUNG'S POINTS, as the status door reads them: the
         # folder each ran in, what it started from and what it alone took
         # (§ 2a.11, § 2a.12) -- the provenance chain's per-point lines, for
@@ -463,83 +484,49 @@ def _stage_facts(calc, *, status) -> List[Dict]:
         # the stage's newest (§ 2a.12): the same per-point reader
         # (`continuation.point_rows`), asked for that run.
         points = s.points
-        points_run = (base / s.dir / s.attempt if s.dir and s.attempt
-                      else None)
+        points_run = newest
         gathered = None
-        if run is not None and s.attempt and s.dir \
-                and run != base / s.dir / s.attempt and s.points:
+        if another and per_point:
             # ITS POINTS AND ITS STATE BY THE ONE READING of a run of points
-            # (`continuation.read_points`), never a second; records that do
-            # not read, and any reader's failure, said on the rung -- never
-            # the whole record.
-            from ..jobset.continuation import read_points
+            # (:func:`_points_read`) -- whatever the newest run's say.
             points_run = run
-            try:
-                got = read_points(calc, name, run)
-            except Exception as exc:              # noqa: BLE001 -- said, never hidden
-                got = None
-                fact["unreadable"] = f"{run.relative_to(base)}: {exc}"
-            if got is not None and got.state == "unreadable":
-                fact["unreadable"] = f"{run.relative_to(base)}: {got.detail}"
-            if got is None or got.state == "unreadable":
-                points = []
-            else:
-                gathered = (got.state, got.detail, list(got.rows))
-                points = gathered[2]
-        if points:
+            got = _points_read(calc, name, run, fact)
+            gathered = ((got.state, got.detail, list(got.rows))
+                        if got is not None
+                        else ("unreadable", "its records do not read", []))
+            points = gathered[2]
+        if points and not per_point:
             fact["taken"] = [
-                {"frame": p.get("frame"), "of": p.get("of"),
-                 "bias_v": p.get("bias_v"),
-                 "attempt": (str(RunPlace.of(points_run).point(p["rel"])
-                                 .relative_to(base))
-                             if points_run is not None and p.get("rel")
-                             else None),
-                 "started_from": p.get("started_from"),
-                 # THE POINT IT IS A COPY OF, the finished calculation's
-                 # (`engines/transport.md` § 2a.16).
-                 **({"copied_from": p["copied_from"]}
-                    if p.get("copied_from") else {}),
-                 "took": p.get("took") or []}
+                _taken(p, str(RunPlace.of(points_run).point(p["rel"])
+                              .relative_to(base))
+                       if points_run is not None and p.get("rel") else None)
                 for p in points]
-        if rung_points(task, name, frames=frames_of(base)) \
-                and answers != PRODUCT:
+        if per_point:
             # A RUNG THAT RUNS PER POINT, POINT BY POINT -- the report's
             # convergence card follows the selected point (`web/results.md`
             # § 2.5); the rung's own facts are its first point's.
-            fact["by_point"] = _rung_points(calc, name, run=run,
-                                            rung=fact, rows=points)
+            # EACH POINT, ITS STATE AND WHAT IT STARTED FROM AND TOOK, from
+            # its own run's rows (`_rung_points`).
+            fact["by_point"] = _rung_points(
+                calc, name, run=run, rung=fact, rows=points,
+                runs=device_runs if name == "device" else None)
             _bridge_charge_from_0v(fact["by_point"])
-            # WHAT EACH POINT STARTED FROM AND TOOK -- the status door's own
-            # reading of the point's `.continued-from` and `.gathered-from`
-            # (`StageStatus.points`; § 2a.12: the provenance of a sweep's
-            # points), joined by the point -- its frame and its voltage;
-            # never a second reader here.
-            said = {(p.get("frame"), float(p["bias_v"])): p
-                    for p in (points or ()) if p.get("bias_v") is not None}
-            for p in fact["by_point"]:
-                sp = said.get((p.get("frame"), float(p["bias_v"])))
-                if sp is not None:
-                    p["started_from"] = sp.get("started_from")
-                    p["took"] = sp.get("took") or []
-            # THE RUN THE TRANSMISSION GATHERED answers for itself when it is
-            # not the stage's newest (§ 2a.12: the device facts beside T(E)
-            # are that run's): its points' states, and a detail naming both.
-            if run is not None and s.attempt and s.dir \
-                    and run != base / s.dir / s.attempt and points:
+            # THE PROVENANCE CHAIN'S PER-POINT LINES, each point's own run's.
+            if points:
+                fact["taken"] = [_taken(p, p.get("attempt"))
+                                 for p in fact["by_point"]]
+            if gathered is not None:
                 # ITS STATE, as the one reading said it for this run
                 # (`continuation.read_points`, above).
-                fact["state"], said = gathered[0], gathered[1]
-                fact["detail"] = (f"{said}; the run the transmission "
-                                  f"gathered ({fact['attempt']}); the "
-                                  f"stage's newest run is "
-                                  f"{s.dir}/{s.attempt}: {s.detail}")
+                fact["state"] = gathered[0]
+                fact["detail"] = gathered_said(gathered[1])
             first = next((p for p in fact["by_point"]
                           if p.get("energy_ev") is not None), None)
             if first is not None:
                 fact.update({k: first[k] for k in first
-                             if k not in ("bias_v", "frame", "point",
+                             if k not in ("bias_v", "frame", "of", "point",
                                           "attempt", "state", "detail",
-                                          "started_from", "took")})
+                                          *_PROVENANCE)})
                 fact["facts_at_v"] = first["bias_v"]
                 fact["facts_at_frame"] = first["frame"]
                 fact["facts_at"] = first["point"]
@@ -551,19 +538,45 @@ def _stage_facts(calc, *, status) -> List[Dict]:
                         if first.get("periodic") else
                         _periodic_shift(base, base / first["started_from"])
                         if first.get("started_from") else None)
+            # A TRANSMISSION RUN WHOSE POINTS GATHERED FROM SEVERAL DEVICE
+            # RUNS -- points taken over beside points run again -- says so;
+            # each point's device facts are its own run's (above).
+            if name == "device" and several:
+                gathered_from = sorted({str(r.relative_to(base))
+                                        for r in device_runs.values()})
+                fact["detail"] = (
+                    f"{fact['detail']}; the transmission's points gathered "
+                    f"from {len(gathered_from)} device runs: "
+                    f"{', '.join(gathered_from)}")
             out.append(fact)
             continue
+        if another and answers != PRODUCT:
+            # A RUN-ONCE RUNG'S GATHERED RUN, by the one door for a run's
+            # state (`runs.concluded`) -- its facts below are that run's.
+            from ..jobset.naming import stage_home
+            from ..runs import concluded
+            st = concluded(run, stage_home(base, task, name).names,
+                           base=base, launched_in=run)
+            fact["state"], fact["detail"] = st.state, gathered_said(st.detail)
         output = (_output_of(run)
                   if answers != PRODUCT and run is not None else None)
         if output is None:
             out.append(fact)
             continue
-        fact.update(_science(output))
+        science = _science(output)
+        unread = science.pop("unreadable", None)
+        fact.update(science)
+        if unread:
+            _say_unreadable(fact, unread)
         if name == "device":
             fact["periodic"] = (
                 {**fact["periodic"], "from": fact.get("attempt")}
                 if fact.get("periodic") else
                 _periodic_shift(base, run))
+            # A DEVICE THAT RUNS ONCE ran at 0 V -- a single bias's list is
+            # [0.0], the low-bias approximation's slice 0 V (`Task.bias`) --
+            # so it is its own 0 V point.
+            _bridge_charge_from_0v([fact], ran_at=0.0)
         out.append(fact)
     return out
 
@@ -593,46 +606,59 @@ def _periodic_shift(base: Path, folder: Path) -> Optional[Dict]:
     return None
 
 
-def gathered_device_run(calc) -> Optional[Path]:
-    """The device run ``calc``'s transmission's newest run gathered its
-    Hamiltonians from -- read from the transmission's first point's own
-    ``.gathered-from`` (`runrecord.read_gathered_from`), the run above the
-    point named there -- or ``None`` while the transmission has gathered
-    nothing (`engines/transport.md` § 2a.12: the provenance is what was
-    gathered, never the newest run by file time)."""
+def gathered_device_runs(calc) -> Tuple[Dict[str, Path], List[str]]:
+    """THE DEVICE RUN EACH TRANSMISSION POINT GATHERED, by the device
+    point's folder below its run (``v0.2``, ``f001/v0.2``) -- read from each
+    point's own ``.gathered-from`` (`runrecord.read_gathered_from`), the run
+    above the device point named there (`engines/transport.md` § 2a.12: the
+    provenance is what was gathered, never the newest run by file time).  A
+    point a launch took over keeps the device run it was computed from,
+    whatever the new run gathered (§ 2a.11, *Launched again*), so one
+    transmission run's points may name two device runs.  Empty while the
+    transmission has gathered nothing; beside it, a sentence for each point
+    whose ``.gathered-from`` does not read -- said on the device rung, never
+    the whole record refused."""
+    from ..runrecord import LaunchRecordError, read_gathered_from
     from .stages import inputs_of
+    base = Path(calc.base)
     # THE DEVICE'S FILE, as the DAG names it (`stage_inputs`), and THE RUN
     # its folder lies in -- a point's folder lies below it
     # (`RunRef.run_folder`).
     device = {fn for up, fn in inputs_of(calc.task, "transmission")
               if up == "device"}
-    for _pt, where, _run in result_folders(calc, "transmission"):
+    out: Dict[str, Path] = {}
+    unread: List[str] = []
+    for pt, where, _run in result_folders(calc, "transmission"):
         if where is None:
             continue
-        for src, fn in _gathered(where):
+        try:
+            got = read_gathered_from(where)
+        except LaunchRecordError as exc:
+            unread.append(f"{pt.words()}: {exc}")
+            continue
+        for src, fn in got:
             if fn in device:
-                return src.run_folder().path(Path(calc.base))
-    return None
+                run = src.run_folder().path(base)
+                out[str(src.path(base).relative_to(run))] = run
+                break
+    return out, unread
 
 
-def _gathered(folder):
-    """What ``folder``'s run gathered (`runrecord.read_gathered_from`) -- a
-    record that does not read is the record's refusal, a
-    :class:`RecordError` naming it, as every reader of the transport record
-    says one."""
-    from ..runrecord import LaunchRecordError, read_gathered_from
-    try:
-        return read_gathered_from(folder)
-    except LaunchRecordError as exc:
-        raise RecordError(str(exc)) from None
+def gathered_device_run(runs: Dict[str, Path]) -> Optional[Path]:
+    """THE DEVICE RUNG'S OWN RUN on the record: the one the transmission's
+    first point whose ``.gathered-from`` reads gathered, of ``runs``
+    (:func:`gathered_device_runs`) -- ``None`` while the transmission has
+    gathered nothing."""
+    return next(iter(runs.values()), None)
 
 
 def readings_kept(readings: Optional[Sequence[Dict]]) -> bool:
     """Whether every reading of a point's data files is kept -- its own and
     those in its ``shared/``, the point's ``digest`` (`model/parse.md`
-    § 5e): the one answer to *its DOS per orbital is whole*, which the
-    digests a point names, the data file's ``dos_per_orbital_reading`` and
-    the export's missing-DOS sentence ask."""
+    § 5e): the one answer to *its DOS per orbital is whole*, asked once a
+    point as the record is composed -- its ``per_orbital_unread``, which
+    the digests it names, the data file's ``dos_per_orbital_reading``, the
+    export's missing-DOS sentence and the page read."""
     return bool(readings) and all(d.get("state") == "kept"
                                   for d in readings)
 
@@ -711,9 +737,9 @@ def _science(out: Path) -> Dict:
     if frames:
         fact["energy_ev"] = frames[-1].energy
         # THE RUN'S FERMI LEVEL, from the last SCF cycle of the last frame
-        # -- the converged one: a lead's is the reference energy the whole
-        # junction is measured against, the seed's is the periodic
-        # junction's, the device's its NEGF loop's (the last row is NEGF).
+        # -- the converged one: a lead's its bulk's, the seed's the periodic
+        # junction's, the device's its NEGF loop's (the last row is NEGF) --
+        # the one T(E)'s energies are measured from (§ 2a.12).
         # Asked by the COLUMN, so adding a third lead one day is a table
         # row and not a third name here.
         for cyc in reversed(hist):
@@ -723,16 +749,24 @@ def _science(out: Path) -> Dict:
     return fact
 
 
-def _bridge_charge_from_0v(points: List[Dict]) -> None:
+def _bridge_charge_from_0v(points: List[Dict],
+                           ran_at: Optional[float] = None) -> None:
     """Each device point's ``negf.d_change_from_0v_e``: ``D(V) - D(0 V)``,
     the bridge's net Mulliken population at its voltage less its frame's at
     0 V, both the last NEGF cycle's (`engines/transport.md` § 2a.12, *The
-    device's charges*) -- set where both are stated, never otherwise.  A
-    frame's later voltages start from the previous voltage's density, so 0 V
-    is the one reference every voltage of a frame shares."""
+    device's charges*) -- set where both are stated and the 0 V point is
+    done, its run finished and its SCF converged; a 0 V point that is not
+    is no reference.  A frame's later voltages start from the previous
+    voltage's density, so 0 V is the one reference every voltage of a
+    frame shares.  ``ran_at``: the voltage of a device that runs once, whose
+    one entry states none."""
+    def volts(p) -> Optional[float]:
+        v = p.get("bias_v") if ran_at is None else ran_at
+        return None if v is None else float(v)
     at_0v = {p.get("frame"): ((p.get("negf") or {}).get("charges") or {})
              .get("D") for p in points
-             if p.get("bias_v") is not None and float(p["bias_v"]) == 0.0}
+             if volts(p) == 0.0 and p.get("state") == "finished"
+             and p.get("scf_converged") is True}
     for p in points:
         d = ((p.get("negf") or {}).get("charges") or {}).get("D")
         d0 = at_0v.get(p.get("frame"))
@@ -769,8 +803,52 @@ def _contour_facts(contours: Dict) -> Dict:
     return out
 
 
+def _points_read(calc, name: str, run: Path, rung: Dict):
+    """THE ONE READING of a run of points (`continuation.read_points`): its
+    points' rows and its state -- ``None`` where its records do not read or
+    the reader fails, said on the rung (:func:`_say_unreadable`)."""
+    from ..jobset.continuation import read_points
+    where = run.relative_to(Path(calc.base))
+    try:
+        got = read_points(calc, name, run)
+    except Exception as exc:                      # noqa: BLE001 -- said, never hidden
+        _say_unreadable(rung, f"{where}: {exc}")
+        return None
+    if got.state == "unreadable":
+        _say_unreadable(rung, f"{where}: {got.detail}")
+        return None
+    return got
+
+
+def _say_unreadable(fact: Dict, *said: str) -> None:
+    """RECORDS THAT DO NOT READ, said on the rung (``unreadable``) -- each
+    sentence beside those said before, never one over another, and never
+    the whole record refused (`engines/transport.md` § 2a.12)."""
+    fact["unreadable"] = "; ".join(
+        [*([fact["unreadable"]] if fact.get("unreadable") else []), *said])
+
+
+#: WHAT A POINT STARTED FROM AND TOOK, as its run's row states it -- the
+#: status door's reading of its ``.continued-from`` and ``.gathered-from``
+#: (`StageStatus.points`; `engines/transport.md` § 2a.12): why its start is
+#: not known where that does not read, and the point it is a copy of
+#: (§ 2a.16).
+_PROVENANCE = ("started_from", "start_unread", "copied_from", "took")
+
+
+def _taken(p: Dict, attempt: Optional[str]) -> Dict:
+    """A point's line of the provenance chain: which point, the folder it
+    ran in (``attempt``), and :data:`_PROVENANCE` as its row states it."""
+    return {"frame": p.get("frame"), "of": p.get("of"),
+            "bias_v": p.get("bias_v"), "attempt": attempt,
+            "started_from": p.get("started_from"),
+            **{k: p[k] for k in ("start_unread", "copied_from") if p.get(k)},
+            "took": p.get("took") or []}
+
+
 def _rung_points(calc, name: str, run: Optional[Path] = None, *, rung: Dict,
-                 rows=()) -> List[Dict]:
+                 rows=(), runs: Optional[Dict[str, Path]] = None
+                 ) -> List[Dict]:
     """``[{frame, bias_v, point, attempt, state, detail, ...science}]`` --
     each point of ``calc``'s rung ``name`` that runs per point (``calc``
     the calculation whole), its state the status door's row (``rows``,
@@ -782,14 +860,31 @@ def _rung_points(calc, name: str, run: Optional[Path] = None, *, rung: Dict,
     rung's own row (``rung``: its state and detail, the status door's).
     A point the ended walk never reached is *not run*, as the rows say it
     (`continuation.never_reached`, `engines/transport.md` § 2a.11) --
-    never one still to come, never failed."""
+    never one still to come, never failed.  ``runs``: a point's own run by
+    its folder below it, where it is another -- the device run a
+    transmission point gathered (:func:`gathered_device_runs`) -- read
+    there, its state and :data:`_PROVENANCE` from that run's rows
+    (`continuation.read_points`).  Each entry carries its row's
+    :data:`_PROVENANCE`."""
     from ..jobset.naming import stage_home
     from ..runs import concluded
     base = Path(calc.base)
     names = stage_home(base, calc.task, name).names
     said = {r["folder"]: r for r in rows or ()}
+    read_runs: set = set()
     out: List[Dict] = []
     for pt, where, run in result_folders(calc, name, run=run):
+        own = (runs or {}).get(pt.rel)
+        if own is not None and run is not None and own != run:
+            where, run = RunPlace.of(own).point(pt.rel), own
+            if own not in read_runs:
+                # ITS RUN'S ROWS, read once (:func:`_points_read`) -- a run
+                # whose records do not read leaves its point to the run
+                # door's own read.
+                read_runs.add(own)
+                got = _points_read(calc, name, own, rung)
+                if got is not None:
+                    said.update({r["folder"]: r for r in got.rows})
         entry: Dict = {**pt.to_wire(), "point": pt.words()}
         if where is None or not where.is_dir():
             entry.update(state=rung["state"], detail=rung["detail"])
@@ -804,6 +899,7 @@ def _rung_points(calc, name: str, run: Optional[Path] = None, *, rung: Dict,
         if row is not None:
             entry.update(state=row["state"],
                          detail=row["detail"] if row["done"] else row["why"])
+            entry.update({k: row[k] for k in _PROVENANCE if row.get(k)})
         else:
             st = concluded(where, names, base=base, launched_in=run)
             entry.update(state=st.state, detail=st.detail)
@@ -832,14 +928,22 @@ def _chain(base: Path, stages: List[Dict]) -> List[Dict]:
     """``[{stage, attempt, gathered: [{file, from}]}]`` -- what each rung's
     attempt was gathered from, read from its `.gathered-from`
     (`runrecord.read_gathered_from`); a rung that gathered nothing is
-    listed with ``[]``."""
+    listed with ``[]``, one whose record does not read with why
+    (``unreadable``) -- never the whole record refused."""
+    from ..runrecord import LaunchRecordError, read_gathered_from
     out = []
     for st in stages:
         if not st.get("attempt"):
             continue
+        try:
+            got = read_gathered_from(base / st["attempt"])
+            unread = None
+        except LaunchRecordError as exc:
+            got, unread = [], str(exc)
         row = {"stage": st["stage"], "attempt": st["attempt"],
-               "gathered": [{"file": fn, "from": str(src)} for src, fn
-                            in _gathered(base / st["attempt"])]}
+               "gathered": [{"file": fn, "from": str(src)}
+                            for src, fn in got],
+               **({"unreadable": unread} if unread else {})}
         # A SWEPT RUN'S POINTS, each with what it started from and what it
         # alone took (the status door's reading, carried by the rung's
         # facts) -- a transmission point's device Hamiltonian, a device
@@ -869,8 +973,9 @@ def collect_record(calc, *, partial: bool = False) -> Dict:
     stated weight, where every frame states one, the structure's rows beside
     it as written -- the frames' post-process, `frame_average.average_block`.
 
-    Reads each point's LATEST attempt, its state the run door's
-    (`parse.dirs.run_status`): a point with its transmission is in
+    Reads each point's LATEST attempt, its state the status door's row
+    (`runstatus.jobset_status`), the run door's (`runs.concluded`) for a
+    run it has no rows for: a point with its transmission is in
     ``points``; one not launched, queued or running is ``pending`` -- never
     a failure; one whose run failed, stopped, or ended without its
     transmission is ``failed``, saying which (the displacement sweep's
@@ -910,12 +1015,12 @@ def collect_record(calc, *, partial: bool = False) -> Dict:
     home = stage_home(base, task, "transmission")
     names = home.names
     regions = device_regions(junction)
-    # THE JUNCTION'S ATOM INDEX MAP -- every junction rung's deck written from
-    # it -- which each point's kept reading must state (`model/overview.md`
-    # § 2.2b, F7).
-    from ..atom_permutation import AtomIndexMap
-    junction_atoms = (AtomIndexMap.of_engine_record(junction.atom_order,
-                                                    junction.n_atoms)
+    # THE JUNCTION'S ATOM INDEX MAP, as the transmission's deck writes it
+    # (`runs.stage_atom_map`) -- which each point's kept reading must
+    # state (`model/overview.md` § 2.2b, F7).
+    from ..runs import stage_atom_map
+    junction_atoms = (stage_atom_map(junction.n_atoms, junction.atom_order,
+                                     task.calculation, "transmission")
                       if junction is not None else None)
     # WHERE EACH RUNG STANDS, the status door's one answer, read once for
     # every part of the record (`runstatus.jobset_status`).
@@ -1062,10 +1167,13 @@ def collect_record(calc, *, partial: bool = False) -> Dict:
         # where every reading is kept and the DOS was read from each, never a
         # reading in part -- one spin, one side of a shared grid.
         digest = [k.to_wire(base) for k in readings(where, task.label)]
+        # NOT READ YET -- a data file whose reading is not whole; one with
+        # none has nothing to read: the one answer the report, the data file
+        # and the export ask.
+        unread = bool(digest) and not readings_kept(digest)
         named = (dos or {}).get("per_orbital") or ()
         if dos is not None and "per_orbital" in dos and not (
-                readings_kept(digest)
-                and len(named) == len(digest)):
+                not unread and digest and len(named) == len(digest)):
             dos.pop("per_orbital")
         for src in (dos or {}).get("per_orbital") or ():
             # EACH DIGEST BY ITS PATH FROM THE CALCULATION'S FOLDER, where
@@ -1074,9 +1182,16 @@ def collect_record(calc, *, partial: bool = False) -> Dict:
         # THE POINT IT IS A COPY OF -- taken over from, or copied in with
         # its run from, the finished calculation this one reuses (§ 2a.16):
         # the run that computed it (`runrecord.copied_of`).
-        from ..runrecord import copied_of
-        copied = (row.get("copied_from") if row is not None
-                  else copied_of(base, where))
+        from ..runrecord import LaunchRecordError, copied_of
+        if row is not None:
+            copied = row.get("copied_from")
+        else:
+            try:
+                copied = copied_of(base, where)
+            except LaunchRecordError as exc:
+                # SAID ON THE RUNG, never the whole record refused (§ 2a.12).
+                copied = None
+                _say_unreadable(rung, f"{pt.words()}: {exc}")
         # ITS CURRENT, and which it is (`engines/transport.md` § 2a.16): the
         # printed figures' total, or -- for a point that shares energies --
         # the record's over its joined grid.
@@ -1117,6 +1232,7 @@ def collect_record(calc, *, partial: bool = False) -> Dict:
             # kept, missing, out of date or being read, with its size and
             # its claim (above).
             "digest": digest,
+            "per_orbital_unread": unread,
         })
     if not points_out and not partial:
         # THE WAY ON, by what the stage's state says: prepared (an attempt is
@@ -1145,7 +1261,7 @@ def collect_record(calc, *, partial: bool = False) -> Dict:
         # the record `summarize` writes is refused by name.
         average = (average_said if partial else average_block)(
             frames_of(base) if junction is not None else None, frame_set,
-            points_out, pending + failed, same_volts)
+            points_out, pending + not_run + failed, same_volts)
     except AverageError as exc:
         raise RecordError(str(exc)) from exc
     provenance = read_provenance(base)
@@ -1163,6 +1279,9 @@ def collect_record(calc, *, partial: bool = False) -> Dict:
     # voltages states the switch; one is a single bias.  Never inferred
     # from how many points ran.
     treatment = task.treatment
+    # A SPIN-POLARIZED CALCULATION, the one answer the I-V, the data file
+    # and the report read: a point whose deck is polarized.
+    polarized = any(p.get("spin") == "polarized" for p in points_out)
     record: Dict = {
         "schema": TRANSPORT_RESULT_SCHEMA,
         "label": task.label,
@@ -1200,6 +1319,7 @@ def collect_record(calc, *, partial: bool = False) -> Dict:
         # ITS WAY ON ALONE, for the report, whose drawing states the fact
         # itself (MolView's notice); ``None`` where the order is recorded.
         "order_way": order_way_said(base, recorded),
+        "polarized": polarized,
         "points": points_out,
         # THE I-V: each point's own TBtrans current -- or, under the low-bias
         # approximation, computed by the record from the one 0 V slice for
@@ -1207,7 +1327,7 @@ def collect_record(calc, *, partial: bool = False) -> Dict:
         "iv": _iv(base, task, treatment, points_out,
                   [pt.frame for pt in rung_points(
                       task, "transmission", frames=frames_of(base))]
-                  or [None]),
+                  or [None], polarized),
         # THE FRAMES' AVERAGE at each voltage -- their post-process's
         # (`frame_average`, § 2a.12) -- and the frame set it is taken over,
         # cited whole: its rows with their meanings, the vibration, the
@@ -1295,7 +1415,8 @@ def device_orbital_index(calc) -> Optional[Path]:
     from ..runfiles import SIESTA_ORB_INDX
     from ..runs import run_of
     for _pt, folder, _run in result_folders(
-            calc, "device", run=gathered_device_run(calc)):
+            calc, "device", run=gathered_device_run(
+                gathered_device_runs(calc)[0])):
         if folder is None:
             continue
         run = run_of(folder)
@@ -1392,9 +1513,9 @@ def selection_pdos(calc, bias_v: float, atoms, orbitals: str,
     except AtomIndexError as exc:
         raise RecordError(str(exc)) from exc
     # THE JUNCTION'S ATOM INDEX MAP, which each reading's must be (F7).
-    from ..atom_permutation import AtomIndexMap
-    junction_atoms = AtomIndexMap.of_engine_record(junction.atom_order,
-                                                   junction.n_atoms)
+    from ..runs import stage_atom_map
+    junction_atoms = stage_atom_map(junction.n_atoms, junction.atom_order,
+                                    calc.task.calculation, "transmission")
     try:
         # THE POINT IT WAS READ AT, stated beside the answer: under the
         # low-bias approximation a voltage's PDOS is its frame's 0 V slice.
@@ -1420,31 +1541,32 @@ def selection_pdos(calc, bias_v: float, atoms, orbitals: str,
 
 
 def _iv(base: Path, task, treatment: str, points_out: List[Dict],
-        frames: List[Optional[int]]) -> Dict:
+        frames: List[Optional[int]], polarized: bool) -> Dict:
     """The record's I-V block -- PER FRAME (`engines/transport.md` § 2a.12):
     columns ``frame`` (each row's frame, ``None`` on a calculation with no
-    frame axis), ``voltages_v``, ``current_a``, ``current_a_printed``.
+    frame axis), ``voltages_v``, ``current_a``.
     ``computed`` says where the currents came from: ``tbtrans`` -- each
     point's own printed integral -- or ``low-bias-approximation`` -- the record's
     integral of each frame's own 0 V slice for every listed voltage, with
     the Fermi tails at the electronic temperature that point's deck states
     (§ 2a.10).  The frames share one transmission deck, so ``kt_ev``,
-    ``window_ev`` and the ``notes`` keyed by voltage are the block's; a
-    frame whose 0 V point has not run is noted under its token (``all``
-    with no frame axis).  A POLARIZED calculation adds ``current_up_a`` and
-    ``current_down_a``, each spin's current beside the total
+    ``window_ev`` and the ``notes`` are the block's: each ``{frame, bias_v,
+    note}`` -- a voltage whose window reaches past the slice's, or a frame
+    whose 0 V point has not run, its ``bias_v`` ``None``: one form
+    for the page, the table `summarize` prints and the data file, which has
+    no row axis.  A POLARIZED calculation adds
+    ``current_up_a`` and ``current_down_a``, each spin's current beside the
+    total
     (`web/results.md` § 2.5): TBtrans's printed figures, or under the
-    approximation each spin's own integral, half of
-    :func:`low_bias_iv` of that spin's T(E, 0) -- the integral is
-    the two-channel G₀'s."""
+    approximation each spin's own integral, :func:`low_bias_iv` of that
+    spin's T(E, 0) by :func:`channel_current`."""
     from ..structure import frame_words
     from .energies import spacing, window_of
     from .stages import same_volts
-    polarized = any(p.get("spin") == "polarized" for p in points_out)
     if treatment == "low-bias-approximation":
         out: Dict = {"frame": [], "voltages_v": [], "current_a": [],
-                     "current_a_printed": [], "computed": "low-bias-approximation",
-                     "kt_ev": None, "window_ev": None, "notes": {}}
+                     "computed": "low-bias-approximation",
+                     "kt_ev": None, "window_ev": None, "notes": []}
         if polarized:
             out["current_up_a"], out["current_down_a"] = [], []
         for f in frames:
@@ -1455,14 +1577,15 @@ def _iv(base: Path, task, treatment: str, points_out: List[Dict],
                     out["frame"].append(f)
                     out["voltages_v"].append(float(v))
                     out["current_a"].append(None)
-                    out["current_a_printed"].append(None)
                     if polarized:
                         out["current_up_a"].append(None)
                         out["current_down_a"].append(None)
-                out["notes"][iv_frame_key(f)] = (
-                    f"the 0 V transmission of {frame_words(f, len(frames))} "
-                    f"has not run" if f is not None
-                    else "the 0 V transmission has not run")
+                out["notes"].append({
+                    "frame": f, "bias_v": None,
+                    "note": (f"the 0 V transmission of "
+                             f"{frame_words(f, len(frames))} has not run"
+                             if f is not None
+                             else "the 0 V transmission has not run")})
                 continue
             kt = BOLTZMANN_EV_K * deck_temperature_k(base / zero["attempt"])
             # THE SLICE'S GRID, as its deck states it -- its spacing each
@@ -1477,33 +1600,27 @@ def _iv(base: Path, task, treatment: str, points_out: List[Dict],
             if polarized:
                 chans = zero.get("channels") or {}
                 for spin in ("up", "down"):
-                    got = (low_bias_iv(zero["energy_ev"], chans[spin],
-                                       list(task.bias), kt, spacing(window))
-                           ["current_a"] if spin in chans
-                           else [None] * len(iv["current_a"]))
                     out[f"current_{spin}_a"].extend(
-                        None if i is None else i / 2.0 for i in got)
-            # THE NOTES, KEYED BY THE ROW OF THE WHOLE TABLE: this frame's
-            # rows start at `row0`, and a note keyed by its row within the
-            # frame's own list is re-keyed by that offset.
-            row0 = len(out["voltages_v"])
+                        low_bias_iv(zero["energy_ev"], chans[spin],
+                                    list(task.bias), kt, spacing(window),
+                                    current=channel_current)["current_a"]
+                        if spin in chans else [None] * len(iv["current_a"]))
             for v, i in zip(iv["voltages_v"], iv["current_a"]):
                 out["frame"].append(f)
                 out["voltages_v"].append(v)
                 out["current_a"].append(i)
-                out["current_a_printed"].append(
-                    zero["current_a_printed"] if same_volts(v, 0.0)
-                    else None)
-            for k, note in (iv.get("notes") or {}).items():
-                out["notes"][str(row0 + int(k))] = note
+            # EACH NOTE OF THE FRAME'S OWN LIST, keyed by its row there
+            # (`low_bias_iv`), placed by the frame and the voltage.
+            out["notes"].extend(
+                {"frame": f, "bias_v": iv["voltages_v"][int(k)], "note": note}
+                for k, note in (iv.get("notes") or {}).items())
             if out["kt_ev"] is None:
                 out["kt_ev"], out["window_ev"] = iv["kt_ev"], iv["window_ev"]
         return out
     out = {"frame": [p["frame"] for p in points_out],
            "voltages_v": [p["bias_v"] for p in points_out],
            "current_a": [p["current_a"] for p in points_out],
-           "current_a_printed": [p["current_a_printed"] for p in points_out],
-           "computed": "tbtrans"}
+           "computed": "tbtrans", "notes": []}
     if polarized:
         for spin in ("up", "down"):
             out[f"current_{spin}_a"] = [
@@ -1616,6 +1733,19 @@ TREATMENT_NOTE = {
 }
 
 
+def printed_said(p: Dict) -> str:
+    """What TBtrans printed at a point (``printed_a``), as the I-V table
+    shows it: a non-polarized point's one figure, a polarized point's each
+    channel's by name, ``--`` where it printed none -- a point that shares
+    energies (:data:`CURRENT_MEANS`)."""
+    got = p.get("printed_a") or {}
+    if list(got) == list(SPIN_CHANNELS["non-polarized"]):
+        return f"{next(iter(got.values())):>13.4e}"
+    if got:
+        return "  ".join(f"{k} {v:.4e}" for k, v in got.items())
+    return f"{'--':>13}"
+
+
 def iv_table_text(record: Dict) -> str:
     """The printed deliverable: one row per point -- its frame's token,
     G(E_F), the junction's total current, and the figure TBtrans printed --
@@ -1638,14 +1768,13 @@ def iv_table_text(record: Dict) -> str:
         return frame_words(f) if f is not None else "--"
     for p in record["points"]:
         g = p["conductance_g0"]
-        i, i0 = p["current_a"], p.get("current_a_printed")
+        i = p["current_a"]
         lines.append(
             f"  {_frame(p.get('frame')):>8}  {p['bias_v']:>8.3f}  "
             + (f"{g:>12.4f}" if g is not None else f"{'--':>12}")
             + "  "
             + (f"{i:>12.4e}" if i is not None else f"{'--':>12}")
-            + "  "
-            + (f"{i0:>13.4e}" if i0 is not None else f"{'--':>13}"))
+            + "  " + printed_said(p))
     for what, said in (("pending", "not ended"), ("not_run", "not run"),
                        ("failed", "failed")):
         for p in record.get(what, ()):
@@ -1660,10 +1789,13 @@ def iv_table_text(record: Dict) -> str:
                      + (f", kT = {kt:.4f} eV, window {iv.get('window_ev')} eV"
                         if kt is not None else "")
                      + ":")
-        notes = iv.get("notes") or {}
-        for (k, f, v), i in zip(iv_rows(iv), iv.get("current_a", ())):
-            # A VOLTAGE'S NOTE IS KEYED BY ITS ROW, ELSE ITS FRAME'S.
-            note = notes.get(str(k)) or notes.get(iv_frame_key(f))
+        notes = iv.get("notes") or ()
+        for (f, v), i in zip(iv_rows(iv), iv.get("current_a", ())):
+            # A VOLTAGE'S NOTE, ELSE ITS FRAME'S, as the record places them.
+            note = next((n["note"] for n in notes if n["frame"] == f
+                         and n["bias_v"] == v), None) or next(
+                (n["note"] for n in notes if n["frame"] == f
+                 and n["bias_v"] is None), None)
             lines.append(f"  {_frame(f):>8}  "
                          f"{v:>8.3f}  {'':>12}  "
                          + (f"{i:>12.4e}" if i is not None else f"{'--':>12}")

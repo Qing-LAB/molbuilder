@@ -20,7 +20,8 @@ ROLE    the post-process over a multi-frame transport calculation, kept out of
         (:data:`ASSUMPTIONS`)
 USED-BY the frame generator (`spectra.mode_frames`: the vocabulary it writes in),
         the transport record (`transport.record`), the data file
-        (`transport.datafile`), the describe door and Task setup's folder
+        (`transport.datafile`), the junction's composition
+        (`transport.compose`), the describe door and Task setup's folder
         answer (`web/blueprints/transport.py`, `web/blueprints/build.py`),
         the post-processing layer (`postprocess.reaveraged`)
 
@@ -391,7 +392,8 @@ def average_block(n_frames: Optional[int], frame_set,
     conductance beside the base frame's, with the change in per cent of it.
     ``n_frames`` is the composed junction's count (``None`` before its
     first prep); ``points`` are the record's done points, ``missing`` its
-    pending and failed ones -- each a dict with ``frame`` and ``bias_v``;
+    pending, not run and failed ones -- each a dict with ``frame`` and
+    ``bias_v``;
     ``same_volts`` the stages' one voltage rule.  ``why`` says, in one
     sentence, why there is no average: nothing composed yet, one structure,
     or frames that do not each state a weight."""
@@ -430,11 +432,9 @@ def average_block(n_frames: Optional[int], frame_set,
         block["why"] = (f"the frames do not each state a {WEIGHT_ROW} -- no "
                         f"average; each frame's curve is its own point")
         return block
-    voltages: List[float] = []
-    for p in list(points) + list(missing):
-        v = float(p["bias_v"])
-        if not any(same_volts(v, u) for u in voltages):
-            voltages.append(v)
+    from .transport.stages import voltages_once
+    voltages = voltages_once((p["bias_v"] for p in list(points) + list(missing)),
+                             same_volts)
     block["at"] = [at_voltage(v, n_frames, weights, points, missing,
                                same_volts) for v in voltages]
     return block
@@ -750,15 +750,16 @@ def _or_nan(value) -> float:
     return float("nan") if v is None else v
 
 
-def data_file_variables(Var) -> Tuple[Any, ...]:
-    """The data file's frame part, as its variables (``Var``, the data file's
-    own record, `transport.datafile.Var`): along ``frame`` every per-frame
+def data_file_variables() -> Tuple[Any, ...]:
+    """The data file's frame part, as its variables (`ncdata.Var`): along
+    ``frame`` every per-frame
     row of the vocabulary -- its words the ``long_name``, its meaning the
     ``definition``, which the set's own meaning replaces where it writes one
     (:func:`with_meanings`) -- and every row each frame states as written
     (``frame_rows``); and the frames' average at each voltage, each naming
     the rule it was taken at.  The atoms' masses are the file's
     ``/structure``'s (`ncdata.structure_vars`), from :func:`masses_of`."""
+    from .ncdata import Var
     return tuple(Var(r.name, ("frame",), r.kind, r.unit_spelled, r.words,
                      _defined(r, r.means, "model/structure.md 2.2f"),
                      auxiliary=True)
@@ -782,29 +783,31 @@ def data_file_variables(Var) -> Tuple[Any, ...]:
             "the frames' average transmission",
             "sum_f weight_f T_f(E) over every frame, at its stated weight -- "
             "the frame set's sampling_rule at its sampling_nodes frames "
-            "where it states them (the structure_rows attribute)"),
+            "where it states them (the structure_rows attribute)",
+            key="transmission"),
         Var("average_delta_transmission", ("bias_v", "energy_ev"), "derived",
             "1", "the average's change",
             "<T(E)> - T_0(E), from frame 0's, <T(E)> as "
-            "average_transmission is taken"),
+            "average_transmission is taken", key="delta_transmission"),
         Var("average_conductance_g0", ("bias_v",), "derived", "G0",
             "the frames' averaged conductance",
             "sum_f weight_f G_f / G0, at the weights average_transmission "
-            "is taken at"),
+            "is taken at", key="conductance_g0"),
         Var("average_conductance_change_percent", ("bias_v",), "derived",
             "%", "the averaged conductance's change",
             "100 (<G> - G_f0) / G_f0, G_f0 frame 0's conductance, <G> as "
-            "average_conductance_g0 is taken"),
+            "average_conductance_g0 is taken",
+            key="conductance_change_percent"),
         Var("average_why", ("bias_v",), "state", "",
             "why the frames' average is none",
             "why there is no average at this voltage: one structure, or "
             "the weights not stated; or the frames whose point at this "
             "voltage is not done yet",
-            dtype=str),
+            dtype=str, key="why"),
         Var("average_conductance_why", ("bias_v",), "state", "",
             "why the averaged conductance or its change is none",
             "the window not straddling E_F, or frame 0's conductance zero",
-            dtype=str),
+            dtype=str, key="conductance_why"),
     )
 
 
@@ -843,11 +846,17 @@ SUMMARY_PART = ("average_transmission", "average_delta_transmission",
                 "average_conductance_why", "weight_sum", "weight_tolerance")
 
 
-#: THE FRAME PART'S ATTRIBUTES WRITTEN AS JSON TEXT (`ncdata.json_attr`,
-#: :func:`fill_data_file` below) -- read back as the blocks they hold by the
-#: data file's door (`transport.datafile.read_data_file`,
-#: `ncdata.unjson_attr`).
-JSON_ATTRS = ("structure_rows", "frame_warnings", "average_assumptions")
+#: WHAT EACH VOLTAGE'S ENTRY OF THE AVERAGE FILLS (:func:`at_voltage`), by
+#: the variable's name, each value at its record key (`ncdata.Var.key`).
+AT_VOLTAGE = ("average_transmission", "average_delta_transmission",
+              "average_conductance_g0", "average_conductance_change_percent",
+              "average_why", "average_conductance_why")
+
+
+#: THE FRAME PART'S ATTRIBUTES THAT HOLD RECORDS (:func:`fill_data_file`
+#: below) -- written as JSON text and read back as the blocks they hold by
+#: the data file's one list of them (`transport.datafile.RECORD_ATTRS`).
+RECORD_ATTRS = ("structure_rows", "frame_warnings", "average_assumptions")
 
 
 def fill_data_file(values: Dict[str, Any], attrs: Dict[str, Any],
@@ -864,7 +873,6 @@ def fill_data_file(values: Dict[str, Any], attrs: Dict[str, Any],
     said of the weights, their sum and its tolerance, and what the average
     assumes."""
     from .frameset import read
-    from .ncdata import json_attr
     rows = read(structure) if structure is not None else None
     if rows is not None:
         check_units(rows)
@@ -876,20 +884,12 @@ def fill_data_file(values: Dict[str, Any], attrs: Dict[str, Any],
     # one, or the voltage's own.
     if average.get("why"):
         values["average_why"][:] = str(average["why"])
+    # EACH VOLTAGE'S AVERAGE, as the block states it (:data:`AT_VOLTAGE`,
+    # `ncdata.copy_stated`).
+    from .ncdata import copy_stated
+    averaged = [v for v in data_file_variables() if v.name in AT_VOLTAGE]
     for e in average.get("at") or ():
-        b = index(e["bias_v"], biases)
-        for key, name in (("why", "average_why"),
-                          ("conductance_why", "average_conductance_why")):
-            if e.get(key):
-                values[name][b] = str(e[key])
-        for key, name in (("transmission", "average_transmission"),
-                          ("delta_transmission",
-                           "average_delta_transmission"),
-                          ("conductance_g0", "average_conductance_g0"),
-                          ("conductance_change_percent",
-                           "average_conductance_change_percent")):
-            if e.get(key) is not None:
-                values[name][b] = e[key]
+        copy_stated(e, averaged, (index(e["bias_v"], biases),), values)
     if rows is not None:
         for r in STRUCTURE_ROWS:
             v = rows.value(r.name)
@@ -902,13 +902,13 @@ def fill_data_file(values: Dict[str, Any], attrs: Dict[str, Any],
             for k in ("run", "result_sha256"):
                 attrs[f"vibration_{k}"] = str(info.get(k) or "")
         # EVERY ROW AS WRITTEN, and what is said of the weights.
-        attrs["structure_rows"] = json_attr(list(rows.structure))
-        attrs["frame_warnings"] = json_attr(warnings_of(rows))
+        attrs["structure_rows"] = list(rows.structure)
+        attrs["frame_warnings"] = warnings_of(rows)
         if rows.weights is not None:
             values["weight_sum"][...] = float(average.get("weight_sum"))
             values["weight_tolerance"][...] = float(average.get("tolerance"))
-            attrs["average_assumptions"] = json_attr(
-                list(average.get("assumptions") or ()))
+            attrs["average_assumptions"] = list(
+                average.get("assumptions") or ())
 
 
 def reaveraged(path, *, temperature_k, swing_quanta=0.0) -> Dict[str, Any]:
@@ -922,13 +922,14 @@ def reaveraged(path, *, temperature_k, swing_quanta=0.0) -> Dict[str, Any]:
     :func:`motion_weights` refuses (:class:`ReaverageError`), and a data
     file of another schema (`transport.datafile.DataFileError`)."""
     import numpy as np
-    from .transport.datafile import read_data_file
+    from .transport.datafile import (STRUCTURE_GROUP, SUMMARY_GROUP,
+                                     read_data_file)
     groups = read_data_file(path)["groups"]
     # THE FRAMES' ROWS ARE THE JUNCTION'S, the points' figures the
     # summary's (`engines/transport.md` § 2a.12, *The calculation as
     # groups*).
-    data = {**groups["structure"]["variables"],
-            **groups["summary"]["variables"]}
+    data = {**groups[STRUCTURE_GROUP]["variables"],
+            **groups[SUMMARY_GROUP]["variables"]}
 
     def value(name):
         got = data.get(name)
@@ -986,7 +987,7 @@ def reaveraged(path, *, temperature_k, swing_quanta=0.0) -> Dict[str, Any]:
 
 
 __all__ = ["ASSUMPTIONS", "AverageError", "FRAME_ROWS", "INFO_KEY",
-           "JSON_ATTRS", "SUMMARY_PART",
+           "RECORD_ATTRS", "SUMMARY_PART",
            "MASS_CHANNEL", "ROWS", "ReaverageError", "Row", "STRUCTURE_ROWS",
            "masses_of", "mass_numbers",
            "answer", "at_voltage", "average_block", "average_said",

@@ -474,8 +474,6 @@ def deck_atom_index_map(said: Declared, task, stage: Optional[str]):
     ``stage``: both columns from its order record, the identity where it
     states none; the engine column alone for a stage of a structure of its
     own.  Its run's files, and the deck itself wherever it lies."""
-    from molbuilder.atom_permutation import AtomIndexMap
-    from molbuilder.kind_table import own_structure
     said = said.require_order()
     record = said.atom_order
     n = (said.atom_metadata or {}).get("n_atoms_total")
@@ -487,10 +485,25 @@ def deck_atom_index_map(said: Declared, task, stage: Optional[str]):
                          f"2.32.0 with no label, no named value and no "
                          f"order record -- so its atoms' indices cannot be "
                          f"stated")
-    own = own_structure(task.calculation, stage)
-    atoms = (AtomIndexMap.of_own_structure(int(n), own) if own
-             else AtomIndexMap.of_engine_record(record, int(n)))
-    return replace(atoms, stated_by=str(said.deck or ""))
+    return replace(stage_atom_map(int(n), record, task.calculation, stage),
+                   stated_by=str(said.deck or ""))
+
+
+def stage_atom_map(n_atoms: int, atom_order, calculation: str,
+                   stage: Optional[str]):
+    """THE ATOM INDEX MAP OF A STAGE'S FILES (`model/overview.md` § 2.2b,
+    F2) -- the one rule, for ``n_atoms`` atoms whose order record is
+    ``atom_order``, in a ``stage`` of a ``calculation``: listed by engine
+    index, both columns from the order record, the identity where it is
+    none; the engine column alone for a stage of a structure of its own
+    (`kind_table.own_structure` -- an electrode cell).  What prep writes
+    from the structure, what a deck states (:func:`deck_atom_index_map`),
+    and what a composed junction's files are held to."""
+    from molbuilder.atom_permutation import AtomIndexMap
+    from molbuilder.kind_table import own_structure
+    own = own_structure(calculation, stage)
+    return (AtomIndexMap.of_own_structure(int(n_atoms), own) if own
+            else AtomIndexMap.of_engine_record(atom_order, int(n_atoms)))
 
 
 @dataclass(frozen=True)
@@ -1511,6 +1524,7 @@ def folder_answer(directory) -> Dict[str, Any]:
 
 __all__ = ["Place", "place_of", "Run", "run_of", "Declared",
            "declared", "declared_of_deck", "deck_atom_index_map",
+           "stage_atom_map",
            "OrderUnstated", "atom_index_map_of", "RunView",
            "view_of",
            "RunSteps", "RunStepsError", "steps_at", "steps_of", "about", "file_row",

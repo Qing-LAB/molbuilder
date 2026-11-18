@@ -73,12 +73,37 @@ STAGE_FACT = {r.name: r.computes for r in _kind("transport").roles}
 SAME_VOLTS_V = 1e-9
 
 
+def _engine() -> str:
+    """THE ENGINE every run of a transport calculation is -- its kind's one
+    (`kind_table`): the seed, the leads and the device SIESTA
+    (TranSIESTA), the transmission its TBtrans."""
+    from ..kind_table import kind
+    one, = kind("transport").engines
+    return one
+
+
+#: The engine, by the kind table's name for it.
+ENGINE: str = _engine()
+
+
 def same_volts(a: float, b: float) -> bool:
     """``a`` and ``b`` are one voltage -- THE rule a reader asks when it
     finds a voltage it was given along the axis (the record, its average,
     the data file).  Points joined by the values one door gave both sides
     (`rung_points`) carry the same floats and are joined by them."""
     return abs(float(a) - float(b)) < SAME_VOLTS_V
+
+
+def voltages_once(volts, same=same_volts) -> List[float]:
+    """``volts`` in their order, each voltage once by ``same`` -- the one
+    rule, :func:`same_volts`, unless a caller hands its own in: the one
+    listing of a calculation's voltages along an axis, the data file's and
+    the frames' average's."""
+    out: List[float] = []
+    for v in volts:
+        if not any(same(v, u) for u in out):
+            out.append(float(v))
+    return out
 
 
 # --------------------------------------------------------------------- #
@@ -305,7 +330,7 @@ def hands_on(stage: str, task_label: str, base_dir) -> list:
     # THE CALCULATION'S OWN LIST, handed in as the vocabulary its suffixes
     # are declared in (`runfiles.declared`): a row it adds for a new engine
     # build is composed too.
-    along = tuple(warm_list("siesta", "transport", base_dir).along)
+    along = tuple(warm_list(ENGINE, "transport", base_dir).along)
     return [f for f in (compose(task_label, suf, roles=along)
                         for suf in along)
             if f in own]
@@ -384,7 +409,7 @@ def warm_declaration(stage: str, task_label: str, base_dir=None):
     if stage not in ("seed", "device"):
         return []
     from ..jobset.model import warm_declaration
-    return warm_declaration("siesta", task_label, "transport", base_dir)
+    return warm_declaration(ENGINE, task_label, "transport", base_dir)
 
 
 def engine_tabs() -> List[Dict[str, object]]:
@@ -410,7 +435,7 @@ def rung_notes() -> Dict[str, str]:
     rung's position in TRANSPORT_STAGES, one-based."""
     from ..kmesh import TRANSMISSION_PER_SCF as _TBT_FACTOR
     from ..template import catalogue, default_of, one
-    _LEAD_KZ = default_of(one(catalogue(), "electrode_kz", engine="siesta"),
+    _LEAD_KZ = default_of(one(catalogue(), "electrode_kz", engine=ENGINE),
                           "transport")
     return {
         "seed": ("A closed periodic SCF of the whole junction.  It writes the "

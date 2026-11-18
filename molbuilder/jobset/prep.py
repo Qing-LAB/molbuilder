@@ -1455,6 +1455,7 @@ def _seed_trajectory_log(struct, cfg, base: Path, *, engine: str,
     # relaxation that never settles.  ``relaxes`` is the rung's render kind.
     from ..template import inactive_settings
     from ..trajectory_log import keys as _K
+    from ..runs import stage_atom_map
     off = inactive_settings(cfg, engine=engine) if relaxes else {}
     leaf = {}
     for key, attr in (() if not relaxes else
@@ -1471,8 +1472,8 @@ def _seed_trajectory_log(struct, cfg, base: Path, *, engine: str,
         convergence_targets=(targets or None),
         frame=frame,
         frozen_atoms=list(getattr(struct, "frozen_atoms", []) or []),
-        plan=plan, atom_index_map=_deck_atoms(struct, kind,
-                                              names.stage).to_dict())
+        plan=plan, atom_index_map=stage_atom_map(
+            struct.n_atoms, struct.atom_order, kind, names.stage).to_dict())
 
 
 def _rows_read(sources, role, *, engine: str, kind: str, stage: str):
@@ -1490,19 +1491,6 @@ def _rows_read(sources, role, *, engine: str, kind: str, stage: str):
     read = {it.name for it in _sc.declarations(engine, calculation=kind,
                                                stage=stage, role=role)}
     return tuple((n, w) for n, w in sources if n not in every or n in read)
-
-
-def _deck_atoms(struct, kind: str, stage):
-    """THE ATOM INDEX MAP of the files a deck of ``struct`` makes its run
-    write (`model/overview.md` § 2.2b, F2): listed by engine index, both
-    columns from the structure's order record, the identity where it
-    carries none; the engine column alone for a structure of its own."""
-    from ..atom_permutation import AtomIndexMap
-    from ..kind_table import own_structure
-    own = own_structure(kind, stage)
-    if own:
-        return AtomIndexMap.of_own_structure(struct.n_atoms, own)
-    return AtomIndexMap.of_engine_record(struct.atom_order, struct.n_atoms)
 
 
 def _job_for(element, script: str, task, stage_name: Optional[str],

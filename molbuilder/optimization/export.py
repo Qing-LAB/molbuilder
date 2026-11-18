@@ -18,19 +18,14 @@ from ..ncdata import ExportError, Exported
 DATA_FILE = ".optimization.nc"
 
 
-def _stem(calc) -> str:
-    """An export's stem, ``<label>.<kind>``, which `ncdata.export_name` gives
-    each format's ending (``<label>.optimization-csv``)."""
-    return f"{calc.task.label}.{calc.task.calculation}"
-
-
 def name_of(calc, fmt: str, **_asks) -> str:
     """What an export of ``calc`` as ``fmt`` is named -- the data file itself,
     or its tables' folder -- known before anything is composed; it asks
     nothing beyond its form (no ``export_asks`` in the kind table), the
     export surface's ``name_of(calc, fmt, **asks)`` (`kind_table`)."""
-    from ..ncdata import export_name
-    return export_name(_stem(calc), fmt, f"{calc.task.label}{DATA_FILE}")
+    from ..ncdata import export_name, export_stem
+    return export_name(export_stem(calc.task.label, calc.task.calculation),
+                       fmt, f"{calc.task.label}{DATA_FILE}")
 
 
 def export(calc, fmt: str, *, folder=None) -> Exported:
@@ -39,7 +34,7 @@ def export(calc, fmt: str, *, folder=None) -> Exported:
     tables and ``README.txt`` -- the runs that give no step said, and why.
     :class:`ExportError` names a form that is not one, and what does not read
     or does not lay out on one grid, in its owner's words."""
-    from ..ncdata import export_format, exported
+    from ..ncdata import export_format, export_stem, exported
     from ..stepsdata import data_file_bytes
     export_format(fmt)
     name = f"{calc.task.label}{DATA_FILE}"
@@ -47,7 +42,9 @@ def export(calc, fmt: str, *, folder=None) -> Exported:
         data, said = data_file_bytes(calc, name)
     except (OSError, ValueError) as exc:
         raise ExportError(str(exc)) from exc
-    return exported({name: data}, fmt, stem=_stem(calc), one_file=True,
+    return exported({name: data}, fmt,
+                    stem=export_stem(calc.task.label, calc.task.calculation),
+                    one_file=True,
                     said=said)
 
 

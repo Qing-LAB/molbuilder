@@ -52,7 +52,7 @@ by a second reader: it is that composition on its grid, for analysis.
 
 | file | what it is | written by | schema | its chapter · its names |
 |---|---|---|---|---|
-| `<label>.transport.nc` | every result of a transport calculation, in groups: the junction, each stage, each point and its device run, and the summary across the points | `jobset summarize task`; an export composes the same file | `molbuilder/transport-data@12` | `engines/transport.md` § 2a.12 · § 9.1 |
+| `<label>.transport.nc` | every result of a transport calculation, in groups: the junction, each stage, each point and its device run, and the summary across the points | `jobset summarize task`; an export composes the same file | `molbuilder/transport-data@13` | `engines/transport.md` § 2a.12 · § 9.1 |
 | `<label>.spectra.nc` | a vibration result, beside its JSON — the same payload, tied by the JSON's sha256 | the result's one writer, at every write on both engines | `molbuilder/spectra-data@10` (`@1`–`@9` read as they are) | `engines/vibration.md` § 6.10, *The data file* · § 9.2 |
 | `<label>.TBT.digest.nc` (`.TBT_UP` / `.TBT_DN`) | a TBtrans data file's DOS per orbital, k-averaged once and kept | the reading of the `.TBT.nc` beside it | `molbuilder/tbt-digest@5` | `model/parse.md` § 5e · § 9.6 |
 | `<label>.optical.nc` | a SIESTA vibration's optical calls — each frame's ε₂ on the photon energies, its mode, side and geometry, the settings the calls read: the record of the Raman phase so far | the run's own record steps — the force constants', every frame pending, then each optical call's — and its finish | `molbuilder/optical-data@5` (`@1`–`@4` read as they are) | `engines/vibration.md` § 5.11 § 8 · § 9.3 |
@@ -103,9 +103,12 @@ A result with parts is written in groups (the vibration result's `/structure`,
 from one record entry, `engines/transport.md` § 2a.12).
 
 **Which attributes are records is each file's stated list** — the transport
-data file's `transport.datafile.JSON_ATTRS` and its frames' part's
-`frame_average.JSON_ATTRS`, the vibration result's block tables' `json`
-entries, `structure_json` the framework's — each marked **record** in § 9.
+data file's `transport.datafile.RECORD_ATTRS` — its frames' part's
+`frame_average.RECORD_ATTRS` among them — a chart file's
+`chartdata.RECORD_ATTRS`, the vibration result's block tables' `json`
+entries, `structure_json` the framework's — each marked **record** in § 9,
+written and read back by that list (`ncdata.json_attrs`,
+`ncdata.read_file`).
 A name on the list is a record the file promises,
 and its reader hands it over as data; any other attribute is text, as written,
 and promises nothing *(the user, 2026-11-04)*.
@@ -821,7 +824,7 @@ Every column is *from the run's own output*.
 Every result of a transport calculation, in groups: the junction, each stage
 that runs once, each point and its device run, and a summary across the
 points. Written by `jobset summarize task` beside `<label>.transport.json`,
-and composed the same way by an export; schema `molbuilder/transport-data@12`
+and composed the same way by an export; schema `molbuilder/transport-data@13`
 — another is refused, `summarize task` writing it again. The science — the
 ladder, the bias treatment, how each number is computed — is
 [`engines/transport.md`](?doc=engines/transport.md) § 2a.12; reading it in a
@@ -954,8 +957,8 @@ none; its `definition` is the meaning the frame set writes for it (its
 | `state` | — | state | — | the stage's run state, as molbuilder words a run's state (`finished`, `failed`, `not run`, `pending` …) |
 | `detail` | — | state | — | molbuilder's sentence for that state |
 | `scf_converged` | — | state | 1 | **flag**: whether the stage's SCF converged |
-| `total_energy_ev` | — | raw | eV | the stage's total energy: the Kohn–Sham energy E_KS of its run's last SCF cycle — converged where `scf_converged` says so — *from the stage's SIESTA output* |
-| `fermi_level_ev` | — | raw | eV | the stage's Fermi level at its last SCF cycle, in its own run's frame — how the frames relate is `fermi_frames` (`/`) — *from the stage's SIESTA output* |
+| `total_energy_ev` | — | raw | eV | the stage's total energy: the Kohn–Sham energy E_KS of its run's last SCF cycle — converged where `scf_converged` says so — *from the stage's SIESTA output* · *the record's key* `energy_ev` |
+| `fermi_level_ev` | — | raw | eV | the stage's Fermi level at its last SCF cycle, in its own run's frame — how the frames relate is `fermi_frames` (`/`) — *from the stage's SIESTA output* · *the record's key* `fermi_ev` |
 | `scf_cycles` | — | | | how many SCF rows the run's last step holds — 9.0.6 |
 | SIESTA's SCF columns | scf_cycle | | | the run's last step's SCF rows — 9.0.6 |
 | `scf_phases` | — | state | — | **record**: the run's phases (`periodic`; a device's `negf` too) — for each, what it had to reach and how it ended: its cycles and whether it converged |
@@ -984,32 +987,32 @@ A group per point the description asks for, named as its folder is — `v0`,
 | `bias_v` | — | given | V | the point's voltage — `/summary`'s `bias_v` at this point |
 | `done` | — | state | 1 | **flag** (`1` or `0`): 1 when the point has its transmission; 0 otherwise, its transmission's values the fill — a gap, never filled in. Its device group holds its device run's values wherever that ran |
 | `state` | — | state | — | the transmission run's state, as molbuilder words a run's state (`finished`, `failed`, `not run`, `pending` …) |
-| `folder` | — | state | — | the transmission point's folder, relative to the calculation's: where its raw values were read — a point that shares a finished point's energies holds those in its `shared/` folder; for a point not done, where its attempt is |
+| `folder` | — | state | — | the transmission point's folder, relative to the calculation's: where its raw values were read — a point that shares a finished point's energies holds those in its `shared/` folder; for a point not done, where its attempt is · *the record's key* `attempt` |
 | `why` | — | state | — | for a point not done, why, in its run's words — pending, or failed and what stopped it |
-| `progress` | — | state | — | for a point not done, how far its TBtrans loop got — running, or where it stopped — in its run record's sentence ([`model/parse.md`](?doc=model/parse.md) § 5d.1b) |
+| `progress` | — | state | — | for a point not done, how far its TBtrans loop got — running, or where it stopped — in its run record's sentence ([`model/parse.md`](?doc=model/parse.md) § 5d.1b) · *the record's key* `progress.said` |
 | `transmission_by_spin` | spin, energy_ev | raw | 1 | T(E), k-averaged, each spin channel's — *from `<label>.TBT.AVTRANS_<L>-<R>` (`TBT_UP` / `TBT_DN` polarized)* |
 | `transmission` | energy_ev | derived | 1 | the transmission G is computed from: a non-polarized point's one channel, a polarized point's mean of the two, (T_up + T_down) / 2 |
 | `conductance_g0` | — | derived | G0 | G / G0 = T at E − E_F = 0, linearly interpolated, G0 = 2e²/h; under a bias, T(0) of that bias's transmission — neither I/V nor dI/dV |
 | `current_by_spin_a` | spin | raw | A | the current TBtrans printed, each channel's own — a non-polarized point's one channel, half the junction's total; the fill for a point whose energies two runs computed — *from the transmission point's TBtrans output* |
 | `current_a` | — | derived | A | the junction's total current, as `current_from` says: `tbtrans` — twice the printed figure unpolarized, the channels' sum polarized; `joined` — the record's integral over the point's joined grid |
 | `current_from` | — | state | — | which current `current_a` is: `tbtrans` or `joined` ([`engines/transport.md`](?doc=engines/transport.md) § 2a.16) |
-| `dos_total_per_ev` | energy_ev | raw | 1/eV | the device's Green-function DOS, k-averaged: a non-polarized point's one spin's, a polarized point's up + down — *from `<label>.TBT.AVDOS`* |
+| `dos_total_per_ev` | energy_ev | raw | 1/eV | the device's Green-function DOS, k-averaged: a non-polarized point's one spin's, a polarized point's up + down — *from `<label>.TBT.AVDOS`* · *the record's key* `dos.total` |
 | `dos_total_by_spin_per_ev` | spin, energy_ev | raw | 1/eV | the same DOS, each spin channel's own — *from `<label>.TBT.AVDOS` (`TBT_UP` / `TBT_DN` polarized)* |
 | `dos_region_per_ev` | region, energy_ev | raw | 1/eV | the device's DOS by region: the point's DOS per orbital summed over the orbitals of the region's atoms its DOS covers (`atom_region`, `dos_atom` 1); spin as `dos_total_per_ev`; the fill where the reading is not kept — *from the point's `<label>.TBT.digest.nc` (9.6)* |
 | `lead_spectral_dos_per_ev` | lead, energy_ev | raw | 1/eV | each lead's spectral DOS: the device's DOS of the states coming in from that lead, k-averaged by TBtrans. TBtrans writes it for every lead but the last; the last lead's row is the fill (`TBT.DOS.A.All` not set) — *from `<label>.TBT.AVADOS_<lead>`* |
 | `lead_bulk_dos_per_ev` | lead, energy_ev | raw | 1/eV | a lead's bulk DOS (`TBT.DOS.Elecs`), k-averaged; spin as `dos_total_per_ev` — *from `<label>.TBT.AVBDOS_<lead>`* |
 | `eigenchannel_transmission` | spin, eigenchannel, energy_ev | raw | 1 | each eigenchannel's transmission (`TBT.T.Eig`), k-averaged, each spin channel's own — *from `<label>.TBT.AVTEIG_<L>-<R>`* |
 | `dos_atom` | atom | state | 1 | **flag**: 1 for each atom of TBtrans's device region — the only atoms it computes a DOS for — 0 for every other, from the point's kept reading; `−1` where none is kept |
-| `dos_per_orbital_files` | — | state | — | **record**: the point's digests — each one's path from the calculation's folder, its spin channel, and the version of its `.TBT.nc` it states, [size in bytes, modification time in ns] — the reading `dos_region_per_ev` was summed from, which `postprocess.pdos` reads back; empty unless every reading of the point is kept |
+| `dos_per_orbital_files` | — | state | — | **record**: the point's digests — each one's path from the calculation's folder, its spin channel, and the version of its `.TBT.nc` it states, [size in bytes, modification time in ns] — the reading `dos_region_per_ev` was summed from, which `postprocess.pdos` reads back; empty unless every reading of the point is kept · *the record's key* `dos.per_orbital` |
 | `dos_per_orbital_reading` | — | state | — | the state of the point's DOS-per-orbital reading: `kept`, or each data file's state in words — not read yet, out of date, being read by …, or a reading just tried that failed ([`model/parse.md`](?doc=model/parse.md) § 5e); `dos_region_per_ev` is the fill where it is not kept |
 | `dos_why` | — | state | — | for a done point with no DOS, why, in its reader's words; its DOS variables the fill |
-| `tbt_kpoints` | — | raw | 1 | how many transverse k-points the transmission used; `−1` where not stated — *from the transmission point's TBtrans output* |
-| `tbt_kpoint_method` | — | raw | — | how those k-points were chosen, as TBtrans states it — *from its output* |
+| `tbt_kpoints` | — | raw | 1 | how many transverse k-points the transmission used; `−1` where not stated — *from the transmission point's TBtrans output* · *the record's key* `k_points` |
+| `tbt_kpoint_method` | — | raw | — | how those k-points were chosen, as TBtrans states it — *from its output* · *the record's key* `k_method` |
 | `loop_elapsed_s` | — | raw | s | the transmission's loop time: its passes' k-point × energy loops summed, as TBtrans measured them — *from its output* |
 | `copied_from` | — | state | — | the run this point is a copy of, in a calculation that reuses a finished one ([`engines/transport.md`](?doc=engines/transport.md) § 2a.16); empty otherwise |
-| `shared_from` | — | state | — | the finished point whose energies this point shares, by its folder ([`engines/transport.md`](?doc=engines/transport.md) § 2a.16); empty for a point that shares none |
-| `shared_held` | — | state | 1 | how many energies that finished point holds; `−1` where the point shares none |
-| `shared_computed` | — | state | 1 | how many energies this point's own run computes beside them; `−1` where it shares none |
+| `shared_from` | — | state | — | the finished point whose energies this point shares, by its folder ([`engines/transport.md`](?doc=engines/transport.md) § 2a.16); empty for a point that shares none · *the record's key* `shared.from` |
+| `shared_held` | — | state | 1 | how many energies of its grid that finished point and it hold in common — those its own run did not compute; `−1` where the point shares none · *the record's key* `shared.held` |
+| `shared_computed` | — | state | 1 | how many energies this point's own run computes beside them; `−1` where it shares none · *the record's key* `shared.computed` |
 
 | attribute | what it says |
 |---|---|
@@ -1026,19 +1029,19 @@ transmission done or not.
 
 | name | over | kind | units | what it is |
 |---|---|---|---|---|
-| `charge_part` | charge_part | coordinate | — | a column of TranSIESTA's `ts-q:` line, as its header names it: `D` the bridge — TranSIESTA's device region; `E1`, `E2` each electrode block; `C1`, `C2` the overlap across each electrode's boundary with the bridge; `O` the rest; `B` the buffer atoms, where there are some ([`engines/transport.md`](?doc=engines/transport.md) § 2a.12, *The device's charges*) |
+| `charge_part` | charge_part | coordinate | — | a column of TranSIESTA's `ts-q:` line, as its header names it: `D` the bridge — TranSIESTA's device region; `E1`, `E2` each electrode block; `C1`, `C2` the overlap across each electrode's boundary with the bridge; `B` the buffer atoms, where there are some — the line prints no `O`, the rest, which its `dQ` counts ([`engines/transport.md`](?doc=engines/transport.md) § 2a.12, *The device's charges*) |
 | `state` · `detail` | — | state | — | the device run's state, as molbuilder words a run's state (`not run` among them), and molbuilder's sentence for it |
 | `scf_converged` | — | state | 1 | **flag**: whether the device run's SCF converged |
-| `fermi_level_ev` | — | raw | eV | the device's Fermi level at its NEGF phase's last cycle, in TranSIESTA's frame |
-| `vha_ev` | — | raw | eV | the boundary Hartree potential `ts-Vha` TranSIESTA printed at its NEGF phase's last cycle — a value, not the shift between the device's zero and the seed's, which is the periodic start's (`fermi_frames`) |
-| `total_energy_ev` | — | raw | eV | the NEGF phase's total energy: E_KS of its last SCF cycle, converged where `scf_converged` says so — never compared across points or calculations ([`engines/transport.md`](?doc=engines/transport.md) § 1.1) |
-| `negf_cycles` | — | raw | 1 | how many NEGF cycles ran — the NEGF rows of its SCF history, after the periodic start; `−1` fill |
-| `dq_e` | — | raw | e | the last NEGF cycle's `dQ`: every column of its `ts-q:` line summed, less the neutral count — the charge the open boundaries did not conserve |
+| `fermi_level_ev` | — | raw | eV | the device's Fermi level at its NEGF phase's last cycle, in TranSIESTA's frame · *the record's key* `negf.ef` |
+| `vha_ev` | — | raw | eV | the boundary Hartree potential `ts-Vha` TranSIESTA printed at its NEGF phase's last cycle — a value, not the shift between the device's zero and the seed's, which is the periodic start's (`fermi_frames`) · *the record's key* `negf.vha_ev` |
+| `total_energy_ev` | — | raw | eV | the NEGF phase's total energy: E_KS of its last SCF cycle, converged where `scf_converged` says so — never compared across points or calculations ([`engines/transport.md`](?doc=engines/transport.md) § 1.1) · *the record's key* `negf.energy` |
+| `negf_cycles` | — | raw | 1 | how many NEGF cycles ran — the NEGF rows of its SCF history, after the periodic start; `−1` fill · *the record's key* `negf.cycles` |
+| `dq_e` | — | raw | e | the last NEGF cycle's `dQ`, as TranSIESTA printed it: the device cell's total population — every region's, and the rest (`O`) its `ts-q:` line prints no column for — less the neutral count; the charge the open boundaries did not conserve · *the record's key* `negf.dq` |
 | `charge_e` | charge_part | raw | e | the last NEGF cycle's Mulliken populations, column by column as TranSIESTA printed them: a net population for a region, an overlap population across a boundary — electrons counted, positive, not a net charge |
-| `d_change_from_0v_e` | — | derived | e | D(V) − D(0 V): the bridge's net Mulliken population (`charge_e` at `D`) at this voltage less the same frame's at 0 V — positive where the bridge gained electrons; `0` at 0 V itself; the fill where the frame has no finished 0 V point |
-| `contour_poles` | — | raw | 1 | the equilibrium contour's pole count, as TranSIESTA echoed it |
-| `neq_emin_ev` · `neq_emax_ev` | — | raw | eV | under a bias, the non-equilibrium line's lower and upper ends |
-| `neq_points` | — | raw | 1 | under a bias, the non-equilibrium line's points |
+| `d_change_from_0v_e` | — | derived | e | D(V) − D(0 V): the bridge's net Mulliken population (`charge_e` at `D`) at this voltage less the same frame's at 0 V — positive where the bridge gained electrons; `0` at 0 V itself; the fill where the frame has no 0 V point finished and converged · *the record's key* `negf.d_change_from_0v_e` |
+| `contour_poles` | — | raw | 1 | the equilibrium contour's pole count, as TranSIESTA echoed it · *the record's key* `negf.contour.poles` |
+| `neq_emin_ev` · `neq_emax_ev` | — | raw | eV | under a bias, the non-equilibrium line's lower and upper ends · *the record's keys* `negf.contour.neq_line.emin_ev` · `negf.contour.neq_line.emax_ev` |
+| `neq_points` | — | raw | 1 | under a bias, the non-equilibrium line's points · *the record's key* `negf.contour.neq_line.points` |
 | `scf_cycles` · SIESTA's SCF columns · `scf_phases` | | | | the run's SCF history and phases, as a stage's — 9.0.6 |
 | `scf_charge_e` | scf_cycle, charge_part | raw | e | every NEGF row's Mulliken populations, column by column as TranSIESTA printed them |
 
@@ -1057,7 +1060,7 @@ Every raw variable here is *from the device point's SIESTA output*.
 
 | name | over | kind | units | what it is |
 |---|---|---|---|---|
-| `bias_v` | bias_v | coordinate | V | the voltages the device and the transmission ran at — the description's list, in its order: [0.0] for a single bias, a description stating none refused |
+| `bias_v` | bias_v | coordinate | V | the voltages the device and the transmission ran at — the description's list, in its order: [0.0] for a single bias and under the low-bias approximation, whose transmission ran at 0 V alone (`iv_bias_v` holds the list); a description stating none refused |
 | `energy_ev` | energy_ev | coordinate | eV | 9.0.4 — the transmission's grid, at the full precision of each point's `.TBT.nc`, ascending; TBtrans's text files, printed to 5 decimals, put on it within half that decimal; a point that shares energies, its joined grid |
 | `spin` | spin | coordinate | — | `unpolarized` — the one channel of a calculation that is not spin-polarized — or `up` and `down` (§ 2a) |
 | `iv_bias_v` | iv_bias_v | coordinate | V | the I–V's voltages — the description's voltage list, in its order; under the low-bias approximation, more than ran |
@@ -1073,7 +1076,7 @@ Every raw variable here is *from the device point's SIESTA output*.
 | *the I–V*: | | | | |
 | `iv_current_a` | frame, iv_bias_v | derived | A | the I–V, as `iv_computed` says: `tbtrans` — each point's own `current_a`; `low-bias-approximation` — I(V) = G0 ∫ T(E, 0) [f(E − V/2) − f(E + V/2)] dE over that frame's 0 V transmission, E in eV, f the Fermi function at `iv_kt_ev`; the fill at a voltage whose window and Fermi tails reach past the transmission's energies (`iv_notes`) |
 | `iv_current_by_spin_a` | frame, iv_bias_v, spin | derived | A | each spin's I–V current, a polarized calculation's, as the record states it; the fill for a non-polarized one, whose two spins carry half the total each |
-| `iv_kt_ev` | — | given | eV | k_BT of the leads' Fermi functions in the low-bias integral — the device run's electronic temperature; NaN where the I–V is TBtrans's own |
+| `iv_kt_ev` | — | given | eV | k_BT of the leads' Fermi functions in the low-bias integral — the electronic temperature the 0 V transmission's deck states; NaN where the I–V is TBtrans's own |
 | `iv_window_lowest_ev` · `iv_window_highest_ev` | — | derived | eV | the low-bias integral's range: the 0 V transmission's lowest and highest energy, E − E_F; NaN where the I–V is TBtrans's own |
 | *the frames' average* — NaN, or the empty text, where there is none: | | | | |
 | `average_transmission` | bias_v, energy_ev | derived | 1 | ⟨T(E)⟩ = Σ_f weight_f T_f(E) over every frame at its stated weight — the frame set's `sampling_rule` at its `sampling_nodes` frames |
@@ -1610,7 +1613,7 @@ entry.
 | `scf-residuals` | an SCF's residuals at each cycle, and their tolerances | `dDmax`, `dHmax`, `dq`, `delta_E`, `gnorm` — each a curve and a mark |
 | `transmission` | the transmission T(E) of the points drawn | `transmission`, `transmission_by_spin`, `transmission_total`, `average_transmission`, `eigenchannel_transmission` |
 | `dos` | the density of states of the points drawn | `dos_total`, `dos_total_by_spin`, `dos_region`, `lead_spectral_dos`, `lead_bulk_dos`, `pdos` |
-| `iv` | the current against the bias | `current`, `current_by_spin`, `iv_current`, `iv_current_by_spin` |
+| `iv` | the current against the bias | `current`, `iv_current`, `iv_current_by_spin` |
 | `spectrum` | a vibration's Raman and IR spectrum — each lane's bands and its broadened curve | `raman_strength`, `raman_curve`, `ir_intensity`, `ir_curve` |
 | `levels` | a mode's frontier orbitals at its two displaced geometries and at equilibrium | `mo_energy` |
 | `thermo` | the thermochemistry over temperature | `thermo_g`, `thermo_h`, `thermo_ts` |
@@ -1628,8 +1631,8 @@ entry.
 | `transmission_total` | `transmission_total` | the chart's: derived, 1 — T↑ + T↓, a polarized point's two channels summed | `energy_ev` |
 | `dos_total` · `dos_total_by_spin` · `dos_region` · `lead_spectral_dos` · `lead_bulk_dos` | `dos_total_per_ev` · `dos_total_by_spin_per_ev` · `dos_region_per_ev` · `lead_spectral_dos_per_ev` · `lead_bulk_dos_per_ev` | the transport file's (9.1) | `energy_ev` |
 | `pdos` | `pdos_per_ev` | the chart's: derived, 1/eV — the DOS projected on the orbitals the person chose (`postprocess.pdos`), a curve each selection; a polarized point's two channels summed | `energy_ev` |
-| `current` · `current_by_spin` | `current_a` · `current_by_spin_a` | the transport file's (9.1) | `bias_v`, the transport file's |
-| `iv_current` · `iv_current_by_spin` | `iv_current_a` · `iv_current_by_spin_a` — computed from T(E, 0) under the low-bias approximation | the transport file's (9.1) | `iv_bias_v`, the transport file's |
+| `current` | `current_a` | the transport file's (9.1) | `bias_v`, the transport file's |
+| `iv_current` · `iv_current_by_spin` | `iv_current_a` · `iv_current_by_spin_a` — computed from T(E, 0) under the low-bias approximation; each spin's, TBtrans's printed figure or the record's own integral as `iv_current_by_spin_a` says, on either treatment | the transport file's (9.1) | `iv_bias_v`, the transport file's |
 | `raman_strength` · `ir_intensity` | `raman_strength_ang4_per_amu` · `ir_intensity_relative_percent` | the chart's: derived — a mode's band as drawn: SIESTA's Raman strength at the laser named (in the root's `chosen`) or PySCF's activity, Å⁴/amu; the IR intensity — the infrared view's or the result's own km/mol — as a percentage of the lane's strongest real band; a gap where no band is drawn (the display floor, the lane's band floor, no value) | `frequency_cm1`, the vibration file's (9.2) |
 | `raman_curve` · `ir_curve` | `raman_curve_ang4_per_amu` · `ir_curve_relative_percent` | the chart's: derived — the lane's broadened curve, a Lorentzian of each real band drawn (its height the band's, its full width at half maximum the broadening chosen), summed; an imaginary mode's band is drawn and left out | `curve_frequency_cm1` (cm-1): a point of the curve |
 | `mo_energy` | `mo_energy_ev` | the chart's: derived, eV — the probe's orbital energies at −A, 0, +A, a curve each orbital of the window, named by its place beside the HOMO and LUMO | `mode_displacement_ang` (angstrom): −A, 0, +A, A the probe's amplitude |

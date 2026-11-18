@@ -4318,9 +4318,49 @@ def test_a_points_current_is_the_junctions_total(junction):
     points = _record(junction)["points"]
     assert [p["spin"] for p in points] == ["non-polarized"] * len(_BIAS)
     biased = [p for p in points if p["bias_v"] != 0.0]
-    assert biased and all(p["current_a_printed"] for p in biased), points
+    # THE FIGURES TBTRANS PRINTED, by channel: a non-polarized point's one,
+    # its channel's name the data file's.
+    assert all(list(p["printed_a"]) == ["unpolarized"] for p in points), points
+    assert biased and all(p["printed_a"]["unpolarized"] for p in biased), points
     for p in points:
-        assert np.isclose(p["current_a"], 2.0 * p["current_a_printed"]), p
+        assert np.isclose(p["current_a"], 2.0 * p["printed_a"]["unpolarized"]), p
+
+
+@pytest.mark.parametrize("scenario, expected", [
+    # ITS 0 V POINT FINISHED, NOT CONVERGED: no reference at any voltage.
+    ("unconverged", {0.0: None, 0.2: None}),
+    # ITS 0 V POINT FAILED, its 0.2 V never run: no reference.
+    ("aborted", {0.0: None, 0.2: None}),
+    # A DEVICE THAT RUNS ONCE ran at 0 V: its own reference.
+    ("single", {0.0: 0.0}),
+])
+def test_the_bridges_charge_since_0v_is_taken_against_a_done_0v_point(
+        junction, scenario, expected, tmp_path):
+    """`engines/transport.md` § 2a.12, *The device's charges*: D(V) − D(0 V)
+    is measured against the frame's 0 V point only where that point is done
+    -- its run finished and its SCF converged; one that failed or finished
+    unconverged is no reference, and no voltage of its frame states one; 0 V
+    itself states 0, and a device that runs once ran at 0 V and is its own.
+    Read from the data file the export composes (`model/datafiles.md` § 9.1,
+    ``device_d_change_from_0v_e``).  The silent failure: a change computed
+    against a density that is not a result -- 0.051 e on the unconverged
+    junction -- shown beside the voltage as one."""
+    from molbuilder.calculation import open as open_calculation
+    from molbuilder.transport.datafile import data_file_bytes, read_data_file
+    from molbuilder.transport.record import collect_record
+    calc = open_calculation(getattr(junction, scenario).bundle)
+    name, data = data_file_bytes(calc, collect_record(calc, partial=True))
+    (tmp_path / name).write_bytes(data)
+    S = {k: v["data"] for k, v in read_data_file(tmp_path / name)["groups"]
+         ["summary"]["variables"].items()}
+    got = {float(v): S["device_d_change_from_0v_e"][0, b]
+           for b, v in enumerate(S["bias_v"])}
+    assert set(got) == set(expected), got
+    for v, want in expected.items():
+        if want is None:
+            assert np.isnan(got[v]), (v, got)
+        else:
+            assert got[v] == want, (v, got)
 
 
 # --------------------------------------------------------------------- #
@@ -5671,7 +5711,7 @@ def test_a_fitted_window_computes_only_the_energies_the_finished_point_did_not(
         assert np.array_equal(np.asarray(pb["transmission"])[at],
                               pa["transmission"])
         assert pb["current_from"] == "joined"
-        assert pb["current_a_printed"] is None
+        assert pb["printed_a"] == {}
         assert pb["shared"]["held"] == 401 and pb["shared"]["computed"] == 200
         if pa["current_a"]:
             assert abs(pb["current_a"] / pa["current_a"] - 1) < 1e-4

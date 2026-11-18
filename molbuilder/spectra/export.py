@@ -30,10 +30,12 @@ from ..ncdata import ExportError, Exported
 STEPS_FILE = ".steps.nc"
 
 def _stem(calc, result: Path) -> str:
-    """An export's stem, ``<label>.<kind>``: the label the result is named
-    on, and the calculation's kind."""
+    """An export's stem (`ncdata.export_stem`): the label the result is
+    named on, and the calculation's kind."""
+    from ..ncdata import export_stem
     from ..runfiles import ROLE_SPECTRA, stem_before
-    return f"{stem_before(result, ROLE_SPECTRA)}.{calc.task.calculation}"
+    return export_stem(stem_before(result, ROLE_SPECTRA),
+                       calc.task.calculation)
 
 
 def name_of(calc, fmt: str, **_asks) -> str:

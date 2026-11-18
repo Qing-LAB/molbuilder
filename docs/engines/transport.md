@@ -3012,7 +3012,10 @@ each costs:
   missing or out of date, saying so, since the record and the data file it
   writes hold the DOS by region. The record states each point's readings
   (`digest`: each data file's, its own and its `shared/`'s — its path from
-  the calculation, its state, size and claim).
+  the calculation, its state, size and claim) and whether its DOS per orbital
+  is not read yet (`per_orbital_unread`: a data file whose reading is not
+  whole; one with none has nothing to read) — the one answer the report, the
+  data file and the export ask.
 - **A point that shares energies** (§ 2a.16) reads its own files and those in
   its `shared/`, each through the same parser — so a sharing point's
   `shared/` holds the finished point's text files and its digest with its
@@ -3097,7 +3100,7 @@ that each calculation has its own group, so it can separate them and look at
 each data set carefully … to access the IV curve, the user could decide to
 take individual points from each calculation group, or … just go for the
 summary and then look at the final. This should be consistent and coming
-from the same result")* — schema `molbuilder/transport-data@12`. The file
+from the same result")* — schema `molbuilder/transport-data@13`. The file
 is the calculation's ladder: the junction,
 each stage that runs once, each point — its device run and its transmission —
 and a summary that gathers across the points what is compared between them.
@@ -3242,8 +3245,8 @@ and the data file says where it is and what each orbital is:
   a file with the time it is built, so the same content reads as another
   sha256 ([`model/datafiles.md`](?doc=model/datafiles.md) § 2b).
 
-**`postprocess.pdos(data_file, point, *, atoms=(), labels=(), regions=(),
-orbitals=None)`** — the PDOS of a selection at one point (`"v0.2"`,
+**`postprocess.pdos(data_file, point, *, atoms=None, labels=None,
+regions=None, orbitals=None)`** — the PDOS of a selection at one point (`"v0.2"`,
 `"f003/v0.2"`, the point group's name), **a mixed selection**: atoms by user
 index, every atom carrying a label as the junction writes it (matched as
 written, never interpreted), every atom of a region molbuilder owns —
@@ -3273,7 +3276,7 @@ runs over, its kind, its units and what it is: [`model/datafiles.md`](?doc=model
 `definition` and, for a raw one, `source`, the file it was read from
 ([`model/datafiles.md`](?doc=model/datafiles.md) § 2, § 9.0) — and the file
 says what it is (§ 2b): its `title`, each group's own, its `schema`
-(`molbuilder/transport-data@12`), the molbuilder that wrote it, and its
+(`molbuilder/transport-data@13`), the molbuilder that wrote it, and its
 `source` — the engine and its version that computed it, as the runs' own
 outputs state it (*the user, 2026-11-16: "transport can also save siesta
 version where appropriate in the meta data"*): *computed by SIESTA 5.4.2 in
@@ -3425,6 +3428,13 @@ observable.
 | `B` | both on buffer atoms — the `buffer` label's, padding outside the electrode blocks (§ 4); printed only where the junction has some | taken out of the NEGF region |
 | `dQ` | the sum of all, less the neutral count (`target`) | the charge the open boundaries did not conserve |
 
+**Each NEGF cycle's `ts-q:` line** — what the record and the data file read,
+row by row and the last for the run (`device_charge_e`, `device_scf_charge_e`)
+— prints `D`, each `E` and `C`, and `B`, **but no `O`** (SIESTA 5.4.2
+`ts_charge.F90`, `TS_Q_INFO_SCF`); its `dQ` is the whole cell's all the same,
+`O` among it, so a row's columns do not sum to its `dQ`. `O` is printed only
+in the closing *Charge distribution* block, which the record does not read.
+
 **Measured on AuBDTAu at 0 V** (Sol, 312 atoms, 5740 valence electrons —
 Au with 19; 75 gold atoms in each electrode block; the bridge 150 gold atoms
 and the 12-atom BDT): at the switch D 2883.355, E1 1418.410, C1 6.659, E2
@@ -3452,8 +3462,12 @@ neutral count ($150 \times 19 + 40$).
   asymmetric or weakly coupled junction charges this way. The report shows it
   beside each voltage's device facts, and the data file carries it
   (`device_d_change_from_0v_e`): each the last NEGF cycle's D, less the same
-  frame's at 0 V. It is the bridge's net Mulliken population — the molecule
-  and the bridge's gold together, in this basis.
+  frame's at 0 V — **a 0 V point finished and converged**: one that failed or
+  finished unconverged is no reference, and no voltage of its frame states
+  one; 0 V itself states 0. A device that runs once — a single bias, the
+  low-bias approximation — ran at 0 V and is its own. It is the bridge's net
+  Mulliken population — the molecule and the bridge's gold together, in this
+  basis.
 - **Only a frame's first voltage starts from the periodic density**; each
   later one starts from the NEGF density of the closest voltage computed
   before it in its frame (§ 2a.11; § 1.3, the hydrogen chain's step 4), so its own starting charges are that voltage's — which is
@@ -3554,11 +3568,22 @@ polarized one, each as TBtrans printed it (empty when it printed only one) —
 but for a transmission point whose energies two runs computed, whose current
 the record integrates by TBtrans's own rule over the joined grid, saying so
 (`current_from`, § 2a.16).
-The figure TBtrans printed stays beside it
-(`current_a_printed`), the spin each point ran with is the one its own deck
-states (`spin`), and the record says in words what each number is
+The figures TBtrans printed stay beside it, **by channel** (`printed_a`:
+a non-polarized point's one, `unpolarized`; a polarized point's `up` and
+`down`; none for a point that shares energies),
+the spin each point ran with is the one its own deck states (`spin`) and
+whether the calculation is spin-polarized the record's one answer
+(`polarized`), and the record says in words what each number is
 (`current_means`) — and so do the table `summarize` prints and the Results
-tab, under the I–V.
+tab, under the I–V. A polarized point's each channel's current
+(`current_by_spin_a`) is TBtrans's printed figure, or, for a point that
+shares energies, one channel's integral by the same rule
+(`record.channel_current`) — and the I–V's each spin (`current_up_a`,
+`current_down_a`) the same, or under the approximation each spin's own
+integral of its T(E, 0). Each of the I–V's notes is placed by its frame and
+voltage (`notes`: a voltage whose window reaches past the slice's, or a
+frame whose 0 V point has not run, its voltage `null`) — one form for the
+page, the table `summarize` prints and the data file.
 
 **Shown, not listed**: each rung's convergence is drawn by the SCF plots the
 trajectory viewer uses, and T(E) per bias point and channel, the I–V, the
@@ -3573,9 +3598,18 @@ The Results tab opens it at the calculation's root through its description,
 **The provenance is what was gathered**, read from each rung's `.gathered-from`
 — never the newest run by file time — and, for a sweep's points, what each
 started from, read from each point's `.continued-from` (§ 2a.11). The device
-facts shown beside a transmission are the device run its first point gathered
-(`record.gathered_device_run`); a point taken over by a warm `--gather` launch
-keeps the device run it was computed on, which its own `.gathered-from` names.
+facts shown beside each transmission point are **the device run that point
+gathered**, as its own `.gathered-from` names it (`record.gathered_device_runs`):
+a point taken over by a warm launch keeps the device run it was computed on,
+whatever the new run gathered, so one transmission run's points may name two
+device runs — the device rung then says so, and its own run is its first
+point's (`record.gathered_device_run`).
+**A record that does not read is said, never the whole report refused**: a
+`.gathered-from`, a run's own records or its copy note that does not read is
+said on its rung (`unreadable`, every such sentence kept beside the others,
+shown beside the rung's state) and, for a rung's own `.gathered-from`, on its
+line of the provenance chain; a device rung whose gathered run's records do
+not read is *unreadable*, each of its points read by the run door.
 A run copied in from a finished calculation is read as any run, its
 `.copied-from` naming the run that computed it (§ 2a.16).
 

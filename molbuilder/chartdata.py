@@ -41,6 +41,11 @@ TABLE_FILE = data_dir() / "chart_table.toml"
 #: Which layout this is, at which version (`model/datafiles.md` § 2b).
 DATA_SCHEMA = "molbuilder/chart-data@1"
 
+#: THE ROOT'S ATTRIBUTES THAT HOLD RECORDS -- what decided the chart's
+#: numbers -- written as JSON text and read back as the blocks they hold
+#: (`ncdata.json_attrs`, `ncdata.read_file`).
+RECORD_ATTRS = ("chosen",)
+
 #: THE MOST CELLS ONE TAG'S CURVES TAKE, padded to the longest: a chart
 #: draws thousands of points on tens of curves; a body that would pad past
 #: this is no chart's, and is refused before the padded grid is made.
@@ -267,7 +272,7 @@ def data_file_bytes(calc, path: Path, *, chart: str,
     a curve whose x and y do not pair, two thresholds of one tag, a chart
     that drew nothing, and curves too many to be a chart's."""
     from . import __version__
-    from .ncdata import (NC_LOCK, as_bytes, empty, in_memory, json_attr,
+    from .ncdata import (NC_LOCK, as_bytes, empty, in_memory, json_attrs,
                          state, write_group)
     got = table().charts.get(chart)
     if got is None:
@@ -331,8 +336,9 @@ def data_file_bytes(calc, path: Path, *, chart: str,
               schema=DATA_SCHEMA, molbuilder_version=__version__,
               derived_from=(f"the {chart} chart on the Results page, drawn "
                             f"from {shown} of the calculation {label}"))
-        ds.setncatts({"label": label, "chart": chart, "shown": shown,
-                      "chosen": json_attr(dict(chosen))})
+        ds.setncatts(json_attrs({"label": label, "chart": chart,
+                                 "shown": shown, "chosen": dict(chosen)},
+                                RECORD_ATTRS))
         if held:
             write_group(ds, {}, tuple(held.values()), values)
         for tag, rows in by_tag.items():
@@ -370,7 +376,7 @@ def export(calc, fmt: str, *, path, chart: str, chosen: Mapping[str, Any],
     """What a page drew of ``chart`` as ``fmt`` -- ``<label>.<chart>.nc``,
     or its tables in ``<label>.<chart>-csv`` -- in the export's one shape
     (`ncdata.exported`), written nowhere."""
-    from .ncdata import export_format, exported
+    from .ncdata import export_format, export_stem, exported
     export_format(fmt)
     if not (isinstance(chosen, Mapping) and isinstance(curves, (list, tuple))
             and isinstance(marks, (list, tuple))):
@@ -378,8 +384,8 @@ def export(calc, fmt: str, *, path, chart: str, chosen: Mapping[str, Any],
     label = str(calc.task.label)
     data = data_file_bytes(calc, Path(path), chart=chart, chosen=chosen,
                            curves=curves, marks=marks)
-    return exported({f"{label}.{chart}.nc": data}, fmt,
-                    stem=f"{label}.{chart}", one_file=True)
+    stem = export_stem(label, chart)
+    return exported({f"{stem}.nc": data}, fmt, stem=stem, one_file=True)
 
 
 def read_data_file(path) -> Dict[str, Any]:
@@ -387,12 +393,10 @@ def read_data_file(path) -> Dict[str, Any]:
     root's attributes, ``chosen`` the record it holds, and every group by its
     path, the root's thresholds under ``""``; another schema refused by
     name."""
-    from .ncdata import read_file, unjson_attr
-    got = read_file(path, schemas=(DATA_SCHEMA,), error=ChartDataError,
-                    way="its chart's Export writes it again")
-    attrs = dict(got["attrs"])
-    attrs["chosen"] = unjson_attr(attrs.get("chosen", "{}"))
-    return {"attrs": attrs, "groups": got["groups"]}
+    from .ncdata import read_file
+    return read_file(path, schemas=(DATA_SCHEMA,), error=ChartDataError,
+                     way="its chart's Export writes it again",
+                     records=RECORD_ATTRS)
 
 
 __all__ = ["Chart", "ChartDataError", "ChartTableError", "DATA_SCHEMA",

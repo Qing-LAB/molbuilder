@@ -71,12 +71,21 @@ each release is its changelog row and its ledger section
   the user, 2026-11-17: "Into the calculation Export", "Groups, as
   transport"); each chart's own Export — a picture, its drawn data as
   CSV and NetCDF — for the trajectory and transport charts in 2.75.0
-  (`web/results.md` § 1.2; the user, 2026-11-17: "Go ahead"); next the
+  (`web/results.md` § 1.2; the user, 2026-11-17: "Go ahead"), and the
   vibration's charts and the bench chart in 2.76.0;
   the PDOS of a mixed selection from the data file and each point's digest
-  (`postprocess.pdos`, the user's option 3, designed with B). Then a
-  full-text review of the result summary and data export code *(the user,
-  2026-11-16)*.
+  (`postprocess.pdos`, the user's option 3, designed with B). The full-text
+  review of the result summary and data export code *(the user,
+  2026-11-16)*: two reviewers, 2026-11-17 -- its defects fixed in 2.76.1.
+  Left from it, next: the vibration's data files (`spectra.datafile`,
+  `spectra.raman`, `spectra.optical_data`) still copy a record's values
+  onto their grid by their own `key_of` loops and encode and decode
+  their record attributes by hand, where the transport file and a
+  chart's use `ncdata.copy_stated` and `ncdata.json_attrs` /
+  `read_file(records=)`; the status door says a copy note that does not
+  read in the copy's own field (`runstatus._copied`), where the transport
+  record says it as `unreadable`; the record's and the data file's
+  builders are long functions.
 - **The overlap audit** *(the user, 2026-11-09)* — 2.69.10–2.69.12: a
   structure file through the one writer, every answer through the one reader,
   every failure through the one builder.

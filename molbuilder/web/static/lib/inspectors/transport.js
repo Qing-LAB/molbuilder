@@ -44,6 +44,21 @@ const WORKSPACE_TAG = "results:transport";
     const _el = (tag, cls, text) => root.molbuilder.dom.el(tag, cls, text);
     const _words = (tag, cls, text) => root.molbuilder.dom.wordsEl(tag, cls, text);
 
+    /* WHAT TBTRANS PRINTED at a point, by channel as the record states it
+     * (`printed_a`, `record.printed_said`): a non-polarized point's one
+     * figure, a polarized point's each channel's by name; a dash where it
+     * printed none. */
+    function _printed(p) {
+        const got = p.printed_a || {};
+        const names = Object.keys(got);
+        if (names.length === 1 && names[0] === "unpolarized") {
+            return _fmt(got.unpolarized, 4, true);
+        }
+        return names.length
+            ? names.map((k) => k + " " + _fmt(got[k], 4, true)).join(" / ")
+            : "—";
+    }
+
     function _fmt(x, digits, exp) {
         if (x === null || x === undefined) return "—";
         const n = Number(x);
@@ -158,6 +173,8 @@ const WORKSPACE_TAG = "results:transport";
         const failed = Array.isArray(rec.failed) ? rec.failed : [];
         const stages = Array.isArray(rec.stages) ? rec.stages : [];
         state.points = pts;
+        // A SPIN-POLARIZED CALCULATION, the record's one answer.
+        state.polarized = !!rec.polarized;
         state.iv = rec.iv || {};
         state.average = rec.average || {};
         // THE SET'S FRAME COUNT, as the record states it (its `average`
@@ -484,8 +501,8 @@ const WORKSPACE_TAG = "results:transport";
                 : "Selected now: none yet.";
             add.disabled = !atoms.length;
             const p = _pointAt(state, _frame(state), state.bias);
-            const unread = p && (p.digest || []).some(
-                (d) => d.state !== "kept");
+            // NOT READ YET, the record's one answer for the point.
+            const unread = !!(p && p.per_orbital_unread);
             msg.textContent = unread
                 ? "This point's DOS per orbital is not read yet -- use "
                   + "Read the DOS per orbital above first." : "";
@@ -558,11 +575,17 @@ const WORKSPACE_TAG = "results:transport";
                 const f = frames[k] == null ? 0 : frames[k];
                 const zero = _pointAt(state, f, 0);
                 const i = (iv.current_a || [])[k];
-                const note = (iv.notes || {})[String(k)];
+                // A VOLTAGE'S NOTE, as the record places it.
+                const placed = (iv.notes || []).find((x) =>
+                    x.bias_v === v && x.frame === (frames[k] == null
+                                                   ? null : frames[k]));
+                const note = placed ? placed.note : null;
+                // THE 0 V ROW, the slice's own: its voltage is the
+                // description's first, 0.
                 pickRow(f, v, [
-                    Math.abs(v) < 1e-9 && zero ? _fmt(zero.conductance_g0, 4, false) : "—",
+                    v === 0 && zero ? _fmt(zero.conductance_g0, 4, false) : "—",
                     i === null || i === undefined ? (note || "—") : _fmt(i, 4, true),
-                    _fmt(((iv.current_a_printed || [])[k]), 4, true),
+                    v === 0 && zero ? _printed(zero) : "—",
                 // EVERY ROW OF A FRAME IS ITS ONE 0 V SLICE'S, so a row picks
                 // that slice -- the pick the I-V chart's point makes.
                 ], { frame: f, bias: 0 });
@@ -570,15 +593,15 @@ const WORKSPACE_TAG = "results:transport";
             /* A FRAME'S OWN NOTE -- its 0 V transmission not run -- under the
              * table, in the record's words; a voltage's note stands in its
              * row. */
-            Object.keys(iv.notes || {}).forEach((key) => {
-                if (!isFinite(Number(key))) {
-                    panel.appendChild(_el("p", "transport-note", iv.notes[key]));
+            (iv.notes || []).forEach((x) => {
+                if (x.bias_v === null) {
+                    panel.appendChild(_el("p", "transport-note", x.note));
                 }
             });
         } else {
             state.points.forEach((p) => pickRow(_pf(p), p.bias_v, [
                 _fmt(p.conductance_g0, 4, false), _fmt(p.current_a, 4, true),
-                _fmt(p.current_a_printed, 4, true)],
+                _printed(p)],
                 { frame: _pf(p), bias: p.bias_v }));
         }
         /* A POINT WITHOUT ITS TRANSMISSION, in its run's words: pending is
@@ -734,7 +757,11 @@ const WORKSPACE_TAG = "results:transport";
                 s.textContent = "not in this description";
             } else {
                 s.appendChild(_chip(st.state));
-                const said = [st.detail, _rungLoopWords(st.progress)]
+                // A RECORD OF ITS RUNS THAT DOES NOT READ, in the
+                // record's words, whatever its SCF says.
+                const said = [st.detail, _rungLoopWords(st.progress),
+                              st.unreadable ? "does not read: "
+                                  + st.unreadable : null]
                     .filter(Boolean).join(" · ");
                 if (said) s.appendChild(_words("span", "transport-stage-detail",
                                                " " + said));
@@ -747,8 +774,7 @@ const WORKSPACE_TAG = "results:transport";
             tr.appendChild(_el("td", null, _fmt(st.energy_ev, 4, false)));
             tr.appendChild(_el("td", null,
                 st.scf_converged === true ? "converged"
-                : st.scf_converged === false ? "NOT converged"
-                : (st.unreadable ? "unreadable: " + st.unreadable : "—")));
+                : st.scf_converged === false ? "NOT converged" : "—"));
             /* THE RUN THE TRANSMISSION GATHERED answers for the device
              * (§ 2a.12): said beside its attempt, with the contour its
              * density was integrated on. */
@@ -782,8 +808,10 @@ const WORKSPACE_TAG = "results:transport";
             const ul = _el("ul", "transport-chain");
             chain.forEach((c) => {
                 const li = _el("li", null, c.attempt + ": ");
+                // A RECORD THAT DOES NOT READ, in the record's words.
                 li.appendChild(_el("span", "transport-prov-val",
-                    c.gathered.length
+                    c.unreadable ? String(c.unreadable)
+                        : c.gathered.length
                         ? c.gathered.map((g) => g.file + " ← " + g.from).join(", ")
                         : "nothing gathered"));
                 /* A SWEPT RUN'S POINTS: what each started from (a point
@@ -955,7 +983,7 @@ const WORKSPACE_TAG = "results:transport";
          * first series colour, spin down the second, the total the ink --
          * so in it no voltage or region borrows a spin's colour.  Every
          * number is the record's, the sums too. */
-        const spinRun = pts.some((q) => q.channels);
+        const spinRun = state.polarized;
         const UP = t.palette[0], DOWN = t.palette[1];
         const nothingYet = () => (pts.length && state.bias !== null
             ? "No transmission at " + here + " yet."
@@ -1206,7 +1234,8 @@ const WORKSPACE_TAG = "results:transport";
         }).filter((tr) => tr.x.length);
         /* EACH SPIN'S CURRENT beside the total, on a polarised calculation's
          * one frame (`web/results.md` § 2.5): the total then takes the ink. */
-        const ivSpin = state.iv && Array.isArray(state.iv.current_up_a)
+        const ivSpin = state.polarized && state.iv
+            && Array.isArray(state.iv.current_up_a)
             && !all("iv") && ivTraces.length === 1;
         if (ivSpin) {
             const total = ivTraces[0];
@@ -1219,13 +1248,15 @@ const WORKSPACE_TAG = "results:transport";
                 up: state.iv.current_up_a[k],
                 down: (state.iv.current_down_a || [])[k] }))
                 .filter((q) => (q.frame == null ? 0 : q.frame) === frame);
-            const bySpin = computed ? "iv_current_by_spin" : "current_by_spin";
             [["up", "I↑" + how, UP], ["down", "I↓" + how, DOWN]].forEach(([key, name, color]) => {
                 const got = rows.filter((q) => q[key] !== null && q[key] !== undefined);
                 if (!got.length) return;
                 ivTraces.push({ x: got.map((q) => q.bias_v),
                     y: got.map((q) => q[key]), mode: "lines+markers", name: name,
-                    tag: bySpin,
+                    // THE I-V'S EACH SPIN, as the record states it --
+                    // TBtrans's printed figure, or the record's own
+                    // integral -- the file names which (`iv_current_by_spin_a`).
+                    tag: "iv_current_by_spin",
                     line: { color: color, width: 1.5, dash: computed ? "dash" : "solid" },
                     marker: { size: 6 },
                     meta: got.map((q) => ({ frame: frame,
@@ -1466,6 +1497,7 @@ const WORKSPACE_TAG = "results:transport";
                     if (state.disposed || !a.ok) return;
                     const b = a.body;
                     state.points = Array.isArray(b.record.points) ? b.record.points : [];
+                    state.polarized = !!b.record.polarized;
                     _redraw(state);
                     _loadPdos(state);
                 } catch (_) { /* the report as it was stays */ }
