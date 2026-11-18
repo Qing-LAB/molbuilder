@@ -1,9 +1,10 @@
 """Documents tab — the read-only docs/*.md reader (blueprints/docs.py).
 
 Pins: /api/docs/toc groups every docs/*.md; /api/docs/read returns one doc's
-text + H1 title; and the path-safety gate rejects traversal / non-.md /
+text + H1 title; the path-safety gate rejects traversal / non-.md /
 outside-docs paths (the same defence-in-depth class as the files blueprint, on a
-different, read-only root).
+different, read-only root); and the four indexes built from the code
+(`web/tabs.md` § 5.6) hold a row for every thing they list.
 
 The blueprint serves the ``docs/`` tree plus the explicitly whitelisted root
 README and LICENSE; all other paths outside ``docs/`` are rejected.
@@ -336,3 +337,111 @@ def test_two_groups_over_one_directory_do_not_each_append_it(tmp_path):
         f"{paths.count('notes/unlisted.md')}x — `_toc_paths` is not growing "
         f"as entries are added")
     assert len(paths) == len(set(paths)), f"duplicates: {paths}"
+
+
+# --------------------------------------------------------------------- #
+#  The indexes -- built from the code each time one is read (§ 5.6)    #
+# --------------------------------------------------------------------- #
+
+def _rows(text: str) -> dict:
+    """Every row of an index's tables, by the thing it names -- its first
+    cell's code span -- with its cells."""
+    import re
+    out = {}
+    for line in text.splitlines():
+        cells = [c.strip() for c in line.split("|")]
+        named = re.match(r"`([^`]+)`", cells[1]) if len(cells) > 2 else None
+        if named:
+            out[named.group(1).replace("&lt;", "<").replace("&gt;", ">")] = (
+                cells[1:-1])
+    return out
+
+
+def _routes(app):
+    return {r.rule for r in app.url_map.iter_rules() if r.endpoint != "static"}
+
+
+def _modules(app):
+    from molbuilder import repo_root
+    pkg = repo_root() / "molbuilder"
+    return {".".join(q for q in p.relative_to(pkg).with_suffix("").parts
+                     if q != "__init__") or "molbuilder"
+            for p in pkg.rglob("*.py") if "__pycache__" not in p.parts}
+
+
+def _files(app):
+    from molbuilder.runfiles import ENGINE_FILES, WRITTEN, shown_file
+    return {shown_file(r) for r in (*WRITTEN, *ENGINE_FILES)}
+
+
+def _references(app):
+    from molbuilder import constants
+    from molbuilder.references import known_keys
+    return ({n for n in vars(constants) if n.isupper()} | set(known_keys()))
+
+
+@pytest.mark.parametrize("name, things", [
+    ("routes", _routes), ("modules", _modules), ("files", _files),
+    ("references", _references),
+], ids=["routes", "modules", "files", "references"])
+def test_each_index_holds_a_row_for_every_thing_it_lists(client, name,
+                                                         things):
+    """`web/tabs.md` § 5.6: each index, read as a document, holds one row
+    for every thing it lists -- every route the server answers, every module
+    of the package, every file of the run-file catalogue, every constant and
+    every bibliography entry.  The silent failure: an index built from a
+    list that is not the code's, missing what was added since."""
+    got = client.get(f"/api/docs/read?path=index/{name}.md")
+    assert got.status_code == 200, got.get_json()
+    missing = things(client.application) - set(_rows(got.get_json()["text"]))
+    assert not missing, sorted(missing)
+
+
+def _title_of(key):
+    from molbuilder.references import citation_for
+    return citation_for(key)["title"]
+
+
+@pytest.mark.parametrize("name, thing, column, said", [
+    # A LAYER, as `architecture.md` § 3 places it: its L1 index, its L3
+    # sentence, every other L2.
+    ("modules", "structure", 1, lambda: "L1"),
+    ("modules", "web.app", 1, lambda: "L3"),
+    ("modules", "transport.record", 1, lambda: "L2"),
+    # A CITATION, by its title, as the bibliography's reader gives it.
+    ("references", "Brandbyge2002", 1, lambda: _title_of("Brandbyge2002")),
+], ids=["an-L1-module", "an-L3-module", "an-L2-module", "a-citation"])
+def test_an_index_row_says_what_its_owner_says(client, name, thing, column,
+                                                said):
+    """`web/tabs.md` § 5.6: a row's cells are its owner's -- a module's
+    layer by `architecture.md` § 3's rule, a citation's title by its
+    bibliography entry.  The silent failure: a row that names its thing and
+    says nothing true of it, a column read from a field its owner never
+    gives."""
+    text = client.get(f"/api/docs/read?path=index/{name}.md").get_json()["text"]
+    assert _rows(text)[thing][column] == said(), _rows(text)[thing]
+
+
+def test_the_indexes_folder_holds_the_four_before_the_archive(
+        client, tmp_path, monkeypatch):
+    """`web/tabs.md` § 5.6: the sidebar's Indexes folder, the server's own,
+    holds the four indexes, each a document the tab opens; the archive
+    stays last.  The silent failure: indexes no sidebar shows.  Read from a
+    copy of the tree: the route writes a document it finds unlisted into
+    `toc.json` (§ 5.3), and the checkout is not the suite's to write."""
+    import shutil
+    from molbuilder.web.blueprints import docs as docs_bp
+    copy = tmp_path / "docs"
+    shutil.copytree(docs_bp._docs_root(), copy)
+    monkeypatch.setattr(docs_bp, "_docs_root", lambda: copy)
+    tree = client.get("/api/docs/toc").get_json()["tree"]
+    labels = [n.get("label") for n in tree]
+    folder = tree[labels.index("Indexes")]
+    assert [c["path"] for c in folder["children"]] == [
+        "index/routes.md", "index/modules.md", "index/files.md",
+        "index/references.md"]
+    if "Archive" in labels:
+        assert labels.index("Indexes") == labels.index("Archive") - 1
+    for c in folder["children"]:
+        read = client.get(f"/api/docs/read?path={c['path']}").get_json()
+        assert read["ok"] and read["title"] == c["label"], read

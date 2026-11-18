@@ -202,12 +202,12 @@ def test_the_warm_rules_and_the_catalogue_name_the_same_keywords():
         "a-templated-file-the-list-does-not-name"])
 def test_the_contracts_restart_column_is_the_lists_own_answer(role, said):
     """`project-layout.md` § 5.4's restart-list column, which
-    `tools.manifest` renders: each engine file as the engine's restart-file
-    list says -- the engine's scratch where `is_scratch` says so of a name
+    `tools.manifest` renders (`catalogue_tables.carried`): each engine file
+    as the engine's restart-file list says -- the engine's scratch where `is_scratch` says so of a name
     the row makes for a run of ours.  THE SILENT FAILURE: the rendered
     contract calling TBtrans's data files scratch, a second answer beside
     `is_scratch`'s, which a person reads to decide what to delete."""
     from molbuilder.runfiles import ENGINE_FILES
-    from tools.manifest import _carried
+    from molbuilder.catalogue_tables import carried as _carried
     (row,) = [e for e in ENGINE_FILES if e.role == role]
     assert _carried(row) == said

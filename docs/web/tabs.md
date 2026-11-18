@@ -540,7 +540,8 @@ mirrors the existing image rewrite: source Markdown stays portable, while the
 rendered in-app view receives the API route it needs.
 
 The root README and repository `LICENSE` are the only intentional path
-exceptions. The sidebar obtains the README from `/api/docs/toc` as
+exceptions outside `docs/`, and the four indexes (§ 5.6) the only documents
+that are no file. The sidebar obtains the README from `/api/docs/toc` as
 `../README.md`; `/api/docs/read` accepts that value and `../LICENSE` exactly.
 All other paths containing `..` are rejected, and every regular document must
 resolve to a real Markdown file inside `docs/`. Opening a doc
@@ -556,6 +557,51 @@ light reading surface (some people print from this pane), and that choice is a
 reading preference kept in this browser after it closes (`pagePrefs`,
 [`runtime.md`](?doc=web/runtime.md) § 3): a page opened later in the same
 browser starts on the surface last chosen.
+
+### 5.6 The indexes — built from the code each time they are read
+
+*(The user, 2026-09-07: "an index that summarizes key design aspects, such
+as api, module, data structure etc. … a reference list that gives the
+foundation of all the constants … and paper citations summarized in one
+place"; 2026-11-17: "Live from the code".)*
+
+Four documents the server composes each time one is read
+(`molbuilder/web/doc_indexes.py`) — never a file on disk, so none can drift
+from what it lists. They sit in the sidebar's
+**Indexes** folder, added by the server to the tree it answers (never
+written into `toc.json`), and read through `/api/docs/read` as
+`index/routes.md`, `index/modules.md`, `index/files.md` and
+`index/references.md` like any document. Each is one table, **one row per
+thing**, and a row says where its fact lives — the chapters that name it —
+with at most the one line its owner already wrote; it never restates the
+detail.
+
+| index | one row per | from | the row says |
+|---|---|---|---|
+| **Routes** | route the running server answers, its methods merged | the server's own route table, and its page scripts | its methods, the first sentence of each handler's docstring (by its methods, where several answer), the chapters that name it, the page scripts that write its path — a route no chapter names says so |
+| **Modules** | module of the package | the package's files | its layer by `architecture.md` § 3's rule, read there (L1 its index, L3 its sentence *L3 is …*, L2 every other; unknown, and said, where either is not found), its own line (its header's `ROLE`, else its docstring's first sentence), the chapters that name it |
+| **Files** | file molbuilder writes into a calculation folder, and each engine file it names | the run-file catalogue's rows, in the one rendering `execution/project-layout.md` § 5 shows too (`molbuilder/catalogue_tables.py`) | that rendering's cells — the file, what it is, who writes it or what the restart list says of it, the one function its readers ask — and the chapters that name it |
+| **References** | physical constant, and bibliography entry | `constants.py`, each constant with the first paragraph of the comment above it — what it is, where its value comes from, why this value; `science/references.bib` through its one reader (`references`) | the constant's value and that paragraph; the entry's title, the line that finds it (first author, journal, volume, year) and DOI, and the chapters that cite it — the code alone, or neither, said so — and each key a chapter cites that the bibliography lacks |
+
+"The chapters that name it" are the live documents — not `archive/`, not
+`plans/`, not the changelog, records of what was that name everything —
+writing: a route's path, its variable part written as a variable (`<id>`,
+`{id}`, `…`, `...`; a value is an example, not a name) and a `{a,b}` list
+read as each of its names — a lone `/` is prose, so the root page `/` is
+named by no chapter; a module in backticks by its path — a file
+(`transport/record.py`) or a package's folder (`jobset/`) — its dotted name
+(`transport.record`, `molbuilder.parse`), or its name with one of its own
+names after it (`runs.concluded`) — a top-level module's bare word, which a
+field or a variable may share, never, nor a bare `.py` or `__init__.py`; a
+file's name, alone or inside a folder's path, its fields written as fields
+(`<base>.fdf`, never `H2.fdf`; one written field stands for any, so
+`<label>.log` names both `<base>.log` and `<group>.log`); a constant's name;
+a citation's key in brackets or after `references.bib:`. A page script *writes* a path when its
+text holds it — a variable also as `${id}`, its last one left off as a
+script builds it (`"/api/x/" + id`); a path it assembles from pieces it
+does not write. A cited
+key the bibliography lacks is found by its author-and-year shape
+(`Papior2019`).
 
 ## 6. Save flow — the out-gate
 
@@ -668,7 +714,9 @@ Documents controller are fully classic. Finishing these off is not planned.
   (paths read from `TABS`).
 - `test_docs_tab.py` — the Documents tab: the tree (`/api/docs/toc`) holds
   every `docs/*.md` once, `read` returns text + title, and the path-safety
-  gate rejects traversal / non-`.md` / outside-`docs`.
+  gate rejects traversal / non-`.md` / outside-`docs`; the Indexes folder
+  holds the four indexes, and each holds a row for every route, module,
+  catalogue file, constant and bibliography entry (§ 5.6).
 - `test_transport_record.py`, `test_transport_cell.py`,
   `test_transport_wizard.py` — the transport surface.
 - `test_structure_save_endpoint.py` — the server end of § 6: the route, the

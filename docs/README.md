@@ -176,7 +176,10 @@ rules above apply to every step in full:
 
 ## Index
 
-*(bottom-up by domain)*
+*(bottom-up by domain)* — one row per document. **Where a thing lives** — a
+route, a module, a file a calculation writes, a constant or a citation — is
+answered by the four indexes of the Documents tab's **Indexes** folder, built
+from the code each time one is read ([`web/tabs.md`](?doc=web/tabs.md) § 5.6).
 
 | Doc | Role | Owns |
 |---|---|---|

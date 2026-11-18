@@ -22,13 +22,14 @@ readers to `paths.path_for` (found 2026-10-04).
 from __future__ import annotations
 
 import argparse
-import importlib
 import re
 import sys
 from pathlib import Path
 
-from molbuilder.runfiles import (ENGINE_FILES, WRITTEN, Artifact, EngineFile,
-                                 compose, names_made, shown)
+from molbuilder.catalogue_tables import (ENGINE_HEAD, WRITTEN_HEAD,
+                                        door_resolves, engine_cells,
+                                        markdown_table, written_cells)
+from molbuilder.runfiles import ENGINE_FILES, WRITTEN
 
 DOC = Path(__file__).resolve().parent.parent / "docs/execution/project-layout.md"
 
@@ -42,101 +43,29 @@ _MARK = re.compile(r"(<!-- manifest:([a-z]+) -->\n)(.*?)(<!-- /manifest -->)",
 
 
 
-def _name(a: "Artifact | EngineFile") -> str:
-    """The file's name, one spelling -- a row of either table, its fields
-    shown by name (`runfiles.shown`)."""
-    if a.name:
-        return f"`{shown(a.name)}`"
-    head = "<base>" if a.staged else "<label>"
-    return f"`{head}{shown(a.role)}`"
-
-
-def _notes(a: Artifact) -> str:
-    """Which engine, which calculation, and when only sometimes."""
-    bits = []
-    if a.engine:
-        bits.append(_engine_words(a.engine))
-    if a.calculation:
-        bits.append(", ".join(a.calculations))
-    out = f" *({', '.join(bits)})*" if bits else ""
-    if a.only:
-        out += f" — only: {a.only}"
-    return out
-
-
-def door_resolves(door: str) -> bool:
-    """Whether ``door``, a dotted path under ``molbuilder``, names something
-    that exists -- a module's function, class, or a class's method."""
-    parts = door.split(".")
-    for cut in range(len(parts) - 1, 0, -1):
-        try:
-            obj = importlib.import_module("molbuilder." + ".".join(parts[:cut]))
-        except ImportError:
-            continue
-        for attr in parts[cut:]:
-            obj = getattr(obj, attr, None)
-            if obj is None:
-                return False
-        return True
-    return False
-
-
-def _carried(e: EngineFile) -> str:
-    """What the engine's shipped restart-file list says of it
-    (`warmfiles`): carried to a continuing run, known to the list, the
-    engine's scratch -- each name the row makes for a run of ours asked
-    (`runfiles.names_made`) -- or nothing."""
-    from molbuilder.warmfiles import is_scratch, warm_list
-    if not e.role:
-        return ""
-    if any(is_scratch(compose("L", m)) for m in names_made(e.role)):
-        return "scratch"
-    listed = warm_list(e.engine)
-    if e.role in listed.carry:
-        return "carried"
-    if e.role in listed.suffixes:
-        return "listed"
-    return ""
-
-
-def _engine_words(engine: str) -> str:
-    """The engine's name as a person reads it -- its record's words."""
-    from molbuilder.engine_table import engine as _engine
-    return _engine(engine).words
-
-
-def _door(row, table: str) -> str:
-    """The row's door as the table shows it -- refused when it names a
-    function the code lacks: a contract must not send a reader to one."""
+def _checked(row, table: str):
+    """``row``, refused when its door names a function the code lacks: a
+    contract must not send a reader to one
+    (`catalogue_tables.door_resolves`)."""
     if row.door and not door_resolves(row.door):
         raise SystemExit(
             f"runfiles.{table}: {row.role or row.name!r} names the door "
             f"{row.door!r}, which does not exist -- a contract must not "
             f"send a reader to a function the code lacks.")
-    return f"`{row.door}`" if row.door else "none"
+    return row
 
 
 def engines_table() -> str:
     """§ 5.4's rows: the engines' files molbuilder names."""
-    lines = ["| file | what it is | the restart list | the door |",
-             "|---|---|---|---|"]
-    for e in ENGINE_FILES:
-        lines.append(f"| {_name(e)} *({_engine_words(e.engine)})* "
-                     f"| {e.what} | {_carried(e) or '—'} "
-                     f"| {_door(e, 'ENGINE_FILES')} |")
-    return "\n".join(lines) + "\n"
+    return markdown_table(ENGINE_HEAD, (
+        engine_cells(_checked(e, "ENGINE_FILES")) for e in ENGINE_FILES))
 
 
 def table(level: str) -> str:
     """One level's rows, as the markdown table § 5 holds."""
-    lines = ["| file | what it is for | written by | the door | kind |",
-             "|---|---|---|---|---|"]
-    for a in WRITTEN:
-        if a.level != level:
-            continue
-        lines.append(f"| {_name(a)}{_notes(a)} | {a.what} | {a.writer} "
-                     f"| {_door(a, 'WRITTEN')} | {a.kind} |")
-    return "\n".join(lines) + "\n"
+    return markdown_table(WRITTEN_HEAD, (
+        written_cells(_checked(a, "WRITTEN"))
+        for a in WRITTEN if a.level == level))
 
 
 def render_into(doc: str) -> str:

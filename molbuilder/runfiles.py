@@ -2583,6 +2583,18 @@ def row_words(a: "Artifact", name: str) -> dict:
             "where": LEVEL_WHERE.get(a.level, ""), "only": a.only}
 
 
+def shown_file(row) -> str:
+    """A CATALOGUE ROW'S FILE AS A PERSON READS IT -- a row of
+    :data:`WRITTEN` or :data:`ENGINE_FILES`: its name, else its role after
+    ``<base>`` (a file named on the stage's base) or ``<label>`` (on the
+    label alone), each field by name (:func:`shown`) -- the one spelling
+    `tools/manifest.py`'s tables and the Documents tab's file index show
+    (`web/tabs.md` § 5.6)."""
+    if row.name:
+        return shown(row.name)
+    return ("<base>" if row.staged else "<label>") + shown(row.role)
+
+
 def shown(template: str, **fields) -> str:
     """A NAME AS A PAGE OR A DESCRIPTION SHOWS IT -- ``template`` (a role, or
     a name with its fields left open) with each field in ``fields`` written

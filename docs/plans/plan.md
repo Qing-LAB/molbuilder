@@ -206,7 +206,7 @@ topic's test is confirmed present before the release ships *(the user,
 | **F8** | **The pages — words and residue** | **Closed** — 2.67.1–2.67.3: what the pages got wrong; every word a person reads plain, no document cited in a message, frames from 1 (decided 7); one prep answer, the terminal's lines drawn on the page (the ledger's *Found by 2.67.1…2.67.3*). | 103 + 3 (F0a's review) | — |
 | **F9** | **Tests through the road** (§ 1ak S4) | **2.67.4–2.67.11** (the ledger's *Found by 2.67.4…2.67.11*): the audit's retire list judged test by test; a test validates what is correct *(the user, 2026-11-06; [`process/testing.md`](?doc=process/testing.md) § 3b)*; the tools' real output; one door per test helper; the prep-side tests through the real commands; runs that never happened made on the road; the page tests fed what the server answers; the four product defects those tests found, fixed (2.67.10); the server-side test doors (2.67.11) — one way to point a test at a projects tree (`conftest.point_the_one_door_at`), one maker of a described calculation, the support helpers public and none borrowed from a test file, one maker per real run, the audit's retire list finished (K2679-9's server half, TA-REWRITE, TA-ISOLATE, TA-RETIRE's rest). **Left, in order** *(the user, 2026-11-07: "continue", on the inventory of F9-6 split three ways)*: **the page-side test doors**, done as 2.70.2–2.70.10 (O-TESTS) — the page tests under node on the one runner and fed the server's answers, no browser in the fast tier, an order held where a time was waited, one collector of a page's errors, the pages asked of the app, the page's clock for its timers (K2679-9's page half), the hand-made workspace stand-ins and their typed answers (the 2026-11-11 test audit's TA-8's store, TA-9, TA-16); **the tests owed**, each on a real run (E2E-OWED, I2-087, B4-14's walk half, B4-15, B4-16), done as 2.70.21, I2-085 with them; **the dead-code release**, done as 2.70.20 — K2677-4, K2678-5, K2679-5, K27610-6, and the three states no road makes (E2E-Q, and E2E-OWED's monitor that dies loading and viewer that throws), its removal list shown first; **F9's closing review rounds**, 2.70.22–2.70.26, their low-harm last items left (the handover's *Left, in order*). Left as they are, said why in the ledger: each module's own server fixture (`testing.md` § 8 lets a module choose its scope), the e2e marker a file repeats (dropped when the file is touched), B1-31 (the form id prefix stated by the server and the page, the browser tests catching a drift). The ledger's rows still marked F9: TA-REWRITE's page files, K2679-9's page half; B4-2, the sent-run pair, kept with its reason stated (decided 10). | 62 + 8 (F0a's review) + 4 (the test audit) | — |
 | **F10** | **The documents true** | Each chapter rewritten against the code once — the untrue and stale sentences corrected, every link resolved, history inside a contract removed and each reason it carried kept as a rule; a chapter a release F0–F9 touches is brought true in that release; README R5 says why `--bundle` keeps its name (decided 8). ~300 items over 70 chapters. | 305 + 1 (F0a's review) | — |
-| **F11** | **The documents findable** (§ 7) | § 7's four indexes; `docs/README.md` the one index naming every live chapter (nine have no row today) and each domain overview listing its own; one place for each thing now stated in several. | 2 + § 7 | — |
+| **F11** | **The documents findable** (§ 7) | § 7's four indexes — **done in 2.77.0**, built from the code each time they are read, the Documents tab's Indexes folder (`web/tabs.md` § 5.6; the user, 2026-11-17: "Live from the code"); `docs/README.md` the one index naming every live chapter (it does, 2026-11-17) — its rows shortened to one line each, and each domain overview listing its own; one place for each thing now stated in several. | 2 + § 7 | — |
 | **F12** | **Proven** (§ 1am step 8) | Each road — an optimization, a vibration on SIESTA and on PySCF, a transport calculation — driven start to finish in the browser on real runs; the full batch; two review rounds over F0–F11. | 8 | — |
 
 **How a release closes** *(the user, 2026-09-27: "a consolidated persistent
@@ -729,7 +729,7 @@ Recorded so nobody fixes them by analogy. Re-read against the code 2026-10-08.
   that out"*). X3 is the browser half only.
 
 
-## 7. The document survey and the four indexes — OPEN; step 1 done (§ 5v, archived), steps 2–4 not started
+## 7. The document survey and the four indexes — OPEN; steps 1–3 done (§ 5v, archived; the four indexes built from the code in 2.77.0, `web/tabs.md` § 5.6), step 4 not started
 
 *(User, 2026-09-07: "the documents are very fragmented and a lot of key
 information cannot be easily found. we also should have an index that
@@ -744,7 +744,8 @@ one place.")*
 2026-10-18 gave 19 documented routes not live and 26 live ones undocumented
 (the checkpoint, files, modify and workspace-storage families among them),
 against about 92 unique `/api` routes (the blueprints', the app's own in
-`app.py`, `rate_limit.py`'s); the counts are re-derived when step 2 is taken.
+`app.py`, `rate_limit.py`'s). Re-derived with the Routes index (2.77.0,
+2026-11-17): every live route is named by a chapter.
 And coverage was never truthfulness:
 the 2026-09-29 check read every live document against the code and found
 statements the code contradicts — § 5v holds that list, and the survey starts
@@ -763,19 +764,20 @@ essays about documents. It is a good map of the tree and a poor answer to
 A document can contradict itself, and nothing systematic finds it — which is
 the survey's real justification.
 
-### 7.2 The four indexes — organized by THING, not by document
+### 7.2 The four indexes — organized by THING, not by document — DONE in 2.77.0
 
-Each is a lookup table, each row pointing at the document that owns the
+Each is a lookup table, each row pointing at the documents that own the
 detail. **None of them may become a second home**: a row says where a fact
 lives, never what the fact is. (`README.md` R-W1, and the reason `docs/`
-survived its 2026-06-02 over-compression.)
-
-| index | one row per | the row answers | generated or written |
-|---|---|---|---|
-| **API** | route | what it answers · who calls it · which doc owns it | **generated** — the route list is derivable from the blueprints, and a generated index cannot drift. Two findings are the argument: W8 (2026-09-07: `web-api.md` claimed the Documents tab read `/api/docs/list`, which it has not since the commit after the one that added it) and the 2026-10-08 route sweep (11 documented routes that do not exist, 9 live ones undocumented) |
-| **Module** | module | its role · its layer (L1/L2/L3) · its doc | **generated** from `architecture.md` § 3's index, the one list of each module's layer |
-| **Data structure** | persisted file / schema | its shape · its version · its one reader and one writer | **written** — the doors are a design fact, not derivable. The substance for a calculation's files exists: `execution/project-layout.md` § 5, every file, who writes it, the one door that reads it — **generated** from `runfiles.WRITTEN` by `tools/manifest.py`, so the index points at it |
-| **Reference** | constant · citation | its value · its source · **why this value** | **written** — see 7.3 |
+survived its 2026-06-02 over-compression.) **All four are built from the code
+each time one is read** *(the user, 2026-11-17: "Live from the code", over
+two written by hand as first sketched here)* — the Documents tab's Indexes
+folder, `web/tabs.md` § 5.6, which holds what each row says and how a chapter
+is found to name a thing: **Routes** from the running server, **Modules**
+from the package's files and `architecture.md` § 3's rule, **Files** from the
+run-file catalogue in its one rendering (`catalogue_tables`, the rows
+`execution/project-layout.md` § 5 shows too), **References** from
+`constants.py` and the bibliography's reader.
 
 ### 7.3 The reference index, which is the one with real content in it
 
@@ -790,7 +792,9 @@ the name carries the convention — `HARTREE_EV / BOHR_ANGSTROM` gives
 must use the SAME one. The emitter imports it (`trajectory_log/emitter.py`)
 so emitted forces line up with what a person reads in ASE, VASP and QE
 logs. That is a real convention choice with a real justification, and it lives
-in a code comment nobody will find.
+in the comment above the constant — which the References index now shows
+beside its value (2.77.0, `web/tabs.md` § 5.6), the comment staying its one
+home.
 
 Citations are split the same way: `science/references.bib` holds **94**
 entries (2026-11-16), about a dozen live documents cite it, and the rest cite
@@ -806,12 +810,9 @@ defined, and the sentence saying why that value and not the neighbouring one.
    every live doc read against the code, findings in one list, an entry
    leaving it when its document is corrected. The route sweep, kept there
    too, is the same kind of finding for `web-api.md`.
-2. **The two generated indexes**, which are cheap and cannot go stale. Inputs:
-   the live routes (about 93 on 2026-10-28); `architecture.md` § 3's module list.
-3. **The two written indexes**, from the survey's findings. Input for the
-   data-structure index: `execution/project-layout.md` § 5 is
-   already the manifest (generated) of a calculation's files — the index points at it, it
-   does not restate it.
+2. **The four indexes** — **done**, all built from the code (§ 7.2). Measured
+   with them, 2026-11-17: every live route is named by a chapter.
+3. *(folded into 2: no index is written by hand.)*
 4. **Only then** decide what merges. Fragmentation may be the symptom; the
    fix might be four indexes and no merges at all.
 

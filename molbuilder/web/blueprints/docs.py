@@ -18,6 +18,11 @@ Routes:
 
     GET /api/docs/toc               document tree for the sidebar
     GET /api/docs/read?path=<rel>   one doc's raw markdown text
+
+**The four indexes** -- routes, modules, files, references -- are documents
+composed from the code each time one is read, never files
+(`web/doc_indexes.py`, `web/tabs.md` § 5.6): the tree's Indexes folder
+lists them, and ``read`` of ``index/<name>.md`` composes one.
 """
 from __future__ import annotations
 
@@ -133,7 +138,9 @@ def _build_toc_tree(root: Path, toc: Dict) -> List[Dict]:
 
     Returns a list of top-level tree nodes.  Each node is either a
     **directory** (has ``children``) or a **document** (has ``path``).
-    Archive children are auto-populated from the filesystem.
+    Archive children are auto-populated from the filesystem; the Indexes
+    folder, the server's own, goes before the archive and is never written
+    into ``toc.json`` (`web/tabs.md` § 5.6).
     """
     import json as _json
     from pathlib import PurePosixPath as _PurePosixPath
@@ -319,12 +326,22 @@ def _build_toc_tree(root: Path, toc: Dict) -> List[Dict]:
 
         archive_children = _scan_dir(archive_root)
 
-    # Build the tree.
+    # Build the tree -- THE INDEXES FOLDER before the archive, the server's
+    # own, never written into toc.json (`web/tabs.md` § 5.6).
+    from ..doc_indexes import INDEXES
+    indexes = {"label": "Indexes", "meta": "built from the code",
+               "collapsed": False,
+               "children": [{"path": i.path, "label": i.title,
+                             "subtitle": i.about} for i in INDEXES]}
     tree = []
     for node in toc.get("tree", []):
         if node.get("label") == "Archive":
             node["children"] = archive_children
+            tree.append(indexes)
+            indexes = None
         tree.append(_populate(node))
+    if indexes is not None:
+        tree.append(indexes)
 
     # Persist the repaired, scanned tree back to toc.json.
     if _new_paths:
@@ -364,7 +381,8 @@ def _build_toc_tree(root: Path, toc: Dict) -> List[Dict]:
 
 @bp.route("/api/docs/toc", methods=["GET"])
 def api_docs_toc():
-    """Document tree for the sidebar — built from ``docs/toc.json``.
+    """Document tree for the sidebar — ``docs/toc.json``'s, with the
+    server's own Indexes folder before the archive.
 
     Response::
 
@@ -446,6 +464,8 @@ def api_docs_read():
     Query: ``path`` -- relative to ``docs/`` (from ``/api/docs/toc``).
     Special: ``path=../README.md`` and ``path=../LICENSE`` read the project
     root README and license. They are the only paths allowed outside ``docs/``.
+    ``path=index/<name>.md`` is one of the four indexes, composed from the
+    code now (`web/doc_indexes.py`, `web/tabs.md` § 5.6).
     Response: ``{ok, path, title, text}`` or ``{ok:false, error}`` (400/404).
     """
     root = _docs_root()
@@ -474,6 +494,14 @@ def api_docs_read():
             "title": title,
             "text":  text,
         })
+
+    # AN INDEX, composed from the code now (`web/tabs.md` § 5.6).
+    from flask import current_app
+    from ..doc_indexes import compose, index_of
+    index = index_of(raw_path)
+    if index is not None:
+        return jsonify({"ok": True, "path": raw_path, "title": index.title,
+                        "text": compose(index, current_app, root)})
 
     try:
         resolved = _resolve_doc(raw_path, root)

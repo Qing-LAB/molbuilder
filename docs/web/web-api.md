@@ -658,10 +658,13 @@ start. The strip hides its GPU cells either way; only the second case prints
 anything, because only the second case is something being wrong.
 
 **Docs** — `GET /api/docs/read` (one markdown doc; also serves the
-whitelisted root `../README.md` / `../LICENSE`), `GET /api/docs/toc` (the
-sidebar tree from `docs/toc.json`; auto-discovers new domain docs and
-best-effort persists the repaired tree — read-only installs are served from
-memory), and `GET /api/docs/img/<path>` (images only, contained to
+whitelisted root `../README.md` / `../LICENSE`, and composes the four indexes,
+`index/routes.md`, `index/modules.md`, `index/files.md` and
+`index/references.md`, from the code each time — [`tabs.md`](?doc=web/tabs.md)
+§ 5.6), `GET /api/docs/toc` (the sidebar tree from `docs/toc.json`, with the
+server's own Indexes folder before the archive; auto-discovers new domain docs
+and best-effort persists the repaired tree — read-only installs are served
+from memory), and `GET /api/docs/img/<path>` (images only, contained to
 `docs/img/`) — what the Documents tab reads.
 
 **Admin** (admin-gated) — `GET /api/admin/rate_limit/status` (the blocked-IP
