@@ -8,116 +8,96 @@ Important caveat: RDKit's embedder is conformation-aware but not
 *helix*-aware.  For oligos longer than ~6 residues the conformer is
 typically a folded clump rather than a B-form helix.  Fine if you'll
 run a thorough DFT optimisation anyway; not what you want for
-production B-DNA / A-RNA structures.  Use the ``amber`` backend
-for an extended chain with proper Amber force-field topology, or
-build with 3DNA externally for a true B-form / A-form helix.
+production B-DNA / A-RNA structures.
 """
 
 from __future__ import annotations
 
 from typing import Optional
 
+from ...chemistry import (INSTALL_TOOLS, TOOLS, embed_conformer,
+                          rdkit_to_structure, require)
 from ...structure import Structure
 from . import Built
-from ._common import rdkit_mol_to_structure
+
+#: This backend builds a single strand only.
+DUPLEX = False
+#: How it is installed: a tool the host env's recipe lists
+#: (`chemistry.INSTALL_TOOLS`) -- the host env's (``ENV``).
+INSTALL = INSTALL_TOOLS
+ENV = "host"
+#: What RDKit is needed for here, as a missing-tool answer says it.
+_NEEDED_FOR = "Building a nucleic acid on the RDKit backend"
 
 
-# rdkit.Chem.MolFromSequence flavor codes (probed empirically:
-# residues with O2' are RNA, residues without are DNA -- the flavors
-# 2-5 produce O2', so they're RNA, and flavors 6-7 are DNA):
-#   2 = RNA, 5'-OH
-#   3 = RNA, 5'-phosphate
-#   4 = RNA, 3'-phosphate
-#   5 = RNA, both phosphates
-#   6 = DNA, 5'-OH
-#   7 = DNA, 5'-phosphate
+#: EACH ASK'S rdkit.Chem.MolFromSequence FLAVOR, measured (RDKit 2026.03,
+#: 2026-11-18): a flavor whose residues hold an O2' is RNA,
+#: one without DNA; a 3'-phosphate is its own residue after the last
+#: nucleotide.  Every terminal is built as asked.
+#:   2 / 6 = RNA / DNA, 5'-OH and 3'-OH
+#:   3 / 7 = RNA / DNA, 5'-phosphate
+#:   4 / 8 = RNA / DNA, 3'-phosphate
+#:   5 / 9 = RNA / DNA, both phosphates
 _FLAVOR = {
     ("dna", "OH"): 6,  ("dna", "5P"): 7,
-    ("dna", "3P"): 6,  ("dna", "PP"): 7,    # rdkit DNA only has 6 / 7
+    ("dna", "3P"): 8,  ("dna", "PP"): 9,
     ("rna", "OH"): 2,  ("rna", "5P"): 3,
     ("rna", "3P"): 4,  ("rna", "PP"): 5,
 }
 #: The terminal state each flavor writes.
-_FLAVOR_TERMINAL = {2: "OH", 3: "5P", 4: "3P", 5: "PP", 6: "OH", 7: "5P"}
+_FLAVOR_TERMINAL = {2: "OH", 3: "5P", 4: "3P", 5: "PP",
+                    6: "OH", 7: "5P", 8: "3P", 9: "PP"}
 
 
 def built(kind: str, form: str, terminal: str) -> Built:
     """What this backend builds of the ask (`backends.built`), read off the
     flavor its build takes (:data:`_FLAVOR`): an embedded conformer, no helix,
-    and the terminal that flavor writes."""
+    and the terminal that flavor writes -- the one asked, every time."""
     return Built(
         form=None, terminal=_FLAVOR_TERMINAL[_FLAVOR[(kind, terminal)]],
-        form_words="RDKit embeds a conformer (ETKDG), not a helix; use the "
-                   "amber backend for an extended backbone or 3DNA for a "
-                   "canonical helix",
-        terminal_words="RDKit's DNA templates carry no 3'-phosphate")
+        form_words="RDKit embeds a conformer (ETKDG), not a helix")
 
 
 def is_available() -> bool:
-    # importlib.util.find_spec checks the module's installability without
-    # actually executing its top-level code -- faster than `import rdkit`
-    # on every call and pyflakes-clean.
+    """RDKit here, by the module the tools table says proves it
+    (`chemistry.TOOLS`) -- found without loading it, so ``auto`` asks
+    cheaply what the build then imports."""
     import importlib.util
-    return importlib.util.find_spec("rdkit") is not None
+    try:
+        return importlib.util.find_spec(TOOLS["rdkit"].module) is not None
+    except ImportError:
+        return False
 
 
 def build(kind: str, sequence: str, form: str, terminal: str,
           title: Optional[str] = None, double_strand: bool = False,
           strand2: Optional[str] = None) -> Structure:
-    if double_strand or strand2 is not None:
-        raise ValueError(
-            "double-strand DNA is not supported by the rdkit backend; it "
-            "requires X3DNA (canonical or arbitrary duplex geometry).")
-    if not is_available():
-        from ...chemistry import BackendUnavailable
-        raise BackendUnavailable(
-            "rdkit not installed; run `pip install rdkit` "
-            "or `conda install -c conda-forge rdkit`", missing="rdkit"
-        )
-
-    # NO FORM IS SHAPED HERE -- the embedded conformer is whatever ETKDG
-    # produces; the check after the build says so (`built`).
-
-    if kind not in ("dna", "rna"):
-        raise ValueError(f"rdkit backend supports kind in 'dna'|'rna'; got {kind!r}")
-    flavor = _FLAVOR.get((kind, terminal))
-    if flavor is None:
-        raise ValueError(
-            f"rdkit backend doesn't support terminal={terminal!r} for {kind}; "
-            f"valid: 'OH', '5P', '3P', 'PP'"
-        )
-
-    from rdkit import Chem
-    from rdkit.Chem import AllChem
-
-    one_letter = "".join(c for c in sequence.upper() if c.isalpha())
-    mol = Chem.MolFromSequence(one_letter, flavor=flavor)
+    """A single strand of ``kind`` from ``sequence`` -- read by the grammar
+    already -- with its terminal as asked; no form is shaped here, the
+    embedded conformer is whatever ETKDG makes (the check after the build
+    says so, :func:`built`)."""
+    Chem = require("rdkit", needed_for=_NEEDED_FOR)
+    AllChem = require("rdkit", needed_for=_NEEDED_FOR,
+                      module="rdkit.Chem.AllChem")
+    flavor = _FLAVOR[(kind, terminal)]
+    mol = Chem.MolFromSequence(sequence, flavor=flavor)
     if mol is None:
-        raise ValueError(
+        # The letters were read by the grammar already: RDKit failing on
+        # them is the engine's failure, never the request's.
+        raise RuntimeError(
             f"RDKit could not build a {kind} polymer from sequence "
-            f"{one_letter!r} (flavor={flavor})"
-        )
+            f"{sequence!r} (flavor={flavor})")
     # Each hydrogen in the residue of the atom it bonds to (RDKit's own
     # ``addResidueInfo``): left out, all of them read as one residue `MOL`.
     mol = Chem.AddHs(mol, addResidueInfo=True)
-
-    params = AllChem.ETKDGv3()
-    params.randomSeed = 0xF00D
-    if AllChem.EmbedMolecule(mol, params) == -1:
-        params.useRandomCoords = True
-        if AllChem.EmbedMolecule(mol, params) == -1:
-            raise RuntimeError(
-                f"RDKit ETKDG could not embed a 3-D conformer for "
-                f"{kind} {one_letter!r}"
-            )
-
+    if not embed_conformer(mol):
+        raise RuntimeError(
+            f"RDKit ETKDG could not embed a 3-D conformer for "
+            f"{kind} {sequence!r}")
     # MMFF doesn't have parameters for nucleic acids -- use UFF.
     try:
         AllChem.UFFOptimizeMolecule(mol, maxIters=500)
     except Exception:
         pass  # optimisation is best-effort
-
-    return rdkit_mol_to_structure(
-        mol,
-        title=title or f"{kind} {one_letter} (rdkit, embedded conformer)",
-    )
+    return rdkit_to_structure(
+        mol, title=title or f"{kind} {sequence} (rdkit, embedded conformer)")

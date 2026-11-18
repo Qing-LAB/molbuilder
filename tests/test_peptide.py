@@ -49,7 +49,86 @@ def test_full_protonation_keeps_heavy_atom_counts(heavy_only_arndc):
         assert s_full.elements.count(el) == heavy_only_arndc.elements.count(el)
 
 
-def test_modified_residue_phosphoserine():
-    s = build_peptide("AR[SEP]C", add_hydrogens=False)
-    assert "SEP" in s.residue_names
-    assert s.elements.count("P") == 1
+#: EACH MODIFIED RESIDUE THE GRAMMAR TAKES: its code, its parent's one
+#: letter, and the heavy atoms it adds to the parent -- the PDB's Chemical
+#: Component Dictionary's definition (`engines/builders.md` § 2).
+_MODIFIED = [
+    ("SEP", "S", {"P": 1, "O": 3}),   # phospho-serine
+    ("TPO", "T", {"P": 1, "O": 3}),   # phospho-threonine
+    ("PTR", "Y", {"P": 1, "O": 3}),   # phospho-tyrosine
+    ("MLZ", "K", {"C": 1}),           # N6-methyl-lysine
+    ("MLY", "K", {"C": 2}),           # N6,N6-dimethyl-lysine
+    ("M3L", "K", {"C": 3}),           # N6,N6,N6-trimethyl-lysine
+    ("ALY", "K", {"C": 2, "O": 1}),   # N6-acetyl-lysine
+]
+
+
+def _residue_atoms(s, rid):
+    return {s.atom_names[i]: i for i in range(s.n_atoms)
+            if s.residue_ids[i] == rid}
+
+
+@pytest.mark.parametrize("code, parent, adds", _MODIFIED,
+                         ids=[row[0] for row in _MODIFIED])
+def test_a_modified_residue_is_built_as_the_pdb_defines_it(code, parent,
+                                                           adds):
+    """`engines/builders.md` § 2: a modified residue is its parent plus the
+    PDB's own atoms, each placed in the parent's local frame -- bonded at a
+    bond length, at its hybridisation's angle (sp3 109.5, sp2 120) -- and
+    the hydrogens placed after leave no two overlapping.  The silent
+    failures (F12's review, 2026-11-18): lab-frame offsets put [SEP]'s P
+    0.235 A from CB and A[SEP]A's CB-OG-P at 77 degrees; [MLY] was built as
+    the single methyl the PDB calls MLZ; TPO's phosphate hydrogens sat
+    1.08 A apart -- each built without a word."""
+    import numpy as np
+
+    from molbuilder.chemistry import CLASH_CONTACT_A
+    s = build_peptide(f"A[{code}]A")
+    plain = build_peptide(f"A{parent}A", add_hydrogens=False)
+    mine = _residue_atoms(s, 2)
+    added = [i for name, i in mine.items()
+             if name not in _residue_atoms(plain, 2)
+             and s.elements[i] != "H"]
+    formula = {}
+    for i in added:
+        formula[s.elements[i]] = formula.get(s.elements[i], 0) + 1
+    assert formula == adds, sorted(s.atom_names[i] for i in added)
+
+    pos = s.positions
+    heavy = [i for i in range(s.n_atoms) if s.elements[i] != "H"]
+    d = np.linalg.norm(pos[:, None, :] - pos[None, :, :], axis=2)
+    for c in added:
+        # Its bond: the nearest heavy atom, at a bond's length.
+        others = [k for k in heavy if k != c]
+        b = min(others, key=lambda k: d[c, k])
+        assert 1.2 <= d[c, b] <= 1.9, (
+            f"{s.atom_names[c]}-{s.atom_names[b]} {d[c, b]:.3f} A")
+        # Its angle, at the atom it is bonded to, with each other heavy
+        # atom bonded there.
+        for a in (k for k in heavy if k not in (b, c) and d[b, k] <= 1.9):
+            u, v = pos[a] - pos[b], pos[c] - pos[b]
+            angle = np.degrees(np.arccos(
+                u @ v / np.linalg.norm(u) / np.linalg.norm(v)))
+            assert 100.0 <= angle <= 130.0, (
+                f"{s.atom_names[a]}-{s.atom_names[b]}-{s.atom_names[c]} "
+                f"{angle:.1f} degrees")
+    hydrogens = [i for i in range(s.n_atoms) if s.elements[i] == "H"]
+    hh = d[np.ix_(hydrogens, hydrogens)] + np.eye(len(hydrogens)) * 9.0
+    assert hh.min() >= CLASH_CONTACT_A, f"two hydrogens {hh.min():.2f} A apart"
+
+
+def test_lysine_ends_in_an_amine():
+    """`engines/builders.md` § 2: lysine's side chain ends in an sp3 amine,
+    NZ bonded to CE and two hydrogens -- Ala-Lys-Ala, neutral, holds 24
+    hydrogens (Ala 5 + Lys 12 + Ala 5 in the chain, and the 2 of the water
+    the two peptide bonds did not take).  The silent failure (F12's review,
+    2026-11-18): the kit's lysine geometry ends in a C=N, so every lysine
+    was built two hydrogens short -- an imine, built without a word."""
+    import numpy as np
+    s = build_peptide("AKA")
+    assert s.elements.count("H") == 24
+    nz = _residue_atoms(s, 2)["NZ"]
+    near = np.linalg.norm(s.positions - s.positions[nz], axis=1)
+    on_nz = [i for i in range(s.n_atoms)
+             if s.elements[i] == "H" and near[i] < 1.15]
+    assert len(on_nz) == 2, f"NZ carries {len(on_nz)} hydrogens"

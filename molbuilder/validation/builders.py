@@ -3,7 +3,8 @@
 A builder returns the structure; this says what it found
 (`science/validation.md` § 4.1 R5, *decided with the user, 2026-10-31,
 (b)*): the structure's own, read off what was built -- a peptide's
-C-terminus with no ``OXT``, a nucleic acid's steric clash -- and what
+C-terminus with no ``OXT``, a nucleic acid's steric clash, a SMILES's or a
+name's molecules overlapping -- and what
 the backend that built it does not build of what was asked, each
 backend's own answer (`builders.backends.built`).  Findings are
 ``Issue``s, never Python warnings, so they reach a web user: the build route answers them as
@@ -24,11 +25,10 @@ from ..structure import Structure
 
 @dataclass(frozen=True)
 class Asked:
-    """What the build asked, as the check reads it: the builder's input, the
-    backend that ran (``auto`` resolved), the form and terminal it was built
-    in (the kind's own when none was asked -- ``defaults`` names which), and
-    whether clash relief was asked."""
-    text: str = ""
+    """What the build asked, as the check reads it: the backend that ran
+    (``auto`` resolved), the form and terminal it was built in (the kind's
+    own when none was asked -- ``defaults`` names which), and whether clash
+    relief was asked."""
     backend: Optional[str] = None
     form: Optional[str] = None
     terminal: Optional[str] = None
@@ -70,29 +70,28 @@ def _aldehyde_end(struct: Structure, asked: Asked) -> List[Issue]:
 
 def _steric_clash(struct: Structure, asked: Asked) -> List[Issue]:
     """Two atoms of different residues closer than a steric clash in a
-    built nucleic acid (`chemistry.steric_clash`, `CLASH_CONTACT_A`,
+    built structure (`chemistry.steric_clash`, `CLASH_CONTACT_A`,
     `NEAR_COINCIDENT_A`), the pair named -- on every build, said and never
     repaired unasked *(decided with the user, 2026-10-31, (b))*.  The danger
     for a later relaxation is the first SCF step from overlapping atoms.
 
-    Two ways it is built: an EXPLICIT duplex -- two strands typed, read off
-    the input as the builder reads it (`nucleic.parse_dna_notation`) --
-    whose mismatched base pair, placed at the standard frame,
-    interpenetrates, relieved where it clashes when the build asked
-    (``relax_clashes``, the builder's) and an overlap left said; or a strand
-    as built -- tleap's extended chain sets each link's backbone torsions so
+    Two ways it is built, read off what was built: BETWEEN THE TWO STRANDS
+    of a duplex -- a mismatched base pair, placed at the standard frame,
+    interpenetrates (a canonical pair never does), relieved where it clashes
+    when the build asked (``relax_clashes``, the builder's) and an overlap
+    left said; or WITHIN A STRAND as built -- tleap's extended chain sets each link's backbone torsions so
     that C3' and the next residue's C5' are 2.66 A apart, and their
     hydrogens, as placed (tleap's on RNA, the methylene repair's on DNA),
     1.14 A apart (measured 2026-10-31)."""
+    from ..builders.backends import BACKENDS
     from ..chemistry import (CLASH_CONTACT_A, NEAR_COINCIDENT_A, is_atom,
                              steric_clash)
-    from ..nucleic import parse_dna_notation
     clash = steric_clash(struct)
     if clash is None:
         return []
     d, i, j = clash
-    explicit_duplex = parse_dna_notation(asked.text)[2] is not None
-    if explicit_duplex and asked.relax_clashes:
+    between_strands = struct.chain_ids[i] != struct.chain_ids[j]
+    if between_strands and asked.relax_clashes:
         if d >= NEAR_COINCIDENT_A:
             return []
         return [Issue(
@@ -120,14 +119,14 @@ def _steric_clash(struct: Structure, asked: Asked) -> List[Issue]:
 
     danger = ("  These atoms are NEAR-COINCIDENT -- relaxing as-is risks an "
               "explosive first SCF step. " if d < NEAR_COINCIDENT_A else "  ")
-    if explicit_duplex:
+    if between_strands:
         return [Issue(
             "warn",
             f"This duplex has a steric CLASH at {_lab(i)}<->{_lab(j)} "
             f"({d:.2f} A) -- a non-Watson-Crick (mismatched) base pair at the "
             f"standard frame." + danger + "Build it again with clash relief "
-            "(Relieve clashes on the DNA panel; relax_clashes=True through "
-            "builders.build) -- a short force-field minimization that removes "
+            "(Relieve clashes on the DNA panel) -- a short force-field "
+            "minimization that removes "
             "the near-coincidence, SIESTA relaxing the rest -- or minimize "
             "externally before a geometry optimization.",
             "build.steric_clash")]
@@ -135,7 +134,8 @@ def _steric_clash(struct: Structure, asked: Asked) -> List[Issue]:
         "warn",
         f"This structure has a steric CLASH at {_lab(i)}<->{_lab(j)} "
         f"({d:.2f} A): atoms of two residues closer than {CLASH_CONTACT_A} A, "
-        f"as built on the {asked.backend or 'chosen'} backend." + danger
+        f"as built on {BACKENDS.get(asked.backend, asked.backend)}."
+        + danger
         + "Minimize it with a force field before a geometry optimization, so "
         "the first SCF step does not start from overlapping atoms."
         + ("  Clash relief applies to an explicit duplex only."
@@ -143,21 +143,59 @@ def _steric_clash(struct: Structure, asked: Asked) -> List[Issue]:
         "build.steric_clash")]
 
 
-#: THE STRUCTURE'S OWN FINDINGS, by the builder that made it: read off what
-#: was built, and the input it was built from where that says which check
-#: applies.
+def _molecules_overlap(struct: Structure, asked: Asked) -> List[Issue]:
+    """Two molecules a SMILES or a name names -- each its own residue
+    (`chemistry.molecules_to_structure`) -- placed by the embedder so close
+    that two of their atoms sit nearer than half the sum of their van der
+    Waals radii (`chemistry.van_der_waals_radius`): the molecules reach
+    halfway into each other.  A hydrogen bond, and an ion pair at its own
+    bond length, sit farther.  The
+    pair named that overlaps most, by how far inside its reach.  Said, never
+    moved: the molecules are moved apart on the Molbuilder tab (the user,
+    2026-11-18: "Half the vdW sum")."""
+    from ..chemistry import van_der_waals_radius
+    if len(set(struct.residue_ids)) < 2:
+        return []
+    pos = np.asarray(struct.positions, dtype=float)
+    radius = np.array([van_der_waals_radius(e) for e in struct.elements],
+                      dtype=float)
+    rid = np.asarray(struct.residue_ids)
+    d = np.linalg.norm(pos[:, None, :] - pos[None, :, :], axis=-1)
+    reach = (radius[:, None] + radius[None, :]) / 2
+    inside = (rid[:, None] != rid[None, :]) & (d < reach)
+    if not inside.any():
+        return []
+    depth = np.where(inside, d / reach, np.inf)
+    i, j = np.unravel_index(np.argmin(depth), depth.shape)
+    return [Issue(
+        "warn",
+        f"Two of the molecules overlap: {struct.atoms_named([i, j])} sit "
+        f"{d[i, j]:.2f} A apart, nearer than half the sum of their van der "
+        f"Waals radii ({reach[i, j]:.2f} A).  The molecules are where the "
+        f"3-D embedding put them: move them apart on the Molbuilder tab "
+        f"before a calculation.",
+        "build.molecules_overlap")]
+
+
+#: THE STRUCTURE'S OWN FINDINGS, by kind, read off what was built: a
+#: peptide's C-terminus; a nucleic acid's steric clash; a SMILES's or a
+#: name's molecules overlapping (`engines/builders.md` § 6).
 _STRUCTURE_CHECKS: Dict[str, Tuple[Callable[[Structure, Asked],
                                             List[Issue]], ...]] = {
     "peptide": (_aldehyde_end,),
     "dna":     (_steric_clash,),
     "rna":     (_steric_clash,),
+    "smiles":  (_molecules_overlap,),
+    "name":    (_molecules_overlap,),
 }
 
 
 def _backend_limits(kind: str, asked: Asked) -> List[Issue]:
     """A form or a terminal asked that the backend that ran does not build --
-    built all the same, as the backend makes it -- in its own words
-    (`builders.backends.built`).  Nothing for a build that asks none."""
+    built all the same, as the backend makes it -- in its own words, of
+    itself only (`builders.backends.built`): which other backend builds the
+    whole ask is no single backend's to say, and the Backend menu lists each
+    with its own words.  Nothing for a build that asks none."""
     if not asked.backend or asked.form is None or asked.terminal is None:
         return []
     from ..builders.backends import built

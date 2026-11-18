@@ -612,8 +612,14 @@ told to go open-shell.
 
 * **The charge.** Auto-detected only for backbone phosphates (one −1 per
   deprotonated phosphate). A peptide's charged side chains are *not* detected —
-  the builder makes the gas-phase neutral form — and are flagged
-  (`config.net_charge`); a SMILES or PDB ion must state its charge.
+  the run is the structure as built, at charge 0 (Asp/Glu protonated, Lys/Arg
+  neutral) — and are flagged (`config.net_charge`); a SMILES or PDB ion must
+  state its charge. A
+  quaternary ammonium nitrogen (a trimethyl-lysine's NZ, a choline's N) is
+  +1 at any pH, but its molecule's net charge is that with any other charged
+  group it holds (a zwitterion's carboxylate, a counter-ion), so it is not
+  counted either: a finite system holding one, its charge left blank, is
+  warned, naming it (`config.net_charge`; `model/chemistry.md` § 1).
 * **In a periodic code (SIESTA).** The cell carries a compensating background,
   and the energy an image-charge error that decays only as 1/L. SIESTA corrects
   it itself for a molecule in a cubic cell (§ 2a.4) and not otherwise; molbuilder's

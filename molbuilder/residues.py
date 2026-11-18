@@ -25,6 +25,8 @@ from __future__ import annotations
 
 from typing import List
 
+from .chemistry import BuildRefused
+
 
 # ---------------------------------------------------------------------- #
 #  Standard amino acids                                                  #
@@ -43,85 +45,68 @@ AA_ONE_TO_THREE = {v: k for k, v in AA_THREE_TO_ONE.items()}
 # ---------------------------------------------------------------------- #
 #  Modified residues                                                     #
 # ---------------------------------------------------------------------- #
-# The "patch" describes how to derive the modified residue from a parent
-# standard residue:
-#   parent      -- the AA we ask PeptideBuilder to place first
-#   add_atoms   -- list of (atom_name, element, attach_to, dx, dy, dz)
-#                  added in the parent's local frame (Angstrom)
-#   remove_atoms -- atom names to delete from the parent (e.g. "HG" of Ser
-#                   when phosphorylating)
-#
-# Coordinates are *relative* offsets from the named anchor atom -- close
-# enough to give SIESTA / PySCF a sane starting structure for relaxation.
+#: EACH MODIFIED RESIDUE AS HEAVY ATOMS ADDED TO A STANDARD PARENT, placed
+#: in the parent's local frame (`engines/builders.md` § 2), each code the
+#: PDB Chemical Component Dictionary's own (files.rcsb.org, read
+#: 2026-11-18: MLZ N-methyl-, MLY N-dimethyl-, M3L N-trimethyl-, ALY
+#: N6-acetyl-lysine; SEP, TPO, PTR the phosphorylated Ser, Thr, Tyr):
+#:   parent    -- the amino acid PeptideBuilder places first
+#:   add_atoms -- (atom_name, element, (a, b, c), bond, angle, dihedral):
+#:                the atom bonded to ``c`` at ``bond`` Angstrom, at
+#:                ``angle`` degrees b-c-new, at ``dihedral`` degrees
+#:                a-b-c-new -- PeptideBuilder's own placement
+#:                (``calculateCoordinates``), the way it places every side
+#:                chain; ``a``/``b``/``c`` name atoms of the residue already
+#:                there, the parent's or one added above.
+#: A STARTING GEOMETRY the DFT relaxation refines: the bond lengths of the
+#: common phosphate (P-O ester 1.61, terminal 1.51), amine (N-C 1.47-1.49)
+#: and amide (N-C 1.34, C=O 1.23, C-C 1.51) groups; the angles of each
+#: atom's hybridisation (sp3 near 109.5, sp2 near 120); the phosphate's
+#: three oxygens staggered about the ester bond, and threonine's turned off
+#: its methyl (CA-CB-OG1-P 120: at 180 a phosphate hydrogen sits 1.08 A
+#: from a methyl one, measured 2026-11-18).  NO HYDROGEN IS LISTED:
+#: PeptideBuilder writes heavy atoms only, and `chemistry.add_hydrogens`
+#: places every hydrogen, the modified residue's with the rest.
+_PHOSPHATE_OXYGENS = ("O1P", "O2P", "O3P")
+
+
+def _phosphate(on: str, a: str, b: str, *, angle: float,
+               dihedral: float) -> list:
+    """A phosphate group on ``on`` -- its P bonded there at ``angle``
+    degrees b-``on``-P and ``dihedral`` degrees a-b-``on``-P -- and the
+    three oxygens on P, staggered about the ester bond."""
+    return ([("P", "P", (a, b, on), 1.61, angle, dihedral)]
+            + [(name, "O", (b, on, "P"), 1.51, 106.0, d)
+               for name, d in zip(_PHOSPHATE_OXYGENS, (180.0, 60.0, -60.0))])
+
+
+def _methyls(*names: str) -> list:
+    """Methyl carbons on lysine's NZ, staggered about CE-NZ."""
+    return [(name, "C", ("CD", "CE", "NZ"), 1.49, 109.5, d)
+            for name, d in zip(names, (180.0, 60.0, -60.0))]
+
+
 MODIFIED_RESIDUES = {
     # ---- phosphorylated serine / threonine / tyrosine -----------------
-    "SEP": {
-        "parent": "SER",
-        "long":   "phosphoserine",
-        "remove_atoms": ["HG"],
-        "add_atoms": [
-            ("P",   "P", "OG",  1.59,  0.00,  0.00),
-            ("O1P", "O", "OG",  2.10,  1.40,  0.00),
-            ("O2P", "O", "OG",  2.10, -0.70,  1.21),
-            ("O3P", "O", "OG",  2.10, -0.70, -1.21),
-        ],
-    },
-    "TPO": {
-        "parent": "THR",
-        "long":   "phosphothreonine",
-        "remove_atoms": ["HG1"],
-        "add_atoms": [
-            ("P",   "P", "OG1", 1.59,  0.00,  0.00),
-            ("O1P", "O", "OG1", 2.10,  1.40,  0.00),
-            ("O2P", "O", "OG1", 2.10, -0.70,  1.21),
-            ("O3P", "O", "OG1", 2.10, -0.70, -1.21),
-        ],
-    },
-    "PTR": {
-        "parent": "TYR",
-        "long":   "phosphotyrosine",
-        "remove_atoms": ["HH"],
-        "add_atoms": [
-            ("P",   "P", "OH",  1.59,  0.00,  0.00),
-            ("O1P", "O", "OH",  2.10,  1.40,  0.00),
-            ("O2P", "O", "OH",  2.10, -0.70,  1.21),
-            ("O3P", "O", "OH",  2.10, -0.70, -1.21),
-        ],
-    },
+    "SEP": {"parent": "SER",
+            "add_atoms": _phosphate("OG", "CA", "CB",
+                                    angle=118.0, dihedral=180.0)},
+    "TPO": {"parent": "THR",
+            "add_atoms": _phosphate("OG1", "CA", "CB",
+                                    angle=118.0, dihedral=120.0)},
+    # The aryl phosphate's P out of the ring's plane.
+    "PTR": {"parent": "TYR",
+            "add_atoms": _phosphate("OH", "CE1", "CZ",
+                                    angle=120.0, dihedral=90.0)},
     # ---- methylated lysines ------------------------------------------
-    "MLY": {
-        "parent": "LYS",
-        "long":   "N-methyl-lysine",
-        "remove_atoms": ["HZ3"],
-        "add_atoms": [
-            ("CH3", "C", "NZ",  1.47,  0.0, 0.0),
-            ("HM1", "H", "NZ",  1.99,  0.96, 0.0),
-            ("HM2", "H", "NZ",  1.99, -0.48, 0.83),
-            ("HM3", "H", "NZ",  1.99, -0.48,-0.83),
-        ],
-    },
-    "M3L": {
-        "parent": "LYS",
-        "long":   "N,N,N-trimethyl-lysine",
-        "remove_atoms": ["HZ1", "HZ2", "HZ3"],
-        "add_atoms": [
-            ("CH1", "C", "NZ",  1.47,  0.0,  0.0),
-            ("CH2", "C", "NZ", -0.48,  1.40, 0.0),
-            ("CH3", "C", "NZ", -0.48, -0.70, 1.21),
-        ],
-    },
+    "MLZ": {"parent": "LYS", "add_atoms": _methyls("CM")},
+    "MLY": {"parent": "LYS", "add_atoms": _methyls("CH1", "CH2")},
+    "M3L": {"parent": "LYS", "add_atoms": _methyls("CM1", "CM2", "CM3")},
     # ---- acetylated lysine -------------------------------------------
-    "ALY": {
-        "parent": "LYS",
-        "long":   "N6-acetyl-lysine",
-        "remove_atoms": ["HZ3"],
-        "add_atoms": [
-            ("CH",  "C", "NZ",  1.34,  0.0,  0.0),
-            ("OAC", "O", "NZ",  1.93,  1.05, 0.0),
-            ("CM",  "C", "NZ",  2.05, -1.20, 0.0),
-            ("HAC", "H", "NZ",  3.13, -1.05, 0.0),
-        ],
-    },
+    "ALY": {"parent": "LYS",
+            "add_atoms": [("CH",  "C", ("CD", "CE", "NZ"), 1.34, 122.0, 180.0),
+                          ("OH",  "O", ("CE", "NZ", "CH"), 1.23, 122.5, 0.0),
+                          ("CH3", "C", ("CE", "NZ", "CH"), 1.51, 116.0, 180.0)]},
 }
 
 
@@ -159,15 +144,32 @@ NUCLEOBASE_BONDS = {
 }
 
 
+#: AmberTools' terminal suffix on a nucleotide's residue name, by where the
+#: nucleotide sits: the 5' end, the 3' end, inner, or alone -- free at both
+#: ends (`DA5`, `DC3`, `DG`, `DAN`).  The AmberTools backend writes them,
+#: :func:`nucleobase` reads them.
+AMBER_SUFFIX = {"5'": "5", "3'": "3", "inner": "", "single": "N"}
+
+
+def _base_of(name: str):
+    """The one letter of a nucleotide named ``name`` exactly: DNA's ``DC``,
+    RNA's ``C``, or a DNA nucleotide named without its ``D``, as older PDB
+    files name thymidine ``T``."""
+    return (DNA_THREE_TO_ONE.get(name) or RNA_THREE_TO_ONE.get(name)
+            or DNA_THREE_TO_ONE.get("D" + name))
+
+
 def nucleobase(residue_name: str):
     """The base of a nucleotide residue named ``residue_name`` -- DNA's
-    ``DC``, RNA's ``C``, with an Amber terminal suffix (``DC5``, ``C3``) --
-    as its one letter (a key of :data:`NUCLEOBASE_BONDS`), or ``None`` for
-    any other residue."""
+    ``DC``, RNA's ``C``, an older file's ``T``, with an AmberTools terminal
+    suffix (:data:`AMBER_SUFFIX`: ``DC5``, ``C3``, ``DAN``) -- as its one
+    letter (a key of :data:`NUCLEOBASE_BONDS`), or ``None`` for any other
+    residue."""
     name = residue_name.strip().upper()
-    if name[-1:] in ("5", "3"):
-        name = name[:-1]
-    return DNA_THREE_TO_ONE.get(name) or RNA_THREE_TO_ONE.get(name)
+    base = _base_of(name)
+    if base is None and name[-1:] in AMBER_SUFFIX.values() and name[-1:]:
+        base = _base_of(name[:-1])
+    return base
 
 
 # ---------------------------------------------------------------------- #
@@ -186,7 +188,8 @@ def _parse(
     Outside ``[...]``: each character must be an ASCII letter and a
     known 1-letter code (case-insensitive).  Whitespace is skipped.
     Inside ``[...]``: a 3- or 4-letter PDB / modified-residue code.
-    Anything else raises a clear error.
+    Anything else is refused (:class:`chemistry.BuildRefused`), naming it,
+    and so is a sequence that holds no residue.
     """
     out: List[str] = []
     pos = 0
@@ -199,29 +202,32 @@ def _parse(
         if ch == "[":
             close = sequence.find("]", pos)
             if close == -1:
-                raise ValueError(
+                raise BuildRefused(
                     f"Unclosed '[' at position {pos} in {sequence!r}"
                 )
             tok = sequence[pos + 1:close].upper().strip()
             if tok in three_table or (modified and tok in modified):
                 out.append(tok)
             else:
-                raise ValueError(
+                raise BuildRefused(
                     f"Unknown {kind} 3-letter code in brackets: {tok!r}"
                 )
             pos = close + 1
             continue
         if not ch.isalpha():
-            raise ValueError(
+            raise BuildRefused(
                 f"Unexpected character {ch!r} at position {pos} in "
                 f"{sequence!r} (use a single 1-letter code, [3LET] for "
                 f"modified/non-standard residues, or whitespace)"
             )
         u = ch.upper()
         if u not in one_to_three:
-            raise ValueError(f"Unknown {kind} 1-letter code: {ch!r}")
+            raise BuildRefused(f"Unknown {kind} 1-letter code: {ch!r}")
         out.append(one_to_three[u])
         pos += 1
+    if not out:
+        raise BuildRefused(f"No {kind} residue in the sequence: nothing to "
+                           f"build.")
     return out
 
 
@@ -254,7 +260,7 @@ def _strip_directionality(seq: str) -> tuple:
       * ``"5to3"``   -- explicit 5'-...-3'.  Same effect as bare.
       * ``"3to5"``   -- explicit 3'-...-5'.  Caller should reverse the
                         parsed residue list before handing to a backend.
-    Raises ValueError on:
+    Refused (:class:`chemistry.BuildRefused`) on:
       * one-sided labels ("5'-ATGC" or "ATGC-3'");
       * matching labels at both ends ("5'-ATGC-5'" / "3'-ATGC-3'").
     """
@@ -263,14 +269,14 @@ def _strip_directionality(seq: str) -> tuple:
     if pre is None and suf is None:
         return seq, None
     if pre is None or suf is None:
-        raise ValueError(
+        raise BuildRefused(
             f"One-sided directionality label in {seq!r}: both ends must "
             f"be labelled or neither (write '5'-ATGC-3'', '3'-CGTA-5'', "
             f"or just 'ATGC' for the implicit 5'->3' default)"
         )
     pre_d, suf_d = pre.group(1), suf.group(1)
     if pre_d == suf_d:
-        raise ValueError(
+        raise BuildRefused(
             f"Self-contradictory directionality in {seq!r}: both ends "
             f"labelled {pre_d}' (a polymer has one 5' end and one 3' end, "
             f"not two of the same)"

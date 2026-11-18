@@ -4,10 +4,12 @@ Primary path: **RDKit** — ETKDGv3 (Riniker-Landrum) conformer + MMFF94s cleanu
 This gives the best geometry + reliable stereochemistry for typical organic
 molecules, and its output is what a DFT optimisation wants as a starting point.
 
-Fallback path: **OpenBabel** — for the inputs RDKit rejects (metal-organics /
-non-kekulizable aromatics like heme, where MolFromSmiles returns None) and the
-cages RDKit can't embed (fullerenes like C60, where ETKDG fails).  OpenBabel is
-more lenient but its geometry is rougher, so it is a fallback, not the default.
+Fallback path: **OpenBabel** — for the chemistry RDKit refuses though the
+text reads (a valence or an aromatic ring it cannot assign, where MolFromSmiles
+returns None) and the cages RDKit can't embed (fullerenes like C60, where ETKDG
+fails).  OpenBabel is more lenient but its geometry is rougher, so it is a
+fallback, not the default.  A text that does not read as SMILES is refused,
+never handed to it: it would build ``C(`` as methane.
 
 The result records WHICH backend produced the geometry (``return_backend=True``)
 so the caller can tell the user when they are on the lower-fidelity path.
@@ -17,37 +19,16 @@ from __future__ import annotations
 
 from typing import Optional, Tuple
 
-import numpy as np
-
-from .engine_atom_index import pdb_numbering
+from .chemistry import (ETKDG_SEED, BuildRefused, embed_conformer,
+                        molecules_to_structure, rdkit_to_structure, require)
 from .structure import Structure
 
 # Provenance strings surfaced to the user (build.py -> the result banner).
 BACKEND_RDKIT = "RDKit ETKDGv3"
 BACKEND_OPENBABEL = "OpenBabel make3D (RDKit fallback — lower-fidelity geometry)"
 
-
-def _import_rdkit():
-    try:
-        from rdkit import Chem
-        from rdkit.Chem import AllChem
-    except ImportError as exc:  # pragma: no cover
-        raise ImportError(
-            "build_from_smiles needs RDKit; install with "
-            "`conda install -c conda-forge rdkit` or `pip install rdkit`"
-        ) from exc
-    return Chem, AllChem
-
-
-def _import_openbabel():
-    try:
-        from openbabel import pybel
-    except ImportError as exc:  # pragma: no cover
-        raise ImportError(
-            "the OpenBabel SMILES fallback needs the openbabel Python "
-            "bindings; install with `conda install -c conda-forge openbabel`"
-        ) from exc
-    return pybel
+#: What RDKit is needed for here, as a missing-tool answer says it.
+_NEEDED_FOR = "Building from a SMILES"
 
 
 def build_from_smiles(
@@ -55,13 +36,14 @@ def build_from_smiles(
     *,
     title: Optional[str] = None,
     optimize: bool = True,
-    seed: int = 0xF00D,
+    seed: int = ETKDG_SEED,
     return_backend: bool = False,
 ):
     """Build a 3-D molecule from a SMILES string.
 
-    RDKit first (best geometry + stereo); OpenBabel fallback for inputs RDKit
-    can't parse (metal-organics, e.g. heme) or embed (cages, e.g. C60).
+    RDKit first (best geometry + stereo); OpenBabel fallback for chemistry
+    RDKit refuses (a valence, an aromatic ring it cannot assign) or cannot
+    embed (cages, e.g. C60).
 
     Parameters
     ----------
@@ -84,49 +66,60 @@ def build_from_smiles(
 
     Raises
     ------
-    ValueError if BOTH RDKit and OpenBabel fail to parse / embed the SMILES.
+    chemistry.BuildRefused for a SMILES that holds no atom or does not read,
+    or that BOTH RDKit and OpenBabel fail to build; chemistry.BackendUnavailable
+    if RDKit is not installed, or
+    OpenBabel when RDKit could not and the fallback is needed.
     """
     struct, backend = _build(smiles, title=title, optimize=optimize, seed=seed)
     return (struct, backend) if return_backend else struct
 
 
 def _build(smiles, *, title, optimize, seed) -> Tuple[Structure, str]:
-    Chem, AllChem = _import_rdkit()
+    Chem = require("rdkit", needed_for=_NEEDED_FOR)
+    AllChem = require("rdkit", needed_for=_NEEDED_FOR,
+                      module="rdkit.Chem.AllChem")
 
-    mol = Chem.MolFromSmiles(smiles)
-    rdkit_stage = None            # which RDKit step failed: "parse" | "embed"
+    mol = Chem.MolFromSmiles(smiles) if smiles.strip() else None
+    if not smiles.strip() or (mol is not None and mol.GetNumAtoms() == 0):
+        raise BuildRefused(f"The SMILES {smiles!r} holds no atom: nothing to "
+                           f"build.")
+    # Text after a space that RDKit reads as the SMILES's NAME, dropping it
+    # (`C C(=O)O` read as methane), and a text RDKit cannot read even
+    # without its chemistry checks: each refused, never built as something
+    # else -- nor handed to OpenBabel, which reads leniently (`C(` as
+    # methane; `engines/builders.md` § 6).  An extended-SMILES block after
+    # the space (`C |^1:0|`, a radical) is part of the SMILES, and built.
+    read = Chem.SmilesParserParams()
+    read.parseName, read.sanitize = True, False
+    named = Chem.MolFromSmiles(smiles.strip(), read)
+    if named is not None and named.HasProp("_Name") and named.GetProp("_Name"):
+        raise BuildRefused(
+            f"The SMILES {smiles!r} holds text after a space "
+            f"({named.GetProp('_Name')!r}), which a SMILES reader takes as "
+            f"its name: it would not be built.")
+    if mol is None and named is None:
+        raise BuildRefused(
+            f"The SMILES {smiles!r} does not read: its text breaks the SMILES "
+            f"grammar (an unbalanced bracket or parenthesis, a ring left "
+            f"open, or a symbol that is no element).")
     if mol is not None:
         molH = Chem.AddHs(mol)
-        if _rdkit_embed(AllChem, molH, seed):
+        if embed_conformer(molH, seed):
             if optimize:
                 _rdkit_optimize(AllChem, molH)
-            return _struct_from_rdkit(molH, smiles, title), BACKEND_RDKIT
-        rdkit_stage = "embed"
-    else:
-        rdkit_stage = "parse"
-
-    # RDKit couldn't handle it (parse OR embed) -> OpenBabel fallback.
-    try:
-        pybel = _import_openbabel()
-    except ImportError:
-        if rdkit_stage == "parse":
-            raise ValueError(
-                f"Invalid SMILES {smiles!r}: RDKit rejected it and the "
-                f"OpenBabel fallback is not installed.")
-        raise ValueError(
-            f"RDKit could not embed a 3-D conformer for SMILES {smiles!r} "
-            f"and the OpenBabel fallback is not installed.")
-    return _openbabel_build(pybel, smiles, title, optimize, rdkit_stage)
-
-
-def _rdkit_embed(AllChem, mol, seed) -> bool:
-    """ETKDGv3, then a random-coords retry.  True iff a conformer was embedded."""
-    params = AllChem.ETKDGv3()
-    params.randomSeed = seed
-    if AllChem.EmbedMolecule(mol, params) != -1:
-        return True
-    params.useRandomCoords = True
-    return AllChem.EmbedMolecule(mol, params) != -1
+            return (rdkit_to_structure(molH,
+                                       title=title or f"smiles {smiles}"),
+                    BACKEND_RDKIT)
+    # RDKit could not -- refused its chemistry, or could not place it in
+    # 3-D: OpenBabel reads and embeds what RDKit cannot (C60, an aromatic
+    # ring RDKit cannot assign), its absence a tool this install lacks, said
+    # through the one door (`chemistry.require`; `engines/builders.md` § 1).
+    did = ("rejected it" if mol is None
+           else "could not place it in 3-D")
+    pybel = require("openbabel", module="openbabel.pybel",
+                    needed_for=f"The SMILES {smiles!r} -- RDKit {did} --")
+    return _openbabel_build(pybel, smiles, title, optimize, did)
 
 
 def _rdkit_optimize(AllChem, mol) -> None:
@@ -145,30 +138,14 @@ def _rdkit_optimize(AllChem, mol) -> None:
             pass
 
 
-def _struct_from_rdkit(mol, smiles, title) -> Structure:
-    elements, positions, atom_names = [], [], []
-    conf = mol.GetConformer()
-    for i, atom in enumerate(mol.GetAtoms()):
-        sym = atom.GetSymbol()
-        p = conf.GetAtomPosition(i)
-        elements.append(sym)
-        positions.append([p.x, p.y, p.z])
-        atom_names.append(f"{sym}{pdb_numbering(i)}")
-    return Structure(
-        elements=elements,
-        positions=np.asarray(positions, dtype=float),
-        atom_names=atom_names,
-        title=title or f"smiles {smiles}",
-    )
-
-
-def _openbabel_build(pybel, smiles, title, optimize, rdkit_stage) -> Tuple[Structure, str]:
+def _openbabel_build(pybel, smiles, title, optimize, did) -> Tuple[Structure, str]:
+    """The SMILES built by OpenBabel, where RDKit ``did`` not."""
     try:
         mol = pybel.readstring("smi", smiles)
     except Exception as exc:
-        raise ValueError(
-            f"Invalid SMILES {smiles!r}: RDKit rejected it and OpenBabel could "
-            f"not parse it either ({exc}).")
+        raise BuildRefused(
+            f"The SMILES {smiles!r} cannot be built: RDKit {did}, and "
+            f"OpenBabel could not read it ({exc}).")
     mol.addh()
     # make3D builds a 3-D conformer (rule-based) + a short FF cleanup; localopt
     # tightens it.  Works on cages/metal-organics ETKDG can't handle.
@@ -180,21 +157,20 @@ def _openbabel_build(pybel, smiles, title, optimize, rdkit_stage) -> Tuple[Struc
         # As a last resort, make3D with the default UFF-ish path.
         mol.make3D()
 
-    elements, positions, atom_names = [], [], []
-    for i, atom in enumerate(mol.atoms):
-        sym = pybel.ob.GetSymbol(atom.atomicnum)
-        elements.append(sym)
-        positions.append(list(atom.coords))
-        atom_names.append(f"{sym}{pdb_numbering(i)}")
-    if not elements:
-        raise ValueError(
+    # ONE RESIDUE FOR EACH MOLECULE the SMILES names, by the one conversion
+    # (`chemistry.molecules_to_structure`): OpenBabel's own split of its
+    # bonds into molecules (``ContigFragList``, atoms from 1).
+    atoms = list(mol.atoms)
+    if not atoms:
+        raise BuildRefused(
             f"OpenBabel produced no atoms for SMILES {smiles!r}.")
+    split = pybel.ob.vectorvInt()
+    mol.OBMol.ContigFragList(split)
     return (
-        Structure(
-            elements=elements,
-            positions=np.asarray(positions, dtype=float),
-            atom_names=atom_names,
-            title=title or f"smiles {smiles}",
-        ),
+        molecules_to_structure(
+            [pybel.ob.GetSymbol(atom.atomicnum) for atom in atoms],
+            [atom.coords for atom in atoms],
+            [[i - 1 for i in molecule] for molecule in split],
+            title=title or f"smiles {smiles}"),
         BACKEND_OPENBABEL,
     )

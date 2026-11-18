@@ -7,17 +7,19 @@ extended chain from sequence, then converts the Bio.PDB output into our
 Modified residues (phosphoSer, methylLys, ...) are handled in two
 phases:
     1. Build the peptide using the parent standard residue (Ser, Lys).
-    2. Patch the side chain in-place: remove specified atoms and add the
-       new ones at offsets defined in :mod:`residues.MODIFIED_RESIDUES`.
+    2. Add the modification's heavy atoms to that residue, each placed in
+       the residue's local frame by PeptideBuilder's own placement
+       (``calculateCoordinates``: a bond, an angle and a dihedral from three
+       atoms already there), as :data:`residues.MODIFIED_RESIDUES` states.
 
 This keeps the heavy lifting (bond geometry, Ramachandran-valid
-backbone) inside PeptideBuilder and only does the chemistry-of-the-tip
-in our own code.
+backbone) inside PeptideBuilder -- the tip's atoms placed by its function
+too -- and only the chemistry of the tip in our own table.
 """
 
 from __future__ import annotations
 
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
 import numpy as np
 
@@ -30,19 +32,28 @@ from .residues import (
 from .structure import Structure
 
 
-def _import_peptidebuilder():
-    """Lazy import so users who only build DNA don't need PeptideBuilder."""
-    try:
-        import PeptideBuilder
-        # PeptideBuilder declares Bio.PDB as a dep and imports it eagerly
-        # at module load, so importing PeptideBuilder is sufficient as a
-        # combined probe -- no need for a redundant Bio.PDB import here.
-        return PeptideBuilder
-    except ImportError as exc:  # pragma: no cover
-        raise ImportError(
-            "Building peptides needs PeptideBuilder + biopython.  Install "
-            "with:  pip install PeptideBuilder biopython"
-        ) from exc
+#: PEPTIDEBUILDER'S OWN GEOMETRY, corrected where it is wrong -- by residue
+#: letter, the kit's ``Geo`` attribute and the value it is built with.
+#: Lysine's chain end: the kit places CD-CE 1.46 A, CE-NZ 1.33 A at
+#: CD-CE-NZ 124.8 degrees -- a C=N double bond's length and angle, so the
+#: hydrogens are placed for an imine and every lysine is built two
+#: hydrogens short (measured 2026-11-18); AmberTools' own LYS residue
+#: (its force field's ``amino12.lib``, measured 2026-11-18) holds CD-CE
+#: 1.525 A, CE-NZ 1.470 A at 109.5 degrees, the sp3 amine the residue is.
+_GEOMETRY_CORRECTED = {
+    "K": {"CD_CE_length": 1.525, "CE_NZ_length": 1.470,
+          "CD_CE_NZ_angle": 109.5},
+}
+
+
+def _geometry(letter: str):
+    """The kit's geometry of the residue ``letter`` -- its own door
+    (``Geometry.geometry``) -- with :data:`_GEOMETRY_CORRECTED`'s values."""
+    from PeptideBuilder.Geometry import geometry
+    geo = geometry(letter)
+    for name, value in _GEOMETRY_CORRECTED.get(letter, {}).items():
+        setattr(geo, name, value)
+    return geo
 
 
 def build_peptide(
@@ -69,7 +80,7 @@ def build_peptide(
         (whichever is installed first).  Required for any quantum-
         chemistry calculation.  If neither is installed and this is True,
         :class:`~molbuilder.chemistry.BackendUnavailable` is raised,
-        naming both installs.
+        naming both.
 
     Returns
     -------
@@ -77,11 +88,12 @@ def build_peptide(
         All-atom structure with PDB-style metadata (atom names, residue
         ids/names) filled in.
     """
-    PeptideBuilder = _import_peptidebuilder()
+    # PeptideBuilder declares Bio.PDB as a dependency and imports it at
+    # load, so the one import is the probe for both.
+    PeptideBuilder = chemistry.require("peptidebuilder",
+                                       needed_for="Building a peptide")
 
     codes = parse_peptide_sequence(sequence)
-    if not codes:
-        raise ValueError("Empty sequence.")
 
     # Track which residues are modified, but build with the standard parent
     # so PeptideBuilder is happy.
@@ -97,52 +109,33 @@ def build_peptide(
     # PeptideBuilder API: 1-letter codes
     one_letter = "".join(AA_THREE_TO_ONE[c] for c in parent_codes)
 
-    # Build with default phi/psi (=trans / extended)
-    bio_struct = PeptideBuilder.make_extended_structure(one_letter)
+    # Built extended (the kit's default phi/psi), through the kit's own door
+    # from each residue's geometry -- `make_extended_structure` is this door
+    # over the kit's defaults -- the wrong ones corrected (`_geometry`).
+    bio_struct = PeptideBuilder.make_structure_from_geos(
+        [_geometry(letter) for letter in one_letter])
 
-    # Convert Bio.PDB structure -> our Structure
-    elements:      List[str] = []
-    positions:     List[Tuple[float, float, float]] = []
-    atom_names:    List[str] = []
-    residue_ids:   List[int] = []
-    residue_names: List[str] = []
-    chain_ids:     List[str] = []
+    # THE MODIFICATIONS, on the kit's own residues before conversion: each
+    # added atom placed in its residue's local frame (`_patch_residue`).
+    model = next(iter(bio_struct))          # the kit writes one model
+    chain = next(model.get_chains())
+    for rid, code in patches.items():
+        _patch_residue(chain[rid], code)
 
-    for model in bio_struct:
-        for chain in model:
-            for res in chain:
-                rid = res.get_id()[1]
-                rname = parent_codes[rid - 1]
-                for atom in res:
-                    # BioPython sometimes returns the element field with
-                    # leading whitespace (e.g. " C" for backbone carbon).
-                    # Strip first, otherwise downstream species detection
-                    # in the FDF / pyscf modules sees " C" as a separate
-                    # element from "C" and emits a malformed input.
-                    el_raw = atom.element.strip()
-                    elements.append(el_raw.title() if len(el_raw) > 1
-                                    else el_raw.upper())
-                    positions.append(tuple(float(c) for c in atom.coord))
-                    atom_names.append(atom.get_name())
-                    residue_ids.append(rid)
-                    residue_names.append(rname)
-                    chain_ids.append(chain.id or "A")
-        break  # first model only
-
-    struct = Structure(
-        elements=elements,
-        positions=np.asarray(positions, dtype=float),
-        atom_names=atom_names,
-        residue_ids=residue_ids,
-        residue_names=residue_names,
-        chain_ids=chain_ids,
-        title=title or f"peptide {sequence}",
-    )
-
-    # Apply modifications in residue-id order so atom indices stay stable
-    # within each call to _patch_residue (we rebuild the arrays each time).
-    for rid in sorted(patches):
-        struct = _patch_residue(struct, rid, patches[rid])
+    # THE KIT'S CHAIN AS A STRUCTURE, by the one conversion of a built
+    # molecule (`chemistry.molecules_to_structure`): each atom its PDB
+    # record -- a modified residue by its own code -- one molecule.  The
+    # element field read stripped (BioPython can return " C") and in the
+    # periodic table's case.
+    atoms = [(res, atom) for chain in model for res in chain
+             for atom in res]
+    struct = chemistry.molecules_to_structure(
+        [atom.element.strip().capitalize() for _res, atom in atoms],
+        [[float(c) for c in atom.coord] for _res, atom in atoms],
+        [list(range(len(atoms)))],
+        pdb=[(atom.get_name(), res.get_id()[1], codes[res.get_id()[1] - 1],
+              res.get_parent().id or "A") for res, atom in atoms],
+        title=title or f"peptide {sequence}")
 
     if add_hydrogens:
         struct = chemistry.add_hydrogens(struct)
@@ -157,66 +150,17 @@ def build_peptide(
 # ---------------------------------------------------------------------- #
 
 
-def _patch_residue(struct: Structure, rid: int, modified_code: str) -> Structure:
-    """Apply the SEP/TPO/PTR/MLY/M3L/ALY-style patch to a single residue."""
-    spec = MODIFIED_RESIDUES[modified_code]
-    remove = set(spec.get("remove_atoms", []))
-    additions = spec.get("add_atoms", [])
-
-    # Index lookups within this residue
-    atom_index_by_name: Dict[str, int] = {}
-    keep_mask = np.ones(struct.n_atoms, dtype=bool)
-    for i in range(struct.n_atoms):
-        if struct.residue_ids[i] != rid:
-            continue
-        if struct.atom_names[i] in remove:
-            keep_mask[i] = False
-        else:
-            atom_index_by_name[struct.atom_names[i]] = i
-
-    elements      = [e for i, e in enumerate(struct.elements)      if keep_mask[i]]
-    positions     = struct.positions[keep_mask]
-    atom_names    = [a for i, a in enumerate(struct.atom_names)    if keep_mask[i]]
-    residue_ids   = [r for i, r in enumerate(struct.residue_ids)   if keep_mask[i]]
-    residue_names = [n for i, n in enumerate(struct.residue_names) if keep_mask[i]]
-    chain_ids     = [c for i, c in enumerate(struct.chain_ids)     if keep_mask[i]]
-
-    # Re-fetch indices in the trimmed array so anchor lookups resolve
-    atom_index_by_name = {n: i for i, n in enumerate(atom_names)
-                          if residue_ids[i] == rid}
-
-    extra_pos: List[np.ndarray] = []
-    for name, element, anchor_name, dx, dy, dz in additions:
-        if anchor_name not in atom_index_by_name:
-            raise ValueError(
-                f"Patch for {modified_code} at residue {rid} expects an "
-                f"anchor atom {anchor_name!r}, which isn't present in the "
-                f"parent residue."
-            )
-        anchor_pos = positions[atom_index_by_name[anchor_name]]
-        new_pos = anchor_pos + np.array([dx, dy, dz], dtype=float)
-        extra_pos.append(new_pos)
-        elements.append(element)
-        atom_names.append(name)
-        residue_ids.append(rid)
-        residue_names.append(modified_code)   # mark patched residue
-        chain_ids.append(chain_ids[atom_index_by_name[anchor_name]])
-
-    # Update the parent residue's resname to the modified code so PDB
-    # writes consistently.
-    for i in range(len(residue_ids)):
-        if residue_ids[i] == rid and residue_names[i] != modified_code:
-            residue_names[i] = modified_code
-
-    if extra_pos:
-        positions = np.vstack([positions, np.array(extra_pos)])
-
-    return Structure(
-        elements=elements,
-        positions=positions,
-        atom_names=atom_names,
-        residue_ids=residue_ids,
-        residue_names=residue_names,
-        chain_ids=chain_ids,
-        title=struct.title,
-    )
+def _patch_residue(residue, modified_code: str) -> None:
+    """Add ``modified_code``'s heavy atoms to ``residue``, the kit's
+    Bio.PDB residue of its parent: each placed in the residue's local frame
+    by PeptideBuilder's own placement -- bonded to the third atom it names,
+    at the bond length, the angle and the dihedral its row states
+    (:data:`residues.MODIFIED_RESIDUES`; `engines/builders.md` § 2)."""
+    from Bio.PDB.Atom import Atom
+    from PeptideBuilder.PeptideBuilder import calculateCoordinates
+    for name, element, frame, bond, angle, dihedral in \
+            MODIFIED_RESIDUES[modified_code]["add_atoms"]:
+        a, b, c = (residue[n] for n in frame)
+        coord = calculateCoordinates(a, b, c, bond, angle, dihedral)
+        residue.add(Atom(name, np.asarray(coord, dtype=float), 0.0, 1.0,
+                         " ", f" {name:<3}", 0, element))

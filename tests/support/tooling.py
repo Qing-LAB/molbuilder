@@ -143,6 +143,33 @@ def needs_backend(name: str) -> None:
                 "is not installed here")
 
 
+def make_absent(monkeypatch, tool: str) -> None:
+    """``tool`` -- a nucleic-acid backend (`builders.backends.BACKENDS`), a
+    Python package a builder imports (`chemistry.TOOLS`), or the hydrogen
+    engines (``hydrogens``) -- made absent for this test: THE one way a test
+    does it.  The named need: none of them can be uninstalled for a test,
+    and each is in the host env's recipe or found on this machine.  Made
+    absent through the entry the code asks: a package's import failing,
+    every module of it (`sys.modules`), so no cached submodule answers -- a
+    backend that is that package (RDKit) absent with it, its detection
+    asking the same module; a backend that is a program, its own detection
+    (its module's ``is_available``, which the registry asks before any
+    build)."""
+    from molbuilder.builders import backends
+    from molbuilder.chemistry import TOOLS
+    if tool not in TOOLS and tool != "hydrogens":
+        monkeypatch.setattr(backends._modules()[tool], "is_available",
+                            lambda: False)
+        return
+    roots = (("openbabel", "rdkit") if tool == "hydrogens"
+             else (TOOLS[tool].module.split(".")[0],))
+    for name in list(sys.modules):
+        if name.split(".")[0] in roots:
+            monkeypatch.setitem(sys.modules, name, None)
+    for root in roots:
+        monkeypatch.setitem(sys.modules, root, None)
+
+
 def browser_plugin(config) -> bool:
     """Whether the browser plugin is loaded in this pytest -- what provides
     the browser fixtures, not merely the library under it."""

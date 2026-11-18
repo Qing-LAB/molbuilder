@@ -58,19 +58,33 @@ class TestKnownAdvisorySitesAreHTTP200:
         assert body["summary"], "the refusal must NAME what is missing"
 
 
-@pytest.mark.parametrize("kind, text", [("dna", "5'-ATGC"), ("rna", "3'-UGCA"),
-                                        ("rna", "AC,GU"), ("rna", "ACGT")])
-def test_a_strand_the_build_does_not_read_is_the_requests_fault(web_client,
-                                                                kind, text):
+@pytest.mark.parametrize("asked", [
+    {"kind": "dna", "input": "5'-ATGC"},
+    {"kind": "rna", "input": "3'-UGCA"},
+    {"kind": "rna", "input": "AC,GU"},
+    {"kind": "rna", "input": "ACGT"},
+    {"kind": "smiles", "input": "C("},
+    {"kind": "smiles", "input": "C C(=O)O"},
+    {"kind": "smiles", "input": "C", "form": "B"},
+    {"kind": "dna", "input": "ATGC", "protonate_phosphates": "false"},
+], ids=["a strand one end short", "an RNA strand one end short",
+        "two RNA strands", "a thymine in RNA", "a SMILES that does not read",
+        "a SMILES holding a space",
+        "an ask the kind does not take", "true-or-false sent as text"])
+def test_a_request_the_build_does_not_read_is_the_requests_fault(web_client,
+                                                                 asked):
     """`web-api.md`, *Status codes*: a bad request is a 4xx, in the build's
-    own words -- not a crash on our side.
+    own words -- not a crash on our side, and never built as something else.
 
     THE SILENT FAILURES: `5'-ATGC`, a typo, answered as a server fault, which
     tells the person molbuilder broke when their label is one end short; a
     thymine let through RNA's alphabet, and a strand with a T built and
-    answered 200 (only the page's own check refused it)."""
-    r = web_client.post("/api/build/molecule",
-                        json={"kind": kind, "input": text})
+    answered 200 (only the page's own check refused it); `C(` built as
+    methane by OpenBabel's lenient reader, and `C C(=O)O` as methane, RDKit
+    reading its first word alone; a field the kind does not take
+    dropped, and a ``"false"`` read as true -- each built, nothing said
+    (F12's fifth review, 2026-11-18)."""
+    r = web_client.post("/api/build/molecule", json=asked)
     assert r.status_code == 400, r.get_json()
     assert r.get_json()["ok"] is False
 

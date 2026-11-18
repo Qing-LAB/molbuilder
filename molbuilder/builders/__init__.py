@@ -64,17 +64,23 @@ def build(kind: str, text: str, *, title: Optional[str] = None,
     a value left ``None`` not passed, the builder's own default standing --
     and the check after it, told the form and terminal the build used (the
     kind's own, `backends.DEFAULT_FORM`, `DEFAULT_TERMINAL`, when none was
-    asked).  An ask the kind does not take is refused, naming it."""
+    asked).  An unknown kind and an ask the kind does not take are refused
+    (:class:`chemistry.BuildRefused`), naming it; what the input holds is
+    the builder's own to read and refuse, an empty one included."""
+    from ..chemistry import BackendUnavailable, BuildRefused
     from ..validation.builders import Asked, check_built
-    from .backends import DEFAULT_FORM, DEFAULT_TERMINAL, resolved_backend
+    from .backends import (DEFAULT_FORM, DEFAULT_TERMINAL, resolved_backend,
+                           with_install)
     gen = GENERATORS.get(kind)
     if gen is None:
-        raise ValueError(f"unknown builder kind {kind!r}; valid: "
+        raise BuildRefused(f"unknown builder kind {kind!r}; valid: "
                          f"{sorted(GENERATORS)}")
     stray = sorted(set(asked) - set(gen.asks))
     if stray:
-        raise ValueError(f"a {kind} build takes {list(gen.asks)}, not "
-                         f"{stray}")
+        raise BuildRefused(
+            f"building {kind} takes "
+            f"{', '.join(gen.asks) or 'nothing beside its text'}, not "
+            f"{', '.join(stray)}")
     asked = {k: v for k, v in asked.items() if v is not None}
     module, name = gen.builder.split(":")
     builder = getattr(import_module(module), name)
@@ -83,15 +89,24 @@ def build(kind: str, text: str, *, title: Optional[str] = None,
         used = resolved_backend(asked.get("backend", "auto"))
         if used is not None:
             asked["backend"] = used
-    if gen.names_backend:
-        struct, used = builder(text, title=title, return_backend=True)
-    else:
-        struct = builder(text, title=title, **asked)
-    check = (Asked(text=text, backend=used,
+    try:
+        if gen.names_backend:
+            struct, used = builder(text, title=title, return_backend=True)
+        else:
+            struct = builder(text, title=title, **asked)
+    except BackendUnavailable as exc:
+        # WHERE THE WORDS COULD NOT NAME THE COMMAND -- a host-env package
+        # said from below the env framework (`chemistry.BackendUnavailable
+        # .env`) -- it is added here, in the framework's one spelling.
+        if exc.env is None:
+            raise
+        raise BackendUnavailable(with_install(str(exc), exc.env),
+                                 missing=exc.missing) from exc
+    check = (Asked(backend=used,
                    form=asked.get("form") or DEFAULT_FORM[kind],
                    terminal=asked.get("terminal") or DEFAULT_TERMINAL,
                    relax_clashes=bool(asked.get("relax_clashes", False)),
                    defaults=tuple(k for k in ("form", "terminal")
                                   if not asked.get(k)))
-             if gen.nucleic else Asked(text=text, backend=used))
+             if gen.nucleic else Asked(backend=used))
     return Build(struct, used, check_built(struct, kind=kind, asked=check))

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pytest
 
-from molbuilder.chemistry import BackendUnavailable
+from molbuilder.chemistry import BackendUnavailable, BuildRefused
 from molbuilder.nucleic import build_dna, parse_dna_notation
 from support import tooling
 
@@ -44,51 +44,34 @@ def test_two_explicit_strands_parse_to_a_duplex():
 
 
 def test_more_than_two_strands_rejected():
-    with pytest.raises(ValueError, match="exactly two"):
+    with pytest.raises(BuildRefused, match="exactly two"):
         parse_dna_notation("ATGC,GCAT,TTTT")
 
 
 # --------------------------------------------------------------------- #
-#  Gate (no X3DNA needed -- the gate fires before the backend runs)     #
+#  The duplex gate: a duplex on a backend that builds one                #
 # --------------------------------------------------------------------- #
 
-def test_ds_rejected_on_non_x3dna_backend():
-    """A MISSING TOOL, not a bad request — so `BackendUnavailable`.
-
-    `test_backends.py::test_dispatch_unknown_backend_raises_value_error`
-    states the split: *"Unknown backend name is a usage error, not a
-    missing-tool error -- ValueError, not BackendUnavailable."*  A duplex
-    is a perfectly good request; X3DNA simply is not installed.  The
-    dedicated type is what lets the web route answer the contract's
-    advisory 200 rather than a 500 (`web-api.md` § 1).
-    """
-    with pytest.raises(BackendUnavailable, match="requires X3DNA"):
+@pytest.mark.parametrize("three_dna, refused, says", [
+    (True,  BuildRefused,       "3DNA"),
+    (False, BackendUnavailable, "x3dna.org"),
+], ids=["another-backend-asked-while-3dna-is-installed", "3dna-not-installed"])
+def test_a_duplex_asked_of_a_single_strand_backend(monkeypatch, three_dna,
+                                                   refused, says):
+    """`engines/builders.md` § 3: a duplex is built on a backend that builds
+    one (each backend's ``DUPLEX``).  Asked of another while one is
+    installed, the request is refused, naming it; with none installed it is
+    a tool this install lacks, which the route answers as advice.  The
+    silent failure (F12's review, 2026-11-18): the gate compared a backend's
+    name, and told a person who picked AmberTools to install the 3DNA they
+    had.  3DNA's absence is made by the one door (`support.tooling.
+    make_absent`)."""
+    if three_dna:
+        tooling.needs_backend("threedna")
+    else:
+        tooling.make_absent(monkeypatch, "threedna")
+    with pytest.raises(refused, match=says):
         build_dna("ds,ATGC", backend="rdkit")
-
-
-def test_ds_rejected_on_unsupported_form():
-    # B / A / Z are supported; anything else is rejected up front.
-    tooling.needs_backend("threedna")
-    with pytest.raises(ValueError, match="B / A / Z"):
-        build_dna("ds,ATGC", backend="threedna", form="Q")
-
-
-def test_two_strand_rejected_on_non_x3dna_backend():
-    """The two-strand spelling of the same gate."""
-    with pytest.raises(BackendUnavailable, match="requires X3DNA"):
-        build_dna("ATGC,GCAT", backend="rdkit")
-
-
-def test_two_strand_unequal_length_rejected():
-    # Forcing threedna passes the backend gate; the equal-length check is a pure
-    # validation before the backend runs, so it fires without X3DNA installed.
-    with pytest.raises(ValueError, match="equal length"):
-        build_dna("ATGC,GCA", backend="threedna")
-
-
-def test_two_strand_non_B_form_rejected():
-    with pytest.raises(ValueError, match="B-form only"):
-        build_dna("ATGC,GCAT", backend="threedna", form="A")
 
 
 # --------------------------------------------------------------------- #
@@ -98,6 +81,16 @@ def test_two_strand_non_B_form_rejected():
 @pytest.fixture(scope="module")
 def _x3dna():
     tooling.needs_backend("threedna")
+
+
+def test_two_strand_unequal_length_rejected(_x3dna):
+    with pytest.raises(BuildRefused, match="equal length"):
+        build_dna("ATGC,GCA", backend="threedna")
+
+
+def test_two_strand_non_B_form_rejected(_x3dna):
+    with pytest.raises(BuildRefused, match="B-form only"):
+        build_dna("ATGC,GCAT", backend="threedna", form="A")
 
 
 def test_ds_build_is_a_two_chain_duplex(_x3dna):

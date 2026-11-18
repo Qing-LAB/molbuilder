@@ -61,7 +61,8 @@ flowchart LR
   heuristic. It looks **only at phosphate groups**. For each phosphorus:
   1. Find non-bridging oxygen neighbours (an O whose only heavy neighbour is
      this P). Adjacency is distance-based: `_HX_CUT = 1.30 Å` (X–H),
-     `_XX_CUT = 1.95 Å` (heavy–heavy).
+     `_XX_CUT = 1.95 Å` (heavy–heavy), each atom read by its element
+     (`is_atom`: a labelled `H1` is a hydrogen).
   2. Count them (`n_nb`) and how many already carry an H (`n_h`). One
      non-bridging O is the implicit `P=O` (contributes **0**); each remaining
      bare O without an H contributes **−1**. So per phosphorus the
@@ -69,16 +70,29 @@ flowchart LR
      atom-name sorting (*which* O is left bare is a protonation choice, § 2).
 
   It does **not** count carboxylates (Asp/Glu), protonated amines (Lys/Arg),
-  histidine pKa, sulfonates/sulfates/nitrates, or metal coordination — those
-  groups are invisible to it. A user with such a system **overrides** via
-  `cfg.net_charge` (both engines); the docstring and the
-  emitter specs say so.
+  histidine pKa, sulfonates/sulfates/nitrates, quaternary ammonium nitrogens,
+  or metal coordination — those groups are invisible to it. A user with such
+  a system **overrides** via `cfg.net_charge` (both engines); the docstring
+  and the emitter specs say so.
+- **`quaternary_ammonium(struct)` → atom indices** — the nitrogens bonded to
+  four carbons (the phosphate rule's heavy–heavy cutoff, `_XX_CUT`; each atom
+  by its element, `is_atom`): each a +1 whatever the pH — a
+  trimethyl-lysine's NZ, a choline's N — which a structure carries as a
+  neutral atom. A blank charge does **not** count them, since the molecule's
+  net charge is theirs with any other charged group it holds (a zwitterion's
+  carboxylate, a counter-ion) *(the user, 2026-11-18: "Don't count; warn")*:
+  when a finite system's charge was left blank and it holds one — whatever
+  filled it, detection or the run the structure came out of *(the user,
+  2026-11-18: "Warn on carried too")* — the electronic state's checks warn,
+  naming them, and ask for the net charge (`config.net_charge`,
+  `validation/chemistry.py`). A warning only: the calculation runs as set.
 
 Two related counters:
 - **`total_electrons(struct, charge=0)` → int** — sum of atomic numbers minus
   the charge (electron count, used by spin-parity checks).
 - **`expected_pH7_peptide_charge(struct)` → int | None** — estimates a
-  peptide's net charge at physiological pH: **only** Asp/Glu −1 and Lys/Arg +1.
+  peptide's net charge at physiological pH: **only** Asp/Glu −1, and Lys/Arg
+  and the methylated lysines (MLZ, MLY, M3L) +1.
   His, Cys, Tyr and the free N-/C-termini contribute **0** (His is ambiguous at
   pH 7; the termini cancel for a free peptide). Returns `None` when the
   structure doesn't look like a peptide.
@@ -110,7 +124,12 @@ Two related counters:
   C4–N3 1.34 Å and C4–N4 1.33 Å, and every cytosine came out the imino tautomer
   (an H on N3, measured 2026-10-31) — so each base's are set from
   `residues.NUCLEOBASE_BONDS` (the canonical amino/keto tautomer, the form in
-  DNA and RNA) before the hydrogens are placed — by OpenBabel. The RDKit
+  DNA and RNA) before the hydrogens are placed — by OpenBabel. **A base's
+  atoms bond only within their nucleotide**: a bond OpenBabel perceives from
+  one to another residue is two bases too close — a mismatched pair at the
+  standard frame, a G's N1 1.17 Å from its A's N1 — and is deleted first,
+  else it takes the place of the hydrogens there (`AAAA,TTTG` was built three
+  short, an odd electron count; measured 2026-11-18). The RDKit
   fallback, used only where OpenBabel is absent, reads the bases' orders from
   its own residue templates but drops the hydrogens it cannot place (an amino
   group left one H short), so nucleic acids want OpenBabel. Pinned by
@@ -286,8 +305,12 @@ own element-column rules.
 | Function | Purpose |
 |---|---|
 | `min_nonbonded_contact(struct, search_radius=2.5)` | closest approach between atoms in **different** residues — a steric-clash probe; returns `(distance, i, j)`, or `(None, None, None)` when there are no residue labels (intra-residue contacts are bonds, not clashes) |
-| `steric_clash(struct)` → `(d, i, j)` or `None` | the closest inter-residue contact when it is a steric clash — below `CLASH_CONTACT_A` (1.3 Å); `NEAR_COINCIDENT_A` (1.0 Å) is the explosion risk. What the check after a nucleic build says (`validation.builders`) and `build_dna`'s relief asks |
-| `relieve_clashes(struct, steps=1000)` → Structure | nudge atoms apart to remove steric clashes |
+| `steric_clash(struct)` → `(d, i, j)` or `None` | the closest inter-residue contact when it is a steric clash — below `CLASH_CONTACT_A` (1.3 Å); `NEAR_COINCIDENT_A` (1.0 Å) is the explosion risk. What the check after a nucleic build says (`validation.builders`) and `build_dna`'s relief asks; a SMILES's molecules are measured by their van der Waals radii instead (`van_der_waals_radius`, `engines/builders.md` § 6) |
+| `backbone_links(struct)` → `{(chain, r): BackboneLink}` | each nucleotide's link to the one before it in its chain (`residues.nucleobase` says which residues are nucleotides): residue *r*'s P to *r* − 1's O3′, its `distance` and whether it is `bridged` — within `O3P_BRIDGE_A` (1.80 Å), the one comparison. Read by the orientation check, 3DNA's and AmberTools' self-check and `relieve_clashes` (`engines/builders.md` § 2) |
+| `relieve_clashes(struct, steps=1000)` → Structure | nudge atoms apart to remove steric clashes: OpenBabel's UFF, every perceived inter-residue bond but the bridged backbone links deleted first; OpenBabel missing is `BackendUnavailable` (`missing="openbabel"`) |
+| `TOOLS`, `require(missing, *, needed_for, module=None)`, `van_der_waals_radius(label)` | the Python packages a builder imports, one table by their `missing` name (each one's name and the module that proves it is here), and the one door that imports one or raises `BackendUnavailable` naming it, what needs it and that it is one of the host env's packages (`INSTALL_TOOLS`, raised with `env="host"`; the build door adds the command that installs it, `engines/builders.md` § 1); an element's van der Waals radius (ASE's table, Bondi 1964 and Mantina et al. 2009; RDKit's for the elements it lacks), what a SMILES's overlapping molecules are measured against (`engines/builders.md` § 6) |
+| `ETKDG_SEED`, `embed_conformer(mol, seed)`, `molecules_to_structure(elements, positions, molecules, *, pdb, title)`, `rdkit_to_structure(mol, *, title)` | the one RDKit embedding recipe (ETKDGv3, then a random-coordinates retry, the seed pinned) and the one conversion of an embedded molecule to a `Structure` — each molecule its own residue by the engine's own split, each atom its PDB record where the engine carries one — RDKit's (a SMILES's, an RDKit nucleic acid's) and OpenBabel's (`engines/builders.md` § 6) |
+| `with_atoms(struct, added)` | the structure with atoms added, each `(i, element, position, name)` in the residue and chain of atom `i`, after that residue's last atom — what a builder adds to what it built (a hydroxyl's hydrogen, 3DNA's third phosphate oxygen), joined through `Structure.concat` / `take`, which carry the structure's other facts |
 | `estimate_partial_charges(struct, total_charge=0.0, *, bond_cutoff=1.95, hx_cutoff=1.30)` | heuristic per-atom partial charges from electronegativity gaps (the cutoffs are keyword-only; same values as § 1) |
 | `estimate_dipole_moment_debye(struct, …)` | the molecular dipole moment, in Debye, taken about the centre of mass: an ion's dipole depends on the origin (`science/normal-modes.md` § 4a.5), and the centre of mass makes the number independent of where the molecule sits in its box (plan § 5q D8) |
 

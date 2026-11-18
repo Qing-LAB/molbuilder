@@ -340,7 +340,8 @@ REPORT_STREAM: "ContextVar" = ContextVar("report_stream", default=None)
 def report(issues: List[Issue], *,
            raise_on_error: bool = True,
            stream=None) -> None:
-    """Print warnings and advisories to stderr; raise ValidationError on errors.
+    """Print warnings and advisories to stderr; raise ValidationError on
+    errors -- or, with ``raise_on_error`` off, print them too.
 
     The two-pass shape (findings first, then maybe-raise) lets the
     user see *all* of them even when an error is also present --
@@ -348,13 +349,16 @@ def report(issues: List[Issue], *,
 
     **`info` is printed too**: `science/validation.md` R4 is explicit: *"no
     surface downgrades a severity to keep a screen quiet, and the CLI prints
-    the same three."*  Errors still raise rather than print, which is R4's own
-    distinction and not a downgrade.
+    the same three."*  Errors raise rather than print, which is R4's own
+    distinction and not a downgrade; a caller that does not raise -- the
+    build commands, which write what was built -- has them printed, never
+    dropped (an `O.O` SMILES built with its atoms on top of each other said
+    nothing until 2026-11-18).
     """
     if stream is None:
         stream = REPORT_STREAM.get() or sys.stderr
     for i in issues:
-        if i.severity in ("warn", "info"):
+        if i.severity in ("warn", "info") or not raise_on_error:
             tag = f" [{i.where}]" if i.where else ""
             print(f"{i.severity}{tag}: {i.message}", file=stream)
     errors = [i for i in issues if i.severity == "error"]

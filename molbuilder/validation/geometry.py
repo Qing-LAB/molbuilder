@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Dict, List, Optional, Sequence
+from typing import List, Optional, Sequence
 
 import numpy as np
 
@@ -51,8 +51,7 @@ def validate_geometry(struct: Structure,
             issues.append(Issue(
                 "warn",
                 f"closest atom pair is {min_d:.3f} Å apart -- this is "
-                f"too short for any real bond; check for failed "
-                f"protonation or backend output corruption",
+                f"too short for any real bond: two atoms overlap",
                 "geometry.min_distance",
             ))
 
@@ -215,7 +214,7 @@ def _min_image_distance(positions: np.ndarray,
 #  chemically the same but the residue listing is reversed -- which     #
 #  silently breaks any downstream code that infers orientation from    #
 #  residue_ids[0] (CIF / PDB writers, web "Watch this run" handoff,    #
-#  the X3DNA 5'-phosphate strip in `_threedna._strip_5prime_phosphate`).#
+#  the X3DNA 5'-phosphate strip in `_threedna._five_prime_end`).      #
 #                                                                       #
 #  This check looks at the actual P-O3' bridges to find the structural  #
 #  5' end (the residue with NO incoming bridge) and warns when it       #
@@ -224,31 +223,24 @@ def _min_image_distance(positions: np.ndarray,
 
 
 def _check_polymer_orientation(struct: Structure) -> List[Issue]:
-    # Locate P and O3' positions per residue.  If neither is present
-    # this isn't a nucleic-acid polymer (or it's a heavy-atom-only
-    # build with no backbone atoms named) -- silently skip.
-    P_pos:  Dict[int, np.ndarray] = {}
-    O3_pos: Dict[int, np.ndarray] = {}
-    for i in range(struct.n_atoms):
-        rid = struct.residue_ids[i]
-        nm  = struct.atom_names[i]
-        if nm == "P":
-            P_pos[rid] = struct.positions[i]
-        elif nm == "O3'":
-            O3_pos[rid] = struct.positions[i]
-    if not P_pos and not O3_pos:
+    # THE NUCLEOTIDES ONLY (`residues.nucleobase`): a phosphoserine's
+    # phosphorus is no backbone.  A structure holding none, or no named
+    # backbone atom, is not a nucleic-acid polymer here -- silently skip.
+    from ..chemistry import backbone_links
+    from ..residues import nucleobase
+    nucleotides = sorted({(struct.chain_ids[i], struct.residue_ids[i])
+                          for i in range(struct.n_atoms)
+                          if nucleobase(struct.residue_names[i]) is not None})
+    # THE ONE BRIDGE RULE (`chemistry.backbone_links`): residue r's P to
+    # residue r-1's O3' in the same chain.  No link at all -- no named
+    # backbone, or a single nucleotide -- is nothing to orient against.
+    links = backbone_links(struct)
+    if not links:
         return []
-
-    rids = sorted(set(struct.residue_ids))
-    # has_predecessor[r] = True if residue r's P bonds to residue (r-1)'s O3'.
-    has_predecessor = set()
-    for r in rids:
-        if r in P_pos and (r - 1) in O3_pos:
-            d = float(np.linalg.norm(P_pos[r] - O3_pos[r - 1]))
-            if d < 1.8:                                # bridged
-                has_predecessor.add(r)
-
-    five_prime_ends = [r for r in rids if r not in has_predecessor]
+    bridged = {where for where, link in links.items() if link.bridged}
+    rids = sorted({r for _, r in nucleotides})
+    five_prime_ends = sorted({r for c, r in nucleotides
+                              if (c, r) not in bridged})
     if not five_prime_ends:
         # cyclic polymer -- nothing to orient against
         return []
@@ -257,7 +249,7 @@ def _check_polymer_orientation(struct: Structure) -> List[Issue]:
         # If the structure has a single chain_id this is a polymer
         # integrity issue worth surfacing; multi-chain inputs (e.g.,
         # a duplex) get a pass.
-        if len(set(struct.chain_ids)) <= 1:
+        if len({c for c, _ in nucleotides}) <= 1:
             return [Issue(
                 "warn",
                 f"polymer has {len(five_prime_ends)} residues with no "

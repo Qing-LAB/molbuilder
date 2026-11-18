@@ -7,7 +7,7 @@
  * USED BY: the structure-optimization tab (SIESTA + PySCF panels), the
  * transport tab, the spectra tab/inspector, the Task setup tab, MolView's
  * notices, the Modify tab's slab panel (the lattice measurement's notes), and
- * the five builder panels (a build's notices, through `panel-deps.findingsIn`).
+ * the five builder panels (a build's notices, through `panel-deps.js`).
  * Nothing else renders a finding.
  *
  * WHY THIS EXISTS (contract R2, docs/science/validation.md § 4.1): one

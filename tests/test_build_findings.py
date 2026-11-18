@@ -4,8 +4,8 @@
 (b))*: a builder returns the structure, and one check after the build
 (`validation.builders.check_built`, run by the build door `builders.build`)
 says what it found -- the structure's own (a peptide's aldehyde end, a
-nucleic acid's steric clash on every DNA or RNA build), read off what was
-built, and what the backend that
+nucleic acid's steric clash on every DNA or RNA build, a SMILES's molecules
+overlapping), read off what was built, and what the backend that
 built it does not build of what was asked (a form, a terminal), in each
 backend's own answer (`builders.backends.built`).  `POST /api/build/molecule` answers them
 as notices beside the structure, each a finding by its `where`; none travels
@@ -31,35 +31,40 @@ ROWS = [
     pytest.param("peptide", "ARNDC", {}, ["build.peptide_aldehyde"], [],
                  id="a-peptide's-c-terminus-as-the-kit-writes-it"),
     pytest.param("dna", "AAAA,TTTG", {"backend": "threedna"},
-                 ["build.steric_clash"], ["mismatched", "A1:H on N6"],
+                 ["build.steric_clash"], ["mismatched", "H on N1"],
                  id="a-mismatched-duplex-clashes"),
     pytest.param("dna", "ATGC,GCAT", {"backend": "threedna"}, [], [],
                  id="a-complementary-duplex-is-clash-free"),
-    pytest.param("rna", "ACGU", {"backend": "threedna", "form": "B"},
-                 ["build.form"], ["was built A-form"],
-                 id="3dna-builds-a-form-rna-only"),
+    # A SMILES of several molecules placed by the embedder inside each
+    # other -- a water in a cyclododecane, two hydrogens 0.80 A apart -- said
+    # by nothing; a rule by bond lengths missed it too, an H-H bond being
+    # 0.74 A (F12's fourth to sixth reviews, 2026-11-18).
+    pytest.param("smiles", "O.C1CCCCCCCCCCC1", {}, ["build.molecules_overlap"],
+                 ["van der Waals"],
+                 id="a-smiles-of-two-molecules-overlapping"),
     pytest.param("dna", "ATGC", {"backend": "threedna", "terminal": "PP"},
-                 ["build.terminal"], ["PP asked was built 5P"],
+                 ["build.terminal"], ["PP", "was built 5P"],
                  id="3dna-adds-no-3'-phosphate"),
     pytest.param("dna", "ATGC", {"backend": "threedna", "terminal": "3P"},
                  ["build.terminal"], ["was built OH"],
                  id="3dna-builds-a-3'-phosphate-ask-with-both-ends-oh"),
     pytest.param("dna", "ATGC", {"backend": "amber", "terminal": "5P"},
                  ["build.steric_clash", "build.form", "build.terminal"],
-                 ["was built OH", "H3'", "H5'", "as built on the amber",
-                  "B-form (the default)"],
+                 ["was built OH", "H3'", "H5'", "AmberTools", "default"],
                  id="tleap-builds-an-extended-chain-with-oh-termini"),
     pytest.param("rna", "ACGU", {"backend": "amber"},
                  ["build.steric_clash", "build.form"], ["H3'", "H5'"],
                  id="tleap-rna-links-clash-said"),
     pytest.param("dna", "ATGC", {"backend": "rdkit"}, ["build.form"], [],
                  id="rdkit-embeds-a-conformer-not-a-helix"),
+    # RDKit builds every terminal as asked (`engines/builders.md` § 5,
+    # flavors 8 and 9 measured 2026-11-18): nothing to say of the terminal.
     pytest.param("dna", "ATGC", {"backend": "rdkit", "terminal": "3P"},
-                 ["build.form", "build.terminal"], ["was built OH"],
-                 id="rdkit-dna-has-no-3'-phosphate"),
+                 ["build.form"], [],
+                 id="rdkit-dna-builds-a-3'-phosphate-as-asked"),
     pytest.param("dna", "ATGC", {"backend": "rdkit", "terminal": "PP"},
-                 ["build.form", "build.terminal"], ["was built 5P"],
-                 id="rdkit-dna-pp-is-built-5p"),
+                 ["build.form"], [],
+                 id="rdkit-dna-builds-both-phosphates-as-asked"),
 ]
 
 

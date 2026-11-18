@@ -134,6 +134,39 @@ def test_a_blank_charge_is_written_with_its_reason(prepared):
             in fdf)
 
 
+@pytest.mark.parametrize("sequence, net_charge, says", [
+    ("A[M3L]A", None, "quaternary ammonium"),
+    ("K[M3L]A", None, "+2"),
+    ("K[M3L]A", 0, "+2"),
+    ("A[M3L]A", 1, None),
+], ids=["left-blank", "left-blank-peptide", "stated-0", "stated-1"])
+def test_a_quaternary_ammonium_is_one_charge_finding(sequence, net_charge,
+                                                     says):
+    """`model/chemistry.md` § 1: a blank charge does not count a quaternary
+    ammonium nitrogen -- the net charge is its +1 with any other charged
+    group the structure holds -- so a finite system holding one, its charge
+    left blank, is warned, naming it, the charge asked for (the user,
+    2026-11-18: "Don't count; warn"), with a peptide's estimated charge at
+    pH 7.4, its side chains and every methylated lysine counted; a stated 0
+    hears that estimate, and a stated +1 nothing.  ONE finding per fact
+    (ES9).  The silent failures: a trimethyl-lysine built by molbuilder ran
+    at charge 0, 173 electrons, a radical, with nothing said; then two
+    warnings for its one +1; K[M3L]A advised +1 where its charge is +2 (F12's
+    reviews, 2026-11-18)."""
+    pytest.importorskip("PeptideBuilder")
+    from molbuilder.builders import build
+    from molbuilder.config.pyscf import PySCFConfig
+    from molbuilder.validation import validate
+    struct = build("peptide", sequence).structure
+    said = [i.message for i in validate(
+                struct, PySCFConfig(net_charge=net_charge),
+                calculation="optimization")
+            if i.where == "config.net_charge"]
+    assert len(said) == (1 if says else 0), said
+    if says:
+        assert says in said[0], said
+
+
 @pytest.mark.parametrize("engine, kind", [("siesta", "optimization"),
                                           ("pyscf", "optimization"),
                                           ("pyscf", "vibration")])

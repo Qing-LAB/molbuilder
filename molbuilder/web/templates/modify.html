@@ -12,6 +12,32 @@
 </head>
 <body data-sidebars="projects">
 
+{#- A NUCLEIC PANEL'S MENUS, one shape for DNA and RNA: the forms the kind is
+    built in, in their words, its default chosen, and the backends in auto's
+    order with theirs -- the builders' registry, rendered by the server
+    (`builders.backends.KIND_FORMS`, `FORMS`, `BACKENDS`). -#}
+{%- macro nucleic_menus(kind) %}
+        <label class="modify-source-row">
+          <span>Form</span>
+          <select id="{{ kind }}-form-select"
+                  title="The helical form asked; a backend that does not build it says so">
+            {%- for form in kind_forms[kind] %}
+            <option value="{{ form }}"{{ " selected" if form == default_form[kind] }}>{{ form }} ({{ forms[form] }})</option>
+            {%- endfor %}
+          </select>
+        </label>
+        <label class="modify-source-row">
+          <span>Backend</span>
+          <select id="{{ kind }}-backend-select"
+                  title="auto: the first of the backends below that is installed, in the order listed">
+            <option value="auto" selected>auto</option>
+            {%- for name, words in backends.items() %}
+            <option value="{{ name }}">{{ words }}</option>
+            {%- endfor %}
+          </select>
+        </label>
+{%- endmacro %}
+
 {% set active_tab = "molbuilder" %}
 {% include "_app_header.html" %}
 {#- App shell (web/ui-contract.md § 3.1): the sidebar rail + the tab
@@ -141,19 +167,18 @@
     <div class="modify-init-panel" id="init-panel-dna" role="tabpanel" hidden>
       <div class="modify-source-body">
         <p class="modify-source-hint">
-          Build DNA from a 1-letter sequence (ACGT) in B / A / Z helix form.
-          Picks the best installed backend (3DNA preferred, AmberTools fallback).
+          Build DNA from a 1-letter sequence (ACGT), read 5'→3'; write
+          <code>3'-…-5'</code> to reverse a strand.  What a backend does not
+          build of what you ask is said under the panel.
           <br>
           <strong>Canonical duplex:</strong> prefix with <code>ds,</code> — e.g.
           <code>ds,ATGCATGC</code> — for a Watson–Crick duplex; the complementary
-          strand is generated automatically (B / A / Z helix — Z needs an
-          alternating poly-d(GC) sequence).
+          strand is generated automatically.
           <br>
           <strong>Explicit / mismatched duplex:</strong> give the two strands
-          comma-separated — e.g. <code>ATGCATGC,GCATGCAT</code> — both 5'→3', paired
-          antiparallel and equal length. A non-complementary base pairs as a
-          mismatch (a B-form starting model — relax before use). B-form only.
-          (Requires 3DNA. Read 5'→3'; write <code>3'-…-5'</code> to reverse a strand.)
+          comma-separated — e.g. <code>ATGCATGC,GCATGCAT</code> — both 5'→3',
+          paired antiparallel. A non-complementary base pairs as a mismatch, a
+          starting model to relax before use.
         </p>
         <label class="modify-source-row">
           <span>Sequence</span>
@@ -161,29 +186,7 @@
                  placeholder="ATGCATGC · ds,ATGCATGC · ATGC,GCAT (two strands)"
                  autocomplete="off" spellcheck="false">
         </label>
-        <label class="modify-source-row">
-          <span>Form</span>
-          <select id="dna-form-select"
-                
-                  title="B = canonical right-handed, A = wide right-handed (dehydrated), Z = left-handed (alternating-purine only)">
-            {#- The build door's default form shown chosen
-                (`builders.backends.DEFAULT_FORM`). -#}
-            <option value="B"{{ " selected" if default_form.dna == "B" }}>B (canonical)</option>
-            <option value="A"{{ " selected" if default_form.dna == "A" }}>A (dehydrated)</option>
-            <option value="Z"{{ " selected" if default_form.dna == "Z" }}>Z (left-handed, GCGC… only)</option>
-          </select>
-        </label>
-        <label class="modify-source-row">
-          <span>Backend</span>
-          <select id="dna-backend-select"
-                
-                  title="auto: pick the best installed backend (3DNA> AmberTools> RDKit).&#10;3DNA: canonical helical fiber, requires x3dna.org install.&#10;Amber: tleap extended chain (form ignored).&#10;RDKit: folded conformer (form ignored).">
-            <option value="auto" selected>auto</option>
-            <option value="threedna">3DNA (canonical helix)</option>
-            <option value="amber">AmberTools (extended chain)</option>
-            <option value="rdkit">RDKit (folded conformer)</option>
-          </select>
-        </label>
+        {{ nucleic_menus("dna") }}
         <label class="modify-source-row"
                title="Two-strand duplexes only: a non-complementary (mismatched) base pair interpenetrates at the standard frame.  When checked, a short force-field minimization pushes the overlapping atoms apart (removes near-coincidence) so a later DFT/SIESTA relaxation doesn't explode.  Unchecked, a clash is only reported.">
           <span>Relieve clashes</span>
@@ -205,10 +208,9 @@
     <div class="modify-init-panel" id="init-panel-rna" role="tabpanel" hidden>
       <div class="modify-source-body">
         <p class="modify-source-hint">
-          Build single-stranded RNA from a 1-letter sequence (ACGU)
-          in A / B / Z helix form.  A-form is the canonical RNA
-          helix; the backend picks the best installed builder
-          (3DNA preferred, AmberTools fallback).
+          Build single-stranded RNA from a 1-letter sequence (ACGU), read
+          5'→3'.  What a backend does not build of what you ask is said
+          under the panel.
         </p>
         <label class="modify-source-row">
           <span>Sequence</span>
@@ -216,25 +218,7 @@
                  placeholder="e.g. ACGUACGU"
                  autocomplete="off" spellcheck="false">
         </label>
-        <label class="modify-source-row">
-          <span>Form</span>
-          <select id="rna-form-select"
-                
-                  title="A = canonical RNA helix (3'-endo sugar).  3DNA's fiber only builds A-form RNA; other backends ignore form and produce an extended (Amber) or folded (RDKit) chain.">
-            <option value="A"{{ " selected" if default_form.rna == "A" }}>A (canonical)</option>
-          </select>
-        </label>
-        <label class="modify-source-row">
-          <span>Backend</span>
-          <select id="rna-backend-select"
-                
-                  title="auto: pick the best installed backend (3DNA> AmberTools> RDKit).&#10;3DNA: canonical A-form fiber, requires x3dna.org install.&#10;Amber: tleap extended chain (form ignored).&#10;RDKit: folded conformer (form ignored).">
-            <option value="auto" selected>auto</option>
-            <option value="threedna">3DNA (canonical A-form)</option>
-            <option value="amber">AmberTools (extended chain)</option>
-            <option value="rdkit">RDKit (folded conformer)</option>
-          </select>
-        </label>
+        {{ nucleic_menus("rna") }}
         <div class="modify-source-actions">
           <button id="rna-generate-btn" class="modify-ghost">Generate</button>
           <span id="rna-status" class="status" role="status"></span>

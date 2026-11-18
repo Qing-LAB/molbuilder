@@ -11,9 +11,6 @@ in **extended** conformation -- not B-form / A-form helix.  For DFT
 that's fine: the bond lengths are right, the optimiser doesn't care
 that the chain isn't pre-coiled.
 
-If you actually need canonical B-form / A-form geometry, use the
-``threedna`` backend, which shells out to 3DNA's ``fiber``.
-
 Install:
     See ``docs/ops/installation.md`` § ``molbuilder-MDtools`` -- the
     canonical place for ``tleap`` in the four-env model.  A
@@ -37,10 +34,19 @@ import numpy as np
 
 from ...diagnostics import get_capabilities
 from ...envs import run_tool
+from ...residues import AMBER_SUFFIX
 from ...structure import Structure
 from . import Built
 from ._common import (first_chain,
                       verify_backbone_connectivity)
+
+#: This backend builds a single strand only.
+DUPLEX = False
+#: How it is installed: its own env, AmberTools' recipe's (``ENV``, its
+#: category; `ops/installation.md`), or tleap on the host env's PATH.
+INSTALL = ("it runs from its own env, or from AmberTools' tleap on the "
+           "host env's PATH")
+ENV = "mdtools"
 
 
 def is_available() -> bool:
@@ -58,30 +64,11 @@ def is_available() -> bool:
 def build(kind: str, sequence: str, form: str, terminal: str,
           title: Optional[str] = None, double_strand: bool = False,
           strand2: Optional[str] = None) -> Structure:
-    if double_strand or strand2 is not None:
-        raise ValueError(
-            "double-strand DNA is not supported by the amber backend; it "
-            "requires X3DNA (canonical or arbitrary duplex geometry).")
-    if not is_available():
-        from ...chemistry import BackendUnavailable
-        raise BackendUnavailable(
-            "AmberTools `tleap` not found.  Either:\n"
-            "  - install `tleap` on the host env's PATH, or\n"
-            "  - create the molbuilder-MDtools conda env.",
-            missing="amber"
-        )
-    if kind not in ("dna", "rna"):
-        raise ValueError(f"AmberTools backend supports kind in 'dna'|'rna'; got {kind!r}")
-
-    # THE FORM IS NOT SHAPED HERE -- tleap builds an extended polymer; the
-    # check after the build says so (`built`).
-
-    seq = "".join(c for c in sequence.upper() if c.isalpha())
-    if not seq:
-        raise ValueError("Empty sequence")
-
+    """A single strand of ``kind`` from ``sequence`` -- read by the grammar
+    already -- as tleap's extended polymer: no form is shaped here, the check
+    after the build says so (:func:`built`)."""
     leaprc      = "leaprc.DNA.OL15" if kind == "dna" else "leaprc.RNA.OL3"
-    res_codes   = _residue_codes_for_sequence(seq, kind)
+    res_codes   = _residue_codes_for_sequence(sequence, kind)
     seq_block   = " ".join(res_codes)
 
     with tempfile.TemporaryDirectory(prefix="molbuilder_tleap_") as workdir:
@@ -125,7 +112,7 @@ quit
 
     struct = Structure.from_pdb(
         pdb_text,
-        title=title or f"{kind} {seq} (tleap, extended chain)",
+        title=title or f"{kind} {sequence} (tleap, extended chain)",
     )
 
     # A backend returns ONE chain.  tleap emits a single chain, so this is
@@ -267,17 +254,18 @@ def _fix_methylene_hydrogens(struct):
 #   DNA:  DA5 / DT5 / DG5 / DC5     -- 5'-terminal (5'-OH)
 #         DA  / DT  / DG  / DC      -- inner residues (with phosphate)
 #         DA3 / DT3 / DG3 / DC3     -- 3'-terminal (3'-OH)
+#         DAN / DTN / DGN / DCN     -- a single nucleotide, free at BOTH ends
 #
 #   RNA:  A5  / U5  / G5  / C5      -- 5'-terminal
 #         A   / U   / G   / C       -- inner
 #         A3  / U3  / G3  / C3      -- 3'-terminal
+#         AN  / UN  / GN  / CN      -- a single nucleotide
 #
-# All 5'-terminal variants have a free 5'-hydroxyl, not a phosphate; if
-# the user requested terminal="5P" or "PP" we'd need different residues
-# (DA5MP and friends in some force fields).  Those aren't universally
-# present so for v1 we just emit the standard 5'-OH terminals and the
-# user gets terminal="OH" semantics regardless.
-
+# A one-letter sequence is BOTH ends at once: its residue is the "N" one --
+# the 5'-terminal residue alone would leave its 3' end open for a link that
+# never comes, no hydrogen on its O3', an odd electron count (measured
+# 2026-11-18: DNA "A" 131 electrons, RNA "A" 139).
+#
 def built(kind: str, form: str, terminal: str) -> Built:
     """What this backend builds of the ask (`backends.built`): an extended
     polymer, no helix, and 5'-OH / 3'-OH termini whatever is asked
@@ -285,26 +273,18 @@ def built(kind: str, form: str, terminal: str) -> Built:
     return Built(
         form=None, terminal="OH",
         form_words="AmberTools (tleap) builds an extended polymer -- its bond "
-                   "chemistry correct (Amber OL15 / OL3), not a helix; for a "
-                   "canonical helix use the 3DNA backend",
-        terminal_words="AmberTools writes only 5'-OH / 3'-OH termini; for "
-                       "a 5'-phosphate use the 3DNA backend, for an RNA "
-                       "3'-phosphate the RDKit backend, or post-process the "
-                       "structure")
+                   "chemistry correct (Amber OL15 / OL3), not a helix",
+        terminal_words="AmberTools writes only 5'-OH / 3'-OH termini")
 
 
 def _residue_codes_for_sequence(seq: str, kind: str) -> List[str]:
     # ONLY 5'-OH / 3'-OH TERMINI are written, whatever is asked; the check
     # after the build says so (`built`).
     n = len(seq)
+    prefix = "D" if kind == "dna" else ""
     out: List[str] = []
     for i, letter in enumerate(seq):
-        prefix = "D" if kind == "dna" else ""
-        if i == 0:
-            suffix = "5"          # 5'-terminal
-        elif i == n - 1:
-            suffix = "3"          # 3'-terminal
-        else:
-            suffix = ""           # inner
-        out.append(f"{prefix}{letter}{suffix}")
+        where = ("single" if n == 1 else "5'" if i == 0
+                 else "3'" if i == n - 1 else "inner")
+        out.append(f"{prefix}{letter}{AMBER_SUFFIX[where]}")
     return out

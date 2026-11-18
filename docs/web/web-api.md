@@ -303,9 +303,9 @@ writes it.
 literal, or passes it as a value — `err(msg, code)`'s default of 400, or a
 path error's own `status`. The advisory bucket is **four sites**: the notify channel probe,
 twice — *"could not reach it"* is news about somewhere else, and a 5xx there
-would claim this server broke — the Build route's missing tool
-(`POST /api/build/molecule`), which is the person's install, not this server's
-fault, and the checkpoint routes' one helper, `_advisory`, for the refusals a
+would claim this server broke — the Build route's missing tool or
+PubChem out of reach (`POST /api/build/molecule`), the person's install or
+somewhere else, not this server's fault, and the checkpoint routes' one helper, `_advisory`, for the refusals a
 person resolves (§ 5). The other literal `200`s are no advisory: the probe's
 success, and a transport citation that cannot be cited, which answers
 `ok: true` with the refusal as its `summary`
@@ -515,7 +515,7 @@ owned by [`molview.md`](?doc=web/molview.md):
 | Method · Path | Purpose |
 |---|---|
 | POST `/api/build/load` | Load a structure — a project path, a pasted or uploaded text, or a structure put back; frame 0 unless `frame` or `frames` says otherwise, `n_frames` in every answer (§ 1) |
-| POST `/api/build/molecule` | Build a molecule from a backend: the structure, `backend_used` (the backend that built it — `auto` resolved once, before the build), and the build's findings as `notices` (`validation.builders.check_built`, [`science/validation.md`](?doc=science/validation.md) § 4.1 R5), beside what the structure check says. A tool this install lacks — a builder backend, or the hydrogen engines — is **advice, not a fault**: `200` with `{ok: false, reason: "backend_unavailable", backend, error}`, `backend` naming what is missing (`threedna`, `amber`, `rdkit`, `hydrogens`), else the backend asked for (`chemistry.BackendUnavailable.missing`) |
+| POST `/api/build/molecule` | Build a molecule from a backend: the structure, `backend_used` (the backend that built it — `auto` resolved once, before the build), and the build's findings as `notices` (`validation.builders.check_built`, [`science/validation.md`](?doc=science/validation.md) § 4.1 R5), beside what the structure check says. Every field beside `kind` and `input` is passed to the build door as sent. What was asked that cannot be built (`chemistry.BuildRefused`) — an empty input, a field the kind does not take, a true-or-false field sent as anything else among it — is `400` in the builder's words; anything else a builder raises is `500`. A tool this install lacks — a nucleic-acid backend (`BACKENDS`), a package a builder imports (`chemistry.TOOLS`, the env framework's command that installs it said), the hydrogen engines — or PubChem out of reach is **advice, not a fault**: `200` with `{ok: false, reason: "backend_unavailable", backend, error}`, `backend` naming what is missing (a backend's name, a tool's of `chemistry.TOOLS`, `hydrogens`, or `pubchem`), else `auto`, when no nucleic-acid backend is installed for it (`chemistry.BackendUnavailable.missing`; [`engines/builders.md`](?doc=engines/builders.md) § 1) |
 | GET `/api/modify/meta` | Element/tool metadata for the Modify UI |
 | POST `/api/modify/{delete,add_atom,orient,rotate,translate,slab}` | The six structure edits |
 | POST `/api/modify/append` | `{structure, addition}` → the two structures as one, with `addition` **centred on the world origin** and appended. **This is what a generate does, and a load the person answers *Add***: they add to what is open rather than replacing it (user, 2026-09-07), so a session is assembled piece by piece. A load asks first when a structure is open, and *Clear* replaces the view with the file without this route (`web/tabs.md` § 2, *Creating a structure*). TWO envelopes in one body, read by the same reader (§ 1). A label the open structure already carries is **numbered** on the way in (`benzene#` → `benzene#2`) so two fragments stay separately selectable; the reserved `frozen_atoms` keeps its spelling, because something downstream acts on that exact name. The **open structure's cell is kept**, and a dropped one is said in `notices` |

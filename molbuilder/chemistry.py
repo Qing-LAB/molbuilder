@@ -5,37 +5,19 @@ validation pass: a small library of inferences that work on a bare
 ``Structure`` (no explicit bond orders required) using heavy-atom
 adjacency.
 
-Public surface (grouped by purpose):
-
-  Charge inference (DNA / RNA / phosphates):
-    formal_charge_from_phosphates(struct) -> int
-        Sum of -1 per deprotonated non-bridging phosphate oxygen.
-    protonate_phosphate_oxygens(struct) -> (struct, n_added)
-        Add H to deprotonated O so the molecule becomes neutral.
-    expected_pH7_peptide_charge(struct) -> Optional[int]
-        Rough physiological-pH net charge for a peptide.
-
-  Electron / spin parity:
-    total_electrons(struct, charge) -> int
-    check_spin_charge_parity(struct, charge, unpaired) -> Optional[str]
-
-  The structure's chemistry facts (the metals that bear on its spin):
-    analyze_structure(struct) -> ChemistryAnalysis
-    explain_metal_spin(element, spin) -> Optional[str]
-        What (element, 2S) means for a metal centre.
-    The DECISION -- which charge and spin a calculation runs with -- is
-    `electronic_state.py`'s (science/chemistry-correctness.md § 2a).
-
-  Hydrogen placement:
-    add_hydrogens(struct, ...) -> struct
-        Geometry-only H placement (no force-field).
+Its public surface -- the charge and spin facts, the hydrogens, and the
+builders' shared steps (the tools they import, the one embedding and the
+one conversion of a built molecule, the atoms they add, the checks' radii)
+-- is listed once, in `model/chemistry.md` § 4.  The DECISION -- which
+charge and spin a calculation runs with -- is `electronic_state.py`'s
+(science/chemistry-correctness.md § 2a).
 
 The chemistry rule encoded in the phosphate helpers is the standard
 interpretation: one P=O double bond, the other oxygens single-bonded
 to H, R-O-, or O- depending on protonation.  "Non-bridging" is
 inferred purely from heavy-atom adjacency (only P as a heavy
-neighbour).  Other charged groups (carboxylates, protonated amines)
-are NOT counted.
+neighbour).  Other charged groups (carboxylates, protonated amines,
+quaternary ammonium nitrogens) are NOT counted.
 """
 
 from __future__ import annotations
@@ -43,7 +25,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import (Iterable, List, Optional, Tuple)
+from typing import (Dict, Iterable, List, Optional, Tuple)
 
 import numpy as np
 
@@ -51,20 +33,153 @@ from .structure import Structure, split_species_label
 
 
 class BackendUnavailable(RuntimeError):
-    """An external engine molbuilder dispatches to is not installed here:
-    a structure builder's backend (X3DNA, AmberTools' ``tleap``, RDKit) or
-    the hydrogen engines (OpenBabel, RDKit).  ``missing`` names it, when one
-    engine is the answer, for a surface that acts on it -- the Build page
-    answers this as advice, not as a server fault (`web-api.md` § 1).
+    """What a build needs is not here: a tool this install lacks -- a
+    nucleic-acid backend (`builders.backends.BACKENDS`), a Python package a
+    builder imports (:data:`TOOLS`), the hydrogen engines -- or PubChem out
+    of reach.  The one type every builder raises for it
+    (`engines/builders.md` § 1); ``missing`` names it, when one is the
+    answer, for a surface that acts on it -- the Build page answers this as
+    advice, not as a server fault (`web-api.md` § 1) -- and ``env`` the env
+    that holds it, where the words cannot name the command that installs it
+    (``"host"``, the host env's packages, from here, below the env
+    framework): the build door adds it (`builders.backends.install_command`).
 
     DEFINED HERE, the lowest layer that raises it (`chemistry` is L1,
     `architecture.md` § 3): `builders/` (L2) raises it for its backends and
     reaches it downward, and :func:`add_hydrogens` raises it for its engines.
     """
 
-    def __init__(self, message: str, *, missing: Optional[str] = None):
+    def __init__(self, message: str, *, missing: Optional[str] = None,
+                 env: Optional[str] = None):
         super().__init__(message)
         self.missing = missing
+        self.env = env
+
+
+class BuildRefused(ValueError):
+    """What was asked of a builder cannot be built -- a letter its grammar
+    does not take, a form no nucleic acid is built in, a Z-form sequence
+    3DNA does not build, a name PubChem does not know -- said in the
+    builder's own words (`engines/builders.md` § 1).  The one type every
+    builder refuses with, so every surface says it one way: the build route
+    as a bad request (it is a ``ValueError``), the command line in one line
+    (`cli.main`'s door) -- and a fault of ours, which is none of these, is
+    never mistaken for it.  Defined here beside :class:`BackendUnavailable`,
+    the lowest layer the builders share."""
+
+
+@dataclass(frozen=True)
+class Tool:
+    """A Python package a builder imports: the name a person knows it by,
+    and the module that proves it is here."""
+    name: str
+    module: str
+
+
+#: THE TOOLS A BUILDER IMPORTS, by the ``missing`` name a surface acts on
+#: (`engines/builders.md` § 1): one home for each one's words, read by
+#: :func:`require` and by every message naming one.  How a tool is installed
+#: is the host env's recipe's, never repeated here (`envs/host-env.txt`,
+#: "one list, written here and nowhere else"), and so is how a command is
+#: spelled (`envs.hints`, which this module, below it, cannot reach): every
+#: message says the tool is one of the host env's packages
+#: (:data:`INSTALL_TOOLS`), raised with ``env="host"``, and the build door,
+#: above, adds the env framework's command that installs it
+#: (`builders.backends.install_command`).
+TOOLS = {
+    "rdkit": Tool("RDKit", "rdkit.Chem"),
+    "openbabel": Tool("OpenBabel", "openbabel.openbabel"),
+    "peptidebuilder": Tool("PeptideBuilder", "PeptideBuilder"),
+    "pubchempy": Tool("PubChemPy", "pubchempy"),
+}
+
+#: HOW ANY OF :data:`TOOLS` IS INSTALLED, in words: one of the host env's
+#: packages, which the env framework's repair installs
+#: (`ops/env-framework.md` § 7).
+INSTALL_TOOLS = "it is one of the host env's packages"
+
+
+def require(missing: str, *, needed_for: str, module: Optional[str] = None):
+    """The tool :data:`TOOLS` names ``missing``, imported -- its own module,
+    or ``module`` of it -- or :class:`BackendUnavailable` naming it, what it
+    is ``needed_for`` and how it is installed (:data:`INSTALL_TOOLS`): THE
+    one door for a Python package a builder needs (`engines/builders.md`
+    § 1)."""
+    import importlib
+    try:
+        return importlib.import_module(module or TOOLS[missing].module)
+    except ImportError as exc:
+        raise BackendUnavailable(
+            f"{needed_for} needs {TOOLS[missing].name}, which this install "
+            f"lacks: {INSTALL_TOOLS}.",
+            missing=missing, env="host") from exc
+
+
+#: THE ETKDG SEED every RDKit embedding takes -- a SMILES's and an RDKit
+#: nucleic acid's -- pinned for reproducibility.
+ETKDG_SEED = 0xF00D
+
+
+def embed_conformer(mol, seed: int = ETKDG_SEED) -> bool:
+    """Embed a 3-D conformer in the RDKit molecule ``mol`` -- ETKDGv3, then a
+    random-coordinates retry -- THE one embedding recipe, a SMILES's and an
+    RDKit nucleic acid's.  True iff a conformer was embedded.  An RDKit
+    molecule in hand is RDKit installed: its caller asked for it already
+    (:func:`require`)."""
+    from rdkit.Chem import AllChem
+    params = AllChem.ETKDGv3()
+    params.randomSeed = seed
+    if AllChem.EmbedMolecule(mol, params) != -1:
+        return True
+    params.useRandomCoords = True
+    return AllChem.EmbedMolecule(mol, params) != -1
+
+
+def molecules_to_structure(elements, positions, molecules, *, pdb=None,
+                           title: Optional[str] = None) -> Structure:
+    """An embedded molecule as a :class:`Structure` -- THE one conversion,
+    an RDKit build's (:func:`rdkit_to_structure`) and an OpenBabel one's
+    (`smiles._openbabel_build`): each atom its PDB record where the engine
+    carries one (``pdb[i]``: name, residue number, residue name, chain -- a
+    nucleotide's), else its element and number (``C1``) in residue ``MOL``
+    of chain ``A``, one residue for each molecule (``molecules``: each one's
+    atom indices, from 0, the engine's own split of its bonds) -- so a
+    SMILES's several molecules are told apart (`engines/builders.md` § 6)."""
+    from .engine_atom_index import pdb_numbering
+    molecule_of = {i: k for k, atoms in enumerate(molecules) for i in atoms}
+    names, rids, rnames, chains = [], [], [], []
+    for i, (element, record) in enumerate(
+            zip(elements, pdb or [None] * len(elements))):
+        name, rid, rname, chain = record or ("", 0, "", "")
+        names.append(name or f"{element}{pdb_numbering(i)}")
+        rids.append(rid or molecule_of[i] + 1)
+        rnames.append(rname or "MOL")
+        chains.append(chain or "A")
+    return Structure(elements=list(elements),
+                     positions=np.asarray(positions, dtype=float),
+                     atom_names=names, residue_ids=rids, residue_names=rnames,
+                     chain_ids=chains, title=title or "")
+
+
+def rdkit_to_structure(mol, *, title: Optional[str] = None) -> Structure:
+    """An RDKit molecule's embedded conformer as a :class:`Structure`, by
+    :func:`molecules_to_structure`: RDKit's own split into molecules
+    (``GetMolFrags``) and each atom's PDB record where it carries one."""
+    from rdkit import Chem
+    conf = mol.GetConformer()
+    atoms = list(mol.GetAtoms())
+
+    def record(atom):
+        info = atom.GetPDBResidueInfo()
+        return ((info.GetName().strip(), info.GetResidueNumber(),
+                 info.GetResidueName().strip(), info.GetChainId().strip())
+                if info else None)
+    return molecules_to_structure(
+        [atom.GetSymbol() for atom in atoms],
+        [[p.x, p.y, p.z] for p in map(conf.GetAtomPosition,
+                                      range(len(atoms)))],
+        Chem.GetMolFrags(mol), pdb=[record(atom) for atom in atoms],
+        title=title)
 
 
 # --------------------------------------------------------------------- #
@@ -131,17 +246,11 @@ def symbol_for_z(z: int) -> str:
 _CHARGED_RESIDUES_PH7 = {
     "ASP": -1, "GLU": -1,                       # acidic
     "LYS":  1, "ARG":  1,                       # basic
+    # The methylated lysines stay cationic: the mono- and dimethyl amines
+    # protonated as lysine's is, the trimethyl a quaternary ammonium, +1 at
+    # any pH (`model/chemistry.md` § 1).
+    "MLZ":  1, "MLY":  1, "M3L":  1,
 }
-
-# Standard (and modified) amino-acid 3-letter codes that come out of
-# molbuilder's peptide builder.  Used to detect "is this a peptide"
-# for the protonation hint.
-_AMINO_ACID_RESIDUE_NAMES = frozenset({
-    "ALA","ARG","ASN","ASP","CYS","GLN","GLU","GLY","HIS","ILE",
-    "LEU","LYS","MET","PHE","PRO","SER","THR","TRP","TYR","VAL",
-    # Modified residues we support
-    "SEP","TPO","PTR","MLY","M3L","ALY",
-})
 
 
 # Open-shell transition metals + lanthanides.  Their ground-state
@@ -733,7 +842,8 @@ def expected_pH7_peptide_charge(struct: Structure) -> Optional[int]:
     Returns
     -------
     int    Estimated charge from charged side chains.  Asp/Glu
-           contribute -1 each; Lys/Arg contribute +1 each.  N- and
+           contribute -1 each; Lys/Arg and the methylated lysines (MLZ,
+           MLY, M3L) +1 each.  N- and
            C-termini cancel each other for a free peptide.  His /
            Cys / Tyr are intentionally skipped (His ambiguous; the
            others have pKa > 8).
@@ -753,10 +863,12 @@ def expected_pH7_peptide_charge(struct: Structure) -> Optional[int]:
     for rid, rname in zip(struct.residue_ids, struct.residue_names):
         if rid not in seen:
             seen[rid] = rname
-    # Confirm we're looking at a peptide: at least one standard AA
-    # residue name must appear.
+    # Confirm we're looking at a peptide: at least one amino-acid residue
+    # name -- a standard one, or a modified one the builder's grammar takes
+    # (`residues.MODIFIED_RESIDUES`) -- must appear.
+    from .residues import AA_THREE_TO_ONE, MODIFIED_RESIDUES
     aa_present = sum(1 for n in seen.values()
-                     if n in _AMINO_ACID_RESIDUE_NAMES)
+                     if n in AA_THREE_TO_ONE or n in MODIFIED_RESIDUES)
     if aa_present == 0:
         return None
     # Sum the side-chain contributions.
@@ -784,13 +896,14 @@ def _adjacency(elements: List[str], positions: np.ndarray
         for j in range(i + 1, n):
             ej = elements[j]
             d = float(np.linalg.norm(positions[i] - positions[j]))
-            cutoff = _HX_CUT if ("H" in (ei, ej)) else _XX_CUT
+            hi, hj = is_atom(ei, "H"), is_atom(ej, "H")
+            cutoff = _HX_CUT if (hi or hj) else _XX_CUT
             if d > cutoff:
                 continue
-            if ej == "H": nb_h[i].append(j)
-            else:         nb_heavy[i].append(j)
-            if ei == "H": nb_h[j].append(i)
-            else:         nb_heavy[j].append(i)
+            if hj: nb_h[i].append(j)
+            else:  nb_heavy[i].append(j)
+            if hi: nb_h[j].append(i)
+            else:  nb_heavy[j].append(i)
     return nb_heavy, nb_h
 
 
@@ -831,6 +944,80 @@ def formal_charge_from_phosphates(struct: Structure) -> int:
     return charge
 
 
+def van_der_waals_radius(label: str) -> Optional[float]:
+    """The van der Waals radius of the element ``label`` names, in Angstrom:
+    ASE's table (``ase.data.vdw_radii``: Bondi 1964 for most of the main
+    group, Mantina et al. 2009 for the rest of it -- `Bondi1964`,
+    `Mantina2009`), and for an element it holds no radius for -- the
+    transition metals, the lanthanides -- RDKit's (its periodic table, from
+    the Blue Obelisk Data Repository, as RDKit's source states) (the user,
+    2026-11-18: "RDKit's radii for the gap").  Each element one source.
+    ``None`` for a label that names no element."""
+    from ase.data import atomic_numbers, vdw_radii
+    try:
+        z = atomic_numbers[resolve_element(label)]
+    except KeyError:
+        return None
+    r = float(vdw_radii[z]) if z < len(vdw_radii) else math.nan
+    if math.isnan(r):
+        from rdkit import Chem
+        r = float(Chem.GetPeriodicTable().GetRvdw(z))
+    return r
+
+
+def quaternary_ammonium(struct: Structure) -> List[int]:
+    """The nitrogens bonded to four carbons -- each a QUATERNARY AMMONIUM,
+    +1 whatever the pH (a trimethyl-lysine's NZ, a choline's N), which a
+    structure, holding no charge of its own, carries as a neutral atom.
+    Bonded by the phosphate rule's cutoff for two heavy atoms (``_XX_CUT``)
+    and its element test (:func:`is_atom`), measured from each nitrogen only,
+    so a large structure pays nothing for its other atoms.  A blank charge does not count them --
+    the net charge is theirs with any other charged group the structure
+    holds -- and the electronic state's checks warn of them
+    (`model/chemistry.md` § 1)."""
+    elements = struct.elements
+    pos = np.asarray(struct.positions, dtype=float)
+    heavy = np.array([not is_atom(el, "H") for el in elements], dtype=bool)
+    found = []
+    for n, el in enumerate(elements):
+        if not is_atom(el, "N"):
+            continue
+        d = np.linalg.norm(pos - pos[n], axis=1)
+        near = np.flatnonzero(heavy & (d <= _XX_CUT) & (d > 0.0))
+        if len(near) == 4 and all(is_atom(elements[j], "C") for j in near):
+            found.append(n)
+    return found
+
+
+def with_atoms(struct: Structure, added) -> Structure:
+    """``struct`` with the atoms ``added`` -- each ``(i, element, position,
+    name)``, an atom in the residue and chain of ``struct``'s atom ``i`` --
+    each placed after the last atom of that residue, in the order given:
+    what a builder adds to what it built (a hydroxyl's hydrogen, 3DNA's
+    third phosphate oxygen), joined through the Structure's own doors
+    (:meth:`Structure.concat`, :meth:`Structure.take`), which carry the
+    structure's other facts."""
+    if not added:
+        return struct
+    rid, chain = list(struct.residue_ids), list(struct.chain_ids)
+    last = {(rid[k], chain[k]): k for k in range(struct.n_atoms)}
+    after: Dict[int, List[int]] = {}
+    for n, (i, _element, _position, _name) in enumerate(added):
+        after.setdefault(last[(rid[i], chain[i])], []).append(
+            struct.n_atoms + n)
+    order: List[int] = []
+    for k in range(struct.n_atoms):
+        order += [k, *after.get(k, ())]
+    return Structure.concat(
+        [struct, *(Structure(elements=[element],
+                             positions=np.asarray([position], dtype=float),
+                             atom_names=[name], residue_ids=[rid[i]],
+                             residue_names=[struct.residue_names[i]],
+                             chain_ids=[chain[i]])
+                   for i, element, position, name in added)],
+        renumber_residues=False, title=struct.title).take(order)
+
+
 def protonate_phosphate_oxygens(struct: Structure) -> Tuple[Structure, int]:
     """Neutralise the molecule by adding Hs to deprotonated phosphate Os.
 
@@ -844,15 +1031,13 @@ def protonate_phosphate_oxygens(struct: Structure) -> Tuple[Structure, int]:
     the new -OH cleanly on the outside of the structure, matching what
     a force-field optimisation would settle on.
 
-    Returns (new_structure, n_hs_added).  If no protonation is needed
-    the original Structure is returned unchanged (n_hs_added = 0).
+    Returns (new_structure, n_hs_added): each H in its oxygen's residue,
+    after its last atom (:func:`with_atoms`).  If no protonation
+    is needed the original Structure is returned unchanged (n_hs_added = 0).
     """
     elements      = list(struct.elements)
-    positions     = np.asarray(struct.positions, dtype=float).copy()
+    positions     = np.asarray(struct.positions, dtype=float)
     atom_names    = list(struct.atom_names)
-    residue_ids   = list(struct.residue_ids)
-    residue_names = list(struct.residue_names)
-    chain_ids     = list(struct.chain_ids)
 
     if not elements:
         return struct, 0
@@ -863,7 +1048,7 @@ def protonate_phosphate_oxygens(struct: Structure) -> Tuple[Structure, int]:
     COS_SP3 = -1.0 / 3.0
     SIN_SP3 = math.sqrt(8.0) / 3.0    # = sin(109.47 deg)
 
-    new_atoms: List[dict] = []
+    added: List[tuple] = []
 
     for p_idx, el in enumerate(elements):
         if not is_atom(el, "P"):
@@ -923,39 +1108,11 @@ def protonate_phosphate_oxygens(struct: Structure) -> Tuple[Structure, int]:
             h_pos = o_pos + BOND_OH * (COS_SP3 * u_op_norm + SIN_SP3 * perp_norm)
 
             # H name -- match common PDB conventions: HOP1, HOP2, ...
-            h_name = ("H" + atom_names[o_idx])[:4]
-            new_atoms.append({
-                "element":  "H",
-                "position": h_pos,
-                "name":     h_name,
-                "res_id":   residue_ids[o_idx],
-                "res_name": residue_names[o_idx],
-                "chain_id": chain_ids[o_idx],
-            })
+            added.append((o_idx, "H", h_pos, ("H" + atom_names[o_idx])[:4]))
 
-    if not new_atoms:
+    if not added:
         return struct, 0
-
-    new_elements      = elements + [a["element"] for a in new_atoms]
-    new_positions     = np.vstack([positions,
-                                   np.array([a["position"] for a in new_atoms])])
-    new_atom_names    = atom_names    + [a["name"]     for a in new_atoms]
-    new_residue_ids   = residue_ids   + [a["res_id"]   for a in new_atoms]
-    new_residue_names = residue_names + [a["res_name"] for a in new_atoms]
-    new_chain_ids     = chain_ids     + [a["chain_id"] for a in new_atoms]
-
-    return (
-        Structure(
-            elements      = new_elements,
-            positions     = new_positions,
-            atom_names    = new_atom_names,
-            residue_ids   = new_residue_ids,
-            residue_names = new_residue_names,
-            chain_ids     = new_chain_ids,
-            title         = struct.title,
-        ),
-        len(new_atoms),
-    )
+    return with_atoms(struct, added), len(added)
 
 
 # --------------------------------------------------------------------- #
@@ -1075,13 +1232,14 @@ def add_hydrogens(struct: Structure) -> Structure:
         return _protonate_rdkit(struct, Chem)
 
     raise BackendUnavailable(
-        "Cannot add hydrogens: neither OpenBabel (`conda install -c "
-        "conda-forge openbabel`) nor RDKit (`conda install -c conda-forge "
-        "rdkit`) is installed, and a structure without them would give DFT "
-        "the wrong electron count.  Install OpenBabel for canonical "
+        f"Cannot add hydrogens: neither {TOOLS['openbabel'].name} nor "
+        f"{TOOLS['rdkit'].name} is installed -- each is one of the host "
+        "env's packages -- and a "
+        "structure without them would give DFT the wrong electron count.  "
+        "Install OpenBabel for canonical "
         "biomolecule protonation; RDKit also works for SMILES-constructed "
         "inputs but has a known ambiguous-valence ghost-coord artifact for "
-        "PDB-parsed nucleic-acid bases.", missing="hydrogens")
+        "PDB-parsed nucleic-acid bases.", missing="hydrogens", env="host")
 
 
 def _protonate_openbabel(struct: Structure, ob) -> Structure:
@@ -1112,9 +1270,37 @@ def _nucleobase_bond_orders(mol, ob) -> None:
     PDB, and its atoms' implicit hydrogens counted again from them -- so
     ``AddHydrogens`` places the canonical tautomer's.  OpenBabel perceives
     the orders from the geometry, which a heavy-atom skeleton does not fix
-    (the table's note); no other residue's bonds are touched."""
+    (the table's note); no other residue's bonds are touched, but a bond
+    OpenBabel perceives from a base's atom to another residue is deleted."""
     from .residues import NUCLEOBASE_BONDS, nucleobase
+
+    def base_atom(atom) -> bool:
+        res = atom.GetResidue()
+        base = nucleobase(res.GetName()) if res is not None else None
+        return (base is not None
+                and res.GetAtomID(atom).strip() in NUCLEOBASE_BONDS[base][0])
+
+    # A BASE'S ATOMS BOND ONLY WITHIN ITS NUCLEOTIDE: a bond OpenBabel
+    # perceives from one to another residue is two bases too close -- a
+    # mismatched pair at the standard frame, its G's N1 1.17 A from its
+    # A's N1 (measured 2026-11-18) -- and, kept, it takes the place of the
+    # hydrogens there (AAAA,TTTG built 3 short, an odd electron count).
+    false = [bond for bond in ob.OBMolBondIter(mol)
+             if bond.GetBeginAtom().GetResidue() is not None
+             and bond.GetEndAtom().GetResidue() is not None
+             and (bond.GetBeginAtom().GetResidue().GetIdx()
+                  != bond.GetEndAtom().GetResidue().GetIdx())
+             and (base_atom(bond.GetBeginAtom())
+                  or base_atom(bond.GetEndAtom()))]
     touched = set()
+    for bond in false:
+        touched.update((bond.GetBeginAtomIdx(), bond.GetEndAtomIdx()))
+        mol.DeleteBond(bond)
+    # A deleted bond clears OpenBabel's "chains perceived" mark, and the next
+    # residue asked would perceive them anew -- renaming every residue by its
+    # own template (DA -> A) and renumbering the second strand.  The residues
+    # are the file's, read as written.
+    mol.SetChainsPerceived()
     for bond in ob.OBMolBondIter(mol):
         a, b = bond.GetBeginAtom(), bond.GetEndAtom()
         res, other = a.GetResidue(), b.GetResidue()
@@ -1157,9 +1343,9 @@ def _protonate_rdkit(struct: Structure, Chem) -> Structure:
         raise BackendUnavailable(
             "Cannot add hydrogens: RDKit could not read this structure to "
             "place them, and OpenBabel -- which can -- is not installed "
-            "(`conda install -c conda-forge openbabel`).  A structure "
+            f"({INSTALL_TOOLS}).  A structure "
             "without them would give DFT the wrong electron count.",
-            missing="hydrogens")
+            missing="hydrogens", env="host")
     mol = Chem.AddHs(mol, addCoords=True)
     pdb_out = Chem.MolToPDBBlock(mol)
     return _drop_overlapping_hydrogens(
@@ -1275,6 +1461,58 @@ def min_nonbonded_contact(struct: Structure, search_radius: float = 2.5):
 CLASH_CONTACT_A   = 1.3
 NEAR_COINCIDENT_A = 1.0
 
+#: THE O3'-P BRIDGE, one rule (`engines/builders.md` § 2): a nucleotide's
+#: phosphorus is bonded to the O3' of the nucleotide before it in its chain
+#: when within this distance (Angstrom) -- a P-O single bond is near 1.6 A,
+#: and 1.80 leaves room for an unrelaxed starting geometry.
+O3P_BRIDGE_A = 1.80
+
+#: The 3'-oxygen's name, as the PDB spells it now and as older files did.
+_O3_NAMES = ("O3'", "O3*")
+
+
+@dataclass(frozen=True)
+class BackboneLink:
+    """One nucleotide's link to the one before it in its chain: the atom
+    index of residue *r*'s P and of residue *r* - 1's O3', their distance,
+    and whether they are bridged -- the one comparison with
+    :data:`O3P_BRIDGE_A`, made here and nowhere else."""
+    p: int
+    o3: int
+    distance: float
+
+    @property
+    def bridged(self) -> bool:
+        return self.distance <= O3P_BRIDGE_A
+
+
+def backbone_links(struct: Structure) -> "dict":
+    """Each nucleotide's link to the one before it in its chain, ``(chain,
+    r) -> BackboneLink``, for every NUCLEOTIDE residue *r*
+    (`residues.nucleobase`) holding a P whose chain holds a nucleotide
+    *r* - 1 with an O3'.  The one rule every reader of the backbone asks --
+    the check of a polymer's orientation (`validation.geometry`), the self-
+    check 3DNA's and AmberTools' builds run (`builders.backends._common`),
+    clash relief's bond clean-up (:func:`relieve_clashes`) -- reading
+    ``bridged``, never comparing a distance of its own; a phosphoserine's
+    or any other residue's P is no backbone."""
+    from .residues import nucleobase
+    p_at: dict = {}
+    o3_at: dict = {}
+    for i in range(struct.n_atoms):
+        if nucleobase(struct.residue_names[i]) is None:
+            continue
+        where = (struct.chain_ids[i], struct.residue_ids[i])
+        if struct.atom_names[i] == "P":
+            p_at[where] = i
+        elif struct.atom_names[i] in _O3_NAMES:
+            o3_at[where] = i
+    return {(c, r): BackboneLink(
+                p_at[c, r], o3_at[c, r - 1],
+                float(np.linalg.norm(struct.positions[p_at[c, r]]
+                                     - struct.positions[o3_at[c, r - 1]])))
+            for (c, r) in p_at if (c, r - 1) in o3_at}
+
 
 def steric_clash(struct: Structure) -> "Optional[Tuple[float, int, int]]":
     """The closest inter-residue contact (:func:`min_nonbonded_contact`) when
@@ -1304,15 +1542,11 @@ def relieve_clashes(struct: Structure, steps: int = 1000) -> Structure:
       2. **Steepest-descent warm-up** then conjugate gradients: SD clears the hard
          short-range overlaps that CG alone can get stuck on.
 
-    Raises RuntimeError if OpenBabel isn't installed / the force field won't set
-    up -- the caller (build_dna) surfaces that rather than silently no-op'ing.
+    Raises :class:`BackendUnavailable` if OpenBabel isn't installed, and
+    RuntimeError if its force field won't set up -- the caller (build_dna)
+    surfaces either rather than silently no-op'ing.
     """
-    try:
-        from openbabel import openbabel as ob
-    except ImportError as exc:      # pragma: no cover - env-dependent
-        raise RuntimeError(
-            "relax_clashes needs OpenBabel (`conda install -c conda-forge "
-            "openbabel`).") from exc
+    ob = require("openbabel", needed_for="Clash relief")
 
     conv = ob.OBConversion()
     conv.SetInAndOutFormats("pdb", "pdb")
@@ -1323,19 +1557,19 @@ def relieve_clashes(struct: Structure, steps: int = 1000) -> Structure:
         r = atom.GetResidue()
         return (r.GetChain(), r.GetNum()) if r else None
 
-    def _atom_name(atom):
-        r = atom.GetResidue()
-        return r.GetAtomID(atom).strip() if r else ""
-
-    # Drop perceived inter-residue bonds except the O3'-P backbone linkage: the
+    # Drop perceived inter-residue bonds except the O3'-P backbone links --
+    # the bridges THE ONE RULE names (:func:`backbone_links`), by atom; the
     # mis-perceived clash "bond" is what pins overlapping atoms together.
+    # OpenBabel numbers the atoms of the PDB it read from 1, in its order.
+    bridges = {frozenset((link.p, link.o3))
+               for link in backbone_links(struct).values() if link.bridged}
     doomed = []
     for bond in ob.OBMolBondIter(mol):
         a1, a2 = bond.GetBeginAtom(), bond.GetEndAtom()
-        if _res_key(a1) != _res_key(a2):
-            names = {_atom_name(a1), _atom_name(a2)}
-            if names not in ({"O3'", "P"}, {"O3*", "P"}):
-                doomed.append(bond)
+        if (_res_key(a1) != _res_key(a2)
+                and frozenset((a1.GetIdx() - 1, a2.GetIdx() - 1))
+                not in bridges):
+            doomed.append(bond)
     for bond in doomed:
         mol.DeleteBond(bond)
 

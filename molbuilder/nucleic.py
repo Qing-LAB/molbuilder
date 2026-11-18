@@ -1,43 +1,39 @@
-"""DNA / RNA polymer builders.
+"""DNA / RNA polymer builders: :func:`build_dna`, :func:`build_rna`.
 
-Public API:
-    build_dna(sequence, *, backend='auto', form='B', terminal='OH')
-    build_rna(sequence, *, backend='auto', form='A', terminal='OH')
-
-All backends return the same :class:`molbuilder.structure.Structure`
-type, so file writers, the deck writers, and the web UI don't care
-which backend produced the geometry.  See :mod:`molbuilder.builders.backends`
-for backend capabilities and install requirements.
+What may be asked -- the forms, terminals and backends -- is the registry's
+(:mod:`molbuilder.builders.backends`), and every backend returns the same
+:class:`molbuilder.structure.Structure`, so file writers, the deck writers
+and the web UI don't care which one built the geometry
+(`engines/builders.md` § 3-§ 5).
 """
 
 from __future__ import annotations
 
 from typing import Optional
 
-from .builders.backends import DEFAULT_FORM, DEFAULT_TERMINAL, dispatch
-# ``resolved_backend`` resolves "auto" -> the chosen backend; used to gate
-# double-strand, which requires X3DNA.
-from .builders.backends import resolved_backend
-from .residues import parse_dna_sequence, parse_rna_sequence, _strip_directionality
+from .builders.backends import (check_ask, dispatch, duplex_backend,
+                                resolved_backend)
+from .chemistry import BuildRefused
+from .residues import DNA_THREE_TO_ONE, parse_dna_sequence, parse_rna_sequence
 from .structure import Structure
 
 
 def _strip_direction(s: str) -> str:
-    """Return ONE DNA strand as a bare internal-5'->3' letter string.
-
-    Delegates to :func:`residues._strip_directionality` -- the SAME strict
-    5'/3' parser ``build_rna`` reaches through ``parse_rna_sequence`` -- so
-    DNA and RNA treat end-labels identically:
+    """Return ONE DNA strand as a bare internal-5'->3' letter string, read
+    by THE ONE GRAMMAR whole (:func:`residues.parse_dna_sequence`) -- the
+    same strict parser ``build_rna`` and the peptide builder reach, so a DNA
+    strand refuses what they refuse (`engines/builders.md` § 2):
 
       * ``5'-ATGC-3'`` -> ``ATGC`` (bare == explicit);
       * ``3'-ATGC-5'`` -> reversed to ``CGTA`` (internal 5'->3');
       * a one-sided (``5'-ATGC``) or self-contradictory (``3'-ATGC-3'``)
-        label RAISES ``ValueError``: a duplex strand quietly built in the
-        wrong 5'->3' order pairs the wrong bases with no error.
+        label is refused (``BuildRefused``): a duplex strand quietly built
+        in the wrong 5'->3' order pairs the wrong bases with no error;
+      * a dash, digit or bracket the grammar does not take is refused,
+        naming its position -- never dropped to leave letters that build.
     """
-    body, direction = _strip_directionality(s.strip())
-    core = "".join(c for c in body if c.isalpha()).upper()
-    return core[::-1] if direction == "3to5" else core
+    return "".join(DNA_THREE_TO_ONE[code]
+                   for code in parse_dna_sequence(s.strip()))
 
 
 def parse_dna_notation(text: str):
@@ -64,15 +60,11 @@ def parse_dna_notation(text: str):
         # Two explicit strands => an arbitrary duplex (regardless of a ds prefix).
         parts = s.split(",")
         if len(parts) != 2:
-            raise ValueError(
+            raise BuildRefused(
                 "a two-strand duplex takes exactly two comma-separated strands "
                 "(\"strand1,strand2\", each 5'->3' by default); got "
                 f"{len(parts)} comma-separated segments.")
-        s1, s2 = _strip_direction(parts[0]), _strip_direction(parts[1])
-        if not s1 or not s2:
-            raise ValueError(
-                "both strands of a two-strand duplex must be non-empty.")
-        return "ds", s1, s2
+        return "ds", _strip_direction(parts[0]), _strip_direction(parts[1])
     return mode, _strip_direction(s), None
 
 
@@ -80,8 +72,8 @@ def build_dna(
     sequence: str,
     *,
     backend: str = "auto",
-    form: str = DEFAULT_FORM["dna"],
-    terminal: str = DEFAULT_TERMINAL,
+    form: Optional[str] = None,
+    terminal: Optional[str] = None,
     add_hydrogens: str = "auto",
     protonate_phosphates: bool = True,
     relax_clashes: bool = False,
@@ -91,7 +83,7 @@ def build_dna(
 
     A bare sequence builds a SINGLE strand; ``ds,<seq>`` builds a canonical
     Watson-Crick DUPLEX; two comma-separated strands (``"strand1,strand2"``) build
-    an EXPLICIT, possibly mismatched duplex (X3DNA required; see
+    an EXPLICIT, possibly mismatched duplex (on a backend that builds one; see
     ``parse_dna_notation``).
 
     ``relax_clashes`` (explicit-duplex only): a mismatched base pair placed at the
@@ -110,16 +102,15 @@ def build_dna(
         double strand.  Direction markers (``5'-…-3'`` / ``3'-…-5'``) are
         accepted.  Whitespace is ignored.
     backend
-        ``"auto"`` (default) -- pick the best installed backend
-        (``threedna`` > ``amber`` > ``rdkit``).  Force one with
-        ``"threedna"`` / ``"amber"`` / ``"rdkit"``.
+        ``"auto"`` (default) -- the first installed of the registry's
+        backends (``backends.BACKENDS``, in order) -- or one of them.
     form
-        Helical form: ``"B"`` (default), ``"A"``, or ``"Z"``.
-        ``threedna`` honours all three; ``amber`` ignores form (always
-        extended); ``rdkit`` always returns its own embedded conformer.
+        A helical form the kind is built in (``backends.KIND_FORMS``), or
+        ``None`` for the kind's default; what a backend builds of it is its
+        own (``backends.built``), said after the build.
     terminal
-        Terminal-phosphate state: ``"OH"`` (default; both ends -OH),
-        ``"5P"``, ``"3P"``, or ``"PP"``.
+        A terminal state of ``backends.TERMINALS``, or ``None`` for the
+        default, both ends -OH (``backends.DEFAULT_TERMINAL``).
     add_hydrogens
         Tri-state H-addition control:
 
@@ -137,7 +128,6 @@ def build_dna(
           * ``"off"`` -- never add.  Use when you want to inspect the
             heavy-atom skeleton or hand off to an external protonator.
 
-        ``True`` is read as ``"auto"``; ``False`` as ``"off"``.
     protonate_phosphates
         If True (default), add an H to each deprotonated non-bridging
         phosphate oxygen so the molecule is formally **neutral**.
@@ -145,62 +135,33 @@ def build_dna(
         needed for charged-cell electrostatic compensation).  Set False
         to keep tleap's deprotonated state (more chemically realistic
         for solution-phase DNA, but the molecule then carries -(N-1)
-        electrons: a blank ``net_charge`` is read from the deprotonated
-        phosphates, the phosphate rule, and the deck states it).
+        electrons: a blank ``net_charge`` counts the deprotonated
+        phosphates (`model/chemistry.md` § 1), and the deck states it).
     title
         Optional title written into XYZ comment / PDB TITLE.
     """
+    # WHAT MAY BE ASKED, refused first, naming the words it takes
+    # (`backends.check_ask`; `engines/builders.md` § 1) -- before any
+    # backend runs, as are the hydrogen mode and the true-or-false asks.
+    check_ask("dna", form, terminal, backend)
+    add_hydrogens = normalise_h_mode(add_hydrogens)
+    protonate_phosphates = _yes_or_no("protonate_phosphates",
+                                      protonate_phosphates)
+    relax_clashes = _yes_or_no("relax_clashes", relax_clashes)
     # Notation: bare -> single strand; "ds,<seq>" -> canonical WC duplex;
-    # "strand1,strand2" -> explicit (possibly mismatched) duplex.
+    # "strand1,strand2" -> explicit (possibly mismatched) duplex -- each
+    # strand read by the one grammar, once (`_strip_direction`).
     mode, seq, seq2 = parse_dna_notation(sequence)
     double_strand = (mode == "ds")
     explicit_duplex = seq2 is not None
     if double_strand:
-        # GATE: any duplex needs X3DNA -- canonical via fiber, arbitrary via rebuild.
-        resolved = resolved_backend(backend)
-        if resolved != "threedna":
-            # `BackendUnavailable`, not `ValueError`: this is the same
-            # condition `_threedna` raises when 3DNA is absent -- the
-            # machine cannot do it -- and one condition wants one type, so
-            # one handler at the route covers both (`web-api.md` § 1): a
-            # tool the person chose not to install is not a crash.
-            from .chemistry import BackendUnavailable
-            raise BackendUnavailable(
-                "double-strand DNA requires X3DNA (the 'threedna' backend, which "
-                "builds duplex geometry via fiber / rebuild).  "
-                + ("It isn't installed / detected. " if resolved is None
-                   else f"The selected backend is {resolved!r}. ")
-                + "Install X3DNA from x3dna.org (non-commercial license).  "
-                "Single strands work with any backend.", missing="threedna")
-        if explicit_duplex:
-            # Arbitrary / mismatched duplex (rebuild): B-form only for now.
-            if (form or DEFAULT_FORM["dna"]).upper() != "B":
-                raise ValueError(
-                    f"two-strand (arbitrary / mismatched) duplexes are B-form only; "
-                    f"got form={form!r}.  Use \"ds,<sequence>\" for an A- or Z-form "
-                    f"canonical duplex (the complement is generated automatically).")
-        elif (form or DEFAULT_FORM["dna"]).upper() not in ("B", "A", "Z"):
-            raise ValueError(
-                f"double-strand DNA supports B / A / Z helix form; got "
-                f"form={form!r}.  (Z requires an alternating poly-d(GC) sequence.)")
-
-    # parse_dna_sequence returns 3-letter codes (DA, DT, DG, DC).
-    # Backends want a 1-letter sequence, so strip the "D" prefix.
-    codes = parse_dna_sequence(seq)
-    cleaned = "".join(c[1] for c in codes)
-    cleaned2 = None
-    if explicit_duplex:
-        codes2 = parse_dna_sequence(seq2)
-        cleaned2 = "".join(c[1] for c in codes2)
-        if len(cleaned) != len(cleaned2):
-            raise ValueError(
-                f"the two strands of a duplex must be equal length (a fully "
-                f"base-paired duplex; overhangs / bulges aren't supported yet): "
-                f"strand1={len(cleaned)} nt, strand2={len(cleaned2)} nt.")
+        # A DUPLEX ON A BACKEND THAT BUILDS ONE (`backends.duplex_backend`);
+        # an explicit duplex's own rules are that backend's to say.
+        backend = duplex_backend(resolved_backend(backend))
     struct = dispatch(
-        "dna", cleaned,
+        "dna", seq,
         backend=backend, form=form, terminal=terminal, title=title,
-        double_strand=double_strand, strand2=cleaned2,
+        double_strand=double_strand, strand2=seq2,
     )
     struct = _maybe_add_hydrogens(struct, add_hydrogens)
     struct = _maybe_protonate(struct, protonate_phosphates)
@@ -221,39 +182,51 @@ def build_rna(
     sequence: str,
     *,
     backend: str = "auto",
-    form: str = DEFAULT_FORM["rna"],
-    terminal: str = DEFAULT_TERMINAL,
+    form: Optional[str] = None,
+    terminal: Optional[str] = None,
     add_hydrogens: str = "auto",
     protonate_phosphates: bool = True,
     title: Optional[str] = None,
 ) -> Structure:
     """Build a single-stranded RNA polymer from a 1-letter sequence.
 
-    See :func:`build_dna` for parameter descriptions.  Default
-    ``form="A"`` because A-form is the canonical RNA helix.
+    See :func:`build_dna` for parameter descriptions; RNA is built in its
+    A-form, the canonical RNA helix (``backends.KIND_FORMS``).
     """
-    codes = parse_rna_sequence(sequence)        # already 1-letter for RNA
-    cleaned = "".join(codes)
+    check_ask("rna", form, terminal, backend)
+    add_hydrogens = normalise_h_mode(add_hydrogens)
+    protonate_phosphates = _yes_or_no("protonate_phosphates",
+                                      protonate_phosphates)
     struct = dispatch(
-        "rna", cleaned,
+        "rna", "".join(parse_rna_sequence(sequence)),
         backend=backend, form=form, terminal=terminal, title=title,
     )
     struct = _maybe_add_hydrogens(struct, add_hydrogens)
     return _maybe_protonate(struct, protonate_phosphates)
 
 
+def _yes_or_no(name: str, value) -> bool:
+    """A true-or-false ask (``protonate_phosphates``, ``relax_clashes``) as
+    it is; refused (:class:`chemistry.BuildRefused`) on anything else -- a
+    ``"false"`` sent as text would read as true."""
+    if isinstance(value, bool):
+        return value
+    raise BuildRefused(f"{name} takes true or false; got {value!r}")
+
+
 def normalise_h_mode(value: str) -> str:
-    """The user's ``add_hydrogens`` argument as one of {auto, on, off}; a
-    ValueError on anything else."""
+    """The user's ``add_hydrogens`` argument as one of {auto, on, off};
+    refused (:class:`chemistry.BuildRefused`) on anything else."""
     if isinstance(value, str) and value.lower() in ("auto", "on", "off"):
         return value.lower()
-    raise ValueError(f"add_hydrogens must be 'auto', 'on' or 'off'; "
+    raise BuildRefused(f"add_hydrogens must be 'auto', 'on' or 'off'; "
                      f"got {value!r}")
 
 
 def _maybe_add_hydrogens(struct: Structure,
                          mode: str) -> Structure:
-    """Apply chemistry.add_hydrogens based on the user's ``mode``.
+    """Apply chemistry.add_hydrogens by ``mode``, the user's
+    ``add_hydrogens`` as :func:`normalise_h_mode` read it before the build.
 
     Tri-state semantics (see ``build_dna`` for the user-facing kwarg):
 
@@ -276,10 +249,9 @@ def _maybe_add_hydrogens(struct: Structure,
     the structure lands in the gray zone (~0.3-0.6), prefer ``"on"``
     or ``"off"`` over ``"auto"`` so the decision is explicit.
     """
-    norm = normalise_h_mode(mode)
-    if norm == "off":
+    if mode == "off":
         return struct
-    if norm == "on":
+    if mode == "on":
         from .chemistry import add_hydrogens as _add_hydrogens
         return _add_hydrogens(struct)
     # auto -- a hydrogen asked the one way (`model/chemistry.md` § 3,

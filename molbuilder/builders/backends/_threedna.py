@@ -1,16 +1,14 @@
 """3DNA backend (uses ``fiber``).
 
 3DNA's ``fiber`` produces canonical B-form / A-form / Z-form helical
-geometry from sequence -- the only thing the existing ``rdkit``
-(folded conformer) and ``amber`` (extended chain) backends do not
-provide.
+geometry from sequence, and its ``rebuild`` an explicit, possibly
+mismatched duplex.
 
 Tool limitations (and how this module compensates)
 --------------------------------------------------
 ``fiber`` is fast, well-validated for canonical helical geometry, and
 the de-facto standard for fiber-diffraction-derived starting
-coordinates.  It also has two long-standing quirks that the user
-will hit:
+coordinates.  It also has quirks the user would hit:
 
   1. **Heavy-atom output.**  ``fiber`` writes deoxyribose, base, and
      phosphate heavy atoms only -- no H on bases, sugars, or phosphate
@@ -21,53 +19,32 @@ will hit:
      the ``nucleic.build_dna``/``build_rna`` layer.  See
      ``molbuilder/chemistry.py`` for the H-add tool comparison.
 
-  2. **5'-terminal phosphate is mandatory.**  ``fiber`` always emits
-     a 5'-phosphate group on the first residue, regardless of any
-     flag we pass (``-single`` controls duplex vs single-strand, not
-     terminal phosphorylation).  An "ATGC" oligo with the user's
-     ``terminal="OH"`` request comes back with 4 phosphate groups
-     instead of the chemically-correct 3 (the three internal A-T,
-     T-G, G-C bridges).  ``_strip_5prime_phosphate`` post-processes
-     the parsed Structure to remove the spurious P + OP1 + OP2 from
-     the 5'-terminal residue when ``terminal in ('OH', '3P')``.  The
-     bridging O5' atom stays; H is added later by chemistry.add_hydrogens.
+  2. **The 5'-terminal phosphate is always written, and one oxygen
+     short.**  ``fiber`` and ``rebuild`` emit it whatever flag is passed,
+     as P, OP1 and OP2 -- no OP3 (measured 2026-11-18: an odd electron
+     count, a radical).  ``_five_prime_end`` strips it for a 5'-OH end and
+     completes it otherwise, its third oxygen at the phosphate's fourth
+     tetrahedral site; the bridging O5' stays, H is added later by
+     chemistry.add_hydrogens.
 
-  3. **3'-phosphate cannot be added.**  fiber's output has 5'-P / 3'-OH;
-     we can strip the 5'-P, but adding a 3'-P would require re-running
-     chemistry from scratch.  ``terminal in ('PP', '3P')`` is built
-     5'-P / 3'-OH or 5'-OH / 3'-OH respectively (``_TERMINAL_BUILT``), which
+  3. **No 3'-phosphate.**  fiber's output ends 3'-OH: a ``3P`` is built
+     5'-OH / 3'-OH and a ``PP`` 5'-P / 3'-OH (``_TERMINAL_BUILT``), which
      the check after the build says (``backends.built``).
 
-  4. **Form constraints.**  fiber's ``-z`` flag (Z-DNA) only works
-     for poly-d(GC) sequences; ``-rna`` only produces A-form RNA.
-     ``build()`` builds A-form RNA whatever form is asked (the check after
-     the build says so) and refuses a Z-form sequence that is not
-     alternating GC.
+  4. **Form constraints.**  fiber's ``-z`` flag (Z-DNA) only builds the
+     poly-d(GC) repeat starting with G; ``-rna`` only produces A-form RNA,
+     the one form RNA is asked in (``backends.KIND_FORMS``).  ``build()``
+     refuses a Z-form sequence that is not that repeat
+     (:func:`_is_z_repeat`).
 
-Detection chain (first hit wins)
---------------------------------
+Detection
+---------
 
-  1. **In-tree** -- look for ``<repo_root>/x3dna*/`` next to the
-     molbuilder package.  This is the easiest path for a dev install:
-     just unpack the 3DNA tarball at the repo root and the backend
-     finds it automatically.  The glob is version-agnostic
-     (``x3dna``, ``x3dna-v2.4``, ``x3dna-2.5``, ``x3dna-sep2025`` all
-     match).  The ``x3dna*/`` directory is gitignored (see
-     ``.gitignore`` -- both for hygiene and to make it structurally
-     hard to redistribute 3DNA accidentally).
-
-  2. **$X3DNA env var** -- the canonical 3DNA install convention.
-     Set ``export X3DNA=$HOME/opt/x3dna-v2.4`` and we use it.
-
-  3. **fiber on PATH** -- last resort; we derive the X3DNA root from
-     ``shutil.which('fiber')`` (assumes the standard ``$X3DNA/bin/``
-     layout).  Useful when the user has a system-wide install that
-     doesn't bother setting the env var.
-
-For each candidate we verify the install is *complete*: ``bin/fiber``
-exists and is executable AND ``config/`` (the 3DNA atomic-parameter
-files, ``Atomic_*.pdb`` and friends) is present.  Without ``config/``,
-``fiber`` runs but emits cryptic errors at runtime.
+Where 3DNA is looked for, in order, is one table (:func:`_places`: in-tree
+at the repo root, ``$X3DNA``, ``fiber`` on PATH), and a root counts only
+when it is complete (:func:`_missing_from`).  The ``x3dna*/`` directory at
+the repo root is gitignored -- both for hygiene and to make it
+structurally hard to redistribute 3DNA accidentally.
 
 Licensing
 ---------
@@ -86,14 +63,25 @@ import subprocess
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional, Tuple
 
+import numpy as np
 
 from ... import repo_root as _repo_root
+from ...chemistry import BackendUnavailable, BuildRefused, with_atoms
 from ...structure import Structure
-from . import DEFAULT_FORM, Built
+from . import Built
 from ._common import (first_chain,
                       verify_backbone_connectivity)
+
+#: This backend builds a duplex: canonical by fiber, explicit by rebuild.
+DUPLEX = True
+#: The line that installs it -- never fetched for the person: its licence
+#: is theirs to accept.
+INSTALL = ("download 3DNA from x3dna.org after accepting its non-commercial "
+           "licence, then unpack it at the repo root or set $X3DNA")
+#: No env holds it: the person installs it, as :data:`INSTALL` says.
+ENV = None
 
 
 # Atom names that constitute the 5'-terminal phosphate group in fiber's
@@ -121,78 +109,54 @@ class _Threedna:
     fiber's auxiliary scripts can find their config files)."""
     fiber: str
     root:  str
-    source: str    # "in-tree" / "env" / "path" -- only for diagnostics
 
 
-def _looks_complete(root: str) -> bool:
-    """A 3DNA root is 'complete' if bin/fiber is executable AND
-    config/ exists.  config/ holds the per-base PDB templates fiber
-    needs at runtime; without it fiber dies cryptically."""
-    fiber  = os.path.join(root, "bin", "fiber")
-    config = os.path.join(root, "config")
-    return (os.path.isfile(fiber)
-            and os.access(fiber, os.X_OK)
-            and os.path.isdir(config))
-
-
-def _find_in_tree() -> Optional[_Threedna]:
-    """Look for an ``x3dna*/`` directory at the repo root (one level
-    above the molbuilder package).  Works for dev / editable installs
-    where the user has unpacked the tarball next to the source.
-
-    The glob is intentionally PERMISSIVE about the suffix -- the
-    upstream tarball name convention (``x3dna-v2.4``) is one of
-    several shapes a user might end up with: ``x3dna-v2.4`` (current),
-    ``x3dna-v2.5`` (future), ``x3dna-2.4`` (no ``v`` prefix variant),
-    ``x3dna`` (user renamed), ``x3dna-sep2025`` (date stamp), etc.
-    The version-agnostic ``x3dna*`` glob plus the
-    :func:`_looks_complete` filter (requires ``bin/fiber`` AND
-    ``config/``) rejects spurious matches like
-    ``x3dna-v2.4-linux-64bit.tar.gz`` (file, not dir) or
-    ``x3dna_notes/`` (dir, but missing bin/fiber + config/).
-    """
-    repo_root = _repo_root()
-    for candidate in sorted(repo_root.glob("x3dna*")):
-        if candidate.is_dir() and _looks_complete(str(candidate)):
-            return _Threedna(
-                fiber  = str(candidate / "bin" / "fiber"),
-                root   = str(candidate),
-                source = "in-tree",
-            )
+def _missing_from(root: str) -> Optional[str]:
+    """What a 3DNA root lacks to be one -- an executable ``bin/fiber``, and
+    ``config/``, the per-base PDB templates fiber needs at run time (without
+    it fiber dies cryptically) -- or ``None`` when it is complete."""
+    fiber = os.path.join(root, "bin", "fiber")
+    if not (os.path.isfile(fiber) and os.access(fiber, os.X_OK)):
+        return "no executable bin/fiber"
+    if not os.path.isdir(os.path.join(root, "config")):
+        return "no config/"
     return None
 
 
-def _find_via_env() -> Optional[_Threedna]:
-    """Use $X3DNA if set and pointing at a complete install."""
-    root = os.environ.get("X3DNA")
-    if not root:
-        return None
-    root = os.path.abspath(os.path.expanduser(root))
-    if not _looks_complete(root):
-        return None
-    return _Threedna(
-        fiber  = os.path.join(root, "bin", "fiber"),
-        root   = root,
-        source = "env",
+def _places() -> Tuple[Tuple[str, List[str], str], ...]:
+    """WHERE 3DNA IS LOOKED FOR, in order (`engines/builders.md` § 4): each
+    place's words, the 3DNA roots it names, and what it is when it names
+    none -- read by the detection (:func:`_resolve`) and by the account of
+    a failed one (:func:`unavailable`), so the two cannot disagree.
+
+    1. In-tree: an ``x3dna*/`` directory at the repo root, where a dev or
+       editable install unpacks the tarball -- any suffix (``x3dna-v2.4``,
+       ``x3dna-2.5``, a renamed ``x3dna``), a root counting only when it is
+       complete (:func:`_missing_from`).
+    2. ``$X3DNA``, the root 3DNA's own instructions set.
+    3. ``fiber`` on ``PATH``, the root the parent of its ``bin/``."""
+    fiber = shutil.which("fiber")
+    env = os.environ.get("X3DNA")
+    return (
+        ("in-tree, at the repo root",
+         [str(c) for c in sorted(_repo_root().glob("x3dna*")) if c.is_dir()],
+         f"nothing named {_repo_root() / 'x3dna*'}"),
+        ("$X3DNA",
+         [os.path.abspath(os.path.expanduser(env))] if env else [], "unset"),
+        ("fiber on PATH",
+         [os.path.dirname(os.path.dirname(os.path.abspath(fiber)))]
+         if fiber else [], "not on PATH"),
     )
 
 
-def _find_via_path() -> Optional[_Threedna]:
-    """Last resort: fiber is on PATH; derive X3DNA root as the parent
-    of the bin/ directory."""
-    fiber = shutil.which("fiber")
-    if not fiber:
-        return None
-    fiber = os.path.abspath(fiber)
-    root = os.path.dirname(os.path.dirname(fiber))
-    if not _looks_complete(root):
-        return None
-    return _Threedna(fiber=fiber, root=root, source="path")
-
-
 def _resolve() -> Optional[_Threedna]:
-    """Walk the detection chain.  First hit wins."""
-    return _find_in_tree() or _find_via_env() or _find_via_path()
+    """The first complete 3DNA root of :func:`_places`, in order."""
+    for _words, roots, _none in _places():
+        for root in roots:
+            if _missing_from(root) is None:
+                return _Threedna(fiber=os.path.join(root, "bin", "fiber"),
+                                 root=root)
+    return None
 
 
 def is_available() -> bool:
@@ -205,113 +169,82 @@ def is_available() -> bool:
 # --------------------------------------------------------------------- #
 
 
-# fiber's form flags (from `fiber -h`):
-#   -b   B-DNA (default)
-#   -a   A-DNA
-#   -z   Z-DNA  (only valid for poly d(GC))
-#   -rna RNA (A-form duplex)
+#: FIBER'S FLAG FOR EACH FORM A KIND IS BUILT IN, and the form it lays
+#: (from `fiber -h`: -b B-DNA, -a A-DNA, -z Z-DNA -- poly d(GC) only --
+#: -rna A-form RNA): the table the build reads and :func:`built` answers
+#: from.
 _FIBER_FLAGS = {
-    ("dna", "B"): ["-b"],
-    ("dna", "A"): ["-a"],
-    ("dna", "Z"): ["-z"],
-    ("rna", "A"): ["-rna"],
+    ("dna", "B"): (["-b"], "B"),
+    ("dna", "A"): (["-a"], "A"),
+    ("dna", "Z"): (["-z"], "Z"),
+    ("rna", "A"): (["-rna"], "A"),
 }
 
 
 #: THE TERMINAL EACH ASK IS BUILT WITH: fiber and rebuild write a
-#: 5'-phosphate and never a 3'-phosphate; the 5'-P is stripped for a 5'-OH end.
+#: 5'-phosphate -- completed with its third oxygen (:func:`_five_prime_end`)
+#: -- and never a 3'-phosphate; the 5'-P is stripped for a 5'-OH end.
 _TERMINAL_BUILT = {"OH": "OH", "5P": "5P", "3P": "OH", "PP": "5P"}
 
 
-def _form_built(kind: str, form: Optional[str]) -> str:
-    """The helical form built of ``form``: RNA is fiber's A-form only
-    (``-rna``); DNA as asked; the kind's own when none is asked."""
-    return "A" if kind == "rna" else (form or DEFAULT_FORM[kind])
-
-
 def built(kind: str, form: str, terminal: str) -> Built:
-    """What this backend builds of the ask (`backends.built`), read off the
-    rules its build follows: :func:`_form_built` and :data:`_TERMINAL_BUILT`."""
+    """What this backend builds of the ask (`backends.built`): the form
+    fiber's flag for it lays (:data:`_FIBER_FLAGS`, the table its build
+    reads), and the terminal its programs write (:data:`_TERMINAL_BUILT`)."""
+    _flags, laid = _FIBER_FLAGS[(kind, form)]
     return Built(
-        form=_form_built(kind, form),
+        form=laid,
         terminal=_TERMINAL_BUILT[terminal],
-        form_words="3DNA's fiber builds RNA in its A-form only",
-        terminal_words="3DNA writes a 5'-phosphate and no 3'-phosphate; for a "
-                       "3'-phosphate, post-process the structure with an "
-                       "external tool")
+        terminal_words="3DNA writes a 5'-phosphate and no 3'-phosphate")
 
 
-def _is_alternating_gc(seq: str) -> bool:
-    """True iff ``seq`` is an EVEN-length strict alternation of G
-    and C — the only sequence shape fiber's ``-z`` Z-DNA mode can
-    build.
+def _is_z_repeat(seq: str) -> bool:
+    """True iff ``seq`` is what fiber's ``-z`` Z-DNA model builds: d(GC)n,
+    an EVEN-length strict alternation of G and C STARTING WITH G
+    (`engines/builders.md` § 5).
 
-    fiber's Z-mode takes ``-rep=N`` (number of dinucleotide GC
-    repeats), so the input length must be a positive even multiple
-    of the 2-base repeat unit (GC, CG, GCGC, CGCGCG, ...).  Odd-
-    length alternations (GCG, CGCGC) would imply a half-repeat
-    that the helix model doesn't support — reject them upfront
-    rather than silently truncating.
+    fiber's Z-mode takes ``-rep=N`` (number of dinucleotide GC repeats) and
+    never the sequence, and lays 5'-GCGC...-3' -- so the input must be a
+    positive even multiple of the GC unit (GC, GCGC, GCGCGC, ...).  A
+    C-first alternation (CGCGCG) is the same repeat read one base on:
+    fiber would build GCGCGC in its place, and no strand of that duplex
+    reads C first.  Odd-length alternations (GCG) would imply a half-repeat
+    that the helix model doesn't support.  Each is refused upfront, never
+    built as something else.
     """
-    s = seq.upper()
-    if len(s) < 2 or len(s) % 2 != 0:
-        return False
-    if set(s) - {"G", "C"}:
-        return False
-    return all(s[i] != s[i + 1] for i in range(len(s) - 1))
+    return len(seq) >= 2 and seq == "GC" * (len(seq) // 2)
 
 
 def build(kind: str, sequence: str, form: str, terminal: str,
           title: Optional[str] = None, double_strand: bool = False,
           strand2: Optional[str] = None) -> Structure:
-    if kind not in ("dna", "rna"):
-        raise ValueError(
-            f"3DNA backend supports kind in 'dna'|'rna'; got {kind!r}"
-        )
-
-    # An EXPLICIT second strand (strand2) => an arbitrary, possibly MISMATCHED
-    # duplex.  fiber can only make a canonical Watson-Crick duplex; route this
-    # through `rebuild` instead (base-pair-step parameters, each pair naming its
-    # two bases independently).  RNA isn't supported on this path.
+    """``sequence`` -- read by the grammar already -- as fiber's canonical
+    helix (a single strand, or with ``double_strand`` its Watson-Crick
+    duplex), or with ``strand2`` as rebuild's explicit duplex.  What each
+    cannot build is refused before 3DNA runs: rebuild's B-form and equal
+    strands (:func:`_explicit_duplex_refused`), fiber's Z repeat
+    (:func:`_is_z_repeat`)."""
+    # An EXPLICIT second strand => an arbitrary, possibly MISMATCHED duplex:
+    # fiber only makes a canonical Watson-Crick one, so rebuild lays it
+    # (base-pair-step parameters, each pair naming its two bases).
     if strand2 is not None:
-        if kind != "dna":
-            raise ValueError(
-                "explicit two-strand duplexes are DNA-only (got kind="
-                f"{kind!r}).")
-        found, seq = _located(sequence)
-        return _build_arbitrary_duplex(found, seq, strand2, form, terminal, title)
-
-    # THE FORM BUILT (:func:`_form_built`): RNA in fiber's A-form whatever
-    # was asked, which the check after the build says (`built`).
-    form = _form_built(kind, form)
+        _explicit_duplex_refused(form, sequence, strand2)
+        return _build_arbitrary_duplex(_installed(), sequence, strand2,
+                                       terminal, title)
 
     flags_key = (kind, form)
-    if flags_key not in _FIBER_FLAGS:
-        raise ValueError(
-            f"3DNA backend doesn't support kind={kind!r} form={form!r}; "
-            f"valid: {sorted(_FIBER_FLAGS)}"
-        )
+    if form == "Z" and not _is_z_repeat(sequence):
+        raise BuildRefused(
+            f"Z-DNA is built by 3DNA's fiber as the alternating poly-d(GC) "
+            f"repeat starting with G (e.g. 'GCGCGC'); got {sequence!r}.  fiber lays "
+            f"the repeat by count, never the sequence, so a C-first sequence "
+            f"would be built as its G-first neighbour -- ask 'GCGC...' for "
+            f"that helix, or another form for another sequence.")
+    found = _installed()
 
-    found, seq = _located(sequence)
-
-    # Z-DNA: fiber's `-z` only builds poly-d(GC), so any other sequence is
-    # refused upfront with an actionable message.
-    if kind == "dna" and form == "Z" and not _is_alternating_gc(seq):
-        raise ValueError(
-            f"Z-DNA via 3DNA's fiber requires an alternating poly-d(GC) "
-            f"sequence (e.g. 'GCGCGC', 'CGCGCG'); got {sequence!r}.  "
-            f"For other sequences, use B-form (right-handed canonical) "
-            f"or A-form (dehydrated).  Z-DNA is rare biologically and "
-            f"only stable in (GC)n stretches under specific conditions; "
-            f"there is no canonical Z geometry for ATGC etc."
-        )
-
-    # fiber's default output is 5'-phosphate / 3'-OH regardless of the
-    # `-single` flag; we post-process below to honour the requested
-    # terminal state.  We can strip the 5'-phosphate (turning fiber's
-    # 5'-P into the requested 5'-OH) but cannot add a 3'-phosphate
-    # without rerunning chemistry: what each ask is built with is
-    # :data:`_TERMINAL_BUILT`, which the check after the build says (`built`).
+    # fiber's output is a 5'-phosphate and a 3'-OH whatever the `-single`
+    # flag: what each ask is built with is :data:`_TERMINAL_BUILT`, which the
+    # check after the build says (`built`).
 
     # Argument shape depends on the form flag:
     # * ``-b`` / ``-a`` / ``-rna``: take ``-seq=<sequence>`` to lay
@@ -319,17 +252,17 @@ def build(kind: str, sequence: str, form: str, terminal: str,
     #   the input).
     # * ``-z``: pre-defined as poly d(GC); ``-seq=`` is REJECTED by
     #   fiber and it drops into an interactive 'Number of repeats'
-    #   prompt instead.  Use ``-rep=N`` where N = len(seq)/2 (we
-    #   already validated alternating-GC upstream, so len is even).
+    #   prompt instead.  Use ``-rep=N`` where N = len(sequence)/2 (the
+    #   sequence is d(GC)n, :func:`_is_z_repeat` above, so len is even).
     if form == "Z":
-        n_repeats = len(seq) // 2  # 2 bases per GC repeat unit
-        cmd = [found.fiber] + _FIBER_FLAGS[flags_key] + [f"-rep={n_repeats}"]
+        n_repeats = len(sequence) // 2  # 2 bases per GC repeat unit
+        cmd = [found.fiber] + _FIBER_FLAGS[flags_key][0] + [f"-rep={n_repeats}"]
         if not double_strand:
             # Z-DNA is inherently a duplex (poly d(GC):poly d(GC)); -single
             # extracts one strand.  Omit it for a double strand.
             cmd.append("-single")
     else:
-        cmd = [found.fiber] + _FIBER_FLAGS[flags_key] + [f"-seq={seq}"]
+        cmd = [found.fiber] + _FIBER_FLAGS[flags_key][0] + [f"-seq={sequence}"]
         if not double_strand:
             # Single-stranded output (the default).  With `double_strand`,
             # omitting `-single` makes fiber lay down the given strand PLUS its
@@ -343,7 +276,7 @@ def build(kind: str, sequence: str, form: str, terminal: str,
 
     struct = Structure.from_pdb(
         pdb_text,
-        title=title or f"{kind} {seq} (3DNA fiber, {form}-form)",
+        title=title or f"{kind} {sequence} (3DNA fiber, {form}-form)",
     )
 
     # fiber's default output is a DUPLEX (chains 'A' + 'B'); `-single` gives one
@@ -352,12 +285,9 @@ def build(kind: str, sequence: str, form: str, terminal: str,
     if not double_strand:
         struct = first_chain(struct)
 
-    # Strip the spurious 5'-terminal phosphate when the end built is a
-    # 5'-OH (:data:`_TERMINAL_BUILT`).  Done AFTER first_chain so the
-    # 5'-terminal residue is unambiguous.  See `_PHOSPHATE_ATOM_NAMES`
-    # for the exact atom set we remove.
-    if _TERMINAL_BUILT[terminal] == "OH":
-        struct = _strip_5prime_phosphate(struct)
+    # Each strand's 5' end as built (:func:`_five_prime_end`).  Done AFTER
+    # first_chain so the 5'-terminal residue is unambiguous.
+    struct = _five_prime_end(struct, terminal)
 
     err = verify_backbone_connectivity(struct)
     if err is not None:
@@ -369,27 +299,21 @@ def build(kind: str, sequence: str, form: str, terminal: str,
     return struct
 
 
-# --------------------------------------------------------------------- #
-#  5'-terminal phosphate strip                                          #
-# --------------------------------------------------------------------- #
-
-
-def _located(sequence: str):
-    """``(found, seq)``: the 3DNA install and the sequence's letters, either
-    missing refused."""
+def _installed() -> "_Threedna":
+    """The 3DNA install the detection finds, whose paths the build runs --
+    the registry asked ``is_available`` before the build; an install gone in
+    between, the one moment this raises, is said as the registry says it
+    (:func:`unavailable`)."""
     found = _resolve()
     if found is None:
-        from ...chemistry import BackendUnavailable
-        raise BackendUnavailable(_unavailable_message(), missing="threedna")
-    seq = "".join(c for c in sequence.upper() if c.isalpha())
-    if not seq:
-        raise ValueError("Empty sequence")
-    return found, seq
+        raise BackendUnavailable(unavailable(), missing="threedna")
+    return found
 
 
 def _pdb_made(cmd, pdb_path: str, found, workdir: str) -> str:
-    """The PDB text a 3DNA program wrote, run in ``workdir``.  A run that hangs,
-    fails or writes nothing is refused, saying so."""
+    """The PDB text a 3DNA program wrote, run in ``workdir``.  A run that
+    hangs, fails or writes nothing is the program's failure, raised saying
+    so."""
     name = os.path.basename(cmd[0])
     # The program needs $X3DNA at run time so its auxiliary scripts and config
     # look-ups resolve.  Inject ours regardless of what the caller's shell has
@@ -419,30 +343,66 @@ def _pdb_made(cmd, pdb_path: str, found, workdir: str) -> str:
     return pdb_text
 
 
-def _strip_5prime_phosphate(struct: Structure) -> Structure:
-    """Remove the 5'-terminal phosphate group from fiber's PDB output.
+# --------------------------------------------------------------------- #
+#  The 5' end                                                           #
+# --------------------------------------------------------------------- #
 
-    fiber always emits a 5'-phosphate regardless of any flag we pass.
-    For canonical 5'-OH ends (the dominant case for short oligos in
-    DFT prep), strip the phosphate so the chain starts with a free
-    O5'-H hydroxyl.  The bridging O5' stays -- it's part of the
-    sugar; the H is added downstream by chemistry.add_hydrogens().
 
-    The 5'-terminal residue is the first residue of the chain in
-    PDB listing order.  fiber writes residues in 5'->3' order, so
-    `residue_ids[0]` (paired with `chain_ids[0]`) identifies it.
-    """
-    # The 5'-terminal residue is the FIRST residue of EACH chain (fiber writes
-    # each chain 5'->3').  A duplex has TWO 5' termini (one per strand), so strip
-    # per chain -- not just the very first residue.
-    first_rid_of = {}       # chain -> its first residue_id (5' terminus)
-    gone = []
-    for i, (chain, rid, name) in enumerate(zip(
-            struct.chain_ids, struct.residue_ids, struct.atom_names)):
-        if (first_rid_of.setdefault(chain, rid) == rid
-                and name in _PHOSPHATE_ATOM_NAMES):
-            gone.append(i)
-    return struct.without(gone)
+def _five_prime_end(struct: Structure, terminal: str) -> Structure:
+    """Each strand's 5' end as the ask is built (:data:`_TERMINAL_BUILT`):
+    fiber's phosphate -- on each chain's first residue, fiber and rebuild
+    writing every chain 5'->3' -- stripped for a 5'-OH (the bridging O5'
+    kept; :data:`_PHOSPHATE_ATOM_NAMES`), completed for a 5'-P."""
+    first: dict = {}
+    for chain, rid in zip(struct.chain_ids, struct.residue_ids):
+        first.setdefault(chain, rid)
+    ends = [[i for i, (c, r) in enumerate(zip(struct.chain_ids,
+                                              struct.residue_ids))
+             if c == chain and r == rid] for chain, rid in first.items()]
+    if _TERMINAL_BUILT[terminal] == "OH":
+        return struct.without(i for end in ends for i in end
+                              if struct.atom_names[i] in _PHOSPHATE_ATOM_NAMES)
+    return _complete_5prime_phosphate(struct, ends)
+
+
+#: The bridging oxygen's names, modern and as older PDB files write it.
+_O5_NAMES = ("O5'", "O5*")
+
+
+def _complete_5prime_phosphate(struct: Structure, ends) -> Structure:
+    """Each strand's 5'-phosphate with its third oxygen -- ``ends`` each 5'
+    nucleotide's atoms: fiber and rebuild write it as P and two non-bridging
+    oxygens, one oxygen short of a phosphate monoester (measured
+    2026-11-18: ATGC 641 electrons, a radical).  The oxygen is placed at the
+    phosphate's fourth tetrahedral site -- opposite the mean direction of
+    its three oxygens -- at the template's own non-bridging P-O length,
+    named in the template's own convention (``OP3``, or ``O3P`` beside the
+    legacy ``O1P``/``O2P``), joined after its nucleotide
+    (`chemistry.with_atoms`).  A phosphate of another shape -- its
+    third oxygen there already among them -- is the program's output
+    changed, raised."""
+    pos = np.asarray(struct.positions, dtype=float)
+    added = []
+    for end in ends:
+        mine = {struct.atom_names[i]: i for i in end}
+        legacy = "O1P" in mine
+        nonbridging = ("O1P", "O2P") if legacy else ("OP1", "OP2")
+        third = "O3P" if legacy else "OP3"
+        bridge = next((n for n in _O5_NAMES if n in mine), None)
+        if ("P" not in mine or bridge is None or third in mine
+                or not all(n in mine for n in nonbridging)):
+            raise RuntimeError(
+                f"3DNA's 5'-phosphate is not P, two non-bridging oxygens and "
+                f"O5' (got {sorted(mine)}): the program's output changed")
+        p = pos[mine["P"]]
+        units = [(pos[mine[n]] - p) / np.linalg.norm(pos[mine[n]] - p)
+                 for n in (bridge, *nonbridging)]
+        away = -np.sum(units, axis=0)
+        length = np.mean([np.linalg.norm(pos[mine[n]] - p)
+                          for n in nonbridging])
+        added.append((mine["P"], "O",
+                      p + length * away / np.linalg.norm(away), third))
+    return with_atoms(struct, added)
 
 
 # --------------------------------------------------------------------- #
@@ -479,7 +439,6 @@ def _copy_standard_bases(root: str, workdir: str, dataset: str = "BDNA") -> None
     looks for both spellings, so both are written -- dropping one would fail
     only on modified residues, which is exactly the kind of gap that hides.
     """
-    import shutil
     cfg = Path(root) / "config"
     work = Path(workdir)
     for stale in work.glob("Atomic[._]?.pdb"):
@@ -529,8 +488,24 @@ def _bp_step_par(strand1: str, strand2: str) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _explicit_duplex_refused(form: str, strand1: str, strand2: str) -> None:
+    """Refuse an explicit duplex rebuild does not lay: another form than B
+    (it lays the standard B-DNA templates), or strands of unequal length
+    (every base paired: no overhang, no bulge)."""
+    if form != "B":
+        raise BuildRefused(
+            f"two-strand (arbitrary / mismatched) duplexes are B-form only; got "
+            f"form={form!r}.  Use \"ds,<sequence>\" for an A- or Z-form canonical "
+            f"duplex (the complementary strand is generated automatically).")
+    if len(strand1) != len(strand2):
+        raise BuildRefused(
+            f"the two strands of a duplex must be equal length (a fully "
+            f"base-paired duplex; overhangs / bulges aren't supported): "
+            f"strand1={len(strand1)} nt, strand2={len(strand2)} nt.")
+
+
 def _build_arbitrary_duplex(found: "_Threedna", strand1: str, strand2: str,
-                            form: str, terminal: str,
+                            terminal: str,
                             title: Optional[str]) -> Structure:
     """Build a two-strand (possibly MISMATCHED) B-form duplex via X3DNA ``rebuild``.
 
@@ -545,18 +520,6 @@ def _build_arbitrary_duplex(found: "_Threedna", strand1: str, strand2: str,
     ``x3dna_utils cp_std BDNA``; A/Z-form arbitrary duplexes aren't offered (use
     ``ds,<sequence>`` for an A/Z *canonical* duplex via fiber).
     """
-    if (form or DEFAULT_FORM["dna"]).upper() != "B":
-        raise ValueError(
-            f"two-strand (arbitrary / mismatched) duplexes are B-form only; got "
-            f"form={form!r}.  Use \"ds,<sequence>\" for an A- or Z-form canonical "
-            f"duplex (the complementary strand is generated automatically).")
-    strand2 = "".join(c for c in strand2.upper() if c.isalpha())
-    if len(strand1) != len(strand2):
-        raise ValueError(
-            f"the two strands of a duplex must be equal length (a fully "
-            f"base-paired duplex; overhangs / bulges aren't supported): "
-            f"strand1={len(strand1)} nt, strand2={len(strand2)} nt.")
-
     par_text    = _bp_step_par(strand1, strand2)
     # `x3dna_utils` is deliberately NOT used: it is 3DNA's only interpreted
     # tool (ruby, and Perl before upstream's 2.4 rewrite) and the one
@@ -576,11 +539,9 @@ def _build_arbitrary_duplex(found: "_Threedna", strand1: str, strand2: str,
     struct = Structure.from_pdb(
         pdb_text,
         title=title or f"dna {strand1}/{strand2} (3DNA rebuild, B-form duplex)")
-    # KEEP both chains -- that IS the duplex.  Strip the spurious 5'-terminal
-    # phosphate per chain when the user asked for 5'-OH ends (rebuild, like fiber,
-    # always emits a 5'-P); H is added downstream by chemistry.add_hydrogens.
-    if _TERMINAL_BUILT[terminal] == "OH":
-        struct = _strip_5prime_phosphate(struct)
+    # KEEP both chains -- that IS the duplex.  Each strand's 5' end as built
+    # (:func:`_five_prime_end`); H is added downstream by chemistry.add_hydrogens.
+    struct = _five_prime_end(struct, terminal)
     err = verify_backbone_connectivity(struct)
     if err is not None:
         raise RuntimeError(
@@ -594,36 +555,15 @@ def _build_arbitrary_duplex(found: "_Threedna", strand1: str, strand2: str,
 # --------------------------------------------------------------------- #
 
 
-def _unavailable_message() -> str:
-    """Build the canonical BackendUnavailable message.
-
-    The message includes:
-      * which preconditions were checked (in-tree / env / PATH);
-      * the URL http://x3dna.org/ and an explicit "register and accept
-        the license -- molbuilder cannot fetch this for you";
-      * a one-line non-commercial-license reminder;
-      * the names of the fallback backends (amber, rdkit).
-    """
-    repo_root = _repo_root()
-    in_tree_glob = repo_root / "x3dna*"
-    env_root = os.environ.get("X3DNA", "(unset)")
-    fiber_path = shutil.which("fiber") or "(not on PATH)"
-
-    return (
-        "3DNA is not available.  Tried, in order:\n"
-        f"  1. in-tree   : no match for {in_tree_glob}\n"
-        f"                 (unpack the 3DNA tarball at the repo root and "
-        f"this lights up automatically)\n"
-        f"  2. $X3DNA    : {env_root}\n"
-        f"                 (must point at a directory containing bin/fiber "
-        f"+ config/)\n"
-        f"  3. fiber on PATH: {fiber_path}\n"
-        f"\n"
-        "3DNA must be downloaded directly from http://x3dna.org/ after\n"
-        "registering and accepting the license -- molbuilder cannot fetch\n"
-        "it for you.  The license is non-commercial-use only; do not\n"
-        "redistribute the archive.\n"
-        "\n"
-        "If you don't need a canonical helix, the `amber` (extended chain)\n"
-        "and `rdkit` (folded conformer) backends remain available."
-    )
+def unavailable() -> str:
+    """Why 3DNA cannot run here (`backends.unavailable_words`): each place
+    the detection looks, in its order (:func:`_places`), and what it found
+    there -- nothing, or a root lacking a piece (:func:`_missing_from`) --
+    and how it is installed (:data:`INSTALL`)."""
+    lines = ["3DNA is not installed; looked for, in order:"]
+    for n, (words, roots, none) in enumerate(_places(), 1):
+        held = "; ".join(f"{root}: {_missing_from(root) or 'complete'}"
+                         for root in roots)
+        lines.append(f"  {n}. {words}: {held or none}")
+    lines.append(f"To install it: {INSTALL}.")
+    return "\n".join(lines)

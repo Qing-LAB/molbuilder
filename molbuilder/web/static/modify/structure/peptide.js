@@ -1,154 +1,28 @@
 /* Peptide-builder generator panel — Molbuilder-tab Source.
  *
- * Wires the Sources card's "Generate peptide" panel.  Identical
- * shape to smiles.js + name.js; only the request kind ("peptide"
- * instead of "smiles" / "name") and the field IDs differ.  The
- * backend dispatches to ``build_peptide`` which expects a one-
- * letter amino-acid sequence (e.g. "ACDEF") and returns a 3-D
- * structure built via AmberTools' tleap (extended chain by
- * default).
- *
- * Flow:
- *   1. Read the sequence input; refuse empty / illegal codes.
- *   2. POST {kind: "peptide", input: <sequence>} to
- *      /api/build/molecule.
- *   3. Route through ``structurePage.loadIntoCanvas``, which installs
- *      into an empty viewer or appends to the open structure.
- *
- * Errors surface in #peptide-status (illegal codes server-side,
- * tleap failure, network drop).  A load the gate did not apply
- * surfaces as "Kept existing workspace."
- *
- * Test seam: ``configure(opts)`` lets tests inject a fake
- * structurePage.
+ * The "Generate peptide" panel: the one panel skeleton (`panel-deps.js`,
+ * `panel`) with its words; the sequence goes as typed to
+ * `/api/build/molecule` (kind "peptide"), whose builder reads one-letter
+ * codes and bracketed modified residues ("AR[SEP]C") by the builders' one
+ * grammar and refuses what it cannot, in its words (`engines/builders.md`
+ * § 1).
  *
  * Design ref: docs/web/tabs.md § 2 (Creating a structure — the in-gate).
  */
 
-(function (root) {
+(function (root, mod) {
     "use strict";
 
-    var BUILD_URL = root.molbuilder.panelDeps.BUILD_URL;
-    // One-letter amino-acid codes the backend's tleap path
-    // recognises.  Used for client-side validation so the user
-    // gets a clear inline error before the request hits the
-    // network instead of waiting for tleap to fail.
-    var VALID_AA = /^[ACDEFGHIKLMNPQRSTVWY]+$/i;
-
-    // The panel's dependency slots, wired once for all five panels
-    // (`panel-deps.js`): `configure` is the test door; the chain resolves
-    // and checks them at each call.
-    var _deps = root.molbuilder.panelDeps.make(root);
-    var configure = _deps.configure;
-
-    /**
-     * Generate a peptide from a one-letter amino-acid sequence.
-     *
-     * @param {string} sequence
-     * @returns {Promise<{ok: boolean,
-     *                    cancelled?: boolean,
-     *                    error?: string,
-     *                    n_atoms?: number}>}
-     */
-    function generate(sequence) {
-        if (typeof sequence !== "string" || !sequence.trim()) {
-            return Promise.resolve({
-                ok: false,
-                error: "Enter a peptide sequence first (one-letter codes).",
-            });
-        }
-        var trimmed = sequence.trim().toUpperCase().replace(/\s+/g, "");
-        if (!VALID_AA.test(trimmed)) {
-            return Promise.resolve({
-                ok:    false,
-                error: "Sequence must use one-letter amino-acid codes "
-                     + "(ACDEFGHIKLMNPQRSTVWY).  Got: "
-                     + JSON.stringify(sequence),
-            });
-        }
-        return _deps.generate(
-            { kind: "peptide", input: trimmed },
-            { kind: "peptide", generator_input: { sequence: trimmed } },
-            "Building the peptide\u2026");
-    }
-
-    var _wired = false;
-    function wirePanel(opts) {
-        opts = opts || {};
-        var doc = opts.doc || root.document;
-        if (!doc || _wired) return;
-        _wired = true;
-
-        var input  = doc.getElementById("peptide-input");
-        var button = doc.getElementById("peptide-generate-btn");
-        var status = doc.getElementById("peptide-status");
-        _deps.findingsIn(doc.getElementById("peptide-findings"));
-        if (!input || !button) return;
-
-        /* The shared `.status` writer (lib/status.js): `.status` is the
-         * app's one severity surface and its `error` IS red; the busy state
-         * is the neutral line. */
-        function setStatus(msg, kind) {
-            window.molbuilder.status.set(
-                status, msg, kind === "error" ? "error" : null);
-        }
-
-        button.addEventListener("click", function () {
-            var echo = input.value.trim().toUpperCase().replace(/\s+/g, "");
-            button.disabled = true;
-            setStatus("Generating peptide…", "generating");
-            generate(echo).then(function (r) {
-                button.disabled = false;
-                if (r.ok) {
-                    setStatus(
-                        "Generated " + (r.n_atoms != null
-                            ? r.n_atoms + " atoms" : "")
-                        + " from sequence " + echo);
-                } else if (r.cancelled) {
-                    setStatus("Kept existing workspace.");
-                } else {
-                    setStatus(r.error || "Generation failed.",
-                              "error");
-                }
-            });
-        });
-
-        input.addEventListener("keydown", function (ev) {
-            if (ev.key === "Enter" && !button.disabled) {
-                ev.preventDefault();
-                button.click();
-            }
-        });
-    }
-
-    var api = {
-        configure: configure,
-        generate:  generate,
-        wirePanel: wirePanel,
-        BUILD_URL: BUILD_URL,
-        VALID_AA:  VALID_AA,
-    };
-
-    if (typeof module !== "undefined" && module.exports) {
-        module.exports = api;
-    } else {
-        root.molbuilder = root.molbuilder || {};
-        root.molbuilder.structurePeptide = api;
-        configure({
-            structurePage: root.molbuilder.structurePage,
-        });
-        if (root.document) {
-            if (root.document.readyState === "loading") {
-                root.document.addEventListener(
-                    "DOMContentLoaded", function () { wirePanel(); });
-            } else {
-                wirePanel();
-            }
-        }
-        if (root.molbuilder.runtime
-            && typeof root.molbuilder.runtime.register === "function") {
-            root.molbuilder.runtime.register(
-                "structure.peptide", api);
-        }
-    }
-})(typeof window !== "undefined" ? window : globalThis);
+    root.molbuilder.panelDeps.panel(root, mod, {
+        kind: "peptide", label: "the peptide", global: "structurePeptide",
+        /** A peptide from the sequence typed, recorded as its sequence. */
+        generate: function (slot) {
+            return function (sequence) {
+                return slot.generateText(sequence, "peptide",
+                    "Enter a peptide sequence first (one-letter codes).",
+                    "Building the peptide\u2026", "sequence");
+            };
+        },
+    });
+})(typeof window !== "undefined" ? window : globalThis,
+   typeof module !== "undefined" ? module : null);

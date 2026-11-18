@@ -1,135 +1,145 @@
-"""PubChem name-lookup tests with mocked network.
+"""PubChem name lookup (`engines/builders.md` § 6), with the network call
+stubbed.
 
-The real ``pubchempy.get_compounds`` hits the PubChem REST API; CI
-must never depend on network reachability or upstream availability.
-These tests stub ``pubchempy`` at the module-import boundary so the
-lookup logic, error handling, and timeout plumbing can be exercised
-in isolation.
+The real ``pubchempy.get_compounds`` reaches the PubChem REST API; no test
+may depend on the network.  Each test replaces that ONE function of the real
+library (``monkeypatch.setattr``) -- every other part, its record reader and
+its error types, is pubchempy's own, so the code is tested against what the
+library answers and raises.
 
-What is NOT tested here: that the SMILES we get back from a real
-PubChem lookup is correct.  That's PubChem's job, and an
-integration test that runs only when the user opts in (e.g. with a
-``-m network`` marker) is the right fix for that, not this file.
+What is NOT tested here: that a real PubChem answer is right.  That is
+PubChem's job.
 """
 
 from __future__ import annotations
 
+import json
 import socket
-import sys
-import types
+from urllib.error import URLError
 
 import pytest
 
 from molbuilder import pubchem
+from molbuilder.chemistry import BackendUnavailable, BuildRefused
+
+#: THE REAL LIBRARY, its network call replaced test by test.
+_PCP = pytest.importorskip("pubchempy")
 
 
-class _FakeCompound:
-    """Stand-in for pubchempy.Compound with the two fields our code
-    actually reads."""
-    def __init__(self, canonical=None, isomeric=None):
-        self.canonical_smiles = canonical
-        self.isomeric_smiles = isomeric
+def _compound(absolute=None, connectivity=None):
+    """A REAL ``pubchempy.Compound``, built offline from a record holding the
+    two SMILES PubChem serves -- the library's own reading of them (F12's
+    review, 2026-11-18: a stand-in with the deprecated attributes hid that
+    ``canonical_smiles`` is the connectivity-only one)."""
+    props = [{"urn": {"label": "SMILES", "name": name}, "value": {"sval": s}}
+             for name, s in (("Absolute", absolute),
+                             ("Connectivity", connectivity)) if s]
+    return _PCP.Compound({"atoms": {"aid": [], "element": []},
+                         "props": props})
 
 
-def _install_fake_pubchempy(monkeypatch, get_compounds):
-    """Inject a stub `pubchempy` module so pubchem._import_pubchempy()
-    returns it.  Caller supplies the get_compounds callable."""
-    fake = types.SimpleNamespace(get_compounds=get_compounds)
-    monkeypatch.setitem(sys.modules, "pubchempy", fake)
-    return fake
-
-
-# --------------------------------------------------------------------- #
-#  smiles_for_name happy path                                           #
-# --------------------------------------------------------------------- #
-
-
-def test_smiles_for_name_returns_canonical(monkeypatch):
-    _install_fake_pubchempy(
-        monkeypatch,
-        lambda name, kind: [_FakeCompound(canonical="c1ccccc1")],
-    )
-    smi = pubchem.smiles_for_name("benzene")
-    assert smi == "c1ccccc1"
-
-
-def test_smiles_for_name_falls_back_to_isomeric(monkeypatch):
-    """If canonical_smiles is empty / None but isomeric_smiles is set
-    (rare but happens for stereo-rich molecules), use the isomeric."""
-    _install_fake_pubchempy(
-        monkeypatch,
-        lambda name, kind: [
-            _FakeCompound(canonical=None, isomeric="C[C@H](N)C(=O)O"),
-        ],
-    )
-    smi = pubchem.smiles_for_name("L-alanine")
-    assert smi == "C[C@H](N)C(=O)O"
-
-
-# --------------------------------------------------------------------- #
-#  smiles_for_name error paths                                          #
-# --------------------------------------------------------------------- #
-
-
-def test_smiles_for_name_unknown_compound(monkeypatch):
-    """Unknown name -> ValueError, not a silent None or a network
-    error masquerading as a usage error."""
-    _install_fake_pubchempy(monkeypatch, lambda name, kind: [])
-    with pytest.raises(ValueError, match="no compounds"):
-        pubchem.smiles_for_name("definitely-not-a-real-molecule")
-
-
-def test_smiles_for_name_compound_with_no_smiles(monkeypatch):
-    """PubChem can return a compound entry with no SMILES at all
-    (rare, but it happens for some salts).  We must surface that as
-    a clear ValueError, not crash on attribute access."""
-    _install_fake_pubchempy(
-        monkeypatch,
-        lambda name, kind: [_FakeCompound(canonical=None, isomeric=None)],
-    )
-    with pytest.raises(ValueError, match="no SMILES"):
-        pubchem.smiles_for_name("weird-salt")
-
-
-def test_smiles_for_name_socket_timeout_becomes_runtime_error(monkeypatch):
-    """A network timeout is a transient external-system failure, NOT
-    a usage error -- it must surface as RuntimeError with a hint
-    about the SMILES escape hatch."""
-    def raise_timeout(name, kind):
-        raise socket.timeout("simulated timeout")
-    _install_fake_pubchempy(monkeypatch, raise_timeout)
-    with pytest.raises(RuntimeError) as exc:
-        pubchem.smiles_for_name("anything", timeout=0.1)
-    msg = str(exc.value)
-    assert "did not complete" in msg
-    assert "build_from_smiles" in msg
-
-
-def test_smiles_for_name_oserror_becomes_runtime_error(monkeypatch):
-    """A generic OSError (DNS failure, connection refused) is also a
-    network problem; same RuntimeError path."""
-    def raise_oserror(name, kind):
-        raise OSError("connection refused")
-    _install_fake_pubchempy(monkeypatch, raise_oserror)
-    with pytest.raises(RuntimeError, match="did not complete"):
-        pubchem.smiles_for_name("anything", timeout=0.1)
-
-
-def test_smiles_for_name_restores_socket_timeout(monkeypatch):
-    """The lookup sets the global socket timeout for the duration of
-    its call.  It MUST restore the previous value, even on error --
-    otherwise a transient PubChem hiccup would silently break every
-    subsequent network call in the same process."""
-    sentinel = 12.34
-    before = socket.getdefaulttimeout()
-    socket.setdefaulttimeout(sentinel)
+def _not_json() -> json.JSONDecodeError:
+    """What the library's reader raises on a page that is not PubChem's JSON
+    -- a proxy's or a network login's -- the real error, from json itself."""
     try:
-        _install_fake_pubchempy(
-            monkeypatch,
-            lambda name, kind: [_FakeCompound(canonical="O")],
-        )
-        pubchem.smiles_for_name("water", timeout=99.0)
-        assert socket.getdefaulttimeout() == sentinel
+        json.loads("<html><body>Sign in to the network</body></html>")
+    except json.JSONDecodeError as exc:
+        return exc
+
+
+def _answers(monkeypatch, outcome):
+    """PubChem's answer to every lookup: ``outcome`` returned, or raised
+    when it is an exception."""
+    def get_compounds(name, namespace):
+        if isinstance(outcome, BaseException):
+            raise outcome
+        return outcome
+    monkeypatch.setattr(_PCP, "get_compounds", get_compounds)
+
+
+def test_the_absolute_smiles_is_the_one_built(monkeypatch):
+    """The absolute SMILES -- stereochemistry included -- never the
+    connectivity-only one, which builds "D-alanine" as whichever isomer the
+    embedder lands on."""
+    d_alanine = "C[C@@H](C(=O)O)N"
+    _answers(monkeypatch, [_compound(absolute=d_alanine,
+                                     connectivity="CC(C(=O)O)N")])
+    assert pubchem.smiles_for_name("D-alanine") == d_alanine
+
+
+#: EACH FAILURE SAID ONCE, BY WHOSE IT IS: (PubChem's answer, the type the
+#: lookup raises, words it must say, words it must not).  The request's is a
+#: refusal; PubChem out of reach is advice naming PubChem, each cause in its
+#: own words -- a timeout never worded as a network error or the reverse.
+_FAILURES = [
+    pytest.param([], BuildRefused, "no compounds", None, id="unknown_name"),
+    pytest.param([_compound()], BuildRefused, "no SMILES", None,
+                 id="record_without_smiles"),
+    pytest.param(_PCP.BadRequestError(400, "PUGREST.BadRequest",
+                                      ["Invalid name"]),
+                 BuildRefused, "refused the name", None, id="name_refused"),
+    pytest.param(socket.timeout("timed out"), BackendUnavailable,
+                 "did not complete within 0.1 s", "could not reach",
+                 id="read_out_of_time"),
+    pytest.param(URLError(socket.timeout("timed out")), BackendUnavailable,
+                 "did not complete within 0.1 s", "could not reach",
+                 id="connect_out_of_time"),
+    pytest.param(URLError("Name or service not known"), BackendUnavailable,
+                 "could not reach PubChem (Name or service not known)",
+                 "did not complete", id="no_network"),
+    pytest.param(_PCP.ServerBusyError(503, "PUGREST.ServerBusy",
+                                      ["Too many requests"]),
+                 BackendUnavailable, "answered by PubChem with an error",
+                 "did not complete", id="pubchem_busy"),
+    # A proxy's page in place of PubChem's JSON: a 500 in a parser's words
+    # until F12's second review (2026-11-18).
+    pytest.param(_not_json(), BackendUnavailable, "does not read",
+                 "did not complete", id="answer_that_does_not_read"),
+    # A record with no properties at all -- a broken proxy's or cache's: its
+    # SMILES read outside the sorting was a 500 (F12's third review,
+    # 2026-11-18).
+    pytest.param([_PCP.Compound({"atoms": {"aid": [], "element": []}})],
+                 BackendUnavailable, "does not read", "did not complete",
+                 id="record_without_properties"),
+]
+
+
+@pytest.mark.parametrize("answer, raised, says, never", _FAILURES)
+def test_a_failed_lookup_is_said_by_whose_it_is(monkeypatch, answer, raised,
+                                                says, never):
+    _answers(monkeypatch, answer)
+    with pytest.raises(raised) as exc:
+        pubchem.smiles_for_name("anything", timeout=0.1)
+    assert says in str(exc.value)
+    if never:
+        assert never not in str(exc.value)
+    if raised is BackendUnavailable:
+        assert exc.value.missing == "pubchem"
+
+
+def test_the_socket_timeout_is_restored_after_a_lookup(monkeypatch):
+    """The lookup sets the global socket timeout for its call and MUST put
+    the previous one back, a failure included -- else one PubChem hiccup
+    changes every later network call in the process."""
+    before = socket.getdefaulttimeout()
+    socket.setdefaulttimeout(12.34)
+    try:
+        _answers(monkeypatch, socket.timeout("timed out"))
+        with pytest.raises(BackendUnavailable):
+            pubchem.smiles_for_name("water", timeout=99.0)
+        assert socket.getdefaulttimeout() == 12.34
     finally:
-        # Whatever happened above, the rest of the run keeps its own.
         socket.setdefaulttimeout(before)
+
+
+def test_an_empty_name_is_refused_before_any_lookup(monkeypatch):
+    """No name is the request's to fix, refused before PubChem is asked --
+    never PubChemPy's own error from its insides (a traceback on the command
+    line, F12's second review, 2026-11-18)."""
+    asked = []
+    monkeypatch.setattr(_PCP, "get_compounds",
+                        lambda *a: asked.append(a) or [])
+    with pytest.raises(BuildRefused):
+        pubchem.smiles_for_name("  ")
+    assert asked == []
+

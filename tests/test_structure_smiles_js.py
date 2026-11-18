@@ -12,13 +12,13 @@ The load door is a recorder handed in through ``configure``, so the state
 machine runs without a canvas.  The DOM wiring (``wirePanel`` against actual
 buttons + inputs) is exercised by an e2e test in test_molbuilder_e2e.py.
 
-The one generate chain is `panel-deps.js`'s, tested here through SMILES.  What
-each other panel asks the server is its own: the RNA panel's are the rows of
-the table at the end of this file, DNA's and the peptide's their own files'
-(`test_structure_dna_js.py`, `test_structure_peptide_js.py`).  The name panel
-has no row: its build asks PubChem, which nothing in this suite may reach
-(`process/testing.md` § 2b), and what it sends is `generateText`'s, the chain
-SMILES is tested through.
+The one panel skeleton and generate chain are `panel-deps.js`'s, tested here
+through SMILES: what the answer leaves in the envelope, on the canvas and in
+the panel's own findings list.  What each other panel asks the server is its
+own: the rows of the table at the end of this file -- DNA's, RNA's and the
+peptide's.  The name panel has no row: its build asks PubChem, which nothing
+in this suite may reach (`process/testing.md` § 2b), and what it sends is
+`generateText`'s, the chain SMILES is tested through.
 """
 from __future__ import annotations
 
@@ -27,6 +27,7 @@ from pathlib import Path
 
 import pytest
 
+from support import tooling
 from tests._node_esm import run_node, served
 
 
@@ -82,27 +83,12 @@ class TestLazyResolve:
         ''', app_at)
         answer = out["answer"]
         assert answer["ok"] is True, answer
-        # Without the lazy-resolve fix generate() rejects: "smiles:
-        # structurePage not configured".
+        # Without the lazy-resolve fix generate() answers "smiles: the
+        # Molbuilder page did not load".
         assert out["r"] == {"ok": True,
                             "n_atoms": len(answer["structure"]["elements"]),
                             "backend_used": answer["backend_used"]}
         assert out["drawn"] == [[], answer["notices"]]
-
-
-class TestInputValidation:
-
-    def test_nothing_to_build_is_refused_without_a_request(self, app_at):
-        """Blank input is refused in the panel's words before anything is
-        sent -- a round trip saved and an inline error the person can act
-        on."""
-        out = _run('''
-            const r = await smiles.generate("   \\n\\t  ");
-            console.log(JSON.stringify({ r, calls: __calls.length }));
-        ''', app_at)
-        assert out["r"]["ok"] is False
-        assert "Enter a SMILES" in out["r"]["error"]
-        assert out["calls"] == 0
 
 
 class TestHappyPath:
@@ -124,10 +110,12 @@ class TestHappyPath:
             let loadCalls = 0;
             const drawn = [];
             // The panel wired as the page wires it: its findings list named.
+            const list = { id: "smiles-findings" };
             smiles.wirePanel({ doc: { getElementById: (id) =>
-                (id === "smiles-findings" ? { id } : null) } });
+                (id === "smiles-findings" ? list : null) } });
             smiles.configure({
-                findings: { render: (rows) => drawn.push(rows) },
+                findings: { render: (rows, opts) => drawn.push(
+                    { rows, under: opts.panel === list }) },
                 structurePage: {
                     loadIntoCanvas: async (struct, src) => {
                         loadCalls++;
@@ -152,8 +140,9 @@ class TestHappyPath:
                                    "n_atoms": len(answer["structure"]["elements"]),
                                    "backend_used": answer["backend_used"]}
         # the panel's earlier findings cleared as the build starts, then what
-        # the build said of what it built, drawn under the panel
-        assert out["drawn"] == [[], answer["notices"]]
+        # the build said of what it built, drawn in the panel's own list
+        assert out["drawn"] == [{"rows": [], "under": True},
+                                {"rows": answer["notices"], "under": True}]
         assert out["call"]["url"] == "/api/build/molecule"
         assert out["call"]["body"] == {"kind": "smiles", "input": "CCO"}
         # The load door receives the ENVELOPE, whole, as the server sent it
@@ -211,7 +200,7 @@ class TestErrorPaths:
             });
             const r = await smiles.generate("CCO");
             const read = await globalThis.molbuilder.server.ask(
-                smiles.BUILD_URL, { method: "POST", body: {} });
+                "/api/build/molecule", { method: "POST", body: {} });
             console.log(JSON.stringify({ r, read }));
         ''')
         assert out["r"]["ok"] is False
@@ -309,8 +298,32 @@ def _ask_panel(panel: str, typed: str, opts: dict, app_at) -> dict:
      {"sequence": "5'-ACGU-3'", "backend": "auto"}),
     ("rna", "3'-UGCA", {},
      {"kind": "rna", "input": "3'-UGCA", "backend": "auto"}, None),
+    # The DNA panel's own copy of the strand reader dropped a dash and sent
+    # the letters, which built (F12's review, 2026-11-18).
+    ("dna", "AT-GC", {},
+     {"kind": "dna", "input": "AT-GC", "backend": "auto",
+      "relax_clashes": False}, None),
+    # The peptide panel's own copy of the letters refused AR[SEP]C, which
+    # the server builds (F12's review, 2026-11-18).
+    ("peptide", "AR[SEP]C", {},
+     {"kind": "peptide", "input": "AR[SEP]C"}, {"sequence": "AR[SEP]C"}),
+    # The DNA panel's form and backend reach the builder -- its own copy of
+    # the Z rule passed CGCGCG, which fiber built as GCGCGC (F12's review,
+    # 2026-11-18) -- and the G-first repeat is built in Z.
+    ("dna", "GCGC", {"form": "Z", "backend": "threedna"},
+     {"kind": "dna", "input": "GCGC", "form": "Z", "backend": "threedna",
+      "relax_clashes": False},
+     {"sequence": "GCGC", "form": "Z", "backend": "threedna"}),
+    # NOTHING TYPED: said in the panel's words, nothing sent -- each panel
+    # door's (a line of text, a nucleic acid, a peptide).
+    ("smiles", "   ", {}, None, None),
+    ("dna", "", {}, None, None),
+    ("peptide", "", {}, None, None),
 ], ids=["RNA with its form and backend", "a strand labelled with its ends",
-        "a strand missing an end"])
+        "a strand missing an end", "a DNA strand the grammar refuses",
+        "a bracketed modified residue", "DNA in Z on 3DNA",
+        "nothing typed: smiles", "nothing typed: dna",
+        "nothing typed: peptide"])
 def test_what_a_panel_asks_the_server(panel, typed, opts, asked, record,
                                       app_at):
     """Each panel's whole request, and the record of what made the structure
@@ -319,10 +332,20 @@ def test_what_a_panel_asks_the_server(panel, typed, opts, asked, record,
     word; a strand's letters sent in place of what was typed: `3'-UGCA`,
     which the server refuses for its missing end -- its refusal said in its
     words and nothing built -- built as if unlabelled, the strand read the
-    other way, nothing said."""
+    other way, nothing said.  No panel checks the builder's rules
+    (`engines/builders.md` § 1): what the builder refuses -- a missing end,
+    a letter its alphabet does not hold -- goes as typed and is refused in
+    its words (F12's review, 2026-11-18: the RNA panel's own copy of the
+    alphabet).  A row asking a backend by name builds on it: it needs it
+    installed."""
+    if opts.get("backend", "auto") != "auto":
+        tooling.needs_backend(opts["backend"])
     got = _ask_panel(panel, typed, opts, app_at)
     assert got["body"] == asked
-    if record is None:
+    if asked is None:
+        assert got["answer"] is None and got["made"] is None, got
+        assert got["said"]["ok"] is False and got["said"]["error"], got
+    elif record is None:
         assert got["answer"]["ok"] is False, got
         assert got["said"] == {"ok": False, "error": got["answer"]["error"]}
         assert got["made"] is None
@@ -330,10 +353,3 @@ def test_what_a_panel_asks_the_server(panel, typed, opts, asked, record,
         assert got["answer"]["ok"] is True, got
         assert got["made"] == {"kind": panel, "generator_input": record}
 
-
-def test_dna_thymine_rejected_in_rna_panel(app_at):
-    """T is DNA's thymine; RNA uses U.  The letter is refused, naming the
-    alphabet, and nothing is sent to be built."""
-    got = _ask_panel("rna", "ACGT", {}, app_at)
-    assert got["said"]["ok"] is False and "ACGU" in got["said"]["error"]
-    assert got["body"] is None

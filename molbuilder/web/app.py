@@ -588,10 +588,14 @@ def create_app(*, config=None) -> Flask:
     @app.route("/molbuilder")
     def molbuilder_page():
         # Molbuilder tab: build + edit + assemble (modify.html
-        # template).  The helix form a nucleic panel shows chosen is the
-        # build door's own default, never the page's.
-        from ..builders.backends import DEFAULT_FORM
-        return render_template("modify.html", default_form=DEFAULT_FORM)
+        # template).  The nucleic panels' menus are the build door's own
+        # words -- its forms, its backends in auto's order, the form shown
+        # chosen -- never the page's (`builders.backends`).
+        from ..builders.backends import (BACKENDS, DEFAULT_FORM, FORMS,
+                                         KIND_FORMS)
+        return render_template("modify.html", default_form=DEFAULT_FORM,
+                               kind_forms=KIND_FORMS, forms=FORMS,
+                               backends=BACKENDS)
 
     @app.route("/molview-demo")
     def molview_demo_page():

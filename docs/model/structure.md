@@ -290,9 +290,13 @@ the geometry ops, `to_dict`/`from_dict`, the sidecar codec. A caller who
 wants it gone states that; a rebuild that simply did not list the field
 is a **defect**, not a default.
 A builder's own steps — `add_hydrogens`, `protonate_phosphate_oxygens`,
-`_patch_residue` — run on what the backend returned, before the structure holds
-any non-atom fact, and carry only its identity columns and title. Handed a
-labelled structure they lose the rest.
+3DNA's completion of its 5′-phosphate (`engines/builders.md` § 5) — run on
+what the backend returned, before the structure holds any non-atom fact (a
+modified residue's atoms are added earlier still, on the kit's own residue,
+before the structure exists — `engines/builders.md` § 2). `add_hydrogens`
+carries only the identity columns and title; the two that add atoms join
+them through `chemistry.with_atoms` (`concat` and `take`), which carries the
+rest.
 
 Two clusters ship today, both recorded by the Results tab from the run
 directory ([`model/parse.md` § 5b, § 5b.1](?doc=model/parse.md)):

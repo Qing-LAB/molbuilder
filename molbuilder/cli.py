@@ -30,8 +30,11 @@ from typing import Iterator, Optional, Sequence
 
 import click
 
-from .builders.backends import DEFAULT_FORM, DEFAULT_TERMINAL
+from .builders import GENERATORS
+from .builders.backends import (BACKENDS, DEFAULT_FORM, DEFAULT_TERMINAL,
+                                 KIND_FORMS, TERMINALS)
 from .chemistry import BackendUnavailable as _BackendUnavailable
+from .chemistry import BuildRefused as _BuildRefused
 from .envs._cli import envs_group
 from .runtime_config import RuntimeConfigError, get_tls, read_config
 from .atom_permutation import MAP_KEY
@@ -172,13 +175,17 @@ def _emit(struct: Structure, *,
 
 def _build(kind: str, sequence: str, **asked) -> Structure:
     """``kind`` built from ``sequence`` through the one build door
-    (`builders.build`, as the build route builds), and what the build says
-    of what it built printed as every finding is (`validation.report`;
-    `science/validation.md` § 4.1 R5)."""
+    (`builders.build`, as the build route builds), and what is said of what
+    it built printed as every finding is (`validation.report`;
+    `science/validation.md` § 4.1 R5): the build's own findings, and the
+    structure's own (`validation.structure_findings`, what `molbuilder
+    validate` says with no engine named -- atoms on top of each other among
+    them)."""
     from .builders import build
-    from .validation import report
+    from .validation import report, structure_findings
     made = build(kind, sequence, **asked)
-    report(made.findings, raise_on_error=False)
+    report(made.findings + structure_findings(made.structure),
+           raise_on_error=False)
     return made.structure
 
 
@@ -288,10 +295,13 @@ cli.add_command(pseudo_group)
 # --------------------------------------------------------------------- #
 
 
-def _build_options(*, nucleic: bool):
+def _build_options(kind: str):
     """Decorator factory: shared --out / --pyscf-atom-block / --title
-    options across all builder subcommands; nucleic adds backend / form /
-    terminal / no-protonate-phosphates."""
+    options across all builder subcommands; a nucleic ``kind`` adds backend /
+    form / terminal / no-protonate-phosphates, its choices the registry's
+    (`builders.backends`) -- whether a kind is nucleic the build table's
+    (`builders.GENERATORS`)."""
+    nucleic = GENERATORS[kind].nucleic
     def deco(f):
         # Order matters because click stacks decorators bottom-up; later
         # decorators land later in --help.  Apply common opts first
@@ -300,18 +310,17 @@ def _build_options(*, nucleic: bool):
             f = click.option("--no-protonate-phosphates", is_flag=True,
                              help="keep phosphates deprotonated (charge -1 each); "
                                   "default is to add Hs so molecule is neutral")(f)
-            f = click.option("--terminal", default=DEFAULT_TERMINAL,
-                             show_default=True,
-                             type=click.Choice(["OH", "5P", "3P", "PP"]),
-                             help="terminal phosphate state")(f)
+            f = click.option("--terminal", default=None,
+                             type=click.Choice(list(TERMINALS)),
+                             help=f"terminal phosphate state (default: "
+                                  f"{DEFAULT_TERMINAL})")(f)
             f = click.option("--form", default=None,
-                             type=click.Choice(["B", "A", "Z"]),
-                             help=(f"helix form (default: {DEFAULT_FORM['dna']} for DNA, "
-                                   f"{DEFAULT_FORM['rna']} for RNA)"))(f)
+                             type=click.Choice(list(KIND_FORMS[kind])),
+                             help=f"helix form (default: {DEFAULT_FORM[kind]})")(f)
             f = click.option("--backend", default="auto", show_default=True,
-                             type=click.Choice(["auto", "rdkit", "amber", "threedna"]),
+                             type=click.Choice(["auto", *list(BACKENDS)]),
                              help="builder backend (auto-order is "
-                                  "threedna > amber > rdkit)")(f)
+                                  + " > ".join(BACKENDS) + ")")(f)
         f = click.option("--title", default=None, help="optional title")(f)
         f = click.option("--pyscf-atom-block", "--pyscf", "pyscf_atom_block",
                          is_flag=True,
@@ -325,7 +334,7 @@ def _build_options(*, nucleic: bool):
 
 
 @cli.command("peptide", short_help="build a polypeptide from sequence")
-@_build_options(nucleic=False)
+@_build_options("peptide")
 def cmd_peptide(sequence, out, pyscf_atom_block, title):
     """Build a polypeptide from a 1-letter sequence (with [SEP] etc)."""
     s = _build("peptide", sequence, title=title)
@@ -333,7 +342,7 @@ def cmd_peptide(sequence, out, pyscf_atom_block, title):
 
 
 @cli.command("dna", short_help="build DNA: a strand or a duplex notation")
-@_build_options(nucleic=True)
+@_build_options("dna")
 def cmd_dna(sequence, out, pyscf_atom_block, title,
             backend, form, terminal, no_protonate_phosphates):
     """Build DNA from a sequence: a single strand, or a duplex notation --
@@ -346,7 +355,7 @@ def cmd_dna(sequence, out, pyscf_atom_block, title,
 
 
 @cli.command("rna", short_help="build single-stranded RNA from a sequence")
-@_build_options(nucleic=True)
+@_build_options("rna")
 def cmd_rna(sequence, out, pyscf_atom_block, title,
             backend, form, terminal, no_protonate_phosphates):
     """Build single-stranded RNA from a sequence."""
@@ -357,7 +366,7 @@ def cmd_rna(sequence, out, pyscf_atom_block, title,
 
 
 @cli.command("smiles", short_help="build a molecule from SMILES (RDKit)")
-@_build_options(nucleic=False)
+@_build_options("smiles")
 def cmd_smiles(sequence, out, pyscf_atom_block, title):
     """Build a molecule from a SMILES string (needs rdkit)."""
     s = _build("smiles", sequence, title=title)
@@ -365,7 +374,7 @@ def cmd_smiles(sequence, out, pyscf_atom_block, title):
 
 
 @cli.command("name", short_help="build a molecule from common/IUPAC name (PubChem)")
-@_build_options(nucleic=False)
+@_build_options("name")
 def cmd_name(sequence, out, pyscf_atom_block, title):
     """Build a molecule from a common or IUPAC name (needs pubchempy)."""
     s = _build("name", sequence, title=title)
@@ -3815,10 +3824,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         sys.exit(e.exit_code)
     except click.Abort:
         sys.exit(1)
-    except _BackendUnavailable as e:
-        # A TOOL THIS INSTALL LACKS -- a builder backend or the hydrogen
-        # engines -- said as the one line the web page says it in, not
-        # a traceback (`chemistry.BackendUnavailable`).
+    except (_BuildRefused, _BackendUnavailable) as e:
+        # A BUILD REFUSED -- what was asked cannot be built, or a tool or
+        # service it needs is not here -- said in the builder's own words,
+        # the web page's, not a traceback (`engines/builders.md` § 1).  A
+        # fault of ours is neither, and keeps its traceback.
         click.echo(f"Error: {e}", err=True)
         sys.exit(1)
     rc = rc or 0

@@ -202,16 +202,24 @@ The sources, and what each produces (all POST `/api/build/molecule` with
 | **SMILES** | `smiles` | RDKit first, **OpenBabel fallback** | the fallback rescues big/awkward molecules RDKit chokes on; the response says which backend won |
 | **By name** | `name` | PubChem → SMILES → (same fallback) | type "aspirin", get a structure |
 | **Project file** | — (`/api/build/load`, `{path}`) | the server reads the `.xyz` and its `.molstruct.json` sidecar, or a `.pdb` alone — read, never written (`StructureCodec`) | asks which frame when the file holds several, and add-or-clear when a structure is open (above) |
-| **DNA** | `dna` | 3DNA (X3DNA) / AmberTools / RDKit | B/A/Z forms, single strand or duplex, optional clash relief |
-| **RNA** | `rna` | A-form canonical | |
+| **DNA** | `dna` | the builders' registry, its menus rendered by the server ([`engines/builders.md`](?doc=engines/builders.md) § 1, § 4) | a single strand or a duplex, in the forms DNA is built in; optional clash relief |
+| **RNA** | `rna` | the builders' registry, as DNA's | a single strand, in the one form RNA is built in |
 | **Peptide** | `peptide` | PeptideBuilder | extended chain from a sequence; its C-terminus as the kit writes it, which the findings say |
 
 **One chain for the five generators** *(2026-10-13)*. Each source's panel
-checks its own input and names its request — SMILES and name, whose input is
-one line of text, through the slot's `generateText` (blank refused, the text
-trimmed); what follows is one chain, the panels' shared slot (`generate`,
-`modify/structure/panel-deps.js`): its dependencies resolved and checked, a
-missing one refused naming the panel, then the POST,
+says an empty field and names its request — it checks none of the builders'
+rules (a letter, a strand's notation, a form, a backend): the text goes as
+typed, its outer spaces trimmed, and the builder's refusal is the one said;
+the DNA and RNA panels' Form and Backend menus are the build door's own,
+rendered by the server ([`engines/builders.md`](?doc=engines/builders.md) § 1). Each panel file
+is its own `generate` and nothing else, in the one panel skeleton
+(`modify/structure/panel-deps.js`, `panel`: the page's ids by the kind, the
+wiring, the Enter key, the status line): SMILES, name and peptide, whose input
+is one line of text, through the slot's `generateText` (blank refused, the text
+trimmed); DNA and RNA through the one nucleic-acid panel (`generateNucleic`,
+the menus' form and backend sent with the text). What follows is one chain, the
+panels' shared slot (`generate`): its dependencies resolved at each call, the
+page not loaded said as the panel's error, then the POST,
 then the page's load gate (`structurePage.loadIntoCanvas`, with the record of
 what made it), **under the page's fence** with a Cancel that aborts the
 request ([`ui-contract.md`](?doc=web/ui-contract.md) § 10 — a build is real
@@ -221,7 +229,7 @@ backend_used}` — the backend that built it when the server names it — the
 answer's notices drawn under the panel's status through the one renderer, all
 of them ([`science/validation.md`](?doc=science/validation.md) § 4.1 R5, R3:
 what the build found — a peptide's aldehyde end, a nucleic acid's steric clash, a
-form or terminal the backend does not build — and what the structure check says
+SMILES's or a name's molecules overlapping, a form or terminal the backend does not build — and what the structure check says
 of what was built, a defaulted cell's vacuum), the panel's earlier findings
 cleared at every build —
 `{ok: false, cancelled: true}` when the gate declines or the fence's Cancel is

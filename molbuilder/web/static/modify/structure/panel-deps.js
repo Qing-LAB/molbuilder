@@ -14,12 +14,17 @@
  * The slot also carries THE ONE GENERATE CHAIN the five panels share
  * (`generate`): its slots resolved and checked, the request, the page's load
  * gate and the answer's envelope, under the page's fence -- said once, so no
- * panel can skip the fence or word a refusal its own way; and the one door
- * for a panel whose input is a line of text (`generateText`: SMILES, name).
- * A panel keeps what is its own: checking its input and naming its request.
+ * panel can skip the fence or word a refusal its own way; the one door for a
+ * panel whose input is a line of text (`generateText`: SMILES, name,
+ * peptide); the one nucleic-acid panel, DNA's and RNA's (`generateNucleic`);
+ * the one wiring of a panel's page, all five's (`wirePanel`); and the one
+ * panel skeleton (`panel`): a panel file is its own `generate` and nothing
+ * else.  A panel keeps what is its own: saying an empty field and naming its
+ * request -- never the builders' rules, which the builder's refusal says.
  *
- * Exports (on window.molbuilder.panelDeps): make(root) -> a per-panel slot;
- * strandCore(text) -> a nucleic strand's letters, for a panel's own letter check.
+ * Exports (on window.molbuilder.panelDeps): panel(root, module, spec) -> a
+ * panel's api, its slot made by `make`.  No panel checks the builders' own
+ * rules (`engines/builders.md` § 1).
  */
 (function (root) {
     "use strict";
@@ -29,7 +34,8 @@
     function make(host) {
         /* `findings`: the one findings renderer
          * (`molbuilder.validationFindings`); `panel`: the list under the
-         * panel's status its build's findings are drawn in (`findingsIn`). */
+         * panel's status its build's findings are drawn in, found when the
+         * panel is wired (`wirePanel`). */
         var deps = { structurePage: null, findings: null, panel: null };
 
         /** THE BUILD'S FINDINGS, drawn under the panel through the one
@@ -52,18 +58,19 @@
          *  runs would abandon or retarget the result; Cancel aborts the
          *  request, and the fence releases on every path.  What the build
          *  says of what it built -- its notices -- is drawn under the panel
-         *  (`findingsIn`), the panel's earlier findings cleared at every
-         *  build.  Resolves the panel's envelope: ``{ok: true, n_atoms,
+         *  (its ``<kind>-findings`` list), the panel's earlier findings
+         *  cleared at every build.  Resolves the panel's envelope: ``{ok: true, n_atoms,
          *  backend_used}``,
          *  ``{ok: false, cancelled: true}`` when the gate declines or Cancel
          *  is pressed, ``{ok: false, error}`` otherwise. */
         function generate(request, generator, reason) {
             // THE SLOTS, read at the call: a panel may load before the page
-            // that fills them; one still empty is said, naming the panel.
+            // that fills them; one still empty -- the load door, or the
+            // page's one reader -- is said, naming the panel.
             resolve();
-            if (!deps.structurePage) {
-                return Promise.reject(new Error(
-                    generator.kind + ": structurePage not configured"));
+            if (!deps.structurePage || !host.molbuilder.server) {
+                return Promise.resolve({ ok: false, error: generator.kind
+                    + ": the Molbuilder page did not load; reload it" });
             }
             draw([]);
             var ctl = (typeof AbortController === "function")
@@ -120,19 +127,117 @@
                 : chain();
         }
 
-        /** A panel whose input is one line of text -- a SMILES, a name: the
-         *  text refused with ``empty`` when blank, else trimmed and built as
-         *  ``kind`` (the request's ``input``, the record's
-         *  ``generator_input[kind]``) under ``reason``. */
-        function generateText(text, kind, empty, reason) {
-            if (typeof text !== "string" || !text.trim()) {
+        /** What was typed, trimmed -- or ``null`` when nothing was: the one
+         *  check every panel makes of its own before a request. */
+        function typedOf(text) {
+            return (typeof text === "string" && text.trim()) ? text.trim()
+                                                             : null;
+        }
+
+        /** A panel whose input is one line of text -- a SMILES, a name, a
+         *  peptide sequence: the text refused with ``empty`` when blank,
+         *  else trimmed and built as ``kind`` (the request's ``input``, the
+         *  record's ``generator_input[key]``, ``key`` the kind's own name
+         *  for it, ``kind`` when none) under ``reason``. */
+        function generateText(text, kind, empty, reason, key) {
+            var typed = typedOf(text);
+            if (typed === null) {
                 return Promise.resolve({ ok: false, error: empty });
             }
-            var trimmed = text.trim();
             var said = {};
-            said[kind] = trimmed;
-            return generate({ kind: kind, input: trimmed },
+            said[key || kind] = typed;
+            return generate({ kind: kind, input: typed },
                             { kind: kind, generator_input: said }, reason);
+        }
+
+        /** A NUCLEIC-ACID PANEL -- DNA's or RNA's, one shape: the sequence
+         *  as typed (refused with ``empty`` when blank), the form and
+         *  backend its menus hold (``opts.form``, ``opts.backend``, auto when
+         *  none), and the kind's own further fields (``extra``: DNA's clash
+         *  relief), built as ``kind`` under ``reason``. */
+        function generateNucleic(kind, sequence, opts, empty, reason, extra) {
+            opts = opts || {};
+            var typed = typedOf(sequence);
+            if (typed === null) {
+                return Promise.resolve({ ok: false, error: empty });
+            }
+            var backend = opts.backend || "auto";
+            var request = { kind: kind, input: typed, form: opts.form,
+                            backend: backend };
+            Object.keys(extra || {}).forEach(function (k) {
+                request[k] = extra[k];
+            });
+            return generate(request,
+                            { kind: kind,
+                              generator_input: { sequence: typed,
+                                                 form: opts.form,
+                                                 backend: backend } },
+                            reason);
+        }
+
+        /** Wire a builder panel's page, ONE SHAPE FOR ALL FIVE -- its
+         *  ``<kind>-input``, Generate button, status and findings list, and
+         *  the menus and clash-relief box where the kind has them -- to
+         *  ``build(text, opts)``, once.  The status line says what was typed
+         *  and what built it -- in the Backend menu's own words where the
+         *  panel has one, else as the answer names it; what the build did
+         *  not build of what was asked is the findings' to say, under it. */
+        var wired = false;
+        function wirePanel(doc, kind, build, label) {
+            if (!doc || wired) return;
+            wired = true;
+            var el = function (part) {
+                return doc.getElementById(kind + "-" + part);
+            };
+            var input = el("input"), button = el("generate-btn");
+            var formSel = el("form-select"), backendSel = el("backend-select");
+            var relax = el("relax-clashes"), status = el("status");
+            deps.panel = el("findings") || null;
+            if (!input || !button) return;
+            var say = function (msg, severity) {
+                host.molbuilder.status.set(
+                    status, msg, severity === "error" ? "error" : null);
+            };
+            var wordsOf = function (backend) {
+                var opts = backendSel ? backendSel.options || [] : [];
+                for (var i = 0; i < opts.length; i++) {
+                    if (opts[i].value === backend) return opts[i].text;
+                }
+                return backend;
+            };
+            button.addEventListener("click", function () {
+                // THE TEXT AS TYPED: the builder reads it and says what it
+                // cannot; captured at the click, so the line names what was
+                // built, not what was typed while it ran.
+                var typed = input.value.trim();
+                button.disabled = true;
+                say("Generating " + label + "\u2026", "generating");
+                build(typed, {
+                    form: formSel ? formSel.value : undefined,
+                    backend: backendSel ? backendSel.value : undefined,
+                    relaxClashes: !!(relax && relax.checked),
+                }).then(function (r) {
+                    button.disabled = false;
+                    if (r.ok) {
+                        say("Generated " + r.n_atoms + " atoms from " + typed
+                            + (r.backend_used
+                               ? " on " + wordsOf(r.backend_used) : ""));
+                    } else if (r.cancelled) {
+                        // Not applied: the workspace is untouched, said so
+                        // the person does not think Generate failed.
+                        say("Kept existing workspace.");
+                    } else {
+                        say(r.error || "Generation failed.", "error");
+                    }
+                });
+            });
+            // Enter inside the input is Generate too.
+            input.addEventListener("keydown", function (ev) {
+                if (ev.key === "Enter" && !button.disabled) {
+                    ev.preventDefault();
+                    button.click();
+                }
+            });
         }
 
         /** The production door: re-read every call. */
@@ -149,42 +254,59 @@
         }
 
         return {
-            generate: generate,
             generateText: generateText,
-            /** The list under the panel's status its builds' findings are
-             *  drawn in, named when the panel is wired. */
-            findingsIn: function (panel) { deps.panel = panel || null; },
+            generateNucleic: generateNucleic,
+            wirePanel: wirePanel,
             /** The test door: explicit fakes win, and keep winning. */
             configure: function (opts) {
                 opts = opts || {};
                 if (opts.structurePage) deps.structurePage = opts.structurePage;
                 if (opts.findings) deps.findings = opts.findings;
             },
-            resolve: resolve,
-            get structurePage() { return deps.structurePage; },
         };
     }
 
-    /**
-     * Extract a strand's CORE 5'->3' sequence, honouring direction markers:
-     *   "ATGC"       -> "ATGC"
-     *   "5'-ATGC-3'" -> "ATGC"      (default direction)
-     *   "3'-ATGC-5'" -> "CGTA"      (reversed to internal 5'->3')
-     */
-    function strandCore(str) {
-        var s = String(str == null ? "" : str).trim();
-        var m = s.match(/^\s*([53])'\s*-\s*([\s\S]*?)\s*-\s*([53])'\s*$/);
-        var core;
-        if (m) {
-            core = m[2].replace(/[^A-Za-z]/g, "").toUpperCase();
-            if (m[1] === "3") core = core.split("").reverse().join("");
-        } else {
-            core = s.replace(/[^A-Za-z]/g, "").toUpperCase();
+    /** ONE BUILDER PANEL, its skeleton said once for all five: its slot
+     *  (`make`), its ``generate`` made from the slot (``spec.generate``),
+     *  and its api -- ``configure`` (the test door), ``generate``,
+     *  and ``wirePanel`` (its page, by ``spec.kind``'s ids, its status
+     *  naming ``spec.label``).  Under node (``mod``, the panel
+     *  file's own module) the api is the file's export; in the page it is
+     *  ``molbuilder[spec.global]``, wired once the document has loaded and
+     *  registered with the runtime as ``structure.<kind>``.  The slots are
+     *  read at each call (`resolve`), so nothing is configured at load. */
+    function panel(host, mod, spec) {
+        var slot = make(host);
+        var generate = spec.generate(slot);
+        var api = {
+            configure: slot.configure,
+            generate:  generate,
+            wirePanel: function (opts) {
+                slot.wirePanel((opts || {}).doc || host.document, spec.kind,
+                               generate, spec.label);
+            },
+        };
+        if (mod && mod.exports) {
+            mod.exports = api;
+            return api;
         }
-        return core;
+        host.molbuilder[spec.global] = api;
+        if (host.document) {
+            if (host.document.readyState === "loading") {
+                host.document.addEventListener(
+                    "DOMContentLoaded", function () { api.wirePanel(); });
+            } else {
+                api.wirePanel();
+            }
+        }
+        if (host.molbuilder.runtime
+            && typeof host.molbuilder.runtime.register === "function") {
+            host.molbuilder.runtime.register("structure." + spec.kind, api);
+        }
+        return api;
     }
 
-    var api = { make: make, BUILD_URL: BUILD_URL, strandCore: strandCore };
+    var api = { panel: panel };
     if (typeof module !== "undefined" && module.exports) {
         module.exports = api;
     }

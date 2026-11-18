@@ -153,7 +153,7 @@ states the *why* so the thresholds don't drift silently.
 | Check | Severity | Why |
 |---|---|---|
 | min atom–atom distance < 0.3 Å | **error** | atoms on top of each other; SCF diverges |
-| min atom–atom distance 0.3–0.7 Å | warn | likely broken structure (failed protonation / bad backend output) |
+| min atom–atom distance 0.3–0.7 Å | warn | two atoms overlap — too short for any real bond |
 | H/heavy ratio, on every structure with a heavy non-metal atom | info | **a reference number, never a verdict** — `H/heavy non-metal atoms: 4/8 = 0.50 (for reference: organic molecules usually sit at 0.6-1.5)`, counted by element (`chemistry.is_atom`) against the heavy **non-metal** atoms only (`chemistry.NONMETALS`): the reference range is organic molecules', so a junction's gold is no part of the count, and a structure with no non-metal heavy atom — a gold lead — gets no note. Whether hydrogens are missing is the scientist's to judge: an oxide or graphene has none by construction *(the user, 2026-10-11: "maybe just provide that ratio as a reference"; counted against the non-metals because a gold lead would read 0/75 and a junction 4/440)* |
 | polymer residue listing reversed / no preceding O3′–P bridge | warn | reversed or disconnected backbone — a likely backend regression |
 

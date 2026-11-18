@@ -1,94 +1,35 @@
-"""Shared helpers across nucleic-acid backends."""
+"""What 3DNA's and AmberTools' backends share: their programs write
+coordinates, not bonds, so each checks its backbone after a build and keeps
+the one chain it built."""
 
 from __future__ import annotations
 
 from typing import Optional
 
-import numpy as np
-
-from ...engine_atom_index import pdb_numbering
 from ...structure import Structure
 
 
-def rdkit_mol_to_structure(mol, *, title: Optional[str] = None) -> Structure:
-    """Convert an RDKit Mol with a 3D conformer + PDB residue info into
-    our :class:`Structure` dataclass.
+def verify_backbone_connectivity(struct: Structure) -> Optional[str]:
+    """Return None if every nucleotide's link to the one before it in its
+    chain is bridged (`chemistry.backbone_links`, the one rule), else a
+    string describing the worst violation.  A
+    duplex's strands number their residues on, so a residue's neighbour by
+    number may be the other strand's, which no backbone joins -- the rule
+    reads each chain on its own.
 
-    Atoms missing PDB info (e.g. hydrogens added without coords) get
-    sensible defaults so the result is still a valid Structure.
+    The self-check of the backends whose programs write coordinates, not
+    bonds -- 3DNA's and AmberTools' (RDKit builds the bonds itself): if it
+    fails the backend raises rather than ship a broken structure.
     """
-    elements = []
-    positions = []
-    atom_names = []
-    residue_ids = []
-    residue_names = []
-    chain_ids = []
-
-    if mol.GetNumConformers() == 0:
-        raise ValueError("RDKit Mol has no 3D conformer; cannot extract positions")
-
-    conf = mol.GetConformer()
-    for i, atom in enumerate(mol.GetAtoms()):
-        elements.append(atom.GetSymbol())
-        p = conf.GetAtomPosition(i)
-        positions.append([p.x, p.y, p.z])
-        info = atom.GetPDBResidueInfo()
-        if info is not None:
-            atom_names.append(info.GetName().strip() or f"{atom.GetSymbol()}{pdb_numbering(i)}")
-            residue_ids.append(info.GetResidueNumber() or 1)
-            residue_names.append(info.GetResidueName().strip() or "MOL")
-            chain_ids.append(info.GetChainId().strip() or "A")
-        else:
-            atom_names.append(f"{atom.GetSymbol()}{pdb_numbering(i)}")
-            residue_ids.append(1)
-            residue_names.append("MOL")
-            chain_ids.append("A")
-
-    return Structure(
-        elements=elements,
-        positions=np.asarray(positions, dtype=float),
-        atom_names=atom_names,
-        residue_ids=residue_ids,
-        residue_names=residue_names,
-        chain_ids=chain_ids,
-        title=title or "",
-    )
-
-
-def verify_backbone_connectivity(struct: Structure,
-                                 max_O3_P: float = 1.80,
-                                 ) -> Optional[str]:
-    """Return None if the inter-residue P-O3' distances within each chain are
-    all under `max_O3_P` Angstrom (implies the backbone is bonded), else a
-    string describing the worst violation.  A duplex's strands number their
-    residues on, so a residue's neighbour by number may be the other strand's,
-    which no backbone joins.
-
-    Used as a self-check at the end of every backend run.  If it fails
-    the backend should raise rather than ship a broken structure.
-    """
-    P_pos:  dict = {}
-    O3_pos: dict = {}
-    for i in range(struct.n_atoms):
-        where = (struct.chain_ids[i], struct.residue_ids[i])
-        n = struct.atom_names[i]
-        if n == "P":
-            P_pos[where] = struct.positions[i]
-        elif n == "O3'":
-            O3_pos[where] = struct.positions[i]
-    worst = None
-    worst_d = 0.0
-    for chain, r in sorted(P_pos):
-        if (chain, r - 1) in O3_pos:
-            d = float(np.linalg.norm(P_pos[chain, r] - O3_pos[chain, r - 1]))
-            if d > max_O3_P and d > worst_d:
-                worst = (chain, r - 1, r, d)
-                worst_d = d
-    if worst is None:
+    from ...chemistry import O3P_BRIDGE_A, backbone_links
+    broken = {where: link for where, link in backbone_links(struct).items()
+              if not link.bridged}
+    if not broken:
         return None
-    chain, a, b, d = worst
-    return (f"chain {chain} residue {a} O3' -> residue {b} P distance = "
-            f"{d:.2f} A (should be <= {max_O3_P}); backbone is broken")
+    (chain, b), link = max(broken.items(), key=lambda kv: kv[1].distance)
+    return (f"chain {chain} residue {b - 1} O3' -> residue {b} P distance = "
+            f"{link.distance:.2f} A (should be <= {O3P_BRIDGE_A}); backbone "
+            f"is broken")
 
 
 def first_chain(struct: Structure) -> Structure:

@@ -1,19 +1,17 @@
-"""Backend dispatch / registry tests.
+"""Backend dispatch / registry tests (`engines/builders.md` § 4).
 
-Tested in isolation from the SIESTA / PySCF e2e flow that
-``test_smiles_and_siesta.py`` covers.  These tests pin the dispatch
-contract:
+  * ``auto`` runs the first installed in `BACKENDS`' order; none installed
+    is each backend's own account.
+  * Every backend answers every ask the registry allows (``built``).
+  * 3DNA is found at the first complete place it is looked for, and not
+    found is said place by place, on every road that needs it.
+  * 3DNA's real builds, where it is installed.
 
-  * ``dispatch(backend="auto")`` picks the first available in the
-    documented order (threedna > amber > rdkit).
-  * ``dispatch(backend="<name>")`` calls that backend exclusively;
-    no fallback.
-  * Unknown backend names raise ``ValueError``.
-  * No-backends-available raises ``BackendUnavailable``.
-
-The tests stub out the actual backend build functions so they don't
-depend on rdkit / AmberTools being installed -- the dispatch layer
-is what's under test, not the builders themselves.
+A backend asked by name builds on it, no fallback: the real builds that ask
+one by name pin it (an RDKit 3'-phosphate, `test_nucleic.py`; the CLI's
+backend row, `test_cli.py`).  Absent backends through the one door
+(`support.tooling.make_absent`), or a real 3DNA tree of the shape a person
+leaves.
 """
 
 from __future__ import annotations
@@ -25,217 +23,123 @@ from molbuilder.chemistry import BackendUnavailable
 from support import tooling
 
 
-def test_dispatch_explicit_backend_calls_only_that_one(monkeypatch):
-    """When the caller names a backend explicitly, that backend is the one
-    called -- the user picked it for a reason.  Not falling back when it
-    cannot run is `test_dispatch_threedna_unavailable_raises_with_message`."""
-    calls = []
-
-    def fake_amber_build(kind, sequence, form, terminal, title,
-                         double_strand=False, strand2=None):
-        calls.append("amber")
-        return "amber-result"
-
-    def fake_rdkit_build(kind, sequence, form, terminal, title,
-                         double_strand=False, strand2=None):
-        calls.append("rdkit")
-        return "rdkit-result"
-
-    # Patch the loader, not the modules, so we exercise the real
-    # registry plumbing.
-    from molbuilder.builders import backends
-    monkeypatch.setattr(
-        backends, "_load_backends",
-        lambda: {"amber": fake_amber_build, "rdkit": fake_rdkit_build},
-    )
-
-    result = dispatch("dna", "ATGC", backend="rdkit")
-    assert result == "rdkit-result"
-    assert calls == ["rdkit"]   # amber NOT called
-
-
-def test_dispatch_auto_prefers_amber_then_rdkit(monkeypatch):
-    """auto mode picks the FIRST available backend in dispatch order
-    (amber > rdkit).  Documented in molbuilder/builders/backends/__init__.py
-    docstring; reflected here so a future re-ordering shows up.
-    """
-    calls = []
-    from molbuilder.builders import backends
-    monkeypatch.setattr(
-        backends, "_load_backends",
-        lambda: {
-            "amber": lambda *a, **k: (calls.append("amber") or "amber-out"),
-            "rdkit": lambda *a, **k: (calls.append("rdkit") or "rdkit-out"),
-        },
-    )
-    monkeypatch.setattr(
-        backends, "available_backends",
-        lambda: {"amber": True, "rdkit": True},
-    )
-    out = dispatch("dna", "ATGC", backend="auto")
-    assert out == "amber-out"
-    assert calls == ["amber"]
-
-
-def test_dispatch_auto_falls_through_when_amber_unavailable(monkeypatch):
-    calls = []
-    from molbuilder.builders import backends
-    monkeypatch.setattr(
-        backends, "_load_backends",
-        lambda: {
-            "amber": lambda *a, **k: (calls.append("amber") or "amber-out"),
-            "rdkit": lambda *a, **k: (calls.append("rdkit") or "rdkit-out"),
-        },
-    )
-    monkeypatch.setattr(
-        backends, "available_backends",
-        lambda: {"amber": False, "rdkit": True},
-    )
-    out = dispatch("dna", "ATGC", backend="auto")
-    assert out == "rdkit-out"
-    assert calls == ["rdkit"]   # amber skipped, rdkit ran
-
-
-def test_dispatch_auto_raises_when_nothing_available(monkeypatch):
-    """No backends installed -> a single, helpful BackendUnavailable
-    pointing at both install commands.  No backend silently runs."""
-    from molbuilder.builders import backends
-    monkeypatch.setattr(
-        backends, "_load_backends",
-        lambda: {"amber": lambda *a, **k: None, "rdkit": lambda *a, **k: None},
-    )
-    monkeypatch.setattr(
-        backends, "available_backends",
-        lambda: {"amber": False, "rdkit": False},
-    )
+@pytest.mark.parametrize("absent, runs", [
+    ((), "threedna"),
+    (("threedna",), "amber"),
+    (("threedna", "amber"), "rdkit"),
+    (("threedna", "amber", "rdkit"), None),
+], ids=["all-installed", "no-3dna", "only-rdkit", "none-installed"])
+def test_auto_runs_the_first_backend_installed(monkeypatch, absent, runs):
+    """`engines/builders.md` § 4: ``auto`` runs the first installed backend
+    in `BACKENDS`' order -- best geometry first, 3DNA, AmberTools, RDKit --
+    each skipped one quietly; with none installed, one answer naming every
+    backend and how each is installed.  The backends made absent by the
+    one door (`support.tooling.make_absent`)."""
+    from molbuilder.builders.backends import resolved_backend
+    if runs:
+        tooling.needs_backend(runs)
+    for name in absent:
+        tooling.make_absent(monkeypatch, name)
+    if runs:
+        assert resolved_backend("auto") == runs
+        return
     with pytest.raises(BackendUnavailable) as exc:
         dispatch("dna", "ATGC", backend="auto")
     msg = str(exc.value)
-    # Must point users at both alternatives.
-    assert "rdkit" in msg
-    assert "ambertools" in msg.lower()
+    assert all(name in msg for name in ("3DNA", "AmberTools", "RDKit")), msg
 
 
-def test_dispatch_unknown_backend_raises_value_error():
-    """Unknown backend name is a usage error, not a missing-tool
-    error -- ValueError, not BackendUnavailable."""
-    with pytest.raises(ValueError) as exc:
-        dispatch("dna", "ATGC", backend="nonsense")
-    msg = str(exc.value)
-    assert "nonsense" in msg
-    # Error must enumerate the valid choices so users can fix it.
-    assert "rdkit" in msg or "amber" in msg
-    assert "auto" in msg
+def test_every_backend_answers_every_ask_the_registry_allows():
+    """`engines/builders.md` § 1: each backend's own table covers every form
+    a kind is built in and every terminal (``KIND_FORMS``, ``TERMINALS``) --
+    its ``built`` answers each, a form asked or none, a terminal of the
+    registry's.  The silent failure: a word added to the registry is offered
+    at once by the command line and the page's menus, and a backend whose
+    table lacks it ends in a KeyError -- a server fault, or a crash in the
+    check after a build that succeeded."""
+    from molbuilder.builders.backends import (BACKENDS, KIND_FORMS,
+                                              TERMINALS, built)
+    for backend in BACKENDS:
+        for kind, forms in KIND_FORMS.items():
+            for form in forms:
+                for terminal in TERMINALS:
+                    made = built(backend, kind, form, terminal)
+                    assert made.form in (form, None), (backend, kind, form)
+                    assert made.terminal in TERMINALS, (backend, terminal)
 
 
 # --------------------------------------------------------------------- #
-#  3DNA detection chain                                                  #
-#                                                                        #
-#  Resolution priority (per molbuilder/builders/backends/_threedna.py):           #
-#    1. in-tree:  <repo_root>/x3dna-v*/  (preferred dev path)           #
-#    2. env var:  $X3DNA points at a complete install                   #
-#    3. PATH:     `fiber` on $PATH, derive root from its location        #
-#                                                                        #
-#  Each candidate must have BOTH bin/fiber (executable) AND config/     #
-#  to count as "complete".                                              #
+#  3DNA detection: in-tree at the repo root, $X3DNA, fiber on PATH       #
 # --------------------------------------------------------------------- #
 
 
-def test_threedna_resolves_via_env_when_in_tree_missing(tmp_path, monkeypatch):
-    """If no in-tree x3dna-v*/ is present but $X3DNA points at a
-    valid install, the env path wins."""
-    from molbuilder.builders.backends import _threedna
-    fake_root = tmp_path / "x3dna-fake"
-    (fake_root / "bin").mkdir(parents=True)
-    (fake_root / "config").mkdir()
-    fiber = fake_root / "bin" / "fiber"
+def _a_3dna_root(at, *, config=True):
+    """A 3DNA tree as its tarball unpacks at ``at``: an executable
+    ``bin/fiber``, and ``config/`` unless ``config`` is false."""
+    fiber = at / "bin" / "fiber"
+    fiber.parent.mkdir(parents=True)
     fiber.write_text("#!/bin/sh\nexit 0\n")
     fiber.chmod(0o755)
-
-    # Force in-tree to miss; env to hit.
-    monkeypatch.setattr(_threedna, "_find_in_tree", lambda: None)
-    monkeypatch.setenv("X3DNA", str(fake_root))
-    found = _threedna._resolve()
-    assert found is not None
-    assert found.source == "env"
-    assert found.root == str(fake_root)
+    if config:
+        (at / "config").mkdir()
+    return at
 
 
-def test_threedna_unavailable_when_config_missing(tmp_path, monkeypatch):
-    """An incomplete install (bin/fiber present but no config/) must
-    NOT be claimed.  Without config/ the fiber binary fails at runtime
-    with cryptic errors -- detection has to filter this case out."""
+@pytest.mark.parametrize("in_tree, env, found", [
+    (None, "complete", "env"),
+    ("complete", "complete", "in-tree"),
+    ("no config", "no config", None),
+], ids=["$X3DNA when nothing in-tree", "in-tree before $X3DNA",
+        "a root without config/ is never claimed"])
+def test_threedna_is_found_at_the_first_complete_place(tmp_path, monkeypatch,
+                                                       in_tree, env, found):
+    """`engines/builders.md` § 4: 3DNA is looked for in order -- in-tree at
+    the repo root, ``$X3DNA``, ``fiber`` on PATH -- and the first COMPLETE
+    root, an executable ``bin/fiber`` and ``config/``, is used.  The silent
+    failure: a root without ``config/`` claimed, and fiber failing at run
+    time, cryptically.  Real trees of each shape; PATH holding no fiber."""
     from molbuilder.builders.backends import _threedna
-    bad_root = tmp_path / "x3dna-broken"
-    (bad_root / "bin").mkdir(parents=True)
-    fiber = bad_root / "bin" / "fiber"
-    fiber.write_text("#!/bin/sh\nexit 0\n")
-    fiber.chmod(0o755)
-    # No config/ directory -- detection must reject this root.
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    roots = {}
+    if in_tree:
+        roots["in-tree"] = _a_3dna_root(repo / "x3dna-v2.4",
+                                        config=in_tree == "complete")
+    roots["env"] = _a_3dna_root(tmp_path / "elsewhere",
+                                config=env == "complete")
+    monkeypatch.setattr(_threedna, "_repo_root", lambda: repo)
+    monkeypatch.setenv("X3DNA", str(roots["env"]))
+    monkeypatch.setenv("PATH", str(tmp_path / "nowhere"))
+    got = _threedna._resolve()
+    assert (got.root if got else None) == (str(roots[found]) if found
+                                           else None)
 
-    monkeypatch.setattr(_threedna, "_find_in_tree", lambda: None)
-    monkeypatch.setenv("X3DNA", str(bad_root))
-    monkeypatch.setattr(_threedna, "_find_via_path", lambda: None)
-    assert _threedna._resolve() is None
 
-
-def test_threedna_unavailable_message_has_required_pieces(monkeypatch):
-    """The unavailability message must mention all three failure modes
-    plus the license / fallback contract from docs/design.md."""
+@pytest.mark.parametrize("text, asked", [
+    ("ATGC", {"backend": "threedna"}),
+    ("ds,ATGC", {}),
+], ids=["3DNA asked by name", "a duplex, which 3DNA builds"])
+def test_threedna_not_found_says_where_it_was_looked_for(tmp_path,
+                                                         monkeypatch, text,
+                                                         asked):
+    """`engines/builders.md` § 4: 3DNA not found says each place it looked
+    and what it found there, and how it is installed -- its licence the
+    person's to accept -- on every road that needs it.  The silent failures:
+    3DNA unpacked at the repo root without its ``config/`` said as "no
+    match", the person told to unpack it where it was (F12's fourth review);
+    a duplex asked told only the install line (the fifth, 2026-11-18).  A
+    real tree of that shape at the repo root, 3DNA's other places empty."""
+    from molbuilder.builders import build
     from molbuilder.builders.backends import _threedna
-    monkeypatch.setattr(_threedna, "_find_in_tree", lambda: None)
+    _a_3dna_root(tmp_path / "x3dna-v2.4", config=False)
+    monkeypatch.setattr(_threedna, "_repo_root", lambda: tmp_path)
     monkeypatch.delenv("X3DNA", raising=False)
-    monkeypatch.setattr(_threedna, "_find_via_path", lambda: None)
-    msg = _threedna._unavailable_message()
-    # All three resolution strategies named:
-    assert "in-tree" in msg.lower()
-    assert "X3DNA" in msg
-    assert "PATH" in msg
-    # License / fetch-yourself contract:
-    assert "x3dna.org" in msg
-    assert "non-commercial" in msg.lower()
-    # Fallback backends named:
-    assert "amber" in msg
-    assert "rdkit" in msg
-
-
-def test_dispatch_threedna_unavailable_raises_with_message(monkeypatch):
-    """When the user explicitly requests --backend threedna and the
-    chain finds nothing, dispatch must raise BackendUnavailable
-    carrying the full message contract.  Auto-mode falling through is
-    NOT enough -- explicit request must surface the install hint."""
-    from molbuilder.builders.backends import _threedna
-    monkeypatch.setattr(_threedna, "_resolve", lambda: None)
+    monkeypatch.setenv("PATH", str(tmp_path / "nowhere"))
     with pytest.raises(BackendUnavailable) as exc:
-        dispatch("dna", "ATGC", backend="threedna")
+        build("dna", text, **asked)
     msg = str(exc.value)
-    assert "x3dna.org" in msg
-    assert "non-commercial" in msg.lower()
-
-
-def test_dispatch_auto_falls_through_threedna_silently(monkeypatch):
-    """When threedna is unavailable in auto mode, dispatch must skip
-    it cleanly and try amber.  No BackendUnavailable, no warning --
-    just a quiet fall-through."""
-    captured = []
-    from molbuilder.builders import backends
-    monkeypatch.setattr(
-        backends, "_load_backends",
-        lambda: {
-            "threedna": lambda *a, **k: (
-                pytest.fail("threedna build called when unavailable")
-            ),
-            "amber": lambda *a, **k: captured.append("amber") or "amber-out",
-            "rdkit": lambda *a, **k: "rdkit-out",
-        },
-    )
-    monkeypatch.setattr(
-        backends, "available_backends",
-        lambda: {"threedna": False, "amber": True, "rdkit": True},
-    )
-    out = dispatch("dna", "ATGC", backend="auto")
-    assert out == "amber-out"
-    assert captured == ["amber"]
+    assert all(word in msg for word in ("x3dna-v2.4", "config", "$X3DNA",
+                                        "PATH", "x3dna.org")), msg
 
 
 # --------------------------------------------------------------------- #
@@ -274,55 +178,35 @@ def test_threedna_a_form_differs_from_b_form():
     )
 
 
-def test_threedna_is_alternating_gc_helper():
-    """Bug #2 helper (2026-06-07): the alternating-poly-d(GC)
-    predicate that gates the Z-DNA path.  Pins the exact set of
-    sequences fiber's ``-z`` can build, plus rejects partial
-    matches that would silently slip through to fiber's
-    interactive 'Number of repeats' prompt."""
-    from molbuilder.builders.backends import _threedna as _td
-    _is_alternating_gc = _td._is_alternating_gc
-    # Accepted: strict alternation, both orientations, multiple
-    # repeats.
-    assert _is_alternating_gc("GC")     is True
-    assert _is_alternating_gc("CG")     is True
-    assert _is_alternating_gc("GCGC")   is True
-    assert _is_alternating_gc("CGCGCG") is True
-    assert _is_alternating_gc("gcgc")   is True   # case-insensitive
-    # Rejected: single base, empty, non-(GC) alphabet, repeated G/C
-    # in a row, partial alternation, odd-length (no integer GC
-    # repeat count).
-    assert _is_alternating_gc("")       is False
-    assert _is_alternating_gc("G")      is False   # too short
-    assert _is_alternating_gc("GCGG")   is False   # repeats
-    assert _is_alternating_gc("ATGC")   is False   # non-(GC)
-    assert _is_alternating_gc("GCG")    is False   # odd length
-    assert _is_alternating_gc("CGCGT")  is False
-
-
-def test_threedna_z_form_with_non_gc_sequence_rejects_fast():
-    """Bug #2 fix (2026-06-07): Z + non-(GC)n must raise a
-    ValueError BEFORE any subprocess.run(fiber ...) call.  Pre-fix
-    fiber dropped into its interactive 'Number of repeats' prompt
-    and the request hung for 60 s reading from the inherited
-    stdin under capture_output=True.  Skipped when 3DNA isn't
-    reachable (the build() entry-point raises BackendUnavailable
-    earlier in that case)."""
+@pytest.mark.parametrize("sequence", [
+    "ATGC",      # not the GC repeat
+    "CGCGCG",    # the repeat C first: fiber would build GCGCGC in its place
+])
+def test_threedna_z_form_refuses_what_fiber_does_not_build(sequence):
+    """`engines/builders.md` § 5: fiber's Z model is d(GC)n, G first, laid
+    by repeat count and never by sequence -- any other Z ask is refused
+    BEFORE fiber runs, naming the way, never built as something else.  Two
+    silent failures: fiber's interactive 'Number of repeats' prompt hanging
+    the request for 60 s (2026-06-07), and a C-first ask built as its
+    G-first neighbour with no word (F12's review, 2026-11-18)."""
     from molbuilder.builders.backends import _threedna
     tooling.needs_backend("threedna")
-    with pytest.raises(ValueError, match=r"Z-DNA.*poly-d\(GC\)"):
-        _threedna.build("dna", "ATGC", form="Z", terminal="OH")
+    from molbuilder.chemistry import BuildRefused
+    with pytest.raises(BuildRefused) as refused:
+        _threedna.build("dna", sequence, form="Z", terminal="OH")
+    # Refused naming what was asked and the repeat it builds (§ 5).
+    assert sequence in str(refused.value) and "GCGC" in str(refused.value)
 
 
-def test_threedna_z_form_with_alternating_gc_succeeds():
-    """The flip side: GCGCGC + form=Z must build cleanly under
-    3DNA.  Catches the case where the new alternating-GC guard
-    accidentally rejects a sequence fiber actually accepts."""
+def test_threedna_z_form_builds_the_repeat_it_was_asked():
+    """The flip side: GCGCGC in Z-form builds, and the strand reads G first
+    from its 5' end -- the sequence asked, residue by residue."""
     from molbuilder.builders.backends import _threedna
     tooling.needs_backend("threedna")
     s = _threedna.build("dna", "GCGCGC", form="Z", terminal="OH")
-    assert s.n_atoms > 0
-    assert "P" in s.elements
+    order = [name for _, name in sorted({(r, n) for r, n in zip(
+        s.residue_ids, s.residue_names)})]
+    assert order == ["DG", "DC", "DG", "DC", "DG", "DC"], order
 
 
 def test_threedna_rna_uses_uracil_not_thymine():

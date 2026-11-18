@@ -83,20 +83,21 @@ def check_species_labels(struct: Structure, *, engine: str = ""
 
 
 def _check_peptide_protonation(struct: Structure, charge) -> List[Issue]:
-    """Hint at the gap between gas-phase neutral build and
-    physiological charge state for peptides with charged side chains.
+    """Hint at the gap between the peptide as built, run at charge 0, and
+    its physiological charge state, for peptides with charged side
+    chains.
 
-    PeptideBuilder + AddHs produces a neutral molecule by default
-    (Asp / Glu protonated, Lys / Arg uncharged amines).  At pH 7 the
+    PeptideBuilder + AddHs builds Asp / Glu protonated and Lys / Arg as
+    uncharged amines.  At pH 7 the
     charged side chains carry a net charge.  Most users don't realise
-    the script is silently using the gas-phase neutral form.
+    the run is the structure as built, at charge 0.
 
     ``charge`` is the electronic state's resolved charge
     (``electronic_state.Resolved``).  Triggered only when the structure
     looks like a peptide, its estimated pH-7 charge is non-zero, and the
     charge that will run is 0 -- whether the phosphate rule found nothing
-    (a peptide has no phosphates) or a person stated neutral: both build
-    the same gas-phase form, so both deserve to hear about the side chains.
+    (a peptide has no phosphates) or a person stated neutral: both run the
+    structure as built, so both deserve to hear about the side chains.
 
     Severity: warn (not error).  The neutral build may be exactly
     what the user wants -- the surface emits SIESTA / PySCF input
@@ -111,10 +112,52 @@ def _check_peptide_protonation(struct: Structure, charge) -> List[Issue]:
         "warn",
         f"peptide has charged side chains (estimated charge at "
         f"pH 7.4: {expected:+d}) but the net charge is 0 ({charge.said}); "
-        f"the script will build the gas-phase neutral form (Asp/Glu "
+        f"the run is the structure as built, at charge 0 (Asp/Glu "
         f"protonated, Lys/Arg neutral).  For physiological-state runs "
-        f"state net_charge = {expected} (and consider the basis: an anion "
-        f"needs diffuse functions such as aug-cc-pVDZ)",
+        f"state net_charge = {expected}"
+        + (" (and consider the basis: an anion needs diffuse functions such "
+           "as aug-cc-pVDZ)" if expected < 0 else ""),
+        "config.net_charge",
+    )]
+
+
+def _check_quaternary_ammonium(struct: Structure, state) -> List[Issue]:
+    """A quaternary ammonium nitrogen in a finite system whose charge the
+    person left blank (`model/chemistry.md` § 1; the user, 2026-11-18:
+    "Don't count; warn"): +1 whatever the pH, which a blank charge does not
+    count -- the molecule's net charge is its +1 with any other charged
+    group it holds (a zwitterion's carboxylate, a counter-ion), which
+    molbuilder does not read -- so it is said, naming each, and the net
+    charge asked for; for a peptide, with its side chains' charge at pH 7.4
+    too, the one advisory on charge (ES9).  Never decided on the person's
+    behalf.  Any charge the person left blank, whatever filled it -- the
+    one detection gives, or the one carried from the run the structure came
+    out of (the user, 2026-11-18: "Warn on carried too"); a stated charge is
+    the person's.  A repeating cell is no molecule: a four-bonded nitrogen
+    there is the lattice's."""
+    from ..chemistry import (expected_pH7_peptide_charge,
+                             quaternary_ammonium, total_electrons)
+    charge = state.net_charge
+    if charge.source == "stated" or not state.finite:
+        return []
+    found = quaternary_ammonium(struct)
+    if not found:
+        return []
+    each = ("a quaternary ammonium nitrogen, +1" if len(found) == 1 else
+            f"quaternary ammonium nitrogens, +1 each ({len(found):+d} in all)")
+    peptide = expected_pH7_peptide_charge(struct)
+    return [Issue(
+        "warn",
+        f"{struct.atoms_named(found)}: {each}, which a blank net charge does "
+        f"not count.  The run takes the charge as {charge.value} "
+        f"({charge.said}): {total_electrons(struct, charge.value)} "
+        f"electrons.  State the net charge -- "
+        f"{'its' if len(found) == 1 else 'their'} {len(found):+d} with any "
+        f"other charged group the structure holds (a carboxylate, a "
+        f"counter-ion)"
+        + (f"; this peptide's estimated charge at pH 7.4, its side chains "
+           f"with it, is {peptide:+d}" if peptide else "")
+        + ".",
         "config.net_charge",
     )]
 
@@ -168,8 +211,16 @@ def check_electronic_state(struct: Structure, cfg, *, calculation: str,
     # there would be advice this family refuses.
     return (out + _spin_findings(struct, state, engine, calculation)
             + _spin_hint(cfg, state)
-            + (_check_peptide_protonation(struct, state.net_charge)
-               if fixed is None else []))
+            + (_charge_findings(struct, state) if fixed is None else []))
+
+
+def _charge_findings(struct: Structure, state) -> List[Issue]:
+    """The charge's advisories, at most one (ES9): a quaternary ammonium the
+    blank charge does not count, when there is one -- its words cover the
+    peptide's other charged groups too -- else the peptide's charged side
+    chains at pH 7."""
+    return (_check_quaternary_ammonium(struct, state)
+            or _check_peptide_protonation(struct, state.net_charge))
 
 
 def _spin_hint(cfg, st) -> List[Issue]:

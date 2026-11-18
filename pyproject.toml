@@ -109,7 +109,7 @@ dependencies = [
 rdkit = ["rdkit>=2023.9"]
 
 # Common-name lookup
-name = ["pubchempy>=1.0"]
+name = ["pubchempy>=1.0.5"]
 
 # Browser UI -- kept for back-compat; flask is now in core dependencies
 # above, so `pip install molbuilder` already pulls it in.
@@ -175,7 +175,7 @@ e2e = [
 # Everything molbuilder itself can use (build-time deps only).
 all = [
     "rdkit>=2023.9",
-    "pubchempy>=1.0",
+    "pubchempy>=1.0.5",
     "flask>=3.0",
     "authlib>=1.3",
     "python-cas>=1.6",

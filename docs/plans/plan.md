@@ -26,7 +26,7 @@ as they stood.
 
 ## ▶ HANDOVER — where we are, and where to start *(2026-11-18)*
 
-**Where we are: 2.77.3.** F0–F11 and F7a are closed; F9's low-harm last
+**Where we are: 2.77.4.** F0–F11 and F7a are closed; F9's low-harm last
 items wait (*Left, in order*, below). F12, *Proven*, has walked its three
 roads in the browser on real runs, run the full batch and its two review
 rounds; its fix releases run next (*What runs next*). Since 2.67.11 three bodies of work the user put first have run;
@@ -129,11 +129,14 @@ found, verified, 27 wrong results and 7 crashes (round 1, by module in
 `TRIAGE-round2.md`), many of them the cause of a round-1 defect. Each
 release fixes its module's round-1 defects through the one-home redesign
 round 2 found for that module, every finding re-read when the module is
-read whole: (1) the builders build what was asked; (2) the deck writes the
-value set; (3) the person's files safe, with the test suite's refusing
-scheduler covering `squeue` and `scancel`; (4) a failure said in words,
-never a traceback; (5) the pages show the folder and run they say; (6)
-MolView; (7) the viewers; (8) the run script and the machine. Then the rest
+read whole: (1) the builders build what was asked — done, 2.77.4; (2) the
+deck writes the value set; (3) the person's files safe, with the test
+suite's refusing scheduler covering `squeue` and `scancel`; (4) a failure
+said in words, never a traceback; (5) the pages show the folder and run
+they say; (6) MolView; (7) the viewers; (8) the run script and the machine.
+**No check or warning stops a build or a calculation** *(the user,
+2026-11-18)*: the person decides; a warning is said and the run goes as
+set. Then the rest
 of round 2 module by module, then the 85 chapter sentences. Two answers
 for them *(the user, 2026-11-18)*: a SIESTA vibration's result keeps the
 structure's own notes, as PySCF's does ("Keep them, as PySCF does"); a

@@ -11,26 +11,13 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
+from molbuilder.chemistry import BuildRefused, total_electrons
 from molbuilder.nucleic import build_dna, build_rna
 from molbuilder.builders.backends import available_backends
 from support import tooling
 
 
 _BACKENDS = sorted(available_backends())
-
-
-def _measure_inter_PO3(struct):
-    P_pos, O3_pos = {}, {}
-    for i in range(struct.n_atoms):
-        rid = struct.residue_ids[i]
-        n   = struct.atom_names[i]
-        if   n == "P":      P_pos[rid]  = struct.positions[i]
-        elif n == "O3'":    O3_pos[rid] = struct.positions[i]
-    inter = []
-    for r, p in P_pos.items():
-        if r - 1 in O3_pos:
-            inter.append(float(np.linalg.norm(p - O3_pos[r - 1])))
-    return inter
 
 
 def _no_isolated_atoms(struct, max_nn: float = 2.5):
@@ -49,22 +36,65 @@ def test_dna_4mer_connected(backend):
     tooling.needs_backend(backend)
     s = build_dna("ATGC", backend=backend)
     _no_isolated_atoms(s)
-    inter = _measure_inter_PO3(s)
-    # Helix-aware backends must produce canonical P-O3' bonds.
+    # Helix-aware backends must produce canonical P-O3' bonds -- the one
+    # bridge rule (`chemistry.backbone_links`, `engines/builders.md` § 2).
     if backend != "rdkit":
-        for d in inter:
-            assert d < 1.80, (
-                f"{backend} dna ATGC: inter-residue P-O3' = {d:.2f} A "
-                f"is too long, backbone broken"
-            )
+        from molbuilder.chemistry import backbone_links
+        links = backbone_links(s)
+        assert len(links) == 3, links
+        broken = {where: round(link.distance, 2)
+                  for where, link in links.items() if not link.bridged}
+        assert not broken, f"{backend} dna ATGC: P-O3' too long at {broken}"
 
 
 @pytest.mark.parametrize("backend", _BACKENDS)
 def test_rna_4mer_has_phosphorus(backend):
     tooling.needs_backend(backend)
-    r = build_rna("AUGC", backend=backend,
-                  form=("A" if backend != "rdkit" else "B"))
+    r = build_rna("AUGC", backend=backend)
     assert "P" in r.elements
+
+
+@pytest.mark.parametrize("backend", _BACKENDS)
+@pytest.mark.parametrize("build", [build_dna, build_rna],
+                         ids=["dna", "rna"])
+def test_a_single_nucleotide_is_a_whole_molecule(backend, build):
+    """`engines/builders.md` § 5: one nucleotide is free at both ends -- a
+    whole, closed-shell molecule, its electron count even.  The silent
+    failure (F12's review, 2026-11-18): AmberTools built a one-letter
+    sequence as its 5'-terminal residue alone (DA5 / A5), its 3' end open
+    for a link that never came -- no hydrogen on O3', 131 and 139
+    electrons, a radical, built without a word."""
+    tooling.needs_backend(backend)
+    s = build("A", backend=backend)
+    electrons = total_electrons(s)
+    assert electrons % 2 == 0, (
+        f"{backend}: {electrons} electrons, residues "
+        f"{sorted(set(s.residue_names))}")
+
+
+def test_a_5prime_phosphate_is_the_same_molecule_on_every_backend():
+    """`engines/builders.md` § 5: a strand asked with its 5'-phosphate is one
+    molecule -- the same atoms on every backend that builds it.  The silent
+    failure (F12's third review, 2026-11-18): 3DNA's fiber writes the
+    phosphate one oxygen short (P, OP1, OP2), so ATGC asked 5P came out with
+    641 electrons, a radical, where RDKit's holds 650."""
+    tooling.needs_backend("threedna")
+    built = [build_dna("ATGC", backend=backend, terminal="5P")
+             for backend in ("threedna", "rdkit")]
+    assert [sorted(s.elements) for s in built][0] == sorted(
+        built[1].elements)
+
+
+@pytest.mark.parametrize("terminal, phosphates", [("3P", 4), ("PP", 5)])
+def test_rdkit_builds_the_3prime_phosphate_asked(terminal, phosphates):
+    """`engines/builders.md` § 5: RDKit writes every terminal as asked --
+    ATGC holds its three backbone phosphates and each terminal one asked.
+    The silent failure (F12's review, 2026-11-18): an RDKit DNA asked a
+    3'-phosphate was built without one (the RNA flavors had it, the DNA's
+    were never wired) -- said, but never built."""
+    tooling.needs_backend("rdkit")
+    s = build_dna("ATGC", backend="rdkit", terminal=terminal)
+    assert s.elements.count("P") == phosphates
 
 
 # --------------------------------------------------------------------- #
@@ -168,7 +198,7 @@ def test_add_hydrogens_says_one_of_its_three_words(said):
     meanings, so a person states `auto`, `on` or `off`, and anything else is
     refused naming them (`engines/builders.md`)."""
     from molbuilder.nucleic import normalise_h_mode
-    with pytest.raises(ValueError, match="'auto', 'on' or 'off'"):
+    with pytest.raises(BuildRefused, match="'auto', 'on' or 'off'"):
         normalise_h_mode(said)
 
 
@@ -415,19 +445,69 @@ def test_threedna_strips_5prime_phosphate_for_terminal_oh():
     )
 
 
-# --- build_dna 5'/3' directionality now matches parse_dna_sequence -------
-# Regression (2026-07-27): build_dna's parse_dna_notation used a permissive
-# local `_strip_direction` that silently kept one-sided labels and silently
-# reversed "3'-ATGC-3'", so a duplex strand could be built in the wrong 5'->3'
-# order with no error -- while parse_dna_sequence / build_rna already rejected
-# the same inputs.  _strip_direction now delegates to the strict
-# residues._strip_directionality, so DNA and RNA behave identically.
+# --- every DNA strand read by the one grammar ---------------------------
+# Regressions: (2026-07-27) a permissive local strand reader silently kept
+# one-sided labels and silently reversed "3'-ATGC-3'", so a duplex strand
+# could be built in the wrong 5'->3' order with no error; (F12's review,
+# 2026-11-18) it kept only the letters, so a dash, digit or bracket the
+# grammar refuses for RNA and peptides was dropped and the rest built.
+# Every strand now goes through `residues.parse_dna_sequence` whole
+# (`engines/builders.md` § 2).
 
-@pytest.mark.parametrize("bad", ["5'-ATGC", "ATGC-3'", "5'-ATGC-5'", "3'-ATGC-3'"])
-def test_build_dna_notation_rejects_bad_directionality(bad):
+@pytest.mark.parametrize("bad", [
+    "5'-ATGC", "ATGC-3'", "5'-ATGC-5'", "3'-ATGC-3'",   # end labels
+    "AT-GC",                                              # not the grammar
+    "ATGC,GC-AT",                                         # a duplex strand
+])
+def test_build_dna_notation_rejects_what_the_grammar_refuses(bad):
+    """Every strand is read by the one grammar, a duplex's second strand
+    too, and what it does not take is refused -- never dropped and the
+    rest built."""
     from molbuilder.nucleic import parse_dna_notation
-    with pytest.raises(ValueError):
+    with pytest.raises(BuildRefused):
         parse_dna_notation(bad)
+
+
+@pytest.mark.parametrize("build, ask, takes", [
+    (build_dna, {"terminal": "XX"}, ("OH", "5P", "3P", "PP")),
+    (build_dna, {"form": "Q"},      ("B", "A", "Z")),
+    (build_rna, {"form": "B"},      ("A",)),
+    # A duplex's gate included: a misspelled backend asked for one was told
+    # to install 3DNA (F12's review, 2026-11-18).
+    (build_dna, {"backend": "nonsense"},
+     ("auto", "threedna", "amber", "rdkit")),
+], ids=["an unknown terminal", "an unknown form", "RNA in a form it is not "
+        "built in", "an unknown backend"])
+def test_a_form_or_terminal_the_kind_does_not_take_is_refused(build, ask,
+                                                              takes):
+    """`engines/builders.md` § 1: the forms each kind is built in, the
+    terminals and the backends have one home (`backends.KIND_FORMS`,
+    `TERMINALS`, `BACKENDS`) -- DNA's
+    B, A, Z; RNA's A alone, the one form any backend builds it in (the
+    user, 2026-11-18) -- and the builder refuses another before any backend
+    runs, naming the ones it takes.  The silent failures (F12's review,
+    2026-11-18): an unknown terminal a raw KeyError on 3DNA and RDKit -- a
+    server fault on the route -- and quietly built OH on AmberTools; RNA
+    asked in B offered on the command line and built A-form."""
+    with pytest.raises(BuildRefused) as refused:
+        build("ds,ATGC" if build is build_dna else "ACGU", **ask)
+    said = str(refused.value)
+    assert all(word in said for word in takes), said
+
+
+def test_a_mismatched_duplex_keeps_every_hydrogen():
+    """`engines/builders.md` § 3: a mismatched pair lands at the standard
+    frame as a clash, and every base keeps its hydrogens all the same -- the
+    duplex holds its two strands' own.  The silent failure (2026-11-18):
+    the hydrogen engine read the A.G pair's overlapping atoms as bonded, and
+    `AAAA,TTTG` came out three hydrogens short -- an odd electron count, a
+    radical, with only the clash said."""
+    tooling.needs_backend("threedna")
+    duplex = build_dna("AAAA,TTTG", backend="threedna")
+    apart = [build_dna(strand, backend="threedna")
+             for strand in ("AAAA", "TTTG")]
+    assert duplex.elements.count("H") == sum(s.elements.count("H")
+                                            for s in apart)
 
 
 def test_build_dna_notation_normalises_reverse_direction():

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 
+from molbuilder.chemistry import BuildRefused
 from molbuilder.residues import (
     parse_dna_sequence,
     parse_peptide_sequence,
@@ -34,9 +35,12 @@ def test_parse_peptide_sequence(seq, expected):
     ("AR(SEP)C",  "parens are no longer accepted (use brackets)"),
     ("AR[XXX]C",  "XXX isn't a known 3-letter code"),
     ("AR[SEPC",   "unclosed bracket"),
+    ("   ",       "no residue at all: nothing to build"),
 ])
 def test_parse_peptide_sequence_rejects(bad, why):
-    with pytest.raises(ValueError):
+    """Refused as the request's (`chemistry.BuildRefused`, a bad request on
+    the route), never a fault of ours."""
+    with pytest.raises(BuildRefused):
         parse_peptide_sequence(bad)
 
 
@@ -93,8 +97,9 @@ def test_parse_rna_3to5_reverses_too():
 ])
 def test_parse_dna_directionality_errors(bad, reason):
     """Self-contradictory or one-sided labels are unambiguously bugs;
-    raise rather than silently picking a direction."""
-    with pytest.raises(ValueError):
+    refused (`chemistry.BuildRefused`) rather than silently picking a
+    direction."""
+    with pytest.raises(BuildRefused):
         parse_dna_sequence(bad)
 
 
@@ -111,3 +116,21 @@ def test_build_dna_3to5_label_produces_same_polymer_as_bare():
         "as bare; got divergent element lists"
     )
     assert s_bare.n_atoms == s_rev.n_atoms
+
+
+@pytest.mark.parametrize("name, base", [
+    ("T",   "T"),     # an older PDB file's thymidine, named without its D
+    ("DAN", "A"),     # AmberTools' single nucleotide, free at both ends
+    ("ASN", None),    # asparagine: no nucleotide, whatever its last letter
+], ids=["older-file-T", "amber-single-DAN", "asparagine"])
+def test_a_nucleotide_is_read_by_its_residue_name(name, base):
+    """`residues.nucleobase` -- which residues are nucleotides, the one
+    reader the orientation check, the backbone links and the hydrogen
+    engine's bond orders ask (`engines/builders.md` § 2).  The silent
+    failures: a DNA file naming thymidine ``T`` read as no nucleotide, so
+    the residue after each looked like a second 5' end and the structure
+    check warned of a broken backbone (F12's second review, 2026-11-18);
+    AmberTools' ``DAN`` read as none, and its single nucleotide left out."""
+    from molbuilder.residues import nucleobase
+    assert nucleobase(name) == base
+

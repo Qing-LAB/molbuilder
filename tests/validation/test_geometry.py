@@ -137,12 +137,20 @@ def test_polymer_orientation_reversed_listing_warns():
 
 
 
-def test_polymer_orientation_no_phosphorus_silent():
-    """A peptide (no P, no O3') must not trigger the polymer-orientation
-    check -- it's not a nucleic acid."""
+@pytest.mark.parametrize("sequence", [
+    "ARNDC",       # no P, no O3'
+    "AR[SEP]C",    # a phosphopeptide: a P, and no backbone of a nucleic acid
+])
+def test_polymer_orientation_is_silent_on_a_peptide(sequence):
+    """A peptide must not trigger the polymer-orientation check -- it's not
+    a nucleic acid: the check counts nucleotides only
+    (`engines/builders.md` § 2).  The silent failure (F12's review,
+    2026-11-18): any atom named P read as a backbone phosphate, so every
+    phosphopeptide of two residues or more was warned "disconnected
+    backbone"."""
     pytest.importorskip("PeptideBuilder")
     from molbuilder.peptide import build_peptide
-    s = build_peptide("ARNDC")
+    s = build_peptide(sequence)
     issues = validate(s, SiestaConfig(), calculation="optimization")
     assert [i for i in issues if i.where == "polymer.orientation"] == []
 

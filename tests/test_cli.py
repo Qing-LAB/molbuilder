@@ -174,13 +174,9 @@ def _residues(built):
     (("rdkit",), ("dna", "ATGC", "--backend", "rdkit"),
      ["DA", "DT", "DG", "DC"], {"build.form"}),
     (("rdkit",), ("rna", "AUGC", "--backend", "rdkit"), None, {"build.form"}),
-    # An RNA is built A-form, its own, with nothing to say (§ 3)...
+    # An RNA is built A-form, its own, with nothing to say (§ 3).
     (("threedna",), ("rna", "AUGC"), None, set()),
-    # ...and a form typed reaches it: another is built A-form, and said (§ 5).
-    (("threedna",), ("rna", "AUGC", "--form", "B"), None,
-     {"build.form"}),
-], ids=["peptide", "dna-backend", "rna-backend", "rna-own-form",
-        "rna-form-typed"])
+], ids=["peptide", "dna-backend", "rna-backend", "rna-own-form"])
 def test_a_build_subcommand_builds_what_was_typed(tmp_path, capsys, tools,
                                                   typed, residues, said):
     """Each build subcommand reaches its builder with the sequence, the
@@ -194,6 +190,58 @@ def test_a_build_subcommand_builds_what_was_typed(tmp_path, capsys, tools,
         assert _residues(built) == residues
     err = capsys.readouterr().err
     assert set(re.findall(r"warn \[([a-z_.]+)\]", err)) == said, err
+
+
+@pytest.mark.parametrize("typed, absent, words", [
+    # The grammar refuses "with the position" (`builders.md` § 2).
+    (("peptide", "A-C"), None, "position 1"),
+    # "A SMILES that holds no atom is refused" (§ 6).
+    (("smiles", ""), None, "no atom"),
+    # A tool this install lacks, named (§ 1); the engines made to fail the
+    # one way a test does it (`support.tooling.make_absent`).
+    (("peptide", "GG"), "hydrogens", "OpenBabel"),
+], ids=["a-builder-refuses", "an-empty-input", "a-tool-this-install-lacks"])
+def test_a_builders_refusal_is_its_error_message(tmp_path, capsys,
+                                                 monkeypatch, typed, absent,
+                                                 words):
+    """`builders.md` § 1: a refusal of a build (`chemistry.BuildRefused`) or
+    a tool this install lacks (`chemistry.BackendUnavailable`) reaches the
+    command line through `cli.main`'s one door, as its ``Error:`` message and
+    exit 1 -- the builder's own words, never a traceback -- after the line
+    every call opens with, the version (the user, 2026-10-18), and nothing
+    is written.  The silent failures (F12's review, 2026-11-18): every
+    builder refusal ended in a traceback, and an empty SMILES in a Python
+    error from the engine's insides.
+
+    MUTATION THIS MUST FAIL AGAINST: `cli.main` without either type in its
+    door."""
+    from molbuilder import __version__
+    if absent:
+        tooling.make_absent(monkeypatch, absent)
+    pair = tmp_path / "built.xyz"
+    with pytest.raises(SystemExit) as ended:
+        cli.main([*typed, "--out", str(pair)])
+    assert ended.value.code == 1
+    lines = capsys.readouterr().err.splitlines()
+    assert lines[0] == f"molbuilder {__version__}", lines
+    assert lines[1].startswith("Error:") and words in lines[1], lines
+    assert "Traceback" not in "\n".join(lines), lines
+    assert not pair.exists()
+
+
+def test_a_build_says_the_structures_own_findings(tmp_path, capsys):
+    """`builders.md` § 8: a build command prints the structure's own
+    findings beside every structure it builds, every severity -- atoms on
+    top of each other among them, as a SMILES of several molecules is built
+    (the user, 2026-11-18: "we have an atom collision detection, that's the
+    warning we should have").  The silent failure: ``O.O`` written as two
+    waters 0.00 A apart, the command saying nothing -- the check never ran
+    here, and the printer dropped every error it was not raising."""
+    pair = tmp_path / "two.xyz"
+    cli.main(["smiles", "O.O", "--out", str(pair)])
+    err = capsys.readouterr().err
+    assert "error [geometry.min_distance]" in err, err
+    assert pair.exists()
 
 
 def test_a_title_typed_is_the_title_built(tmp_path):

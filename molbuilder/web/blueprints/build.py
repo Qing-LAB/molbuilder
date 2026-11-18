@@ -29,11 +29,8 @@ JSON shape:
                                    "n_atoms": N, "summary": "...",
                                    "title": "...", "structure": {...}}
 
-      DNA / RNA tri-state add_hydrogens semantics:
-        "auto"  (default) -- backend-aware: 3DNA gets H, AmberTools/3DNA-fiber
-                             keeps the backend's existing H placement.
-        "on"              -- always invoke chemistry.add_hydrogens.
-        "off"              -- skip H addition entirely.
+      DNA / RNA take add_hydrogens "auto" (default), "on" or "off" --
+      `engines/builders.md` § 7, the builder's to read.
 
   /api/build/load     -- `web-api.md` § 2's row.
 
@@ -52,6 +49,7 @@ from datetime import datetime
 from typing import Any, Dict, Optional
 
 from ...chemistry import BackendUnavailable as _BackendUnavailable
+from ...chemistry import BuildRefused as _BuildRefused
 from ...issues import Issue
 from flask import Blueprint, jsonify, request
 from ._shared import (
@@ -65,7 +63,7 @@ from ._shared import (
     struct_from_body as _struct_from_body,
 )
 
-from molbuilder.builders import GENERATORS, build
+from molbuilder.builders import build
 from molbuilder.engine_table import (EngineTableError, config_class,
                                      engine as _engine, relabelled)
 from molbuilder.structure import Structure
@@ -191,33 +189,13 @@ def api_build_molecule():
     body = request.get_json(silent=True) or {}
     kind = (body.get("kind") or "").strip().lower()
     text = (body.get("input") or "").strip()
-    if kind not in GENERATORS:
-        return err(
-            f"Unknown kind {kind!r}; "
-            f"valid: {sorted(GENERATORS)}",
-            400)
-    if not text:
-        return err("empty input", 400)
-    takes = GENERATORS[kind].asks
-    # WHAT THE PERSON ASKED, each a value the kind takes (`builders.
-    # GENERATORS`); one left out keeps the builder's own default.
-    asked: Dict[str, Any] = {name: body[name]
-                             for name in ("backend", "form", "terminal")
-                             if name in takes and body.get(name) is not None}
-    for flag in ("protonate_phosphates", "relax_clashes"):
-        if flag in takes and flag in body:
-            asked[flag] = bool(body[flag])
-    if "add_hydrogens" in takes:
-        # add_hydrogens is tri-state: auto / on / off ("auto" by default).
-        from molbuilder.nucleic import normalise_h_mode
-        try:
-            h_mode_used = normalise_h_mode(body.get("add_hydrogens", "auto"))
-        except ValueError as exc:
-            return err(str(exc), 400)
-        asked["add_hydrogens"] = h_mode_used
-    # THE BACKEND ASKED FOR, when a kind lets a person choose one -- which
-    # the missing-backend answer below names.
-    requested = asked.get("backend", "auto") if "backend" in takes else None
+    # WHAT THE PERSON ASKED -- every field beside the kind and the text --
+    # passed as sent: the build door refuses an unknown kind and an ask the
+    # kind does not take (`builders.GENERATORS`, the kind's row), the
+    # builder a value it does not take; one left out keeps the builder's own
+    # default.
+    asked: Dict[str, Any] = {name: value for name, value in body.items()
+                             if name not in ("kind", "input")}
     try:
         # THE ONE BUILD DOOR (`builders.build`): "auto" resolved once, the
         # builder run, and what the build says of what it built -- its
@@ -225,36 +203,30 @@ def api_build_molecule():
         made = build(kind, text, **asked)
     except _BackendUnavailable as exc:
         # NOT A SERVER FAULT.  `web-api.md` § 1 defines 5xx as *"an I/O
-        # error, an engine that fell over, a bug"* -- a backend the person
-        # chose not to install is none of those, and answering 500 tells
-        # them molbuilder crashed when it did not.  It is the contract's
-        # ADVISORY case, word for word: *"the request was well-formed and
-        # the validator refused it"* -> 200 with `ok: false`.
-        #
-        # `reason` and `backend` are machine-readable so the page can act
-        # on it -- the Modify tab offers all four backends whether or not
-        # they are installed, and this is what would let it stop.  The
-        # message itself is unchanged: `design.md` requires it to name the
-        # preconditions checked, the download URL, the licence terms and
-        # the fallbacks, and it does.
+        # error, an engine that fell over, a bug"* -- a tool this install
+        # lacks, or PubChem out of reach, is somewhere else's, and answering
+        # 500 would tell the person molbuilder crashed when it did not.  It
+        # is the contract's ADVISORY case: 200 with `ok: false`, `reason` and
+        # `backend` machine-readable for the page, the message the one that
+        # names what is missing and how it is installed.
         return err(
             str(exc),
             200,
             reason="backend_unavailable",
-            # WHAT IS MISSING, when one engine is the answer -- a backend,
-            # or the hydrogen engines -- else the request
-            # (`chemistry.BackendUnavailable.missing`).
-            backend=exc.missing or requested or "auto")
-    except ImportError as exc:
-        return err(f"missing dependency: {exc}", 500)
-    except ValueError as exc:
-        # Every builder says what it cannot read this way (a one-sided strand
-        # label, a letter its alphabet does not hold): the request's, in the
-        # builder's words.
+            # WHAT IS MISSING (`chemistry.BackendUnavailable.missing`) --
+            # none named only when no nucleic-acid backend is installed for
+            # `auto`.
+            backend=exc.missing or "auto")
+    except _BuildRefused as exc:
+        # WHAT WAS ASKED CANNOT BE BUILT -- the one type every builder refuses
+        # with (a one-sided strand label, a letter its alphabet does not
+        # hold, a form no nucleic acid is built in): the request's, in the
+        # builder's words (`engines/builders.md` § 1).
         return err(str(exc), 400)
     except Exception as exc:
         # web-api.md § 1, *Status codes* (server fault -> 5xx): anything else
-        # a builder raises is a server fault, not protocol error.
+        # a builder raises -- an engine that fell over, a fault of ours -- is
+        # a server fault, never the request's.
         return err(str(exc), 500)
     struct, backend_used = made.structure, made.backend
 
@@ -279,9 +251,8 @@ def api_build_molecule():
     # `.molstruct.json` pair and the deck's ATOM-METADATA block, whose lines
     # are already `#`-prefixed comments and whose readers strip a prefix rather
     # than splitting on the character.
-    if text:
-        struct.regions = dict(struct.regions or {},
-                              **{f"{text}#": list(range(struct.n_atoms))})
+    struct.regions = dict(struct.regions or {},
+                          **{f"{text}#": list(range(struct.n_atoms))})
 
     # The structure in its one shape (``ok_structure_response``).
     # WHAT THE BUILD SAYS OF WHAT IT BUILT -- the structure's own findings
