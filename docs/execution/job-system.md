@@ -950,10 +950,9 @@ engine seam (`jobset/engines.engine_seam`, SIESTA's `siesta/seam.py`; SIESTA's s
   stage and a tight stage are sized apart.
 
 **The shipped ladder** is coarse, medium and tight, and `molbuilder describe
---stage-strategy` picks which it starts with
-(`config.stages.STAGE_STRATEGY_PRESETS`): `loose-only` coarse; `publishable`
-coarse and medium; `vib-quality` all three. Each stage's values and their
-scientific reasons are [`engines/tuning.md`](?doc=engines/tuning.md)'s.
+--stage-strategy` picks which it starts with — which tiers each strategy runs
+is [`engines/tuning.md`](?doc=engines/tuning.md) § 4, and each stage's values
+and their scientific reasons are that chapter's.
 
 ### 4.2 A benchmark sweep
 

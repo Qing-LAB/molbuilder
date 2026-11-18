@@ -606,12 +606,9 @@ almost still, and why the exaggerated default exists.
 #### physical, thermal — the same thing at a temperature
 
 Above absolute zero the excited vibrational states are populated too, and the
-thermal average over them raises the mean-square displacement by a factor:
-
-$$
-\langle Q^2\rangle_T = (\hbar/2\omega)\cdot\coth(\hbar\omega/2k_BT)
-$$
-
+thermal average over them raises the mean-square displacement by the factor
+$\coth(\hbar\omega/2k_BT)$ — the thermal distribution of one mode,
+[`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md) § 2.
 The amplitude therefore grows by **$\sqrt{\coth(x)}$**, $x = \hbar\omega/2k_BT$. As $T \to 0$,
 $\coth \to 1$ and this becomes the zero-point expression exactly — the two are one
 formula, not two, which is the check that the limit is right.
@@ -836,7 +833,7 @@ On `/spectrum-calculation` the page is a short vertical workflow:
    and **SIESTA**. Both forms are **built from the
    CATALOGUE**, narrowed to (engine, vibration)
    (`GET /api/build/schema/<engine>?calculation=vibration&surface=own`), through the
-   same door and the same renderer as the Build tab, so a parameter is
+   same door and the same renderer as the Structure optimization tab, so a parameter is
    defined once and rendered the same everywhere
    ([`engines/template.md`](?doc=engines/template.md) § 6.3; the items each
    engine shows and why are [`engines/vibration.md`](?doc=engines/vibration.md)
@@ -862,8 +859,8 @@ On `/spectrum-calculation` the page is a short vertical workflow:
    ([`handover-procedure.md`](?doc=web/handover-procedure.md), via
    `lib/task-handover.js` — the same door `/structure-optimization` uses):
    the server renders the parameter template, the structure pair and
-   `task.1st.json` (carrying `calculation: "vibration"`), the browser writes
-   them into the selected folder, and Task setup finishes shape and stages.
+   `task.1st.json` (carrying `calculation: "vibration"`) and writes them into
+   the selected folder, every file or none, and Task setup finishes shape and stages.
    **This tab renders no deck** — the deck is written by `prep`, on the
    machine that runs it
    ([`execution/script-preparation.md`](?doc=execution/script-preparation.md)).

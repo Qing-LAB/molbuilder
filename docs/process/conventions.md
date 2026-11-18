@@ -144,7 +144,8 @@ blueprint both dispatch to `build_peptide` / `build_dna` / `build_from_smiles` /
 `build_from_name`; `modify` and the Modify blueprint both call
 `molbuilder.modify`; `jobset prep` and the Build blueprint both reach
 `runwrap.write_run_wrapper` through the same seam. The layering keeps this —
-`cli` and `web` are the only two top-layer modules, both sitting above one
+`cli` and `web` are the two top-layer surfaces (L3 with `__main__`, which only
+calls `cli`), both sitting above one
 shared API (review, `code-audit.md` § 1c (e)).
 
 ### The command catalogue (an index — behaviour lives in the domain docs)

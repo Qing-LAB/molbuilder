@@ -93,7 +93,7 @@ Seven words are used throughout. Each is ordinary once you know what it points a
 | **description** | What *changes* across a calculation — the sequence of steps, and which settings differ between them. Named `task.json` |
 | **job request** | How and where the calculation runs — the queue, wall and memory asked, each step's run card (ranks, threads, GPU, solver), which steps share one job, a benchmark's plan, the reports. Named `job-request.json` |
 | **deck** | The engine's own input file. `.fdf` for SIESTA, `.py` for PySCF. This is what the engine actually reads |
-| **wrapper** | The shell script that activates the right environment, works out how many processors to use, launches the engine, and watches it. Named `<label>.run.sh` |
+| **wrapper** | The shell script that activates the right environment, works out how many processors to use, launches the engine, and watches it. Named `<label>_<stage>.run.sh` ([`running-a-job.md`](?doc=execution/running-a-job.md) § 0) |
 | **stage** | One step of a multi-step calculation — *coarse*, then *tight*. molbuilder's idea, not the engine's |
 
 Two more you will meet in names: a **run** — the code says
@@ -279,7 +279,7 @@ produced.**
 
 ```mermaid
 flowchart TB
-    S1["<b>1 · settle which machine this is for</b><br/><i>READ the record — the calculation's, else this machine's.<br/>Neither? prep refuses and names <code>jobset probe --write</code></i><br/>→ the first prep copies it in, <code>environment.json</code>"]
+    S1["<b>1 · settle which machine this is for</b><br/><i>READ the record — the calculation's, else the one <code>--target</code> names, else this machine's (configuration.md M-3).<br/>Other machines' records on file, no <code>--target</code>, no copy yet? prep refuses, asking which.<br/>None? prep refuses and names <code>jobset probe --write</code></i><br/>→ the first prep copies it in, <code>environment.json</code>"]
     S2["<b>2 · settle the numbers</b><br/><i>template + description + machine + your ask</i><br/>→ the configuration(s), in memory. <b>Writes nothing.</b>"]
     S3["<b>3 · write the engine's input</b><br/>→ <code>01_coarse/&lt;label&gt;_01_coarse.fdf</code>"]
     S4["<b>4 · write the wrapper and the submission</b><br/><i>reads the deck just written</i>"]
@@ -410,7 +410,7 @@ it at once — the verbs, the sidebar, the workspace store.
 ```
 
 in `molbuilder.json`, or `MOLBUILDER_PROJECTS=/scratch/u/projects` for
-one shell ([`architecture.md § 8.2`](?doc=execution/architecture.md)).
+one shell (which of them wins: [`job-contracts.md`](?doc=execution/job-contracts.md) § 2.5).
 
 > **One address, one anchor — with one exception you will meet at `launch`.**
 > `--from 01_coarse/run-0` names an attempt *inside* the calculation, and is
@@ -508,12 +508,12 @@ flowchart TB
         STRUCT["<b>structure preparation</b> — Build · Modify · MolView<br/>labels, regions (frozen atoms), cell ride the model<br/>and its sidecar (model/structure-molstruct.md)"]
         FORM["<b>the calculation's form</b> — Structure optimization tab ·<br/>Spectrum tab (vibration)<br/><code>/api/build/schema/&lt;engine&gt;?calculation=…</code>,<br/>one shared renderer (web/form-schema.md)"]
         DETECT["charge and spin — <code>/api/structure/analyze</code><br/>the one electronic state, for exactly what the form says,<br/>shown on the card; fills nothing (chemistry-correctness.md § 2a)"]
-        SEND["<b>Send to Task setup</b> — <code>lib/task-handover.js</code>,<br/>ONE door for every parameter tab (Transport writes<br/>its description directly; web/handover-procedure.md)<br/>writes template + structure pair + <code>task.1st.json</code>"]
+        SEND["<b>Send to Task setup</b> — <code>lib/task-handover.js</code>,<br/>ONE door for every parameter tab — Transport's too, through<br/>its own describe door, with no hand-over (web/handover-procedure.md);<br/>the others write template + structure pair + <code>task.1st.json</code>"]
         TS["<b>Task setup</b> — stages, bench axes<br/>(web/task-setup.md); saving writes <code>task.json</code><br/>— the described calculation — and <code>job-request.json</code>,<br/>how it runs (execution/job-request.md)"]
     end
     subgraph MACHINE["run it — the machine that will compute"]
         PREP["<b>prep</b> — the conductor renders the deck<br/>(execution/script-preparation.md § 5’s five steps,<br/>workflow.md § 5), wrapper + dirs follow the deck —<br/>planned whole, the folder's state saved, then written"]
-        RUN["<b>launch → run</b> — the plan shown and asked, the state saved<br/>at a group's first launch, the header prep wrote sent —<br/>one wrapper, <code>&lt;label&gt;.run.sh</code> (execution/running-a-job.md),<br/>the deck phase-writes its artifact atomically"]
+        RUN["<b>launch → run</b> — the plan shown and asked, the state saved<br/>at a group's first launch, the header prep wrote sent —<br/>one wrapper, <code>&lt;label&gt;_&lt;stage&gt;.run.sh</code> (execution/running-a-job.md),<br/>the deck phase-writes its artifact atomically"]
         SCR["<b>jobset scratch</b> — an engine's scratch a run left,<br/>listed, and emptied with --empty from every run not going<br/>(never saved by a checkpoint, and a restore removes it)"]
     end
     subgraph READ["read it — results presentation"]
@@ -542,7 +542,7 @@ this table exists to rule out)*:
 | gate | fires | refuses / warns on | owner |
 |---|---|---|---|
 | **① live preflight** | on every form edit, Structure optimization tab (`/api/build/preflight`) | the same `validate(struct, cfg)` verdict gate ④ will give — surfaced while the person is still at the form | [`science/validation.md`](?doc=science/validation.md) § 4 |
-| **② the cell gate** | at Send, on the exported envelope | a box the calculation cannot use (degenerate cell, left-handed axes); *notices* (thin vacuum) hold the navigation, never the write | [`web/handover-procedure.md`](?doc=web/handover-procedure.md) |
+| **② the cell gate** | at Send, on the exported envelope | a box the calculation cannot use (degenerate cell, left-handed axes); *notices* (thin vacuum) never hold the write; the page does not navigate, so they are read where the person is | [`web/handover-procedure.md`](?doc=web/handover-procedure.md) |
 | **③ task preflight** | at every describe — Task-setup save, `molbuilder describe` (its transport arm too), the Transport tab's Send — and at dispatch | a description that is not one: unknown keys, identity clashes (the § 6.6 check table), empty ladders (§ 6.5), bench entries that name no execution item and points that fit no item (`job-request.md` § 3.4; `generator.md` § 4.3a), a stage's value past its hard limit; it *warns* on a value, or a bias point, outside its recommended range ([`engines/template.md`](?doc=engines/template.md) § 5.3) | [`engines/stages.md`](?doc=engines/stages.md) §§ 6.5–6.8 |
 | **④ the science gate** | at `prep`, inside the conductor’s STEP 3.3 — **“here, and only here”**, so no deck route can forget it | cell + geometry + field ranges and choices (`validation/metadata.py`) + the electronic state's one family (charge, parity, open shell, what the engine can run — `validation/chemistry.py`) + the engine's and the kind's science (grid, amplitude — `validation/{siesta,pyscf,spectra}.py`); errors refuse the deck, warns reach stderr. And at the record step, the placement check: a spec with no engine frame, and any atom outside the cell along a non-periodic lattice vector, are refused (`cell.require_placed`, `model/structure-periodicity.md` § 6.0, check 3) | [`execution/script-preparation.md`](?doc=execution/script-preparation.md) §§ 3–4 (step 3.3) |
 | **⑤ the parse gates** | at every artifact read (Results tab, CLI) | a file the reader cannot vouch for: unknown schema version (readable **sets**, additive bumps read old files whole), malformed fields — each a **typed** refusal the UI can react to | [`web/spectra.md`](?doc=web/spectra.md) § 6, the parse layer |

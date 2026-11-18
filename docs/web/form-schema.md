@@ -223,8 +223,8 @@ the one foldable component ([`ui-contract.md`](?doc=web/ui-contract.md) § 4),
 a `<details class="fold">` whose header is its `<summary>`, with the count of
 settings it holds, and `folded(role, fields)` says which start closed. The transport tab
 folds per rung — a card holding none of the rung's own items starts closed
-([`engines/transport.md`](?doc=engines/transport.md) § 3.8.2a); the Build tab
-passes nothing and keeps its open cards. The component draws the two states
+([`engines/transport.md`](?doc=engines/transport.md) § 3.8.2a); the other tabs
+pass nothing and keep their open cards. The component draws the two states
 (`.fold`, page-shell); form-schema's sheet keeps the card's grid, and neither
 decides which cards fold.
 
@@ -359,7 +359,7 @@ stated nowhere else:
 ```mermaid
 flowchart LR
     DC["the CATALOGUE<br/>(config classes are translators)"]
-    DC -->|"the server turns it into a form shape"| SCHEMA["schema JSON<br/>GET /api/build/schema/siesta"]
+    DC -->|"the server turns it into a form shape"| SCHEMA["schema JSON<br/>GET /api/build/schema/siesta?calculation=…"]
     SCHEMA -->|"renderForm"| FORM["the form on screen"]
     FORM -->|"the user fills it in"| FILLED["filled-in form"]
     FILLED -->|"collectForm"| VALUES["the values"]

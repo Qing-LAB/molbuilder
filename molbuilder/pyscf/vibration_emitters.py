@@ -1145,9 +1145,9 @@ def _emit_raman_block(cfg: "VibrationConfigView") -> List[str]:
     out.append("")
     out.append("def _polarizability(_mf):")
     out.append("    '''Static dipole polarizability at the converged mf.'''")
-    out.append("    # _mf is force_cpu=True for polarizability (gpu4pyscf")
-    out.append("    # doesn't expose analytic CPHF), so this is CPU NumPy --")
-    out.append("    # the bridge is defensive in case the call path changes.")
+    out.append("    # _mf is force_cpu=True for polarizability, so this is")
+    out.append("    # CPU NumPy -- the bridge is defensive in case the call")
+    out.append("    # path changes.")
     out.append("    return _mb_as_numpy(_mf.Polarizability().polarizability())")
     out.append("")
     if cfg.compute_ir:

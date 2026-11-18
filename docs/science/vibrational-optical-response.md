@@ -268,7 +268,8 @@ charge moved:
 ### 2.2 Read from the force-constant run, with no extra calculation
 
 SIESTA's force-constant run moves each free atom $k$ by $\pm\delta$ along x,
-y and z in turn (`FC.Displacement`, 0.04 bohr = 0.0212 Å by default) and
+y and z in turn (`FC.Displacement`, 0.04 bohr = 0.0212 Å by default,
+[`engines/vibration.md`](?doc=engines/vibration.md) § 3.1) and
 solves the electrons self-consistently at each step. With
 `Charge.Hirshfeld geometry` and `Charge.Voronoi geometry` in its input —
 written there when *Compute IR* is on (`engines/vibration.md` § 3.1, § 5.3)

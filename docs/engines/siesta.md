@@ -67,7 +67,7 @@ flowchart LR
   values its record carries and the rules the finished deck must satisfy — and
   the framework renders it (`script_emit.render_deck`). The public surface is
   `spec_for` and `config.siesta.SiestaConfig`; `pseudos.copy_pseudopotentials`
-  copies `<label>.psml` by the name SIESTA opens and no other (`pseudos.psml_sources`, the rule every check asks). A deck reaches disk one way —
+  copies `<label>.psml` by the name SIESTA opens and no other (`pseudos.psml_sources`, the rule every check asks; [`science/pseudopotentials.md`](?doc=science/pseudopotentials.md) C1a). A deck reaches disk one way —
   `jobset prep`, which calls `spec_for` → `script_emit.prepare_deck` (validate
   → render → write → check) on the machine that will run it, and writes the
   siblings the deck's own text promises
@@ -128,7 +128,7 @@ flowchart LR
 
 | | what the emitter must stop doing | why |
 |---|---|---|
-| **1** ✅ | **reading anything outside the config.** `molbuilder/siesta/` reads no `.stage` ([`stages.md § 1.1`](?doc=engines/stages.md): the emitter never learns the word) — and the USER-CUSTOM read-back merge cannot run at `prep` at all, since there is no previous deck to harvest from, so the text arrives as an **item** ([`template.md § 9.2`](?doc=engines/template.md)) | the template is meant to be complete. Anything the emitter fetches for itself is a value the description does not record, and therefore a deck nothing can reproduce |
+| **1** ✅ | **reading anything outside the config.** `molbuilder/siesta/` reads no `.stage` ([`stages.md § 1.1`](?doc=engines/stages.md): the emitter never learns the word) — and a person's own USER-CUSTOM text is not the emitter's to fetch either: the one writer, `script_emit.write_script`, merges it from the deck it replaces, and it is no item ([`template.md § 9.2`](?doc=engines/template.md)) | the template is meant to be complete. Anything the emitter fetches for itself is a value the description does not record, and therefore a deck nothing can reproduce |
 | **2** ✅ | **always computing, always emitting.** `BlockSize` has **two** states — a number you set or benchmarked, emitted verbatim, or **unset, in which case the keyword is not emitted at all** and SIESTA uses its own automatic ([`tuning.md § 2.11`](?doc=engines/tuning.md)) | an emitter that always writes a line cannot express the second, and the second is a legitimate scientific answer — the same shape as `Diag.Algorithm ScaLAPACK`, which § 7 also emits as nothing. Verified: an unset `block_size` produces no `BlockSize` line, and an explicit `24` is emitted as `24` rather than snapped to a power of two |
 | **3** | **seeing items that are not its own.** Only `kind` in `{engine, deck}` reaches the deck writer; `wrapper` and `produce` items belong to other layers ([`template.md § 6`](?doc=engines/template.md)) | *"a SIESTA producer must not try to emit a `wrapper` item as a keyword — SIESTA would not understand it"* |
 
@@ -288,11 +288,9 @@ would reach SIESTA with nothing said. As an `Issue` the same advice reaches the 
 that is clause **R5** of the delivery contract,
 [`science/validation.md`](?doc=science/validation.md) § 4.1.
 
-Distinct from adequacy, and much smaller: the § 6.1 **default vacuum gap** gives
-every isolated axis 3 Å per side **when the user set no vacuum at all**, so a
-flat or linear molecule cannot produce a zero-volume cell SIESTA would refuse to
-run. A vacuum you *did* set is used verbatim, however small — the default fills
-an absence, it never overrides a value.
+Distinct from adequacy, and much smaller: the **default vacuum gap** — 3 Å per
+side on an isolated axis when the user set no vacuum at all, never over a
+vacuum set — is [`model/structure-periodicity.md`](?doc=model/structure-periodicity.md) § 6.1's.
 
 The default keeps the cell *well-formed*; it says nothing about the vacuum being
 *enough*, which is what the check above is for — and the two speak the same
@@ -461,11 +459,11 @@ refused is not judged — that refusal stands alone).
 |---|---|---|
 | an isolated axis sampled with more than one k-point | warn — `k > 1` is the person's explicit statement *(user, 2026-08-20)*; the extra k-points sample only the structure's periodic images, separated by vacuum, cost for nothing | `kmesh.check`, the settings gate |
 | on a transport calculation's SCF stages, an isolated axis sampled with more than one k-point **while the other axis of the electrode plane (x, y) is periodic** — a stripe | **refused** — TranSIESTA stops the device: a lead that repeats along one axis of the electrode plane must take one k-point along the other, where it has no neighbours (`ts_electrode.F90`, `check_in_cell`: *"found incompatible k-grids"*), and the seed and both leads would have run first. A wire, isolated along both x and y, passes that check and is warned as above. Refused for now *(user, 2026-09-30: "a special case that will take a lot of effort to get right")* | `kmesh.check`, the settings gate — at the seed's `prep`, before anything runs |
-| a sampled axis with more than one k-point, whose periodic images sit ≥ 5 Å apart | warn, a hint — the geometric gap is the real vacuum; *"if deliberate, carry on"* | `kmesh.check` |
+| a sampled axis with more than one k-point, whose periodic images sit ≥ 5 Å apart | warn, a hint — the geometric gap is the real vacuum, and images that far apart are usually meant not to interact; *"if deliberate, carry on"* | `kmesh.check` |
 | an offset on an axis sampled with one k-point | warn — it moves that one k-point off Γ (SIESTA and tbtrans read the offset modulo 1, so 1.0 is Γ again) | `kmesh.check` |
-| a component a kind fixes, holding another value | refused | `kmesh.fixed` through `template.why_not` — every door |
-| a count at or below 0; `electrode_kz` at or below 1 | refused | the items' own limits, `above` (`template.md` § 5.3) — every door |
-| `electrode_kz` below 50 | warn — the SIESTA manual's floor ("at least >50 should easily be reachable"), not a proof of convergence: only raising it and seeing the lead's Fermi level stay put shows it has settled | its recommended `range` |
+| a component a kind fixes, holding another value | refused — along z the device and the transmission are open, both engines take one k-point there, and the seed's density is only their starting point, while a lead samples z by its own count, `electrode_kz` ([`transport.md`](?doc=engines/transport.md) § 0.2) | `kmesh.fixed` through `template.why_not` — every door |
+| a count at or below 0; `electrode_kz` at or below 1 | refused — a lead is periodic bulk metal along z, and one k-point there gives a wrong lead Hamiltonian and Fermi level, which every self-energy is built from and aligned to | the items' own limits, `above` (`template.md` § 5.3) — every door |
+| `electrode_kz` below 50 or above 200 | warn — outside its recommended range, `[50, 200]` ([`transport.md`](?doc=engines/transport.md) § 0.2); 50 is the SIESTA manual's floor ("at least >50 should easily be reachable"), not a proof of convergence: only raising it and seeing the lead's Fermi level stay put shows it has settled | its recommended `range` |
 | on a transport calculation, a transmission k-point grid the person set **above the Γ point while the shared k-point grid is Γ alone** (1 × 1, no offset) | warn, never refused *(user, 2026-10-17: "We should let tbtrans handle it. Prep can detect and warn but user decide what to do")* — a device computed at one k-point is saved in a form that works only there: tbtrans stops as it starts (*"Transiesta calculation was a Gamma calculation while you request transmission k-points"*, `tbt_init.F90`, its set-up) only when both its counts in the electrode plane are 3 or more; with a 1 or a 2 along x or y its grid starts at k = 0 and it runs on, every k-point given the k = 0 Hamiltonian, its T(E) invalid *(the user, 2026-10-20: "warn, worded truly")*; the cases, by example, and the two ways on are [`transport.md`](?doc=engines/transport.md) § 0.3b | `kmesh.check`, the settings gate, on the transmission's deck |
 | on a transport calculation, a transmission k-point grid the person set **coarser than the shared k-point grid** along x or y | warn — T(E) needs at least the k-points the density was converged on, and usually many more (the manual: "much denser"); a blank one is three times the shared grid and never coarser ([`transport.md`](?doc=engines/transport.md) § 0.3b) | `kmesh.check`, the settings gate, on the transmission's deck, which carries both grids |
 | on a transport calculation, one k-point (k = 1) along a periodic direction of the electrode plane (x, y) | warn — a single k-point there treats every sideways copy of the cell as in phase; known to add false peaks to T(E) and shift the conductance by tens of per cent *(the user, 2026-10-09; [`transport.md`](?doc=engines/transport.md) § 0.3b)*; said where the person sets the grid, never on a transmission grid worked out from the shared one | `kmesh.check`, the settings gate |
@@ -587,15 +585,13 @@ absent, which is a **missing build option, not a missing device**.
 
 So: a run that uses the GPU — its GPU request, whatever the solver — enters
 the engine table's `gpu_environment` (`siesta-gpu`); every other run enters
-`siesta`.
-`molbuilder.json` `envs.*` overrides the concrete env name, and an env the user
-names always wins — the route is the fallback for *no choice given*, never an
-override. What is *available* is filtered by what is *needed*, and the user
+`siesta`. The routing, and the names a person may set over it, are
+[`running-a-job.md`](?doc=execution/running-a-job.md) § 2.3. What is *available* is filtered by what is *needed*, and the user
 picks from what survives.
 
-> **The solver never decides the environment.** Routing ELPA to the source
-> build would refuse, on a site that cannot compile, a runnable calculation —
-> for a solver the packaged baseline already has. **Knowing a keyword is not
+> **The solver never decides the environment**
+> ([`running-a-job.md`](?doc=execution/running-a-job.md) § 2.3 says why).
+> **Knowing a keyword is not
 > providing the capability:** the packaged binary carries `ELPA-1stage`,
 > `ELPA-2stage` and `Diag.ELPA.GPU` as strings either way.
 
@@ -652,8 +648,8 @@ verb names its stage, on a one-rung ladder exactly as on three
   values as its `overrides`, the tiers `STAGE_STRATEGY_PRESETS` runs —
   `publishable` (1+2), `loose-only` (1), `vib-quality` (1+2+3). CG warm-up
   0.05 → Broyden publishable 0.04 → Broyden crystal-tight 0.01 eV/Å; the
-  authoritative per-tier value table is [`tuning.md`](?doc=engines/tuning.md)
-  § 4, and the presets are the one place those numbers enter, so no second
+  per-tier values are owned by [`tuning.md`](?doc=engines/tuning.md)
+  § 2, each in its own section (§ 4 there sets the ladders side by side), and the presets are the one place those numbers enter, so no second
   path can drift from them. The strategy names + masks
   are one table both engines read, `molbuilder/config/stages.py`'s
   `STAGE_STRATEGY_PRESETS`.

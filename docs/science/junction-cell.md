@@ -6,7 +6,7 @@
 (the `cell` / `axis_kind` fields this decides a value for — § 4 `resolve_cell`,
 § 5 capture-at-construction); [`engines/transport.md`](?doc=engines/transport.md)
 (the TranSIESTA invariants I8 / I10 / I12 that read this geometry);
-the Modify tab's **Cell page** is where $c$ is set (§ 6).
+the Molbuilder tab's **Cell page** is where $c$ is set (§ 6).
 
 When you flank a molecule with two metal slabs, something has to decide how long
 the box is along z. Get it wrong by one layer spacing and the crystal either
@@ -112,7 +112,7 @@ is why the derivation reads the built slab rather than a table.
 `fcc_lattice.json` is the one table (`molbuilder.data_dir`, A10); one that does
 not read — a syntax error, a missing `metals` key, not v3 — is refused by its
 path. A lattice constant of your own comes from your relaxed bulk run, read by
-the Modify tab (`POST /api/modify/lattice-from-run`).
+the Molbuilder tab (`POST /api/modify/lattice-from-run`).
 
 ---
 
@@ -508,7 +508,7 @@ their own structure.
 | layers per stacking period, by surface | `cell.STACKING_PERIOD` |
 | **what the boundary does to the crystal** | **`cell.classify_seam`** (§ 4.1) — the measurement; the wording is `blueprints/modify.py`, the same split `_lattice_notes` uses |
 | applying it to the bulk lead | `transport.wizard.extract_electrode_model` |
-| **setting it on a built slab** | **you**, on the Modify tab's Cell page (§ 6) |
+| **setting it on a built slab** | **you**, on the Molbuilder tab's Cell page (§ 6) |
 
 `STACKING_PERIOD` is a table rather than a verdict function on purpose: the
 panel's note re-renders as the user types a layer count, so `/api/modify/meta`

@@ -274,7 +274,7 @@ New persisted artifacts MUST be registered there; a JSON record is read by
 `persist.check_schema`, a NetCDF data file through `ncdata`, its schema by
 the same `persist.check_schema`
 ([`model/datafiles.md`](?doc=model/datafiles.md) § 3a). The structure save file itself
-(`.molstruct.json`, its envelope and schema versions — v7–v17 read) is
+(`.molstruct.json`, its envelope and schema versions) is
 [`model/structure-molstruct.md`](?doc=model/structure-molstruct.md).
 
 ---

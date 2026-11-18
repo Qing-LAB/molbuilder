@@ -321,16 +321,17 @@ answer two unrelated questions and key the answer to the wrong thing.
 **It costs no new wiring, and that is the test of the seam.** Layer 1 already
 flows through `pseudos.check_coverage`; layer 2 is an ordinary
 `validation/siesta.py` check, registered like every other. Both already reach
-all three surfaces through the one door — `report(validate(...))` is called by
+all three surfaces through the one door — `validate(...)` is called by
 **script generation** (`render_deck`), the **web preflight**, and **`jobset
-prep`** — so the backend, the UI panel and the emitted deck get the new findings
+prep`**, and `report()` gates generation and prep — so the backend, the UI panel and the emitted deck get the new findings
 without a line of plumbing. A finding that needed new wiring to reach a surface
 would be a sign it was put in the wrong place.
 
 ### 2a.1 A declared number outranks a literature floor
 
-`_check_siesta_mesh_cutoff` warns below **150 Ry** — a defensible production
-floor, and a *guess about this calculation*, because it knows nothing about the
+`_check_siesta_mesh_cutoff` warns below **150 Ry** — the screening floor
+(production work sits at 200–300 Ry, `engines/tuning.md` § 2.6), and a *guess
+about this calculation*, because it knows nothing about the
 pseudos actually in it. A PseudoDojo v0.5 file states its own numbers
 (`cutoff_hint_low` / `_normal` / `_high`; sulfur: **72 / 147 / 162 Ry**).
 

@@ -252,14 +252,11 @@ known and every later surface can only report that nobody said:
   Declared, it is written as `paths.projects`.
 
 `--yes` takes both defaults and **prints** them. `--projects PATH` declares the
-tree non-interactively. A file a person wrote is never overwritten — a file that
-exists is reported, so re-running shows you what is there — with two
-exceptions it reports as `rewritten`: molbuilder's own two READMEs, when their
-text is out of date, and a `molbuilder.json` with no `env_init.activation`,
-which gains the one you were asked for and nothing else.
+tree non-interactively. A file a person wrote is never overwritten, and one that
+exists is reported, so re-running shows you what is there (§ 2.1).
 
-**Where the tree is, you are always told.** Four things can answer — an explicit
-argument, `$MOLBUILDER_PROJECTS`, `paths.projects`, the default — so every
+**Where the tree is, you are always told.** Four things can answer, in the order
+[`job-contracts.md`](?doc=execution/job-contracts.md) § 2.5 gives, so every
 `jobset` verb, `serve` and `envs doctor` print the path **and which of them
 supplied it**:
 
@@ -304,11 +301,9 @@ than silent. Override it without being asked:
 bash scripts/install-env.sh init-config --activation "source activate" --yes
 ```
 
-**A file you wrote is never overwritten.** Every step reports `created`,
-`kept` or `rewritten`: a file that exists is left as it is, except
-molbuilder's own two READMEs, rewritten when their text is out of date, and a
-`molbuilder.json` with no `env_init.activation`, which gains the one asked —
-nothing else in it is touched. Re-run it any time:
+**A file you wrote is never overwritten**, and every step says what it did —
+the two files it may rewrite are [`configuration.md`](?doc=configuration.md)
+§ 3.2's. Re-run it any time:
 
 ```bash
 bash scripts/install-env.sh init-config     # idempotent; asks about activation

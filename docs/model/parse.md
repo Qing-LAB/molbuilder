@@ -835,12 +835,12 @@ as a reader sees it — is floor 6's, served beside this answer by the route
 
 | field | the question | who reads it |
 |---|---|---|
-| `place` | what the folder is — a run, a container, a run's scratch, or not ours — its calculation, and where it sits: what it is, its stage, run, trial and point (`calcdirs.where`, `execution/project-layout.md` § 1.4a, *Where am I*) | the Results page (the empty state, § 1.4a) |
+| `place` | what the folder is — a run, a container, a run's scratch, or not ours — its calculation, and where it sits: what it is, its stage, run, trial and point (`calcdirs.where`, `execution/project-layout.md` § 1.4a, *Where am I*); `of_points`, whether it is a run of points' root, read with its view; `says`, what the page says of a folder with nothing of its own to open (`runs.PLACE_SAYS`) | the Results page (the empty state, § 1.4a) |
 | `engine` · `openable` | which engine ran — the description's; which file the viewer loads | `/api/results/dir` → the Results viewer |
 | `engine_words` · `noun` | the engine's words and the calculation's noun, from the engine and kind tables — each `null` where the folder names none | the Results heading (`web/presenters.md` § 2) |
 | `status` | how it is doing (`running-a-job.md` § 4.2) — the run the folder speaks for, `null` for a container or a folder not ours | `/api/results/dir` — served, not yet shown for a run folder (`web/results.md` § 0.4) |
 | `attempts` | what was tried | `/api/results/dir` → the refusal a person reads |
-| `record` | what ran, with what, and how it went (§ 5d) | `/api/results/dir` → the Run panel (`web/results.md` § 3a) |
+| `record` | what ran, with what, and how it went (§ 5d), its deck's `path` whole | `/api/results/dir` → the Run panel (`web/results.md` § 3a) |
 | `files` | per file its whole `path`, its role, label, stage — read back with the run's label — whether a parser reads it, and what it is (`about`, the catalogue's line or *not written by molbuilder*) | the picker; the file card (`web/results.md` § 3b) |
 | `report` | the file the folder opens when it lies outside it — a transmission run's, its calculation's report, `task.json`, as its kind's record declares (`execution/architecture.md` § 3.3) — as a `files` row with its `path`; `null` for every other folder. The point it opens it at is the point the folder is (`point_of`, floor 4) — at a run of points' root, its view's point at work's — served beside this answer (`views_of`, `execution/architecture.md` § 3.2) | the picker, which lists the report first; the file card (`web/results.md` § 2, § 3b) |
 
@@ -999,7 +999,7 @@ order — and a bare `xv2xyz`, which writes a pair, refuses an `.XV` a
 reordered run of ours holds, naming `--from-run`. **No door builds a run's
 structure from a parser class it imports** — it asks the run door: a door that
 builds from a run's geometry, `runs.steps_of`, the transport citation's and
-the Modify tab's. The job's own Python, where molbuilder is not installed,
+the Molbuilder tab's. The job's own Python, where molbuilder is not installed,
 reads its calls' output through SIESTA's one reading pass and keeps it in the
 deck order every call of the run shares (`engines/vibration.md` § 5.11 § 3).
 

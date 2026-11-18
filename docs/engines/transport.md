@@ -530,7 +530,7 @@ below are the Au–BDT–Au design's, 2026-09; the walk's junction is smaller):
 | | |
 |---|---|
 | structure | 444 atoms — 432 Au, one benzene-1,4-dithiol bridge |
-| labels | `L-electrode` (low z) · `BRIDGE` · `R-electrode` (high z) |
+| labels | `L-electrode` (low z) · `bridge` · `R-electrode` (high z) |
 | contract, from the citation | DZP · GGA-PBE · 300 Ry mesh |
 | device k-points | `2 2 1` — 2×2 in the electrode plane, **one along z** |
 | electrode k | `2 2 100` — the same 2×2, **dense along z** (`electrode_kz`'s default) |
@@ -1805,7 +1805,7 @@ gold electrodes, starting from a finished relaxation that ran at DZP.
 | basis | **TZP** *(relaxation ran DZP)* | the relaxation only had to get the geometry right; transport needs the longer tails that carry the contact coupling. Permitted by the first ruling in § 2a.7 — this is exactly the case it exists for |
 | energy shift | 0.02 Ry | the confinement radius; tighter would truncate those same tails |
 | XC | GGA / PBE | and the caveat is real: GGA underestimates the gap, so the conductance will come out high. § 7 says by how much |
-| mesh cutoff | 300 Ry | converged for Au–S; egg-box error below ~250 |
+| mesh cutoff | 300 Ry | the catalogue's default, not a converged value: an Au junction wants **400 Ry**, converged 300 → 500 (§ 7; [`tuning.md`](?doc=engines/tuning.md) § 2.6); egg-box error grows below ~250 |
 | electronic temperature | 300 K | metallic leads; also the leads' distribution function |
 | shared k-point grid (x, y) | 4 × 4 | the junction supercell's k-point grid in the electrode plane — **the leads and the device both use it** |
 
@@ -5473,13 +5473,13 @@ either hide the shared values with nowhere to put them, or offer them and be
 refused at prep.
 
 **Both surfaces are generated from the catalogue**, narrowed by kind, by the
-same call the Build tab makes. Which fields land on which is answered by the
+same call the Structure optimization tab makes. Which fields land on which is answered by the
 markers the catalogue carries, never by a list a blueprint keeps:
 
 | marker | means | shared panel | per-rung form |
 |---|---|---|---|
 | `calculations` | not a parameter of this kind | — | — |
-| `allocation` | the scheduler answers at prep | no | no |
+| `allocation` | the run states it, on its run card or a prep flag — never the template ([`template.md`](?doc=engines/template.md) § 6.4) | no | no |
 | `role` | the rung's own identity; a choice with one correct answer | no | never a control: **echoed read-only** at the rung's answer, with why (`locked`, `form-schema.md` § 1.1; K7, 2026-09-30) |
 | `shared` *(§ 3.8.6, decided 2026-09-24)* | binds every rung | **yes** — except the `setup` group, whose two members the description (the identity) and the citation (the pseudopotentials: a cited run's travel with it) answer themselves, save what the citation asks of the person — a pair's pseudopotential directory (§ 3.8.1, `citation_defaults.asked_of_the_person`); the same group rule that keeps `staging` off every form (`form-schema.md` § 1.3) | **no** |
 | `citation` | a cited run DEFAULTS it at `molbuilder describe` | yes for a shared row, its provenance shown | for a rung's own row — the SCF stages' mixer and criteria (§ 3.1) — the template's value from the citation, as a blank field's hint |
@@ -5531,7 +5531,7 @@ correct order".)*
 | **Inside a tab the group cards fold** (`renderForm`'s `foldable` option, `form-schema.md` § 1.3): a card holding an item the rung OWNS opens; a card holding only any-rung items starts folded, its summary naming the count. **Every card is named with the rung** (*seed · Convergence targets*) and one sentence above them says the values are the rung's own over the template's — the schema's `card_prefix` and `stage_words` *(user, 2026-10-09: "make sure the title and text in each panel for these stages are clear ... so the user is not confused by the repetition")* | the rung's own physics is what the eye lands on; the seed, both leads and the device each carry the same SCF settings with their own values, and each tab says whose they are |
 | **The describe door takes per-rung bags** — `stages: {rung: {item: value}}`, the shape `task.stages` carries — and refuses a bag naming an item the rung does not own, through the one door `prep` refuses from (`template.why_not_in`, the description's check — `validation/task.py`) | A rung's values are its own bag; nothing routes an item to a rung |
 | **The ladder is its five rungs, in order** — a transport description's `stages` are `seed`, `electrode_L`, `electrode_R`, `device`, `transmission`, every one — the seed among them, since the device starts from its density (user, 2026-10-12, withdrawing ruling Q4's skip) — its stages the kind's roles (`execution/architecture.md` § 3.3); the description's reader refuses any other ladder, naming the five rungs, and Task setup offers no control that would change it (`web/task-setup.md` § 5.3) *(user, 2026-10-11)* | a rung removed, added, renamed or moved is a ladder no prep can walk |
-| **Describe is one act, and the server writes it** — `POST /api/transport/describe` names the folder (`dest`); the door refuses one above a calculation's place — the projects root, a project, a bare topic (`job-contracts.md` § 2.5, in the words of every describe door's one depth rule, `describe.refuse_place`, which Build's hand-over and `molbuilder describe` ask too) — one that already holds a `task.json` (one calculation per folder), one inside a calculation's folder — the citation's among them (§ 3.1) — and one holding a calculation (`project-layout.md` § 7, invariant 2a) — the checks `molbuilder describe` asks, through the same function (`describe.refuse_described`) — and writes the template, `task.json` and `job-request.json`, every file or none, through the writer every describe takes (`describe.write_description`); the browser writes neither (`web/handover-procedure.md` § 4) *(user, 2026-10-11)*. Once written, the description is Task setup's to edit, as every kind's is: each rung's own values in its Stages card (`web/task-setup.md` § 5.3), the run's settings on each rung's run card. The citation, the electrode rename and the bias are what the calculation is (§ 3.8.1, § 4), and Task setup's cards show them and change none. The citation names the calculation — its run id is derived from it — so a different junction is a new description in a new folder; the rename and the bias are corrected in `task.json` itself, in Task setup's editor, as `molbuilder describe`'s refusal says of a described folder (user, 2026-10-01); a shared value is the template's, changed in that file | The refusal belongs to the door that writes, so the browser writes no file |
+| **Describe is one act, and the server writes it** — `POST /api/transport/describe` names the folder (`dest`); the door refuses a folder where `job-contracts.md` § 2.5 places no calculation (`describe.refuse_place`), and one that already holds a description or would put one calculation inside another — the citation's among them (§ 3.1) — (`describe.refuse_described`, `project-layout.md` § 7, invariant 2a): every describe door's checks, Build's hand-over's and `molbuilder describe`'s too — and writes the template, `task.json` and `job-request.json`, every file or none, through the writer every describe takes (`describe.write_description`); the browser writes neither (`web/handover-procedure.md` § 4) *(user, 2026-10-11)*. Once written, the description is Task setup's to edit, as every kind's is: each rung's own values in its Stages card (`web/task-setup.md` § 5.3), the run's settings on each rung's run card. The citation, the electrode rename and the bias are what the calculation is (§ 3.8.1, § 4), and Task setup's cards show them and change none. The citation names the calculation — its run id is derived from it — so a different junction is a new description in a new folder; the rename and the bias are corrected in `task.json` itself, in Task setup's editor, as `molbuilder describe`'s refusal says of a described folder (user, 2026-10-01); a shared value is the template's, changed in that file | The refusal belongs to the door that writes, so the browser writes no file |
 
 The numbered cards and the tab strip read as one order: **1 cite the junction
 → 2 the shared description, once → 3 check the chemistry → 4 each rung, on
@@ -6526,7 +6526,7 @@ declaration says the crystal continues:
 
 | axis | declared | the settings gate | why |
 |---|---|---|---|
-| transport (`c`) | any | **refuses** a room at the boundary above 1.5 of the lead's interlayer spacings (vacuum), or below 1/1.5 of one (a collision: the two leads' end layers meet through the image) | the leads continue through the boundary into the periodic image, so the room there is exactly one layer spacing of the lead (2.40 Å on the Au–BDT–Au junction), not zero; more is a gap, and a gap makes the lead a surface (I12) |
+| transport (`c`) | any | **refuses** a room at the boundary above 1.5 of the lead's interlayer spacings (vacuum), or below 1/1.5 of one (a collision: the two leads' end layers meet through the image) | the leads continue through the boundary into the periodic image, so the room there is exactly one layer spacing of the lead (2.40 Å on the Au–BDT–Au junction, a PBE lattice), not zero; more is a gap, and a gap makes the lead a surface (I12) |
 | transverse (`a`, `b`) | `periodic` | **refuses** a lead that does not reach across the boundary: its closest approach there above 1.5 of its own nearest-neighbour distance — **each lead on its own**, and named | periodic says the crystal continues across the boundary, and vacuum contradicts the declaration |
 | transverse | `isolated` | **allows** it | a wire or chain lead is vacuum-surrounded across the transport axis — the standard TranSIESTA setup — and the vacuum is the one the structure states |
 
@@ -6757,7 +6757,9 @@ Three corrections that catch real mistakes:
   checked by TranSIESTA itself, and is the measure: on AuBDTAu the geometric
   repeat, 3 Au(111) layers ($c$ = 7.193 Å), passed it (*"L principal cell is
   perfect!"*) even with the diffuse `PAO.EnergyShift 0.005 Ry`, whose Au 6s
-  radius is 6.64 Bohr (3.5 Å) against the 2.36 Å interlayer spacing
+  radius is 6.64 Bohr (3.5 Å) against the 2.40 Å interlayer spacing of this
+  junction's PBE lattice ($c$/3; 2.35 Å on the experimental lattice,
+  [`science/junction-cell.md`](?doc=science/junction-cell.md) § 2)
   [Papior 2017; Soler 2002 for the EnergyShift↔range link]. Read that line in
   the device's output rather than assume it. Separately, the
   electrostatic potential must reach its **bulk value at the lead boundary** (else Σ
@@ -6806,7 +6808,7 @@ sees:
 | (110) | ABAB | **2 layers** | $a/(2\sqrt{2})$ | 1.4697 Å |
 
 $a$ is not a constant to assume: `fcc_lattice.json` carries
-`a_experimental` and `a_pbe` per metal (and the Modify tab can measure a third
+`a_experimental` and `a_pbe` per metal (and the Molbuilder tab can measure a third
 off your own relaxed bulk run), and **the lead must
 use the same one the device was built with** — a 1–2 % lead/device lattice
 mismatch is exactly what I10 exists to prevent. For a PBE run that means

@@ -1131,7 +1131,7 @@ A key is written where the result states it.
 | `title` · `schema` · `molbuilder_version` · `source` · `engine_version` · `Conventions` · `unit_meanings` · `label` | 9.0.1 — `source` *computed by pyscf 2.14.0* or *computed by siesta 5.4.2*: the engine as the result keys it (`siesta`, `pyscf`), where the other files write *SIESTA* |
 | `engine` | the engine that computed it: `pyscf` or `siesta` |
 | `json_sha256` | the sha256 of the `<label>.spectra.json` written with this file — the pair tied at every rewrite |
-| `spectra_schema_version` | the schema version of that JSON result (`14`) — not this file's, which is `schema` |
+| `spectra_schema_version` | the schema version of that JSON result ([`engines/vibration.md`](?doc=engines/vibration.md) § 6.1) — not this file's, which is `schema` |
 | `timestamp` | when the result was written, UTC — the result's own time, carried as it is |
 | `n_atoms_total` | how many atoms the structure has |
 | `methods_text` | the Methods paragraph composed for the result ([`engines/vibration.md`](?doc=engines/vibration.md) § 4.10) |

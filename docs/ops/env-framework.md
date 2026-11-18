@@ -819,14 +819,15 @@ and is named: the recovery command is printed *before* the removal, not after a
 failure. Python applies `--clean` to every other recipe and says so for the one
 it skips.
 
-**The env-manager confirmation is asked only by the verbs that CHANGE an env**
+**The env-manager confirmation is asked only by the verbs that CREATE an env**
 *(2026-09-12)*. `require_conda` prompts *"use this env manager?"* — which exists
 for the case where an old `~/anaconda3` is picked over the Miniforge you meant —
 and that only matters when something is about to be created with it. So it is
 asked only by `bootstrap` and `install` (`_verb_changes_envs`). Both accept
 `--yes`, so the remedy printed with no TTY is runnable. A read-only verb
-(`doctor`, `list`, `validate`, `repair`) defines no `--yes` and needs none, so a
-health check runs in CI.
+(`doctor`, `list`, `validate`) defines no `--yes` and needs none, so a
+health check runs in CI; nor does `repair`, which installs into an env that
+exists already and runs without a prompt on a remote node (§ 7).
 
 **`--help` never installs.** It implies `--yes`, so with no TTY the pointer
 still prints, and `MB_WANT_HELP` stops the `bootstrap` arm when the host env is

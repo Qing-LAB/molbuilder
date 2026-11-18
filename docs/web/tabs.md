@@ -241,7 +241,7 @@ charge and spin it will carry, describe the calculation and Send it. It mounts:
 - a **read-only MolView** (`mode: "readonly", owner: "structure-opt"`) — you look,
   you don't edit;
 - two **schema-built forms** (one SIESTA, one PySCF), rendered by form-schema from
-  `GET /api/build/schema/siesta` and `.../pyscf`;
+  `GET /api/build/schema/siesta?calculation=optimization` and `.../pyscf?calculation=optimization`;
 - the **chemistry card** ("Charge and spin", `lib/chemistry.js`) and each form's
   **chip** (`lib/detection-chip.js`): the charge and spin each form's calculation
   will carry, resolved by the one electronic-state class for exactly what that

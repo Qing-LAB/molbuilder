@@ -211,10 +211,10 @@ is [`job-system.md`](?doc=execution/job-system.md) § 5.0.
   stage's first run opened with the calls it always holds
   ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.11).
 - **(e)** Every file of the plan written in the order it was planned
-  (`Plan.carry_out`): each member's decks, run scripts, run folder and pipeline
-  log, then its row in `job-set.json` — a member without its row has not been
-  prepared; then what each stage was prepared with (`prepared-with.json`,
-  which `status` compares with the records later) and `STAGE-PLAN.md`.
+  (`Plan.carry_out`), the order [`job-system.md`](?doc=execution/job-system.md)
+  § 5.0, checkpoint 6, gives — a member without its row in `job-set.json` has
+  not been prepared, and `prepared-with.json` is what `status` compares with
+  the records later.
 
 **The transport steps:**
 
@@ -727,7 +727,7 @@ job in a different order cannot be compared, only read.
 flowchart TB
     subgraph FIXED["the sequence — the framework's, identical for every engine"]
       direction TB
-      S1["<b>resolve</b><br/>template ⊕ overrides ⊕ sweep ⊕ pins ⊕ the rung's answers"]
+      S1["<b>resolve</b><br/>template ⊕ overrides ⊕ run settings ⊕ sweep ⊕ pins ⊕ the rung's answers"]
       S2["<b>spec_for</b><br/><i>ask the engine for its FORM</i>"]
       S3["<b>validate</b><br/>the settings gate"]
       S4["<b>render</b><br/><i>walk spec.layout in order</i>"]

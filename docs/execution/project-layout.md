@@ -897,7 +897,7 @@ set**, and each row names the one it equals:
 | **M2a** | a machine's facts are recorded by the probe on that machine, and the record is copied to where you prepare; prep says how a run's ask fits it, never a veto | configuration M-1; [`scheduler.md`](?doc=execution/scheduler.md) R6 |
 | **M3** | what came from the machine and what was stated are both recoverable from the folder: the record's `source` says probed or declared, and the deck's provenance block says who set each value | configuration M-1; [`job-contracts.md`](?doc=execution/job-contracts.md) § 3.2 |
 | **M4** | the ask is an input to prep, not a decision at the send | configuration § 5, *Capability and allocation*; [`architecture.md`](?doc=execution/architecture.md) § 5.2 |
-| **M5** | `launch` decides nothing: it sends what prep wrote, one job | configuration § 5, *Capability and allocation*; [`job-system.md`](?doc=execution/job-system.md) § 6.0 |
+| **M5** | `launch` decides nothing: it sends what prep wrote — one job for a task, one per resource shelf for a benchmark | configuration § 5, *Capability and allocation*; [`job-system.md`](?doc=execution/job-system.md) § 6.0; [`submission.md`](?doc=execution/submission.md) § 1 |
 | **M6** | a workstation records its capability in the same shape as a cluster | configuration M-2 |
 
 How a benchmark's sweep sits inside them is

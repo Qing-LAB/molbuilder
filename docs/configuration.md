@@ -185,10 +185,8 @@ runs at the end of a first install (§ 3.2;
 [`ops/installation.md`](?doc=ops/installation.md) § 2.1). Every reader treats an
 absent file as unset, so the directory need not exist; but the activation has
 no default, and a machine with none is refused before any run script is written
-(§ 4). The seeding never overwrites a file a person wrote — a file that is there
-is reported and left — with two exceptions it says: molbuilder's own two
-READMEs when their text is out of date, and a `molbuilder.json` with no
-`env_init.activation`, which gains the one asked.
+(§ 4). The seeding never overwrites a file a person wrote; the two files it may
+rewrite are § 3.2's.
 
 ### 2.1d Operational state — `$XDG_STATE_HOME` and `$XDG_RUNTIME_DIR`
 
@@ -221,7 +219,8 @@ No module builds a per-user path itself.
 ### 2.1e The session key has one home
 
 **The key is `<config dir>/secrets/secret_key`.** The server creates it on its
-first start, at `0600`, and reads it from then on — one resolver,
+first start with sign-in configured (an `auth` section; without one, or under
+`--no-auth`, there is no session key), at `0600`, and reads it from then on — one resolver,
 `config_dir.session_key()`, and one creator, `web/auth._install_secret_key`, so
 reader and writer cannot name different files. `molbuilder auth-setup` does not
 touch it.
@@ -530,6 +529,12 @@ moment the answer is known: the **activation** (no default), written as
 `paths.projects` (its default is inside the checkout). `--yes` takes both
 defaults and prints them.
 
+**It never overwrites a file a person wrote.** Every step reports `created`,
+`kept` or `rewritten`: a file that is there is reported and left, with two
+exceptions — molbuilder's own two READMEs, rewritten when their text is out of
+date, and a `molbuilder.json` with no `env_init.activation`, which gains the
+one asked and nothing else.
+
 **Seeding runs at the end of `bootstrap`, and its preconditions are checked at
 the start**: a failure at the end must not throw away the built environments,
 so it is reported and never fatal — but an unwritable config root, or no
@@ -580,7 +585,7 @@ ignored — inside a section as at the top level (`runtime_config._refuse_unknow
 | key | what it is for | read by | printed in provenance | owner of its values |
 |---|---|---|---|---|
 | `launch.mode` | how `jobset launch` sends a job when no `--mode` is given: `direct` runs it here with bash, `submit` hands it to the scheduler | `runtime_config.get_launch_mode` ← `jobset launch` | yes | below |
-| `envs.<category>` | which conda environment a category runs in, when not the default name: `siesta`, `siesta-gpu`, `pyscf`, `mdtools`, `jupyter` | `diagnostics.Capabilities.env_for_category` ← the run script at prep, the `envs` verbs | no | [`ops/installation.md`](?doc=ops/installation.md) |
+| `envs.<category>` | which conda environment a category runs in, when not the default name: `siesta`, `siesta-gpu`, `pyscf`, `mdtools`, `jupyter`, by default `molbuilder-siesta`, `molbuilder-siesta-gpu`, `molbuilder-pySCF`, `molbuilder-MDtools`, `molbuilder-jupyternb` (`diagnostics.DEFAULT_ENV_NAMES`) | `diagnostics.Capabilities.env_for_category` ← the run script at prep, the `envs` verbs | no | [`ops/installation.md`](?doc=ops/installation.md) |
 | `envs.manager` | the absolute path of the conda-compatible command, when the one on PATH is not the one to use | `runtime_config.get_env_manager` ← the `envs` verbs | no | [`ops/installation.md`](?doc=ops/installation.md) |
 | `env_init.activation` · `env_init.preamble` | how a shell on this machine enters a conda environment — `source activate` or `conda activate`, no default — and the shell run before it (`module load mamba`, sourcing conda's hook) | `runtime_config.get_env_init` ← `jobset probe` | no | M-1; [`running-a-job.md`](?doc=execution/running-a-job.md) § 5.2 |
 | `paths.projects` | where the project tree is: a folder named `projects`, which this setting (and `$MOLBUILDER_PROJECTS`, which beats it) moves and never renames | `projects.projects_root` ← every surface | yes | [`job-contracts.md`](?doc=execution/job-contracts.md) § 2.5 |
@@ -657,7 +662,7 @@ rank and GPUs are not part of it**: they are the launch's shape, stated on the
 run card (`execution`, § 3.2 there), and the two are separate rungs of
 [`architecture.md`](?doc=execution/architecture.md) § 5.2 because a queue that
 grants a wall clock grants no rank count. **The catalogue's `allocation =
-true` flag is another set**: it marks the items a machine answers — `mpi_np`,
+true` flag is another set**: it marks the items the run states and a template never holds — `mpi_np`,
 `omp_threads` (PySCF's `threads`), `gpu_count`, `max_memory_mb` — the launch
 shape and the memory cap, never the `allocation` block.
 
@@ -703,8 +708,10 @@ flowchart TB
 - **The ask is an input to prep, not a decision at launch.** The deck carries
   values tied to the rank count, and the run script is written for the deck, so
   the shape is known before either is rendered; the header is written from the
-  ask by the same prep. **Launch decides nothing**: it sends what prep wrote,
-  one job ([`job-system.md`](?doc=execution/job-system.md) § 6.0;
+  ask by the same prep. **Launch decides nothing**: it sends what prep wrote —
+  one job for a task, one per resource shelf for a benchmark
+  ([`submission.md`](?doc=execution/submission.md) § 1;
+  [`job-system.md`](?doc=execution/job-system.md) § 6.0;
   [`architecture.md`](?doc=execution/architecture.md) A3). Asking for less of a
   machine is often the better choice — a smaller ask starts sooner — so nothing
   fills an allocation in from what the machine has

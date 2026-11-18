@@ -228,7 +228,7 @@ and a registration in a notebook reaches no `jobset prep`.
 ## 5. Region-label vocabulary (which tags mean electrodes)
 
 Region labels are `tag` channels; a subset of the vocabulary drives the
-transport emitter. Users assign labels in the Modify tab (the data model only requires a
+transport emitter. Users assign labels in the Molbuilder tab (the data model only requires a
 non-empty string — `Structure._validate_regions`).
 
 > **The convention, in one line:** the two transport **leads** are the regions
@@ -243,7 +243,7 @@ non-empty string — `Structure._validate_regions`).
 > The browser holds no list of lead names, so there is no second
 > implementation to agree.
 
-The canonical labels the Modify tab ships and the emitter interprets:
+The canonical labels the Molbuilder tab ships and the emitter interprets:
 
 | Label | Role (data-model meaning) |
 |---|---|
@@ -292,7 +292,7 @@ thing a shared namespace otherwise loses.
 **It marks provenance, not reservation.** `frozen_atoms` is reserved — something
 downstream acts on it — and deliberately does **not** take the suffix. Nothing
 reads its name as a pattern: it is spelled once (`FROZEN_LABEL`), matched
-whole, and a person assigns it on purpose in the Modify tab. The suffix is for
+whole, and a person assigns it on purpose in the Molbuilder tab. The suffix is for
 the one place a free-text input names a region, and it stays there.
 *(User decision, 2026-09-07: "just for the electrodes … frozen_atoms is so
 clear we don't want to touch that.")*

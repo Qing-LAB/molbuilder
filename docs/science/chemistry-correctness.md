@@ -618,8 +618,8 @@ told to go open-shell.
   and the energy an image-charge error that decays only as 1/L. SIESTA corrects
   it itself for a molecule in a cubic cell (§ 2a.4) and not otherwise; molbuilder's
   `makov_payne_correction.py` must add only what SIESTA did not — it reads
-  `siesta: Emadel` first (`siesta/makov_payne.py`). The vacuum is judged against 25 Å per side
-  rather than 8.
+  `siesta: Emadel` first (`siesta/makov_payne.py`). The vacuum is judged against the charged
+  threshold ([`engines/siesta.md`](?doc=engines/siesta.md) § 4).
 * **In a gas-phase code (PySCF).** No images, no correction. An anion needs
   diffuse basis functions (`aug-`, or def2 `…D`) — without them the extra
   electron is squeezed into valence orbitals — and a gas-phase anion can have an
@@ -719,8 +719,8 @@ backend doesn't break the cascade (3DNA still wins for DNA when present).
 the shared `add_hydrogens` (X3DNA's raw output has stylised hydrogens that need
 replacement); AmberTools/tleap runs the methylene-hydrogen fix
 (`builders.backends._amber._fix_methylene_hydrogens`); RDKit builds the
-polymer from the one-letter sequence (`MolFromSequence`), adds Hs with plain
-`Chem.AddHs`, embeds a conformer with ETKDGv3, and minimises with **UFF** — MMFF
+polymer from the one-letter sequence (`MolFromSequence`), adds Hs with
+`Chem.AddHs(addResidueInfo=True)`, each in its anchor's residue, embeds a conformer with ETKDGv3, and minimises with **UFF** — MMFF
 lacks parameters for nucleic acids (`builders.backends._rdkit.build`).
 
 **3.3 At the chemistry primitives** — `add_hydrogens` runs **once** per structure

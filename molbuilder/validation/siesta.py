@@ -345,8 +345,8 @@ def _check_siesta_mesh_cutoff(cfg, struct=None, *, dest_dir=None) -> List[Issue]
     if 100.0 <= mc_val < 150.0:
         return [Issue(
             "warn",
-            (f"mesh_cutoff = {mc_val:g} Ry is below the production "
-             f"floor of ~150 Ry.  Forces / energies on organic and "
+            (f"mesh_cutoff = {mc_val:g} Ry is below the ~150 Ry floor "
+             f"of a screening calculation.  Forces / energies on organic and "
              f"biomolecule systems are noticeably wrong at this "
              f"cutoff (tens of meV; a relaxation converges to a "
              f"slightly different minimum).  Production-typical: "

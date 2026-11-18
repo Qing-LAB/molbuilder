@@ -204,14 +204,16 @@ Six of the eight presenters are simple, but two — **trajectory** and
   SCF plots;
 - the **spectra** presenter hands off the same way to the spectrum engine
   (`lib/spectra/core.js`) — the chart and modes table, following a run still
-  going until its phases finish ([`spectra.md`](?doc=web/spectra.md) § 7);
+  going until the run ends — a phase flag never stops it ([`spectra.md`](?doc=web/spectra.md) § 7);
 - **bench-summary** is self-contained: it reads a sweep's `job-set.json`,
   renders the trials and a chart, and re-polls on its own cadence;
 - **transport** is self-contained too: for a transport calculation's
   `task.json` it asks `/api/transport/record`, which composes the record from
   the rungs as they are now, and draws the report — T(E), DOS, the I–V, each
-  rung's state with the ladder's chip and its convergence — once, with no
-  polling;
+  rung's state with the ladder's chip and its convergence — once; while a
+  point's digest is being read it asks that reading's line again every 2 s,
+  and fetches the record again when the reading ends
+  ([`results.md`](?doc=web/results.md) § 2.5);
 - **fc-sweep** likewise: it reads a `<label>.fc-sweep.json` and draws the
   stages' and modes' tables, once (bench-summary, transport and fc-sweep build
   their elements through one shared helper, `lib/dom.js`);

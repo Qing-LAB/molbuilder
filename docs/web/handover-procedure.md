@@ -141,14 +141,9 @@ in the Send's severity *(the user, 2026-11-09; [`tabs.md`](?doc=web/tabs.md)
 
 ## 3. The hand-over file
 
-`task.1st.json`, schema **`molbuilder/task-handover@1`**. Three rules, each
-doing work (`stages.md` § 6.5a is the contract):
-
-| | |
-|---|---|
-| **its own schema** | never `molbuilder/task@2`. It has no `shape` and no settled `stages`, so it would fail that reader — and `check_schema` refuses a wrong artifact **by name**, so nothing can read it as a description by accident |
-| **the extension is last** | `task.1st.json`, not `task.json.1st`. Highlighting is by suffix, so the second spelling is plain text in the editor a person reads it in — and nothing looking for `task.json` matches it, which matters because `calcdirs.described` treats that name as the marker that a folder **declares itself a calculation root** |
-| **it says what it is** | JSON has no comments, so it opens with a `_what` line and an `awaiting` list naming the keys it lacks. A person reads it, in an editor, and should not need a document open beside it |
+`task.1st.json`, schema **`molbuilder/task-handover@1`**. Its three rules —
+its own schema, the extension last, it says what it is — and why it is a file
+apart from `task.json` are [`stages.md`](?doc=engines/stages.md) § 6.5a's.
 
 **It names the structure, it does not summarise it.** `structure.source` is a
 **folder-relative** name — the `.xyz` beside it — plus `formula` and `atoms` as
@@ -166,10 +161,9 @@ hand-over and the description say the same thing in the same words.
 rule, which has one home (`model/structure.md` § 2.4). Naming it would be a
 second copy of a rule this document does not own.
 
-**It resolves in one direction.** On a successful save `task.json` exists and the
-hand-over is removed, so the next visit finds one description. A folder holding
-both is a save that did not finish, and **the description wins** — it is the one
-that passed the preflight.
+**It resolves in one direction** — removed when the description is saved, the
+description winning over a leftover ([`stages.md`](?doc=engines/stages.md)
+§ 6.5a).
 
 ---
 
@@ -187,7 +181,7 @@ The split is `projects.md`'s, not this document's invention:
 
 ## 5. What the receiving tab must do
 
-**Three states, and the third is a refusal:**
+**Three states** ([`task-setup.md`](?doc=web/task-setup.md) § 2.2):
 
 | the folder holds | it means |
 |---|---|

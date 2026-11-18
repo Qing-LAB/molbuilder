@@ -1030,7 +1030,7 @@ coordinate gives a whole Hessian column; only the active coordinates are
 displaced, so 300 atoms with 30 active cost 90 displaced coordinates rather
 than 900, while every SCF stays a 300-atom SCF. *Tool:* exactly that —
 `MD.TypeOfRun FC`, `FC.First..FC.Last` over the free range of the sorted
-copy, `FC.Displacement` (0.04 Bohr by default, range 0.005–0.2), the `.FC`
+copy, `FC.Displacement` (its default and range: [`engines/vibration.md`](?doc=engines/vibration.md) § 3.1), the `.FC`
 file in eV/Å² read by the job's finish, the two sides of each nudge averaged
 (a central difference) and the free block symmetrised
 (`parse/engines/siesta_fc.py::hessian_from_fc`).
@@ -1375,7 +1375,7 @@ A measurement averages over the motion, and in both cases that matter the
 first-order term averages away:
 
 - *thermal*: $Q$ is Gaussian, $\langle Q\rangle = 0$,
-  $\sigma^2 = \langle Q^2\rangle = (\hbar/2\omega)\coth(\hbar\omega/2k_BT)$ (web/spectra.md § 4.1):
+  $\sigma^2 = \langle Q^2\rangle = (\hbar/2\omega)\coth(\hbar\omega/2k_BT)$ ([`vibrational-averaging.md`](?doc=science/vibrational-averaging.md) § 2):
 
   $$
   \langle T\rangle = T_0 + \tfrac12\,T''\sigma^2 + O(\sigma^4)

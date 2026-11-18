@@ -4,7 +4,7 @@
 **Domain:** web
 **Companions:** [`molview.md`](?doc=web/molview.md) — owns the molecule the
 workspace saves; the workspace holds no data of its own. `web-api.md` — the
-`/api/workspace-storage/*` server routes (web wave). The Modify tab's Save panel
+`/api/workspace-storage/*` server routes (web wave). The Molbuilder tab's Save panel
 and the projects file doors — a *file* save is their job, not the workspace's
 (§ 8).
 
@@ -94,7 +94,7 @@ had.
 |---|---|---|
 | the **timeline** — the sequence of saved points, where you are on it, what a save records, what to prune, how far a step goes | **MolView**, in `lib/molview/history.js` (molview.md § 11.2) | The workspace stores numbered *states*; the **timeline is the sequence MolView makes of them**. The workspace has no idea one exists — it never compares two indices, and index 3 means nothing more to it than "a different file from index 2". A server that knew the order would be a second opinion about a history it cannot see the contents of |
 | a **reader** of what it stores | nobody — the bytes are opaque | It moves bytes and never parses them. That is what lets a trajectory become restorable with no change here (molview.md § 11.2), and it is why the same routes serve a molecule, a history point and a page's settings without knowing the difference |
-| a **file** save | the Modify tab's Save panel + the projects doors (§ 8) | Saving to a project is a decision a user makes about a name and a place. The workspace saves what you did not ask it to save |
+| a **file** save | the Molbuilder tab's Save panel + the projects doors (§ 8) | Saving to a project is a decision a user makes about a name and a place. The workspace saves what you did not ask it to save |
 | the **owner** of where `projects/` is | the app, through `Capabilities` | The root is resolved once for the whole app. Answering it separately here is exactly how the storage came to write somewhere the file picker was not looking |
 
 **The first row is the one most easily misread**: the server half
@@ -104,7 +104,7 @@ had.
 
 ## 3. A worked example — reload the tab, undo
 
-Say you open a molecule in the Modify tab, delete an atom, then move another:
+Say you open a molecule in the Molbuilder tab, delete an atom, then move another:
 
 1. Each edit rewrites **the draft** — one file, replaced each time — and lays
    down a numbered point of its own (`molview.md` § 1.1), dropping any points
@@ -125,8 +125,9 @@ Say you open a molecule in the Modify tab, delete an atom, then move another:
 
 ## 4. The tag — how several savers share one page
 
-A page can have more than one thing worth keeping. The Results tab shows a
-structure inspector and a trajectory inspector side by side. The Modify tab has a
+A page can have more than one thing worth keeping. The Results tab mounts one
+inspector at a time — a structure inspector or a trajectory inspector, each
+keeping its own ([`results.md`](?doc=web/results.md) § 1). The Molbuilder tab has a
 viewer holding a molecule *and* its own panel state. All of them want to survive a
 reload, and none of them should be able to tread on another.
 
@@ -233,7 +234,7 @@ There is no `workspace.getAtoms()`: a store that opened your bytes to answer
 ### What you have to do
 
 **Say your tag on every call.** No tag is remembered between calls. Use the same
-word every time for the same thing: the viewer on the Modify tab always says
+word every time for the same thing: the viewer on the Molbuilder tab always says
 `"modify"`, the structure inspector on Results always says `"results:structure"`.
 Miss it and the call fails; use a different word by accident and you are reading
 an empty slot while your work sits in the other one.
@@ -293,10 +294,10 @@ Both questions are yours — you wrote the bytes, so you know what is in them.
 
 Saving your work-in-progress (everything above) is a different thing from
 **saving a file into a project.** When you click Save-to-project, that runs
-through the Modify tab's Save panel (`modify/structure/save.js`) to the projects
+through the Molbuilder tab's Save panel (`modify/structure/save.js`) to the projects
 file door (`projects.molviewFiles.save` → `POST /api/structure/save`), which writes
 the `.xyz` + `.molstruct.json` pair. The workspace is **not** in that path at
-all. (The details live in the Modify-tab and projects docs.)
+all. (The details live in [`tabs.md`](?doc=web/tabs.md) § 2 and [`projects.md`](?doc=web/projects.md).)
 
 ## 9. The state files on the server, and two ordering rules
 

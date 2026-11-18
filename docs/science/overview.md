@@ -175,24 +175,9 @@ k-point is one such shift. A run samples a regular **k-point grid** of them —
 a count along each axis, a 4 × 4 × 1 k-point grid for example — and averages.
 *("Mesh" in SIESTA is the real-space grid, `MeshCutoff`, not this.)* The rules
 and their severities are [`engines/siesta.md`](?doc=engines/siesta.md)
-§ 6.1's, on the k-point grid each stage writes — `kgrid`, a transmission's
-`tbt_k_grid`, a lead's `electrode_kz`. In a transport calculation x and y span
-the electrode plane and z is the transport direction:
-
-| Check | Severity | Why |
-|---|---|---|
-| an isolated axis sampled with more than one k-point | warn | the structure does not repeat there, so the extra k-points only sample its periodic images, separated by vacuum — cost for nothing *(user, 2026-08-20: `k > 1` is the person's statement, never refused)* |
-| a transport calculation's isolated axis sampled with more than one k-point while the other axis of the electrode plane (x, y) is periodic (a stripe) | **error** | TranSIESTA stops the device on it — *"found incompatible k-grids"* (`ts_electrode.F90`) — after the seed and both leads have run; refused for now *(user, 2026-09-30)* |
-| a sampled axis with more than one k-point, whose periodic images sit ≥ 5 Å apart | warn (hint) | the gap is the real vacuum; images that far apart are usually meant not to interact |
-| an offset on an axis sampled with one k-point | warn | it moves that one k-point off Γ, the point k = 0 (the offset is read modulo 1, so 1.0 is Γ again) |
-| a transport calculation's third k-point count other than 1 (`kgrid`, `tbt_k_grid`), or its offset other than 0 | **error** | along z the device and the transmission are open — both engines force one k-point there — and the seed's density is only their starting point, while a lead samples z by its own count, `electrode_kz`: no stage reads this component as a choice (`kmesh.fixed`, every door; [`engines/transport.md`](?doc=engines/transport.md) § 0.2) |
-| a count at or below 0; `electrode_kz` at or below 1 | **error** | the items' own limits (`above`, `engines/template.md` § 5.3) — a lead is periodic bulk metal along z, and one k-point there gives a wrong lead Hamiltonian and Fermi level, which every self-energy is built from and aligned to |
-| `electrode_kz` below 50 | warn | its recommended range, the SIESTA manual's floor — not a proof of convergence: only raising it and seeing the lead's Fermi level stay put shows it has settled |
-| a transmission k-point grid the person set coarser than the shared k-point grid along x or y | warn | T(E) needs at least the k-points the density was converged on, and usually many more; a blank one is three times the shared grid ([`engines/transport.md`](?doc=engines/transport.md) § 0.3b) |
-
-*(`k = 1` states nothing and is checked not at all, save on a transport
-calculation, where one k-point along a direction the electrodes repeat in is
-warned ([`engines/transport.md`](?doc=engines/transport.md) § 0.3b).)*
+§ 6.1's, each with its reason and a transport calculation's among them, on
+the k-point grid each stage writes — `kgrid`, a transmission's
+`tbt_k_grid`, a lead's `electrode_kz`.
 
 ### Spin & charge — the electronic state's one family (`validation/chemistry.py::check_electronic_state`, every engine and kind)
 
@@ -244,7 +229,7 @@ every door (k-point grids, above).
 ### Config field ranges (`validation/metadata.py`)
 Every catalogue item may carry a `range`, and a config field a `validate=`
 callable; the generic metadata pass checks each value against them (e.g.
-`mesh_cutoff` outside 100–1000 Ry → warn; the 150 Ry production floor is
+`mesh_cutoff` outside 100–1000 Ry → warn; the 150 Ry screening floor is
 SIESTA's own check, `validation/siesta.py::_check_siesta_mesh_cutoff`). A range is a recommendation,
 warned and never refused; a hard limit is the catalogue's `above`, refused on
 every door through `template.why_not` — and a value refused there draws that

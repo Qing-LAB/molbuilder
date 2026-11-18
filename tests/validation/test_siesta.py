@@ -129,7 +129,7 @@ def test_siesta_mesh_cutoff_in_range_no_warn(water_structure):
 
 def test_siesta_mesh_cutoff_below_production_floor_warns(water_structure):
     """2026-05-28: a value within the dataclass range but below the
-    150 Ry production floor emits a SOFT WARN with a clear nudge.
+    150 Ry screening floor emits a SOFT WARN with a clear nudge.
 
     The slider lower bound is 100 Ry (the dataclass metadata-range
     check owns "below the slider floor").  100-149 Ry is the
@@ -144,8 +144,8 @@ def test_siesta_mesh_cutoff_below_production_floor_warns(water_structure):
         f"{[i.message for i in mc_issues]}"
     )
     assert mc_issues[0].severity == "warn"
-    # Message must name the actual value AND the production floor
-    # so the user knows what to set instead.
+    # Message must name the actual value, the screening floor and the
+    # production range, so the user knows what to set instead.
     assert "120" in mc_issues[0].message
     assert "150" in mc_issues[0].message
     assert ("200-300" in mc_issues[0].message

@@ -1093,8 +1093,8 @@ def get_admin_emails(cfg: Mapping[str, Any]) -> frozenset:
         "admin": { "emails": ["operator@asu.edu"] }
 
     **Absent or empty means NOBODY IS NAMED HERE**, and what that means is
-    one rule, `web/admin.is_admin_request`'s, for both subsystems that ask --
-    the rate limiter's block list and the server restart
+    one rule, `web/admin.is_admin_request`'s, for the subsystems that ask --
+    among them the rate limiter's block list and the server restart
     (`access-control.md` § 5): **anyone who can sign in**.  That is not an
     open door, because reaching a session at all requires being in a
     provider's ``allowed_users``, a REQUIRED field -- an operator has already

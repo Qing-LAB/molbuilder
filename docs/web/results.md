@@ -507,7 +507,7 @@ and count, the file it opens: its own result, else the point at work's
 folder and the file it opens (the ladder's view, `views_of`, each stage's runs
 in it, `runstatus.every_run`, a run of points' rows read once,
 `continuation.point_rows`: under each `stages[]` row,
-`runs: [{run, frame, of, bias_v, dir, state, converged, detail, opens, opens_report, opens_at, deck, validation, copied_from}]`, every path whole — a point's frame index, the set's frame count and its voltage, the point's one wire form (`stages.Point.to_wire`); a SIESTA vibration's call its phase, its name and, for an optical call, its mode, side and frequency beside them (`vibration_phases.Call.to_wire`, [`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 7); a transmission run once, at one voltage, carries its one point — `bias_v` 0, its frame and set `null` — as the report opens it (`point_of`), where another run-once rung carries all three `null` —, `opens` the run door's answer for that folder
+`runs: [{run, frame, of, bias_v, dir, state, converged, detail, opens, opens_report, opens_at, deck, validation, copied_from}]`, every path whole (a stage whose runs do not list, `runs: []` and why, `runs_unread`, the other stages kept; `opens_at` the point a row's report opens at — its own, or a run of points' point at work's) — a point's frame index, the set's frame count and its voltage, the point's one wire form (`stages.Point.to_wire`); a SIESTA vibration's call its phase, its name and, for an optical call, its mode, side and frequency beside them (`vibration_phases.Call.to_wire`, [`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 7); a transmission run once, at one voltage, carries its one point — `bias_v` 0, its frame and set `null` — as the report opens it (`point_of`), where another run-once rung carries all three `null` —, `opens` the run door's answer for that folder
 (`runs.openable`), so
 **a transmission run's is the root's `task.json`, with its
 `point`**, and `opens_report` says so (§ 2): its result is the report at that bias (§ 0.1), and its row's *open*
@@ -599,10 +599,9 @@ $I_\sigma = (e/h) \int T_\sigma(E, 0)\, [f(E - eV/2) - f(E + eV/2)]\, dE$, besid
 **A non-polarized calculation draws one curve per quantity**, its axes saying
 what its curves are — *T (each spin, ↑ = ↓)*, *DOS (states/eV, each spin)*: SIESTA and
 TBtrans compute one channel and treat the other as the same, TBtrans's T and
-DOS carry no spin factor (the DOS per orbital $-\mathrm{Im}\bigl[(G - G^\dagger)\,S\bigr]/2\pi$, which is $-\mathrm{Im}\,[G\,S]/\pi$, `m_tbt_tri_scat.F90`;
-the current's prefactor $e^2/h$, *"no spin degeneracy"*,
-`m_tbt_save.F90`), $G = G_0 \cdot T(E_F)$ carries the spin's factor 2 in
-$G_0 = 2e^2/h$, and the total current is twice the channel's TBtrans printed — so
+DOS carry no spin factor (the DOS per orbital $-\mathrm{Im}\bigl[(G - G^\dagger)\,S\bigr]/2\pi$, which is $-\mathrm{Im}\,[G\,S]/\pi$, `m_tbt_tri_scat.F90`), $G = G_0 \cdot T(E_F)$ carries the spin's factor 2 in
+$G_0 = 2e^2/h$, and the record's current is both channels' where TBtrans prints
+one ([`engines/transport.md`](?doc=engines/transport.md) § 2a.12) — so
 a polarized run's $T_\uparrow + T_\downarrow$ and its DOS ↑ + ↓ stand where a non-polarized run's
 $2T$ and $2 \cdot \mathrm{DOS}$ would. A polarized DOS axis says *↑ + ↓ unless marked* on one
 frame — the regions, the leads and your selections are the two spins summed —
@@ -901,7 +900,8 @@ calculation root, whose ladder is § 2.4's), and a folder with no run in it.
 points are its calls, and a bias sweep's run. The folder is not one run: its
 points are, each in a folder of its own, so it has no record of its own. The
 run of points' view (floor 6, `points_view`, served beside the folder's
-answer as `points`) carries **the point the run is at** — the point that is
+answer as `points`, `{state, detail, at_work: {point, dir, record, opens} | null,
+opens}`) carries **the point the run is at** — the point that is
 running; else the last, in the walk's order, whose run holds an engine output;
 none before any has — with that point's record, its one wire form, its folder
 and the row of the file it opens, each path whole. The panel leads with the
@@ -986,7 +986,10 @@ was.
 | **anything else** — the engine's, SLURM's, a person's | *not written by molbuilder* |
 
 **The words are the catalogue's, and the card composes none.** Each file of
-`/api/results/dir`'s answer carries `about` — `{ours, what, writer, when}`,
+`/api/results/dir`'s answer carries `about` — `{ours, what, writer, when, kind}`
+(`kind`, what losing the file costs, the catalogue row's —
+[`execution/project-layout.md`](?doc=execution/project-layout.md) § 5 —
+or `structure` for a saved pair),
 `{ours: null, unread}` (the reader's refusal of the folder's description,
 `runs.place_of`'s `problem`), or `{ours: false}` — the run door's `about(path)`
 ([`execution/architecture.md`](?doc=execution/architecture.md) § 3.2) over the
@@ -1239,9 +1242,9 @@ An empty GPU list has two causes, and they are opposite news:
 
 ```mermaid
 flowchart TD
-  Q["server reports no GPUs"] --> A{"was the NVIDIA library<br/>even installed?"}
+  Q["server reports no GPUs"] --> A{"is there an nvidia-smi<br/>to ask?"}
   A -->|"no — this is a CPU-only install"| CPU["cells hidden, nothing said<br/>(nothing is wrong)"]
-  A -->|"yes, and it refused to start"| ERR["cells hidden AND a warning line<br/>under the strip saying why"]
+  A -->|"yes, and it failed or timed out"| ERR["cells hidden AND a warning line<br/>under the strip saying why"]
 ```
 
 The server tells them apart with a `gpu_error` field on every reading: `null`

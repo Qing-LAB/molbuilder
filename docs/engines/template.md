@@ -426,7 +426,7 @@ written on a machine fact — is refused, as the reader refuses it.
 |---|---|
 | `anchor` | `kind = "engine"` — an engine item that names no keyword cannot reach the deck |
 | `value` | **when the item has been answered.** Its absence is a real state — *explicitly unset* — distinct from the default and from an absent key elsewhere. A valueless item is not malformed: § 6.4 makes valueless the **normal** state for an item answered after the description is written — by the structure (`spin_treatment`), a cited run, or the rung |
-| `allocation` | when the item is the **launch shape** — ranks, threads, GPUs, the memory cap — the machine's answers among the run settings: what a prep flag may state and the scheduler grants (§ 6.4). Like every run setting it is never in a template |
+| `allocation` | when the item is the **launch shape** — ranks, threads, GPUs, the memory cap — the run settings the run itself states, on its run card or as a prep flag (§ 6.4). Like every run setting it is never in a template |
 | `citation` | **which calculation KINDS have this item answered by a cited run** rather than by a person — § 6.4's sibling, ruled 2026-09-15. A list, like `calculations`, and absence means *never* |
 | `shared` | **which calculation KINDS this item binds every rung of** — a scope, not an answerer (`engines/transport.md` § 3.8.6, decided 2026-09-24). A list, like `calculations`; absence means *any rung may own it*. Every `citation` row is shared but the SCF settings: the cited run's mixer and criteria start every SCF stage, each of which may set its own (`engines/transport.md` § 3.1, TD6, 2026-10-09); the marker exists because the shared set is larger than the cited one |
 | `expands` | `kind = "deck"` — it is how a reader learns what this item produces: the engine keywords when the product is keywords (`restart` → `DM.UseSaveDM`, …), or the deck MECHANISM by name when the product is control flow (`compute_raman` → `PySCF: the finite-difference polarizability loop, every mode at once` — the vibration kind's items generate loops, not lines, and inventing pseudo-keywords for them would send a reader grepping for spellings no engine has) |
@@ -661,7 +661,7 @@ recorded because the reverse assumption produced a "leak" that was not one.)*
 | `offered` | **the choices a kind may take**, a subset of `choices` — `offered = { vibration = ["CG", "Broyden", "FIRE"] }` (§ 6.3a, 2026-09-30); on an item that serves two engines whose choices differ, the key names the engine too — `offered = { siesta.transport = ["restricted", "unrestricted"], pyscf.vibration = ["restricted"] }` (a TOML dotted key: one table per engine). Absent — for the kind, or on the item — means every choice. Read by the form, the stage table's cells, the description's own check, `resolve` and the settings gate (`template.offered`); a value outside it is refused by name, listing what the kind offers, with the reason `template.why_not_offered` gives. Each member passes the item's own `type` and `choices` at parse time, and each key names a calculation kind — a misspelled one is refused, since it would be a set nothing asks |
 | `not_offered` | **why a choice is not offered, beside it** — a list of rows `{ on, values, why }` (§ 6.3a, 2026-10-28): `on` an engine the item serves, a calculation kind or `"<engine>.<kind>"` — absent, wherever a value is withheld; `values` the withheld choices it explains — absent, every one withheld there; `why` the reason, read from the engine's source. A refusal of a value outside `offered` gives the first row that holds (`template.why_not_offered`). Checked at parse time: only on an item with `offered`, `on` naming an engine the item serves or a kind, every value one of the item's choices. Catalogue-only, never written into a calculation's template |
 | `refs` | citation keys into `docs/science/references.bib` — the paper(s) behind a scientific knob's guidance. Resolved server-side (title + DOI) and rendered in the form's help; `tests/test_catalogue_refs.py` pins that every key resolves |
-| `allocation` | **the scheduler answers this one** — ranks, threads, memory (§ 6.4). One boolean. |
+| `allocation` | **the run states this one, never the template** — ranks, threads, memory (§ 6.4). One boolean. |
 | `citation` | **a cited run answers this one, for these kinds** — `citation = ["transport"]` on `basis_size`, `mesh_cutoff`, `kgrid`, `pao_energy_shift`, `electronic_temperature`, `xc_functional`, `xc_authors`, the spin's `spin_treatment` and `unpaired_electrons` (2026-09-28), the grid's offset `kgrid_displacement` (2026-09-30, `engines/siesta.md` § 6.1), and the SCF's mixer and criteria — `mixing_weight`, `pulay_history`, `dm_tolerance`, `h_tolerance`, `dm_energy_tolerance`, `scf_energy_converge` — each SCF stage's starting value, not shared (2026-10-09, TD6). It is a LIST and not a boolean because those are the **same rows** an optimization uses, where the person answers them. One declaration on the item, which every reader asks through `select(t, citation=…)` ([`transport.md`](?doc=engines/transport.md) § 3.4.3). |
 | `shared` | **binds every rung of these kinds** — `shared = ["transport"]` on the `citation` rows and on `electrodes_bulk` (Class A, `engines/transport.md` § 2a.3; `electrodes_bulk` since 2026-09-29, one value for the two rungs that read it, § 6.1b); on the electronic state's four items for **every** kind that has them — `net_charge` and `method` for optimization and vibration, `spin_treatment` and `unpaired_electrons` for those and transport — because the state belongs to the calculation, never to a stage (`science/chemistry-correctness.md` § 2a, ES1; M6); and on the calculation's identity for every SIESTA kind — `system_label`, `species_order`, `psml_lib` (2026-09-29, K1): each rung reads what the one before it wrote under that label, numbered by that species table (the `.XV` holds each atom's species index, `ioxv.F`) and built on that pseudopotential set. Three readers ask it: the transport tab's shared panel shows these and nothing else, the per-rung form never offers one, and `prep` refuses a stage override naming one — for every kind, at the one resolve door ([`transport.md`](?doc=engines/transport.md) § 3.8.2), saying why (`template.why_shared`). Filtering on `citation` for this question would offer the species order as a per-rung override. |
 | `why_shared` | **why the stages it binds must hold one value**, in the sentence a refusal of one stage's own says — on a `shared` item whose reason is its own: *"the electrode and the device must not be able to disagree about it"* on the settings a transport calculation's cited run answers (`engines/transport.md` § 2a.7). Absent, the reason is one of `shared`'s own rules (`template.why_shared`): the electronic state belongs to the calculation, never to a stage; a calculation has one name, one species table and one pseudopotential set; a value scoped by `stages` is read by those rungs alone. A `shared` item none of those rules holds and that states no `why_shared` is refused when the catalogue loads — no reason is ever another's. Catalogue-only |
@@ -1140,12 +1140,12 @@ a GPU deck needs the source-built environment **and** a GPU runtime: the `gres`
 ask, MPS, the NUMA pin, the rank/thread budget. So it is `kind="deck"` (a
 merged item keeps no anchor, § 6.3) with `read_by = ["wrapper"]`.
 
-**Why that key earns its place — and where it stands today.** The wrapper finds
-this out by **reading the deck text**, which is a layer re-deriving an answer
-another layer already holds — the habit
+**Why that key earns its place.** A wrapper that found this out by **reading
+the deck text** would be a layer re-deriving an answer another layer already
+holds — the habit
 [`execution/architecture.md`](?doc=execution/architecture.md) § 7, rule A4 (ask,
-never work it out again), exists to remove. The target is that the wrapper is *told* which items it depends on, so
-a new engine declares its own without anyone editing the wrapper writer.
+never work it out again), exists to remove. So the wrapper is *told*, and the
+key states which items it depends on:
 
 > The wrapper is told: `resolve` puts `use_gpu` on the element's
 > `Resources`, the same ride `wall_slack` takes, and the wrapper asks that. It
@@ -1836,7 +1836,7 @@ default for "how many cores are there".
 which is what the flag below is for; a calculation's template holds neither
 (§ 2).
 
-**`allocation` says the SCHEDULER answers this one.** One boolean on the item,
+**`allocation` says the RUN states this one, never the template.** One boolean on the item,
 and it is the whole mechanism:
 
 ```toml
@@ -1844,7 +1844,7 @@ and it is the whole mechanism:
 kind       = "wrapper"
 category   = ["execution"]
 type       = "int"
-allocation = true      # the scheduler answers it; a description may never
+allocation = true      # the run states it; a description may never
                        # state a value, and a reader refuses one
 optional   = true
 group      = "staging"
@@ -1856,7 +1856,7 @@ help       = "How many MPI ranks to run with."
 | `allocation = true` | ranks, threads, memory — **stated for the run, not the template** | the run states its ranks and threads — on its run card or as a prep flag — or prep refuses the run ([`execution/architecture.md`](?doc=execution/architecture.md) § 5.2); a memory cap left unset is no cap -- a PySCF deck's run-settings block writes `MAX_MEMORY_MB = None`, which its `gto.M` hands PySCF as `max_memory`, read as not given, keeping its own setting (`PYSCF_MAX_MEMORY`, else 4000 MB), on every PySCF deck. Nothing fills one: not the machine's record, not what the queue grants | **it is no template item at all** (§ 2, G1) |
 | `optional = true`, no value | *unset is a legal answer* | what its blank's words (`null_label`) say: the engine's own value, which the deck's not-set line names, or what molbuilder works out from the run (*Parallel over k-points*: from the k-point grid and the solver) | yes — and a run setting (the `execution` category) is no template item at all: its value is the job request's run card (`execution/job-request.md` § 2) |
 
-**Five items carry it** — `mpi_np`, `gpu_count`, `omp_threads`, `max_memory_mb`, `threads` — and
+**Five items carry it** — `mpi_np`, `gpu_count`, `omp_threads`, `max_memory_mb`, `threads` (PySCF's) — and
 `select(t, allocation=True)` is the one way to ask which. Nothing hand-lists
 them: not the deck writer, not the web form, not `prep`. A door that needs
 some of them for a question of its own names those, with its reason beside
@@ -1935,9 +1935,9 @@ Five obligations, each naming the reader it binds.
 
 | | obligation | held by |
 |---|---|---|
-| **1 — declared once** | The catalogue states, for every item, **who answers it** — the person; a cited run (`citation`); the rung's role (`role`); the scheduler (`allocation`); the job request's run card (the `execution` category); the catalogue default when nobody has — and **where it binds**: every rung of a kind (`shared`), named rungs (`stages`), or this rung alone. **Whether the person may edit it, and where, is DERIVED from those two and never declared separately**: the owner's surface edits it, every other surface echoes it. | § 6.4 and its markers, `shared` among them (§ 5) |
+| **1 — declared once** | The catalogue states, for every item, **who answers it** — the person; a cited run (`citation`); the rung's role (`role`); the run's own statement, never a template (`allocation`); the job request's run card (the `execution` category); the catalogue default when nobody has — and **where it binds**: every rung of a kind (`shared`), named rungs (`stages`), or this rung alone. **Whether the person may edit it, and where, is DERIVED from those two and never declared separately**: the owner's surface edits it, every other surface echoes it. | § 6.4 and its markers, `shared` among them (§ 5) |
 | **2 — recorded with its source** | The description on disk — this calculation's template, and the stage bags in `task.json` — carries each item's value **and where it came from**. The three states a shared panel shows (*from the junction you cited · you set this · not chosen*) are states of the FILE, not of a screen. A file that holds `400` and cannot say whose `400` it is holds a number nobody can check. | § 4.3's writer; `transport/citation_defaults.py` at `molbuilder describe` |
-| **3 — shown everywhere, edited in one place** | Every surface that presents the calculation presents **every** parameter of it, at every rung: as a control where this surface owns it, otherwise as a **read-only echo naming the source and the reason** — *shared by all five rungs, change it in the shared block* · *fixed by this rung's role* · *the scheduler answers this at prep*. Leaving a parameter off a screen because it is not editable there is a defect: it makes the parameter look absent, which is the failure every rebuilt transport form has had. | [`form-schema.md`](?doc=web/form-schema.md); [`transport.md`](?doc=engines/transport.md) § 2a.6, *one editing surface, many read-only echoes* |
+| **3 — shown everywhere, edited in one place** | Every surface that presents the calculation presents **every** parameter of it, at every rung: as a control where this surface owns it, otherwise as a **read-only echo naming the source and the reason** — *shared by all five rungs, change it in the shared block* · *fixed by this rung's role* · *the run states this, on its run card*. Leaving a parameter off a screen because it is not editable there is a defect: it makes the parameter look absent, which is the failure every rebuilt transport form has had. | [`form-schema.md`](?doc=web/form-schema.md); [`transport.md`](?doc=engines/transport.md) § 2a.6, *one editing surface, many read-only echoes* |
 | **4 — explicit in the deck** | Every item of a rung's layout is written into that rung's deck with the value that will apply. A value nobody chose is written as the documented default **and marked as such**. An item deliberately unset (`optional`, at `None`) states so in the deck, naming the engine default that therefore applies. **No value reaches the engine by omission.** § 6.4's third state — *absent from the file: not a parameter of this calculation* — still says which items a KIND has; it never licenses silence for an item the kind has. | § 8.1 `prep`; the deck writers |
 | **5 — traceable** | From any deck line a reader reaches the item, its value, its source at prep (pin · sweep · stage · role · the stage's run card · the calculation's run card · the catalogue's default · allocation · template — `resolve.provenance`, [`execution/job-request.md`](?doc=execution/job-request.md) § 4) **and the template value's own origin from obligation 2**, and the decision that set it (`pipeline.log`, `jobset-decisions.log`) — **on every road, browser and CLI alike**. | `resolve.py`, `pipeline_log.py`, `jobset/ledger.py` |
 
@@ -2205,7 +2205,7 @@ the one [`overview.md`](?doc=engines/overview.md) § 3 already draws:
 
 | | what it is | where it lives |
 |---|---|---|
-| the held atoms — the reserved `frozen` label in the structure's regions | the structure's own label; the deck writer reads it at `prep` | with the structure, in the sidecar |
+| the held atoms — the reserved `frozen_atoms` label in the structure's regions | the structure's own label; the deck writer reads it at `prep` | with the structure, in the sidecar |
 | the held set, written | `%block Geometry.Constraints`, from the structure's own `frozen_atoms` region — the same fact, in SIESTA's 1-based numbering | `siesta/input.py`, from the structure; **no template item** — the held set is a structure fact for every engine ([`overview.md`](?doc=engines/overview.md) § 3) |
 
 Note that the two use different index bases in one file on purpose
@@ -2341,7 +2341,7 @@ flowchart TD
     TPL --> CFT --> RES
     ENV --> RES
     ASK -->|"allocation · pins"| RES
-    RES -->|"⊕ stage ⊕ sweep ⊕ pin ⊕ the rung's answers"| EFF
+    RES -->|"⊕ stage ⊕ run settings ⊕ sweep ⊕ pin ⊕ the rung's answers"| EFF
     EFF --> RES
     RES --> RC --> SPEC --> DECK --> WRAP --> RUN["the run directory"]
 ```
@@ -2683,12 +2683,8 @@ item whose `read_by` names it and is handed `use_gpu` — the item already
 carries that declaration, and nothing reads it yet (§ 1.1a's second row,
 § 12.1 row 4).
 
-**A CPU-ELPA deck needs neither**: the packaged SIESTA runs both ELPA stages
-on CPU ([`siesta.md`](?doc=engines/siesta.md) § 7.2, measured). The two
-environments split on **provenance** — one installs from packages anywhere,
-the other must be compiled, which some sites forbid — so routing keys on the
-GPU alone: sending a CPU-ELPA deck to the source build would refuse a runnable
-calculation where that build is forbidden.
+**A CPU-ELPA deck needs neither**: routing keys on the GPU alone, and why is
+[`running-a-job.md`](?doc=execution/running-a-job.md) § 2.3.
 
 **A new engine will need no change to the wrapper writer** — it declares
 `read_by = ["wrapper"]` on its own item and is served by the same code. That is

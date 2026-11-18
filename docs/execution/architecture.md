@@ -1032,8 +1032,8 @@ Task setup card, the `job-request.json` key that card writes, and the prep flag.
   want opposite walls and queues — a trial's steps are cut, a run's are not.
   `execution` carries the run's own. **`mem` does not join them** — why is
   [`job-request.md`](?doc=execution/job-request.md) § 3.2a.
-- **A benchmark's trial** takes, for each setting, its grid point, over its
-  one-point `bench` declarations, over the calculation's run card, over the
+- **A benchmark's trial** takes, for each setting, its one-point `bench`
+  declarations, over its grid point, over the calculation's run card, over the
   catalogue's default — never a rung's own card. Its queue, wall and memory are
   the prep flags, else the calculation's `allocation` — never a run card's
   ([`generator.md`](?doc=execution/generator.md) § 4.3a).
@@ -1050,13 +1050,10 @@ Task setup card, the `job-request.json` key that card writes, and the prep flag.
   a flag given to it first, the value baked at prep last. It never decides a
   value prep left unstated, because prep left none.
 
-**What prep refuses, and what it only shows.** Prep refuses a statement that is
-missing or contradicts another: a launch value stated nowhere; a queue the
-target's record does not list; a scheduler whose record lists no queues; a GPU
-run with no count. What the record says of the queue — a GPU on a queue that
-lists none, more cores, GPUs or memory than a node holds, a wall past the
-queue's — is **shown as the job's fit, never a refusal**: the scheduler decides
-([`scheduler.md`](?doc=execution/scheduler.md) R6).
+**What prep refuses, and what it only shows.** Prep refuses a launch value
+stated nowhere (the table above); what else it refuses, and what of the queue
+it only **shows as the job's fit, never a refusal** — the scheduler decides —
+is [`scheduler.md`](?doc=execution/scheduler.md) R6.
 
 **Prep decides every value; launch restates one.** `--time` on `launch`
 restates a submitted job's wall on the `sbatch` line — for a run launched again
@@ -1132,7 +1129,7 @@ flowchart TB
         B3 -.->|"unstated"| B4
     end
 
-    RES["<b>4 · resolve()</b> — floor 3<br/>template ⊕ overrides ⊕ pins ⊕ the rung's answers ⊕ the job's request → <b>ParameterSet</b>"]
+    RES["<b>4 · resolve()</b> — floor 3<br/>template ⊕ overrides ⊕ run settings ⊕ sweep ⊕ pins ⊕ the rung's answers → <b>ParameterSet</b>"]
     DECK["<b>5 · the deck</b><br/>records the rank count it assumed"]
     SB["<b>5 · the .sbatch</b><br/><code>#SBATCH -n</code> ← the stated <code>mpi_np</code>"]
     WRAP["<b>5 · the run script</b><br/>its baked default ← the same stated value"]

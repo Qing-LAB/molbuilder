@@ -52,6 +52,10 @@ files, pandas for the CSV export, sisl for TBtrans's own files.
 
 ## 2. The files, and what each is for
 
+How the framework writes and reads each is
+[`model/datafiles.md`](?doc=model/datafiles.md) § 7; here, where each is and
+what to read it with.
+
 | file | where | holds | read it with |
 |---|---|---|---|
 | `<label>.transport.nc` | the calculation's folder, written by `jobset summarize task` (and by an export, anywhere you choose) | **every result**, in groups — the junction whole (its cell, each atom's region and labels), each stage, each point and its device run, and a summary across the points: T(E) per point and spin, G, the currents and the I–V, the DOS and its regions, the eigenchannels, the frames' average, every run's state, SCF history and engine version — each variable with its units and definition | xarray (§ 3) |

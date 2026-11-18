@@ -604,7 +604,7 @@ other's from the template and a stage's overrides
 |---|---|---|
 | an ordinary deck line | `mesh_cutoff` → `MeshCutoff`; `diag_algorithm` → `Diag.Algorithm` | the stage's deck, and nowhere else |
 | **a deck line that is also a resource decision** | `use_gpu` → `Diag.ELPA.GPU` | the deck **and** the wrapper's env routing **and** a scheduler's `--gres` |
-| a field the deck never carries | `mpi_np`, `omp_threads`, `wall_slack` | the **wrapper** — baked at prep (`wall_slack`) or resolved at run time (ranks, threads) — and a scheduler's `-n` / `-c` if one is asked |
+| a field the deck never carries | `mpi_np`, `omp_threads`, `wall_slack` — on SIESTA; a PySCF script carries its run settings, `THREADS` and `WALL_SLACK` among them ([`pyscf.md`](?doc=engines/pyscf.md) § 3) | the **wrapper** — baked at prep (`wall_slack`) or resolved at run time (ranks, threads) — and a scheduler's `-n` / `-c` if one is asked |
 | **what a rung needs from the runs before it** | a transport rung's `.DM`, `.TSHS`, `.TS.HSX` | **not a field**: the kind's DAG (`transport.stages.inputs_of`), checked and copied by the gather at the rung's first launch (`transport/gather.py`; `job-contracts.md § 2.1`, *What a stage needs*) |
 
 > **The second row is about where a value *lands*, not about who *chooses* it**
@@ -659,7 +659,8 @@ target's record. Each is stated or refused; none has a default
 ### 5.1 The middle row, and what it costs
 
 `job-contracts.md § 6.2` lists the eigensolver as a config value that becomes a
-`.fdf` keyword and the GPU request as one *derived from* the `.fdf`.
+`.fdf` keyword, and the GPU request as one carried on the job's resources, never
+read back out of the `.fdf` ([`execution/gpu.md`](?doc=execution/gpu.md) G7).
 `running-a-job.md § 2.3` says which of the two actually moves the wrapper:
 **only a job that uses a GPU re-routes**, to `molbuilder-siesta-gpu` — the
 job's GPU request (`jobset.model.gpu_request`), the same `use_gpu` the deck

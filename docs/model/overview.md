@@ -9,8 +9,9 @@ config↔scheduler parameter vocabulary, run identifiers, and
 persisted-artifacts registry — absorbed from the legacy
 `data-vocabulary.md`, see § 3).
 
-The **model** is molbuilder's L1 layer: the pure data objects, how they persist,
-and how files are read back into them. Everything else (engines, execution, the
+The **model** is molbuilder's data layer: the pure data objects (L1), how they
+persist, and how files are read back into them (the parse stack and the
+sidecars are L2, [`architecture.md`](?doc=architecture.md) § 3). Everything else (engines, execution, the
 web front end) builds on these. Start here, then open the doc for the piece
 you're working on.
 

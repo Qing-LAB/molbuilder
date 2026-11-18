@@ -86,8 +86,7 @@ make or pick the one you want there first.
 **One rule about which folder: somewhere under a topic.** How deep, and how you
 group jobs below that, is yours — nest as many folders as suits the work. The
 projects root, a project, and a bare topic are not destinations
-([`job-contracts.md § 2.5`](?doc=execution/job-contracts.md) names the
-topics), and neither is a folder inside another calculation's, nor one that
+([`job-contracts.md § 2.5`](?doc=execution/job-contracts.md)), and neither is a folder inside another calculation's, nor one that
 holds a calculation: a calculation that builds on another's result cites it
 ([`project-layout.md`](?doc=execution/project-layout.md) § 7, invariant 2a).
 

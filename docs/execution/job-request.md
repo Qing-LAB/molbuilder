@@ -94,7 +94,7 @@ converges to. They are of two kinds:
 
 | kind | the items | stated nowhere |
 |---|---|---|
-| **the launch shape and the memory cap** — the catalogue's machine-answered items (its `allocation = true` flag, not the `allocation` block of § 3.1) | `mpi_np`, `omp_threads`, PySCF's `threads`, `gpu_count`, `max_memory_mb` | see [`architecture.md`](?doc=execution/architecture.md) § 5.2 |
+| **the launch shape and the memory cap** — the catalogue's machine-answered items (its `allocation = true` flag, not the `allocation` block of § 3.1) | [`template.md`](?doc=engines/template.md) § 6.4 lists them | see [`architecture.md`](?doc=execution/architecture.md) § 5.2 |
 | **the speed settings** | `use_gpu`, `diag_algorithm`, `block_size`, `parallel_over_k`, `ts_solution_method`, `ts_elecs_out_of_core`, `wall_slack` | the catalogue's default (§ 4) |
 
 What is refused at prep when a launch value is stated nowhere, and what a

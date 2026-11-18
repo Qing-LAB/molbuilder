@@ -62,12 +62,8 @@ flowchart TD
 ```
 
 Both engines ship three tiers as stage presets — `coarse` / `medium` / `tight`
-(§ 4), one vocabulary for both engines. A new description is ONE stage, named
-`coarse`, carrying no overrides: it runs the template's own values, not the
-coarse tier's. Naming a strategy writes the tiers it runs (`publishable`:
-coarse + medium; `loose-only`: coarse; `vib-quality`: all three), and a tier
-left out can be added later from Task setup's presets. No stage is switched
-off: a stage is in the description or it is not.
+(§ 4), one vocabulary for both engines. What a new description starts with,
+and the tiers each strategy writes, is § 4.
 
 **Three rungs, and no fourth** *(the user, 2026-09-03: "retire all of
 them")*. `tight` already targets the SCF noise floor, so a rung past it would
@@ -163,7 +159,8 @@ Full per-tier values:
 | tight — crystal/surface | **0.01 eV/Å / ≈ 2×10⁻⁴ Ha/Bohr** (VASP `EDIFFG=-0.01`; safe for 100s of atoms) |
 | tight — molecule vib/IR | ≈ 0.001 eV/Å (SIESTA) / 1.5×10⁻⁵ Ha/Bohr (geomeTRIC `GAU_TIGHT`; **never** on a 100+ atom metal — it chases SCF noise forever) |
 
-**The shipped `tight` rung uses the crystal/surface number** (0.01 eV/Å ≈
+**The shipped `tight` rung — and a vibration's relaxation, recommended at that
+rung's values — uses the crystal/surface number** (0.01 eV/Å ≈
 `geom_gmax 2×10⁻⁴ Ha/Bohr`), *not* `GAU_TIGHT`, precisely because a default named
 tight has to be safe on large systems. Molecule vib/IR work opts into the very-tight
 column by overriding those items on the rung in `task.json`.
@@ -415,8 +412,8 @@ are the person's. `use_gpu` is an ordinary option with a real default, chosen
 on Task setup ([`task-setup.md`](?doc=web/task-setup.md) § 6.2, user ruling
 2026-08-16). `mpi_np` is stated on the run card or with `prep --np`, and
 refused at prep when stated nowhere. Nothing derives either from the machine.
-The launch counts `mpi_np`, `gpu_count`, `omp_threads`, `max_memory_mb` and
-`threads` carry one catalogue flag, `allocation`.
+The launch counts and the memory cap carry one catalogue flag, `allocation`
+([`template.md`](?doc=engines/template.md) § 6.4 lists them).
 
 | where | what happens to `BlockSize` |
 |---|---|
@@ -831,7 +828,8 @@ For users who know one engine and want the other's equivalent.
 ## 4. The shipped stage ladders
 
 Both engines ship three tiers as stage presets. A description starts as one
-stage, `coarse`, carrying no overrides. `--stage-strategy` names the tiers it
+stage, `coarse`, carrying no overrides — it runs the template's own values, not
+the coarse tier's. `--stage-strategy` names the tiers it
 is written with (`publishable`: coarse + medium; `vib-quality`: all three;
 `loose-only`: coarse), and Task setup's presets add a tier later. No stage is
 switched off.

@@ -81,7 +81,7 @@ deck it renders — each engine's `spec_for` hands it the deck's form
 | **ENGINE-OFFSET** | where the deck's atoms were placed | every deck (`emit_engine_offset`) |
 | **VIBRATION** | what a SIESTA force-constant deck's finish reads | SIESTA only (`emit_vibration_record`) |
 | **RUN-SETTINGS** | a PySCF script's run settings, live lines at its head | PySCF only (`pyscf.input.emit_run_settings_block`) |
-| **user-custom** placeholder | a marked region that is yours: every writer merges it from the file it replaces — `jobset prep` of a stage prepared before, the run script, the web Build tab — so your text survives a re-generate; a first prep has no earlier deck to read it from ([`job-contracts.md`](?doc=execution/job-contracts.md) § 3.5's table) | both (`emit_user_custom_placeholder`) |
+| **user-custom** placeholder | a marked region that is yours: every writer merges it from the file it replaces — `jobset prep` of a stage prepared before, the run script, the web file write — so your text survives a re-generate; a first prep has no earlier deck to read it from ([`job-contracts.md`](?doc=execution/job-contracts.md) § 3.5's table) | both (`emit_user_custom_placeholder`) |
 | post-processing hook | a commented-template section (in the engine body, emitted inline by each emitter — not a `_sc` block) where downstream steps attach | both (inline) |
 
 Because it is one module, a change to the wrapper contract lands in every engine at
@@ -194,7 +194,11 @@ stays whole-system.
 > `group = "staging"`, which `catalogue_to_form_schema` filters out, so a
 > parameter form cannot offer it even by accident.
 
-> **G-2 — It changes *where the work runs*, never the answer.** That is what
+> **G-2 — It changes *where the work runs*, not the calculation** — within the
+> tolerances it converges to, under the conditions each engine's GPU path keeps
+> ([`execution/gpu.md`](?doc=execution/gpu.md) G11: on PySCF, an unrestricted
+> reference's stability is not checked on the GPU, and its solvent model has not
+> been compared). That is what
 > puts it in `category = "execution"`, and `execution` is a **claim**
 > ([`template.md`](?doc=engines/template.md) § 6.2): the knobs that change
 > speed and not the science. SIESTA's measured equivalence — ELPA-GPU and
@@ -257,11 +261,11 @@ second of the run. Both stop. Neither downgrades.
 > *elpa gpu codepath* probe. Recorded here so the rule above is not read as a
 > guarantee it cannot make.
 
-**A computation with no GPU implementation is a different thing, and is not a
-fallback.** gpu4pyscf has no analytic CPHF polarizability, so a Raman block
-runs on the CPU *by design* even with the GPU on. That is the engine having no
-GPU code for one operation — announced, deterministic, and unrelated to whether
-a GPU is present. G-5 governs *availability*, not *coverage*.
+**An operation molbuilder runs on the CPU is a different thing, and is not a
+fallback.** molbuilder's Raman block calls PySCF's CPU CPHF polarizability, not
+gpu4pyscf's ([`pyscf.md`](?doc=engines/pyscf.md) § 2a), so it runs on the CPU
+*by design* even with the GPU on — announced, deterministic, and unrelated to
+whether a GPU is present. G-5 governs *availability*, not *coverage*.
 
 ### What is still owed
 
@@ -287,8 +291,8 @@ Both the SIESTA and PySCF emitters ship a **three-stage relaxation ladder**, and
 > tier values**, below.
 
 - **The tier *values*** (algorithm, steps, force / `gmax`, per stage) are owned by
-  **[`tuning.md`](?doc=engines/tuning.md) § 4** — the single value table both emitters
-  and this contract defer to.
+  **[`tuning.md`](?doc=engines/tuning.md) § 2**, each in its own section, which both
+  emitters and this contract defer to; § 4 there sets the two ladders side by side.
 - **Neither engine's ladder carries a non-convergence policy**, and running out
   of steps means the same thing in both: the rung stops, and you decide. The
   next stage exists only because you looked at the result and prepared it — the

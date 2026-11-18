@@ -512,7 +512,7 @@ calculation's own folder first, then the library for what it lacks — the
 template's `psml_lib` on SIESTA, the cited run's folder on transport. So a
 calculation whose files sit beside it needs no `psml_lib`, and a library
 missing a species the calculation already has refuses nothing. Before a
-calculation folder exists only the library can answer; how the Build tab and
+calculation folder exists only the library can answer; how the web preflight and
 the Send report a species no library covers is
 [`science/pseudopotentials.md`](?doc=science/pseudopotentials.md) § 1.
 
@@ -1022,8 +1022,8 @@ through `script_emit.merge_user_custom_from_target`:
 | `jobset prep` of a stage prepared before — every kind, TranSIESTA included | **kept** — merged from the deck it replaces |
 | `jobset prep`, the first time | **empty** — there is no earlier deck to read |
 | the run script, written again by prep | **kept**, the same way |
-| the web Build tab, regenerating | **kept** — merged on a fresh write (`web/blueprints/files.py`) |
-| the web Build tab, saving your edit | **as you saved it** — the merge is skipped, because you are committing your own text |
+| the web file write, a fresh write | **kept** — merged (`web/blueprints/files.py`) |
+| the web file write, saving your edit | **as you saved it** — the merge is skipped, because you are committing your own text |
 
 A launched stage is prepared again only when each deck is the same
 calculation its runs ran
@@ -1500,8 +1500,8 @@ versions as they are:
 | `slot-provenance.json` | `@1` — what a record holds is known by what its junction's files state; one whose junction, composed again, is the recorded one is written again at `@2` by the prep ([`engines/transport.md`](?doc=engines/transport.md) § 1.1, *The first prep*) |
 | `.molstruct.json` | every `schema_version` in `sidecars/molstruct.READABLE_VERSIONS` |
 | `.spectra.json` | every `schema_version` in `spectra/results.READABLE_SCHEMA_VERSIONS` |
-| `.spectra.nc` | `@1`–`@7` (`spectra/datafile.READABLE_DATA_SCHEMAS`) |
-| `.optical.nc` | `@1`, `@2` (`spectra/optical_data.READABLE_DATA_SCHEMAS`) |
+| `.spectra.nc` | every schema in `spectra/datafile.READABLE_DATA_SCHEMAS` ([`model/datafiles.md`](?doc=model/datafiles.md) § 1) |
+| `.optical.nc` | every schema in `spectra/optical_data.READABLE_DATA_SCHEMAS` ([`model/datafiles.md`](?doc=model/datafiles.md) § 1) |
 
 What each version changed is the [changelog](?doc=process/changelog.md).
 

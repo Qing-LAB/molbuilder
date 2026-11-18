@@ -104,8 +104,9 @@ outranks a guess**, the same rule the rank count follows
 (`running-a-job.md` § 3.1: *read from a record, never guessed*).
 
 **All three reach every surface through the one door, and that is the test of
-placement.** `report(validate(...))` is called by script generation, the web
-preflight and `jobset prep`; a finding that needed new plumbing to reach a
+placement.** `validate(...)` is called by script generation, the web
+preflight and `jobset prep`, and `report()` gates generation and prep (the
+preflight shows the findings while the form is open); a finding that needed new plumbing to reach a
 surface would be a finding put in the wrong layer.
 
 ---

@@ -524,7 +524,7 @@ included**: a transport point's frame level is `f001` for the frame of index 1
 (`engines/transport.md` § 2a.11, `paths.frame_token`, a vibration's optical
 calls' too). What a person reads counts from 1: every message, on the page and
 in the terminal alike — *frame 2 of 3* (`structure.frame_words`) — and the UI's
-own display — the frame bar's `1 / F`, the Modify tab's frame picker, the
+own display — the frame bar's `1 / F`, the Molbuilder tab's frame picker, the
 Customized heading's *Frame 2 of 3* — through MolView's `toDisplay` /
 `fromDisplay` (`web/molview.md` § 11.5); nothing else writes a `+ 1`, those two
 doors the only ones. A script's
@@ -782,7 +782,7 @@ line, never a refusal. **`molbuilder modify` refuses a file of several frames**
 multiframe file because it creates a whole cluster of options and cases"*): an
 edit acts on one structure, and on the command line there is no one to ask
 which frame — a frame is taken out by a script (`load(path, frame=i)`) or in
-the Modify tab, which asks.
+the Molbuilder tab, which asks.
 
 > **ASE owns the XYZ parse:** `from_xyz` calls
 > `ase.io.read(..., format="extxyz")`, a superset reader (the plain xmol

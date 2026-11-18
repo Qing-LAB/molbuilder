@@ -11,7 +11,7 @@ MolView); [`web-api.md`](?doc=web/web-api.md) (the server routes MolView calls);
 structure and the labels MolView carries);
 [`model/structure-molstruct.md`](?doc=model/structure-molstruct.md) (the
 `.molstruct.json` sidecar it reads and writes). How a user *builds* a structure —
-the Modify tab's source panels and its save dialog — belongs to
+the Molbuilder tab's source bar and its save dialog — belongs to
 [`tabs.md`](?doc=web/tabs.md), not here.
 
 MolView is the one 3D molecular viewer used everywhere in the browser. The
@@ -72,7 +72,7 @@ current code.
 
 Every place in the app that shows a molecule embeds the same component with the
 same controls. A user who learns to select, isolate, measure and scrub in the
-Modify tab can do all of it in the Results tab without learning anything new. A
+Molbuilder tab can do all of it in the Results tab without learning anything new. A
 developer who needs a viewer does not build one.
 
 ### 1.1 What that looks like in use
@@ -204,7 +204,7 @@ edit and there is never work that only *some* of is recoverable (user,
 such that the user always can retract back"*). Saving by hand is still there for
 a point you want to mark that no edit produced — a selection you want to come
 back to — and the badge still says when there is work not on the sequence yet.
-The button belongs to the page rather than to the viewer — in the Modify tab it
+The button belongs to the page rather than to the viewer — in the Molbuilder tab it
 sits with the editing (§ 11.2). This is not a file and nothing appears in your
 project (§ 11.3).
 
@@ -3758,7 +3758,7 @@ the wrong place is exactly how the sidecar came to be dropped. Saving a state
 carries no decision. What a save *means* is fixed here, identically for every
 caller; the only thing that varies is *when* it is worth offering one, and a host
 knows that better than a viewer does. So the host places the control where its own
-workflow puts it — today the Modify tab, beside the editing it belongs next to.
+workflow puts it — today the Molbuilder tab, beside the editing it belongs next to.
 
 A host that mounted a read-only viewer knows not to offer it, because it is the
 one that passed the flag. The gate (§ 9.4) is what makes the guarantee true even
@@ -4124,7 +4124,7 @@ and why the first atom reads as `#1` everywhere even though the code sees `0`.
 
 **A frame number crosses the same way** (`model/structure.md` § 2.2e): the
 frame bar's `1 / F`, the export dialog's range, the Customized heading's
-*Frame 1 of 3* and the Modify tab's frame picker go through the same two
+*Frame 1 of 3* and the Molbuilder tab's frame picker go through the same two
 functions — exported for that page (§ 4) — while an export's file name keeps
 the index (§ 11.4).
 

@@ -266,13 +266,13 @@ paths to find a weak point.** Everything about its shape follows from that.
 | Signal | Trips on | Default |
 |---|---|---|
 | **Attack signature** | one match in the decoded path+query — `<script`, `<meta http-equiv`, `document.cookie`, `union select`, `; drop table`, `/etc/passwd`, `../../../` | on whenever the limiter is: a threshold of 0 does not turn it off |
-| **404 storm** | `threshold_404` 4xx responses within `window_404_s` | 20 in 30 s |
+| **404 storm** | `threshold_404` 4xx responses within `window_404_s` | on — its numbers are [`deployment.md`](?doc=ops/deployment.md) § 4's |
 | **Total burst** | `threshold_total` requests within `window_total_s` | **off** (`0`) |
 
 The path is URL-decoded *and* `+`-unpadded before matching, so encoding
 `%3Cscript%3E` does not walk past the signature check.
 
-A trip blocks the IP for `cooldown_s` — one hour — answering an empty `429` with
+A trip blocks the IP for `cooldown_s` ([`deployment.md`](?doc=ops/deployment.md) § 4 gives its default), answering an empty `429` with
 `Retry-After` and `Connection: close`. No body, no page render, no hint about
 what is behind the door.
 
@@ -318,9 +318,9 @@ recommended floor is 600 (10/s sustained), well above any poll cadence.
 "admin": { "emails": ["operator@asu.edu"] }
 ```
 
-Two subsystems ask it — who may read and clear the rate limiter's block list
-(`GET /api/admin/rate_limit/status`, `POST …/clear`), and who may restart the
-server (§ 6) — and they get the same answer.
+Three subsystems ask it — who may read and clear the rate limiter's block list
+(`GET /api/admin/rate_limit/status`, `POST …/clear`), who may restart the
+server (§ 6), and who may start the notebook (§ 2.0) — and they get the same answer.
 
 **Absent or empty means ANYONE WHO CAN SIGN IN** — and that is not an open door,
 because the door was already locked upstream. `auth.providers[].allowed_users` is
@@ -471,7 +471,7 @@ The transferable part. A new gate should be able to point at one of these.
    deployment**, not chosen once and shipped.
 8. **A secret that must reach a second machine is minted only by an explicit
    act.** `serve` may generate a secret that lives here and nowhere else — the
-   session key does exactly that on first run (§ 3.4), and rotating it only asks
+   session key does exactly that on its first run with sign-in configured (§ 3.4), and rotating it only asks
    people to sign in again. It may never generate one whose counterpart is held
    by another machine, because nothing here can deliver the replacement: the far
    side keeps presenting the old secret, is refused, and **the failure looks

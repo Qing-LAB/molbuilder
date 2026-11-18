@@ -131,10 +131,9 @@ spelling.
 
 **G2 — The person answers it, and nothing derives it from the machine.**
 `use_gpu` is an ordinary explicit option with a real default (`false`). It is
-**not** among the catalogue's machine-answered items — exactly `mpi_np`,
-`gpu_count`, `omp_threads`, `max_memory_mb`, `threads`, marked by the item's
-`allocation = true` flag (not the `allocation` block of `job-request.json`) and
-read through one door. *A document that calls `use_gpu` a machine fact is wrong,
+**not** among the catalogue's machine-answered items — those the item's
+`allocation = true` flag marks (not the `allocation` block of `job-request.json`),
+listed in [`template.md`](?doc=engines/template.md) § 6.4 and read through one door. *A document that calls `use_gpu` a machine fact is wrong,
 not shorthand.*
 
 **G3 — The solver is not the accelerator.** `diag_algorithm` chooses the
@@ -169,8 +168,8 @@ it:
 - a benchmark's trials, their shelves and their report;
 - the Task setup card, which shows a request prep refuses as the refusal.
 
-A bench is not a run: a bench that names no `gpu_count` measures the counts § 3.1
-describes.
+A bench is not a run: its device counts are the points it states, and a GPU
+benchmark that states none is refused, naming it (§ 3.1).
 
 **G6 — No silent fallback, in either direction.** A GPU deck never runs on the
 CPU build, and a CPU deck never on the GPU one.

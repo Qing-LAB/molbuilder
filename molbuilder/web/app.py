@@ -229,8 +229,10 @@ def serve_port() -> int:
 #: Plotly's data-URI tiles, ``blob:`` the image Plotly makes in the page's
 #: memory to draw a chart's PNG (a chart's own Export, `web/results.md`
 #: § 1.2; the user, 2026-11-17: "Allow it") -- an image the page itself
-#: made, nothing from elsewhere; ``connect-src 'self'`` our ``/api/*`` fetches, and
-#: is the CSRF defence: a cross-origin fetch is blocked.
+#: made, nothing from elsewhere; ``connect-src 'self'`` our ``/api/*`` fetches --
+#: where our own pages may send.  It is not the CSRF defence: a policy binds
+#: only the page that carries it, never an attacker's.  That defence is the
+#: session cookie's ``SameSite=Lax`` (`auth.py`, `ops/deployment.md` § 4).
 _CSP = (
     ("default-src", "'self'"),
     ("script-src", "'self'"),

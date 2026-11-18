@@ -160,7 +160,7 @@ today is `--mode ask`, which asks the scheduler (§ 6a).
 **R1 — A placement is decided once, at prep, and rendered once.** The header
 carries it, in the target's kind's language (`scheduler.emit`, § 6a); the line a
 launch sends carries that header and no resource of its own but a wall the
-launch restates (`commands.LAUNCH_FLAGS`, `submit._sbatch_request`). There is
+launch restates (R9; `commands.LAUNCH_FLAGS`, `submit._sbatch_request`). There is
 one rendering, so there is nothing to disagree about.
 
 **R2 — The fit is total over the declared limits.** Every limit of one job that
@@ -234,7 +234,9 @@ the queue takes that wall is the fit's to say and the scheduler's to decide.
 **R6 — Shown, never a veto** *(the user, 2026-10-17: "the information on each
 domain is displayed correctly to the user, do not refuse user's choice, user
 knows best and when denied, the output gives the reason")*. Prep refuses no
-request for what the target's record says of the queue it names: it prepares
+request for what the target's record says of the queue it names — a GPU on a
+queue that lists none, more cores, GPUs or memory than a node holds, a wall
+past the queue's: it prepares
 the job and prints the fit beside its placement — each limit it is over, with
 its numbers. **The scheduler decides, and its answer is shown**: at submit its
 refusal in its own words; with `--mode ask` before anything is sent; and a job
@@ -298,7 +300,7 @@ machine whose record has changed goes back to the state saved before its first
 prep.
 
 - **The one value a launch may restate** is a submitted job's wall
-  (`launch --time`), passed on the line in a job's own spelling
+  (`launch --time`, [`architecture.md`](?doc=execution/architecture.md) § 5.2), passed on the line in a job's own spelling
   (`D-HH:MM:SS`, § 6a) and checked by nothing of ours: the scheduler answers it.
 - **What the launch records of the request is read off the header it sends** —
   its wall and memory, each by its directive's own spelling in the kind's

@@ -564,8 +564,7 @@ wizard cannot leave the auth block in a file nothing consults; a
 `./molbuilder.json` in the launch directory is neither read nor written.
 
 **These are the server's sections.** The same file also carries what
-*calculations* need — `launch`, `envs`, `env_init`, `checkpoint` — which are
-[`execution/running-a-job.md`](?doc=execution/running-a-job.md) § 5. Every key
+*calculations* need — `launch`, `envs`, `env_init`, `checkpoint`. Every key
 the file may hold, what it is for and who reads it is
 [`configuration.md`](?doc=configuration.md) § 4.
 
@@ -576,7 +575,7 @@ the file may hold, what it is for and who reads it is
 | `auth.trust_proxy` | install `ProxyFix` for a reverse proxy |
 | *(run reports)* | **nothing goes here.** `molbuilder notify-token`, or the *This machine* tab, writes `notify_keys` in the config directory, and **that file is the switch**: it carries its own route, and the listener is registered because the file exists and names one. `notify_keys_file` and `notify_route` were retired on 2026-08-31 and are now refused ([`run-reports.md`](?doc=execution/run-reports.md) § 4.3) |
 | `rate_limit: {…}` | tune the limiter (§4 defaults) |
-| `admin: {emails:[…]}` | who may clear the block list and restart the server (§ 4) |
+| `admin: {emails:[…]}` | who may clear the block list, restart the server and start the notebook (§ 4) |
 | `paths: {projects}` | where the projects tree lives (§ 6) |
 | `envs: {siesta, pyscf, …}` | the conda-env names for the backends |
 
@@ -593,12 +592,10 @@ in version control — and a second template beside the one
 `molbuilder envs init-config` generates is the one that goes stale.
 
 **Where the template comes from now:** `molbuilder envs init-config` writes it,
-and `envs bootstrap` runs that at the end of a first install. It seeds every
-section that can be empty, each with a `_`-prefixed comment block saying who
-fills it in — you, or a command — and it *asks* the two values only you
-know: the activation form, which it writes as `env_init` (the probe copies it
-into this machine's record), and where the projects tree lives. A generated
-template cannot drift from the reader, because the same package writes both.
+and `envs bootstrap` runs that at the end of a first install — what it seeds,
+and the two values it asks, is [`configuration.md`](?doc=configuration.md)
+§ 3.2. A generated template cannot drift from the reader, because the same
+package writes both.
 
 **Your site's own values come from your site** — measured by `jobset probe`
 on it into its record, never written into this file (`configuration.md` § 4):
@@ -673,10 +670,9 @@ Notes:
 
 ## 6. What's on disk at runtime
 
-A running server keeps your work under **the projects tree** — `$MOLBUILDER_PROJECTS`,
-else `paths.projects`, else the checkout's `projects/` ([`installation.md`](?doc=ops/installation.md)
-§ 2.1) — the whole project/topic/structure/job tree. Config and secrets live in
-the config directory: `molbuilder.json` and `secrets/` (`0600`). The rate-limiter's blocklist is memory
+A running server keeps your work under **the projects tree**, found as
+[`job-contracts.md`](?doc=execution/job-contracts.md) § 2.5 says — the whole project/topic/structure/job tree. Config and secrets live in
+the config directory: `molbuilder.json` (`0600`) and `secrets/` (`0700`, each file in it `0600`). The rate-limiter's blocklist is memory
 only. The server writes nothing into its working directory and makes no
 shared-filesystem assumptions.
 

@@ -86,9 +86,10 @@ CATEGORIES = ("system", "method", "accuracy", "convergence",
 
 #: **THE machine-answered fact, one home.**  `engines/template.md` § 6.4.
 #:
-#: An item whose value the SCHEDULER answers -- ranks, threads, memory.  A
-#: portable description states the question and never the answer, so a value
-#: on one is refused on read.
+#: An item the RUN states, never a template -- ranks, threads, memory: the
+#: launch shape, on the run card or as a prep flag.  A portable description
+#: states the question and never the answer, so a value on one is refused on
+#: read.
 #:
 #: There is no second vocabulary.  Ask ``Item.allocation``, or
 #: ``select(t, allocation=True)``.
@@ -531,7 +532,7 @@ class Item:
 
     #: **THE machine-answered flag.  One parameter, written to the file.**
     #:
-    #: True means the scheduler answers this, not the person -- so a portable
+    #: True means the run states this one, never a template -- so a portable
     #: description may state the question and never the answer (§ 2, G1).
     #:
     #: Ask it directly, or filter for it: ``select(t, allocation=True)``.
@@ -3009,8 +3010,8 @@ def select(t: "Template", *, category=None, engine=None,
             continue
         if want_read_by and not (set(want_read_by) & set(it.read_by)):
             continue
-        # THE machine-answered filter -- `select(t, allocation=True)` is the
-        # one API for *"which settings does the scheduler answer?"*.
+        # THE run-stated filter -- `select(t, allocation=True)` is the one
+        # API for *"which settings does the run state?"*.
         if allocation is not None and bool(it.allocation) is not bool(allocation):
             continue
         # A KIND'S MARKERS (§ 6.4), the one API for *"which settings does a

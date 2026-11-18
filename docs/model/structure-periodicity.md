@@ -639,7 +639,8 @@ to these or is a bug:
    * **A vacuum is set** → it is used **verbatim**, on every axis, however
      small. You dictate what you want; a thin gap is *warned about*
      (`cell.vacuum_thin`) and **never overridden**.
-   * **Nothing is set** → every **isolated** axis gets **3 Å per side**. It is a
+   * **Nothing is set** → every **isolated** axis gets **3 Å per side**, so a flat or
+     linear molecule cannot make a zero-volume cell SIESTA would refuse to run. It is a
      default **gap**, not a floor on the box length: 3 Å of empty space is 3 Å
      whether the molecule is 2 Å across or 200 Å, so a large molecule gets it
      too.
@@ -790,7 +791,7 @@ does not, and only the measurement is trustworthy.
 
 | Check | Asks about | Warns below | Same thing in the other currency |
 |---|---|---|---|
-| `cell.vacuum_thin` | the vacuum you **set** (or defaulted to) | 8 Å per side, 25 Å charged | an image gap of 16 Å / 50 Å |
+| `cell.vacuum_thin` | the vacuum you **set** (or defaulted to) | 8 Å per side, 25 Å charged ([`engines/siesta.md`](?doc=engines/siesta.md) § 4) | an image gap of 16 Å / 50 Å |
 | `cell.image_distance` | the gap **achieved**, measured from the atoms | 6 Å image gap | 3 Å per side |
 
 So they are **nested, not contradictory**: `vacuum_thin` is the *advice*
@@ -931,7 +932,7 @@ states (§ 6.0): three numbers or one atom, and blank is *Automatic*, the atoms
 centred; a half-typed origin is refused before it is sent. Every value shown
 or re-sent is rounded once, at the 6th decimal — half the hand-off's 1e-6 Å
 tolerance, so a re-sent box never moves an atom the deck would refuse.
-**Only the Modify tab has this editor**: the other tabs mount MolView
+**Only the Molbuilder tab has this editor**: the other tabs mount MolView
 read-only and carry no periodicity controls.
 
 **Two gestures take a value off the structure instead of out of the keyboard**

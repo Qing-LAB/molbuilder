@@ -47,7 +47,7 @@ header, inside the domain.
 | Folder | Domain |
 |---|---|
 | *(root)* | The spine: this index, `design.md` (mission · principles · decisions), `architecture.md` (the reuse map: task → tool), `workflow.md`, `configuration.md`, `backend-architecture.md`. **The one plan is [`plans/plan.md`](?doc=plans/plan.md)** — rule R3 |
-| `model/` | The data model (L1): Structure, periodicity, annotations, codecs & load/save, sidecars, region labels, selection grammar, chemistry, the parse stack, the data vocabulary |
+| `model/` | The data model (its core types L1; the parse stack and sidecars L2, `architecture.md` § 3): Structure, periodicity, annotations, codecs & load/save, sidecars, region labels, selection grammar, chemistry, the parse stack, the data vocabulary |
 | `science/` | Scientific correctness: validation machinery, chemistry correctness, pseudopotential standards, parameter tuning |
 | `engines/` | Per-engine emitter specs (SIESTA, PySCF, transport/TranSIESTA, builders, GPU build recipe) **and the cross-engine contracts**: tier values, what a stage is, and the template every engine's parameters travel in |
 | `execution/` | Running calculations: the jobset protocol (describe, prep, launch, status), the job request, the folder on disk and the file formats, the run script at run time, runs of points, reports, saved history, the scheduler and GPUs, the benchmark — routed by `execution/overview.md` |
@@ -262,7 +262,7 @@ from the code each time one is read ([`web/tabs.md`](?doc=web/tabs.md) § 5.6).
 | [`web/runtime.md`](?doc=web/runtime.md) | contract | How browser modules find each other whatever order they load in, and the catalogue of small helpers every page shares. |
 | [`web/notifications.md`](?doc=web/notifications.md) | contract | The app-wide notification bar: its calls, where messages appear, and the one message source built into it. |
 | [`web/form-schema.md`](?doc=web/form-schema.md) | contract | How every engine-option form is generated from the parameter catalogue: the round trip, the calls, field kinds and grouping. |
-| [`web/handover-procedure.md`](?doc=web/handover-procedure.md) | contract | How a parameter tab hands its work to Task setup on disk: the steps, the hand-over file, and the cell gate. |
+| [`web/handover-procedure.md`](?doc=web/handover-procedure.md) | contract | How a parameter tab hands its work to Task setup on disk: the steps, what the hand-over file names, and the cell gate. |
 | [`web/task-setup.md`](?doc=web/task-setup.md) | contract | The Task setup tab: where it saves, the stage table, the measure and run cards, and the files it writes. |
 | [`web/this-machine.md`](?doc=web/this-machine.md) | contract | The This machine tab: the machine's notification channels, its report listener, and how their secrets are kept. |
 | [`web/jupyter.md`](?doc=web/jupyter.md) | contract | The JupyterLab tab: reaching it through molbuilder's own port, starting and stopping it, its controls, what it exposes, its env. |
@@ -279,7 +279,7 @@ from the code each time one is read ([`web/tabs.md`](?doc=web/tabs.md) § 5.6).
 | [`ops/env-framework.md`](?doc=ops/env-framework.md) | contract | The machinery under installation: the environment registry, recipes as data, the install pipeline and its order, audit, repair, the shell shim. |
 | [`ops/access-control.md`](?doc=ops/access-control.md) | contract | Who reaches the server and what they may do: each gate and its question, the rules beneath them, the known sharp edges. |
 | [`archive/2026-08-19-server-reload-plan.md`](?doc=archive/2026-08-19-server-reload-plan.md) | plan | How a code change reaches the running server without a manual restart, delivered; ops/deployment.md and ops/access-control.md hold the behaviour. |
-| [`ops/deployment.md`](?doc=ops/deployment.md) | guide | Running the web server: the serve commands, the production shape behind a proxy, sign-in, security posture, rate limiter, molbuilder.json. |
+| [`ops/deployment.md`](?doc=ops/deployment.md) | guide | Running the web server: the serve commands, the production shape behind a proxy, sign-in, security posture, rate limiter, the server's sections of molbuilder.json. |
 | [`process/package-layout.md`](?doc=process/package-layout.md) | reference | Where everything lives: the repository and package mapped by domain, each area linked to its owning document, the tests' layout, packaging. |
 | [`process/conventions.md`](?doc=process/conventions.md) | reference | How code is written and invoked: the conventions and what holds each, when the version number moves, the command line's conventions. |
 | [`process/changelog.md`](?doc=process/changelog.md) | record | What each version changed in the files molbuilder writes, one dated line per version, newest first. |
