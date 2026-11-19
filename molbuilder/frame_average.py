@@ -428,6 +428,13 @@ def average_block(n_frames: Optional[int], frame_set,
         block["why"] = ("one structure, not a frame set: there are no frames "
                         "to average over")
         return block
+    if frame_set is None:
+        # FRAMES COUNTED, THEIR RECORD NOT READ: the composed junction that
+        # holds them does not read (`transport.record`, `junction_unread`).
+        block["why"] = ("the composed junction, which holds the frames and "
+                        "their weights, does not read -- no average; each "
+                        "frame's curve is its own point")
+        return block
     if weights is None:
         block["why"] = (f"the frames do not each state a {WEIGHT_ROW} -- no "
                         f"average; each frame's curve is its own point")

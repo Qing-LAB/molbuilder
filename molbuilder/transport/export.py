@@ -76,7 +76,6 @@ def export(calc, fmt: str, *, folder=None,
     `postprocess.pdos` reads a PDOS of chosen atoms from, anywhere; asked
     with that form alone, its row's (`kind_table.export_asks_of`)."""
     from ..ncdata import export_format, export_stem, exported
-    from .compose import ComposeError
     from .datafile import DataFileError, data_file_bytes
     from .record import RecordError, collect_record
     export_format(fmt)
@@ -85,8 +84,7 @@ def export(calc, fmt: str, *, folder=None,
         # point not done is the fill value (`done` 0).
         record = collect_record(calc, partial=True)
         name, data = data_file_bytes(calc, record)
-    except (RecordError, ComposeError, DataFileError, OSError,
-            ValueError) as exc:
+    except (RecordError, DataFileError, OSError, ValueError) as exc:
         raise ExportError(str(exc)) from exc
     files = {name: data}
     if dos_per_orbital:

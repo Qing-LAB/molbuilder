@@ -874,11 +874,17 @@ def junction_mesh_findings(template_text: str, task, *, cited=None,
     one, the composed junction that one recorded (``base``).  None where
     its kinds cannot be read yet: compose refuses that junction, by name,
     at prep."""
-    from .compose import ComposeError, junction_axis_kind, recorded_junction
+    from .compose import junction_axis_kind, recorded_junction
+    from .rung import compose_refusals
     try:
-        kinds = (junction_axis_kind(cited) if cited is not None else
-                 recorded_junction(base).structure.axis_kind)
-    except (ComposeError, AttributeError):
+        if cited is not None:
+            kinds = junction_axis_kind(cited)
+        else:
+            recorded = recorded_junction(base)
+            if recorded is None:
+                return []
+            kinds = recorded.structure.axis_kind
+    except compose_refusals():
         return []
     return ladder_mesh_findings(template_text, task, kinds)
 

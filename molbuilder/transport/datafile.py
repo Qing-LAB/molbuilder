@@ -641,11 +641,13 @@ def data_file_bytes(calc, record: Dict, *,
     (`transport.export`).  ``readings`` -- the outcomes of the data files'
     readings just made (`tbtnc.read_points`) -- say a file that failed to
     read, or that another reading holds, in that outcome's words.
-    :class:`DataFileError` names what does not lay out on one grid."""
+    :class:`DataFileError` names what does not lay out on one grid, and a
+    composed junction that does not read, in its reader's words."""
     from .. import __version__
     from ..frame_average import fill_data_file, with_meanings
     from ..ncdata import NC_LOCK, as_bytes, empty, in_memory, state
     from .compose import recorded_junction
+    from .rung import compose_refusals
     from .record import iv_rows, order_unstated_said
     from ..paths import frame_token
     from .stages import (TRANSPORT_STAGES, frames_of,
@@ -659,7 +661,12 @@ def data_file_bytes(calc, record: Dict, *,
     # THE ATOM AXIS IN THE USER ORDER (`model/overview.md` § 2.2a, I1): the
     # composed junction, in the engine's order, restored through its record
     # -- which a junction whose sidecar states none does not hold (I9).
-    recorded = recorded_junction(base)
+    try:
+        recorded = recorded_junction(base)
+    except compose_refusals() as exc:
+        # A JUNCTION THAT DOES NOT READ, refused in its reader's words
+        # (F12's review, E-D1).
+        raise DataFileError(str(exc)) from None
     unstated = order_unstated_said(base, recorded)
     if unstated:
         raise DataFileError(unstated)

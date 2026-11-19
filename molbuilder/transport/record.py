@@ -995,7 +995,9 @@ def collect_record(calc, *, partial: bool = False) -> Dict:
     from ..frame_average import (AverageError, average_block, average_said,
                                  citation_block)
     from ..frameset import read as read_frame_set
+    from ..deck_record import DeckRecordUnreadable
     from .compose import read_provenance, recorded_junction
+    from .rung import compose_refusals
     from .stages import frames_of, rung_points, same_volts
     from .energies import joined, sharing_of, spacing
     from .tbtnc import (DOS_CURVES, NO_CURVE, ORBITAL_NOTE,
@@ -1004,7 +1006,13 @@ def collect_record(calc, *, partial: bool = False) -> Dict:
 
     base_dir = calc.base
     base, task = Path(base_dir), calc.task
-    recorded = recorded_junction(base)
+    # THE COMPOSED JUNCTION, or why it does not read -- said, never the
+    # whole report refused (`engines/transport.md` § 2a.12; F12's review,
+    # E-D1: an HTML 500 on Results, a traceback from `summarize`).
+    try:
+        recorded, junction_unread = recorded_junction(base), None
+    except compose_refusals() as exc:
+        recorded, junction_unread = None, str(exc)
     junction = recorded.structure if recorded is not None else None
     frame_set = (read_frame_set(junction) if junction is not None
                  else None)
@@ -1097,7 +1105,19 @@ def collect_record(calc, *, partial: bool = False) -> Dict:
         # its grid its own run computes, and those the finished point holds
         # (`engines/transport.md` § 2a.16): its deck's record, said beside
         # its loop, which counts its own run's energies.
-        sharing = sharing_of(where)
+        try:
+            sharing = sharing_of(where)
+        except DeckRecordUnreadable as exc:
+            # ITS DECK'S RECORD OF WHAT IT SHARES DOES NOT READ: said on this
+            # point alone, never the whole record refused (§ 2a.12) -- one
+            # that finished is not done, in the words status gives its row
+            # (`continuation.point_done`); one not ended is said once it
+            # ends, its progress said now.
+            if state == "finished":
+                failed.append({**at, "attempt": rel, "state": "finished",
+                               "why": str(exc)})
+                continue
+            sharing = None
         shares = ({"shared": {"from": sharing.source, "held": sharing.held,
                               "computed": sharing.computed}}
                   if sharing is not None else {})
@@ -1260,7 +1280,8 @@ def collect_record(calc, *, partial: bool = False) -> Dict:
         # tab's read draws a refused frame set where the average would be;
         # the record `summarize` writes is refused by name.
         average = (average_said if partial else average_block)(
-            frames_of(base) if junction is not None else None, frame_set,
+            frames_of(base) if junction is not None or junction_unread
+            else None, frame_set,
             points_out, pending + not_run + failed, same_volts)
     except AverageError as exc:
         raise RecordError(str(exc)) from exc
@@ -1312,6 +1333,9 @@ def collect_record(calc, *, partial: bool = False) -> Dict:
         # name (`runfiles.JUNCTION_FILE`) -- what the report draws; ``None``
         # until a prep has composed it.
         "junction_file": JUNCTION_FILE if recorded is not None else None,
+        # ...OR WHY IT DOES NOT READ, in its reader's words, where the
+        # report would draw it; ``None`` when it reads or none is composed.
+        "junction_unread": junction_unread,
         # WHEN ITS ORDER IS NOT RECORDED -- a junction whose sidecar states
         # none (I9) -- the sentence the report says beside the drawing, which
         # then lists the atoms as TranSIESTA does; ``None`` otherwise.
@@ -1489,7 +1513,18 @@ def selection_pdos(calc, bias_v: float, atoms, orbitals: str,
     # the runs list the atoms as the composed junction does.  A record that
     # states no order names no atom in the user order (I9).
     from .compose import recorded_junction
-    recorded = recorded_junction(base)
+    from .rung import compose_refusals
+    try:
+        recorded = recorded_junction(base)
+    except compose_refusals() as exc:
+        # A JUNCTION THAT DOES NOT READ names no atom: the selection's
+        # refusal, in its reader's words (F12's review, E-D1).
+        raise RecordError(str(exc)) from None
+    if recorded is None:
+        from ..runfiles import JUNCTION_FILE
+        raise RecordError(f"the composed junction, {JUNCTION_FILE}, is not in "
+                          f"the calculation's folder, so no atom of it can "
+                          f"be named")
     unstated = order_unstated_said(base, recorded)
     if unstated:
         raise RecordError(unstated)

@@ -1291,7 +1291,7 @@ it is ([`job-system.md`](?doc=execution/job-system.md) § 6.0). Raw reads exist
 in `jobset/migrate` alone (`migrate._Records`); it writes through the
 owners' writers into one plan (`jobset.planned.Plan`), the template's text
 its own, and a write that fails is recorded in the ledger with how far the
-plan got (`planned.CutShort`).
+plan got (`planned.Plan.carry_out_or_say`, as prep's and launch's are).
 
 **How review checks A7, A8 and A12.**
 

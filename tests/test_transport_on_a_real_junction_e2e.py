@@ -6153,3 +6153,137 @@ def test_the_tab_cites_a_frame_set_of_the_junction_it_extends(
     assert task.slots["junction"] == junction.frame_set
     assert task.reuses == "P/transport/O"
     assert task.label == task_of(once.bundle).label
+
+
+def _junction_edited(copy):
+    """A person's hand edit of the composed junction: its first atom moved
+    0.1 Angstrom along x in the xyz, the sidecar left as prep wrote it, so
+    its geometry is no longer the one the sidecar pins."""
+    from molbuilder.runfiles import JUNCTION_FILE
+    xyz = copy.bundle / JUNCTION_FILE
+    lines = xyz.read_text().splitlines()
+    element, x, *rest = lines[2].split()
+    lines[2] = " ".join([element, f"{float(x) + 0.1:.8f}", *rest])
+    xyz.write_text("\n".join(lines) + "\n")
+
+
+def test_a_junction_that_does_not_read_is_said_and_the_points_still_read(
+        junction, monkeypatch):
+    """§ 2a.12, *A record that does not read is said, never the whole report
+    refused*: the composed junction edited by hand so it no longer reads --
+    the report says why where it draws the junction, and every point still
+    reads; a selection's PDOS and the data file, which name its atoms,
+    refuse in the junction's reader's words, so `summarize task` says it
+    and never traces back.  The silent failure (F12's review, E-D1): an
+    HTML 500 on the Results tab, a Python traceback from `summarize`."""
+    from conftest import point_the_one_door_at
+    from support.road import jobset
+    from molbuilder.calculation import open as open_calculation
+    from molbuilder.transport.record import collect_record
+    from molbuilder.web.app import create_app
+    point_the_one_door_at(junction.tree.parent, monkeypatch.setenv)
+    run = copy_of(junction.unread, "junction-edited", _junction_edited)
+    rec = collect_record(open_calculation(run.bundle), partial=True)
+    assert "the composed junction, junction.xyz, does not read" in (
+        rec["junction_unread"] or ""), rec["junction_unread"]
+    assert rec["junction_file"] is None
+    assert len(rec["points"]) == len(_BIAS), rec["failed"]
+    client = create_app(config={}).test_client()
+    page = client.get(f"/api/transport/record?path={run.bundle}")
+    assert page.status_code == 200 and (
+        page.get_json()["record"]["junction_unread"]), (
+        page.status_code, page.get_data(as_text=True)[:300])
+    got = client.get(f"/api/transport/pdos?path={run.bundle}"
+                     f"&atoms=0&point={_BIAS[0]}&orbitals=all")
+    assert got.status_code == 400 and "does not read" in (
+        got.get_json()["error"]), (got.status_code, got.get_data(as_text=True)[:300])
+    r = jobset("summarize", "task", "--bundle", run.bundle)
+    assert r.exit_code != 0 and "does not read" in r.output, r.output
+    assert isinstance(r.exception, SystemExit), repr(r.exception)
+    # ...AND A LAUNCH OF ITS POINTS -- cold, every point run again --
+    # refuses in words, sending nothing.
+    r = jobset("launch", "task", "--stage", "transmission", "--mode",
+               "direct", "--foreground", "--yes", "--cold", "--bundle",
+               run.bundle)
+    assert r.exit_code != 0 and "does not read" in r.output, r.output
+    assert isinstance(r.exception, SystemExit), repr(r.exception)
+
+
+def test_the_report_says_why_its_junction_does_not_read(junction, page,
+                                                        monkeypatch):
+    """`web/results.md` § 2.5; § 2a.12: the report of a calculation whose
+    composed junction no longer reads (the hand edit above) draws its curves
+    and says, where the junction would be drawn, why it does not read.
+    Opened as a person opens it: the Results tab on the calculation's
+    folder, its report chosen in the menu.  The silent failure: the page
+    saying the junction is composed at prep -- which it was."""
+    from conftest import point_the_one_door_at
+    from support.live_server import serve
+    from support.sidebar import results_on
+    point_the_one_door_at(junction.tree.parent, monkeypatch.setenv)
+    run = copy_of(junction.unread, "junction-edited", _junction_edited)
+    task = (run.bundle / "task.json").resolve()
+    with serve() as base:
+        results_on(page, base, run.bundle)
+        page.wait_for_function(
+            "(want) => [...document.querySelectorAll("
+            "  '#results-file-picker-select option')]"
+            "  .some(o => o.value === want)", arg=str(task), timeout=30000)
+        page.select_option("#results-file-picker-select", value=str(task))
+        page.locator("#inspector-host .transport-curves-card").wait_for(
+            timeout=60000)
+        said = page.locator("#inspector-host .transport-note").all_inner_texts()
+        assert any("junction.xyz, does not read" in s for s in said), said
+
+
+#: A POINT'S RECORD OF WHAT IT SHARES, broken by hand: ``(name, the edit
+#: of its one ``"held":`` entry, what its reader says)`` -- JSON that does
+#: not parse, and JSON that parses without the entry.
+_SHARED_BROKEN = [
+    ("does-not-parse", '"held"', "holds JSON that does not parse"),
+    ("entry-missing", '"kept":', "lacks its 'held' entry"),
+]
+
+
+@pytest.mark.parametrize("name, edited, said", _SHARED_BROKEN,
+                         ids=[b[0] for b in _SHARED_BROKEN])
+def test_a_point_whose_shared_record_does_not_read_is_said_on_it_alone(
+        junction, reused, monkeypatch, name, edited, said):
+    """§ 2a.12, *A record that does not read is said, never the whole report
+    refused*: one transmission point of the fitted window, which shares
+    energies with the finished calculation, has the record of what it
+    shares broken in its deck -- that point is not done, in its reader's
+    words, on its own, and the others still read; `status` and `summarize
+    task` say it and never trace back.  The silent failure (F12's review,
+    E-D2): the whole report refused, a traceback from `status` and
+    `summarize`."""
+    from conftest import point_the_one_door_at
+    from support.road import jobset
+    from molbuilder.calculation import open as open_calculation
+    from molbuilder.runs import run_of
+    from molbuilder.transport.energies import sharing_of
+    from molbuilder.transport.record import collect_record
+    point_the_one_door_at(junction.tree.parent, monkeypatch.setenv)
+
+    def one_shared_record_broken(copy):
+        from molbuilder.transport.stages import Point
+        for v in _BIAS:
+            folder = copy.attempt("transmission") / Point(volts=v).rel
+            if sharing_of(folder) is not None:
+                deck = run_of(folder).deck
+                text = deck.read_text()
+                assert text.count('"held":') == 1, deck
+                deck.write_text(text.replace('"held":', edited))
+                return
+        raise AssertionError("no point of the fitted window shares energies")
+    run = copy_of(reused["fitted"], f"shared-record-{name}",
+                  one_shared_record_broken)
+    rec = collect_record(open_calculation(run.bundle), partial=True)
+    unread = [f for f in rec["failed"] if said in f["why"]]
+    assert len(unread) == 1 and unread[0]["state"] == "finished", (
+        rec["failed"])
+    assert rec["points"], "the other points no longer read"
+    for words in (("status", "transmission"), ("summarize", "task")):
+        r = jobset(*words, "--bundle", run.bundle)
+        assert r.exception is None or isinstance(r.exception, SystemExit), (
+            words, repr(r.exception), r.output)

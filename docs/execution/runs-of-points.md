@@ -515,7 +515,9 @@ conclusion's code is the engine's, or the failed step's after a clean engine, so
 It ran, and `_run_ending.not_done_why(verdict, counts, missing)` has nothing to say: its verdict converged where it
 counts, and it holds every `must_hold` file. Why not, in that function's words — *finished, not converged (SCF NO)*,
 *finished without CO2.FC* — or, for a point that did not run, its exit and its step's failure: *exit 1*, *the optical
-calls' record was not written: …*. A point taken over is done when it holds what it must.
+calls' record was not written: …*. A point taken over is done when it holds what it must. A point
+whose record it is judged by does not read — a transmission point's deck's record of what it shares — is
+not done, in its reader's words (`continuation.point_done`), never the whole status refused.
 
 ### 4.3 Still to run
 

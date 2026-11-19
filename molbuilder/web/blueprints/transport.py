@@ -390,8 +390,9 @@ def _describe_reused(folder: str, root) -> Any:
     from molbuilder.issues import Issue
     from molbuilder.jobset.rung import citation_of
     from molbuilder.jobset.runstatus import jobset_status
-    from molbuilder.transport.compose import ComposeError, recorded_junction
+    from molbuilder.transport.compose import recorded_junction
     from molbuilder.transport.reuse import Extension, ReuseError, reused
+    from molbuilder.transport.rung import compose_refusals
     try:
         calc, rel = reused(folder, tree_root=root)
     except ReuseError as exc:
@@ -403,7 +404,7 @@ def _describe_reused(folder: str, root) -> Any:
     unread = None
     try:
         recorded = recorded_junction(calc.base)
-    except ComposeError as exc:
+    except compose_refusals() as exc:
         recorded, unread = None, str(exc)
     # THE JUNCTION IN THE USER ORDER, once -- the structure the viewer draws
     # and the frames' rows and masses beside it, one list

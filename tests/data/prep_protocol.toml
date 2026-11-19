@@ -795,3 +795,20 @@ said = ["estimated net dipole"]
 name = "...the same pair as a crystal at Gamma is not"
 structure = { elements = ["F", "H"], positions = [[0.0, 0.0, 0.0], [0.92, 0.0, 0.0]], cell = [5.0, 5.0, 5.0], axis_kind = ["periodic", "periodic", "periodic"] }
 said_lacks = ["estimated net dipole"]
+
+[[case]]
+name = "a write that fails -- the stage's folder one prep may not write -- leaves the stage not prepared, said in one sentence naming the file it stopped at and the way back, the state saved before it; the ledger records how far it got, and holds no refused line"
+unwritable = "coarse"
+refused = ["writing ", "01_coarse/H2_01_coarse.fdf failed (Permission denied)", "molbuilder checkpoint restore -p"]
+ledger_holds = ["prep saved", "prep stopped at a write that failed"]
+ledger_lacks = ["prep refused"]
+status_says = ["group 1  coarse  not prepared"]
+
+[[case]]
+name = "a launch whose write fails -- the stage's folder one launch may not write -- sends nothing, said in one sentence naming the file it stopped at; the ledger records how far it got, and holds no refused line"
+launch = []
+launch_mode = "direct"
+launch_sends = true
+launch_unwritable = "coarse"
+launch_refused = ["writing ", "/01_coarse/", "failed (Permission denied)", "nothing was sent", "molbuilder checkpoint restore -p"]
+after_launch = { ledger_holds = ["launch stopped at a write that failed"], ledger_lacks = ["launch refused"] }

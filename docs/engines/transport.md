@@ -3616,6 +3616,7 @@ said on its rung (`unreadable`, every such sentence kept beside the others,
 shown beside the rung's state) and, for a rung's own `.gathered-from`, on its
 line of the provenance chain; a device rung whose gathered run's records do
 not read is *unreadable*, each of its points read by the run door.
+The composed junction that does not read — its pair edited by hand, say — is said where the report draws it (`junction_unread`, in its reader's words), the curves drawn beside it; a selection's PDOS and the data file, which name its atoms, refuse in those words, so `summarize task` says it, and so does a launch of its points. Every reader of the junction beyond its own module takes what reading it can raise from one door (`rung.compose_refusals`). A point whose deck's record of what it shares does not read is not done ([`execution/runs-of-points.md`](?doc=execution/runs-of-points.md) § 4.2), said on it alone in its reader's words; the composed junction names its own way back: the state saved before the edit.
 A run copied in from a finished calculation is read as any run, its
 `.copied-from` naming the run that computed it (§ 2a.16).
 

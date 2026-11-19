@@ -94,7 +94,9 @@ class PointsOf:
     #: DONE, each with the words its absence is said in -- the list the
     #: done door is asked with (`continuation.done`) and the index carries
     #: for the job; ``deck`` a prepared deck's path where no run holds the
-    #: point's deck yet (launch writing the index).
+    #: point's deck yet (launch writing the index).  A deck's record it reads
+    #: that does not read raises `deck_record.DeckRecordUnreadable`: the
+    #: point is not done, in its words (`continuation.point_done`).
     must_hold: Callable
     #: ``(calc, stage, point, points) -> Start``: its start and its needs,
     #: among ``points``, the run's in the listing order.
@@ -111,6 +113,9 @@ class PointsOf:
     #: ``(calc, stage, *, carried, deck) -> dict``: the kind's facts about
     #: the run, for its index -- ``carried`` those of the run whose planner
     #: a launch again took over, ``deck`` a prepared point's deck's path.
+    #: A record they are read from that does not read raises
+    #: :class:`errors.PrepError`, the launch's refusal in its reader's words
+    #: (`submit._refusal_kinds`).
     run_facts: Callable = (lambda calc, stage, *, carried, deck: {})
     #: ``(calc, stage, run_dir, index) -> Optional[str]``: what the
     #: run needs BEYOND its points done to be finished -- ``None`` when

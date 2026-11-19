@@ -95,15 +95,23 @@ def lone_xyz_said(name: str, text: str) -> str:
             "Metadata pages; saving there writes it to the .molstruct.json.")
 
 
-def geometry_changed_said(name: str) -> str:
-    """What the read says of a pair whose sidecar's geometry hash is not the
-    file's (``structure-molstruct.md`` § 3) -- the refusal of a door that
-    builds from it, and the notice of the browser's load door, one sentence."""
+def geometry_changed_fact(name: str) -> str:
+    """The fact alone of a pair whose sidecar's geometry hash is not the
+    file's (``structure-molstruct.md`` § 3) -- what a door that names its
+    own way on says before it (the composed junction,
+    `transport.compose.recorded_junction`)."""
     return (f"{name}'s atoms or cell are not the ones its .molstruct.json was "
             f"saved with -- the file changed after the pair was written, so "
-            f"its labels and cell may sit on the wrong atoms.  Open it on the "
-            f"Molbuilder tab, check its labels and cell, and save it there: "
-            f"that writes the pair anew.")
+            f"its labels and cell may sit on the wrong atoms")
+
+
+def geometry_changed_said(name: str) -> str:
+    """What the read says of such a pair (:func:`geometry_changed_fact`) --
+    the refusal of a door that builds from it, and the notice of the
+    browser's load door -- with the way on, one sentence."""
+    return (f"{geometry_changed_fact(name)}.  Open it on the Molbuilder tab, "
+            f"check its labels and cell, and save it there: that writes the "
+            f"pair anew.")
 
 
 #: WHAT A READ SAYS TO A PERSON, each by its name and at its level -- the

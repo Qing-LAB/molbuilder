@@ -1289,7 +1289,7 @@ def api_task_setup_prep():
     # (`checkpointing.md` § 9).
     from molbuilder.calculation import NotACalculation, open as open_calc
     from molbuilder.jobset.model import Resources
-    from molbuilder.jobset.errors import PrepError
+    from molbuilder.jobset.errors import PrepError, PrepStopped
     from molbuilder.jobset.prep import prep_said, prep_task
     try:
         calc = open_calc(dest)
@@ -1301,6 +1301,11 @@ def api_task_setup_prep():
                                    else None),
                             target=target, allocation=Resources(),
                             preview=preview, plan_id=plan_id)
+    except PrepStopped as exc:
+        # A WRITE THAT FAILED -- the disk, the folder -- is a fault, not the
+        # request's (`web-api.md` § 1): said in prep's words, how far it got
+        # in the ledger.
+        return err(str(exc), 500)
     except PrepError as exc:
         # Refused, not repaired -- the reader's own words, as the terminal
         # gives them -- WITH what the entry had found by then: the preflight's

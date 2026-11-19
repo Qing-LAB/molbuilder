@@ -14,6 +14,7 @@ import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from molbuilder.frameset import finite_number
 from molbuilder.parse.base import FileParser
 from molbuilder.parse.types import InstrumentResult
 
@@ -42,7 +43,12 @@ def read_reports(path, *, since: Optional[float] = None,
             except ValueError:
                 skipped += 1
                 continue
-            if not isinstance(d, dict):
+            # A LINE THAT DOES NOT READ: no object, or a sent time that
+            # is no number of seconds (the listener keeps any short text
+            # a sender puts there, `notify._clean`).
+            if not isinstance(d, dict) or (
+                    d.get("sent_at") is not None
+                    and finite_number(d["sent_at"]) is None):
                 skipped += 1
                 continue
             rows.append(d)

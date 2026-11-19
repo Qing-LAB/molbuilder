@@ -312,10 +312,11 @@ def order_record(calc, plan) -> Optional[str]:
     and the words prep says of it; ``None`` when the record states its
     order, nothing to record.  A record that does not read is refused
     (:class:`PrepError`)."""
-    from .compose import ComposeError, recorded_junction
+    from .compose import recorded_junction
+    from .rung import compose_refusals
     try:
         recorded = recorded_junction(calc.base)
-    except ComposeError as exc:
+    except compose_refusals() as exc:
         raise PrepError(str(exc)) from None
     if recorded is None or not recorded.order_unstated:
         return None

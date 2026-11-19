@@ -250,9 +250,8 @@ def transport_sources(element, *, engine: str):
 def compose_refusals() -> tuple:
     """What reading or composing a junction raises for the person to fix --
     the composition's, the sort's, the order record's and a cited run's
-    deck record -- said by every door that asks as its refusal
-    (:class:`PrepError`): prep (`gather.composed_for_prep`) and the gather
-    (`gather.composed_junction`) alike."""
+    deck record -- the one list every reader of a junction catches, each
+    saying it as its own refusal."""
     from ..atom_permutation import PermutationError
     from ..deck_record import DeckRecordUnreadable
     from .compose import ComposeError

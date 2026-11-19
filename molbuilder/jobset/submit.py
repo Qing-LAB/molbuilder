@@ -1442,11 +1442,14 @@ def _refusal_kinds() -> tuple:
     own kind, said as the launch's refusal (:func:`plan_launch`): a record
     of a run that does not read (R-L21), a plan's job no file can be named
     for (`naming.NamingError`), and a calculation's own
-    `warm-files.toml` that does not read (`warmfiles.WarmFilesError`) --
-    never a plain error of code, which stays one."""
+    `warm-files.toml` that does not read (`warmfiles.WarmFilesError`), and
+    what the description's readers refuse, as prep says it
+    (`errors.PrepError`: a rung's gather, the composed junction a kind's
+    facts are read from) -- never a plain error of code, which stays one."""
     from ..warmfiles import WarmFilesError
+    from .errors import PrepError
     from .naming import NamingError
-    return (LaunchRecordError, NamingError, WarmFilesError)
+    return (LaunchRecordError, NamingError, WarmFilesError, PrepError)
 
 
 def _planned(calc, jobset: JobSet, *, machine, mode, only, side, time_s,
@@ -1684,6 +1687,8 @@ def send_launch(plan: LaunchPlan, *, said) -> List[JobResult]:
         plan.asked(said)
         plan.record("refused", reason=str(exc))
         raise
+    way_back = ("nothing was sent: launch it again once the folder can be "
+                "written")
     if plan.save_before is not None:
         # A GROUP'S FIRST LAUNCH SAVES THE FOLDER'S STATE first -- the state
         # a redo of the group restores, every run it builds on in it
@@ -1701,6 +1706,7 @@ def send_launch(plan: LaunchPlan, *, said) -> List[JobResult]:
             plan.record("refused", reason=why)
             raise SubmitError(why) from None
         plan.saved = kept.said()
+        way_back = f"nothing was sent; {kept.way_back(plan.base)}"
         plan.asked(said)
         plan.record("saved", state=kept.state.short, note=kept.state.note,
                     new=kept.new)
@@ -1710,7 +1716,10 @@ def send_launch(plan: LaunchPlan, *, said) -> List[JobResult]:
     # waited on, or left in the background (`job-system.md` § 6.0).
     if said.other:
         plan.background = not plan.background
-    plan.writes.carry_out()
+    # THE PLAN'S WRITES, a write that stops them said and how far it got
+    # recorded (`planned.Plan.carry_out_or_say`).
+    plan.writes.carry_out_or_say(plan.record, SubmitError,
+                                 way_back=way_back)
     # WHAT EACH STAGE TAKES, recorded where it lands (`job-system.md`
     # § 5.4): the run it continues from and what came across (`continues`),
     # a rung's gathered inputs (`gathers`), or nothing at a first launch
@@ -3086,14 +3095,11 @@ def _gathered_now(calc, stage: str):
     words, before anything is sent (`job-system.md` § 6.0, step 1).  Asked
     only for a rung whose kind names its inputs (`--gather`, checked at
     the launch's door)."""
-    from .errors import PrepError, user_error_as_prep
+    from .errors import user_error_as_prep
     from .ready import gather_of
     gather_sources = gather_of(calc.task)
-    try:
-        with user_error_as_prep():
-            return gather_sources(calc, stage)
-    except PrepError as exc:
-        raise SubmitError(str(exc)) from None
+    with user_error_as_prep():
+        return gather_sources(calc, stage)
 
 
 def _gather_sweep(base: Path, run: Path, points, got, writes

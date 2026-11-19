@@ -111,7 +111,9 @@ class DeckRecordUnreadable(ValueError):
     never read as a deck that records nothing."""
 
 
-def _unreadable(name: str, why: str) -> DeckRecordUnreadable:
+def block_unreadable(name: str, why: str) -> DeckRecordUnreadable:
+    """The refusal of the block ``name`` that does not read for ``why`` --
+    every reader of a block's record says it in these words."""
     return DeckRecordUnreadable(
         f"its molbuilder {name} block {why}.  The block is a record "
         f"molbuilder writes, not one edited by hand: restore the folder to "
@@ -158,17 +160,18 @@ def read_json_block(text: str, name: str) -> Optional[Dict[str, Any]]:
     if not seen:
         return None
     if inner is None:
-        raise _unreadable(name, "has no BEGIN/END pair of fences")
+        raise block_unreadable(name, "has no BEGIN/END pair of fences")
     lines = [re.sub(r"^# ?", "", raw) for raw in inner]
     opens = next((i for i, line in enumerate(lines)
                   if line.lstrip().startswith("{")), None)
     if opens is None:
-        raise _unreadable(name, "holds no JSON object")
+        raise block_unreadable(name, "holds no JSON object")
     try:
         return json.JSONDecoder().raw_decode(
             "\n".join(lines[opens:]).lstrip())[0]
     except json.JSONDecodeError as exc:
-        raise _unreadable(name, f"holds JSON that does not parse ({exc})") \
+        raise block_unreadable(
+            name, f"holds JSON that does not parse ({exc})") \
             from exc
 
 
@@ -449,7 +452,8 @@ __all__ = ["BUILD_NAME", "BLOCK_PROVENANCE", "BLOCK_BENCH_MARKS",
            "BLOCK_USER_CUSTOM", "BLOCK_PARAMETERS", "BLOCK_RUN_SETTINGS",
            "MARKER_RE", "same_calculation",
            "begin_marker", "end_marker", "order_record_of", "read_json_block",
-           "DeckRecordUnreadable", "extract_atom_metadata",
+           "DeckRecordUnreadable", "block_unreadable",
+           "extract_atom_metadata",
            "extract_engine_offset", "extract_vibration_record",
            "PARAMETER_ROW_PREFIX", "PARAMETERS_KEY", "read_parameters_fence",
            "read_provenance_block", "read_bench_marks_block", "written_by",

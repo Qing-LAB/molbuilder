@@ -7,7 +7,8 @@ MODULE  frameset (L2 by the index, `architecture.md`; it imports only the
 ROLE    :func:`read` -- the structure's rows and each frame's as written, and
         each frame's ``weight``
 USED-BY the frames' post-process (`frame_average`: the weighted average, the
-        data file's frame part, what a page is answered)
+        data file's frame part, what a page is answered); the report log's
+        reader (`parse.instruments.reports`, :func:`finite_number`)
 
 **A calculation over the frames needs the frames and nothing else** (user,
 2026-10-18: "the frame can of course carry meta data, and why you treat it as
@@ -61,10 +62,15 @@ class FrameRows:
 def finite_number(value: Any) -> Optional[float]:
     """``value`` as a finite number, or ``None`` -- true/false is not a
     number here, though Python counts it as one.  The one rule every
-    reader of a frame's row asks (`frame_average`)."""
+    reader of a frame's row asks (`frame_average`), and the report log's
+    reader of a report's sent time."""
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         return None
-    v = float(value)
+    try:
+        v = float(value)
+    except OverflowError:
+        # AN INTEGER PAST ANY FLOAT is no finite number either.
+        return None
     return v if math.isfinite(v) else None
 
 

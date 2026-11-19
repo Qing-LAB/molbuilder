@@ -276,8 +276,11 @@ const WORKSPACE_TAG = "results:transport";
             _mountDevice(molHost, state, rec.junction_file,
                          !!rec.order_unstated);
         } else {
+            /* A JUNCTION THAT DOES NOT READ is said in its reader's words
+             * (`record.junction_unread`); none composed yet, when. */
             molHost.appendChild(_el("p", "transport-note",
-                "The junction is composed when the calculation is prepared."));
+                rec.junction_unread
+                || "The junction is composed when the calculation is prepared."));
         }
         _redraw(state);
     }

@@ -55,7 +55,8 @@ from . import prepared_with
 from ..runfiles import (GROUP_HEADER, ROLE_HEADER, ROLE_MOLWATCH,
                         ROLE_VALIDATION, RunNames, beside_the_deck,
                         deck_role, fixed_fields, role_of)
-from .errors import PrepError, as_prep_error, step_errors, user_error_as_prep
+from .errors import (PrepError, PrepStopped, as_prep_error, step_errors,
+                     user_error_as_prep)
 from .machine import machine_record, require_activation, set_machine
 from .engines import EngineSeam, engine_seam
 from .rung import cited_pair_path, described_rung, structure_path
@@ -2457,12 +2458,6 @@ def prep_bench(calc, stage: Optional[str], *, target: Optional[str] = None,
         out.saved = kept.said()
         ledger(base, "prep", "saved", stage=stage, state=kept.state.short,
                note=kept.state.note, new=kept.new)
-        # 6 · THE PLAN, WRITTEN -- deciding nothing and refusing nothing.
-        plan.carry_out()
-        # 7 · THE RECORD, after the save -- so the state saved holds no line
-        #     of this prep: the description's notes, then the stage's.
-        _record_preflight(base, described.findings, stage=stage)
-        return _record_prepared(base, out)
     except PrepError as exc:
         raise _refused(exc)
     except step_errors() as exc:
@@ -2471,6 +2466,17 @@ def prep_bench(calc, stage: Optional[str], *, target: Optional[str] = None,
         # own refusals (`errors.step_errors`) -- said the same way on both
         # doors.
         raise _refused(as_prep_error(exc)) from exc
+    # 6 · THE PLAN, WRITTEN -- deciding nothing and refusing nothing, so
+    #     after the refusals: a write that stops it is said with the way
+    #     back, and how far it got recorded (§ 5.0, checkpoint 6).
+    plan.carry_out_or_say(
+        lambda decision, **facts: ledger(base, "prep", decision, stage=stage,
+                                         **facts),
+        PrepStopped, way_back=kept.way_back(base))
+    # 7 · THE RECORD, after the save -- so the state saved holds no line of
+    #     this prep: the description's notes, then the stage's.
+    _record_preflight(base, described.findings, stage=stage)
+    return _record_prepared(base, out)
 
 
 def prep_task(calc, kind: str, *, groups: Sequence[int] = (),
@@ -2545,7 +2551,10 @@ def _record_the_order(calc, record_order, *, refuse, asked, preview,
     asked()
     ledger(base, "prep", "saved", groups=[], state=kept.state.short,
            note=kept.state.note, new=kept.new)
-    plan.carry_out()
+    plan.carry_out_or_say(
+        lambda decision, **facts: ledger(base, "prep", decision, groups=[],
+                                         **facts),
+        PrepStopped, way_back=kept.way_back(base))
     ledger(base, "prep", "order recorded", writes=written)
     answer.saved = kept.said()
     return answer
@@ -3232,8 +3241,12 @@ def _prep_groups(calc, numbers: List[int], *, target, allocation,
     ledger(base, "prep", "saved", groups=numbers, state=kept.state.short,
            note=kept.state.note, new=kept.new)
     # 4 · THE PLAN, WRITTEN as it was made -- every member, every header --
-    #     deciding nothing and refusing nothing (§ 5.0, rule 3).
-    the_plan.carry_out()
+    #     deciding nothing and refusing nothing (§ 5.0, rule 3); a write that
+    #     stops it said, and how far it got recorded.
+    the_plan.carry_out_or_say(
+        lambda decision, **facts: ledger(base, "prep", decision,
+                                         groups=numbers, **facts),
+        PrepStopped, way_back=kept.way_back(base))
     # 5 · THE RECORD: the description's notes, each member's, then each
     #     group's.
     _record_preflight(base, description.findings, groups=numbers)

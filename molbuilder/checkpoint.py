@@ -2106,6 +2106,16 @@ class Kept:
     state: "State"
     new: bool
 
+    def way_back(self, folder) -> str:
+        """The state as the way back from what came after it, the command
+        that restores it in its one spelling (`identity.checkpoint_as_typed`)
+        -- the words a verb cut short by a write that failed ends with
+        (`planned.Plan.carry_out_or_say`)."""
+        from .identity import checkpoint_as_typed
+        _shown, restore = checkpoint_as_typed(Path(folder).resolve())
+        return (f"the folder's state saved before it is the way back: "
+                f"`{restore} {self.state.short}`")
+
     def said(self) -> str:
         """The line both doors show and the ledger records."""
         # THE NOTE FIRST, which leads with its time: a person finds the

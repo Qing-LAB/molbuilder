@@ -558,11 +558,24 @@ def point_done(calc, stage: str, run, pdir, pt, names, *, st=None
     question status (:func:`point_rows`), launch's walk and a reuse of a
     finished calculation ask of a point; ``st`` the point's state where the
     caller read it already."""
+    from ..deck_record import DeckRecordUnreadable
     from .points import points_of
     declared = points_of(calc.task)
-    return done(pdir, names, base=calc.base, launched_in=run,
-                must_hold=declared.must_hold(calc, stage, pt, pdir),
-                verdict_counts=declared.verdict_counts(pt), st=st)
+    try:
+        must_hold, unread = declared.must_hold(calc, stage, pt, pdir), None
+    except DeckRecordUnreadable as exc:
+        must_hold, unread = (), str(exc)
+    ok, why = done(pdir, names, base=calc.base, launched_in=run,
+                   must_hold=must_hold,
+                   verdict_counts=declared.verdict_counts(pt), st=st)
+    if ok and unread is not None:
+        # A RECORD THE POINT IS JUDGED BY THAT DOES NOT READ -- its deck's
+        # record of what it shares, say: a point its run would call done is
+        # not done, in that reader's words; one failed or still running
+        # keeps its run's own (`runs-of-points.md` § 4.2) -- never the
+        # whole status refused.
+        return False, unread
+    return ok, why
 
 
 def point_rows(calc, stage: str, run, names, *, index=None):

@@ -781,6 +781,10 @@ def calls_made(calls: Path):
 # refused, saying each of these, and the row ends there.  A probe row's
 # machine holds the `molbuilder.json` `envs init-config` leaves -- its
 # `env_init` -- unless `machine_config` gives the file;
+# `unwritable` / `launch_unwritable` -- the named stage's folder one
+# nobody may write while the row's prep, or its launch, runs: a write that
+# fails (made writable again before the row's checks); `ledger_lacks`
+# (beside `ledger_holds`) -- decisions the ledger must not hold;
 # `saved_first` -- the folder's state saved before anything else, as a person
 # saves it (`molbuilder checkpoint init`); `before` -- the verbs a person typed
 # first, each a list of words (`["prep", "task", "--group", "1"]`), the calculation
@@ -1409,14 +1413,16 @@ def _road_after_prep(case, bundle) -> None:
             assert words in st.output, _one_line(st)
         for words in case.get("status_lacks", []):
             assert words not in st.output, _one_line(st)
-    if "ledger_holds" in case:
+    if "ledger_holds" in case or "ledger_lacks" in case:
         from molbuilder.jobset import ledger
         lines = ledger.read(bundle)
         # A DECISION, or a verb's decision (``launch continues``): prep and
         # launch both record what a stage continues from.
         decided = ({e["decision"] for e in lines}
                    | {f"{e['verb']} {e['decision']}" for e in lines})
-        for decision in case["ledger_holds"]:
+        for decision in case.get("ledger_lacks", []):
+            assert decision not in decided, f"the ledger holds: {decided}"
+        for decision in case.get("ledger_holds", []):
             if isinstance(decision, dict):
                 # A DECISION AND ITS FACTS: some line of it holds each.
                 want = dict(decision)
@@ -1701,6 +1707,25 @@ def shelf_headers(bundle: Path, stage: str, *, side=None) -> dict:
     return {s.name: list(s.request()) for s in plan.submissions}
 
 
+@contextmanager
+def _unwritable(case, key, bundle):
+    """While the verb runs, the folder of the stage ``case[key]`` names is
+    one nobody may write -- a write that fails -- and writable again after,
+    for the row's checks; nothing when the row names none."""
+    if key not in case:
+        yield
+        return
+    from molbuilder.jobset.naming import stage_home
+    from molbuilder.task import of as task_of
+    folder = stage_home(bundle, task_of(bundle), case[key]).dir
+    folder.mkdir(parents=True, exist_ok=True)
+    folder.chmod(0o500)
+    try:
+        yield
+    finally:
+        folder.chmod(0o700)
+
+
 def stage_file(bundle: Path, stage: str, role: str) -> Path:
     """The file ``stage``'s prep wrote for ``role`` -- ``.sbatch``,
     ``.run.sh``, the deck's suffix -- by the one composer's names
@@ -1860,8 +1885,9 @@ def run_road_case(table, case, tmp_path, monkeypatch, *, ran=None) -> None:
         import shutil
         twin = bundle.with_name(bundle.name + "-page")
         shutil.copytree(bundle, twin)
-    r = jobset("prep", kind, *named, "--bundle", bundle,
-               "--target", target, *case.get("prep", []))
+    with _unwritable(case, "unwritable", bundle):
+        r = jobset("prep", kind, *named, "--bundle", bundle,
+                   "--target", target, *case.get("prep", []))
     for where, was in kept.items():
         assert _as_written(bundle / where) == was, \
             f"{where} was written again by the row's prep"
@@ -1945,11 +1971,14 @@ def run_road_case(table, case, tmp_path, monkeypatch, *, ran=None) -> None:
         mode = case.get("launch_mode", "submit")
         was = all_written(bundle)
         stage_typed = case.get("launch_stage", "coarse")
-        r = jobset("launch", kind, *_named(kind, stage_typed or None, bundle,
-                                           verb="launch"),
-                   "--bundle", bundle, *(("--mode", mode) if mode else ()),
-                   *(() if case.get("launch_sends") else ("--dry-run",)),
-                   "--yes", *case["launch"])
+        with _unwritable(case, "launch_unwritable", bundle):
+            r = jobset("launch", kind,
+                       *_named(kind, stage_typed or None, bundle,
+                               verb="launch"),
+                       "--bundle", bundle,
+                       *(("--mode", mode) if mode else ()),
+                       *(() if case.get("launch_sends") else ("--dry-run",)),
+                       "--yes", *case["launch"])
         if "launch_refused" in case:
             said = case["launch_refused"]
             assert r.exit_code != 0, _one_line(r)

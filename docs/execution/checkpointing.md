@@ -1667,7 +1667,7 @@ Where each owed test stands:
 
 - **A3** — every act's save is asserted (§ 13.4); that a group's first launch and
   Save write nothing before it is held by the code — `save_before` is called
-  before `plan.writes.carry_out()` in `submit.send_launch`, and before
+  before `plan.writes.carry_out_or_say()` in `submit.send_launch`, and before
   `write_task` in the Save route — with no test.
 - **A4, the CLI and the Python surface** — `checkpoint restore` has no
   partial-restore flag and `Repo.restore(state, force=False)` takes nothing

@@ -80,10 +80,17 @@ def _run_facts(calc, stage: str, *, carried, deck) -> dict:
     states them (`frameset.read`) -- what a round's outcome reads."""
     from ..frameset import read as read_frame_set
     from ..parse.fdf import parse_fdf_params
+    from ..jobset.errors import PrepError
     from .compose import recorded_junction
     from .conductance import spin_of
+    from .rung import compose_refusals
     from .transiesta import LEAD_NAMES, LEAD_PAIR
-    recorded = recorded_junction(Path(calc.base))
+    try:
+        recorded = recorded_junction(Path(calc.base))
+    except compose_refusals() as exc:
+        # A JUNCTION THAT DOES NOT READ, the launch's refusal in its
+        # reader's words (`jobset.points.PointsOf.run_facts`).
+        raise PrepError(str(exc)) from None
     rows = (read_frame_set(recorded.structure) if recorded is not None
             else None)
     return {"computes": STAGE_FACT[stage], "pair": LEAD_PAIR,

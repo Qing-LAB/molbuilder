@@ -37,9 +37,11 @@ SHARED_DIR = "shared"
 #: which finished point, the grid, and the contours -- its name the deck
 #: record's (`deck_record`).
 try:                                        # inside molbuilder
-    from ..deck_record import BLOCK_SHARED, read_json_block  # noqa: E402
+    from ..deck_record import (BLOCK_SHARED, block_unreadable,  # noqa: E402
+                               read_json_block)
 except ImportError:                         # beside a job
-    from deck_record import BLOCK_SHARED, read_json_block  # type: ignore[no-redef]  # noqa: E402
+    from deck_record import (BLOCK_SHARED, block_unreadable,  # type: ignore[no-redef]  # noqa: E402
+                             read_json_block)
 
 
 def spacing(window: Tuple[float, float, int]) -> float:
@@ -184,7 +186,17 @@ class Contours:
         """The sharing a deck records, or ``None`` for a deck that computes
         its window whole."""
         rec = read_json_block(text, BLOCK_SHARED)
-        return cls.of_record(rec) if rec is not None else None
+        if rec is None:
+            return None
+        try:
+            return cls.of_record(rec)
+        except KeyError as exc:
+            # A BLOCK THAT PARSES AND DOES NOT HOLD WHAT IT RECORDS is as
+            # unreadable as one that does not parse.
+            raise block_unreadable(BLOCK_SHARED, f"lacks its {exc} entry")
+        except (TypeError, ValueError, OverflowError) as exc:
+            raise block_unreadable(BLOCK_SHARED,
+                                   f"holds a value that does not read ({exc})")
 
 
 def shared_contours(energies: Sequence[float], held: Sequence[float], *,

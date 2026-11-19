@@ -1429,7 +1429,7 @@ sidecar what molbuilder serialised — not the shape of the payload.
 | `*.molwatch.log` — a PySCF run's stamped `scf_history` rows | `scf_timing_rows.progress_log_timing_metrics` | the same figures, in the run's one phase, `scf` |
 | `*.monitor.log` | `monitor-log` · `monitor_metrics` | `machine` {`node`, `cores`, `mem_gb`, `gpu`} from `[MACHINE]` (`scheduler.md` R12); `bound` (`gpu` / `host` / `mixed`), `stated_cpu_mean_pct` and `stated_gpu_sm_mean_pct` from `[UTIL-SUMMARY]`; `mem_basis`, `mem_peak_kernel_gb`, `mem_limit_gb` from `[UTIL-BASIS]`; `ended_at`, `ended_why` from the monitor's closing record — absent for a monitor that never closed |
 | `*.util.csv` | `util-csv` · `util_csv_metrics` | the samples' `mem_peak_sampled_gb` (the largest sample of the job's memory), `monitored_elapsed_s`, `cpu_mean_pct`, `gpu_sm_mean_pct`, `gpu_vram_peak_gb` |
-| `reports/<user>.jsonl` | `reports-log` · `read_reports` | reports (newest first), total, skipped — the reports a run's monitor sent, as the listener received them |
+| `reports/<user>.jsonl` | `reports-log` · `read_reports` | reports (newest first), total, skipped — the reports a run's monitor sent, as the listener received them; a line that is no object, or whose `sent_at` is no number of seconds, is skipped and counted |
 
 **Seconds per iteration: one rule, each engine's stamped rows**
 (`scf_timing_rows.timing_figures`; `timing_of(path)` picks the row reader by

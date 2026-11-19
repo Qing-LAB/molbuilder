@@ -11,7 +11,8 @@ from contextlib import contextmanager
 
 class PrepError(Exception):
     """A prep refused -- in the reader's own words, which each surface shows
-    as they are.
+    as they are -- or, as :class:`PrepStopped`, cut short by a write that
+    failed.
 
     What the one prep entry had already found when it refused rides with it
     (`prep.prep_task`): ``findings`` (the description's preflight notes) and
@@ -23,6 +24,14 @@ class PrepError(Exception):
     """
     findings: tuple = ()
     notes: tuple = ()
+
+
+class PrepStopped(PrepError):
+    """A prep cut short by a write that failed -- a full disk, a folder it
+    may not write -- not a refusal: nothing decided it (`job-system.md`
+    § 5.0, checkpoint 6), so no `refused` line is written, and a surface
+    answers it as the fault it is (`web-api.md` § 1: 5xx for an I/O
+    error)."""
 
 
 class WrapperError(Exception):
@@ -81,5 +90,6 @@ def user_error_as_prep():
         raise as_prep_error(exc) from exc
 
 
-__all__ = ["PrepError", "WrapperError", "user_errors", "step_errors",
+__all__ = ["PrepError", "PrepStopped", "WrapperError", "user_errors",
+           "step_errors",
            "as_prep_error", "user_error_as_prep"]

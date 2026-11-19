@@ -985,11 +985,13 @@ def recorded_junction(base_dir) -> Optional[RecordedJunction]:
     never by the molbuilder that wrote it (the user, 2026-10-15:
     "feature/format detection").  ``None`` before anything was composed;
     a pair that does not read is refused in its reader's words,
-    :class:`ComposeError`.  Asked by the record's read for prep and the
-    gather (:func:`load_compose_record`), the transport record, its data
-    file and a selection's PDOS, and `prep task` with no group named."""
+    :class:`ComposeError`.  Asked by every reader of the composed junction,
+    each catching `rung.compose_refusals`."""
+    from ..identity import checkpoint_words
     from ..sidecars.molstruct import sidecar_path_for
+    from ..structure_pair import GeometryChangedError
     from ..workingcopy_structure import (ORDER_UNSTATED, StructureCodec,
+                                         geometry_changed_fact,
                                          pair_order_unstated_said)
     path = Path(base_dir) / JUNCTION_GEOMETRY
     if not path.is_file():
@@ -1001,10 +1003,21 @@ def recorded_junction(base_dir) -> Optional[RecordedJunction]:
         struct = StructureCodec().load(path, frames=True, stated_out=stated,
                                        opened=(ORDER_UNSTATED,),
                                        said_out=[])
+    except GeometryChangedError as exc:
+        # EDITED SINCE PREP COMPOSED IT: the codec's fact, and THIS RECORD'S
+        # WAY BACK -- the junction is the record prep composed from the
+        # citation, never a file to edit, so the state saved before the
+        # change, not a save on the Molbuilder tab.
+        raise ComposeError(
+            f"the composed junction, {path.name}, does not read: "
+            f"{geometry_changed_fact(path.name)}.  It is the record prep "
+            f"composed from the citation, not a file to edit; go back to "
+            f"the state saved before the change -- "
+            f"{checkpoint_words(Path(base_dir).resolve())}") from exc
     except ValueError as exc:
-        # THE CODEC'S REFUSALS are ValueErrors -- a sidecar that does not
-        # parse, one whose geometry pin is not the file's, an atom list that
-        # does not read (`structure_pair.MolstructJsonError` among them).
+        # THE CODEC'S OTHER REFUSALS are ValueErrors -- a sidecar that does
+        # not parse, an atom list that does not read
+        # (`structure_pair.MolstructJsonError` among them).
         raise ComposeError(f"the composed junction, {path.name}, does not "
                            f"read: {exc}") from exc
     return RecordedJunction(

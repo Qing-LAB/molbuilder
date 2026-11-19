@@ -265,30 +265,56 @@ class Plan:
     def carry_out(self) -> None:
         """Write the plan, in its order.  Nothing here decides or refuses:
         a write that fails (a full disk) is the only error, :class:`CutShort`
-        saying how far it got, and the state saved before it is the way back
-        (`job-system.md` § 5.0, 6)."""
+        saying how far it got; each verb says its own way back
+        (:meth:`carry_out_or_say`)."""
         done: List[str] = []
         for op in self._ops:
             try:
                 _carry(op)
             except OSError as exc:
-                raise CutShort(done, _said(op), exc) from exc
+                raise CutShort(done, _said(op), exc, op.path) from exc
             done.append(_said(op))
         self._ops.clear()
+
+    def carry_out_or_say(self, record, stopped, *, way_back: str) -> None:
+        """:meth:`carry_out`, and a write that stops it said in words, never
+        a traceback: ``record(decision, **facts)`` writes in the ledger how
+        far it got -- each operation carried out before it, and the one that
+        failed -- and ``stopped(message)``, the verb's own error, is raised:
+        the file the system refused, how many changes were made before it,
+        and ``way_back``, the verb's own way back -- the state prep saved, the
+        files `jobset migrate` keeps beside those it rewrites.  The one way
+        prep, launch and `jobset migrate` carry a plan out (`job-system.md`
+        § 5.0, checkpoint 6, and § 6.0, step 4; `job-request.md` § 8)."""
+        try:
+            self.carry_out()
+        except CutShort as exc:
+            record("stopped at a write that failed", changes=exc.done,
+                   failed=f"{exc.failed}: {exc.cause}")
+            raise stopped(
+                f"writing {exc.path} failed "
+                f"({exc.cause.strerror or exc.cause}) after {len(exc.done)} "
+                f"other change(s) to the folder were made; {way_back}"
+            ) from None
 
 
 class CutShort(OSError):
     """A plan's carrying out stopped at a write that failed -- a full disk,
     a folder it may not write: :attr:`done`, each operation carried out
     before it, in :meth:`Plan.described`'s words and order; :attr:`failed`,
-    the one that failed, and :attr:`cause`, why.  What a ledger line that
-    says how far a write got records (`jobset migrate`)."""
+    the one that failed, and :attr:`cause`, why.  What the ledger line that
+    says how far a write got records (:meth:`Plan.carry_out_or_say`)."""
 
-    def __init__(self, done: List[str], failed: str, cause: OSError):
+    def __init__(self, done: List[str], failed: str, cause: OSError,
+                 path: Path):
         super().__init__(
             f"{failed} failed ({cause}) -- {len(done)} operation(s) of the "
             f"plan carried out before it")
         self.done, self.failed, self.cause = list(done), failed, cause
+        #: The file or folder the failed operation was making -- what the
+        #: person's sentence names, the plan's own path, never a temporary
+        #: file the system names.
+        self.path = path
 
 
 def _said(op) -> str:

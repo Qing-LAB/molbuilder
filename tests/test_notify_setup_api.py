@@ -981,8 +981,11 @@ def test_the_reports_the_listener_received_are_read_back_as_the_card(client):
     """`this-machine.md` § 4.1, `web-api.md`: the reports route reads the
     listener's own file, newest first, each with the chat card's picture;
     `since` narrows; a name the listener does not know is a state, not an
-    error.  Silent failure otherwise: a tab drawing a card the chats never
-    got, or a report the listener kept and nobody can see."""
+    error; a line whose sent time is no number does not read, skipped and
+    counted.  Silent failure otherwise: a tab drawing a card the chats never
+    got, or a report the listener kept and nobody can see -- or, from one
+    report whose sender put text as its time (the listener keeps it), every
+    report hidden behind an answer of 500 (F12's review, P-D3)."""
     import time
 
     from molbuilder.web.blueprints.notify import SCHEMA, _logger_for
@@ -997,8 +1000,9 @@ def test_the_reports_the_listener_received_are_read_back_as_the_card(client):
         if energy is not None:
             record["energy"] = energy
         _logger_for("alice").info(json.dumps(record))
+    _logger_for("alice").info(json.dumps({**record, "sent_at": "x"}))
     d = c.get("/api/notify/reports?user=alice").get_json()
-    assert d["ok"] and d["total"] == 2 and d["skipped"] == 0, d
+    assert d["ok"] and d["total"] == 2 and d["skipped"] == 1, d
     first = d["reports"][0]
     assert first["event"] == "scf_converged"                # newest first
     assert first["card"]["title"] == "fine_optimization_01_fine · 62238108 — running"

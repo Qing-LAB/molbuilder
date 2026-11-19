@@ -23,10 +23,10 @@ F0–F11's rows, the decided-and-done rows and the pointer stubs to
 
 ## ▶ Where we are *(2026-11-18)*
 
-**2.77.7.** F0–F11 and F7a are closed (2.56.2–2.77.2). F12, *Proven*, walked
+**2.77.8.** F0–F11 and F7a are closed (2.56.2–2.77.2). F12, *Proven*, walked
 its three roads in the browser on real runs, ran the full batch (the fast
 tests 6106 of 6106, the e2e 805 of 805, at 2.77.2) and its two review
-rounds; its fix releases are running — 2.77.4 to 2.77.7 shipped.
+rounds; its fix releases are running — 2.77.4 to 2.77.8 shipped.
 
 **What runs next — F12's fix releases** *(the user, 2026-11-18: "Harm first,
 by module")*. The two review rounds found, verified, 27 wrong results and 7
@@ -44,7 +44,7 @@ is read whole:
    (below) — **done, 2.77.6**;
 3. the person's files safe, with the test suite's refusing scheduler
    covering `squeue` and `scancel` — **done, 2.77.7**;
-4. a failure said in words, never a traceback;
+4. a failure said in words, never a traceback — **done, 2.77.8**;
 5. the pages show the folder and run they say;
 6. MolView;
 7. the viewers;

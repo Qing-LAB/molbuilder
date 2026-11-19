@@ -114,8 +114,8 @@ class MigrateError(ValueError):
 class MigrationStopped(MigrateError):
     """A migration stopped partway, at a write or a rename that failed --
     written in the calculation's ledger by the migration itself, with what
-    it had done (`jobset.planned.CutShort`), so its caller writes nothing
-    more."""
+    it had done (`jobset.planned.Plan.carry_out_or_say`), so its caller
+    writes nothing more."""
 
 
 #: PySCF's old ``method`` was the SCF class: (method, spin treatment).
@@ -1391,7 +1391,7 @@ def migrate_state(base) -> List[str]:
     # file renamed, after every record is written -- a rename rewrites no
     # byte, so nothing is kept beside it: its old name is said, and the
     # ledger keeps it.
-    from .planned import CutShort, Plan
+    from .planned import Plan
     plan = Plan()
     for path, (write, _rules) in writes.items():
         if path in kept:
@@ -1399,23 +1399,20 @@ def migrate_state(base) -> List[str]:
         write(plan=plan)
     for m in moves:
         plan.move(m.old, m.new)
-    try:
-        plan.carry_out()
-    except CutShort as exc:
-        # HOW FAR IT GOT, in the ledger: what was carried out before the
-        # write that failed, and that write.
-        from . import ledger
-        ledger.record(base, "migrate", "a calculation an older "
-                      "molbuilder wrote, rewritten -- stopped at a write "
-                      "that failed", changes=said + exc.done,
-                      failed=f"{exc.failed}: {exc.cause}")
-        raise MigrationStopped(
-            f"{exc}; each one carried out before it is written in the "
-            f"ledger") from None
+    # HOW FAR IT GOT, in the ledger, should a write stop it: what was
+    # carried out before the write that failed, and that write.
+    from . import ledger
+    plan.carry_out_or_say(
+        lambda decision, changes, **facts: ledger.record(
+            base, "migrate", "a calculation an older molbuilder wrote, "
+            f"rewritten -- {decision}", changes=said + changes, **facts),
+        MigrationStopped,
+        way_back="each file it had rewritten is kept beside it as it was, "
+                 "its name ending in .pre- and a version, and the ledger "
+                 "says where it stopped")
     said += [f"{path.relative_to(base)} kept as {kept[path].name}"
              for path in writes if path in kept]
     said += t_said + r_said
-    from . import ledger
     ledger.record(base, "migrate", "a calculation an older molbuilder "
                   "wrote, rewritten -- each change with its reason",
                   changes=said)
