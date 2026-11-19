@@ -398,7 +398,7 @@ def _by_default(calc, stage: str, prev: str, *, bench: bool = False
     # not launched goes with its group; a run a refused send opened, and
     # one launched, with the stage alone again (D4).
     what = f"the newest attempt of `{prev}`, {source},"
-    launch_prev = block(launch_pending(prev, g_prev, attempt.name, base=base)
+    launch_prev = block(launch_pending(prev, g_prev, attempt, base=base)
                         if state == "pending"
                         else launch_lines("task", prev, base=base))
     why, first = state_remedy(concluded, state, launch_prev,

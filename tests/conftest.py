@@ -423,15 +423,30 @@ def _product_toolchain_stubs(tmp_path_factory) -> Path:
     # the session's setup, before any test's own fixture.  A folder of their
     # own, so a test of a machine with no scheduler takes them off PATH
     # without the engines' tripwires.
+    # EVERY COMMAND THE SCHEDULER TABLE NAMES, for every kind (`scheduler/
+    # kinds.toml`: submit, query, cancel, the cluster's) -- a query or a
+    # cancel on a login node reaches a real job too (F12's review, R2-14
+    # #2: `squeue` and `scancel` were not stubbed) -- and the job-step
+    # commands no table names.
     (d / "no-scheduler").mkdir()
-    for name in ("sbatch", "srun", "salloc"):
+    for name in _scheduler_commands():
         f = d / "no-scheduler" / name
         f.write_text("#!/bin/sh\n"
-                     f'echo "the test suite must never run {name}: a job '
-                     'would be queued for real" >&2\n'
+                     f'echo "the test suite must never run {name}: it would '
+                     'reach a real scheduler" >&2\n'
                      "exit 97\n")
         f.chmod(0o755)
     return d
+
+
+def _scheduler_commands():
+    """Every command the scheduler table names, for every kind
+    (`molbuilder/scheduler/kinds.toml`: submit, query, cancel, the
+    cluster's), and the job-step commands no table names -- what the suite
+    refuses (`process/testing.md`)."""
+    from molbuilder.scheduler.kinds import kind, names
+    return sorted({c for k in names() for c in kind(k).commands.values()}
+                  | {"srun", "salloc"})
 
 
 def _config_fingerprint():

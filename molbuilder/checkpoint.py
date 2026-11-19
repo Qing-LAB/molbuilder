@@ -341,6 +341,20 @@ class FolderStatus:
 # --------------------------------------------------------------------- #
 
 
+#: THE GIT SETTINGS EVERY CHECKPOINT CALL SETS (:func:`_run_git`): the
+#: person's own would otherwise decide what a save keeps or whether it can
+#: be made at all -- which files git ignores, how it converts what it
+#: stores, which hooks run, whether a commit or a tag must be signed.
+_GIT_SETTINGS = (
+    ("core.excludesFile", os.devnull),
+    ("core.attributesFile", os.devnull),
+    ("core.autocrlf", "false"),
+    ("core.hooksPath", os.devnull),
+    ("commit.gpgSign", "false"),
+    ("tag.gpgSign", "false"),
+)
+
+
 def _run_git(argv: List[str], cwd: str, *,
              check: bool = True,
              stdin: Optional[str] = None) -> subprocess.CompletedProcess:
@@ -349,8 +363,24 @@ def _run_git(argv: List[str], cwd: str, *,
     Sets a molbuilder git identity in the environment so a checkpoint works on
     a machine where the user never ran ``git config --global user.email``.
     ``setdefault``, so a real identity already present is left alone.
+
+    **What a save keeps is never the person's git settings' to decide**: the
+    settings that would -- an excludes file (read by default from
+    ``~/.config/git/ignore``, no setting naming it), an attributes file,
+    line-ending conversion, hooks, signing -- are set for every call
+    (:data:`_GIT_SETTINGS`, git's command-scope configuration, which wins
+    over the global and system files).  A global ignore holding ``*.log``
+    left every small log in no store, never shown unsaved, and a restore
+    deleted it; a signing key the web server has no agent for would stop a
+    save (`checkpointing.md` § 2.1; F12's review, C-D1).  The rest of the
+    person's configuration stands -- ``safe.directory`` for a folder another
+    owns among it.
     """
     env = os.environ.copy()
+    env["GIT_CONFIG_COUNT"] = str(len(_GIT_SETTINGS))
+    for i, (key, value) in enumerate(_GIT_SETTINGS):
+        env[f"GIT_CONFIG_KEY_{i}"] = key
+        env[f"GIT_CONFIG_VALUE_{i}"] = value
     env.setdefault("GIT_AUTHOR_NAME",     "molbuilder")
     env.setdefault("GIT_AUTHOR_EMAIL",
                    f"molbuilder@{os.uname().nodename}")
@@ -371,7 +401,7 @@ def _run_git(argv: List[str], cwd: str, *,
         # host_env_name`), never a name typed here.
         from .runwrap import host_env_name
         raise GitNotInstalledError(
-            "git is not on PATH.  molbuilder requires git ≥ 2.20; "
+            "git is not on PATH.  molbuilder requires git ≥ 2.31; "
             "install it with your distro's package manager, or activate "
             f"molbuilder's environment, {host_env_name()} -- every "
             "molbuilder env ships git as a conda_packages entry."
@@ -1449,6 +1479,26 @@ class Repo:
             argv.insert(1, f"-n{int(limit)}")
         out = _run_git(argv, cwd=self.path, check=False).stdout
         return self._parse_states(out)
+
+    def files_ever_held(self, folder) -> set:
+        """Every file any state ever held in ``folder`` -- a folder of this
+        calculation, as the calculation names it, never through a link it
+        may be -- by its path from ``folder``: what a restore may have taken
+        away, which a new entry must not stand in for (a run's number,
+        `project-layout.md` § 4.3).  Empty before the first state, and for a
+        folder outside the calculation."""
+        if not self.initialized:
+            return set()
+        rel = os.path.relpath(os.path.abspath(folder),
+                              os.path.abspath(self.root))
+        if rel == os.pardir or rel.startswith(os.pardir + os.sep):
+            return set()
+        prefix = Path(rel).as_posix() + "/"
+        out = _run_git(["log", "--format=", "--name-only",
+                        "--glob=" + _STATE_REF + "*", "--", prefix],
+                       cwd=self.path, check=False).stdout
+        return {line[len(prefix):] for line in out.splitlines()
+                if line.startswith(prefix)}
 
     def resolve(self, name: str) -> str:
         """A state id or a tag -> the state's id.  One kind of argument (§ 5)."""

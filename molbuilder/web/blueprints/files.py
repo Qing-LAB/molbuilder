@@ -36,11 +36,16 @@ Every endpoint that takes a ``path`` query parameter runs it through
 
 Anything that fails validation gets HTTP 400 with a JSON error.
 
+A rename, a move and a delete act on the ENTRY picked instead
+(:func:`_entry_within_roots`, `projects.contain_entry`): its folder fenced
+as above, its own name kept, so a link is the link, never what it points
+to; a copy copies what it is given, as ``cp`` does.
+
 Design note: this blueprint is the projects sidebar's full file-system
 surface, the mutation surface included (``web/projects.md`` § 4 + § 5).
-Path-safety is the invariant: every
-mutation runs through ``_resolve_within_roots`` + depth + canonical-
-topic checks before touching disk.
+Path-safety is the invariant: every mutation runs through the fence -- the
+path's, or the entry's -- and the depth and canonical-topic checks before
+touching disk.
 """
 from __future__ import annotations
 
@@ -56,7 +61,8 @@ from ._shared import err
 from molbuilder.sidecars.molstruct import paired_sidecar, sidecar_path_for
 from molbuilder.projects import (
     CANONICAL_TOPICS, PROJECTS_ROOT_NAME, InvalidName, OutsideRoot,
-    contain, populate_project_skeleton, project_dir, projects_root,
+    contain, contain_entry, populate_project_skeleton, project_dir,
+    projects_root,
     segments, validate_folder_name,
 )
 
@@ -143,13 +149,18 @@ def _is_canonical_topic_dir(resolved, rel_parts) -> bool:
 
 def _rel_parts_inside_root(resolved) -> "Optional[Tuple[str, ...]]":
     """The path's segments from the projects tree this layer serves
-    (`projects.segments`), or ``None`` outside it.
+    (`projects.segments`), or ``None`` outside it -- a link's by its OWN
+    place, its folder's segments and its own name, never where it points
+    (a link out of the tree, or to a project's topic, is the entry it is).
 
     Every endpoint with a depth rule needs this: depth 1 is a project,
     depth 2 a topic, and what is legal to rename, move, copy or delete
     depends on which.  Several copies of a depth rule would be several
     chances to disagree about what a user may delete.
     """
+    if Path(resolved).is_symlink():
+        above = segments(Path(resolved).parent, _root())
+        return None if above is None else (*above, Path(resolved).name)
     return segments(resolved, _root())
 
 
@@ -162,16 +173,23 @@ def _resolve_within_roots(raw_path: str) -> Path:
     Existence is NOT checked here (the caller decides: a listing wants 404 on
     a missing path, but a save-as target legitimately doesn't exist yet).
     """
-    if not raw_path:
-        raise _PickerError(400, "missing 'path' query parameter")
-    root = _root()
     # THE fence is `projects.contain` -- one implementation, shared with the
     # `jobset` CLI (`projects.py`).  This function keeps what is genuinely
     # ITS OWN: the root it serves, and an HTTP-shaped refusal that names it.
-    # A `..` and a path that will not resolve are said in the fence's own
-    # words (`OutsideRoot.reason`); a path outside, naming the root.
+    return _fenced(raw_path, contain)
+
+
+def _fenced(raw_path: str, door) -> Path:
+    """``raw_path`` through ``door`` -- `projects.contain`, or
+    `projects.contain_entry` -- held to the root this layer serves, its
+    refusal HTTP-shaped: a `..` and a path that will not resolve said in the
+    fence's own words (`OutsideRoot.reason`); a path outside, naming the
+    root."""
+    if not raw_path:
+        raise _PickerError(400, "missing 'path' query parameter")
+    root = _root()
     try:
-        return contain(raw_path, root)
+        return door(raw_path, root)
     except OutsideRoot as exc:
         if not exc.outside:
             raise _PickerError(400, f"{raw_path!r}: {exc.reason}") from None
@@ -179,6 +197,21 @@ def _resolve_within_roots(raw_path: str) -> Path:
             400,
             f"path {str(exc.candidate)!r} is outside every configured "
             f"root; allowed roots: {[str(root)]}") from None
+
+
+def _entry_within_roots(raw_path: str) -> Path:
+    """THE ENTRY a person picked -- what a delete, rename, move or copy acts
+    on -- inside the projects tree: its folder fenced as
+    :func:`_resolve_within_roots` fences a path, its own name kept, so a link
+    is the link and never what it points to (`projects.contain_entry`).
+    The same refusals."""
+    return _fenced(raw_path, contain_entry)
+
+
+def _existing_entry(entry: Path) -> Path:
+    """:func:`_existing` for an entry a person picked: a link is there
+    whether or not what it points to still is."""
+    return entry if entry.is_symlink() else _existing(entry)
 
 
 # --------------------------------------------------------------------- #
@@ -202,7 +235,12 @@ def _next_free_name(path: Path) -> Optional[Path]:
     """The first ``<stem>-<n><suffix>`` beside ``path`` that nothing holds --
     no file, no folder, no link, a dangling one included -- each passing the
     rule an uploaded name passes; ``None`` after 998 tries, when the directory
-    is truly broken."""
+    is truly broken.  A name outside that rule -- one a rename gave a file
+    already there -- has no candidate that passes it: its refusal is said,
+    400, before any is tried."""
+    refused = _validate_upload_filename(path.name)
+    if refused is not None:
+        raise _PickerError(400, refused)
     for n in range(2, 1000):
         candidate = path.with_name(f"{path.stem}-{n}{path.suffix}")
         if _validate_upload_filename(candidate.name) is not None:
@@ -245,7 +283,8 @@ def _writable(dest: Path) -> Path:
     """THE ONE WRITE-PATH CHECK: may a file be written at ``dest``, a path
     already fenced (`web-api.md` § 2.1) -- its folder below the projects
     root (:func:`_below_root`) and there (:func:`_existing`), its name an
-    upload's (:func:`_validate_upload_filename`), and ``dest`` neither a
+    upload's when the write creates it (:func:`_validate_upload_filename`;
+    a file already there keeps its own), and ``dest`` neither a
     folder nor a symlink.  The fence resolves the path it is given, a link
     included, and refuses one leading out of the tree; a name it never saw
     -- an upload's, joined to its folder -- could still be a link, the
@@ -255,7 +294,12 @@ def _writable(dest: Path) -> Path:
     frame-set write -- of every name they would write, an auto-renamed one
     included.  Raises :class:`_PickerError`; returns ``dest``."""
     _existing(_below_root(dest.parent, dest), "dir")
-    refused = _validate_upload_filename(dest.name)
+    # A NAME THE DOOR CREATES takes the strict rule; a file already there is
+    # written under its own name -- one a rename, a move or a copy gave it,
+    # which keep any name without a separator (the user, 2026-11-09), so a
+    # file renamed is one the preview still saves (F12's review, R2-9 #5).
+    refused = (None if dest.is_file()
+               else _validate_upload_filename(dest.name))
     if refused is not None:
         raise _PickerError(400, refused)
     if dest.is_dir():
@@ -274,7 +318,9 @@ def _writable(dest: Path) -> Path:
 
 
 def _is_basename(name: str) -> bool:
-    """A file's name alone: no folder in it, no way out of its own."""
+    """A file's name alone: no folder in it, no way out of its own -- what a
+    rename, a move or a copy asks of a file's new name (the user,
+    2026-11-09: any name without a separator)."""
     return not ("/" in name or "\\" in name or name in (".", ".."))
 
 
@@ -1164,8 +1210,11 @@ _UPLOAD_FILENAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 
 
 def _validate_upload_filename(name: str) -> Optional[str]:
-    """Return an error message if ``name`` is unsuitable as an upload
-    target filename; None when OK.
+    """THE RULE FOR A NAME A DOOR CREATES -- an upload's, a new file's write,
+    the structure's save (:func:`_writable`): an error message, or None
+    when the name may stand.  A rename, a move or a copy keeps any name
+    without a separator (:func:`_is_basename`), and a file so named is
+    written under its own name.
 
     Separate from ``molbuilder.projects.validate_name`` because that
     one is for directory / project names and forbids the dot that
@@ -1453,7 +1502,8 @@ def api_files_rename():
     the user can't get into a state where rename succeeds where
     delete would refuse):
 
-      * ``path`` must resolve inside the projects tree.
+      * ``path`` -- the entry picked, a link the link -- must lie inside
+        the projects tree.
       * ``path`` must exist.
       * ``path`` must NOT be the projects root itself (depth 0).
       * ``path`` must NOT be a canonical-topic subdir directly under
@@ -1487,18 +1537,17 @@ def api_files_rename():
     if not isinstance(new_name, str) or not new_name.strip():
         return err("missing 'new_name' in request body", 400)
 
-    # Reject path-traversal / separator attempts on new_name.  A
-    # legitimate rename only changes the basename; anything that
-    # tries to move the entry into another dir is rejected.
+    # ANY NAME WITHOUT A SEPARATOR (the user, 2026-11-09): a rename only
+    # changes the name; one that would put the entry in another folder is
+    # refused.
     if not _is_basename(new_name):
-        return err(
-            "invalid 'new_name': must be a basename only "
-            "(no '/', no '..', no '.')",
-            400)
+        return err("the new name must be a name alone -- no '/', and not "
+                   "'.' or '..'", 400)
 
-    resolved = _resolve_within_roots(raw_path)
+    # THE ENTRY PICKED: a link is renamed, never what it points to.
+    resolved = _entry_within_roots(raw_path)
 
-    _existing(resolved)
+    _existing_entry(resolved)
 
     # Depth check + canonical-topic protection.  Same shape as
     # delete's check.
@@ -1516,7 +1565,7 @@ def api_files_rename():
             f"need to.",
             400)
     # A FOLDER'S NEW NAME BY ITS DEPTH, as one made there takes it.
-    if resolved.is_dir():
+    if resolved.is_dir() and not resolved.is_symlink():
         try:
             validate_folder_name(new_name, depth - 1, new=False)
         except InvalidName as exc:
@@ -1587,8 +1636,8 @@ def _dest_dir(raw_dest: str) -> Path:
 
 def _new_name(raw_new_name: object, src_name: str) -> str:
     """``new_name`` is optional on move/copy (defaults to the source's
-    basename = "same name, different dir").  When provided, runs the
-    same basename-only validation as rename.
+    basename = "same name, different dir").  When provided, any name
+    without a separator, as rename takes (:func:`_is_basename`).
     """
     if raw_new_name in (None, ""):
         return src_name
@@ -1597,8 +1646,8 @@ def _new_name(raw_new_name: object, src_name: str) -> str:
             400, "'new_name' must be a non-empty string when provided")
     new_name = raw_new_name.strip()
     if not _is_basename(new_name):
-        raise _PickerError(400, "invalid 'new_name': must be a basename only "
-                                "(no '/', no '..', no '.')")
+        raise _PickerError(400, "the new name must be a name alone -- no "
+                                "'/', and not '.' or '..'")
     return new_name
 
 
@@ -1611,9 +1660,10 @@ def api_files_move():
     JSON body: ``{path, dest_dir, new_name?}``
 
     Behaviour:
-      * ``path`` must resolve inside the projects tree + must
-        exist + must NOT be a directory (v1 scope; directory move
-        is a separate feature).
+      * ``path`` -- the entry picked, a link the link -- must lie inside
+        the projects tree + must exist + must NOT be a directory (v1
+        scope; directory move is a separate feature; a link to one moves
+        as the link).
       * ``dest_dir`` must resolve inside the projects tree, below its
         root (:func:`_below_root`), and be an existing directory.
       * ``new_name`` (optional) renames during the move.  Same
@@ -1639,11 +1689,12 @@ def api_files_move():
     if not isinstance(raw_path, str) or not raw_path.strip():
         return err("missing 'path' in request body", 400)
 
-    src = _resolve_within_roots(raw_path)
+    # THE ENTRY PICKED: a link is moved, never what it points to.
+    src = _entry_within_roots(raw_path)
 
-    _existing(src)
+    _existing_entry(src)
 
-    if src.is_dir():
+    if src.is_dir() and not src.is_symlink():
         return err(
             "moving directories is not supported in v1; move files "
             "individually.",
@@ -1652,8 +1703,8 @@ def api_files_move():
 
     dst = _dest_dir(raw_dest_dir) / _new_name(raw_new_name, src.name)
 
-    # No-op move: same path -> short-circuit (matches rename's no-op).
-    if dst.resolve() == src.resolve():
+    # No-op move: same entry -> short-circuit (matches rename's no-op).
+    if dst == src:
         return jsonify({"ok": True, "path": str(src)})
 
     _pair_to(src, dst, verb="move", past="moved")
@@ -1688,6 +1739,12 @@ def api_files_copy():
     if not isinstance(raw_path, str) or not raw_path.strip():
         return err("missing 'path' in request body", 400)
 
+    # A COPY COPIES WHAT IT IS GIVEN, as `cp` does: a link inside the tree,
+    # the file it points to -- a copy that stayed a link would share its
+    # file with the original -- under the link's own name; the fence
+    # refuses one leading out of the tree.
+    entry = _entry_within_roots(raw_path)
+    _existing_entry(entry)
     src = _resolve_within_roots(raw_path)
 
     _existing(src)
@@ -1704,9 +1761,9 @@ def api_files_copy():
     # matters, which we get by virtue of src being a file (the root
     # is a directory).
 
-    dst = _dest_dir(raw_dest_dir) / _new_name(raw_new_name, src.name)
+    dst = _dest_dir(raw_dest_dir) / _new_name(raw_new_name, entry.name)
 
-    if dst.resolve() == src.resolve():
+    if dst in (src, entry):
         return err(
             "source and destination resolve to the same path; "
             "use 'new_name' to choose a different filename or "
@@ -1727,7 +1784,8 @@ def api_files_delete():
     Validation contract (matches the JS ``_isDeletableEntry`` gate so the user never sees a control
     they can't use):
 
-      * ``path`` must resolve inside the projects tree.
+      * ``path`` -- the entry picked, a link the link, removed alone --
+        must lie inside the projects tree.
       * ``path`` must NOT be the projects root itself (depth 0:
         refuses to delete ``projects/``).
       * ``path`` must NOT be a canonical-topic subdir directly
@@ -1759,9 +1817,11 @@ def api_files_delete():
     if not isinstance(raw_path, str) or not raw_path.strip():
         return err("missing 'path' in request body", 400)
 
-    resolved = _resolve_within_roots(raw_path)
+    # THE ENTRY PICKED: a link is removed, never what it points to (F12's
+    # review, I-D1: a link's folder was removed whole).
+    resolved = _entry_within_roots(raw_path)
 
-    _existing(resolved)
+    _existing_entry(resolved)
 
     # Depth check + canonical-topic protection.  We need both the
     # depth (for the root-protection + recursive-flag rules) AND
@@ -1794,9 +1854,9 @@ def api_files_delete():
             f"kebab takes this path.",
             400)
 
-    # Non-empty dir requires explicit recursive flag.  Empty dirs
-    # and plain files can be deleted without it.
-    if resolved.is_dir():
+    # Non-empty dir requires explicit recursive flag.  Empty dirs, plain
+    # files and links (removed alone) can be deleted without it.
+    if resolved.is_dir() and not resolved.is_symlink():
         # any() short-circuits as soon as it finds one entry --
         # cheaper than iterating the whole directory.
         try:
@@ -1816,11 +1876,17 @@ def api_files_delete():
     # directories, non-structure files, and files without an existing sidecar.  (Deleting
     # a .molstruct.json directly is a single-file op -- paired_sidecar returns
     # None for a non-structure suffix, same as rename.)
+    # ...A LINK TO A STRUCTURE TAKES ITS SIDECAR TOO, as a rename or a move
+    # of it does (the pair as one, § 4.1); a link to a folder is removed
+    # alone.
+    link = resolved.is_symlink()
     its_sidecar = (None if resolved.is_dir()
                    else paired_sidecar(resolved))
 
     try:
-        if resolved.is_dir():
+        if link:
+            resolved.unlink()
+        elif resolved.is_dir():
             if recursive:
                 shutil.rmtree(resolved)
             else:

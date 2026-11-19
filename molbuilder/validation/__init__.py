@@ -326,12 +326,13 @@ def validate(struct: Structure, cfg, *,
     if ref is not None:
         kind_fn = part(ref, record=f"kind {calculation}", key="validator")
         issues += kind_fn(struct, cfg, cell, **engine_kw)
-    # A VALUE OUTSIDE ITS RECOMMENDED RANGE, warned -- unless another
-    # finding already speaks of it (`science/validation.md` § 7: one fact,
-    # one finding: TranSIESTA's own floor said beside its range, a rung
-    # that relaxes in no step, said by the description's own check), or
-    # the rung does not read it (an item judged only where it is read,
-    # `template.reads`).
+    # A VALUE OUTSIDE ITS RECOMMENDED RANGE, warned -- unless the same fact
+    # is already said of it (`science/validation.md` § 7: one fact, one
+    # finding): an engine's own floor, said as information, or a rung that
+    # relaxes in no step, said by the description's own check; or the rung
+    # does not read it (an item judged only where it is read,
+    # `template.reads`).  A warning of another fact about the value -- a
+    # count on an axis that does not repeat -- leaves its range warned.
     issues[ranges_at:ranges_at] = validate_config_metadata(
         cfg, refused=refused | _spoken_of(issues, cfg, calculation, engine,
                                           rung),
@@ -342,13 +343,15 @@ def validate(struct: Structure, cfg, *,
 
 
 def _spoken_of(issues, cfg, calculation: str, engine: str, rung) -> frozenset:
-    """The settings a finding of this gate names, and ``relax_steps`` where
-    the description's own check says this rung relaxes in no step
-    (`validation.stages.check_a_relaxation_takes_a_step`): their range
-    warnings stand aside."""
+    """The settings whose range is already said: one an engine's own floor
+    is said of, as information (the user, 2026-11-02: an engine's stop is
+    said, never refused), and ``relax_steps`` where the description's own
+    check says this rung relaxes in no step
+    (`validation.stages.check_a_relaxation_takes_a_step`)."""
     from .stages import check_a_relaxation_takes_a_step
     named = {i.where.split(".", 1)[1] for i in issues
-             if (i.where or "").startswith("config.")}
+             if i.severity == "info"
+             and (i.where or "").startswith("config.")}
     named |= {i.where.split(".", 1)[1]
               for i in check_a_relaxation_takes_a_step(
                   [(rung or "", cfg)], engine=engine, kind=calculation)}

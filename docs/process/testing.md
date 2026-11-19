@@ -35,7 +35,10 @@ limits — to the logic that reads them *(user, 2026-10-08: "our api is not sies
 engine. it's prep script for engines including siesta")*.  **No engine runs in
 it, fake or real**: the suite's `siesta`, `tbtrans` and `mpirun` are a tripwire
 that fails a basic test reaching one — a run script it executed, a launch it
-sent, a version it asked (`conftest._TRIPWIRE`).  **No engine output, saved or
+sent, a version it asked (`conftest._TRIPWIRE`) — and **no scheduler either**:
+every command the scheduler table names, for every kind (`scheduler/kinds.toml`:
+submit, query, cancel, the cluster's), and `srun` and `salloc`, refuses, so no
+test submits, queries or cancels a real job on a login node.  **No engine output, saved or
 typed**: a test that needs what an engine writes — a `.out`, an `.MD.nc`, a
 `.FC`, a spectrum a run derived, what a stage builds on from a run — is a
 tier-3 test that makes the run *(user, 2026-10-06: "when a test need siesta's

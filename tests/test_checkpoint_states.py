@@ -209,6 +209,79 @@ _NEVER_CARRIED = {"an engine's scratch": _scratch_of_an_engine,
                       _temporary_files_of_molbuilders}
 
 
+def test_a_run_number_a_saved_state_held_is_never_used_again(calc):
+    """`project-layout.md` § 4.3: a run's number is never reused.  A restore
+    to a state that never held `run-0` and `run-1` takes those folders away;
+    the next fresh run is `run-2`, past every number a saved state held --
+    and, the earliest run the stage holds, it is prep's, not one a refused
+    send opened.  The silent failure (F12's review, C-U3): it was `run-0`
+    again -- a second, different run under a number a later state holds."""
+    from molbuilder.jobset.materialize import resolve_attempt
+    from molbuilder.paths import attempt_dir, opened_by_refused_send
+    before = calc.states()[0].id
+    stage = calc.root / "01_coarse"
+    for n in (0, 1):
+        attempt_dir(stage, n).mkdir(parents=True)
+        (attempt_dir(stage, n) / "notes.txt").write_text(SMALL)
+    calc.save("two runs")
+    calc.restore(before, force=True)
+    assert not stage.exists() or not any(stage.iterdir())
+    run, fresh, stale = resolve_attempt(stage, base=calc.root)
+    assert fresh and run == attempt_dir(stage, 2) and stale is None, run
+    run.mkdir(parents=True)
+    assert not opened_by_refused_send(run)
+
+
+def test_a_run_a_saved_state_holds_launched_is_not_filled_again(calc):
+    """§ 4.3 again, on the redo road (`job-system.md` § 6.0): a state saved
+    with `run-0` prepared, a later one with it launched; restored to the
+    first, the next prep does not fill `run-0` again -- a later state holds
+    a different run under that number -- but opens `run-1`, `run-0` taken
+    out whole.  The silent failure (F12 fix 3's review): `run-0` filled
+    again under the number a launched run holds."""
+    from molbuilder.jobset.materialize import resolve_attempt
+    from molbuilder.paths import attempt_dir
+    from molbuilder.runrecord import write_launch
+    stage = calc.root / "01_coarse"
+    prepared = attempt_dir(stage, 0)
+    prepared.mkdir(parents=True)
+    (prepared / "notes.txt").write_text(SMALL)
+    first = calc.save("prepared")
+    write_launch(prepared, mode="direct", command=["bash", "run.sh"])
+    calc.save("launched")
+    calc.restore(first.id, force=True)
+    run, fresh, stale = resolve_attempt(stage, base=calc.root)
+    assert fresh and run == attempt_dir(stage, 1), run
+    assert stale == prepared, stale
+
+
+@pytest.mark.parametrize("setting, text, name", [
+    ("ignore", "*.log\n", "run.log"),
+    ("attributes", "*.fdf text eol=crlf\n", "job.fdf"),
+], ids=["an ignore file holding *.log", "an attributes file turning line "
+        "endings to CRLF"])
+def test_the_persons_own_git_settings_never_decide_what_a_save_keeps(
+        calc, tmp_path, monkeypatch, setting, text, name):
+    """`checkpointing.md` § 2.1: checkpoint never chooses whether a file is
+    stored or what it holds, and neither do the person's own git settings --
+    the files git reads by default from ``~/.config/git/``, no setting
+    naming them.  A file saved and changed comes back, byte for byte, from
+    a restore.  The silent failure (F12's review, C-D1): every small log in
+    no store, never shown unsaved, deleted by a restore; a deck's line
+    endings rewritten on the way back."""
+    home = tmp_path / "home"
+    (home / ".config" / "git").mkdir(parents=True)
+    (home / ".config" / "git" / setting).write_text(text)
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+    (calc.root / name).write_bytes(b"a line\nanother\n")
+    state = calc.save("with its file")
+    assert name in _tracked(calc), sorted(_tracked(calc))
+    (calc.root / name).write_text("changed after the save\n")
+    calc.restore(state.id, force=True)
+    assert (calc.root / name).read_bytes() == b"a line\nanother\n"
+
+
 @pytest.mark.parametrize("kind", list(_NEVER_CARRIED))
 def test_what_no_copy_carries_is_in_neither_store_and_a_restore_removes_it(
         tmp_path, checkpoint_config, kind):

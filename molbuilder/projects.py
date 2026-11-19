@@ -33,7 +33,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import List, Mapping, NamedTuple, Optional, Tuple
+from typing import Callable, List, Mapping, NamedTuple, Optional, Tuple
 
 from . import kind_table
 from .runfiles import NAME_CHARS, NAME_TOKEN, PSEUDO_FILE, TASK_FILE, fixed_name
@@ -295,6 +295,32 @@ def contain(candidate, root) -> Path:
     return resolved
 
 
+def contain_entry(candidate, root) -> Path:
+    """THE ENTRY a person picked at ``candidate``: its folder resolved and
+    fenced (:func:`contain`), its own name kept -- so a link is the link,
+    never what it points to.  What a delete, rename, move or copy acts on
+    (`web/web-api.md` § 4): resolving the entry itself would hand them the
+    link's target, and deleting a link would remove the folder behind it
+    (F12's review, I-D1).  The root itself is the root.
+
+    Raises :class:`OutsideRoot`, as :func:`contain` does."""
+    raw = str(candidate)
+    if ".." in Path(raw).parts:
+        raise OutsideRoot(raw, root, "the path may not contain '..'")
+    entry = Path(raw).expanduser()
+    if not entry.name or entry.parent == entry:
+        return contain(raw, root)
+    try:
+        folder = contain(entry.parent, root)
+    except OutsideRoot:
+        # ...THE ROOT ITSELF, whose folder lies outside it.
+        whole = contain(raw, root)
+        if whole == Path(root).expanduser().resolve():
+            return whole
+        raise
+    return folder / entry.name
+
+
 def find_projects_root(start: Path) -> Optional[Path]:
     """Walk up from ``start`` to the ``projects/`` tree it lives in.
 
@@ -399,30 +425,45 @@ def ensure_structure_dir(project: str, topic: str, structure: str, *,
     return d
 
 
+def _pseudopotential_readme(project_name: str) -> str:
+    """The README of a project's ``pseudopotential/`` topic: what to drop
+    there, and the spelling of the Pseudopotential directory (`psml_lib`)
+    that reaches it -- measured from the tree's root, so this project's own
+    name first (`job-contracts.md` § 2.5a); the bare name is the tree's own
+    library (`pseudos.CONVENTIONAL_LIBRARY`), another folder (F12's review,
+    R2-2 C6: this README said the bare name reached it)."""
+    from .pseudos import CONVENTIONAL_LIBRARY
+    return ("# pseudopotential/\n\n"
+            "SIESTA pseudopotentials for this project.  Drop `.psml`\n"
+            f"files here, one per species, named for its label "
+            f"(`{fixed_name(PSEUDO_FILE, species='H')}`,\n"
+            f"`{fixed_name(PSEUDO_FILE, species='O')}`, "
+            f"`{fixed_name(PSEUDO_FILE, species='Au1')}`, ...): SIESTA opens "
+            f"`<label>.psml`.\n"
+            f"A SIESTA calculation whose Pseudopotential directory "
+            f"(`psml_lib`) is `{project_name}/pseudopotential`\n"
+            f"takes the files it lacks from here at prep; "
+            f"`{CONVENTIONAL_LIBRARY}` alone\n"
+            f"is the tree's own library, `{PROJECTS_ROOT_NAME}/"
+            f"{CONVENTIONAL_LIBRARY}/`.\n")
+
+
 # The README of each storage topic and of ``user``, written into a new
 # project as `<project>/<topic>/README.md` so a person navigating the tree
 # (or a colleague handed a project tarball) sees what each folder is for
-# without reading docs.  A run topic's is its kinds' (:func:`_topic_readme`).
-_TOPIC_READMES: Mapping[str, str] = {
-    "structure": (
+# without reading docs, each written from the project's name (the
+# pseudopotential topic names the spelling that reaches it).  A run topic's
+# is its kinds' (:func:`_topic_readme`).
+_TOPIC_READMES: Mapping[str, Callable[[str], str]] = {
+    "structure": lambda _project: (
         "# structure/\n\n"
         "Curated input structure files for this project.\n\n"
         "Drop `.xyz`, `.pdb` files here.  Flat directory --\n"
         "no subdirs by convention.  Use these as starting points for\n"
         "the calculations in the other topics.\n"
     ),
-    "pseudopotential": (
-        "# pseudopotential/\n\n"
-        "SIESTA pseudopotentials for this project.  Drop `.psml`\n"
-        f"files here, one per species, named for its label "
-        f"(`{fixed_name(PSEUDO_FILE, species='H')}`,\n"
-        f"`{fixed_name(PSEUDO_FILE, species='O')}`, "
-        f"`{fixed_name(PSEUDO_FILE, species='Au1')}`, ...): SIESTA opens "
-        f"`<label>.psml`.\n"
-        "A SIESTA calculation whose `psml_lib` is `pseudopotential`\n"
-        "takes the files it lacks from here at prep.\n"
-    ),
-    "user": (
+    "pseudopotential": _pseudopotential_readme,
+    "user": lambda _project: (
         "# user/\n\n"
         "Free-form workspace -- no molbuilder layout applies inside this\n"
         "directory.  Use it for notes, scratch files, organising\n"
@@ -434,11 +475,11 @@ _TOPIC_READMES: Mapping[str, str] = {
 }
 
 
-def _topic_readme(topic: str) -> str:
+def _topic_readme(topic: str, project_name: str) -> str:
     """The README of ``topic``: a storage topic's or ``user``'s own, a run
     topic's said from the kind whose topic it is."""
     if topic in _TOPIC_READMES:
-        return _TOPIC_READMES[topic]
+        return _TOPIC_READMES[topic](project_name)
     of = next(kind_table.kind(k) for k in kind_table.kinds()
               if kind_table.kind(k).topic == topic)
     return (f"# {topic}/\n\n"
@@ -486,7 +527,7 @@ def populate_project_skeleton(proj: Path, *, project_name: str) -> None:
         for topic in CANONICAL_TOPICS:
             sub = proj / topic
             sub.mkdir(parents=False, exist_ok=False)
-            (sub / "README.md").write_text(_topic_readme(topic))
+            (sub / "README.md").write_text(_topic_readme(topic, project_name))
     except BaseException:
         shutil.rmtree(proj, ignore_errors=True)
         raise
@@ -562,6 +603,7 @@ __all__ = [
     "validate_folder_name",
     "projects_root",
     "contain",
+    "contain_entry",
     "at",
     "segments",
     "address",

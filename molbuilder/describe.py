@@ -419,7 +419,7 @@ def write_description(desc: Description, dest, *,
     return publish(out_dir, _fill)
 
 
-def publish(dest, fill) -> List[Path]:
+def publish(dest, fill, *, replaces=()) -> List[Path]:
     """EVERY FILE OR NONE, into the folder *dest* -- the one transaction a
     calculation's files are written through: `molbuilder describe`, the
     transport describe door and the hand-over (`web/handover-procedure.md`
@@ -433,7 +433,10 @@ def publish(dest, fill) -> List[Path]:
     the records name it; then every other file by name.  A project the
     folder lies in that is not there yet is made whole first
     (:func:`project_to_make`; `projects.populate_project_skeleton`), and
-    removed again if the files are not published.  Returns the paths
+    removed again if the files are not published.  ``replaces`` names the
+    files in *dest* this set stands in for -- a hand-over replaced whole
+    (`web/handover-procedure.md` § 2) -- each one the new set does not
+    write again removed once the new files are in place.  Returns the paths
     written, in that order."""
     out_dir = Path(dest)
     project = project_to_make(out_dir)
@@ -464,6 +467,11 @@ def publish(dest, fill) -> List[Path]:
         os.replace(src, dst)
         written.append(dst)
     staging.rmdir()
+    kept = {p.name for p in written}
+    for old in map(Path, replaces):
+        if (old.parent == out_dir and old.name not in kept
+                and os.path.lexists(old)):
+            old.unlink()
     return written
 
 

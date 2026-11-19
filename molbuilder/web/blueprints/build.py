@@ -46,7 +46,7 @@ import dataclasses
 
 import pathlib
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
 from ...chemistry import BackendUnavailable as _BackendUnavailable
 from ...chemistry import BuildRefused as _BuildRefused
@@ -1135,8 +1135,12 @@ def api_task_setup_handover():
     handover["proposed_varies"] = list(fresh_varies(proposed))
 
     # A hand-over already in the folder is replaced by this one -- said, so
-    # the page can say it.
+    # the page can say it -- WHOLE: its template and the structure pair it
+    # names go with it (`describe.publish`'s ``replaces``), so the folder
+    # holds one hand-over's files, never a second template Task setup then
+    # refuses to save beside (F12's review, I-D2).
     handover_here = (dest_dir / TASK_HANDOVER_NAME).is_file()
+    replaced = _the_handover_files(dest_dir) if handover_here else ()
 
     # EVERY FILE OR NONE, through the one transaction (`describe.publish`):
     # the pair as the codec rendered it, the template under its door's name
@@ -1153,7 +1157,7 @@ def api_task_setup_handover():
                     template_text.encode("utf-8"))
         write_json(staging / TASK_HANDOVER_NAME, handover)
     try:
-        written = publish(dest_dir, _fill)
+        written = publish(dest_dir, _fill, replaces=replaced)
     except OSError as exc:
         return err(
             f"could not write into {dest_dir.name}: "
@@ -1166,6 +1170,31 @@ def api_task_setup_handover():
         "handover_here": handover_here,
         "notices":       struct_notices,
     })
+
+
+def _the_handover_files(folder: pathlib.Path) -> Tuple[pathlib.Path, ...]:
+    """The files the hand-over in ``folder`` wrote beside its record, named
+    from the record: the structure pair it names (``structure.source``, its
+    sidecar by the pairing rule, `molstruct.paired_sidecar`) and the
+    template of that pair's label (`runfiles.stem_before`,
+    `template_file.template_path`) -- never another file there.  A record
+    that does not read names none."""
+    from molbuilder.persist import read_object
+    from molbuilder.runfiles import ROLE_SOURCE, stem_before
+    from molbuilder.sidecars.molstruct import paired_sidecar
+    from molbuilder.template_file import template_path
+    try:
+        source = read_object(folder / TASK_HANDOVER_NAME,
+                             schema=TASK_HANDOVER_SCHEMA)["structure"]["source"]
+    except (OSError, ValueError, KeyError, TypeError):
+        return ()
+    label = stem_before(source, ROLE_SOURCE) if isinstance(source, str) else None
+    if not label or pathlib.Path(source).name != source:
+        return ()
+    geometry = folder / source
+    sidecar = paired_sidecar(geometry)
+    return (geometry, *((sidecar,) if sidecar is not None else ()),
+            template_path(folder, label))
 
 
 @bp.route("/api/task-setup/prep", methods=["POST"])

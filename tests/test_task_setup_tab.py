@@ -388,6 +388,31 @@ def test_save_writes_the_description_and_reports_the_handover(web_client, isolat
         "the save door deleted it; moving bytes is the file layer's job")
 
 
+def test_a_handover_sent_again_under_a_new_name_replaces_the_first_whole(
+        web_client, isolated_projects_root):
+    """`web/handover-procedure.md` § 2: a hand-over already in the folder is
+    replaced -- the answer says so -- and replaced whole: the first one's
+    template and structure pair go with it, so Task setup's Save then saves
+    the second.  The silent failure (F12's review, I-D2): the first label's
+    template stayed, and Save was refused, "holds 2 templates", until the
+    person deleted it by hand."""
+    from molbuilder.runfiles import ROLE_TEMPLATE, find_by_role
+    d = fresh_calc_dir(isolated_projects_root, species=["H"])
+    handed_over(web_client, d, dict(
+        _envelope(), engine="siesta", calculation="optimization",
+        name="probe", params={"system_label": "probe"}))
+    out, _over, _t = handed_over(web_client, d, dict(
+        _envelope(), engine="siesta", calculation="optimization",
+        name="water", params={"system_label": "water"}))
+    assert out["handover_here"] is True, out
+    assert [p.name for p in find_by_role(d, ROLE_TEMPLATE)] == [
+        "water.template.toml"], sorted(p.name for p in d.iterdir())
+    assert not list(d.glob("probe*")), sorted(p.name for p in d.iterdir())
+    proposed, request = as_the_page_saves(web_client, d)
+    r = save_both(d, proposed, request, web_client)
+    assert r.status_code == 200, r.get_json()
+
+
 def test_save_never_writes_over_a_file_changed_since_it_was_read(
         web_client, isolated_projects_root):
     """`web/task-setup.md` § 8: Save compares what each record was when the

@@ -75,6 +75,10 @@ file** — a browser-authored pair drifts from the server's, and one shipped
 without the sidecar's `schema_version`, after which the load door refused it
 and every label in it was dropped silently.
 
+**A hand-over already there is replaced whole**: its template and the
+structure pair its record names are removed once the new files are in place,
+so a second sent under a new name leaves the folder one hand-over's.
+
 **The stem is the caller's, the suffixes are the codec's.** The calculation's
 label names the pair; which extension follows from the format, and what the
 sidecar beside it is called, is the pairing rule's — one home

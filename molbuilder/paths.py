@@ -108,11 +108,15 @@ def attempt_index(name: str) -> Optional[int]:
 
 
 def opened_by_refused_send(run) -> bool:
-    """Whether ``run`` -- a run not launched, a folder or its name -- was
-    opened by a launch whose send was refused: any run but a stage's first,
+    """Whether ``run`` -- a run not launched, its folder -- was opened by a
+    launch whose send was refused: any run but the earliest its stage holds,
     which prep opens; a later one is opened only by a launch
-    (`materialize.newest_launched`; `project-layout.md` § 1.6.2)."""
-    return bool(attempt_index(Path(run).name))
+    (`materialize.newest_launched`; `project-layout.md` § 1.6.2).  The
+    earliest held, not `run-0`: after a restore a stage's first run is
+    numbered past every run a saved state held (§ 4.3)."""
+    run = Path(run)
+    n, held = attempt_index(run.name), attempts_in(run.parent)
+    return n is not None and bool(held) and n > min(held)
 
 
 def attempts_in(container) -> "list[int]":

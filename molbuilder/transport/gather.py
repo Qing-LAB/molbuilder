@@ -157,7 +157,7 @@ def transport_inputs(calc, stage: str, *, point=None,
                     f"not been launched.  Launch it --\n"
                     + block(launch_pending(upstream,
                                            calc.request.group_of(upstream),
-                                           newest.name, base=base))
+                                           newest, base=base))
                     + q2)
             else:
                 # THE ONE RULE the status door asks (`continuation.
@@ -194,7 +194,7 @@ def transport_inputs(calc, stage: str, *, point=None,
                 why, first = state_remedy(
                     c, st, block(launch_pending(
                         upstream, calc.request.group_of(upstream),
-                        newest.name if newest is not None else None,
+                        newest,
                         base=base)
                         if st == "pending"
                         else launch_lines("task", upstream, base=base)),

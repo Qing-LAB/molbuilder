@@ -924,7 +924,10 @@ def _steps(calc, groups, rows: List[StageStatus]) -> List[GroupStep]:
                                                launched=True)))
             elif opened is not None:
                 step = ("pending", f"{opened.name}: {opened.detail}",
-                        launch_pending(opened.name, n, opened.attempt,
+                        launch_pending(opened.name, n,
+                                       (Path(opened.dir) / opened.attempt
+                                        if opened.dir and opened.attempt
+                                        else None),
                                        base=base))
             elif odd is None:
                 # FINISHED, AND ONLY THEN: every member's newest run.

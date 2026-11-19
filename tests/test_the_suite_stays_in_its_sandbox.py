@@ -63,6 +63,17 @@ def test_a_reach_past_the_sandbox_is_refused(what, act):
         conftest._REACHED.clear()     # this test's own reach, not a finding
 
 
+@pytest.mark.parametrize("command", conftest._scheduler_commands())
+def test_a_scheduler_command_the_suite_reaches_refuses(command):
+    """A scheduler this suite can reach is a real job it can submit, query or
+    cancel -- on a login node, in a real queue: each of its commands, found
+    on PATH as any call would find it, refuses.  The silent failure (F12's
+    review, R2-14 #2): `squeue` and `scancel` were not stubbed."""
+    r = subprocess.run([command], capture_output=True, text=True, timeout=30)
+    assert r.returncode == 97 and "must never run" in r.stderr, (
+        command, r.returncode, r.stderr)
+
+
 @pytest.fixture(scope="module")
 def module_folders():
     """What a module-scoped fixture sees -- the scope the per-test isolation

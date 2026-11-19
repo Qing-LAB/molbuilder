@@ -377,12 +377,17 @@ projects, so no file is written, uploaded, moved or copied into it
 the structure save and the frame-set write, an auto-renamed name included —
 passes one check, `files._writable`: its folder below the root and there (a
 missing one is 404, the one must-exist answer, `files._existing`), its name an
-upload's — letters, digits, `.`, `_` and `-`, starting with a letter or a
-digit — and it neither a folder nor a symlink. The fence resolves every path
+upload's when the door creates the file — letters, digits, `.`, `_` and `-`,
+starting with a letter or a digit; a file already there is written under its
+own name — and it neither a folder nor a symlink. The fence resolves every path
 it is given, a link included, and refuses one that leads out of the tree; a
 name it never saw — an upload's, joined to its folder — could still be a link,
 the person's, which the write's temp-and-replace would replace unseen. An
-auto-renamed name is one nothing holds, a link included. A rename, a move or a copy keeps any name without a separator *(the
+auto-renamed name is one nothing holds, a link included. **A rename, a move
+and a delete act on the entry picked**: its folder fenced, its own name kept
+(`projects.contain_entry`), so a link is renamed, moved or deleted as the link,
+never what it points to; **a copy copies what it is given**, as `cp` does — what
+a link inside the tree points to, under the link's name, a file of its own. A rename, a move or a copy keeps any name without a separator *(the
 user, 2026-11-09)* — a structure's `.xyz` keeps `.xyz`, another extension
 refused naming the `.xyz` to give it *(the user, 2026-11-10;
 `StructureCodec.refused_name`)* — and refuses a destination anything holds — a file, a

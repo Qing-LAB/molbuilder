@@ -16,8 +16,8 @@
   sent it; the run writes only inside its own folder.** The whole order is one
   table (§ 2).
 - **A run is one start.** `run-<n>/` holds one start of its run script. To
-  continue is to launch the stage again, which opens `run-<n+1>/` beside it
-  (§ 1.6.1). What a run computed is never changed (§ 1.5).
+  continue is to launch the stage again, which opens the next run beside it
+  (§ 1.6.1; its number, § 4.3). What a run computed is never changed (§ 1.5).
 - **Every file goes into a run as a real copy, never a link** (§ 1.6.5).
 - **Every folder says what it is**: `task.json` at the calculation,
   `calcdir.json` in every folder below it, read by one door, `calcdirs.where`
@@ -500,7 +500,7 @@ points are folders inside it, each point started once in its run
 **To continue is to launch again.** A run whose SCF did not converge, whose
 relaxation used up its steps, or that stopped at its wall ends there — failed, or
 finished not converged. The next `jobset launch` of its stage opens
-`run-<n+1>/` beside it — what lands there is § 1.6.5, *Launching again, on
+the next run (§ 4.3) beside it — what lands there is § 1.6.5, *Launching again, on
 disk*. Nothing on the compute node starts the engine a second time.
 
 **The chain between runs is in each run's own records, never in a name**
@@ -531,7 +531,8 @@ the engine as its child
 ([`running-a-job.md`](?doc=execution/running-a-job.md) § 2.2a).
 
 **Prep opens a stage's first run.** For a stage never launched it opens
-`run-0/` — creates it and stamps it (§ 1.4a), or, when the stage is prepared
+`run-0/` (after a restore that took a stage's runs away, the next unused
+number, § 4.3) — creates it and stamps it (§ 1.4a), or, when the stage is prepared
 again, empties the one there whole (§ 1.6.3) — and copies in the deck, the run
 script, `mb_monitor.pyz` and the job's other bundles, and the pseudopotentials.
 Prep opens no run for a launched stage (one prepared again for its job request,
@@ -548,7 +549,7 @@ the send, never on a dry run ([`job-system.md`](?doc=execution/job-system.md)
   the stage's files, the progress logs prep moved into it as they lie — then
   adds what the run takes: the restart files of the run it continues from, or a
   transport rung's gathered inputs;
-- **a launch again** opens `run-<n+1>/` beside the stage's newest run and fills
+- **a launch again** opens the next run (§ 4.3) beside the stage's newest and fills
   it the same way, warm or cold;
 - **a run a refused send opened** is never launched, so whatever fills it next
   empties it first.
@@ -758,7 +759,7 @@ a restore returns the whole folder to a saved state (row 16). In order:
 | 6 | every prep | `prep` | ④ | the stage folder: its deck, check, run script, bundles and pseudopotential copies; a run of points' prepared folders |
 | 7 | every prep, for a stage never launched; for a group a transport calculation reuses | `prep` | ⑤ | `run-0/` opened and filled with copies of the stage's files; a reused group's every run copied in from the finished calculation, its `.copied-from` beside it and its `run.json` last ([`engines/transport.md`](?doc=engines/transport.md) § 2a.16) |
 | 8 | `prep bench <stage>` | `prep` | the stage's `bench/` | the benchmark's own `job-set.json` and `STAGE-PLAN.md`; each trial's deck and run script, in `bench-<point>/run-0/`; its shelves' headers in its `launch/` |
-| 9 | the send, after the yes | `launch` | ⑤; the `launch/` of its walk (③, ④ or `bench/`) | the first run filled again, or `run-<n+1>/` opened; what it takes; a run of points' index; a walk's script, and a sequence's launch record in ③'s `launch/` |
+| 9 | the send, after the yes | `launch` | ⑤; the `launch/` of its walk (③, ④ or `bench/`) | the first run filled again, or the next run (§ 4.3) opened; what it takes; a run of points' index; a walk's script, and a sequence's launch record in ③'s `launch/` |
 | 10 | the send succeeded | `launch` | ⑤ | `run.json` |
 | 11 | the start goes ahead | the run script | ⑤ | the session log |
 | 12 | the run runs | the engine, the run script, the monitor | ⑤ | the output, the engine's own files, the monitor's pair, the notification record |
@@ -1077,7 +1078,12 @@ that has run makes a different stage, which takes the next number
 ### 4.3 A run is numbered, and the number is not padded
 
 `run-0`, `run-1`, `run-2`: the next unused number, assigned in Python by the one
-opener (§ 1.6.2), never reused and never reset. `run-` is a reserved prefix and
+opener (§ 1.6.2), never reused and never reset — unused past the newest run
+present **and past every run a saved state of the calculation held**
+(`checkpoint.Repo.files_ever_held`), so a restore that takes a run's folder
+away does not give its number to the next one; and a run prepared, not
+launched, that a later state holds launched is not filled again under that
+number — a fresh one takes its place, and it is taken out whole. `run-` is a reserved prefix and
 its members are numbers; no `run-latest` pointer exists — you name the run you
 continue from, or the launch says which one it takes.
 

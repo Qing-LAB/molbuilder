@@ -239,21 +239,41 @@ def trial_run(trial: Path) -> Path:
     return attempt_dir(Path(trial), FIRST_ATTEMPT)
 
 
-def resolve_attempt(stage_dir: Path) -> Tuple[Path, bool]:
-    """The run to prepare into, and whether it is a fresh one.
+def resolve_attempt(stage_dir: Path, *, base: Path
+                    ) -> Tuple[Path, bool, Optional[Path]]:
+    """The run to prepare into, whether it is a fresh one, and the unlaunched
+    run it stands in for -- to be taken out whole, so the newest run stays
+    the one that may be unlaunched (:func:`newest_launched`) -- or ``None``.
 
     The newest run is REUSED when it has not been launched -- the one prep
     opened, which `launch` then runs -- and the next is opened only when it
     has (:func:`newest_launched`): what a launch of a stage again opens
-    (`job-system.md` § 5.4).  A record that does not read raises, as the
-    one door does.
+    (`job-system.md` § 5.4).  A run's number is never one used before
+    (`project-layout.md` § 4.3): a FRESH run is numbered past the newest run
+    present and past every run a saved state of the calculation at ``base``
+    ever held (`checkpoint.Repo.files_ever_held`) -- a restore to a state
+    that never held `run-2` takes that folder away, and the next launch
+    opened `run-2` again (F12's review, C-U3); and an unlaunched run is not
+    reused when a saved state holds it launched -- a redo restores a state
+    whose run was prepared, not launched, while a later state holds it
+    launched (F12 fix 3's review).  A record that does not read raises, as
+    the one door does.
     """
+    from ..checkpoint import Repo
+    from ..runfiles import LAUNCH_RECORD_FILE
+    files = Repo(str(base)).files_ever_held(stage_dir)
+    held = {n for n in (attempt_index(f.split("/", 1)[0]) for f in files)
+            if n is not None}
+    launched_then = {f.split("/", 1)[0] for f in files
+                     if f.split("/", 1)[1:] == [LAUNCH_RECORD_FILE]}
     last = latest_attempt(stage_dir)
-    if last is None:
-        return attempt_dir(stage_dir, FIRST_ATTEMPT), True
-    if newest_launched(stage_dir) != last:
-        return last, False
-    return attempt_dir(stage_dir, attempt_index(last.name) + 1), True
+    unlaunched = last is not None and newest_launched(stage_dir) != last
+    if unlaunched and last.name not in launched_then:
+        return last, False, None
+    present = () if last is None else (attempt_index(last.name),)
+    used = (*present, *held)
+    return (attempt_dir(stage_dir, max(used) + 1 if used else FIRST_ATTEMPT),
+            True, last if unlaunched else None)
 
 
 def job_folder(calc, job) -> Path:
@@ -397,7 +417,10 @@ def open_sweep_run(calc, stage_name: str, *, plan) -> SweepRun:
     job = jobset.job(stage_name)
     stage_dir = job_folder(calc, job)
     rn = run_names(jobset, job)
-    run, fresh = resolve_attempt(stage_dir)
+    run, fresh, stale = resolve_attempt(stage_dir, base=base)
+    if stale is not None:
+        empty_run(stale, plan)
+        plan.remove_folder(stale)
     # THE RUNG'S PREPARED POINTS, by its kind's declaration (`jobset.points`),
     # its records as this plan holds them -- a prep composing the junction
     # in the same plan has not written its record yet -- each one whose deck
@@ -698,7 +721,12 @@ def prepare_attempt(calc, stage_name: str, *,
     stage_dir = job_folder(calc, job)
     plan.folder(stage_dir)
     rn = run_names(jobset, job)
-    attempt, is_new = resolve_attempt(stage_dir)
+    attempt, is_new, stale = resolve_attempt(stage_dir, base=Path(calc.base))
+    # A RUN A SAVED STATE HOLDS LAUNCHED is not filled again under its
+    # number: the fresh one takes its place, and it is taken out whole.
+    if stale is not None:
+        empty_run(stale, plan)
+        plan.remove_folder(stale)
     # AN ATTEMPT NEVER LAUNCHED, REUSED -- prepared again, or filled at the
     # launch after a refused send: what was put into it before is taken
     # out first, so it starts from what this one takes.  A changed mind

@@ -98,3 +98,27 @@ def test_state_rejects_bad_identity(client_project):
     assert client.post("/api/workspace-storage/write",
                        json={"workspace_id": "ok", "state_index": "x",
                              "data": {}}).status_code == 400
+
+
+def test_a_write_the_disk_refuses_is_said_with_its_reason(client_project):
+    """`web-api.md` § 1: every failure answer is the one shape, the reason in
+    it, which the page's persist-error notice says (`notifications.md` § 3)
+    -- a store the server cannot write (here: its folder made read-only, as
+    a full disk or a root the server may not write refuses it).  The silent
+    failure (F12's review, I-D3): Flask's own HTML 500, the reason never
+    reaching the page."""
+    import os
+    client, proj = client_project
+    states = proj / ".molbuilder_workspace" / "states"
+    states.mkdir(parents=True)
+    states.chmod(0o500)
+    try:
+        r = client.post("/api/workspace-storage/write",
+                        json={"workspace_id": "ws-full", "state_index": 0,
+                              "data": {"i": 0}})
+    finally:
+        states.chmod(0o700)
+    assert r.status_code == 500 and r.is_json, r.data[:200]
+    body = r.get_json()
+    assert body["ok"] is False, body
+    assert body["error"] == os.strerror(13), body

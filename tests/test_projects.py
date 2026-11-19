@@ -359,3 +359,20 @@ class TestABundleIsNamedFromTheRootAndStaysInside:
         assert res.exit_code == 2
         assert "is not inside the projects tree" in res.output
         assert "<project>/<topic>/<calculation>" in res.output
+
+
+def test_a_projects_pseudopotential_readme_names_the_spelling_that_reaches_it(
+        tmp_path):
+    """`job-contracts.md` § 2.5a: a Pseudopotential directory (`psml_lib`) is
+    measured from the tree's root, so the spelling a project's
+    `pseudopotential/` README states is the one that reaches that folder.
+    The silent failure (F12's review, R2-2 C6): it said `pseudopotential`,
+    which reaches the tree's own library -- another folder."""
+    from molbuilder.projects import populate_project_skeleton
+    from molbuilder.pseudos import resolve_psml_lib
+    root = tmp_path / "projects"
+    populate_project_skeleton(root / "water", project_name="water")
+    folder = root / "water" / "pseudopotential"
+    readme = (folder / "README.md").read_text()
+    assert "`water/pseudopotential`" in readme, readme
+    assert resolve_psml_lib("water/pseudopotential", base=root) == folder

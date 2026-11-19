@@ -464,10 +464,10 @@ def order_recorded(*, base) -> str:
             + block([command("prep", *words_for(TASK), base=base)]))
 
 
-def launch_pending(stage: str, group: Optional[int], attempt: Optional[str],
+def launch_pending(stage: str, group: Optional[int], attempt,
                    *, base) -> List[str]:
     """The launch that sends ``stage``'s run that is opened and not launched
-    -- ``attempt``, its folder's name: prep's first run goes with its group,
+    -- ``attempt``, its folder: prep's first run goes with its group,
     which goes whole the first time; a run a refused send opened for a stage
     launched before (`paths.opened_by_refused_send`) goes with the
     stage alone, launched again (D4)."""

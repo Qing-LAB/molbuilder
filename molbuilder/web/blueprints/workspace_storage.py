@@ -138,8 +138,18 @@ def ws_write_state():
     if data is None:
         return err("missing 'data'")
     d = _state_dir()
-    d.mkdir(parents=True, exist_ok=True)
-    persist.write_json(_state_path(ws_id, idx), data)
+    # A WRITE THE DISK REFUSES -- full, or a projects root the server cannot
+    # write -- answered in the one failure shape with the reason, which the
+    # page's persist-error notice says (`web-api.md` § 1;
+    # `notifications.md` § 3): never Flask's own HTML page (F12's review,
+    # I-D3).
+    try:
+        d.mkdir(parents=True, exist_ok=True)
+        persist.write_json(_state_path(ws_id, idx), data)
+    except OSError as exc:
+        # THE REASON ALONE: the page says it inside its own sentence,
+        # "Couldn't save state to disk (<reason>)".
+        return err(f"{exc.strerror or exc}", 500)
     # Rolling window: drop the oldest indices beyond the window.
     for old in _state_indices(ws_id)[:-_STATE_WINDOW]:
         try:

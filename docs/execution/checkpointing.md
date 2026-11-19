@@ -109,6 +109,15 @@ and checkpointing asks them (S1).
 with whether it is saved, a large file — a trajectory, say — ends up in no
 snapshot, and nobody chose that.
 
+**Nor do your own git settings.** The settings that would decide what a save
+keeps or whether it can be made — the ignore and attributes files git reads by
+default from `~/.config/git/`, line-ending conversion, hooks, signing — are set
+for every checkpoint call (`checkpoint._GIT_SETTINGS`; git 2.31 or later): a
+global ignore holding `*.log` would leave every small log in no store, never
+shown unsaved, and a restore would delete it; a signing key the web server has
+no agent for would stop a save. The rest of your configuration stands —
+`safe.directory`, for a folder another owns, among it.
+
 ### 2.2 Reading one old file without moving anything
 
 Both commands print and touch nothing. **Which one you need depends on the

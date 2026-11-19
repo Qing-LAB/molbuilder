@@ -1460,6 +1460,50 @@ def test_a_folder_renamed_takes_its_depths_name(web, picker_root, folder,
         assert (folder.parent / new_name).is_dir()
 
 
+def test_a_file_renamed_under_any_name_is_still_saved(web, picker_root):
+    """`web/projects.md` § 4.1: a rename keeps any name without a separator
+    (the user, 2026-11-09), and a file so named is written under its own
+    name -- the strict rule is for a name a door creates.  The silent
+    failure (F12's review, R2-9 #5): `my notes.txt`, renamed, was refused
+    by every Save of it from the preview."""
+    r = web.post("/api/projects/create", json={"name": "proj"})
+    assert r.status_code == 200, r.get_json()
+    note = picker_root / "proj" / "notes.txt"
+    r = web.post("/api/files/write", json={"path": str(note),
+                                           "text": "a note\n"})
+    assert r.status_code == 200, r.get_json()
+    r = web.post("/api/files/rename",
+                 json={"path": str(note), "new_name": "my notes.txt"})
+    assert r.status_code == 200, r.get_json()
+    renamed = note.parent / "my notes.txt"
+    r = web.post("/api/files/write", json={
+        "path": str(renamed), "text": "saved again\n",
+        "expected_mtime": renamed.stat().st_mtime})
+    assert r.status_code == 200, r.get_json()
+    assert renamed.read_text() == "saved again\n"
+
+
+@pytest.mark.parametrize("route, body, refused", [
+    ("/api/files/write", lambda d: {"path": str(d / "my new notes.txt"),
+                                    "text": "x\n"}, "unsupported characters"),
+    ("/api/files/rename", lambda d: {"path": str(d / "notes.txt"),
+                                     "new_name": "a/b.txt"}, "a name alone"),
+], ids=["a new file takes the strict name", "a rename takes no separator"])
+def test_a_name_a_door_may_not_give(web, picker_root, route, body, refused):
+    """The rules' other halves (`web/projects.md` § 4.1): a name a door
+    creates holds to the strict rule, and a rename keeps the file in its
+    folder."""
+    r = web.post("/api/projects/create", json={"name": "proj"})
+    assert r.status_code == 200, r.get_json()
+    folder = picker_root / "proj"
+    r = web.post("/api/files/write", json={"path": str(folder / "notes.txt"),
+                                           "text": "a note\n"})
+    assert r.status_code == 200, r.get_json()
+    r = web.post(route, json=body(folder))
+    assert r.status_code == 400 and refused in r.get_json()["error"], (
+        r.get_json())
+
+
 def _a_structure():
     """A structure as the page's save sends one, through the one builder
     (`tests/support/envelope.py`)."""
@@ -1973,6 +2017,90 @@ def test_a_link_at_the_destination_is_an_entry_there(web, picker_root,
 # --------------------------------------------------------------------- #
 #  DELETE /api/files/delete                                             #
 # --------------------------------------------------------------------- #
+
+
+#: A LINK IS THE ENTRY A PERSON PICKED (`web/projects.md` § 4.1): each
+#: mutation acts on the link, never on what it points to -- (route, method,
+#: what the link points to, the request body, where the link is after).
+#: The silent failure (F12's review, I-D1): deleting a link to a
+#: calculation's folder removed the folder whole, a rename renamed it, a copy
+#: copied its file; then a link out of the tree, or to another project's
+#: topic folder, placed by where it pointed (F12 fix 3's review).
+_LINK_ROWS = [
+    pytest.param("/api/files/delete", "delete", "folder",
+                 lambda link, root: {"path": str(link), "recursive": True},
+                 lambda link, root: None, id="delete-a-link-to-a-folder"),
+    pytest.param("/api/files/delete", "delete", "outside",
+                 lambda link, root: {"path": str(link)},
+                 lambda link, root: None, id="delete-a-link-out-of-the-tree"),
+    pytest.param("/api/files/rename", "post", "folder",
+                 lambda link, root: {"path": str(link), "new_name": "pseudos"},
+                 lambda link, root: link.parent / "pseudos",
+                 id="rename-a-link-to-a-folder"),
+    pytest.param("/api/files/rename", "post", "topic",
+                 lambda link, root: {"path": str(link), "new_name": "theirs"},
+                 lambda link, root: link.parent / "theirs",
+                 id="rename-a-link-to-another-projects-topic"),
+
+    pytest.param("/api/files/move", "post", "folder",
+                 lambda link, root: {"path": str(link),
+                                     "dest_dir": str(root / "proj" / "spectrum")},
+                 lambda link, root: root / "proj" / "spectrum" / "the-link",
+                 id="move-a-link-to-a-folder"),
+]
+
+
+@pytest.mark.parametrize("route, method, points_at, body, after", _LINK_ROWS)
+def test_a_link_is_acted_on_never_what_it_points_to(
+        web, picker_root, tmp_path, route, method, points_at, body, after):
+    """A link a person made inside a project is deleted, renamed, copied or
+    moved as the link: what it points to stays where it is, whole."""
+    import os
+    for name in ("proj", "other"):
+        r = web.post("/api/projects/create", json={"name": name})
+        assert r.status_code == 200, r.get_json()
+    calc = picker_root / "proj" / "optimization" / "calcA"
+    calc.mkdir(parents=True)
+    (calc / "notes.txt").write_text("the calculation's own file\n")
+    outside = tmp_path / "outside-the-tree"
+    outside.mkdir()
+    target = {"folder": calc, "file": calc / "notes.txt", "outside": outside,
+              "topic": picker_root / "other" / "structure"}[points_at]
+    link = picker_root / "proj" / "user" / "the-link"
+    os.symlink(target, link)
+    before = sorted(x.name for x in target.iterdir()) if target.is_dir() else (
+        target.read_text())
+    r = getattr(web, method)(route, json=body(link, picker_root))
+    assert r.status_code == 200, r.get_data(as_text=True)
+    assert (sorted(x.name for x in target.iterdir()) if target.is_dir()
+            else target.read_text()) == before
+    now = after(link, picker_root)
+    if now is None:
+        assert not os.path.lexists(link)
+    else:
+        assert now.is_symlink() and os.readlink(now) == str(target), now
+
+
+def test_a_copy_of_a_link_is_a_file_of_its_own(web, picker_root):
+    """A copy copies what a link inside the tree points to, as `cp` does,
+    under the link's name -- a file of its own, so editing the copy leaves
+    the original as it was.  The silent failure (F12 fix 3's review): the
+    copy was a second link, and editing it edited the original."""
+    import os
+    r = web.post("/api/projects/create", json={"name": "proj"})
+    assert r.status_code == 200, r.get_json()
+    original = picker_root / "proj" / "notes.txt"
+    original.write_text("the original\n")
+    link = picker_root / "proj" / "user" / "notes-link.txt"
+    os.symlink(original, link)
+    r = web.post("/api/files/copy", json={"path": str(link),
+                                          "dest_dir": str(link.parent),
+                                          "new_name": "copied.txt"})
+    assert r.status_code == 200, r.get_json()
+    copied = link.parent / "copied.txt"
+    assert not copied.is_symlink() and copied.read_text() == "the original\n"
+    copied.write_text("edited\n")
+    assert original.read_text() == "the original\n"
 
 
 class TestFilesDelete:
