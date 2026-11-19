@@ -272,6 +272,23 @@ def test_selecting_an_atom_draws_a_highlight(demo):
     )
 
 
+def test_a_shift_click_on_a_tick_box_selects_the_run(demo):
+    """§ 9.5: a shift-click selects every row from the last row clicked to this
+    one, inclusive, and adds them -- on a row's tick box too, which is part of
+    the row.
+
+    THE SILENT FAILURE: the tick box's own `change` carries no shift key, so a
+    shift-click there ticked that one atom and moved the anchor.
+    """
+    rows = demo.locator(".molviewer-atoms-table tr")
+    rows.nth(1).click()
+    rows.nth(4).locator("input[type=checkbox]").click(modifiers=["Shift"])
+    ticked = rows.locator("input[type=checkbox]").evaluate_all(
+        "boxes => boxes.map(b => b.checked)")
+    assert [i for i, on in enumerate(ticked) if on] == [1, 2, 3, 4], (
+        f"a shift-click on row 5's tick box did not select rows 2-5: {ticked}")
+
+
 def test_isolate_hides_the_rest_and_gives_them_back(demo):
     """§ 6.3: under isolate the drawing holds only the selection, and "the whole
     structure comes back the moment isolate is turned off" — because the master

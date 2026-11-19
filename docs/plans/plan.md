@@ -12,7 +12,7 @@ at 2.77.9 is [`archive/2026-11-19-plan-consolidation.md`](?doc=archive/2026-11-1
 
 ## ▶ Where we are *(2026-11-19)*
 
-**2.77.10.** F0–F11 and F7a are closed (2.56.2–2.77.2). 2.77.10 brought Plotly's toolbar back on every chart, each chart's Export in a strip above it *(the user, 2026-11-19)*. F12, *Proven*, walked
+**2.77.11.** F0–F11 and F7a are closed (2.56.2–2.77.2). 2.77.10 brought Plotly's toolbar back on every chart, each chart's Export in a strip above it *(the user, 2026-11-19)*. F12, *Proven*, walked
 its three roads in the browser on real runs, ran the full batch (6106 fast
 and 805 e2e tests, none failed, at 2.77.2) and its two review rounds
 ([`archive/audits/2026-11-18-f12-review/`](?doc=archive/audits/2026-11-18-f12-review/TRIAGE-round1.md));
@@ -28,8 +28,8 @@ through the one-home redesign round 2 found for it (`TRIAGE-round2.md`):
 3. the person's files safe — done, 2.77.7;
 4. a failure said in words, never a traceback — done, 2.77.8;
 5. the pages show the folder and run they say — done, 2.77.9;
-6. **MolView** — next;
-7. the viewers — with the spectrum's pointer readout given a place clear of
+6. MolView — done, 2.77.11;
+7. **the viewers** — next — with the spectrum's pointer readout given a place clear of
    Plotly's toolbar, which covers it on a tall window *(the user, 2026-11-19)*;
 8. the run script and the machine.
 

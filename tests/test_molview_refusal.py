@@ -238,7 +238,7 @@ def test_a_refused_edit_changes_no_data(app_at, pairs):
     """§ 11.1's "a failed edit changes nothing", for a failure that leaves by
     throwing. Throwing must not skip the part where nothing
     was written — and must not leave the door jammed against the next attempt,
-    which is what an `running` flag cleared only on the success path would do.
+    which is what an in-flight flag cleared only on the success path would do.
     """
     out = _run(app_at, pairs, """
         const m = await loaded("CO");

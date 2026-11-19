@@ -185,10 +185,12 @@ export function processFrame(input) {
     let measured = null;
     if (track.active && Array.isArray(track.picks) && track.picks.length) {
         const seat = new Map(sourceIndex.map((original, drawn) => [original, drawn]));
-        const drawn = track.picks
-            .map((i) => seat.get(i))
-            .filter((d) => d !== undefined);
-        measured = drawn.length ? drawn : null;
+        /* A PICK THAT IS NOT DRAWN KEEPS ITS PLACE, as `null`: the chain's
+         * order and its gaps go down together, so the sealed layer sees a
+         * broken chain and marks what is visible rather than join two picks
+         * the person never joined (§ 11.6). */
+        const drawn = track.picks.map((i) => (seat.has(i) ? seat.get(i) : null));
+        measured = drawn.some((d) => d !== null) ? drawn : null;
     }
 
     // Force arrows for THIS frame, from THIS frame's forces. Getting that wrong
@@ -741,9 +743,7 @@ export function createRenderEngine(embed) {
     }
 
     // A seek and a new set of forces keep only the LAST — only the frame you end
-    // on matters, and only the last forces are the current answer. Appended
-    // frames ACCUMULATE, because each poll tick's frames are a distinct piece of
-    // the run and losing one would leave a hole in the middle of it.
+    // on matters, and only the last forces are the current answer.
     function hold(kind, fn) {
         if (kind === "seek" || kind === "forces" || kind === "camera") {
             held = held.filter((h) => h.kind !== kind);
@@ -866,9 +866,11 @@ export function createRenderEngine(embed) {
         },
 
         // "Add these frames." A streamed append EXTENDS the movie; it is not a
-        // reload (§ 10.5).
+        // reload (§ 10.5).  During a rebuild NOTHING IS HELD (§ 10.9): the
+        // rebuild reads the frames when it runs, so the ones arriving now are
+        // drawn by it -- once.
         appendFrames(from) {
-            if (phase === REBUILDING) { hold("append", () => doAppend(from)); return; }
+            if (phase === REBUILDING) return;
             doAppend(from);
         },
 

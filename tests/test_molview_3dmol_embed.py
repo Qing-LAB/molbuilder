@@ -379,24 +379,39 @@ def test_arrows_arrive_as_geometry_and_are_given_their_appearance_here():
 
 def test_an_arrow_that_brings_its_own_colour_keeps_it():
     """§ 6.5 again, from the other side: the axis triad hands its own per-axis
-    colours through this same door, and those are its to choose.
+    colours through this same door, and those are its to choose -- and it is
+    not a force: § 1.1's gold is the largest FORCE's, so a triad longer than
+    every force leaves the forces drawn as they are without it.
     """
     out = _run(
         """
         const e = fresh();
+        const colours = () => globalThis.__calls
+            .filter(c => c.name === "addArrow" || c.name === "addArrow:batched")
+            .map(c => c.args[0].color);
         e.setArrows([
             { start: [0,0,0], end: [1,0,0], color: "#ff0000" },
             { start: [0,0,0], end: [9,0,0] },
         ]);
-        const drawn = globalThis.__calls
-            .filter(c => c.name === "addArrow" || c.name === "addArrow:batched")
-            .map(c => c.args[0]);
-        console.log(JSON.stringify({ colors: drawn.map(a => a.color) }));
+        const own = colours();
+        const forces = [{ start: [0,0,0], end: [1,0,0] },
+                        { start: [0,0,0], end: [4,0,0] }];
+        globalThis.__resetCalls();
+        e.setArrows(forces);
+        const alone = colours();
+        globalThis.__resetCalls();
+        e.setArrows(forces.concat([
+            { start: [0,0,0], end: [9,0,0], color: "#ff0000" }]));
+        const besideATriad = colours();
+        console.log(JSON.stringify({ own, alone, besideATriad }));
         """
     )
-    assert out["colors"][0] == "#ff0000", (
+    assert out["own"][0] == "#ff0000", (
         "a caller's own arrow colour was overwritten by this layer"
     )
+    assert out["besideATriad"][:2] == out["alone"], (
+        f"a triad longer than every force took the gold off the largest force: "
+        f"alone {out['alone']}, beside the triad {out['besideATriad'][:2]}")
 
 
 # ---------------------------------------------------------------------------

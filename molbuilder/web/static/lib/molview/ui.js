@@ -294,7 +294,7 @@ function mountFrameBar(doc, card, model, handle) {
     // Every move goes through the model's one write, whatever pressed it — so
     // the slider, the arrows and playback are indistinguishable downstream.
     const step = (delta) => {
-        if (handle.isPlaying()) { handle.pause(); reflect(); }
+        if (handle.isPlaying()) handle.pause();
         model.setCurrentFrame(model.currentFrame() + delta);
     };
 
@@ -306,7 +306,6 @@ function mountFrameBar(doc, card, model, handle) {
     playBtn.addEventListener("click", () => {
         if (handle.isPlaying()) handle.pause();
         else handle.play();
-        reflect();
     });
     loopBox.addEventListener("change", (e) => handle.setLoop(!!e.target.checked));
     /* THE BOX DOES NOT HOLD THE SPEED — it sets it and then shows what was
@@ -346,11 +345,15 @@ function mountFrameBar(doc, card, model, handle) {
 
     const offFrame = model.onFrameChange(reflect);
     const offData = model.subscribe(reflect);
+    // Playback starting and stopping -- by this button, by a host, or by the
+    // last frame with loop off, which moves no frame -- is heard from the
+    // handle, where playback lives (§ 8.5).
+    const offPlay = handle.onPlaybackChange(reflect);
     reflect();
 
     return {
         dispose() {
-            offFrame(); offData();
+            offFrame(); offData(); offPlay();
             try { bar.textContent = ""; bar.hidden = true; } catch (_) {}
         },
     };
@@ -1323,6 +1326,10 @@ function mountPanel(doc, card, model) {
     root.appendChild(pages.cell);
     root.appendChild(pages.info);
 
+    // The Cell page's notices as the person last saw them, opened -- the
+    // tab's mark is for notices not yet seen (`markPageWithNotices`).
+    let seenOnCell = null;
+
     function showPage(which) {
         for (const key of Object.keys(pages)) {
             // The [hidden] attribute, not a class: the stylesheet's rules are
@@ -1417,6 +1424,18 @@ function mountPanel(doc, card, model) {
      *
      * Asked once, here, so a third bulk gesture cannot be added without it. */
     const measuring = () => model.measurement.getState().active;
+
+    /* ONE RULE FOR A PICK IN THE LIST, from a row or its tick box (§ 9.5).
+     * SHIFT SELECTS THE RUN from the last row clicked to this one; with
+     * nothing to count from it is an ordinary click -- an anchorless run has
+     * no meaning to guess at.  An ordinary click picks through `pickAtom`,
+     * which decides measuring or selecting, and becomes the next run's start. */
+    const extendsRun = (e) => !!(e && e.shiftKey) && rangeAnchor !== null;
+    function pickRow(atom, e) {
+        if (extendsRun(e)) { selectRun(rangeAnchor, atom); return; }
+        rangeAnchor = atom;
+        model.pickAtom(atom);
+    }
 
     function selectRun(fromAtom, toAtom) {
         if (measuring()) return;
@@ -1939,11 +1958,10 @@ function mountPanel(doc, card, model) {
         }
     }
 
+    /* A DOOR'S "NOTHING TO DO" KEEPS WHAT WAS TYPED (§ 6.9): nothing to
+     * say, and the editor stays as it is. */
     function infoCommit(key, value) {
-        if (!model.info.edit(key, value)) {
-            infoSay("Not changed: this viewer does not save its structure.");
-            return false;
-        }
+        if (!model.info.edit(key, value)) return false;
         infoEdit = null;
         infoSay("");
         return true;
@@ -2159,7 +2177,9 @@ function mountPanel(doc, card, model) {
         else if (infoEdit && (infoEdit.kind === "field" || infoEdit.kind === "entry")
                  && !((infoEdit.top || infoEdit.key) in store)) infoEdit = null;
         infoHint.hidden = editable;
-        infoButtons.add.hidden = !editable;
+        // Nothing loaded: an entry has no structure to describe (§ 9.4: a
+        // control that would do nothing is not offered).
+        infoButtons.add.hidden = !editable || model.getElements() === null;
         infoButtons.expand.hidden = infoButtons.collapse.hidden = infoRawShown;
         infoFilter.hidden = infoRawShown;
         infoButtons.raw.setAttribute("aria-pressed", infoRawShown ? "true" : "false");
@@ -2194,15 +2214,26 @@ function mountPanel(doc, card, model) {
                         return;
                     }
                     const now = model.info.get();
-                    for (const k of Object.keys(now)) {
-                        if (!(k in next)) model.info.drop(k);
-                    }
-                    for (const k of Object.keys(next)) {
-                        if (!(k in now) || JSON.stringify(now[k])
-                                !== JSON.stringify(next[k])) {
-                            model.info.edit(k, next[k]);
+                    /* ONE EDIT, ONE POINT (§ 8.4a, § 11.2): its drops and
+                     * edits are bracketed, so one point lands, carrying the
+                     * settled store, and one Retract takes the whole edit
+                     * back. */
+                    let done = true;
+                    model.beginChange();
+                    try {
+                        for (const k of Object.keys(now)) {
+                            if (!(k in next)) done = model.info.drop(k) && done;
                         }
+                        for (const k of Object.keys(next)) {
+                            if (!(k in now) || JSON.stringify(now[k])
+                                    !== JSON.stringify(next[k])) {
+                                done = model.info.edit(k, next[k]) && done;
+                            }
+                        }
+                    } finally {
+                        model.endChange();
                     }
+                    if (!done) return;      // nothing to do (§ 6.9): as typed
                     infoEdit = null;
                     infoSay("");
                     drawInfo();
@@ -2380,8 +2411,9 @@ function mountPanel(doc, card, model) {
         }
         const row = el("div", "molviewer-selection-actions-row");
         row.appendChild(infoButton("Apply", () => {
+            let done;
             try {
-                model.customized.set(String(custAdding.name || "").trim(),
+                done = model.customized.set(String(custAdding.name || "").trim(),
                                      custValue(custAdding.value || ""),
                                      { unit: custAdding.unit || null,
                                        note: custAdding.note || null,
@@ -2391,6 +2423,7 @@ function mountPanel(doc, card, model) {
                 infoSay("Not applied -- " + ((e && e.message) || e));
                 return;
             }
+            if (!done) return;      // nothing to do (§ 6.9): the form as typed
             custAdding = null;
             infoSay("");
             drawCustomized();
@@ -2436,7 +2469,7 @@ function mountPanel(doc, card, model) {
             block.appendChild(sub);
             if (mine.length) block.appendChild(custRows(mine, at, editable));
         }
-        if (editable) {
+        if (editable && model.getElements() !== null) {
             if (custAdding) block.appendChild(custAddForm(count));
             else {
                 const row = el("div", "molviewer-selection-actions-row");
@@ -2595,35 +2628,23 @@ function mountPanel(doc, card, model) {
             check.checked = picked.has(atom.index);
             check.setAttribute("aria-label",
                                "Select atom #" + toDisplay(atom.index));
-            /* WHILE MEASURING, THE TICK BOX IS NOT A SELECTION CONTROL.
-             *
-             * Caught on `click`, which fires BEFORE the browser flips the box:
-             * `preventDefault` there stops the flip and suppresses the `change`
-             * below, so nothing has to put the tick back afterwards.  The tick
-             * goes on meaning exactly one thing — this atom is selected — which
-             * is what lets the redraw stay the only writer of it. */
+            /* THE TICK BOX IS PART OF THE ROW, and picks as the row does
+             * (`pickRow`) -- read on `click`, which carries the shift key
+             * where `change` does not.  While measuring, or for a run, the
+             * flip is stopped (which suppresses `change`), and the redraw
+             * puts every box where the selection says -- a line here that
+             * set the tick would be a second opinion about what is selected
+             * (§ 8.4). */
             check.addEventListener("click", (e) => {
-                if (!measuring()) return;
+                if (!measuring() && !extendsRun(e)) return;
                 e.preventDefault();
                 e.stopPropagation();
-                model.pickAtom(atom.index);
+                pickRow(atom.index, e);
             });
             check.addEventListener("change", (e) => {
                 // The row's own handler would toggle it straight back.
                 e.stopPropagation();
-                if (e.shiftKey && rangeAnchor !== null) {
-                    selectRun(rangeAnchor, atom.index);
-                    /* THE TICK IS NOT SET HERE. The browser flips a checkbox
-                     * before `change` fires, so the box is momentarily wrong —
-                     * and the fix is not to write the right answer over it, it
-                     * is to let the redraw put every box where the selection
-                     * says. A line here that says "ticked" is a second opinion
-                     * about what is selected, and § 8.4 exists because the
-                     * second opinion is the one that drifts. */
-                    return;
-                }
-                rangeAnchor = atom.index;
-                model.pickAtom(atom.index);
+                pickRow(atom.index, e);
             });
             checkCell.appendChild(check);
             row.appendChild(checkCell);
@@ -2642,15 +2663,7 @@ function mountPanel(doc, card, model) {
             row.addEventListener("click", (e) => {
                 // The controls inside the row speak for themselves.
                 if (e.target === check) return;
-                /* SHIFT SELECTS THE RUN from the last row clicked to this one
-                 * (§ 9.5). With nothing to count from it is an ordinary click —
-                 * an anchorless run has no meaning to guess at. */
-                if (e.shiftKey && rangeAnchor !== null) {
-                    selectRun(rangeAnchor, atom.index);
-                    return;
-                }
-                rangeAnchor = atom.index;
-                model.pickAtom(atom.index);
+                pickRow(atom.index, e);
             });
             rowBoxes.push({ atom: atom.index, row: row });   // for the drag box
             list.appendChild(row);
@@ -2839,9 +2852,13 @@ function mountPanel(doc, card, model) {
      * warn into a page nobody is on. So the tab says there is something there:
      * the mark is on the TAB, which is visible from either page, and the words
      * stay where they can be used. Cleared when the page is opened, because by
-     * then it has been seen. */
+     * then it has been seen -- and it stays cleared for what was read: the
+     * same notices coming back are not news, and any other set raises it. */
     function markPageWithNotices() {
-        const waiting = onlyFor("cell").length > 0;
+        const onCell = onlyFor("cell");
+        const said = JSON.stringify(onCell);
+        if (!pages.cell.hidden) seenOnCell = said;
+        const waiting = onCell.length > 0 && said !== seenOnCell;
         const tab = tabInputs.cell && tabInputs.cell.parentNode;
         if (!tab) return;
         const show = waiting && pages.cell.hidden;

@@ -568,7 +568,7 @@ classDiagram
       +string[] elements
       +Label[] labels
       +int[] selection
-      +int[] measured
+      +int?[] measured
       +Arrow[] arrows
     }
     class Scene {
@@ -737,7 +737,7 @@ the axes and the busy-state cover also travel down; none of those is per frame �
 | `elements` | `string[]` | element per **drawn** atom |
 | `labels` | `{position, text}[]` or `null` | the atom-number labels — *not* the labels a user attaches — when that switch is on. `text` is the **1-based original** number (§ 11.5) |
 | `selection` | `int[]` or `null` | which drawn atoms to highlight. `null` means *draw no highlight* — which happens both when nothing is selected and under isolate, where every drawn atom is selected and a highlight would say nothing |
-| `measured` | `int[]` or `null` | which drawn atoms the ruler holds (§ 11.6). `null` when the ruler is off or nothing is picked — but **not** under isolate, and that is the one place it parts from `selection` above: the measured atoms are a handful *within* the drawn set, so which ones they are is still worth saying |
+| `measured` | `(int \| null)[]` or `null` | which drawn atoms the ruler holds, in pick order (§ 11.6); a pick that is not drawn keeps its place as `null`, so the chain's gaps go down with it and the drawing never joins two picks across one. `null` when the ruler is off or no pick is drawn — but **not** under isolate, and that is the one place it parts from `selection` above: the measured atoms are a handful *within* the drawn set, so which ones they are is still worth saying |
 | `arrows` | `{start, end}[]` or `null` | force vectors for **this** frame, where `end = start + force × scale` |
 
 The cell box and the axes are **not** in here. They are the same for every frame
@@ -977,8 +977,8 @@ accepts frames for the structure being held; in `EMPTY` it refuses by name
 `Clear` that left the viewer `HOLDING` would leave it accepting frames for a
 structure that is not there.
 
-**The triad goes up either way**, because the condition is *the window is
-empty*, not *which door emptied it*.
+**The triad goes up either way**, because the condition is *a structure with
+no atoms put in*, not *which door put it*.
 
 > **Raising the switch is not the same as drawing the arrows.** The pipeline's
 > empty rebuild must HAND the triad down, not leave the drawing to redraw
@@ -1002,9 +1002,12 @@ a choice, and remembering "what it was before" would be hidden state nobody
 asked for.
 
 **It settles where the fact lives — in `settle()`, the one place every change
-to the structure passes through.** A rule that depends on a fact sits beside
+to the structure passes through — as the window *arrives* empty**: a structure
+with no atoms put in — a load, an edit, a state put back, `clear()`. A change
+made in place — a label, a cell, frames arriving — re-asserts nothing, so a
+person who hid the triad keeps it hidden. A rule that depends on a fact sits beside
 that fact, not in whichever control happened to change it. The fact here is
-the atom count, and `settle` is where the atom count becomes final.
+a structure put in, and `settle` is where every one lands.
 
 > **Why not at the doors.** Besides the edit path and `clear()`, there is a
 > third way to arrive empty: reopening a page whose saved state is the empty
@@ -1155,7 +1158,8 @@ field, and that field decides the place:
 from the Selection page, so a cell warning arriving with a file would otherwise
 land on a page nobody is on. The **Cell tab carries a dot** while its page holds
 notices you have not opened; the words stay where they are useful, and the dot
-goes when you open the page. A dot rather than a count — how *many* things are
+goes when you open the page — and stays gone for what you read there: the same
+notices coming back are not news, and any other set raises it again. A dot rather than a count — how *many* things are
 wrong is not a question a tab can usefully answer, and the sentences are one
 click away.
 
@@ -1239,7 +1243,7 @@ else:
 |---|---|---|
 | **it worked** | the change happened | the thing — the structure, the cell block |
 | **it was refused** | the server said no, or the request never completed | **it throws**, carrying the reason |
-| **there was nothing to do** | the viewer is read-only · an op was asked for that the controls already rule out · **one edit is already in flight** (§ 11.1) · the **cell** door with nothing loaded — there is no box to change | **`null`**, and nothing else — none of these needs explaining |
+| **there was nothing to do** | the viewer is read-only · an op was asked for that the controls already rule out · **an edit, a cell commit or a Retract is already in flight** (§ 9.4, § 11.1) · **a load landed while the edit was on its way** (§ 9.4) · the **cell** door with nothing loaded — there is no box to change | **`null`**, and nothing else — none of these needs explaining |
 
 **"Nothing is loaded" is not one of these for an EDIT.** An empty structure **is** a structure: `Structure(elements=[])` is
 legal, round-trips, and `add_slab` builds onto it. So an edit door with nothing
@@ -1258,7 +1262,9 @@ asked: there is no structure to edit, or the viewer does not edit, or the atoms
 picked are not what the operation takes. In every one of those the interface has
 already said so — a read-only viewer does not draw the control at all (§ 9.4),
 and a control that needs two atoms is not clickable with three. Announcing them
-afterwards would be telling somebody about a button they cannot see.
+afterwards would be telling somebody about a button they cannot see. And while
+another change is on its way (§ 9.4's second reason), it is about to change the
+thing this one was aimed at: there is nothing to say.
 
 **A refusal is different, and it belongs to whoever asked.** The server decided
 something and said why. MolView is not the one who asked, does not own the button
@@ -1672,7 +1678,7 @@ would vanish on the next one; the page says where to edit instead.
 doors — `data.info.edit(key, value)` and `data.info.drop(key)` — are
 **gated**: refused on a read-only viewer, and recorded on the history like
 any other edit — each lays a point of its own (§ 11.2), so Retract takes it
-back.  The host's doors — `set`, `remove` — stay ungated and silent: a
+back; the whole store applied as JSON is one edit, and lays one point.  The host's doors — `set`, `remove` — stay ungated and silent: a
 page describing what it loaded has changed nothing the person made.
 
 **An edited record says so.**  A block that names its `source` — a run's
@@ -1754,8 +1760,9 @@ gone the `structure_modified` flag below has nothing left to mark.
 
 **An edit outdates a recorded contract** (user, 2026-08-29).  When the
 store carries `info.calculation` and an edit lands, the flag is recorded
-beside the contract, at the same gated points the unsaved badge is
-raised — so a read-only viewer or a failed edit never flags.  Neither
+beside the contract, inside the edit's own change — before its point is
+laid, so the point and the draft carry it; a read-only viewer or a failed edit
+never flags.  Neither
 flag is ever cleared by the viewer (Retract is how an edit is un-done)
 and both ride the pair like everything in the store.
 
@@ -1803,7 +1810,7 @@ a fact of its own, and none reaches the drawing directly.
 
 | The control | Reads | Writes |
 |---|---|---|
-| **the frame bar** — slider, ‹ ▶ ›, loop, speed | the displayed frame and the count, from the model (§ 6.4); loop and speed, from the handle | the displayed frame, through the one write everyone uses; play, pause, loop and speed, through the handle (§ 9.2) |
+| **the frame bar** — slider, ‹ ▶ ›, loop, speed | the displayed frame and the count, from the model (§ 6.4); whether it plays, loop and speed, from the handle | the displayed frame, through the one write everyone uses; play, pause, loop and speed, through the handle (§ 9.2) |
 | **the rail** — atom numbers, forces, cell, axes, isolate, **measure**, Reset (§ 1.1) | each switch's lit state **from the store that owns it** — five from `selection`, measure from `measurement` (§ 11.6) | the five switches to `selection`, measure to `measurement`; **Reset** writes nothing — it re-fits the camera through the handle, the one thing on this card that is neither data nor a switch (§ 9.6) |
 | **the View menu** — style, radius, background, projection | `view` | all four to `view` |
 | **the panel** | one snapshot of `selection` (§ 8.4) | the selection, the filter rows and labels; on the Metadata page the `info` store and the named values (§ 8.4a); a row click while measuring goes to `measurement` through `pickAtom` (§ 11.6) |
@@ -2349,6 +2356,15 @@ one with `frame`, and installs the one-frame envelope that answered, put back
 > ever hold would be the one it was seeded with. The question is whether something **changes** the structure the
 > calculation ran on — and its own output does not.
 
+**One mutation in flight is the gate's second reason** (§ 11.1). While an
+edit, a cell commit or a Retract is on its way to the server, every door the
+table below answers with a no-op — but for the install, `reloadFrames` and
+`save` — answers the same: what is on its way replaces the structure whole, so a change landing in
+between would be overwritten. Saving is not one of them — it records and
+changes nothing. A load is the one door that still lands, the more
+authoritative statement (§ 10.9), and an edit's answer that arrives after it is
+not adopted: the edit's door answers `null`.
+
 #### Every door, in a read-only viewer
 
 The one question of § 9.4 asked of each, with what it answers when the gate
@@ -2842,7 +2858,7 @@ now third in the list.
 |---|---|---|---|
 | **atom-number labels** | that switch is on | one label per drawn atom | the text is the atom's **original** number, recovered through the map from step 1, and converted to 1-based by the one shared translation (§ 11.5). Never its position in the cut-down list |
 | **the selection highlight** | something is selected **and isolate is off** | the list of drawn atoms to highlight | under isolate this is deliberately empty: the drawn set already *is* the selection, so highlighting all of it would say nothing. The pipeline emits only *which* atoms — never what the highlight looks like |
-| **the measurement marks** | the ruler is on and something is picked (§ 11.6) | the list of drawn atoms the ruler holds | the one overlay that **survives isolate**, and for the mirror of the highlight's reason: the measured atoms are a handful *within* the drawn set, so which ones they are is exactly what is still worth saying. Same content-only rule — *which* atoms, never what a mark looks like |
+| **the measurement marks** | the ruler is on and a pick is drawn (§ 11.6) | the ruler's picks in order, as drawn atoms, a pick not drawn kept as a gap | the one overlay that **survives isolate**, and for the mirror of the highlight's reason: the measured atoms are a handful *within* the drawn set, so which ones they are is exactly what is still worth saying. Same content-only rule — *which* atoms, never what a mark looks like |
 | **force arrows** | the forces switch is on and the data carried forces | frame `f`'s forces, times the scale | frame `f`'s arrows come from frame `f`'s forces. Getting this wrong shows converged forces on an unconverged frame |
 
 The result, for every frame, is the finished data of § 6.5.
@@ -3123,8 +3139,8 @@ flowchart LR
     IDLE(["IDLE<br/>the drawing matches the data"])
     REB(["REBUILDING<br/>the cover is up"])
     IDLE -->|"a change that needs a rebuild (§ 10.5)"| REB
-    REB -->|"a seek, new forces, a cell edit, new frames or a camera action arrive:<br/>held, not applied"| REB
-    REB -->|"a switch changes:<br/>nothing is held"| REB
+    REB -->|"a seek, new forces, a cell edit or a camera action arrive:<br/>held, not applied"| REB
+    REB -->|"a switch changes or new frames arrive:<br/>nothing is held"| REB
     REB -->|"a full load arrives:<br/>drop everything held, rebuild from it"| REB
     REB -->|"finished: replay what was held,<br/>in arrival order"| IDLE
 ```
@@ -3136,7 +3152,7 @@ flowchart LR
 | **new forces** | held; only the last set survives | the same: only the last is the current answer |
 | a **cell edit** | held, and replayed as an overlay refresh (§ 10.5) | the scene is worked out again from the cell when the command arrives; the box and the axes are re-applied on the drawn structure (`render-engine.js` `cellChanged`) |
 | a **camera action** — Reset, *look along this axis*, *point the camera here* | held; only the last survives, and it lands **after** the rebuild's own fit | a load's rebuild runs in a later turn than the load, so a camera action issued right after a load would land on the drawing being replaced and be undone by the load's fit (§ 9.6); replayed afterwards it lands on the drawn structure. Only the pose you end on matters |
-| **appended frames** | held, and they **accumulate** | each poll tick's frames are a distinct piece of the run, and losing one would leave a hole in the middle of it |
+| **appended frames** | nothing is held | the rebuild reads the frames when it runs, so every frame that arrived is drawn by it — none lost, none drawn twice |
 | a **full load** | everything held is dropped, and the load supersedes the rebuild under way | it replaces the atom set, so anything held refers to atoms or frames that no longer exist. A full load is never itself refused: it is the more authoritative statement about what the structure is |
 
 When the rebuild finishes, what was held is replayed **in arrival order**, and the
@@ -3251,7 +3267,8 @@ same answer either way (`archive/2026-09-01-modify-redesign-plan.md` § 3). The 
 mechanism is one flag: *the selection is not sent*.
 
 **One mutation in flight.** A second edit started while one is still running is
-**not started** rather than interleaved. Two responses applying over each other
+**not started** rather than interleaved — nor does any other change the gate
+guards land meanwhile; a load and the frame doors still do (§ 9.4). Two responses applying over each other
 produce a structure neither edit asked for, and a history state the user never
 saw. It answers `null` and says nothing — there is nothing to explain, because
 the edit already running is about to change the thing the second one was aimed
@@ -4314,10 +4331,9 @@ per step says which was first, so the picture stops needing the caption. At
 three picks the second arrow's tail is the angle's vertex, which is the same
 thing the readout says in words.
 
-**Its own shapes, not the arrow overlay.** Force arrows are ranked by length so
-the largest draws gold (§ 1.1); a measurement arrow in that bucket could be the
-longest and take the gold off the force that earned it. Two overlays, two
-buckets, no interaction.
+**Its own shapes, not the arrow overlay.** The marks are keyed to atoms, so the
+drawing re-places them at every frame swap (§ 10.6); the force arrows are a
+frame's own, sent with each swap. Two kinds of overlay, two buckets.
 
 **A pick that is not on screen costs the arrows, not their correctness.** Under
 isolate a picked atom may not be drawn, and joining the two that *are* drawn
@@ -4756,6 +4772,14 @@ This table is the test plan. **A rule with no row here is a rule nothing guards.
 | § 6.4 — master copy, then range, then frame, then notify | after a load that shortens a trajectory, no subscriber ever sees a range from the new structure beside a frame number from the old one; an out-of-range write is resolved against the range, not accepted |
 | § 6.5 — the drawn-to-original map holds | under isolate, atom-number labels carry original numbers and measurement resolves panel numbers against the master copy |
 | § 6.5 — the highlight is content, not styling | per-frame data carries no colour, radius or opacity |
+| § 6.8 — the dot is for what has not been read | opening the Cell page clears it; leaving the page does not raise it for the same notices; a new set does |
+| § 8.4a — a label write's flag rides its point | the point a label write lays carries `labels_modified`, so a Retract back to it gives the flag with the label |
+| § 9.5 — a run from the tick box | a shift-click on a row's tick box selects the run from the last row clicked, as a shift-click on the row does |
+| § 11.2 — a count-changing edit's point holds the cleared selection | a Retract back to it marks no atom nobody picked |
+| § 11.2 — a load beats a read on its way | a Retract whose point is still being read when a structure is opened puts nothing back over it |
+| § 6.7a — the triad goes up as the window arrives empty | an edit that leaves no atoms raises it; a change in place — a label written onto no atoms — leaves a triad the person hid hidden |
+| § 1.1 — the gold is the largest force's | forces drawn beside a triad longer than any of them are drawn as they are without it |
+| § 11.6 — a broken chain is marked, never joined | under isolate, three picks with the middle one not drawn draw no arrow — the visible picks are marked |
 | § 6.6 — MolView interprets no reserved label | tagging atoms `frozen_atoms` changes what is stored and nothing about what is drawn; no code here acts on the name |
 | § 6.6 — a reserved name is announced, never refused | typing a reserved label applies it like any other label **and** tells the user it is reserved and what it does |
 | § 6.6 — a reserved label is stored, filtered and drawn like any other | it arrives in the same list, groups through the same walk, filters through the same rule and leaves in the same field; no atom carries the fact twice, and no boundary renames or moves it |
@@ -4772,7 +4796,7 @@ This table is the test plan. **A rule with no row here is a rule nothing guards.
 | § 9.5 — `by label` chooses from what is defined | the value control is a chooser for that rule and a text box for the other three, and re-kinding a row swaps it |
 | § 6.6 / § 9.3 — the accessor is the only way in | the designated read agrees with the label store because it is a cut of it, cannot be used to write, and is the one place the reserved name is spelled |
 | § 11.1 — an edit reaches the route it names | the operation's arguments arrive where the route reads them, and the selection lands under the key its row gives; a request the route cannot act on is refused, not answered `ok` |
-| § 11.1 — one mutation in flight | a second edit started while one is running is not started — it answers `null` — and only one request leaves |
+| § 11.1, § 9.4 — one mutation in flight | a second edit started while one is running is not started — it answers `null` — and only one request leaves; no change the gate guards lands meanwhile, a save still does, and an edit's answer arriving after a load is not adopted |
 | § 11.7 — one path out, whole structure | every edit sends the whole structure and adopts the whole structure returned; moving part of it is an argument, never a smaller request |
 | § 11.7 — the browser writes no coordinate document | the module contains no coordinate or sidecar writer at all; what leaves the export door is the structure, and the bytes are the server's |
 | § 6.7 — no file route | the module reaches no file endpoint |
@@ -4822,7 +4846,7 @@ This table is the test plan. **A rule with no row here is a rule nothing guards.
 | § 10.6 — shapes move with the frames | after a swap, labels and the highlight sit on the atoms' new positions, not where frame 0 left them |
 | § 10.7 — a selection never restyles the model | a click adds or removes shapes and issues no model restyle, and its cost does not grow with atom count |
 | § 10.8 — same atoms, every frame | a frame with a different atom count is a hard error, never coerced |
-| § 10.9 — nothing is lost during a rebuild | frames that arrive mid-rebuild all appear afterwards; a seek and a force update keep only the last; a camera action lands after the rebuild's fit; a full load cancels what was queued and supersedes the rebuild |
+| § 10.9 — nothing is lost during a rebuild | frames that arrive mid-rebuild all appear afterwards, once each; a seek and a force update keep only the last; a camera action lands after the rebuild's fit; a full load cancels what was queued and supersedes the rebuild |
 | § 10.10 — the offered frames are drawable | appending to a structure with no movie rebuilds instead of extending nothing; a short drawing heals |
 | § 10.10 — only the master copy's count is offered | the count a consumer reads never comes from the drawing |
 | § 11.1 — the count requirement is checked first | `orient` with one atom and `delete` with none answer `null` locally, with no request sent |

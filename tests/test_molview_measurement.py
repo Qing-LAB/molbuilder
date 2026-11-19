@@ -302,14 +302,19 @@ def test_the_marks_survive_isolate_where_the_highlight_does_not():
     )
 
 
-def test_a_pick_that_is_no_longer_in_the_structure_is_dropped():
-    """A track restored from the lane, or held across an edit, can name an atom
-    the drawn list does not have.  A mark with no atom must vanish, not throw."""
+def test_a_pick_isolate_does_not_draw_keeps_its_place_as_a_gap():
+    """§ 6.5, § 11.6: under isolate a picked atom may not be drawn; its pick
+    keeps its place in the chain as `null`, renumbered picks on either side,
+    so the drawing marks what is visible and joins nothing across the gap.
+
+    THE SILENT FAILURE: the hidden pick dropped, so the first and third read
+    as a chain of two and an arrow joins them -- a step never made."""
     out = _engine("""
-        const gone = at({ measurement: { active: true, picks: [1, 99] } });
-        console.log(JSON.stringify({ measured: gone.measured }));
+        const drawn = at({ selection: [1, 2], switches: { isolate: true },
+                           measurement: { active: true, picks: [1, 3, 2] } });
+        console.log(JSON.stringify({ measured: drawn.measured }));
     """)
-    assert out["measured"] == [1]
+    assert out["measured"] == [0, None, 1]
 
 
 # ---------------------------------------------------------------------- #

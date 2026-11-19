@@ -45,14 +45,19 @@ import { createHistory } from "./history.js";
  * `edit` is new data with the camera kept (§ 9.6): an operation changes the
  * structure the user turned to look at, and only a load -- an install, a
  * reopened page, a state put back (§ 11.2) -- fits the camera.
+ *
+ * `putsIn` says whether the change replaces what the window holds -- a load,
+ * an edit, a state put back, `clear()`, a reload of the frames -- rather than
+ * changing it in place: the fact § 6.7a's axis triad keys on (a reload never
+ * meets it empty: § 10.8 refuses frames for no atoms).
  */
 const REDRAW = {
-    data:   (engine)       => engine.dataChanged(),
-    edit:   (engine)       => engine.dataChanged({ edit: true }),
-    append: (engine, from) => engine.appendFrames(from),
-    forces: (engine)       => engine.forcesChanged(),
-    cell:   (engine)       => engine.cellChanged(),
-    none:   ()             => {},
+    data:   { draw: (engine)       => engine.dataChanged(),              putsIn: true },
+    edit:   { draw: (engine)       => engine.dataChanged({ edit: true }), putsIn: true },
+    append: { draw: (engine, from) => engine.appendFrames(from),         putsIn: false },
+    forces: { draw: (engine)       => engine.forcesChanged(),            putsIn: false },
+    cell:   { draw: (engine)       => engine.cellChanged(),              putsIn: false },
+    none:   { draw: ()             => {},                                putsIn: false },
 };
 
 
@@ -299,6 +304,7 @@ export function createModel(opts) {
          * SET BEFORE ANYONE IS TOLD (§ 6.4: updated completely first, and no
          * one observes a half state). */
         notices = opts.notices || null;
+        const redraw = REDRAW[opts.redraw || "data"];
         change();                                             // 1
 
         /* THE RULE FOR THE ORDERED TRACK, STATED ONCE (§ 11.6).
@@ -311,8 +317,7 @@ export function createModel(opts) {
          * `keepsAtoms` is the ONE exemption and it is not a judgement call: it
          * marks the doors that PROVE the atoms are unchanged (`requireSameAtoms`
          * / `requireMatch` run before they land) -- a running job's frames
-         * arriving, and a label written onto the atoms already there.  Those
-         * must not clear, because § 12.4 is measuring an angle WHILE a
+         * arriving.  Those must not clear, because § 12.4 is measuring an angle WHILE a
          * trajectory plays: the picks are indices, the readout re-reads the
          * current frame, and the value follows the movie.  Clearing there
          * would delete the measurement the feature exists to show. */
@@ -320,17 +325,18 @@ export function createModel(opts) {
 
         /* ── AN EMPTY WINDOW STILL SHOWS THE AXES (§ 6.7a) ────────────────
          *
-         * The same shape as `stores.js`'s *"isolate turns itself off when the
-         * selection empties"*: a rule that depends on a fact lives beside the
-         * fact.  The fact here is the ATOM COUNT.
+         * A rule that depends on a fact lives beside the fact.  The fact
+         * here is A STRUCTURE PUT IN WITH NO ATOMS.
          *
          * HERE, because `settle` is the ONE place every change to the
          * structure passes through -- the last atom deleted, `clear()`, and a
          * reopened page adopting an empty draft.
          *
-         * Turned ON only -- a person who then hides it stays hidden. */
-        if (!structure || !Array.isArray(structure.elements)
-                       || !structure.elements.length) {
+         * Turned ON as the window ARRIVES empty, and only then: a change made
+         * in place (its row's `putsIn` false) -- a label, a cell, frames
+         * arriving -- re-asserts nothing, so a person who hid it stays
+         * hidden. */
+        if (redraw.putsIn && atomCount() === 0) {
             selection.setSwitch("showAxis", true);
         }
 
@@ -342,7 +348,7 @@ export function createModel(opts) {
         const frameMoved = resolved !== frameIndex;
         frameIndex = resolved;
 
-        if (renderer) (REDRAW[opts.redraw] || REDRAW.data)(renderer, opts.from);
+        if (renderer) redraw.draw(renderer, opts.from);
         announceStructure();                                        // 4
         if (frameMoved) announceFrame();
     }
@@ -377,6 +383,38 @@ export function createModel(opts) {
             return fn.apply(null, args);
         };
     }
+
+    /* ONE MUTATION IN FLIGHT -- the gate's second reason (§ 9.4), for the
+     * doors that CHANGE the structure.  While an edit, a cell commit or a
+     * Retract is on its way, such a door answers its "nothing to do": what
+     * is on its way replaces the structure whole, so a change landing in
+     * between would be overwritten -- a structure neither change asked for.
+     * Saving is not one of them: it records, and changes nothing. */
+    let inFlight = false;
+
+    function changes(fn, whenFrozen) {
+        return gated(function (...args) {
+            if (inFlight) return whenFrozen;
+            return fn.apply(null, args);
+        }, whenFrozen);
+    }
+
+    /* A door that waits on the server holds the flag for the whole round
+     * trip, refused or answered.  A LOAD is the one door that still lands
+     * meanwhile -- the more authoritative statement about what the
+     * structure is (§ 10.9) -- so an edit's answer that arrives after a load
+     * is not adopted (`loadedSinceSent`). */
+    let loads = 0;
+    let loadsWhenSent = 0;
+    function oneInFlight(door) {
+        return async function (...args) {
+            inFlight = true;
+            loadsWhenSent = loads;
+            try { return await door.apply(null, args); }
+            finally { inFlight = false; }
+        };
+    }
+    const loadedSinceSent = () => loads !== loadsWhenSent;
 
     // Deep enough that changing what you were given can never change the viewer
     // (§ 9.3). Structures are plain data, so this is the whole of it.
@@ -418,7 +456,7 @@ export function createModel(opts) {
         return history.save(1);
     }
 
-    const writeLabel = gated(function (name, atoms, verb) {
+    const writeLabel = changes(function (name, atoms, verb) {
         if (!structure || !name) return false;
         const wanted = new Set(atoms);
         // A label changes what an atom IS, not what is drawn (§ 6.6): the panel
@@ -439,54 +477,32 @@ export function createModel(opts) {
                 if (keep) labels.push(name);
                 facts.labels = labels;
             });
+            markLabelsModified();
         }, { redraw: "none" });
         // A LABEL IS WORTH COMING BACK FROM.  It changes what an atom IS
         // (§ 6.6), and a region written onto the wrong atoms is exactly the
         // kind of mistake Retract exists for -- so this gate checkpoints like
         // any geometry edit, even though it moves nothing.
         recordEdit(true);
-        markContractOutdated("labels");   // a name, not the atoms
         return true;
     }, false);
 
-    /* AN EDIT OUTDATES A RECORDED CONTRACT (user, 2026-08-29), and TWO
-     * FLAGS say what it outdated (user, 2026-09-07 -- molview.md § 8.4a).
-     * The `info.calculation` block describes the structure the run was
-     * made FROM; once an edit lands these atoms are no longer that
-     * structure, and a later reader must be told WHICH kind of edit:
-     *
-     *   structure_modified  a geometry or cell op -- the settings a later
-     *                       calculation inherits (mesh cutoff, transverse
-     *                       k-mesh) were converged over a CELL that is no
-     *                       longer there;
-     *   labels_modified     a label write -- no setting is a function of a
-     *                       name, so the settings stand; but on a junction
-     *                       the electrode/device partition IS labels, so
-     *                       the region assignment may now differ from what
-     *                       was relaxed.
-     *
-     * Set beside the record at the exact places an edit is marked
-     * (`recordEdit()` -- inside the gate, so a read-only viewer or a
-     * failed edit never reaches it), never cleared by the viewer:
-     * un-editing is what Retract is for, and both flags ride the pair like
-     * everything in the store.
-     *
-     * ONE CALLER LEFT, and it is the one edit the server never sees.
-     * `structure_modified` is decided in Python now: the geometry ops POST
-     * to `/api/modify/<name>` and the cell goes through
-     * `/api/structure/periodicity`, and both answers are adopted, so
-     * marking here as well would be one rule in two languages.
-     * `writeLabel` makes no request at all -- it rewrites `annotations`
-     * in place -- so `labels_modified` has nowhere else it could be
-     * decided. */
-    function markContractOutdated(what) {
+    /* A LABEL WRITE OUTDATES A RECORDED CONTRACT'S REGIONS (user,
+     * 2026-08-29, 2026-09-07 -- molview.md § 8.4a).  The `info.calculation`
+     * block describes the structure the run was made FROM, and two flags say
+     * what an edit outdated: `structure_modified` -- a geometry or cell op,
+     * whose settings (mesh cutoff, transverse k-mesh) were converged over a
+     * cell that is no longer there -- decided by the server for the edits it
+     * makes, and adopted with the answer; and `labels_modified` -- a label
+     * write: no setting is a function of a name, but on a junction the
+     * electrode/device partition IS labels.  A label write makes no request
+     * -- it rewrites `annotations` in place -- so its flag is set here, inside
+     * its own change: before its point is laid, so the point and the draft
+     * carry it.  Never cleared by the viewer: un-editing is what Retract is
+     * for, and the flag rides the pair like everything in the store. */
+    function markLabelsModified() {
         const c = structure && structure.info && structure.info.calculation;
-        if (!c || typeof c !== "object") return;
-        const key = (what === "labels") ? "labels_modified"
-                                        : "structure_modified";
-        if (c[key]) return;
-        c[key] = true;
-        announceStructure();
+        if (c && typeof c === "object") c.labels_modified = true;
     }
 
     /* ── The same-atoms rule, at the doors that could break it (§ 10.8) ────
@@ -592,8 +608,8 @@ export function createModel(opts) {
          * them.
          *
          * The empty window is drawn with its axes either way -- but that is
-         * `settle`'s rule, not this door's, because the condition is *the
-         * window is empty* and not *which door emptied it* (§ 6.7a). */
+         * `settle`'s rule, not this door's, because the condition is *a
+         * structure with no atoms put in*, not *which door put it* (§ 6.7a). */
     }
 
     /* ══ The helpers, each handed exactly what it may call (§ 7.3) ════════ */
@@ -601,6 +617,7 @@ export function createModel(opts) {
     const installMolecule = createLoad({
         ask: opts.ask,
         put: (s, c, name, said) => {
+            loads += 1;
             settle(() => put(s, c, name), {
                 resetFrame: true,
                 notices: (said && said.length) ? said : null,
@@ -677,6 +694,7 @@ export function createModel(opts) {
          * place that knows which op wants which. */
         readPicks:     () => measurement.get(),
         apply: (s, c, countChanged, said, checkpoint) => {
+            if (loadedSinceSent()) return false;
             settle(() => put(s, c), {
                 resetFrame: true,
                 redraw: "edit",
@@ -688,6 +706,13 @@ export function createModel(opts) {
                 notices: (said && said.length)
                     ? said : null,
             });
+            // An operation that grows or shrinks the structure clears the
+            // selection: a kept one could point at an atom that is no longer the
+            // one it meant. A count-preserving transform leaves it alone.
+            // Cleared BEFORE the point is laid, so the point and the draft
+            // hold the selection the person now has: a Retract to it, or a
+            // reload, never marks atoms nobody picked.
+            if (countChanged) selection.clear();
             // The point is laid down HERE, inside the gate and after the
             // change has landed — which makes two of the contract's rules fall
             // out rather than needing cases of their own: a read-only viewer
@@ -695,16 +720,9 @@ export function createModel(opts) {
             // failed edit never reaches it either, so nothing is recorded
             // (§ 11.1).
             recordEdit(checkpoint);
-            // NOT MARKED HERE.  Every op in this door runs in Python
-            // (`/api/modify/<name>`) and the answer is adopted whole by
-            // `structureFromServer`, which reads `structure.info` -- so the
-            // outdated mark arrives already set, from the one place that
-            // decides it (`model/structure.md` § 2.2a).  Setting it again
-            // was the same rule written twice.
-            // An operation that grows or shrinks the structure clears the
-            // selection: a kept one could point at an atom that is no longer the
-            // one it meant. A count-preserving transform leaves it alone.
-            if (countChanged) selection.clear();
+            // The recorded contract's outdated mark arrives with the
+            // answer, set by the server, which decides it for every op
+            // (`model/structure.md` § 2.2a).
             /* THE RULER IS CLEARED BY ANY EDIT, with no "did the count change"
              * question asked (user, 2026-08-31: *"any edit would clear
              * measurement selection list - to keep it simple and explicit"*).
@@ -722,6 +740,7 @@ export function createModel(opts) {
              * taken.
              *
              * The clear itself is `settle`'s, stated once for every door. */
+            return true;
         },
     });
 
@@ -731,6 +750,7 @@ export function createModel(opts) {
         // A cell edit does not move an atom, so the frame and its range are
         // untouched — this is why § 10.5 makes it an overlay refresh.
         applyCell: (block, said, recorded) => {
+            if (loadedSinceSent()) return false;
             settle(() => {
                 structure.periodicity = block;
                 // ADOPTED, NOT RE-DECIDED.  `periodicity_gate.apply_edit`
@@ -749,6 +769,7 @@ export function createModel(opts) {
             // through one door (§ 6.2), and a box set wrong is as recoverable
             // as any atom that moved.
             recordEdit(true);
+            return true;
         },
     });
 
@@ -880,7 +901,7 @@ export function createModel(opts) {
              * `edited_by_hand` (the time), and the relaxation check reads
              * the values as the person's word.  An edit that changes nothing
              * records nothing. */
-            edit: gated(function (key, value) {
+            edit: changes(function (key, value) {
                 if (!structure || typeof key !== "string" || !key) return false;
                 let v;
                 try { v = JSON.parse(JSON.stringify({ v: value === undefined
@@ -899,7 +920,7 @@ export function createModel(opts) {
                 recordEdit();
                 return true;
             }, false),
-            drop: gated(function (key) {
+            drop: changes(function (key) {
                 if (!structure || !structure.info
                         || !(key in structure.info)) {
                     return false;
@@ -938,7 +959,7 @@ export function createModel(opts) {
                     return copy(f == null ? (structure.customized || [])
                                           : ((rowsPerFrame && rowsPerFrame[f]) || []));
                 },
-                set: gated(function (name, value, opts) {
+                set: changes(function (name, value, opts) {
                     if (!structure) return false;
                     const o = opts || {};
                     const f = frameAt(o.frame);
@@ -973,7 +994,7 @@ export function createModel(opts) {
                     recordEdit();
                     return true;
                 }, false),
-                remove: gated(function (name, opts) {
+                remove: changes(function (name, opts) {
                     if (!structure) return false;
                     const f = frameAt((opts || {}).frame);
                     const rows = f == null ? (structure.customized || [])
@@ -1144,7 +1165,7 @@ export function createModel(opts) {
          * empty box (user, 2026-09-02).
          *
          * GATED: it changes the core data, which is § 9.4's one question. */
-        clear: gated(function () {
+        clear: changes(function () {
             settle(() => {
                 structure = null;
                 holdCoordinates(null);
@@ -1167,8 +1188,9 @@ export function createModel(opts) {
             return true;
         }, false),
 
-        applyOp:              gated(applyOp, Promise.resolve(null)),
-        commitPeriodicityOp:  gated(commitPeriodicityOp, Promise.resolve(null)),
+        applyOp:              changes(oneInFlight(applyOp), Promise.resolve(null)),
+        commitPeriodicityOp:  changes(oneInFlight(commitPeriodicityOp),
+                                      Promise.resolve(null)),
 
         /* ══ Load or extend the frames — NOT gated (§ 9.4) ════════════════
          *
@@ -1345,8 +1367,9 @@ export function createModel(opts) {
          * too, and the badge never appears.
          */
         save: gated((step) => history.save(step), Promise.resolve(false)),
-        load: gated((step) => history.load(step), Promise.resolve(null)),
-        undo: gated(() => history.undo(), Promise.resolve(null)),
+        load: changes(oneInFlight((step) => history.load(step)),
+                      Promise.resolve(null)),
+        undo: changes(oneInFlight(() => history.undo()), Promise.resolve(null)),
 
         /* ══ Know where you are in the history (§ 9.3) ════════════════════
          *

@@ -366,15 +366,20 @@ def test_an_append_leaves_the_displayed_frame_where_it_was():
 # ---------------------------------------------------------------------------
 
 def test_frames_arriving_mid_rebuild_all_appear_afterwards():
-    """§ 13.3: "frames that arrive mid-rebuild all appear afterwards."
+    """§ 13.3: "frames that arrive mid-rebuild all appear afterwards", once
+    each.
 
-    § 10.9: appended frames ACCUMULATE, "because each poll tick's frames are a
-    distinct piece of the run, and losing one would leave a hole in the middle of
-    it."
+    § 10.9: nothing is held -- the rebuild reads the frames when it runs, so
+    every poll tick that arrived is drawn by it; losing one would leave a hole
+    in the middle of the run.
+
+    THE SILENT FAILURE: an append replayed after the rebuild that already drew
+    its frames draws them again; every later frame then sits at the wrong
+    index, and the frame bar shows another step's geometry.
     """
     out = _run(
         """
-        const { engine, src } = wired(4, 2);
+        const { engine, src, embed } = wired(4, 2);
         await engine.dataChanged();
         globalThis.__embedCalls = [];
 
@@ -384,15 +389,17 @@ def test_frames_arriving_mid_rebuild_all_appear_afterwards():
             engine.appendFrames(src.frames.length - 1);
         }
         await rebuilding;
+        // And a poll tick after it: the drawing grows by that one.
+        src.frames.push([[9,0,0],[9,1,0],[9,2,0],[9,3,0]]);
+        engine.appendFrames(src.frames.length - 1);
         console.log(JSON.stringify({
-            appends: calls("appendFrames").map(c => c.args[0]),
+            drawn: embed.drawnFrameCount(), master: src.frames.length,
         }));
         """
     )
-    assert len(out["appends"]) == 3, (
-        f"poll ticks arriving during a rebuild were dropped, leaving a hole in "
-        f"the run: {out['appends']}"
-    )
+    assert out["drawn"] == out["master"] == 6, (
+        f"the drawing holds {out['drawn']} frames of a run of {out['master']}: "
+        f"a frame drawn twice")
 
 
 def test_a_seek_and_new_forces_keep_only_the_last():
@@ -520,19 +527,19 @@ def test_a_full_load_supersedes_a_rebuild_and_drops_what_was_held():
         globalThis.__embedCalls = [];
 
         const first = engine.dataChanged();
-        src.frames.push([[1,0,0],[2,0,0],[3,0,0],[4,0,0]]);
-        engine.appendFrames(2);                  // held...
+        src.forces = src.frames.map(() => [[1,0,0],[1,0,0],[1,0,0],[1,0,0]]);
+        engine.forcesChanged();                  // held...
         const second = engine.dataChanged();     // ...and dropped by this
         await Promise.all([first, second]);
 
         console.log(JSON.stringify({
-            appends: calls("appendFrames").length,
+            refreshes: engine.__costs().filter((c) => c === E.OVERLAY).length,
             loads: calls("loadFrames").length,
         }));
         """
     )
-    assert out["appends"] == 0, (
-        "a held append was replayed after a full load replaced the atoms it "
+    assert out["refreshes"] == 0, (
+        "held forces were replayed after a full load replaced the atoms they "
         "referred to"
     )
     assert out["loads"] >= 1

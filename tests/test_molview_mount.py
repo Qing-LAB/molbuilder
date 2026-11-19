@@ -378,10 +378,14 @@ def test_playback_moves_the_frame_through_the_same_write_everyone_uses(app_at, p
 
     § 6.4: the write "tells EVERY subscriber regardless of what did the moving",
     so a subscriber never has to know which.
+
+    § 8.5: the frame bar reads playback from the handle -- so a movie that
+    stops by itself, at the last frame with loop off, leaves its button
+    saying Play.
     """
     out = _run(app_at, pairs,
         """
-        const { viewer } = await mounted();
+        const { host, viewer } = await mounted();
         await opened(viewer.data, "H2");
         viewer.data.reloadFrames([[[0,0,0],[1,0,0]], [[2,0,0],[3,0,0]]]);
 
@@ -398,9 +402,18 @@ def test_playback_moves_the_frame_through_the_same_write_everyone_uses(app_at, p
         viewer.play();
         await new Promise(r => setTimeout(r, 150));
         viewer.pause();
+        const playing = viewer.isPlaying();
 
+        // To the end with loop off: it stops by itself.
+        viewer.setLoop(false);
+        viewer.data.setCurrentFrame(0);
+        viewer.play();
+        await new Promise(r => setTimeout(r, 150));
+        const button = host.querySelector(".molviewer-frames-play");
         console.log(JSON.stringify({
-            byHand, heard, playing: viewer.isPlaying(),
+            byHand, heard, playing,
+            stopped: !viewer.isPlaying(),
+            button: button.getAttribute("aria-label"),
         }));
         """
     )
@@ -410,6 +423,9 @@ def test_playback_moves_the_frame_through_the_same_write_everyone_uses(app_at, p
         f"subscriber hears it: {out['heard']}"
     )
     assert out["playing"] is False, "pause must stop the timer"
+    assert out["stopped"] is True, "the movie did not stop at its last frame"
+    assert out["button"] == "Play", (
+        f"the movie stopped and its button still says {out['button']!r}")
 
 
 def test_a_movie_saves_the_frame_it_stops_on_and_none_it_passes(app_at, pairs):
@@ -1594,16 +1610,15 @@ def test_a_notice_is_drawn_where_its_subject_is_and_the_tab_says_so(app_at, pair
 
     A warning about the box names an axis and a clearance — those numbers are
     the Cell page's four rows, so that is where it belongs and where a user
-    would go to change them. It used to be routed by ORIGIN instead: the same
-    warning went above the atom list when it arrived with a file, and under the
-    Cell rows when it arrived from a cell edit. Same sentence, same subject, two
-    places.
+    would go to change them -- the same sentence about the same subject goes
+    to one place, whichever answer brought it.
 
     AND A PAGE YOU ARE NOT LOOKING AT STILL HAS TO REACH YOU. Loading happens
     from the Selection page, so putting the words on the Cell page alone would
     warn into a page nobody is on. The TAB carries a mark — visible from either
     page — and the words stay where they are useful. Opening the page clears it,
-    because by then it has been seen.
+    because by then it has been seen; leaving it does not raise it again for
+    what was read, and a notice not yet read does.
 
     The notices are the load's own (§ 6.8): crowded water whose box was put
     where it does not hold it answers a warning about the box, a warning about
@@ -1644,10 +1659,18 @@ def test_a_notice_is_drawn_where_its_subject_is_and_the_tab_says_so(app_at, pair
 
         const before = { onCell, aboveTabs, tabMarked: marked() };
         // Open the Cell page: the mark has done its job.
-        card.querySelectorAll(".molviewer-panel-tab-option input")[1]
-            .dispatch("change", {});
-        console.log(JSON.stringify({ said, before,
-                                     markedAfterOpening: marked() }));
+        const pageTabs = card.querySelectorAll(".molviewer-panel-tab-option input");
+        pageTabs[1].dispatch("change", {});
+        const markedAfterOpening = marked();
+        // Back to the Selection page: those notices have been read.
+        pageTabs[0].dispatch("change", {});
+        const markedAfterLeaving = marked();
+        // The atoms moved: the box's warning says new numbers -- news.
+        await viewer.data.applyOp("translate", { dx: 0.5, dy: 0, dz: 0 });
+        await __quiet();
+        console.log(JSON.stringify({ said, before, markedAfterOpening,
+                                     markedAfterLeaving,
+                                     markedOnNews: marked() }));
         """
     )
     about_the_box = [n["message"] for n in out["said"] if n["about"] == "cell"]
@@ -1674,6 +1697,12 @@ def test_a_notice_is_drawn_where_its_subject_is_and_the_tab_says_so(app_at, pair
     assert out["markedAfterOpening"] is False, (
         "the mark stayed after the page was opened, so it says nothing"
     )
+    assert out["markedAfterLeaving"] is False, (
+        "the mark came back on leaving the page, for notices already read"
+    )
+    assert out["markedOnNews"] is True, (
+        "a notice not yet read -- the box's new numbers after a move -- left "
+        "no mark on the tab")
 
 
 def test_the_names_molview_offers_each_read_differently_and_frozen_stands_out(app_at, pairs):
@@ -2534,6 +2563,46 @@ def test_a_pick_reaches_the_drawing_as_a_mark_then_an_arrow(app_at, pairs):
         f"FIRST (at {out['atom1']}) and atom 0 second (at {out['atom0']}) — the "
         f"arrow must follow the click order, which is what it exists to show"
     )
+
+
+def test_a_pick_that_is_not_drawn_breaks_the_chain(app_at, pairs):
+    """§ 11.6: "a pick that is not on screen costs the arrows, not their
+    correctness" -- under isolate a picked atom may not be drawn, and joining
+    the two that are would assert a step the person never made; a broken
+    chain marks what is visible.
+
+    THE SILENT FAILURE: the hidden pick dropped before the drawing sees the
+    chain, so an arrow runs from the first pick to the third.
+
+    The road's water: its first and last atoms selected and isolated, then
+    all three picked in order, the middle one not drawn.
+    """
+    out = _run(app_at, pairs, """
+        const { viewer } = await mounted();
+        await opened(viewer.data, "water");
+        await waitForDrawing(() => globalThis.__lastCall("addModelsAsFrames"),
+                             "the structure never reached the window");
+        viewer.data.selection.add([0, 2]);
+        globalThis.__resetCalls();
+        viewer.data.selection.setSwitch("isolate", true);
+        await waitForDrawing(() => globalThis.__lastCall("addModelsAsFrames"),
+                             "isolating never redrew the window");
+        viewer.data.measurement.setActive(true);
+        viewer.data.pickAtom(0);
+        viewer.data.pickAtom(1);
+        globalThis.__resetCalls();
+        viewer.data.pickAtom(2);
+        console.log(JSON.stringify({
+            picks:  viewer.data.measurement.getState().picks,
+            arrows: globalThis.__countCalls("addArrow"),
+            marks:  globalThis.__countCalls("addSphere"),
+        }));
+    """)
+    assert out["picks"] == [0, 1, 2], f"the picks did not land: {out['picks']}"
+    assert out["arrows"] == 0, (
+        "an arrow joins the first and third picks across the one not drawn -- "
+        "a step the person never made")
+    assert out["marks"] >= 2, "the two picks on screen are not marked"
 
 
 #: (what the person picked before the structure arrived, what the Assign

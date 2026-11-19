@@ -293,6 +293,9 @@ export function createHistory(handed) {
             return null;              // unreachable storage reads as "nothing"
         }
         if (saved == null || saved.v !== 1) return null;
+        // A structure opened while the draft was being read is the more
+        // authoritative statement (§ 11.2): nothing is put back over it.
+        if (anchored) return null;
 
         handed.restoreState(saved.state);
 
@@ -447,6 +450,7 @@ export function createHistory(handed) {
             const way = step < 0 ? -1 : (step > 0 ? 1 : 0);
             while (way && refused.has(target)) target += way;
             if (target < 0 || target > highest) return null;
+            const mine = opened;
 
             /* THE POINT COMES BACK BY ITS NUMBER, under this tag.
              * `readState` answers null for a miss and for any
@@ -455,6 +459,10 @@ export function createHistory(handed) {
              * way, and the only safe reading of null is "nothing to put back". */
             const saved = await handed.workspace.readState(handed.tag, target);
             if (saved == null) return null;
+            // A structure opened while the point was being read is the more
+            // authoritative statement (§ 11.2): the point is not put back
+            // over it.
+            if (mine !== opened) return null;
             // Written by this module, so unwrapped by it. A file from a layout
             // this code does not know is not something to guess at.
             if (saved.v !== 1) return null;

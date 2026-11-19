@@ -829,6 +829,176 @@ def test_a_trajectory_arrives_whole_in_one_install(app_at, pairs):
     )
 
 
+def test_a_second_edit_while_one_is_running_is_not_started(app_at, pairs):
+    """One mutation in flight (§ 11.1, § 9.4's second reason). The answer on its
+    way replaces the structure whole, built from what was sent, so a change
+    landing meanwhile would be overwritten -- a structure neither asked for.
+    So every door that changes the structure answers its nothing-to-do until
+    the answer lands, and none of them changes anything; saving, which
+    changes nothing, still lands.
+
+    THE SILENT FAILURE: a label, a cell, an entry, a named value, a Retract
+    or a Clear applied while an edit is out, then overwritten by its answer.
+
+    The road's H2 on the real workspace: one edit laid as a point, a second
+    held on its way."""
+    out = _run(app_at, pairs, """
+        const m = createModel({ owner: "s", workspace: ws });
+        await opened(m, "H2");
+        await m.applyOp("translate", { dx: 1, dy: 0, dz: 0 });
+        await __quiet();
+        const before = m.getAtoms().map((a) => a.labels);
+        __calls.length = 0;
+        // The next edit kept on its way (`_node_esm.served`'s hold): an
+        // order held, never timed.
+        __hold((call) => call.url.startsWith("/api/modify/"));
+
+        const first = m.applyOp("translate", { dx: 1, dy: 0, dz: 0 });
+        const meanwhile = {
+            edit:    await m.applyOp("translate", { dx: 9, dy: 0, dz: 0 }),
+            label:   m.selection.writeLabel("device", "replace", [0]),
+            cell:    await m.commitPeriodicityOp("vacuum", [5, 5, 5]),
+            entry:   m.info.edit("note", "mine"),
+            named:   m.customized.set("charge", 1),
+            retract: await m.undo(),
+            clear:   m.clear(),
+        };
+        const saved = await m.save(1);
+        __release();
+        await first;
+        await __quiet();
+        console.log(JSON.stringify({
+            meanwhile, saved, before,
+            labels: m.getAtoms().map((a) => a.labels),
+            entry: "note" in m.info.get(),
+            named: m.customized.list(),
+            edits: __calls.filter((c) => c.url.startsWith("/api/modify/")).length,
+        }));
+        """)
+    assert out["meanwhile"] == {"edit": None, "label": False, "cell": None,
+                                "entry": False, "named": False,
+                                "retract": None, "clear": False}, (
+        f"a door changed the structure while an edit was out: "
+        f"{out['meanwhile']}")
+    assert out["labels"] == out["before"], (
+        f"a label landed under the edit's answer: {out['labels']}")
+    assert out["entry"] is False and out["named"] == [], (
+        "an entry or a named value landed while the edit was out")
+    assert out["saved"] is True, "a save -- which changes nothing -- was dropped"
+    assert out["edits"] == 1, f"two edits reached the server: {out['edits']}"
+
+
+#: (what is out, the request kept on its way, how it starts): a cell commit
+#: and a Retract hold the gate an edit does (§ 9.4's second reason).
+OUT_ROWS = [
+    ("a cell commit", "/api/structure/periodicity",
+     'm.commitPeriodicityOp("vacuum", [5, 5, 5])'),
+    ("a Retract", "/api/workspace-storage/read", "m.undo()"),
+]
+
+
+@pytest.mark.parametrize("what, route, start", OUT_ROWS,
+                         ids=[r[0] for r in OUT_ROWS])
+def test_a_cell_commit_or_a_retract_out_holds_the_same_gate(app_at, pairs,
+                                                             what, route,
+                                                             start):
+    """§ 9.4's second reason holds while any change is on its way, not only an
+    edit: what is out replaces the structure whole when it lands.
+
+    THE SILENT FAILURE: an edit or a label landing under a cell commit's or a
+    Retract's answer.
+
+    The road's H2 on the real workspace, one edit laid as a point to go back
+    to."""
+    out = _run(app_at, pairs, """
+        const m = createModel({ owner: "s", workspace: ws });
+        await opened(m, "H2");
+        await m.applyOp("translate", { dx: 1, dy: 0, dz: 0 });
+        await __quiet();
+        const before = m.getAtoms().map((a) => a.labels);
+        __hold((call) => call.url.endsWith(ROUTE));
+        const pending = """ + start + """;
+        const meanwhile = {
+            edit:  await m.applyOp("translate", { dx: 9, dy: 0, dz: 0 }),
+            label: m.selection.writeLabel("device", "replace", [0]),
+        };
+        __release();
+        await pending;
+        await __quiet();
+        console.log(JSON.stringify({
+            meanwhile, before, labels: m.getAtoms().map((a) => a.labels),
+        }));
+        """, ROUTE=route)
+    assert out["meanwhile"] == {"edit": None, "label": False}, (
+        f"a change landed while {what} was out: {out['meanwhile']}")
+    assert out["labels"] == out["before"], (
+        f"a label landed under {what}'s answer: {out['labels']}")
+
+
+def test_a_load_while_an_edit_is_out_wins(app_at, pairs):
+    """§ 9.4, § 10.9: a load is the one door that lands while an edit is out --
+    the more authoritative statement about what the structure is -- so the
+    edit's answer, arriving after it, is not adopted, and its door answers
+    null.
+
+    THE SILENT FAILURE: the file just opened replaced by the previous
+    structure plus the edit, the page still naming the file.
+
+    The road's H2: a move held on its way, the same pair opened again."""
+    out = _run(app_at, pairs, """
+        const m = await loaded("H2");
+        const asOpened = m.getFrameAllAtoms(0);
+        __hold((call) => call.url.startsWith("/api/modify/"));
+        const moving = m.applyOp("translate", { dx: 1, dy: 0, dz: 0 });
+        await opened(m, "H2");
+        __release();
+        const answer = await moving;
+        console.log(JSON.stringify({
+            answer, asOpened, now: m.getFrameAllAtoms(0),
+        }));
+        """)
+    assert out["answer"] is None, "the edit's door answered as though it landed"
+    assert out["now"] == out["asOpened"], (
+        f"the edit's answer replaced the structure just opened: {out['now']}")
+
+
+def test_a_retract_that_lands_after_a_load_puts_nothing_back(app_at, pairs):
+    """§ 11.2: opening a new structure drops anything still on its way -- "the
+    more authoritative statement about what the structure is beats whatever is
+    in flight".  A Retract whose point is still being read when a structure is
+    opened puts nothing back over it.
+
+    THE SILENT FAILURE: the old structure restored over the file just opened,
+    the page still naming the file, the sequence pointing past what it holds.
+
+    The road's H2 on the real workspace: two edits laid as points, a Retract
+    held while it reads its point, the water opened meanwhile -- its pruning
+    of the old points held too, so the point is still there to be read."""
+    out = _run(app_at, pairs, """
+        const m = createModel({ owner: "s", workspace: ws });
+        await opened(m, "H2");
+        for (let i = 0; i < 2; i += 1) {
+            await m.applyOp("translate", { dx: 1, dy: 0, dz: 0 });
+            await __quiet();
+        }
+        __hold((call) => call.url.endsWith("/api/workspace-storage/read")
+                      || call.url.endsWith("/api/workspace-storage/prune"));
+        const retract = m.undo();
+        await opened(m, "water");
+        __release();
+        const answer = await retract;
+        await __quiet();
+        console.log(JSON.stringify({
+            answer, elements: m.getElements(), at: m.state_index,
+        }));
+        """)
+    assert out["answer"] is None, "the Retract answered as though it landed"
+    assert out["elements"] == WATER["elements"], (
+        f"the Retract put the old structure back over the file just opened: "
+        f"{out['elements']}")
+    assert out["at"] == 0, f"the sequence stands at {out['at']}, past the load"
+
+
 def test_an_edit_lays_down_a_point_so_retract_steps_back_one_edit(app_at, pairs):
     """§ 11.2 (user, 2026-09-07): "every edit lays down a point of its own", so
     Retract always steps back exactly one edit.
@@ -1984,13 +2154,16 @@ def test_a_count_changing_edit_clears_the_selection(app_at, pairs):
     """A kept selection could point at an atom that is no longer the one it
     meant. A count-preserving transform leaves it alone — the two cases are
     genuinely different, which is why the operation table carries the effect on
-    atom count (§ 11.1).
+    atom count (§ 11.1).  And the point the edit lays holds the cleared
+    selection (§ 11.2: a state is the structure and the atoms picked out), so
+    a Retract back to it marks no atom nobody picked.
 
-    The road's water, two of its atoms picked: the Translate box moves them;
-    Delete removes them.
+    The road's water on the real workspace, two of its atoms picked: the
+    Translate box moves them; Delete removes them; one more move, taken back.
     """
     out = _run(app_at, pairs, """
-        const m = await loaded("water");
+        const m = createModel({ owner: "s", workspace: ws });
+        await opened(m, "water");
         m.selection.add([0, 1]);
 
         // Same count back: the selection survives.
@@ -2000,8 +2173,13 @@ def test_a_count_changing_edit_clears_the_selection(app_at, pairs):
         // One atom back where there were three: the count changed.
         m.selection.add([0, 1]);
         await m.applyOp("delete", {});
+        const afterShrink = m.selection.get();
+        await __quiet();
+        await m.applyOp("translate", { dx: 1, dy: 0, dz: 0 });
+        await __quiet();
+        await m.undo();
         console.log(JSON.stringify({
-            afterTransform, afterShrink: m.selection.get(),
+            afterTransform, afterShrink, backOnTheDelete: m.selection.get(),
             atoms: m.getElements(),
         }));
         """)
@@ -2013,6 +2191,11 @@ def test_a_count_changing_edit_clears_the_selection(app_at, pairs):
     assert out["afterShrink"] == [], (
         f"an edit that changed the atom count must clear the selection: "
         f"{out['afterShrink']}"
+    )
+    assert out["backOnTheDelete"] == [], (
+        f"a Retract to the delete's point marked atoms nobody picked -- the "
+        f"point kept the selection from before the delete: "
+        f"{out['backOnTheDelete']}"
     )
 
 
@@ -2128,30 +2311,41 @@ def test_an_empty_structure_raises_the_axis_triad(app_at, pairs):
     """`molview.md` § 6.7a.  An axis in an empty window is how you tell a
     working viewer from a broken one -- the thing a blank card cannot say.
 
-    The condition is *the window is empty*, not *which door emptied it*, so
-    it settles in `settle` -- the one place every change to the structure
-    passes through, and where the atom count becomes final.  The same shape
-    as `stores.js`'s "isolate turns itself off when the selection empties".
+    The condition is *a structure with no atoms put in*, not *which door put
+    it*, so it settles in `settle` -- the one place every change to the
+    structure passes through.
 
     This is the FIRST of the three ways to arrive empty; the other two are
     `clear()` (below) and reopening a page whose saved state is empty.
 
-    The road's water, every atom picked, Delete pressed.
+    Raised as the window ARRIVES empty, and never forced back: a person who
+    then hides it keeps it hidden through a change that leaves the structure
+    empty.
+
+    The road's water, every atom picked, Delete pressed; then the triad
+    hidden and a label written onto the empty structure.
     """
     out = _run(app_at, pairs, """
         const m = await loaded("water");
         const before = m.selection.switches().showAxis;
         m.selection.all(m.getElements().length);
         await m.applyOp("delete", {});
+        const after = m.selection.switches().showAxis;
+        m.selection.setSwitch("showAxis", false);
+        m.selection.writeLabel("device", "replace", []);
         console.log(JSON.stringify({
             before: before,
             atoms: m.getElements(),
-            after:  m.selection.switches().showAxis,
+            after: after,
+            hidden: m.selection.switches().showAxis,
         }));
     """)
     assert out["before"] is False, "the switch starts off (SWITCH_DEFAULTS)"
     assert out["atoms"] == [], f"the delete left atoms: {out['atoms']}"
     assert out["after"] is True, "an empty window did not raise the triad"
+    assert out["hidden"] is False, (
+        "the triad the person hid came back on a label write -- the viewer "
+        "overrode their choice")
 
 
 def test_deleting_every_atom_is_an_ORDINARY_EDIT(app_at, pairs):
@@ -2440,11 +2634,12 @@ def test_reopening_a_cleared_page_still_shows_the_triad(app_at, pairs):
 
 def _with_a_recorded_contract(extra=""):
     """The pair that carries the record its run leaves (:func:`recorded`),
-    opened for editing -- the record arrives the way it really does, in the
-    structure the load door answers (`structure.info`) -- then ``extra``,
-    then the two flags as the store holds them."""
+    opened for editing on the real workspace -- the record arrives the way it
+    really does, in the structure the load door answers (`structure.info`) --
+    then ``extra``, then the two flags as the store holds them."""
     return """
-        const m = await loaded("recorded");
+        const m = createModel({ owner: "s", workspace: ws });
+        await opened(m, "recorded");
         const had = m.info.get().calculation;
     """ + extra + """
         const c = (m.info.get() || {}).calculation || {};
@@ -2454,8 +2649,21 @@ def _with_a_recorded_contract(extra=""):
     """
 
 
+#: (when the flags are read, what is done first): straight after the write,
+#: and on the point the write laid -- an edit on top of it taken back.
+LABEL_FLAG_ROWS = [
+    ("after the write", 'm.selection.writeLabel("device", "replace", [0]);'),
+    ("on its point", 'm.selection.writeLabel("device", "replace", [0]);'
+                     ' await __quiet();'
+                     ' await m.applyOp("translate", { dx: 1, dy: 0, dz: 0 });'
+                     ' await __quiet(); await m.undo();'),
+]
+
+
+@pytest.mark.parametrize("when, done", LABEL_FLAG_ROWS,
+                         ids=[r[0] for r in LABEL_FLAG_ROWS])
 def test_a_label_write_flags_labels_and_not_the_structure(app_at, pairs,
-                                                         recorded):
+                                                         recorded, when, done):
     """A rename moves the regions, not the convergence.
 
     `molview.md` § 8.4a. The settings a later calculation inherits are the
@@ -2465,10 +2673,14 @@ def test_a_label_write_flags_labels_and_not_the_structure(app_at, pairs,
     would mean telling a person their mesh cutoff is suspect because they renamed an
     electrode, and on a junction renaming an electrode is routine.
 
+    The flag is part of the edit, so the point the edit lays carries it
+    (§ 8.4a: "both ride the pair like everything in the store") -- a Retract
+    back to it, or a reload, gives the flag with the label.
+
     The Label box writing ``device`` onto the first atom.
     """
-    out = _run(app_at, dict(pairs, recorded=recorded), _with_a_recorded_contract(
-        'm.selection.writeLabel("device", "replace", [0]);'))
+    out = _run(app_at, dict(pairs, recorded=recorded),
+               _with_a_recorded_contract(done))
     assert out["had"] is True, "the pair opened without its record"
     assert out["labels"] is True, "a label write set no flag at all"
     assert out["structure"] is False, (

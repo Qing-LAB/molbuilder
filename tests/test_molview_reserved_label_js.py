@@ -188,25 +188,3 @@ def test_an_op_sends_its_arguments_where_the_route_reads_them(app_at, pairs):
     )
 
 
-def test_a_second_edit_while_one_is_running_is_refused(app_at, pairs):
-    """One mutation in flight. Two responses applying over each other produce a
-    structure neither edit asked for, and a history state the user never saw."""
-    out = _run(app_at, pairs,
-        """
-        const m = await loaded("CO labelled");
-        // The first edit kept on its way (`_node_esm.served`'s hold): an
-        // order held, never timed.
-        __hold((call) => call.url.startsWith("/api/modify/"));
-
-        const first  = m.applyOp("translate", { dx: 1, dy: 0, dz: 0 });
-        const second = await m.applyOp("translate", { dx: 9, dy: 0, dz: 0 });
-        __release();
-        await first;
-        console.log(JSON.stringify({
-            secondRefused: second === null,
-            requests: globalThis.__calls.length,
-        }));
-        """
-    )
-    assert out["secondRefused"] is True, "a second edit interleaved with the first"
-    assert out["requests"] == 1, f"two edits reached the server: {out['requests']}"

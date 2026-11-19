@@ -426,7 +426,10 @@ export function init(viewer) {
                 return null;
             }
             if (!r) {
-                setEditStatus(`${words.doing} failed.`, "error");
+                /* NOTHING TO DO -- not a failure (molview.md § 6.9): another
+                 * change was on its way, or a load landed meanwhile, and the
+                 * viewer says nothing about it, so the status goes quiet. */
+                setEditStatus("");
                 return null;
             }
             /* THE COUNT IS READ OFF THE STRUCTURE THE DOOR HANDED BACK.
@@ -480,10 +483,9 @@ export function init(viewer) {
             });
             if (!go) return;
         }
-        if (d.clear() === false) {         // a read-only viewer says no
-            setEditStatus("This viewer is read-only.", "error");
-            return;
-        }
+        // This tab's viewer saves its structure, so "no" here is nothing to
+        // do -- a change is on its way (molview.md § 9.4) -- not a refusal.
+        if (d.clear() === false) return;
         /* THE PAGE'S OWN NOTE GOES TOO.  Which file is on the canvas is the
          * PAGE's state, not the viewer's (molview.md § 6.7), and it is
          * persisted. */

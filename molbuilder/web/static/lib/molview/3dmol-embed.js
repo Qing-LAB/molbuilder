@@ -52,7 +52,7 @@
 // by RELATIVE magnitude, the shaft thickening the same way, so the eye lands on
 // the atom under the most force — the relaxation hot spot.
 const FORCE_ARROW = {
-    maxColor:   "#ffc400",   // gold: the single largest arrow in the set
+    maxColor:   "#ffc400",   // gold: the largest force in the set
     radiusMin:  0.05,        // Å, at zero relative magnitude
     radiusSpan: 0.04,        // Å, added at the largest
 };
@@ -432,11 +432,10 @@ export function create(hostEl, opts) {
 
     /* THE RULER'S MARKS (§ 11.6), in pick order.
      *
-     * ITS OWN SHAPES, NOT `state.arrows`.  `redrawArrows` ranks every arrow it
-     * holds by length to decide which one gets the gold that marks the largest
-     * force (§ 1.1) -- so a measurement arrow in that bucket could be the
-     * longest and take the gold off the force that earned it.  Two overlays,
-     * two buckets, no interaction.
+     * ITS OWN SHAPES, NOT `state.arrows`.  The marks are keyed to ATOMS and
+     * re-placed here at every frame swap (§ 10.6); the arrows of
+     * `state.arrows` are a frame's, sent with each swap.  Two kinds of
+     * overlay, two buckets.
      *
      * A PICK THAT IS NOT ON SCREEN COSTS THE ARROWS, not their correctness.
      * Under isolate a picked atom may not be drawn; joining the two that ARE
@@ -450,7 +449,7 @@ export function create(hostEl, opts) {
         const pts = [];
         let allDrawn = true;
         for (const i of indices) {
-            const a = atoms[i];
+            const a = i === null ? null : atoms[i];    // null: a pick not drawn
             if (!a) { allDrawn = false; continue; }
             pts.push(a);
         }
@@ -513,11 +512,17 @@ export function create(hostEl, opts) {
         state.arrowLabels = clear(state.arrowLabels, "label");
         const arrows = state.arrows;
 
-        // Rank first: gold goes to the largest, everything else ramps against it.
+        /* RANK THE FORCES: gold goes to the largest force, and every force
+         * ramps against it.  An arrow that arrives with its own colour -- an
+         * axis triad -- is not a force: it is not ranked, so a triad longer
+         * than every force cannot take the gold off the force that earned it
+         * (§ 1.1); it keeps the colour it brought and is drawn at the full
+         * radius. */
+        const isForce = (a) => !a.color;
         let maxMag = 0, maxAt = -1;
         for (let i = 0; i < arrows.length; i++) {
             const a = arrows[i];
-            if (!a || !a.start || !a.end) continue;
+            if (!a || !a.start || !a.end || !isForce(a)) continue;
             const m = arrowMagnitude(a);
             if (m > maxMag) { maxMag = m; maxAt = i; }
         }
@@ -527,12 +532,10 @@ export function create(hostEl, opts) {
         for (let i = 0; i < arrows.length; i++) {
             const a = arrows[i];
             if (!a || !a.start || !a.end) continue;
-            const t = maxMag > 0 ? arrowMagnitude(a) / maxMag : 0;
-            // An arrow that arrives WITH a colour keeps it: the axis triad hands
-            // its own per-axis colours through this same door, and those are its
-            // to choose. Force arrows arrive without one and are coloured here.
-            const color = a.color
-                || (i === maxAt ? FORCE_ARROW.maxColor : rampColor(t));
+            const t = !isForce(a) ? 1
+                    : maxMag > 0 ? arrowMagnitude(a) / maxMag : 0;
+            const color = !isForce(a) ? a.color
+                : i === maxAt ? FORCE_ARROW.maxColor : rampColor(t);
             const radius = typeof a.radius === "number"
                 ? a.radius
                 : FORCE_ARROW.radiusMin + FORCE_ARROW.radiusSpan * t;

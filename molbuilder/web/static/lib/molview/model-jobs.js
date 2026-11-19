@@ -841,19 +841,14 @@ export const OPERATIONS = {
  * structure has changed.
  *
  * Handed: read the atoms, apply the structure the server sends back, and the
- * server's reader, `ask` (§ 7.3, § 4).
+ * server's reader, `ask` (§ 7.3, § 4).  One mutation in flight is the
+ * model's gate (`model.js`), which stands in front of this door and every
+ * other that changes the structure.
  */
 export function createEdits(handed) {
-    /* ONE MUTATION IN FLIGHT. A second edit started while one is running is
-     * REFUSED rather than interleaved: two responses applying over each other
-     * produce a structure neither edit asked for, and the history records a
-     * state the user never saw. */
-    let running = false;
-
     return async function applyOp(name, params) {
         const spec = OPERATIONS[name];
         if (!spec) throw new Error("applyOp: unknown operation '" + name + "'");
-        if (running) return null;
 
         /* NOTHING LOADED IS A STATE THE SERVER CAN ANSWER, not a reason to
          * stay silent: `slab` places from absolute coordinates and needs no
@@ -910,13 +905,7 @@ export function createEdits(handed) {
          *
          * The operation name IS the server route segment (§ 11.1): the delete
          * operation is `delete`, not `deleteAtoms`. */
-        let payload;
-        running = true;
-        try {
-            payload = await postJson(handed.ask, "/api/modify/" + name, body);
-        } finally {
-            running = false;                    // even when the edit was refused
-        }
+        const payload = await postJson(handed.ask, "/api/modify/" + name, body);
         const applied = structureFromServer(payload);
         if (!applied) {
             throw new Error("The server answered, but not with a structure.");
@@ -925,14 +914,15 @@ export function createEdits(handed) {
          * The check runs on every op because it lives in the return path, not
          * in the ops -- so an op that says nothing has been checked and had
          * nothing to say, which is a different thing from not being checked. */
-        handed.apply(applied.structure, applied.coordinates,
+        const adopted = handed.apply(applied.structure, applied.coordinates,
                      countChanged(structure, applied.structure),
                      applied.notices,
                      /* WHETHER THIS ONE IS WORTH COMING BACK TO -- the row's
                         own declaration, carried to the gate rather than
                         decided there. */
                      spec.checkpoint !== false);
-        return applied.structure;
+        // Not adopted (the model's gate, § 9.4): nothing happened.
+        return adopted ? applied.structure : null;
     };
 }
 
@@ -988,7 +978,9 @@ export function createCellEdit(handed) {
         /* The answer's notices ride WITH the block it describes (§ 6.8). They
          * are passed on verbatim -- the server's own words, its own levels --
          * because rewording a warning here would put a second author on it. */
-        handed.applyCell(block, read.notices || [], read.structure.info);
+        if (!handed.applyCell(block, read.notices || [], read.structure.info)) {
+            return null;       // not adopted (the model's gate, § 9.4)
+        }
         return block;
     };
 }
