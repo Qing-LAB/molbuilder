@@ -87,28 +87,31 @@
      * THE PAGE'S OWN NOTE.  The viewer tracks contents, not files
      * (`molview.md` § 6.7) -- it never knew where anything came from or went
      * to.  `structurePage` keeps it because `structurePage` is what performed
-     * the save.  It drives the readout; it is NOT a destination. */
+     * the save.  It is NOT a destination. */
     function targetPath() {
-        _lazyResolve();
-        var snap = (_structurePage && _structurePage.getCanvasSnapshot)
-            ? _structurePage.getCanvasSnapshot() : null;
+        var snap = _snapshot();
         return (snap && snap.lastSaveTo) || null;
     }
 
-    /* A name to suggest in the dialog: what this page last saved as, else the
-     * file it loaded from, else nothing.  Only a SUGGESTION -- the door's
-     * dialog is where the name is decided, and an empty box is a fine
-     * starting point. */
+    /* THE NAME A SAVE WRITES BY DEFAULT, without its extension: the file
+     * this page last saved, else the one it loaded -- the page's own note
+     * (`getCanvasSnapshot`) -- the readout's *Target* and the dialog's
+     * suggestion alike.  A save writes `<name>.xyz` with its sidecar,
+     * whatever was loaded -- a `.pdb` is read, never written, and holds no
+     * sidecar (`model/structure.md` § 2.4).  Only a SUGGESTION in the
+     * dialog, where the name is decided. */
     function _stem() {
-        var last = targetPath();
-        var from = (_structurePage
-                    && typeof _structurePage.getLoadedFrom === "function")
-            ? _structurePage.getLoadedFrom() : null;
-        // The name without its extension (the one path door): a save writes
-        // `<name>.xyz` with its sidecar, whatever was loaded -- a `.pdb` is
-        // read, never written, and holds no sidecar (`model/structure.md`
-        // § 2.4).
-        return root.molbuilder.path.stem(last || from || "");
+        var snap = _snapshot();
+        return root.molbuilder.path.stem(
+            (snap && (snap.lastSaveTo || snap.loadedFrom)) || "");
+    }
+
+    /* THE PAGE'S OWN NOTE, read through its one door, or null before the
+     * page is bound. */
+    function _snapshot() {
+        _lazyResolve();
+        return (_structurePage && _structurePage.getCanvasSnapshot)
+            ? _structurePage.getCanvasSnapshot() : null;
     }
 
     function save() {
@@ -205,15 +208,17 @@
             button.disabled = _inFlight || !hasContent;
 
             if (!readout) return;
-            var path  = targetPath();
+            var stem  = _stem();
             // EDITED SINCE WRITTEN: the page's own note (tabs.md § 6), never
             // the viewer's timeline flag, which every edit clears.
-            var snap  = (_structurePage && _structurePage.getCanvasSnapshot)
-                ? _structurePage.getCanvasSnapshot() : null;
+            var snap  = _snapshot();
             var dirty = !!(snap && snap.isDirty);
-            if (path) {
+            if (stem) {
+                // ...THE NAME A SAVE WRITES, under the pairing rule's suffix
+                // (the projects door's, the server's rule).
                 readout.textContent = (dirty ? "Unsaved — " : "")
-                                    + "Target: " + _basename(path);
+                    + "Target: " + stem
+                    + root.molbuilder.projects.pairedSuffix();
             } else if (hasContent) {
                 readout.textContent = "Not saved yet";
             } else {

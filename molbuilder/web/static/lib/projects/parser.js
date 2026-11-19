@@ -7,6 +7,8 @@
  *
  *   * openMolecule(viewer, path) -> viewer.data.installMolecule({path}) -> POST /api/build/load
  *     (the server reads the .xyz + paired .molstruct.json via StructureCodec.load).
+ *   * notLoaded(path, why) -- the one sentence of a load that did not land;
+ *     NO_VIEWER -- why, where the 3-D viewer did not start.
  *
  * Saving a structure is `projects.molviewFiles.save("project", ...)`, which asks
  * WHERE and owns the overwrite flow (`tabs.md` § 6).
@@ -17,6 +19,7 @@
  *
  * Contract + map: docs/model/structure.md.
  */
+import { basename } from "/static/lib/path-utils.js";
 
 /* THE VIEWER IS PASSED IN, by whoever mounted it.
  *
@@ -98,6 +101,17 @@ export async function openMolecule(viewer, path, opts) {
   return { ok: true, payload: payload };
 }
 
+/* THE WORDS OF A LOAD THAT DID NOT LAND, for every loader of a structure
+ * file the person picks: the file by its name, then why, in the reader's
+ * words. */
+export function notLoaded(path, why) {
+  return basename(String(path || "")) + " was not loaded: " + why;
+}
+
+/* WHY, WHERE THE 3-D VIEWER DID NOT START: nothing to load into -- MolView's
+ * own card says what stopped it (no WebGL, a panel narrower than its floor). */
+export const NO_VIEWER = "the 3-D viewer did not start -- its card says why";
+
 // The format-aware sub-namespace, mounted at window.molbuilder.projects.parser by the
 // sidebar entry point (projects-sidebar.js).
-export const parser = { openMolecule };
+export const parser = { openMolecule, notLoaded, NO_VIEWER };

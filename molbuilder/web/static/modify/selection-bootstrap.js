@@ -314,7 +314,7 @@ import { outcome } from "/static/lib/validation-findings.js";
                     body:   Object.assign({ path: path, restore: true }, which),
                 });
                 if (!a.ok) {
-                    say(a.error, "error");
+                    say(projects.parser.notLoaded(path, a.error), "error");
                     return null;
                 }
                 return a.body;
@@ -350,10 +350,23 @@ import { outcome } from "/static/lib/validation-findings.js";
                     confirmLabel: "Clear current view",
                 });
             }
+            // ONE FRAME OF A FILE OF SEVERAL is said so to the gate, whose
+            // note then names no file for it (tabs.md § 6).
             const gate = await page.loadIntoCanvas(
-                { structure: body.structure }, { file: path },
+                { structure: body.structure },
+                { file: path,
+                  frame: body.n_frames > 1 ? chosen : undefined },
                 { replace: replace });
-            if (!gate || gate.ok !== true) return;
+            /* THE GATE'S ANSWER, as every panel reads it (tabs.md § 2): an
+             * add not started puts nothing on the canvas and no error is
+             * said; a refusal or a lost connection is, in its words
+             * (ui-contract.md § 12). */
+            if (!gate.ok) {
+                if (gate.error) {
+                    say(projects.parser.notLoaded(path, gate.error), "error");
+                }
+                return;
+            }
             _refreshLoadUI();
             /* SAY WHAT LANDED, and say which of the two things happened. The
              * count comes from the viewer, which is the thing that holds it. */

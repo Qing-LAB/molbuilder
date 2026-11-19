@@ -64,6 +64,7 @@
      * newer selection's. */
     let shownAsks = null;
     let exportSeq = 0;
+    let exportAt = null;      // the selection the bar on screen was decided for
     //: What is on screen right now -- the comparison the re-announce guard
     //: in `_onSelectionChange` makes.  `currentHandle` alone cannot answer
     //: it: it says something is mounted, not which file it is showing.
@@ -554,9 +555,15 @@
             els.actions.replaceChildren();
             return;
         }
-        proj.exportBar(path, { asks: () => (shownAsks ? shownAsks() : {}) })
+        proj.exportBar(path, { asks: () => (shownAsks ? shownAsks() : {}),
+                               at: () => exportAt })
             .then((bar) => {
                 if (seq !== exportSeq) return;
+                // THE SELECTION ON SCREEN, which the bar exports, read as a
+                // button is pressed (`projects.exportBar`'s ``at``) -- set
+                // with the bar this selection's offer decided, whichever it
+                // is, so no bar exports another calculation's selection.
+                exportAt = path;
                 const shown = els.actions.firstElementChild;
                 const same = bar && shown && bar.dataset.calculation
                     && shown.dataset.calculation === bar.dataset.calculation;

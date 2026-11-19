@@ -57,7 +57,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Set
 
 from flask import Blueprint, current_app, jsonify, request
 from ._shared import err
@@ -143,9 +143,8 @@ def _mask(url: str) -> str:
 def _usable() -> Set[str]:
     """The channel names the MONITOR accepts -- one reading of the file.
 
-    The page's only source of truth about whether a channel works.  Kept as
-    its own function so `_state` can read once and hand the answer to both
-    consumers rather than each asking again.
+    The page's only source of truth about whether a channel works, read
+    once for every row (`_rows`).
     """
     from ...monitor import load_channels
     return set(load_channels())
@@ -185,17 +184,20 @@ def _row(name: str, spec: Dict[str, Any],
         # reader a job runs -- not re-derived here.  A page that cannot be
         # trusted about which channels work is worse than no page.
         "usable":    usable,
+        # ...AND WHY NOT, in the monitor reader's words, on the channel's own
+        # row (`this-machine.md` § 3); None for a channel it sends to.
+        "skipped":   None if usable else _why_skipped(name, spec),
     }
 
 
-def _rows(usable: Optional[Set[str]] = None) -> List[Dict[str, Any]]:
+def _rows() -> List[Dict[str, Any]]:
     """Every STORED channel, each marked with whether the monitor accepts it.
 
     Both halves are needed and neither alone is honest: `load_channels` alone
     would hide a broken channel the operator can see in their own file, and
     `_stored` alone cannot say whether it works.
     """
-    usable = _usable() if usable is None else usable
+    usable = _usable()
     return [_row(n, s if isinstance(s, dict) else {}, usable=n in usable)
             for n, s in sorted(_stored().items())]
 
@@ -215,15 +217,13 @@ def _state() -> Dict[str, Any]:
         file_mode = oct(path.stat().st_mode & 0o777)
     except OSError:
         file_mode = ""
-    # ONE READING, PASSED DOWN to `_rows` and `_file_note`: one answer,
-    # shared.
-    usable = _usable()
-    return {"path": str(path), "channels": _rows(usable),
-            "problem": _file_note(usable), "mode": file_mode}
+    return {"path": str(path), "channels": _rows(),
+            "problem": _file_note(), "mode": file_mode}
 
 
-def _file_note(usable: Optional[Set[str]] = None) -> str:
-    """What is wrong with the file, in words, or ``""``.
+def _file_note() -> str:
+    """What is wrong with THE FILE, in words, or ``""`` -- a channel the
+    monitor skips is said on its own row (:func:`_row`).
 
     A broken file and no file both mean nothing is sent and look identical
     from outside.  Saying which is most of what this page is worth.
@@ -240,19 +240,6 @@ def _file_note(usable: Optional[Set[str]] = None) -> str:
             return ("this is the old single-destination file — save a "
                     "channel below and it becomes a named one")
         return "needs a 'channels' object"
-    # PER-CHANNEL, FROM THE MONITOR'S READER.  The checks above are file-level
-    # and judge the file as read, because `load_channels` returning {} does
-    # not say WHY.  Per channel it does know, so its rules are not
-    # re-implemented here.
-    usable = _usable() if usable is None else usable
-    stored = _stored()
-    skipped = sorted(set(stored) - usable)
-    if skipped:
-        return ("the monitor will skip "
-                + "; ".join(f"{n!r} — {_why_skipped(n, stored[n])}"
-                            for n in skipped)
-                + ".  Nothing is sent to a skipped channel and the monitor "
-                  "log says why.")
     return ""
 
 

@@ -86,7 +86,7 @@ function _benchVerdict(kind, nPoints) {
 }
 
 function machineAnswers(name) {
-    return (_sweep || []).some(i => i.name === name && i.machine_answers);
+    return (SWEEP.current() || []).some(i => i.name === name && i.machine_answers);
 }
 
 /* The second line under a row's name — DERIVED, never a table here.
@@ -97,7 +97,7 @@ function machineAnswers(name) {
  * facts read together, and there is nothing to keep in step.
  */
 function rowNote(name) {
-    const it = (_sweep || []).find(i => i.name === name);
+    const it = (SWEEP.current() || []).find(i => i.name === name);
     if (!it) return "";
     return it.machine_answers ? "a shape to try" : "yours to choose";
 }
@@ -152,7 +152,7 @@ function el(tag, attrs, ...kids) {
     return n;
 }
 
-const { codeWords } = window.molbuilder.dom;
+const { codeWords, wordsText } = window.molbuilder.dom;
 
 function setState(kind, title, body) {
     $("ts-state").setAttribute("data-state", kind);
@@ -180,6 +180,13 @@ function showPath(dir) {
             { class: last ? "ts-path-here" : "ts-path-seg" }, seg));
         if (!last) host.appendChild(el("span", { class: "ts-path-sep" }, "/"));
     });
+}
+
+/* A FILE OF THE RAIL, BY ITS NAME: the folder answer's, or a dash where
+ * it names none. */
+function nameFile(id, name) {
+    const named = $(id + "-name");
+    if (named) named.textContent = name || "\u2014";
 }
 
 function markFile(id, exists, presentText) {
@@ -286,15 +293,21 @@ function renderStages(task) {
         // gets an empty list, and a row draws no menu rather than one that
         // would add columns `prep` refuses.
         let preset = null;
-        if ((_presets || []).length) {
+        const presets = PRESETS.current() || [];
+        if (PRESETS.failed) {
+            // A MENU THAT DID NOT LOAD says so, never drawn as none.
+            preset = el("select", { class: "ts-preset", disabled: "",
+                                    "aria-label": "presets for " + name },
+                        el("option", { value: "" }, wordsText(PRESETS.failed)));
+        } else if (presets.length) {
             preset = el("select", { class: "ts-preset", id: _rowId(i, "preset"),
                                     "aria-label": "apply a preset to " + name });
             preset.appendChild(el("option", { value: "" }, "preset\u2026"));
-            for (const ps of _presets) {
+            for (const ps of presets) {
                 preset.appendChild(el("option", { value: String(ps.tier) }, ps.name));
             }
             preset.addEventListener("change", () => {
-                const ps = _presets.find((x) => String(x.tier) === preset.value);
+                const ps = presets.find((x) => String(x.tier) === preset.value);
                 preset.value = "";
                 if (ps) setRowValues(i, ps.values, "the preset");
             });
@@ -602,13 +615,22 @@ let _fitSeq   = 0;
  * here is cleared without anyone remembering.
  *
  * Deliberately NOT in here: `_machine` (a choice about the box, not the
- * folder) and the engine-keyed caches `_cols` / `_presets` / `_sweep`
- * (which invalidate on their own `*Key`).  Keeping that boundary visible
+ * folder) and the engine-keyed lists `COLUMNS` / `SWEEP` / `PRESETS`
+ * (`keyedList`, held by their own key).  Keeping that boundary visible
  * is the point -- "no state of its own" forbids remembering a FOLDER's
  * facts, not caching the engine's vocabulary.
  * ===================================================================== */
 function freshFolderState() {
     return {
+        /* What THIS FOLDER's template answers, which is not the same thing
+         * as what the catalogue recommends.  `stages.md` § 6.2: a stage that
+         * sets nothing uses the TEMPLATE's value -- so the k-grid a person
+         * chose in the parameter tab is the number an empty cell must name
+         * here, and the catalogue default is only the answer when the
+         * template is silent.  From the folder answer, once it is the
+         * folder's still shown (`readFolder`). */
+        tmpl:         { name: null, values: Object.create(null),
+                        said: Object.create(null) },
         runs:         {},         // stage name -> its runs launched (T5)
         walks:        {},         // stage -> a run of points' one job, prep's words
         extraRunRows: new Map(),  // rows added to a run card, per stage
@@ -632,7 +654,7 @@ function freshFolderState() {
         writtenOpen:  new Set(),  // the file groups opened in *What this calculation writes*
         readAs:       null,       // each record as the folder answer read it -- Save's compare (§ 8)
         plan:         null,       // the last prep-plan answer painted -- repainted when the need comes
-        need:         null,       // the memory door's last answer: {key, stages, largest} (job-request.md § 3.1a)
+        need:         null,       // the memory door's last answer: {key, stages, largest, error} (job-request.md § 3.1a)
         needAsking:   null,       // the key a need ask is in flight for
         needSeq:      0,          // the newest need ask; an older answer is dropped
         proposing:    false,      // a hand-over opened, its proposal not landed: Save held (§ 9a)
@@ -778,10 +800,6 @@ function extraRunRows(stage) {
  *
  * `mem` is deliberately not here.  A trial and a run hold about the same
  * amount, so a second home for it would be a second place to look. */
-/* THE RUN'S OWN TWO ASKS -- `time` and `domain` -- with their words, as the
- * sweepable door serves them (`lane_asks`, from `job_request.LANE_ASK_ROWS`; the
- * page kept its own table until 2026-10-18).  Empty until the door answers. */
-let _laneAsks = [];
 
 /** The rows that STAND on every run card (`task-setup.md` § 6.2b): the
  *  catalogue's run settings, every setting the bench
@@ -796,7 +814,7 @@ let _laneAsks = [];
 function standingRows() {
     const out = [];
     const add = (n) => { if (out.indexOf(n) === -1) out.push(n); };
-    for (const it of (_sweep || [])) {
+    for (const it of (SWEEP.current() || [])) {
         if (it) add(it.name);
     }
     const req = _request || {};
@@ -876,10 +894,10 @@ function dropRunRow(name, members) {
  *  the run's own asks; a name none of those holds after them, by name. */
 function runRowOrder(names) {
     const rank = new Map();
-    (_sweep || []).forEach((it, i) => {
+    (SWEEP.current() || []).forEach((it, i) => {
         if (it && it.name) rank.set(it.name, i);
     });
-    _laneAsks.forEach((a, i) => rank.set(a.name, 2000 + i));
+    _laneAsks().forEach((a, i) => rank.set(a.name, 2000 + i));
     const at = (n) => (rank.has(n) ? rank.get(n) : 3000);
     return names.slice().sort((x, y) => at(x) - at(y) || x.localeCompare(y));
 }
@@ -1028,7 +1046,7 @@ function runRow(task, name, members, opts) {
     // setting has no template value; a launch value none holds is not
     // stated, which prep refuses; and a row no stage of the card reads,
     // nothing.
-    const lane = _laneAsks.find((a) => a.name === name);
+    const lane = _laneAsks().find((a) => a.name === name);
     const stated = (block) => ((_request && _request[block]) || {})[name];
     const from = every ? undefined : stated("execution");
     const queued = lane ? stated("allocation") : undefined;
@@ -1155,9 +1173,9 @@ function addSetting(task, members, names, card) {
     // which are not sweepable and never will be (a benchmark that swept its
     // own wall clock would be measuring the queue), but which a RUN owns
     // separately from the bench (`job-request.md` § 3.2a).
-    fillPicker(sel, (_sweep || []).filter((it) => it && members.some(
-                   (m) => readsHere(it.name, m))).concat(_laneAsks), names,
-               "every setting is already listed");
+    fillPicker(sel, (SWEEP.current() || []).filter((it) => it && members.some(
+                   (m) => readsHere(it.name, m))).concat(_laneAsks()), names,
+               SWEEP.failed || "every setting is already listed");
     return el("div", { class: "ts-actions" }, sel, go);
 }
 
@@ -1286,7 +1304,8 @@ function renderMachine(task) {
      * `mpi_np` into "MPI ranks (np)" is a separate fetch, and when it fails
      * the honest thing is a card that works and admits what it lacks. */
     let note = $("ts-machine-labels-note");
-    if (_vocabFailed) {
+    const raw = COLUMNS.failed || SWEEP.failed;
+    if (raw) {
         if (!note) {
             note = el("p", { class: "status warn",
                              id: "ts-machine-labels-note" }, "");
@@ -1294,7 +1313,7 @@ function renderMachine(task) {
         }
         // THE READER'S WORDS FOR WHY, through the one status writer.
         window.molbuilder.status.set(
-            note, "Showing raw setting names — " + _vocabFailed + ".",
+            note, "Showing raw setting names — " + raw + ".",
             "warn");
         note.hidden = false;
     } else if (note) {
@@ -1517,6 +1536,23 @@ function _resetPerFolderState(keep) {
         if (box) box.value = "";
     }
     { const b = $("ts-ask-gpu-binding"); if (b) b.checked = true; }
+    /* THE FILES THE RAIL NAMES ARE THIS FOLDER'S: the folder answer names
+     * them (`task_name`, `structure_pair`); until it has, the page spells
+     * none of them (:func:`nameFile`). */
+    /* ...THE SAME FOLDER, READ AGAIN, keeps them: what it shows is
+     * repainted when its answer lands. */
+    if (keep) {
+        _fs.tmpl = was.tmpl;
+    } else {
+        { const card = $("ts-files-card"); if (card) card.hidden = false; }
+        for (const id of ["ts-f-task", "ts-f-req", "ts-f-tmpl", "ts-f-struct",
+                          "ts-f-side"]) {
+            markFile(id, false, "");
+            nameFile(id, null);
+            const row = $(id).closest("li");
+            if (row) row.hidden = false;
+        }
+    }
     /* THE PREP PLAN AND THE FILE LIST ARE THIS FOLDER'S TOO: a refresh the
      * last folder scheduled is cancelled, one in flight is discarded, and
      * both cards stay hidden until this folder's description paints them. */
@@ -1618,20 +1654,6 @@ async function readFolder(projects, dir, opts) {
     if (!dir) {
         _mode = "empty";
         hideDescriptionCards();
-        // NO FOLDER, NO NAMES: the files are named by the folder answer
-        // once one is open (`task_name`, `structure_pair`); the page spells
-        // none of them.
-        for (const [id, name] of [["ts-f-task", "\u2014"],
-                                  ["ts-f-req", "\u2014"],
-                                  ["ts-f-tmpl", "\u2014"],
-                                  ["ts-f-struct", "\u2014"],
-                                  ["ts-f-side", "\u2014"]]) {
-            markFile(id, false, "");
-            const named = $(id + "-name");
-            if (named) named.textContent = name;
-            const row = $(id).closest("li");
-            if (row) row.hidden = false;
-        }
         setState("empty", "Nothing selected",
                  "Pick a calculation folder in the sidebar to read its description.");
         await setBuffers({ task: "", request: "" }, { fromDisk: true });
@@ -1645,10 +1667,19 @@ async function readFolder(projects, dir, opts) {
      * answer is what makes that checkable -- `calcdir.json`'s rule
      * (project-layout.md § 1.4a) on the wire. */
     if (dir !== _dir) return;
+    /* ITS TEMPLATE'S VALUES, the folder's still shown (§ 5.1: an empty cell
+     * shows them) -- set past the check above, so a late answer for a
+     * folder left sets nothing. */
+    const tmpl = (answer.ok && answer.body.template) || {};
+    if (tmpl.ok) _fs.tmpl = { name: tmpl.name, values: tmpl.values || {},
+                              said: tmpl.said || {} };
     /* NO ANSWER FOR THE FOLDER STILL SELECTED: said in the server's words,
      * and nothing of the last folder left on the page for Save to write
      * here (§ 6.2b: a check that cannot run says so). */
     if (!answer.ok) {
+        // ...AND ITS FILES ARE NOT LISTED: nobody read them (§ 2.1, a card
+        // with nothing to show for the folder is hidden).
+        $("ts-files-card").hidden = true;
         await refuseFolder("This folder could not be read", answer.error);
         return;
     }
@@ -1685,13 +1716,13 @@ async function readFolder(projects, dir, opts) {
     const names = new Set(said.files || []);
 
     // THE DESCRIPTION'S FILE NAME is the folder answer's (`task_name`).
-    if (said.task_name) $("ts-f-task-name").textContent = said.task_name;
+    nameFile("ts-f-task", said.task_name);
     const here = (rec) => readerRefused(rec)
         ? "already here — its reader refuses it, so Save is held"
         : "already here — saving would update it";
     markFile("ts-f-task", !!taskText, here(said.description));
     // ...AND THE JOB REQUEST'S (`request_name`), beside it.
-    if (said.request_name) $("ts-f-req-name").textContent = said.request_name;
+    nameFile("ts-f-req", said.request_name);
     markFile("ts-f-req", !!requestText, here(said.request));
     for (const [which, name] of [["task", said.task_name],
                                  ["request", said.request_name]]) {
@@ -1704,7 +1735,7 @@ async function readFolder(projects, dir, opts) {
     markFile("ts-f-tmpl", !!templateName, "already here — Save leaves it alone");
     /* WRITTEN EITHER WAY: an absent name is a value to render, not a reason
      * to skip rendering. */
-    $("ts-f-tmpl-name").textContent = templateName || "";
+    nameFile("ts-f-tmpl", templateName);
 
     /* THE STRUCTURE, by the name the description itself gives it.  Globbing
      * for a `.xyz` would answer a different question — "is there a geometry
@@ -1742,8 +1773,8 @@ async function readFolder(projects, dir, opts) {
     const pair = said.structure_pair || {};
     const structName = pair.geometry || "";
     const sideName = pair.sidecar || "";
-    $("ts-f-struct-name").textContent = structName;
-    $("ts-f-side-name").textContent = sideName;
+    nameFile("ts-f-struct", structName);
+    nameFile("ts-f-side", sideName);
     markFile("ts-f-struct", structName && names.has(structName),
              "here — " + (ref.atoms || "?") + " atoms");
     markFile("ts-f-side", sideName && names.has(sideName),
@@ -1915,7 +1946,7 @@ async function readFolder(projects, dir, opts) {
     await refreshPickers();
     // Through the ONE accessor -- `String({name})` is "[object Object]",
     // which 400s the sweepable fetch.
-    await loadSweepChoices(_handoverEngine(task));
+    await loadSweepChoices(task);
     // MOVED ON WHILE IT LOADED: every await above can land after another
     // folder was opened; this folder's description must not paint, or set
     // the baseline Save compares against, under that folder's path.
@@ -2011,7 +2042,7 @@ async function syncFromModel() {
     renderStages(_task);
     // THE MACHINE ROWS TOO: every bench verb -- addPoint, removePoint,
     // removeSetting -- ends here.
-    await loadSweepChoices(_handoverEngine(_task || {}));
+    await loadSweepChoices(_task);
     renderMachine(_task);
     renderNext(_task);
     schedulePlan(_task);
@@ -2196,37 +2227,141 @@ function renderShared(rows) {
 
 /* ---------- the pickers: what may be added, from the catalogue ---------- */
 
-let _cols = null;       // the columns' records (`_shared.item_record`)
-let _colsKey = null;
+/* THE LISTS THE PAGE ASKS FOR AN (engine, kind) -- the columns, the
+ * sweepable settings, the tier presets, the fields a report can carry --
+ * each held by ONE RULE (`task-setup.md` § 6.1; :func:`keyedList`). */
+const _byKind = (path) => (engine, kind) => path + "?"
+    + new URLSearchParams({ engine: engine, calculation: kind });
+const COLUMNS = keyedList("column list", _byKind("/api/task-setup/columns"),
+                          (body) => body.items);
+const SWEEP = keyedList("list of sweepable settings",
+                        _byKind("/api/task-setup/sweepable"),
+                        (body) => body.items);
+// NO PRESETS offers no tier; the settings' names do not hang on it.
+const PRESETS = keyedList("list of tier presets",
+                          _byKind("/api/task-setup/presets"),
+                          (body) => body.presets);
+// NOTHING OFFERED on a malformed answer, rather than a guess: a card that
+// invented the list would be a second copy of it.
+//: ...``null`` until the server has answered -- NOT KNOWN, which is not
+//: the same as "none": a card that took an unanswered question for an
+//: empty list would rewrite a description's `notify.report` to `[]`.
+const REPORT_FIELDS = keyedList(
+    "list of the fields a report can carry",
+    (engine, kind) => _byKind("/api/notify/report-fields")(
+        engine.toLowerCase(), kind),
+    (body) => (Array.isArray(body.fields) ? body.fields : null));
+
 /* How this kind names its rungs' roles, handed with the columns
  * (`template.stage_role_rule`, plan § 5w K4): `{named, otherwise}`, or null
- * for a kind without roles.  Read by `rolesOf`, and by the pickers to
- * know whether the kind has roles at all. */
-let _roleRule = null;
-const _colsInflight = {};   // key -> the pending fetch (see loadColumnChoices)
+ * for a kind without roles -- read off the columns' held answer, so another
+ * kind's is never read.  Read by `rolesOf`, and by the pickers to know
+ * whether the kind has roles at all. */
+function _roleRule() {
+    const a = COLUMNS.answer();
+    return (a && a.roles) || null;
+}
+
+/* THE RUN'S OWN TWO ASKS -- `time` and `domain` -- with their words, as the
+ * sweepable door serves them (`lane_asks`, from `job_request.LANE_ASK_ROWS`;
+ * the page kept its own table until 2026-10-18), off its held answer: none
+ * until the door answers. */
+function _laneAsks() {
+    const a = SWEEP.answer();
+    return (a && Array.isArray(a.lane_asks)) ? a.lane_asks : [];
+}
+
 /* name -> the catalogue's own item, so the table can show what a parameter
  * DEFAULTS to and what it is for.  The catalogue already carries `default`,
  * `unit` and `help`; a second copy here would be the drift the one-source rule
  * exists to prevent, so this is a lookup into what the schema returned. */
 const _meta = Object.create(null);
-let _sweep = null;      // the ones a benchmark may sweep
-//: Why a list carrying the settings' labels failed to load this page-load
-//: -- the reader's words for the first that failed (`_labelsFailed`) -- or
-//: false.  The machine card's note says the names are raw, and why.
-let _vocabFailed = false;
-let _sweepKey = null;
-const _sweepInflight = {};  // key -> the pending fetch
 
-/** A LIST THAT CARRIES THE SETTINGS' LABELS did not load: the first such
- * reason kept, for the machine card to say why its names are raw.  A list
- * of labels is a vocabulary, and a page that has the substance shows it with
- * the raw names. */
-function _labelsFailed(answer, what) {
-    if (!answer.ok && !_vocabFailed) {
-        _vocabFailed = "the " + what + " did not load: " + answer.error;
-    }
+/* ONE LIST PER QUESTION OF AN (engine, kind), held by one rule
+ * (`task-setup.md` § 6.1): one fetch per key, the one in flight what every
+ * caller for its key awaits; the answer held answered only for the key asked
+ * last, so a hand-over of another engine or kind is never offered the last
+ * folder's list, nor what that list's answer handed beside it; and a list
+ * that did not load -- or whose answer does not read -- said where it is
+ * picked from (``failed``) and asked for again, never held as the list
+ * (ui-contract.md § 12).  ``name`` its words, ``url(engine, kind)`` the
+ * question, ``read(body)`` its list, or null for an answer that does not
+ * read.  Each list says when what it holds for the key asked last
+ * changes (``onChange``). */
+function keyedList(name, url, read) {
+    let held = null;          // {items, body}: the answer for ``heldKey``
+    let heldKey = null;
+    let newest = null;        // the key asked last
+    const inflight = Object.create(null);
+    const said = (why) => "the " + name + " did not load: " + why;
+    const mine = () => heldKey !== null && heldKey === newest;
+    const heard = [];
+    const list = {
+        name: name,
+        /* ``fn()`` asked each time what the list holds for the key asked
+         * last changes. */
+        onChange: (fn) => { heard.push(fn); },
+        /* The list for the key asked last -- null while it is asked, when
+         * it did not load, and when nothing is asked. */
+        current: () => (mine() ? held.items : null),
+        /* ...and the whole answer it came in, for what it hands beside. */
+        answer: () => (mine() ? held.body : null),
+        /* Why the list for the key asked last did not load, or null. */
+        failed: null,
+        async load(engine, kind) {
+            // NOTHING DESCRIBED, NOTHING ASKED: with no description or
+            // hand-over open, the page knows no engine and no kind, the
+            // server refuses a request that states none, and the page holds
+            // no list.
+            if (!engine || !kind) {
+                newest = null;
+                list.failed = null;
+                return [];
+            }
+            const key = engine + ":" + kind;
+            if (key !== newest) list.failed = null;
+            newest = key;
+            if (inflight[key]) return inflight[key];
+            if (heldKey === key) return held.items;
+            const p = (async () => {
+                const got = await ask(url(engine, kind));
+                const items = (got.ok && got.body) ? read(got.body) : null;
+                const why = !got.ok ? got.error
+                    : (items == null ? "its answer does not read" : null);
+                if (newest !== key) return items || [];   // a newer key owns the slot
+                const was = [list.current(), list.failed];
+                list.failed = why ? said(why) : null;
+                held = why ? null : { items: items, body: got.body };
+                heldKey = why ? null : key;
+                if (list.current() !== was[0] || list.failed !== was[1]) {
+                    heard.forEach((fn) => fn());
+                }
+                return items || [];
+            })();
+            inflight[key] = p;
+            try { return await p; } finally { delete inflight[key]; }
+        },
+    };
+    return list;
 }
 
+/* THE KEY THE LISTS ARE ASKED BY: the open description's engine and kind
+ * -- ``task`` where a caller holds the one it draws, else the page's; on a
+ * hand-over, the hand-over's (`_handoverEngine`, `_kindOf`). */
+function _openKey(task) {
+    const t = task || _task;
+    return [_handoverEngine(t), (t && t.calculation) || _kindOf()];
+}
+
+/* WHAT IS DRAWN FROM THE LISTS IS REDRAWN WHEN ONE CHANGES -- one that did
+ * not load, asked again and loaded, or the reverse: the stage table (its
+ * columns' widgets, its rows' preset menus) and the machine card (its
+ * labels, and whether it says they are raw). */
+function _listsChanged() {
+    if (!_task) return;
+    renderStages(_task);
+    renderMachine(_task);
+}
 
 /** Every parameter that may become a column.
  *
@@ -2235,46 +2370,15 @@ function _labelsFailed(answer, what) {
  * may not hold them at all.  The server answers that from the catalogue —
  * there is no list here and none there.
  */
-async function loadColumnChoices(engine) {
-    // The folder's KIND narrows the columns (template.md § 6.3's sibling
-    // rule) -- a vibration description's picker offers the vibration
-    // items beside the shared ones; an optimization's never sees them.
-    // The cache is keyed by (engine, kind).
-    const kind = _kindOf();
-    // NOTHING DESCRIBED, NOTHING ASKED: with no description or hand-over
-    // open, the page knows no engine and no kind, and the server refuses a
-    // request that states none.
-    if (!engine || !kind) return [];
-    const key = engine + ":" + kind;
-    if (_cols && _colsKey === key) {
-        // REFILL `_meta` EVEN ON THE CACHED PATH: `refreshPickers` clears
-        // `_meta` before calling the loaders, and `legalValues()` reads it
-        // to decide whether a cell is a DROPDOWN or a text box.
-        _fillMeta(_cols);
-        return _cols;
-    }
-    /* ONE FETCH PER KEY, AND THE IN-FLIGHT ONE IS THE CACHE.  Two callers can
-     * ask for the same key before the first answer lands (the hand-over's
-     * pickers and the hand-over itself).  A pending promise per key is what every caller awaits;
-     * a newer key still owns the slot (the guard below), the way the other
-     * in-flight guards in this file are sequences or memoised promises. */
-    if (_colsInflight[key]) return _colsInflight[key];
-    _colsKey = key;
-    const p = (async () => {
-        const got = await ask(
-            "/api/task-setup/columns?engine="
-            + encodeURIComponent(engine)
-            + "&calculation=" + encodeURIComponent(kind));
-        _labelsFailed(got, "column list");
-        const items = (got.ok && got.body && got.body.items) || [];
-        if (_colsKey !== key) return items;      // a newer load owns the slot
-        _cols = items;
-        _roleRule = (got.ok && got.body && got.body.roles) || null;
-        _fillMeta(_cols);
-        return _cols;
-    })();
-    _colsInflight[key] = p;
-    try { return await p; } finally { delete _colsInflight[key]; }
+async function loadColumnChoices(task) {
+    // A vibration description's picker offers the vibration items beside
+    // the shared ones; an optimization's never sees them (`keyedList`).
+    const items = await COLUMNS.load(..._openKey(task));
+    // `_meta` REFILLED from the list held, fetched or not: `refreshPickers`
+    // clears it before calling the loaders, and `legalValues()` reads it to
+    // decide whether a cell is a DROPDOWN or a text box.
+    _fillMeta(COLUMNS.current());
+    return items;
 }
 
 /** The roles the stage `name` plays, by the rule the columns came with
@@ -2283,9 +2387,10 @@ async function loadColumnChoices(engine) {
  *  without roles.  The rule's names are keyed in any case, as every stage
  *  name compares (`identity.stage_key`, `stages.md` § 2). */
 function rolesOf(name) {
-    if (!_roleRule) return null;
-    const got = (_roleRule.named && _roleRule.named[String(name).toLowerCase()])
-        || _roleRule.otherwise;
+    const rule = _roleRule();
+    if (!rule) return null;
+    const got = (rule.named && rule.named[String(name).toLowerCase()])
+        || rule.otherwise;
     return got ? [].concat(got) : [name];
 }
 
@@ -2303,8 +2408,7 @@ function readsHere(col, name) {
  *  widget question (`legalValues`) gets its answer from: the columns' and
  *  the run settings', each the setting's one record
  *  (`_shared.item_record`), and never the same setting -- a run setting is
- *  no column (`task-setup.md` § 5).  A function, not a loop at each call
- *  site, because each loader has a cached path and a fetching one. */
+ *  no column (`task-setup.md` § 5).  Asked by both loaders. */
 function _fillMeta(items) {
     for (const it of (items || [])) {
         if (it && it.name) _meta[it.name] = it;
@@ -2312,43 +2416,16 @@ function _fillMeta(items) {
 }
 
 /** The sweepable set — `execution` category only (`stages.md` § 6.8). */
-async function loadSweepChoices(engine) {
-    /* Keyed by ENGINE and by KIND, as the columns are. */
-    const kind = _kindOf();
-    // NOTHING DESCRIBED, NOTHING ASKED: with no description or hand-over
-    // open, the page knows no engine and no kind, and the server refuses a
-    // request that states none.
-    if (!engine || !kind) return [];
-    const key = engine + ":" + kind;
-    if (_sweep && _sweepKey === key) {
-        _fillMeta(_sweep);      // same reason as the column cache above
-        return _sweep;
-    }
-    if (_sweepInflight[key]) return _sweepInflight[key];   // one fetch per key (see loadColumnChoices)
-    _sweepKey = key;
+async function loadSweepChoices(task) {
     /* A LABEL LOOKUP MUST NOT BE ABLE TO STRAND THE PAGE.
      *
      * This is an ENRICHMENT: it turns `mpi_np` into "MPI ranks (np)".  It
      * degrades: rows paint with their raw names and the card says the
      * labels are missing.  A surface that cannot get its nicety shows what it
      * has; only a surface that cannot get its SUBSTANCE may refuse. */
-    const p = (async () => {
-        const got = await ask(
-            "/api/task-setup/sweepable?engine="
-            + encodeURIComponent(engine)
-            + "&calculation=" + encodeURIComponent(kind));
-        _labelsFailed(got, "list of sweepable settings");
-        const items = (got.ok && got.body && got.body.items) || [];
-        if (got.ok && got.body && Array.isArray(got.body.lane_asks)) {
-            _laneAsks = got.body.lane_asks;
-        }
-        if (_sweepKey !== key) return items;   // a newer load owns the slot
-        _sweep = items;
-        _fillMeta(_sweep);
-        return _sweep;
-    })();
-    _sweepInflight[key] = p;
-    try { return await p; } finally { delete _sweepInflight[key]; }
+    const items = await SWEEP.load(..._openKey(task));
+    _fillMeta(SWEEP.current());      // same reason as the columns above
+    return items;
 }
 
 /* The LEGAL VALUES of a switch or a choice, from the catalogue meta --
@@ -2388,7 +2465,7 @@ function fillPicker(sel, items, taken, empty) {
     sel.textContent = "";
     const left = items.filter((i) => taken.indexOf(i.name) === -1);
     if (!left.length) {
-        sel.appendChild(el("option", { value: "" }, empty));
+        sel.appendChild(el("option", { value: "" }, wordsText(empty)));
         sel.disabled = true;
         return;
     }
@@ -2404,7 +2481,7 @@ function fillPicker(sel, items, taken, empty) {
         // ...by the one rule (`readsHere`), named only where the kind gives
         // its rungs roles: on a kind without them every rung reads, and
         // nothing is worth saying.
-        const readers = (_roleRule && Array.isArray(i.stages) && i.stages.length)
+        const readers = (_roleRule() && Array.isArray(i.stages) && i.stages.length)
             ? own.filter((n) => readsHere(i.name, n)) : [];
         sel.appendChild(el("option", {
             value: i.name,
@@ -2418,46 +2495,28 @@ function fillPicker(sel, items, taken, empty) {
 let _pickersSeq = 0;
 
 async function refreshPickers() {
-    /* THE ENGINE IS THE DESCRIPTION'S, AND ON A HAND-OVER THE HAND-OVER'S. */
-    const engine = (_task && _task.engine && _task.engine.name)
-        || _handoverEngine(null);
-    /* _meta is rebuilt from this engine's answers, as its neighbours are
-     * keyed (_colsKey/_sweepKey/_presetsKey). */
+    /* _meta is rebuilt from the lists' answers for the open description's
+     * key (`_openKey`: on a hand-over, the hand-over's). */
     for (const k of Object.keys(_meta)) delete _meta[k];
     // A SEQUENCE, like the other in-flight guards here: a refresh that was
     // superseded while its answers were in flight paints nothing.
     const seq = ++_pickersSeq;
     try {
         const [cols, sweep] = await Promise.all([
-            loadColumnChoices(engine), loadSweepChoices(engine),
-            loadPresets(engine)]);
+            loadColumnChoices(), loadSweepChoices(),
+            PRESETS.load(..._openKey())]);
         if (seq !== _pickersSeq) return;
         fillPicker($("ts-add-col"), cols,
                    Array.isArray(_task && _task.varies) ? _task.varies : [],
-                   "every parameter is already a column");
+                   COLUMNS.failed || "every parameter is already a column");
         // WHAT A BENCHMARK ROW MAY HOLD, by the door's homes.
         fillPicker($("ts-add-setting"),
                    sweep.filter((it) => (it.homes || []).includes("bench")),
                    Object.keys((_request && _request.bench) || {}),
-                   "every sweepable setting is already listed");
+                   SWEEP.failed || "every sweepable setting is already listed");
     } catch (_) { /* the pickers stay empty; nothing else breaks */ }
 }
 
-/* What THIS FOLDER's template answers, which is not the same thing as what the
- * catalogue recommends.  `stages.md` § 6.2: a stage that sets nothing uses the
- * TEMPLATE's value -- so the k-grid a person chose in the parameter tab is the
- * number an empty cell must name here, and the catalogue default is only the
- * answer when the template is silent. */
-let _tmpl = { name: null, values: Object.create(null),
-              said: Object.create(null) };
-
-/** The folder's ONE answer — `/api/task-setup/folder` (`task-setup.md`
- * § 2.1).  Returns the payload, or null; the caller checks `answer.dir`
- * against the folder it is still on before rendering any of it.
- *
- * `_tmpl` is filled here rather than by its own fetch: the template's
- * values are a fact about the folder, so they arrive with the rest of
- * them and cannot land separately after a move. */
 /** THE FOLDER'S OWN LINE in the state box -- what is loaded -- which a
  *  card's question gives way to once it is answered. */
 function sayLoaded(task) {
@@ -2497,17 +2556,8 @@ async function refuseFolder(title, why) {
 
 
 async function loadFolderAnswer(dir) {
-    _tmpl = { name: null, values: Object.create(null),
-              said: Object.create(null) };
-    if (!dir) return null;
     // THE ANSWER WHOLE: a failure is the caller's to say, in its words.
-    const answer = await ask("/api/task-setup/folder?dir="
-                             + encodeURIComponent(dir));
-    if (!answer.ok) return answer;
-    const t = answer.body.template || {};
-    if (t.ok) _tmpl = { name: t.name, values: t.values || {},
-                        said: t.said || {} };
-    return answer;
+    return ask("/api/task-setup/folder?dir=" + encodeURIComponent(dir));
 }
 
 /** Rendered the way it will be written, unit and all. */
@@ -2524,7 +2574,7 @@ function renderValue(v, unit) {
  *  name the form beside it does not. */
 function labelOf(name) {
     if (_meta[name] && _meta[name].label) return _meta[name].label;
-    const lane = _laneAsks.find((a) => a.name === name);
+    const lane = _laneAsks().find((a) => a.name === name);
     return (lane && lane.label) || name;
 }
 
@@ -2547,7 +2597,7 @@ function wordsOf(m, v) {
 /** What a stage that sets nothing will actually use: the template first. */
 function defaultText(name) {
     const m = _meta[name];
-    if (name in _tmpl.values) return valueWords(name, _tmpl.values[name]);
+    if (name in _fs.tmpl.values) return valueWords(name, _fs.tmpl.values[name]);
     if (!m) return "";
     return valueWords(name, m.default);
 }
@@ -2569,10 +2619,10 @@ function helpText(name) {
      * (`template.md` § 6.6 obligation 2) -- the other this KIND's default
      * (the routes serve `default_of`, with `default_words`), and a person checking
      * a description before a week of compute wants to see that they differ. */
-    if (name in _tmpl.values) {
-        const whose = _tmpl.said[name];
-        bits.push("This job (" + (_tmpl.name || "template") + "): "
-                  + valueWords(name, _tmpl.values[name])
+    if (name in _fs.tmpl.values) {
+        const whose = _fs.tmpl.said[name];
+        bits.push("This job (" + (_fs.tmpl.name || "template") + "): "
+                  + valueWords(name, _fs.tmpl.values[name])
                   + (whose ? " \u2014 " + whose : ""));
     }
     // THIS KIND'S DEFAULT, said by where it comes from -- the server's
@@ -2585,38 +2635,6 @@ function helpText(name) {
     if (m.engine_key) bits.push("Writes: " + m.engine_key
                                 + " \u00b7 in task.json: " + name);
     return bits.filter(Boolean).join("\n\n");
-}
-
-/* ---------- the tier presets ---------- */
-
-let _presets = null;
-let _presetsKey = null;
-const _presetsInflight = {};  // key -> the pending fetch
-
-async function loadPresets(engine) {
-    /* Keyed by (ENGINE, KIND), like `_cols`. */
-    const kind = _kindOf();
-    // NOTHING DESCRIBED, NOTHING ASKED: with no description or hand-over
-    // open, the page knows no engine and no kind, and the server refuses a
-    // request that states none.
-    if (!engine || !kind) return [];
-    const key = engine + ":" + kind;
-    if (_presets && _presetsKey === key) return _presets;
-    if (_presetsInflight[key]) return _presetsInflight[key];   // one fetch per key
-    _presetsKey = key;
-    const p = (async () => {
-        // NO PRESETS offers no tier; the settings' names do not hang on it.
-        const got = await ask(
-            "/api/task-setup/presets?engine="
-            + encodeURIComponent(engine)
-            + "&calculation=" + encodeURIComponent(kind));
-        const presets = (got.ok && got.body && got.body.presets) || [];
-        if (_presetsKey !== key) return presets;   // a newer load owns the slot
-        _presets = presets;
-        return _presets;
-    })();
-    _presetsInflight[key] = p;
-    try { return await p; } finally { delete _presetsInflight[key]; }
 }
 
 /**
@@ -2755,9 +2773,21 @@ function needKey(task) {
 function paintNeed() {
     const note = $("ts-ask-mem-need");
     if (!note) return;
-    const most = _fs.need && _fs.need.largest;
-    note.hidden = !most;
+    const need = _fs.need;
+    const most = need && need.largest;
     note.textContent = "";
+    /* A CHECK THAT CANNOT RUN SAYS SO, never a blank (§ 6.2b, § 7.1). */
+    if (need && need.error) {
+        note.hidden = false;
+        note.append(codeWords("the memory need could not be worked out: "
+                              + need.error));
+        tone(note, "error");
+        note.setAttribute("data-attention", "");
+        return;
+    }
+    tone(note, null);
+    note.removeAttribute("data-attention");
+    note.hidden = !most;
     if (most) note.append("memory need: ", codeWords(most.line));
 }
 
@@ -2783,11 +2813,18 @@ async function refreshNeed(task) {
     // ANOTHER FOLDER SINCE, or a newer ask: this answer is not shown.
     if (fs !== _fs || seq !== fs.needSeq) return;
     fs.needAsking = null;
-    if (!answer.ok) return;
+    if (!answer.ok) {
+        // ...SAID, and asked again at the next change: no key is held.
+        fs.need = { key: null, stages: {}, largest: null,
+                    error: answer.error };
+        paintNeed();
+        return;
+    }
     const body = answer.body;
     const stages = {};
     for (const row of body.stages || []) stages[row.stage] = row.need;
-    fs.need = { key: key, stages: stages, largest: body.largest_need };
+    fs.need = { key: key, stages: stages, largest: body.largest_need,
+                error: null };
     if (fs.plan) paintPlan($("ts-plan"), $("ts-plan-list"), fs.plan);
     paintNeed();
 }
@@ -3166,9 +3203,7 @@ function renderNext(task) {
          * choice.  The folder's answer, the one the verb acts on. */
         const chooser = g.members.length === 1 ? g.members[0] : null;
         const cf = chooser ? _fs.continueFrom[chooser] : null;
-        if (cf && !cf.error) {
-            block.appendChild(continueFromChoice(task, chooser, cf));
-        }
+        if (cf) block.appendChild(continueFromChoice(task, chooser, cf));
         // THE LINES THE TERMINAL WOULD PRINT, from its own composer
         // (`jobset/commands.stage_lines`, W55 B4): the group's prep and its
         // one launch, and each member launched before, again alone (D4).
@@ -3399,6 +3434,17 @@ function nextSteps() {
  *  means: the default's own line, or why its launch refuses it for now. */
 function continueFromChoice(task, name, cf) {
     const wrap = el("div", { class: "ts-continue-from" });
+    /* WHAT IT CONTINUES FROM COULD NOT BE READ: said in the reader's words,
+     * never left out (§ 11; the folder answer's per-stage ``{error}``). */
+    if (cf.error) {
+        const said = el("p", { class: "hint ts-continue-note" },
+                        codeWords("What " + name + " continues from could "
+                                  + "not be read: " + cf.error));
+        tone(said, "error");
+        said.setAttribute("data-attention", "");
+        wrap.appendChild(said);
+        return wrap;
+    }
     const sel = el("select", { "aria-label": "continue " + name + " from" });
     const add = (value, text) => sel.appendChild(el("option", { value }, text));
     // WHAT IT CONTINUES FROM BY DEFAULT: the stage before it.
@@ -4525,10 +4571,7 @@ function readNotifyFromRequest(request, task) {
     // offered are the ones its engine and kind can state (§ 6.9) -- and
     // with no description open, or one mid-edit stating neither, there are
     // none to ask for.
-    const engine = (task && task.engine && task.engine.name) || "";
-    const calculation = (task && task.calculation) || "";
-    if (!engine || !calculation) return;
-    loadReportFields(engine.toLowerCase(), calculation).then(() => {
+    REPORT_FIELDS.load(..._openKey(task)).then(() => {
         paintReportTicks(rep);
         paintReportNote();
     });
@@ -4694,7 +4737,6 @@ async function loadMachines() {
  *  never on one taken since. */
 async function proposeHandover(proposed) {
     const fs = _fs;
-    const engine = _handoverEngine(null);
     // NO BENCH IS PROPOSED (`task-setup.md` § 6.2a-b): a run needs no
     // benchmark, and a grid is the person's to state.  The sweep vocabulary
     // is loaded for the pickers.
@@ -4704,8 +4746,8 @@ async function proposeHandover(proposed) {
     // written over that folder's description.
     try {
         await pageBusy.run("Proposing the stages\u2026", [], () =>
-            Promise.all([loadColumnChoices(engine),
-                         loadSweepChoices(engine)]).then(() => {
+            Promise.all([loadColumnChoices(), loadSweepChoices(),
+                         PRESETS.load(..._openKey())]).then(() => {
                     // THE SERVER'S PROPOSAL, as Save writes it.
                     _task = JSON.parse(proposed.task);
                     _request = JSON.parse(proposed.request);
@@ -5141,6 +5183,7 @@ function start(projects) {
  * `undefined`.  That is what the runtime registry exists to prevent.
  */
 function boot() {
+    for (const list of [COLUMNS, SWEEP, PRESETS]) list.onChange(_listsChanged);
     const rt = window.molbuilder && window.molbuilder.runtime;
     if (rt && typeof rt.whenReady === "function") {
         rt.whenReady("projects").then(start).catch((e) => {
@@ -5196,35 +5239,6 @@ let _channelsWhy = "";
  *
  * THE CALCULATION'S NAME IS NOT HERE, on purpose: it is always sent, so
  * offering a box for it would be offering a choice that does not exist. */
-//: ``null`` until the server has answered -- NOT KNOWN, which is not the
-//: same as "none": a card that took an unanswered question for an empty
-//: list would rewrite a description's `notify.report` to `[]`.
-let _reportFields = null;
-//: The `<engine>/<calculation>` `_reportFields` answers, or `null`.
-let _reportFieldsFor = null;
-//: The latest ask: an older answer arriving later does not overwrite it.
-let _reportFieldsAsk = 0;
-//: Why the server could not say, in its words -- `""` once it has said.
-let _reportFieldsWhy = "";
-
-/** Ask which fields a report of this engine and calculation can carry. */
-async function loadReportFields(engine, calculation) {
-    const key = engine + "/" + calculation;
-    if (_reportFieldsFor === key && _reportFields !== null) return;
-    const seq = ++_reportFieldsAsk;
-    const q = new URLSearchParams({ engine: engine,
-                                    calculation: calculation });
-    const answer = await ask("/api/notify/report-fields?" + q);
-    if (seq !== _reportFieldsAsk) return;       // a later ask answers instead
-    // NOTHING OFFERED rather than a guess on a malformed answer: a card
-    // that invented the list would be a second copy of it.
-    const got = answer.ok && Array.isArray(answer.body.fields)
-        ? answer.body.fields : null;
-    _reportFields = got;
-    _reportFieldsFor = got === null ? null : key;
-    _reportFieldsWhy = answer.ok ? "" : answer.error;
-}
-
 /** The ticked report fields, or `null` for "every field it can work out".
  *  Same two-state shape as `channelSelection`, for the same reason. */
 function reportSelection() {
@@ -5232,7 +5246,7 @@ function reportSelection() {
     if (all && all.checked) return null;
     const host = $("ts-report-items");
     if (!host) return null;
-    if (_reportFields === null) {
+    if (REPORT_FIELDS.current() === null) {
         // NOT KNOWN which fields apply: the job request's own list stands.
         // A card that could not ask must not rewrite what it was told.
         const r = currentRecord("request");
@@ -5243,7 +5257,7 @@ function reportSelection() {
     // same boxes must write the same file.
     const on = new Set(Array.from(host.querySelectorAll("input[type=checkbox]"))
                             .filter(b => b.checked).map(b => b.value));
-    return _reportFields.map(f => f.name).filter(k => on.has(k));
+    return REPORT_FIELDS.current().map(f => f.name).filter(k => on.has(k));
 }
 
 /** Paint one tick per report field. */
@@ -5254,7 +5268,7 @@ function paintReportTicks(chosen) {
     const all = $("ts-report-all");
     const picking = !(all && all.checked);
     host.textContent = "";
-    for (const { name: key, offered_as: label } of (_reportFields || [])) {
+    for (const { name: key, offered_as: label } of (REPORT_FIELDS.current() || [])) {
         const id = "ts-rep-" + key;
         const row = document.createElement("label");
         row.className = "ts-notify-opt";
@@ -5288,10 +5302,9 @@ function paintReportNote() {
     const sel = reportSelection();
     // THE NAME IS NAMED, every time, because it is the part that is not a
     // choice and the part a person most needs to know is there.
-    if (_reportFields === null && sel !== null) {
-        note.replaceChildren(codeWords("The fields a report of this "
-            + "calculation can carry could not be read"
-            + (_reportFieldsWhy ? ": " + _reportFieldsWhy : "")
+    if (REPORT_FIELDS.current() === null && sel !== null) {
+        note.replaceChildren(codeWords((REPORT_FIELDS.failed
+            || "the " + REPORT_FIELDS.name + " is not known yet")
             + "; the description's own list ("
             + (sel.join(", ") || "none") + ") is kept as it is."));
     } else if (sel === null) {
@@ -5301,7 +5314,7 @@ function paintReportNote() {
         note.textContent = "Each message: this calculation's name and job id,"
             + " the state, and the one-line summary \u2014 no field grid.";
     } else {
-        const labels = (_reportFields || [])
+        const labels = (REPORT_FIELDS.current() || [])
             .filter(f => sel.indexOf(f.name) !== -1)
             .map(f => f.offered_as.toLowerCase());
         note.textContent = "Each message: this calculation's name and job id,"

@@ -249,8 +249,10 @@ def test_a_stored_address_the_monitor_skips_is_named_by_its_fault(client):
     path.write_text(json.dumps({"channels": {"lab": {"url": WEBHOOK.replace(
         "https://", "http://")}}}))
     state = c.get(CH).get_json()
+    # ITS FAULT ON ITS OWN ROW, the file itself sound (`this-machine.md` § 3).
     assert state["channels"][0]["usable"] is False, state
-    assert "its credential" in state["problem"], state["problem"]
+    assert "its credential" in state["channels"][0]["skipped"], state
+    assert state["problem"] == "", state["problem"]
     r = c.post(CH + "/lab/test")
     assert r.status_code == 400, r.get_json()
     assert "its credential" in r.get_json()["error"], r.get_json()

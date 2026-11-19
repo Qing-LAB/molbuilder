@@ -9,19 +9,24 @@
  * Public surface (mounted on ``window.molbuilder.structurePage``):
  *
  *   loadIntoCanvas(structure, source, how?)
- *     -> Promise<{ok: bool, cancelled?: bool}>
+ *     -> Promise<{ok: true} | {ok: false, cancelled: true}
+ *                | {ok: false, error}>   -- never rejects
  *
  *     ``structure``: ``{structure: <envelope>}`` -- the loss-free
  *                    ``Structure`` dict that every structure-returning
  *                    endpoint already answers with. Never a document:
  *                    the browser does not write coordinates.
- *     ``source``:    ``{kind, file?, generator_input?}``
+ *     ``source``:    ``{kind, file?, frame?, generator_input?}`` --
+ *                    ``frame``, one frame taken from a file of several,
+ *                    which the page's note then names no file for
+ *                    (tabs.md § 6)
  *     ``how``:       ``{replace: true}`` installs over an open structure:
  *                    the person's answer to the Load button's question
  *                    (tabs.md § 2); absent, an open structure is added to.
  *
- *     Returns ``{ok: true}`` when the canvas was updated, or
- *     ``{ok: false}`` when the append did not apply.
+ *     Returns the gate's one envelope (above): ``{ok: true}`` when the
+ *     canvas was updated, ``{ok: false, cancelled: true}`` when an add was
+ *     not started, ``{ok: false, error}`` otherwise.
  *
  *   markDirtyAfterModification()
  *     -> void.  A NO-OP: the page follows the viewer's changes itself.
@@ -93,12 +98,18 @@
      * -- or over what is open, when ``how.replace`` says the person chose to
      * clear the view.
      *
-     * @returns {Promise<{ok: bool, cancelled?: bool}>}
+     * ITS ANSWER, ONE ENVELOPE FOR EVERY CALLER (tabs.md § 2): ``{ok: true}``;
+     * ``{ok: false, cancelled: true}`` when an add is not started -- another
+     * edit runs (molview.md § 11.1, one mutation in flight) -- nothing put
+     * on the canvas; ``{ok: false, error}``, a refusal's or a lost
+     * connection's words.  It never rejects.
+     *
+     * @returns {Promise<{ok: bool, cancelled?: bool, error?: string}>}
      */
     function loadIntoCanvas(structure, source, how) {
         if (!_model() || !_mod()) {
-            return Promise.reject(new Error(
-                "structure-page: not bound — call _bind() first"));
+            return Promise.resolve({ ok: false,
+                error: window.molbuilder.projects.parser.NO_VIEWER });
         }
         /* The ONE atomic whole-model load door (web/molview.md § 9.3): it
          * replaces the whole model (canvas + atoms + render) and anchors the
@@ -136,7 +147,7 @@
             return _model().applyOp("append", {
                 addition: structure.structure,
             }).then(function (applied) {
-                if (!applied) return { ok: false };
+                if (!applied) return { ok: false, cancelled: true };
                 /* THE PAGE'S NOTE IS CLEARED, not kept.  It answers "which
                  * file is on the canvas" (§ 6.7), and after an append the
                  * canvas is no longer any one file -- so Save to project asks
@@ -158,7 +169,9 @@
                  * SMILES/DNA/RNA/peptide/name build passes no `file`, so the
                  * note becomes null and the loader readout stops claiming a file
                  * that never existed. */
-                markLoadedFrom(filename);
+                // ONE FRAME OF A FILE OF SEVERAL IS NO FILE'S: the viewer
+                // keeps where it came from, the page's note names no file.
+                markLoadedFrom((source && source.frame) ? null : filename);
                 return { ok: true };
             });
         }
@@ -167,10 +180,12 @@
          * there is nothing.  Appending into a viewer that holds no structure
          * has nothing to append TO -- and it would leave the timeline with no
          * point 0 to retract to -- so the first thing in is installed. */
-        if (_model().getStructure() === null || (how && how.replace === true)) {
-            return _apply();
-        }
-        return _append();
+        var done = (_model().getStructure() === null
+                    || (how && how.replace === true)) ? _apply() : _append();
+        return done.catch(function (e) {
+            return { ok: false, error: (e && e.message) ? e.message
+                                                        : String(e) };
+        });
     }
 
     /* WHERE A STRUCTURE WAS SAVED TO, AND WHETHER THE VIEW STILL HOLDS WHAT WAS

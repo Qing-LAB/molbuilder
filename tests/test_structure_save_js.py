@@ -28,6 +28,7 @@ ROOT = Path(__file__).resolve().parents[1]
 MODULE = ROOT / "molbuilder/web/static/modify/structure/save.js"
 #: What the page header loads before any click: the one path door.
 PATH_DOOR = ROOT / "molbuilder/web/static/lib/path-utils.js"
+from molbuilder.sidecars.molstruct import PAIRED_SUFFIX  # noqa: E402
 
 
 def _run_node(snippet: str) -> object:
@@ -42,8 +43,11 @@ def _run_node(snippet: str) -> object:
         globalThis.window = globalThis;
         globalThis.molbuilder = {{}};
         // WHAT THE PAGE HEADER LOADS before any click: the one path door
-        // (`lib/path-utils.js`), which save.js reads when called.
+        // (`lib/path-utils.js`), which save.js reads when called...
         require({json.dumps(str(PATH_DOOR.resolve()))});
+        // ...and the projects door's suffix, the server's pairing rule as
+        // the page header states it (`sidecars.molstruct.PAIRED_SUFFIX`).
+        molbuilder.projects = {{ pairedSuffix: () => {json.dumps(PAIRED_SUFFIX)} }};
 
         /** A stand-in viewer DATA model: the two reads the panel makes, plus
          *  the export it hands to the door. */
@@ -85,7 +89,10 @@ def _run_node(snippet: str) -> object:
                 marks,
                 markSavedTo: (p) => {{ saved = p; edited = false; marks.push(p);
                                       said(); }},
+                // THE PAGE'S SNAPSHOT, its fields as `page.js` answers
+                // them: where it last saved, the file it loaded.
                 getCanvasSnapshot: () => ({{ lastSaveTo: saved,
+                                            loadedFrom: loadedFrom || null,
                                             isDirty: edited }}),
                 getLoadedFrom: () => (loadedFrom || null),
                 // THE PAGE'S NOTE and its own channel (`page.js`,

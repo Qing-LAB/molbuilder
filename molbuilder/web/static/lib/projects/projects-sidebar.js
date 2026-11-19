@@ -10,7 +10,8 @@
  *                   openDir
  *   mutation-bar.js -- New project / New folder / Upload / Download action bar
  *   preview.js   -- file-preview modal
- *   parser.js    -- format-aware structure door (openMolecule)
+ *   parser.js    -- format-aware structure door (openMolecule, and the
+ *                   words of a load that did not land: notLoaded, NO_VIEWER)
  *   checkpoint.js -- run-history panel (checkpoint-domain consumer)
  *
  * This entry file imports each module, mounts the public API on

@@ -108,13 +108,19 @@ export function attachStructureCard(opts) {
         $("info-formula").textContent = n ? mvFormula(elements) : "—";
     }
 
-    /* A LOAD THAT FAILED says why, and the readout no longer names the
-     * structure it was about to replace. */
-    function failed(name, words) {
-        say(words, "error");
-        $("info-title").textContent = "load failed: " + name;
-        $("info-atoms").textContent = "—";
-        $("info-formula").textContent = "—";
+    /* A LOAD THAT FAILED says which file and why (the load door's words,
+     * `projects.parser.notLoaded`), and the readout goes on naming the
+     * structure still on screen -- the one Send writes (`tabs.md` § 3: the
+     * structure the tab sends is the one its readout names). */
+    function failed(f, words) {
+        say(window.molbuilder.projects.parser.notLoaded(f, words), "error");
+        readInfo(shownName());
+    }
+
+    /* THE NAME THE READOUT GIVES THE STRUCTURE ON SCREEN: its file's, or
+     * the draft's put back with none. */
+    function shownName() {
+        return shown ? basename(shown) : "restored structure";
     }
 
     function refreshLoadButton() {
@@ -150,7 +156,13 @@ export function attachStructureCard(opts) {
      * back (molview.md § 9.3). */
     function keep() {
         const w = ws();
-        const out = data() ? data().exportFile() : null;
+        const d = data();
+        const n = d ? d.frameCount() : 0;
+        // EVERY FRAME, a frame set whole -- the displayed one alone is what
+        // `exportFile()` answers without a range (molview.md § 9.3).  The
+        // frame on screen is the viewer's own to keep and put back, in its
+        // view context, on the structure it belonged to (§ 11.2b).
+        const out = n ? d.exportFile({ from: 0, to: n - 1 }) : null;
         if (!w || !out || !out.structure) return;
         w.persistDraft(DRAFT, { v: 1, structure: out.structure,
                                 loadedFrom: shown });
@@ -172,7 +184,7 @@ export function attachStructureCard(opts) {
             { structure: saved.structure });
         if (put === null) return false;    // the viewer took nothing
         shown = saved.loadedFrom || "";
-        const name = shown ? basename(shown) : "restored structure";
+        const name = shownName();
         landed(name, `Restored ${name} — `
                      + `${saved.structure.elements.length} atoms.`);
         return true;
@@ -201,8 +213,7 @@ export function attachStructureCard(opts) {
         say(`Loading ${name}…`);
         const viewer = await mounted();
         if (!viewer) {
-            failed(name, "Viewer unavailable: nothing to load the structure "
-                         + "into.");
+            failed(f, window.molbuilder.projects.parser.NO_VIEWER);
             return;
         }
         let res;
@@ -211,11 +222,11 @@ export function attachStructureCard(opts) {
         } catch (e) {
             // The load door's own sentence -- the one reader's words
             // (ui-contract.md § 12) where it asked the server.
-            failed(name, (e && e.message) || String(e));
+            failed(f, (e && e.message) || String(e));
             return;
         }
         if (!res || res.ok === false) {
-            failed(name, (res && res.error) || "Load failed.");
+            failed(f, (res && res.error) || "its read answered nothing");
             return;
         }
         shown = f;

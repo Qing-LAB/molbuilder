@@ -212,6 +212,86 @@ def test_moving_to_a_folder_with_LESS_to_show_clears_what_the_last_one_had(
 
 
 
+def test_a_folder_whose_answer_fails_shows_nothing_of_the_last(
+        page, flask_server, two_calcs):
+    """`task-setup.md` § 2.1: a folder refused draws every card from it --
+    the folder answer lost on its way (the browser's own network refusing
+    its one request: a connection cannot be lost on cue otherwise), the
+    page says the folder could not be read, and nothing of the folder open
+    before stays, the rail's files among it.  The silent failure (F12's
+    review, TS-D3): *What gets written* kept the last folder's files --
+    "already here", its atoms -- under a folder that could not be read; or,
+    cleared, claimed that folder holds none of them."""
+    a, b = two_calcs
+    task_setup_on(page, flask_server, a)
+    page.wait_for_function(
+        "() => document.body.innerText.includes('alphalabel')",
+        timeout=WAIT_MS)
+    page.wait_for_selector("#ts-main:not([aria-busy])", state="attached",
+                           timeout=WAIT_MS)
+    page.route("**/api/task-setup/folder?*", lambda route: route.abort())
+    walk_to(page, b)
+    page.wait_for_selector('#ts-state[data-state="refuse"]',
+                           state="attached", timeout=WAIT_MS)
+    # ITS FILES NOT LISTED, nobody having read them: the card hidden.
+    assert page.locator("#ts-files-card").is_hidden()
+    text = every_card_text(page)
+    assert "alphalabel" not in text and "already here" not in text, text
+
+
+def test_a_list_that_did_not_load_is_said_where_it_is_picked(
+        page, flask_server, two_calcs):
+    """`task-setup.md` § 6.1; `ui-contract.md` § 12: the column list lost
+    on its way (the browser's own network refusing its one request) is said
+    in the column picker, never drawn as a list with nothing left to add.
+    The silent failure (F12's review, TS-D4): *every parameter is already a
+    column*, and the empty list kept for the rest of the visit."""
+    a, _b = two_calcs
+    page.route("**/api/task-setup/columns?*", lambda route: route.abort())
+    task_setup_on(page, flask_server, a)
+    page.wait_for_function(
+        "() => document.body.innerText.includes('alphalabel')",
+        timeout=WAIT_MS)
+    page.wait_for_function(
+        "() => (document.querySelector('#ts-add-col option') || {})"
+        "  .textContent?.includes('the column list did not load')",
+        timeout=WAIT_MS)
+
+
+def test_a_hand_over_of_another_engine_is_offered_its_engines_list(
+        page, flask_server, isolated_projects_root):
+    """`task-setup.md` § 6.1, *The vocabularies are the engine's*: a SIESTA
+    calculation open, then a PySCF hand-over -- its column picker offers
+    what the server answers for PySCF, and nothing it does not.  The silent
+    failure (F12's review, TS-D1): the hand-over asked for its lists while
+    the page held SIESTA's, and was answered with them -- MPI ranks and the
+    Diagonalizer on a PySCF run's cards."""
+    from molbuilder.web.app import create_app
+    umbrella = isolated_projects_root / "umbrella"
+    with pytest.MonkeyPatch.context() as local:
+        siesta = described(road_tree(isolated_projects_root.parent, local),
+                           "umbrella/optimization/siesta-run",
+                           name="siestalabel")
+    bare, shown = _a_hand_over(umbrella)
+    pyscf = {it["name"] for it in create_app(config={}).test_client().get(
+        "/api/task-setup/columns?engine=pyscf&calculation=optimization"
+    ).get_json()["items"]}
+
+    task_setup_on(page, flask_server, siesta)
+    page.wait_for_function(
+        "() => document.body.innerText.includes('siestalabel')",
+        timeout=WAIT_MS)
+    page.wait_for_selector("#ts-main:not([aria-busy])", state="attached",
+                           timeout=WAIT_MS)
+    walk_to(page, bare)
+    shown(page)
+    page.wait_for_selector("#ts-main:not([aria-busy])", state="attached",
+                           timeout=WAIT_MS)
+    offered = set(page.eval_on_selector_all(
+        "#ts-add-col option", "os => os.map((o) => o.value).filter(Boolean)"))
+    assert offered and offered <= pyscf, sorted(offered - pyscf)
+
+
 def test_a_hand_over_is_finished_on_the_page_and_saved_as_both_records(
         page, flask_server, isolated_projects_root):
     """`task-setup.md` § 4, § 7a, § 8, § 9a: a hand-over becomes a

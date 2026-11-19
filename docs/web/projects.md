@@ -162,7 +162,12 @@ with the whole enriched molecule — atoms, cell, the region/frozen labels, the
   frame (`molview.md` § 9.4) — and MolView installs it, the 3D viewer painting
   it with its labels and cell. If the model already has unsaved edits it can
   pause and ask first (pass a `confirmDiscard` function) and returns `{
-  ok:false, cancelled:true }` if you decline.
+  ok:false, cancelled:true }` if you decline. **A load that did not land is
+  said in one sentence, `projects.parser.notLoaded(path, why)`** — the file by
+  its name, then why — by every loader of a structure file the person picks:
+  the Molbuilder tab's Load, the Structure optimization and Spectrum tabs'
+  card, the Results tab's structure view; where the 3-D viewer did not start,
+  why is `projects.parser.NO_VIEWER`.
 - **The Molbuilder tab's Load** — its button, or a double-click in the tree
   (`tabs.md` § 2). That tab holds one frame: the route answers frame 0 and says
   how many frames the file holds; a file of several asks **which frame**
@@ -555,7 +560,9 @@ server's sentence beside them — what the export holds without — or its
 refusal, every button disabled while one runs; and *How to read these in
 Python*, the kind's document. `asks()` — the values the page shows that the
 export takes (a vibration's laser and width) — is read as a button is
-pressed, only the offer's numbers sent. Resolves the bar; a line saying why
+pressed, only the offer's numbers sent; `at()` — the selection on screen,
+handed over by a controller that keeps one bar across its calculation's
+selections — is read so too, `path` where none is handed. Resolves the bar; a line saying why
 where the offer did not read — never taken for none; or `null` where the
 path lies in no calculation or its calculation exports nothing. The bar
 names its calculation (`data-calculation`, the offer's), so a page keeps one

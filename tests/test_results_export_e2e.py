@@ -237,3 +237,43 @@ def test_an_optimization_exports_from_the_top_line(
             if r == coarse.relative_to(real_h2_pyscf.bundle).as_posix()]
     assert len(mine) == len(steps.energy_ev) > 0, got["run_of_step"]
     assert np.allclose(got["position_ang"][mine], steps.positions_ang)
+
+
+def test_the_bar_that_stays_exports_the_selection_on_screen(
+        real_h2_pyscf, page, flask_server, monkeypatch):
+    """`web/results.md` § 1.1: one Export bar stays while the selection
+    stays in its calculation, and it exports the selection on screen -- the
+    tab bound again, to the calculation's own folder, the bar kept, *CSV*
+    asks the export for the new selection.  The silent failure (F12's
+    review, J2-D1): the bar kept the path it was first built with, so a
+    vibration's Export downloaded another run's spectrum than the one
+    shown."""
+    from support.sidebar import reload_from
+    from molbuilder.runs import run_of
+    log = run_of(real_h2_pyscf.attempt("coarse")).file(".molwatch.log")
+    _open(page, flask_server, monkeypatch, real_h2_pyscf, log)
+    bar = page.locator(".results-status .export-bar")
+    bar.wait_for(timeout=60000)
+    page.eval_on_selector(".results-status .export-bar",
+                          "(b) => { b.dataset.first = '1'; }")
+    # THE NEW SELECTION'S OFFER, asked for what the tab now shows.
+    with page.expect_response(
+            lambda r: "/api/export/offer?" in r.url
+            and _path_asked(r.url) != str(log), timeout=60000) as offered:
+        reload_from(page, real_h2_pyscf.bundle)
+    offered.value.finished()
+    shown = _path_asked(offered.value.url)
+    assert Path(shown).resolve().is_relative_to(
+        real_h2_pyscf.bundle.resolve()), shown
+    assert page.eval_on_selector(
+        ".results-status .export-bar", "(b) => b.dataset.first") == "1", (
+        "the bar was replaced within one calculation")
+    with page.expect_request(lambda r: "/api/export?" in r.url) as asked:
+        bar.get_by_role("button", name="CSV", exact=True).click()
+    assert _path_asked(asked.value.url) == shown, asked.value.url
+
+
+def _path_asked(url: str) -> str:
+    """The ``path`` a request asked for, as the page sent it."""
+    from urllib.parse import parse_qs, urlparse
+    return parse_qs(urlparse(url).query)["path"][0]

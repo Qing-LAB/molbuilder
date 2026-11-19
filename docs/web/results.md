@@ -141,7 +141,7 @@ calculation's offer for the selection's path (`GET /api/export/offer`,
 [`model/datafiles.md`](?doc=model/datafiles.md) § 5a) and draws the one bar
 (`projects.exportBar`, what it holds [`projects.md`](?doc=web/projects.md)
 § 5). A selection in no calculation, or in one whose kind exports nothing,
-has none; an offer that did not read is said in its place. **One bar stays while the selection stays in its calculation**, what its last export said beside it. **What a viewer shows that the export takes
+has none; an offer that did not read is said in its place. **One bar stays while the selection stays in its calculation**, what its last export said beside it, and it exports the selection on screen, which the controller hands over as it does the laser and width below (`at`). **What a viewer shows that the export takes
 is the viewer's to hand over** — the vibration's laser and width, as its
 Raman view applied them (`ctx.exportAsks`,
 [`presenters.md`](?doc=web/presenters.md) § 2) — read as a button is

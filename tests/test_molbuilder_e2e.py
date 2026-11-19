@@ -258,6 +258,82 @@ def test_the_status_line_says_a_load_was_added(
     assert "Added" in status and "5 in total" in status, status
 
 
+def test_a_file_loaded_is_the_saves_target(page, flask_server, two_files):
+    """`tabs.md` § 6: the save readout names the file the view was last
+    written as -- before any save, the one loaded -- never *Not saved yet*
+    over a structure read from a file.  The silent failure (F12's review,
+    MB-D3): *Not saved yet* for water.xyz loaded unchanged, and never
+    *Unsaved* after an edit."""
+    water, _pair = two_files
+    _open(page, flask_server)
+    _load(page, water)
+    page.wait_for_function(
+        "(want) => (document.getElementById('save-readout') || {})"
+        "  .textContent === want", arg=f"Target: {water.name}",
+        timeout=WAIT_MS)
+
+
+def test_one_frame_of_a_file_of_several_is_no_files(
+        page, flask_server, isolated_projects_root):
+    """`tabs.md` § 6: one frame taken from a file of several is a structure
+    no file was ever written as -- the save readout says *Not saved yet*,
+    and a save names no file to write it over.  The silent failure (F12's
+    review of fix 5's first version): *Target: relax.xyz* over frame 1 of a frame
+    set, a save offering to replace the whole set with one frame.  The
+    frame set written by the codec, as every frame set is
+    (`support.road.structure_saved` writes the transport kind's, with a
+    bridge)."""
+    import numpy as np
+    from molbuilder.structure import Structure
+    from molbuilder.workingcopy_structure import StructureCodec
+    water = Structure(elements=["O", "H", "H"],
+                      positions=np.array([[0.0, 0.0, 0.0], [0.957, 0.0, 0.0],
+                                          [-0.239, 0.927, 0.0]]))
+    step = np.array([[0.1, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]])
+    relax = StructureCodec().write(
+        water.with_frames([water.positions + k * step for k in range(3)]),
+        isolated_projects_root.resolve() / "relax.xyz")
+    _open(page, flask_server)
+    walk_to(page, relax)
+    page.wait_for_function(
+        "() => !document.getElementById('load-candidate-btn').disabled",
+        timeout=WAIT_MS)
+    page.locator("#load-candidate-btn").click()
+    page.get_by_role("button", name="Load", exact=True).click()
+    page.wait_for_function(
+        "() => (document.getElementById('save-readout') || {})"
+        "  .textContent === 'Not saved yet'", timeout=WAIT_MS)
+
+
+def test_a_load_whose_add_fails_says_why(page, flask_server, two_files):
+    """`ui-contract.md` § 12: a failed answer is said, never nothing -- the
+    second Load's add meets a lost connection (the browser's own network
+    refusing the add's one request: a connection cannot be lost on cue
+    otherwise), and the status line says the file was not loaded and why;
+    the canvas keeps what it held.  The silent failure (F12's review, MB-D2):
+    nothing on screen, the line keeping *Loaded water.xyz*, the error an
+    unhandled rejection."""
+    water, pair = two_files
+    errors = _open(page, flask_server)
+    _load(page, water)
+    held = _atom_count_or_zero(page)
+    page.route("**/api/modify/append", lambda route: route.abort())
+    walk_to(page, pair)
+    page.wait_for_function(
+        "() => !document.getElementById('load-candidate-btn').disabled",
+        timeout=WAIT_MS)
+    page.locator("#load-candidate-btn").click()
+    page.locator("dialog.molbuilder-warning-modal[open]").wait_for(
+        state="visible", timeout=WAIT_MS)
+    page.keyboard.press("Enter")
+    page.wait_for_function(
+        "(name) => (document.getElementById('status') || {})"
+        "  .textContent?.includes(name + ' was not loaded')",
+        arg=pair.name, timeout=WAIT_MS)
+    assert _atom_count_or_zero(page) == held
+    assert not errors, errors
+
+
 def test_start_empty_then_load_is_how_you_replace(
         page, flask_server, two_files):
     """After *Clear structure*, a Load installs the file without asking, and

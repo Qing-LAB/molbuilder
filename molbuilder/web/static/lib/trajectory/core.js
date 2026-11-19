@@ -26,6 +26,7 @@
 
 import { mount } from "/static/lib/molview/index.js";
 import { molviewDoors } from "../projects/molview-doors.js";
+import { NO_VIEWER } from "../projects/parser.js";
 import { basename } from "../path-utils.js";
 import { ask } from "../server.js";
 import { outcome } from "../validation-findings.js";
@@ -550,13 +551,11 @@ import { outcome } from "../validation-findings.js";
                 ...molviewDoors,
             });
         } catch (e) {
-            setStatus("Viewer failed: "
-                + (e && e.message ? e.message : String(e)), "error");
-            return null;
+            _mv = { ok: false, error: (e && e.message) || String(e) };
         }
         if (!_mv || !_mv.ok) {
-            setStatus("Viewer failed: "
-                + ((_mv && _mv.error) || "molview.mount failed."), "error");
+            // SAID AMONG THE LINE'S NOTICES, so a later line keeps it.
+            _withRunNotes("");
             return null;
         }
         // Test hook: expose the mount handle so Playwright e2e can drive the
@@ -590,7 +589,14 @@ import { outcome } from "../validation-findings.js";
      * kept notices (I9), each in the server's words, in the tone of the
      * most severe -- the one composer (`validationFindings.outcome`, R4). */
     function _withRunNotes(msg, kind) {
-        const said = outcome(msg || "", state.notices, kind);
+        // ...AND A VIEWER THAT COULD NOT START, kept on the line as the run's
+        // notices are (`trajectory.md` § 4): MolView's own card says why.
+        const viewer = (_mv && !_mv.ok)
+            ? [{ severity: "error",
+                 message: NO_VIEWER + "; the run is drawn without it." }]
+            : [];
+        const said = outcome(msg || "", viewer.concat(state.notices || []),
+                             kind);
         setStatus(said.text.trim(), said.tone);
     }
 
@@ -1908,8 +1914,12 @@ import { outcome } from "../validation-findings.js";
         // Either failing => NOT a provable continuation => full atomic rebuild instead.
         const boundaryOk = _frameEqualAt(oldData && oldData.frames,
                                          r.data && r.data.frames, oldLen - 1);
-        const countInSync = !_mv || (_mvdata().frameCount() === oldLen);
-        const canAppend = _mv
+        // THE VIEWER, where it mounted: one that could not start (no WebGL,
+        // a panel narrower than its floor) holds no frames, and the plots,
+        // badge and SCF line are drawn without it (`trajectory.md` § 4).
+        const viewer = _mvdata();
+        const countInSync = !viewer || (viewer.frameCount() === oldLen);
+        const canAppend = !!viewer
             && sameAtomCount
             && newLen > oldLen
             && _latticeEqual(oldData && oldData.lattice,
@@ -2016,7 +2026,14 @@ import { outcome } from "../validation-findings.js";
 
         const n = state.data.frames.length;
         if (n === 0) {
-            setStatus("File loaded ("+ state.label +") but no frames yet.", "");
+            _withRunNotes("File loaded (" + state.label
+                          + ") but no frames yet.", "");
+            // THE RUN IS STILL SAID, and the first render signalled: a run
+            // with no frames yet -- queued, or stopped before its first step
+            // -- has its badge and its reason (`trajectory.md` § 4), and the
+            // cover lifts (`results.md` § 3).
+            _renderBadge();
+            _announceReady({ frames: 0 });
             return;
         }
         // (Per-frame XYZ export is MolView's Export knob, which is

@@ -251,3 +251,27 @@ def test_every_element_the_viewer_draws_into_is_on_its_panel(
     wrong = sorted({f"{sel} answered by {n}" for sel, n in asked if n != 1})
     assert not wrong, wrong
 
+
+
+def test_a_viewer_that_could_not_start_leaves_the_run_drawn(
+        finished, real_h2_layered, page, flask_server, monkeypatch):
+    """`web/trajectory.md` § 4, `web/results.md` § 3: the run's state, its
+    SCF line and its plots need no 3-D viewer -- the Results tab in a window
+    too narrow for MolView's card, the viewer refuses to mount and says so
+    on its card, and the run is drawn beside it -- the tab bound in a wide
+    window, the window narrowed and the page reloaded, as a person does.
+    The silent failure (F12's review, J2-D2): the load threw on the viewer
+    it did not have, the status line said "Cannot read properties of null",
+    and nothing was drawn."""
+    _open(page, flask_server, finished, real_h2_layered.tree, monkeypatch)
+    page.set_viewport_size({"width": 340, "height": 900})
+    page.reload()
+    page.wait_for_function(
+        "() => /Finished/.test((document.getElementById('run-state-label')"
+        " || {}).textContent || '')"
+        " && /SCF cycle/.test((document.getElementById('scf-status')"
+        " || {}).textContent || '')", timeout=30000)
+    assert page.locator(".molviewer-embed-error").count() == 1
+    status = page.locator("#trajectory-status").inner_text()
+    assert "Cannot read" not in status, status
+    assert page.locator("#energy-plot").inner_html().strip(), "no energy plot"

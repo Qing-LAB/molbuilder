@@ -544,13 +544,19 @@ the answer *is* right now, not what it is defined as.
 on, which is the description's, and it is the stage table's column
 ([`stages.md § 6.2`](?doc=engines/stages.md); [`job-request.md`](?doc=execution/job-request.md) § 2).
 
-**The vocabularies are the engine's.** The columns, the sweepable set and the
-tier presets are fetched for the description's engine — on a hand-over, the
-hand-over's — and while either is loaded the page assumes none; the loaders'
-own SIESTA fallback is reachable only on a page with neither, where no card
-is filled. One fetch per engine key at a time: a second caller for the same
-key awaits the fetch in flight rather than reading the previous folder's list. So a PySCF hand-over
-is never offered SIESTA's settings, nor a sweep its own preflight refuses.
+**The vocabularies are the engine's.** The columns, the sweepable set, the
+tier presets and the fields a report can carry are fetched for the
+description's engine and kind — on a hand-over, the hand-over's — each list
+held by one rule (`keyedList`), with what its answer hands beside it (the
+kind's rungs' roles, the run's own asks): with no
+description or hand-over open nothing is asked and no card is filled; one
+fetch per (engine, kind) at a time, a second caller for that key awaiting the
+fetch in flight; the list held answered only for the key it was fetched for,
+so while another key's is asked the page holds none. So a PySCF hand-over is
+never offered SIESTA's settings, nor a sweep its own preflight refuses. **A
+list that did not load is said where it is picked from** — the picker or the
+row's preset menu names it and why — never drawn as an empty list, and is
+asked for again ([`ui-contract.md`](?doc=web/ui-contract.md) § 12).
 
 So ranks, threads and memory in the **measure** card are always *points to
 try* — one of them is one trial, never an answer. What a run uses is the

@@ -161,6 +161,13 @@ incoming atoms centred on the origin, a label the canvas already has numbered
 each decision returned as a receipt. A generator's result is added without a
 question.
 
+**The gate answers one envelope, and never throws**: `{ok: true}`; `{ok: false,
+cancelled: true}` when an add is not started — another edit is running
+([`molview.md`](?doc=web/molview.md) § 11.1) — nothing put on the canvas and no
+error said; or `{ok: false, error}`, a refusal's or a lost connection's words,
+which the panel or the Load that asked says
+([`ui-contract.md`](?doc=web/ui-contract.md) § 12).
+
 **A project file asks first** *(user, 2026-10-09: "add one guard to the load
 button: ask user 'do you want to add the structure to the existing view or
 clear the current view?' default is add")*. The Load button, and a double-click
@@ -280,7 +287,9 @@ sends is the one its readout names.
 
 **A reload keeps the structure and what the forms hold**: the structure the
 viewer shows as the tab's own draft in the workspace (`structure-opt:panel`,
-[`workspace.md`](?doc=web/workspace.md) § 2, saved when the tab loads one), and
+[`workspace.md`](?doc=web/workspace.md) § 2, saved when the tab loads one —
+a frame set whole, the frame on screen the viewer's own view context
+([`molview.md`](?doc=web/molview.md) § 11.2b)), and
 both engines' forms in this browser tab, each tab its own
 (`formSchema.keepInTab` over `pagePrefs`, [`runtime.md`](?doc=web/runtime.md) § 3;
 the user, 2026-11-11), saved as the page is left and put back after the forms
@@ -643,8 +652,11 @@ things and no more: **what** (the viewer's export) and **a suggested stem**.
    (`validationFindings.outcome`).
 
 **What the tab keeps is the panel, not the pipeline**: the readout beside the
-button — *"Target: `<name>.xyz`"*, *"Unsaved — Target: …"* once you edit
-again, and *"Not saved yet"* for a structure that has never been written —
+button — *"Target: `<name>.xyz`"*, the name a save writes — the file last
+saved or, before any save, the one loaded, a `.pdb`'s as its `.xyz` —
+*"Unsaved — Target: …"* once you edit again, and *"Not saved yet"* for a
+structure that has never been written, one frame taken from a file of several
+among them —
 the
 button's enabled state, and recording where the bytes went — the page's own
 note, because the viewer tracks contents and not files

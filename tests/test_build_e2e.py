@@ -311,6 +311,28 @@ class TestSidebarStructureFlow:
         _use(page, first, 3)
         _use(page, second, 5)
 
+    def test_a_load_that_fails_leaves_the_readout_on_the_structure_shown(
+            self, page, flask_server, two_xyz_files):
+        """`tabs.md` § 3: the structure the tab sends is the one its readout
+        names -- a second file's load lost on its way (the browser's own
+        network refusing its one request: a connection cannot be lost on cue
+        otherwise) is said on the status line, and the readout goes on
+        naming the first file and its atoms, which the viewer still shows
+        and Send would write.  The silent failure (F12's review, SO-D2): the
+        readout said "load failed: …" and no atoms while the first structure
+        stayed on the canvas and in Send."""
+        from playwright.sync_api import expect
+        first, second = two_xyz_files
+        _open_build(page, flask_server)
+        _use(page, first, 3)
+        page.route("**/api/build/load", lambda route: route.abort())
+        walk_to(page, second, use=True)
+        page.wait_for_function(
+            "() => (document.getElementById('load-status') || {})"
+            "  .className?.includes('error')", timeout=WAIT_MS)
+        expect(page.locator("#info-title")).to_have_text(first.name)
+        expect(page.locator("#info-atoms")).to_have_text("3")
+
 
 # --------------------------------------------------------------------- #
 #  Second visit: the tab keeps what it held; the file changed on disk    #
@@ -806,10 +828,15 @@ class TestSendToTaskSetup:
         assert np.allclose(sent.positions, _BOXED.positions, atol=1e-5), (
             "the Send wrote another structure than the one loaded")
 
+    @pytest.mark.parametrize("reloaded", [False, True],
+                             ids=["as-loaded", "after-a-reload"])
     def test_send_writes_the_frame_on_screen(
-            self, page, flask_server, isolated_projects_root):
+            self, page, flask_server, isolated_projects_root, reloaded):
         """A Send writes the frame you are looking at, after the frame bar
-        has moved away from the one the file opened on.
+        has moved away from the one the file opened on -- and after a
+        reload, which keeps the frame set whole and the frame on screen
+        (`web/tabs.md` § 3; F12's review, SO-D1: a reload kept frame 1
+        alone, and Send wrote it).
 
         THE SILENT FAILURE.  This tab once copied the geometry when a file
         loaded and read the labels and the cell fresh at each request, so a
@@ -844,8 +871,20 @@ class TestSendToTaskSetup:
         _use(page, trajectory, 3)
         counter = page.locator(".molviewer-frames-counter")
         expect(counter).to_have_text("1 / 3", timeout=WAIT_MS)
-        page.get_by_role("button", name="Next frame").click()
-        expect(counter).to_have_text("2 / 3", timeout=WAIT_MS)
+        if reloaded:
+            # THE FRAME KEPT -- the viewer's own view context written
+            # (`molview.md` § 11.2b) -- then the page reloaded.
+            with page.expect_request(
+                    lambda r: r.url.endswith("/api/workspace-storage/write")
+                    and "-ui-draft" in (r.post_data or ""),
+                    timeout=WAIT_MS):
+                page.get_by_role("button", name="Next frame").click()
+            expect(counter).to_have_text("2 / 3", timeout=WAIT_MS)
+            page.reload()
+            expect(counter).to_have_text("2 / 3", timeout=WAIT_MS)
+        else:
+            page.get_by_role("button", name="Next frame").click()
+            expect(counter).to_have_text("2 / 3", timeout=WAIT_MS)
 
         self._send(page)
         sent = self._handed_over(calc, frames=True)

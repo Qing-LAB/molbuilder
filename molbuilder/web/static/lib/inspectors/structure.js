@@ -209,8 +209,9 @@ import { basename, dirname } from "../path-utils.js";
                         }
                         const res = await _proj.parser.openMolecule(handle, structPath);
                         if (res && res.ok === false) {
-                            fail("Error: "
-                                 + (res.error || "could not load " + structPath));
+                            fail(_proj.parser.notLoaded(
+                                structPath, res.error || "its read answered "
+                                + "nothing"));
                             return;
                         }
                     }

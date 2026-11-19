@@ -407,3 +407,20 @@ def test_a_name_the_page_forbids_is_refused(page, flask_server):
         f"are legal.  Over-tightening is the same defect pointing the other "
         f"way: a person cannot name a channel the thing they already called "
         f"it on the compute node.")
+
+
+def test_the_reports_line_says_what_the_server_said(page, flask_server):
+    """`this-machine.md` § 4.1, `ui-contract.md` § 12.1: with no reports to
+    list, the reports line is the server's own sentence -- here, with no one
+    signed in, that there is no user to read reports for and how to name
+    one.  The silent failure (F12's review, TM-D2): the line wrote the
+    server's note and at once wrote *Nothing received yet.* over it."""
+    from molbuilder.web.app import create_app
+    note = create_app(config={}).test_client().get(
+        "/api/notify/reports").get_json()["note"]
+    assert note, "the server answered no note to say"
+    errors = _open(page, flask_server)
+    page.wait_for_function(
+        "(want) => (document.getElementById('tm-reports-state') || {})"
+        "  .textContent === want", arg=note, timeout=5000)
+    assert not errors, errors

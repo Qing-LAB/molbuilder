@@ -94,7 +94,8 @@
                     return deps.structurePage.loadIntoCanvas(
                         { structure: body.structure }, generator
                     ).then(function (gate) {
-                        if (!gate.ok) return { ok: false, cancelled: true };
+                        // THE GATE'S ANSWER, its envelope this one's.
+                        if (!gate.ok) return gate;
                         // WHAT THE BUILD FOUND, under the panel; ONE ANSWER
                         // for every panel: the atoms and the backend that
                         // built them.
@@ -113,8 +114,9 @@
                     });
                 })
                 .catch(function (err) {
-                    // The load gate failing: one envelope, so the panel
-                    // need not branch on exceptions.
+                    // A STEP OF THE CHAIN FAILING (the gate answers its own
+                    // envelope): one envelope, so the panel need not branch
+                    // on exceptions.
                     return { ok: false,
                              error: (err && err.message) ? err.message
                                                          : String(err) };

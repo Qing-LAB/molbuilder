@@ -44,12 +44,16 @@ _FENCE = f"const {{ pageBusy }} = await import({json.dumps(PAGE_BUSY.as_uri())})
 _READER = f"const {{ ask }} = await import({json.dumps(SERVER.as_uri())});"
 
 
+#: THE LISTS THE PAGE ASKS FOR AN (engine, kind), held by their one rule
+#: (`keyedList`) -- the report fields among them, which the card reads.
+_LISTS = ("/* THE LISTS THE PAGE ASKS FOR AN (engine, kind)",
+          "\n\n/** Every parameter that may become a column.")
 #: WHAT THE HARNESSES LIFT OUT OF THE VIEWER, each by `lifted`'s two anchors:
 #: `notifyValues` asks BOTH selectors, so a harness needs both or it exercises
 #: a different function than the page runs.
 _CHOOSING = (
-    ("//: ``null`` until the server has answered",
-     "/** Paint one tick per report"),
+    _LISTS,
+    ("/** The ticked report fields,", "/** Paint one tick per report"),
     ("function channelSelection()", "/** Paint one tick per channel"),
     ("function notifyValues()", "/** Write the policy INTO"),
 )
@@ -68,6 +72,9 @@ _WRITER = (*_CHOOSING, _FENCE, *_WRITING)
 #: card filled from the job request (`readNotifyFromRequest`), the policy,
 #: and the writer.
 _ON_THE_PAGE = (
+    _LISTS,
+    # ...and the engine the key the lists are asked by reads.
+    ("function _handoverEngine(over) {", "/* Each bench row's class"),
     ("//: What this machine has, from `GET /api/notify/channels`.",
      "\nif (document.readyState"),
     ("function readNotifyFromRequest(", "/** What a `prep` would resolve"),

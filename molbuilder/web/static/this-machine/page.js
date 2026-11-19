@@ -53,6 +53,14 @@
         kind.className = "tm-row-kind";
         kind.textContent = c.kind;
         name.appendChild(kind);
+        /* A CHANNEL THE MONITOR SKIPS is marked on its row, with its fault
+         * in the monitor's words (`this-machine.md` § 3). */
+        if (c.skipped) {
+            var skip = window.molbuilder.dom.wordsEl(
+                "div", "tm-row-skip", "the monitor skips it: " + c.skipped);
+            window.molbuilder.status.tone(skip, "error");
+            name.appendChild(skip);
+        }
 
         var where = document.createElement("div");
         where.className = "tm-row-where";
@@ -122,12 +130,20 @@
             say("tm-file", "No channels are set up, so nothing is sent. "
                 + "They live in " + d.path + ".", "muted");
         } else {
+            var skipped = d.channels.filter(function (c) { return c.skipped; });
+            var none = skipped.length === d.channels.length;
+            var loose = d.mode && d.mode !== "0o600";
             say("tm-file", (d.channels.length === 1 ? "One channel"
                 : d.channels.length + " channels") + " in " + d.path
-                + (d.mode && d.mode !== "0o600"
-                   ? "  — warning: that file is " + d.mode
-                     + ", not 0600" : ""),
-                d.mode && d.mode !== "0o600" ? "warn" : "ok");
+                + (none ? "  — the monitor skips "
+                          + (d.channels.length === 1 ? "it" : "every one")
+                          + ", so nothing is sent; marked below"
+                   : skipped.length ? "  — the monitor skips "
+                     + (skipped.length === 1 ? "one, marked below"
+                        : skipped.length + " of them, marked below") : "")
+                + (loose ? "  — warning: that file is " + d.mode
+                           + ", not 0600" : ""),
+                none ? "error" : (skipped.length || loose) ? "warn" : "ok");
         }
     }
 
@@ -391,6 +407,7 @@
 
     var REPORTS = "/api/notify/reports";
     var reports = [];          // what the server last answered, newest first
+    var told = {};             // ...and what it said of them: total, file, note
     // A PER-BROWSER CONVENIENCE, kept after the browser closes
     // (`lib/page-prefs.js`).
     var SEEN = "reports.seen";
@@ -463,31 +480,36 @@
             host.appendChild(cardFor(r));
             shown += 1;
         });
-        if (!reports.length) {
-            say("tm-reports-state", "Nothing received yet.", "muted");
-        } else if (q) {
-            say("tm-reports-state", shown + " of " + reports.length + " shown.", "muted");
-        }
+        // THE STATE LINE, ITS ONE PAINTER: the server's note where there is
+        // none to list, the filter's count while one is typed, else what the
+        // server holds (this-machine.md § 4.1; ui-contract.md § 12.1).
+        say("tm-reports-state",
+            told.error ? told.error
+            : !reports.length ? (told.note || "Nothing received yet.")
+            : q ? shown + " of " + reports.length + " shown."
+            : told.total + " report" + (told.total === 1 ? "" : "s")
+              + " in " + told.file, told.error ? "warn" : "muted");
     }
 
     async function loadReports() {
         if (!$("tm-reports")) return;
         var answer = await window.molbuilder.server.ask(REPORTS);
         if (!answer.ok) {
-            say("tm-reports-state", answer.error, "warn");
+            // ...SAID BY THE LINE'S ONE PAINTER, the list as last read kept.
+            told = Object.assign({}, told, { error: answer.error });
+            paintReports();
             return;
         }
         var d = answer.body;
         reports = d.reports || [];
+        told = { total: d.total, file: d.file, note: d.note || "",
+                 error: "" };
         var seen = _seen();
         var fresh = reports.filter(function (x) { return Number(x.sent_at || 0) > seen; }).length;
         var count = $("tm-reports-count");
         if (count) count.textContent = reports.length
             ? (reports.length + " kept" + (fresh ? ", " + fresh + " since you last looked" : ""))
             : "";
-        say("tm-reports-state", reports.length
-            ? d.total + " report" + (d.total === 1 ? "" : "s") + " in " + d.file
-            : (d.note || "Nothing received yet."), "muted");
         paintReports();
         if (reports.length) _markSeen(Number(reports[0].sent_at || 0));
     }

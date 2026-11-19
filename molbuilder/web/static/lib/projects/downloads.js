@@ -70,10 +70,12 @@ export async function downloadExport(url, body) {
  * writer, every button disabled while one runs, and the kind's *How to read
  * these in Python*.  ``asks()`` -- the values the page shows that the export
  * takes (a vibration's laser and width) -- is read as a button is pressed,
- * and only the offer's numbers are sent.  Resolves the bar; a line saying
+ * and only the offer's numbers are sent; ``at()`` -- the selection on screen,
+ * which a controller that keeps one bar across its calculation's selections
+ * hands over -- is read so too, ``path`` where none is handed.  Resolves the bar; a line saying
  * why where the offer did not read -- never taken for none; or ``null``
  * where the path's calculation exports nothing.  Never throws. */
-export async function exportBar(path, { asks } = {}) {
+export async function exportBar(path, { asks, at } = {}) {
     const a = await ask("/api/export/offer?"
                         + new URLSearchParams({ path }).toString());
     // THE ONE ELEMENT BUILDER (`lib/dom.js`).
@@ -99,7 +101,8 @@ export async function exportBar(path, { asks } = {}) {
     let buttons = [];
     const run = async (choice) => {
         const shown = typeof asks === "function" ? (asks() || {}) : {};
-        const q = Object.assign({ path }, choice);
+        const where = typeof at === "function" ? at() : path;
+        const q = Object.assign({ path: where }, choice);
         numbers.forEach((n) => { if (shown[n] != null) q[n] = String(shown[n]); });
         buttons.forEach((b) => { b.disabled = true; });
         say("Composing the export.", "muted");
