@@ -232,7 +232,7 @@ words = "a transport calculation, as netcdf: each point's DOS per orbital beside
 
 [transport.charge]
 value = 0
-why = "a transport junction is neutral: its boundaries are open, so the electrodes' chemical potentials set its electron number; net charge and gating are deferred by ruling"
+why = "a transport junction is neutral: its ends are open to the leads, so the leads' chemical potentials set how many electrons it holds"
 
 [transport.description]
 # Its relaxed junction, cited (engines/transport.md § 3.1); the electrode

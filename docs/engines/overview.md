@@ -131,8 +131,9 @@ flowchart LR
   (`pyscf/vibration_deck.py`) into `FROZEN_ATOM_IDXS` — geomeTRIC's `$freeze`
   file for the relaxation, the free-atom Hessian after it; the SIESTA decks
   write `%block Geometry.Constraints` from `struct.frozen_atoms`, and the
-  vibration deck the FC range beside it; a transport calculation requires the
-  leads held, refusing a citation whose lead atoms are not. No
+  vibration deck the FC range beside it; a transport calculation asks the
+  leads held, and says of a citation whose lead atoms are not which ones — a
+  warning, the run going as set. No
   emitter unions, infers or drops an index, and no generated script reads the
   sidecar at run time ([`engines/vibration.md`](?doc=engines/vibration.md)
   § 2.3, invariant I6).
@@ -158,7 +159,7 @@ ATOM-METADATA block, read by nothing and named by no check:
 
 | Label | builders | siesta / pyscf opt | vibration (both engines) | transport |
 |---|---|---|---|---|
-| `frozen_atoms` | — (the viewer's selection panel sets it) | freezes in the relax (`Geometry.Constraints` / `$freeze`) | holds the relaxation and takes the Hessian over the free atoms only¹ | requires every lead atom held — a citation whose lead atoms are not in `frozen_atoms` is refused |
+| `frozen_atoms` | — (the viewer's selection panel sets it) | freezes in the relax (`Geometry.Constraints` / `$freeze`) | holds the relaxation and takes the Hessian over the free atoms only¹ | asks every lead atom held — a citation whose lead atoms are not in `frozen_atoms` is warned, naming them |
 | `regions` (`L-electrode`/`bridge`/…) | — (the viewer's selection panel sets it) | round-tripped in metadata (not consumed) | round-tripped in metadata (not consumed) | **drives the whole derivation** |
 
 ¹ *partial Hessian* = second derivatives for the free atoms only, the block of

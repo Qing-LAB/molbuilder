@@ -57,7 +57,7 @@ from typing import List, Optional, Sequence, Tuple
 import numpy as np
 
 from ..cell import (LAYER_TOL_ANG, bulk_z_period, classify_seam,
-                    detect_layers)
+                    detect_layers, uneven_layers)
 from ..issues import Issue
 from ..structure import Structure
 from .sort import ELECTRODE_LABELS
@@ -93,6 +93,12 @@ class ElectrodeModel:
     #: and its seam (:func:`seam_finding`): ``warn`` where the lead may not
     #: be the bulk crystal the self-energy needs, ``info`` otherwise.
     notes: List[Issue] = field(default_factory=list)
+    #: WHAT ITS CHECKS SAY OF IT (:func:`extract_electrode_model`): an
+    #: atom not held, held by nothing in its relaxation, moved, or layers
+    #: unevenly spaced -- each a warning, never a stop (the user,
+    #: 2026-11-18), carried into the composition's record so every prep
+    #: says it (`compose.junction_said`).
+    said: Tuple[str, ...] = ()
 
     def as_structure(self) -> Structure:
         """The lead as an ordinary :class:`~molbuilder.structure.Structure`,
@@ -236,45 +242,64 @@ def seam_finding(pos, cell) -> Issue:
                  where=SEAM_WHERE)
 
 
-def _spacing_or_refuse(layer_z, label: str):
-    """:func:`cell.bulk_z_period`, with the block's name on the refusal.
+def _spacing_or_refuse(layer_z, label: str, outer: int):
+    """:func:`cell.bulk_z_period` at the lead's ``outer`` end, with the
+    lead's name on the refusal.
 
-    The rule is `cell`'s; the label is this layer's, and `cell` has no
+    The rule is `cell`'s; the label is this lead's, and `cell` has no
     way to know it.  Without it a two-lead junction of one element gives
     no way to tell which end to re-label.
     """
     try:
-        return bulk_z_period(layer_z)
+        return bulk_z_period(layer_z, outer)
     except ValueError as exc:
-        raise ValueError(f"the {label} block: {exc}") from exc
+        raise ValueError(f"the {label} lead: {exc}") from exc
 
 
-def _refuse_unless_frozen_bulk(
+def _outer_end(device: Structure, idxs) -> int:
+    """Which end of a lead is its bulk side -- the one farthest from the
+    rest of the junction -- as :func:`cell.bulk_z_period` takes it: 0 the
+    lowest pair of layers, where the rest lies above (the left lead), -1
+    the highest.  Measured from the structure, never from the lead's
+    name."""
+    z = np.asarray(device.positions, dtype=float)[:, 2]
+    rest = sorted(set(range(len(z))) - set(idxs))
+    if not rest:
+        return 0
+    return 0 if float(z[rest].mean()) > float(z[list(idxs)].mean()) else -1
+
+
+def _lead_findings(
     device: Structure,
     label: str,
     idxs,
     prior_positions: Optional[np.ndarray],
     held_by_relaxation: Optional[Sequence[int]] = None,
-) -> None:
-    """The lead must be frozen, and must have stayed where it was.
+) -> List[str]:
+    """Whether the lead is frozen, and stayed where it was -- what is not,
+    in words: each a warning, never a stop (the user, 2026-11-18: "None of
+    these things should stop any calculation being constructed or being
+    run").
 
     Split out so :func:`extract_electrode_model` reads as *check, then
-    build* rather than interleaving the two; see that docstring for why
-    the order of these questions is a dependency and not a preference.
+    build* rather than interleaving the two.  An unfrozen block is told
+    that alone: whether it moved is noise there, and freezing is the fix
+    for both.  Raises only where the comparison cannot be made: a starting
+    geometry of another atom count.
     """
+    said: List[str] = []
     frozen = set(getattr(device, "frozen_atoms", None) or ())
     loose = [i for i in idxs if i not in frozen]
     if loose:
-        raise ValueError(
-            f"{len(loose)} atom(s) in {label!r} are NOT FROZEN: "
-            f"{device.atoms_named(loose, limit=6)}.  A lead is the "
-            f"pristine bulk "
-            f"the self-energy attaches to, so every atom carrying an "
-            f"electrode label must be held still — freeze them (the Modify "
-            f"tab's selection writes \"frozen_atoms\"), then relax and cite "
-            f"again.  Freezing them now does not make the geometry they are "
-            f"already in bulk -- nothing held them while the bridge relaxed, "
-            f"so whether they moved was never constrained")
+        return [
+            f"{len(loose)} atom(s) of the {label} lead are NOT FROZEN: "
+            f"{device.atoms_named(loose, limit=6)}.  The calculation takes "
+            f"the lead as the bulk metal on its side, and these atoms were "
+            f"free while the rest relaxed, so the lead it computes may not "
+            f"be the bulk.  Add them to the frozen_atoms region on the "
+            f"Molbuilder tab, then relax the junction again and cite that "
+            f"relaxation -- freezing them now does not undo what the "
+            f"earlier relaxation did to them."]
 
     # HELD BY THE RELAXATION TOO, when its record says which atoms it held:
     # the label is the person's to change, the record is what the relaxation
@@ -285,16 +310,19 @@ def _refuse_unless_frozen_bulk(
         free_then = [i for i, j in zip(idxs, device.map_to_user_index(idxs))
                      if j not in held]
         if free_then:
-            raise ValueError(
-                f"{len(free_then)} atom(s) in {label!r} were NOT HELD by "
-                f"the relaxation that left this geometry, as its record "
-                f"says: {device.atoms_named(free_then, limit=6)}.  A lead is "
-                f"the pristine bulk the self-energy attaches to, and holding "
-                f"them now does not undo what the relaxation did to them -- "
-                f"hold every electrode atom, then relax and cite again")
+            said.append(
+                f"{len(free_then)} atom(s) of the {label} lead were NOT "
+                f"FROZEN in the relaxation this geometry comes from, as its "
+                f"record says: {device.atoms_named(free_then, limit=6)}.  "
+                f"The calculation takes the lead as the bulk metal on its "
+                f"side, so the lead it computes may not be the bulk.  "
+                f"Freeze every lead atom, then relax the junction again and "
+                f"cite that relaxation -- freezing them now does not undo "
+                f"what that relaxation did to them.")
+            return said
 
     if prior_positions is None:
-        return
+        return said
     prior = np.asarray(prior_positions, dtype=float)
     now = np.asarray(device.positions, dtype=float)
     if prior.shape != now.shape:
@@ -311,14 +339,14 @@ def _refuse_unless_frozen_bulk(
             f"{device.atoms_named([i])} moved {d:.4f} A"
             for i, d in moved[:6])
         more = f" and {len(moved) - 6} more" if len(moved) > 6 else ""
-        raise ValueError(
-            f"{len(moved)} atom(s) in {label!r} MOVED during the cited "
-            f"relaxation: {shown}{more}.  Frozen means unmoved"
-            f": the "
-            f"electrode blocks "
-            f"are the seam the self-energies attach to.  Re-relax the "
-            f"junction with the electrode atoms constrained, or fix the "
-            f"labels")
+        said.append(
+            f"{len(moved)} atom(s) of the {label} lead MOVED during the "
+            f"cited relaxation: {shown}{more}.  The calculation takes the "
+            f"lead as the bulk metal on its side, so the lead it computes is "
+            f"the moved one, not the bulk.  Relax the junction again with "
+            f"the lead atoms frozen, or correct which atoms are labelled as "
+            f"the lead.")
+    return said
 
 
 def extract_electrode_model(
@@ -330,14 +358,16 @@ def extract_electrode_model(
     layer_tol_ang: float = LAYER_TOL_ANG,
 ) -> ElectrodeModel:
     """Build an :class:`ElectrodeModel` for one lead, ``L-electrode`` or
-    ``R-electrode`` — and refuse the region outright if it is not a bulk lead.
+    ``R-electrode`` — and say what is not a bulk lead about it.
 
     The lateral cell is the **device's** (a, b) — so the lead tiles the
     device cross-section (I6).  The z-period is derived from the layer
     spacing.
 
-    **This is the one gate.**  Three questions, in the order their
-    answers depend on one another, each refusal naming what to do:
+    **This is the one place a lead is judged.**  Three questions, in the
+    order their answers depend on one another, each answer that is not a
+    bulk lead said in :attr:`ElectrodeModel.said`, naming what to do --
+    a warning, never a stop (the user, 2026-11-18):
 
     1. **Declared frozen** -- every atom of the region is in
        ``frozen_atoms`` (``engines/transport.md`` § 4: the lead atoms
@@ -350,13 +380,14 @@ def extract_electrode_model(
        (`model/overview.md` § 2.2a, I1), each atom of this structure
        compared with itself there (``Structure.map_to_user_index``).  Form B
        has none and passes on 1 alone, which is why 1 exists separately.
-    3. **Evenly spaced** -- :func:`cell.bulk_z_period`, which refuses a
-       block whose layers do not share one spacing.
+    3. **Evenly spaced** -- :func:`cell.uneven_layers`; the lead is
+       built on its first spacing (:func:`cell.bulk_z_period`).
 
-    1 before 2 because it is cheaper and its answer is the fix for both;
-    1 and 2 before 3 because the spacings of a block that moved describe
-    nothing.  Raises ``ValueError``; `compose` turns it into a
-    ``ComposeError`` verbatim.  A refusal names atoms in the user order
+    1 before 2 because its answer is the fix for both; 1 and 2 before 3
+    because the spacings of a block that moved describe nothing.  Raises
+    ``ValueError`` only where no lead can be built -- a region that is not
+    an electrode, one atomic layer -- which `compose` turns into a
+    ``ComposeError`` verbatim.  Atoms are named in the user order
     (``Structure.atoms_named``).
     """
     electrodes = {lab: idxs
@@ -368,8 +399,8 @@ def extract_electrode_model(
             f"(the leads are {' and '.join(ELECTRODE_LABELS)})")
     idxs = sorted(electrodes[label])
 
-    _refuse_unless_frozen_bulk(device, label, idxs, prior_positions,
-                               held_by_relaxation)
+    said = _lead_findings(device, label, idxs, prior_positions,
+                          held_by_relaxation)
 
     pos = np.asarray(device.positions, dtype=float)[idxs]
     elems = [device.elements[i] for i in idxs]
@@ -390,7 +421,12 @@ def extract_electrode_model(
     layer_z = [lz - float(min(layer_z)) for lz in layer_z] if layer_z else []
 
     notes: List[Issue] = []
-    zper, d_inter, n_layers = _spacing_or_refuse(layer_z, label)
+    zper, d_inter, n_layers = _spacing_or_refuse(
+        layer_z, label, _outer_end(device, idxs))
+    # ...THE SPACINGS of a block that did not stay put describe nothing.
+    uneven = None if said else uneven_layers(layer_z)
+    if uneven is not None:
+        said.append(f"the {label} lead: {uneven}")
     z_span = float(layer_z[-1] - layer_z[0])
     notes.append(Issue(
         "info", f"z-period derived from {n_layers} layers: their span "
@@ -407,7 +443,7 @@ def extract_electrode_model(
     return ElectrodeModel(
         label=label, elements=elems, positions=pos, lat_a=lat_a, lat_b=lat_b,
         transverse_kind=(dev_kind[0], dev_kind[1]), z_period=zper,
-        notes=notes)
+        notes=notes, said=tuple(said))
 
 
 __all__ = [

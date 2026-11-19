@@ -302,11 +302,10 @@ def _classify_run(cite_dir: Path) -> CitedRun:
 def _classify_pair(path: Path) -> CitedPair:
     """A cited structure pair: every frame through the codec
     (`StructureCodec.load(frames=True)`), its ``info.calculation`` -- what
-    the settings default from -- and the per-frame promise only the
-    citation can check (`engines/transport.md` § 2a.9): every frame keeps
-    the electrode atoms where frame 0 has them, within
-    `wizard.FROZEN_TOL_ANG`, because every frame shares the leads'
-    calculation.  The frames' rows are their maker's, carried with the
+    the settings default from.  Whether every frame keeps the electrode
+    atoms where frame 0 has them (`engines/transport.md` § 2a.9) is said
+    when the junction is composed (:func:`frames_moving_the_leads`).  The
+    frames' rows are their maker's, carried with the
     structure and never read here (`model/structure.md` § 2.2f).  The
     same atoms, species and cell are the structure's own invariant, refused
     by its reader."""
@@ -339,24 +338,26 @@ def _classify_pair(path: Path) -> CitedPair:
             f"{path} carries no info.calculation -- {sidecar.name} records no "
             f"optimization -- so nothing says which settings its geometry was "
             f"optimized with.  {CITATION_CONDITION}.")
-    frames_keep_the_leads(struct, path)
     return CitedPair(path=path, sidecar=sidecar, structure=struct,
                      calculation=calc, said=tuple(said))
 
 
-def frames_keep_the_leads(struct: Structure, path: Path) -> None:
+def frames_moving_the_leads(struct: Structure, path: Path) -> Optional[str]:
     """Every frame's electrode atoms where frame 0 has them (§ 2a.9: the
     lead Hamiltonian is truth for every frame), measured as the lead gate
     measures an unmoved atom -- the distance, against
-    `wizard.FROZEN_TOL_ANG` -- refused naming each frame and its atoms, in
-    the pair's own atom order."""
+    `wizard.FROZEN_TOL_ANG`: the sentence naming each frame that moves one
+    and its atoms, in the pair's own atom order, ``None`` when every frame
+    keeps them.  Said, never a stop (the user, 2026-11-18): the frame set
+    built from modes says it (`spectra.mode_frames`), and so does a
+    transport calculation citing the set (:func:`junction_said`)."""
     from ..structure import frame_words
     from .wizard import FROZEN_TOL_ANG
     regions = struct.regions or {}
     leads = sorted(set(regions.get(REGION_LEFT_ELECTRODE, ()))
                    | set(regions.get(REGION_RIGHT_ELECTRODE, ())))
     if struct.n_frames < 2 or not leads:
-        return
+        return None
     frames = np.asarray(struct.frames, dtype=float)
     broken = []
     for f in range(1, len(frames)):
@@ -370,14 +371,16 @@ def frames_keep_the_leads(struct: Structure, path: Path) -> None:
             more = f" and {len(moved) - 3} more" if len(moved) > 3 else ""
             broken.append(f"{frame_words(f, len(frames))} moves "
                           f"{shown}{more}")
-    if broken:
-        raise ComposeError(
-            f"{path.name}: {'; '.join(broken)} -- every frame of a set "
-            f"shares the leads' calculation, so an electrode atom stays where "
-            f"the base, the first frame, has it, within "
-            f"{FROZEN_TOL_ANG:g} A"
-            f".  Write the frames with the "
-            f"electrodes held.")
+    if not broken:
+        return None
+    return (f"{path.name}: {'; '.join(broken)}, from where the first "
+            f"frame has it.  A transport calculation citing this set "
+            f"computes the leads once, from the first frame, so a lead atom "
+            f"should stay where that frame has it, within "
+            f"{FROZEN_TOL_ANG:g} A: TranSIESTA compares each frame's lead "
+            f"atoms with the leads it was given to about that accuracy and "
+            f"stops that frame's device stage where they differ.  Make the "
+            f"frames with the lead atoms frozen.")
 
 
 def cited_frames(citation: str, tree_root: Path) -> dict:
@@ -579,9 +582,9 @@ def _extract_and_gate_electrodes(dev: Structure, *, prior_positions=None,
 
     What a lead must BE is `wizard.extract_electrode_model`'s question
     -- every atom frozen, unmoved if a starting geometry is given,
-    evenly spaced -- and a block that is none of those never becomes a
-    model.  This passes the inputs through and turns the refusal into a
-    `ComposeError`.
+    evenly spaced -- each answer that is not said on the model
+    (`ElectrodeModel.said`), never a stop.  This passes the inputs through
+    and turns a block no lead can be built from into a `ComposeError`.
 
     Whether a lead is thick enough for its Hamiltonian's reach -- the
     principal-layer condition -- is TranSIESTA's own check, at the
@@ -597,7 +600,7 @@ def _extract_and_gate_electrodes(dev: Structure, *, prior_positions=None,
     junction's relaxation record held, in the user order
     (:func:`_held_by_its_relaxation`), or ``None`` the same way.
 
-    A refusal names atoms in the user order, the device's own
+    What is said names atoms in the user order, the device's own
     answer (`Structure.map_to_user_index`), never by their place in TranSIESTA's
     deck order (`engine_atom_index`).
     """
@@ -620,6 +623,19 @@ def _extract_and_gate_electrodes(dev: Structure, *, prior_positions=None,
             "neither labeled electrode block can serve as a lead. "
             + "  ".join(f"({i}) {r}." for i, r in enumerate(refusals, 1)))
     return tuple(models)
+
+
+def junction_said(composed: "ComposedJunction", *,
+                  extending: bool = False) -> Tuple[str, ...]:
+    """WHAT A COMPOSED JUNCTION SAYS, every surface alike -- prep (each
+    rung's `Rung.said`) and the Transport card: what the junction says of
+    itself (`sort.junction_notes`, nothing while ``extending``) and what
+    composing it said -- its leads' checks, its frames, its citation's
+    charge -- as its record keeps them (``warnings``,
+    :func:`compose_junction`): warnings, never a stop."""
+    from .sort import junction_notes
+    return (*junction_notes(composed.junction, extending=extending),
+            *(composed.provenance or {}).get("warnings", ()))
 
 
 def with_swapped_leads(struct, source_name: str):
@@ -674,19 +690,29 @@ def _refuse_outside(struct: Structure) -> None:
     where = struct.atoms_named(outside, limit=8)
     if struct.engine_offset is None:
         # CENTRED AND STILL OUTSIDE: the atoms span more than the cell along
-        # z, so the leads' end layers meet through the image -- I12's
-        # collision, in its own words: the room measured from the lead and
-        # the c that closes the boundary to one layer spacing.
-        from ..validation.sidecar import check_junction_boundary
-        said = [i.message for i in check_junction_boundary(
-                    struct, severity="error")
-                if i.where == "cell.transport_collision"]
+        # z -- the length that holds them with one layer spacing of the lead
+        # at the edge measured as I12 measures the room there
+        # (`cell.transport_room`).
+        from ..cell import transport_room
+        from .sort import ELECTRODE_LABELS
+        box = np.asarray(struct.cell, dtype=float).reshape(3, 3)
+        z = np.asarray(struct.positions, dtype=float)[:, 2]
+        leads = [list(idx) for label, idx in (struct.regions or {}).items()
+                 if label in ELECTRODE_LABELS and idx]
+        room, spacing = (transport_room(struct.positions, box, leads)
+                         if leads else (None, None))
+        fits = (f"set the cell's length along z to "
+                f"{float(box[2, 2]) - room + spacing:.3f} Å, one layer "
+                f"spacing of the lead at its edge"
+                if spacing is not None else
+                f"make the cell longer along z than {float(np.ptp(z)):.3f} Å")
         raise ComposeError(
             f"the junction, centred in its cell, has {where} outside it "
-            f"along z, the transport direction: "
-            + (said[0] if said else
-               "its atoms span more than the cell's length there"
-               "."))
+            f"along z, the transport direction: its atoms span "
+            f"{float(np.ptp(z)):.3f} Å there, and the cell is "
+            f"{float(box[2, 2]):.3f} Å long.  TranSIESTA needs every atom "
+            f"inside the cell along the transport direction: on the Cell "
+            f"page, {fits}.")
     # THE WAY OUT IS THE PAIR'S OWN: a one-geometry pair is saved on the
     # Molbuilder tab; a frame set, which the tab opens one frame of, is
     # written again by what made it (`model/structure.md` § 2.2e).
@@ -747,13 +773,25 @@ def compose_junction(citation: str, *, tree_root, engine: str,
     dev = sorted_res.structure
 
     # The electrode models, extracted from the SORTED blocks -- and the
-    # § 3 lead gates, which is the same step: a block that is not frozen
-    # bulk does not become a model (`wizard.extract_electrode_model`).  The
-    # starting geometry stays in the user order: the gate compares each atom of
+    # § 3 lead checks, which are the same step: what is not frozen bulk is
+    # said on the model (`wizard.extract_electrode_model`).  The starting
+    # geometry stays in the user order: the check compares each atom of
     # the sorted device with itself there, through the device's own answer
     # (`Structure.map_to_user_index`).
     elec_l, elec_r = _extract_and_gate_electrodes(
         dev, prior_positions=start, held_by_relaxation=held)
+    # WHAT COMPOSING SAYS -- the leads' checks, the frames' (§ 2a.9), the
+    # citation's charge (ES7): warnings, never a stop (the user,
+    # 2026-11-18), recorded with the composition -- the starting geometry
+    # and the citation they are measured against do not travel with it --
+    # so every prep says them (:func:`junction_said`).
+    from .citation_defaults import charge_finding, citation_answers
+    moving = (frames_moving_the_leads(cited.structure, cited.path)
+              if isinstance(cited, CitedPair) else None)
+    charged = charge_finding(citation_answers(cited))
+    warnings = ([s for m in (elec_l, elec_r) for s in m.said]
+                + ([moving] if moving else [])
+                + ([charged.message] if charged is not None else []))
 
     provenance = {
         # WHICH KIND was cited (§ 3.1): it decides which files the record
@@ -768,6 +806,7 @@ def compose_junction(citation: str, *, tree_root, engine: str,
         # result can always say which bytes built it, and a cited pair
         # edited since is refused by name (`load_compose_record`).
         "files": files,
+        **({"warnings": warnings} if warnings else {}),
         **said,
     }
     return ComposedJunction(
@@ -1049,12 +1088,12 @@ def load_compose_record(base_dir, *, citation: str, engine: str,
     The record answers for the citation it was made from: a
     ``task.json`` re-pointed at a different attempt must NOT keep
     serving the old copy, so a citation mismatch reads as *no record*.
-    The § 3 lead gates re-run on the loaded structure (cheap, pure) —
-    frozen-declared and evenly-spaced both need only the structure.  The
-    UNMOVED comparison does not re-run: it measures against the geometry
-    the relaxation started from, which is exactly what a travelled folder
-    no longer carries, and the provenance records that it passed when the
-    copy was made.
+    The leads are built again from the loaded structure (cheap, pure);
+    what their checks said is the record's (``warnings``): the UNMOVED
+    comparison measures against the geometry the relaxation started from,
+    which is exactly what a travelled folder no longer carries, so what it
+    said when the copy was made is what every later prep says
+    (:func:`junction_said`).
 
     *tree_root* holds a cited PAIR to the bytes it was composed from
     (§ 3.1): one edited since is refused by name, because the seed and the
@@ -1145,9 +1184,8 @@ def load_compose_record(base_dir, *, citation: str, engine: str,
     # NO `prior_positions` HERE, and that is not an omission: this
     # rebuilds from a junction that was already composed, and the
     # geometry the relaxation started from is not part of the record --
-    # the unmoved comparison ran when the record was written.  The frozen
-    # DECLARATION is asked separately and does re-run here, as does
-    # even-spacing.  Both need only the structure.
+    # what its checks said then is (`warnings`, said by
+    # `junction_said`).
     elec_l, elec_r = _extract_and_gate_electrodes(dev)
     deck_text = read_deck(deck_path) if kind == "run" else None
     return ComposedJunction(

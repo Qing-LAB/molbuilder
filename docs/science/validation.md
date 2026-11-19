@@ -327,9 +327,10 @@ either nagging or dangerous:
 
 * **Does the k-point mesh contradict the axes?** — `kmesh.check`, on every
   mesh a deck writes (`config.kgrid`, a transmission's `config.tbt_k_grid`),
-  **warnings**, save one refusal — a transport calculation's grid sampling an
-  isolated axis more than once while the other axis of the electrode plane is
-  periodic, which TranSIESTA stops on *(user, 2026-09-30)* — under one rule
+  **warnings**, save one piece of information — a transport calculation's grid
+  sampling an isolated axis more than once while the other axis of the
+  electrode plane is periodic, which TranSIESTA stops the device on, said
+  beforehand and written as set *(the user, 2026-11-02)* — under one rule
   *(user, 2026-08-20)*: **`k > 1` is the user's
   explicit statement — "sample a supercell along this axis" — so that is the
   only place a consistency question exists. `k = 1` states nothing** (correct
@@ -514,7 +515,7 @@ its transport boundary, are asked once by `validate()` where the kind's deck
 relaxes the structure (the kind table's `relaxes` — an optimization's), never
 by an engine's validator. A vibration's held atoms are its own question, and
 the free atoms are the system it calculates; a transport rung relaxes nothing,
-and its kind refuses the boundary itself.
+and its kind warns of the boundary itself.
 The same wrong calculation reached the transport kind: its rungs write no MD
 block — the junction was relaxed upstream and every rung computes at that
 geometry — so SIESTA's frozen-atom family is not asked there at all, rather

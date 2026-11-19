@@ -379,38 +379,41 @@ def test_bulk_z_period_single_layer_raises():
         cellmod.bulk_z_period([0.0])
 
 
-def test_bulk_z_period_refuses_layers_that_are_not_evenly_spaced():
+def test_layers_that_are_not_evenly_spaced_are_said_and_the_first_spacing_kept():
     """A lead is frozen bulk, so its spacings are the one the slab was
-    built with — and a block where they are not is refused, not averaged.
+    built with — and a block where they are not is said, never averaged,
+    and built on its first spacing; never a stop (the user, 2026-11-18).
 
     (user ruling, 2026-09-20: "that single value should be the space we
     use... only checking of a single value").  An outlier inside an
     electrode region means the region was mislabelled or was never frozen, and smoothing it over
     hands back a plausible period for a lead that is not bulk.
     """
-    with pytest.raises(ValueError) as e:
-        cellmod.bulk_z_period([0.0, 2.35, 4.70, 7.05, 10.05])
-    msg = str(e.value)
+    layers = [0.0, 2.35, 4.70, 7.05, 10.05]
+    msg = cellmod.uneven_layers(layers)
+    assert msg is not None
     assert "2.3500" in msg and "3.0000" in msg, (
         f"the spacings must be named so a person can see which one is "
         f"odd: {msg}")
     assert "frozen" in msg, "and the reason it must not vary"
+    _zper, d, _n = cellmod.bulk_z_period(layers)
+    assert d == pytest.approx(2.35)
 
 
-def test_bulk_z_period_refuses_a_three_layer_block_the_median_could_not_judge():
+def test_a_three_layer_block_the_median_could_not_judge_is_said():
     """With only two spacings a `median` is the mean of both, so the
-    outlier would move the answer instead of being rejected by it:
+    outlier would move the answer instead of being caught by it:
     [0, 2.35, 5.35] would give d = 2.675 and a seam 0.33 A too wide,
     silently.  A spread check has no such floor."""
-    with pytest.raises(ValueError):
-        cellmod.bulk_z_period([0.0, 2.35, 5.35])
+    assert cellmod.uneven_layers([0.0, 2.35, 5.35]) is not None
 
 
 def test_bulk_z_period_tolerates_the_noise_a_real_junction_carries():
-    """The other half: the tolerance must not refuse real data.  These
+    """The other half: the tolerance must not call real data uneven.  These
     are the L-electrode layer centroids of
     `projects/Au-BDT-Au/.../AuBDTAu_partOpt_frame38`, whose two spacings
     differ by 1e-6 A — the precision the coordinates were written at."""
+    assert cellmod.uneven_layers([0.0, 2.400623, 4.801245]) is None
     zper, d, n = cellmod.bulk_z_period([0.0, 2.400623, 4.801245])
     assert n == 3
     assert d == pytest.approx(2.400623)
@@ -431,24 +434,23 @@ def test_bulk_z_period_admits_what_the_REAL_path_does_to_a_built_lead():
     """
     d = 2.3545498678090       # Au(111) at a = 4.0782, straight from add_slab
     exact = [i * d for i in range(6)]
-    cellmod.bulk_z_period(exact)                       # as built
+    assert cellmod.uneven_layers(exact) is None        # as built
 
     six_dp = [round(z, 6) for z in exact]              # through the codec
     gaps = np.diff(six_dp)
     assert gaps.max() - gaps.min() <= 1e-6 + 1e-12, (
         "the codec's own quantization is the only noise on this path")
+    assert cellmod.uneven_layers(six_dp) is None
     zper, spacing, n = cellmod.bulk_z_period(six_dp)
     assert n == 6
     assert spacing == pytest.approx(d, abs=1e-6)
 
 
-def test_the_refusal_never_prints_a_spread_that_looks_equal_to_the_limit():
+def test_the_sentence_never_prints_a_spread_that_looks_equal_to_the_limit():
     """`{spread:.4f}` against `{tol:g}` printed "a spread of 0.0010 A,
     more than 0.001 A" — the same number twice, reading as a
     contradiction to the person told to act on it."""
-    with pytest.raises(ValueError) as e:
-        cellmod.bulk_z_period([0.0, 2.35, 4.70, 7.05, 10.05])
-    msg = str(e.value)
+    msg = cellmod.uneven_layers([0.0, 2.35, 4.70, 7.05, 10.05])
     import re
     nums = re.findall(r"a spread of ([\d.]+) A, more than ([\d.]+) A", msg)
     assert nums, f"the two numbers must both appear: {msg}"

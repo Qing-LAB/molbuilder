@@ -46,7 +46,7 @@ def test_a_perfect_channels_low_bias_current_is_g0_times_v():
     for v, i in zip(volts[:4], got["current_a"]):
         assert abs(i - G0 * v) < 1e-3 * G0 * max(abs(v), 0.1), (v, i, G0 * v)
     # THE NOTE IS KEYED BY THE ROW, never by a spelling of the voltage.
-    assert got["current_a"][4] is None and "does not reach" in got["notes"]["4"]
+    assert got["current_a"][4] is None and "is left out" in got["notes"]["4"]
 
 
 def test_a_spin_polarized_points_transmission_is_its_two_channels_averaged():

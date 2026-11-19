@@ -233,7 +233,7 @@ class TestDeadProjectorC5:
         assert parse_psml_header(lib / "S.psml").null_channels == ["p"]
         [entry] = check_coverage(["S"], lib)
         assert entry.status == "dead_projector"
-        assert "p" in entry.message and "ekb=0" in entry.message
+        assert "'p' channel" in entry.message and "strength is zero" in entry.message
 
         class _Cfg:
             psml_lib = str(lib)

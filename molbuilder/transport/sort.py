@@ -163,7 +163,8 @@ def electrode_orientation(struct: Structure) -> Optional[str]:
 
 def inverted_note(struct: Structure) -> str:
     """The one sentence every surface says about an inverted pair, through
-    :func:`junction_notes` -- the Transport card and prep.
+    :func:`junction_notes`, which the Transport card and prep say through
+    `compose.junction_said`.
 
     It states the measurement and the CONSEQUENCE, and stops: which
     end carries +V/2 is the author's call about their own experiment
@@ -186,8 +187,9 @@ def inverted_note(struct: Structure) -> str:
 
 def junction_notes(junction: Structure, *,
                    extending: bool = False) -> Tuple[str, ...]:
-    """WHAT A COMPOSED JUNCTION SAYS OF ITSELF, every surface alike -- the
-    Transport card and prep (`Rung.said`): an inverted pair
+    """WHAT A COMPOSED JUNCTION SAYS OF ITSELF, read off the junction --
+    said by the Transport card and prep with what composing it said
+    (`compose.junction_said`): an inverted pair
     said in its one sentence (:func:`inverted_note`), checked and warned,
     never refused (the user, 2026-08-29); nothing while ``extending`` a
     finished calculation, whose rename is that calculation's own and not

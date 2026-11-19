@@ -40,18 +40,17 @@ def validate_geometry(struct: Structure,
         d  = np.linalg.norm(pos[:, None, :] - pos[None, :, :], axis=-1)
         np.fill_diagonal(d, np.inf)
         min_d = float(d.min())
-        if min_d < 0.3:
-            issues.append(Issue(
-                "error",
-                f"closest atom pair is {min_d:.3f} Å apart -- atoms are "
-                f"effectively on top of each other; SCF will diverge",
-                "geometry.min_distance",
-            ))
-        elif min_d < 0.7:
+        # SAID, NEVER A STOP, however close (the user, 2026-11-18: "None of
+        # these things should stop any calculation being constructed or
+        # being run"): what the engine makes of it is the engine's.
+        if min_d < 0.7:
+            i, j = np.unravel_index(int(np.argmin(d)), d.shape)
             issues.append(Issue(
                 "warn",
-                f"closest atom pair is {min_d:.3f} Å apart -- this is "
-                f"too short for any real bond: two atoms overlap",
+                f"{struct.atoms_named(sorted((int(i), int(j))))} are "
+                f"{min_d:.3f} Å apart -- closer than any real bond, so the "
+                f"two overlap.  If that is not meant, move them apart on the "
+                f"Molbuilder tab.",
                 "geometry.min_distance",
             ))
 

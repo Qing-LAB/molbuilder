@@ -668,8 +668,8 @@ loads, and a name with no record is refused naming the file and the key.
   own (`description_checks`, a part, resolved by the description's check,
   `validation.task.preflight`) — a transport calculation's bias list against
   its setting, its window against the largest voltage;
-- the charge it fixes, where it fixes one, and why — a transport junction is
-  neutral, and net charge and gating are deferred by ruling;
+- the charge it fixes, where it fixes one, and why — a transport junction's
+  (`charge`, its `why` the one statement of the reason);
 - why it takes no benchmark, where it takes none (`no_benchmark`) — a
   transport calculation's one axis is its bias list;
 - which tab hands it over to Task setup (`web/tabs.py`'s key), or that it

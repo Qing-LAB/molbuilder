@@ -99,6 +99,37 @@ def validate_transport_kind(struct: Structure, cfg, cell, *, engine: str,
                     f"{need:.2f} eV.  The default is 10 eV"
                     f".",
                     where="config.negf_eq_pole_ev"))
+    # MORE THAN TWO SPIN COMPONENTS: TranSIESTA's own stop at the device's
+    # start (`transiesta.STOPS_ON_SPIN`), said as information on every rung
+    # -- the seed and the leads run them -- and written as set (the user,
+    # 2026-11-02).
+    from ..transport.transiesta import STOPS_ON_SPIN
+    treatment = getattr(cfg, "spin_treatment", None)
+    if treatment in STOPS_ON_SPIN:
+        out.append(Issue(
+            "info",
+            f"spin treatment {treatment}: TranSIESTA handles at most two "
+            f"spin channels, so it stops at the start of the device stage "
+            f"-- after the seed and both leads have run.  Restricted or "
+            f"unrestricted runs.",
+            where="config.spin_treatment"))
+    # THE BIAS WINDOW'S REACH PAST EACH FERMI LEVEL has TranSIESTA's own
+    # floor too (`transiesta.MIN_NEQ_FERMI_CUTOFF_KT`): said as information
+    # on the rung that reads it, the deck written as set -- TranSIESTA's
+    # stop is TranSIESTA's (the user, 2026-11-02).
+    cutoff = getattr(cfg, "negf_neq_fermi_cutoff_kt", None)
+    cutoff_item = items_of(cfg).get("negf_neq_fermi_cutoff_kt")
+    if cutoff is not None and (rung is None or cutoff_item is None or reads(
+            cutoff_item, engine, "transport", rung)):
+        from ..transport.transiesta import MIN_NEQ_FERMI_CUTOFF_KT
+        if float(cutoff) < MIN_NEQ_FERMI_CUTOFF_KT:
+            out.append(Issue(
+                "info",
+                f"the bias window reaches {float(cutoff):g} kT past each "
+                f"Fermi level; TranSIESTA stops the device stage under bias "
+                f"when this is below {MIN_NEQ_FERMI_CUTOFF_KT:g} kT.  "
+                f"{MIN_NEQ_FERMI_CUTOFF_KT:g} kT or more runs.",
+                where="config.negf_neq_fermi_cutoff_kt"))
     # THE TRANSMISSION WINDOW REACHES THE BIAS WINDOW (P2, `engines/
     # transport.md` § 2a.10, § 6.1c): on the transmission rung alone, whose
     # deck writes the window and the voltage.  One rule for the record, this
@@ -111,13 +142,14 @@ def validate_transport_kind(struct: Structure, cfg, cell, *, engine: str,
     # THE K-POINT SAMPLING IS NOT HERE: it is the k-point mesh's
     # (`kmesh.py`, `engines/siesta.md` § 6.1): the third
     # component of `kgrid` and `tbt_k_grid` is one a transport calculation
-    # fixes, and a lead's count is refused at 1 by its own limit and warned
-    # below 50 by its range -- every door, through `template.why_not`.
+    # fixes, and a lead's count is warned below 50 by its range and refused
+    # only at 0, which samples nothing -- every door, through
+    # `template.why_not`.
 
     # ---- I12: no vacuum where the crystal continues (§ 5, § 6.1c) ----
     #
     # MEASURED FROM THE LEAD (TD3, user 2026-09-29): each rule reads the
-    # lead's own spacing, and both are refusals -- a gap along transport
+    # lead's own spacing, and both are warnings -- a gap along transport
     # severs the lead, and vacuum on a periodic axis contradicts the
     # declaration.  An ISOLATED transverse axis is left alone: a wire or chain
     # lead is vacuum-surrounded across transport, and that vacuum is the one
@@ -132,10 +164,10 @@ def validate_transport_kind(struct: Structure, cfg, cell, *, engine: str,
         from ..cell import SEAM_VACUUM_FACTOR, transverse_reach
         from ..transport.sort import ELECTRODE_LABELS
         from .sidecar import check_junction_boundary
-        # THE ROOM ALONG TRANSPORT, one rule both ways (vacuum, collision)
-        # -- a refusal on every transport rung; the same rule warns at a
-        # labelled junction's relaxation (`sidecar.check_junction_boundary`).
-        out += check_junction_boundary(struct, _cell, severity="error",
+        # THE ROOM ALONG TRANSPORT, one rule both ways (vacuum, collision),
+        # warned on every transport rung as at a labelled junction's
+        # relaxation (`sidecar.check_junction_boundary`).
+        out += check_junction_boundary(struct, _cell,
                                        whole_structure_is_the_lead=True)
         # A LEAD RUNG'S SEAM (`junction-cell.md` § 3.1, `engines/transport.md`
         # § 7.1): whether the lead tiles into the bulk crystal -- a room of
@@ -157,7 +189,7 @@ def validate_transport_kind(struct: Structure, cfg, cell, *, engine: str,
         # LEAD BY LEAD, as the rule is stated: pooled, two leads answer for
         # each other -- one that tiles hides one that does not on the
         # junction's rungs, while the electrode rung that sees it alone
-        # refuses the same calculation; and two one-atom leads measure the
+        # warns of the same calculation; and two one-atom leads measure the
         # distance between the leads as a "bond".
         kinds = struct.axis_kind
         named = ([label for label, idx in
@@ -173,22 +205,22 @@ def validate_transport_kind(struct: Structure, cfg, cell, *, engine: str,
                 if bond is None:
                     out.append(Issue(
                         "warn",
-                        f"axis {name} is declared periodic, but {label} is "
-                        f"one atom, so whether it reaches across that "
-                        f"boundary cannot be measured.",
+                        f"axis {name} is set to repeat (periodic), but "
+                        f"{label} is one atom, so whether it continues "
+                        f"across the cell's edge there cannot be measured.",
                         where="cell.transverse_vacuum"))
                 elif reach > SEAM_VACUUM_FACTOR * bond:
                     out.append(Issue(
-                        "error",
-                        f"axis {name} is declared periodic, but across its "
-                        f"boundary the nearest atom of {label} is "
-                        f"{reach:.2f} Å away -- {reach / bond:.1f} of its own "
-                        f"{bond:.2f} Å bond, so the crystal does not continue "
-                        f"there: that is vacuum.  A wire or chain lead is "
-                        f"isolated across the transport axis: declare the "
-                        f"axis isolated on the structure (the Cell page), "
-                        f"relax it, and cite that relaxation -- its deck "
-                        f"records the axis kinds.",
+                        "warn",
+                        f"axis {name} is set to repeat (periodic), but "
+                        f"{label} does not continue across the cell's edge "
+                        f"there: its nearest repeated atom is {reach:.2f} Å "
+                        f"away, {reach / bond:.1f} times its own "
+                        f"{bond:.2f} Å bond, so there is empty space "
+                        f"instead.  A wire or chain lead does not repeat "
+                        f"sideways: on the Cell page set axis {name} to "
+                        f"isolated, then relax the junction again and cite "
+                        f"that relaxation.",
                         where="cell.transverse_vacuum"))
     return out
 
@@ -234,7 +266,7 @@ def _window_reaches_the_bias(task, ladder) -> List[Issue]:
     window, ±(|V|/2 + 5 kT) -- the one rule `energies.window_short_of` states
     (`engines/transport.md` § 2a.10, P2), judged here on the description as
     the transmission rung resolves it, so a list that the window cannot
-    serve is refused where it is written: under the low-bias approximation
+    serve is said where it is written: under the low-bias approximation
     the record integrates every listed voltage over the one 0 V slice, and
     a sweep's point writes its own voltage into that window.  Nothing to
     say without the resolved ladder (no template in hand)."""
@@ -254,8 +286,9 @@ def _window_short(cfg, bias: float, *, stage=None) -> List[Issue]:
     """THE ONE RULE for whether the transmission's window reaches the bias
     window at its temperature -- the record's, this gate's and the
     description's (`energies.window_short_of`, `engines/transport.md`
-    § 2a.10) -- an error on the window's edge when it cuts the current
-    short, none when a value it needs is unset."""
+    § 2a.10) -- a warning on the window's edge when it cuts the current
+    short, never a stop (the user, 2026-11-18), none when a value it needs
+    is unset."""
     emin = getattr(cfg, "transmission_emin_ev", None)
     emax = getattr(cfg, "transmission_emax_ev", None)
     n = getattr(cfg, "transmission_n_points", None)
@@ -266,7 +299,7 @@ def _window_short(cfg, bias: float, *, stage=None) -> List[Issue]:
     from ..transport.energies import sampled_window, window_short_of
     short = window_short_of(*sampled_window(emin, emax, n), bias,
                             BOLTZMANN_EV_K * float(temp))
-    return [Issue("error", short,
+    return [Issue("warn", short,
                   where="config.transmission_emax_ev",
                   stage=stage)] if short else []
 

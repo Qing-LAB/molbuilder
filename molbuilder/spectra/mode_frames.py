@@ -353,14 +353,13 @@ def frameset_from_mode(run_folder, *, mode: int, temperature_k: float,
 
     # AN ELECTRODE ATOM THE FRAMES MOVE -- written, and said in the words
     # of the one check a transport citation asks of every frame
-    # (`compose.frames_keep_the_leads`, within `wizard.FROZEN_TOL_ANG`;
+    # (`compose.frames_moving_the_leads`, within `wizard.FROZEN_TOL_ANG`;
     # `engines/transport.md` § 2a.9), so what the person is told is what
     # the citation does.
-    from ..transport.compose import ComposeError, frames_keep_the_leads
-    try:
-        frames_keep_the_leads(built, out)
-    except ComposeError as exc:
-        said.append(str(exc))
+    from ..transport.compose import frames_moving_the_leads
+    moving = frames_moving_the_leads(built, out)
+    if moving:
+        said.append(moving)
     StructureCodec().write(built, out)
     return ModeFrames(path=out, mean_quanta=float(n_quanta),
                       sigma_over_zero_point=float(sigma / q_zp),

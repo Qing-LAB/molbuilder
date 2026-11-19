@@ -144,6 +144,40 @@ class TestThePoleEnergyIsTiedToTheTemperature:
         assert bool(found) is said, (rung, found)
 
 
+#: TRANSIESTA'S OTHER STOPS, said as information on the rungs they concern
+#: and never refused (the user, 2026-11-02: "you can have those checks give
+#: hint/info to the user but it is not your business to refuse") -- each row
+#: (the setting and its value, the rung, said there, words said).
+_ENGINE_STOPS = [
+    pytest.param("negf_neq_fermi_cutoff_kt", 2.0, "device", True,
+                 "below 2.5 kT", id="cutoff-under-the-floor-on-the-device"),
+    pytest.param("negf_neq_fermi_cutoff_kt", 2.0, "seed", False, "",
+                 id="cutoff-on-a-rung-that-does-not-read-it"),
+    pytest.param("negf_neq_fermi_cutoff_kt", 2.5, "device", False, "",
+                 id="cutoff-at-the-floor"),
+    pytest.param("spin_treatment", "non-collinear", "device", True,
+                 "at most two spin channels", id="non-collinear-spin"),
+    pytest.param("spin_treatment", "unrestricted", "device", False, "",
+                 id="two-spin-channels"),
+]
+
+
+@pytest.mark.parametrize("name, value, rung, said, words", _ENGINE_STOPS)
+def test_transiestas_own_stops_are_said_never_refused(
+        junction, name, value, rung, said, words):
+    """`engines/transport.md` § 6.1c: TranSIESTA stops the device under bias
+    below a 2.5 kT reach past each Fermi level, and on more than two spin
+    channels -- said beforehand as information, the deck written as set.
+    The silent failure: each refused at prep, a calculation the engine's own
+    words would have answered never run."""
+    cfg = SiestaConfig(system_label="j", kgrid=(2, 2, 1), **{name: value})
+    issues = validate(junction, cfg, calculation="transport", rung=rung)
+    found = _find(issues, f"config.{name}", "info")
+    assert bool(found) is said, (name, value, rung, found)
+    assert all(words in i.message for i in found), found
+    assert not _find(issues, f"config.{name}", "error"), issues
+
+
 class TestTheCellWrapsAlongTransport:
     """I12.
 
@@ -173,21 +207,21 @@ class TestTheCellWrapsAlongTransport:
                                   calculation="transport"),
                          "cell.transport_vacuum")
 
-    def test_a_fused_cell_is_refused_and_its_relaxation_warned(self, junction):
+    def test_a_fused_cell_is_said_on_the_rung_and_its_relaxation(self, junction):
         """I12 the other way: c equal to the atoms' span puts the two leads'
         end layers in one plane through the image -- a collision the engines
         only note by removing couplings (the 2026-10-08 road walk ran its
-        whole ladder on one).  A transport rung refuses it, naming the c
-        that closes the boundary to one spacing; the junction's relaxation
-        is warned, since the structure has not committed to transport."""
+        whole ladder on one).  A transport rung and the junction's
+        relaxation both say it, naming the c that closes the boundary to
+        one spacing -- never a stop (the user, 2026-11-18)."""
         span = float(junction.positions[:, 2].max()
                      - junction.positions[:, 2].min())
         s = self._with_c(junction, span)
-        refused = _find(validate(s, SiestaConfig(system_label="j"),
-                                 calculation="transport"),
-                        "cell.transport_collision")
-        assert refused and refused[0].severity == "error"
-        assert f"{span + 2.36:.3f}"[:4] in refused[0].message
+        said = _find(validate(s, SiestaConfig(system_label="j"),
+                              calculation="transport"),
+                     "cell.transport_collision")
+        assert said and said[0].severity == "warn"
+        assert f"{span + 2.36:.3f}"[:4] in said[0].message
         warned = _find(validate(s, SiestaConfig(system_label="j"),
                                 calculation="optimization"),
                        "cell.transport_collision")
@@ -205,14 +239,15 @@ class TestTheCellWrapsAlongTransport:
                          "cell.transport_vacuum")
 
 
-def test_the_transmission_window_must_reach_the_bias_window(junction):
+def test_a_transmission_window_short_of_the_bias_window_is_said(junction):
     """`engines/transport.md` § 2a.10 (P2): the current is TBtrans's integral
     over the deck's window, weighted by both leads' Fermi functions at
     μ = ±V/2, and TBtrans says nothing when the window cuts it short -- so
-    the transmission deck's gate refuses a window that does not reach
-    ±(|V|/2 + 5 kT).  At 0.4 V and 300 K the reach is 0.2 + 5 × 0.02585 =
-    0.329 eV: ±0.3 eV is refused, ±0.4 eV passes, and the rule is the
-    transmission rung's alone -- the device writes no window.
+    the transmission deck's gate says a window that does not reach
+    ±(|V|/2 + 5 kT), never a stop (the user, 2026-11-18).  At 0.4 V and
+    300 K the reach is 0.2 + 5 × 0.02585 = 0.329 eV: ±0.3 eV is said,
+    ±0.4 eV is not, and the rule is the transmission rung's alone -- the
+    device writes no window.
 
     Silent before this: the window gate was a catalogue note (plan P2);
     above a few volts the current was cut without a word.
@@ -226,12 +261,12 @@ def test_the_transmission_window_must_reach_the_bias_window(junction):
         return validate(junction, cfg, calculation="transport", rung=rung)
 
     short = _find(issues(0.3, "transmission"), "config.transmission_emax_ev",
-                  "error")
-    assert short and "0.329" in short[0].message and "widen" in short[0].message
+                  "warn")
+    assert short and "0.329" in short[0].message and "Widen" in short[0].message
     assert not _find(issues(0.4, "transmission"), "config.transmission_emax_ev")
     assert not _find(issues(0.3, "device"), "config.transmission_emax_ev")
     # THE ENERGIES TBTRANS SAMPLES, not the window's edges: four mid-rule
-    # points on ±0.4 eV sit at ±0.3 eV, short of 0.329 eV -- refused here,
+    # points on ±0.4 eV sit at ±0.3 eV, short of 0.329 eV -- said here,
     # as the record would leave that voltage out (energies.sampled_window).
     assert _find(issues(0.4, "transmission", n=4),
-                 "config.transmission_emax_ev", "error")
+                 "config.transmission_emax_ev", "warn")

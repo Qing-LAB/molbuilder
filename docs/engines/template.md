@@ -658,7 +658,7 @@ recorded because the reverse assumption produced a "leak" that was not one.)*
 | `engines` | which engines this item applies to, as a list. **Absent means all of them** — § 6.3 |
 | `calculations` | which calculation KINDS select this item, as a list — `engines`' exact sibling on the other axis. **Absent means every kind**, and a vibration's own items stay out of an optimization template by declaration |
 | `recommended` | a **per-kind recommended value**, `recommended = { vibration = 0.01 }` (§ 6.3a, 2026-09-24): what a form built for that kind shows as a blank field's hint and what `molbuilder describe` and the form doors write into that kind's template when nobody chose, in place of `value`/`default`, when the kind asks a different question of the same parameter than the general default answers — a frequency's relaxation is tighter than an optimization's. Absent means the general default. Each value passes the item's own `type` at parse time (`range` stays advisory, § 5.3) |
-| `offered` | **the choices a kind may take**, a subset of `choices` — `offered = { vibration = ["CG", "Broyden", "FIRE"] }` (§ 6.3a, 2026-09-30); on an item that serves two engines whose choices differ, the key names the engine too — `offered = { siesta.transport = ["restricted", "unrestricted"], pyscf.vibration = ["restricted"] }` (a TOML dotted key: one table per engine). Absent — for the kind, or on the item — means every choice. Read by the form, the stage table's cells, the description's own check, `resolve` and the settings gate (`template.offered`); a value outside it is refused by name, listing what the kind offers, with the reason `template.why_not_offered` gives. Each member passes the item's own `type` and `choices` at parse time, and each key names a calculation kind — a misspelled one is refused, since it would be a set nothing asks |
+| `offered` | **the choices a kind may take**, a subset of `choices` — `offered = { vibration = ["CG", "Broyden", "FIRE"] }` (§ 6.3a, 2026-09-30); on an item that serves two engines whose choices differ, the key names the engine too — `offered = { siesta.vibration = ["restricted", "unrestricted", "non-collinear", "spin-orbit"], pyscf.vibration = ["restricted"] }` (a TOML dotted key: one table per engine). Absent — for the kind, or on the item — means every choice. Read by the form, the stage table's cells, the description's own check, `resolve` and the settings gate (`template.offered`); a value outside it is refused by name, listing what the kind offers, with the reason `template.why_not_offered` gives. Each member passes the item's own `type` and `choices` at parse time, and each key names a calculation kind — a misspelled one is refused, since it would be a set nothing asks |
 | `not_offered` | **why a choice is not offered, beside it** — a list of rows `{ on, values, why }` (§ 6.3a, 2026-10-28): `on` an engine the item serves, a calculation kind or `"<engine>.<kind>"` — absent, wherever a value is withheld; `values` the withheld choices it explains — absent, every one withheld there; `why` the reason, read from the engine's source. A refusal of a value outside `offered` gives the first row that holds (`template.why_not_offered`). Checked at parse time: only on an item with `offered`, `on` naming an engine the item serves or a kind, every value one of the item's choices. Catalogue-only, never written into a calculation's template |
 | `refs` | citation keys into `docs/science/references.bib` — the paper(s) behind a scientific knob's guidance. Resolved server-side (title + DOI) and rendered in the form's help; `tests/test_catalogue_refs.py` pins that every key resolves |
 | `allocation` | **the run states this one, never the template** — ranks, threads, memory (§ 6.4). One boolean. |
@@ -677,7 +677,6 @@ recorded because the reverse assumption produced a "leak" that was not one.)*
 | `not_set` | **what the engine does when this item writes nothing**, in one sentence read from the engine's source — *"SIESTA works out its own block size from the ranks and the orbital count (`initparallel.F`, `set_blocksizedefault`)"*. Where an item's line would be and the engine's own default applies — an `optional` item at no value — the deck writes `# <keyword> not written: <not_set>` in its place, so no value reaches the engine by omission (§ 6.6 obligation 4). **Required on every `optional` item of kind `engine` or `deck` that the scheduler does not answer**, checked when the catalogue is read; an item in that state with none is refused where the deck is written. `null_label` names the same state in a few words on every surface; this is the deck's sentence *(named `not_set`, not `unset`, because unset reads as removed by a person — the user, 2026-10-11)* |
 | `range` · `unit` · `choices` | bounds, unit label, enum members. `unit` is also the **deck's unit word**: the SIESTA renderer writes it beside the number (`siesta/engine_input.unit_word`, one source — plan F27), spelling Å as fdf's `Ang`; the bias, held in volts, is written `eV`, the one declared exception. `range` is a **recommendation**: a value outside it is warned on every surface and refused on none (§ 5.3) |
 | `above` | **a hard limit: the value must be greater than `value`**, and `why` is the reason — `above = { value = 0, why = "SIESTA divides each force difference by it (ofc.f90)" }`. Refused on every surface with one message, through `template.why_not` (§ 5.3, 2026-09-30); for a triple, each component |
-| `at_least` | **the same, inclusive: the value must be at least `value`** — for an engine whose own rule is *larger than or equal to*: `at_least = { value = 2.5, why = "TranSIESTA stops a run below 2.5 …" }` on `negf_neq_fermi_cutoff_kt` (`m_ts_contour_neq.f90`, 2.1.0). The limit refuses exactly what the engine refuses, through the same door (`template.why_not`, § 5.3) |
 | `group` | **which card**, from the closed vocabulary `template.GROUPS`, in render order: `setup` (what the run is called and where its pseudopotentials come from — nothing can be built without these, so they come first) · `profile` (the method and the physical character of the system) · `stage` (what counts as converged — the set a staged sequence tightens, and what makes *vary per stage* start ticked) · `budget` (how much compute) · `output` (what the run writes) · `staging` (answered by the staging surface, not by a parameter form). **What each card says** — its title and the line under it — has one home, `template.GROUP_WORDS`, served with every form schema in its `cards`, beside a kind's result cards (§ 6.2a; `web/form-schema.md` § 1.3); the *Setup* and *Run profile* cards' lines follow the fields a form shows them with, beside it (`SETUP_WORDS`, `PROFILE_STATE_WORDS`, `PROFILE_METHOD_WORDS`, chosen by `template.card_line`). Optional on a template item — it is presentation, and `prep` reading one headlessly never asks — but **required on every item of the catalogue**, which is what a form is built from: an item with none renders loose below the cards and its findings fall to the residual panel |
 | `optional` | whether **unset** is a state this item has. A surface must offer it — *(auto)*, *(no cap)* — in the item's own words (`null_label`, which every optional item states) (§ 1.2 of [`web/form-schema.md`](?doc=web/form-schema.md)) |
 | `required` | **which calculation KINDS' forms draw this optional item as required** — only an item whose Send refuses on those kinds until it is answered, whatever else the calculation holds: the form marks it required and shows it red while it is empty. A list, like `calculations`; absence means *not required*. It refuses nothing itself — the Send's check does. *No item declares it now: `psml_lib` is answered by the `.psml` files already in the calculation's folder too (`handover-procedure.md` § 2.2), so its Send does not refuse it blank* |
@@ -853,26 +852,24 @@ source:
 | `kgrid` · `tbt_k_grid` | 0 | a k-point count per axis: 0 samples nothing (SIESTA's `kgrid.F` counts the points as the grid's determinant) |
 | `mpi_np` · `omp_threads` · `threads` · `gpu_count` | 0 | a count of processes, threads or devices: 0 runs nothing — refused on the run card, on a benchmark row and on a prep flag alike |
 | `max_memory_mb` | 0 | a cap holds that many MB; *no cap* is the row left blank, never `0`, which one reader would take as no cap and another as no limit — one value, two meanings |
-| `electrode_kz` | **1** | a lead is periodic bulk along transport: one point there gives a wrong lead Hamiltonian, and the device attaches the self-energy built from it — a wrong transmission with no runtime error ([`siesta.md`](?doc=engines/siesta.md) § 6.1) |
+| `electrode_kz` | 0 | a count of k-points along z: 0 samples nothing. A lead sampled at one point there is warned by the item's range, `[50, 200]`, and runs as set ([`siesta.md`](?doc=engines/siesta.md) § 6.1) |
 | `optical_broaden` | 0 | SIESTA spreads each transition as a Gaussian of this width on an energy grid a tenth of it (`optical.F`); 0 writes spikes on no grid |
 
-**An inclusive limit is `at_least`** — the same shape, `at_least = { value =
-N, why = "<why>" }`, for an engine whose own rule is *at least N*, so the
-limit refuses exactly what the engine refuses:
-
-| item | at least | why |
-|---|---|---|
-| `negf_neq_fermi_cutoff_kt` | 2.5 | TranSIESTA stops a run below 2.5 kT: the Fermi function still has weight at E_F + 2.5 kT (`m_ts_contour_neq.f90`) |
+**An engine's own floor is no limit**: it is the engine's stop, said
+beforehand as information and written as set *(the user, 2026-11-02)* —
+TranSIESTA's on `negf_neq_fermi_cutoff_kt` is said by the transport kind's
+validator on the device ([`transport.md`](?doc=engines/transport.md) § 3.4).
 
 A value the engine takes is not a limit, however odd: `relax_steps = 0` is a
-single point (`MD.Steps`, `read_options.F90`), and `prep bench` pins exactly
-that to measure one SCF on the rung's own deck — so the item keeps its range.
-What a DESCRIPTION states is another matter: a rung that relaxes in 0 steps
-relaxes nothing, and a vibration's force constants would be taken at a geometry
-nobody relaxed, so the description's own check refuses `relax_steps = 0` beside
-a `relax_type` that moves atoms, on the rungs that read it
-(`validation.stages.check_a_relaxation_takes_a_step`, plan § 5w K4) — at every
-describe and at `prep`, never seeing the bench's pin, which is prep's own.
+single point, and `prep bench` pins exactly that to measure one SCF on the
+rung's own deck — so the item keeps its range. On a rung that relaxes, the
+description's own check says what it means — the rung relaxes nothing, and a
+vibration's force constants are taken at a geometry nobody relaxed — beside a
+`relax_type` that moves atoms, on the rungs that read it
+(`validation.stages.check_a_relaxation_takes_a_step`, plan § 5w K4), and the
+range warning stands aside for it: never a stop, the run going as set *(the
+user, 2026-11-18)*, at every describe and at `prep`, never seeing the
+bench's pin, which is prep's own.
 
 **One door for whether a value may stand** — `template.accepts`, § 5.4's,
 asked by every place a value lives; what it asks of an item's limits is
@@ -886,8 +883,8 @@ draws one refusal** — the first that holds of the declared type and the home
 2. **a choice the kind does not offer** (§ 6.3a) — the electronic state's items
    excepted, whose resolved values that family judges, and a value that is not
    one of the item's `choices` at all, which is the declared type's refusal;
-3. **a value past its limit** — at or below an `above`, below an
-   `at_least`; each component of a triple, the fixed components left to (1).
+3. **a value past its limit** — at or below an `above`; each component of a
+   triple, the fixed components left to (1).
 
 **A value refused draws that refusal alone**: its range warning stands aside,
 and so does any check on what is built from it — the k-point mesh made from a
@@ -943,7 +940,7 @@ vocabularies.
 
 | the question | the door | what it answers from |
 |---|---|---|
-| **may this value stand here?** | `accepts(item, value, home, *, engine, kind, stage=None)` → the one refusal clause, or none | in order, the first that holds: whether `home` may hold this item at all (`home_of`, below); `null` — *unset* — taken on a run card or an override only by an item whose unset is an answer (`optional`: the launch shape, `block_size`, `parallel_over_k`, an optional parameter of the description) and refused for any other, and **never a benchmark row's point** — a point is a value to try, and a setting left off the row runs at its own; the item's `type`, the **catalogue's** — the config class's annotation judges nothing; then § 5.3's door: a component the kind fixes, a choice the kind does not offer (`offered`), a limit (`above`, `at_least`) |
+| **may this value stand here?** | `accepts(item, value, home, *, engine, kind, stage=None)` → the one refusal clause, or none | in order, the first that holds: whether `home` may hold this item at all (`home_of`, below); `null` — *unset* — taken on a run card or an override only by an item whose unset is an answer (`optional`: the launch shape, `block_size`, `parallel_over_k`, an optional parameter of the description) and refused for any other, and **never a benchmark row's point** — a point is a value to try, and a setting left off the row runs at its own; the item's `type`, the **catalogue's** — the config class's annotation judges nothing; then § 5.3's door: a component the kind fixes, a choice the kind does not offer (`offered`), a limit (`above`) |
 | **what is it, spelled?** | `spell(item, value)` → the value in its declared type | lossless only — a whole float for a count is the count, a list of three a triple (`as_declared`); **what a page sends** — a cell's or a card row's text, a form's value — is read by the same door, `read_text(item, text)` → `(value, refusal)`, its type judged, so no page keeps a reader of its own: a number as JSON writes one — decimal, with an exponent if any (`1e3` is 1000), never `0x10` or `1_000` — `true` / `false`, an enum's member by its spelling, a grid as `4,4,1`, `4x4x1`, `4 4 1` or the list `[4, 4, 1]`, a list by commas or spaces; and a refusal quotes a value through `shown(value)` — `null` for unset, `true` / `false`, a triple as the list it is written as |
 | **what does nobody's statement mean?** | `default_of(item, kind)` → the value, or none | the kind's `recommended`, else the item's `default` — **the one default**: `resolve` lays it for a run setting no card states, every door that writes a template from what was stated writes it for a value nobody stated (`stated_config`, § 6.3a) — and `molbuilder validate` judges a kind on that config, nothing stated — a form and Task setup show it beside a blank field or row, a run's record of its parameters states it as each setting's catalogue default ([`model/parse.md`](?doc=model/parse.md) § 5d.3a), migrate asks it whether a value was the default; for an item with neither, its `not_set` line says what applies (§ 6.6, obligation 4). A run setting states no `value` in the catalogue — no template starts from one — which the catalogue's reader checks |
 | **where may a value of it live?** | `home_of(item, kind)` → its homes; `why_not_in(item, home, *, engine, kind, stage=None)` → the clause for a home that may not hold it — `accepts`' first question, and asked alone where a name stands without a value (a `varies` column, a benchmark row's name) | read off the item's own markers: **a stage's overrides** — what is computed (not a run setting, not `role`, not `shared`), on a rung that reads it (`stages`); **a run card** — a run setting (`execution`); **a benchmark row** — a run setting a trial may vary (what every trial fixes, `TRIAL_PINS` — capped SCFs, no geometry step, a clean start, [`job-request.md`](?doc=execution/job-request.md) § 3.4 — says what is computed, so it is no run setting and that clause keeps it off a row), and of the launch shape only the grid's axes (`GRID_AXES` — ranks, cores per rank, devices; [`generator.md`](?doc=execution/generator.md) § 4.3a), a memory cap being no axis it sweeps; **a prep flag** — the launch shape (`allocation = true`). The scheduler's asks — `allocation`'s `domain`, `time`, `mem`, `gpu_binding`, a card's `time` and `domain` — are not catalogue items; the job request's reader judges and spells them, the allocation's and a card's alike ([`job-request.md`](?doc=execution/job-request.md) § 3.1, § 3.2a) |
@@ -1581,8 +1578,9 @@ starts at — its recommendation, else the item's default — is among its
 offered set, checked when the catalogue loads.
 
 **A rule about two items together is not a choice set** and stays a check of
-the kind's, by name: PCM with held atoms, IR-only or Raman on a PySCF
-vibration ([`vibration.md`](?doc=engines/vibration.md) § 4.6); a fixed spin
+the kind's, by name: PCM with held atoms, IR or Raman on a PySCF
+vibration, said as a warning ([`vibration.md`](?doc=engines/vibration.md)
+§ 4.6); a fixed spin
 count on a transport rung, which TranSIESTA cannot hold — written as stated,
 the stop said beforehand, never refused
 ([`science/chemistry-correctness.md`](?doc=science/chemistry-correctness.md) ES6).

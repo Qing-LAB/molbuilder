@@ -23,11 +23,10 @@ F0–F11's rows, the decided-and-done rows and the pointer stubs to
 
 ## ▶ Where we are *(2026-11-18)*
 
-**2.77.5.** F0–F11 and F7a are closed (2.56.2–2.77.2). F12, *Proven*, walked
+**2.77.6.** F0–F11 and F7a are closed (2.56.2–2.77.2). F12, *Proven*, walked
 its three roads in the browser on real runs, ran the full batch (the fast
 tests 6106 of 6106, the e2e 805 of 805, at 2.77.2) and its two review
-rounds; its fix releases are running — the first two shipped as 2.77.4 and
-2.77.5.
+rounds; its fix releases are running — 2.77.4, 2.77.5 and 2.77.6 shipped.
 
 **What runs next — F12's fix releases** *(the user, 2026-11-18: "Harm first,
 by module")*. The two review rounds found, verified, 27 wrong results and 7
@@ -42,7 +41,7 @@ is read whole:
    fixed but D7 (a warning) and D11 (cosmetic), through round 2's P1, P5 and
    P8;
 2b. the user's rule made true: every scientific refusal at prep a warning
-   (below);
+   (below) — **done, 2.77.6**;
 3. the person's files safe, with the test suite's refusing scheduler
    covering `squeue` and `scancel`;
 4. a failure said in words, never a traceback;
@@ -62,14 +61,17 @@ user**: nothing now.
 **Nothing stops a calculation the person set** *(the user, 2026-11-18:
 "None of these things should stop any calculation being constructed or being
 run. It is totally user's decision")*: a scientific finding is said and the
-run goes as set. Kept as errors: only what leaves nothing to compute or a file
-the engine cannot open. **Not yet true of the code**: 2.77.5 makes the
-pseudopotential findings warnings (only a missing or misnamed file stops
-prep), but prep still refuses scientific judgments — measured: atoms closer
-than 0.3 Å, a PySCF vibration with a solvent model and IR intensities. **The
-sweep is the next release after fix 2**: every error a prep check raises,
-listed from the code, each scientific one made a warning said on the same
-road.
+run goes as set; an engine's own stop is said as information and the deck
+written as asked *(the user, 2026-11-02)*. What may still be an error is
+[`science/overview.md`](?doc=science/overview.md) § 4's. 2.77.5 made the
+pseudopotential findings warnings; fix 2b
+reads every refusal prep can make from the code
+(`archive/audits/2026-11-18-f12-review/fix2b-refusals-inventory.md`, 170) and
+makes the 13 scientific ones warnings and TranSIESTA's three own stops
+information. **Every warning in plain words** *(the user, 2026-11-18: "make
+sure warning messages are not jargon")*: what happens to the calculation,
+then what to do, in the pages' words — no source files, deck keywords, code
+names or internal terms.
 
 **Open beside the finish line — low harm, waiting** *(the user, 2026-11-15:
 "focus on real issues", "Toward the finish line")*, each read against the

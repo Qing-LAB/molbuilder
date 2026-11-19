@@ -294,7 +294,7 @@ def described(tree: Path, bundle: "str | None" = None, *, name: str = "H2",
               structure: str = STRUCTURE,
               stage_strategy: "str | None" = None, bias: str = "0",
               psml_lib: "str | None" = "pseudopotential",
-              refused: bool = False, **blocks):
+              refused: bool = False, said_too: bool = False, **blocks):
     """THE ONE MAKER OF A CALCULATION ON THE ROAD: `molbuilder describe`, in
     the projects tree ``tree`` the one door already points at, of the
     structure saved there (``structure``, the path from the projects root
@@ -316,7 +316,8 @@ def described(tree: Path, bundle: "str | None" = None, *, name: str = "H2",
     run card (``execution``), the allocation, the benchmark, what the
     calculation tells -- ``None`` leaving that block out; and the run card,
     unless given, the road's own (:data:`RUN_CARD`).  Returns the
-    calculation's folder; with ``refused``, what `describe` said refusing.
+    calculation's folder; with ``refused``, what `describe` said refusing;
+    with ``said_too``, the folder and what `describe` said.
 
     THE SILENT FAILURE: a launch shape a maker states by habit -- a test
     moved from one maker of calculations to another ran on another rank
@@ -337,6 +338,7 @@ def described(tree: Path, bundle: "str | None" = None, *, name: str = "H2",
                    *(("--stage-strategy", strategy) if strategy else ()),
                    *(("--psml-lib", psml_lib)
                      if engine == "siesta" and psml_lib is not None else ()))
+    assert not (refused and said_too), "refused returns what was said"
     if refused:
         assert r.exit_code != 0, r.output
         return r.output
@@ -350,7 +352,7 @@ def described(tree: Path, bundle: "str | None" = None, *, name: str = "H2",
         else:
             request[block] = value
     write_request(folder, request)
-    return folder
+    return (folder, r.output) if said_too else folder
 
 
 def prep_groups(calculation: Path, *groups) -> None:
@@ -410,7 +412,8 @@ def handed_over(client, folder: Path, body: dict):
 
 def described_and_prepared(tmp_path, monkeypatch, struct, engine, *,
                            calculation="optimization", template=None,
-                           overrides=None, hand_edit=None, refused=False):
+                           overrides=None, hand_edit=None, refused=False,
+                           said_too=False):
     """`molbuilder describe` of ``struct``, then `jobset prep task` of its
     first rung: ``(the calculation, that stage, the deck's text)``.  Each call
     is a calculation of its own, in a folder of its own.  An optimization's
@@ -420,7 +423,9 @@ def described_and_prepared(tmp_path, monkeypatch, struct, engine, *,
     file changed by hand.
 
     ``refused`` expects the step that refuses -- Save, for ``overrides``, else
-    prep -- and returns what it said in place of the deck."""
+    prep -- and returns what it said in place of the deck; ``said_too`` returns
+    what prep said too, after the deck: a warning said and the deck written
+    as set."""
     from molbuilder.jobset.naming import stage_home
     from molbuilder.task import of as task_of
     # AS A PAIR, through the codec: the cell, the vacuum and the frozen set
@@ -448,6 +453,7 @@ def described_and_prepared(tmp_path, monkeypatch, struct, engine, *,
         assert saved.status_code == 200, saved.get_json()
     r = jobset("prep", "task", *group_words(dest, stage), "--bundle", dest,
                "--target", "this")
+    assert not (refused and said_too), "refused returns what was said"
     if refused:
         assert r.exit_code != 0, r.output
         return dest, stage, r.output
@@ -465,8 +471,10 @@ def described_and_prepared(tmp_path, monkeypatch, struct, engine, *,
         deck = home.dir / FC_PART / deck.name
     if engine == "siesta":
         from molbuilder.parse.fdf import read_deck
-        return dest, stage, read_deck(deck)
-    return dest, stage, deck.read_text()
+        text = read_deck(deck)
+    else:
+        text = deck.read_text()
+    return (dest, stage, text, r.output) if said_too else (dest, stage, text)
 
 
 def until(holds, *, within: float, what: str) -> None:

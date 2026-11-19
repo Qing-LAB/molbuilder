@@ -789,8 +789,8 @@ def detect_layers(z, tol_ang: float = LAYER_TOL_ANG) -> List[float]:
     return [float(np.mean(layer)) for layer in layers]
 
 
-#: How far two adjacent-layer spacings in one block may differ before it
-#: is refused as a bulk lead.
+#: How far two adjacent-layer spacings in one lead may differ before it is
+#: said not to be a bulk lead (:func:`uneven_layers`).
 #:
 #: A frozen lead's spacings are equal by construction: `modify.add_slab`
 #: gives every atom in a layer the SAME z, and measuring an Au(111)
@@ -806,7 +806,7 @@ def detect_layers(z, tol_ang: float = LAYER_TOL_ANG) -> List[float]:
 #: Per-atom rounding <= 5e-7 A, and a spread is a difference of
 #: differences of layer means, so <= 4x that = 2e-6 A.  1e-3 leaves
 #: ~500x headroom over that and sits ~50x below the smallest defect
-#: worth refusing, a surface layer relaxed by ~0.05 A (1-3% of
+#: worth saying, a surface layer relaxed by ~0.05 A (1-3% of
 #: Au(111)'s 2.35).
 #:
 #: NOT interchangeable with `transport.wizard.FROZEN_TOL_ANG` despite the
@@ -816,47 +816,60 @@ UNIFORM_SPACING_TOL_ANG = 1e-3
 
 def bulk_z_period(
     layer_z: Sequence[float],
-    tol_ang: float = UNIFORM_SPACING_TOL_ANG,
+    outer: int = 0,
 ) -> Tuple[float, float, int]:
     """The bulk repeat of a lead, from its layer centroids.
 
     Returns ``(z_period, d_interlayer, n_layers)``.  ``d_interlayer`` is
-    the spacing every adjacent pair of layers is checked to share, and
-    ``z_period = z_span + d_interlayer``, so the next periodic image's
-    first layer lands one spacing above the top layer rather than on it.
+    the spacing at the lead's outer end -- ``outer`` 0 the lowest pair of
+    layers, -1 the highest: the end farthest from the rest of the
+    junction, the bulk side -- and ``z_period = z_span + d_interlayer``,
+    so the next periodic image's first layer lands one spacing above the
+    top layer rather than on it.
 
     A lead is frozen bulk (``engines/transport.md`` § 2a.9), so its
     layers sit where the builder put them and the spacing is read off
-    rather than averaged: an outlier means the region was mislabelled or
-    was never frozen, which is a refusal, not something to smooth over.
+    rather than averaged; whether they share it is
+    :func:`uneven_layers`'s to say.
 
-    Raises ``ValueError`` -- naming the spacings -- when they differ by
-    more than *tol_ang*, and on fewer than 2 layers, where there is no
+    Raises ``ValueError`` on fewer than 2 layers, where there is no
     spacing to measure.
     """
     n = len(layer_z)
     if n < 2:
         raise ValueError(
-            "cannot derive a bulk z-period from a single atomic layer; "
-            "pass an explicit z_period (the lead's bulk lattice repeat)")
+            "it is one atomic layer, which gives no repeat length along z: "
+            "label at least two whole layers as the lead")
+    diffs = np.diff(np.asarray(layer_z, dtype=float))
+    d_interlayer = float(diffs[outer])
+    z_span = float(layer_z[-1] - layer_z[0])
+    z_period = z_span + d_interlayer
+    return z_period, d_interlayer, n
+
+
+def uneven_layers(layer_z: Sequence[float],
+                  tol_ang: float = UNIFORM_SPACING_TOL_ANG) -> Optional[str]:
+    """Why a lead's layers do not share one spacing -- naming the spacings
+    -- when they differ by more than *tol_ang*; ``None`` when they share it
+    or there are fewer than two.  Said, never a stop (the user,
+    2026-11-18): the lead is built on its outer spacing
+    (:func:`bulk_z_period`)."""
+    if len(layer_z) < 2:
+        return None
     diffs = np.diff(np.asarray(layer_z, dtype=float))
     # max - min, not each gap against an average of them: a reference
     # drawn from the same numbers moves with them.
     spread = float(diffs.max() - diffs.min())
-    if spread > tol_ang:
-        raise ValueError(
-            f"the layers are not evenly spaced: "
-            f"{', '.join(f'{g:.4f}' for g in diffs)} A "
-            f"(a spread of {spread:.4f} A, more than {tol_ang:.4f} A), so "
-            f"repeating this block does not reproduce a bulk lead.  A lead "
-            f"is frozen bulk, so every spacing is the one the slab was built "
-            f"with — either the label boundary cuts a partial layer "
-            f"(re-label the block on whole bulk layers), or these atoms were "
-            f"not frozen and have relaxed away from bulk")
-    d_interlayer = float(diffs[0])
-    z_span = float(layer_z[-1] - layer_z[0])
-    z_period = z_span + d_interlayer
-    return z_period, d_interlayer, n
+    if spread <= tol_ang:
+        return None
+    return (f"its atomic layers are not evenly spaced: "
+            f"{', '.join(f'{g:.4f}' for g in diffs)} A apart "
+            f"(a spread of {spread:.4f} A, more than {tol_ang:.4f} A).  The "
+            f"lead is built repeating the spacing at its outer end, away "
+            f"from the molecule, so the lead computed is not these layers.  "
+            f"A lead's layers keep the spacing the metal was built with, so "
+            f"either the lead label cuts through a layer (label whole "
+            f"layers), or these atoms were not frozen and moved.")
 
 
 # --------------------------------------------------------------------- #

@@ -503,7 +503,8 @@ def test_nothing_reaches_a_deck_until_the_last_refusal(tmp_path, monkeypatch):
     assert "no .psml file for H in the calculation folder" in r.output, \
         r.output
     # ...and the way out, on the command line as on the page.
-    assert "point `psml_lib` at a library that has it" in r.output, r.output
+    assert ("set the Pseudopotential directory to a folder that has it"
+            in " ".join(r.output.split())), r.output
     decks = [p for p in bundle.rglob("*") if p.suffix in (".fdf", ".py")]
     assert not decks, f"a deck was written despite the refusal: {decks}"
 

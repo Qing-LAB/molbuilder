@@ -70,11 +70,13 @@ def window_short_of(emin_ev: float, emax_ev: float, volts: float,
     reach = half + WINDOW_TAILS_KT * float(kt_ev)
     lo, hi = float(emin_ev), float(emax_ev)
     if reach > hi or -reach < lo:
-        return (f"the transmission's sampled window [{lo:g}, {hi:g}] eV "
-                f"does not reach "
-                f"±{reach:.3f} eV for {float(volts):g} V (V/2 + "
-                f"{WINDOW_TAILS_KT:g} kT at kT = {float(kt_ev):.4f} eV); "
-                f"widen it -- transmission_emin_ev / transmission_emax_ev")
+        return (f"at {float(volts):g} V the current needs the transmission "
+                f"from -{reach:.3f} to +{reach:.3f} eV (half the bias plus "
+                f"{WINDOW_TAILS_KT:g} kT on each side, at kT = "
+                f"{float(kt_ev):.4f} eV), but the energies computed reach "
+                f"only [{lo:g}, {hi:g}] eV, so the current at that voltage "
+                f"is left out.  "
+                f"Widen the transmission's energy range.")
     return None
 
 

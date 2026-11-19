@@ -409,10 +409,12 @@ and a strained or unusual slab is judged on what it is.
 
 **One home, and one question.** The derivation is `cell.bulk_z_period(layer_z)`,
 returning `(z_period, d_interlayer, n_layers)` with $z_{\mathrm{period}} = z_{\mathrm{span}} + d$.
-$d$ is **the** spacing — the one every adjacent pair of layers is *checked* to
-share, to within `UNIFORM_SPACING_TOL_ANG` (1e-3 Å) — and the function refuses a
-block whose layers disagree by more than that, naming the spacings. It also
-raises on a single layer, where there is no spacing to measure at all.
+$d$ is **the** spacing, read off the first pair of layers. Whether every
+adjacent pair shares it, to within `UNIFORM_SPACING_TOL_ANG` (1e-3 Å), is
+`cell.uneven_layers`'s to say: a block whose layers disagree by more than that
+is said as a warning, naming the spacings, and the lead is built on the first —
+never a stop *(the user, 2026-11-18)*. `bulk_z_period` raises only on a single
+layer, where there is no spacing to measure at all.
 
 **There is no statistic here, and that is the point** *(user ruling,
 2026-09-20)*. A lead is frozen bulk: `engines/transport.md` § 2a.9 —
@@ -427,7 +429,7 @@ what the self-energy has to tile.
 > **No median, no mean.** A relaxed layer **inside** an electrode region means
 > the region was mislabelled or never frozen; absorbing it would hand back a
 > plausible spacing, a plausible period and a deck built on a lead that is not
-> bulk. The condition to refuse cannot also be the condition to smooth over —
+> bulk. The condition to warn of cannot also be the condition to smooth over —
 > and on a short lead a median *is* the mean: `[0, 2.35, 5.35]` would give
 > $d = 2.675$, a seam 0.33 Å too wide.
 >
@@ -437,7 +439,7 @@ what the self-energy has to tile.
 > `.molstruct.json` pair, and `to_xyz` writes six decimals: per-atom rounding
 > ≤ 5e-7 Å, and a spread is a difference of differences of layer means, so
 > ≤ 4× that = **2e-6 Å**. The threshold sits ~500× above that and ~50× below
-> the smallest thing worth refusing, a surface layer relaxed by ~0.05 Å.
+> the smallest thing worth saying, a surface layer relaxed by ~0.05 Å.
 >
 > The bound comes from the WRITER's format, not from any file on disk — a
 > number read off found data is a guess about what data will exist.
@@ -453,11 +455,13 @@ stacking period. It sits in `cell` (L1) so the rule has a home below the
 engine. `modify.add_slab` is not a caller: it sets $c = z_{\mathrm{extent}}$
 verbatim (§ 6), so nothing there needs a spacing.
 
-**And the gate around it.** `extract_electrode_model` is the one place that
-decides whether a labelled block can serve as a lead, asking in order: every
-atom **declared frozen** (refused naming the atoms and telling you to freeze
+**And the checks around it.** `extract_electrode_model` is the one place a
+labelled block is judged as a lead, asking in order: every
+atom **declared frozen** (said naming the atoms and telling you to freeze
 them); **unmoved**, when the caller supplies the geometry the relaxation started
-from; then **evenly spaced**, which is the call above.
+from; then **evenly spaced** (`cell.uneven_layers`, above). Each answer that is
+not a bulk lead is a warning, never a stop *(the user, 2026-11-18)*, kept on the
+lead (`ElectrodeModel.said`) and in the composition's record.
 
 > **The layer-COUNT question is MEASURED AND REPORTED, never refused** — the
 > same line the electrode ORIENTATION is drawn on (`blueprints/transport.py`:
@@ -503,7 +507,8 @@ their own structure.
 
 | Concern | Home |
 |---|---|
-| the rule $z_{\mathrm{period}} = z_{\mathrm{span}} + d$, **and the refusal when the spacings differ** | `cell.bulk_z_period` |
+| the rule $z_{\mathrm{period}} = z_{\mathrm{span}} + d$, $d$ the first spacing | `cell.bulk_z_period` |
+| **the warning when the spacings differ** | `cell.uneven_layers` |
 | grouping atoms into layers | `cell.detect_layers` |
 | layers per stacking period, by surface | `cell.STACKING_PERIOD` |
 | **what the boundary does to the crystal** | **`cell.classify_seam`** (§ 4.1) — the measurement; the wording is `blueprints/modify.py`, the same split `_lattice_notes` uses |

@@ -262,9 +262,8 @@ def api_transport_describe_attempt() -> Any:
 # junction* (always answerable from the citation's own files) and
 # *can it be composed into a calculation* (a refusal, sometimes).
 # Kept apart, so a reason a junction cannot be BUILT -- labels
-# missing, an electrode that moved, a mid-run record, blocks that
-# interleave -- does not blank the viewer: the refusal is read over
-# the thing it is about.
+# missing, a mid-run record, blocks that interleave -- does not blank
+# the viewer: the refusal is read over the thing it is about.
 #
     # The composition answers both when it succeeds (`relaxed` IS the
     # labeled citation structure), so the happy path reads the citation's
@@ -295,20 +294,18 @@ def api_transport_describe_attempt() -> Any:
         # THE CONVENTION IS CHECKED AND REPORTED, NEVER ENFORCED (user
         # ruling, 2026-08-29).  An inverted junction composes and runs
         # -- it biases the other end -- so the tab gets what the junction
-        # says of itself, as prep does (`sort.junction_notes`: nothing
+        # says, as prep does (`compose.junction_said`: its inversion, nothing
         # while extending, where the rename is the finished calculation's
-        # own, § 2a.16), plus `fix` as a WORD it can act on without
-        # matching prose.
-        from molbuilder.transport.sort import junction_notes
-        for note in junction_notes(composed.junction,
-                                   extending=finished is not None):
+        # own, § 2a.16; what composing it said), plus `fix` as a WORD it can
+        # act on without matching prose.
+        from molbuilder.transport.compose import junction_said
+        for note in junction_said(composed, extending=finished is not None):
             findings.append(Issue("warn", note))
         # AND THE LEADS' OWN MEASUREMENTS.  `extract_electrode_model`
         # measures each lead's period and periodic seam into
-        # `ElectrodeModel.notes`, each at its weight; a lead that cannot
-        # be one is the gate's refusal, so what reaches here is measured
-        # and reported.  Labelled, because "the seam is ECLIPSED" is
-        # useless without which end.
+        # `ElectrodeModel.notes`, each at its weight -- what its checks say
+        # of it is in `junction_said` above.  Labelled, because "the seam
+        # is ECLIPSED" is useless without which end.
         for model in (composed.electrode_left, composed.electrode_right):
             for note in (model.notes if model is not None else ()):
                 findings.append(Issue(note.severity,
@@ -949,7 +946,7 @@ def _panel_template(answers, shared: Dict[str, Any], *, label: str,
     beside the panel shows.
 
     Raises ``ValueError`` -- the value, or a citation the template's door
-    refuses (a cited run that carried a net charge, ES7).
+    refuses.
     """
     from molbuilder.transport.citation_defaults import transport_template_text
     from molbuilder.transport.describe import shared_of

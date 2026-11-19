@@ -594,6 +594,10 @@ class CoverageEntry:
 ERROR_STATUSES = frozenset({"missing", "misnamed"})
 
 
+#: A file's relativistic treatment as a person reads it.
+_RELATIVISTIC_WORDS = {"scalar": "scalar-relativistic",
+                       "spin-orbit": "fully relativistic"}
+
 #: THE FAMILIES A PSEUDOPOTENTIAL FILE CAN DECLARE -- those its libxc ids
 #: give (:data:`_LIBXC_MAP`).
 _PSML_FAMILIES = frozenset(family for family, _authors in _LIBXC_MAP.values())
@@ -711,9 +715,9 @@ def check_coverage(labels: Iterable[str],
                              f"opens <label>.psml in the folder it runs "
                              f"from and has no search path, so it will "
                              f"refuse to start.  Put {key}.psml in {d}, or "
-                             f"point `psml_lib` at a library that has it "
-                             f"(http://www.pseudo-dojo.org, PSML format, "
-                             f"the functional the run uses)."),
+                             f"set the Pseudopotential directory to a folder "
+                             f"that has it (http://www.pseudo-dojo.org, PSML "
+                             f"format, the functional the run uses)."),
                     path=None,
                 ))
             continue
@@ -739,14 +743,14 @@ def check_coverage(labels: Iterable[str],
             chans = "/".join(info.null_channels)
             out.append(CoverageEntry(
                 element=key, status="dead_projector",
-                message=(f"{opened.name} has a NULL Kleinman-Bylander "
-                         f"projector for the '{chans}' channel (ekb=0): "
-                         f"the pseudopotential is defective/incomplete "
-                         f"for a valence angular momentum.  It gives "
-                         f"wrong {key} bonding AND can trip SIESTA's "
-                         f"'propor: ERROR: IMAX=0'.  Replace it with a "
-                         f"vetted pseudo (PseudoDojo) matching the rest "
-                         f"of your set's generator version + XC."),
+                message=(f"{opened.name} has no working Kleinman-Bylander "
+                         f"projector for its valence '{chans}' channel -- "
+                         f"its strength is zero -- so the pseudopotential is "
+                         f"incomplete: {key}'s bonding comes out wrong, and "
+                         f"SIESTA may stop with an 'IMAX=0' error.  Use a "
+                         f"tested pseudopotential (PseudoDojo) of the same "
+                         f"generator version and XC functional as the rest "
+                         f"of your set."),
                 path=info.path,
             ))
             continue
@@ -771,20 +775,16 @@ def check_coverage(labels: Iterable[str],
             chans = "/".join(info.semilocal_only_channels)
             out.append(CoverageEntry(
                 element=key, status="semilocal_only",
-                message=(f"{opened.name} carries the VALENCE '{chans}' channel "
-                         f"only as a semilocal <slps> block: its "
-                         f"Kleinman-Bylander projectors are present and set "
-                         f"to ZERO -- not omitted, which is how PSML says "
-                         f"'nothing here', but written out as zeros, which "
-                         f"claims the projector IS zero.  It is not, and "
-                         f"NOTHING in the file says to read the semilocal "
-                         f"block instead -- so a reader that takes the "
-                         f"nonlocal block at its word is reading the file "
-                         f"correctly and gets no '{chans}' for {key} at all: "
-                         f"wrong bonding, not a crash you would notice.  "
-                         f"PseudoDojo v0.5 re-generated eleven elements this "
-                         f"way (Ba, Bi, I, Pb, Po, Rb, Rn, S, Te, Tl, Xe); "
-                         f"v0.4.1 of the same element does not."),
+                message=(f"{opened.name} writes the Kleinman-Bylander "
+                         f"projectors of its VALENCE '{chans}' channel as "
+                         f"ZERO -- present, not omitted -- and gives the "
+                         f"real channel only in a part of the file SIESTA "
+                         f"does not read.  So SIESTA computes {key} with no "
+                         f"'{chans}' channel at all: the bonding is wrong, "
+                         f"with no error to notice.  PseudoDojo v0.5 made "
+                         f"eleven elements this way (Ba, Bi, I, Pb, Po, Rb, "
+                         f"Rn, S, Te, Tl, Xe); v0.4.1 of the same element is "
+                         f"whole -- use that one."),
                 path=info.path,
             ))
             continue
@@ -803,9 +803,9 @@ def check_coverage(labels: Iterable[str],
                 message=(f"{opened.name} has a ZERO projector on the valence "
                          f"'{chans}' channel while another projector on the "
                          f"same channel is real.  The channel still works, "
-                         f"at less than the completeness its own generator "
-                         f"input asked for (`nproj`), which costs "
-                         f"transferability rather than correctness.  "
+                         f"with fewer projectors than the file's own "
+                         f"generator asked for, which makes it less "
+                         f"transferable rather than wrong.  "
                          f"PseudoDojo v0.5 ships six elements this way (Bi, "
                          f"Pb, Po, Rn, Te, Tl); v0.4.1 of the same element "
                          f"does not."),
@@ -824,12 +824,12 @@ def check_coverage(labels: Iterable[str],
             out.append(CoverageEntry(
                 element=key, status="xc_family_mismatch",
                 message=(f"{opened.name} was generated for "
-                         f"{info.xc_family} ({info.xc_authors}); calc "
-                         f"requests {expected_xc_family} "
-                         f"({expected_xc_authors or '?'}) -- XC-FAMILY "
-                         f"mismatch: bond lengths and energies will be "
-                         f"silently wrong.  Use a pseudo generated with "
-                         f"the calc's XC family."),
+                         f"{info.xc_family} ({info.xc_authors}), and the "
+                         f"calculation uses {expected_xc_family}"
+                         f"{f' ({expected_xc_authors})' if expected_xc_authors else ''}"
+                         f" -- another XC family: bond lengths and "
+                         f"energies come out wrong with no error.  Use pseudopotentials generated for the "
+                         f"calculation's XC family."),
                 path=info.path,
             ))
             continue
@@ -841,11 +841,11 @@ def check_coverage(labels: Iterable[str],
             # name no file's, and are no "minor" difference from PBE's.
             out.append(CoverageEntry(
                 element=key, status="xc_mismatch",
-                message=(f"{opened.name} was generated for "
-                         f"{info.xc_authors}; calc requests "
-                         f"{expected_xc_authors} -- minor mismatch; "
-                         f"results may differ from publication-grade "
-                         f"by ~1-2 kcal/mol."),
+                message=(f"{opened.name} was generated with "
+                         f"{info.xc_authors}, and the calculation uses "
+                         f"{expected_xc_authors} -- the same XC family, a "
+                         f"small difference: results may differ from "
+                         f"published values by about 1-2 kcal/mol."),
                 path=info.path,
             ))
             continue
@@ -854,11 +854,15 @@ def check_coverage(labels: Iterable[str],
                 and info.relativistic != expected_relativistic:
             out.append(CoverageEntry(
                 element=key, status="relativistic_mismatch",
-                message=(f"{opened.name} is {info.relativistic}; calc "
-                         f"expects {expected_relativistic}.  For "
-                         f"most non-spin-orbit work, scalar (SR) is "
-                         f"correct.  Fully-relativistic (FR) is needed "
-                         f"only when spin-orbit coupling matters."),
+                message=(f"{opened.name} is "
+                         f"{_RELATIVISTIC_WORDS.get(info.relativistic, info.relativistic)}"
+                         f", and the calculation needs "
+                         f"{_RELATIVISTIC_WORDS.get(expected_relativistic, expected_relativistic)}"
+                         f": spin-orbit coupling needs fully relativistic "
+                         f"pseudopotentials, and everything else is right "
+                         f"with scalar-relativistic ones.  Use a "
+                         f"{_RELATIVISTIC_WORDS.get(expected_relativistic, expected_relativistic)}"
+                         f" file for {key}."),
                 path=info.path,
             ))
             continue
@@ -866,8 +870,10 @@ def check_coverage(labels: Iterable[str],
         if info.parse_warnings:
             out.append(CoverageEntry(
                 element=key, status="parse_warning",
-                message=(f"{opened.name} present but header had issues: "
-                         f"{'; '.join(info.parse_warnings)}"),
+                message=(f"{opened.name} is there, but parts of its "
+                         f"description did not read: "
+                         f"{'; '.join(info.parse_warnings)} -- what it says "
+                         f"of its functional and generator is unchecked."),
                 path=info.path,
             ))
             continue
@@ -909,12 +915,12 @@ def check_coverage(labels: Iterable[str],
         )
         out.append(CoverageEntry(
             element=",".join(strangers) or "*", status="generator_mismatch",
-            message=(f"pseudopotential set mixes generator versions: "
-                     f"{summary}.  A coherent set should come from ONE "
-                     f"PseudoDojo / ONCVPSP release; confirm the "
-                     f"odd-one-out ({', '.join(strangers)}) is intended "
-                     f"-- a stray version is how a defective pseudo "
-                     f"usually sneaks in."),
+            message=(f"the pseudopotentials come from different generator "
+                     f"versions: {summary}.  A set made together comes from "
+                     f"one PseudoDojo / ONCVPSP release, and a stray "
+                     f"version is the usual way a defective file gets in: "
+                     f"check that {', '.join(strangers)} is the file you "
+                     f"meant."),
             path=None,
         ))
     return out

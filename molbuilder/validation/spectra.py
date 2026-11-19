@@ -351,48 +351,37 @@ def spectra_render_checks(struct: Structure, cfg, *,
     # solvent's own term (`with_solvent.hess`).  The deck's OTHER routes
     # are built without it -- the held-atom Hessian (`hess_elec(atmlst=)`
     # + `hess_nuc`), the analytic IR block and Raman's polarizability loop
-    # -- so PCM reaches one route, and the others
-    # are refused until built and measured (`engines/vibration.md` § 4.6;
-    # plan § 5w K17).
+    # -- so PCM reaches one route whole, and the others run with the
+    # solvated SCF and without the solvent's response, said as a warning
+    # (`engines/vibration.md` § 4.6).
     from ..pyscf.scf_setup import solvent_of
     _solv = solvent_of(cfg)
     if _solv:
         # Only for a name the dielectric table knows: the engine
         # validator refused unknown names, and a regime note about a
         # run that will not happen would be double-speak.
-        from ..pyscf.scf_setup import SOLVENTS as _SOLV_TABLE
-        _held = list(getattr(cfg, "frozen_indices", []) or [])
-        # (route asked for, what turns it off) -- in the deck's order.
-        _asked = (([(f"{len(_held)} held atom(s) -- the held-atom "
-                     f"Hessian", "release the held atoms")]
-                   if _held else [])
-                  + ([("Raman -- its polarizability loop",
-                       "turn Raman off")]
-                     if bool(getattr(cfg, "compute_raman", False))
-                     else [])
-                  + ([("IR -- its dipole-derivative route",
-                       "turn IR off")]
-                     if bool(getattr(cfg, "compute_ir", False))
-                     else []))
+        from ..pyscf.scf_setup import SOLVENTS as _SOLV_TABLE, solvent_left_out
+        _asked = solvent_left_out(cfg)
         _routes = [r for r, _off in _asked]
         if _routes and _solv in _SOLV_TABLE:
-            # PCM REACHES ONE ROUTE (ruled 2026-09-29 --
-            # `engines/vibration.md` § 4.6).  For a name the
-            # dielectric table knows: an unknown one is the engine
-            # validator's refusal already.
+            # PCM REACHES ONE ROUTE (`engines/vibration.md` § 4.6): said,
+            # and the run goes as set -- every SCF of it solvated, the
+            # routes asked for without the solvent's response (the user,
+            # 2026-11-18: "None of these things should stop any
+            # calculation").  For a name the dielectric table knows: an
+            # unknown one is the engine validator's refusal already.
             issues.append(Issue(
-                severity="error",
+                severity="warn",
                 message=(
-                    f"PCM solvation ({_solv}) reaches one route: the "
-                    f"frequencies of a structure with no atoms held, "
-                    f"with IR and Raman off -- PySCF's full analytic "
-                    f"Hessian carries the solvent's response "
-                    f"(with_solvent.hess), and the routes this "
-                    f"calculation asks for are built without it: "
-                    f"{'; '.join(_routes)}.  "
+                    f"the solvent ({_solv}, PCM) is included in full only "
+                    f"in the frequencies of a structure with no atoms "
+                    f"held, with IR and Raman off.  Every SCF here runs "
+                    f"in the solvent, but what this calculation also asks "
+                    f"for is computed without the solvent's response to "
+                    f"the atoms moving: {'; '.join(_routes)}.  "
                     f"{_sentence(', '.join(off for _r, off in _asked))}"
-                    f" -- or remove the solvent"
-                    f"."),
+                    f" -- or remove the solvent -- for results that "
+                    f"include it in full."),
                 where="config.solvent",
             ))
         elif _solv in _SOLV_TABLE:

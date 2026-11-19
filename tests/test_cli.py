@@ -240,7 +240,7 @@ def test_a_build_says_the_structures_own_findings(tmp_path, capsys):
     pair = tmp_path / "two.xyz"
     cli.main(["smiles", "O.O", "--out", str(pair)])
     err = capsys.readouterr().err
-    assert "error [geometry.min_distance]" in err, err
+    assert "warn [geometry.min_distance]" in err, err
     assert pair.exists()
 
 
@@ -381,13 +381,18 @@ def test_validate_judges_a_kind_on_what_its_description_starts_from(
 
 def test_validate_exit_on_error_returns_2(monkeypatch, capsys, tmp_path):
     """--exit-on-error makes the command non-zero when any error-severity
-    issue fires.  Synthesise a structure with two atoms < 0.3 A apart,
-    which the min_distance check flags as error."""
+    issue fires: a structure whose cell is mirrored (`cell.left_handed`),
+    saved as a pair through the codec."""
     import json
-    xyz = "2\nbroken\nO 0 0 0\nH 0.1 0 0\n"   # 0.1 A < 0.3 -> error
+    import numpy as np
+    from molbuilder.structure import Structure
+    from molbuilder.workingcopy_structure import StructureCodec
+    bad = tmp_path / "bad.xyz"
+    StructureCodec().write(Structure(
+        elements=["H", "H"], positions=np.array([[5.0, 5, 5], [5, 5, 5.74]]),
+        cell=np.array([[0, 10.0, 0], [10.0, 0, 0], [0, 0, 10.0]])), bad)
     with pytest.raises(SystemExit) as exc:
-        cli.main(["validate", _write_xyz(tmp_path / "bad.xyz", xyz),
-                  "--exit-on-error"])
+        cli.main(["validate", str(bad), "--exit-on-error"])
     assert exc.value.code == 2
     out = capsys.readouterr().out
     body = json.loads(out)

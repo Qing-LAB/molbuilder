@@ -191,7 +191,7 @@ def describe(*, calculation: str, engine: Optional[str],
     from ..kind_table import kind
     from ..task import Task, derive_run, fresh_varies
     from ..validation.task import refuse_on_error
-    from .citation_defaults import (check_pseudopotentials,
+    from .citation_defaults import (charge_finding, check_pseudopotentials,
                                     citation_answers,
                                     transport_template_text)
     from .compose import (CitedPair, ComposeError, refuse_failed_citation,
@@ -364,9 +364,9 @@ def describe(*, calculation: str, engine: Optional[str],
             template = finished.template_text
         else:
             check_pseudopotentials(cited, chosen.get("psml_lib"))
+            answers = citation_answers(cited)
             template = transport_template_text(
-                citation_answers(cited), label=task.label, blank=blank,
-                **chosen)
+                answers, label=task.label, blank=blank, **chosen)
     except ValueError as exc:
         raise NotDescribed(str(exc), task=task) from None
     desc = Description(task=task, template=template,
@@ -384,6 +384,11 @@ def describe(*, calculation: str, engine: Optional[str],
     except ValidationError as exc:
         raise NotDescribed(str(exc), findings=found, task=task) from None
     notes: List[object] = list(found)
+    # A CHARGED CITATION, said (`citation_defaults.charge_finding`).
+    if finished is None:
+        charged = charge_finding(answers)
+        if charged is not None:
+            notes.append(charged)
     if fitted_words is not None:
         notes.append(Issue("info", f"transmission window: {fitted_words}"))
 

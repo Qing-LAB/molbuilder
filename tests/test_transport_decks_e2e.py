@@ -449,17 +449,19 @@ def test_a_voltage_outside_its_recommended_range_is_warned_where_it_is_saved(
         found["message"], found
 
 
-def test_a_relaxation_at_another_charge_cannot_be_cited(real_charged_formate,
-                                                        tmp_path, monkeypatch):
+def test_a_relaxation_at_another_charge_is_said_when_cited(
+        real_charged_formate, tmp_path, monkeypatch):
     """§ 3.1 and ES7: the leads set a junction's electron number, so a geometry
     relaxed charged is not this junction's -- said at describe, naming the
-    charge and the way out."""
-    said = described(road_tree(tmp_path, monkeypatch,
-                               real_charged_formate.pair),
-                     name="T", calculation="transport",
-                     refused=True)
-    assert "states a net charge of -1" in said, said
-    assert "Relax the junction neutral" in " ".join(said.split()), said
+    charge and the way out, and the calculation described all the same:
+    never a stop (the user, 2026-11-18)."""
+    folder, said = described(road_tree(tmp_path, monkeypatch,
+                                       real_charged_formate.pair),
+                             name="T", calculation="transport", said_too=True)
+    words = " ".join(said.split())
+    assert "was run at a charge of -1" in words, said
+    assert "relax it at that charge" in words, said
+    assert (folder / "task.json").is_file(), said
 
 
 def test_the_device_s_scratch_folder_is_said_on_every_page(

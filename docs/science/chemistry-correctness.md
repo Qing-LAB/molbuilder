@@ -501,8 +501,12 @@ every value the shared panel carries: defaulted, never sealed
 and what its structure's run recorded is warned by the record check, because a
 frequency or a transmission at a geometry optimised for another electronic state
 is usually a mistake and occasionally the point (a vertical ionisation). **A
-transport calculation refuses a cited run that carried a net charge** — in the reason the kind table states for its fixed charge, the one the state's rule and the settings gate read: its
-boundaries are open and the junction must be neutral.
+transport calculation cited from a run that carried a net charge is computed
+neutral, and says so** — a warning when it is described and at every prep
+(`citation_defaults.charge_finding`, kept with the composed junction), never
+a stop *(the user, 2026-11-18)*, in the reason the kind table states for its
+fixed charge (`charge.why`), the one the state's rule and the settings gate
+read. The geometry of the neutral junction is a relaxation at 0, cited.
 
 **ES8 · A blank is decided, never hidden.** There is no fill step: a blank item
 *is* the instruction "work it out", and the class answers it identically for the
@@ -553,8 +557,8 @@ and is the kind table's — a kind's parts ([`execution/architecture.md`](?doc=e
 | `restricted` | ✅ | ✅ | ✅ | ✅ |
 | `restricted-open` | ❌ SIESTA has no restricted open-shell formalism | ❌ | ✅ ROHF/ROKS gradients exist (`pyscf/grad/rohf.py`, `roks.py`) | ❌ **no analytic ROHF/ROKS Hessian** — `pyscf/hessian/` holds `rhf`, `rks`, `uhf`, `uks` only, and the vibration deck uses the analytic Hessian |
 | `unrestricted` | ✅ (`Spin polarized`) | ✅ — the count floats (below) | ✅ | ❌ *until the spectrum record carries two spin channels* — its orbital block is written one channel wide and the reader refuses a second (PS-C2, ruled 2026-09-29) |
-| `non-collinear` | ✅ — a pinned count written as stated, SIESTA's stop said (ES6): it `die()`s on `Spin.Fix` here (`read_options.F90`) | ❌ TranSIESTA stops on more than two spin components (`m_transiesta.F90`: *"transiesta does not work for non-collinear or spin-orbit"*) | ❌ not offered | ❌ |
-| `spin-orbit` | ✅ — needs fully-relativistic pseudopotentials; a pinned count said as above | ❌ as `non-collinear` | ❌ | ❌ |
+| `non-collinear` | ✅ — a pinned count written as stated, SIESTA's stop said (ES6): it `die()`s on `Spin.Fix` here (`read_options.F90`) | ✅ — written as set; the seed and the leads run it, and TranSIESTA stops at the device's start on more than two spin components (`m_transiesta.F90`: *"transiesta does not work for non-collinear or spin-orbit"*), its stop said beforehand as information on every rung (`transiesta.STOPS_ON_SPIN`; the user, 2026-11-02) | ❌ not offered | ❌ |
+| `spin-orbit` | ✅ — needs fully-relativistic pseudopotentials; a pinned count said as above | ✅ as `non-collinear` | ❌ | ❌ |
 
 | `unpaired_electrons` | SIESTA | SIESTA transport | PySCF |
 |---|---|---|---|

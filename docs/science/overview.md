@@ -129,12 +129,17 @@ pre-flight checks. An engine's checks are always a kind's too, so `--engine`
 asks `--calculation`: nothing judges a configuration as an optimization because
 nobody said otherwise.
 
-**What may carry `error` severity** is deliberately narrow — only "physically
-impossible or wrong" (atoms overlapping, a degenerate cell, a missing or
-defective pseudopotential, a spin treatment or count the kind does not offer on
+**What may carry `error` severity** is deliberately narrow — only what leaves
+nothing to compute, a file the engine cannot open, what a deck or molbuilder's
+records cannot express, and two stated values that conflict or a value stated
+nowhere (a degenerate cell, a missing
+pseudopotential, a spin treatment or count the kind does not offer on
 its engine, `restricted` with unpaired electrons, a charge on a transport
-calculation). Everything advisory stays `warn` — including a
-closed shell stated on an open-shell structure, and a spin count decided from a
+calculation); nothing stops a calculation the person set *(the user,
+2026-11-18: "None of these things should stop any calculation…")*.
+Everything advisory stays `warn` — two atoms closer than any bond, however
+close, among it — and so do a
+closed shell stated on an open-shell structure and a spin count decided from a
 metal's usual count: both are strong warnings about the state the SCF is asked
 for, and neither stops it running. A value given to a setting that enters
 nothing here, and held atoms the run will not honour, are `warn`; held atoms a
@@ -152,8 +157,7 @@ states the *why* so the thresholds don't drift silently.
 ### Geometry (`validation/geometry.py`, every-edit)
 | Check | Severity | Why |
 |---|---|---|
-| min atom–atom distance < 0.3 Å | **error** | atoms on top of each other; SCF diverges |
-| min atom–atom distance 0.3–0.7 Å | warn | two atoms overlap — too short for any real bond |
+| min atom–atom distance < 0.7 Å, however close | warn | two atoms overlap — too short for any real bond; said, never a stop: what the engine makes of it is the engine's |
 | H/heavy ratio, on every structure with a heavy non-metal atom | info | **a reference number, never a verdict** — `H/heavy non-metal atoms: 4/8 = 0.50 (for reference: organic molecules usually sit at 0.6-1.5)`, counted by element (`chemistry.is_atom`) against the heavy **non-metal** atoms only (`chemistry.NONMETALS`): the reference range is organic molecules', so a junction's gold is no part of the count, and a structure with no non-metal heavy atom — a gold lead — gets no note. Whether hydrogens are missing is the scientist's to judge: an oxide or graphene has none by construction *(the user, 2026-10-11: "maybe just provide that ratio as a reference"; counted against the non-metals because a gold lead would read 0/75 and a junction 4/440)* |
 | polymer residue listing reversed / no preceding O3′–P bridge | warn | reversed or disconnected backbone — a likely backend regression |
 
@@ -188,7 +192,7 @@ first that holds wins.
 
 | Check | Severity | Why |
 |---|---|---|
-| a treatment or a count the kind does not offer on this engine — SIESTA's restricted-open, PySCF's non-collinear / spin-orbit, a PySCF vibration's restricted-open or unrestricted, TranSIESTA's non-collinear / spin-orbit, `free` on PySCF (ES4, ES6) | **error** | declared, not discovered (the catalogue's `offered`, [`engines/template.md`](?doc=engines/template.md) § 6.3a): the form does not offer it, and the gate refuses the RESOLVED value by name, saying where it came from, before a deck is written |
+| a treatment or a count the kind does not offer on this engine — SIESTA's restricted-open, PySCF's non-collinear / spin-orbit, a PySCF vibration's restricted-open or unrestricted, `free` on PySCF (ES4, ES6) | **error** | declared, not discovered (the catalogue's `offered`, [`engines/template.md`](?doc=engines/template.md) § 6.3a): the form does not offer it, and the gate refuses the RESOLVED value by name, saying where it came from, before a deck is written |
 | a fixed count where SIESTA cannot hold one — under non-collinear or spin-orbit, and under unrestricted on a transport rung (ES6) | info | SIESTA stops on `Spin.Fix` unless the spin is collinear and polarized (`read_options.F90`), and TranSIESTA on any (`m_ts_options.F90`) — the engine's own stop, said before the run, the count written as stated, never refused (the user, 2026-11-02); a count nobody stated floats there instead |
 | `restricted` with a count above 0 (ES5) | **error** | restricted means every electron paired |
 | the count's parity against the electron count, for a finite system (ES3) | info; **warn** for SIESTA restricted with an odd count, which runs half-filled | PySCF stops on the pair at its start — its own stop, said, never refused (the user, 2026-11-02); a repeating cell's count per cell is not a spin |
@@ -216,8 +220,10 @@ transmission's grid are one rule each.
 
 | Check | Severity | Why |
 |---|---|---|
-| `cell.transport_vacuum`: the room at the transport boundary above 1.5 of the lead's layer spacings | **error** | a junction's leads continue into the periodic image, so the room there is one layer spacing; more is a SEVERED lead, not padding — measured from the lead's own layer spacing; the room below 1/1.5 of it is refused too, as `cell.transport_collision` — the leads' end layers meet through the image. **The reverse of what `cell.vacuum_thin` tells an isolated molecule**, which is why it is keyed on the kind: the two must never both fire |
-| `cell.transverse_vacuum`: a lead that does not reach across a transverse axis declared periodic — its nearest atom there above 1.5 of its own bond, each lead on its own | **error** | periodic says the crystal continues across the boundary; a wire or chain lead is declared isolated there instead, and its vacuum is then allowed ([`engines/transport.md`](?doc=engines/transport.md) § 6.1c) |
+| `cell.transport_vacuum`: the room at the transport boundary above 1.5 of the lead's layer spacings | warn | a junction's leads continue into the periodic image, so the room there is one layer spacing; more is a SEVERED lead, not padding — measured from the lead's own layer spacing; the room below 1/1.5 of it is warned too, as `cell.transport_collision` — the leads' end layers meet through the image. Each names the cell length that closes the gap to one spacing, and the run goes as set. **The reverse of what `cell.vacuum_thin` tells an isolated molecule**, which is why it is keyed on the kind: the two must never both fire |
+| `cell.transverse_vacuum`: a lead that does not reach across a transverse axis declared periodic — its nearest atom there above 1.5 of its own bond, each lead on its own | warn | periodic says the crystal continues across the boundary; a wire or chain lead is declared isolated there instead, and its vacuum is then allowed ([`engines/transport.md`](?doc=engines/transport.md) § 6.1c) |
+| `spin_treatment` non-collinear or spin-orbit, on every rung | info | TranSIESTA handles two spin channels at most and stops at the device's start (`m_transiesta.F90`), after the seed and both leads have run — its stop, said beforehand, the deck written as set (`transiesta.STOPS_ON_SPIN`) |
+| `negf_neq_fermi_cutoff_kt` below 2.5, on the device | info | TranSIESTA stops the device under bias below 2.5 kT (`m_ts_contour_neq.f90`) — its stop, said beforehand, the deck written as set (`transiesta.MIN_NEQ_FERMI_CUTOFF_KT`) |
 | `negf_eq_pole_ev` giving < 20 poles, 0 among them | info | TranSIESTA derives the pole count from the energy, `int(E / (π·kT))`, and stops below 20 after the queue wait — said before the run with the least energy at this temperature, never refused; an energy at or below 0 leaves TranSIESTA its own 8-pole count, said the same way |
 | `electronic_temperature < 10 K` on a transport calculation | info | TranSIESTA stops below 10 K before it counts a pole (`m_ts_options.F90`) — its stop, said beforehand |
 

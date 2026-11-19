@@ -1476,17 +1476,24 @@ def pyscf_methods_fragment(cfg: "VibrationConfigView") -> str:
     # relaxation, the Hessian, each displaced point -- carries the same
     # continuum (`scf_setup.emit_solvent_apply_fn`), and the model is part
     # of what was computed.
-    from .scf_setup import solvent_of
+    from .scf_setup import solvent_left_out, solvent_of
     solvent = solvent_of(cfg)
     if solvent:
         from .scf_setup import SOLVENTS
+        # ...AND WHAT WAS COMPUTED WITHOUT ITS RESPONSE, said as the
+        # settings gate says it (`scf_setup.solvent_left_out`): the text a
+        # person copies into a paper never claims a term the run left out.
+        left_out = [what for what, _off in solvent_left_out(cfg)]
+        response = ("the Hessian including the solvent's own response"
+                    if not left_out else
+                    f"{' and '.join(left_out)} computed without the "
+                    f"solvent's response to the atoms' motion")
         parts.append(
             f"The solvent, {solvent} (dielectric constant "
             f"{SOLVENTS[solvent]:g}), was modelled as a polarizable "
             f"continuum ({cfg.solvent_method}) at every self-consistent field "
-            f"of the run, the Hessian including the solvent's own "
-            f"response, in the equilibrium-solvation approximation "
-            f"[Tomasi2005, Cances1997]."
+            f"of the run, {response}, in the equilibrium-solvation "
+            f"approximation [Tomasi2005, Cances1997]."
         )
     if frozen:
         # THE FROZEN SET, SAID OUT LOUD: freezing is the user's own

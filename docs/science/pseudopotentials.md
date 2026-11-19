@@ -522,8 +522,8 @@ and exits non-zero when any line is an ERROR — the shape a CI job greps / gate
 ```text
   [OK   ] Au       Au.psml OK (GGA / PBE, scalar)
   [OK   ] C        C.psml OK (GGA / PBE, scalar)
-  [WARN ] S        S.psml has a NULL Kleinman-Bylander projector for the 'p' channel (ekb=0): …
-  [WARN ] S        pseudopotential set mixes generator versions: ONCVPSP-3 (Au,C); ONCVPSP-4 (S).  … confirm the odd-one-out (S) is intended …
+  [WARN ] S        S.psml has no working Kleinman-Bylander projector for its valence 'p' channel -- its strength is zero -- so the pseudopotential is incomplete: …
+  [WARN ] S        the pseudopotentials come from different generator versions: ONCVPSP-3 (Au,C); ONCVPSP-4 (S).  … check that S is the file you meant.
 
 4 checks: 0 error(s), 2 warning(s).          # process exits 0 (no file SIESTA cannot open)
 ```

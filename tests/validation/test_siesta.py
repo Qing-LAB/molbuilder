@@ -405,5 +405,5 @@ class TestSiestaPseudoCoverageInPreflight:
                           calculation="optimization")
         said = [i for i in issues if i.where.startswith("config.psml_lib")]
         assert len(said) == (2 if mismatch else 0), said
-        assert all("XC-FAMILY" in i.message for i in said), said
+        assert all("another XC family" in i.message for i in said), said
         assert not [i for i in issues if i.severity == "error"], issues

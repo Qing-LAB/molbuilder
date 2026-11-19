@@ -17,7 +17,7 @@ auxiliary basis cannot be honored at one site and dropped at another.
 """
 from __future__ import annotations
 
-from typing import List
+from typing import List, Tuple
 
 
 def emit_scf_configure_fn(cfg, *, verbose: bool = True) -> List[str]:
@@ -169,6 +169,26 @@ def solvent_of(cfg) -> str:
     passed the check and crashed prep; round 1 D9: ``Water`` written with
     ``eps=?`` in the header)."""
     return str(getattr(cfg, "solvent", "") or "").strip().lower()
+
+
+def solvent_left_out(cfg) -> List[Tuple[str, str]]:
+    """WHAT A PySCF VIBRATION COMPUTES WITHOUT THE SOLVENT'S RESPONSE to the
+    atoms' motion (`engines/vibration.md` § 4.6): PySCF's full analytic
+    Hessian carries it (``with_solvent.hess``), and the deck's other routes
+    are built without it -- the held-atom Hessian, the infrared route's
+    Hessian and dipole derivatives, Raman's polarizability loop -- each
+    ``(what it computes, what turns it off)``, in the deck's order; ``[]``
+    for the gas phase or the full Hessian's route.  Read by the settings
+    gate's warning and the Methods text alike."""
+    if not solvent_of(cfg):
+        return []
+    held = list(getattr(cfg, "frozen_indices", []) or [])
+    return (([(f"the frequencies, with {len(held)} atom(s) held",
+               "release the held atoms")] if held else [])
+            + ([("the Raman intensities", "turn Raman off")]
+               if bool(getattr(cfg, "compute_raman", False)) else [])
+            + ([("the frequencies and IR intensities", "turn IR off")]
+               if bool(getattr(cfg, "compute_ir", False)) else []))
 
 
 def solvent_header_lines(cfg) -> List[str]:

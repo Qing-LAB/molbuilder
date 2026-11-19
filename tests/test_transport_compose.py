@@ -1,5 +1,5 @@
-"""The lead gate the transport citation asks (`engines/transport.md` § 3.1,
-§ 4): what is refused or measured on the structure alone.
+"""The lead checks the transport citation asks (`engines/transport.md` § 3.1,
+§ 4): what is said or measured on the structure alone.
 
 What a citation of a finished relaxation composes -- the leads it cuts, how
 the run ended, the electrode rename on this calculation's own copy -- reads
@@ -14,43 +14,6 @@ import pytest
 
 from molbuilder.transport.sort import (REGION_BRIDGE, REGION_LEFT_ELECTRODE,
                                        REGION_RIGHT_ELECTRODE)
-from support.junction import BRIDGE, LAYERS_L, LAYERS_R
-
-
-def _junction_with_free_leads():
-    """The junction a person built on the Molbuilder tab, its leads
-    labelled but left free -- never held for a relaxation -- in a box whose
-    c closes the leads' boundary to one layer spacing (§ 6.1c), as a
-    ``Structure`` (`support.road.road_structure`)."""
-    from support.road import road_structure
-    elements, zs, labels = [], [], []
-    for z in LAYERS_L:
-        elements.append("Au"); zs.append(z); labels.append(REGION_LEFT_ELECTRODE)
-    for el, z in BRIDGE:
-        elements.append(el); zs.append(z); labels.append(REGION_BRIDGE)
-    for z in LAYERS_R:
-        elements.append("Au"); zs.append(z); labels.append(REGION_RIGHT_ELECTRODE)
-    regions: dict = {}
-    for i, lab in enumerate(labels):
-        regions.setdefault(lab, []).append(i)
-    return road_structure({"elements": elements,
-                           "positions": [[1.0, 1.0, z] for z in zs],
-                           "regions": regions,
-                           "cell": [8.0, 8.0, 37.0],
-                           "axis_kind": ["periodic", "periodic",
-                                         "transport"]})
-
-
-def test_a_lead_that_was_not_held_is_refused_by_name():
-    """§ 3's lead gate, the one compose asks: a lead must have come through
-    the relaxation as frozen bulk.  A junction whose leads were left free is
-    refused naming what to do."""
-    from molbuilder.transport.wizard import extract_electrode_model
-    with pytest.raises(ValueError) as e:
-        extract_electrode_model(_junction_with_free_leads(),
-                                REGION_LEFT_ELECTRODE)
-    msg = str(e.value)
-    assert "NOT FROZEN" in msg and "freeze them" in msg, msg
 
 
 def _au_lead_junction(n_layers: int):
@@ -95,3 +58,31 @@ def test_a_leads_periodic_seam_is_measured(n_layers, verdict):
                                                            lead).notes
                 if n.where == "lead.seam"]
         assert len(seam) == 1 and verdict in seam[0], (lead, seam)
+
+
+@pytest.mark.parametrize("moved, said", [
+    (None, False),
+    (REGION_BRIDGE, False),
+    (REGION_RIGHT_ELECTRODE, True),
+], ids=["frames-alike", "the-bridge-moves", "a-lead-atom-moves"])
+def test_a_frame_that_moves_a_lead_atom_is_said(moved, said):
+    """`engines/transport.md` § 2a.9: a transport calculation citing a frame
+    set computes the leads once, from the first frame, so every frame keeps
+    the lead atoms where that frame has them -- a frame that moves one is
+    said, naming the frame and the atom, never a stop (the user,
+    2026-11-18); the bridge is the frames' to move.  The silent failure:
+    the leads drifting frame by frame with nothing said, and TranSIESTA
+    stopping each such frame's device stage."""
+    from molbuilder.transport.compose import frames_moving_the_leads
+    from pathlib import Path
+    base = _au_lead_junction(4)
+    frames = [np.asarray(base.positions, dtype=float)] * 2
+    if moved is not None:
+        second = frames[0].copy()
+        second[base.regions[moved][0], 2] += 0.01
+        frames = [frames[0], second]
+    s = base.replace(frames=np.stack(frames))
+    sentence = frames_moving_the_leads(s, Path("set.xyz"))
+    assert (sentence is not None) is said, sentence
+    if said:
+        assert "frame 2 of 2" in sentence and "Au" in sentence, sentence

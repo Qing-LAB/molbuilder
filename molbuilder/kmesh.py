@@ -286,12 +286,12 @@ def check(meshes: Sequence[Optional[KMesh]], struct, *, cell=None,
     2026-08-20), and ``k = 1`` states nothing and is checked not at all --
     save on a transport calculation, where one point along a direction the
     electrodes repeat in is warned (`engines/transport.md` § 0.3b; the user,
-    2026-10-09) -- and save one refusal, where the engine itself stops: a transport
-    calculation's SCF grid sampling an isolated axis more than once while the
-    other axis of the electrode plane is periodic (a stripe), which
-    TranSIESTA refuses at the device after the seed and both leads have run
-    (``ts_electrode.F90``, ``check_in_cell``; refused for now, user
-    2026-09-30).  A
+    2026-10-09) -- and save one piece of information, where the engine
+    itself stops: a transport calculation's SCF grid sampling an isolated
+    axis more than once while the other axis of the electrode plane is
+    periodic (a stripe), which TranSIESTA stops on at the device after the
+    seed and both leads have run (``ts_electrode.F90``, ``check_in_cell``)
+    -- said beforehand, the deck written as set (the user, 2026-11-02).  A
     count at or below its limit and a fixed component are refused by the
     one per-value door (``template.why_not``) on every surface; they are not
     judged here again -- and a grid built from a value that cannot stand
@@ -326,26 +326,23 @@ def check(meshes: Sequence[Optional[KMesh]], struct, *, cell=None,
             where = f"config.{axis.source}"
             name = f"{_grid_words(axis.source)} along {AXES[i]}"
             if axis.role == "gamma" and axis.count > 1 and _a_stripe(mesh, i):
+                # TranSIESTA's own stop, said as information and written as
+                # set -- the engine's to make (the user, 2026-11-02).
                 out.append(Issue(
-                    "error",
-                    f"{name} = {axis.count} on an isolated axis of a junction "
-                    f"that repeats along the other axis of the electrode "
-                    f"plane (x, y): TranSIESTA stops the device on it.  A "
-                    f"lead that repeats along one axis of the electrode "
-                    f"plane must take one k-point along the other, where it "
-                    f"has no neighbours (ts_electrode.F90, \"found "
-                    f"incompatible k-grids\"), and the seed and both leads "
-                    f"would have run before the device stops.  Set it to 1; "
-                    f"such a junction is refused for now",
+                    "info",
+                    f"{name} = {axis.count}, where the junction does not "
+                    f"repeat, while it repeats along the other axis of the "
+                    f"electrode plane (x, y): TranSIESTA stops the device "
+                    f"stage on this (\"found incompatible k-grids\") -- "
+                    f"after the seed and both leads have run.  "
+                    f"1 point along {AXES[i]} runs.",
                     where))
             elif axis.role == "gamma" and axis.count > 1:
                 out.append(Issue(
                     "warn",
-                    f"{name} = {axis.count} on an isolated axis: the "
-                    f"structure does not repeat there, so the extra k-points "
-                    f"only sample its periodic images, separated by vacuum "
-                    f"-- they add cost and nothing else; 1 is the usual "
-                    f"choice",
+                    f"{name} = {axis.count}, where the structure does not "
+                    f"repeat, so the extra k-points add cost and change "
+                    f"nothing; 1 is the usual choice",
                     where))
             elif (axis.role == "sampled" and axis.count == 1
                   and mesh.axes[TRANSPORT_AXIS].role in ("open", "lead")

@@ -262,7 +262,7 @@ def ok_structure_response(
     # THE GEOMETRY'S ADVICE, WHILE EDITING (`science/overview.md` § 3; the
     # user, 2026-11-10: "show them while editing") -- atoms closer than they
     # should be, an unusual hydrogen count -- said beside every structure a
-    # person loads, builds or edits, never blocking; generation enforces.
+    # person loads, builds or edits, never blocking.
     said.extend(notices_for_report(validate_geometry(struct)))
     merged = dict(extra or {})
     merged.pop("notices", None)

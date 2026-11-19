@@ -90,6 +90,15 @@ ACCEPTS = [
     # vibration told to set `restart` on its "relaxation stage").
     ("restart", "override", "vibration", "freq", "continue",
      ", which no stage of a vibration on PySCF reads", "pyscf"),
+    # ...a count's floor is what samples nothing; one point along a lead's
+    # z is the person's, warned by its range (the user, 2026-11-18); and a
+    # floor of TranSIESTA's own is said, never held at the door (the user,
+    # 2026-11-02).
+    ("electrode_kz", "override", "transport", "electrode_L", 1, None),
+    ("electrode_kz", "override", "transport", "electrode_L", 0,
+     ": it must be greater than 0"),
+    ("negf_neq_fermi_cutoff_kt", "override", "transport", "device", 2.0,
+     None),
     # A PREP FLAG: the launch shape alone; no cap is the row left blank.
     ("max_memory_mb", "flag", "optimization", None, 0,
      ": it must be greater than 0"),

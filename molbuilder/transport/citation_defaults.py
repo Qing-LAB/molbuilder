@@ -95,7 +95,8 @@ class CitationAnswers:
     source_name: str = ""
     #: The charge the cited run carried -- 0 when it answers none.  Not a
     #: value of the transport template (the junction is neutral by rule);
-    #: read so a charged citation can be refused by name (ES7).
+    #: read so a charged citation is said by name (ES7,
+    #: :func:`charge_finding`).
     net_charge: int = 0
 
 
@@ -141,10 +142,9 @@ def citation_answers(cited) -> CitationAnswers:
     # floats by the kind's own rule (`electronic_state.count_must_float`),
     # which each rung's deck says.
     from ..electronic_state import FREE, count_must_float
-    # ...NOR A TREATMENT IT CANNOT RUN (non-collinear, spin-orbit: TranSIESTA
-    # stops on more than two spin components) -- the treatment and its count
-    # are left blank and worked out on the junction, which each rung's deck
-    # says (`template.md` § 6.3a).
+    # ...NOR A TREATMENT THE KIND DOES NOT OFFER -- the treatment and its
+    # count are left blank and worked out on the junction, which each rung's
+    # deck says (`template.md` § 6.3a).
     _can = _T.offered(_T.one(_T.catalogue(), "spin_treatment",
                              engine="siesta"), "siesta", "transport")
     if (kw.get("spin_treatment") is not None
@@ -158,6 +158,30 @@ def citation_answers(cited) -> CitationAnswers:
         kw["mesh_cutoff"] = float(kw["mesh_cutoff"])
     return CitationAnswers(values=kw, source=source, source_name=name,
                            net_charge=charge)
+
+
+def charge_finding(answers: CitationAnswers):
+    """ES7 (`science/chemistry-correctness.md` § 2a): the charge a transport
+    calculation carries is its kind's (the kind table's `charge`, the
+    record the state's rule and the settings gate read); a geometry relaxed
+    at another is said in the record's own reason -- a warning, never a
+    stop (the user, 2026-11-18) -- or ``None`` where the charges agree."""
+    from ..issues import Issue
+    from ..kind_table import kind as _kind
+    kind = _kind("transport")
+    fixed = kind.charge
+    if answers.net_charge == fixed.value:
+        return None
+    return Issue(
+        "warn",
+        f"the cited relaxation was run at a charge of "
+        f"{answers.net_charge:+d} ({answers.source_name or 'its record'}), "
+        f"and {kind.with_article} is computed at {fixed.value:+d} -- "
+        f"{fixed.why}.  So the junction is computed at {fixed.value:+d} on "
+        f"a geometry relaxed at {answers.net_charge:+d}.  For the geometry "
+        f"of the junction at {fixed.value:+d}, relax it at that charge and "
+        f"cite that relaxation.",
+        where="config.net_charge")
 
 
 def siesta_config_from_citation(answers: CitationAnswers, *, label: str,
@@ -176,21 +200,6 @@ def siesta_config_from_citation(answers: CitationAnswers, *, label: str,
     "work it out" (`science/chemistry-correctness.md` § 2a).
     """
     from ..config.siesta import SiestaConfig
-    # ES7 (`science/chemistry-correctness.md` § 2a): the charge a transport
-    # calculation carries is its kind's (the kind table's `charge`, the
-    # record the state's rule and the settings gate read), and a geometry
-    # relaxed at another is not this junction's -- refused in the record's
-    # own reason.
-    from ..kind_table import kind as _kind
-    kind = _kind("transport")
-    fixed = kind.charge
-    if answers.net_charge != fixed.value:
-        raise ValueError(
-            f"the citation's record states a net charge of "
-            f"{answers.net_charge:+d} ({answers.source_name or 'its record'}), "
-            f"and {kind.with_article} carries {fixed.value:+d} -- "
-            f"{fixed.why}.  Relax the junction neutral and cite that run, or "
-            f"the pair saved from it.")
     # UNDER BOTH, the one default (`engines/template.md` § 5.4, § 6.3a),
     # and WHO SET EACH (§ 6.6 obligation 2), by the one door every
     # road asks: the citation's answers -- its recorded contract -- then

@@ -161,25 +161,24 @@ def test_a_run_card_value_its_rung_does_not_read_is_refused_where_it_is_saved(
     assert r.status_code == 200, r.get_json()
 
 
-def test_a_relaxation_that_takes_no_step_is_refused(tmp_path, monkeypatch):
+def test_a_relaxation_that_takes_no_step_is_said(tmp_path, monkeypatch):
     """``relax_steps = 0`` on a rung that relaxes is a single point -- the
-    rung relaxes nothing, and a vibration's force constants would be taken
-    at a geometry nobody relaxed -- so the description is refused where it
-    is saved.  (The same value is `prep bench`'s own measurement pin, which
-    no description carries; its tests run the bench.)  One value, one
-    refusal: the value's range warning stands aside.
+    rung relaxes nothing, and a vibration's force constants are taken at a
+    geometry nobody relaxed -- so it is said where the description is
+    saved, and the Save kept: never a stop (the user, 2026-11-18).  (The
+    same value is `prep bench`'s own measurement pin, which no description
+    carries; its tests run the bench.)  One value, one finding.
 
-    MUTATIONS THIS MUST FAIL AGAINST: the step rule not asked (it saves);
-    the range check not told of the refusal (a warning beside it)."""
+    MUTATIONS THIS MUST FAIL AGAINST: the step rule not asked (nothing
+    said); the range check saying the same value again beside it."""
     from support.road import described, road_tree
     vibration = described(road_tree(tmp_path, monkeypatch),
                           calculation="vibration")
     r, kept = _overridden(vibration, {"freq": {"relax_steps": 0}})
-    assert r.status_code == 400, r.get_json()
-    assert kept, "a refused Save wrote a record"
-    assert "stage 'freq' relaxes" in r.get_json()["error"], \
-        r.get_json()["error"]
-    assert "relaxes nothing" in r.get_json()["error"]
-    found = [f["severity"] for f in r.get_json()["findings"]
-             if f["where"] == "config.relax_steps"]
-    assert found == ["error"], r.get_json()["findings"]
+    assert r.status_code == 200, r.get_json()
+    assert not kept, "the Save wrote no record"
+    said = [f for f in r.get_json().get("findings", [])
+            if f["where"] == "config.relax_steps"]
+    assert [f["severity"] for f in said] == ["warn"], said
+    assert "stage 'freq' is set to relax" in said[0]["message"], said
+    assert "relaxes nothing" in said[0]["message"], said

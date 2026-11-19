@@ -74,15 +74,13 @@ def check_electrode_labels_are_frozen(struct: Structure) -> List[Issue]:
 
     So this asks the same question one step earlier, where it is cheap — and
     where it is still ACTIONABLE, because the run has not happened yet. That
-    is the whole of what this adds; the compose-time refusal is what makes a
-    bad junction impossible, and this is what makes it avoidable.
+    is the whole of what this adds; a transport calculation citing the
+    relaxation says it again (`transport.wizard`), and this is what makes it
+    avoidable.
 
-    **A warning, not a refusal**, and the line is worth stating. A structure
-    carrying electrode labels is heading for transport, but it has not
-    committed: a person may deliberately relax the whole junction once before
-    freezing the leads for the run that counts. Refusing here would block that.
-    The refusal belongs at compose, where transport IS the intent, and it is
-    already there.
+    **A warning, never a stop** (the user, 2026-11-18): a person may
+    deliberately relax the whole junction once before freezing the leads for
+    the run that counts.
     """
     from ..transport.sort import ELECTRODE_LABELS
 
@@ -98,20 +96,19 @@ def check_electrode_labels_are_frozen(struct: Structure) -> List[Issue]:
     shown = struct.atoms_named(loose, limit=6)
     return [Issue(
         "warn",
-        (f"{len(loose)} atom(s) carry an electrode label but are NOT frozen: "
-         f"{shown}.  A transport calculation takes the lead atoms out "
-         f"of this structure by that label and treats them as pristine bulk, "
-         f"so they must come through the relaxation unmoved -- and nothing "
-         f"holds them.  Add them to \"frozen_atoms\" in /modify before "
-         f"running this, or the relaxation will move the leads and the "
-         f"junction cannot be composed afterwards (the composer refuses it, "
-         f"by which point this run has been paid for)."),
+        (f"{len(loose)} atom(s) carry a lead label but are NOT frozen: "
+         f"{shown}.  A transport calculation takes the lead atoms out of "
+         f"this structure by that label as the bulk metal on each side, so "
+         f"they should come through this relaxation unmoved -- and nothing "
+         f"holds them here.  To keep them still, add them to the "
+         f"frozen_atoms region on the Molbuilder tab before running this; "
+         f"if they move, a transport calculation citing this relaxation "
+         f"computes leads that are not the bulk, and says so."),
         "structure.electrode_frozen",
     )]
 
 
 def check_junction_boundary(struct: Structure, cell=None, *,
-                            severity: str = "warn",
                             whole_structure_is_the_lead: bool = False,
                             vacuum: bool = True) -> List[Issue]:
     """**The room at the transport boundary is one layer spacing of the
@@ -129,10 +126,10 @@ def check_junction_boundary(struct: Structure, cell=None, *,
     Measured from the lead (TD3): the spacing is the lead's own, the room
     the cell's.  A junction is a structure carrying electrode labels; an
     electrode rung's structure IS the lead and carries none, which the
-    transport kind gate says with ``whole_structure_is_the_lead``.  Asked
-    at a junction's relaxation as a **warning** (the structure has not
-    committed to transport) and at every transport rung as a **refusal**
-    (`validation.transport.validate_transport_kind`).  ``vacuum=False``
+    transport kind gate says with ``whole_structure_is_the_lead``.  A
+    **warning** wherever it is asked -- at a junction's relaxation and at
+    every transport rung (`validation.transport.validate_transport_kind`)
+    -- never a stop (the user, 2026-11-18).  ``vacuum=False``
     leaves the
     vacuum half unsaid: a junction relaxed in a padded cell is told to add
     vacuum by the molecule's own advice (`cell.vacuum_thin`), and the two
@@ -145,7 +142,9 @@ def check_junction_boundary(struct: Structure, cell=None, *,
     leads = [list(idx) for label, idx in regions.items()
              if label in ELECTRODE_LABELS and idx]
     n = getattr(struct, "n_atoms", 0)
-    if not leads:
+    # A LEAD'S OWN STAGE: the structure is the lead, labelled nowhere.
+    lead_alone = not leads
+    if lead_alone:
         if not whole_structure_is_the_lead or not n:
             return []
         leads = [list(range(n))]
@@ -157,39 +156,47 @@ def check_junction_boundary(struct: Structure, cell=None, *,
         return [Issue(
             "warn",
             f"the lead has fewer than two atomic layers, so its layer "
-            f"spacing -- and whether the {room:.2f} Å at the transport "
-            f"boundary is a seam or vacuum -- cannot be measured"
-            f".",
+            f"spacing -- and whether the {room:.2f} Å between the two leads "
+            f"across the cell's edge along z is right -- cannot be "
+            f"measured.",
             where="cell.transport_vacuum")]
+    import numpy as np
+    c_now = float(np.asarray(box, dtype=float).reshape(3, 3)[2, 2])
+    # WHERE THE ROOM IS, and THE WAY OUT both findings name: on a junction,
+    # between its two leads, closed on the Cell page; on a lead's own stage,
+    # between the lead and its own repeat, whose cell molbuilder builds from
+    # the junction's labelled layers.
+    if lead_alone:
+        between = "between the lead and its own repeat"
+        closes = ("The lead's cell is built from the junction's labelled "
+                  "lead layers, so check those layers on the junction.")
+    else:
+        between = "between the two leads"
+        closes = (f"On the Cell page, set the cell's length along z to "
+                  f"{c_now - room + spacing:.3f} Å so the gap is one layer "
+                  f"spacing.")
     if room > SEAM_VACUUM_FACTOR * spacing:
         if not vacuum:
             return []
         return [Issue(
-            severity,
-            f"the cell leaves {room:.2f} Å at the transport boundary -- "
-            f"{room / spacing:.1f} of the lead's {spacing:.2f} Å layer "
-            f"spacings.  The leads continue through that boundary into "
-            f"the periodic image, so the room there is one layer "
-            f"spacing, not a gap; above {SEAM_VACUUM_FACTOR:g} spacings "
-            f"it is vacuum, and the lead is a surface rather than a lead"
-            f".  Set the cell's c so "
-            f"the boundary closes to one spacing (the Cell page).",
+            "warn",
+            f"along the transport direction (z) the cell leaves "
+            f"{room:.2f} Å {between} across its edge -- "
+            f"{room / spacing:.1f} times the lead's {spacing:.2f} Å layer "
+            f"spacing.  The metal should continue across that edge as the "
+            f"bulk does, one layer spacing apart; this much room is empty "
+            f"space, so the lead ends in a surface instead.  "
+            f"{closes}",
             where="cell.transport_vacuum")]
     if room < spacing / SEAM_VACUUM_FACTOR:
-        import numpy as np
-        c_now = float(np.asarray(box, dtype=float).reshape(3, 3)[2, 2])
         return [Issue(
-            severity,
-            f"the cell leaves {room:.2f} Å at the transport boundary -- "
+            "warn",
+            f"along the transport direction (z) the cell leaves only "
+            f"{room:.2f} Å {between} across its edge -- "
             f"{room / spacing:.1f} of the lead's {spacing:.2f} Å layer "
-            f"spacings.  The leads continue through that boundary into "
-            f"the periodic image, so the room there is one layer spacing; "
-            f"below 1/{SEAM_VACUUM_FACTOR:g} of it the two leads' end layers "
-            f"meet through the image -- a collision: the seed's SCF and "
-            f"TranSIESTA's Hamiltonian are taken on a fused cell"
-            f".  Set the cell's c to "
-            f"{c_now - room + spacing:.3f} Å so the boundary closes to one "
-            f"spacing (the Cell page).",
+            f"spacing -- so the end layers overlap there, and every stage "
+            f"computes them run into each other.  "
+            f"{closes}",
             where="cell.transport_collision")]
     return []
 

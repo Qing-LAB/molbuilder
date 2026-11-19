@@ -557,8 +557,8 @@ There is no `engine` form item: the engine is not a parameter of the deck.
 > 2a.3).
 
 **The items the vibration shares with the optimization kind** — method, functional, basis, the spin treatment and count, dispersion, density
-fitting, the implicit solvent (`solvent`, PCM — on the frequencies-only
-route, § 4.6), the SCF machinery, the
+fitting, the implicit solvent (`solvent`, PCM — included in full on the
+frequencies-only route, § 4.6), the SCF machinery, the
 geometry-convergence criteria (`geom_gmax` family, whose values for this
 kind are the tight tier through the catalogue's `recommended` key — the row
 above), the relaxation's workflow knobs
@@ -915,10 +915,12 @@ sets compared by frequency only).
 > adds the solvent's own second derivative (`with_solvent.hess`); the deck's
 > other routes are built without it — the held-atom Hessian
 > (`hess_elec(atmlst=)` + `hess_nuc`), the analytic IR block, and Raman's
-> polarizability loop. So with a solvent set, a PySCF vibration runs the
-> frequencies of a structure with no atoms held, with IR and Raman off; any
-> of the three is refused by name at `prep`, until those routes carry the
-> solvent and are measured. **SMD and ddCOSMO are not offered**: PySCF's SMD
+> polarizability loop. So the solvent is included in full only in the
+> frequencies of a structure with no atoms held, with IR and Raman off. Held
+> atoms, IR or Raman beside a solvent are said as a warning naming each and
+> what turns it off, and the run goes as set — every SCF solvated, those
+> routes without the solvent's response *(the user, 2026-11-18: "None of these
+> things should stop any calculation…")*. **SMD and ddCOSMO are not offered**: PySCF's SMD
 > needs a solvent library its build here was compiled without, and ddCOSMO has
 > no Hessian in PySCF at all.
 
@@ -2055,11 +2057,12 @@ written over: a transport calculation citing it is pinned to it.
 **It keeps what a transport citation checks**: the same atoms, order, labels
 and box in every frame, and the held atoms where frame 0 has them — $L$ is
 zero on every held atom. **An electrode atom left free may move**, and
-frames that move one beyond the citation's tolerance are no transport
-citation (`engines/transport.md` § 2a.9: 10⁻³ Å, `wizard.FROZEN_TOL_ANG`):
-the set is written, and the generator asks the citation's own check of the
-frames it built and says, in its words, which electrode atoms move — a set
-transport refuses.
+frames that move one beyond the citation's tolerance no longer match the
+leads computed once from frame 0 (`engines/transport.md` § 2a.9: 10⁻³ Å,
+`wizard.FROZEN_TOL_ANG`): the set is written, and the generator asks the
+citation's own check (`compose.frames_moving_the_leads`) of the frames it
+built and says, in its words, which electrode atoms move — what a transport
+calculation citing the set says too, running as set.
 
 **Two doors, one generator** (`frameset_from_mode`):
 

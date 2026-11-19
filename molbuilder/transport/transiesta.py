@@ -89,6 +89,16 @@ MIN_EQ_POLES = 20
 #: again per chemical potential, :284-288; the message means kelvin).
 MIN_TS_TEMPERATURE_K = 10.0
 
+#: THE SPIN TREATMENTS TranSIESTA STOPS ON -- more than two spin components
+#: (`m_transiesta.F90`: "transiesta does not work for non-collinear or
+#: spin-orbit"); the seed and the leads, plain SIESTA runs, take them.
+STOPS_ON_SPIN = ("non-collinear", "spin-orbit")
+
+#: TranSIESTA's floor on the bias window's reach past each Fermi level, in
+#: kT: it stops a run below this, the Fermi function still having weight at
+#: E_F + 2.5 kT (`m_ts_contour_neq.f90`).
+MIN_NEQ_FERMI_CUTOFF_KT = 2.5
+
 
 def pole_count(energy_ev: float, temperature_k: float) -> int:
     """How many poles TranSIESTA takes for an equilibrium pole ENERGY.

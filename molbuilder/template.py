@@ -476,11 +476,6 @@ class Item:
     #: never one.  Every door asks :func:`why_not`, so the refusal is one
     #: message wherever it is met; a triple is held per component.
     above: Tuple[Any, ...] = ()
-    #: THE SAME, INCLUSIVE: the value must be at least ``bound`` -- an engine
-    #: whose rule is *larger than or equal to* (TranSIESTA's Fermi cutoff,
-    #: 2.5 kT, `m_ts_contour_neq.f90`), so the limit refuses exactly what the
-    #: engine refuses (§ 5.3, 2.1.0).
-    at_least: Tuple[Any, ...] = ()
     #: WHICH WAY A LADDER TIGHTENS THIS ITEM (plan § 5w K4): ``"down"`` -- a
     #: tighter setting is a smaller number (a tolerance) -- or ``"up"`` (a
     #: mesh cutoff); ``""`` when no tier table says (`engines/tuning.md`
@@ -929,7 +924,7 @@ _ITEM_KEY_ORDER = ("kind", "category", "engines", "calculations", "refs", "ancho
                    "allocation",
                    "citation", "shared", "why_shared", "role", "role_values",
                    "why_fixed", "per_point_from", "stages",
-                   "unit", "range", "above", "at_least", "tightens", "tier",
+                   "unit", "range", "above", "tightens", "tier",
                    "pattern",
                    "group", "label", "null_label", "not_set", "read_by", "help")
 
@@ -986,8 +981,6 @@ def _item_payload(it: Item) -> Dict[str, Any]:
         out["range"] = list(it.range)
     if it.above:
         out["above"] = {"value": it.above[0], "why": it.above[1]}
-    if it.at_least:
-        out["at_least"] = {"value": it.at_least[0], "why": it.at_least[1]}
     if it.tightens:
         out["tightens"] = it.tightens
     if it.group:
@@ -1784,8 +1777,7 @@ def _tightens_from(name: str, raw) -> str:
     return raw
 
 
-def _above_from(name: str, body: Mapping, type_: str,
-                key: str = "above") -> Tuple[Any, ...]:
+def _above_from(name: str, body: Mapping, type_: str) -> Tuple[Any, ...]:
     """An item's hard limit (§ 5.3), ``(bound, why)``: a number the value
     must exceed and the sentence every refusal gives, on a numeric item --
     and the item's own DEFAULT and each kind's RECOMMENDED value obey it,
@@ -1794,24 +1786,19 @@ def _above_from(name: str, body: Mapping, type_: str,
     calculation's template that is a person's answer, and a value past the
     limit is refused where every value is, by the one per-value door
     (:func:`why_not`) with its one message."""
-    raw = body.get(key)
+    raw = body.get("above")
     if raw is None:
         return ()
-    # `above` is strict, `at_least` inclusive: a value breaks the limit when
-    # it is at or below the bound, or below it.
-    breaks = ((lambda x, b: x <= b) if key == "above"
-              else (lambda x, b: x < b))
-    must = "greater than" if key == "above" else "at least"
     bound = raw.get("value") if isinstance(raw, Mapping) else None
     why = raw.get("why") if isinstance(raw, Mapping) else None
     if (not isinstance(raw, Mapping) or set(raw) != {"value", "why"}
             or isinstance(bound, bool) or not isinstance(bound, (int, float))
             or not isinstance(why, str) or not why.strip()):
-        _refuse(f"`{key}` is a hard limit: a number the value must be "
-                f"{must} and the reason, e.g. {key} = {{ value = 0, why = "
-                f"\"SIESTA divides by it\" }}", where=name)
+        _refuse("`above` is a hard limit: a number the value must be "
+                "greater than and the reason, e.g. above = { value = 0, "
+                "why = \"SIESTA divides by it\" }", where=name)
     if type_ not in ("int", "float", "int3", "float3", "pow2"):
-        _refuse(f"`{key}` bounds a number, and this item is {type_!r}",
+        _refuse(f"`above` bounds a number, and this item is {type_!r}",
                 where=name)
     # ...AND EVERY VALUE THE CATALOGUE STARTS A CALCULATION ON: the default,
     # and each kind's `recommended` -- a kind is never started on a value it
@@ -1823,9 +1810,9 @@ def _above_from(name: str, body: Mapping, type_: str,
                      else ())]
     for what, v in starts:
         parts = v if isinstance(v, (list, tuple)) else (v,)
-        if v is not None and any(breaks(float(x), bound) for x in parts):
+        if v is not None and any(float(x) <= bound for x in parts):
             _refuse(f"its {what} {v!r} breaks its own limit -- it must be "
-                    f"{must} {bound}: {why}", where=name)
+                    f"greater than {bound}: {why}", where=name)
     return (bound, why.strip())
 
 
@@ -2070,7 +2057,6 @@ def _item_from(name: str, body: Any) -> Item:
         choice_labels=_choice_labels_from(name, body.get("choice_labels"),
                                           choices),
         above=_above_from(name, body, type_),
-        at_least=_above_from(name, body, type_, key="at_least"),
         tightens=_tightens_from(name, body.get("tightens")),
         refs=tuple(body.get("refs", ()) or ()),
         allocation=bool(body.get("allocation", False)),
@@ -2425,9 +2411,8 @@ def why_not(item: "Item", value: Any, *, engine: str,
        item's ``choices``: a value that is not one is the declared type's
        refusal, and the electronic state's items are that family's, which
        judges their RESOLVED values;
-    3. a value past its limit -- at or below an ``above``, below an
-       ``at_least`` -- each component of a triple, the fixed components
-       left to (1).
+    3. a value past its limit -- at or below an ``above`` -- each component
+       of a triple, the fixed components left to (1).
 
     The clause reads after *"<who> sets <name> = <value>"*: each door names
     who.  A value that does not hold the item's declared type -- ``"0"``
@@ -2460,11 +2445,6 @@ def why_not(item: "Item", value: Any, *, engine: str,
         if any(v <= bound for v in parts):
             return (f": {'each component' if triple else 'it'} must be "
                     f"greater than {bound} -- {why}")
-    if item.at_least:
-        bound, why = item.at_least
-        if any(v < bound for v in parts):
-            return (f": {'each component' if triple else 'it'} must be "
-                    f"at least {bound} -- {why}")
     return None
 
 

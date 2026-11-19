@@ -60,7 +60,8 @@ def test_a_relaxation_samples_every_axis_by_its_kind(tmp_path, monkeypatch):
     assert _mesh(next(dest.rglob("*.fdf")).read_text()) == (
         (2, 3, 1), (0.0, 0.0, 1.0))
     report = next(dest.rglob("*.validation.txt")).read_text()
-    assert "K-point grid along y = 3 on an isolated axis" in report, report
+    assert ("K-point grid along y = 3, where the structure does not repeat"
+            in report), report
     assert "The k-point offset along z" not in report, report
 
 
@@ -178,3 +179,11 @@ def test_a_transport_meshs_start_and_its_one_point_warning():
     assert said((4, 4, 1), None, slab, "transmission") == []
     assert said((1, 1, 1), None, slab, "transmission") == \
         [("warn", "config.kgrid")] * 2
+    # A STRIPE -- repeating along x, not along y -- sampled twice along y:
+    # TranSIESTA's own stop at the device, said as information, never
+    # refused (the user, 2026-11-02); one point along y says nothing.
+    stripe = ("periodic", "isolated", "transport")
+    for shape in ("seed", "device"):
+        assert said((4, 2, 1), (12, 2, 1), stripe, shape) == \
+            [("info", "config.kgrid")], shape
+        assert said((4, 1, 1), (12, 1, 1), stripe, shape) == [], shape

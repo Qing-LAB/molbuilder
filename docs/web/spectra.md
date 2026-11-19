@@ -774,7 +774,7 @@ nothing itself: it asks the one generator through
 as the frame-set card names it (*frame 1 (of 5)* for the first, the
 display's count from 1, `model/structure.md` § 2.2e), its $q/\sigma$, largest
 atom move and weight, the pair's path, and, where an electrode atom moves,
-that transport refuses the set. The animation's amplitude (§ 4.1) is a
+which ones, in the words a transport calculation citing the set says too. The animation's amplitude (§ 4.1) is a
 drawing choice and never this input.
 
 ## 5. The standalone tab — from a structure to a description

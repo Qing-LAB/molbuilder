@@ -1338,18 +1338,24 @@ def test_a_vibration_of_the_relaxed_pair_is_judged_by_what_it_held(
         (severity, True)], found
 
 
-def test_a_pair_whose_relaxation_left_an_electrode_atom_free_is_refused(
-        junction):
+def test_a_pair_whose_relaxation_left_an_electrode_atom_free_is_said(
+        junction, tmp_path):
     """`engines/transport.md` § 1.1, Step 0: a lead is the bulk its
     relaxation held still, and the record says which atoms that was -- so a
     pair saved from the relaxation whose electrode label is then widened by
     the wire's two atoms beside it, the one the relaxation moved held now
-    too, is refused at the citation, naming that atom.  The silent failure
-    (plan V1.43): the label alone was read, and the pair composed a lead out
-    of an atom nothing held while the bridge relaxed."""
+    too, is said at the citation, naming that atom, and composed all the
+    same: never a stop (the user, 2026-11-18).  The silent failure (plan
+    V1.43): the label alone was read, and the pair composed a lead out of an
+    atom nothing held while the bridge relaxed.  And every later prep says
+    it too: the composition's record keeps what composing said, which no
+    later prep can measure again (the starting geometry does not travel)."""
     import shutil
 
-    from molbuilder.transport.compose import ComposeError, compose_junction
+    from molbuilder.transport.compose import (compose_junction,
+                                              junction_said,
+                                              load_compose_record,
+                                              write_compose_record)
     from molbuilder.workingcopy_structure import StructureCodec
     s = StructureCodec().load(junction.tree / junction.pair)
     moved, beside = _at(_LEAD + 1), _at(_LEAD)
@@ -1363,14 +1369,20 @@ def test_a_pair_whose_relaxation_left_an_electrode_atom_free_is_refused(
     where = junction.tree / "P" / "relabelled"
     try:
         StructureCodec().write(s, where / "relabelled.xyz")
-        with pytest.raises(ComposeError) as refused:
-            compose_junction("P/relabelled/relabelled.xyz",
-                             tree_root=junction.tree, engine="siesta")
+        composed = compose_junction("P/relabelled/relabelled.xyz",
+                                    tree_root=junction.tree, engine="siesta")
     finally:
         shutil.rmtree(where, ignore_errors=True)
-    said = str(refused.value)
-    assert "NOT HELD by the relaxation" in said, said
+    said = " ".join(junction_said(composed))
+    assert "NOT FROZEN in the relaxation" in said, said
     assert f"atom index {moved} (H)" in said, said
+    base = tmp_path / "calc"
+    base.mkdir()
+    write_compose_record(base, composed)
+    back = load_compose_record(base, citation="P/relabelled/relabelled.xyz",
+                               engine="siesta")
+    assert back is not None and junction_said(back) == junction_said(
+        composed), (back, junction_said(composed))
 
 
 def _prepared_decks(run, stage):

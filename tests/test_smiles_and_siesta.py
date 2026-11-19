@@ -183,7 +183,8 @@ def test_k_above_one_on_an_isolated_axis_warns_by_axis():
     found = _kgrid_findings(
         _kgrid_struct(["isolated", "isolated", "isolated"]), (2, 2, 1))
     assert len(found) == 2, [i.message for i in found]
-    assert all("on an isolated axis" in i.message for i in found)
+    assert all("where the structure does not repeat" in i.message
+               for i in found)
     found = _kgrid_findings(
         _kgrid_struct(["periodic", "periodic", "transport"]), (2, 2, 4))
     assert len(found) == 1, [i.message for i in found]

@@ -138,8 +138,9 @@ def preflight(task, *,
 
     # The RESOLVED ladder (template ⊕ each stage's overrides) when the caller
     # has the template: the checks below that judge a rung as it will run
-    # read it, and one of them refuses -- so it is asked before the range
-    # check, whose warning stands aside for a refused value (§ 5.3).
+    # read it, and one of them speaks of a value -- so it is asked before
+    # the range check, whose warning stands aside for a value already
+    # spoken of (§ 5.3: one value, one finding).
     from .stages import (check_a_relaxation_takes_a_step,
                          check_identical_stages,
                          check_ladder_does_not_loosen)

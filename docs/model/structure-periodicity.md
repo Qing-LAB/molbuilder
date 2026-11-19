@@ -550,8 +550,9 @@ that block's.
    boundary into the periodic image — so, centred, each face holds `d/2`, the
    placement TranSIESTA's recipe gives. A room above `1.5 d` is vacuum (the lead
    is a surface) and one below `d / 1.5` a collision (the two leads' end layers
-   meet through the image); both are **refused** at every transport rung, and
-   the collision is **warned** at a labelled junction's relaxation — I12,
+   meet through the image); both are **warned** at every transport rung, and
+   the collision at a labelled junction's relaxation too — never a stop *(the
+   user, 2026-11-18)* — I12,
    [`engines/transport.md`](?doc=engines/transport.md) § 6.1c
    (`validation/sidecar.py` `check_junction_boundary`; the factor is
    `cell.SEAM_VACUUM_FACTOR`). The spacing is the lead's own, measured from the

@@ -1145,8 +1145,8 @@ How the two spin channels are solved.
   restricted       every electron paired: one set of orbitals for both spins.  Closed-shell molecules, and metals that carry no moment (Cu, Ag, Au).
   restricted-open  one set of spatial orbitals, the unpaired electrons in their own -- spin-pure.  PySCF only, and not for a vibration: PySCF has no analytic ROHF/ROKS Hessian.
   unrestricted     the two spin channels solved separately.  Radicals, open-d transition metals (Fe, Co, Ni, Mn, ...), triplets.  Not for a PySCF vibration yet: its spectrum record carries one spin channel.
-  non-collinear    moments may point in any direction.  SIESTA only, and not for transport: TranSIESTA runs two spin components at most.
-  spin-orbit       couples spin to orbital motion -- heavy elements (Au, Bi, Pt).  SIESTA only, not for transport, and it needs fully-relativistic pseudopotentials.
+  non-collinear    moments may point in any direction.  SIESTA only; on transport TranSIESTA stops the device on it, two spin components at most.
+  spin-orbit       couples spin to orbital motion -- heavy elements (Au, Bi, Pt).  SIESTA only, and it needs fully-relativistic pseudopotentials; on transport TranSIESTA stops the device on it.
 Left blank it is worked out from the structure: unrestricted for an open-d metal or an odd electron count in a molecule, restricted otherwise -- and a repeating cell is never made open-shell by its electron count.  The chemistry card says what it came to and why.
 """
 
@@ -1157,7 +1157,7 @@ Left blank it is worked out from the structure: unrestricted for an open-d metal
 [item.spin_treatment.offered]
 siesta.optimization = ["restricted", "unrestricted", "non-collinear", "spin-orbit"]
 siesta.vibration    = ["restricted", "unrestricted", "non-collinear", "spin-orbit"]
-siesta.transport    = ["restricted", "unrestricted"]
+siesta.transport    = ["restricted", "unrestricted", "non-collinear", "spin-orbit"]
 pyscf.optimization  = ["restricted", "restricted-open", "unrestricted"]
 pyscf.vibration     = ["restricted"]
 
@@ -1175,11 +1175,6 @@ why = "PySCF's molecular SCF here is collinear"
 on = "pyscf"
 values = ["spin-orbit"]
 why = "PySCF's molecular SCF here has no spin-orbit coupling"
-
-[[item.spin_treatment.not_offered]]
-on = "transport"
-values = ["non-collinear", "spin-orbit"]
-why = "TranSIESTA stops on more than two spin components (m_transiesta.F90: 'transiesta does not work for non-collinear or spin-orbit')"
 
 [[item.spin_treatment.not_offered]]
 on = "pyscf.vibration"
@@ -2877,7 +2872,6 @@ value = 5.0
 default = 5.0
 engine_default = { value = 5.0, source = "SIESTA 5.4.2 m_ts_contour_neq.f90:141: cutoff_kT = fdf_get('TS.Contours.nEq.Fermi.Cutoff', 5._dp)" }
 range = [2.5, 20.0]
-at_least = { value = 2.5, why = "TranSIESTA stops a run below 2.5: the Fermi function still has weight at E_F + 2.5 kT (m_ts_contour_neq.f90)" }
 group = "stage"
 label = "Bias window's reach past each Fermi level (in kT)"
 tier = "advanced"
@@ -3060,7 +3054,7 @@ type = "int"
 value = 100
 default = 100
 range = [50, 200]
-above = { value = 1, why = "a lead is periodic bulk metal along z, the transport direction: one k-point there gives a wrong lead Hamiltonian and Fermi level, and the device builds its self-energy from both -- a wrong transmission with no runtime error" }
+above = { value = 0, why = "a count of k-points along z: 0 would sample nothing" }
 group = "stage"
 label = "Electrode k-points along z"
 tier = "basic"

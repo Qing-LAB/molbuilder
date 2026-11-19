@@ -250,9 +250,9 @@ def validate(struct: Structure, cfg, *,
     # given about it -- no recommended range, no probe's displacement.  A
     # value refused, and a setting waiting on it, draw that refusal alone.
     inactive = inactive_settings(cfg, calculation, engine, refused=refused)
-    issues += validate_config_metadata(
-        cfg, refused=refused,
-        foreign=not_carried_by(engine, calculation), inactive=frozenset(inactive))
+    # THE RANGE WARNINGS take this place in the list, worked out once every
+    # other finding is in (below): one value, one finding.
+    ranges_at = len(issues)
     # WHAT EVERY RUNG FIXES ALIKE (`engines/template.md` § 6.4): a config
     # that skipped `resolve` holds whatever its caller put there.
     issues += check_fixed_on_every_rung(cfg, calculation, engine)
@@ -326,7 +326,43 @@ def validate(struct: Structure, cfg, *,
     if ref is not None:
         kind_fn = part(ref, record=f"kind {calculation}", key="validator")
         issues += kind_fn(struct, cfg, cell, **engine_kw)
+    # A VALUE OUTSIDE ITS RECOMMENDED RANGE, warned -- unless another
+    # finding already speaks of it (`science/validation.md` § 7: one fact,
+    # one finding: TranSIESTA's own floor said beside its range, a rung
+    # that relaxes in no step, said by the description's own check), or
+    # the rung does not read it (an item judged only where it is read,
+    # `template.reads`).
+    issues[ranges_at:ranges_at] = validate_config_metadata(
+        cfg, refused=refused | _spoken_of(issues, cfg, calculation, engine,
+                                          rung),
+        foreign=not_carried_by(engine, calculation),
+        inactive=frozenset(inactive) | _unread_on(cfg, calculation, engine,
+                                                 rung))
     return issues
+
+
+def _spoken_of(issues, cfg, calculation: str, engine: str, rung) -> frozenset:
+    """The settings a finding of this gate names, and ``relax_steps`` where
+    the description's own check says this rung relaxes in no step
+    (`validation.stages.check_a_relaxation_takes_a_step`): their range
+    warnings stand aside."""
+    from .stages import check_a_relaxation_takes_a_step
+    named = {i.where.split(".", 1)[1] for i in issues
+             if (i.where or "").startswith("config.")}
+    named |= {i.where.split(".", 1)[1]
+              for i in check_a_relaxation_takes_a_step(
+                  [(rung or "", cfg)], engine=engine, kind=calculation)}
+    return frozenset(named)
+
+
+def _unread_on(cfg, calculation: str, engine: str, rung) -> frozenset:
+    """The settings the rung ``rung`` does not read (`template.reads`) --
+    none without a rung."""
+    if rung is None:
+        return frozenset()
+    from ..template import items_of, reads
+    return frozenset(name for name, item in items_of(cfg).items()
+                     if not reads(item, engine, calculation, str(rung)))
 
 
 #: Where :func:`report` writes when it is given no stream: this context's

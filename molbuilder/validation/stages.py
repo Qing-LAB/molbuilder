@@ -118,7 +118,8 @@ def check_a_relaxation_takes_a_step(
     ``relax_steps = 0`` beside a ``relax_type`` that moves atoms is a single
     point (``MD.Steps 0``, `read_options.F90`): the rung relaxes nothing, and
     a vibration's force constants are then taken at a geometry nobody
-    relaxed.  Refused where a DESCRIPTION states it — on the rungs that read
+    relaxed.  Said, never a stop (the user, 2026-11-18), where a
+    DESCRIPTION states it — on the rungs that read
     ``relax_steps`` (`template.reads`), as the description resolves them —
     because the value itself is one SIESTA takes: ``prep bench`` pins exactly
     0 to time one SCF on a rung's own deck, and that pin is prep's own,
@@ -136,10 +137,12 @@ def check_a_relaxation_takes_a_step(
                 or not reads(steps, engine, kind, name)):
             continue
         out.append(Issue(
-            "error",
-            f"stage {name!r} relaxes ({cfg.relax_type}) in relax_steps = 0 steps -- "
-            f"MD.Steps 0 is a single point (read_options.F90), so the stage "
-            f"relaxes nothing.  Give it at least one step",
+            "warn",
+            f"stage {name!r} is set to relax ({cfg.relax_type}), but its "
+            f"max geometry-optimisation steps are 0, so SIESTA computes it "
+            f"once at the "
+            f"starting geometry and moves no atom -- it relaxes nothing.  "
+            f"Give it at least one step to relax it.",
             where="config.relax_steps", stage=name))
     return out
 

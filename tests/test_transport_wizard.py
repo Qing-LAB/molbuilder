@@ -63,32 +63,37 @@ def test_extract_clones_atoms_and_uses_device_lateral_cell():
 
 
 # --------------------------------------------------------------------- #
-#  the gate: what disqualifies a labelled block from being a lead       #
+#  the checks: what is not a bulk lead about a labelled block           #
 # --------------------------------------------------------------------- #
 #
 # One function decides this, so the tests sit on the extraction: it is
-# where the answer lives, for every caller and both citation forms.
+# where the answer lives, for every caller and both citation forms.  Each
+# answer is SAID on the lead it built, never a stop (the user, 2026-11-18:
+# "None of these things should stop any calculation being constructed or
+# being run").
 
 
-def test_an_unfrozen_lead_is_refused_and_told_to_freeze():
-    """The refusal a person acts on: WHICH atoms, and what to do."""
+def _said(model) -> str:
+    return " ".join(model.said)
+
+
+def test_an_unfrozen_lead_is_said_and_told_to_freeze():
+    """What a person acts on: WHICH atoms, and what to do -- the lead
+    built all the same."""
     dev = _au_device()
     dev.frozen_atoms = []
-    with pytest.raises(ValueError) as e:
-        extract_electrode_model(dev, "L-electrode")
-    msg = str(e.value)
+    msg = _said(extract_electrode_model(dev, "L-electrode"))
     assert "NOT FROZEN" in msg
     assert "atom indices 0 (Au)" in msg, f"the atoms must be named: {msg}"
-    assert "freeze them" in msg, f"and the fix must be named: {msg}"
+    assert "frozen_atoms region" in msg, f"and the fix must be named: {msg}"
 
 
 def test_one_unfrozen_atom_is_enough():
     """A lead is bulk or it is not; there is no mostly-frozen lead."""
     dev = _au_device()
     dev.frozen_atoms = [0, 1, 2]          # the 4th Au of L is loose
-    with pytest.raises(ValueError) as e:
-        extract_electrode_model(dev, "L-electrode")
-    assert "1 atom(s)" in str(e.value) and "atom index 3 (Au)" in str(e.value)
+    msg = _said(extract_electrode_model(dev, "L-electrode"))
+    assert "1 atom(s)" in msg and "atom index 3 (Au)" in msg
 
 
 def test_the_bridge_is_not_required_to_be_frozen():
@@ -96,46 +101,59 @@ def test_the_bridge_is_not_required_to_be_frozen():
     bridge relaxes while the leads do not, so a gate that demanded every
     atom be frozen would refuse every correct junction."""
     dev = _au_device()                     # bridge atoms 4, 5 are free
-    assert len(extract_electrode_model(dev, "L-electrode").elements) == 4
+    model = extract_electrode_model(dev, "L-electrode")
+    assert len(model.elements) == 4 and model.said == ()
 
 
-def test_a_lead_that_moved_is_refused_when_a_starting_geometry_is_given():
+def test_a_lead_that_moved_is_said_when_a_starting_geometry_is_given():
     """`frozen` is a declaration; this is the outcome.  Both are asked,
     because a label can carry the declaration and the relaxation can
     still have moved the atom."""
     dev = _au_device()
     prior = np.asarray(dev.positions, dtype=float).copy()
     prior[2, 2] -= 0.05
-    with pytest.raises(ValueError) as e:
-        extract_electrode_model(dev, "L-electrode", prior_positions=prior)
-    msg = str(e.value)
+    msg = _said(extract_electrode_model(dev, "L-electrode",
+                                        prior_positions=prior))
     assert "MOVED" in msg and "atom index 2 (Au)" in msg and "0.0500" in msg
 
 
 def test_an_unmoved_lead_passes_with_a_starting_geometry():
-    """The half without which 'it refuses' would be satisfied by
-    refusing always."""
+    """The half without which 'it is said' would be satisfied by saying
+    it always."""
     dev = _au_device()
     prior = np.asarray(dev.positions, dtype=float).copy()
     m = extract_electrode_model(dev, "L-electrode", prior_positions=prior)
-    assert m.z_period == pytest.approx(4 * 2.35)
+    assert m.z_period == pytest.approx(4 * 2.35) and m.said == ()
 
 
-def test_an_unevenly_spaced_lead_is_refused():
+def test_an_unevenly_spaced_lead_is_said():
     """Wired, not merely present in `cell`: the extraction is where a
-    caller meets this, and the refusal names the spacings."""
+    caller meets this, and the sentence names the spacings."""
     dev = _au_device()
     pos = np.asarray(dev.positions, dtype=float)
     pos[3, 2] += 0.6                       # the 4th layer of L, pushed out
     dev.positions = pos
-    with pytest.raises(ValueError) as e:
-        extract_electrode_model(dev, "L-electrode")
-    msg = str(e.value)
+    msg = _said(extract_electrode_model(dev, "L-electrode"))
     assert "not evenly spaced" in msg
     assert "L-electrode" in msg, (
-        f"the refusal must say WHICH block -- on a two-lead junction of "
+        f"it must say WHICH block -- on a two-lead junction of "
         f"one element there is otherwise no way to tell which end to "
         f"re-label: {msg}")
+
+
+def test_an_uneven_lead_is_built_on_its_bulk_side_spacing():
+    """The lead repeats the spacing at its outer end, away from the
+    molecule -- for either lead, measured from the structure.  The silent
+    failure (F12 fix 2b's review): the right lead built on the spacing
+    beside the molecule, the one a relaxation moves -- its repeat 0.15 Å
+    short where the left lead's was right."""
+    dev = _au_device()
+    pos = np.asarray(dev.positions, dtype=float)
+    pos[6, 2] += 0.15                      # the right lead's layer by the bridge
+    dev.positions = pos
+    m = extract_electrode_model(dev, "R-electrode")
+    assert m.z_period == pytest.approx(3 * 2.35 - 0.15 + 2.35)
+    assert "not evenly spaced" in _said(m)
 
 
 def test_frozen_is_asked_before_moved():
@@ -146,9 +164,8 @@ def test_frozen_is_asked_before_moved():
     dev.frozen_atoms = []
     prior = np.asarray(dev.positions, dtype=float).copy()
     prior[2, 2] -= 0.05
-    with pytest.raises(ValueError) as e:
-        extract_electrode_model(dev, "L-electrode", prior_positions=prior)
-    msg = str(e.value)
+    msg = _said(extract_electrode_model(dev, "L-electrode",
+                                        prior_positions=prior))
     assert "NOT FROZEN" in msg and "MOVED" not in msg
 
 

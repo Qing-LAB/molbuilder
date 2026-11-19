@@ -22,31 +22,21 @@ from ._helpers import _vacuum_cell
 # --------------------------------------------------------------------- #
 
 
-def test_min_distance_too_small_is_error():
-    """< 0.3 Å -- atoms effectively coincide; SCF will diverge."""
+def test_atoms_closer_than_any_bond_are_said():
+    """Closer than 0.7 Å -- shorter than any real bond -- is said, however
+    close, naming the two atoms, and never stops a calculation (the user,
+    2026-11-18: "None of these things should stop any calculation being
+    constructed or being run"): what the engine makes of it is the
+    engine's.  Two atoms 0.1 Å apart, on top of each other."""
     s = Structure(
         elements=["O", "H"],
         positions=np.array([[0.0, 0.0, 0.0], [0.1, 0.0, 0.0]]),
     )
     issues = validate(s, SiestaConfig(), calculation="optimization")
-    errs = [i for i in issues if i.severity == "error"
-            and i.where == "geometry.min_distance"]
-    assert len(errs) == 1
-    assert "0.100" in errs[0].message
-
-
-
-def test_min_distance_short_is_warn():
-    """0.3 - 0.7 Å -- shorter than any real bond, likely broken."""
-    s = Structure(
-        elements=["C", "H"],
-        positions=np.array([[0.0, 0.0, 0.0], [0.5, 0.0, 0.0]]),
-    )
-    issues = validate(s, SiestaConfig(), calculation="optimization")
-    warns = [i for i in issues if i.severity == "warn"
-             and i.where == "geometry.min_distance"]
-    assert len(warns) == 1
-
+    said = [i for i in issues if i.where == "geometry.min_distance"]
+    assert [i.severity for i in said] == ["warn"], said
+    assert "0.100" in said[0].message, said
+    assert "atom indices 0 (O), 1 (H)" in said[0].message, said
 
 
 def test_min_distance_normal_bonds_no_issue(water_structure):
@@ -293,7 +283,8 @@ def test_kgrid_on_isolated_axis_is_warn():
     cfg = SiestaConfig(kgrid=(4, 4, 1))
     msgs = [i for i in validate(s, cfg, cell=cell, calculation="optimization")
             if i.where == "config.kgrid"]
-    assert any("K-point grid along x" in i.message and "isolated" in i.message
+    assert any("K-point grid along x" in i.message
+               and "does not repeat" in i.message
                for i in msgs)
 
 

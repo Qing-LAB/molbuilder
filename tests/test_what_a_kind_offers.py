@@ -74,15 +74,18 @@ def test_pcm_reaches_one_route(prepared):
     """vibration.md § 4.6: with a solvent, the frequencies of a structure
     with no atoms held, IR and Raman off -- the one route whose Hessian
     carries the solvent's response.  Infrared is on by default, so a
-    solvent alone is refused, naming the route and what turns it off.
+    solvent alone is said, naming the route and what turns it off, and the
+    deck is written solvated as set: never a stop (the user, 2026-11-18).
 
     MUTATION THIS MUST FAIL AGAINST: the route rule removed (the dipole
     route runs without the solvent's response, under an info saying it has
     it)."""
-    _d, _s, said = prepared(water_in_vacuum(), "pyscf", calculation="vibration", template=dict(already_relaxed=True, solvent="water"), refused=True)
-    assert "PCM solvation (water) reaches one route" in said, said
-    assert "IR -- its dipole-derivative route" in said, said
-    assert "Turn IR off" in said, said
+    _d, _s, deck, said = prepared(water_in_vacuum(), "pyscf", calculation="vibration", template=dict(already_relaxed=True, solvent="water"), said_too=True)
+    words = " ".join(said.split())
+    assert "the solvent (water, PCM) is included in full only" in words, said
+    assert "the frequencies and IR intensities" in words, said
+    assert "Turn IR off" in words, said
+    assert "78.3553" in deck, "the deck is written with the solvent set"
     _d, _s, deck = prepared(water_in_vacuum(), "pyscf", calculation="vibration", template=dict(already_relaxed=True, solvent="water", compute_raman=False, compute_ir=False))
     assert "78.3553" in deck and ("mf = mf.PCM()" in deck
                                   or "_mb_apply_solvent" in deck), (
@@ -96,7 +99,7 @@ def test_an_unknown_solvent_is_one_refusal(prepared):
     route rule asked of any name (two refusals on one field)."""
     _d, _s, said = prepared(water_in_vacuum(), "pyscf", calculation="vibration", template=dict(already_relaxed=True, solvent="xylol"), refused=True)
     assert "unknown solvent 'xylol'" in said, said
-    assert "reaches one route" not in said, said
+    assert "is included in full only" not in said, said
 
 
 # ------------------------------------ what the two picking surfaces offer
@@ -141,15 +144,16 @@ def test_the_form_and_the_stage_table_offer_the_kinds_set():
         assert "transiesta" not in _form_choices(c, "siesta", "optimization",
                                                  "solution_method")
     # ...and the Transport tab's shared panel, the one surface a transport
-    # calculation's spin is picked on: two treatments, and every count --
-    # a stated one is written as stated, TranSIESTA's stop said beforehand,
-    # never refused (`engines/transport.md` § 3.1's spin note;
+    # calculation's spin is picked on: every treatment SIESTA runs and every
+    # count -- a stated one is written as stated, TranSIESTA's stop said
+    # beforehand, never refused (`engines/transport.md` § 3.1's spin note;
     # `science/chemistry-correctness.md` ES6, the user, 2026-11-02).
     from molbuilder.web.app import create_app
     body = create_app(config={}).test_client().get(
         "/api/transport/schema?engine=siesta&surface=shared").get_json()
     shared = {f["name"]: f.get("choices") for s in body["schema"]["sections"]
               for f in s["fields"]}
-    assert shared["spin_treatment"] == ["restricted", "unrestricted"], shared
+    assert shared["spin_treatment"] == ["restricted", "unrestricted",
+                                        "non-collinear", "spin-orbit"], shared
     assert shared["unpaired_electrons"] == list(range(11)) + ["free"], \
         shared
