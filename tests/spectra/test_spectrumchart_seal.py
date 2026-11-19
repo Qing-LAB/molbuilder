@@ -1,6 +1,6 @@
 """SpectrumChart `_seal.js` — what `web/spectrumchart.md` § 8.4 asks of it.
 
-What the seal DOES with a drawing library — the six doors, the palette, the
+What the seal DOES with a drawing library — the seven doors, the palette, the
 click that comes up as a position (§ 8.4). Run in node against a stand-in that
 takes Plotly's place, per § 12's middle level: the stand-in replaces the
 LIBRARY, never a file of this module.
@@ -58,7 +58,16 @@ globalThis.Plotly = {
         area.className = "nsewdrag";
         area.getBoundingClientRect = () => ({ left: 100, width: 400, top: 50, height: 200 });
         el.appendChild(area);
-        el.querySelector = (sel) => (sel === ".nsewdrag" ? area : null);
+        /* And its toolbar: a button inside the container Plotly names
+           `modebar-container`.  It has no place here -- the seal tells a
+           toolbar press by what was pressed, never by where. */
+        const bar = document.createElement("div");
+        bar.className = "modebar-container";
+        const button = document.createElement("button");
+        button.className = "modebar-btn";
+        bar.appendChild(button);
+        el.appendChild(bar);
+        globalThis.__toolbarButton = button;
         el._fullLayout = { xaxis: { range: [0, 4000] } };
     },
     restyle(el, update, indices) { PLOTLY_CALLS.push({ call: "restyle", update, indices }); },
@@ -112,9 +121,6 @@ def seal(snippet: str):
         f"{PICTURE}\n{snippet}"
     )
     return run_node([], program, globals_js=BROWSER)
-
-
-# --- § 4  the module is self-contained ---------------------------------------
 
 
 # --- § 11  the stylesheet keeps to itself -----------------------------------
@@ -180,6 +186,23 @@ class TestTheDoors:
             "console.log(JSON.stringify(seen));"
         )
         assert got == []
+
+    def test_a_toolbar_button_is_not_a_pick(self):
+        """§ 5.3, § 8.4 — the library's toolbar sits at the chart's top right,
+        above some frequency: pressing its zoom or reset must not select a
+        mode, nor hovering it name one. Told by WHAT is under the pointer --
+        so the stand-in's button is pressed where a pick would land."""
+        got = seal(
+            "const clicks = [], hovers = [];\n"
+            "surface.onClick((at) => clicks.push(at.x));\n"
+            "surface.onHover((at) => hovers.push(at && at.x));\n"
+            "surface.draw(picture);\n"
+            "const el = host.children[0].children[0];\n"
+            "el.dispatch('mousemove', { clientX: 200, clientY: 150, target: __toolbarButton });\n"
+            "el.dispatch('click', { clientX: 200, clientY: 150, target: __toolbarButton });\n"
+            "console.log(JSON.stringify([clicks, hovers]));"
+        )
+        assert got == [[], [None]]
 
     def test_a_shaky_hand_still_picks(self):
         got = seal(

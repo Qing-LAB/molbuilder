@@ -481,9 +481,12 @@ export async function openSurface(host) {
      * VERTICAL POSITION IS NOT CONSULTED. A spectrum is picked by frequency, so
      * anywhere in the chart at that frequency means the same thing — clicking
      * level with a peak's tip and clicking down near the axis are the same
-     * request.
+     * request. What is not a position is the library's own toolbar, told by
+     * WHAT is under the pointer, not by where: a button is a button wherever
+     * the library puts it.
      */
     const positionOf = (event) => {
+        if (event.target.closest(".modebar-container")) return null;
         const area = plotArea();
         const axis = surface._fullLayout && surface._fullLayout.xaxis;
         if (!area || !axis || !Array.isArray(axis.range)) return null;
@@ -542,9 +545,14 @@ export async function openSurface(host) {
             readoutIndex = picture.note ? 1 : 0;
             lastReadout = picture.readout || "";
             Plotly.react(surface, traces, layoutFor(picture), {
-                // ONE WAY OUT: the chart's own Export, in the wrap around
-                // the module (web/results.md § 1.2) -- no toolbar of Plotly's.
-                displayModeBar: false,
+                // THE LIBRARY'S TOOLBAR, LESS WHAT IS NOT THIS CHART'S
+                // (§ 5.3), shown on hover: its picture is the page's Export,
+                // in the wrap around the module; a selection picks nothing
+                // here; the logo and the share button are ways off the page.
+                displayModeBar: "hover",
+                displaylogo: false,
+                showSendToCloud: false,
+                modeBarButtonsToRemove: ["toImage", "select2d", "lasso2d"],
                 responsive: false,
             });
         },

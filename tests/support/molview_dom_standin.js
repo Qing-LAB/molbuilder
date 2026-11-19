@@ -69,6 +69,14 @@ function makeElement(doc, tag) {
         // when the page is opened, which a stand-in with only `set` cannot do.
         removeAttribute(k) { delete node.attributes[k]; },
         hasAttribute(k) { return k in node.attributes; },
+        /* The nearest of itself and its ancestors that ONE selector step
+         * names -- read by the stand-in's one reader of a step (`matches`). */
+        closest(selector) {
+            for (let n = node; n && n._classes; n = n.parentNode) {
+                if (matches(n, selector)) return n;
+            }
+            return null;
+        },
         appendChild(child) {
             child.parentNode = node;
             node.children.push(child);

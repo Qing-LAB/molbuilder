@@ -152,14 +152,23 @@ takes what it handed over with it.
 ### 1.2 Each chart's own Export
 
 *(The user, 2026-11-17: "Own menu, always seen"; "Server, one composition"; "Go ahead"; "need clear api separation instead of code directly inserted everywhere".)* **Every chart drawn
-through the plot box with a name carries an *Export ▾* button in its top
-corner, always shown.** *Picture* — PNG or SVG, the chart as it stands on
+through the plot box with a name carries an *Export ▾* button, always
+shown, at the right of a strip of its own above the drawing**
+*(the user, 2026-11-19: "think of where the best to put the export button so it
+will not overlap")* — the drawing starts below the strip, so the button covers
+nothing the chart draws at its top: Plotly's toolbar, a pointer readout, a
+curve (`lib/chart-export.css`). *Picture* — PNG or SVG, the chart as it stands on
 screen (Plotly's own image of it); *Data* — NetCDF or CSV, the numbers the
 chart draws now, after the person's choices (a frame, a voltage, one frame
 or all), **exactly as drawn**: a residual's absolute value as its log axis
 plots it, a polarized point's T↑ + T↓ as the curve is, each column's words
 saying how it was made. Curves the legend hides are in it, flagged hidden.
-Plotly's own hover button is off on these charts, so there is one way.
+**Plotly's toolbar is shown, on hover** — zoom, pan, zoom in and out,
+autoscale, reset — less its picture button, a chart's picture being its
+Export's, and less box and lasso select, no chart here acting on a selection,
+and its logo and its share button, each a way off the page (the share button
+sends the chart's numbers to Plotly's cloud): the plot box's rule
+(`lib/plot-box.js`), and the sealed spectrum's own (`spectrumchart.md` § 5.3).
 **The twelve charts** (2.75.0, 2.76.0): the trajectory viewer's energy,
 largest force, SCF energy and residuals; the transport report's T(E), DOS,
 I–V and convergence card; the vibration's spectrum, orbital levels and
@@ -761,7 +770,9 @@ is said below the drawing, in its words (`order_way`).
   sentence a box shows in place of its chart, why there is none), into a box that
   states its size: the module's markup makes the element a box (the
   `plot-box` class beside its own — `draw` refuses any other), so it stands
-  at its size before a drawing and after one; `lib/plot-box.css` gives it a
+  at its size before a drawing and after one — a chart drawn with its own
+  Export adds the Export's strip above the drawing at its first draw (§ 1.2),
+  and keeps it; `lib/plot-box.css` gives it a
   stated height, content-box sizing (what Plotly reads is the area it draws
   in, a frame around it the module's) and no floor wider than its track; the
   module's own class says the height (`--plot-box-h`, a token). The chart is

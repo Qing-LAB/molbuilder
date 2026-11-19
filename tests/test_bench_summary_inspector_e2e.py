@@ -92,8 +92,10 @@ def test_the_sweeps_chart_exports_each_trials_numbers(page, real_h2_bench,
     setting the sweep varies, that setting named in what was chosen -- on
     the real benchmark of two trials.
 
+    It keeps Plotly's toolbar, less its picture button, the Export above it.
+
     THE SILENT FAILURE: a chart of category bars exporting nothing, or its
-    numbers under another trial's setting."""
+    numbers under another trial's setting; an Export over its toolbar."""
     import io
     import math
     import zipfile
@@ -101,13 +103,13 @@ def test_the_sweeps_chart_exports_each_trials_numbers(page, real_h2_bench,
     from molbuilder.postprocess import read_chart_data
     from molbuilder.web import create_app
     from support.live_server import serve
-    from support.pages import chart_exported
+    from support.pages import chart_exported, export_clear_of_the_chart
     folder = real_h2_bench.bundle / "01_coarse" / "bench"
     point_the_one_door_at(real_h2_bench.tree.parent, monkeypatch.setenv)
     with serve() as base:
         _open(page, base, folder)
         box = page.locator(".bench-chart")
-        box.locator(".chart-export-open").wait_for(timeout=60000)
+        export_clear_of_the_chart(box)
         path = chart_exported(page, box, "NetCDF", tmp_path)
         tables = chart_exported(page, box, "CSV", tmp_path)
     summary = create_app(config={}).test_client().get(

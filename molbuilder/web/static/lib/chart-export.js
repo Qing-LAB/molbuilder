@@ -2,7 +2,7 @@
  *
  * Contract: docs/web/results.md § 1.2; the file, model/datafiles.md § 5b,
  *           § 9.7.
- * Owns:     the Export button in a chart's corner and what it does: the
+ * Owns:     the Export button above a chart and what it does: the
  *           picture -- the chart as it stands, Plotly's own image of it --
  *           and the data -- every curve and threshold the chart carries a
  *           tag on, read from the chart as Plotly holds it and sent to the
@@ -98,11 +98,13 @@
         return new root.Blob([bytes], { type: type });
     }
 
-    /* THE CHART AS IT STANDS, at the size it stands at. */
+    /* THE CHART AS IT STANDS, at the size it stands at -- the size Plotly
+     * drew it at (`null`: its own layout's), never the box's, whose padding
+     * is the Export's strip and no part of the chart. */
     async function _picture(el, how, fmt) {
         const url = how.picture ? await how.picture(fmt)
             : await root.Plotly.toImage(el, {
-                format: fmt, width: el.clientWidth, height: el.clientHeight });
+                format: fmt, width: null, height: null });
         root.molbuilder.projects.download(await _pictureName(how, fmt),
                                           _blobOf(url));
         return { ok: true, said: "" };
@@ -157,9 +159,9 @@
         return menu;
     }
 
-    /** The Export button in ``el``'s corner, for what ``how`` names --
-     *  ``{chart, path, chosen, data?, picture?}`` (above) -- kept to the
-     *  box's last draw. */
+    /** The Export button in the strip above ``el``'s drawing, for what
+     *  ``how`` names -- ``{chart, path, chosen, data?, picture?}`` (above)
+     *  -- kept to the box's last draw. */
     function install(el, how) {
         asked.set(el, how);
         el.classList.add(MENU + "-host");

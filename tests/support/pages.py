@@ -1,8 +1,9 @@
 """The pages the app serves, as the browser receives them -- for a test that
 reads what was served rather than the templates it was rendered from --
 what a page's request is served of a result (:func:`spectra_served`), a
-server sentence as a page draws it (:func:`drawn`), and what a chart's own
-Export hands over (:func:`chart_exported`)."""
+server sentence as a page draws it (:func:`drawn`), what a chart's own
+Export hands over (:func:`chart_exported`), and where it stands beside the
+chart's toolbar (:func:`export_clear_of_the_chart`)."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -10,7 +11,8 @@ from pathlib import Path
 
 def chart_exported(page, box, form: str, to) -> Path:
     """WHAT A CHART'S OWN EXPORT HANDS OVER (`web/results.md` § 1.2): the
-    Export button in ``box`` -- a locator of the chart's box -- opened and
+    Export button in ``box`` -- a locator of the chart's box, or of the wrap
+    around a sealed chart -- opened and
     ``form`` (``PNG``, ``SVG``, ``NetCDF``, ``CSV``) pressed, as a person
     presses them; the download saved in ``to`` under the name it was handed
     over with, its path answered."""
@@ -27,6 +29,27 @@ def chart_exported(page, box, form: str, to) -> Path:
     saved = Path(to) / got.value.suggested_filename
     got.value.save_as(saved)
     return saved
+
+
+def export_clear_of_the_chart(box) -> None:
+    """WHERE A CHART'S OWN EXPORT STANDS (`web/results.md` § 1.2): the chart
+    in ``box`` -- a locator of its box, or of the wrap around a sealed chart
+    -- keeps Plotly's toolbar, its buttons the view's alone -- zoom, pan and
+    reset among them, no picture, no share, nothing that leaves the page;
+    and the Export button sits above the drawing, so it covers neither the
+    toolbar nor anything the chart draws."""
+    box.locator(".chart-export-open").wait_for(timeout=60000)
+    box.locator(".modebar-btn").first.wait_for(state="attached", timeout=60000)
+    titles = box.locator(".modebar-btn").evaluate_all(
+        "bs => bs.map(b => b.getAttribute('data-title'))")
+    assert {"Zoom", "Pan", "Reset axes"} <= set(titles) <= {
+        "Zoom", "Pan", "Zoom in", "Zoom out", "Autoscale", "Reset axes"}, titles
+    # The toolbar is inside the drawing's container, so above the one is
+    # above the other.
+    export = box.locator(".chart-export-open").bounding_box()
+    drawing = box.locator(".svg-container").first.bounding_box()
+    assert export["y"] + export["height"] <= drawing["y"] + 0.5, (
+        export, drawing)
 
 
 def drawn(said: str) -> str:

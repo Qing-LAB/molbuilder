@@ -462,17 +462,19 @@ def test_each_vibration_chart_exports_what_it_draws(real_water_probed, page,
     reaching the strongest; the probed mode's orbitals, each at -A, 0, +A,
     the probe's energies in eV; the thermochemistry over temperature, the
     grid less E_elec in kcal/mol; its parts at the headline temperature, the
-    last the free energy.
+    last the free energy. Each keeps Plotly's toolbar, less its picture
+    button, with its Export above the drawing.
 
     THE SILENT FAILURE: a sealed chart that exports nothing, a level diagram
-    exporting its dashes, a thermochemistry in hartree."""
+    exporting its dashes, a thermochemistry in hartree; a chart with no zoom
+    or reset, or an Export over its toolbar."""
     from conftest import point_the_one_door_at
     from molbuilder import constants as C
     from molbuilder.postprocess import read_chart_data
     from molbuilder.runfiles import ROLE_SPECTRA
     from molbuilder.runs import on_label_at
     from support.live_server import serve
-    from support.pages import chart_exported
+    from support.pages import chart_exported, export_clear_of_the_chart
     from support.sidebar import results_on
     run = real_water_probed
     folder = run.attempt("freq")
@@ -492,7 +494,7 @@ def test_each_vibration_chart_exports_what_it_draws(real_water_probed, page,
                 for k in range(len(v[group]["data"]))]
 
     def exported(box):
-        box.locator(".chart-export-open").wait_for(timeout=60000)
+        export_clear_of_the_chart(box)
         return chart_exported(page, box, "NetCDF", tmp_path)
     with serve() as base:
         results_on(page, base, folder)

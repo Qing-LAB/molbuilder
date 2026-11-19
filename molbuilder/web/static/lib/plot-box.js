@@ -53,14 +53,22 @@
         watching.set(el, obs);
     }
 
+    /* PLOTLY'S TOOLBAR, LESS WHAT IS NOT OURS -- this door's rule, never a
+     * caller's (web/results.md § 1.2): shown on hover, zoom, pan and reset
+     * stay; the picture button goes, a chart's picture being its own
+     * Export's; box and lasso select go, no chart here acting on a
+     * selection; the logo and the share button go, each a way off the page
+     * (the share button sends the chart's numbers to Plotly's cloud). */
+    const TOOLBAR = { displayModeBar: "hover", displaylogo: false,
+                      showSendToCloud: false,
+                      modeBarButtonsToRemove: ["toImage", "select2d", "lasso2d"] };
+
     /** Draw ``traces`` with ``layout`` into ``el`` and keep it to its box.
-     *  ``config`` is Plotly's, less ``responsive`` and ``displayModeBar``,
-     *  which this door owns.
+     *  ``config`` is Plotly's, less ``responsive`` and the toolbar
+     *  (``TOOLBAR``), which this door owns.
      *  ``exported`` -- ``{chart, path, chosen, data?, picture?}`` -- names
-     *  a chart the chart table knows: its own Export goes in the box's
-     *  corner (`lib/chart-export.js`, web/results.md § 1.2).  NO PLOTLY
-     *  TOOLBAR on any chart of this page -- this door's rule, never a
-     *  caller's: a chart's way out is its own Export. */
+     *  a chart the chart table knows: its own Export goes in a strip above
+     *  the drawing (`lib/chart-export.js`, web/results.md § 1.2). */
     function draw(el, traces, layout, config, exported) {
         if (!el.classList.contains(BOX)) {
             throw new Error("plotBox.draw: #" + (el.id || "?") + " is not a"
@@ -70,8 +78,7 @@
         // `say`'s, or a module's notice -- and they go before it is drawn.
         if (!live.has(el)) el.replaceChildren();
         const drawn = root.Plotly.react(el, traces, layout,
-            Object.assign({}, config, { responsive: false,
-                                        displayModeBar: false }));
+            Object.assign({}, config, TOOLBAR, { responsive: false }));
         live.add(el);
         _watch(el);
         if (exported) root.molbuilder.chartExport.install(el, exported);

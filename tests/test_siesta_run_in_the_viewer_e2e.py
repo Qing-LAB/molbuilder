@@ -134,10 +134,14 @@ def test_each_chart_exports_what_it_draws(finished, real_h2_layered, page,
     force the run door's (`read_steps`), to the 0.0001 eV SIESTA prints; the
     force tolerance the run's record's, and both SCF tolerances the deck's;
     the SCF energy of the step shown the run door's rows of that step.  Its
-    picture is a PNG; its tables lie beside their README.
+    picture is a PNG the size of the chart on screen; its tables lie beside
+    their README.  The energy and the largest-force charts keep Plotly's
+    toolbar, its buttons the view's alone, the Export above it.
 
     THE SILENT FAILURE: a file whose numbers are not the chart's -- another
-    step's, a curve or a threshold lost -- or one naming no chart."""
+    step's, a curve or a threshold lost -- or one naming no chart; a picture
+    stretched to the box around the chart; an Export
+    over the toolbar or the curve."""
     import io
     import zipfile
 
@@ -145,7 +149,7 @@ def test_each_chart_exports_what_it_draws(finished, real_h2_layered, page,
     from molbuilder.parse.fdf import parse_fdf_params
     from molbuilder.postprocess import read_chart_data, read_steps
     from molbuilder.runs import run_of
-    from support.pages import chart_exported
+    from support.pages import chart_exported, export_clear_of_the_chart
     steps = read_steps(finished)
     deck = parse_fdf_params(run_of(finished).deck.read_text(),
                             source="the deck")
@@ -162,6 +166,8 @@ def test_each_chart_exports_what_it_draws(finished, real_h2_layered, page,
 
     def held(values):
         return values[np.isfinite(values)]
+    for box in ("#energy-plot", "#force-plot"):
+        export_clear_of_the_chart(page.locator(box))
     energy = chart_exported(page, page.locator("#energy-plot"), "NetCDF",
                             tmp_path)
     assert energy.name.endswith(".total-energy.nc"), energy.name
@@ -203,6 +209,17 @@ def test_each_chart_exports_what_it_draws(finished, real_h2_layered, page,
     picture = chart_exported(page, page.locator("#energy-plot"), "PNG",
                              tmp_path)
     assert picture.read_bytes()[:8] == b"\x89PNG\r\n\x1a\n", picture.name
+    # THE CHART AS IT STANDS: the picture is the drawing's size on screen,
+    # not its box's, whose top is the Export's strip (`web/results.md` § 1.2).
+    from PIL import Image
+    on_screen = page.locator("#energy-plot .svg-container").bounding_box()
+    with Image.open(picture) as png:
+        size = png.size
+    # A canvas holds whole pixels: the drawing's fraction is dropped.
+    assert all(0 <= drawn - got < 1 for got, drawn in
+               zip(size, (on_screen["width"], on_screen["height"]))), (
+        f"the picture is {size}, the chart on screen "
+        f"{on_screen['width']} x {on_screen['height']}")
     vector = chart_exported(page, page.locator("#force-plot"), "SVG",
                             tmp_path)
     assert vector.name.endswith(".max-force.svg"), vector.name

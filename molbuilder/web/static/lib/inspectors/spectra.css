@@ -148,10 +148,6 @@
     width: 100%;
     margin: 0 0 var(--space-xs);
 }
-/* The wrap around the sealed spectrum: a strip above it holds the chart's own
- * Export (lib/chart-export.css), clear of the chart's pointer readout, which
- * the module draws at its top right (web/results.md § 1.2). */
-.spectrum-chart-wrap { padding-top: var(--space-xl); }
 /* ---- Modes table ---- */
 
 .modes-table-controls {

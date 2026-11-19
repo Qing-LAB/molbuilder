@@ -3192,7 +3192,6 @@
             showlegend: true,
         };
 
-        // No toolbar: the chart's own Export is the way out (the plot box).
         const config = {
             scrollZoom: true,          // wheel over the plot zooms the energy axis
         };
@@ -4273,8 +4272,6 @@
         const hRel = grid.h_eh.map((h) => kcal(h - eElec));
         const gRel = grid.g_eh.map((g) => kcal(g - eElec));
         const ts   = T.map((Ti, i) => kcal(Ti * grid.s_eh_k[i]));
-        // No toolbar: the chart's own Export is the way out (the plot box).
-        const config = {};
         root.molbuilder.plotBox.draw(els.thermoCurves, [
             { x: T, y: gRel, name: rrho ? "G − E_elec" : "F_vib",
               tag: "thermo_g",
@@ -4298,7 +4295,7 @@
                                          : "kcal/mol, vibrational contributions",
                               font: { size: 10 } },
                      gridcolor: t.grid, zeroline: false },
-        }), config, _exported("thermo", () => ({ regime: th.regime })));
+        }), {}, _exported("thermo", () => ({ regime: th.regime })));
 
         // --- The decomposition at the grid point nearest the headline T --
         // Every bar is read off the grid; the parts sum to the last bar.
@@ -4333,7 +4330,7 @@
                               font: { size: 10 } },
                      gridcolor: t.grid, zeroline: true,
                      zerolinecolor: t.axis },
-        }), config, _exported("thermo-parts", () => ({
+        }), {}, _exported("thermo-parts", () => ({
             regime: th.regime, temperature_k: T[i0] })));
     }
 

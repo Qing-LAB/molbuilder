@@ -1,12 +1,18 @@
 /* A chart's own Export (lib/chart-export.js; web/results.md § 1.2): the
- * button in the box's top corner, always shown, and the forms it opens --
- * inside the box, which clips what passes its edge (lib/plot-box.css), so
- * they open downward over the chart.  Its buttons are the page's own, and
- * its words go through the one status writer (lib/status.js), as the
- * calculation's Export bar's do. */
+ * button at the right of a strip of its own above the drawing, always shown,
+ * and the forms it opens -- inside the box, which clips what passes its edge
+ * (lib/plot-box.css), so they open downward over the chart.  Its buttons are
+ * the page's own, and its words go through the one status writer
+ * (lib/status.js), as the calculation's Export bar's do. */
 /* The element the button sits in -- a chart's box, or the wrap around a
- * sealed chart -- is its positioned ancestor. */
-.chart-export-host { position: relative; }
+ * sealed chart -- is its positioned ancestor, and its top padding is the
+ * strip: the drawing starts below it, so the button covers nothing the chart
+ * draws at its top -- the library's toolbar, a pointer readout, a curve.  A
+ * box is sized content-box (lib/plot-box.css): the strip adds to the box and
+ * takes nothing from the drawing.  `--space-xl` because it holds the button:
+ * its `--space-xs` offset, one `--text-sm` line at the page's line height
+ * and its border -- 27 px of the 28. */
+.chart-export-host { position: relative; padding-top: var(--space-xl); }
 .chart-export {
     position: absolute;
     top: var(--space-xs);

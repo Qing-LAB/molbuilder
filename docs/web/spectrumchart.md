@@ -269,9 +269,13 @@ of a number the tab displays.
 
 SpectrumChart draws **no controls** — no heading, no broadening box, no export
 button. It fills the element it was given with a spectrum. The drawing library's
-own toolbar is off: the chart's Export is the page's, in the wrap around the
-module ([`results.md`](?doc=web/results.md) § 1.2), reading the module through its
-one read-only door (§ 8.3).
+own toolbar is the library's, shown on hover — zoom, pan, reset — less its
+picture button, the chart's Export being the page's, in the wrap around the
+module ([`results.md`](?doc=web/results.md) § 1.2), reading the module through
+its one read-only door (§ 8.3); less box and lasso select, a selection picking
+nothing here; and less its logo and its share button, each a way off the page.
+A press on the toolbar is not a pick, nor is the pointer over it a position
+(§ 8.4).
 
 ### 5.4 The host gives the width; the chart's frame states its height
 
@@ -701,8 +705,8 @@ curve as the module computed it (`curve`, or `null`), and `image(fmt)`, the
 drawing's data URL, which the seal makes (`image`, § 8.4) — so a chart's own
 Export reads the chart without opening the seal *(the user, 2026-11-17: "Add the
 one door"; [`results.md`](?doc=web/results.md) § 1.2)*. The module names no
-quantity: the caller tags each lane it declared. Plotly's own hover button is
-off — the chart's Export, in the wrap around it, is the one way out. What the module knows that the caller does not is
+quantity: the caller tags each lane it declared. The chart's Export, in the
+wrap around it, is the one way out (§ 5.3). What the module knows that the caller does not is
 *where the marks landed on screen*, and that is the seal's business and never
 leaves it (§ 8.4).
 
@@ -871,6 +875,11 @@ chart rather than from the design:
   drag-to-zoom ends in one, and the chart would otherwise select whatever sat
   under the release. A pick is a click that stayed within a few pixels of where
   it went down.
+- **A press on the library's toolbar is a button, not a place.** The toolbar
+  sits at the chart's top right, so its zoom or reset lies above some
+  frequency; a click or a pointer whose target is inside the toolbar is no
+  position. It is told by *what* is under the pointer, not by where — a button
+  is a button wherever the library puts it.
 
 **Vertical position is never consulted.** A spectrum is picked by frequency, so
 every point at that frequency is the same request: level with a peak's tip,
@@ -1055,7 +1064,7 @@ the difference, because § 8.4 is the whole of what it asks of that library.
 | § 5.1 — the door says the cost | `setSelected` computes no curve and changes no axis; `setModes` does both |
 | § 5.1 — recolouring is not redrawing | after `setSelected`, the picture handed to the seal is the same picture, with only its colours changed |
 | § 5.2 — the selection is mirrored, not owned | a click emits `onSelect` and changes **nothing** on screen until `setSelected` is called; a chart mounted without `onSelect` still draws |
-| § 5.3 — no controls | a mounted chart contains no heading, button, input or control of any kind |
+| § 5.3 — no controls | a mounted chart contains no heading, button, input or control of its own — the library's toolbar is the library's |
 | § 5.4 — the host gives the width | the module writes no width or height onto its host — not at mount, not at any door — and a box that changes size redraws while the window sits still |
 | § 6.1 — the two required fields | a record without `index`, or without `freq`, is refused |
 | § 6.1 — a refusal takes the whole call | one malformed record among many draws **nothing**, rather than a spectrum quietly missing that mode |
@@ -1079,6 +1088,7 @@ the difference, because § 8.4 is the whole of what it asks of that library.
 | § 6.3.1 — pointing costs only what changed | sliding inside one band makes no call at all; a move that changes the words alone does not repaint a colour |
 | § 6.3.1 — what you picked does not flicker | a chosen mode keeps its colour under the pointer |
 | § 8.4 — a drag is not a pick | a press and a release far apart report nothing; a click a pixel or two from the press still reports |
+| § 8.4 — a toolbar press is not a pick | a click, or a pointer, whose target is inside the library's toolbar reports nothing, wherever the toolbar sits |
 | § 8.4 — vertical position is not consulted | clicks at one frequency and different heights — including beside the axis — all report the same number |
 | § 8.4 — the scale comes up with the position | what goes up says both where the pointer was and what one pixel is worth there |
 | § 6.4 — an imaginary mode is drawn and clickable | it appears at its own frequency and a click on it reports its index, exactly like any other mode |
