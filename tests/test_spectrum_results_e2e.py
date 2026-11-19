@@ -558,6 +558,66 @@ def test_each_vibration_chart_exports_what_it_draws(real_water_probed, page,
     assert y[-1] == pytest.approx((grid["g_eh"][i0] - E) * kcal), (labels, y)
 
 
+def test_the_animation_stays_in_view_beside_the_views(real_water_vibration,
+                                                      page, monkeypatch):
+    """`web/spectra.md` § 3, § 4 (the user, 2026-11-19: "always keep the
+    vibrationview visible ... when we pick from list/plot different modes"):
+    the selected mode's animation stands in a column of its own beside the
+    spectrum and the tabs and stays in view while the page scrolls down to the
+    table; on a card too narrow for two columns it stacks between the spectrum
+    and the tabs -- on the PySCF water vibration, in a window the pane
+    scrolls in.
+
+    THE SILENT FAILURE: the animation behind a tab of its own, or scrolled out
+    of sight, so a mode picked from the table is not seen moving."""
+    from conftest import point_the_one_door_at
+    from support.live_server import serve
+    from support.sidebar import WAIT_MS, results_on
+    run = real_water_vibration
+    folder = run.attempt("freq")
+    spectrum = str(on_label_at(folder, ROLE_SPECTRA))
+    point_the_one_door_at(run.tree.parent, monkeypatch.setenv)
+    page.set_viewport_size({"width": 1400, "height": 900})
+    box = lambda selector: page.locator(selector).first.bounding_box()
+    with serve() as base:
+        results_on(page, base, folder)
+        page.wait_for_function(
+            "(want) => [...document.querySelectorAll("
+            "  '#results-file-picker-select option')]"
+            "  .some(o => o.value === want)", arg=spectrum, timeout=WAIT_MS)
+        page.select_option("#results-file-picker-select", value=spectrum)
+        page.locator("#mode-viewer").wait_for(state="visible", timeout=WAIT_MS)
+        beside = (box("#mode-viewer"), box(".modes-table-wrap"))
+        page.locator('#modes-tbody tr[data-mode="2"]').click()
+        # Down to the table, as the pane scrolls: the tab strip at its top.
+        scrolled = page.locator(".app-content").evaluate(
+            "(p) => { const tabs = document.querySelector('#mode-tabs');"
+            "  p.scrollTop += tabs.getBoundingClientRect().top"
+            "                 - p.getBoundingClientRect().top;"
+            "  return p.scrollTop; }")
+        held = (box("#mode-viewer"), box("#modes-tbody tr.active"),
+                box(".app-content"))
+        # 1100 wide, the projects sidebar docked: a panel under 52rem.
+        page.set_viewport_size({"width": 1100, "height": 900})
+        stacked = (box("#spectrum-section"), box(".spectra-mode-aside"),
+                   box("#mode-tabs"))
+    shown, rows = beside
+    assert shown["x"] >= rows["x"] + rows["width"], (
+        f"the animation is not beside the table: {shown} vs {rows}")
+    viewer, row, pane = held
+    inside = lambda b: (pane["y"] <= b["y"]
+                        and b["y"] + b["height"] <= pane["y"] + pane["height"])
+    assert scrolled > 0, "the page did not scroll down to the table"
+    assert inside(row), f"the picked row is not in the pane: {row} in {pane}"
+    assert inside(viewer), (
+        f"the animation left the pane beside the row picked: {viewer} in {pane}")
+    chart, mode, tabs = stacked
+    assert (chart["y"] + chart["height"] <= mode["y"]
+            and mode["y"] + mode["height"] <= tabs["y"]), (
+        f"on a narrow card the animation is not between the spectrum and "
+        f"the tabs: {chart}, {mode}, {tabs}")
+
+
 def test_a_raman_spectrums_bands_are_each_modes_activity(real_water_vibration,
                                                           page, monkeypatch,
                                                           tmp_path):

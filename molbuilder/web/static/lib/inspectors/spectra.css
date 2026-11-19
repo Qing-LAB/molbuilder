@@ -1,10 +1,11 @@
 /* lib/inspectors/spectra.css -- the spectra-INSPECTOR component sheet.
  *
  * MODULE: the spectra inspector (templates/_spectra_inspector.html, mounted by
- *   lib/inspectors/spectra.js on /results AND composed into the /spectra page).
+ *   lib/inspectors/spectra.js on /results).
  * ROLE: styles for the inspector's COMPONENT classes only (.spectra-section /
- *   .spectra-section-header / .modes-table / .spectrum-chart / .mode-viewer /
- *   .spectra-phase-indicator / .es-* / .results-meta / .spectra-inline-row).
+ *   .spectra-section-header / .spectra-mode-* / .modes-table / .spectrum-chart /
+ *   .mode-viewer / .spectra-phase-indicator / .es-* / .results-meta /
+ *   .spectra-inline-row).
  *   /results does not load the spectra PAGE sheet (`web/ui-contract.md` § 1:
  *   one owner per pattern; a page sheet never restyles another page).
  * USED BY: templates/spectra.html + templates/results.html (both <link> this
@@ -137,9 +138,7 @@
        next control for the same row. */
 }
 
-/* ---- The spectrum, and the three views under it ----
- *
- * The three views of a selected mode are tabs below the full-width chart. */
+/* ---- The spectrum ---- */
 
 /* The HOST is a place, not a frame: SpectrumChart mounts its own frame
  * inside, which states its height and draws its border and background
@@ -280,7 +279,57 @@
     outline-offset: -1px;
 }
 .modes-table tbody tr.mode-imag td:nth-child(2) { color: var(--error); }
-/* ---- The mode viewer, in its own tab ----
+/* ---- The spectrum, its views, and the mode beside them (spectra.md § 3, § 4) ----
+ *
+ * THE ANIMATION IS IN VIEW WHATEVER A MODE IS PICKED FROM (the user,
+ * 2026-11-19: "always keep the vibrationview visible ... when we pick from
+ * list/plot different modes"): a column of its own beside the chart and the
+ * views, held at the top of the pane while the page scrolls.  A card too
+ * narrow for two columns stacks it between the chart and the views, still
+ * above the table it is picked from.  The markup puts it there too, so the
+ * keyboard meets it in the order it is seen.  The column is there once a
+ * mode can be shown: a run followed before its frequencies land keeps the
+ * whole width. */
+/* The container the two-column query below asks about: the panel. */
+.results-summary { container-type: inline-size; }
+.spectra-mode-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "top" "mode" "views";
+    column-gap: var(--space-md);
+    align-items: start;
+}
+.spectra-mode-top   { grid-area: top;   min-width: 0; }
+/* The views' own width is what their figures fit, not the panel's: the
+   electronic structure's `@container` (below) asks THIS column. */
+.spectra-mode-views { grid-area: views; min-width: 0; container-type: inline-size; }
+.spectra-mode-aside { grid-area: mode;  min-width: 0; }
+/* Queries `.results-summary` (declared above): 52rem -- the animation's
+   column (--sp-mode-aside-w, 22rem), the gap (--space-md) and 29rem for the
+   chart and the views -- is where a window from about 1200 px wide, the
+   projects sidebar docked, keeps the column beside (measured 2026-11-19);
+   narrower, it stacks.  From there to about 63rem a PySCF result's widest
+   modes table (its orbital columns, about 40rem, measured) scrolls sideways
+   inside its own box rather than the animation leaving the side.  A
+   container query cannot read a custom property, which is why the sum is
+   written out: a change to the column is a change here.
+   HELD, NOT CAPPED: its top -- the controls and the 3-D box -- stays at the
+   top of the pane while the page scrolls; a column taller than the pane (the
+   help open, a short window) reaches its end with the end of the page.  A cap
+   could only be the window's height, and the pane under the header is
+   shorter: it would hide the 3-D box to make room for the help. */
+@container (min-width: 52rem) {
+    .spectra-mode-layout:not(:has(.mode-viewer-wrap[hidden])) {
+        grid-template-columns: minmax(0, 1fr) var(--sp-mode-aside-w);
+        grid-template-areas: "top mode" "views mode";
+    }
+    .spectra-mode-aside {
+        position: sticky;
+        top: var(--space-md);
+    }
+}
+
+/* ---- The mode viewer ----
  *
  * VibrationView renders the equilibrium structure inside #mode-viewer and
  * animates the selected mode; this sheet owns only the BOX it is given
@@ -289,10 +338,9 @@
  * ONE STEP DOWN THE TYPE SCALE, deliberately: this is a dense instrument panel,
  * not body copy, so its chrome sits at --text-2xs where the page reads at
  * --text-base.  The sizes are token steps, not hand-picked decimals. */
-/* NO CARD CHROME: it fills a tab panel, and a card drawn just inside a panel
-   is a box around a box -- the 3-D
-   window below carries its own ground and its own edge, which is the boundary
-   that means something. */
+/* NO CARD CHROME: it fills its column, and a card drawn just inside it is
+   a box around a box -- the 3-D window below carries its own ground and its
+   own edge, which is the boundary that means something. */
 .mode-viewer-wrap { min-width: 0; }
 .mode-viewer-wrap[hidden] { display: none; }
 
@@ -405,11 +453,6 @@
        above it to separate from. */
 }
 
-/* THE CONTAINER THE QUERY BELOW ASKS ABOUT.  A `@container` condition needs
-   an ancestor that has declared itself one; without this line the query can
-   never match and `.es-body` stays stacked at every width. */
-.results-summary { container-type: inline-size; }
-
 .es-body {
     display: grid;
     grid-template-columns: minmax(0, 1fr);   /* stacked, until there is room */
@@ -418,7 +461,7 @@
     margin-top: var(--space-sm);
 }
 
-/* Queries `.results-summary` (declared above): the diagram stops being readable
+/* Queries `.spectra-mode-views` (declared above): the diagram stops being readable
    below --sp-figure-min (22rem) and the numbers below --es-numbers-min (11rem),
    so 40rem is where the two together stop fitting -- not a round number picked
    for looks.  A container query condition cannot read a custom property, which
@@ -428,7 +471,7 @@
    whole: three columns of levels do not get more readable with more width, so
    growing the box should not grow the plot without limit. */
 @container (min-width: 40rem) {
-    /* The figure takes everything the numbers do not: in its own tab a cap
+    /* The figure takes everything the numbers do not: in its tab a cap
        would leave a hole to the right of the panel. */
     .es-body {
         grid-template-columns:

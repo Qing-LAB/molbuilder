@@ -12,7 +12,7 @@ at 2.77.9 is [`archive/2026-11-19-plan-consolidation.md`](?doc=archive/2026-11-1
 
 ## ▶ Where we are *(2026-11-19)*
 
-**2.77.11.** F0–F11 and F7a are closed (2.56.2–2.77.2). 2.77.10 brought Plotly's toolbar back on every chart, each chart's Export in a strip above it *(the user, 2026-11-19)*. F12, *Proven*, walked
+**2.77.12.** F0–F11 and F7a are closed (2.56.2–2.77.2). 2.77.10 brought Plotly's toolbar back on every chart, each chart's Export in a strip above it, and 2.77.12 a vibration mode's animation into a column beside the spectrum and its table, held in view *(the user, 2026-11-19)*. F12, *Proven*, walked
 its three roads in the browser on real runs, ran the full batch (6106 fast
 and 805 e2e tests, none failed, at 2.77.2) and its two review rounds
 ([`archive/audits/2026-11-18-f12-review/`](?doc=archive/audits/2026-11-18-f12-review/TRIAGE-round1.md));
@@ -67,6 +67,7 @@ not read stops only the monitor of a run that sends reports.
   the status door says an unreadable copy note in the copy's own field, where
   the transport record says `unreadable`; the record's and the data file's
   builders are long functions.
+- A held side rail's height cap is the window less a margin (`form-components.css` `.page-aside`, Task setup and Transport), while the pane under the header is shorter: a rail taller than the pane holds its top, its end reached with the page's end (measured 2026-11-19, the spectra layout's review). A cap true to the pane needs the shell's content pane as a size container — a change to every page's shell, the user's to decide.
 - F9's last items: four page stand-ins without a named need (the Task setup
   save bar's refusal, the export door's answers, the save door's page, the
   checkpoint Cancel's signal) and the installer's repair audit.

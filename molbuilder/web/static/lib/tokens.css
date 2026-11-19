@@ -357,7 +357,8 @@
     --sp-table-max-h:   clamp(320px, 55vh, 760px); /* the modes table, its own tab */
     --sp-viewer-h:      clamp(200px, 26vh, 320px); /* the mode viewer's box */
     --sp-viewer-range-w: 9rem;    /* the mode viewer's sliders */
-    --sp-mode-range-w:  6.5rem;   /* the same, in the viewer tab's control row */
+    --sp-mode-range-w:  6.5rem;   /* the same, in the mode column's control row */
+    --sp-mode-aside-w:  22rem;    /* the mode column: its control rows and the 3-D box, measured to fit (2026-11-19) */
     --sp-methods-max-h: 22rem;    /* the Methods text before it scrolls */
     /* --- Results tab (results/style.css) --- */
     --results-page-max: 1200px;   /* the plots row legible without wrapping */

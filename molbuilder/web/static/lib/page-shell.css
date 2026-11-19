@@ -579,8 +579,8 @@ button.danger:disabled {
  *
  * Not the app's top navigation (lib/tabs.css) -- those are links to pages.
  * These switch which of several views of the SAME data is on screen, without
- * navigating: the Spectra results panel showing its modes table, its 3-D mode
- * animation or its electronic structure, all following one selection.
+ * navigating: the Spectra results panel showing its modes table, its
+ * electronic structure or its thermochemistry, under one selection.
  *
  * Declared here rather than in a component sheet because this is the second
  * instance of the pattern: the Modify tab's init-source strip

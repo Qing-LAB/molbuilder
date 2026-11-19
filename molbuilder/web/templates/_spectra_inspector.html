@@ -14,9 +14,11 @@
                                until its phases finish (web/spectra.md § 7)
       * "Results"           -- summary + spectrum chart + modes table
                                + CSV export
-      * "Mode visualisation" -- 3D mode-eigenvector animation
+      * the mode's animation -- the selected mode in 3-D, in a column
+                               of its own beside them
       * "Electronic structure" -- HOMO/LUMO bar diagram for the
                                   selected mode
+      * "Thermochemistry"   -- the whole run's, once it carries a grid
 -#}
 
   {#- ONE ROOT, AND IT IS A CARD: page-shell's `.card` is the surface every
@@ -85,6 +87,14 @@
            <code>docs/science/references.bib</code>.</p>
       </details>
 
+      {#- THE SPECTRUM, ITS VIEWS, AND THE MODE BESIDE THEM (web/spectra.md
+          § 3, § 4; the user, 2026-11-19): the animation in a column of its
+          own, in view whatever a mode is picked from -- a stick or a row --
+          and held at the top of the pane while the page scrolls;
+          between the chart and the views on a card too narrow for two
+          columns.  lib/inspectors/spectra.css lays it out. -#}
+      <div class="spectra-mode-layout">
+      <div class="spectra-mode-top">
       {#- THE SPECTRUM, OR THE MODE POSITIONS (web/spectra.md § 2, § 9b.3):
           with no strength computed -- a SIESTA result with no infrared view
           while no laser is applied for its Raman -- the chart draws
@@ -193,7 +203,7 @@
            with a broadened envelope overlay.  Click a stick to
            select the mode (synchronises with the table below and
            the ES panel). -->
-      {#- The spectrum, full width: every mode at once, and the place you
+      {#- The spectrum: every mode at once, and the place you
           pick one from.  Named by the section's heading, which says which
           picture is drawn -- the spectrum or the mode positions
           (web/spectra.md § 2). -#}
@@ -205,21 +215,174 @@
         </div>
       </div>
 
-      {#- ONE SELECTION, THREE VIEWS.
-          The modes table, the 3-D animation and the electronic structure all
-          describe the SAME selected mode.  As tabs directly under the
-          spectrum they share one position on the page and one selection.
-          Clicking a stick never switches tab: it updates all three underneath,
-          and the reader stays where they were looking.
+      </div>{#- /.spectra-mode-top -#}
+      <aside class="spectra-mode-aside" aria-label="The selected mode, animated">
+      {#- NO HEADING HERE: which mode is showing is written into the
+          picture itself as its caption. -#}
+      <div id="mode-viewer-wrap" class="mode-viewer-wrap" hidden>
+        <div class="viewer-controls">
+          {#- HOW BIG the motion is, which is two different questions.
+
+              DISPLAY exaggerates it so the eye can follow: real vibrational
+              amplitudes are small, and every tool that draws them -- Jmol,
+              Avogadro, Gaussian -- exaggerates the same way.  The slider is the
+              size, in angstrom, of the largest-moving atom's swing.
+
+              PHYSICAL draws how far the atoms actually move.  There is no slider
+              for it because there is nothing to choose: the size follows from the
+              mode's own frequency.  Zero-point is the T = 0 quantum floor;
+              thermal adds the population of higher states at a temperature you
+              give, and reduces to zero-point as that goes to zero.
+
+              The two are not interchangeable and the export records which was
+              used, because they do not even share a unit
+              (docs/web/vibrationview.md 12.2). -#}
+          <label class="inline-label">
+            <span>Amplitude</span>
+            <select id="anim-amplitude-mode">
+              <option value="display" selected
+                      title="A drawing choice: the biggest-moving atom swings by whatever the Size slider says. Not a physical amplitude.">exaggerated</option>
+              <option value="zero-point"
+                      title="How far the atoms actually move in a molecule at absolute zero — quantum mechanics forbids a still molecule.">physical, zero-point</option>
+              <option value="thermal"
+                      title="Zero-point motion plus what higher vibrational levels add at your temperature. Only changes soft modes.">physical, thermal</option>
+            </select>
+          </label>
+          <label class="inline-label" id="anim-temperature-row" hidden>
+            <span>Temperature</span>
+            <input id="anim-temperature" type="number" min="0" max="2000"
+                   step="1" value="298">
+            <span class="unit">K</span>
+          </label>
+          <label class="inline-label" id="anim-amplitude-row">
+            <span>Size</span>
+            {#- 0.05-3.0 Å range: 3.0 Å is well past any physical
+                thermal RMS (typically <0.05 Å) but visually useful
+                for cartoon-grade vibrational displacement,
+                especially for low-frequency / soft modes where the
+                eigenvector entries are small.  Step at 0.05 keeps
+                the slider easy to land on round numbers.
+
+                Default 0.15 Å (~10% of a bond) reads as a clear
+                vibration without distorting the molecular topology;
+                0.30 Å (~20% of a typical bond length) produces
+                visibly "broken" bonds on stretching modes.  Users
+                who want a bigger swing can drag the slider. -#}
+            <input id="anim-amplitude" type="range"
+                   min="0.05" max="3.0" step="0.05" value="0.15">
+            <span id="anim-amplitude-val" class="unit">0.15 Å</span>
+          </label>
+          <label class="inline-label">
+            <span>Speed</span>
+            {#- THE TOP IS THE FASTEST SMOOTH SPEED: the viewer plays at
+                its default 30 fps and draws no fewer than 15 frames a cycle
+                (`vibrationview/_maths.js` FRAMES_PER_CYCLE_MIN), so 2.0x is
+                the fastest it plays -- a slider past it would show speeds
+                that all play alike (`vibrationview.md` § 10.1). -#}
+            <input id="anim-speed" type="range"
+                   min="0.2" max="2.0" step="0.1" value="1.0">
+            <span id="anim-speed-val" class="unit">1.0×</span>
+          </label>
+          <button id="anim-toggle" type="button">Pause</button>
+        </div>
+        <div id="mode-viewer" class="mode-viewer"
+             aria-label="3D structure with vibrational mode animation">
+        </div>
+        {#- HOW BIG what you are watching is, in a sentence, directly under the
+            picture it describes: its own line names the atom, the distance
+            from rest, the bond it is a fraction of, and whether that is real
+            or exaggerated, which is what the number is FOR.  Written by _reportSwing in
+            lib/spectra/core.js; the science is docs/web/spectra.md § 4.2. -#}
+        <p id="viewer-status" class="status muted viewer-readout"
+           aria-live="polite"></p>
+        {#- Getting the animation out.  The three formats are not
+            interchangeable: GIF goes anywhere and cannot hold either a smooth
+            gradient or a soft transparent edge; WebM is a video; the PNG
+            sequence is lossless at any size and is what an encoder wants as
+            input, which is why it carries a manifest saying what it is and the
+            ffmpeg line that turns it into whatever a journal asked for. -#}
+        <div class="viewer-controls">
+          <label class="inline-label">
+            <span>Export</span>
+            <select id="anim-export-format">
+              <option value="png-zip" selected>PNG frames (.zip)</option>
+              <option value="webm">WebM video</option>
+              <option value="gif">GIF</option>
+            </select>
+          </label>
+          <label class="inline-label">
+            <span>Resolution</span>
+            <input id="anim-export-width" type="number" min="200" max="4000"
+                   step="20" value="1600">
+            <span class="unit">×</span>
+            <input id="anim-export-height" type="number" min="200" max="4000"
+                   step="20" value="1200">
+          </label>
+          <label class="inline-label">
+            <span>Background</span>
+            <select id="anim-export-background">
+              <option value="" selected>as shown</option>
+              <option value="#ffffff">white</option>
+              <option value="transparent">transparent</option>
+            </select>
+          </label>
+          <label class="inline-label">
+            <span>Cycles</span>
+            <input id="anim-export-cycles" type="number" min="1" max="20"
+                   step="1" value="1">
+          </label>
+          <button id="anim-export-btn" type="button">Save animation</button>
+          <button id="anim-export-cancel" type="button" hidden>Cancel</button>
+          <span id="anim-export-status" class="status muted"></span>
+        </div>
+        {#- THE MODE AS A FRAME SET a transport calculation cites
+            (docs/web/spectra.md § 4.3): the person states the maximum
+            displacement; the one generator writes the pair. -#}
+        <div class="viewer-controls">
+          <button id="frameset-btn" type="button">Write frame set…</button>
+          <span id="frameset-status" class="status muted"></span>
+        </div>
+        <details class="amplitude-help">
+          <summary>What do the amplitude choices mean?</summary>
+          <div class="amplitude-help-body">
+            <p>The mode's <em>shape</em> is the same in all three — what changes
+              is how <em>big</em> it is drawn.</p>
+            <p><strong>exaggerated</strong> — a drawing choice. The
+              biggest-moving atom swings by the Size slider. Real amplitudes are
+              too small to read, so every tool exaggerates.</p>
+            <p><strong>zero-point</strong> — how far the atoms really move at
+              absolute zero; a quantum oscillator is never still. Falls as
+              1/√ν̃ and as 1/√mass, so <em>stiff bonds and heavy atoms move
+              less</em>: hydrogen swings 0.41 Å in a 100 cm⁻¹ torsion but only
+              0.075 Å in a C–H stretch, where carbon manages 0.022 Å.</p>
+            <p><strong>thermal</strong> — adds the higher vibrational levels
+              populated at your temperature. Room temperature is worth only
+              ~207 cm⁻¹, so stiffer modes are frozen out and look identical:
+              ×2.1 at 100 cm⁻¹, ×1.27 at 300, ×1.01 at 1000. Worth setting for
+              torsions and librations, invisible on a stretch.</p>
+            <p class="amplitude-help-note">
+              The full derivation, the constants and why the two normalisations
+              must never be crossed:
+              <a href="/documents?doc=web/spectra.md" target="_blank"
+                 rel="noopener">the spectra page's document</a>.
+            </p>
+          </div>
+        </details>
+      </div>
+      </aside>
+      <div class="spectra-mode-views">
+      {#- ONE SELECTION, THE VIEWS OF IT.
+          The modes table and the electronic structure describe the SAME
+          selected mode, the thermochemistry the whole run.  As tabs under
+          the spectrum they share one position on the page and one
+          selection.  Clicking a stick never switches tab: every view
+          updates underneath, and the reader stays where they were looking.
           Pattern: lib/page-shell.css `.panel-tabs` (see the note there). -#}
       <nav id="mode-tabs" class="panel-tabs" role="tablist"
            aria-label="Mode detail views">
         <button type="button" id="mode-tabbtn-table" class="panel-tab"
                 role="tab" aria-selected="true" aria-controls="mode-tab-table"
                 data-tab="table">Modes table</button>
-        <button type="button" id="mode-tabbtn-viewer" class="panel-tab"
-                role="tab" aria-selected="false" aria-controls="mode-tab-viewer"
-                data-tab="viewer">Mode visualisation</button>
         <button type="button" id="mode-tabbtn-es" class="panel-tab"
                 role="tab" aria-selected="false" aria-controls="mode-tab-es"
                 data-tab="es">Electronic structure</button>
@@ -246,8 +409,7 @@
               Vibrational modes table.  Each column header is a button
               that sorts by it.  The modes are one stop: the arrow keys
               move between them, and Enter shows the mode, as a click on
-              its row does, and updates the electronic-structure panel
-              below.
+              its row does, and updates the Electronic structure tab.
             </caption>
             <thead>
               <tr id="modes-thead-row">
@@ -298,167 +460,6 @@
         </div>
       </div>
 
-      {#- A 3-D canvas and a chart both size themselves from a box, and a box
-          in a hidden panel has no size.  core.js re-fits the viewer and
-          re-sizes the chart when its tab becomes visible (_activateModeTab). -#}
-      <div id="mode-tab-viewer" class="panel-tabpanel" role="tabpanel"
-           aria-labelledby="mode-tabbtn-viewer" hidden>
-        {#- NO HEADING HERE: the tab above is the heading, and which mode is
-            showing is written into the picture itself as its caption.  A card
-            titled "Mode visualisation" under a tab labelled "Mode visualisation"
-            says it twice and shows the molecule less. -#}
-        <div id="mode-viewer-wrap" class="mode-viewer-wrap" hidden>
-          <div class="viewer-controls">
-            {#- HOW BIG the motion is, which is two different questions.
-
-                DISPLAY exaggerates it so the eye can follow: real vibrational
-                amplitudes are small, and every tool that draws them -- Jmol,
-                Avogadro, Gaussian -- exaggerates the same way.  The slider is the
-                size, in angstrom, of the largest-moving atom's swing.
-
-                PHYSICAL draws how far the atoms actually move.  There is no slider
-                for it because there is nothing to choose: the size follows from the
-                mode's own frequency.  Zero-point is the T = 0 quantum floor;
-                thermal adds the population of higher states at a temperature you
-                give, and reduces to zero-point as that goes to zero.
-
-                The two are not interchangeable and the export records which was
-                used, because they do not even share a unit
-                (docs/web/vibrationview.md 12.2). -#}
-            <label class="inline-label">
-              <span>Amplitude</span>
-              <select id="anim-amplitude-mode">
-                <option value="display" selected
-                        title="A drawing choice: the biggest-moving atom swings by whatever the Size slider says. Not a physical amplitude.">exaggerated</option>
-                <option value="zero-point"
-                        title="How far the atoms actually move in a molecule at absolute zero — quantum mechanics forbids a still molecule.">physical, zero-point</option>
-                <option value="thermal"
-                        title="Zero-point motion plus what higher vibrational levels add at your temperature. Only changes soft modes.">physical, thermal</option>
-              </select>
-            </label>
-            <label class="inline-label" id="anim-temperature-row" hidden>
-              <span>Temperature</span>
-              <input id="anim-temperature" type="number" min="0" max="2000"
-                     step="1" value="298">
-              <span class="unit">K</span>
-            </label>
-            <label class="inline-label" id="anim-amplitude-row">
-              <span>Size</span>
-              {#- 0.05-3.0 Å range: 3.0 Å is well past any physical
-                  thermal RMS (typically <0.05 Å) but visually useful
-                  for cartoon-grade vibrational displacement,
-                  especially for low-frequency / soft modes where the
-                  eigenvector entries are small.  Step at 0.05 keeps
-                  the slider easy to land on round numbers.
-
-                  Default 0.15 Å (~10% of a bond) reads as a clear
-                  vibration without distorting the molecular topology;
-                  0.30 Å (~20% of a typical bond length) produces
-                  visibly "broken" bonds on stretching modes.  Users
-                  who want a bigger swing can drag the slider. -#}
-              <input id="anim-amplitude" type="range"
-                     min="0.05" max="3.0" step="0.05" value="0.15">
-              <span id="anim-amplitude-val" class="unit">0.15 Å</span>
-            </label>
-            <label class="inline-label">
-              <span>Speed</span>
-              {#- THE TOP IS THE FASTEST SMOOTH SPEED: the viewer plays at
-                  its default 30 fps and draws no fewer than 15 frames a cycle
-                  (`vibrationview/_maths.js` FRAMES_PER_CYCLE_MIN), so 2.0x is
-                  the fastest it plays -- a slider past it would show speeds
-                  that all play alike (`vibrationview.md` § 10.1). -#}
-              <input id="anim-speed" type="range"
-                     min="0.2" max="2.0" step="0.1" value="1.0">
-              <span id="anim-speed-val" class="unit">1.0×</span>
-            </label>
-            <button id="anim-toggle" type="button">Pause</button>
-          </div>
-          <div id="mode-viewer" class="mode-viewer"
-               aria-label="3D structure with vibrational mode animation">
-          </div>
-          {#- HOW BIG what you are watching is, in a sentence, directly under the
-              picture it describes: its own line names the atom, the distance
-              from rest, the bond it is a fraction of, and whether that is real
-              or exaggerated, which is what the number is FOR.  Written by _reportSwing in
-              lib/spectra/core.js; the science is docs/web/spectra.md § 4.2. -#}
-          <p id="viewer-status" class="status muted viewer-readout"
-             aria-live="polite"></p>
-          {#- Getting the animation out.  The three formats are not
-              interchangeable: GIF goes anywhere and cannot hold either a smooth
-              gradient or a soft transparent edge; WebM is a video; the PNG
-              sequence is lossless at any size and is what an encoder wants as
-              input, which is why it carries a manifest saying what it is and the
-              ffmpeg line that turns it into whatever a journal asked for. -#}
-          <div class="viewer-controls">
-            <label class="inline-label">
-              <span>Export</span>
-              <select id="anim-export-format">
-                <option value="png-zip" selected>PNG frames (.zip)</option>
-                <option value="webm">WebM video</option>
-                <option value="gif">GIF</option>
-              </select>
-            </label>
-            <label class="inline-label">
-              <span>Resolution</span>
-              <input id="anim-export-width" type="number" min="200" max="4000"
-                     step="20" value="1600">
-              <span class="unit">×</span>
-              <input id="anim-export-height" type="number" min="200" max="4000"
-                     step="20" value="1200">
-            </label>
-            <label class="inline-label">
-              <span>Background</span>
-              <select id="anim-export-background">
-                <option value="" selected>as shown</option>
-                <option value="#ffffff">white</option>
-                <option value="transparent">transparent</option>
-              </select>
-            </label>
-            <label class="inline-label">
-              <span>Cycles</span>
-              <input id="anim-export-cycles" type="number" min="1" max="20"
-                     step="1" value="1">
-            </label>
-            <button id="anim-export-btn" type="button">Save animation</button>
-            <button id="anim-export-cancel" type="button" hidden>Cancel</button>
-            <span id="anim-export-status" class="status muted"></span>
-          </div>
-          {#- THE MODE AS A FRAME SET a transport calculation cites
-              (docs/web/spectra.md § 4.3): the person states the maximum
-              displacement; the one generator writes the pair. -#}
-          <div class="viewer-controls">
-            <button id="frameset-btn" type="button">Write frame set…</button>
-            <span id="frameset-status" class="status muted"></span>
-          </div>
-          <details class="amplitude-help">
-            <summary>What do the amplitude choices mean?</summary>
-            <div class="amplitude-help-body">
-              <p>The mode's <em>shape</em> is the same in all three — what changes
-                is how <em>big</em> it is drawn.</p>
-              <p><strong>exaggerated</strong> — a drawing choice. The
-                biggest-moving atom swings by the Size slider. Real amplitudes are
-                too small to read, so every tool exaggerates.</p>
-              <p><strong>zero-point</strong> — how far the atoms really move at
-                absolute zero; a quantum oscillator is never still. Falls as
-                1/√ν̃ and as 1/√mass, so <em>stiff bonds and heavy atoms move
-                less</em>: hydrogen swings 0.41 Å in a 100 cm⁻¹ torsion but only
-                0.075 Å in a C–H stretch, where carbon manages 0.022 Å.</p>
-              <p><strong>thermal</strong> — adds the higher vibrational levels
-                populated at your temperature. Room temperature is worth only
-                ~207 cm⁻¹, so stiffer modes are frozen out and look identical:
-                ×2.1 at 100 cm⁻¹, ×1.27 at 300, ×1.01 at 1000. Worth setting for
-                torsions and librations, invisible on a stretch.</p>
-              <p class="amplitude-help-note">
-                The full derivation, the constants and why the two normalisations
-                must never be crossed:
-                <a href="/documents?doc=web/spectra.md" target="_blank"
-                   rel="noopener">the spectra page's document</a>.
-              </p>
-            </div>
-          </details>
-        </div>
-      </div>
-
       <div id="mode-tab-es" class="panel-tabpanel" role="tabpanel"
            aria-labelledby="mode-tabbtn-es" hidden>
         <div id="es-panel" class="es-panel" hidden>
@@ -500,5 +501,7 @@
                            temperature"></div>
         </div>
       </div>
+      </div>{#- /.spectra-mode-views -#}
+      </div>{#- /.spectra-mode-layout -#}
     </div>
   </div><!-- /.card.spectra-inspector -->

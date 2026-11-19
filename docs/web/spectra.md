@@ -185,18 +185,25 @@ with them, never with a change not yet applied, and they are what is
 remembered (§ 7). The animation's temperature (§ 4.1) is not in the bar: it
 shapes the animation, not a strength, and asks as it changes.
 
-## 3. The three views of one mode
+## 3. The views of one mode
 
-Under the chart sit **three tabs — Modes table, Mode visualisation, Electronic
-structure —** all describing the *same* selected mode. They were three bands
-stacked down the page, so comparing what a mode looks like against what its
-levels do meant scrolling between two places and holding one in memory.
+Under the chart sit **tabs — Modes table and Electronic structure, the
+selected mode's views, and Thermochemistry, the whole run's** (once the result
+carries its grid) — and **beside the chart and the tabs, in a column of its
+own, the mode's animation** (§ 4), held at the top of the pane while the page
+scrolls, so the mode picked — from a stick or a row — stays in view
+*(the user, 2026-11-19: "always keep the vibrationview visible somehow in a
+nicer layout such that it is easy to see when we pick from list/plot
+different modes")*. The column is there once a mode can be shown — a run
+followed before its frequencies land keeps the whole width — and its end (the
+help, when open) is reached with the end of the page. A card too narrow for
+two columns stacks the animation between the chart and the tabs; from there to a wide one, the modes table
+scrolls sideways inside its own box when its columns do not fit.
 
-**Selecting a mode never switches tab.** All three update underneath and you stay
-where you were looking. Becoming visible is an event rather than a style change:
-a 3D canvas and a chart both take their size from a box, and a box in a hidden
-tab has none — so opening a tab re-fits the viewer, and a chart sees its box
-come back by itself ([`results.md`](?doc=web/results.md) § 2.5, *one Plotly
+**Selecting a mode never switches tab.** Every view updates underneath and you
+stay where you were looking. A chart in a tab takes its size from its box, and
+a box in a hidden tab has none — so a chart sees its box come back by itself
+when its tab opens ([`results.md`](?doc=web/results.md) § 2.5, *one Plotly
 box*).
 
 The **Modes table** is a table of every vibrational mode — its number,
@@ -231,7 +238,7 @@ it was asked and no optical call ran — is not shown, nor exported to CSV
 
 ### 3.1 The level diagram — and why it has to zoom
 
-Under the table, a selected mode with excited-state data draws a **molecular
+On the Electronic structure tab, a selected mode with excited-state data draws a **molecular
 orbital correlation diagram**: the same levels at three geometries — pushed to
 $-A$, at equilibrium, and pushed to $+A$ — with **every orbital joined across the
 three**, so the eye follows one level rather than comparing three separate stacks
@@ -271,8 +278,8 @@ each answers: where the levels sit, how the gap moves, and the electron–phonon
 coupling $\Delta E/(2A)$. The displacement $A$ itself is in the panel header, since it is
 the input every number below depends on rather than a result among them.
 
-**A fourth, run-level tab: Thermochemistry**. Beside the
-three per-mode views sits a tab that appears when the results carry a
+**A third, run-level tab: Thermochemistry**. Beside the
+two per-mode views sits a tab that appears when the results carry a
 `thermo` block ([`engines/vibration.md`](?doc=engines/vibration.md) § 4.7):
 the headline numbers with the regime sentence, curves over the deck's
 temperature grid, and the decomposition bar at the headline temperature. The
@@ -498,8 +505,8 @@ table's own *CSV* of the rows on screen stays as it is.
 
 ## 4. Clicking a mode — the 3D animation
 
-Click a stick in the chart or a row in the table, open the **Mode visualisation**
-tab, and that **normal mode animates in 3D**: the atoms oscillate along the mode's displacement vectors so you can see
+Click a stick in the chart or a row in the table, and that **normal mode
+animates in 3D** in the column beside them (§ 3): the atoms oscillate along the mode's displacement vectors so you can see
 which bonds stretch or bend. This 3D box is **not** MolView — it's the concealed
 **VibrationView** module ([`vibrationview.md`](?doc=web/vibrationview.md)), a
 self-contained viewer built for exactly this one job (it owns the oscillation loop
@@ -1185,7 +1192,10 @@ fingerprint.
 
 The calculation's own tests — the rank rule, the decks, the artifact's gates,
 the end-to-end runs on both engines — are mapped in
-[`engines/vibration.md`](?doc=engines/vibration.md) § 9. This tab's: `test_spectra_transition_js.py` (the viewer's
+[`engines/vibration.md`](?doc=engines/vibration.md) § 9. This tab's:
+`test_spectrum_results_e2e.py::test_the_animation_stays_in_view_beside_the_views`
+(§ 3: the animation beside the table and in view while the page scrolls, and
+between the chart and the tabs on a narrow card); `test_spectra_transition_js.py` (the viewer's
 state on each transition, and the older names), `test_the_viewers_follow_a_real_run_e2e.py` (the follow, a poll,
 an answer under its own file's name, and the phase indicator, the
 relaxation dot included, on every phase record real runs wrote),

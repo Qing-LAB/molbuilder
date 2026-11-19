@@ -251,7 +251,6 @@
         // the top level of `state` (not in any bucket) because it's a wrapper-managed
         // external resource.
         vib:            null,
-        modeTab:             "table", // which of the three views is on screen
         vibMounting:    false,   // one build per mount, not one per mode click
         vibStructure:   null,    // which structure the viewer holds (§ 5.1)
         animPaused:     false,   // the USER's intent, not the viewer's state
@@ -3921,38 +3920,22 @@
         els.viewerStatus.title = why;
     }
 
-    /* THE THREE VIEWS OF ONE SELECTION.
+    /* THE VIEWS OF ONE SELECTION.
      *
-     * The modes table, the mode animation and the electronic structure all
-     * describe the same selected mode.  As tabs they share one position, and
-     * the selection is what moves.
+     * The modes table and the electronic structure describe the selected
+     * mode, the thermochemistry the whole run.  As tabs they share one
+     * position, and the selection is what moves; the mode's animation stands
+     * beside them, held in view where the card has room for two columns
+     * (spectra.md § 3, § 4).
      *
-     * SELECTING A MODE DOES NOT SWITCH TAB.  All three update underneath; the
-     * reader stays where they were looking.  A click that yanks the view away is
-     * the same as losing your place.
+     * SELECTING A MODE DOES NOT SWITCH TAB.  Every view updates underneath;
+     * the reader stays where they were looking.  A click that yanks the view
+     * away is the same as losing your place.
      *
-     * WHY THIS IS NOT JUST TOGGLING `hidden`.  A box inside a hidden panel has
-     * no size, and both a 3-D canvas and a Plotly figure take their size FROM
-     * their box.  Mounted or drawn while their tab was hidden, they come back
-     * with a zero-size drawing surface.  Both see their box come back by
-     * themselves: the viewer's drawing library watches its container and
-     * draws again at its size, fitted (measured 2026-11-16: a viewer given its
-     * mode while hidden draws, once shown, what one given it while shown
-     * draws), and a chart through lib/plot-box.js.
+     * A chart drawn while its tab was hidden sees its box come back by
+     * itself, through lib/plot-box.js.  The tabs are the one tab strip's
+     * (`lib/tab-strip.js`, ui-contract.md § 4.1), which owns which is shown.
      */
-    const MODE_TABS = ["table", "viewer", "es", "thermo"];
-
-    /* THE MODE TABS, through the one tab strip (`lib/tab-strip.js`,
-     * ui-contract.md § 4.1): the strip shows the panel; this is what the
-     * page does when one is shown. */
-    function _modeTabShown(name) {
-        state.modeTab = name;
-    }
-
-    function _activateModeTab(name) {
-        if (MODE_TABS.indexOf(name) === -1 || !state.modeStrip) return;
-        state.modeStrip.select(name);
-    }
 
     function _stopAnimation() {
         // Not the user's doing -- there is simply nothing to animate -- so the
@@ -4223,7 +4206,9 @@
             // A v4 file, or a run that has not reached the thermo
             // stage yet.  If the user was ON the tab when such a run
             // loaded, land them somewhere real.
-            if (state.modeTab === "thermo") _activateModeTab("table");
+            if (state.modeStrip && state.modeStrip.active() === "thermo") {
+                state.modeStrip.select("table");
+            }
             return;
         }
         const rrho = th.regime === "rrho";
@@ -4444,8 +4429,7 @@
         els.broadeningFwhm    = $("broadening-fwhm");
         // 3D mode-animation viewer.
         els.modeViewerWrap    = $("mode-viewer-wrap");
-        // The tab strip: one listener on the strip, not three on the buttons.
-        // Found by id like every other element here -- a class query would reach
+        // The tab strip, found by id like every other element here -- a class query would reach
         // across the whole document, and this inspector is mounted INTO a page
         // that may hold other panels.
         els.modeTabs          = $("mode-tabs");
@@ -4580,8 +4564,7 @@
             // Mode-table interactions.
             if (els.modeTabs && window.molbuilder.tabStrip) {
                 state.modeStrip = window.molbuilder.tabStrip.mount(
-                    els.modeTabs, { onChange: _modeTabShown,
-                                    listeners: _listeners });
+                    els.modeTabs, { listeners: _listeners });
             }
             _on(els.modesTheadRow, "click", onTableHeaderClick);
             _on(els.modesTbody,    "click", onTableRowClick);
