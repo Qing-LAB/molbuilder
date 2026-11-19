@@ -1194,7 +1194,7 @@ def _render_sections(spec: "DeckSpec", cfg, *, verbose: bool = True,
     return out, emitted
 
 
-def render_deck(spec: "DeckSpec", struct, cfg, *, verbose: bool = True,
+def render_deck(spec: "DeckSpec", struct, cfg, *,
                 log=None, dest_dir=None,
                 sources: Optional[Sequence[Tuple[str, str]]] = None
                 ) -> "RenderedDeck":
@@ -1216,6 +1216,12 @@ def render_deck(spec: "DeckSpec", struct, cfg, *, verbose: bool = True,
     there is one.  The settings gate reads from it what the run will open
     beside the deck -- the pseudopotentials -- rather than guessing at them.
     """
+    # THE PERSON'S CHOICE, from the one config the deck is written from
+    # (``verbose_comments``): the notes the framework writes follow it as
+    # the engine's own lines do -- never a second switch of the writer's
+    # (F12's review, D4: "Verbose inline comments" off still wrote every
+    # note).
+    verbose = bool(getattr(cfg, "verbose_comments", True))
     # STEP 3.3, HERE, AND ONLY HERE.  The gate belongs to rendering because
     # its whole job is to refuse before a line exists -- and every route that
     # produces deck text must be gated, not only the one that also writes.
@@ -1516,7 +1522,7 @@ def check_deck(path, spec: "DeckSpec", rendered: "RenderedDeck",
 
 
 def prepare_deck(spec: "DeckSpec", struct, cfg, path, *,
-                 verbose: bool = True, log=None, dest_dir=None,
+                 log=None, dest_dir=None,
                  findings: "Optional[list]" = None, plan=None,
                  sources: Optional[Sequence[Tuple[str, str]]] = None):
     """**Validate → render → write → check**, in that order, for one deck.
@@ -1550,7 +1556,7 @@ def prepare_deck(spec: "DeckSpec", struct, cfg, path, *,
         _log_spec(spec, log)
     # 3.3 validate runs inside `render_deck`, on the subject the SPEC names --
     # one owner for the step.
-    rendered = render_deck(spec, struct, cfg, verbose=verbose, log=log,
+    rendered = render_deck(spec, struct, cfg, log=log,
                            dest_dir=dest_dir, sources=sources)
     written = write_script(path, rendered.text, plan=plan)     # 3.10 write
     # THE DECK AS THE ENGINE WILL READ IT: where its settings are keywords,

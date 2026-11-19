@@ -33,7 +33,8 @@ def _item(name, engine="siesta"):
     return one(catalogue(), name, engine=engine)
 
 
-#: ``(item, home, kind, stage, value, refused with -- None: it stands)``.
+#: ``(item, home, kind, stage, value, refused with -- None: it stands)``,
+#: then the engine where it is not SIESTA.
 ACCEPTS = [
     # A RUN CARD: the catalogue's type and choices, its limits, `null` only
     # for an item whose unset is an answer.
@@ -84,6 +85,11 @@ ACCEPTS = [
     # fixes.
     ("relax_type", "override", "vibration", "freq", "none",
      ", which a vibration does not offer"),
+    # ...a setting no rung of the kind on that engine reads: removed, never
+    # sent to a stage it has none of (F12's review, D13 -- a PySCF
+    # vibration told to set `restart` on its "relaxation stage").
+    ("restart", "override", "vibration", "freq", "continue",
+     ", which no stage of a vibration on PySCF reads", "pyscf"),
     # A PREP FLAG: the launch shape alone; no cap is the row left blank.
     ("max_memory_mb", "flag", "optimization", None, 0,
      ": it must be greater than 0"),
@@ -92,9 +98,10 @@ ACCEPTS = [
 ]
 
 
-@pytest.mark.parametrize("name, home, kind, stage, value, refused", ACCEPTS)
-def test_a_value_stands_or_is_refused_once_in_its_home(name, home, kind,
-                                                       stage, value, refused):
+@pytest.mark.parametrize("name,home,kind,stage,value,refused,engine",
+                         [(*row, "siesta")[:7] for row in ACCEPTS])
+def test_a_value_stands_or_is_refused_once_in_its_home(
+        name, home, kind, stage, value, refused, engine):
     """One value, one answer, wherever it lives (§ 5.4): the clause read
     after *"<who> sets <name> = <value>"*, or none.
 
@@ -103,8 +110,8 @@ def test_a_value_stands_or_is_refused_once_in_its_home(name, home, kind,
     `null` taken by every item (``use_gpu: null`` stands); the type judged
     on the raw value (``8.0`` refused for a count) or not at all (``"8"``
     stands)."""
-    said = accepts(_item(name), value, home, engine="siesta", kind=kind,
-                   stage=stage)
+    said = accepts(_item(name, engine), value, home, engine=engine,
+                   kind=kind, stage=stage)
     if refused is None:
         assert said is None, said
     else:

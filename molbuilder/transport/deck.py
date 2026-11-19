@@ -409,8 +409,9 @@ def _emit_neq_contour(struct, cfg) -> str:
         "",
         "%block TS.Contour.nEq.line",
         "  part line",
-        f"    from - {kt:g} kT - |V|/2 to |V|/2 + {kt:g} kT",
-        f"      delta {float(delta.value):g} eV",
+        f"    from - {_sl.exact_real(kt)} kT - |V|/2 to |V|/2 + "
+        f"{_sl.exact_real(kt)} kT",
+        f"      delta {_sl.exact_real(delta.value)} eV",
         "        method mid-rule",
         "%endblock TS.Contour.nEq.line",
     ])
@@ -442,8 +443,9 @@ def _emit_tbt_window(struct, cfg) -> str:
         # ITS ENDS AT FULL PRECISION: tbtrans computes its energies from
         # them, and an end rounded is another energy (`engines/transport.md`
         # § 2a.16).
-        f"   from {float(lo.value)!r} {unit_word('transmission_emin_ev')}"
-        f" to {float(hi.value)!r} {unit_word('transmission_emax_ev')}",
+        f"   from {_sl.exact_real(lo.value)} "
+        f"{unit_word('transmission_emin_ev')}"
+        f" to {_sl.exact_real(hi.value)} {unit_word('transmission_emax_ev')}",
         f"    points {int(n.value)}",
         "     method mid-rule",
         "%endblock TBT.Contour.window",
@@ -487,7 +489,8 @@ def _tbt_energies(contours):
         unit = unit_word("transmission_emin_ev")
         for name, (a, b, n) in zip(names, contours.lines):
             out += ["", f"%block TBT.Contour.{name}", "  part line",
-                    f"   from {a!r} {unit} to {b!r} {unit}",
+                    f"   from {_sl.exact_real(a)} {unit} to "
+                    f"{_sl.exact_real(b)} {unit}",
                     f"    points {n}", "     method mid-rule",
                     f"%endblock TBT.Contour.{name}"]
         return "\n".join(out + [""])

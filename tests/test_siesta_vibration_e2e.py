@@ -628,6 +628,53 @@ def test_unticked_the_run_relaxes_first_and_measures_at_the_relaxed_geometry(
         "a refused launch opened a run")
 
 
+def test_the_finish_by_hand_states_what_the_runs_own_finish_states(
+        real_co2_vibration):
+    """`engines/vibration.md` § 5.5, *When the finish fails*: the analysis
+    run by hand in the force-constant call's folder --
+    ``mb_vibration.pyz finish <deck> <output>`` -- writes the spectrum
+    beside that call's deck, analysed as the run's own finish analyses it:
+    the run's relaxation and its Raman phase stated as that finish states
+    them, its Raman read from the optical data written beside it -- and
+    the run's root left as the run left it.  Run on a copy of the shared
+    run (`support.real_runs.copy_of`), as a person runs it.  The silent
+    failures (F12's reviews, F-D1): a run that relaxed written "not
+    requested", its remedy "untick already_relaxed" on a box already
+    unticked, a run that asked Raman written as one that did not; then its
+    optical data written over the run's root, beside no result citing it."""
+    import subprocess
+    import sys
+    from molbuilder.runfiles import (ROLE_OPTICAL, ROLE_SPECTRA,
+                                     VIBRATION_BUNDLE, compose)
+    from molbuilder.runs import on_label_at, run_of
+    from molbuilder.spectra.raman import optical_data_of
+    from molbuilder.sidecars.spectra import parse_spectra_json
+    from molbuilder.siesta.vibration_phases import FC
+
+    def finished_by_hand(copy):
+        fc = run_of(copy.call("freq", FC))
+        bundle = next(copy.attempt("freq").rglob(VIBRATION_BUNDLE))
+        copy.said["finish"] = subprocess.run(
+            [sys.executable, str(bundle), "finish", fc.deck.name,
+             fc.stdout.name],
+            cwd=fc.folder, capture_output=True, text=True, timeout=300)
+    copy = copy_of(real_co2_vibration, "finished-by-hand", finished_by_hand)
+    said = copy.said["finish"]
+    assert said.returncode == 0, said.stdout + said.stderr
+    fc = run_of(copy.call("freq", FC))
+    written = fc.folder / compose(fc.label, ROLE_SPECTRA)
+    result = parse_spectra_json(str(written))
+    by_hand = result.to_dict()
+    own = _the_result(real_co2_vibration)
+    for phase in ("phase_relaxation", "phase_raman"):
+        assert by_hand[phase] == own[phase], (phase, by_hand[phase],
+                                              own[phase])
+    assert optical_data_of(written, result).parent == fc.folder
+    root = on_label_at(copy.attempt("freq"), ROLE_OPTICAL)
+    shared = on_label_at(real_co2_vibration.attempt("freq"), ROLE_OPTICAL)
+    assert root.read_bytes() == shared.read_bytes(), "the root was written"
+
+
 def test_every_folder_of_the_run_reads_back_as_its_run_and_call(
         real_co2_vibration):
     """`execution/runs-of-points.md` § 2.4: the folder grammar's two halves

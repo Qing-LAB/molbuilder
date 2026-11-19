@@ -87,22 +87,22 @@ def _ordered_nodes(n: int) -> Tuple[np.ndarray, np.ndarray]:
     return x[order], w[order] / math.sqrt(math.pi)
 
 
-def _relaxation_record(run) -> Tuple[Optional[Dict[str, Any]], str]:
+def _relaxation_record(run, res) -> Tuple[Optional[Dict[str, Any]], str]:
     """THE RECORD OF THE RELAXATION a vibration run's geometry came from
     (`engines/vibration.md` § 5.10 ③) and, where there is none, why: the
     run's own `relax` call relaxed it at the one template's settings,
     so its own deck's record (`runs.view_of`); a structure stated already
-    relaxed (its deck's `vibration` block says so) states its own -- the
-    calculation's structure beside it, its ``info.calculation``."""
-    from ..deck_record import extract_vibration_record
+    relaxed states its own -- the calculation's structure beside it, its
+    ``info.calculation``.  WHETHER IT WAS STATED RELAXED is what the run's
+    own result ``res`` states (``relaxation.already_relaxed``, written on
+    either engine) -- never the description as it stands now, which may
+    have changed since, nor a SIESTA deck's block, which a PySCF deck has
+    none of (F12's reviews, F-D2: a PySCF set never read the stated
+    structure's record)."""
     from ..jobset.rung import structure_path
     from ..runs import view_of
     from ..workingcopy_structure import StructureCodec
-    from ..parse.fdf import read_deck
-    deck = run.deck
-    record = (extract_vibration_record(read_deck(deck))
-              if deck is not None else None)
-    if not (record or {}).get("already_relaxed"):
+    if not (res.relaxation or {}).get("already_relaxed"):
         own = (view_of(run).info or {}).get("calculation")
         return own, ("" if own is not None else
                      f"{run.label}'s deck records no settings (a PySCF deck "
@@ -296,7 +296,7 @@ def frameset_from_mode(run_folder, *, mode: int, temperature_k: float,
     # from, the one a transport citation takes its settings from
     # (`engines/vibration.md` § 5.10 ③, `transport.md` § 3.1).
     said: List[str] = []
-    calculation, why = _relaxation_record(run)
+    calculation, why = _relaxation_record(run, res)
     if calculation is not None:
         built.set_info("calculation", calculation)
     else:

@@ -19,13 +19,13 @@ explicit zeros — *not* an omission (PSML says "nothing here" by leaving the
 150 Ry literature floor was checked instead — a guess outranking a
 measurement.
 
-**The severities differ, and § 2a.2 says why.**  Layer 1 is an **ERROR**
-(user ruling, 2026-09-03): the file states something false about a channel
-carrying valence electrons, nothing in it says to read the semilocal block
-instead, and a reader doing the normal thing therefore gets wrong physics with
-no crash to notice — the `xc_family_mismatch` case.  Layer 2 is a **WARN**: a
-cutoff below what a file recommends is a trade-off a person may make
-knowingly, and the number is theirs to set.
+**Both layers warn, and § 2a.2 says why.**  Layer 1 is said loudly: the
+file states something false about a channel carrying valence electrons,
+nothing in it says to read the semilocal block instead, and a reader doing the
+normal thing therefore gets wrong physics with no crash to notice — the
+`xc_family_mismatch` case — and still the calculation is the person's (the
+user, 2026-11-18).  Layer 2: a cutoff below what a file recommends is a
+trade-off a person may make knowingly, and the number is theirs to set.
 """
 from __future__ import annotations
 
@@ -86,19 +86,28 @@ def test_the_good_pseudo_says_nothing():
     assert info.null_channels == []
 
 
-def test_it_BLOCKS(tmp_path):
-    """ERROR, by user ruling 2026-09-03.
+def test_it_is_said_and_never_stops_the_run(isolated_projects_root):
+    """Said loudly, never a stop (the user, 2026-11-18: "None of these
+    things should stop any calculation ... It is totally user's decision").
 
     The file states something false about a channel carrying four of
     sulfur's six valence electrons, and nothing in it says to read the
     semilocal block instead -- so a reader doing the normal thing gets wrong
     physics with no crash to notice.  That is the `xc_family_mismatch` case,
-    and it blocks for the same reason: *silently* wrong is what a preflight
-    is for.
+    said as it is.
     """
-    entries = _found(_lib(tmp_path, S=S_V05), "S")
+    from molbuilder.config.siesta import SiestaConfig
+    from molbuilder.validation import validate
+    lib = isolated_projects_root
+    shutil.copy(S_V05, lib / "S.psml")
+    sulfur = Structure(elements=["S"], positions=np.zeros((1, 3)))
+    issues = validate(sulfur, SiestaConfig(psml_lib=str(lib)),
+                      calculation="optimization")
+    said = [i for i in issues if i.where == "config.psml_lib.S"]
+    assert [i.severity for i in said] == ["warn"], said
+    assert not [i for i in issues if i.severity == "error"], issues
+    entries = _found(lib, "S")
     assert [e.status for e in entries] == ["semilocal_only"], entries
-    assert "semilocal_only" in ERROR_STATUSES
     msg = entries[0].message
     assert "ZERO" in msg and "not omitted" in msg, (
         "the message must say the projector is present and CLAIMS zero -- "

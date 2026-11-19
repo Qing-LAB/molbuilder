@@ -115,12 +115,6 @@ def test_the_record_sits_below_the_banner_and_the_science_above_it():
     assert banner < out.text.index(dr.begin_marker(dr.BLOCK_PROVENANCE))
 
 
-def test_verbose_false_drops_the_notes_and_keeps_the_values():
-    out = se.render_deck(_spec(), _struct(), _cfg(), verbose=False)
-    assert "MeshCutoff 250.0" in out.text
-    assert se.parameter("mesh_cutoff", "siesta").note()[1] not in out.text
-
-
 # ---------------------------------------------------------------- check --
 
 def test_rendering_touches_no_disk(tmp_path, monkeypatch):

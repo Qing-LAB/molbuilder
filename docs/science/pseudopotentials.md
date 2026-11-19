@@ -52,7 +52,7 @@ flowchart TB
     subgraph L1["LAYER 1 — file integrity (§ 2) · per FILE"]
       CC["pseudos.check_coverage(labels, each label's dir, …)<br/>→ List[CoverageEntry(element = the label, status, …)]"]
       ST["11 statuses: ok · missing · misnamed · dead_projector ·<br/>xc_family_mismatch · xc_mismatch · relativistic_mismatch ·<br/>generator_mismatch · parse_warning · <b>semilocal_only</b> ·<br/>partial_projectors (§ 2a.2)"]
-      SEV["severity — the ONE shared set pseudos.ERROR_STATUSES<br/>ERROR: missing · misnamed · dead_projector · xc_family_mismatch ·<br/><b>semilocal_only</b><br/>WARN: the rest · ok: silent"]
+      SEV["severity — the ONE shared set pseudos.ERROR_STATUSES<br/>ERROR: missing · misnamed (a file SIESTA cannot open)<br/>WARN: the rest · ok: silent"]
       CC --> ST --> SEV
     end
 
@@ -109,8 +109,8 @@ naming the citation's way out.) The severities:
 
 | Severity | Statuses | Meaning |
 |---|---|---|
-| **ERROR** (blocks generation / non-zero CLI exit) | `missing`, `misnamed`, `dead_projector`, **`xc_family_mismatch`**, **`semilocal_only`** | the run **cannot be correct** — a file is absent or under a name SIESTA does not open (SIESTA won't start), or the file a species opens declares another element (C1a), a valence channel is physically missing (wrong Hamiltonian), the XC *family* is wrong, or a valence channel is present and **claims a strength of zero** (§ 2a.2). The last three are all *silently* wrong: the run completes and the answer is not right |
-| **WARN** (advisory) | `xc_mismatch`, `relativistic_mismatch`, `generator_mismatch`, `parse_warning`, `partial_projectors` | a strong smell that *might* be intentional (curated mix, deliberate SR/FR choice) — surfaced loudly, but the user may proceed |
+| **ERROR** (blocks generation / non-zero CLI exit) | `missing`, `misnamed` | **a file SIESTA cannot open** — absent, or under a name SIESTA does not open (SIESTA won't start), or the file a species opens declares another element (C1a): there is nothing to give the run |
+| **WARN** (said loudly; the run goes as set) | `dead_projector`, `xc_family_mismatch`, `semilocal_only`, `xc_mismatch`, `relativistic_mismatch`, `generator_mismatch`, `parse_warning`, `partial_projectors` | what a file says of its physics. The first three are *silently* wrong — a valence channel physically missing (wrong Hamiltonian), the XC *family* another, a valence channel present and **claiming a strength of zero** (§ 2a.2): the run completes and the answer is not right — and still the calculation is the person's *(the user, 2026-11-18: "None of these things should stop any calculation being constructed or being run. It is totally user's decision")*. The rest are a smell that *might* be intentional (curated mix, deliberate SR/FR choice) |
 | `ok` | — | silent pass |
 
 **Settled before the folder exists — at the Send** *(user, 2026-09-30: "it
@@ -164,24 +164,29 @@ itself constructs. A folder holding only `gold.psml` is `misnamed` for `Au`.
 Staged copies are named by `copy_pseudopotentials`, so this guards the folder a
 person assembles by hand.
 
-### C2 — XC functional consistency · ERROR *(family)* / WARN *(author)*
+### C2 — XC functional consistency · WARN
 **What:** the pseudo's exchange-correlation functional matches the calculation's
-(`cfg.xc_authors`). **Why:** a pseudo is generated *for* a specific XC functional.
+— its family the calculation's own `xc_functional`, the one its deck writes as
+`XC.functional`, and its authors `cfg.xc_authors`. **Why:** a pseudo is generated *for* a specific XC functional.
 Using a PBE pseudo in an LDA run (or vice versa) gives **silently wrong** bond
 lengths and energies — the run completes, the numbers are off by an amount that
 looks physical.
 
-- **Family mismatch** (GGA vs LDA) → `xc_family_mismatch` → **ERROR**. Never
-  correct.
+- **Family mismatch** (GGA vs LDA) → `xc_family_mismatch` → **WARN**, said
+  loudly: never correct, and the calculation the person's.
 - **Author mismatch, same family** (PBE vs PBEsol) → `xc_mismatch` → **WARN**.
   Minor (~1–2 kcal/mol).
 
 **How:** `PsmlInfo.xc_family` / `xc_authors` are decoded from the `<libxc-info>`
 functional ids (**libxc** = the standard open-source library that assigns each XC
-functional a numeric id) via `_LIBXC_MAP` and compared to the
-family derived from `cfg.xc_authors`. An unrecognised libxc id stays `"unknown"` and
-does **not** warn — we don't flag what we can't classify. **False positives:**
-low, bounded by the libxc id table.
+functional a numeric id) via `_LIBXC_MAP` and compared to the calculation's
+`xc_functional` (`pseudos.expected_xc_family`) where a pseudopotential file can
+declare that family — LDA, GGA. A vdW-DF run (`VDW`) compares no family, and so
+no authors: no pseudopotential is generated for vdW-DF, and it is run on GGA
+ones. Authors are compared only within a family that was. An unrecognised
+libxc id stays `"unknown"` and does **not** warn — we
+don't flag what we can't classify. **False positives:** low, bounded by the
+libxc id table.
 
 ### C3 — Relativistic treatment · WARN · `relativistic_mismatch`
 **What:** scalar-relativistic (SR) vs fully-relativistic / spin-orbit (FR)
@@ -210,7 +215,7 @@ mixing *can* be intentional (a curated set drawing the best pseudo per element
 from different releases). Hence WARN, not ERROR; the message says "confirm the
 odd-one-out is intended."
 
-### C5 — Dead Kleinman-Bylander projector · ERROR · `dead_projector`
+### C5 — Dead Kleinman-Bylander projector · WARN · `dead_projector`
 **What:** no angular-momentum channel (the s / p / d / … orbital-momentum
 component) present in the nonlocal block has its **entire** set of KB
 projectors at `ekb ≈ 0` with nothing else carrying it.
@@ -235,7 +240,7 @@ only when **all three** hold:
 
 **Condition 3 is essential.** A channel whose `<proj>` entries are zeros and
 which a `<slps>` semilocal potential carries is not C5's: it is § 2a.2's
-`semilocal_only` (ERROR when the channel holds valence electrons — PseudoDojo
+`semilocal_only` (said loudly when the channel holds valence electrons — PseudoDojo
 v0.5's S, Ba, I, Rb, Xe), because SIESTA reads the zeros. C5 flags only a zero
 channel nothing carries.
 **Threshold:** `1e-6` (in the hartree-ish KB units of `ekb`) is heuristic — well
@@ -251,7 +256,7 @@ channel names):
 <!-- (a) HEALTHY p-channel — real ekb, contributes to bonding → ok -->
 <proj l="p" seq="1" ekb="4.213" eref="0" type="oncv"/>
 
-<!-- (b) DEAD sulfur p-channel — every projector zero AND no <slps l="p"> → dead_projector (ERROR) -->
+<!-- (b) DEAD sulfur p-channel — every projector zero AND no <slps l="p"> → dead_projector (WARN) -->
 <proj l="p" seq="1" ekb="0.0" eref="0" type="oncv"/>
 <proj l="p" seq="2" ekb="0.0" eref="0" type="oncv"/>
 <!-- (no <slps l="p"> in <semilocal-potentials>) -->
@@ -431,29 +436,23 @@ of those two empty:
 
 | | elements | the p channel | status |
 |---|---|---|---|
-| **both projectors zero** | S, Ba, I, Rb, Xe | contributes **nothing** | `semilocal_only` — **ERROR** |
+| **both projectors zero** | S, Ba, I, Rb, Xe | contributes **nothing** | `semilocal_only` — **WARN**, said loudly |
 | **one of two zero** | Bi, Pb, Po, Rn, Te, Tl | survives, at half the requested completeness | `partial_projectors` — WARN |
 
 A second projector is what makes a channel transferable across bonding
 environments, so losing one costs **accuracy**; losing both costs the
-**channel**. Blocking the second case would refuse six elements over a
-degradation their owner may knowingly accept; staying silent about it would
-hide a defect the file's own input file contradicts.
+**channel**. Both are said; neither stops the run.
 
-**ERROR for the first tier** *(user ruling, 2026-09-03)*. The argument is the
-`xc_family_mismatch` argument: the run **completes** and the answer is wrong.
-There is no crash to investigate and no line in the output that looks
-suspicious, which is exactly the failure a preflight exists to catch — and it
-is what happened here, until a comparison against v0.4 explained it after the
-fact.
-
-The case for leaving it a warning was that these files' **semilocal** block is
-complete and correct, so a code consuming *that* representation gets right
-physics from the same file. That is true and it does not survive the ranking:
-this preflight runs for SIESTA, whose reader took the zeros, and a check that
-declines to block the reader it is protecting is not doing the job. A user
-whose reader consumes the semilocal form points `psml_lib` at a set that does
-not carry the claim — v0.4.1 of those eleven elements.
+**Said loudly, never a stop** *(the user, 2026-11-18, over their ruling of
+2026-09-03 that made the first tier block)*. The case for saying it loudly is
+the `xc_family_mismatch` case: the run **completes** and the answer is wrong,
+with no crash to investigate and no line in the output that looks suspicious —
+what happened here until a comparison against v0.4 explained it after the
+fact. The case against stopping it is the person's: a code consuming these
+files' complete **semilocal** block gets right physics from the same file, and
+whatever the reason, the calculation is theirs to run. A user whose reader
+consumes the semilocal form points `psml_lib` at a set that does not carry the
+claim — v0.4.1 of those eleven elements.
 
 ---
 
@@ -504,12 +503,12 @@ its `check` command):
 
 ```bash
 # screen a whole directory (CI gate; exits non-zero on any ERROR-status pseudo:
-# missing / misnamed / dead-projector / xc_family_mismatch / semilocal_only --
-# the same set the preflight blocks):
-python -m molbuilder pseudo check projects/pseudopotential --xc PBE
+# missing / misnamed, a file SIESTA cannot open -- the same set the preflight
+# blocks):
+python -m molbuilder pseudo check projects/pseudopotential --xc-functional GGA --xc PBE
 
 # require specific species labels + a relativistic level:
-python -m molbuilder pseudo check <dir> --elements Au1,Au2,C,H,S --xc PBE --relativistic scalar
+python -m molbuilder pseudo check <dir> --elements Au1,Au2,C,H,S --xc-functional GGA --xc PBE --relativistic scalar
 ```
 
 With no `--elements` the folder's own files say what to check
@@ -523,10 +522,10 @@ and exits non-zero when any line is an ERROR — the shape a CI job greps / gate
 ```text
   [OK   ] Au       Au.psml OK (GGA / PBE, scalar)
   [OK   ] C        C.psml OK (GGA / PBE, scalar)
-  [ERROR] S        S.psml has a NULL Kleinman-Bylander projector for the 'p' channel (ekb=0): …
+  [WARN ] S        S.psml has a NULL Kleinman-Bylander projector for the 'p' channel (ekb=0): …
   [WARN ] S        pseudopotential set mixes generator versions: ONCVPSP-3 (Au,C); ONCVPSP-4 (S).  … confirm the odd-one-out (S) is intended …
 
-4 checks: 1 error(s), 1 warning(s).          # process exits 1 (an ERROR was found)
+4 checks: 0 error(s), 2 warning(s).          # process exits 0 (no file SIESTA cannot open)
 ```
 
 The same check is one Python call:
@@ -554,12 +553,12 @@ check until clean.
 |---|---|---|---|
 | C1 coverage | ERROR | `check_coverage` → `missing` | `test_pseudos.py` |
 | C1a the file SIESTA opens | ERROR | `check_coverage` → `misnamed` (`file_named_for`, `scan_psml_directory` by file name) | `test_pseudos.py` |
-| C2 XC family | **ERROR** | `check_coverage` → `xc_family_mismatch` | `test_pseudos.py` |
+| C2 XC family | WARN | `check_coverage` → `xc_family_mismatch` | `test_pseudos.py` |
 | C2 XC author | WARN | `check_coverage` → `xc_mismatch` | `test_pseudos.py` |
 | C3 relativistic | WARN | `check_coverage` → `relativistic_mismatch` | `test_pseudos.py` |
 | C4 version | WARN | `check_coverage` + `_generator_key` | `test_pseudos.py` |
-| C5 dead projector | ERROR | `parse_psml_header` → `null_channels`, emitted by `check_coverage` | `test_pseudos.py` |
-| § 2a.2 semilocal-only channel | ERROR | `parse_psml_header` → `semilocal_only_channels`, emitted by `check_coverage` → `semilocal_only` | `test_pseudo_requirements_layer.py`, `test_pseudos.py` |
+| C5 dead projector | WARN | `parse_psml_header` → `null_channels`, emitted by `check_coverage` | `test_pseudos.py` |
+| § 2a.2 semilocal-only channel | WARN | `parse_psml_header` → `semilocal_only_channels`, emitted by `check_coverage` → `semilocal_only` | `test_pseudo_requirements_layer.py`, `test_pseudos.py` |
 | § 2a.2 one of two projectors zero | WARN | `parse_psml_header` → `partial_projector_channels` → `partial_projectors` | `test_pseudo_requirements_layer.py` |
 | C6 parse | WARN | `parse_psml_header` → `parse_warnings` | `test_pseudos.py` |
 | severity set (shared) | — | `pseudos.ERROR_STATUSES` → `validation.siesta._check_siesta_pseudo_coverage` (preflight) + `cli.cmd_pseudo_check` (CLI exit) | `tests/test_pseudos.py::TestErrorStatusesSharedBySurfaces` |

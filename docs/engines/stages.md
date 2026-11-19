@@ -463,7 +463,8 @@ the tier presets, its values filled in ([`web/task-setup.md`](?doc=web/task-setu
 `overrides` may name **any field of the shared schema** and **never** `name`,
 nor an item bound to the whole calculation — the items the catalogue marks `shared` for the kind (the
 electronic state's four for every kind; the calculation's identity — its
-`system_label`, `species_order` and `psml_lib` — for every SIESTA kind;
+`system_label`, `species_order` and `psml_lib` for every SIESTA kind, its
+`job_name` for every PySCF kind (`template.md` § 5);
 transport's electronic description) — nor an item the rung itself fixes (`role`:
 SIESTA's per-step forces and coordinates on every kind, a transport rung's
 solver and bias). A
@@ -1151,7 +1152,8 @@ A folder whose decks are correct on their own. Concretely, per rendered stage:
   computes the vectors and shifts the atoms into the frame the deck must carry
   (`model/structure-periodicity.md § 6.2`; design record `archive/2026-08-20-cell-plan.md`).
 - **pseudopotentials resolved** per species, through the path that already
-  refuses on `xc_family_mismatch`, and written into the folder. (`job-contracts.md
+  refuses a file SIESTA cannot open (and warns what a file says of its
+  physics), and written into the folder. (`job-contracts.md
   § 2.7` says the layout does not *require* co-location; putting them there is
   what makes the folder self-contained.)
 - **every value the description determined**, written rather than left to an

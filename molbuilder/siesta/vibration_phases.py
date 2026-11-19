@@ -72,6 +72,11 @@ class PhaseRule:
     #: The call whose file seeds this phase's calls -- ``(phase, suffix)``,
     #: the density the SCF starts from -- or ``None``.
     seed: Optional[Tuple[str, str]]
+    #: Which step of a call's output holds the structure's own energy --
+    #: ``-1`` its last (a relaxation's result), ``0`` its first (the force
+    #: constants' reference geometry, frame 0, before the displaced ones):
+    #: what the Makov-Payne script beside the deck reads (`makov_payne`).
+    energy_step: int
     #: The files a call must hold to be done, by suffix on the label
     #: (`continuation.done`'s products); a relaxation holds none -- done is
     #: finished, converged or not (§ 5).
@@ -113,16 +118,17 @@ class PhaseRule:
 PHASES: Tuple[PhaseRule, ...] = (
     PhaseRule(RELAX, part="relax", role="relaxation",
               switch=("already_relaxed", True),
-              coordinates="structure", seed=None, products=(),
+              coordinates="structure", seed=None, energy_step=-1, products=(),
               verdict_counts=False, warm_kind="optimization", needs=(),
               relaunch=CONTINUE, carried=True),
     PhaseRule(FC, part="fc", role="force_constants", switch=None,
-              coordinates=RELAX, seed=(RELAX, SIESTA_DM),
+              coordinates=RELAX, seed=(RELAX, SIESTA_DM), energy_step=0,
               products=(SIESTA_FC,),
               verdict_counts=True, warm_kind="vibration", needs=(RELAX,)),
     PhaseRule(OPTICAL, part="optical", role="optical",
               switch=("compute_raman", False),
-              coordinates=FC, seed=(FC, SIESTA_DM), products=(SIESTA_EPSIMG,),
+              coordinates=FC, seed=(FC, SIESTA_DM), energy_step=-1,
+              products=(SIESTA_EPSIMG,),
               verdict_counts=True, warm_kind="optical", needs=(FC,),
               planned_by=FC),
 )
@@ -146,6 +152,13 @@ def phase(name: str) -> PhaseRule:
             return p
     raise ValueError(f"no phase {name!r}: the phases are "
                      f"{', '.join(p.name for p in PHASES)}")
+
+
+def phase_playing(role: Optional[str]) -> Optional[PhaseRule]:
+    """The phase whose deck plays ``role`` -- each phase plays its own --
+    or ``None`` for a deck that plays no phase's: an optimization's, a
+    transport stage's, a benchmark trial's."""
+    return next((p for p in PHASES if p.role == role), None)
 
 
 def phases_on(cfg) -> Tuple[PhaseRule, ...]:

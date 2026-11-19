@@ -300,7 +300,8 @@ def _gpu_library_limits(struct: Structure, cfg, state) -> List[Issue]:
                 "a lower state.  The run's log says "
                 "`stability: NOT CHECKED`.",
                 "config.use_gpu"))
-    if str(getattr(cfg, "solvent", "") or "").strip():
+    from ..pyscf.scf_setup import solvent_of
+    if solvent_of(cfg):
         out.append(Issue(
             "warn",
             "use_gpu with a solvent model: gpu4pyscf's solvent has not been "
@@ -373,7 +374,8 @@ def validate_pyscf(struct: Structure, cfg,
     # Solvation, engine-side: these are facts about the BUILD and the
     # vocabulary, not about the vibration -- both decks emit the same
     # solvent lines (scf_setup.emit_solvent_lines).
-    _solv = str(getattr(cfg, "solvent", "") or "").strip().lower()
+    from ..pyscf.scf_setup import solvent_of
+    _solv = solvent_of(cfg)
     if _solv:
         from ..pyscf.scf_setup import SOLVENTS
         if _solv not in SOLVENTS:

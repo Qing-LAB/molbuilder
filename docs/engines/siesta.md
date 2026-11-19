@@ -307,7 +307,11 @@ one) — `siesta/seam.py::_siesta_sibling_artifacts` →
 `siesta/makov_payne.py` — that estimates the residual image-charge energy after
 the run. It is not part of the `.fdf` itself: the deck's own text instructs
 `python3 makov_payne_correction.py`, and that file has to exist, which is why
-one writer owns both routes. **It adds only what SIESTA did not** — it reads
+one writer owns both routes. **It reports the structure's own energy** — the
+step each phase's rule names (`vibration_phases.PhaseRule.energy_step`): a run's
+last, but a force-constant run's first, its reference geometry before the
+displaced ones (2.77.5; F12's review, D6: the last displaced geometry's energy
+was printed as the total). **It adds only what SIESTA did not** — it reads
 `siesta: Emadel` first — and a charged slab or crystal, where the monopole
 formula does not hold, gets no script:
 [`science/chemistry-correctness.md`](?doc=science/chemistry-correctness.md)

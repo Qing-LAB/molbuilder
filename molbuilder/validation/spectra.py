@@ -354,7 +354,8 @@ def spectra_render_checks(struct: Structure, cfg, *,
     # -- so PCM reaches one route, and the others
     # are refused until built and measured (`engines/vibration.md` § 4.6;
     # plan § 5w K17).
-    _solv = str(getattr(cfg, "solvent", "") or "").lower()
+    from ..pyscf.scf_setup import solvent_of
+    _solv = solvent_of(cfg)
     if _solv:
         # Only for a name the dielectric table knows: the engine
         # validator refused unknown names, and a regime note about a

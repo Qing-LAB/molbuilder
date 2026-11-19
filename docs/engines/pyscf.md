@@ -352,7 +352,12 @@ driver catches it, and `geometric_solver.kernel` returns the flag with the geome
   force component against the rung's criterion (the reader's record for an
   optimisation, `model/parse.md` § 5b.1; the vibration result's
   `relaxation.converged`) — which can pass while geomeTRIC's other criteria,
-  displacement and energy, did not; the warning names what did not.
+  displacement and energy, did not; the warning names what did not. **The saved
+  geometry says so too**: its comment line reads *Optimized geometry* only
+  where geomeTRIC's criteria were met, and *the relaxation did not converge*
+  where it stopped short — on the optimization deck and the vibration deck's
+  relaxation alike, worded in the run's words table, which a launched stage's
+  same-calculation reading sets aside (2.77.5; F12's reviews, D10).
 
 **Every step's SCF must converge, whatever the policy** (`assert_convergence=True`
 on every call): a gradient from an unconverged SCF is not a force, so an SCF that
@@ -810,7 +815,7 @@ frequencies as provisional):
 |---|---|
 | `stability: CHECKED, stable on the first SCF (no restart needed).` | checked; already the best solution found |
 | `stability: CHECKED, reached a stable solution after N restart(s).` | checked; was broken, repaired — use this result |
-| `stability: WARNING -- still internally unstable after 3 restarts.` | checked; **not** repaired — everything below it is suspect |
+| `stability: WARNING -- each of 3 restarts still lowered the energy; the state reached is not confirmed stable.` | checked; every restart was a repair and the last state was not asked again (asking it is one more restart) — everything below it is suspect |
 | `stability: NOT CHECKED. The energy below has not been tested for a broken-symmetry solution.` | no claim either way |
 | `stability: NOT CHECKED -- this mean field declares no stability analysis (on the GPU, gpu4pyscf does not implement it)` | the mean field has none to call — gpu4pyscf's GPU classes declare `stability = NotImplemented` (§ 7.3); printed alongside the line above |
 | `stability: NOT CHECKED -- this method does not implement it (<error>)` | the method has one and refused at run time (`NotImplementedError`); printed alongside the line above |

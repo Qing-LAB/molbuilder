@@ -52,10 +52,10 @@ class EngineSeam:
     #: ``config -> traits``: the facts its warm files are conditioned on --
     #: SIESTA's optimizer, which `model.warm_carry` compares (§ 4, 3.13).
     traits_for: Callable
-    #: ``(struct, config, deck_path) -> None`` — the sibling files this
-    #: engine's deck TEXT promises (E6: a charged SIESTA deck instructs
-    #: running a script; the promise must be kept on every route that
-    #: renders the deck).  ``None`` for an engine whose decks promise
+    #: ``(struct, config, deck_path, *, kind, names, role, plan) -> None`` —
+    #: the sibling files this engine's deck TEXT promises (E6: a charged
+    #: SIESTA deck instructs running a script; the promise must be kept on
+    #: every route that renders the deck), ``role`` the deck's stage role.  ``None`` for an engine whose decks promise
     #: nothing.
     sibling_artifacts: Optional[Callable] = None
     #: ``(base_dir) -> [filename]`` — which files in the calculation are the

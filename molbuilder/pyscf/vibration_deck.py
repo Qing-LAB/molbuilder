@@ -43,7 +43,8 @@ from ..structure import Structure
 from .input import (GEOMETRIC_APPENDS, emit_bundle_imports,
                     emit_constraints_file, emit_gpu_probe, emit_pyscf_threads,
                     emit_run_settings_block, emit_runtime_facts,
-                    emit_save_call, emit_script_head, emit_words,
+                    emit_save_call, emit_script_head, emit_title_by_verdict,
+                    emit_words,
                     run_file_expr, ROLE_INITIAL, PYSCF_OPTIMIZED, ROLE_SPECTRA)
 from .script_input import WORDS_NAME
 
@@ -341,6 +342,8 @@ def _vib_relax_block(cfg, names) -> List[str]:
         f"        state['relaxation']['warning'] = {unmet}",
     ]
     if getattr(cfg, "save_optimized_xyz", False):
+        out.append(emit_title_by_verdict("_geometric_converged",
+                                         indent="    "))
         out.append(emit_save_call("mol", PYSCF_OPTIMIZED, names, indent="    "))
     out += [
         "    COORDS_EQ_ANG = mol.atom_coords(unit='Angstrom')",

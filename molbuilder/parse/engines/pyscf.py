@@ -140,8 +140,10 @@ def _read_scf_history(
     traj_path: str,
 ) -> Tuple[List[List[Dict[str, float]]], Dict[str, str]]:
     """``(runs, said)``: the per-cycle SCF data of ``<stem>.log``, PySCF's
-    own log -- a list of runs, one per geom-opt step, each a list of
-    per-cycle dicts; none for a trajectory with no log beside it, or one
+    own log -- a list of its SCF runs in order, each a list of per-cycle
+    dicts, among them runs no frame is (a stability check's, the SCF at the
+    relaxed geometry after geomeTRIC returns; :func:`_scf_by_frame` pairs
+    them); none for a trajectory with no log beside it, or one
     that does not read -- and WHICH LOG, OR WHY NONE (`model/parse.md` § 5a,
     rule 4): ``pyscf_log_source`` the log read, ``pyscf_log_error`` the log
     that did not read and why."""
@@ -199,6 +201,50 @@ def _read_scf_history(
     return runs, {"pyscf_log_source": name}
 
 
+#: How near a run's last energy is to a frame's own for it to be that
+#: frame's -- one microhartree, past the decimals both files print.
+_SAME_ENERGY_EV = 1e-6 * _HARTREE_TO_EV
+
+
+def _scf_by_frame(energies: List[Optional[float]],
+                  runs: List[List[Dict[str, float]]]
+                  ) -> List[Optional[List[Dict[str, float]]]]:
+    """EACH FRAME'S OWN SCF RUN, by what it is: the run of PySCF's log that
+    ends at the frame's own energy (`model/parse.md` § 5a, "each step's SCF
+    history"), never the run at the frame's position.  The log holds runs no
+    frame is -- an open-shell deck's stability check before geomeTRIC's
+    first evaluation, the SCF every relaxation deck runs again at the
+    relaxed geometry after it -- at the same energies as the first and last
+    frames (F12's review, P-D2: every frame shown the one before it).  So
+    the frames take the TIGHTEST stretch of runs that matches them in order:
+    for each run the first frame could be, the frames after it each take
+    the next run ending at their energy; the stretch matching the most
+    frames, then the shortest, then the latest, wins.  ``None`` for a frame
+    no run ends at."""
+    ends = [run[-1]["energy"] if run else None for run in runs]
+
+    def matches(k: int, energy: Optional[float]) -> bool:
+        return (energy is not None and ends[k] is not None
+                and abs(ends[k] - energy) <= _SAME_ENERGY_EV)
+    framed = [i for i, e in enumerate(energies) if e is not None]
+    best: Optional[Tuple[Tuple[int, int, int], Dict[int, int]]] = None
+    for start in (k for k in range(len(runs)) if framed
+                  and matches(k, energies[framed[0]])):
+        got, last = {framed[0]: start}, start
+        for i in framed[1:]:
+            k = next((k for k in range(last + 1, len(runs))
+                      if matches(k, energies[i])), None)
+            if k is not None:
+                got[i], last = k, k
+        score = (-len(got), last - start, -start)
+        if best is None or score < best[0]:
+            best = (score, got)
+    out: List[Optional[List[Dict[str, float]]]] = [None] * len(energies)
+    for i, k in (best[1].items() if best else ()):
+        out[i] = runs[k]
+    return out
+
+
 def _parse_pyscf_xyz(path: str) -> Trajectory:
     """Parse geomeTRIC's ``<stem>_geom_optim.xyz`` into a Trajectory: its
     frames, read as every XYZ is (`xyz.read_frames`), each comment line's
@@ -218,12 +264,11 @@ def _parse_pyscf_xyz(path: str) -> Trajectory:
     mw_meta = _read_molwatch_metadata(path)
     scf_history, scf_said = _read_scf_history(path)
 
+    scf_of = _scf_by_frame(energies, scf_history)
     frames: List[Frame] = []
     for i, (_comment, elements, positions) in enumerate(frames_raw):
         struct = Structure(elements=elements, positions=positions)
-        scf_for_step = (scf_history[i]
-                        if i < len(scf_history) and scf_history[i]
-                        else None)
+        scf_for_step = scf_of[i]
         frames.append(Frame(
             structure   = struct,
             step_index  = iterations[i],

@@ -9,6 +9,7 @@ kind = "engine"
 category = ["system", "procedure"]
 engines = ["siesta"]
 shared = ["optimization", "vibration", "transport"]
+why_shared = "a calculation has one name: each stage reads what the one before it wrote under that name"
 anchor = "SystemLabel"
 engine_key = "SystemLabel"
 manual = "SIESTA 5.4.2 §6.1 'General system descriptors'"
@@ -75,7 +76,7 @@ Per-tier (Ry):
   0.05    fast screening only
   0.01    production (this project's default)
   0.005   accuracy-critical: band gaps, weak interactions, vdW
-SIESTA's own default is 0.02 Ry. This catalogue starts at 0.01 because its targets are molecules and metal-molecule junctions, where the more diffuse tails are what set adsorption geometry and level alignment.
+This catalogue starts at SIESTA's own default (its engine default, stated with the item): its targets are molecules and metal-molecule junctions, where the more diffuse tails are what set adsorption geometry and level alignment.
 """
 
 [item.mesh_cutoff]
@@ -1031,6 +1032,7 @@ kind = "produce"
 category = ["method"]
 engines = ["siesta"]
 shared = ["optimization", "vibration", "transport"]
+why_shared = "a calculation is built on one set of pseudopotentials: each stage reads the density the one before it wrote for that set"
 engine_key = "(molbuilder: copies the .psml files beside the deck; SIESTA finds each by its element)"
 type = "str"
 group = "setup"
@@ -1055,6 +1057,7 @@ kind = "produce"
 category = ["system"]
 engines = ["siesta"]
 shared = ["optimization", "vibration", "transport"]
+why_shared = "a calculation has one species table: each stage reads the geometry the one before it wrote, its atoms numbered by that table"
 engine_key = "(molbuilder: the order of the ChemicalSpeciesLabel block)"
 type = "strlist"
 group = "profile"
@@ -1239,6 +1242,8 @@ why = "a PySCF vibration is restricted: every electron paired"
 kind = "produce"
 category = ["system", "procedure"]
 engines = ["pyscf"]
+shared = ["optimization", "vibration"]
+why_shared = "a calculation has one name: each stage reads what the one before it wrote under that name"
 engine_key = "(molbuilder: the name of the run's files and logs)"
 type = "str"
 value = "pyscf_relax"

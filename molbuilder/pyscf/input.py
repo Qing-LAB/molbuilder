@@ -142,7 +142,7 @@ _STABILITY_ENERGY_TOL = 1e-8
 # The PCM dielectric table lives in scf_setup.SOLVENTS (one home
 # for both decks); this alias serves one reader -- the deck
 # header's solvent line.
-from .scf_setup import SOLVENTS as _SOLVENTS
+from .scf_setup import solvent_header_lines, solvent_of
 from molbuilder.constants import HARTREE_EV as _HARTREE_EV
 from molbuilder.constants import (
     HARTREE_BOHR_EV_ANGSTROM_ASE as _HARTREE_BOHR_EV_ANG_ASE)
@@ -266,9 +266,7 @@ def spec_for(struct: Structure,
                        f"grms={cfg.geom_grms:.1e} Ha/Bohr, "
                        f"gmax={cfg.geom_gmax:.1e}, "
                        f"conv_tol={cfg.scf_conv_tol:.1e}")
-        if cfg.solvent:
-            out.append(f"Solvent   : {cfg.solvent} ({cfg.solvent_method}, "
-                       f"eps={_SOLVENTS.get(cfg.solvent, '?')})")
+        out += solvent_header_lines(cfg)
         out.append("")
         out += emit_run_with(names)
         out.append("")
@@ -338,7 +336,7 @@ def spec_for(struct: Structure,
             out.append(f'        "{_fix_cmd("bootstrap", "--yes")}\\n"')
             out.append('        f"(import error: {_exc})"')
             out.append("    )")
-        if cfg.solvent:
+        if solvent_of(cfg):
             out.append("from pyscf.solvent import pcm")
         out.append("")
         out.append("t0 = time.time()")
@@ -690,6 +688,7 @@ def spec_for(struct: Structure,
         # we only write the FINAL geometry.
         if cfg.save_optimized_xyz and cfg.optimize:
             out.append("")
+            out.append(emit_title_by_verdict("_GEOM_CONVERGED"))
             out.append(emit_save_call("mol_eq", PYSCF_OPTIMIZED, names))
         out.append("")
         out.append('print(f"\\n' + END_MARKER + ' {time.time() - t0:.1f} s")')
@@ -1017,6 +1016,11 @@ def _emit_stability_block(cfg: PySCFConfig, v: bool) -> List[str]:
         'freely within "',
         '                  f"the degenerate space.")',
         "            break",
+        # THE LOOP RAN OUT, every restart lowering the energy: the state
+        # the last one reached is asked no more (the energy is the
+        # criterion, and asking it is one more restart), so the warning
+        # below says what was tested -- never "still unstable" of a state
+        # no check has seen (F12's reviews, D12).
         "        else:",
         "            _MB_STABLE = False",
         "    except NotImplementedError as _exc:",
@@ -1038,8 +1042,9 @@ def _emit_stability_block(cfg: PySCFConfig, v: bool) -> List[str]:
         '    print(f"[molbuilder] stability: CHECKED, reached a stable '
         'solution after {_MB_STABILITY_ROUNDS} restart(s).")',
         "else:",
-        '    print(f"[molbuilder] stability: WARNING -- still internally '
-        'unstable after {_MB_STABILITY_MAX} restarts. "',
+        '    print(f"[molbuilder] stability: WARNING -- each of '
+        '{_MB_STABILITY_MAX} restarts still lowered the energy; the state '
+        'reached is not confirmed stable. "',
         '          "The results below may describe a saddle point, not '
         'the ground state. "',
         '          "Continuing because this is advice, not a veto -- but '
@@ -1592,6 +1597,9 @@ _SAVED_AS = {ROLE_INITIAL:    ("initial_geometry", "Initial geometry (input)"),
 
 #: ...and what the optimized geometry says while the relaxation goes on.
 _REACHED_AS = ("reached_geometry", "Geometry reached (PySCF, relaxing)")
+#: ...and once the relaxation stopped short of its criteria.
+_STOPPED_AS = ("stopped_geometry",
+               "Geometry reached (PySCF, the relaxation did not converge)")
 
 
 def emit_words() -> List[str]:
@@ -1601,8 +1609,8 @@ def emit_words() -> List[str]:
     used, so a release that words it otherwise changes no statement that
     computes (`execution/job-request.md` § 6).  It opens with the comment
     line of each geometry a PySCF deck may save (:data:`_SAVED_AS`,
-    :data:`_REACHED_AS`), whichever this one saves."""
-    said = [*_SAVED_AS.values(), _REACHED_AS]
+    :data:`_REACHED_AS`, :data:`_STOPPED_AS`), whichever this one saves."""
+    said = [*_SAVED_AS.values(), _REACHED_AS, _STOPPED_AS]
     return [f"{WORDS_NAME} = {{",
             *(f"    {key!r}: {words!r}," for key, words in said),
             "}", ""]
@@ -1616,6 +1624,19 @@ def emit_save_call(mol: str, role: str, names, indent: str = "") -> str:
     return (f'{indent}_save_structure({mol}, '
             f'_mb_outfile({run_file_expr(names, role)}), '
             f'{WORDS_NAME}[{_SAVED_AS[role][0]!r}])')
+
+
+def emit_title_by_verdict(converged: str, indent: str = "") -> str:
+    """The line that words the relaxed geometry's comment line by the
+    relaxation's verdict -- ``converged``, the script's name for it -- before
+    its save (:func:`emit_save_call`): optimized where geomeTRIC's criteria
+    were met, else where it stopped (:data:`_STOPPED_AS`; `engines/pyscf.md`
+    § 3, F12's review, D10).  An assignment into the words
+    (`script_input.WORDS_NAME`), which a launched stage's same-calculation
+    reading sets aside: the words are no part of what is computed."""
+    key = _SAVED_AS[PYSCF_OPTIMIZED][0]
+    return (f"{indent}{WORDS_NAME}[{key!r}] = ({WORDS_NAME}[{key!r}] if "
+            f"{converged} else {WORDS_NAME}[{_STOPPED_AS[0]!r}])")
 
 
 def emit_sidecar_constant(sidecar: dict) -> List[str]:

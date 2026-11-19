@@ -239,20 +239,25 @@ def pseudo_group() -> None:
                    "Au,C,H,S or Au1,Au2) -- SIESTA opens <label>.psml; "
                    "default: every species the directory's .psml files "
                    "are for.")
+@click.option("--xc-functional", default=None,
+              help="the calculation's XC functional -- flags pseudos "
+                   "generated in another family; vdW-DF compares none.")
 @click.option("--xc", "xc_authors", default=None,
-              help="expected XC authors (e.g. PBE) -- flags pseudos that "
-                   "don't match the calc's functional.")
+              help="expected XC authors (e.g. PBE) -- flags pseudos of "
+                   "other authors within the family --xc-functional names.")
 @click.option("--relativistic", default="scalar", show_default=True,
               type=click.Choice(["scalar", "spin-orbit", "no"]),
               help="expected relativistic treatment.")
-def cmd_pseudo_check(directory, elements, xc_authors, relativistic):
+def cmd_pseudo_check(directory, elements, xc_functional, xc_authors,
+                     relativistic):
     """Screen a directory of .psml files: coverage, XC + relativistic
     match, dead Kleinman-Bylander projectors (ekb=0, a defective
     pseudo), and generator-version consistency across the set.
 
     Exits non-zero on any ERROR-severity issue -- a missing or misnamed
-    pseudo, a dead projector, or an XC-family mismatch (the same ``ERROR_STATUSES``
-    the SIESTA preflight blocks on) -- so it can gate a workflow.
+    pseudo, a file SIESTA cannot open (the same ``ERROR_STATUSES`` the
+    SIESTA preflight blocks on) -- so it can gate a workflow; what a file
+    says of its physics is a warning.
     """
     from pathlib import Path as _P
     from molbuilder.pseudos import (labels_in_directory, check_coverage,
@@ -266,9 +271,10 @@ def cmd_pseudo_check(directory, elements, xc_authors, relativistic):
         if not els:
             raise click.ClickException(f"no parseable .psml files in {d}")
 
-    # The ONE table (`pseudos.expected_xc_family`).
+    # The family the calculation's functional asks (`pseudos.
+    # expected_xc_family`).
     from .pseudos import expected_xc_family
-    fam = expected_xc_family(xc_authors)
+    fam = expected_xc_family(xc_functional)
 
     entries = check_coverage(els, d, expected_xc_family=fam,
                              expected_xc_authors=xc_authors or None,

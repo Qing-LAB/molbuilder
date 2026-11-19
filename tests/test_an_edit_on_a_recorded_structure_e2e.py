@@ -95,23 +95,46 @@ def test_the_mark_rides_what_is_derived_after_it_and_voids_the_record(
     assert _recorded(back) is None
 
 
-@pytest.mark.parametrize("op, payload", [
-    ("vacuum",      [4.0, 4.0, 4.0]),
-    ("axis_kind",   ["periodic", "periodic", "isolated"]),
-    ("cell",        _CELL),
-    ("box_corner",  [-1.0, -1.0, -1.0]),
+def _its_own_box(s):
+    """The block the Cell page sends back when the person applies the box
+    the structure already holds -- each field as the page fills it, every
+    number rounded at the 6th decimal as the page rounds what it shows
+    (`modify/periodicity.js`, ``round``)."""
+    def shown(v):
+        return None if v is None else np.round(np.asarray(v, dtype=float),
+                                               6).tolist()
+    return {"cell": shown(s.cell),
+            "box_corner": (None if s.engine_offset is None
+                           else shown(-np.asarray(s.engine_offset))),
+            "axis_kind": list(s.axis_kind),
+            "vacuum": shown(s.vacuum)}
+
+
+@pytest.mark.parametrize("op, payload, marks", [
+    ("vacuum",      [4.0, 4.0, 4.0], True),
+    ("axis_kind",   ["periodic", "periodic", "isolated"], True),
+    ("cell",        _CELL, True),
+    ("box_corner",  [-1.0, -1.0, -1.0], True),
     ("block",       {"cell": _CELL, "box_corner": None,
                      "axis_kind": ["periodic", "periodic", "periodic"],
-                     "vacuum": None}),
-])
-def test_a_box_edit_marks_the_record_outdated(recorded, op, payload):
+                     "vacuum": None}, True),
+    # Apply with nothing changed: the run's record stands (F12's review,
+    # G-D1 -- it was marked, and a later blank charge dropped the recorded
+    # one).
+    ("block",       _its_own_box, False),
+], ids=["vacuum", "axis_kind", "cell", "box_corner", "block",
+        "block-unchanged"])
+def test_a_box_edit_marks_the_record_outdated(recorded, op, payload, marks):
     """Every op of the periodicity door, not just the geometry ones: mesh
     cutoff is a grid density over the CELL and the k-mesh samples the
     reciprocal cell, so changing the box invalidates the settings as much as
-    moving an atom does.  The door marks and the answer carries it."""
+    moving an atom does.  The door marks and the answer carries it -- when
+    the box moved: the same box applied again moves nothing."""
     was = _copy.deepcopy(recorded.info)
-    out, _notices = apply_edit(recorded, op, payload)
-    assert out.info["calculation"]["structure_modified"] is True
+    out, _notices = apply_edit(recorded, op, (payload(recorded)
+                                              if callable(payload)
+                                              else payload))
+    assert bool(out.info["calculation"].get("structure_modified")) is marks
     assert out.info["calculation"]["contract"] == was["calculation"]["contract"]
     assert out.info["calculation"].get("labels_modified") is None, \
         "a box edit claimed the labels moved"
@@ -120,8 +143,7 @@ def test_a_box_edit_marks_the_record_outdated(recorded, op, payload):
 
 def test_a_refused_box_edit_marks_nothing(recorded):
     """The mark rides the returned copy, and a refusal returns none --
-    `apply_edit` marks before its per-op branches, safe only because every
-    refusal raises.  Answering with the copy on a rejected edit would leave
+    every refusal raises before `apply_edit` marks.  Answering with the copy on a rejected edit would leave
     the pair a staleness flag for an edit that never happened."""
     was = _copy.deepcopy(recorded.info)
     with pytest.raises(ValueError):

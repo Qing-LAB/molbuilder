@@ -217,14 +217,29 @@ _PAD = {
     "ts_scf_dq_converge": 23, "ts_scf_dq_tolerance": 23, "ts_dq": 23,
 }
 
-#: Items SIESTA wants in scientific notation.  Formatting is spelling, so it
-#: is the engine's business and lives beside the rest of the spelling.
-_FMT = {"dm_tolerance": ".1e", "h_tolerance": ".1e",
-        "dm_energy_tolerance": ".1e",
-        "bias_voltage_v": ".4f", "negf_eq_pole_ev": ".4f",
-        "negf_neq_eta_ev": ".6f", "ts_elecs_eta_ev": ".6f",
-        "tbt_elecs_eta_ev": ".6f",
-        "tbt_contours_eta_ev": ".6f"}
+#: The notation each real is read in: a tolerance in scientific notation
+#: (``1.0e-04``), a bias or a broadening as a decimal (``0.00625``).
+#: Formatting is spelling, so it is the engine's business and lives beside
+#: the rest of the spelling -- and it is EXACT: the shortest spelling that
+#: reads back as the value set (`numpy.format_float_*`, ``unique``), so the
+#: deck computes what the person set and the record states, never a value
+#: rounded to a fixed number of places (F12's review: a 0.00625 V bias ran
+#: at 0.0063 V, a 5e-7 eV broadening as none).
+_FMT = {"dm_tolerance": "e", "h_tolerance": "e", "dm_energy_tolerance": "e",
+        "bias_voltage_v": "f", "negf_eq_pole_ev": "f",
+        "negf_neq_eta_ev": "f", "ts_elecs_eta_ev": "f",
+        "tbt_elecs_eta_ev": "f", "tbt_contours_eta_ev": "f"}
+
+
+def exact_real(value, notation: str = "f") -> str:
+    """``value`` spelled exactly in ``notation`` -- ``"e"`` scientific,
+    ``"f"`` decimal (:data:`_FMT`): every digit set, nothing rounded.  The
+    one spelling of a real in a SIESTA-family deck, this writer's and the
+    transport blocks' (`transport.deck`)."""
+    import numpy as np
+    spell = (np.format_float_scientific if notation == "e"
+             else np.format_float_positional)
+    return spell(float(value), unique=True, trim="0")
 
 
 
@@ -374,8 +389,9 @@ def line(derived: dict):
                     f"this value is {param.value!r}")
             return _keyed(param, key,
                           "[" + " ".join(str(v) for v in param.value) + "]")
-        fmt = _FMT.get(param.name)
-        shown = format(param.value, fmt) if fmt else f"{param.value}"
+        notation = _FMT.get(param.name)
+        shown = (exact_real(param.value, notation) if notation
+                 else f"{param.value}")
         unit = unit_word(param.name)
         return _keyed(param, key, f"{shown} {unit}" if unit else shown)
 

@@ -1322,7 +1322,7 @@ Two parsers do this today, PySCF's from two siblings:
 | primary | sibling | what the sibling supplies |
 |---|---|---|
 | `engines/pyscf.py` | `<base>.molwatch.log` | convergence targets, the SCF's criteria and what each SCF row measures, run state, the atoms the run holds (§ 5.3) — the log read through its one read, `molwatch_reader.read_log` (§ 4a), so the two files of one run state them alike |
-| `engines/pyscf.py` | `<base>.log`, PySCF's own (§ 5.5) | each step's SCF history |
+| `engines/pyscf.py` | `<base>.log`, PySCF's own (§ 5.5) | each step's SCF history — the log's run that ends at the step's own energy, never the run at its position: the log holds runs no step is, an open-shell deck's stability check before the first and the SCF every relaxation deck runs again at the relaxed geometry after the last, so the steps take the tightest stretch of runs matching them in order (2.77.5; F12's reviews, P-D2) |
 | `engines/siesta.py` | the run's own `<SystemLabel>.MD.nc` | coordinates + per-step energy, in full precision |
 
 **The rules, which are what keep this from becoming a second source of truth:**

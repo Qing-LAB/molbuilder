@@ -572,12 +572,35 @@ def _with_raman_phase(res, run, optical, phase: str):
 def _finished(deck, output):
     """THE ``finish`` VERB, by hand (`engines/vibration.md` § 5.5): the
     force-constant call ``deck`` ran (its output ``output``), read and
-    analysed, its result written beside the deck."""
+    analysed as the run's own finish analyses it -- with the `relax`
+    call's record from the run's index (:func:`_relaxation_of`) and the
+    optical calls' record, the Raman phase complete -- its result and its
+    optical data written beside the deck (:func:`_write_result`), the
+    run's root left alone.  The silent failure (F12's review, F-D1):
+    analysed without either, a run that relaxed was written "not
+    requested", its remedy "untick already_relaxed" on a box already
+    unticked, and a run that asked Raman written as one that did not."""
     run = read_force_constant_run(deck, output)
-    res = result_of(run)
-    out = Path(deck).parent / compose(run.label, ROLE_SPECTRA)
-    dump_spectra_json(res, out)
+    here = _here(deck)
+    index = _rp.read_index(here.index)
+    res, out = _write_result(here, index, run,
+                             result_of(run, **_relaxation_of(index)),
+                             Path(deck).parent)
     return run, res, out
+
+
+def _write_result(here: "_CallHere", index: dict, run, res, into: Path):
+    """THE RESULT, FINAL, written into ``into`` -- the run's root for the
+    run's own finish, the force-constant call's folder for the by-hand verb
+    -- with the optical calls' record beside it (:func:`_write_optical`) and
+    the Raman phase complete (§ 5.11 § 8): the one step both write by, so
+    the result and the optical data it cites lie side by side.
+    ``(result, its path)``."""
+    optical = _write_optical(here, index, res, into)
+    res = _with_raman_phase(res, run, optical, PHASE_COMPLETE)
+    out = into / compose(here.label, ROLE_SPECTRA)
+    dump_spectra_json(res, out)
+    return res, out
 
 
 # --------------------------------------------------------------------- #
@@ -1096,18 +1119,19 @@ def _optical_payload(here: _CallHere, index: dict, res: SpectraResults
             "spin": list(spins), "frames": frames}
 
 
-def _write_optical(here: _CallHere, index: dict, res: SpectraResults
-                   ) -> Optional[dict]:
+def _write_optical(here: _CallHere, index: dict, res: SpectraResults,
+                   into: Path) -> Optional[dict]:
     """THE OPTICAL CALLS' RECORD, rewritten (§ 5.11 § 8): ``<label>.
-    optical.nc`` at the run's root (`spectra.optical_data`), and the
-    result's citation of it (`spectra.results.checked_optical`) -- the file
-    and its sha256, the direction, ``δ``, the selection, each frame's
-    state -- or ``None`` where the run planned no optical call."""
+    optical.nc`` in ``into``, beside the result that cites it
+    (`spectra.optical_data`), and the result's citation of it
+    (`spectra.results.checked_optical`) -- the file and its sha256, the
+    direction, ``δ``, the selection, each frame's state -- or ``None``
+    where the run planned no optical call."""
     payload = _optical_payload(here, index, res)
     if payload is None:
         return None
     path = write_optical_data(
-        payload, here.run_dir / compose(here.label, ROLE_OPTICAL))
+        payload, into / compose(here.label, ROLE_OPTICAL))
     frames = payload["frames"]
     sides: dict = {}
     for f in frames:
@@ -1146,15 +1170,20 @@ def _force_constants(here: _CallHere, index: dict
     if fc_out is None:
         return None
     run = read_force_constant_run(fc_dir / here.deck.name, fc_out)
-    # ITS RELAXATION, and the run that computed it -- this one, or the run
-    # its `relax` call was taken over from, its stage read off the record
-    # (`runrecord.RunRef.stage`).
+    return run, result_of(run, **_relaxation_of(index))
+
+
+def _relaxation_of(index: dict) -> dict:
+    """THE RUN'S RELAXATION, as :func:`result_of` takes it: the `relax`
+    call's record from the run's ``index``, and the run that computed it --
+    this one, or the run its `relax` call was taken over from, its stage
+    read off the record (`runrecord.RunRef.stage`).  What the run's finish
+    and the by-hand ``finish`` verb both analyse with."""
     relax = _rp.entry_of(index, Call(RELAX, RELAX).rel) or {}
     origin = relax.get("taken_from")
-    return run, result_of(
-        run, relaxation=(relax.get("facts") or {}).get("relaxation"),
-        relaxation_stage=(command_stage(RunRef.read(origin).stage)
-                          if origin else None))
+    return {"relaxation": (relax.get("facts") or {}).get("relaxation"),
+            "relaxation_stage": (command_stage(RunRef.read(origin).stage)
+                                 if origin else None)}
 
 
 def finish_run(deck) -> None:
@@ -1176,12 +1205,9 @@ def finish_run(deck) -> None:
             "-- no result to write")
         return
     run, res = got
-    out = here.run_dir / compose(here.label, ROLE_SPECTRA)
-    # THE OPTICAL CALLS' RECORD, final, and its citation: the phase complete
-    # once every call has ended (§ 5.11 § 8).
-    optical = _write_optical(here, index, res)
-    dump_spectra_json(_with_raman_phase(res, run, optical, PHASE_COMPLETE),
-                      out)
+    # THE RESULT AND THE OPTICAL CALLS' RECORD, final, at the run's root:
+    # the phase complete once every call has ended (§ 5.11 § 8).
+    _res, out = _write_result(here, index, run, res, here.run_dir)
     say("INFO", f"vibration: the finish wrote {out.name}")
 
 
@@ -1248,8 +1274,8 @@ def record_call(deck, output, exit_code: int) -> None:
                 planned = _plan_optical(here, run, res, index)
                 # THE OPTICAL CALLS' RECORD, every frame pending, and the
                 # result's citation of it: the Raman phase running (§ 8).
-                optical = (_write_optical(here, index, res) if planned
-                           else None)
+                optical = (_write_optical(here, index, res, here.run_dir)
+                           if planned else None)
                 dump_spectra_json(_with_raman_phase(res, run, optical,
                                                     PHASE_RUNNING), out)
                 _rp.note(index, call.rel, modes=len(res.modes),
@@ -1272,7 +1298,7 @@ def record_call(deck, output, exit_code: int) -> None:
                     f"{force_constants_call(here.run_dir)} is not "
                     f"done: the optical calls' record has no reference "
                     f"geometry to stand on")
-            _write_optical(here, index, got[1])
+            _write_optical(here, index, got[1], here.run_dir)
         except Exception as exc:                        # noqa: BLE001
             _record_failed("the optical calls' record was not written", exc)
     if failed is not None:

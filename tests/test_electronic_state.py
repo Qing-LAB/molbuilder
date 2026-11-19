@@ -230,6 +230,46 @@ def test_a_charged_molecule_is_corrected_and_a_charged_cell_is_not(
     assert "Makov" not in fdf and not script(dest, stage).exists()
 
 
+def test_a_force_constant_runs_correction_reads_its_reference_geometry(
+        prepared, real_h2_sweep, tmp_path):
+    """`engines/siesta.md` § 4: the correction script prep writes beside a
+    charged deck reports the structure's own energy.  Beside a vibration's
+    force-constant deck that is the run's reference geometry -- its first
+    step -- never its last, a displaced geometry.  The script prep wrote for
+    a charged formate's force constants, run as a person runs it on a real
+    force-constant output (the session's H2 sweep), beside the run's bundle.
+    The silent failure (F12's review, D6): the displaced geometry's energy
+    printed as the total, raw and corrected."""
+    import shutil
+    import subprocess
+    import sys
+    from molbuilder.parse import parse
+    from molbuilder.runfiles import (MAKOV_PAYNE_SCRIPT, MONITOR_BUNDLE,
+                                     ROLE_SIESTA_OUT)
+    from molbuilder.runs import run_of
+    from molbuilder.siesta.vibration_phases import FC, Call
+    dest, _stage, _fdf = prepared(
+        FORMATE(), "siesta", calculation="vibration",
+        template=dict(net_charge=-1, already_relaxed=True))
+    script = next(s for s in dest.rglob(MAKOV_PAYNE_SCRIPT)
+                  if Call(FC, FC).rel in s.parent.parts)
+    call = real_h2_sweep.call("freq", FC)
+    out = run_of(call).file(ROLE_SIESTA_OUT)
+    shutil.copy(script, tmp_path / MAKOV_PAYNE_SCRIPT)
+    shutil.copy(next(real_h2_sweep.attempt("freq").rglob(MONITOR_BUNDLE)),
+                tmp_path / MONITOR_BUNDLE)
+    said = subprocess.run(
+        [sys.executable, MAKOV_PAYNE_SCRIPT, "--out", str(out)],
+        cwd=tmp_path, capture_output=True, text=True, timeout=120)
+    assert said.returncode == 0, said.stderr
+    raw = float(re.search(r"E_total \(raw, eV\)\s*=\s*(\S+)",
+                          said.stdout).group(1))
+    frames = parse(out).frames
+    assert len(frames) > 1
+    assert abs(raw - frames[0].energy) < 1e-5, (raw, frames[0].energy,
+                                                frames[-1].energy)
+
+
 def _cluster(el, n):
     """``n`` atoms of ``el`` on a line, 2.6 Å apart -- composition is what
     the detection reads; the geometry only has to be a molecule."""

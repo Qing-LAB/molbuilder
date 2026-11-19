@@ -198,6 +198,47 @@ def test_the_trajectory_beside_a_run_s_progress_log_and_the_atom_index_door_read
     assert atom_index_map(log).stated_by == str(log)
 
 
+@pytest.mark.parametrize("run, optimized", [
+    ("real_h2_pyscf", True),
+    ("real_stopped_h2_pyscf", False),
+], ids=["converged", "stopped short, proceeding"])
+def test_the_saved_geometry_is_called_optimized_only_when_it_is(
+        real_h2_pyscf, real_stopped_h2_pyscf, run, optimized):
+    """`engines/pyscf.md` § 3: the geometry a relaxation leaves is saved and
+    says what it is on its comment line -- optimized where geomeTRIC's
+    criteria were met, else where the relaxation stopped.  The silent
+    failure (F12's review, D10): a relaxation stopped short under
+    `on_nonconvergence = proceed` (or at its wall) saved its last geometry
+    titled "Optimized geometry"."""
+    from molbuilder.runfiles import PYSCF_OPTIMIZED
+    from molbuilder.runs import run_of
+    from molbuilder.workingcopy_structure import StructureCodec
+    real = {"real_h2_pyscf": real_h2_pyscf,
+            "real_stopped_h2_pyscf": real_stopped_h2_pyscf}[run]
+    saved = run_of(real.attempt("coarse")).on_label(PYSCF_OPTIMIZED)
+    title = StructureCodec().load(saved).title
+    assert ("Optimized" in title) is optimized, title
+
+
+def test_each_frame_is_given_its_own_steps_scf(real_open_shell_h2_pyscf):
+    """`model/parse.md` § 5a: PySCF's own log gives each step of the
+    trajectory its SCF history -- the run that ended at that step's own
+    energy.  An open-shell relaxation logs its stability check's SCF before
+    geomeTRIC's first evaluation.  The silent failure (F12's review, P-D2):
+    the log's runs paired with the frames by position, every frame shown
+    the SCF of the evaluation before it, the first the stability check's."""
+    from molbuilder.parse import parse
+    from molbuilder.runfiles import ROLE_GEOM_TRAJ
+    from molbuilder.runs import run_of
+    run = run_of(real_open_shell_h2_pyscf.attempt("coarse"))
+    frames = parse(run.file(ROLE_GEOM_TRAJ)).frames
+    assert len(frames) > 1, frames
+    for f in frames:
+        assert f.scf_history, f.step_index
+        assert abs(f.scf_history[-1]["energy"] - f.energy) < 1e-4, (
+            f.step_index, f.scf_history[-1]["energy"], f.energy)
+
+
 @pytest.mark.parametrize("role, keys, alone", [
     (ROLE_MOLWATCH, "molwatch_",
      lambda r: (r.run_state, r.error_message) == ("unknown", None)

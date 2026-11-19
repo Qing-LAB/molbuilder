@@ -156,17 +156,27 @@ def effective_L(cell: List[List[float]]) -> float:
     return V ** (1.0 / 3.0)
 
 
+#: THE STEP A DECK'S STRUCTURE IS where no phase says otherwise: its last --
+#: a relaxation's result, a single point's one step.  A vibration phase
+#: states its own (`vibration_phases.PhaseRule.energy_step`).
+LAST_STEP = -1
+
+
 def render_correction_script(
     system_label: str,
     q: int,
     epsilon_r: float = 1.0,
     *,
     stage: str,
+    energy_step: int = LAST_STEP,
 ) -> str:
     """Generate a self-contained Python post-process script that
     reads the run's output (``stage`` the run's stage token), extracts the
-    converged total energy, computes the Makov-Payne correction for the
-    actual cell SIESTA used, and prints the corrected value.
+    converged total energy -- of the step ``energy_step`` names, the
+    structure's own: a relaxation's last, a force-constant run's first, its
+    reference geometry before the displaced ones -- computes the
+    Makov-Payne correction for the actual cell SIESTA used, and prints the
+    corrected value.
 
     The script takes ``--epsilon`` on the command line so a user
     re-running with implicit solvation can override the default
@@ -266,6 +276,10 @@ SYSTEM_LABEL = "{system_label}"
 # run's files (`runfiles.RunNames`).
 STAGE        = "{stage}"
 NET_CHARGE   = {q}
+# THE STEP WHOSE ENERGY IS THE STRUCTURE'S: -1 a run's last, 0 a
+# force-constant run's first -- its reference geometry, before the displaced
+# ones.
+ENERGY_STEP  = {energy_step}
 DEFAULT_EPS  = {epsilon_r!r}
 MADELUNG     = {MADELUNG_CUBIC!r}   # cubic; override if non-cubic
 HARTREE_EV   = {HARTREE_EV!r}
@@ -289,14 +303,14 @@ def _bundle():
 def read_siesta_output(path):
     """``(E_KS in eV, the final cell's rows in Angstrom, SIESTA's own
     Emadel in eV or None)`` -- the output read by SIESTA's one reading pass:
-    the last step's energy, the last cell the output printed, and SIESTA's
-    monopole term."""
+    the structure's own step's energy (``ENERGY_STEP``), the last cell the
+    output printed, and SIESTA's monopole term."""
     _bundle()
     from siesta_reader import read_output
     reading = read_output(path).finish()
     steps = [st for st in reading.get("steps") or []
              if st.get("energy") is not None]
-    return ((steps[-1]["energy"] if steps else None),
+    return ((steps[ENERGY_STEP]["energy"] if steps else None),
             reading.get("lattice"),
             (reading.get("runtime_info") or {{}}).get("emadel_ev"))
 
@@ -415,6 +429,7 @@ def emit_correction_script(
     epsilon_r: float = 1.0,
     *,
     names,
+    energy_step: int = LAST_STEP,
     plan=None,
 ) -> Optional[Path]:
     """Write ``makov_payne_correction.py`` next to the FDF -- or put it in
@@ -436,5 +451,6 @@ def emit_correction_script(
                             render_correction_script(
                                 system_label=system_label, q=q,
                                 epsilon_r=epsilon_r,
-                                stage=names.stage),
+                                stage=names.stage,
+                                energy_step=energy_step),
                             plan=plan)

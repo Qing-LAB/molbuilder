@@ -160,6 +160,29 @@ SOLVENTS = {
 }
 
 
+def solvent_of(cfg) -> str:
+    """THE SOLVENT'S NAME, read once for every reader -- the decks' lines,
+    their headers, the Methods text and the checks: the person's
+    ``solvent`` stripped and lower-cased, ``""`` for the gas phase.  One
+    reading, so the check that refuses an unknown name and the writer that
+    uses the known one cannot disagree (F12's review, round 2 P1: ``' water'``
+    passed the check and crashed prep; round 1 D9: ``Water`` written with
+    ``eps=?`` in the header)."""
+    return str(getattr(cfg, "solvent", "") or "").strip().lower()
+
+
+def solvent_header_lines(cfg) -> List[str]:
+    """The solvent's line in a deck's header, ONE spelling for both decks:
+    the name (:func:`solvent_of`), the model and its dielectric constant
+    from :data:`SOLVENTS` -- ``[]`` for the gas phase.  An unknown name
+    never reaches it: the check refuses it first, by the same reading."""
+    name = solvent_of(cfg)
+    if not name:
+        return []
+    return [f"Solvent   : {name}, {cfg.solvent_method} "
+            f"(dielectric constant {SOLVENTS[name]:g})"]
+
+
 def emit_solvent_lines(cfg) -> List[str]:
     """The PCM decoration, ONE spelling for both decks.
 
@@ -173,7 +196,7 @@ def emit_solvent_lines(cfg) -> List[str]:
     Empty ``solvent`` -> the gas phase, said in one comment where the
     decoration would be (`engines/template.md` § 6.6 obligation 4).
     """
-    solvent = str(getattr(cfg, "solvent", "") or "").lower()
+    solvent = solvent_of(cfg)
     if not solvent:
         from ..script_emit import not_set_line, parameter
         return [not_set_line(parameter("solvent", "pyscf"), keyword="solvent")]

@@ -1762,7 +1762,10 @@ and both ride the pair like everything in the store.
 **WHO DECIDES IT, IN ONE LANGUAGE** *(2026-09-21)*.  The edit itself
 decides, and every geometry and cell edit runs in **Python**:
 `Structure.mark_contract_outdated()` is called at each edit exit in
-`modify.py` and inside `periodicity_gate.apply_edit`, and the answer
+`modify.py` and inside `periodicity_gate.apply_edit` -- there, only when the
+box the edit leaves differs from the one it was given (cell, origin, axis
+kinds, vacuum): an Apply that changed nothing keeps the run's record, its
+charge and spin among it (2.77.5; F12's review, G-D1) -- and the answer
 carries the marked `info` back inside the answer's `structure`, the one
 shape every door answers with (`/api/modify/<name>` and
 `/api/structure/periodicity` alike).  The browser **adopts** that answer and never

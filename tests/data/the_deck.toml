@@ -96,6 +96,33 @@ stage_strategy = ""
 template = { mixing_weight = 0.1, pulay_history = 6, dm_tolerance = 0.0001, dm_energy_tolerance = 0.001, scf_energy_converge = true }
 deck_reads = { mixing_weight = 0.1, pulay_history = 6, dm_tolerance = 0.0001, dm_energy_tolerance_ev = 0.001, scf_energy_converge = true }
 
+# A VALUE IS WRITTEN AS IT WAS SET, never rounded to a fixed number of
+# places: the deck computed something else -- a 0.00625 V bias at 0.0063 V,
+# a 5e-7 eV broadening as none, 1.25e-4 as 1.3e-04 (F12's review, D2).
+[[case]]
+name = "a value is written as it was set, never rounded"
+stage_strategy = ""
+template = { dm_tolerance = 0.000125 }
+deck_reads = { dm_tolerance = 0.000125 }
+
+# "VERBOSE INLINE COMMENTS" OFF WRITES A BARE DECK, its values kept: the
+# framework's notes go with the engine's own -- the setting reached the
+# engine's blocks alone, and every note was written (F12's review, D4).  The
+# note is the mesh cutoff's help as the catalogue words it; its twin below
+# shows it written where the comments are on.
+[[case]]
+name = "verbose comments off writes no note, the framework's included, and keeps the values"
+stage_strategy = ""
+template = { verbose_comments = false }
+deck_lacks = ["# Real-space integration grid (Ry)."]
+deck_says = { MeshCutoff = "300.0 Ry" }
+
+[[case]]
+name = "...on, the framework's note is written"
+stage_strategy = ""
+template = { verbose_comments = true }
+deck = ["# Real-space integration grid (Ry)."]
+
 # One k-point has nothing to parallelise over; several do, on ScaLAPACK.
 [[case]]
 name = "a Gamma-only calculation's diagonaliser is not parallelised over k-points"
@@ -279,6 +306,16 @@ name = "a solvent stated puts the deck in PCM, with its permittivity"
 engine = "pyscf"
 template = { solvent = "water" }
 deck = ["from pyscf.solvent import pcm", "mf = mf.PCM()", "mf.with_solvent.eps = 78.3553"]
+
+# THE SOLVENT AS TYPED IS THE SOLVENT NAMED, a capital and a space read as
+# the check reads them: the check passed " Water" and the writer refused it,
+# a traceback at prep; "Water" was written with `eps=?` in the header (F12's
+# reviews, P1 and D9).
+[[case]]
+name = "a solvent typed with a capital and a space is the solvent named"
+engine = "pyscf"
+template = { solvent = " Water" }
+deck = ["mf.with_solvent.eps = 78.3553", "Solvent : water, IEF-PCM (dielectric constant 78.3553)"]
 
 [[case]]
 name = "density fitting turned off writes no density fit"

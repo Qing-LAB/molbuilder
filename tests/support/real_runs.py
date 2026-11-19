@@ -46,6 +46,9 @@ Each is the session fixture of its name in `tests/conftest.py`:
 * :func:`pyscf` (``real_h2_pyscf``) -- an H2 optimization on PySCF,
   stretched so it moves: `coarse` launched and waited on -- labelled ``H2``,
   or, for a module whose subject is the label, the one it gives;
+  ``real_open_shell_h2_pyscf`` the same run unrestricted, its stability
+  check logged before the optimization's own steps, and
+  ``real_stopped_h2_pyscf`` stopped after one step, proceeding;
 * :func:`water` (``real_water_vibration``), :func:`water_held`
   (``real_water_held``), :func:`water_probed` (``real_water_probed``),
   :func:`water_linear` (``real_water_linear``) -- the vibration kind on PySCF,
@@ -885,15 +888,15 @@ def copy_of(run: RealRun, name: str, alter) -> RealRun:
     return _MADE[bundle]
 
 
-def pyscf(tmp_path_factory, label: str = "H2") -> RealRun:
+def pyscf(tmp_path_factory, label: str = "H2", **settings) -> RealRun:
     """An H2 optimization on PySCF under ``label`` -- its run
     `01_coarse/run-0/` (:meth:`RealRun.attempt`) -- one thread, the bond
-    stretched to 0.80 A so the optimization takes steps: `coarse` prepared,
-    launched and waited on.  THE ONE MAKER of it: each module that reads a
-    finished PySCF run reads the shared one, labelled ``H2``
-    (`process/testing.md` tier 3); a module whose subject is the label makes
-    its own under the label it needs."""
-    from support.road import H2
+    stretched to 0.80 A so the optimization takes steps, ``settings`` the
+    person's in its template: `coarse` prepared, launched and waited on.
+    THE ONE MAKER of it: each module that reads a finished PySCF run reads
+    the shared one, labelled ``H2`` (`process/testing.md` tier 3); a run
+    whose subject is a label or a setting is made under its own label."""
+    from support.road import H2, set_by_the_person
     stretched = {**H2, "positions": [[5.0, 5.0, 5.0], [5.0, 5.0, 5.80]]}
     with on_the_road(tmp_path_factory, f"pyscf-{label}",
                      engine="pyscf") as tree:
@@ -901,6 +904,8 @@ def pyscf(tmp_path_factory, label: str = "H2") -> RealRun:
                            structure=structure_saved(tree, stretched),
                            name=label, calculation="optimization",
                            engine="pyscf", execution={"threads": 1})
+        if settings:
+            set_by_the_person(bundle, settings)
         run = RealRun(tree=tree, bundle=bundle)
         taken(run, "prep coarse", "prep", "task", "--group", "1",
               "--target", "this")

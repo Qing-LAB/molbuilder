@@ -380,22 +380,30 @@ class TestSiestaPseudoCoverageInPreflight:
         assert h_issues[0].severity == "error"
         assert "no .psml file for H" in h_issues[0].message
 
-    def test_xc_family_mismatch_emits_error(self, isolated_projects_root):
-        """The pseudos are GGA and the calc asks LDA -> an XC-FAMILY mismatch,
-        which is never physically correct (silently wrong bond lengths).
-        ERROR per element so it BLOCKS emission."""
+    @pytest.mark.parametrize("xc_functional, xc_authors, mismatch", [
+        ("LDA", "CA", True),
+        ("VDW", "DRSLL", False),
+    ], ids=["an LDA run on GGA pseudos", "a vdW-DF run on GGA pseudos"])
+    def test_the_xc_family_is_the_runs_own_functional(
+            self, isolated_projects_root, xc_functional, xc_authors,
+            mismatch):
+        """`science/pseudopotentials.md` C2: a pseudopotential generated in
+        another XC family than the calculation's own functional -- an LDA run
+        on GGA pseudos -- is an XC-family mismatch, said per element and
+        never a stop; a vdW-DF run compares no family, no pseudopotential
+        being generated for it, and so no authors either.  The silent
+        failures (F12's reviews, D1): every vdW-DF run refused as a mismatch,
+        an offered choice never preparable; then every species of it told of
+        a "minor" author difference, DRSLL against PBE."""
         lib = isolated_projects_root
         for el in ("O", "H"):
             shutil.copy(PSML_DIR / f"{el}.psml", lib)
-        from molbuilder.config.siesta import SiestaConfig
-        from molbuilder.validation import validate
         issues = validate(self._water(),
-                           SiestaConfig(psml_lib=str(lib), xc_authors="CA"),
-                           calculation="optimization")
-        mismatch_issues = [i for i in issues
-                           if "psml" in i.where.lower()
-                           and i.severity == "error"
-                           and "LDA" in i.message]
-        assert len(mismatch_issues) == 2   # O + H both flagged, blocking
-        assert all("silently wrong" in i.message
-                   for i in mismatch_issues)
+                          SiestaConfig(psml_lib=str(lib),
+                                       xc_functional=xc_functional,
+                                       xc_authors=xc_authors),
+                          calculation="optimization")
+        said = [i for i in issues if i.where.startswith("config.psml_lib")]
+        assert len(said) == (2 if mismatch else 0), said
+        assert all("XC-FAMILY" in i.message for i in said), said
+        assert not [i for i in issues if i.severity == "error"], issues

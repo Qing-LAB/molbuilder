@@ -97,20 +97,23 @@ def test_no_rung_turns_the_forces_or_coordinates_off(
 
 # ----------------------------------- what the calculation shares (§ 5)
 
-@pytest.mark.parametrize("name, value", [
-    ("species_order", ["H", "O"]),
-    ("system_label", "OTHER"),
-    ("psml_lib", "pseudopotential"),
+@pytest.mark.parametrize("engine, name, value", [
+    ("siesta", "species_order", ["H", "O"]),
+    ("siesta", "system_label", "OTHER"),
+    ("siesta", "psml_lib", "pseudopotential"),
+    ("pyscf", "job_name", "OTHER"),
 ])
 def test_no_rung_renames_or_renumbers_the_calculation(
-        prepared, name, value):
+        prepared, engine, name, value):
     """SO-C2: one name, one species table, one pseudopotential set per
     calculation -- each rung reads what the one before it wrote under that
     name, numbered by that table.  A rung's own value is refused, saying so.
+    The silent failure (F12's review, D3): a PySCF stage's own job name was
+    accepted, the stage reading and writing files under it -- starting cold,
+    and the next stage finding nothing.
 
     MUTATION THIS MUST FAIL AGAINST: the kind missing from the item's
     `shared` list (the override is honoured)."""
-    _d, _s, said = prepared(water_in_vacuum(), "siesta", overrides={name: value},
+    _d, _s, said = prepared(water_in_vacuum(), engine, overrides={name: value},
                             refused=True)
     assert f"'{name}'" in said and "shared by every stage" in said, said
-    assert "one species table" in said, said

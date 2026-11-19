@@ -416,8 +416,8 @@ def parse_psml_header(path: Path) -> PsmlInfo:
     # <semilocal-potentials> <slps l=".."> block, from which SIESTA
     # rebuilds the KB projector at read time.  Standard, PseudoDojo-
     # validated pseudos for I, Xe, Rb, Ba do exactly this for their p
-    # channel -- flagging them as "dead" would be a FALSE POSITIVE that
-    # ERROR-blocks those common elements.
+    # channel -- flagging them as "dead" would be a FALSE POSITIVE warned
+    # on those common elements.
     #
     # A channel is genuinely null ONLY if EVERY <proj> for that l is
     # ~zero AND there is NO <slps l> semilocal potential for it (nothing
@@ -577,54 +577,38 @@ class CoverageEntry:
     path:     Optional[Path] = None
 
 
-#: The `CoverageEntry.status` values that BLOCK — a run with any of these
-#: cannot be correct: a pseudo is absent (SIESTA won't start), a valence
-#: channel is physically missing (wrong Hamiltonian), the XC *family* is wrong
-#: (silently-wrong energies), or a valence channel is present and states a
-#: strength of ZERO (``semilocal_only`` — the same silently-wrong-energies
-#: case, user ruling 2026-09-03 after PseudoDojo v0.5's sulfur ran with no
-#: p channel).  This is the SINGLE source of truth for "which statuses are
-#: ERROR"; ``misnamed`` is one (the file for a species exists and is healthy
-#: but is not called `<label>.psml`, so SIESTA never opens it -- a certain
-#: start-up failure, said at configuration time -- or `<label>.psml`
-#: declares another element, which SIESTA would read for it).
-#: The SIESTA preflight
-#: (``validation.siesta._check_siesta_pseudo_coverage``) and the CLI
-#: (``cli.cmd_pseudo_check``) both consume it so the two surfaces cannot
-#: drift.
-#: Everything else — ``xc_mismatch`` (same-family author diff),
-#: ``relativistic_mismatch``, ``generator_mismatch``, ``parse_warning`` — is
-#: advisory (WARN); ``ok`` is a silent pass.
-ERROR_STATUSES = frozenset({"missing", "misnamed", "dead_projector",
-                            "xc_family_mismatch", "semilocal_only"})
+#: WHAT STOPS PREP: the `CoverageEntry.status` values of a file SIESTA
+#: cannot open for a species -- ``missing`` (SIESTA won't start), or
+#: ``misnamed`` (the file for a species exists but is not called
+#: `<label>.psml`, so SIESTA never opens it, or `<label>.psml` declares
+#: another element, which SIESTA would read for it).  Every other status is
+#: what a file says of its physics or its provenance -- ``dead_projector``,
+#: ``semilocal_only``, ``partial_projectors``, ``xc_family_mismatch``,
+#: ``xc_mismatch``, ``relativistic_mismatch``, ``generator_mismatch``,
+#: ``parse_warning`` -- said as a warning, loudly, and the calculation is
+#: the person's (the user, 2026-11-18: "None of these things should stop
+#: any calculation being constructed or being run.  It is totally user's
+#: decision"); ``ok`` is a silent pass.  The one statement of it: the SIESTA
+#: preflight (``validation.siesta._check_siesta_pseudo_coverage``) and the
+#: CLI (``cli.cmd_pseudo_check``) both read it, so the two cannot drift.
+ERROR_STATUSES = frozenset({"missing", "misnamed"})
 
 
-#: XC authors -> the FAMILY a pseudopotential must belong to.
-#:
-#: One home, for the same reason ``ERROR_STATUSES`` has one: it decides an
-#: ERROR-severity verdict (``xc_family_mismatch`` — *"never physically
-#: correct, energies/forces silently wrong"*), so two copies of it are two
-#: opinions about whether a run may proceed.
-_XC_FAMILIES = {
-    "GGA": ("pbe", "pbesol", "blyp", "revpbe", "rpbe"),
-    "LDA": ("ca", "pz", "pw"),
-    "VDW": ("drsll", "lmkll"),
-}
+#: THE FAMILIES A PSEUDOPOTENTIAL FILE CAN DECLARE -- those its libxc ids
+#: give (:data:`_LIBXC_MAP`).
+_PSML_FAMILIES = frozenset(family for family, _authors in _LIBXC_MAP.values())
 
 
-def expected_xc_family(xc_authors: Optional[str]) -> Optional[str]:
-    """The XC family ``xc_authors`` implies, or ``None`` if it names none.
-
-    ``None`` is a real answer and not a failure: an unrecognised or empty
-    authors string means *do not compare families*, which is what lets a
-    curated set through rather than blocking on a name this table has not been
-    taught yet.
-    """
-    a = (xc_authors or "").strip().lower()
-    for family, authors in _XC_FAMILIES.items():
-        if a in authors:
-            return family
-    return None
+def expected_xc_family(xc_functional: Optional[str]) -> Optional[str]:
+    """The XC family a pseudopotential must be generated in for a run of
+    ``xc_functional`` -- the calculation's own field, the family its deck
+    writes as ``XC.functional`` (`science/pseudopotentials.md` C2) -- when a
+    pseudopotential file can declare it (:data:`_PSML_FAMILIES`: LDA, GGA).
+    ``None`` -- families not compared -- for a family no file declares (a
+    vdW-DF run, ``VDW``: no pseudopotential is generated for it) or none
+    given."""
+    family = (xc_functional or "").strip().upper()
+    return family if family in _PSML_FAMILIES else None
 
 
 def check_coverage(labels: Iterable[str],
@@ -654,8 +638,8 @@ def check_coverage(labels: Iterable[str],
         ``<label>.psml`` declares another element, which SIESTA would read
         for it.
       * ``"xc_family_mismatch"`` -- pseudo's XC FAMILY differs from the
-        calc's (e.g. an LDA pseudo in a GGA run).  ERROR-severity: never
-        physically correct, energies/forces silently wrong.
+        calc's (e.g. an LDA pseudo in a GGA run).  WARN-severity: energies
+        and forces silently wrong, the calculation the person's.
       * ``"xc_mismatch"`` -- same family, different authors (PBE vs
         PBEsol); WARN-severity, a minor ~1-2 kcal/mol difference.
       * ``"relativistic_mismatch"`` -- e.g. user picked an SR pseudo
@@ -747,10 +731,10 @@ def check_coverage(labels: Iterable[str],
             ))
             continue
         read[key] = info
-        # Value validation: a defective pseudo with a dead KB channel.
-        # ERROR-severity -- this is the failure that masqueraded as a
-        # propor crash; it also silently corrupts the physics for that
-        # element's bonding, so it must block BEFORE the run.
+        # Value validation: a defective pseudo with a dead KB channel --
+        # the failure that masqueraded as a propor crash; it also silently
+        # corrupts the physics for that element's bonding, so it is said
+        # BEFORE the run (a warning: the run is the person's).
         if info.null_channels:
             chans = "/".join(info.null_channels)
             out.append(CoverageEntry(
@@ -774,14 +758,15 @@ def check_coverage(labels: Iterable[str],
         # projectors, S's valence is 3s2 3p4, and the run was wrong until
         # the v0.4 file replaced it (2026-06).
         #
-        # ERROR (user ruling, 2026-09-03).  The file states something FALSE
-        # about a channel that carries valence electrons -- sulfur's p holds
-        # four of its six -- and nothing in the file says to read the
-        # semilocal block instead.  So a reader doing the normal thing is
-        # reading the file correctly and gets wrong physics with no crash to
-        # notice: the `xc_family_mismatch` case, and it blocks for the same
-        # reason.  A user whose reader consumes the semilocal form points
-        # `psml_lib` at a set that does not carry the claim (v0.4.1).
+        # The file states something FALSE about a channel that carries
+        # valence electrons -- sulfur's p holds four of its six -- and
+        # nothing in the file says to read the semilocal block instead.  So
+        # a reader doing the normal thing is reading the file correctly and
+        # gets wrong physics with no crash to notice: the
+        # `xc_family_mismatch` case, said loudly as it is -- a warning, the
+        # run the person's (the user, 2026-11-18).  A user whose reader
+        # consumes the semilocal form points `psml_lib` at a set that does
+        # not carry the claim (v0.4.1).
         if info.semilocal_only_channels:
             chans = "/".join(info.semilocal_only_channels)
             out.append(CoverageEntry(
@@ -834,8 +819,8 @@ def check_coverage(labels: Iterable[str],
             # physically correct -- the pseudo was generated with a
             # different exchange-correlation than the calc uses, so the
             # frozen core is inconsistent and energies/forces are silently
-            # wrong.  Distinct status so the caller can BLOCK (error), unlike
-            # the same-family author mismatch below (a minor warn).
+            # wrong.  A status of its own, said louder than the same-family
+            # author mismatch below (a minor difference).
             out.append(CoverageEntry(
                 element=key, status="xc_family_mismatch",
                 message=(f"{opened.name} was generated for "
@@ -848,9 +833,12 @@ def check_coverage(labels: Iterable[str],
                 path=info.path,
             ))
             continue
-        if expected_xc_authors and info.xc_authors != "unknown" \
+        if expected_xc_family and expected_xc_authors \
+                and info.xc_authors != "unknown" \
                 and info.xc_authors.lower() != expected_xc_authors.lower():
-            # Same family but different authors (PBE vs PBEsol).
+            # Same family but different authors (PBE vs PBEsol) -- compared
+            # only within a family that was: a vdW-DF run's authors (DRSLL)
+            # name no file's, and are no "minor" difference from PBE's.
             out.append(CoverageEntry(
                 element=key, status="xc_mismatch",
                 message=(f"{opened.name} was generated for "

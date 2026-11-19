@@ -439,8 +439,7 @@ def rung_deck_now(calc, stage: str, composed, *, point=None) -> str:
     spec, cfg = rung_spec(task, stage, struct, config, state, point,
                                 base=base, contours=contours)
     with user_error_as_prep():
-        text = _sc.render_deck(spec, struct, cfg, verbose=True,
-                               dest_dir=base,
+        text = _sc.render_deck(spec, struct, cfg, dest_dir=base,
                                sources=transport_sources(
                                    _element, engine=task.engine)).text
     # THE ZONE PREP KEEPS: from the deck prep wrote for this rung -- in its

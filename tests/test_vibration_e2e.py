@@ -706,3 +706,40 @@ def test_the_listed_modes_get_the_probe_and_no_other(real_water_probed):
         assert np.isfinite(es["scf_energy_plus_eh"]), es
         assert np.isfinite(es["scf_energy_minus_eh"]), es
         assert es["mo_energies_plus_eh"] and es["mo_energies_minus_eh"], es
+
+
+@makes_a_real_run("module", "molbuilder-pySCF")
+def stated_from_its_relaxation(real_charged_formate, tmp_path_factory):
+    """A PySCF vibration of a structure saved from a finished SIESTA
+    relaxation -- the shared charged formate's pair, its run's record in its
+    ``info.calculation`` -- stated already relaxed: `freq` launched and
+    waited on (`support.real_runs.water_vibration`, the one maker)."""
+    return water_vibration(tmp_path_factory, "stated",
+                           structure=real_charged_formate.pair,
+                           settings={"already_relaxed": True})
+
+
+def test_a_frame_set_of_a_structure_stated_relaxed_states_its_record(
+        stated_from_its_relaxation, real_charged_formate, tmp_path_factory):
+    """`engines/vibration.md` § 5.10 ③: a frame set's frame 0 states the
+    record of the relaxation its geometry came from -- where the structure
+    was stated already relaxed, the record that structure states, its
+    ``info.calculation`` -- on either engine.  The silent failure (F12's
+    review, F-D2): on PySCF, whose deck has no SIESTA vibration block, the
+    stated structure's record was never read, and the set cited no
+    relaxation."""
+    from support.real_runs import road_at
+    from support.road import molbuilder
+    from molbuilder.workingcopy_structure import StructureCodec
+    run = stated_from_its_relaxation
+    with road_at(run.tree.parent, tmp_path_factory):
+        r = molbuilder("frameset", "from-mode",
+                       str(run.attempt("freq").relative_to(run.tree)),
+                       "--mode", "1", "--temperature", "300",
+                       "--out", "P/structure/frames.xyz")
+    assert r.exit_code == 0, r.output
+    written = StructureCodec().load(run.tree / "P/structure/frames.xyz",
+                                    frames=True)
+    stated = StructureCodec().load(real_charged_formate.pair)
+    assert written.info["calculation"] == stated.info["calculation"], (
+        written.info.get("calculation"))

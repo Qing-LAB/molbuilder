@@ -26,6 +26,17 @@ max_cores = 48
 gpu = { a100 = 4 }
 node_types = [{ cores = 48, nodes = 5, gpu = { a100 = 4 } }]
 
+# A REAL IN DECIMAL NOTATION IS WRITTEN AS SET, every digit (F12's reviews,
+# D2: a 0.00625 V bias written 0.0063, a 5e-7 eV broadening written 0) --
+# the decimal twin of the deck table's scientific-notation row.
+[[case]]
+name = "a value in decimal notation is written as it was set, never rounded"
+calculation = "transport"
+stage = "device"
+before = [["prep", "task", "--group", "1"]]
+template = { negf_eq_pole_ev = 12.3456789 }
+deck_says = { "TS.Contours.Eq.Pole" = "12.3456789 eV" }
+
 # `SolutionMethod` switches the SCF to NEGF; `TS.SolutionMethod` is how the
 # Green's function is inverted, and 5.4.2 stops on `transiesta` there
 # ("Unrecognized TranSiesta solution method", measured): two keywords, two

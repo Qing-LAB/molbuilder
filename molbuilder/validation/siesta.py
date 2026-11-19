@@ -47,8 +47,8 @@ def _check_siesta_pseudo_coverage(struct: Structure, cfg,
     """
     from ..chemistry import names_an_element
     from ..pseudos import (CONVENTIONAL_LIBRARY, PsmlLibError, check_coverage,
-                           ERROR_STATUSES, expected_xc_family, file_named_for,
-                           psml_sources, resolve_psml_lib)
+                           ERROR_STATUSES, file_named_for, psml_sources,
+                           resolve_psml_lib)
     labels = list(dict.fromkeys(str(e).strip() for e in struct.elements))
     # A LABEL NAMING NO ELEMENT is the species check's refusal
     # (`check_species_labels`), said once: no file would make it run.
@@ -127,25 +127,18 @@ def _check_siesta_pseudo_coverage(struct: Structure, cfg,
             )]
         found = {el: (d if d is not None else psml_dir)
                  for el, d in found.items()}
-    # The expected XC family, from the ONE table (`pseudos.expected_xc_family`).
-    xc_authors = (getattr(cfg, "xc_authors", "") or "").strip()
-    expected_family = expected_xc_family(xc_authors)
     out: List[Issue] = []
     # THE WHOLE STRUCTURE IN ONE CALL, each label read from where the run
     # will open it: a file another label opens is that label's, and the
     # set's generators are compared across every file read.
-    for entry in check_coverage(
-            labels, found,
-            expected_xc_family=expected_family,
-            expected_xc_authors=xc_authors or None,
-            expected_relativistic=relativistic):
+    for entry in check_coverage(labels, found,
+                                **_what_the_run_expects(cfg, relativistic)):
         if entry.status == "ok":
             continue
-        # ERROR_STATUSES BLOCK: the run cannot be correct.  The rest --
-        # xc_mismatch (same-family author diff) / relativistic_mismatch /
-        # generator_mismatch / parse_warning -- are advisory (warn).  The
-        # set is shared with the CLI (pseudos.py) so the two surfaces
-        # can't drift.
+        # ERROR_STATUSES BLOCK: a file SIESTA cannot open.  What a file
+        # says of its physics is a warning -- the run is the person's.  The
+        # set is shared with the CLI (pseudos.py) so the two surfaces can't
+        # drift.
         severity = "error" if entry.status in ERROR_STATUSES else "warn"
         message = entry.message
         if (entry.status == "missing" and dest_dir is not None
@@ -157,14 +150,28 @@ def _check_siesta_pseudo_coverage(struct: Structure, cfg,
     return out
 
 
+def _what_the_run_expects(cfg, relativistic: str) -> dict:
+    """What the calculation asks of each file, as `pseudos.check_coverage`
+    takes it: the family of its own functional where a file can declare one
+    (`pseudos.expected_xc_family`), its XC authors, and the relativistic
+    treatment."""
+    from ..pseudos import expected_xc_family
+    xc_authors = (getattr(cfg, "xc_authors", "") or "").strip()
+    return {"expected_xc_family": expected_xc_family(
+                getattr(cfg, "xc_functional", None)),
+            "expected_xc_authors": xc_authors or None,
+            "expected_relativistic": relativistic}
+
+
 def _the_convention_covers(lacking, cfg, *, dest_dir=None,
                            relativistic: str = "scalar") -> str:
     """The sentence an unset directory earns when the tree's own
     ``pseudopotential`` folder would answer it (plan § 5w K20): named only
     when it holds every species the calculation lacks and the coverage check
-    refuses none of them -- a suggestion, never a fill.  ``""`` otherwise."""
-    from ..pseudos import (CONVENTIONAL_LIBRARY, ERROR_STATUSES, PsmlLibError,
-                           check_coverage, expected_xc_family,
+    finds nothing to say of any of them -- a suggestion, never a fill, so
+    never of a folder whose files it would then warn about.  ``""``
+    otherwise."""
+    from ..pseudos import (CONVENTIONAL_LIBRARY, PsmlLibError, check_coverage,
                            resolve_psml_lib)
     try:
         folder = resolve_psml_lib(CONVENTIONAL_LIBRARY, dest_dir=dest_dir)
@@ -172,12 +179,9 @@ def _the_convention_covers(lacking, cfg, *, dest_dir=None,
         return ""
     if not lacking or not folder.is_dir():
         return ""
-    xc_authors = (getattr(cfg, "xc_authors", "") or "").strip()
     found = check_coverage(lacking, folder,
-                           expected_xc_family=expected_xc_family(xc_authors),
-                           expected_xc_authors=xc_authors or None,
-                           expected_relativistic=relativistic)
-    if any(e.status in ERROR_STATUSES for e in found):
+                           **_what_the_run_expects(cfg, relativistic))
+    if any(e.status != "ok" for e in found):
         return ""
     return (f"  The tree's `{CONVENTIONAL_LIBRARY}` folder covers all "
             f"{len(lacking)} species this needs ({', '.join(lacking)}): "

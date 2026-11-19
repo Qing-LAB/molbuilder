@@ -118,9 +118,9 @@ class TestCheckCoverage:
 
     def test_xc_family_mismatch(self, tmp_path):
         """A GGA pseudo on an LDA calc -- silently-wrong bond lengths.  A
-        FAMILY mismatch is a distinct status (xc_family_mismatch), which the
-        SIESTA validator maps to ERROR (blocks); it is never physically
-        correct.  (Same-family author diffs stay 'xc_mismatch' / WARN.)"""
+        FAMILY mismatch is a distinct status (xc_family_mismatch), said
+        louder than a same-family author diff ('xc_mismatch'); it is never
+        physically correct, and the calculation is the person's."""
         _write_folder(tmp_path, {"C.psml": "C"})
         from molbuilder.pseudos import check_coverage
         entries = check_coverage(
@@ -222,7 +222,7 @@ def _a_channel_nothing_carries(directory):
 
 
 class TestDeadProjectorC5:
-    def test_a_channel_nothing_carries_is_dead_and_blocks(self, tmp_path):
+    def test_a_channel_nothing_carries_is_dead_and_said(self, tmp_path):
         """Only p is named: `d` has one real projector, and the standard asks
         of the WHOLE channel.  The screening and the preflight say so alike."""
         from molbuilder.pseudos import check_coverage, parse_psml_header
@@ -242,7 +242,7 @@ class TestDeadProjectorC5:
         class _Struct:
             elements = ["S"]
         issues = _check_siesta_pseudo_coverage(_Struct(), _Cfg(), dest_dir=lib)
-        assert any(i.severity == "error" and "Kleinman" in i.message
+        assert any(i.severity == "warn" and "Kleinman" in i.message
                    for i in issues), [(_i.severity, _i.message) for _i in issues]
 
 
@@ -271,26 +271,6 @@ class TestErrorStatusesSharedBySurfaces:
     exit set omitted ``xc_family_mismatch``, so an XC-family mismatch that
     the preflight blocked slipped past ``pseudo check`` with exit 0.  Both
     now consume ``pseudos.ERROR_STATUSES`` so the surfaces can't disagree."""
-
-    def test_error_statuses_is_the_blocking_set(self):
-        """The five things that make a run wrong rather than suspect.
-
-        `semilocal_only` joined 2026-09-03 (user ruling): a valence channel
-        whose projectors STATE a strength of zero, which PseudoDojo v0.5 does
-        for eleven elements.  Same class as `xc_family_mismatch` -- the run
-        completes and the physics is wrong -- so it blocks for the same
-        reason.
-
-        `misnamed` joined 2026-09-19: the file for a species is present but
-        not called `<label>.psml`, so SIESTA -- which has no search path --
-        never opens it; or the file it opens declares another element.  A
-        certain start-up failure or a wrong species, about the file's NAME
-        rather than its physics.
-        """
-        from molbuilder.pseudos import ERROR_STATUSES
-        assert ERROR_STATUSES == frozenset(
-            {"missing", "misnamed", "dead_projector", "xc_family_mismatch",
-             "semilocal_only"})
 
     #: C1 / C1a as rows (`science/pseudopotentials.md`): the folder's files
     #: (`_write_folder`), the species labels the structure holds, and the
@@ -359,9 +339,9 @@ class TestErrorStatusesSharedBySurfaces:
     #: `NAMED_FILES`), the options, the exit code, and lines the output must
     #: hold (regular expressions, so a bare "C" is a word, not any letter).
     CLI_ROWS = [
-        pytest.param({"C.psml": "C"}, ["--xc", "CA"],
-                     1, [r"\[ERROR\] C\b"],
-                     id="a-gga-pseudo-on-an-lda-calc-blocks"),
+        pytest.param({"C.psml": "C"}, ["--xc-functional", "LDA", "--xc", "CA"],
+                     0, [r"\[WARN \] C\b"],
+                     id="a-gga-pseudo-on-an-lda-calc-is-said"),
         pytest.param({"C.psml": "C"}, ["--xc", "PBE"],
                      0, [r"\[OK   \] C\b"],
                      id="a-matching-set-passes"),
@@ -393,21 +373,29 @@ class TestErrorStatusesSharedBySurfaces:
         for line in lines:
             assert re.search(line, res.output), (line, res.output)
 
-    #: The settings gate as rows: the calculation's functional, the library's
+    #: The settings gate as rows: the calculation's functional (its family and
+    #: its authors), the library's
     #: files, the calculation folder's (`pseudos/`, or ``None`` for the library
     #: as the folder), the labels, and the findings by `where`, each
     #: (severity, words).
     GATE_ROWS = [
-        # The SAME mismatch the CLI blocks on is error-severity in the
-        # preflight -- the two surfaces agree.
-        pytest.param("CA", {"C.psml": "C"}, None, ["C"],
-                     {"config.psml_lib.C": ("error", ["LDA"])},
-                     id="a-gga-pseudo-on-an-lda-calc-blocks"),
+        # WHAT STOPS PREP is a file SIESTA cannot open (`science/
+        # pseudopotentials.md` § 2): one not called `<label>.psml`, which
+        # SIESTA, having no search path, never opens.  What a file says of
+        # its physics is said and never stops the run (the user, 2026-11-18:
+        # "None of these things should stop any calculation ... It is
+        # totally user's decision") -- its rows are the family's
+        # (`validation/test_siesta.py`), the dead projector's and the
+        # zero-strength channel's (`test_pseudo_requirements_layer.py`).
+        pytest.param(("GGA", "PBE"), {"carbon.psml": "C"}, None, ["C"],
+                     {"config.psml_lib.C": ("error", ["carbon.psml",
+                                                      "C.psml"])},
+                     id="a-file-SIESTA-never-opens-stops-prep"),
         # Labels read from two places -- C1 and H from the folder, C2 from the
         # library -- are judged together: the library's C1.psml is C1's, never
         # C2's to take (measured 2026-10-31 on gold: the second label was told
         # to save the element's pseudopotential from it).
-        pytest.param("PBE", {"C1.psml": "C"},
+        pytest.param(("GGA", "PBE"), {"C1.psml": "C"},
                      {"C1.psml": "C", "H.psml": "H"}, ["C1", "C2", "H"],
                      {"config.psml_lib.C2": ("error",
                                              ["no .psml file for C2"])},
@@ -432,7 +420,7 @@ class TestErrorStatusesSharedBySurfaces:
 
         class _Cfg:
             psml_lib = str(lib)
-            xc_authors = xc
+            xc_functional, xc_authors = xc
 
         class _Struct:
             elements = labels

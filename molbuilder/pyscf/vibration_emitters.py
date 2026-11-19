@@ -154,12 +154,8 @@ def _emit_header_docstring(struct: Structure,
         out.append(f"Method    : {cfg.scf_class} (Hartree-Fock) / {cfg.basis}")
     if cfg.dispersion != "none":
         out.append(f"Dispersion: {cfg.dispersion}")
-    _solvent = str(getattr(cfg, "solvent", "") or "").lower()
-    if _solvent:
-        from .scf_setup import SOLVENTS
-        out.append(f"Solvent   : {_solvent}, "
-                   f"{cfg.solvent_method} "
-                   f"(dielectric constant {SOLVENTS[_solvent]:g})")
+    from .scf_setup import solvent_header_lines
+    out += solvent_header_lines(cfg)
     out.append(f"Atoms     : {getattr(struct, 'n_atoms', len(struct.elements))}")
     out.append(f"Job name  : {cfg.job_name}")
     out.append("")
@@ -1480,7 +1476,8 @@ def pyscf_methods_fragment(cfg: "VibrationConfigView") -> str:
     # relaxation, the Hessian, each displaced point -- carries the same
     # continuum (`scf_setup.emit_solvent_apply_fn`), and the model is part
     # of what was computed.
-    solvent = str(getattr(cfg, "solvent", "") or "").lower()
+    from .scf_setup import solvent_of
+    solvent = solvent_of(cfg)
     if solvent:
         from .scf_setup import SOLVENTS
         parts.append(

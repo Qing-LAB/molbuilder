@@ -811,7 +811,7 @@ def _plan_calculation(calc, stage: Optional[str], resolved: "Resolved",
                         seam.sibling_artifacts(
                             _struct, _at, _out / script,
                             kind=rung.render_kind, names=_names,
-                            plan=plan)
+                            role=rung.role_at(_point), plan=plan)
             spec = spec or _spec
             spec_at[_out] = _spec
         # THE PROGRESS LOG IS SEEDED BESIDE THE DECK IT FOLLOWS -- the

@@ -205,6 +205,24 @@ def test_the_leads_greens_functions_are_the_runs_once_per_voltage(
         assert "gf" not in rows and "gf.reuse" not in rows, rows
 
 
+def _numbers_read(words):
+    """A block row's words as TranSIESTA reads them: a number as its value,
+    whatever its spelling, any other word as written."""
+    def read(word):
+        try:
+            return float(word)
+        except ValueError:
+            return word
+    return [read(w) for w in words]
+
+
+def _window(cutoff_kt):
+    """The bias window's line `engines/transport.md` § 6.1 states: from
+    ``- c kT - |V|/2`` to ``|V|/2 + c kT``, ``c`` the Fermi cutoff."""
+    return ["-", cutoff_kt, "kT", "-", "|V|/2", "to", "|V|/2", "+",
+            cutoff_kt, "kT"]
+
+
 def test_the_device_deck_writes_the_bias_windows_line_and_the_file_switch(
         real_bridged_chain, tmp_path, monkeypatch):
     """`engines/transport.md` § 2a.11, *The levers*: the device deck writes
@@ -231,7 +249,7 @@ def test_the_device_deck_writes_the_bias_windows_line_and_the_file_switch(
     rows = {r[0].lower(): r[1:] for r in blocks[fdf_key("TS.Contour.nEq.line")]}
     assert rows["part"] == ["line"] and rows["method"] == ["mid-rule"], rows
     assert rows["delta"] == ["0.01", "eV"], rows
-    assert " ".join(rows["from"]) == "- 5 kT - |V|/2 to |V|/2 + 5 kT", rows
+    assert _numbers_read(rows["from"]) == _window(5.0), rows
     assert fdf_true(scalars[fdf_key("TS.Elecs.Out-of-core")]), scalars
 
     scalars, blocks = read("set", card={"ts_elecs_out_of_core": False},
@@ -239,7 +257,7 @@ def test_the_device_deck_writes_the_bias_windows_line_and_the_file_switch(
                                      "negf_neq_fermi_cutoff_kt": 7.5})
     rows = {r[0].lower(): r[1:] for r in blocks[fdf_key("TS.Contour.nEq.line")]}
     assert rows["delta"] == ["0.02", "eV"], rows
-    assert " ".join(rows["from"]) == "- 7.5 kT - |V|/2 to |V|/2 + 7.5 kT", rows
+    assert _numbers_read(rows["from"]) == _window(7.5), rows
     assert not fdf_true(scalars[fdf_key("TS.Elecs.Out-of-core")]), scalars
 
 

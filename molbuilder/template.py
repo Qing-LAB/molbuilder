@@ -1204,8 +1204,7 @@ def catalogue() -> "Template":
         # `shared`'s own rules, or its own ``why_shared`` -- never another
         # item's reason given for it.
         if it.shared and not it.why_shared and not (
-                it.name in STATE_ITEMS or it.name in IDENTITY_ITEMS
-                or it.stages):
+                it.name in STATE_ITEMS or it.stages):
             _refuse("a `shared` item no rule of `shared` explains states its "
                     "own `why_shared` -- why its stages must hold one value", where=it.name)
     return parsed
@@ -2185,11 +2184,6 @@ def why_run_setting(name: str) -> str:
             f" -- never in the description")
 
 
-#: The calculation's identity -- `shared` for every SIESTA kind (2026-09-29,
-#: K1): one name, one species table, one pseudopotential set.
-IDENTITY_ITEMS = ("system_label", "species_order", "psml_lib")
-
-
 def shared_by(name: str) -> str:
     """WHO SHARES a `shared` item, in words -- *every stage of this
     calculation*, or the stages its ``stages`` names (§ 5, TD11): what a
@@ -2219,12 +2213,6 @@ def why_shared(name: str) -> str:
         return ("the electronic state belongs to the calculation, never to "
                 "a stage -- every stage's warm files are a density for one "
                 "state")
-    if name in IDENTITY_ITEMS:
-        return (f"a calculation has one name, one species table and one set "
-                f"of pseudopotentials -- each stage reads what the one before "
-                f"it wrote under that name, numbered by that table (the "
-                f"`{SIESTA_XV}` holds each atom's species index) and built on "
-                f"that set")
     if _scoped_shared(name) is not None:
         return ("they are the stages that read it, and must not be able to "
                 "disagree about it")
@@ -2291,6 +2279,19 @@ def stage_roles(engine: str, kind: str, stage: Optional[str]
     return tuple(got) if got else (stage,)
 
 
+def roles_held(engine: str, kind: str) -> Tuple[str, ...]:
+    """Every role some rung of a ``kind`` calculation on ``engine`` plays
+    (:func:`stage_role_rule`, read beside :func:`stage_roles`): the kind's
+    every role where a rung's role is its name, else the roles the rule
+    names -- a PySCF vibration's force-constant run alone.  ``()`` for a
+    kind without roles."""
+    rule = stage_role_rule(engine, kind)
+    if rule is None or rule["otherwise"] is None:
+        return _roles_of(kind)
+    return tuple(dict.fromkeys(
+        r for rs in [*rule["named"].values(), rule["otherwise"]] for r in rs))
+
+
 def reads(item: "Item", engine: str, kind: str, stage: Optional[str], *,
           role: Optional[str] = None) -> bool:
     """Does the rung ``stage`` of a ``kind`` calculation read ``item`` -- or,
@@ -2316,8 +2317,16 @@ def why_unread(name: str, engine: str, kind: str, stage: str, *,
         return (f"which {_kinds.kind(kind).with_article} does not carry -- no stage of it reads "
                 f"it, so the value would change nothing")
     roles = stage_roles(engine, kind, stage) or (stage,)
-    # ...THE RUNGS OF THIS KIND that read it, never another kind's roles.
-    mine = [r for r in it.stages if r in (_roles_of(kind) or it.stages)]
+    # ...THE RUNGS OF THIS KIND ON THIS ENGINE that read it, never another
+    # kind's roles, nor another engine's: a PySCF vibration has no
+    # relaxation stage to set it on (F12's review, D13).
+    held = roles_held(engine, kind)
+    mine = [r for r in it.stages if r in (held or it.stages)]
+    if not mine:
+        from .engine_table import engine as _engine
+        return (f"which no stage of {_kinds.kind(kind).with_article} on "
+                f"{_engine(engine).words} reads, so the value would change "
+                f"nothing -- remove it")
     who = " / ".join(mine)
     rung = (repr(stage) if roles == (stage,)
             else f"{stage!r} (its {' + '.join(roles)} stage)")
@@ -3488,7 +3497,7 @@ __all__ = ["SCHEMA", "KINDS", "TYPES", "CATEGORIES",
            "STATE_ITEMS", "shared_by_every_stage", "why_shared",
            "shared_by", "shared_scope_words",
            "run_settings", "why_run_setting",
-           "IDENTITY_ITEMS", "fixed_by_role", "role_answers",
+           "fixed_by_role", "role_answers",
            "fixed_answers", "fixed_on_every_rung", "why_role", "offered", "why_not_offered",
            "as_declared", "why_not", "why_not_an_item", "why_not_items", "MIGRATE_AT",
            "template_settings", "retired",

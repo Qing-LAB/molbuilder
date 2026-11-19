@@ -1528,6 +1528,18 @@ def real_h2_pyscf(tmp_path_factory):
 
 
 @_real_runs.makes_a_real_run("session", "molbuilder-pySCF")
+def real_stopped_h2_pyscf(tmp_path_factory):
+    return _real_runs.pyscf(tmp_path_factory, "H2s", geom_max_steps=1,
+                            on_nonconvergence="proceed")
+
+
+@_real_runs.makes_a_real_run("session", "molbuilder-pySCF")
+def real_open_shell_h2_pyscf(tmp_path_factory):
+    return _real_runs.pyscf(tmp_path_factory, "H2u",
+                            spin_treatment="unrestricted")
+
+
+@_real_runs.makes_a_real_run("session", "molbuilder-pySCF")
 def real_held_water_pyscf(tmp_path_factory):
     return _real_runs.held_water_pyscf(tmp_path_factory)
 

@@ -10,7 +10,7 @@ loads beside the conductor that imports it.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, List
+from typing import TYPE_CHECKING, List, Optional
 
 from ..pseudos import PSEUDO_DIRNAME
 from ..runfiles import PSEUDO_FILE, fixed_fields
@@ -20,11 +20,15 @@ if TYPE_CHECKING:
 
 
 def _siesta_sibling_artifacts(struct, cfg, deck_path: Path, *,
-                              kind: str, names, plan=None) -> None:
+                              kind: str, names, role: Optional[str] = None,
+                              plan=None) -> None:
     """The sibling files a SIESTA deck's own text PROMISES.
 
     A charged deck instructs ``python3 makov_payne_correction.py`` in its
-    header -- a promise this keeps.
+    header -- a promise this keeps, the script reading the energy of the
+    step the deck's ``role`` makes the structure's own (a vibration
+    phase's ``energy_step``: a force-constant run's reference geometry,
+    never its last, displaced one -- F12's review, D6).
 
     The charge is the electronic state's (`science/chemistry-correctness.md`
     § 2a) -- the one the deck beside it was written from.  The deck has just
@@ -33,13 +37,17 @@ def _siesta_sibling_artifacts(struct, cfg, deck_path: Path, *,
     molecule's in a vacuum box, and a charged slab or crystal's deck says it
     gets no formula."""
     from ..electronic_state import electronic_state
-    from .makov_payne import emit_correction_script
+    from .makov_payne import LAST_STEP, emit_correction_script
+    from .vibration_phases import phase_playing
     state = electronic_state(struct, cfg, kind=kind)
     q = state.net_charge.value
     if q != 0 and state.finite:
+        played = phase_playing(role)
         emit_correction_script(fdf_path=deck_path,
                                system_label=cfg.system_label, q=q,
-                               names=names, plan=plan)
+                               names=names, plan=plan,
+                               energy_step=(LAST_STEP if played is None
+                                            else played.energy_step))
 
 
 def _siesta_describe_findings(struct, cfg, *, calculation: str,

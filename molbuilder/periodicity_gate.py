@@ -355,17 +355,6 @@ def apply_edit(struct: Structure, op: str,
         raise ValueError(
             "no atoms loaded — load a structure before editing its box")
     s = struct.copy()
-    # THE BOX MOVED, SO THE RECORD IS OUTDATED -- the same mark every
-    # geometry op sets (`model/structure.md` § 2.2a).  Set on the COPY and
-    # before the branches: `s` is what every arm returns (`_apply_block`
-    # included) and an op that refuses raises instead of returning, so a
-    # failed edit never carries it -- which is the rule `molview/model.js`
-    # states by marking inside its gate.
-    #
-    # This is why the browser needs no mark of its own here:
-    # `commitPeriodicityOp` POSTs to `/api/structure/periodicity` and adopts
-    # the answer, so the flag arrives from the one place that decides it.
-    s.mark_contract_outdated()
     notices: List[dict] = []
     s = _edit(s, op, payload, notices)
     # ONE CHECK, ON THE RESULT, whatever the op: the box the person now has,
@@ -377,7 +366,41 @@ def apply_edit(struct: Structure, op: str,
         "This edit would clear the cell the structure states, sizing the box "
         "from the atoms instead. "
         if struct.cell is not None and s.cell is None else ""))
+    # THE BOX MOVED, SO THE RECORD IS OUTDATED -- the same mark every
+    # geometry op sets (`model/structure.md` § 2.2a) -- and only when it
+    # moved: an Apply that changed nothing keeps the run's record, its
+    # charge and spin among it (F12's review, G-D1: an unchanged block
+    # marked the structure modified, and a later blank charge dropped the
+    # recorded one).  Set on the result an edit that passed returns: one
+    # that refuses raises before it, so a failed edit never carries it --
+    # the rule `molview/model.js` states by marking inside its gate.  The
+    # browser needs no mark of its own: `commitPeriodicityOp` POSTs to
+    # `/api/structure/periodicity` and adopts the answer, so the flag
+    # arrives from the one place that decides it.
+    if not _same_box(struct, s):
+        s.mark_contract_outdated()
     return s, notices
+
+
+def _same_box(a: Structure, b: Structure) -> bool:
+    """Whether ``a`` and ``b`` hold one box: the four facts the Cell page's
+    block sets (:data:`BLOCK_KEYS`) -- the cell, the stated origin
+    (``engine_offset``), each axis's kind and the vacuum -- each number
+    within the hand-off's own tolerance (`cell.PLACED_TOL_ANG`), which the
+    page's rounding at the 6th decimal stays inside: a box the page shows
+    and sends back is the box it was given."""
+    from .cell import PLACED_TOL_ANG
+
+    def close(x, y) -> bool:
+        if x is None or y is None:
+            return x is None and y is None
+        return np.allclose(np.asarray(x, dtype=float),
+                           np.asarray(y, dtype=float), rtol=0.0,
+                           atol=PLACED_TOL_ANG)
+    return (tuple(a.axis_kind) == tuple(b.axis_kind)
+            and close(a.cell, b.cell)
+            and close(a.engine_offset, b.engine_offset)
+            and close(a.vacuum, b.vacuum))
 
 
 def _edit(s: Structure, op: str, payload: Any,
