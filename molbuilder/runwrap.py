@@ -524,6 +524,8 @@ MONITOR_STOP_S = 10
 #: read as the trap began.
 _STOPPED_BEFORE_ITS_END = conclude_line('"$_mb_rc"', STOPPED)
 
+#: WHAT THE RUN SCRIPT SAYS OF THE PERSON'S OWN LINES, in its log
+
 #: THE SIGNALS THAT STOP A RUN, each caught by its one handler
 #: (``_mb_on_signal``), so none reaches the exit trap as an end of the
 #: script's own: a scheduler's stop, Ctrl-C, a lost terminal, a limit
@@ -707,10 +709,35 @@ def _held_words(deck_text: Optional[str]) -> str:
             f"deck's atom record)" if held else "none held -- every atom free")
 
 
+def _gpu_list_bash() -> str:
+    """Bash that sets ``_gpus``, THE JOB'S GPUs BY DEVICE, and ``_ngpu``,
+    how many (`running-a-job.md` § 3.3): the scheduler's allocated set
+    (``CUDA_VISIBLE_DEVICES``) where it is said -- whether or not device
+    cgroups isolate the node, it names the job's devices -- else every GPU
+    ``nvidia-smi`` lists, by index, off a scheduler; none seen, none.  One
+    rule: the run script reads it once, before the person's own lines, and
+    the rank helper, its own process, runs the same lines at each rank's
+    start -- so the banner, the dry run, the whole-job wrap and the ranks
+    name the same devices from the ``CUDA_VISIBLE_DEVICES`` the launch gave
+    the job."""
+    return "".join(line + "\n" for line in (
+        'if [ -n "${CUDA_VISIBLE_DEVICES:-}" ]; then',
+        '    IFS=, read -ra _gpus <<< "$CUDA_VISIBLE_DEVICES"',
+        'else',
+        '    _gpus=(); _i=0',
+        '    _n=$(nvidia-smi -L 2>/dev/null | grep -c "^GPU " || true)',
+        '    case "$_n" in ""|*[!0-9]*) _n=0 ;; esac',
+        '    while [ "$_i" -lt "$_n" ]; do _gpus+=("$_i"); _i=$((_i+1)); done',
+        'fi',
+        '_ngpu=${#_gpus[@]}',
+    ))
+
+
 def _bash_numa_from_gpu(gpu_expr: str, out_var: str,
                         bus_var: str = "_bus", indent: str = "") -> str:
-    """Emit bash that resolves the NUMA node of the GPU at index
-    ``gpu_expr`` into ``out_var`` (``-1`` when unknown).
+    """Emit bash that resolves the NUMA node of the GPU ``gpu_expr``
+    names -- a device of the job's list (:func:`_gpu_list_bash`) -- into
+    ``out_var`` (``-1`` when unknown).
 
     Single source for the sysfs lookup so the per-rank launcher (running-a-job.md § 3.3)
     and the ``--dry-run`` placement report don't each carry their own
@@ -736,21 +763,20 @@ def _bash_numa_from_gpu(gpu_expr: str, out_var: str,
 def _gpu_loadbalance_block() -> str:
     """Bash that derives the rank<->GPU load balance at RUN time.
 
-    GOAL: count the GPUs the job was given (``$_ngpu``, which the MPS
-    decision reads) and turn the resolved rank count into a ranks-per-GPU
-    figure, which the banner and the dry run report; the per-rank launcher
+    GOAL: turn the resolved rank count and the job's GPUs (``$_ngpu``, the
+    list :func:`_gpu_runtime_block` builds) into a ranks-per-GPU figure,
+    which the banner and the dry run report; the per-rank launcher
     block-distributes the ranks over the GPUs itself.
 
-    READS  ``$_mpi_np``  (rank count; set by the args block).
-    SETS   ``$_ngpu``           -- visible GPU count (0 if none),
-           ``$_ranks_per_gpu``  -- ``mpi_np / ngpu`` (clamped >= 1).
+    READS  ``$_mpi_np``  (rank count; set by the args block), ``$_ngpu``.
+    SETS   ``$_ranks_per_gpu``  -- ``mpi_np / ngpu`` (clamped >= 1).
     EMITS  one stderr line ``molbuilder: GPU load-balance -- N ranks over
            G GPU(s) = K rank(s)/GPU`` -- the human-checkable confirmation
            that K matches the allocation (validation pinpoint for the
            benchmark sweep, generator.md § 4.3a).
     WHY: K is the knob the benchmark sizes; it must come from the ACTUAL
     runtime allocation (the scheduler may grant a different GPU count than
-    generation assumed).  1 GPU degenerates to all-ranks-on-GPU0 (the
+    generation assumed).  1 GPU degenerates to all ranks on the job's one GPU (the
     existing single-GPU behavior) with no code fork.
 
     ORDERING: emit AFTER ``$_mpi_np`` resolves and BEFORE the MPS block
@@ -759,22 +785,12 @@ def _gpu_loadbalance_block() -> str:
     return (
         "# --- GPU load-balance: rank <-> GPU matching "
         "(running-a-job.md § 3.3) ---\n"
-        "# Count ALLOCATED GPUs now and split ranks across them.  The\n"
+        "# Split the ranks across the job's GPUs ($_ngpu).  The\n"
         "# per-rank launcher maps rank -> GPU as\n"
         "# local_rank*ngpu/localsize, so K=mpi_np/ngpu ranks share\n"
-        "# each GPU via MPS.  1 GPU -> all ranks on GPU0 (the existing\n"
-        "# behavior); N GPUs -> block-distributed, no code fork.\n"
-        "# Prefer CUDA_VISIBLE_DEVICES (the scheduler's allocated set) over\n"
-        "# nvidia-smi -L (which over-counts on a shared node without\n"
-        "# device-cgroup isolation) -- must agree with the per-rank\n"
-        "# launcher's own count.\n"
-        'if [ -n "${CUDA_VISIBLE_DEVICES:-}" ]; then\n'
-        '    _ngpu=$(printf %s "$CUDA_VISIBLE_DEVICES" '
-        '| tr , "\\n" | grep -c . || true)\n'
-        'else\n'
-        '    _ngpu=$(nvidia-smi -L 2>/dev/null | grep -c "^GPU " || true)\n'
-        'fi\n'
-        'case "$_ngpu" in ""|*[!0-9]*) _ngpu=0 ;; esac\n'
+        "# each GPU via MPS.  1 GPU -> all ranks on it (the existing\n"
+        "# behavior); N GPUs -> block-distributed, no code fork.  The GPUs\n"
+        "# are the job's list, built with the placement above.\n"
         'if [ "$_ngpu" -ge 1 ]; then\n'
         '    _ranks_per_gpu=$(( _mpi_np / _ngpu ))\n'
         '    [ "$_ranks_per_gpu" -lt 1 ] && _ranks_per_gpu=1\n'
@@ -902,7 +918,7 @@ def _gpu_per_rank_launcher_block(program: str) -> str:
 
     GOAL: give every MPI rank its own GPU and (under a scheduler) defer CPU/mem
     placement to the scheduler.  Implements the general load-balance
-    model -- 1 GPU degenerates to "all ranks on GPU0", N GPUs
+    model -- 1 GPU degenerates to "all ranks on its one GPU", N GPUs
     block-distribute -- with no code fork on GPU count (running-a-job.md § 3.3).
 
     WRITES a runtime helper ``.mb-rank-launch-$$.sh`` (``trap``-removed on
@@ -930,23 +946,10 @@ def _gpu_per_rank_launcher_block(program: str) -> str:
         '_lr=${OMPI_COMM_WORLD_LOCAL_RANK:-${PMIX_RANK:-0}}\n'
         '_ls=${OMPI_COMM_WORLD_LOCAL_SIZE:-${MB_NTASKS:-1}}\n'
         '[ "${_ls:-0}" -lt 1 ] && _ls=1\n'
-        '# Allocated GPU list: prefer CUDA_VISIBLE_DEVICES (a scheduler sets it\n'
-        '# to the allocated set -- robust whether or not device-cgroups\n'
-        '# isolate the node, and it carries the real physical indices);\n'
-        '# fall back to all visible GPUs only when unset (local / no\n'
-        '# scheduler).  nvidia-smi -L alone would over-count on a shared\n'
-        '# node without cgroup isolation.\n'
-        'if [ -n "${CUDA_VISIBLE_DEVICES:-}" ]; then\n'
-        '    IFS=, read -ra _gpus <<< "$CUDA_VISIBLE_DEVICES"\n'
-        'else\n'
-        '    _n=$(nvidia-smi -L 2>/dev/null | grep -c "^GPU " || true)\n'
-        '    case "$_n" in ""|*[!0-9]*) _n=1 ;; esac\n'
-        '    [ "$_n" -lt 1 ] && _n=1\n'
-        '    _gpus=(); _i=0\n'
-        '    while [ "$_i" -lt "$_n" ]; do _gpus+=("$_i"); _i=$((_i+1)); done\n'
-        'fi\n'
-        '_ngpu=${#_gpus[@]}\n'
-        '[ "$_ngpu" -lt 1 ] && { _gpus=(0); _ngpu=1; }\n'
+        '# The job\'s GPUs, by the rule the run script lists them by; none\n'
+        '# seen, the rank runs on GPU 0.\n'
+        + _gpu_list_bash()
+        + '[ "$_ngpu" -lt 1 ] && { _gpus=(0); _ngpu=1; }\n'
         '_idx=$(( _lr * _ngpu / _ls ))\n'
         '_gpu=${_gpus[$_idx]}\n'
         # Resolve NUMA from the chosen GPU index BEFORE narrowing
@@ -978,7 +981,7 @@ def _gpu_per_rank_launcher_block(program: str) -> str:
         'trusting scheduler cpuset for CPU/mem binding '
         '(no manual numactl)" >&2\n'
         # Off a scheduler with >1 GPU in play, the whole-job wrap would set
-        # every rank\'s memory on GPU0\'s node, and its cpuset is not what
+        # every rank\'s memory on the first GPU\'s node, and its cpuset is not what
         # places the ranks (OpenMPI\'s map overrides it -- measured,
         # running-a-job.md § 3.3).  The per-rank helper pins each rank
         # beside ITS GPU whenever ranks span GPUs; the whole-job wrap
@@ -987,7 +990,7 @@ def _gpu_per_rank_launcher_block(program: str) -> str:
         '    _numa_wrap_gpu=""\n'
         '    echo "molbuilder: $_ngpu GPUs in play -- per-rank NUMA '
         'binding via the rank helper (the whole-job wrap would set '
-        'every rank\'s memory on GPU0\'s node)" >&2\n'
+        'every rank\'s memory on the first GPU\'s node)" >&2\n'
         'fi\n'
     )
 
@@ -996,9 +999,10 @@ def _resolved_log_block(launch_line: str, gpu_ranks: bool) -> str:
     """Bash that records the fully-resolved launch command + placement
     into the session log -- ALWAYS, on every run.
 
-    GOAL (user request 2026-06-26): the log must carry the exact command
-    that ran and the GPU/NUMA context, so a post-mortem never has to
-    guess what was launched.  These ``_log INFO`` lines ARE the audit
+    GOAL (user request 2026-06-26): the log must carry the command and the
+    GPU/NUMA context, so a post-mortem never has to guess what was launched
+    -- here its shape, before the wall is counted; the command exactly is
+    logged as the engine starts (``the command:``, the launch block).  These ``_log INFO`` lines ARE the audit
     trail that pins what the run did -- the validation anchor when a run
     is slow or wrong.
 
@@ -1087,7 +1091,7 @@ def _dry_run_block(launch_line: str, gpu_ranks: bool, words: str) -> str:
             '    else\n'
             '        _dr_r=0\n'
             '        while [ "$_dr_r" -lt "$_mpi_np" ]; do\n'
-            '            _dr_g=$(( _dr_r * _dr_ng / _mpi_np ))\n'
+            '            _dr_g=${_gpus[$(( _dr_r * _dr_ng / _mpi_np ))]}\n'
             + _bash_numa_from_gpu("$_dr_g", "_dr_numa",
                                   bus_var="_dr_bus", indent="            ")
             + '            echo "      rank $_dr_r -> GPU $_dr_g '
@@ -1214,8 +1218,12 @@ def _gpu_runtime_block() -> str:
         is on PATH, and whether the run may start it (``--mps`` /
         ``--no-mps`` and ``MOLBUILDER_USE_MPS`` say; unsaid, allowed).  The
         MPS block below decides from both and from ranks sharing a GPU.
-      * ``_gpu_numa``: the NUMA node GPU 0 is attached to, resolved at run
-        time on the machine the job runs on (:func:`_bash_numa_from_gpu`:
+      * ``_gpus`` / ``_ngpu``: the job's GPUs by device, and how many
+        (:func:`_gpu_list_bash`) -- the list the load balance, the banner
+        and the dry run read, and the rank helper builds again by the same
+        rule.
+      * ``_gpu_numa``: the NUMA node the job's first GPU is attached to,
+        resolved at run time on the machine the job runs on (:func:`_bash_numa_from_gpu`:
         nvidia-smi's bus id + the kernel's sysfs); overridable via
         ``MOLBUILDER_GPU_NUMA``.  An integer string, or ``"unknown"``.
       * ``_numa_wrap_gpu``: the ``numactl`` prefix that sets a single-GPU
@@ -1225,6 +1233,8 @@ def _gpu_runtime_block() -> str:
     """
     return (
         "# --- GPU mode: placement (MPS, NUMA) -- the counts are stated ---\n"
+        "# The job's GPUs, by device (running-a-job.md § 3.3).\n"
+        + _gpu_list_bash() +
         # ---- MPS availability ----
         # NVIDIA Multi-Process Service: a daemon that lets multiple CUDA
         # client processes share one GPU CONCURRENTLY via Hyper-Q instead of
@@ -1242,13 +1252,13 @@ def _gpu_runtime_block() -> str:
         '[ "$_have_mps" = "1" ] && _have_mps_str="yes"\n'
         'echo "molbuilder: mps_available=$_have_mps_str" >&2\n'
         # ---- GPU NUMA proximity, RESOLVED AT RUN TIME ----
-        # On the machine the job runs on, from GPU 0's PCI bus id and the
-        # kernel's sysfs -- the same lookup the per-rank launcher makes
+        # On the machine the job runs on, from the job's first GPU's PCI bus
+        # id and the kernel's sysfs -- the same lookup the per-rank launcher makes
         # (`_bash_numa_from_gpu`).  A machine fact is measured where the job
         # runs, never on the machine that prepared it (`configuration.md`
         # § 5 M-1).  The runtime override
         # ``MOLBUILDER_GPU_NUMA=N`` wins; 0 is a valid node.
-        + _bash_numa_from_gpu("0", "_gpu_numa_probed")
+        + _bash_numa_from_gpu("${_gpus[0]:-0}", "_gpu_numa_probed")
         + '_gpu_numa="${MOLBUILDER_GPU_NUMA:-$_gpu_numa_probed}"\n' +
         '# Defence in depth: whatever the lookup or the override gave,\n'
         '# use it as a NUMA target only if it parses as a non-negative\n'
@@ -2380,7 +2390,16 @@ def render_run_wrapper(script_path: Path, *,
         # QUOTED where it runs; shown bare, inside the banner's own quotes.
         launch_words, launch_shown = '"$_mb_py"', "$_mb_py"
     to_output = (" > $_out_file" if stderr_apart else " > $_out_file 2>&1")
+    # THE COMMAND'S SHAPE, which the banner, the resolved-launch line and the
+    # dry run show before the wall is counted; and THE COMMAND EXACTLY, as
+    # the engine starts -- the time limit's words counted then, after the
+    # person's own lines, so what is left is what is left (`job-contracts.md`
+    # § 2.6: "the command about to run, logged").  Its output shown as a
+    # person would write it by hand; the log names the SCF stamps' file.
     launch_line = f"{launch_shown} {script_name}{to_output}"
+    command_now = (f'{launch_shown}${{_mb_wall_args[*]+ ${{_mb_wall_args[*]}}}} '
+                   f'{script_name}{to_output}' if prog is not None
+                   else launch_line)
 
     # THE WALL'S WORDS FOR THIS PROGRAM -- the catalogue's `launch` for
     # `wall_slack` (template.md § 5), rendered with what the script counts:
@@ -2523,7 +2542,7 @@ def render_run_wrapper(script_path: Path, *,
         _phys_cores_probe_block()
         + (_gpu_runtime_block() if gpu_ranks else "")
         + counts
-        # GPU load-balance: count the GPUs the job was given and derive
+        # GPU load-balance: from the job's GPUs (the placement's list) derive
         # ranks-per-GPU from the resolved rank count -- after the counts
         # (needs $_mpi_np), before the MPS block (reads $_ngpu).
         + (_gpu_loadbalance_block() if gpu_ranks else "")
@@ -2604,11 +2623,12 @@ def render_run_wrapper(script_path: Path, *,
         + ((
             # THE single authoritative GPU-resource summary, printed with
             # the RESOLVED launch values so it always matches what runs;
-            # $_gpu_numa is GPU 0's NUMA node, looked up at run time.
+            # $_gpu_numa is the job's first GPU's NUMA node, looked up at
+            # run time.
             f'echo "{lead("GPU resources")}$_mpi_np ranks x $_omp_threads '
             'threads ($(( _mpi_np * _omp_threads )) cores); '
             'mps=$_use_mps_str; ranks/GPU=${_ranks_per_gpu:-?}; '
-            'GPU0 NUMA=$_gpu_numa"\n'
+            'GPU ${_gpus[0]:-0} NUMA=$_gpu_numa"\n'
             # TUNE BY MEASURING, not by asking for a guess.
             f'echo "{under}# tune: -np / -omp / --mps / --no-mps "'
             '"(or measure it: prep bench, for this stage)"\n'
@@ -2705,6 +2725,7 @@ def render_run_wrapper(script_path: Path, *,
         # which fires the EXIT trap and would run it AGAIN (D17).
         f'    [ "${{_mb_cleanup_ran:-0}}" = "1" ] && return 0 || true\n'
         f"    _mb_cleanup_ran=1\n"
+
         # A FAILURE OF THE SCRIPT'S OWN CONCLUDES THE RUN (`project-layout.md`
         # § 1.6.3): an activation or a step that failed under `set -e`, an
         # exit before the engine -- the main line never reached its marker,
@@ -2788,6 +2809,27 @@ def render_run_wrapper(script_path: Path, *,
     # force-stopped), and `exec` would replace this shell so nothing could
     # run afterwards -- the ending asked, its advice, what a launch again
     # will do, a point's step after its engine.
+    # THE PERSON'S OWN LINES, two zones (`job-contracts.md` § 3.5; the
+    # user, 2026-11-19): plain places to type, kept line for line -- one
+    # before the engine, after the dry run's exit; one after it, before
+    # the run concludes.  Nothing is built around them: the script is the
+    # person's to edit as they like (the user, 2026-11-20).
+    from . import script_emit as _sc
+    from .deck_record import BLOCK_USER_BEFORE_ENGINE, BLOCK_USER_CUSTOM
+    _own_before = (
+        "# --- Your own lines, before the engine --------------------------\n"
+        + _sc.emit_user_custom_placeholder(BLOCK_USER_BEFORE_ENGINE, (
+            "Your own lines, run before the engine, in the shell that starts",
+            "it.  molbuilder keeps this section, line for line, across",
+            "regenerations."))
+        + "\n")
+    _own_after = (
+        "# --- Your own lines, after the engine ---------------------------\n"
+        + _sc.emit_user_custom_placeholder(BLOCK_USER_CUSTOM, (
+            "Your own lines, run after the engine, before the run concludes.",
+            "molbuilder keeps this section, line for line, across",
+            "regenerations."))
+        + "\n")
     launch_block = (
         _resolved_log_block(launch_line, gpu_ranks)
         + _dry_run_block(launch_line, gpu_ranks, words)
@@ -2800,6 +2842,7 @@ def render_run_wrapper(script_path: Path, *,
                          cores="$_mb_cores", gpu=gpus.uses,
                          member=point is not None)
         + _finish_check_block(finish)
+        + _own_before
         # THE POINT'S START, AND ITS OWN STEP BEFORE ITS ENGINE, where its
         # kind has one -- a vibration call's coordinates
         # (`execution/runs-of-points.md` § 3, op. 9).
@@ -2836,6 +2879,8 @@ def render_run_wrapper(script_path: Path, *,
            f'{words} stops ${{{WALL_SLACK_VAR}}}s '
            f'before it"\n'
            f"fi\n" if takes_wall else "")
+        + f'_mb_command="{command_now}"\n'
+        + '_log INFO "the command: $_mb_command"\n'
         + "_t_start=$(date +%s.%N)\n"
         "set +e\n"
         + (f'{launch_words} {script_name}'
@@ -2891,15 +2936,19 @@ def render_run_wrapper(script_path: Path, *,
            if asks_wall else f'    {_again_line(_again)}')
         + _point_block(names, POINT_ENDED, point, finish, script_name,
                        failed=True)
-        + '    # CONCLUDED -- an error is a conclusion (project-\n'
+        + "else\n"
+        + f'    echo "{words} completed: $_mb_command"\n'
+        + _point_block(names, POINT_ENDED, point, finish, script_name)
+        + "fi\n"
+        + _own_after
+        + 'if [ "$_engine_exit" -ne 0 ]; then\n'
+        '    # CONCLUDED -- an error is a conclusion (project-\n'
         '    # layout.md 1.6.3): the engine returned and this process\n'
         '    # says goodbye with its code.  A forced stop leaves NO\n'
         '    # marker: its signal handler writes none.\n'
         + "    " + conclude_line('"$_engine_exit"') + "\n"
         + '    exit "$_engine_exit"\n'
         "fi\n"
-        + f'echo "{words} completed: {launch_line}"\n'
-        + _point_block(names, POINT_ENDED, point, finish, script_name)
         + conclude_line(0) + "\n"
     )
 
@@ -2909,7 +2958,6 @@ def render_run_wrapper(script_path: Path, *,
     # existing env vars per the contract) and no ATOM-METADATA (lives in
     # the deck, not the run script).  An engine of one process states no
     # rank count: prep refuses one before it reaches here.
-    from . import script_emit as _sc
     _resolved_defaults = {
         "target_env":    target_env,
         # THE STATED COUNTS -- unstated, the run was refused at prep, so
@@ -2929,8 +2977,6 @@ def render_run_wrapper(script_path: Path, *,
         # own PROVENANCE gives (`script_emit.render_deck`): prep's.
         engine=engine,
     )
-    _user_custom = _sc.emit_user_custom_placeholder()
-
     return (
         f"#!/usr/bin/env bash\n"
         f"{_provenance}\n"
@@ -3031,7 +3077,6 @@ def render_run_wrapper(script_path: Path, *,
         f"{env_activation}"
         f"{env_prefix}"
         f"{launch_block}"
-        f"\n{_user_custom}\n"
     )
 
 
@@ -3633,9 +3678,9 @@ def write_run_wrapper(script_path: Path, *,
     what a wrapper needs beside it.
 
     **Through the one writer** (`script-preparation.md` § 3.2, W4), which keeps
-    the reader's USER-CUSTOM block.  The wrapper EMITS that block — it invites
-    a person to put their own lines in it — and an invitation the next prep
-    silently revokes is worse than no invitation.
+    the person's own lines, each zone of them.  The wrapper EMITS those zones
+    — it invites a person to put their own lines in them — and an invitation
+    the next prep silently revokes is worse than no invitation.
 
     Modes: the wrapper is 0o755, a program its launch runs (and a person
     asks for ``-h`` or ``--dry-run``); the ``.sbatch`` is 0o644, read by

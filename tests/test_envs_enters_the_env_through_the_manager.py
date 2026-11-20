@@ -346,6 +346,57 @@ def test_every_step_gets_the_clean_slate_only_builds_used_to_get(
     assert os.path.isdir(env["TMPDIR"])
 
 
+#: (the step, its role, whether the env already has its folders, the temp
+#: folder handed): a step that installs makes the env's folders; a verify
+#: creates nothing and is handed only those that are there, the host's own
+#: temp folder otherwise (`env-framework.md` § 5.6).
+STEP_FOLDER_ROWS = [
+    ("an install step, an env with no folders yet", "PACKAGES", False, "env"),
+    ("a verify, an env with its folders", "VERIFY", True, "env"),
+    ("a verify, an env without them", "VERIFY", False, "host"),
+]
+
+
+@pytest.mark.parametrize("what, role, has_folders, handed", STEP_FOLDER_ROWS,
+                         ids=[r[0] for r in STEP_FOLDER_ROWS])
+def test_a_step_is_handed_its_envs_folders_as_its_role_allows(
+        tmp_path, monkeypatch, what, role, has_folders, handed):
+    """`env-framework.md` § 5.6: temp and caches kept inside the prefix; a
+    verify, "which creates nothing in the env it reads, is handed only those
+    folders that are there" -- asserted through `run_step`, the door
+    `doctor` and `install` ask, its dispatch faked as the test above fakes
+    it (the step's environment is what it receives).
+
+    THE SILENT FAILURE: a verify told TMPDIR=<prefix>/var/tmp in an env
+    with no such folder -- anything writing a temp file fails, and a
+    healthy env reads FAILED; or an install step handed a folder never
+    made."""
+    from molbuilder.envs import install as I
+    seen = {}
+
+    def fake_dispatch(argv, prefix, *, env=None, **kw):
+        seen["env"] = env
+        return (0, "ok")
+
+    monkeypatch.setattr(I._builds, "dispatch_into_env", fake_dispatch)
+    host_tmp = tmp_path / "host-tmp"
+    host_tmp.mkdir()
+    monkeypatch.setenv("TMPDIR", str(host_tmp))
+    prefix = _prefix(tmp_path)
+    if has_folders:
+        Path(prefix, "var", "tmp").mkdir(parents=True)
+    step = I.InstallStep(label="a step", role=getattr(I.StepRole, role),
+                         argv=B.conda_run_argv("/m", "someenv", "true"))
+
+    I.run_step(step, prefix=prefix)
+
+    tmp = seen["env"]["TMPDIR"]
+    assert tmp == (f"{prefix}/var/tmp" if handed == "env" else str(host_tmp))
+    assert os.path.isdir(tmp), tmp
+    if role == "VERIFY" and not has_folders:
+        assert not Path(prefix, "var").exists(), "a verify made folders"
+
+
 def test_run_step_hands_that_environment_to_the_door(tmp_path, monkeypatch):
     """The door hands the step that environment -- asserted through
     `run_step`, because "the function exists" was never the gap."""

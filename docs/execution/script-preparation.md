@@ -155,7 +155,7 @@ reader has to decode. The table is in the order the sub-steps run:
 | 3.5 | **structure** | cell, species, coordinates, frozen atoms, region labels |
 | 3.6 | **parameters** | every resolved value, each written with its reason |
 | 3.7 | **engine body** | what no parameter models — a run loop, a post-processing template |
-| 3.8 | **reader section** | the one block a person is meant to edit (`USER-CUSTOM`) |
+| 3.8 | **reader section** | the blocks a person is meant to edit — a deck's one, a run script's two ([`job-contracts.md`](?doc=execution/job-contracts.md) § 3.5) |
 | 3.9 | **record** | provenance, benchmark anchors, atom labels, behind a do-not-edit banner |
 | 3.10 | **write** | one writer, which keeps whatever the reader put in their section |
 | 3.11 | **check** | read what the writer made — **the exact text the engine will open**, the reader's section merged in — and refuse if it is wrong |

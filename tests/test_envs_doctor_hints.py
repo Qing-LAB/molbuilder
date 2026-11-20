@@ -11,9 +11,12 @@ prescribe a no-op.
 """
 from __future__ import annotations
 
+import pytest
+
 from molbuilder.envs._cli import _fix_cmd, _render_doctor
 from molbuilder.envs.doctor import (EnvReport, PackageAudit,
                                     PackageAuditIssue)
+from molbuilder.diagnostics import DEFAULT_ENV_NAMES
 from molbuilder.envs.recipes import builtin_recipes
 
 # CHOSEN BY THE PROPERTY UNDER TEST, not by index.  These tests split on
@@ -23,8 +26,13 @@ from molbuilder.envs.recipes import builtin_recipes
 # `extra_set()`, not `extra_steps`: the DEFAULT set is what decides how many
 # commands doctor prints, and the two differ -- `_HOST`
 # declares an opt-in chromium step that a default install never dispatches.
-RECIPE = next(r for r in builtin_recipes() if not r.extra_set())
+# A BACKEND's: the host env's fixes are its own (`hints.install_again_cmd`),
+# rows below.
+RECIPE = next(r for r in builtin_recipes()
+              if r.category is not None and not r.extra_set())
 NAME = RECIPE.name
+#: The host env's recipe -- the env the install script runs its verbs from.
+_HOST_RECIPE = next(r for r in builtin_recipes() if r.category is None)
 
 #: One that DOES have post-install steps on a default run, for the other branch.
 RECIPE_WITH_STEPS = next(r for r in builtin_recipes() if r.extra_set())
@@ -58,10 +66,30 @@ def _render(capsys, rep):
     return code, cap.out + cap.err
 
 
-def test_a_missing_env_carries_the_install_command(capsys):
-    code, out = _render(capsys, _report(present=False, verify_ok=None))
+#: (which env is missing, its recipe, the fix doctor names): the host env is
+#: made by `bootstrap`, which makes the molbuilder this command runs -- the
+#: install script refuses `install` for it -- and any other by `install`
+#: (`ops/installation.md` § 2: every problem ends with its exact fix command).
+MISSING_ROWS = [
+    ("the host env", _HOST_RECIPE, ("bootstrap", "--yes")),
+    ("a backend env", RECIPE, ("install", NAME, "--yes")),
+]
+
+
+@pytest.mark.parametrize("which, recipe, fix", MISSING_ROWS,
+                         ids=[r[0] for r in MISSING_ROWS])
+def test_a_missing_env_carries_the_command_that_makes_it(capsys, which,
+                                                         recipe, fix):
+    """`ops/installation.md` § 2: a missing env's `next:` line is its exact
+    fix command -- one the install script runs.
+
+    THE SILENT FAILURE: a missing host env told to run `install molbuilder
+    --yes`, which the install script refuses."""
+    code, out = _render(capsys, _report(recipe=recipe,
+                                        effective_name=recipe.name,
+                                        present=False, verify_ok=None))
     assert code == 0            # missing is informational, as before
-    assert "next:    " + _fix_cmd("install", NAME, "--yes") in out
+    assert "next:    " + _fix_cmd(*fix) in out, out
     assert "molbuilder envs install" not in out, (
         "the second spelling is back -- one spelling, the shell form")
 
@@ -141,12 +169,39 @@ def test_optional_only_names_the_enable_command_and_stays_ok(capsys):
     assert _fix_cmd("repair", NAME, "--include-optional") in out
 
 
-def test_a_failed_verify_offers_repair_then_the_rebuild(capsys):
-    rep = _report(verify_ok=False, verify_output="boom")
+#: (which env failed its verify, its recipe, the rebuild doctor names): a
+#: backend's by `install --clean`; the host env's -- the install script runs
+#: its verbs from it, so its `--clean` is refused there -- by removing it from
+#: a shell where it is not active, then `bootstrap` (`installation.md` M5).
+FAILED_VERIFY_ROWS = [
+    ("a backend env", RECIPE,
+     [_fix_cmd("install", NAME, "--clean", "--yes")]),
+    ("the host env", _HOST_RECIPE,
+     [f"/opt/mgr/bin/micromamba env remove -n {_HOST_RECIPE.name} -y",
+      _fix_cmd("bootstrap", "--yes")]),
+]
+
+
+@pytest.mark.parametrize("which, recipe, rebuild", FAILED_VERIFY_ROWS,
+                         ids=[r[0] for r in FAILED_VERIFY_ROWS])
+def test_a_failed_verify_offers_repair_then_the_rebuild(capsys, which,
+                                                        recipe, rebuild):
+    """`ops/installation.md` § 2: every problem ends with its exact fix
+    command -- one the install script runs.
+
+    THE SILENT FAILURE: a host env told `install molbuilder --clean --yes`,
+    which the install script refuses from inside that env."""
+    rep = _report(recipe=recipe, effective_name=recipe.name,
+                  verify_ok=False, verify_output="boom",
+                  manager="/opt/mgr/bin/micromamba")
     code, out = _render(capsys, rep)
     assert code == 1
-    assert "next:    " + _fix_cmd("repair", NAME) in out
-    assert _fix_cmd("install", NAME, "--clean", "--yes") in out
+    assert "next:    " + _fix_cmd("repair", recipe.name) in out, out
+    for line in rebuild:
+        assert line in out, out
+    if recipe.category is None:
+        assert _fix_cmd("install", recipe.name, "--clean", "--yes") \
+            not in out, out
 
 
 def test_a_failed_verify_on_the_RUNNING_env_does_not_offer_clean(capsys):
@@ -181,3 +236,81 @@ def test_the_closing_line_points_at_the_hints_not_the_docs(capsys):
     assert "docs/ops/installation.md" not in out
     assert "`next:` fix command" in out, (
         "the closing line must point at the hints")
+
+
+#: (the command a person runs on a missing env): every surface that finds
+#: an env missing prints the one fix `hints.install_again_cmd` gives --
+#: doctor's rows above, these two here.
+MISSING_COMMANDS = ["repair", "validate"]
+
+
+@pytest.mark.parametrize("command", MISSING_COMMANDS)
+@pytest.mark.parametrize("which, recipe, fix", MISSING_ROWS,
+                         ids=[r[0] for r in MISSING_ROWS])
+def test_a_missing_env_named_to_a_command_carries_its_fix(
+        command, which, recipe, fix):
+    """`ops/installation.md` § 2: every problem ends with its exact fix
+    command -- `repair` and `validate` on an env that is not there, as
+    `doctor` on one.
+
+    THE SILENT FAILURE: `repair molbuilder` on a machine whose host env is
+    gone told to `install molbuilder --yes`, which the install script
+    refuses."""
+    from click.testing import CliRunner
+    from molbuilder.diagnostics import Capabilities, set_capabilities
+    from molbuilder.envs._cli import envs_group
+    set_capabilities(Capabilities(runtime_config={},
+                                  conda_binary="/usr/bin/conda",
+                                  conda_envs={}))
+    result = CliRunner().invoke(envs_group, [command, recipe.name])
+    said = result.output + (getattr(result, "stderr", "") or "")
+    assert _fix_cmd(*fix) in said, said
+
+
+#: (the command, what it is typed with, the command the sentence names --
+#: its verb and recipe): every verb that needs the package manager, refused
+#: in the one sentence.
+_SOURCE_BUILT = DEFAULT_ENV_NAMES["siesta-gpu"]
+NO_MANAGER_COMMANDS = [
+    ("doctor", ["doctor"], ["doctor"]),
+    ("repair", ["repair", NAME], ["repair", NAME]),
+    ("clean", ["clean", _SOURCE_BUILT], ["clean", _SOURCE_BUILT]),
+    ("validate", ["validate", _SOURCE_BUILT], ["validate", _SOURCE_BUILT]),
+    ("install", ["install", NAME, "--check"], ["install", NAME]),
+    ("bootstrap", ["bootstrap", "--dry-run"], ["bootstrap"])]
+#: (why there is none, what the resolver said, the sentence's fix): none
+#: loaded -- load it; the one molbuilder.json records not runnable -- fix
+#: the record, since a recorded manager wins (`hints.no_manager`).
+NO_MANAGER_CAUSES = [
+    ("none found", None, "Load it in this shell"),
+    ("the recorded one cannot run",
+     "molbuilder.json envs.manager = '/gone/bin/mamba' is not an executable "
+     "file on this machine", "Fix `envs.manager` there"),
+]
+
+
+@pytest.mark.parametrize("cause, refusal, fix", NO_MANAGER_CAUSES,
+                         ids=[r[0] for r in NO_MANAGER_CAUSES])
+@pytest.mark.parametrize("command, words, named", NO_MANAGER_COMMANDS,
+                         ids=[r[0] for r in NO_MANAGER_COMMANDS])
+def test_a_command_with_no_package_manager_says_the_one_sentence(
+        command, words, named, cause, refusal, fix):
+    """`ops/installation.md`, *The install script is not the CLI*: a command
+    that finds no package manager "says so in one sentence: load it in this
+    shell and run the command again" -- and, where molbuilder.json's
+    recorded one is what does not run, that the record is the fix.
+
+    THE SILENT FAILURE: `validate` telling a person whose env is there to
+    install it again; `clean` naming another verb; "load it" where loading
+    cannot help."""
+    from click.testing import CliRunner
+    from molbuilder.diagnostics import Capabilities, set_capabilities
+    from molbuilder.envs._cli import envs_group
+    set_capabilities(Capabilities(runtime_config={}, conda_binary=None,
+                                  conda_binary_source=refusal,
+                                  conda_envs={}))
+    result = CliRunner().invoke(envs_group, words)
+    said = result.output + (getattr(result, "stderr", "") or "")
+    assert result.exit_code != 0, said
+    assert f"`{_fix_cmd(*named)}` cannot run" in said, said
+    assert fix in said, said

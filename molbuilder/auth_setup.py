@@ -142,8 +142,8 @@ def issue_notify_key(user: str, *,
     # route, the WHOLE FILE -- so writing one unchecked destroys every key
     # already issued and takes the listener with it.  Measured 2026-09-12:
     # `--route a/b` was accepted and reported success, after which the server
-    # had no route and no keys, silently, because a notifier swallows
-    # failures.  The check is `monitor`'s own door, not a second regex here:
+    # had no route and no keys -- said only as each report not delivered, in
+    # its run's monitor log.  The check is `monitor`'s own door, not a second regex here:
     # the two ends must not be free to disagree about what a segment is.
     if not is_route_segment(seg):
         raise NotifyKeyError(

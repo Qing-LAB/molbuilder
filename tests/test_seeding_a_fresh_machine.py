@@ -110,40 +110,199 @@ def test_seeding_twice_changes_nothing(fresh):
     assert after == before
 
 
-def test_an_existing_config_is_left_exactly_as_it_is(fresh):
-    """A person's own file is never merged into, never reformatted -- and
-    keeping it is not staying quiet about it: one written before a section
-    was retired no longer reads, and the note says why, in the reader's own
-    words.
+def test_a_config_that_does_not_read_is_said_and_left_as_it_is(fresh,
+                                                                capsys):
+    """`configuration.md` § 3.2: "a file that does not read is said first,
+    nothing asked or written to it" -- one written before a section was
+    retired, said in its reader's own words, by the command a person runs.
     """
+    from molbuilder.cli import main
     fresh.mkdir(parents=True)
     mine = fresh / CONFIG_FILENAME
     mine.write_text('{"execution": {"mode": "direct"}}')
     original = mine.read_bytes()
 
-    step = initconfig.seed_machine_config("conda activate")
+    with pytest.raises(SystemExit) as stopped:
+        main(["envs", "init-config", "--no-probe", "--yes"])
 
-    assert step.action == "kept"
+    said = capsys.readouterr().err
+    assert stopped.value.code == 2, said
+    assert "'execution' is now 'launch'" in said, said
     assert mine.read_bytes() == original
-    assert "does not read" in step.note, step.note
-    assert "'execution' is now 'launch'" in step.note, step.note
 
-def test_a_config_without_env_init_gets_the_one_asked_and_nothing_else(fresh):
-    """``init-config`` asks how this machine enters an environment, so the
-    answer is written -- into a file that already exists and declares none,
-    that section alone; what the person wrote stays as it was.  It asked and
-    dropped the answer until 2026-10-02 (W54 R17)."""
+#: (what is in the person's file, what is typed on the command line, what
+#: the file then holds): `configuration.md` § 3.2 -- a value typed replaces
+#: its one key; a file with no activation gains it, its own preamble kept.
+TYPED_ROWS = [
+    # It asked and dropped the answer until 2026-10-02 (W54 R17).
+    ("no env_init, an activation typed", {},
+     ["--activation", "source activate"],
+     {"env_init": {"activation": "source activate"}}),
+    ("a declared activation, another typed",
+     {"env_init": {"activation": "conda activate",
+                   "preamble": "module load mamba/2.6.2"}},
+     ["--activation", "source activate"],
+     {"env_init": {"activation": "source activate",
+                   "preamble": "module load mamba/2.6.2"}}),
+    ("a declared activation, a projects tree typed",
+     {"env_init": {"activation": "source activate"}},
+     ["--projects", "/scratch/someone/projects"],
+     {"env_init": {"activation": "source activate"},
+      "paths": {"projects": "/scratch/someone/projects"}}),
+    ("no activation, a hand-written preamble",
+     {"env_init": {"preamble": "module load mamba/2.6.2"}},
+     ["--activation", "conda activate"],
+     {"env_init": {"activation": "conda activate",
+                   "preamble": "module load mamba/2.6.2"}}),
+]
+
+
+@pytest.mark.parametrize("what, mine, typed, holds", TYPED_ROWS,
+                         ids=[r[0] for r in TYPED_ROWS])
+def test_a_value_typed_replaces_its_one_key_and_nothing_else(
+        fresh, what, mine, typed, holds):
+    """`configuration.md` § 3.2: "a value you type on the command line,
+    `--activation` or `--projects`, ... replaces its one key in your file",
+    said as what it was and what it is now; "a question your
+    `molbuilder.json` does not answer ... gains the answer given"; "a
+    preamble your file states stays" -- through ``init-config``, as the
+    installation chapter shows it.
+
+    THE SILENT FAILURE: an override typed and reported "left as it is"; a
+    `module load` preamble replaced by conda's hook, unsaid."""
     from click.testing import CliRunner
     from molbuilder.envs._cli import envs_group
     fresh.mkdir(parents=True)
-    (fresh / CONFIG_FILENAME).write_text('{"launch": {"mode": "direct"}}')
+    (fresh / CONFIG_FILENAME).write_text(json.dumps(
+        {**mine, "launch": {"mode": "direct"}}))
     result = CliRunner().invoke(
-        envs_group, ["init-config", "--activation", "source activate",
-                     "--no-probe", "--yes"])
+        envs_group, ["init-config", *typed, "--no-probe", "--yes"])
     assert result.exit_code == 0, result.output
     doc = json.loads((fresh / CONFIG_FILENAME).read_text())
-    assert doc["env_init"] == {"activation": "source activate"}, doc
+    for key, value in holds.items():
+        assert doc[key] == value, (key, doc)
     assert doc["launch"] == {"mode": "direct"}, doc
+    assert " was " in result.output and ", now " in result.output, result.output
+
+
+#: (the file's env_init, the preamble the installer found -- conda's hook --
+#: what the file then holds, what the step says): the seeding as the
+#: command hands it the hook it found or none, through its one door.
+_HOOK = "source /opt/conda/etc/profile.d/conda.sh"
+PREAMBLE_ROWS = [
+    ("the hook found, the file stating none",
+     {"activation": "source activate"}, _HOOK,
+     {"activation": "conda activate", "preamble": _HOOK}, f"preamble {_HOOK!r}"),
+    ("no hook found, the file stating none",
+     {"activation": "source activate"}, None,
+     {"activation": "conda activate"}, "needs conda's hook"),
+    ("the hook found, the file stating its own",
+     {"preamble": "module load mamba/2.6.2"}, _HOOK,
+     {"activation": "conda activate", "preamble": "module load mamba/2.6.2"},
+     "env_init.activation was unset"),
+]
+
+
+@pytest.mark.parametrize("what, mine, found, holds, says", PREAMBLE_ROWS,
+                         ids=[r[0] for r in PREAMBLE_ROWS])
+def test_an_activation_written_says_its_preamble(fresh, what, mine, found,
+                                                 holds, says):
+    """`configuration.md` § 3.2: "an activation written into a file that
+    states no preamble brings the preamble found (conda's hook, for `conda
+    activate`), or the note that none was; a preamble your file states
+    stays".
+
+    THE SILENT FAILURE: `conda activate` typed over `source activate` in a
+    file with no preamble, said only as the change -- and every job then
+    dies on its activation line, where a non-interactive shell has no
+    `conda activate`; or a `module load` preamble replaced by the hook."""
+    fresh.mkdir(parents=True)
+    (fresh / CONFIG_FILENAME).write_text(json.dumps({"env_init": mine}))
+    step, = [s for s in initconfig.init_config(
+        "conda activate", found, probe=False,
+        typed=frozenset({"activation"})) if s.path.name == CONFIG_FILENAME]
+    env_init = json.loads((fresh / CONFIG_FILENAME).read_text())["env_init"]
+    assert env_init == holds, env_init
+    assert says in step.note, step.note
+
+
+def test_a_typed_projects_tree_is_checked_as_on_a_fresh_file(fresh):
+    """`projects.named_projects`: the installer's answer is checked "before
+    it is written" -- into an existing file as into a fresh one.
+
+    THE SILENT FAILURE: `--projects /scratch/me/calcs` written into an
+    existing file, said as done -- and every later command refusing the
+    file."""
+    from click.testing import CliRunner
+    from molbuilder.envs._cli import envs_group
+    from molbuilder.runtime_config import RuntimeConfigError
+    fresh.mkdir(parents=True)
+    mine = fresh / CONFIG_FILENAME
+    mine.write_text(json.dumps({"env_init": {"activation": "source activate"}}))
+    before = mine.read_bytes()
+    result = CliRunner().invoke(
+        envs_group, ["init-config", "--projects", "/scratch/me/calcs",
+                     "--no-probe", "--yes"])
+    assert isinstance(result.exception, RuntimeConfigError), result.output
+    assert "a folder called 'calcs'" in str(result.exception)
+    assert mine.read_bytes() == before
+
+
+#: (what the file says, the --projects typed, whether bootstrap warns before
+#: its installs that the seeding at the end cannot go through): with no
+#: terminal and no --yes.
+WARN_ROWS = [
+    ("a fresh machine", None, None, "the install-time questions"),
+    ("a file that answers both",
+     {"env_init": {"activation": "source activate"},
+      "paths": {"projects": "/scratch/someone/projects"}}, None, None),
+    ("a tree typed that is not named projects",
+     {"env_init": {"activation": "source activate"},
+      "paths": {"projects": "/scratch/someone/projects"}},
+     "/scratch/me/calcs", "a folder called 'calcs'"),
+]
+
+
+@pytest.mark.parametrize("what, mine, projects, says", WARN_ROWS,
+                         ids=[r[0] for r in WARN_ROWS])
+def test_bootstrap_says_up_front_what_the_seeding_will_need(
+        fresh, monkeypatch, capsys, what, mine, projects, says):
+    """`configuration.md` § 3.2 (the user, 2026-09-12): the seeding's
+    preconditions are said at the start of `bootstrap`, before its
+    installs -- the questions it will ask, and a tree typed that it will
+    refuse; nothing, where it will ask nothing.
+
+    THE SILENT FAILURE: forty minutes of installs, then the seeding
+    refusing; or a warning about questions the file already answers."""
+    from molbuilder.envs import _cli
+    if mine is not None:
+        fresh.mkdir(parents=True)
+        (fresh / CONFIG_FILENAME).write_text(json.dumps(mine))
+    monkeypatch.setattr(_cli._hints, "stdin_can_answer", lambda: False)
+    warned = _cli._warn_about_seeding_now(False, projects)
+    said = capsys.readouterr().err
+    assert warned is (says is not None), said
+    if says:
+        assert says in said, said
+
+
+def test_what_the_file_says_is_not_asked_again(fresh):
+    """`configuration.md` § 3.2: "Nothing a file already declares is asked
+    again" -- run with no terminal answer and no --yes, as a re-run is; the
+    tree is still said.
+
+    THE SILENT FAILURE: a re-run asking what the file states, its answer
+    then dropped -- and under a batch step, the question aborting it."""
+    from click.testing import CliRunner
+    from molbuilder.envs._cli import envs_group
+    fresh.mkdir(parents=True)
+    (fresh / CONFIG_FILENAME).write_text(json.dumps(
+        {"env_init": {"activation": "source activate"},
+         "paths": {"projects": "/scratch/someone/projects"}}))
+    result = CliRunner().invoke(envs_group, ["init-config", "--no-probe"],
+                                input="")
+    assert result.exit_code == 0, result.output
+    assert "/scratch/someone/projects" in result.output, result.output
 
 
 # ══ WHAT IT WRITES, AND WHAT IT REFUSES TO WRITE ═══════════════════════════

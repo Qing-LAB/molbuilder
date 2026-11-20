@@ -783,10 +783,9 @@ def run_shepherd(serve_port: int) -> int:
 
     caps = get_capabilities()
     if caps.conda_binary is None:
-        sys.stderr.write(
-            "molbuilder jupyter: no env manager found, so the notebook env "
-            "cannot be entered.  Record one as `envs.manager` in "
-            "molbuilder.json, or activate one before starting the server.\n")
+        from .envs.hints import no_manager
+        sys.stderr.write("molbuilder jupyter: " + no_manager(
+            "the notebook", caps.conda_binary_source) + "\n")
         return 2
     recipe = recipe_by_name("molbuilder-jupyternb")
     env_name = effective_name(recipe, caps)

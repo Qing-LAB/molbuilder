@@ -15,6 +15,8 @@ usage error, printed by the very code that detected the problem.
 """
 from __future__ import annotations
 
+from typing import Optional
+
 #: The launcher form, and why it is the launcher rather than ``molbuilder envs``:
 #: ``bash scripts/install-env.sh <verb> ...`` works from a bare shell -- it finds
 #: the manager, ensures the host env and dispatches -- which is exactly the
@@ -24,6 +26,27 @@ from __future__ import annotations
 LAUNCHER = "bash scripts/install-env.sh"
 
 
+def no_manager(what: str, refusal: Optional[str] = None) -> str:
+    """THE ONE SENTENCE for what found no package manager: ``what`` cannot
+    run.  A person at a terminal loads the manager in their shell -- on Sol
+    `module load mamba` -- and runs the command again; `envs.manager` is for
+    what runs with no one there to load it (`ops/installation.md`, *The
+    install script is not the CLI*; the user, 2026-11-19).  ``refusal`` is
+    the resolver's, when the manager molbuilder.json records is what does
+    not run (`diagnostics.detect`): a recorded manager wins, so loading
+    another cannot help, and the record is what to fix."""
+    if refusal:
+        return (f"the package manager molbuilder.json records cannot run "
+                f"({refusal}), so {what} cannot run.  Fix `envs.manager` "
+                f"there, or remove it so the one loaded in this shell is "
+                f"found.")
+    return (f"no conda-compatible package manager was found, so {what} "
+            "cannot run.  Load it in this shell -- on Sol, `module load "
+            "mamba` -- and run this again; for what runs with no one there "
+            "to load it, record it once as `envs.manager` in molbuilder.json "
+            "(an absolute path).")
+
+
 def fix_cmd(action: str, *args: str) -> str:
     """The ONE spelling of an env command: the launcher, the verb, then the
     recipe and flags."""
@@ -31,10 +54,27 @@ def fix_cmd(action: str, *args: str) -> str:
 
 
 def install_cmd(recipe: str) -> str:
-    """The command that installs a recipe's env -- the remedy every surface
-    names for an env that is not there: `envs`' hints, `molbuilder jupyter`
-    and the notebook page, and a test that skips for want of the env."""
+    """The command that installs a backend recipe's env -- the remedy every
+    surface names for one that is not there: `envs`' hints, `molbuilder
+    jupyter` and the notebook page, and a test that skips for want of the
+    env.  The host env's is :func:`install_again_cmd`'s."""
     return fix_cmd("install", recipe, "--yes")
+
+
+def install_again_cmd(recipe) -> str:
+    """The line that installs ``recipe`` again once its env is gone: the
+    host env by `bootstrap`, which makes the molbuilder every other verb
+    needs -- the install script runs its other verbs from that env, and
+    refuses them while it is missing -- any other by :func:`install_cmd`."""
+    return (fix_cmd("bootstrap", "--yes") if recipe.category is None
+            else install_cmd(recipe.name))
+
+
+def rebuild_cmd(recipe: str) -> str:
+    """The command that removes a recipe's env and installs it from
+    scratch -- a backend's; the host env's is removed from outside it, then
+    :func:`install_again_cmd` (`ops/installation.md` M5)."""
+    return fix_cmd("install", recipe, "--clean", "--yes")
 
 
 def opt_in_cmd(recipe: str) -> str:

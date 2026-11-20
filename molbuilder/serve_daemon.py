@@ -158,10 +158,29 @@ class LogRoll:
 #  pid verification — never signal what you have not identified          #
 # --------------------------------------------------------------------- #
 
-def read_pidfile(path: Path) -> Optional[int]:
-    """The pid a pidfile names, or ``None`` if it cannot be read as one.
+def read_pidfile_lines(path: Path) -> Tuple[Optional[int], Optional[str]]:
+    """``(pid, bound host)`` -- the pidfile's two lines, :func:`write_pidfile`'s
+    shape.  THE ONE READER (`plan.md` § 5n, J16); :func:`read_pidfile` and
+    :func:`read_bound_host` are its two halves.  ``None`` for what the file
+    does not say: no file, an unreadable or corrupt one, or -- for the host
+    -- a pidfile a supervisor older than the second line wrote, or a
+    notebook shepherd's, which states none.
+    """
+    try:
+        lines = Path(path).read_text().split("\n")
+    except (OSError, ValueError):
+        return None, None
+    try:
+        pid: Optional[int] = int(lines[0].strip())
+    except ValueError:
+        pid = None
+    host = lines[1].strip() if len(lines) > 1 else ""
+    return pid, (host or None)
 
-    THE ONE READER (`plan.md` § 5n, J16).
+
+def read_pidfile(path: Path) -> Optional[int]:
+    """The pid a pidfile names, or ``None`` if it cannot be read as one
+    (:func:`read_pidfile_lines`).
 
     Absent, empty, unreadable and "not a number" all answer ``None``, and
     every caller treats that as *nothing to act on* -- so a missing pidfile
@@ -169,23 +188,30 @@ def read_pidfile(path: Path) -> Optional[int]:
     process, and the verification step (`pid_state`) is what decides whether
     a pid that IS named may be signalled.
     """
-    try:
-        return int(Path(path).read_text().strip())
-    except (OSError, ValueError):
-        return None
+    return read_pidfile_lines(path)[0]
 
 
-def write_pidfile(path: Path) -> Path:
+def write_pidfile(path: Path, host: Optional[str] = None) -> Path:
     """This process's pid, written to the pidfile at ``path`` -- THE ONE
     WRITER, the supervisor's and the notebook shepherd's, of the shape
     :func:`read_pidfile` reads, through the one atomic writer
-    (`persist.write_bytes`)."""
-    return write_bytes(path, f"{os.getpid()}\n".encode("utf-8"))
+    (`persist.write_bytes`).  ``host``, the supervisor's, is the host its
+    server is started on (``--host``): the second line, which
+    :func:`read_bound_host` reads -- so `serve status` asks the server where
+    it listens (`deployment.md` § 1.0b)."""
+    lines = f"{os.getpid()}\n" + (f"{host}\n" if host else "")
+    return write_bytes(path, lines.encode("utf-8"))
 
 
 def read_pid(port: int) -> Optional[int]:
     """The supervisor's own pid for ``port`` -- `read_pidfile` at its address."""
     return read_pidfile(serve_pidfile(port))
+
+
+def read_bound_host(port: int) -> Optional[str]:
+    """The address the server on ``port`` was started on -- its pidfile's
+    second line (:func:`read_pidfile_lines`) -- or ``None``."""
+    return read_pidfile_lines(serve_pidfile(port))[1]
 
 
 def unverified_ctx():
@@ -194,8 +220,8 @@ def unverified_ctx():
     Verification is off on purpose and the reason is one sentence:
     molbuilder handed that process the certificate, and the question being
     asked is *"is it answering"*, not *"is it trusted"*.  A cert made for the
-    public name fails verification on `127.0.0.1` anyway, which is where
-    every one of these probes goes.
+    public name fails verification on a loopback address anyway, which is
+    where a probe of a wildcard or loopback bind goes.
 
     **ONE HOME, because it is a security knob** (`plan.md` § 5n, J8).  Here because
     this module is the supervisor's own floor -- stdlib only, imported by
@@ -358,6 +384,7 @@ def _note(roll: "LogRoll", msg: str) -> None:
 
 def supervise(port: int, child_argv: List[str], *,
               log_max_bytes: int, log_keep: int,
+              host: str,
               jupyter_argv: Optional[List[str]] = None,
               max_restarts: Optional[int] = None) -> int:
     """The daemon's main loop: run the child, pump its output through the
@@ -366,6 +393,8 @@ def supervise(port: int, child_argv: List[str], *,
     ``SIGHUP`` recycles the child (the `restart` verb); ``SIGTERM`` takes
     the child down and exits cleanly, removing the pidfile.
     ``max_restarts`` exists for bounded tests; production passes None.
+    ``host`` is the address ``child_argv`` binds, kept in the pidfile for
+    `serve status` (:func:`read_bound_host`).
 
     **``SIGUSR1`` / ``SIGUSR2`` start and stop the NOTEBOOK server**
     (`docs/web/jupyter.md` § 3.4).  It is parented HERE, one level above the
@@ -401,7 +430,7 @@ def supervise(port: int, child_argv: List[str], *,
     # $XDG_RUNTIME_DIR is absent this falls back INSIDE the state root, where
     # the default umask gives 0775.
     ensure_runtime_dir()
-    write_pidfile(serve_pidfile(port))
+    write_pidfile(serve_pidfile(port), host)
 
     # LAYER 3 (docs/web/jupyter.md § 3.3): a notebook server that outlived the
     # molbuilder that started it -- a machine crash, or a survivor re-parented

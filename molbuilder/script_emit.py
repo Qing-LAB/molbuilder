@@ -3,8 +3,9 @@
 **One format, its grammar below.**  This module writes the reserved blocks
 (PROVENANCE / BENCH-MARKS / ATOM-METADATA / USER-CUSTOM); their
 grammar and their readers are `deck_record`'s, because a job and the floors
-below this one read them.  It reads back only the person's USER-CUSTOM zone,
-to carry it across a generation.  `parse/`'s registry answers *"which parser
+below this one read them.  It reads back only the person's own zones -- a
+deck's one, a run script's two (:data:`USER_ZONES`) -- to carry them across
+a generation.  `parse/`'s registry answers *"which parser
 handles this file?"* for FOREIGN formats; these blocks are molbuilder's own, and
 every caller already knows which block it wants.
 `execution/job-contracts.md` § 3.1 owns the grammar.
@@ -52,7 +53,8 @@ from . import runfiles as _rf
 # against the template at import) cannot be imported.
 from .deck_record import (BLOCK_ATOM_METADATA, BLOCK_BENCH_MARKS,
                           BLOCK_ENGINE_OFFSET,
-                          BLOCK_PROVENANCE, BLOCK_USER_CUSTOM, BLOCK_VIBRATION,
+                          BLOCK_PROVENANCE, BLOCK_USER_BEFORE_ENGINE,
+                          BLOCK_USER_CUSTOM, BLOCK_VIBRATION,
                           MARKER_RE, PARAMETER_ROW_PREFIX, PARAMETERS_KEY,
                           begin_marker, end_marker)
 
@@ -375,17 +377,19 @@ def emit_engine_offset(frame: Any, axis_kind: Any) -> str:
 
 
 def emit_vibration_record(payload: Mapping[str, Any]) -> str:
-    """The VIBRATION block, format v5: the facts a SIESTA force-constant
+    """The VIBRATION block, format v6: the facts a SIESTA force-constant
     run's finish reads that no SIESTA keyword states (`engines/vibration.md`
     § 5.3, § 5.5, § 5.11 § 4) -- ``force_criterion_ev_ang`` (the tolerance
     the reference geometry is relaxed to, `prep`'s), ``temperature_K`` (the
     thermochemistry's, from the template), ``already_relaxed`` (the
     person's statement, as made), ``masses_amu`` (every atom's mass in the
     deck's order, stated by `prep`, I3) and ``raman`` (*Raman for*, as the
-    optical phase applies it -- ``None`` with Compute Raman off, v5).  Written by the framework
+    optical phase applies it -- ``None`` with Compute Raman off, v5), and
+    the structure's ``title``, ``identity`` columns and notes (``info``,
+    v6).  Written by the framework
     from :attr:`DeckSpec.vibration`; read back by
     `deck_record.extract_vibration_record`, beside the job as on the host."""
-    return _json_block(BLOCK_VIBRATION, "molbuilder-vibration/v5",
+    return _json_block(BLOCK_VIBRATION, "molbuilder-vibration/v6",
                        dict(payload))
 
 
@@ -396,6 +400,13 @@ def _json_block(name: str, format_line: str, payload: Dict[str, Any]) -> str:
     return "\n".join((begin_marker(name), f"# format: {format_line}",
                       *(f"# {line}" for line in _compact_json_lines(payload)),
                       end_marker(name)))
+
+
+#: The characters ``json.dumps(ensure_ascii=False)`` writes raw and
+#: ``str.splitlines`` -- every block reader's -- breaks a line at, each with
+#: its JSON escape: the line and paragraph separators and NEL.
+_LINE_BREAKS_JSON_WRITES_RAW = (("\u2028", "\\u2028"), ("\u2029", "\\u2029"),
+                            ("\u0085", "\\u0085"))
 
 
 def _compact_json_lines(payload: Dict[str, Any]) -> List[str]:
@@ -417,13 +428,18 @@ def _compact_json_lines(payload: Dict[str, Any]) -> List[str]:
     result, so a break may never fall inside a string literal -- wrapping at a
     fixed column could split a hash and produce JSON that cannot be read back.
     Breaking only between top-level keys cannot: a key boundary is always
-    outside a string.
+    outside a string.  And no line breaks inside one either: the three
+    separators JSON leaves raw and a line reader breaks at
+    (:data:`_LINE_BREAKS_JSON_WRITES_RAW`) are written as escapes -- a title or
+    a note pasted with one had made the block unreadable.
     """
     keys = list(payload)
     lines: List[str] = ["{"]
     for i, key in enumerate(keys):
         value = json.dumps(payload[key], separators=(",", ":"),
                            ensure_ascii=False)
+        for raw, escaped in _LINE_BREAKS_JSON_WRITES_RAW:
+            value = value.replace(raw, escaped)
         comma = "," if i < len(keys) - 1 else ""
         lines.append(f'  {json.dumps(key, ensure_ascii=False)}:{value}{comma}')
     lines.append("}")
@@ -459,19 +475,25 @@ def machine_record_banner() -> str:
     ])
 
 
-def emit_user_custom_placeholder() -> str:
-    """Empty USER-CUSTOM block emitted on every fresh generation.
+#: THE ZONES OF A PERSON'S OWN LINES a generated file may carry, each found
+#: by its own markers and carried across a generation on its own
+#: (`execution/job-contracts.md` § 3.5): every file's ``user-custom``, and
+#: the run script's zone before its engine.
+USER_ZONES = (BLOCK_USER_CUSTOM, BLOCK_USER_BEFORE_ENGINE)
+
+
+def emit_user_custom_placeholder(zone: str = BLOCK_USER_CUSTOM,
+                                 says=("Your own additions go here.  molbuilder will preserve",
+                                       "this section verbatim across regenerations.")) -> str:
+    """The empty zone ``zone`` emitted on every fresh generation, ``says``
+    its lines of comment -- what the zone is for, where it sits.
 
     The round-trip (:func:`merge_user_custom_from_target`) replaces
-    this placeholder with the existing target file's user-custom
-    content byte-for-byte across regenerations.
+    this placeholder with the existing target file's zone content, line for
+    line, across regenerations.
     """
-    return "\n".join([
-        begin_marker(BLOCK_USER_CUSTOM),
-        "# Your own additions go here.  molbuilder will preserve",
-        "# this section verbatim across regenerations.",
-        end_marker(BLOCK_USER_CUSTOM),
-    ])
+    return "\n".join([begin_marker(zone), *("# " + line for line in says),
+                      end_marker(zone)])
 
 
 # --------------------------------------------------------------------- #
@@ -1624,14 +1646,15 @@ def _log_spec(spec: "DeckSpec", log) -> None:
 #  THE USER-CUSTOM ZONE, READ BACK                                      #
 # --------------------------------------------------------------------- #
 #
-#  To carry the person's zone across a generation.  Every other block's reader
+#  To carry the person's zones across a generation.  Every other block's reader
 #  is `deck_record`'s.  These take a STRING and do no I/O.
 #
 #  Contract: `execution/job-contracts.md` § 3.1 (the block grammar and the
 #  emit matrix).
 
-def _user_custom_span(text: str) -> Optional[Tuple[int, int]]:
-    """``(begin_idx, end_idx)`` of the USER-CUSTOM block, or ``None``.
+def _user_custom_span(text: str, zone: str = BLOCK_USER_CUSTOM
+                      ) -> Optional[Tuple[int, int]]:
+    """``(begin_idx, end_idx)`` of the zone ``zone``, or ``None``.
 
     **The OUTERMOST pair, and that is not a guess.**
     :func:`emit_user_custom_placeholder` writes exactly ONE ``BEGIN`` and one
@@ -1651,7 +1674,7 @@ def _user_custom_span(text: str) -> Optional[Tuple[int, int]]:
     end_idx: Optional[int] = None
     for i, line in enumerate(lines):
         m = MARKER_RE.match(line)
-        if not m or m.group(1) != BLOCK_USER_CUSTOM:
+        if not m or m.group(1) != zone:
             continue
         if m.group(2) == "BEGIN":
             if begin_idx is None:          # the FIRST begin, and only it
@@ -1663,16 +1686,17 @@ def _user_custom_span(text: str) -> Optional[Tuple[int, int]]:
     return begin_idx, end_idx
 
 
-def _extract_user_custom_inner(text: str) -> Optional[List[str]]:
-    """Return the inner lines of the USER-CUSTOM block in ``text``, or
-    ``None`` if there is no well-formed USER-CUSTOM BEGIN/END pair.
+def _extract_user_custom_inner(text: str, zone: str = BLOCK_USER_CUSTOM
+                               ) -> Optional[List[str]]:
+    """Return the inner lines of the zone ``zone`` in ``text``, or
+    ``None`` if there is no well-formed BEGIN/END pair of it.
 
     Inner lines are everything STRICTLY between the BEGIN and END
     markers (markers excluded).  Trailing/leading whitespace inside
     the block is preserved.  See :func:`_user_custom_span` for which
     pair, and why.
     """
-    span = _user_custom_span(text)
+    span = _user_custom_span(text, zone)
     if span is None:
         return None
     begin_idx, end_idx = span
@@ -1684,12 +1708,12 @@ def _extract_user_custom_inner(text: str) -> Optional[List[str]]:
 # ===================================================================== #
 #
 #  `merge_user_custom_from_target` reads the PREVIOUS OUTPUT to carry your
-#  USER-CUSTOM zone forward across a regeneration (`job-contracts.md` § 3.5).
+#  zones forward across a regeneration (`job-contracts.md` § 3.5).
 #  It is the reason a regenerated deck does not lose what you typed into it.
 
 def write_script(path, text: str, *, plan=None,
                  mode: Optional[int] = None) -> "Path":
-    """Write a generated script, KEEPING the reader's own USER-CUSTOM block.
+    """Write a generated script, KEEPING the person's own zones.
 
     ``plan`` (`jobset.planned.Plan`) receives the file instead of the disk,
     merged with the text it will replace -- what the plan already holds
@@ -1722,30 +1746,30 @@ def write_script(path, text: str, *, plan=None,
 # --------------------------------------------------------------------- #
 #
 # When the generator writes a fresh render over an existing target
-# file, preserve the user-custom block content byte-for-byte.
+# file, preserve each of the person's zones (`USER_ZONES`) line for line.
 # `write_script` chains
 #
 #     final_text = merge_user_custom_from_target(rendered, target_path)
 #
 # before actually writing.  ``rendered`` is what render_deck /
 # render_run_wrapper produced (carries the empty
-# placeholder); ``target_path`` is where the file will live.  If the
-# existing target carries a user-custom block, its inner lines splice
-# into the new render's placeholder.  Edge cases (no existing file,
+# placeholder); ``target_path`` is where the file will live.  For each zone
+# the existing target carries, its inner lines splice into the new render's
+# placeholder of it.  Edge cases (no existing file,
 # no markers on either side, corrupt markers) all degrade to "return
 # rendered unchanged" — the merge never throws.
 
 
-def replace_user_custom_inner(text: str, inner_lines: List[str]) -> str:
-    """Return ``text`` with its USER-CUSTOM block's inner lines
-    replaced by ``inner_lines``.  If ``text`` has no USER-CUSTOM
-    block, return it unchanged.
+def replace_user_custom_inner(text: str, inner_lines: List[str],
+                              zone: str = BLOCK_USER_CUSTOM) -> str:
+    """Return ``text`` with its zone ``zone``'s inner lines replaced by
+    ``inner_lines``.  If ``text`` has no such zone, return it unchanged.
     """
     # THE SAME SPAN THE EXTRACTOR USES: two readers of one boundary would let
     # the zone mean different things to the half that reads it and the half
     # that replaces it.
     lines = text.splitlines(keepends=False)
-    span = _user_custom_span(text)
+    span = _user_custom_span(text, zone)
     if span is None:
         return text
     begin_idx, end_idx = span
@@ -1757,13 +1781,13 @@ def replace_user_custom_inner(text: str, inner_lines: List[str]) -> str:
 
 def merge_user_custom_from_target(rendered: str,
                                   target_path: Path) -> str:
-    """High-level merge: splice the existing target file's USER-CUSTOM
-    block content into ``rendered`` before write.
+    """High-level merge: splice each of the existing target file's zones
+    into ``rendered`` before write (:func:`merge_user_custom`).
 
     Safe in every degenerate case:
       * Target doesn't exist → return rendered.
-      * Target has no USER-CUSTOM block → return rendered.
-      * Rendered has no USER-CUSTOM placeholder → return rendered.
+      * Target has none of a zone → that zone of rendered as rendered.
+      * Rendered has no placeholder of a zone → nothing of it carried.
       * Target is unreadable → return rendered.
     """
     try:
@@ -1776,12 +1800,15 @@ def merge_user_custom_from_target(rendered: str,
 
 
 def merge_user_custom(rendered: str, old_text: Optional[str]) -> str:
-    """``rendered`` with the USER-CUSTOM block of ``old_text`` -- the file as
-    it stands -- carried into it: the merge itself, given the text (`prep`
-    reads it from its plan, `jobset.planned`).  ``None``, or a text with no
-    block, carries nothing."""
-    old_inner = (_extract_user_custom_inner(old_text)
-                 if old_text is not None else None)
-    if old_inner is None:
+    """``rendered`` with each zone of ``old_text`` -- the file as it stands
+    -- carried into the zone of the same name: the merge itself, given the
+    text (`prep` reads it from its plan, `jobset.planned`).  ``None``, or a
+    text with no zone, carries nothing; a zone only one side has is left as
+    the render has it."""
+    if old_text is None:
         return rendered
-    return replace_user_custom_inner(rendered, old_inner)
+    for zone in USER_ZONES:
+        old_inner = _extract_user_custom_inner(old_text, zone)
+        if old_inner is not None:
+            rendered = replace_user_custom_inner(rendered, old_inner, zone)
+    return rendered

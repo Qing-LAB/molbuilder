@@ -18,10 +18,14 @@ from pathlib import Path
 
 import pytest
 
+from molbuilder.diagnostics import DEFAULT_ENV_NAMES
 from molbuilder.envs import builds as B
 from molbuilder.envs.recipes import (
     BuildComponent, BuildSpec, recipe_by_name,
 )
+
+#: The recipe a source build's checks run for, named in every fix they print.
+_SOURCE_BUILT = DEFAULT_ENV_NAMES["siesta-gpu"]
 
 
 pytestmark = pytest.mark.module
@@ -184,7 +188,7 @@ def test_a_resume_skips_the_phases_whose_sentinel_exists(tmp_path, monkeypatch):
     monkeypatch.setattr(B, "dispatch_into_env", fake_door)
 
     result = B.run_build_spec(spec, env_prefix, conda_binary="/m",
-                              skip_network_check=True)
+                              skip_network_check=True, recipe=_SOURCE_BUILT)
 
     by_phase = {r.step.phase: r.status for r in result.steps}
     assert by_phase["configure"] == "skip"
@@ -222,7 +226,7 @@ def test_the_presence_gate_asks_the_installed_binary_through_the_door(
     monkeypatch.setattr(B, "dispatch_into_env", fake_door)
 
     result = B.run_build_spec(spec, env_prefix, conda_binary="/m",
-                              skip_network_check=True)
+                              skip_network_check=True, recipe=_SOURCE_BUILT)
 
     assert {r.status for r in result.steps} == {"skip"}, [
         (r.step.phase, r.status) for r in result.steps]
@@ -297,7 +301,7 @@ def test_cuda_13_with_gcc_14_is_ok(tmp_path):
         cuda_version="13.0.0", cuda_compute_cap="8.0",
         gcc_version="14.2.0", openmpi_version="5.0.5", jobs=8,
     )
-    assert B.check_cuda_gcc_compat(probe) is None
+    assert B.check_cuda_gcc_compat(probe, recipe=_SOURCE_BUILT) is None
 
 
 def test_cuda_128_with_gcc_14_is_ok(tmp_path):
@@ -307,7 +311,7 @@ def test_cuda_128_with_gcc_14_is_ok(tmp_path):
         cuda_version="12.8.0", cuda_compute_cap="8.0",
         gcc_version="14.2.0", openmpi_version="5.0.5", jobs=8,
     )
-    assert B.check_cuda_gcc_compat(probe) is None
+    assert B.check_cuda_gcc_compat(probe, recipe=_SOURCE_BUILT) is None
 
 
 def test_cuda_127_with_gcc_14_is_rejected(tmp_path):
@@ -317,7 +321,7 @@ def test_cuda_127_with_gcc_14_is_rejected(tmp_path):
         cuda_version="12.7.0", cuda_compute_cap="8.0",
         gcc_version="14.2.0", openmpi_version="5.0.5", jobs=8,
     )
-    err = B.check_cuda_gcc_compat(probe)
+    err = B.check_cuda_gcc_compat(probe, recipe=_SOURCE_BUILT)
     assert err is not None
     assert "13" in err  # recommends gcc 13
     assert "MOLBUILDER_GCC" in err  # tells user the override env var
@@ -330,9 +334,73 @@ def test_cuda_11_with_gcc_14_is_rejected(tmp_path):
         cuda_version="11.8.0", cuda_compute_cap="8.0",
         gcc_version="14.2.0", openmpi_version="5.0.5", jobs=8,
     )
-    err = B.check_cuda_gcc_compat(probe)
+    err = B.check_cuda_gcc_compat(probe, recipe=_SOURCE_BUILT)
     assert err is not None
     assert "11" in err and "MOLBUILDER_GCC" in err
+
+
+def _pairing(tmp_path, monkeypatch):
+    """CUDA 11.8 beside gcc 14: the pairing the toolkit refuses."""
+    return B.preflight(recipe_by_name(_SOURCE_BUILT).build_spec, B.ToolchainProbe(
+        env_prefix=str(tmp_path), cuda_home=str(tmp_path),
+        cuda_version="11.8.0", cuda_compute_cap="8.0",
+        gcc_version="14.2.0", openmpi_version="5.0.5", jobs=8),
+        None, recipe=_SOURCE_BUILT, check_network=False).errors
+
+
+def _sysroot(tmp_path, monkeypatch):
+    """An env's C library newer than the host's."""
+    import molbuilder.envs.abi as A
+    monkeypatch.setattr(A, "_detect_host_glibc", lambda: (2, 28))
+    _write_sysroot(tmp_path, "2.39")
+    return B.preflight(recipe_by_name(_SOURCE_BUILT).build_spec,
+                       _abi_probe(tmp_path), str(tmp_path),
+                       recipe=_SOURCE_BUILT, check_network=False).errors
+
+
+def _no_nvcc(tmp_path, monkeypatch):
+    """An env that exists and holds no CUDA compiler."""
+    (tmp_path / "conda-meta").mkdir()
+    probe = B.ToolchainProbe(env_prefix=str(tmp_path), cuda_home=None,
+                             cuda_version=None, cuda_compute_cap="8.0",
+                             gcc_version="14.3.0", openmpi_version="5.0.10",
+                             jobs=8)
+    return B.preflight(recipe_by_name(_SOURCE_BUILT).build_spec, probe,
+                       str(tmp_path), recipe=_SOURCE_BUILT,
+                       check_network=False).errors
+
+
+def _no_manager(tmp_path, monkeypatch):
+    """`install <recipe> --dry-run` on a machine with no package manager."""
+    from click.testing import CliRunner
+    from molbuilder.diagnostics import Capabilities, set_capabilities
+    from molbuilder.envs._cli import envs_group
+    set_capabilities(Capabilities(runtime_config={}, conda_binary=None,
+                                  conda_envs={}))
+    result = CliRunner().invoke(envs_group, ["install", _SOURCE_BUILT,
+                                             "--dry-run"])
+    assert result.exit_code == 2, result.output
+    return [result.output]
+
+
+#: (the check, what it says): every fix the install checks print names the
+#: recipe it was checked for, through the checks a source build's install
+#: runs -- `ops/installation.md` § 2: every problem ends with its exact fix
+#: command.
+NAMED_FIX_ROWS = [("the CUDA and gcc pairing", _pairing),
+                  ("the sysroot above the host's C library", _sysroot),
+                  ("no CUDA compiler in the env", _no_nvcc),
+                  ("no package manager to install with", _no_manager)]
+
+
+@pytest.mark.parametrize("check, said", NAMED_FIX_ROWS,
+                         ids=[r[0] for r in NAMED_FIX_ROWS])
+def test_a_printed_fix_names_the_recipe(tmp_path, monkeypatch, check, said):
+    """THE SILENT FAILURE: `install <recipe> --clean` printed literally --
+    pasted, the shell reads `<recipe` as a redirect from a file named
+    `recipe`."""
+    text = "\n".join(said(tmp_path, monkeypatch))
+    assert f"install {_SOURCE_BUILT}" in text, text
 
 
 def test_detect_cuda_home_prefers_env_over_system(tmp_path, monkeypatch):
@@ -359,7 +427,7 @@ def test_no_cuda_no_gcc_is_silent(tmp_path):
         cuda_version=None, cuda_compute_cap=None,
         gcc_version=None, openmpi_version=None, jobs=8,
     )
-    assert B.check_cuda_gcc_compat(probe) is None
+    assert B.check_cuda_gcc_compat(probe, recipe=_SOURCE_BUILT) is None
 
 
 # --------------------------------------------------------------------- #
@@ -425,7 +493,7 @@ def test_disk_is_never_a_preflight_WARNING_either(tmp_path, monkeypatch,
     env_prefix.mkdir(parents=True)
     probe = B.probe_toolchain(str(env_prefix))
     report = B.preflight(tiny_spec, probe, str(env_prefix),
-                         check_network=False)
+                         check_network=False, recipe=_SOURCE_BUILT)
 
     joined = " ".join(report.warnings) + " ".join(report.errors)
     assert "GiB free" not in joined, (
@@ -450,7 +518,7 @@ def test_disk_is_never_a_preflight_ERROR(tmp_path, monkeypatch, tiny_spec):
     env_prefix.mkdir(parents=True)
     probe = B.probe_toolchain(str(env_prefix))
     report = B.preflight(tiny_spec, probe, str(env_prefix),
-                         check_network=False)
+                         check_network=False, recipe=_SOURCE_BUILT)
     assert not any("free" in e or "GiB" in e for e in report.errors), (
         f"disk put a hard stop in errors: {report.errors}")
 
@@ -485,7 +553,7 @@ def test_preflight_report_separates_errors_warnings_info(tmp_path,
         gcc_version="14.2.0", openmpi_version="5.0.5", jobs=8,
     )
     report = B.preflight(spec, probe, str(tmp_path),
-                         check_network=False)
+                         check_network=False, recipe=_SOURCE_BUILT)
     assert isinstance(report, B.PreflightReport)
     # No CUDA toolkit + no driver -> at least one error mentions
     # "driver" or "nvcc" (the two failure modes after the split).
@@ -543,7 +611,7 @@ def test_preflight_reports_both_sides_of_the_abi_contract(tmp_path,
     recipe = recipe_by_name("molbuilder-siesta-gpu")
     _write_sysroot(tmp_path, "2.17")
     report = B.preflight(recipe.build_spec, _abi_probe(tmp_path),
-                         str(tmp_path), check_network=False)
+                         str(tmp_path), check_network=False, recipe=_SOURCE_BUILT)
     info = "\n".join(report.info)
     assert "Host glibc" in info
     assert "Env sysroot" in info and "2.17" in info
@@ -559,7 +627,7 @@ def test_preflight_errors_when_the_sysroot_outranks_the_host_glibc(
     recipe = recipe_by_name("molbuilder-siesta-gpu")
     _write_sysroot(tmp_path, "2.39")
     report = B.preflight(recipe.build_spec, _abi_probe(tmp_path),
-                         str(tmp_path), check_network=False)
+                         str(tmp_path), check_network=False, recipe=_SOURCE_BUILT)
     codes = {f.code for f in report.findings}
     assert "abi.sysroot-exceeds-host-glibc" in codes
     # ...and it must land in errors, not warnings: the build cannot
@@ -574,7 +642,7 @@ def test_preflight_is_silent_on_the_pinned_default(tmp_path, monkeypatch):
     recipe = recipe_by_name("molbuilder-siesta-gpu")
     _write_sysroot(tmp_path, "2.17")
     report = B.preflight(recipe.build_spec, _abi_probe(tmp_path),
-                         str(tmp_path), check_network=False)
+                         str(tmp_path), check_network=False, recipe=_SOURCE_BUILT)
     assert [f for f in report.findings if f.code.startswith("abi.")] == []
 
 
@@ -633,7 +701,7 @@ def test_preflight_surfaces_stale_dirs_as_warning(tmp_path, monkeypatch):
         cuda_version="13.0", cuda_compute_cap="8.0",
         gcc_version="14.2", openmpi_version="5.0.5", jobs=8,
     )
-    report = B.preflight(spec, probe, env_prefix, check_network=False)
+    report = B.preflight(spec, probe, env_prefix, check_network=False, recipe=_SOURCE_BUILT)
     warn_text = " ".join(report.warnings)
     assert "elsi" in warn_text or "stale" in warn_text.lower()
     assert "--rebuild=all" in warn_text
@@ -655,7 +723,7 @@ def test_run_build_short_circuits_on_preflight_error(tmp_path, monkeypatch):
         spec, env_prefix,
         conda_binary="/bin/false",   # would fail if called
         skip_network_check=True,
-    )
+     recipe=_SOURCE_BUILT)
     assert result.succeeded is False
     assert result.preflight_errors  # non-empty
     assert result.steps == ()        # no phases executed
@@ -694,7 +762,7 @@ def test_run_build_actually_REACHES_a_phase(tmp_path, monkeypatch):
         spec, env_prefix,
         conda_binary="/bin/false",
         skip_network_check=True,
-    )
+     recipe=_SOURCE_BUILT)
     # Whether the fake phases pass is not the point; that the executor got to
     # them without a TypeError is.
     assert result.steps, (
@@ -723,7 +791,7 @@ def test_run_build_calls_on_warnings_callback(tmp_path, monkeypatch):
         conda_binary="/bin/false",
         on_warnings=lambda r: (seen.append(r), False)[1],
         skip_network_check=True,
-    )
+     recipe=_SOURCE_BUILT)
     assert seen and seen[0].warnings == ("fake warning",)
     assert result.succeeded is False
     assert any("declined" in e for e in result.preflight_errors)

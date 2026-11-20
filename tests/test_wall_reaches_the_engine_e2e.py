@@ -128,3 +128,18 @@ def test_a_warm_file_written_as_the_job_ended_is_said_at_the_next_launch(walled)
     assert "continues from" in said, said
     assert "H2.XV -- WARNING: written as the job ended" in said, said
     assert walled["ended_at"][11:19] in said, said
+
+
+def test_the_command_logged_is_the_one_siesta_was_started_with(walled):
+    """`job-contracts.md` § 2.6: the command exactly -- "the time limit's
+    words included" -- is logged as the engine starts (`the command:`);
+    `running-a-job.md` § 3.6: SIESTA is told its wall "on the command line,
+    beside the deck", counted as it starts.
+
+    THE SILENT FAILURE: a command copied from the log to run again by hand
+    missing the wall SIESTA was given."""
+    wrap = walled["wrap"].read_text(errors="replace")
+    line = next((ln for ln in wrap.splitlines() if "the command:" in ln), None)
+    assert line is not None, wrap[-3000:]
+    assert re.search(r"siesta -fdf MaxWalltime=\d+:s -fdf MaxWalltime\.Slack=600:s "
+                     r"\S+\.fdf > \S+\.out$", line), line

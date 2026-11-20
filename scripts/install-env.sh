@@ -196,13 +196,20 @@ _mb_set_gcc() {
 # MOLBUILDER_PYTHON at IMPORT time into module-level recipe data, so a
 # Python-side option would arrive after the value it must change was frozen.
 #
-# THE FLOOR IS CHECKED HERE BECAUSE HERE IS WHERE IT IS CHEAP.  pyproject
-# declares ``requires-python = ">=3.11"`` and `template.py` imports `tomllib`
-# unconditionally, so 3.10 produces an env that builds for minutes and then
-# cannot `import molbuilder` -- from inside the very env this script then
-# dispatches into.  A shape check costs nothing and fails in the first second.
+# THE FLOOR IS CHECKED HERE BECAUSE HERE IS WHERE IT IS CHEAP.  It is
+# pyproject.toml's `requires-python`, read from that file (_MB_PYTHON_FLOOR):
+# an env below it builds for minutes and then cannot `import molbuilder` --
+# from inside the very env this script then dispatches into.  A shape check
+# costs nothing and fails in the first second.
 # The upper end is not guessed at: whether conda-forge has rdkit/openbabel/
 # sisl for a given python is the solver's question, and it answers it.
+#: the floor's minor version, as pyproject.toml's `requires-python = ">=3.N"`
+#: states it -- the one statement of it.
+_MB_PYTHON_FLOOR="$(sed -n 's/^requires-python = ">=3\.\([0-9][0-9]*\)"$/\1/p' "$REPO_ROOT/pyproject.toml")"
+if [ -z "$_MB_PYTHON_FLOOR" ]; then
+    echo "[molbuilder] pyproject.toml states no requires-python = \">=3.N\" -- the floor --python is checked against." >&2
+    exit 2
+fi
 _mb_set_python() {
     # NO LEADING ZEROS.  `[0-9]+` admitted `3.09`, and bash then read `09` as
     # an invalid octal literal in the `(( ))` below: the test errored to
@@ -215,10 +222,10 @@ _mb_set_python() {
         exit 2
     fi
     local _minor="${1#3.}"
-    if (( _minor < 12 )); then
+    if (( _minor < _MB_PYTHON_FLOOR )); then
         echo "[molbuilder] --python $1 is below molbuilder's floor." >&2
-        echo "[molbuilder] pyproject.toml declares requires-python >= 3.12:" >&2
-        echo "[molbuilder] molbuilder's code uses Python 3.12's f-strings -- the" >&2
+        echo "[molbuilder] pyproject.toml declares requires-python >= 3.$_MB_PYTHON_FLOOR:" >&2
+        echo "[molbuilder] molbuilder's code uses that Python's syntax -- the" >&2
         echo "[molbuilder] env would build and then fail at 'import molbuilder'." >&2
         exit 2
     fi
@@ -335,8 +342,8 @@ bash scripts/install-env.sh clean molbuilder-siesta-gpu --yes
 bash scripts/install-env.sh doctor
 
 # 8. Re-seed / inspect the per-user config directory (bootstrap
-#    already ran this; it never overwrites a file you wrote, so re-running
-#    is safe):
+#    already ran this; it keeps a file you wrote -- a value you type
+#    replaces its one key -- so re-running is safe):
 bash scripts/install-env.sh init-config
 
 # 9. TEST TOOLING (optional -- only if you run the test suite):
@@ -395,10 +402,12 @@ Post-bootstrap subcommands (forwarded verbatim to the Python CLI):
                   molbuilder.json as `env_init`, which `jobset probe` copies
                   into the record) and where the project tree lives --
                   because install time is the one moment the answer is
-                  known.  --activation states the first, --projects PATH the
-                  second; --yes takes both defaults and prints them.  Run
-                  automatically at the end of bootstrap; never overwrites
-                  a file you wrote.  See docs/ops/installation.md section 2.1
+                  known; each only where molbuilder.json does not say.
+                  --activation states the first, --projects PATH the
+                  second, replacing what the file says; --yes takes both
+                  defaults and prints them.  Run automatically at the end
+                  of bootstrap; keeps a file you wrote.  See
+                  docs/ops/installation.md section 2.1
   install <recipe>   create the env and run its whole plan.  On an env
                      that ALREADY EXISTS the create is skipped and the
                      declared conda set is installed instead, so a recipe
@@ -421,7 +430,8 @@ THE TWO FLAGS THIS SCRIPT OWNS (Python's --help does not list them):
                   Consumed here, never forwarded, for the
                   same reason as --gcc: recipes.py reads MOLBUILDER_PYTHON
                   at IMPORT time.  Refuses a bare major (not a pin) and
-                  anything below 3.11 (molbuilder's real floor), so a typo
+                  anything below pyproject.toml's requires-python
+                  (molbuilder's real floor), so a typo
                   costs a second rather than a multi-GB solve.
                   Only affects a FRESH solve -- pair with --clean to move
                   an env that already exists.
@@ -516,8 +526,7 @@ Environment variables:
                                  host-env.txt's python line).  A minor version
                                  -- conda reads a bare
                                  "3" as "3.*", which is not a pin.  Floor is
-                                 3.11 (pyproject's requires-python, and
-                                 molbuilder imports tomllib unconditionally);
+                                 pyproject.toml's requires-python;
                                  the --python flag refuses below it before the
                                  solver runs.  EVERY env, with no
                                  exception: the generated wrapper runs its job
@@ -680,11 +689,9 @@ _verb_changes_envs() {
 require_conda() {
     if ! detect_env_mgr; then
         cat >&2 <<EOF
-Error: no conda-compatible env manager found.
-
-molbuilder expects \`conda\`, \`mamba\` or \`micromamba\` to be installed
-on the system already.  Installing one is the OS / cluster admin's job,
-not this script's.
+Error: no conda-compatible package manager was found, so this command
+cannot run.  Load it in this shell -- on Sol, \`module load mamba\` --
+and run this again.
 
 What the script checked, in order:
 

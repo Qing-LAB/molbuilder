@@ -141,8 +141,9 @@ def road_structure(s):
     """A road structure -- :data:`H2`, :data:`CO2`, a row's -- as a
     ``Structure``: its ``elements``, ``positions`` (Å), ``regions``
     (``frozen_atoms`` among them), its box's three edges or three vectors,
-    ``cell`` (Å), each axis's ``axis_kind`` (isolated unless given) and the
-    origin a person assigned, ``engine_offset`` (none unless given).
+    ``cell`` (Å), each axis's ``axis_kind`` (isolated unless given), the
+    origin a person assigned, ``engine_offset`` (none unless given), and its
+    notes, ``info`` (none unless given).
     THE ONE BUILDER of the road's structures -- one a test already holds as
     a ``Structure`` (a box its vacuum sizes, an origin the Cell page's own op
     assigned), as it stands; a pair on disk, as its read door opens it."""
@@ -159,7 +160,8 @@ def road_structure(s):
         cell=(np.asarray(s["cell"], dtype=float) if np.ndim(s["cell"]) == 2
               else np.diag([float(a) for a in s["cell"]])),
         axis_kind=tuple(s.get("axis_kind", ["isolated"] * 3)),
-        engine_offset=s.get("engine_offset"))
+        engine_offset=s.get("engine_offset"),
+        info=dict(s.get("info") or {}))
 
 
 def water_in_vacuum():
@@ -669,7 +671,7 @@ def a_machine_with_queues(tmp_path, monkeypatch, domains,
     bin_dir = tmp_path / "scheduler-bin"
     bin_dir.mkdir()
     calls = tmp_path / "sbatch-calls.log"
-    f = bin_dir / "sbatch"
+    f = bin_dir / Path(SLURM.submit).name
     f.write_text(
         "#!/bin/sh\n"
         f'echo "$(pwd) | $*" >> "{calls}"\n'
@@ -685,9 +687,9 @@ def a_machine_with_queues(tmp_path, monkeypatch, domains,
 
 def _submits(word: str) -> bool:
     """Whether ``word`` is the SLURM submit command a road record names --
-    `sbatch`, by its bare name or its full path, as the road's records name
-    it."""
-    return Path(word).name == "sbatch"
+    the scheduler table's, by its bare name or its full path, as the road's
+    records name it."""
+    return Path(word).name == Path(SLURM.submit).name
 
 
 def sbatch_line(output: str):

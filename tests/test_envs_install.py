@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import itertools
 import json
+import re
 import os
 import subprocess
 from pathlib import Path
@@ -109,7 +110,7 @@ def test_plan_conda_create_has_channels_in_order():
 def test_plan_raises_without_conda_binary():
     _bind(conda_binary=None)
     recipe = recipe_by_name("molbuilder-siesta")
-    with pytest.raises(RuntimeError, match="conda CLI not found"):
+    with pytest.raises(RuntimeError, match="no conda-compatible package manager was found"):
         install.plan_install(recipe)
 
 
@@ -1579,19 +1580,6 @@ def test_bootstrap_warns_about_a_readonly_config_root_BEFORE_installing(
         _os.chmod(ro, 0o700)
 
 
-def test_bootstrap_without_yes_and_without_a_terminal_says_so_up_front(
-        monkeypatch):
-    """The documented form is `bootstrap` with no `--yes`, which has two
-    questions to ask.  Under nohup / CI / a batch step there is nobody to ask,
-    so the seeding aborts at the end -- knowable at the start."""
-    _bind()
-    from molbuilder.envs import _cli
-    monkeypatch.setattr(_cli._hints, "stdin_can_answer", lambda: False)
-    assert _cli._warn_about_seeding_now(auto_yes=False) is True
-    # ...and --yes is exactly the answer, so it must NOT warn then.
-    assert _cli._warn_about_seeding_now(auto_yes=True) is False
-
-
 def test_bootstrap_that_could_not_seed_the_config_exits_nonzero(monkeypatch):
     """A bootstrap that installed everything and seeded NOTHING is not a
     success, and the exit code is the only part a script reads.
@@ -1919,6 +1907,35 @@ def _run_install_env_sh(args, *, tmp_path, host_env_present=True,
         env=env, capture_output=True, text=True,
         cwd=str(cwd) if cwd is not None else None,
     )
+
+
+#: (a --python typed, whether the install script takes it): the floor is
+#: pyproject.toml's requires-python, read by the script (`installation.md`).
+_FLOOR = int(re.search(r'requires-python = ">=3\.(\d+)"',
+                       (_REPO_ROOT / "pyproject.toml").read_text()).group(1))
+PYTHON_ROWS = [("below the floor", f"3.{_FLOOR - 1}", False),
+               ("at the floor", f"3.{_FLOOR}", True)]
+
+
+@pytest.mark.parametrize("what, typed, taken", PYTHON_ROWS,
+                         ids=[r[0] for r in PYTHON_ROWS])
+def test_the_install_script_refuses_a_python_below_the_floor_first(
+        tmp_path, what, typed, taken):
+    """`ops/installation.md`: the floor is pyproject.toml's requires-python,
+    which the script reads; "the flag refuses below it in the first second
+    rather than after a multi-gigabyte solve".
+
+    THE SILENT FAILURE: an env built for minutes on a python molbuilder
+    cannot import on; or a floor the script states that is not the one it
+    checks."""
+    r = _run_install_env_sh(["--python", typed, "list"], tmp_path=tmp_path)
+    said = r.stdout + r.stderr
+    if taken:
+        assert "below molbuilder's floor" not in said, said
+    else:
+        assert r.returncode == 2, said
+        assert f"requires-python >= 3.{_FLOOR}" in said, said
+        assert "[stub-create]" not in said, said
 
 
 def test_shim_bootstrap_dry_run_refuses_to_create_the_host_env(tmp_path):

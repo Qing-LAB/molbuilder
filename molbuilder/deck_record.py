@@ -44,6 +44,10 @@ BLOCK_ENGINE_OFFSET = "engine-offset"
 #: person's statement, the ladder's relaxation record.
 BLOCK_VIBRATION     = "vibration"
 BLOCK_USER_CUSTOM   = "user-custom"
+#: The run script's second zone of the person's own lines, run just before
+#: the engine; ``user-custom`` is its zone after the engine
+#: (`execution/job-contracts.md` § 3.5).
+BLOCK_USER_BEFORE_ENGINE = "user-custom-before-engine"
 #: What a transmission point that shares energies with a finished
 #: calculation's point computes, and with which point
 #: (`transport.energies.Contours`; `engines/transport.md` § 2a.16).
@@ -72,6 +76,7 @@ def end_marker(name: str) -> str:
 #: Either fence of any block.  Group 1: the block's name; group 2: BEGIN | END.
 MARKER_RE = re.compile(
     r"^#\s*===\s+molbuilder\s+([a-z-]+)\s+(BEGIN|END)\s+===\s*$")
+
 
 
 #: The name a PySCF vibration script gives the release that wrote it, for its
@@ -125,8 +130,8 @@ def _first_pair(text: str, name: str) -> Tuple[Optional[List[str]], bool]:
     """The lines between the first complete BEGIN/END pair of the block
     ``name`` in ``text`` (``None`` when there is none), and whether either of
     its fences is there at all -- the scan every reader of a block by its
-    first pair asks.  USER-CUSTOM takes the outermost pair instead, on purpose
-    (`script_emit._user_custom_span`)."""
+    first pair asks.  A zone of the person's own lines takes the outermost
+    pair instead, on purpose (`script_emit._user_custom_span`)."""
     lines = text.splitlines()
     begin: Optional[int] = None
     seen = False
@@ -193,9 +198,10 @@ def extract_engine_offset(text: str) -> Optional[Dict[str, Any]]:
 
 def extract_vibration_record(text: str) -> Optional[Dict[str, Any]]:
     """The VIBRATION block's payload -- ``{stage, force_criterion_ev_ang,
+    force_criterion_from,
     temperature_K, already_relaxed, relaxation, relaxation_stage,
-    masses_amu, raman, title, identity, molbuilder_version}`` (format
-    ``molbuilder-vibration/v5``), built by
+    masses_amu, raman, title, identity, info, molbuilder_version}`` (format
+    ``molbuilder-vibration/v6``), built by
     `spectra.siesta_vibration.vibration_record` and written by
     `script_emit.emit_vibration_record` -- or ``None`` for a deck that
     carries none: every deck but a SIESTA force-constant one."""
@@ -449,7 +455,8 @@ TRAVELS_WITH = ("molbuilder.trajectory_log.keys",)
 
 __all__ = ["BUILD_NAME", "BLOCK_PROVENANCE", "BLOCK_BENCH_MARKS",
            "BLOCK_ATOM_METADATA", "BLOCK_ENGINE_OFFSET", "BLOCK_VIBRATION",
-           "BLOCK_USER_CUSTOM", "BLOCK_PARAMETERS", "BLOCK_RUN_SETTINGS",
+           "BLOCK_USER_CUSTOM", "BLOCK_USER_BEFORE_ENGINE",
+           "BLOCK_PARAMETERS", "BLOCK_RUN_SETTINGS",
            "MARKER_RE", "same_calculation",
            "begin_marker", "end_marker", "order_record_of", "read_json_block",
            "DeckRecordUnreadable", "block_unreadable",

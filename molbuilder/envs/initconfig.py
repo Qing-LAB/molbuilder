@@ -23,13 +23,14 @@ answering a prompt (or from ``--yes`` taking the recommendation, printed).
 A declaration made by the operator at install time is what the rule asks
 for; what it forbids is a generator guessing at emit time.
 
-**Never overwrites what a PERSON wrote.**  Every step reports ``created``,
-``kept`` or ``rewritten``, and nothing a person wrote is replaced --
-`configuration.md` M-6, *"the probe asks before it overwrites"*, generalised
-to the whole directory.  Two things are written into, and say so: the two
-READMEs (below), and a ``molbuilder.json`` that declares no
-``env_init.activation``, which gains the one asked (that section alone,
-2026-10-02's R17; `configuration.md` § 2.1c, "Two things it rewrites").
+**Keeps what a PERSON wrote.**  Every step reports ``created``,
+``kept`` or ``rewritten`` -- `configuration.md` M-6, *"the probe asks before
+it overwrites"*, generalised to the whole directory.  What is written into
+an existing file, and said as what it was and what it is now, is
+`configuration.md` § 3.2's: the two READMEs (below); a question the
+person's ``molbuilder.json`` does not answer, which gains the answer given;
+and a value the person types on the command line, which replaces its one
+key (:func:`seed_machine_config`).
 Re-running is a no-op that prints what is already there, which is what makes it
 safe to call from ``bootstrap`` unconditionally.
 
@@ -61,7 +62,8 @@ from ..runfiles import JOB_REQUEST_FILE, MACHINE_RECORD_FILE
 __all__ = [
     "Step", "conda_hook", "seed_document", "seeding_blockers",
     "ensure_dirs", "seed_machine_config", "seed_environment_record",
-    "init_config",
+    "init_config", "DeclaredConfig", "declared_config", "unanswered",
+    "projects_setting", "ACTIVATION_QUESTION", "PROJECTS_QUESTION",
 ]
 
 
@@ -71,10 +73,10 @@ class Step:
 
     ``action`` is ``"created"``, ``"kept"`` or ``"rewritten"``.  The third
     is for the two READMEs this module authors, and for a ``molbuilder.json``
-    given the ``env_init`` it lacked: the module never deletes, and never
-    replaces anything a person wrote (see the note at the top).  ``note`` carries what a person
-    needs to act on: which activation form was written, or why a preamble was
-    not.
+    written into as `configuration.md` § 3.2 allows (see the note at the
+    top): the module never deletes.  ``note`` carries what a person needs to
+    act on: which activation form was written, or why a preamble was not;
+    what a key was and what it is now.
     """
     path: Path
     action: str
@@ -265,9 +267,7 @@ def seed_document(activation: str, preamble: Optional[str] = None,
     if preamble:
         doc["env_init"]["preamble"] = preamble
     if projects is not None:
-        from ..projects import named_projects
-        doc["paths"] = {"projects": str(named_projects(
-            Path(projects), "the project tree's path"))}
+        doc["paths"] = {"projects": projects_setting(projects)}
     return doc
 
 
@@ -290,9 +290,9 @@ def seeding_blockers() -> List[str]:
     $HOME is read-only or over quota.
 
     This checks only what this module OWNS: whether the directory it writes can
-    be written.  Whether the two install-time questions can be ASKED is the
-    CLI's to know -- it owns the prompting -- and it is the other half of the
-    same late surprise.
+    be written.  Whether the install-time questions (:func:`unanswered`) can
+    be ASKED is the CLI's to know -- it owns the prompting -- and it is the
+    other half of the same late surprise.
     """
     root = config_dir()
     blockers: List[str] = []
@@ -463,55 +463,114 @@ def _seed_secrets_dir() -> List[Step]:
 
 
 def seed_machine_config(activation: str, preamble: Optional[str] = None,
-                        projects: Optional[Path] = None) -> Step:
-    """Write ``molbuilder.json`` if it is absent; otherwise report it kept --
-    or, when it declares no ``env_init.activation``, give it the one asked,
-    that section alone through the one writer (R17).
+                        projects: Optional[Path] = None, *,
+                        typed: "frozenset" = frozenset()) -> Step:
+    """Write ``molbuilder.json`` if it is absent; otherwise keep it -- the
+    person's (`configuration.md` § 3.2) -- with two exceptions, each written
+    through the one writer as its one key and said as what it was and what
+    it is now:
 
-    Nothing else in an existing file is touched: it is a person's.  The ``note`` on
-    a kept file says whether it still READS -- a file carrying a section
-    retired since it was written is refused by every reader, and this is the
-    run of the installer most likely to be the first to say so -- and whether
-    it declares the activation the probe copies.
+    * a question the file does not answer -- an ``env_init.activation``, a
+      ``paths.projects`` -- gains the answer given;
+    * a value ``typed`` names -- ``"activation"``, ``"projects"``, given on
+      this command line -- replaces its one key: the person's own word.
+
+    An activation written into a file that states no preamble brings the
+    preamble found, or the note that none was (:func:`_preamble_note`); a
+    preamble the file states is its own and stays.  A file that does not
+    read is refused by its reader, as everywhere (`configuration.md` § 3.2).
     """
     from ..runtime_config import machine_config_path, write_config_scope
 
     path = machine_config_path()
-    if path.exists():
-        note = _config_note()
-        if "declares no env_init.activation" not in note:
-            return Step(path, "kept", note)
-        # ASKED, SO WRITTEN: a file with no `env_init` gets the answer just
-        # given -- that section alone, through the one writer; nothing the
-        # person wrote is touched.
-        write_config_scope(
-            {"_env_init": seed_document(activation)["_env_init"],
-             "env_init": seed_document(activation, preamble)["env_init"]})
-        return Step(path, "rewritten",
-                    f'added env_init.activation = "{activation}"'
+    declared = declared_config()
+    if not declared.exists:
+        _ensure_root()
+        # THE ONE WRITER of this file (configuration.md § 2.3): its own path
+        # from its own resolver, validated with the server's validator
+        # before a byte lands, 0600 from the first byte.
+        write_config_scope(seed_document(activation, preamble, projects))
+        return Step(path, "created", f'env_init.activation = "{activation}"; '
                     + _preamble_note(activation, preamble))
-    _ensure_root()
-    # THE ONE WRITER of this file (configuration.md § 2.3): its own path from
-    # its own resolver, validated with the server's validator before a byte
-    # lands, 0600 from the first byte.
-    write_config_scope(seed_document(activation, preamble, projects))
-    return Step(path, "created", f'env_init.activation = "{activation}"'
-                + _preamble_note(activation, preamble))
+    patch: dict = {}
+    said = []
+    if ((not declared.activation or "activation" in typed)
+            and declared.activation != activation):
+        patch["env_init"] = {"activation": activation}
+        said.append(f"env_init.activation {_what_it_was(declared.activation)}"
+                    f' now "{activation}"')
+        if not declared.preamble:
+            if preamble:
+                patch["env_init"]["preamble"] = preamble
+            said.append(_preamble_note(activation, preamble))
+    if projects is not None and ("projects" in typed or not declared.projects):
+        value = projects_setting(projects)
+        if value != declared.projects:
+            patch["paths"] = {"projects": value}
+            said.append(f"paths.projects {_what_it_was(declared.projects)}"
+                        f' now "{value}"')
+    if not patch:
+        return Step(path, "kept", f"left as it is (env_init.activation = "
+                                  f'"{declared.activation}")')
+    if "env_init" in patch and not declared.activation:
+        patch["_env_init"] = seed_document(activation)["_env_init"]
+    write_config_scope(patch)
+    return Step(path, "rewritten", "; ".join(said))
 
 
-def _config_note() -> str:
-    """What an already-present config is: readable or refused and why, and
-    the activation it declares."""
-    try:
-        from ..runtime_config import get_env_init
-        said = get_env_init().get("activation")
-    except Exception as exc:            # the refusal says what to do
-        return f"left as it is -- but it does not read: {exc}"
-    if said:
-        return f'left as it is (env_init.activation = "{said}")'
-    return ("left as it is -- but it declares no env_init.activation, so the "
-            "probe has nothing to copy and every prep for this machine "
-            "refuses")
+def _what_it_was(value: Optional[str]) -> str:
+    """What a key held before a write, in the step's words."""
+    return f'was "{value}",' if value else "was unset,"
+
+
+def projects_setting(projects: Path) -> str:
+    """``paths.projects`` as written: the installer's answer, refused
+    unless it names a folder called ``projects`` (`projects.named_projects`,
+    which every reader of the setting asks) -- on a fresh file and an
+    existing one alike."""
+    from ..projects import named_projects
+    return str(named_projects(Path(projects), "the project tree's path"))
+
+
+@dataclass(frozen=True)
+class DeclaredConfig:
+    """What this machine's ``molbuilder.json`` already answers of the
+    installer's two questions."""
+    exists: bool
+    activation: Optional[str] = None
+    preamble: Optional[str] = None
+    projects: Optional[str] = None
+
+
+def declared_config() -> DeclaredConfig:
+    """THE ONE READER of what the file declares, for the questions, the
+    writes and the note alike -- through the readers every other surface
+    uses (`runtime_config.get_env_init`, `get_paths`), whose refusal of a
+    file that does not read stands."""
+    from ..runtime_config import get_env_init, get_paths, machine_config_path
+    if not machine_config_path().exists():
+        return DeclaredConfig(exists=False)
+    env_init = get_env_init()
+    return DeclaredConfig(exists=True,
+                          activation=env_init.get("activation"),
+                          preamble=env_init.get("preamble"),
+                          projects=get_paths().get("projects"))
+
+
+#: The installer's two questions, in the words they are listed in.
+ACTIVATION_QUESTION = "how this machine enters a conda env"
+PROJECTS_QUESTION = "where the projects tree lives"
+
+
+def unanswered(declared: DeclaredConfig, *, activation: Optional[str] = None,
+               projects: Optional[str] = None) -> List[str]:
+    """THE QUESTIONS THE SEEDING ASKS (`configuration.md` § 3.2): each that
+    nothing typed answers -- ``activation``, ``projects`` -- and the file
+    does not; what the CLI asks, and what `bootstrap` says up front it will
+    need a terminal for."""
+    return [question for question, answered in (
+        (ACTIVATION_QUESTION, activation or declared.activation),
+        (PROJECTS_QUESTION, projects or declared.projects)) if not answered]
 
 
 def seed_environment_record() -> Step:
@@ -547,6 +606,14 @@ def seed_environment_record() -> Step:
                 f"does not read -- {why_unread(path)}; `{probe_command()}` "
                 f"writes it again"))
         said = (before.env_init or {}).get("activation")
+        now_said = get_env_init().get("activation")
+        if said and now_said and said != now_said:
+            # THE FILE CHANGED UNDER THE RECORD prep reads: said, with the
+            # probe that copies it (`configuration.md` § 4).
+            return Step(path, "kept", (
+                f'carries activation "{said}"; molbuilder.json now says '
+                f'"{now_said}" -- `{probe_command()}` copies it (prep reads '
+                f'this record)'))
         return Step(path, "kept", (
             f'activation "{said}"; re-probe with `{probe_command()}` when '
             f'the machine changes' if said else
@@ -581,22 +648,23 @@ def _preamble_note(activation: str, preamble: Optional[str]) -> str:
     at install, where it can still be fixed, rather than by a job failing on
     its activation line."""
     if preamble:
-        return f"; preamble {preamble!r}"
+        return f"preamble {preamble!r}"
     if activation == "conda activate":
         # ``conda activate`` is a shell function that a non-interactive shell
         # has never defined, so no preamble here means a wrapper that will
         # fail inside the job.
-        return ("; no preamble -- `conda activate` needs conda's hook "
+        return ("no preamble -- `conda activate` needs conda's hook "
                 "sourced in a non-interactive shell, and none was found")
     # ``source activate`` is a script on PATH.  It needs no hook, so the
     # absence is the correct state and must not be reported as a miss.
-    return "; no preamble (source activate needs none)"
+    return "no preamble (source activate needs none)"
 
 
 def init_config(activation: str,
                 preamble: Optional[str] = None,
                 probe: bool = True,
-                projects: Optional[Path] = None) -> List[Step]:
+                projects: Optional[Path] = None, *,
+                typed: "frozenset" = frozenset()) -> List[Step]:
     """Seed the whole directory.  Idempotent; returns what it did.
 
     ``activation`` and ``preamble`` go into ``molbuilder.json``'s
@@ -619,7 +687,8 @@ def init_config(activation: str,
         raise RuntimeError("\n".join(blockers))
 
     steps = list(ensure_dirs())
-    steps.append(seed_machine_config(activation, preamble, projects))
+    steps.append(seed_machine_config(activation, preamble, projects,
+                                     typed=typed))
     if probe:
         steps.append(seed_environment_record())
     return steps

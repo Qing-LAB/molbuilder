@@ -689,7 +689,8 @@ rejects. Two things follow:
 
 **Environment, not activation.** What a step legitimately needs beyond activation
 — `TMPDIR`, `PIP_CACHE_DIR` and npm's cache (`npm_config_cache`) kept inside
-the prefix so `env remove` really cleans up, and `builds.build_subprocess_env()`'s stripping of host `CPATH` /
+the prefix so `env remove` really cleans up (a verify, which creates nothing in
+the env it reads, is handed only those folders that are there), and `builds.build_subprocess_env()`'s stripping of host `CPATH` /
 `CFLAGS` / `CUDA_HOME` / `OMPI_*` leakage — is computed by `builds.env_for_step`
 inside `run_step` (and by `builds._build_env` for a build phase). A step does not
 choose its environment; `run_step` takes none from its caller.

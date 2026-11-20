@@ -13,6 +13,12 @@ category: it rides ``installMolecule`` in and ``exportFile`` out already
 (§ 8.4a), so a key added here reaches the viewer, the Metadata pane and
 the exported ``.molstruct.json`` pair without another line changing.
 
+**And a run a structure enters leaves these behind**
+(:func:`info_without_run_records`): they describe the run the structure
+came out of.  The one filter both engines' decks apply -- PySCF's sidecar
+payload (`pyscf.input._sidecar_for`) and a SIESTA force-constant deck's
+`vibration` block (`spectra.siesta_rung`) (`engines/vibration.md` § 6.10.1).
+
 Two keys:
 
 * ``calculation`` — the electronic contract the run's own deck records
@@ -39,7 +45,21 @@ Callers, each handing the output it has open:
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, Mapping, Optional, Union
+
+#: The keys of a structure's ``info`` that :func:`run_info` writes -- what
+#: the run the structure came out of says about itself.
+RUN_INFO_KEYS = ("calculation", "relaxation")
+
+
+def info_without_run_records(info: Optional[Mapping[str, Any]]) -> Dict[str, Any]:
+    """A structure's ``info`` as a run it enters keeps it: every note but
+    :data:`RUN_INFO_KEYS` -- those describe the run the structure came out
+    of, its tolerance, its force, its level of theory, at its coordinates;
+    the new run's are read from its own output when it is exported
+    (`model/parse.md` § 5b).  The one filter both engines' decks apply
+    (`engines/vibration.md` § 6.10.1)."""
+    return {k: v for k, v in (info or {}).items() if k not in RUN_INFO_KEYS}
 
 
 def run_info(*, deck: Union[str, Path, None] = None,

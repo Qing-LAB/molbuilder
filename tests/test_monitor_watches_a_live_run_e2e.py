@@ -28,6 +28,8 @@ import pytest
 
 from molbuilder import monitor
 from molbuilder.monitor import NotifyPolicy
+from molbuilder.scheduler.quantities import slurm_time
+from support.machines import SLURM
 from support.replay import Output, output_lines, replay, statuses
 
 
@@ -476,3 +478,121 @@ def test_every_file_that_ships_beside_a_job_reads_the_run_without_molbuilder(
     speaker = here.endings[here.active_source]
     assert got["converged"] == dict(speaker.phases.items()), got
     assert got["energy"] is not None, got["text"]
+
+
+#: (where the run was launched, the launch record its launch writes, what
+#: the start card says of the wall): the record as `jobset.submit` writes it
+#: (`runrecord.write_launch`) -- for the queue, as a SLURM queue's answer
+#: fills it, its job's number made up here, where no scheduler answers (a
+#: scheduler's own text belongs to the field tier, `testing.md`); a run
+#: here, placed on no queue.
+START_CARD_WALLS = [
+    ("sent to a queue with four hours",
+     {"mode": "submit", "command": [Path(SLURM.submit).name, "x.sbatch"],
+      "job_id": "4242",
+      "placed_on": {"domain": "public", "partition": "public", "qos": "public",
+                    "time": slurm_time(4 * 3600), "mem": None},
+      "scheduler": {"kind": "slurm", "stderr": None}},
+     "time limit 4h"),
+    ("run here",
+     {"mode": "direct", "command": ["bash", "H2.run.sh"], "job_id": None,
+      "placed_on": None, "scheduler": None},
+     None),
+]
+
+
+@pytest.mark.parametrize("where, launch, says", START_CARD_WALLS,
+                         ids=[r[0] for r in START_CARD_WALLS])
+def test_the_start_card_states_the_wall_where_the_monitor_counts_one(
+        run, tmp_path, where, launch, says):
+    """`run-reports.md` § 4.1c: a start card's summary says where the run is
+    "and, for a job sent to a queue with one, its wall as § 2.1b counts it
+    -- a run here states none" -- the wall read off the run's launch record,
+    the sender's (`runrecord.write_launch`), and counted from the job's
+    start.
+
+    THE SILENT FAILURE: the start card sent before the wall was read, a
+    queued job's first report saying nothing of its four hours."""
+    from molbuilder.runrecord import write_launch
+    o = Output(run)
+    there, watched, _grow = replay(run, tmp_path, o.through(o.rows_of(0)[1]))
+    write_launch(there, **launch)
+    cards = []
+    monitor.register_notifier(lambda st, ev: cards.append((ev, st.as_text())))
+    monitor.run_monitor(watched, interval=1, watch_pid=0, job_started=0.0,
+                        sleep=lambda s: None, max_ticks=1,
+                        clock=_fake_clock([0.0, 0.0, 1.0]))
+    start = next(text for ev, text in cards if ev == "start")
+    if says:
+        assert says in start, start
+    else:
+        assert "time limit" not in start, start
+
+
+@pytest.mark.parametrize("where, launch, says", START_CARD_WALLS,
+                         ids=[r[0] for r in START_CARD_WALLS])
+def test_a_run_of_points_start_card_states_the_wall_too(
+        run, tmp_path, monkeypatch, where, launch, says):
+    """`run-reports.md` § 4.1c, for a run of points: its start is sent by a
+    point's report step (`mb_monitor.pyz notify start`), and says the wall
+    as the run's monitor counts it -- the same records, the same words.
+
+    THE SILENT FAILURE: a run of points sent to a queue whose one start card
+    says nothing of its four hours, while a run's says it."""
+    from molbuilder.runrecord import write_launch
+    from molbuilder.runtime_info import JOB_STARTED_VAR
+    o = Output(run)
+    there, watched, _grow = replay(run, tmp_path, o.through(o.rows_of(0)[1]))
+    write_launch(there, **launch)
+    monkeypatch.setenv(JOB_STARTED_VAR, "0")
+    cards = []
+    monitor.register_notifier(lambda st, ev: cards.append((ev, st.as_text())))
+    assert monitor.main(["notify", "start", "--label", watched.names.label,
+                         "--stage", watched.names.stage,
+                         "--dir", str(there)]) == 0
+    start = next(text for ev, text in cards if ev == "start")
+    if says:
+        assert says in start, start
+    else:
+        assert "time limit" not in start, start
+
+
+#: (the run, its notify policy, whether an unreadable card layout stops it):
+#: a channel set up on this machine either way.
+CARD_COPY_ROWS = [
+    ("a run that sends none", NotifyPolicy(channels=()), False),
+    ("a run that sends reports", NotifyPolicy(channels=None), True),
+]
+
+
+@pytest.mark.parametrize("what, policy, stops", CARD_COPY_ROWS,
+                         ids=[r[0] for r in CARD_COPY_ROWS])
+def test_an_unreadable_card_layout_stops_only_a_run_that_sends_reports(
+        run, tmp_path, monkeypatch, what, policy, stops):
+    """`run-reports.md` § 4.1c: a copy of the card's layout that does not
+    read is refused by "the monitor of a run that sends reports ... and the
+    monitor stops there -- a run that sends none never reads it" (the user,
+    2026-11-18).  The refusal comes before anything is sent.
+
+    THE SILENT FAILURE: a run with reports off losing its utilization
+    record, its status lines and its closing record to a file it never
+    needed."""
+    from molbuilder import report_cards as C
+    monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path / "config"))
+    channels = monitor.default_notify_path()
+    channels.parent.mkdir(parents=True, exist_ok=True)
+    channels.write_text(json.dumps(
+        {"channels": {"here": {"url": "https://example.invalid/hook"}}}))
+    C.layout_path().write_text("{ not a layout")
+    o = Output(run)
+    _there, watched, _grow = replay(run, tmp_path, o.through(o.rows_of(0)[1]))
+    go = lambda: monitor.run_monitor(
+        watched, interval=1, watch_pid=0, notify=policy,
+        sleep=lambda s: None, max_ticks=1, clock=_fake_clock([0.0, 0.0, 1.0]))
+    if stops:
+        with pytest.raises(C.LayoutError):
+            go()
+    else:
+        go()
+    log = watched.path(".monitor.log").read_text()
+    assert ("[MONITOR] the card's layout is refused" in log) is stops, log

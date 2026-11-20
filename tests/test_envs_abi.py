@@ -24,7 +24,11 @@ from pathlib import Path
 
 import pytest
 
+from molbuilder.diagnostics import DEFAULT_ENV_NAMES
 from molbuilder.envs import abi as A
+
+#: The recipe the checks run for, named in every fix they print.
+_RECIPE = DEFAULT_ENV_NAMES["siesta-gpu"]
 
 
 pytestmark = pytest.mark.unit
@@ -122,15 +126,15 @@ def _contract(sysroot, glibc, *, headers=None, kernel=(6, 0, 0)):
 
 def test_sysroot_newer_than_host_glibc_is_an_error():
     """The exact shape of the reported bug: env 2.39, host 2.28."""
-    findings = _contract((2, 39), (2, 28)).findings()
+    findings = _contract((2, 39), (2, 28)).findings(recipe=_RECIPE)
     codes = {f.code: f for f in findings}
     assert "abi.sysroot-exceeds-host-glibc" in codes
     assert codes["abi.sysroot-exceeds-host-glibc"].severity is A.Severity.ERROR
 
 
 def test_sysroot_at_or_below_host_glibc_is_silent():
-    assert _contract((2, 17), (2, 28)).findings() == ()
-    assert _contract((2, 28), (2, 28)).findings() == ()
+    assert _contract((2, 17), (2, 28)).findings(recipe=_RECIPE) == ()
+    assert _contract((2, 28), (2, 28)).findings(recipe=_RECIPE) == ()
 
 
 def test_the_pinned_default_is_clean_on_this_host():
@@ -139,22 +143,22 @@ def test_the_pinned_default_is_clean_on_this_host():
     contract = A.AbiContract(host=host,
                              env=A.EnvToolchain(sysroot=(2, 17),
                                                 kernel_headers=(3, 10, 0)))
-    assert [f for f in contract.findings()
+    assert [f for f in contract.findings(recipe=_RECIPE)
             if f.severity is A.Severity.ERROR] == []
 
 
 def test_unknown_versions_never_produce_a_finding():
     """An unreadable version is a reason to stay quiet, not to block a
     build on a guess."""
-    assert _contract(None, (2, 28)).findings() == ()
-    assert _contract((2, 39), None).findings() == ()
+    assert _contract(None, (2, 28)).findings(recipe=_RECIPE) == ()
+    assert _contract((2, 39), None).findings(recipe=_RECIPE) == ()
 
 
 def test_kernel_header_skew_is_a_warning_not_an_error():
     """Syscalls are additive; this is worth saying and not worth
     blocking on."""
     findings = _contract((2, 17), (2, 28), headers=(6, 12, 0),
-                         kernel=(4, 18, 0)).findings()
+                         kernel=(4, 18, 0)).findings(recipe=_RECIPE)
     codes = {f.code: f for f in findings}
     assert codes["abi.kernel-headers-exceed-host-kernel"].severity \
         is A.Severity.WARNING
@@ -201,7 +205,7 @@ exit 1
 def test_no_compiler_in_env_is_silent(tmp_path):
     """A dry run, or an env that has not been created yet.  Missing
     packages are doctor.audit_packages' job, not ours."""
-    assert A.check_toolchain_executes(tmp_path) is None
+    assert A.check_toolchain_executes(tmp_path, recipe=_RECIPE) is None
 
 
 @pytest.mark.slow
@@ -211,7 +215,7 @@ def test_a_working_toolchain_reports_nothing(tmp_path):
         pytest.skip("no host g++ to stand in for the env's compiler")
     (tmp_path / "bin").mkdir()
     os.symlink(host_cxx, tmp_path / "bin" / "g++")
-    assert A.check_toolchain_executes(tmp_path) is None
+    assert A.check_toolchain_executes(tmp_path, recipe=_RECIPE) is None
 
 
 @pytest.mark.slow
@@ -219,7 +223,7 @@ def test_binaries_that_compile_but_will_not_run_are_an_error(tmp_path):
     """The one that matters.  Every version check passes; the toolchain
     is still unusable."""
     _fake_compiler(tmp_path, _COMPILER_MAKING_UNRUNNABLE_BINARIES)
-    finding = A.check_toolchain_executes(tmp_path)
+    finding = A.check_toolchain_executes(tmp_path, recipe=_RECIPE)
     assert finding is not None
     assert finding.code == "abi.toolchain-cannot-run-binaries"
     assert finding.severity is A.Severity.ERROR
@@ -234,7 +238,7 @@ def test_the_failure_message_names_the_version_skew_when_known(tmp_path):
     contract = A.AbiContract(
         host=A.HostPlatform(glibc=(2, 28), kernel=(4, 18, 0), arch="x86_64"),
         env=A.EnvToolchain.from_env(tmp_path))
-    rendered = A.check_toolchain_executes(tmp_path, contract=contract).render()
+    rendered = A.check_toolchain_executes(tmp_path, contract=contract, recipe=_RECIPE).render()
     assert "2.39" in rendered and "2.28" in rendered
     assert "MOLBUILDER_SYSROOT" in rendered
 
@@ -244,6 +248,6 @@ def test_a_compiler_that_cannot_compile_is_only_a_warning(tmp_path):
     """The build will produce a far better error; this is an early
     signal, not the diagnosis."""
     _fake_compiler(tmp_path, _COMPILER_THAT_FAILS_TO_COMPILE)
-    finding = A.check_toolchain_executes(tmp_path)
+    finding = A.check_toolchain_executes(tmp_path, recipe=_RECIPE)
     assert finding.code == "abi.toolchain-cannot-compile"
     assert finding.severity is A.Severity.WARNING

@@ -50,6 +50,28 @@ def test_a_run_asked_on_the_gpu_runs_the_gpu_build(real_h2_gpu):
     assert solver["elpa_gpu"] == "nvidia-gpu", solver
 
 
+def test_its_dry_run_names_the_gpu_the_job_was_given(real_h2_gpu):
+    """`running-a-job.md` § 3.3: "the job's GPUs are one list, by device" --
+    the GPU given by its UUID, as a device may be named, is the one the
+    banner places the job by and the dry run's rank -> GPU map names, for
+    each rank.
+
+    THE SILENT FAILURE: a job given another device than GPU 0 shown -- and,
+    on a workstation, wrapped -- on GPU 0, while its ranks run on the one
+    it was given."""
+    import re
+    uuid = real_h2_gpu.gpu_uuid
+    _said(real_h2_gpu, "script dry run by its UUID",
+          f"GPU {uuid} NUMA=", f"rank 0 -> GPU {uuid}")
+    # PLACED BY IT: the NUMA node looked up by the UUID is the one by index.
+    numa = {step: re.search(r"GPU \S+ NUMA=(\S+)",
+                            real_h2_gpu.said[step].output).group(1)
+            for step in ("script dry run", "script dry run by its UUID")}
+    assert len(set(numa.values())) == 1, numa
+    _said(real_h2_gpu, "script dry run -np 2 by its UUID",
+          f"rank 0 -> GPU {uuid}", f"rank 1 -> GPU {uuid}")
+
+
 @pytest.mark.skipif(shutil.which("nvidia-cuda-mps-control") is None,
                     reason="MPS is decided on only where its binary is on "
                            "PATH, and it is not here")

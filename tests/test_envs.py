@@ -82,5 +82,5 @@ def test_run_in_env_refuses_when_no_manager_was_found():
     names the recorded-manager door rather than a stack trace."""
     set_capabilities(Capabilities(runtime_config={}, conda_binary=None,
                                   conda_envs={}))
-    with pytest.raises(RuntimeError, match="conda CLI not found"):
+    with pytest.raises(RuntimeError, match="no conda-compatible package manager was found"):
         envs.run_in_env("my-env", ["echo"])

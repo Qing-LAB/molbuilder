@@ -1453,10 +1453,9 @@ def api_files_write():
         else:
             return exists_answer(resolved, False)
 
-    # Step 2b USER-CUSTOM round-trip preservation -- when this write
-    # is a fresh regenerate (expected_mtime is None), splice any
-    # USER-CUSTOM block content from the existing target into the
-    # incoming text.  Edit-save (expected_mtime set) bypasses the
+    # Step 2b the person's own zones carried -- when this write is a fresh
+    # regenerate (expected_mtime is None), splice each zone's lines from
+    # the existing target into the incoming text.  Edit-save (expected_mtime set) bypasses the
     # merge: the user is explicitly committing their text byte-for-
     # byte and a merge would silently undo edits inside the user-
     # custom block.  The merge helper is safe in every degenerate

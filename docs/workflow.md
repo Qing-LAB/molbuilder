@@ -256,9 +256,11 @@ Three rules hold for every door in this list:
 - **A generated file has ONE writer, and the writer keeps what you put in your
   own section** — a deck's and a wrapper's, the files that have one. Every
   deck and every wrapper goes through `write_script`,
-  which merges back the `USER-CUSTOM` block from whatever was already on
-  disk — so the one part of a
-  generated file you are invited to edit survives the next `prep`. Any route
+  which merges back each zone of your own lines from whatever was already
+  on disk — a deck's one, a run script's two, before its engine and after it
+  ([`execution/job-contracts.md`](?doc=execution/job-contracts.md) § 3.5) —
+  so the part of a generated file you are invited to edit survives the next
+  `prep`. Any route
   reaching for a plain write would destroy those edits.
 - **A door takes a whole thing, never a handful of its fields.** When a job's
   resources are handed to the wrapper writer, the *whole* set of resources

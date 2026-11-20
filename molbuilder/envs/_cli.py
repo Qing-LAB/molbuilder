@@ -127,6 +127,16 @@ def _tee_console_to(log_path: Path):
                 pass
 
 
+def _require_manager(caps, *command: str) -> str:
+    """THE ONE GUARD of a verb that needs the package manager: its path, or
+    the verb refused in the one sentence (`hints.no_manager`) naming the
+    command typed -- before a probe would call ``None``."""
+    if caps.conda_binary is None:
+        raise click.UsageError(_hints.no_manager(
+            "`" + _fix_cmd(*command) + "`", caps.conda_binary_source))
+    return caps.conda_binary
+
+
 def _recipe_named(name: str):
     """The recipe called ``name``, or the refusal naming those there are."""
     recipe = recipe_by_name(name)
@@ -216,7 +226,7 @@ def _render_doctor(reports: Iterable[_doctor.EnvReport]) -> int:
             else:
                 click.echo("    state:   MISSING")
             click.echo("    next:    "
-                       + _hints.install_cmd(rep.recipe.name))
+                       + _hints.install_again_cmd(rep.recipe))
             continue
         click.echo("    state:   present")
         if rep.verify_ok is None:
@@ -234,9 +244,12 @@ def _render_doctor(reports: Iterable[_doctor.EnvReport]) -> int:
                 click.echo(indented)
             click.echo("    next:    "
                        + _fix_cmd("repair", rep.recipe.name))
-            if _install.runs_from_prefix(rep.prefix):
+            if (_install.runs_from_prefix(rep.prefix)
+                    or rep.recipe.category is None):
                 # `installation.md` M5: a printed remedy may not destroy
-                # working state.  `--clean` on THIS env removes the prefix
+                # working state.  THE HOST ENV ANYWHERE: the install script
+                # runs its verbs from it, so its `--clean` is refused there
+                # too.  `--clean` on THIS env removes the prefix
                 # this interpreter is running from, and `--yes` means no
                 # prompt stands between the copy-paste and a machine with no
                 # molbuilder at all.  The rebuild is still NAMED -- the rule
@@ -244,20 +257,17 @@ def _render_doctor(reports: Iterable[_doctor.EnvReport]) -> int:
                 # its exact command (user, 2026-08-20) -- but as the
                 # three-step that works: from outside the env.
                 click.echo("             (molbuilder runs FROM this env, so "
-                           "--clean is not offered here.")
+                           "--clean is not offered for it.")
                 click.echo("              To rebuild it, from a shell where "
                            "it is not active:")
                 click.echo("                " + _install.remove_env_cmd(
                     rep.manager, rep.effective_name))
-                click.echo("                " + (
-                    _fix_cmd("bootstrap", "--yes") + ")"
-                    if rep.recipe.category is None
-                    else _hints.install_cmd(rep.recipe.name) + ")"))
+                click.echo("                " + _hints.install_again_cmd(rep.recipe)
+                           + ")")
             else:
                 click.echo("             (if repair finds nothing to fix, "
                            "rebuild from the recipe: "
-                           + _fix_cmd("install", rep.recipe.name,
-                                      "--clean", "--yes") + ")")
+                           + _hints.rebuild_cmd(rep.recipe.name) + ")")
         # Package audit (real check, not just verify smoke test).
         # Required-missing -> FAILED + exits 1; optional-missing
         # (e.g. GPU-only cupy + gpu4pyscf) -> info-only, env still
@@ -355,8 +365,8 @@ def _render_doctor(reports: Iterable[_doctor.EnvReport]) -> int:
                         click.echo("    next:    "
                                    + _fix_cmd("repair", rep.recipe.name)
                                    + "   (the MISSING packages only)")
-                    click.echo("    then:    " + _fix_cmd(
-                        "install", rep.recipe.name, "--clean", "--yes"))
+                    click.echo("    then:    "
+                               + _hints.rebuild_cmd(rep.recipe.name))
                     click.echo("             (the version mismatch above is a "
                                "BUILD input, and this env's binaries are")
                     click.echo("              already compiled against the old "
@@ -473,11 +483,7 @@ def cmd_repair(name: str, include_optional: bool,
     """
     caps = get_capabilities()
     recipe = _recipe_named(name)
-    if caps.conda_binary is None:
-        raise click.UsageError(
-            "conda/mamba not found; cannot run repair.  Install one of "
-            "them, then run this again."
-        )
+    _require_manager(caps, "repair", recipe.name)
     effective = effective_name(recipe, caps)
     if not caps.env_available(effective):
         click.echo(
@@ -485,7 +491,7 @@ def cmd_repair(name: str, include_optional: bool,
             err=True,
         )
         click.echo(
-            "    " + _hints.install_cmd(recipe.name),
+            "    " + _hints.install_again_cmd(recipe),
             err=True,
         )
         sys.exit(2)
@@ -730,10 +736,7 @@ def cmd_clean(name: str, auto_yes: bool, dry_run: bool,
             f"meaningful only for source-build envs like "
             f"`molbuilder-siesta-gpu`."
         )
-    if caps.conda_binary is None:
-        raise click.UsageError(
-            "conda/mamba not found; cannot resolve env prefix."
-        )
+    _require_manager(caps, "clean", recipe.name)
     effective = effective_name(recipe, caps)
     if not caps.env_available(effective):
         click.echo(
@@ -885,8 +888,8 @@ def cmd_clean(name: str, auto_yes: bool, dry_run: bool,
 def cmd_doctor(no_verify: bool) -> None:
     """Per-recipe report: name, present/missing, verify outcome.
 
-    A missing env is reported but does not fail the command -- run
-    ``molbuilder envs install <name>`` to add one.  A present env that
+    A missing env is reported but does not fail the command -- its `next:`
+    line names the command that adds it.  A present env that
     fails its verify command exits with code 1 so the doctor command
     is usable in CI / startup health checks.
     """
@@ -906,14 +909,9 @@ def cmd_doctor(no_verify: bool) -> None:
         click.echo(f"[doctor] package manager: {caps.conda_binary}  "
                    f"(from {caps.conda_binary_source})", err=True)
     else:
-        click.echo(f"[doctor] package manager: NONE -- "
-                   f"{caps.conda_binary_source or 'no manager found'}",
-                   err=True)
-        click.echo("[doctor]   fix: record it once as "
-                   "`\"envs\": {\"manager\": \"/abs/path\"}` in "
-                   "molbuilder.json, or load/install one "
-                   "(on ASU Sol: `module load mamba` in the shell that "
-                   "runs molbuilder).", err=True)
+        click.echo("[doctor] package manager: NONE -- " + _hints.no_manager(
+            "`" + _fix_cmd("doctor") + "`", caps.conda_binary_source),
+            err=True)
         sys.exit(1)
     # WHAT ARRIVED LOOSE.  `doctor` is where a permissions audit belongs --
     # this is the surface a person is already looking at when
@@ -1002,13 +1000,14 @@ def cmd_validate(name: str, quiet_on_fail: bool) -> None:
     """
     recipe = _recipe_named(name)
     caps = get_capabilities()
+    _require_manager(caps, "validate", recipe.name)
     # Need the env to exist and its prefix to be resolvable.
     # Through the one door, so the host override applies here too.
     effective = effective_name(recipe, caps)
     if not caps.env_available(effective):
         click.echo(
             f"env `{effective}` is not present.  Install it first:\n"
-            f"  {_hints.install_cmd(name)}",
+            f"  {_hints.install_again_cmd(recipe)}",
             err=True,
         )
         sys.exit(2)
@@ -1210,6 +1209,7 @@ def cmd_install(name: str, dry_run: bool, check: bool,
     # is skipped because `artifact_root` is None when there is no build_spec.
 
     caps = get_capabilities()
+    _require_manager(caps, "install", recipe.name)
 
     if check:
         reports = _doctor.report_all(caps, recipes=(recipe,))
@@ -1276,6 +1276,7 @@ def cmd_install(name: str, dry_run: bool, check: bool,
                     recipe.build_spec,
                     probe,
                     env_prefix=env_for_probe,
+                    recipe=recipe.name,
                     check_network=False,  # dry-run avoids network ls-remote
                 )
             ))
@@ -1304,14 +1305,6 @@ def cmd_install(name: str, dry_run: bool, check: bool,
             click.echo("  --clean (REMOVE conda env + WIPE artifact dir, "
                        "then fresh install)")
 
-    if caps.conda_binary is None:
-        # The guard `repair` and `clean` already have.  Without it the probe
-        # below calls subprocess.run([None, ...]) and the person gets a
-        # TypeError instead of the one sentence that names the fix.
-        raise click.UsageError(
-            "conda/mamba not found; cannot install.  Install one of them, "
-            "then run this again."
-        )
 
 
     # THROUGH THE ONE DOOR, which `bootstrap` also calls (D7).
@@ -1320,7 +1313,7 @@ def cmd_install(name: str, dry_run: bool, check: bool,
             recipe, effective, caps,
             auto_yes=auto_yes, clean=clean, rebuild=rebuild,
             force_resume=force_resume, with_dev_tools=with_dev_tools,
-            skip_network_check=skip_network_check, name=name)
+            skip_network_check=skip_network_check)
     except _Aborted:
         sys.exit(0)
     except _CannotInstall:
@@ -1340,15 +1333,7 @@ class _Aborted(Exception):
     """The person said no at a confirmation.  Not a failure."""
 
 
-def _install_again(recipe, name: str) -> str:
-    """The line that installs ``recipe`` again once its env is gone: the host
-    env by `bootstrap`, which makes the molbuilder this command needs; any
-    other by `install`."""
-    return (_fix_cmd("bootstrap", "--yes") if recipe.category is None
-            else _hints.install_cmd(name))
-
-
-def _remove_it_yourself(state, recipe, name: str) -> None:
+def _remove_it_yourself(state, recipe) -> None:
     """THE REMEDY FOR A DIRECTORY THE MANAGER WILL NOT REMOVE
     (`EnvState.removed_by_hand`): the person's `rm -rf` of it, then the
     install again -- from outside it when it is the env this process runs
@@ -1360,7 +1345,7 @@ def _remove_it_yourself(state, recipe, name: str) -> None:
                + ", then re-run:")
     click.echo("")
     click.echo(f"    rm -rf {state.prefix}")
-    click.echo("    " + _install_again(recipe, name))
+    click.echo("    " + _hints.install_again_cmd(recipe))
 
 
 def _install_one(recipe, effective: str, caps, *,
@@ -1369,8 +1354,7 @@ def _install_one(recipe, effective: str, caps, *,
                  rebuild: "Optional[str]" = None,
                  force_resume: bool = False,
                  with_dev_tools: bool = False,
-                 skip_network_check: bool = False,
-                 name: "Optional[str]" = None):
+                 skip_network_check: bool = False):
     """Install ONE recipe: probe, diagnose, wipe if asked, summarise, confirm,
     tee, run, recap.  Returns the `InstallResult`.
 
@@ -1381,7 +1365,6 @@ def _install_one(recipe, effective: str, caps, *,
     refusal ends `install` with exit 2, and is one line of a `bootstrap` report
     that still has four more envs to build.
     """
-    name = name if name is not None else recipe.name
     # === Step 0: probe + diagnose conda env state up front ===
     # Resolve the conda env's state BEFORE any subprocess work runs.
     # Catches all the edge cases (orphan dirs from prior failed
@@ -1421,7 +1404,7 @@ def _install_one(recipe, effective: str, caps, *,
         click.echo(f"    {mgr} deactivate          "
                    f"# or just open a new shell")
         click.echo(f"    {state.remove_cmd()}")
-        click.echo("    " + _install_again(recipe, name))
+        click.echo("    " + _hints.install_again_cmd(recipe))
         click.echo("")
         click.echo("  Nothing was removed.")
         raise _CannotInstall("--clean refused: that is the env we run from")
@@ -1432,7 +1415,7 @@ def _install_one(recipe, effective: str, caps, *,
         click.echo("")
         click.echo(f"--clean refused: {state.state_label} -- the manager will "
                    f"not remove a directory it does not recognise.")
-        _remove_it_yourself(state, recipe, name)
+        _remove_it_yourself(state, recipe)
         click.echo("")
         raise _CannotInstall("--clean refused: the manager will not remove "
                              "that directory")
@@ -1447,7 +1430,8 @@ def _install_one(recipe, effective: str, caps, *,
         )
         click.echo("")
         click.echo(
-            "    " + _fix_cmd("install", name, "--force-resume", "--yes")
+            "    " + _fix_cmd("install", recipe.name, "--force-resume",
+                         "--yes")
         )
         click.echo("")
         # THE STATE'S OWN REMEDY, the one a fix command must be (M5: a
@@ -1456,12 +1440,12 @@ def _install_one(recipe, effective: str, caps, *,
         # remove` both refuse it -- and a GHOST, whose directory is gone,
         # `--clean` restores (`EnvState.removed_by_hand`, `describe`).
         if state.removed_by_hand:
-            _remove_it_yourself(state, recipe, name)
+            _remove_it_yourself(state, recipe)
         else:
             click.echo("Copy-paste to fix (restores the env, then installs):")
             click.echo("")
             click.echo(
-                "    " + _fix_cmd("install", name, "--clean", "--yes")
+                "    " + _hints.rebuild_cmd(recipe.name)
             )
         raise _CannotInstall(
             f"env is {state.state_label}; conda create cannot recover it")
@@ -1704,9 +1688,9 @@ def _install_one(recipe, effective: str, caps, *,
                    "build starts unless --yes is also given.")
 @click.option("--projects", default=None, metavar="PATH",
               help="where the project tree lives -- written to\n"
-                   "molbuilder.json as `paths.projects`.  Omit to be\n"
-                   "asked; with --yes, omit to take the default\n"
-                   "(which is printed).")
+                   "molbuilder.json as `paths.projects`, replacing what\n"
+                   "it says.  Omitted, asked when the file does not say;\n"
+                   "with --yes, the default (which is printed).")
 @click.option("--yes", "-y", "auto_yes", is_flag=True,
               help="proceed without interactive confirmation.  Required "
                    "for headless / CI / HPC-batch use.")
@@ -1750,16 +1734,10 @@ def cmd_bootstrap(dry_run: bool, skip_existing: bool, clean: bool,
     # mamba 2.x with a populated registry these can each take several
     # seconds.  Print before EACH probe so the user can see exactly
     # what we're waiting on, not a silent multi-minute hang.
+    # Without the manager the probe below would run `subprocess.run([None,
+    # ...])`: a TypeError in place of the one sentence that names the fix.
+    _require_manager(caps, "bootstrap")
     click.echo(f"[bootstrap] env manager: {caps.conda_binary}", err=True)
-    if caps.conda_binary is None:
-        # The guard `install` has (review B-L4): without it the probe below
-        # runs `subprocess.run([None, ...])` and the person gets a TypeError
-        # instead of the one sentence that names the fix.
-        raise click.UsageError(
-            "no env manager was found: "
-            f"{caps.conda_binary_source or 'none on PATH, no $MAMBA_EXE/$CONDA_EXE'}.  "
-            "Record this machine's manager once as `envs.manager` in "
-            "molbuilder.json (an absolute path), or activate one first.")
     click.echo(
         f"[bootstrap] registered recipes: "
         f"{len(default_set)} in the default stack + "
@@ -1821,7 +1799,7 @@ def cmd_bootstrap(dry_run: bool, skip_existing: bool, clean: bool,
     # are true or false already.  Printed here so a 40-minute install is not
     # the thing that discovers a read-only config root.
     if not dry_run:
-        _warn_about_seeding_now(auto_yes)
+        _warn_about_seeding_now(auto_yes, projects)
 
     if not plan:
         if dry_run:
@@ -1940,9 +1918,9 @@ def cmd_bootstrap(dry_run: bool, skip_existing: bool, clean: bool,
         # read-only $HOME should not throw away forty minutes of built envs or
         # take the doctor report with it -- but recorded, so bootstrap never
         # reports success having created no config directory.  The realistic
-        # trigger is the documented form: `bootstrap` without `--yes` has two
-        # questions to ask, and with no tty on stdin (nohup, CI, a batch step)
-        # click aborts on the first one.
+        # trigger is the documented form: `bootstrap` without `--yes` asks
+        # what molbuilder.json does not say, and with no tty on stdin (nohup,
+        # CI, a batch step) click aborts on the first question.
         seed_failed = True
 
     # Refresh capabilities so doctor sees newly-created envs.
@@ -1958,8 +1936,8 @@ def cmd_bootstrap(dry_run: bool, skip_existing: bool, clean: bool,
     # "What now?" -- show the most common next-step commands so the
     # user knows how to proceed once bootstrap finishes.  Includes
     # the GPU SIESTA install (commonly missed because source builds
-    # are opt-in) + ``repair`` for any package gaps doctor's audit
-    # surfaced + ``doctor`` itself for re-verification.  Always shown
+    # are opt-in) + ``doctor`` itself for re-verification -- the doctor
+    # report above already names each env's own fix.  Always shown
     # at the end of bootstrap, even on success, so the GPU path is
     # discoverable from the bootstrap output alone.
     click.echo("")
@@ -1977,9 +1955,6 @@ def cmd_bootstrap(dry_run: bool, skip_existing: bool, clean: bool,
         click.echo(
             _hints.install_cmd(DEFAULT_ENV_NAMES["siesta-gpu"])
         )
-    click.echo("")
-    click.echo("# Repair any REQUIRED package gaps doctor's audit surfaced:")
-    click.echo(_fix_cmd("repair", "<recipe-name>"))
     click.echo("")
     click.echo("# Re-verify env health after any change:")
     click.echo(_fix_cmd("doctor"))
@@ -2053,22 +2028,24 @@ def _recommended_activation(conda_binary: "Optional[str]") -> tuple:
 def _render_init_config(steps: "Iterable") -> None:
     """One line per step: what it is, whether it appeared, and what to know."""
     for step in steps:
-        # `~` is the README this program authored and has just corrected --
-        # neither "appeared" nor "was already right", and rendering it as `=`
-        # would report a file that just CHANGED as one that did not.
+        # `~` is a file this program has just written into -- a README it
+        # authored, corrected; molbuilder.json, a key given -- neither
+        # "appeared" nor "was already right", and rendering it as `=` would
+        # report a file that just CHANGED as one that did not.
         mark = "+" if step.created else ("~" if step.rewritten else "=")
         click.echo(f"  {mark} {step.path}")
         if step.note:
             click.echo(f"      {step.note}")
 
 
-def _warn_about_seeding_now(auto_yes: bool) -> bool:
+def _warn_about_seeding_now(auto_yes: bool,
+                            projects: "Optional[str]") -> bool:
     """Say at the START what would only be discovered at the END.
 
     The config directory is seeded after every install, and that ordering is
     right -- a failure there must not discard forty minutes of built envs.  Its
     preconditions -- a read-only $HOME, or a bootstrap with no terminal to ask
-    its two questions in -- are knowable before the first install, so they are
+    its questions in -- are knowable before the first install, so they are
     stated here, while an interactive user can still say no at the
     Proceed prompt (user, 2026-09-12: *"if it's read only, then we should give
     the warning early rather than wait at the very end"*).
@@ -2080,17 +2057,26 @@ def _warn_about_seeding_now(auto_yes: bool) -> bool:
 
     ``True`` when something was printed.
     """
+    from ..runtime_config import RuntimeConfigError
     from .initconfig import seeding_blockers
     problems = list(seeding_blockers())
-    if not auto_yes and not _hints.stdin_can_answer():
+    if projects is not None:
+        # A TREE TYPED is checked as the seeding at the end will check it.
+        try:
+            initconfig.projects_setting(projects)
+        except RuntimeConfigError as exc:
+            problems.append(str(exc))
+    asks = initconfig.unanswered(initconfig.declared_config(),
+                                 projects=projects)
+    if asks and not auto_yes and not _hints.stdin_can_answer():
         # The OTHER half, and the one that actually bites: the documented form
-        # is `bootstrap` without `--yes`, which has two questions to ask, and
-        # under nohup / CI / a batch step click aborts on the first.
+        # is `bootstrap` without `--yes`, and under nohup / CI / a batch step
+        # click aborts on the first question the seeding asks.
         problems.append(
-            "there is no terminal to ask the two install-time questions in "
-            "(how this machine enters a conda env, and where the projects "
-            "tree lives), so the seeding at the end will abort.  Pass --yes "
-            "to take the detected defaults, or run this from a terminal.")
+            "there is no terminal to ask the install-time questions in ("
+            + "; ".join(asks) + "), so the seeding at the end will abort.  "
+            "Pass --yes to take the detected defaults, or run this from a "
+            "terminal.")
     if not problems:
         return False
     click.echo("", err=True)
@@ -2115,7 +2101,17 @@ def _seed_config(activation: "Optional[str]", auto_yes: bool,
     machine declares how a shell enters an environment here -- and the probe
     copies it into the record (`configuration.md` § 4)."""
     recommended, preamble = _recommended_activation(conda_binary)
-    if activation is None:
+    # WHAT THE PERSON TYPED replaces its one key in a file they wrote
+    # (`configuration.md` § 3.2); what that file already declares is not
+    # asked again.
+    typed = frozenset(name for name, value in (("activation", activation),
+                                               ("projects", projects))
+                      if value is not None)
+    declared = initconfig.declared_config()
+    asks = initconfig.unanswered(declared, activation=activation,
+                                 projects=projects)
+    activation = activation or declared.activation
+    if initconfig.ACTIVATION_QUESTION in asks:
         if auto_yes:
             activation = recommended
         else:
@@ -2136,10 +2132,18 @@ def _seed_config(activation: "Optional[str]", auto_yes: bool,
         # needs no such thing, so carrying the line there would be a preamble
         # that sources a file for no reason.
         preamble = None
-    projects = _ask_projects_root(auto_yes, projects)
+    if "projects" in typed or initconfig.PROJECTS_QUESTION in asks:
+        projects = _ask_projects_root(auto_yes, projects)
+        if projects is not None:
+            # CHECKED NOW, before a file or a folder is written.
+            initconfig.projects_setting(projects)
+    else:
+        # Declared, so not asked -- and still SAID: where the tree is.
+        from ..projects import projects_root_with_source
+        click.echo(f"  {projects_root_with_source().describe()}")
     try:
         _render_init_config(initconfig.init_config(activation, preamble, probe,
-                                                  projects))
+                                                  projects, typed=typed))
     except RuntimeError as exc:
         # The blockers, as a sentence rather than a traceback (D1).  One catch,
         # because this is the one place `init_config` is called -- `bootstrap`
@@ -2150,7 +2154,7 @@ def _seed_config(activation: "Optional[str]", auto_yes: bool,
 
 
 def _ask_projects_root(auto_yes: bool,
-                       declared: "Optional[str]") -> "Optional[Path]":
+                       typed: "Optional[str]") -> "Optional[Path]":
     """Where the project tree goes -- asked, like activation, never detected.
 
     ``None`` means "leave `paths.projects` empty and take the default", which
@@ -2164,8 +2168,8 @@ def _ask_projects_root(auto_yes: bool,
     """
     from pathlib import Path as _Path
     from ..projects import projects_root_with_source
-    if declared:
-        return _Path(declared).expanduser()
+    if typed:
+        return _Path(typed).expanduser()
     default = projects_root_with_source()
     if auto_yes:
         # Still PRINT it.  Taking the default silently is how a person ends up
@@ -2192,8 +2196,9 @@ def _ask_projects_root(auto_yes: bool,
     short_help="seed the per-user config directory (molbuilder.json + record)")
 @click.option("--projects", default=None, metavar="PATH",
               help="where the project tree lives -- written to "
-                   "molbuilder.json as `paths.projects`.  Omit to be asked; "
-                   "with --yes, omit to take the default (which is printed).")
+                   "molbuilder.json as `paths.projects`, replacing what it "
+                   "says.  Omitted, asked when the file does not say; with "
+                   "--yes, the default (which is printed).")
 @click.option("--activation", type=click.Choice(sorted(ACTIVATION_FORMS)),
               default=None,
               help="declare how this machine enters a conda env, instead of "
@@ -2228,13 +2233,15 @@ def cmd_init_config(activation: "Optional[str]", probe: bool,
 
     Two things are ASKED, never detected, because install time is the one
     moment the answer is known: how this machine enters a conda env, and where
-    the project tree lives.  `--yes` takes both defaults and PRINTS them.
+    the project tree lives -- each only where molbuilder.json does not
+    already say.  `--yes` takes both defaults and PRINTS them.
 
-    **Idempotent.**  A file a person wrote is never overwritten -- re-running
-    prints what is there.  molbuilder's own two READMEs are rewritten when
-    their text is out of date, and a molbuilder.json with no
-    env_init.activation gains the one asked.  Run automatically at the end of
-    ``bootstrap``.
+    **Idempotent.**  A file a person wrote is kept -- re-running prints what
+    is there.  molbuilder's own two READMEs are rewritten when their text is
+    out of date; a question molbuilder.json does not answer gains the answer
+    given; a value typed here (--activation, --projects) replaces its one
+    key, said as what it was and what it is now.  Run automatically at the
+    end of ``bootstrap``.
     """
     click.echo(f"config directory: {config_dir()}")
     _seed_config(activation, auto_yes, probe,

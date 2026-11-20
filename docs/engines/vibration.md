@@ -1406,7 +1406,7 @@ states:
 
 ```text
 # === molbuilder vibration BEGIN ===
-# format: molbuilder-vibration/v5
+# format: molbuilder-vibration/v6
 # {
 #   "stage":"freq",                   # the stage's name -> the result's config.stage
 #   "force_criterion_ev_ang":0.01,    # the tolerance the relaxation runs to (§ 5.5)
@@ -1426,6 +1426,7 @@ states:
 #   "masses_amu":[1.008, 1.008],      # every atom's mass, the deck's order (I3)
 #   "title":"...",                    # the structure's title -> the result's structure (§ 6.10.1)
 #   "identity":{...},                 # the identity columns, the deck's order -- restored with the rest -> the result's structure
+#   "info":{...},                     # the structure's notes, its earlier runs' records left behind (v6) -> the result's structure
 #   "molbuilder_version":"1.1.0"      # the molbuilder that prepared it -> the result
 # }
 # === molbuilder vibration END ===
@@ -2458,7 +2459,7 @@ one `DeckSpec`, the three decks sharing the stage's one name,
 | part | sections | the record blocks |
 |---|---|---|
 | `relax` | the optimization layout — the relaxation items (`relax_*`, `restart`), the vibration's catalogue narrowing | ATOM-METADATA, ENGINE-OFFSET; no `vibration` block; the bundle named, for its plan and record steps |
-| `fc` | § 5.3's: the force-constant section and block — its charges when *Compute IR* is on — the start state | all three; the `vibration` block, format **v5**: § 5.3's keys, **`raman`** among them — *Raman for* and its range, `null` with *Compute Raman* off — the one fact no keyword states ($\delta$ is `FC.Displacement`; $\hat e$ the optical deck's `Optical.Vector`: nothing is stated twice, § 6.10.1); the finish named |
+| `fc` | § 5.3's: the force-constant section and block — its charges when *Compute IR* is on — the start state | all three; the `vibration` block, format **v6**: § 5.3's keys, **`raman`** among them — *Raman for* and its range, `null` with *Compute Raman* off — the one fact no keyword states ($\delta$ is `FC.Displacement`; $\hat e$ the optical deck's `Optical.Vector`: nothing is stated twice, § 6.10.1) — and the structure's title, identity columns and notes, `info` (§ 6.10.1); the finish named |
 | `optical` | the vibration's settings; a single point (`MD.TypeOfRun CG`, `MD.Steps 0`); the start state (`DM.UseSaveDM .true.`, `MD.UseSaveXV .false.`); the optical section from the catalogue items (§ 9), each checked against SIESTA's manual before it is written (I21) | ATOM-METADATA, ENGINE-OFFSET; no `vibration` block; the bundle named, for its plan and record steps |
 
 The block's reader (`deck_record.extract_vibration_record`) refuses no key;
@@ -3054,6 +3055,7 @@ frame, on the machine that runs it (the method's § 5.1).
 | a file of one stage's run named for another stage (`RunNames.restaged`), over the name generator's whole product | API | the call taken over keeping the first stage's names, so the later stage's readers find no output in it |
 | the same sweep on the CO₂ run (the vibration e2e): `freq_half`'s run takes `freq`'s `relax` call over, its record naming the call that computed it, its output found by the run door | e2e | the take-over not made, or made with names no reader finds |
 | the CO₂ run's calculation opened in the Results tab: the ladder's rows (`tests/test_siesta_vibration_e2e.py`) | e2e | every call's row reading `run-0` alone — eight rows a person cannot tell apart |
+| the CO₂ run stated relaxed, its structure saved with a note of the person's and an earlier run's `calculation` and `relaxation` records: the result's structure (§ 6.10.1) | e2e | the person's notes dropped, or the earlier run's records carried as this run's |
 
 ---
 
@@ -3410,7 +3412,7 @@ one loss-free serialiser, read back by `Structure.from_dict`
 | the labels | as the run was given them: the reserved `frozen_atoms` — **the atoms this calculation held**, the partial Hessian's fixed set ([`science/normal-modes.md`](?doc=science/normal-modes.md) § 1) — the transport partition, every other label |
 | the box | the cell, the axis kinds, the stated engine offset and whose it is, the vacuum — the run's |
 | the identity columns and channels | as the run was given them |
-| `info` | as the run was given it: **the input's own run records stay behind** — its `relaxation` and `calculation` describe the run the input came out of, at the input's coordinates, not these (`pyscf/input.py::_sidecar_for`) |
+| `info` | as the run was given it, on both engines *(the user, 2026-11-18: "Keep them, as PySCF does")*: **the input's own run records stay behind** — its `relaxation` and `calculation` describe the run the input came out of, at the input's coordinates, not these — by the one filter both decks apply (`parse.dirs.run_info.info_without_run_records`) |
 
 **What is not in it, and where it is.** The masses the analysis weighted by
 stay the result's own, `equilibrium.masses_amu` (§ 6.2): they are the
@@ -3434,7 +3436,8 @@ run's index (§ 5.11 § 3).
   deck's held-first order; the finish builds the structure from them and the
   reference geometry, puts it back in the user order through the recorded
   permutation (§ 5.2), and takes from the `vibration` block **only what no
-  block carries** — the title and the identity columns. Nothing is stated
+  block carries** — the title, the identity columns and the notes (none from
+  a deck an earlier molbuilder wrote, format v5). Nothing is stated
   twice in the deck: the ATOM-METADATA block states every metadata field but
   the box, which belongs to the ENGINE-OFFSET block
   (`script_emit.emit_atom_metadata`). **Checked**: the

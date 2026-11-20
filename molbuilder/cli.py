@@ -1466,7 +1466,7 @@ def _print_oauth_redirect_hint_if_auth_on(scheme, host, port):
         err=True,
     )
     for p in oauth_providers:
-        guess = f"{scheme}://{host}:{port}/oauth-callback/{p['id']}"
+        guess = f"{scheme}://{_url_host(host)}:{port}/oauth-callback/{p['id']}"
         click.echo(f"  {p['id']:>14s}  ({p['kind']:>9s})  ->  {guess}",
                     err=True)
     click.echo(
@@ -2198,8 +2198,8 @@ def cmd_notify_token(user, host, route, channel, replace):
     **`serve` never generates or rotates these**.
     The counterpart lives on a cluster molbuilder cannot reach, so a
     startup rotation would leave every running job signing with the old key
-    -- refused, and silently, because a notifier swallows failures by
-    design.  Rotating is this command with --replace, and then copying the
+    -- refused, costing those runs nothing, each refusal said only in its
+    run's monitor log.  Rotating is this command with --replace, and then copying the
     new file across.
     """
     import json as _json
@@ -2239,9 +2239,9 @@ def cmd_notify_token(user, host, route, channel, replace):
     # listener blueprint only if the file already names a route and holds keys,
     # and nothing re-reads it afterwards -- so the FIRST key issued against a
     # running server does not work until that server restarts.  Every report
-    # gets a 404 and the notifier swallows it by design, which means the job
-    # succeeds and the reports are simply absent.  Said here because this is the
-    # moment the person can act on it; `run-reports.md` 4.4 carries the rule.
+    # gets a 404, which costs the job nothing and is said only in its run's
+    # monitor log -- nowhere the person is looking.  Said here because this is
+    # the moment the person can act on it; `run-reports.md` 4.4 carries the rule.
     if not existing_route:
         click.echo("")
         click.echo( "  RESTART THE SERVER        : this is the first key, so "
@@ -2249,17 +2249,19 @@ def cmd_notify_token(user, host, route, channel, replace):
         click.echo( "                             when the running server "
                     "started.  Until it is")
         click.echo( "                             restarted every report gets "
-                    "a 404 -- and a notifier")
-        click.echo( "                             is silent on failure, so you "
-                    "would see no error,")
-        click.echo( "                             just no reports.")
+                    "a 404: the run goes")
+        click.echo( "                             on, and each 404 is said only "
+                    "in that run's")
+        click.echo( "                             monitor log ([NOTIFY] ... not "
+                    "delivered).")
         click.echo( "                                 molbuilder serve restart "
                     "--port <port>")
     if route and existing_route and route != existing_route:
         click.echo(f"\n  MOVED the route from {existing_route} to {seg} "
                    f"because you passed --route.")
-        click.echo( "  Every key issued under the old segment stops working, "
-                    "and silently.")
+        click.echo( "  Every key issued under the old segment stops working: "
+                    "each report gets a 404,")
+        click.echo( "  said only in its run's monitor log.")
     elif existing_route:
         click.echo(f"\n  joined the route already in that file ({seg}), so "
                    f"everybody already set up keeps working.")
@@ -2321,6 +2323,10 @@ def serve_group():
 #: of them sends a stop to a server that is not the one just started.
 _DEFAULT_SERVE_PORT = 8000
 
+#: The address `serve` binds unless told -- loopback, which no remote client
+#: can reach -- and where a server whose supervisor kept no address is asked.
+_DEFAULT_SERVE_HOST = "127.0.0.1"
+
 
 def _serve_port_flag(f):
     """``--port`` for a verb that ACTS ON a running molbuilder -- one
@@ -2352,7 +2358,7 @@ def _serve_flags(f):
     """The flags ``foreground`` and ``start`` share -- one decorator, so
     the two verbs cannot drift apart about what a server accepts."""
     for opt in reversed([
-        click.option("--host",  default="127.0.0.1", show_default=True),
+        click.option("--host",  default=_DEFAULT_SERVE_HOST, show_default=True),
         # THE SAME OPTION THE OTHER VERBS TAKE.
         _serve_port_flag,
         click.option("--cert", type=click.Path(exists=True, dir_okay=False),
@@ -2556,7 +2562,7 @@ def cmd_serve(host, port, debug, cert, key, allow_insecure_binding, no_auth,
         app.config["MOLBUILDER_SERVE_PORT"] = port
         click.echo(
             f"molbuilder web UI (NO AUTH -- loopback only) starting at "
-            f"http://{host}:{port}", err=True)
+            f"http://{_url_host(host)}:{port}", err=True)
         app.run(host=host, port=port, debug=debug, ssl_context=None)
         return
 
@@ -2564,7 +2570,8 @@ def cmd_serve(host, port, debug, cert, key, allow_insecure_binding, no_auth,
     app = create_app()
     # This process's port -- see `web.app.serve_port`.
     app.config["MOLBUILDER_SERVE_PORT"] = port
-    click.echo(f"molbuilder web UI starting at {scheme}://{host}:{port}", err=True)
+    click.echo(f"molbuilder web UI starting at "
+               f"{scheme}://{_url_host(host)}:{port}", err=True)
     _print_oauth_redirect_hint_if_auth_on(scheme, host, port)
     if ssl_ctx is not None:
         _harden_tls_accept_loop()
@@ -2641,7 +2648,8 @@ def cmd_serve_start(host, port, cert, key, allow_insecure_binding, no_auth,
             f"cannot bind {host}:{port} ({_held}).\n"
             f"  The port is not reported busy; the address itself is the "
             f"problem.  `--host` must name an interface this machine has -- "
-            f"`ip -br addr` lists them -- or 0.0.0.0 for all of them.")
+            f"`ip -br addr` lists them -- or 0.0.0.0 (IPv4) or :: (both) "
+            f"for all of them.")
     # AND CAN ITS PIDFILE BE WRITTEN?  The supervisor writes it after
     # `daemonize()`, where a directory that cannot be made -- an
     # `XDG_RUNTIME_DIR` carried in from the node you logged in to -- ends the
@@ -2696,7 +2704,7 @@ def cmd_serve_start(host, port, cert, key, allow_insecure_binding, no_auth,
     # from here we are the detached supervisor; nothing prints to the
     # terminal again -- the roll owns every later byte
     raise SystemExit(supervise(
-        port, child,
+        port, child, host=host,
         log_max_bytes=log_max_mb * 1024 * 1024, log_keep=log_keep,
         jupyter_argv=notebook))
 
@@ -2744,10 +2752,16 @@ def _port_in_use(host: str, port: int):
     **It returns the error, not a sentence**, because "cannot bind" has more
     than one cause and the caller has to tell them apart: a host that is not
     an address on this machine (EADDRNOTAVAIL) is not a port in use.
+
+    The family is the server's own, asked of the rule it binds by
+    (werkzeug's `select_address_family`), so the check binds as the child
+    will.
     """
     import socket
+    from werkzeug.serving import select_address_family
+    family = select_address_family(host, port)
     try:
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        with socket.socket(family, socket.SOCK_STREAM) as s:
             s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             s.bind((host, port))
         return None
@@ -3022,6 +3036,26 @@ def cmd_jupyter_shepherd(serve_port):
     raise SystemExit(run_shepherd(serve_port))
 
 
+def _url_host(host: str) -> str:
+    """``host`` as a URL's host part: an IPv6 address bracketed, by the
+    rule the server binds by (werkzeug's `select_address_family`) -- every
+    URL `serve` prints or asks."""
+    import socket
+    from werkzeug.serving import select_address_family
+    return (f"[{host}]" if select_address_family(host, 0) == socket.AF_INET6
+            else host)
+
+
+def _probe_host(bound: "str | None") -> str:
+    """Where a server started on ``bound`` is asked, as a URL's host part
+    (:func:`_url_host`): the host itself; a wildcard on loopback of its
+    family.  ``None`` -- a supervisor that kept no host -- is the default
+    bind."""
+    loopback = {"0.0.0.0": "127.0.0.1", "::": "::1"}
+    return _url_host(loopback.get(bound, bound) if bound
+                     else _DEFAULT_SERVE_HOST)
+
+
 def _probe_health(port: int, *, timeout: float = 5.0):
     """Does the molbuilder on ``port`` ANSWER?  -> ``(bool, one line)``.
 
@@ -3029,8 +3063,13 @@ def _probe_health(port: int, *, timeout: float = 5.0):
     server that was UP and not ANSWERING, and a status conflating the two
     calls that healthy.
 
-    Loopback, either scheme, verification off -- a cert made for the public
-    name fails on `127.0.0.1`, and this asks about liveness, not identity
+    At the host it was started on, as its supervisor kept it
+    (`serve_daemon.read_bound_host`, :func:`_probe_host`) -- a server
+    bound to one interface does not answer on `127.0.0.1`, and calling it
+    wedged would advise restarting a healthy server; the NO line names the
+    address asked.  Either scheme,
+    verification off -- a cert made for the public name fails on a loopback
+    address, and this asks about liveness, not identity
     (`serve_daemon.unverified_ctx` owns that knob).
 
     One home because the survey and the single-port report must not answer
@@ -3042,32 +3081,36 @@ def _probe_health(port: int, *, timeout: float = 5.0):
     import urllib.error
     import urllib.request
 
-    from .serve_daemon import unverified_ctx
-    ctx = unverified_ctx()
+    from .serve_daemon import read_bound_host, unverified_ctx
+    address = _probe_host(read_bound_host(port))
+    # STRAIGHT TO THE SERVER: a proxy the shell names is for reaching other
+    # machines, and one that cannot reach this address -- or answers for it
+    # -- would decide the answer about a server it never asked.
+    opener = urllib.request.build_opener(
+        urllib.request.ProxyHandler({}),
+        urllib.request.HTTPSHandler(context=unverified_ctx()))
     for scheme in ("https", "http"):
         try:
-            with urllib.request.urlopen(
-                    f"{scheme}://127.0.0.1:{port}/api/health",
-                    timeout=timeout,
-                    context=ctx if scheme == "https" else None):
+            with opener.open(f"{scheme}://{address}:{port}/api/health",
+                             timeout=timeout):
                 return True, f"yes ({scheme}, /api/health)"
         except urllib.error.HTTPError:
             return True, (f"yes ({scheme}; /api/health refused, which is "
                           f"still an answer)")
         except (urllib.error.URLError, OSError, TimeoutError):
             continue
-    return False, (f"NO -- the process is up but /api/health gave nothing "
+    return False, (f"NO -- /api/health at {address}:{port} gave nothing "
                    f"within {timeout:g}s")
 
 
-def _note_wedge(port: int, pid: int) -> None:
+def _note_wedge(port: int, pid: int, said: str) -> None:
     """Append the detection to the server's own log.
 
     The log is the record of concerns and detections (`deployment.md`
     § 1.0c, user ruling 2026-08-28) -- a wedge belongs there too, not only in
     whichever terminal happened to ask.  A one-line append beside the
     daemon's own writes; the rare rotation race can cost this line at worst,
-    never a daemon byte.
+    never a daemon byte.  ``said`` is the status's own answering line.
     """
     from .config_dir import ensure_private_dir, serve_log
     try:
@@ -3077,8 +3120,8 @@ def _note_wedge(port: int, pid: int) -> None:
         ensure_private_dir(serve_log(port).parent, tighten=True)
         with open_private(serve_log(port), "ab") as fh:
             fh.write(event_line(
-                "status", f"DETECTED: process up (pid {pid}) but "
-                          f"/api/health gave nothing within 5s"))
+                "status", f"DETECTED: process up (pid {pid}), "
+                          f"answering: {said}"))
     except OSError:
         pass                     # the terminal report above still stands
 
@@ -3095,7 +3138,7 @@ def cmd_serve_status(port):
     that has to be told which port can only ever confirm a guess.
     """
     from .config_dir import serve_log, serve_pidfile
-    from .serve_daemon import pid_state, read_pid
+    from .serve_daemon import pid_state, read_bound_host, read_pid
 
     if port is None:
         raise SystemExit(_survey())
@@ -3119,6 +3162,13 @@ def cmd_serve_status(port):
     click.echo(f"log:       {serve_log(port)}")
     ok, said = _probe_health(port)
     click.echo(f"answering: {said}")
+    if not ok and read_bound_host(port) is None:
+        # A SUPERVISOR AN OLDER MOLBUILDER STARTED kept no host, so it is
+        # asked at the default bind -- the wrong place for a server started
+        # on another (`deployment.md` § 1.0b).
+        click.echo("  NOTE: this supervisor kept no host, so it was asked at "
+                   f"{_DEFAULT_SERVE_HOST}; `molbuilder serve stop` then "
+                   "`serve start` records it.")
     # A SUPERSET OF THE SURVEY ROW THAT SENT YOU HERE.  The survey prints
     # `notebook: yes|no` and the port-clash note and then says "detail on
     # one: ... --port <port>" (`plan.md` § 5n.8).
@@ -3134,7 +3184,7 @@ def cmd_serve_status(port):
         return
     click.echo("  `kill -USR1` the child pid and read the stacks log, or "
                "`molbuilder serve restart`.")
-    _note_wedge(port, pid)
+    _note_wedge(port, pid, said)
     raise SystemExit(4)
 
 
@@ -3196,7 +3246,7 @@ def _survey() -> int:
         # a detection belongs in the log "not only in whichever terminal
         # happened to ask".
         if not ok:
-            _note_wedge(p, pid)
+            _note_wedge(p, pid, said)
         # THE PID ONLY, no HTTP: the survey's question is "what is
         # running", and `jupyter status --port N` is the verb that asks a
         # notebook whether it ANSWERS.

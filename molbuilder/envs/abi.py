@@ -333,8 +333,12 @@ class AbiRule:
     #: worded that way rather than pretending to offer a knob.
     remediation_scope: Scope = Scope.ENV
 
-    def evaluate(self, env: EnvToolchain, host: HostPlatform) -> Optional[Finding]:
-        """Return a :class:`Finding` when this rule is violated.
+    def evaluate(self, env: EnvToolchain, host: HostPlatform, *,
+                 recipe: str) -> Optional[Finding]:
+        """Return a :class:`Finding` when this rule is violated -- its
+        remedy naming ``recipe``, the env's recipe, where it has a command
+        to paste (`ops/installation.md`: every problem ends with its exact
+        fix command).
 
         ``None`` when it holds, and also when either side is unknown --
         an unreadable version is a reason to stay quiet, never a reason
@@ -361,7 +365,7 @@ class AbiRule:
                 "as `cannot run C compiled programs`, cmake as a failed "
                 "compiler test -- neither mentions the version skew."
             ),
-            remedy=self.remedy,
+            remedy=self.remedy.replace("{recipe}", recipe),
             scope=self.remediation_scope,
         )
 
@@ -377,7 +381,7 @@ ABI_RULES: Tuple[AbiRule, ...] = (
         remedy=(
             "Rebuild the env with a sysroot at or below the host's glibc: "
             f"`MOLBUILDER_SYSROOT=2.17 "
-            f"{_hints.fix_cmd('install', '<recipe>', '--clean')}`.  "
+            f"{_hints.rebuild_cmd('{recipe}')}`.  "
             "2.17 is conda-forge's portability floor and is "
             "what every prebuilt package in the env already targets."
         ),
@@ -418,11 +422,12 @@ class AbiContract:
             env=EnvToolchain.from_env(env_prefix),
         )
 
-    def findings(self) -> Tuple[Finding, ...]:
-        """Every violated rule, in :data:`ABI_RULES` order."""
+    def findings(self, *, recipe: str) -> Tuple[Finding, ...]:
+        """Every violated rule, in :data:`ABI_RULES` order, each remedy
+        naming ``recipe``."""
         out: List[Finding] = []
         for rule in ABI_RULES:
-            found = rule.evaluate(self.env, self.host)
+            found = rule.evaluate(self.env, self.host, recipe=recipe)
             if found is not None:
                 out.append(found)
         return tuple(out)
@@ -477,6 +482,7 @@ def _find_env_compiler(env_prefix: str) -> Optional[Path]:
 def check_toolchain_executes(env_prefix: str,
                              *,
                              contract: Optional[AbiContract] = None,
+                             recipe: str,
                              env: Optional[Mapping[str, str]] = None,
                              timeout: int = 120,
                              ) -> Optional[Finding]:
@@ -533,7 +539,8 @@ def check_toolchain_executes(env_prefix: str,
             ran = _quiet_run([str(binary)], env=env, timeout=timeout)
             if ran.returncode == 0:
                 return None
-            return _cannot_run_finding(compiler, ran, contract)
+            return _cannot_run_finding(compiler, ran, contract,
+                                       recipe=recipe)
     except (OSError, subprocess.SubprocessError):
         # A probe that cannot run is not evidence that the toolchain is
         # broken.  Stay silent rather than block a build on our own
@@ -544,6 +551,8 @@ def check_toolchain_executes(env_prefix: str,
 def _cannot_run_finding(compiler: Path,
                         ran: subprocess.CompletedProcess,
                         contract: Optional[AbiContract],
+                        *,
+                        recipe: str,
                         ) -> Finding:
     """Build the ERROR for "compiled fine, would not run".
 
@@ -553,12 +562,13 @@ def _cannot_run_finding(compiler: Path,
     """
     explanation = ""
     remedy = (
-        "Re-run with `MOLBUILDER_SYSROOT=2.17 ... --clean` if the env's "
+        "Re-run with `MOLBUILDER_SYSROOT=2.17 "
+        f"{_hints.rebuild_cmd(recipe)}` if the env's "
         "sysroot is newer than this host's glibc; otherwise check that "
         "the build directory is not on a noexec mount."
     )
     if contract is not None:
-        for finding in contract.findings():
+        for finding in contract.findings(recipe=recipe):
             if finding.severity is Severity.ERROR:
                 explanation = f"  {finding.summary}"
                 remedy = finding.remedy

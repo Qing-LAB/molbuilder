@@ -125,6 +125,8 @@ class RealRun:
     #: (:func:`swept`): before its second stage ran (``early``), after it
     #: (``record``), and under a tolerance (``flagged``).
     sweep: Dict[str, dict] = field(default_factory=dict)
+    #: The UUID of the GPU a job was given by name (:func:`gpu`).
+    gpu_uuid: "str | None" = None
     #: The run a launch left in the background, as the launch returned
     #: (:func:`left_to_end`): its ``pid``, its session (``sid``), and whether
     #: it was still this process's to wait for (``waited_here``) -- a launch
@@ -370,19 +372,19 @@ def _answered(run: RealRun, step: str, answer: str, *words) -> Said:
     return said
 
 
-def _script_dry_runs(run: RealRun, prepared: Path, scratch: Path,
-                     **given: str) -> None:
+def script_dry_runs(run: RealRun, prepared: Path, scratch: Path,
+                    step_suffix: str = "", **given: str) -> None:
     """The run script's own dry run (`running-a-job.md` § 3.4), on a copy of
     a prepared folder so no run another test reads gains a log: as prepared,
-    and with ``-np 2`` typed on it.  The rank and thread counts the shell
-    may carry are scrubbed, so what resolves is the script's own chain;
-    ``given`` is what the job is given there -- its GPUs, as a scheduler
-    gives them (``CUDA_VISIBLE_DEVICES``)."""
+    and with ``-np 2`` typed on it, each step's name ended by ``step_suffix``.
+    The rank and thread counts the shell may carry are scrubbed, so what
+    resolves is the script's own chain; ``given`` is what the job is given
+    there -- its GPUs, as a scheduler gives them (``CUDA_VISIBLE_DEVICES``)."""
     there = scratch / prepared.name
     shutil.copytree(prepared, there)
     script = next(there.glob("*.run.sh"))
-    for step, extra in (("script dry run", ()),
-                        ("script dry run -np 2", ("-np", "2"))):
+    for step, extra in ((f"script dry run{step_suffix}", ()),
+                        (f"script dry run -np 2{step_suffix}", ("-np", "2"))):
         done = subprocess.run(["bash", str(script), "--dry-run", *extra],
                               cwd=there, capture_output=True, text=True,
                               timeout=120, env=_scrubbed(**given))
@@ -567,7 +569,7 @@ def layered(tmp_path_factory) -> RealRun:
         run = RealRun(tree=tree, bundle=bundle)
         taken(run, "prep coarse", "prep", "task", "--group", "1",
               "--target", "this")
-        _script_dry_runs(run, run.attempt("coarse"),
+        script_dry_runs(run, run.attempt("coarse"),
                          tmp_path_factory.mktemp("dry-run"))
         _header_under_a_slurm_grant(run, tree,
                                     tmp_path_factory.mktemp("header-dry-run"))
@@ -665,7 +667,8 @@ def gpu(tmp_path_factory) -> RealRun:
     GPU and how its shell enters an environment, the run entering the
     source-built `molbuilder-siesta-gpu`.  Its run script's own dry run as
     prepared, and with ``-np 2`` -- each given GPU 0, as a job asking one GPU
-    is given one -- then the run, waited on."""
+    is given one, and given the same GPU by its UUID (``gpu_uuid``), as a
+    device may be named -- then the run, waited on."""
     with on_the_road(tmp_path_factory, "gpu") as tree:
         from conftest import write_machine_record
         from molbuilder.scheduler import Topology
@@ -679,9 +682,17 @@ def gpu(tmp_path_factory) -> RealRun:
         run = RealRun(tree=tree, bundle=bundle)
         taken(run, "prep coarse", "prep", "task", "--group", "1",
               "--target", "this")
-        _script_dry_runs(run, run.attempt("coarse"),
+        script_dry_runs(run, run.attempt("coarse"),
                          tmp_path_factory.mktemp("gpu-dry-run"),
                          CUDA_VISIBLE_DEVICES="0")
+        run.gpu_uuid = subprocess.run(
+            ["nvidia-smi", "--id=0", "--query-gpu=uuid",
+             "--format=csv,noheader"], capture_output=True, text=True,
+            check=True).stdout.strip()
+        script_dry_runs(run, run.attempt("coarse"),
+                         tmp_path_factory.mktemp("gpu-dry-run-uuid"),
+                         step_suffix=" by its UUID",
+                         CUDA_VISIBLE_DEVICES=run.gpu_uuid)
         taken(run, "launch coarse", "launch", "task", "--stage", "coarse",
               "--mode", "direct", "--foreground", "--yes")
     return run
@@ -723,15 +734,17 @@ CO2_OPTICAL = {"compute_raman": True, "raman_modes": "range",
 
 
 def co2_vibration(tree: Path, where: str = "P/spectrum/CO2", *,
-                  optical: bool = False) -> Path:
+                  optical: bool = False, info=None) -> Path:
     """The road's CO2 (`support.road.CO2`) described as a SIESTA vibration
     in ``tree`` at ``where``: the kind's one stage, `freq`, one rank, one
     thread (`support.road.described`), its template carrying
     :data:`CO2_SETTINGS` as the person's (`support.road.set_by_the_person`)
-    -- and, ``optical``, :data:`CO2_OPTICAL` -- THE ONE MAKER of it, for the
-    shared run and for a test's own calculation alike."""
+    -- and, ``optical``, :data:`CO2_OPTICAL`; ``info``, the notes its
+    structure is saved with -- THE ONE MAKER of it, for the shared run and
+    for a test's own calculation alike."""
     from support.road import CO2, set_by_the_person
-    bundle = described(tree, where, structure=structure_saved(tree, CO2),
+    bundle = described(tree, where,
+                       structure=structure_saved(tree, {**CO2, "info": info}),
                        name="CO2", calculation="vibration",
                        execution={"mpi_np": 1, "omp_threads": 1})
     set_by_the_person(bundle, {**CO2_SETTINGS,

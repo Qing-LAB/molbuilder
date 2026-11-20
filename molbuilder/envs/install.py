@@ -605,10 +605,9 @@ def plan_install(
     """
     caps = caps if caps is not None else get_capabilities()
     if caps.conda_binary is None:
-        raise RuntimeError(
-            "conda CLI not found; install conda before invoking "
-            "`" + _hints.fix_cmd("install", "<recipe>") + "`."
-        )
+        raise RuntimeError(_hints.no_manager(
+            "`" + _hints.fix_cmd("install", recipe.name) + "`",
+            caps.conda_binary_source))
     effective = effective_name(recipe, caps)
     steps = _plan(recipe, effective, caps.conda_binary,
                   include_opt_in=include_opt_in)
@@ -1306,11 +1305,6 @@ def run_install(
         and runs through the one door like every other step.
     """
     caps = caps if caps is not None else get_capabilities()
-    if caps.conda_binary is None:
-        raise RuntimeError(
-            "conda CLI not found; install conda before invoking "
-            "`" + _hints.fix_cmd("install", "<recipe>") + "`."
-        )
     effective = effective_name(recipe, caps)
     _same_name, planned = plan_install(recipe, caps=caps, clean=clean,
                                        include_opt_in=include_opt_in)
@@ -1395,6 +1389,7 @@ def run_install(
             build_result = _builds.run_build_spec(
                 recipe.build_spec, dispatcher.prefix,
                 conda_binary=caps.conda_binary,
+                recipe=recipe.name,
                 rebuild=rebuild,
                 skip_network_check=build_skip_network_check,
                 on_warnings=build_on_warnings,

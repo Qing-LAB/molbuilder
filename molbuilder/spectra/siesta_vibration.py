@@ -33,7 +33,8 @@ owner:
     user order -- `model/overview.md` § 2.2a, I5), ``engine-offset`` (the axis
     kinds, R3, and the box the run had, `box_of_run`) and ``vibration`` (the stationarity criterion, the
     thermochemistry's temperature, the person's statement, the stage,
-    Raman for, the molbuilder that prepared it);
+    Raman for, the molbuilder that prepared it, and of the structure the
+    title, the identity columns and the notes);
   * the run's index -- its one reader, `runpoints.read_index`: how each
     call ended, and the `relax` call's relaxation record;
   * ``<label>.FC`` -- `parse.engines.siesta_fc`;
@@ -174,8 +175,9 @@ def vibration_record(*, stage: str, force_criterion_ev_ang: Optional[float],
                      molbuilder_version: str,
                      raman: Optional[Mapping[str, Any]] = None,
                      title: str = "",
-                     identity: Optional[Mapping[str, Any]] = None) -> dict:
-    """The deck's ``vibration`` block, format v5 (`engines/vibration.md`
+                     identity: Optional[Mapping[str, Any]] = None,
+                     info: Optional[Mapping[str, Any]] = None) -> dict:
+    """The deck's ``vibration`` block, format v6 (`engines/vibration.md`
     § 5.3, § 5.11 § 4): what the finish reads back and no SIESTA keyword
     states.  Built by `prep`, which holds every fact -- the stage it
     prepares, the stage's resolved config (``relax_force_tol``,
@@ -186,9 +188,12 @@ def vibration_record(*, stage: str, force_criterion_ev_ang: Optional[float],
     range's two bounds; ``None`` with Compute Raman off -- the one fact of
     that phase no keyword states; the record step refuses a block without
     the key), and what no other block of the deck
-    carries of the structure -- its ``title`` and its ``identity`` columns
-    (`structure.IDENTITY_FIELDS`, in the deck's order), for the structure the
-    result states (`engines/vibration.md` § 6.10.1) -- and placed in the
+    carries of the structure -- its ``title``, its ``identity`` columns
+    (`structure.IDENTITY_FIELDS`, in the deck's order) and its notes,
+    ``info``, as prep hands them, the earlier run's records already left
+    behind (v6; the user, 2026-11-18: "Keep them, as PySCF does"), for the
+    structure the result states
+    (`engines/vibration.md` § 6.10.1) -- and placed in the
     deck as given (`script_emit.emit_vibration_record`).  Its keys are read
     by :func:`result_of`.  The relaxation record is the `relax` call's, read
     from the run's index at the finish (§ 5.11 § 3), so the block states it
@@ -207,7 +212,8 @@ def vibration_record(*, stage: str, force_criterion_ev_ang: Optional[float],
             "raman": (dict(raman) if raman is not None else None),
             "title": str(title or ""),
             "identity": {k: (list(v) if v is not None else None)
-                         for k, v in (identity or {}).items()}}
+                         for k, v in (identity or {}).items()},
+            "info": dict(info or {})}
 
 
 class FinishError(ValueError):
@@ -239,11 +245,13 @@ class ForceConstantRun:
     #: vibration.md` § 6.10.1): its ATOM-METADATA payload (the labels, the
     #: channels, the named rows, the order record), its ENGINE-OFFSET
     #: payload (the box), and from its `vibration` block what no block
-    #: carries -- the title and the identity columns.
+    #: carries -- the title, the identity columns and the structure's notes
+    #: (``info``; none from a deck before v6).
     atom_metadata: Optional[dict]
     engine_offset: Optional[dict]
     title: str
     identity: dict
+    info: dict
     fc: ForceConstantFile
     engine_version: str
     #: the deck's ``vibration`` block (`script_emit.emit_vibration_record`)
@@ -358,6 +366,7 @@ def read_force_constant_run(deck, output) -> ForceConstantRun:
         atom_metadata=atom_metadata, engine_offset=offset,
         title=str(record.get("title") or ""),
         identity=dict(record.get("identity") or {}),
+        info=dict(record.get("info") or {}),
         fc=read_fc(fc_path),
         engine_version=engine_version(reading.get("runtime_info")) or "",
         record=record,
@@ -375,14 +384,15 @@ def equilibrium_structure(run: ForceConstantRun) -> dict:
     with the box the run had (`deck_record.box_of_run`, the run door's
     rule), the deck's labels, channels, rows and order record applied
     through the structure's one door (``Structure.apply_atom_metadata``),
-    the title and the identity columns from the `vibration` block, then put
-    back in the user order (``Structure.restored``).  **Checked**: the
+    the title, the identity columns and the notes from the `vibration`
+    block, then put back in the user order (``Structure.restored``).  **Checked**: the
     atoms the run did not nudge are the structure's `frozen_atoms` -- a deck
     whose two statements of the held set disagree is refused."""
     struct = Structure(
         elements=list(run.elements),
         positions=np.array(run.positions_ang, dtype=float),
         title=run.title,
+        info=dict(run.info),
         **{k: (list(v) if v is not None else None)
            for k, v in run.identity.items()})
     box = box_of_run(run.engine_offset) or {}

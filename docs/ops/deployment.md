@@ -44,7 +44,7 @@ threads, not processes. Three files, each in a directory of **your own** account
 
 | file | what |
 |---|---|
-| `$XDG_RUNTIME_DIR/molbuilder/serve-<port>.pid` | the supervisor's pid — the address `stop`/`restart`/`status` act on.  `<state>/run` when that variable is unset; a variable naming a directory that cannot be made here is refused before `start` detaches ([`configuration.md`](?doc=configuration.md) § 2.1d) |
+| `$XDG_RUNTIME_DIR/molbuilder/serve-<port>.pid` | the supervisor's pid — the address `stop`/`restart`/`status` act on — and, on its second line, the address its server was started on (`--host`), where `status` asks it.  `<state>/run` when that variable is unset; a variable naming a directory that cannot be made here is refused before `start` detaches ([`configuration.md`](?doc=configuration.md) § 2.1d) |
 | `$XDG_STATE_HOME/molbuilder/logs/serve-<port>.log` | everything the server prints (default `~/.local/state/molbuilder/logs/`) |
 | `$XDG_STATE_HOME/molbuilder/logs/serve-<port>.stacks.log` | thread stacks, appended each time the server child receives `SIGUSR1` (§ 1.0c) |
 
@@ -65,9 +65,13 @@ stale, never signalled.
 
 * **`status`** answers two different questions separately: *is the
   process up* (the pidfile checks above) and *is it answering*
-  (`/api/health`) — the 2026-08-28 wedge was precisely a server that was up
-  and not answering, and a status that conflated the two would have
-  called it healthy.
+  (`/api/health`, asked at the address the server was started on — `0.0.0.0`
+  or `::` on loopback — straight to it, never through a proxy your shell names;
+  a server whose supervisor an older molbuilder started kept no host, and is
+  asked at `127.0.0.1`, which a NO names, with `serve stop` then `serve start`
+  to record it) — the 2026-08-28 wedge was precisely a
+  server that was up and not answering, and a status that conflated the two
+  would have called it healthy.
 * **`restart`** signals the supervisor (`SIGHUP`), which recycles the
   child — the Reload button's effect, workable from a script, and
   workable when the child is HUNG and the button's route cannot answer.

@@ -185,8 +185,8 @@ runs at the end of a first install (§ 3.2;
 [`ops/installation.md`](?doc=ops/installation.md) § 2.1). Every reader treats an
 absent file as unset, so the directory need not exist; but the activation has
 no default, and a machine with none is refused before any run script is written
-(§ 4). The seeding never overwrites a file a person wrote; the two files it may
-rewrite are § 3.2's.
+(§ 4). The seeding never overwrites a file a person wrote; what it may write
+into one is § 3.2's.
 
 ### 2.1d Operational state — `$XDG_STATE_HOME` and `$XDG_RUNTIME_DIR`
 
@@ -454,7 +454,7 @@ $XDG_STATE_HOME/molbuilder, else ~/.local/state/molbuilder
 
 $XDG_RUNTIME_DIR/molbuilder, else <state dir>/run
 │                                      0700   config_dir.runtime_dir()
-├── serve-<port>.pid       the address stop/restart act on          config_dir.serve_pidfile()
+├── serve-<port>.pid       the address stop/restart/status act on, and where its server listens  config_dir.serve_pidfile()
 ├── jupyter-<port>.pid     the shepherd's — jupyter stop's address  config_dir.jupyter_pidfile()
 └── jupyter-<port>.json    where the notebook is AND ITS TOKEN 0600 config_dir.jupyter_runtime()
 ```
@@ -530,10 +530,17 @@ moment the answer is known: the **activation** (no default), written as
 defaults and prints them.
 
 **It never overwrites a file a person wrote.** Every step reports `created`,
-`kept` or `rewritten`: a file that is there is reported and left, with two
+`kept` or `rewritten`: a file that is there is reported and left, with three
 exceptions — molbuilder's own two READMEs, rewritten when their text is out of
-date, and a `molbuilder.json` with no `env_init.activation`, which gains the
-one asked and nothing else.
+date; a question your `molbuilder.json` does not answer — its activation, its
+projects tree — which gains the answer given; and a value you type on the
+command line, `--activation` or `--projects`, which replaces its one key in your
+file — your own word. Each is said as what the key was and what it is now. An
+activation written into a file that states no preamble brings the preamble found
+(conda's hook, for `conda activate`), or the note that none was; a preamble your
+file states stays. A projects tree is checked before it is written, as on a fresh
+file. Nothing a file already declares is asked again, and a file that does not
+read is said first, nothing asked or written to it.
 
 **Seeding runs at the end of `bootstrap`, and its preconditions are checked at
 the start**: a failure at the end must not throw away the built environments,

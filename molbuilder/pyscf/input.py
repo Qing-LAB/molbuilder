@@ -1304,17 +1304,13 @@ def _sidecar_for(struct: Structure) -> dict:
     imported by the deck composer on every render.
     """
     import numpy as np
+    from ..parse.dirs.run_info import info_without_run_records
     from ..workingcopy_structure import StructureCodec
-    # AND THE INPUT'S RUN RECORDS STAY BEHIND: `info.relaxation` and
-    # `info.calculation` describe the run the INPUT came out of -- its
-    # tolerance, its force, its level of theory.  This run's pairs are the
-    # relaxed geometry, another run's, and the input snapshot in the engine's
-    # frame, whose coordinates the input record's fingerprint does not
-    # describe.  This run's record is read from its own output by the one
-    # reader when it is exported (`model/parse.md` § 5b, `engines/pyscf.md`
-    # § 2).
-    info = {k: v for k, v in (struct.info or {}).items()
-            if k not in ("relaxation", "calculation")}
+    # AND THE INPUT'S RUN RECORDS STAY BEHIND (`info_without_run_records`):
+    # this run's pairs are the relaxed geometry, another run's, and the
+    # input snapshot in the engine's frame, whose coordinates the input
+    # record's fingerprint does not describe (`engines/pyscf.md` § 2).
+    info = info_without_run_records(struct.info)
     sidecar = StructureCodec().pair(
         struct.replace(engine_offset=np.zeros(3), offset_by="engine",
                        info=info)).sidecar

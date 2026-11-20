@@ -206,6 +206,30 @@ _BLOCK_ROWS = [
 ]
 
 
+#: Text a person pastes into a note -- a PDF's or a web page's line
+#: separator, a cp1252 ellipsis read as NEL -- the characters `json.dumps`
+#: writes raw and a line reader breaks at.
+PASTED = ["a\u2028b", "c\u2029d", "e\u0085f"]
+
+
+@pytest.mark.parametrize("text", PASTED)
+def test_a_pasted_note_reads_back_from_the_deck(text):
+    """`engines/vibration.md` § 6.10.1: the result's structure keeps the
+    title and the notes as the run was given them -- read back from the
+    deck's `vibration` block.
+
+    THE SILENT FAILURE: a note holding a line separator splits the block's
+    JSON, and the force-constant run's record step refuses the deck after
+    its force constants."""
+    from molbuilder.spectra.siesta_vibration import vibration_record
+    payload = vibration_record(
+        stage="freq", force_criterion_ev_ang=0.01, already_relaxed=True,
+        temperature_K=298.15, masses_amu=[1.008, 1.008],
+        molbuilder_version="0", info={"note": text})
+    deck = sc.emit_vibration_record(payload)
+    assert dr.extract_vibration_record(deck) == payload
+
+
 @pytest.mark.parametrize("row", _BLOCK_ROWS,
                          ids=[r["name"] for r in _BLOCK_ROWS])
 def test_the_block_carries_every_field_but_the_box(row):

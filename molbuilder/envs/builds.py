@@ -709,6 +709,14 @@ def activation_wrapper(argv: Sequence[str], env_prefix: str) -> Tuple[str, ...]:
     return ("bash", "-c", wrapper)
 
 
+#: A step's temp and caches, under the prefix, so that removing the env
+#: really does clean up after an install: (the variable, the folder) --
+#: npm's too, for the step that installs the JS test packages
+#: (`env-framework.md` § 3.2a), whose default is ``~/.npm``.
+_STEP_FOLDERS = (("TMPDIR", "var/tmp"), ("PIP_CACHE_DIR", "var/cache/pip"),
+                 ("npm_config_cache", "var/cache/npm"))
+
+
 def env_for_step(env_prefix: Optional[str],
                  base_env: Optional[Mapping[str, str]] = None,
                  *, make_dirs: bool = True) -> Dict[str, str]:
@@ -725,24 +733,24 @@ def env_for_step(env_prefix: Optional[str],
     """
     env = build_subprocess_env(base_env)
     if env_prefix:
-        tmp = f"{env_prefix}/var/tmp"
-        pip_cache = f"{env_prefix}/var/cache/pip"
-        # npm's too, for the step that installs the JS test packages
-        # (`env-framework.md` § 3.2a): its default is ``~/.npm``.
-        npm_cache = f"{env_prefix}/var/cache/npm"
         # ``make_dirs=False`` for a step that only READS the env, so
-        # `doctor`'s verify creates nothing in an env it audits.
-        for d in ((tmp, pip_cache, npm_cache) if make_dirs else ()):
-            try:
-                os.makedirs(d, exist_ok=True)
-            except OSError:
-                pass  # an unwritable prefix is the step's failure to report
-        env["TMPDIR"] = tmp
-        env["PIP_CACHE_DIR"] = pip_cache
-        # npm reads its variables in either case, so a host's upper-case
-        # one would compete with this.
-        env.pop("NPM_CONFIG_CACHE", None)
-        env["npm_config_cache"] = npm_cache
+        # `doctor`'s verify creates nothing in an env it audits -- and is
+        # handed only the folders that are there, since a TMPDIR naming none
+        # fails whatever writes a temp file.  The host's own then stands.
+        for variable, folder in _STEP_FOLDERS:
+            where = f"{env_prefix}/{folder}"
+            if make_dirs:
+                try:
+                    os.makedirs(where, exist_ok=True)
+                except OSError:
+                    pass  # an unwritable prefix is the step's failure to report
+            elif not os.path.isdir(where):
+                continue
+            env[variable] = where
+            if variable == "npm_config_cache":
+                # npm reads its variables in either case, so a host's
+                # upper-case one would compete with this.
+                env.pop("NPM_CONFIG_CACHE", None)
     return env
 
 
@@ -1258,7 +1266,8 @@ def _cuda_tuple(cuda_version: Optional[str]) -> Optional[Tuple[int, int]]:
     return (int(m.group(1)), int(m.group(2))) if m else None
 
 
-def check_cuda_gcc_compat(probe: ToolchainProbe) -> Optional[str]:
+def check_cuda_gcc_compat(probe: ToolchainProbe, *,
+                          recipe: str) -> Optional[str]:
     """Return an error string if CUDA + gcc don't pair, else ``None``."""
     cuda = _cuda_tuple(probe.cuda_version)
     gcc = _gcc_major(probe.gcc_version)
@@ -1277,7 +1286,7 @@ def check_cuda_gcc_compat(probe: ToolchainProbe) -> Optional[str]:
                 f"CUDA {cuda_str} pairs with gcc <= {max_gcc}, but the env "
                 f"has gcc {gcc}.  Re-install with "
                 f"`MOLBUILDER_GCC={max_gcc} "
-                f"{_hints.fix_cmd('install', '<recipe>', '--clean')}` to pin "
+                f"{_hints.rebuild_cmd(recipe)}` to pin "
                 f"the recipe's gcc_linux-64 packages to version {max_gcc}"
                 + (f", or install CUDA {min(newer)}+." if newer else ".")
             )
@@ -1379,6 +1388,7 @@ def detect_stale_artifact_dirs(spec: BuildSpec, env_prefix: str) -> List[str]:
 def preflight(spec: BuildSpec, probe: ToolchainProbe,
               env_prefix: Optional[str] = None,
               *,
+              recipe: str,
               envs_dirs: Sequence[str] = (),
               check_network: bool = True,
               ) -> PreflightReport:
@@ -1466,7 +1476,7 @@ def preflight(spec: BuildSpec, probe: ToolchainProbe,
                     f"conda env at {env_prefix} has no nvcc.  The recipe "
                     f"declares cuda-nvcc but the solver may have dropped "
                     f"it; start over: "
-                    f"{_hints.fix_cmd('install', '<recipe>', '--clean', '--yes')}"
+                    f"{_hints.rebuild_cmd(recipe)}"
                 )
         # NO VERSION FLOOR HERE, deliberately.  The toolkit comes from conda
         # INTO THE ENV and this project pins it (`recipes.py`'s
@@ -1499,7 +1509,7 @@ def preflight(spec: BuildSpec, probe: ToolchainProbe,
         info.append(f"gcc                {probe.gcc_version:<10s}  (env's gcc_linux-64)")
     if probe.openmpi_version:
         info.append(f"OpenMPI            {probe.openmpi_version:<10s}  (env's openmpi)")
-    compat = check_cuda_gcc_compat(probe)
+    compat = check_cuda_gcc_compat(probe, recipe=recipe)
     if compat:
         errors.append(compat)
 
@@ -1513,7 +1523,7 @@ def preflight(spec: BuildSpec, probe: ToolchainProbe,
     if env_prefix and Path(env_prefix, "conda-meta").is_dir():
         contract = AbiContract.probe(env_prefix)
         info.extend(contract.describe())
-        for finding in contract.findings():
+        for finding in contract.findings(recipe=recipe):
             emit(finding)
         # The rules above catch the mismatch we can name.  This catches
         # the rest of the family by asking the only question that
@@ -1521,7 +1531,8 @@ def preflight(spec: BuildSpec, probe: ToolchainProbe,
         # Same sanitized environment the build will use, so the probe
         # sees what the build sees.
         executes = check_toolchain_executes(
-            env_prefix, contract=contract, env=build_subprocess_env())
+            env_prefix, contract=contract, recipe=recipe,
+            env=build_subprocess_env())
         if executes is not None:
             emit(executes)
 
@@ -2076,6 +2087,7 @@ def run_build_spec(spec: BuildSpec,
                    env_prefix: str,
                    *,
                    conda_binary: str,
+                   recipe: str,
                    rebuild: Optional[str] = None,
                    skip_network_check: bool = False,
                    on_warnings: Optional[ConfirmWarningsCallback] = None,
@@ -2107,7 +2119,7 @@ def run_build_spec(spec: BuildSpec,
     """
     probe = probe_toolchain(env_prefix)
     from ..diagnostics import manager_info
-    report = preflight(spec, probe, env_prefix,
+    report = preflight(spec, probe, env_prefix, recipe=recipe,
                        envs_dirs=manager_info(conda_binary).get("envs_dirs") or (),
                        check_network=not skip_network_check)
 

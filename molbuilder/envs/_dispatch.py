@@ -30,6 +30,7 @@ from typing import Optional, Sequence
 
 from ..diagnostics import get_capabilities
 from . import builds as _builds
+from . import hints as _hints
 from .builds import conda_run_argv
 
 
@@ -62,14 +63,9 @@ def run_in_env(env_name: str,
     """
     caps = get_capabilities()
     if caps.conda_binary is None:
-        raise RuntimeError(
-            f"conda CLI not found.  Cannot dispatch `{' '.join(argv)}` "
-            f"into env `{env_name}`: "
-            f"{caps.conda_binary_source or 'no manager on PATH and no $MAMBA_EXE/$CONDA_EXE'}.  "
-            f"Record this machine's manager once as `envs.manager` in "
-            f"molbuilder.json (an absolute path), or install/activate "
-            f"one before invoking molbuilder."
-        )
+        raise RuntimeError(_hints.no_manager(
+            f"`{' '.join(argv)}` in env `{env_name}`",
+            caps.conda_binary_source))
     full = conda_run_argv(caps.conda_binary, env_name, *argv)
     rc, out = _builds.dispatch_into_env(
         full, caps.env_prefix(env_name), cwd=cwd, sink=None, timeout=timeout)

@@ -616,7 +616,7 @@ arranges files belongs to Python on the host.
 | **Baked preamble** | the target machine's own lines, verbatim from its record |
 | **Activation** | the record's one activation statement, verbatim |
 | the node's shape | the node's physical cores and sockets (`lscpu`), logged |
-| **GPU mode: placement** | *(a job that uses a GPU, its engine running ranks)* whether MPS is on the machine, and GPU 0's NUMA node |
+| **GPU mode: placement** | *(a job that uses a GPU, its engine running ranks)* the job's GPUs by device, one list; whether MPS is on the machine; and the NUMA node of the first of them |
 | **The counts, resolved** | the thread count the run uses, and its rank count where its engine runs ranks |
 | **The job's python** | `$_mb_py`, the activated env's own python |
 | **Runtime status banner** | what the run holds of the restart files, read at run time, and the atoms its deck holds, stated at prep from its ATOM-METADATA record (§ 3.4); printed, with the program and its build, its counts and its wall, once the launch is chosen |
@@ -628,17 +628,18 @@ arranges files belongs to Python on the host.
 | **Probe the program's build** | *(an engine that runs a program)* the build's parallelisations, which choose the launcher (§ 2.1) |
 | **The deck is a script** | *(an engine whose deck is a script)* the launch on the job's python, one process |
 | **GPU<->CPU socket co-location** | *(a job that uses a GPU, its engine running ranks)* ranks pinned beside the GPU's NUMA node, each rank starting the job's program |
-| **Record resolved launch command + placement** | the command about to run, logged |
-| **Dry-run preview** | `--dry-run`: the resolved command and each value's source, nothing started |
+| **Record resolved launch command + placement** | the command's shape and the placement, logged before the wall is counted; the command as you would type it — the time limit's words included — logged as the engine starts (`the command:`, in the launch block) |
+| **Dry-run preview** | `--dry-run`: the command's shape and each value's source, nothing started |
 | **SCF per-iteration timing instrument** | *(where the file catalogue cuts a file from the output — the timing log's row names its `cut_from`, a SIESTA output — its rows recognised by the patterns the output's row names, its `reads`' `scf_rows`)* the per-iteration timing log a benchmark reads |
 | **How a run ended** | `_mb_ending`, the script's question to the framework's reader of endings, and the one ask `_mb_ending_able` — see below |
 | **Background job monitor** | `mb_monitor.pyz` at `nice 19`, watching the script's process ([`run-reports.md`](?doc=execution/run-reports.md) § 2.4, § 2.6) |
 | **Can the job finish itself?** | *(a job with a finish)* the check that the finish bundle loads on the job's python ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.5) |
+| **Your own lines, before the engine** | USER-CUSTOM-BEFORE-ENGINE, the run script's zone run before the engine (§ 3.5) |
 | **The run's report step: point started** | *(a point of a run of points)* [`runs-of-points.md`](?doc=execution/runs-of-points.md) § 3, operation 9 |
 | **What the engine will read** | *(a deck that states keywords)* the `effective-parameters` record: a row for each catalogue item the rung reads (its kind's, its stage's roles') that writes a keyword into its deck, with its default, then the deck as the engine parses it, read by the bundle beside it with the engine's keyword reader (`mb_monitor.pyz deck READER DECK`) |
-| **Launch the engine + capture exit** | the wall left, told to the engine; the engine, run as a child, never `exec`'d; after a failure, `_mb_ending` — see below — and the conclusion marker |
+| **Launch the engine + capture exit** | the wall left, told to the engine; the engine, run as a child, never `exec`'d; after a failure, `_mb_ending` — see below |
 | **The run's report step: point ended** | *(a point of a run of points)* [`runs-of-points.md`](?doc=execution/runs-of-points.md) § 3, operation 10 |
-| USER-CUSTOM | your own zone (§ 3.5) |
+| **Your own lines, after the engine** | USER-CUSTOM, the run script's zone run after the engine and the run's own steps after it (§ 3.5) — then the conclusion marker |
 
 **`_mb_ending` is the script's question to the framework's reader of endings**
 in `mb_monitor.pyz`: `ending OUTPUT [--stderr LOG] [QUESTION]` — `--stderr` where
@@ -708,7 +709,7 @@ absent, and parsers find blocks by their markers, never by position.
 ```mermaid
 flowchart TD
     E["ENGINE BODY — the .fdf / .py itself (always present)"]
-    U["USER-CUSTOM — your zone, kept line for line"]
+    U["USER-CUSTOM — your zone, kept line for line (the run script: two, § 3.5)"]
     M["machine-record banner — data about the file; not hand-edited"]
     P["PROVENANCE — who, when, from what"]
     B["BENCH-MARKS — which fields a tool may override"]
@@ -751,17 +752,21 @@ restore`) or the stage prepared again.
 | ENGINE-OFFSET | ✅ | ✅ | ✅ | — |
 | VIBRATION | ✅¹ | — | — | — |
 | SHARED | — | — | ✅² | — |
-| USER-CUSTOM | ✅ | ✅ | ✅ | ✅ |
+| USER-CUSTOM | ✅ | ✅ | ✅ | ✅³ |
+| USER-CUSTOM-BEFORE-ENGINE | — | — | — | ✅³ |
 | RUN-SETTINGS | — | ✅ | — | — |
 
 ¹ A force-constant deck only (`script_emit.emit_vibration_record`, read by
 `deck_record.extract_vibration_record`): the stationarity criterion, your
-statement, the thermochemistry's temperature, every atom's mass and *Raman
-for*, which the job's record step and finish read
+statement, the thermochemistry's temperature, every atom's mass, *Raman
+for*, and the structure's title, identity columns and notes, which the job's
+record step and finish read
 ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.3, § 5.11).
 ² A transmission point that shares energies with a finished calculation's
 point: the energies it computes and the point it shares with, inside its
 engine body ([`engines/transport.md`](?doc=engines/transport.md) § 2a.16).
+³ The run script's two zones of your own lines, one before its engine and
+one after it (§ 3.5).
 
 - **ENGINE-OFFSET** states where the deck's atoms were placed — the resolved
   cell, the offset applied, the axis kinds, whether the origin was stated;
@@ -988,12 +993,21 @@ it. The payload is the sidecar's schema
 
 ### 3.5 USER-CUSTOM — your territory
 
-**The one zone of a generated file that is yours.** molbuilder writes every
-other block and rewrites it on the next generation. This one it reads only to
+**The zones of a generated file that are yours.** molbuilder writes every
+other block and rewrites it on the next generation. A zone it reads only to
 find where it is, then copies **line for line, unchanged** into the new file —
-the lines strictly between the outermost `BEGIN` and the last `END`, joined
+the lines strictly between its outermost `BEGIN` and its last `END`, joined
 with the new file's own line endings (`script_emit.merge_user_custom`,
-`_user_custom_span`).
+`_user_custom_span`), each zone by its own markers. A deck has one, USER-CUSTOM.
+**The run script has two** *(the user, 2026-11-19)*:
+
+| zone | when its lines run | what they can do | a line that fails |
+|---|---|---|---|
+| `user-custom-before-engine` | before the engine starts, in the shell that starts it — after the banner and a dry run's exit, so a dry run runs none of them; before the time limit is counted | what they set reaches the engine | stops the run, as any line of the script does under `set -e`: it concludes `stopped before its end` |
+| `user-custom` | after the engine, whatever its code, and after the run's own steps after it, before the run concludes | what you want done after it | the same |
+
+The script is yours to read and edit as you like *(the user, 2026-11-20)*:
+nothing is checked or reported about the lines you write there.
 
 ```
 # === molbuilder user-custom BEGIN ===
@@ -1007,7 +1021,7 @@ with the new file's own line endings (`script_emit.merge_user_custom`,
 | rule | why |
 |---|---|
 | anything between the markers is yours — comments, engine keywords, a `%block`, a path to a Lua script | molbuilder does not read it; the engine judges it, and its own message is more useful than one molbuilder could invent |
-| do not write the marker lines yourself, and do not nest a second pair | they are how the zone is found: the merge carries the outermost pair's span forward without guessing, and the deck check then refuses the written file, its marker count not one |
+| do not write the marker lines yourself, and do not nest a second pair | they are how the zone is found: the merge carries the outermost pair's span forward without guessing; a deck's check then refuses the written file, its marker count not one |
 | comment syntax is the host file's — `#` in `.fdf`, `.py` and `.run.sh` alike | the zone is plain text in a file the engine parses |
 | the zone may be absent | a file without it is valid; the next generation writes an empty one |
 | it carries no version | its content is not molbuilder's to version (§ 3.6) |
@@ -1029,8 +1043,8 @@ A launched stage is prepared again only when each deck is the same
 calculation its runs ran
 ([`job-request.md`](?doc=execution/job-request.md) § 5).
 
-**What the zone is for.** Things an engine supports that molbuilder's forms
-do not model — a SIESTA `%block` with no form field, a PySCF call, a Lua
+**What a deck's zone is for.** Things an engine supports that molbuilder's
+forms do not model — a SIESTA `%block` with no form field, a PySCF call, a Lua
 script driving SIESTA. Text written into a stage's deck lives in that one
 folder: a first prep on another machine has no deck to read it from. A
 person's own engine text as an input of its own is

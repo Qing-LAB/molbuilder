@@ -1391,7 +1391,7 @@ def notify_keys_path():
 # One place for one fact (`run-reports.md` § 4.3): `notify-token` cannot read
 # molbuilder.json, so a route kept there would let a second key generate a
 # NEW segment and move the route out from under everyone already set up --
-# silently, because a notifier swallows failures.
+# each report then refused, said only in its run's monitor log.
 #
 # With the route in here the command reads what it already issued, the server
 # reads the same file, and `molbuilder.json` needs nothing at all.
@@ -1498,8 +1498,8 @@ def is_route_segment(route) -> bool:
     **It has to be asked at BOTH ends.**  :func:`read_notify_keys` applies
     `_ROUTE_RE` on the way IN and returns ``(None, {})`` for anything failing
     it, so a bad route written unchecked leaves the server with no route and
-    NO KEYS AT ALL -- every key already issued stops working, and silently,
-    because a notifier swallows failures by design.
+    NO KEYS AT ALL -- every key already issued stops working, each report
+    refused and said only in its run's monitor log.
     `auth_setup.issue_notify_key` asks it on the way OUT.
 
     This module ships to a compute node as a standalone stdlib-only file,
@@ -2058,14 +2058,37 @@ def run_identity(watched: Optional["WatchedRun"] = None) -> Dict[str, str]:
     return ident
 
 
+def _wall_of(watched: "WatchedRun", job_started: Optional[float]
+             ) -> Tuple[Optional[float], bool, Optional[str]]:
+    """THE JOB'S WALL, from the run's launch record (`run-reports.md`
+    § 2.1b): the wall in seconds or None; whether the record answered --
+    False while it is not written yet, to be read again; and why the wall
+    is not counted, or None.  A run here names no queue, so its record
+    answers no wall; a job sent with one counts it from its header's start
+    (``MB_JOB_STARTED``), so a header that states none counts nothing."""
+    try:
+        record = watched.launch()
+        if record is None:
+            return None, False, None
+        wall = _rr.sent_wall_s(record)
+    except _rr.LaunchRecordError as exc:
+        return None, True, str(exc)
+    if wall is not None and job_started is None:
+        return None, True, (f"the job's header states no start "
+                            f"({JOB_STARTED_VAR}) -- it was written before "
+                            f"it did")
+    return wall, True, None
+
+
 def _install_env_notifiers(log: Optional[Path] = None,
                            ident: Optional[Dict[str, str]] = None,
                            channels: Optional[Sequence[str]] = None,
-                           report: Optional[Sequence[str]] = None,
-                           layout: "Optional[_cards.Layout]" = None) -> None:
-    """Register the user's notifiers, if they configured any.  ``layout``
-    is the card's layout, read once at the monitor's start
-    (`run-reports.md` § 4.1c), handed to every notifier.
+                           report: Optional[Sequence[str]] = None) -> None:
+    """Register the user's notifiers, if they configured any -- and, once
+    one will be, read the card's layout, this machine's copy or the shipped
+    file (`run-reports.md` § 4.1c), handed to every notifier.  A layout
+    that does not read raises :class:`report_cards.LayoutError`, said by
+    the caller; a run that sends nothing never reads it.
 
     ``MB_NOTIFY_URL`` wins when set -- an explicit environment override is
     how you test a destination once without editing a file.  It names no
@@ -2104,7 +2127,7 @@ def _install_env_notifiers(log: Optional[Path] = None,
         # failed delivery, never the address.
         register_notifier(make_webhook_notifier(
             url, key=os.environ.get(NOTIFY_KEY_VAR) or None, ident=ident,
-            report=report, layout=layout, log=log))
+            report=report, layout=_cards.load(), log=log))
         return
     if channels is not None and len(channels) == 0:
         # NONE ASKED FOR (`notify.channels = []`, `run-reports.md` § 3.0):
@@ -2120,6 +2143,7 @@ def _install_env_notifiers(log: Optional[Path] = None,
         _notify_say(f"this calculation asks for {', '.join(sorted(missing))}"
                     f" -- not set up on this machine, so nothing is sent "
                     f"there", log)
+    layout = _cards.load() if chosen else None
     for name in sorted(chosen):
         dest = chosen[name]
         register_notifier(make_webhook_notifier(
@@ -2178,10 +2202,21 @@ def _progressed(curr: JobStatus, prev: JobStatus) -> bool:
     return (curr.geom_step or 0) > (prev.geom_step or 0)
 
 
-#: The variable a job's header sets once, when the job starts, for
-#: everything it runs (`runwrap.render_sbatch`): the epoch second each run's
-#: monitor counts the job's wall down from (`run-reports.md` § 2.1b) -- by
-#: its one name (`runtime_info.JOB_STARTED_VAR`), imported above.
+def _job_started() -> Optional[float]:
+    """The epoch second the job started, as its header set it for
+    everything it runs (`runtime_info.JOB_STARTED_VAR`): what the job's wall
+    counts down from (`run-reports.md` § 2.1b) -- or None."""
+    started = os.environ.get(JOB_STARTED_VAR, "")
+    return float(started) if started.isdigit() else None
+
+
+def _set_wall(st: "JobStatus", wall: Optional[float],
+              job_started: Optional[float], now: float) -> None:
+    """The job's wall on a status, and what is left of it -- where
+    :func:`_wall_of` counted one."""
+    if wall is not None and job_started is not None:
+        st.wall_s = wall
+        st.wall_left_s = wall - (now - job_started)
 
 
 def run_monitor(watched: "WatchedRun", *,
@@ -2255,19 +2290,19 @@ def run_monitor(watched: "WatchedRun", *,
     _append(log, f"[{t0}] [MONITOR] start "
                  f"(interval={interval:.0f}s watch_pid={watch_pid}) "
                  f"{st0.as_text()}")
-    # THE CARD'S LAYOUT, READ ONCE, HERE (`run-reports.md` § 4.1c): this
-    # machine's copy or the shipped file.  One that does not read is
-    # refused with its reason in this log, and the monitor stops here --
-    # it is the person's own file, and nothing is guessed at.
+    # The channels AFTER the first two lines: what they say about themselves
+    # (a channel not set up here, a malformed file) follows the machine.
+    # A RUN THAT SENDS REPORTS reads the card's layout as its channels are
+    # chosen (`run-reports.md` § 4.1c), and one that does not read stops
+    # this monitor here, said with its reason -- the person's own file,
+    # nothing guessed at; a run that sends none never reads it (the user,
+    # 2026-11-18).
     try:
-        layout = _cards.load()
+        _install_env_notifiers(log, run_identity(watched), notify.channels,
+                               notify.report)
     except _cards.LayoutError as exc:
         _append(log, f"[{t0}] [MONITOR] the card's layout is refused -- {exc}")
         raise
-    # The channels AFTER the first two lines: what they say about themselves
-    # (a channel not set up here, a malformed file) follows the machine.
-    _install_env_notifiers(log, run_identity(watched), notify.channels,
-                           notify.report, layout)
 
     def _said(st: JobStatus, event: str, now: float) -> None:
         # ONE EVENT SENT, and written into the run's notification record --
@@ -2281,8 +2316,6 @@ def run_monitor(watched: "WatchedRun", *,
         except Exception as exc:                       # noqa: BLE001
             _append(log, f"[{_iso(now)}] [NOTIFY] not recorded: {exc}")
 
-    if not member:
-        _said(st0, "start", start)
     # Policy state (`run-reports.md` § 2).  ``last_notify`` starts at the
     # job's start, so
     # the first periodic message lands one full period in -- not immediately,
@@ -2318,25 +2351,10 @@ def run_monitor(watched: "WatchedRun", *,
     def _count_down(st: JobStatus, now: float) -> None:
         nonlocal wall, wall_settled
         if not wall_settled:
-            try:
-                record = watched.launch()
-                if record is not None:
-                    wall_settled = True
-                    wall = _rr.sent_wall_s(record)
-            except _rr.LaunchRecordError as exc:
-                wall_settled = True
-                _append(log, f"[{_iso(now)}] [WALL] not counted: {exc}")
-            else:
-                if wall is not None:
-                    if job_started is None:
-                        _append(log, f"[{_iso(now)}] [WALL] not counted: "
-                                     f"the job's header states no start "
-                                     f"({JOB_STARTED_VAR}) -- it was "
-                                     f"written before it did")
-                        wall = None
-        if wall is not None:
-            st.wall_s = wall
-            st.wall_left_s = wall - (now - job_started)
+            wall, wall_settled, why = _wall_of(watched, job_started)
+            if why:
+                _append(log, f"[{_iso(now)}] [WALL] not counted: {why}")
+        _set_wall(st, wall, job_started, now)
 
     # --- utilization sampling setup (same loop, separate change-gated
     # output file; `run-reports.md` § 2.1).  ``sampler`` is injectable for
@@ -2380,6 +2398,12 @@ def run_monitor(watched: "WatchedRun", *,
             util_last_log = now
 
     _count_down(st0, start)
+    # THE START CARD, once its wall is counted (`run-reports.md` § 4.1c): a
+    # job sent to a queue states it -- read off its launch record, there
+    # unless the job started before the sender wrote it -- and a run here,
+    # whose record names no queue, states none.
+    if not member:
+        _said(st0, "start", start)
     prev = st0
     ticks = 0
     while True:
@@ -2757,19 +2781,20 @@ def main(argv=None) -> int:
     except (OSError, AttributeError):
         pass
     register_notifier(make_log_notifier(watched.path(_rf.ROLE_MONITOR_LOG)))
-    started = os.environ.get(JOB_STARTED_VAR, "")
-    run_monitor(watched,
-                job_started=float(started) if started.isdigit() else None,
-                interval=a.interval, watch_pid=a.watch_pid,
-                sleep=_sleep_until_stopped,
-                util=a.util, cores=a.cores, gpu=a.gpu,
-                util_keepalive_s=a.util_keepalive_s,
-                notify=NotifyPolicy(
-                    on_scf=a.notify_on_scf,
-                    every_hours=a.notify_every_hours,
-                    channels=_channels_from_flag(a.notify_channels),
-                    report=_report_from_flag(a.notify_report)),
-                member=a.member)
+    try:
+        run_monitor(watched, job_started=_job_started(),
+                    interval=a.interval, watch_pid=a.watch_pid,
+                    sleep=_sleep_until_stopped,
+                    util=a.util, cores=a.cores, gpu=a.gpu,
+                    util_keepalive_s=a.util_keepalive_s,
+                    notify=NotifyPolicy(
+                        on_scf=a.notify_on_scf,
+                        every_hours=a.notify_every_hours,
+                        channels=_channels_from_flag(a.notify_channels),
+                        report=_report_from_flag(a.notify_report)),
+                    member=a.member)
+    except _cards.LayoutError:
+        return 1                # said in the monitor's log, where it stops
     return 0
 
 
@@ -3062,16 +3087,20 @@ def _notify_main(argv) -> int:
         return 0
     register_notifier(make_log_notifier(log))
     try:
-        layout = _cards.load()
+        _install_env_notifiers(
+            log, run_identity(watched),
+            _channels_from_flag(os.environ.get(NOTIFY_CHANNELS_VAR)),
+            _report_from_flag(os.environ.get(NOTIFY_REPORT_VAR)))
     except _cards.LayoutError as exc:
         _append(log, f"[{_iso(now)}] [NOTIFY] the card's layout is refused "
                      f"-- {exc}")
         return 1
-    _install_env_notifiers(
-        log, run_identity(watched),
-        _channels_from_flag(os.environ.get(NOTIFY_CHANNELS_VAR)),
-        _report_from_flag(os.environ.get(NOTIFY_REPORT_VAR)), layout)
     st = JobStatus(state=a.state, detail=a.detail)
+    # THE RUN'S WALL, as its monitor counts it (§ 2.1b): a run of points'
+    # start card states it too (§ 4.1c).
+    job_started = _job_started()
+    wall, _answered, _why = _wall_of(watched, job_started)
+    _set_wall(st, wall, job_started, now)
     # THE RUN'S COUNT AND CLOCK, from its index (§ 2.4, § 2.8), which
     # the step sending the event has just written -- the start's, its
     # points before any has ended (plan § 1af).

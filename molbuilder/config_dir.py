@@ -236,8 +236,9 @@ def relative_home(resolve) -> str:
     recipe that runs on a CLUSTER, so it cannot use an absolute local path: it
     builds `$cfg` from the same three branches `config_dir` does and joins the
     tail this derives, so the recipe follows the file wherever its resolver
-    puts it -- a wrong one fails silently, because a notifier swallows every
-    failure by design.
+    puts it -- a wrong one fails without stopping the run: a notifier never
+    fails one, and says each report not delivered only in that run's
+    monitor log.
 
     **It lives here, not in `placement`**: it is `config_dir` arithmetic over
     a resolver the caller supplies, and `placement` in this codebase means

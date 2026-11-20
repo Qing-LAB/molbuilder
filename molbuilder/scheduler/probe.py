@@ -217,7 +217,8 @@ class QosLimit(NamedTuple):
 
     A named tuple because positional readers of a widening tuple are how a
     field gets read as its neighbour.  ``None`` everywhere
-    means *this QoS does not say* (R3).
+    means *this QoS does not say* (R3); ``max_submit_jobs_pu`` is also
+    ``record.UNSET``, *not asked* (below).
     """
     maxwall_str:  Optional[str] = None
     maxwall_secs: Optional[int] = None
@@ -225,7 +226,8 @@ class QosLimit(NamedTuple):
     #: which no amount of hardware overrides (R13).
     max_cpus_per_job: Optional[int] = None
     #: ``MaxSubmitJobsPerUser`` -- HOW MANY JOBS this QoS lets one user have
-    #: submitted at once (R14).
+    #: submitted at once (R14); ``record.UNSET`` where the query that read
+    #: the row did not ask it.
     #:
     #: It is a different KIND of ceiling from the two above, which is why it
     #: needed its own rule rather than joining R13.  Those cap ONE job and
@@ -233,7 +235,7 @@ class QosLimit(NamedTuple):
     #: an ask fits depends on what the user already has queued.  A bench
     #: sweep submits many jobs at once by construction, so this is exactly
     #: the limit a sweep meets.
-    max_submit_jobs_pu: Optional[int] = None
+    max_submit_jobs_pu: Any = None
 
 
 _TRES_CPU = re.compile(r"(?:^|,)cpu=(\d+)")
@@ -254,6 +256,7 @@ def parse_qos(text: str) -> Dict[str, "QosLimit"]:
     older four-column format simply has no fifth cell, which reads as *this
     probe never asked* rather than as *no limit*.
     """
+    from .record import UNSET
     out: Dict[str, QosLimit] = {}
     for line in (text or "").splitlines():
         cols = [c.strip() for c in line.split("|")]
@@ -272,9 +275,10 @@ def parse_qos(text: str) -> Dict[str, "QosLimit"]:
         if m:
             cpus = int(m.group(1))
         # Column 5 (index 4), appended after Flags.  Blank means the QoS
-        # states no per-user submit cap; a missing column means this row
-        # came from the older format and the question was never asked.
-        submit: Optional[int] = None
+        # states no per-user submit cap (None); a missing column means this
+        # row came from the older format and the question was never asked
+        # (UNSET, which the record leaves off its row -- `scheduler.md` R13).
+        submit: Any = UNSET if len(cols) <= 4 else None
         if len(cols) > 4 and cols[4]:
             try:
                 submit = int(cols[4])

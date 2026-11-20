@@ -439,6 +439,7 @@ card does not expose that field (`nvidia-smi` prints `[N/A]`), the GPU's others 
 |---|---|---|
 | `[MACHINE]` | first | `node= cores= mem_gb= gpu=` — the node the job landed on ([`scheduler.md`](?doc=execution/scheduler.md) R12) |
 | `[MONITOR] start` | at start | the interval, the watched PID, and the first reading |
+| `[MONITOR] the card's layout is refused` | at start, a run that sends reports | the copy of the card's layout that does not read, and why; the monitor stops (§ 4.1c) |
 | `[STATUS]` | when the run advanced (§ 2.1), and once at the end | the summary line (§ 4.1a), the time left before the job's wall among it (§ 2.1b) |
 | `[WALL]` | once, when the warning of § 2.1b is due; or once, when the wall cannot be counted | the time left, and the points left with the time they need at the pace — or the longest step and how many have finished; or why nothing is counted |
 | `[NOTIFY]` | on each event, and on any channel problem | `(stub) <event>: <summary>`, the record of every event; or a channel's problem (below) |
@@ -1017,9 +1018,11 @@ reads the same shipped file for the tab.
 `report_cards.layout_path()`). The config dir, because it travels with the
 monitor (`config_dir.py`). The monitor reads the copy on the machine that runs the job;
 the tab and the Test button read the server's. Each is the person's own file, never written by molbuilder, not a
-secret, any mode. A file that does not read is refused by its reason: the monitor at its start, in its monitor
-log's line `[MONITOR] the card's layout is refused -- <reason>` (§ 2.5), and the monitor stops there; a run of
-points' `notify` verb in a `[NOTIFY]` line, sending nothing; the reports route and the Test button in their answer.
+secret, any mode. A file that does not read is refused by its reason: the monitor of a run that sends reports, as
+its channels are chosen at its start, in its monitor log's line `[MONITOR] the card's layout is refused --
+<reason>` (§ 2.5), and the monitor stops there — a run that sends none never reads it *(the user, 2026-11-18)*; a
+run of points' `notify` verb in a `[NOTIFY]` line, sending nothing; the reports route and the Test button in their
+answer.
 
 ```json
 {"schema": "molbuilder/report-cards@1",
@@ -1063,7 +1066,8 @@ file, unless a copy on one machine replaces it — the person's choice, on that 
 **What the shipped layout chooses** — the intermediate status read at a glance:
 
 - A *start* card and a *test* card are the title and the summary line, with no field grid: the summary says where
-  the run is and its wall, and a test report states no field.
+  the run is and, for a job sent to a queue with one, its wall as § 2.1b counts it — a run here states none — and a
+  test report states no field.
 - A *scf_converged* or *periodic* card shows the clocks and the pace first (`elapsed_s`, `call_elapsed_s`,
   `units_done`, `units_left`, `unit_s`, `left_at_pace_s`), then the SCF's rate (`n_iters`, `per_iter_s`), then the
   result (`energy`, `max_force`, `max_force_held`, `geom_step`), then a loop's progress (`done_pct`, `eta_s`).

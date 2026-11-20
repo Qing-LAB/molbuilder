@@ -27,6 +27,7 @@ from pathlib import Path
 import pytest
 
 from molbuilder import serve_daemon as sd
+from molbuilder.cli import _DEFAULT_SERVE_HOST
 
 #: The clone root -- the supervisor subprocesses must import
 #: molbuilder from THIS tree, wherever it is checked out.
@@ -122,15 +123,19 @@ def test_two_crashes_in_the_window_is_flapping():
 
 # ------------------------------------------------- the real supervisor
 
-def _spawn_supervisor(tmp_path, port=9321, child_sleep=60):
-    """A REAL supervisor subprocess with HOME in tmp and a stub child."""
+def _spawn_supervisor(tmp_path, port=9321, child_sleep=60, *,
+                      host=_DEFAULT_SERVE_HOST, child=None):
+    """A REAL supervisor subprocess with HOME in tmp and a stub child --
+    or ``child``, the child's own Python -- handed ``host`` as `serve
+    start` hands the supervisor its ``--host``: always, the default bind
+    unless told."""
+    child = child or (f'import time,sys; print("child up", flush=True); '
+                      f'time.sleep({child_sleep})')
     code = (
         "import sys\n"
         "from molbuilder.serve_daemon import supervise\n"
-        f"supervise({port}, [sys.executable, '-u', '-c', "
-        f"'import time,sys; print(\"child up\", flush=True); "
-        f"time.sleep({child_sleep})'], "
-        "log_max_bytes=1_000_000, log_keep=2)\n")
+        f"supervise({port}, [sys.executable, '-u', '-c', {child!r}], "
+        f"host={host!r}, log_max_bytes=1_000_000, log_keep=2)\n")
     # The supervisor writes its pidfile under the RUNTIME directory and its
     # log under the STATE directory, not under HOME (`configuration.md`
     # § 2.1d).  These are CHILD PROCESSES, so the roots are handed over
@@ -167,7 +172,7 @@ def test_the_daemon_lifecycle_end_to_end(tmp_path):
     try:
         pidfile = tmp_path / "runtime" / "molbuilder" / "serve-9321.pid"
         assert _wait_for(lambda: pidfile.exists()), "no pidfile appeared"
-        assert int(pidfile.read_text()) == sup.pid
+        assert sd.read_pidfile_lines(pidfile) == (sup.pid, _DEFAULT_SERVE_HOST)
 
         first = _wait_for(lambda: (_child_pids(sup.pid) or [None])[0])
         assert first, "no child appeared"
@@ -224,7 +229,8 @@ def test_a_flapping_child_is_given_up_on(tmp_path):
         "raise SystemExit(supervise(9322, "
         "[sys.executable, '-c', "
         "'import os,signal; os.kill(os.getpid(), signal.SIGKILL)'], "
-        "log_max_bytes=1_000_000, log_keep=1))\n")
+        f"host={_DEFAULT_SERVE_HOST!r}, log_max_bytes=1_000_000, "
+        "log_keep=1))\n")
     # The supervisor writes its pidfile under the RUNTIME directory and its
     # log under the STATE directory, not under HOME (`configuration.md`
     # § 2.1d).  These are CHILD PROCESSES, so the roots are handed over
@@ -247,6 +253,112 @@ def test_a_flapping_child_is_given_up_on(tmp_path):
 
 
 # ----------------------------------------------------- the CLI surface
+
+#: A server's own /api/health, answering on the one address it is given --
+#: the child `serve start --host <address>` runs, as far as status can see.
+#: A STAND-IN, for a named need: status asks the child that route and
+#: nothing else, and the real child (`serve foreground`) is the whole web
+#: application -- its config, sign-in and notebook -- which this test of
+#: where status asks has no use for (`testing.md` § 3b).
+_ANSWERS_ON = (
+    "import http.server, socket\n"
+    "class H(http.server.BaseHTTPRequestHandler):\n"
+    "    def do_GET(self):\n"
+    "        self.send_response(200); self.end_headers(); self.wfile.write(b'{}')\n"
+    "    def log_message(self, *a): pass\n"
+    "class S(http.server.HTTPServer):\n"
+    "    address_family = socket.AF_INET6 if ':' in HOST else socket.AF_INET\n"
+    "S((HOST, PORT), H).serve_forever()\n")
+
+#: (how status is typed, its arguments): the survey and the one-port detail
+#: answer one question one way (`deployment.md` § 1.0b, § 1.0c).
+STATUS_SPELLINGS = [("one port", True), ("the survey", False)]
+#: (the address `serve start --host` names): one that is not the default
+#: bind, and the IPv6 loopback, asked bracketed.
+ADDRESSES = [("one loopback address", "127.0.0.2"),
+             ("the IPv6 loopback", "::1")]
+
+
+@pytest.mark.parametrize("where, address", ADDRESSES,
+                         ids=[r[0] for r in ADDRESSES])
+@pytest.mark.parametrize("spelling, names_the_port", STATUS_SPELLINGS,
+                         ids=[r[0] for r in STATUS_SPELLINGS])
+def test_a_server_started_on_one_address_is_asked_there(
+        tmp_path, spelling, names_the_port, where, address):
+    """`deployment.md` § 1.0b: *is it answering* is asked "at the address
+    the server was started on" -- its pidfile's second line.
+
+    THE SILENT FAILURE: a healthy server started with `--host 127.0.0.2`
+    (or one interface) called "answering: NO", exit 4, a false DETECTED
+    line in its log, and the advice to restart it."""
+    import socket
+    try:
+        with socket.socket(socket.AF_INET6 if ":" in address
+                           else socket.AF_INET) as s:
+            s.bind((address, 0))
+            port = s.getsockname()[1]
+    except OSError:
+        pytest.skip(f"this machine cannot bind {address}")
+    sup = _spawn_supervisor(
+        tmp_path, port, host=address,
+        child=_ANSWERS_ON.replace("HOST", repr(address))
+                         .replace("PORT", str(port)))
+    try:
+        def up():
+            try:
+                with socket.create_connection((address, port), 1):
+                    return True
+            except OSError:
+                return False
+        assert _wait_for(up), "the child never listened"
+        env = dict(os.environ, HOME=str(tmp_path),
+                   XDG_STATE_HOME=str(tmp_path / "state"),
+                   XDG_RUNTIME_DIR=str(tmp_path / "runtime"))
+        r = subprocess.run(
+            [sys.executable, "-m", "molbuilder", "serve", "status",
+             *(["--port", str(port)] if names_the_port else [])],
+            env=env, cwd=_REPO, capture_output=True, text=True, timeout=60)
+        assert r.returncode == 0, r.stdout + r.stderr
+        assert "answering: yes" in r.stdout, r.stdout
+        log = tmp_path / "state" / "molbuilder" / "logs" / f"serve-{port}.log"
+        assert "DETECTED" not in (log.read_text() if log.exists() else "")
+    finally:
+        sup.terminate()
+        sup.wait(timeout=30)
+
+
+def test_start_on_the_ipv6_loopback_is_not_refused(tmp_path, monkeypatch):
+    """`::1` is a loopback bind the server makes (`serve foreground --host
+    ::1` serves on it), so `serve start`'s bind check binds it as the
+    server will -- IPv6 -- and goes on to detach.
+
+    THE SILENT FAILURE: "cannot bind ::1 ... the address itself is the
+    problem", for an address this machine has."""
+    import socket
+    try:
+        with socket.socket(socket.AF_INET6) as s:
+            s.bind(("::1", 0))
+            port = s.getsockname()[1]
+    except OSError:
+        pytest.skip("this machine has no IPv6 loopback to bind")
+
+    # THE DETACH IS FAKED, the one fake here, for a named need: `serve start`
+    # would fork this test's own process into a supervisor.  The bind check
+    # is the outcome, and the detach comes after it (`testing.md` § 3b).
+    class Detached(Exception):
+        pass
+
+    def detach():
+        raise Detached
+    from click.testing import CliRunner
+    from molbuilder.cli import cli
+    monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path / "runtime"))
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    monkeypatch.setattr(sd, "daemonize", detach)
+    r = CliRunner().invoke(cli, ["serve", "start", "--host", "::1",
+                                 "--port", str(port)])
+    assert isinstance(r.exception, Detached), r.output
+
 
 def test_the_bare_serve_spelling_is_dead():
     """Rename = delete the old everywhere: `molbuilder serve --port N`

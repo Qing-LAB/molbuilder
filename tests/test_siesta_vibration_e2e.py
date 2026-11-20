@@ -101,13 +101,23 @@ def unticked(real_co2_vibration, tmp_path_factory):
     return copy_of(real_co2_vibration, "unticked", on_the_run)
 
 
+#: The notes the stated-relaxed run's structure is saved with: one of the
+#: person's, and the two records of a run it came out of, which stay behind
+#: (a relaxation record with no fingerprint is no record to the gate:
+#: `validation/sidecar.py`, so the ticked run's prep is told what it is
+#: told without it).
+NOTES = {"source": "drawn on the Builder page",
+         "calculation": {"source": "an earlier run"},
+         "relaxation": {"source": "an earlier run"}}
+
+
 @makes_a_real_run("module", "molbuilder-siesta")
 def ticked(tmp_path_factory):
     """The box ticked, on the road: the template's `already_relaxed` true
     and its temperature 350 K, `freq` prepared and launched -- one run, its
     `fc` call alone -- each answer written down."""
     with on_the_road(tmp_path_factory, "ticked") as tree:
-        run = RealRun(tree=tree, bundle=co2_vibration(tree))
+        run = RealRun(tree=tree, bundle=co2_vibration(tree, info=NOTES))
         set_by_the_person(run.bundle, {"already_relaxed": True,
                                        "temperature_K": 350.0})
         taken(run, "prep freq", "prep", "task",
@@ -1093,6 +1103,19 @@ def test_ticked_the_run_measures_at_the_geometry_as_given(ticked):
     assert d["relaxation"]["converged"] is False
     assert d["relaxation"]["max_force_eh_bohr"] \
         > 0.01 / HARTREE_BOHR_EV_ANGSTROM_ASE
+
+
+def test_the_result_keeps_the_structures_notes(ticked):
+    """`engines/vibration.md` § 6.10.1: the result's structure keeps `info`
+    "as the run was given it, on both engines" -- "the input's own run
+    records stay behind" (the user, 2026-11-18: "Keep them, as PySCF
+    does").
+
+    THE SILENT FAILURE: every SIESTA vibration's structure with no notes,
+    the person's dropped where PySCF's are kept."""
+    d = _the_result(ticked)
+    assert d["structure"]["info"] == {"source": NOTES["source"]}, \
+        d["structure"]["info"]
 
 
 #: named: a hidden Plotly node resized on load logs this, and nothing else

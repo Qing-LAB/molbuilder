@@ -78,6 +78,15 @@ of truth; the `molbuilder envs` command reads it.
 2. The PATH probe: `mamba` → `micromamba` → `conda`.
 3. `$MAMBA_EXE` / `$CONDA_EXE` (validated executable).
 
+**The install script is not the CLI.** `bash scripts/install-env.sh` is run by
+a person at a terminal, with the package manager loaded in that shell (on Sol,
+`module load mamba` first), and finds it there: on PATH, through `$MAMBA_EXE` /
+`$CONDA_EXE`, up from `$CONDA_PREFIX`, or in a common install folder.
+`envs.manager` is for what runs with no one there to load it — molbuilder's
+own commands and the runs they prepare *(the user, 2026-11-19)*. A command that
+finds none says so in one sentence: load it in this shell and run the command
+again.
+
 The resolver lives in `molbuilder/diagnostics.py` and NOWHERE else —
 a module that probes for a manager by name is a second door, and review
 refuses it (`process/code-audit.md` § 1c).  Every consumer reads
@@ -186,7 +195,8 @@ list ([`env-framework.md`](?doc=ops/env-framework.md) § 3.4).
 ends with its exact fix command** *(user, 2026-08-20)* — a `next:` line
 (`enable:` for gated features, `add:` for opt-in packages) naming the
 `bash scripts/install-env.sh` invocation that repairs it (`install --yes` for a
-missing env, `repair` for missing packages, `repair --include-version-fix` when
+missing env — `bootstrap --yes` for the host env, the one the script runs its
+other verbs from — `repair` for missing packages, `repair --include-version-fix` when
 only version/build pins differ — `install --clean --yes` for a source build,
 whose binaries a repair would not recompile — `repair --include-optional` to
 turn on gated features) — so the report is
@@ -196,8 +206,9 @@ the instruction and this page is background, not a required detour.
 need **no flag and no terminal** — run them from CI, a batch step or `nohup` as
 they are. Only `bootstrap` and `install` confirm the env manager, and both take
 `--yes`. (Those four verbs define no `--yes`, and the shim asks none of them for
-one — `env-framework.md` § 8 has the rule.) `bootstrap` without `--yes` has two
-questions to ask and will say so up front when there is no terminal to ask in.
+one — `env-framework.md` § 8 has the rule.) `bootstrap` without `--yes` asks
+what `molbuilder.json` does not already say, and says so up front when there is
+no terminal to ask in.
 
 Then you're ready:
 
@@ -253,7 +264,10 @@ known and every later surface can only report that nobody said:
 
 `--yes` takes both defaults and **prints** them. `--projects PATH` declares the
 tree non-interactively. A file a person wrote is never overwritten, and one that
-exists is reported, so re-running shows you what is there (§ 2.1).
+exists is reported, so re-running shows you what is there (§ 2.1) — but a
+question it does not answer gains your answer, and a value you type,
+`--activation` or `--projects`, replaces its one key in it, each said as what it
+was and what it is now.
 
 **Where the tree is, you are always told.** Four things can answer, in the order
 [`job-contracts.md`](?doc=execution/job-contracts.md) § 2.5 gives, so every
@@ -295,18 +309,19 @@ answer into `molbuilder.json`, and the probe copies it into this machine's
 record; `--yes` takes the recommendation — `conda activate` when conda's
 `etc/profile.d/conda.sh` hook is on disk, `source activate` otherwise — and
 **prints the line it wrote** either way, so a wrong default is visible rather
-than silent. Override it without being asked:
+than silent. Override it without being asked -- it reaches your runs once this machine's
+record copies it (`molbuilder jobset probe --write`, which the step names):
 
 ```bash
 bash scripts/install-env.sh init-config --activation "source activate" --yes
 ```
 
 **A file you wrote is never overwritten**, and every step says what it did —
-the two files it may rewrite are [`configuration.md`](?doc=configuration.md)
-§ 3.2's. Re-run it any time:
+what it may rewrite, a key you typed among them, is
+[`configuration.md`](?doc=configuration.md) § 3.2's. Re-run it any time:
 
 ```bash
-bash scripts/install-env.sh init-config     # idempotent; asks about activation
+bash scripts/install-env.sh init-config     # idempotent; asks only what the file does not say
 ```
 
 `--no-probe` seeds the config and writes no `environment.json`; `jobset probe
@@ -664,9 +679,9 @@ Four things are worth knowing before you move it.
 * **A minor version, not a major.** conda reads a bare `3` as `3.*`, so two
   machines installing weeks apart would resolve different interpreters. The
   flag refuses anything but `3.<minor>`.
-* **The floor is 3.11 and it is real** — `pyproject.toml` declares it and
-  molbuilder imports `tomllib` unconditionally. The flag refuses below it in
-  the first second rather than after a multi-gigabyte solve. The ceiling is
+* **The floor is real** — it is `pyproject.toml`'s `requires-python`, which the
+  script reads (3.12: molbuilder's code uses its syntax). The flag refuses
+  below it in the first second rather than after a multi-gigabyte solve. The ceiling is
   not guessed at: whether conda-forge has rdkit, openbabel and sisl for a
   given python is the solver's question and it answers it.
 * **Every env carries it, `molbuilder-siesta` included**, and it costs that

@@ -16,7 +16,7 @@ from ..jobset.rung import Rung, structure_for
 
 def _vibration_block(stage: str, cfg, *, criterion, criterion_from: str,
                      struct) -> dict:
-    """A SIESTA force-constant deck's `vibration` block, format v5: the
+    """A SIESTA force-constant deck's `vibration` block, format v6: the
     facts the run's finish reads and no SIESTA keyword states
     (`engines/vibration.md` § 5.3, § 5.11 § 4), built here because only
     `prep` holds all of them -- the stage, its resolved config, the
@@ -27,11 +27,13 @@ def _vibration_block(stage: str, cfg, *, criterion, criterion_from: str,
     ``struct`` is the structure the deck is written from, whose atoms'
     masses the block states (`chemistry.atomic_mass`, I3).  The relaxation
     record is the `relax` call's, read from the run's index at the finish
-    (§ 5.11 § 3), never written here."""
+    (§ 5.11 § 3), never written here.  The structure's notes go in with
+    the earlier run's records left behind (`info_without_run_records`)."""
     from .. import __version__ as _mb_version
     from ..chemistry import atomic_mass
     from ..siesta.vibration_phases import OPTICAL, phases_on
     from .siesta_vibration import vibration_record
+    from ..parse.dirs.run_info import info_without_run_records
     from ..structure import IDENTITY_FIELDS
     from ..template import inactive_settings
     # WHAT ENTERS, asked of its declarations: the optical phase of the phase
@@ -59,7 +61,8 @@ def _vibration_block(stage: str, cfg, *, criterion, criterion_from: str,
         # WHAT NO OTHER BLOCK OF THE DECK CARRIES of the structure the result
         # states (engines/vibration.md 6.10.1).
         title=str(struct.title or ""),
-        identity={k: getattr(struct, k) for k in IDENTITY_FIELDS})
+        identity={k: getattr(struct, k) for k in IDENTITY_FIELDS},
+        info=info_without_run_records(struct.info))
 
 
 def siesta_vibration_rung_of(calc, pset, *, seam, sweep, log, plan,

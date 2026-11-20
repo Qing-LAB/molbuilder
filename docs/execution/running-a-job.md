@@ -43,6 +43,7 @@ sequenceDiagram
     R->>R: open the session log, set the exit trap, run the preamble and the activation
     R->>R: check the job's python, resolve the counts, place the GPU ranks
     R->>M: start at nice 19, watching the run script
+    R->>R: your own lines before the engine
     opt a point of a run of points
         R->>R: point started, its kind's step before the engine
     end
@@ -54,6 +55,7 @@ sequenceDiagram
     opt a point of a run of points
         R->>R: point ended, its kind's step after the engine
     end
+    R->>R: your own lines after the engine
     R->>R: write stem.concluded, the exit code and the time
     R->>M: SIGTERM from the exit trap, then wait for its closing lines
 ```
@@ -75,15 +77,17 @@ section named in the last column.
 | 9 | the counts | resolves the rank and thread counts (flag, then environment, then the stated value); one that is not a positive integer stops the start, concluding `a count that is not a positive integer (<flag>)` | § 3.1, § 3.2 |
 | 10 | threads, GPUs, memory | exports the thread count; where the engine runs ranks, pins BLAS to one thread, balances the ranks over the GPUs of a job that uses one, starting MPS where ranks share a GPU, and prints the occupancy notice; sets the memory cap the run states, unless its engine's deck applies it | § 3.1a, § 3.2, § 3.3 |
 | 11 | the banner | where the engine runs a program, asks it what it was built with and picks `mpirun` or the program alone — a deck that is a script runs on the job's python; prints the banner (§ 4.1), its held atoms as prep read them from the deck's own record | § 2.3, § 4.1 |
-| 12 | the resolved launch, and a dry run | logs the resolved command, the launch mode and the counts (`resolved launch :`); `--dry-run` then prints them with each count's source and exits 0, nothing started | § 3.4 |
+| 12 | the resolved launch, and a dry run | logs the command's shape, the launch mode and the counts (`resolved launch :`) — the time limit's words are counted at step 17; `--dry-run` then prints them with each count's source and exits 0, nothing started | § 3.4 |
 | 13 | the monitor | starts `mb_monitor.pyz` at `nice 19`, watching the run script's own PID (`MB_MONITOR=0`: none) | [`run-reports.md`](?doc=execution/run-reports.md) § 2.4, § 2.6 |
 | 14 | can the job finish itself | *(a job with a finish)* checks that the finish bundle loads on the job's python; otherwise it concludes `finish cannot load (<bundle>)` | § 2.2a |
+| 14a | your own lines before the engine | runs the lines of the run script's zone before the engine, in this shell, so what they set reaches it | [`job-contracts.md`](?doc=execution/job-contracts.md) § 3.5 |
 | 15 | point started | *(a point of a run of points)* stamps its start and runs its kind's step before the engine | [`runs-of-points.md`](?doc=execution/runs-of-points.md) § 3, op. 9 |
 | 16 | what the engine will read | where the deck states keywords the engine reads, writes into the log a row for each catalogue item this rung reads that writes a keyword into its deck — carried by the calculation's kind and read by its stage — or, for a point of a run of points that plays one role, by that role: a SIESTA vibration's force-constant call lists the force constants' settings, never the relaxation's (`template.reads`, the one rule: a TBtrans step lists TBtrans's settings, never a relaxation's) — with its default, then the deck as the engine will read it, read by the bundle beside it with the engine's keyword reader (`mb_monitor.pyz deck READER DECK`) | [`job-contracts.md`](?doc=execution/job-contracts.md) § 2.6 |
 | 17 | the wall | counts what is left of the job's wall and tells the engine on its own channel | § 3.6 |
-| 18 | the engine | runs it as a child, its stdout written to the output — where the file catalogue cuts a file from the output (the timing log's row's `cut_from`: a SIESTA output), its SCF rows stamped and teed into `<stem>.scf-timing.log` too — its exit code captured; logs the engine's wall time (`benchmark:`) | § 2.0a, § 4.1 |
+| 18 | the engine | logs the command as it starts it, as you would type it, the time limit's words of step 17 included (`the command:`); runs it as a child, its stdout written to the output — where the file catalogue cuts a file from the output (the timing log's row's `cut_from`: a SIESTA output), its SCF rows stamped and teed into `<stem>.scf-timing.log` too — its exit code captured; logs the engine's wall time (`benchmark:`) | § 2.0a, § 4.1 |
 | 19 | after a failure | says how it ended, the advice for its cause where the output's family keeps some (SIESTA's `propor` hint), and what a launch again will do | § 3.5 |
 | 20 | point ended | *(a point of a run of points)* stamps its end, runs its kind's step after the engine, and — no point left — the run's finish | [`runs-of-points.md`](?doc=execution/runs-of-points.md) § 3, op. 10 |
+| 20a | your own lines after the engine | runs the lines of the run script's zone after the engine, whatever its code, and after steps 19 and 20 | [`job-contracts.md`](?doc=execution/job-contracts.md) § 3.5 |
 | 21 | the conclusion | writes `<stem>.concluded`, `rc=<code> at <date>`, its last act on the main line, and exits with the engine's code | § 4.2 |
 | 22 | the exit trap runs | a failure of the script's own that wrote no marker concludes here, `stopped before its end`; then it stops the monitor (waiting up to 10 s), removes the rank helper and stops the MPS daemon it started | § 2.0a |
 
@@ -124,8 +128,9 @@ molbuilder: detected phys_cores=20, n_sockets=2, cores_per_socket=10
   Time limit     : 1800s from the job's start; SIESTA stops 600s before it
 [09:58:43-0700] [INFO ] monitor: mb_monitor.pyz started
 [09:58:43-0700] [INFO ] time limit: 1798s left of 1800s; SIESTA stops 600s before it
+[09:58:43-0700] [INFO ] the command:  mpirun -np 1  siesta -fdf MaxWalltime=1798:s -fdf MaxWalltime.Slack=600:s H2_01_coarse.fdf > H2_01_coarse.out
 [09:59:08-0700] [INFO ] benchmark: SIESTA wall 24.9s, 54 SCF rows in H2_01_coarse.scf-timing.log
-SIESTA completed:  mpirun -np 1  siesta H2_01_coarse.fdf > H2_01_coarse.out
+SIESTA completed:  mpirun -np 1  siesta -fdf MaxWalltime=1798:s -fdf MaxWalltime.Slack=600:s H2_01_coarse.fdf > H2_01_coarse.out
 ```
 
 and its `H2_01_coarse.concluded`: `rc=0 at Mon Nov  2 09:59:08 AM MST 2026`. A PySCF run's banner, from the same
@@ -469,7 +474,7 @@ has no ranks to place, and its deck uses the device itself.
 *This section is the mechanics; what offloads, why ranks share a device, what the sources recommend and how to
 design a benchmark around it is [`engines/tuning.md`](?doc=engines/tuning.md) § 2.12.*
 
-- **Load balance.** It counts the GPUs the job was given (`CUDA_VISIBLE_DEVICES` first, else `nvidia-smi -L`),
+- **Load balance.** It counts the GPUs the job was given (the job's list, below),
   sets `ranks_per_gpu = mpi_np / ngpu` (at least 1) and prints a `GPU load-balance` line. **The rank and
   thread counts are the stated ones**, resolved as on CPU (§ 3.1, § 3.2).
 - **NVIDIA MPS** — the Multi-Process Service, which lets several MPI ranks share one GPU at once. **One
@@ -483,9 +488,13 @@ design a benchmark around it is [`engines/tuning.md`](?doc=engines/tuning.md) §
   (`rank × GPUs / ranks`), and, when the rank's cpuset spans more than one socket, pins it with `numactl` to
   the NUMA nodes of its GPU's socket that it owns — **the helper finds that mapping itself, per rank, at run
   time** (nvidia-smi and sysfs). `MB_NO_SOCKET_PIN=1` turns the socket pinning off.
+  - **The job's GPUs are one list, by device**: those `CUDA_VISIBLE_DEVICES` names where it is set as the job
+    starts — a scheduler's allocation, or yours, given with the launch — else every GPU `nvidia-smi` lists.
+    The load balance, the banner and the dry run's rank → GPU map read it, the wrap below too, and each rank's
+    helper builds it again by the same rule, so a job given GPU 1 is shown, wrapped and run on GPU 1.
   - **Off a scheduler**, OpenMPI binds each rank to cores of its own (`--bind-to core --map-by
     package:PE=<cores per rank>`), spreading the ranks over the sockets. A single-GPU job is also wrapped
-    whole in `numactl`, on the NUMA node GPU 0 sits on — looked up at run time from its PCI bus id and sysfs,
+    whole in `numactl`, on the NUMA node its GPU sits on — looked up at run time from its PCI bus id and sysfs,
     `MOLBUILDER_GPU_NUMA` overriding — which sets its memory there but does not hold its ranks: OpenMPI's map
     overrides it (measured with OpenMPI 5.0.10), so a single GPU's second rank runs on the far socket.
   - **Under a scheduler** (`MB_JOB_ID` set) the wrap and that binding are cleared, and OpenMPI places the
@@ -500,7 +509,7 @@ design a benchmark around it is [`engines/tuning.md`](?doc=engines/tuning.md) §
 | `-np` / `--np N` | every run script | the rank count, where the engine runs ranks; an engine that runs one process accepts it and says anything but 1 is ignored |
 | `-omp` / `--omp N`, `-t` / `--threads N` | every run script | the thread count |
 | `--mps` / `--no-mps` | a job that uses a GPU, its engine running ranks | allow or forbid MPS; it starts only where ranks outnumber GPUs (§ 3.3) |
-| `--dry-run` | every run script | print, then exit 0: the resolved launch command, each count's source, the environment and — where ranks are placed on GPUs — the rank → GPU / NUMA map |
+| `--dry-run` | every run script | print, then exit 0: the command's shape (the time limit's words are counted as the engine starts), each count's source, the environment and — where ranks are placed on GPUs — the rank → GPU / NUMA map; none of your own lines run |
 | `-h` / `--help` | every run script | usage |
 
 - **Any other argument is refused** (exit 1), and so is a count that is not a positive integer, before
@@ -576,14 +585,17 @@ keeps the words for the failure's line *(user, 2026-09-28: "ask the bundle once"
 
 ```mermaid
 flowchart LR
-    P["a point of a run of points:<br/>point started, its kind's before-step"] --> X["the engine exits"]
+    B["your own lines before the engine"] --> P["a point of a run of points:<br/>point started, its kind's before-step"]
+    B -->|"a line failed: no engine"| C
+    P --> X["the engine exits"]
     P -->|"its before-step failed: no engine"| S
     X --> Q{"how did it end?<br/>(_mb_ending)"}
     Q -->|"a failure: its words, the advice for its cause,<br/>what a launch again will do"| S["a point of a run of points:<br/>point ended, told the exit"]
-    S --> C["conclude: write &lt;stem&gt;.concluded"]
+    S --> A["your own lines after the engine"]
     Q -->|"a clean exit"| F{"a point of a<br/>run of points?"}
-    F -->|"no"| C
-    F -->|"yes: point ended -- its kind's after-step, the job's on failure;<br/>no point left, the run's finish"| C
+    F -->|"no"| A
+    F -->|"yes: point ended -- its kind's after-step, the job's on failure;<br/>no point left, the run's finish"| A
+    A --> C["conclude: write &lt;stem&gt;.concluded"]
 ```
 
 ### 3.6 A run ends itself before the wall, and a file written as a job died is said

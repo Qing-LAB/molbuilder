@@ -267,8 +267,14 @@ Metadata pane displays (`web/molview.md` § 8.4a), it is written into the
 sidecar from schema 9, and it rides every export. What it is **not** is
 part of the structure:
 
-- **Not structural.** No emitter reads it; it never enters the
-  frozen/region machinery. Nothing in a deck depends on it.
+- **Not structural.** It never enters the frozen/region machinery. The one
+  engine input read from it is a run record's charge and spin, where the
+  person states none (`info.calculation`, ES7: `electronic_state`); beyond
+  that a deck carries it only as its record of the structure — PySCF's
+  sidecar payload, for every pair it saves and its result; a SIESTA
+  force-constant deck's `vibration` block, for its result
+  ([`engines/vibration.md`](?doc=engines/vibration.md) § 6.10.1) — its
+  earlier runs' records left behind.
 - **Not in the hash.** `geometry_hash` is computed without it, so
   recording or removing a key never changes the identity of the
   coordinates (`structure-molstruct.md`).
