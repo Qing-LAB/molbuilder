@@ -87,8 +87,9 @@ atom-*.tgz
 atom-*.tar.gz
 atom*/
 
-.claude/
-**/.claude/
+.claude/*
+**/.claude/*
+!/.claude/project-profile.md
 claude-memory.tgz
 
 # Per-machine config (TLS cert/key paths, OAuth client_id +

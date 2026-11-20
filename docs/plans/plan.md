@@ -48,16 +48,26 @@ and the machine 2.77.16 (R2); 9, the jobs, run files and records 2.77.17 (R3a).
    the job's (`run-reports.md` § 2.1a; the system-load page shares the
    sampler); two run-script messages hand `install` an env's name, not its
    recipe's; a structure title pasted with a line separator (U+2028) cannot
-   be saved -- the title is one line, at its door.
+   be saved -- the title is one line, at its door. Left to its parts by
+   R3a's review (`fix9-review.md`): **R3b** — `runwrap` splits a part's
+   module off `module:NAME` itself (`runpoints.part` is the one reader);
+   **R3c** — `pyscf/script_input` and `script_emit` find block fences by
+   exact text (`deck_record.MARKER_RE` is the grammar), the generated
+   PySCF scripts write the standard atmosphere and the atomic mass unit as
+   numbers (`constants.ATM_PA`, `AMU_KG`), `template._refuse` copies the
+   record refusal kit (`persist.RecordRefusals`); **R3e** — `builders`
+   resolves `module:NAME` itself.
 4. **R4 — one home per fact, the pages and the tests**: round 2's items for
    the pages, MolView, the viewers and the test harness — the Results
    tab's file-menu pick copied in ten test files among them, its door now
    `support.sidebar.result_picked` — the warning that a file renamed to a
    name starting with a dot leaves the sidebar (round 2's file-name item,
    the rest shipped in 2.77.7), and the deletions the readers proposed,
-   each shown to the user before it goes.
+   each shown to the user before it goes. The jobs' and run files' test
+   items: `r2-1-jobset.md` T2–T7, `r2-2-runfiles-records.md` T1–T3, T6, T7.
 5. **R5 — the documents and the proof**: the 80 chapter sentences that need
-   no code (`TRIAGE-round1.md` § I, one docs pass, no version), then the
+   no code (`TRIAGE-round1.md` § I, one docs pass, no version) with
+   `r2-1-jobset.md` F2's sentence, F3 and F14, then the
    finish line's proof: the full batch, and the three roads walked again in
    the browser on real runs.
 
