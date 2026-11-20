@@ -24,6 +24,9 @@ const root = (typeof window !== "undefined") ? window : globalThis;
 
 const FORMATS = ["gif", "webm", "png-zip"];
 
+// The words of a cancelled export, in one place (§ 12).
+const CANCELLED = "the export was cancelled";
+
 const GIF_VENDOR    = "/static/vendor/gif.min.js";
 const GIF_WORKER    = "/static/vendor/gif.worker.min.js";
 const WEBM_BITRATE  = 8_000_000;   // the browser default looks muddy on flat 3D
@@ -160,7 +163,7 @@ function describe(meta, format, count) {
     return {
         format:        format,
         frames:        count,
-        // THE PICTURE'S SIZE, as its first frame is drawn (§ 12.2) -- every
+        // THE PICTURE'S SIZE, as its first frame is drawn (§ 12) -- every
         // format's description says it, not only the zip's manifest.
         width:         null,
         height:        null,
@@ -195,10 +198,10 @@ function manifest(description) {
  */
 async function eachFrame(ctx, opts, count, take, share) {
     // `share`: the part of the whole export the walk is -- all of it, or the
-    // first half of a GIF's, whose encoding is the second (§ 12.2).
+    // first half of a GIF's, whose encoding is the second (§ 12).
     const part = share || 1;
     for (let n = 0; n < count; n++) {
-        if (aborted(opts.signal)) throw new Error("the export was cancelled");
+        if (aborted(opts.signal)) throw new Error(CANCELLED);
         ctx.surface.setAtomCoords(ctx.coordsAt(n));
         const canvas = ctx.surface.compositeCanvas();
         if (!canvas) throw new Error("nothing drawn");
@@ -277,7 +280,7 @@ async function toGif(ctx, opts, count) {
         if (clear) keyCanvas = keyed(canvas, keyCanvas);
         gif.addFrame(clear ? keyCanvas : canvas, { copy: true, delay: delay });
     }, 0.5);
-    /* THE ENCODING IS THE SECOND HALF (§ 12.2): copying the frames is the
+    /* THE ENCODING IS THE SECOND HALF (§ 12): copying the frames is the
      * first, and the encoder's own progress the rest, so the fraction reaches
      * 1 when the last frame is encoded -- never for an export that failed --
      * and a cancel during the encoding stops the encoder and rejects, as it
@@ -286,7 +289,7 @@ async function toGif(ctx, opts, count) {
         const signal = opts.signal;
         const cancel = function () {
             try { gif.abort(); } catch (_) {}
-            reject(new Error("the export was cancelled"));
+            reject(new Error(CANCELLED));
         };
         if (aborted(signal)) { cancel(); return; }
         if (signal) signal.addEventListener("abort", cancel, { once: true });
@@ -346,12 +349,7 @@ async function toWebm(ctx, opts, count) {
 }
 
 
-/* ── The door § 12 describes ─────────────────────────────────────────────────
- *
- * `ctx` is assembled by index.js at call time from its own closure and is not
- * reachable from anywhere else — the export needs the viewer's state, and a
- * hatch on the handle would have given it to everyone (§ 4).
- */
+/* ── The door § 12 describes ───────────────────────────────────────────────── */
 export async function exportAnimation(opts, ctx) {
     opts = opts || {};
     const format = opts.format || "png-zip";
@@ -383,6 +381,12 @@ export async function exportAnimation(opts, ctx) {
         blob = await run(Object.assign({}, ctx, { meta: meta,
                                                   description: description }),
                          opts, count, description);
+        if (aborted(opts.signal)) throw new Error(CANCELLED);
+    } catch (e) {
+        /* CANCELLED IS CANCELLED, however the run ended: a cancel landing on
+         * the last frame never hands back the file, and one that left the
+         * surface with nothing to draw is said as the cancel it was. */
+        throw aborted(opts.signal) ? new Error(CANCELLED) : e;
     } finally {
         /* On EVERY path out — done, failed, cancelled — the surface goes back to
          * the size and colour it was, and playback to what it was doing. A viewer

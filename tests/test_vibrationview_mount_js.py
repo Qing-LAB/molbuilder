@@ -11,13 +11,16 @@ actually leave the module.
 """
 from pathlib import Path
 
+import pytest
+
 from _node_esm import run_node
 
 ROOT = Path(__file__).resolve().parents[1]
 STATIC = ROOT / "molbuilder/web/static"
 
 #: A recording stand-in for the drawing library.  It obeys the one rule its level
-#: has: it draws what it is told and answers nothing about the structure.
+#: has: it draws what it is told -- and keeps where it was told to put the atoms,
+#: which a test reads (`drawn()`) as what the person sees.
 HARNESS = r"""
     const calls = [];
     let atoms = [];
@@ -97,6 +100,7 @@ HARNESS = r"""
         innerHTML: "", textContent: "",
     };
     const caption = () => children.find((c) => c.className === "vibview-caption");
+    const drawn = () => atoms.map((a) => [a.x, a.y, a.z]);
     // The clock is the handle's, so it is the one thing a test must drive.
     var rafQ = [];
     let clock = 0;
@@ -262,23 +266,49 @@ def test_a_new_structure_ends_the_mode_that_was_running():
 # § 6.3 — a mode that does not fit is refused
 # ---------------------------------------------------------------------------
 
-def test_a_mode_that_does_not_fit_the_structure_draws_nothing():
-    """§ 6.3: "turned away with nothing drawn — never padded with zeros into a
-    partial animation"."""
+def test_a_mode_that_does_not_fit_is_refused_and_ends_the_mode_showing():
+    """§ 6.3: a mode that does not fit is "turned away with nothing of it drawn
+    — never padded with zeros into a partial animation" -- and the mode that
+    was showing ends with it: no clock, no caption, no held-still marks, the
+    atoms at rest, nothing left to export.
+
+    THE SILENT FAILURE: the previous mode animating on under its own caption
+    while the page has asked for another."""
     out = _run("""
         const vib = await mount(host, {});
         vib.setStructure(WATER);
+        // Mode 1 moves the hydrogens and holds the oxygen still.
+        const marked = (c) => c[0] === "setStyle" && c[1] !== "all";
         calls.length = 0;
-        const accepted = vib.showMode({ index: 1,
+        vib.showMode({ index: 1, displacements: [[1,0,0],[0,1,0]], basis: [1, 2],
+                       label: "Mode 1" });
+        const markedBefore = calls.some(marked);
+        vib.play();
+        calls.length = 0;
+        const accepted = vib.showMode({ index: 4,
                                         displacements: [[1,0,0]], basis: [9] });
-        const drewAnything = calls.length > 0;
+        const marksAfter = calls.some(marked);
+        const atRest = JSON.stringify(drawn()) === JSON.stringify(WATER.positions);
+        const label = { hidden: caption().hidden, text: caption().textContent };
+        let exported = "resolved";
+        try { await vib.exportAnimation({ format: "png-zip" }); }
+        catch (e) { exported = e.message; }
+        const playing = vib.isPlaying();
         // ...and the viewer is still usable afterwards
         const goodOne = vib.showMode({ index: 2,
                                        displacements: [[1,0,0],[0,1,0],[0,0,1]] });
-        console.log(JSON.stringify({ accepted, drewAnything, goodOne }));
+        console.log(JSON.stringify({ accepted, markedBefore, marksAfter, atRest,
+                                     label, exported, playing, goodOne }));
     """)
+    assert out["markedBefore"] is True, "Mode 1 drew no held-still marks to clear"
     assert out["accepted"] is False
-    assert out["drewAnything"] is False
+    assert out["marksAfter"] is False, "the previous mode's held-still marks stayed"
+    assert out["atRest"] is True, "the atoms were left where a mode put them"
+    assert out["label"] == {"hidden": True, "text": ""}, (
+        f"the previous mode's caption stayed up: {out['label']}")
+    assert out["playing"] is False, "the previous mode kept animating"
+    assert out["exported"] == "no mode is showing, so there is nothing to export", (
+        f"the previous mode was still there to export: {out['exported']}")
     assert out["goodOne"] is True
 
 
@@ -304,8 +334,8 @@ def test_showMode_before_a_structure_is_a_refusal_not_a_queue():
 
 def test_the_knobs_are_live_and_a_drag_never_stops_the_animation():
     """§ 9.2: "amplitude, fps and cycle-length changes take effect on the next
-    frame, issue no call to the drawing surface, and never stop a running
-    animation".
+    frame, issue no call to the drawing surface while the animation runs ... and
+    never stop a running animation".
 
     A knob that re-registered anything would stop the loop.
     """
@@ -332,16 +362,15 @@ def test_the_knobs_are_live_and_a_drag_never_stops_the_animation():
 
 
 def test_a_rate_change_does_not_jump_the_motion():
-    """§ 9.2 / § 10.1: "a rate change mid-flight does not jump the motion".
+    """§ 9.2: "a rate change keeps the phase" -- read off what is drawn, not off
+    the frame number.
 
     A frame number means nothing without the count it is measured against, so
     when the count changes the number is re-expressed against the new one.
     Without that, nudging a smoothness slider would visibly move the molecule.
     """
     out = _run("""
-        // Read where the atoms ACTUALLY ARE, off the drawing library's own
-        // model, before and after the change — which is what a user sees.
-        const drawn = () => atoms.map((a) => [a.x, a.y, a.z]);
+        // Where the atoms are drawn, before and after the change.
         const worst = (a, b) => Math.max(...a.flatMap(
             (row, i) => row.map((v, j) => Math.abs(v - b[i][j]))));
 
@@ -422,7 +451,7 @@ def test_the_caption_is_drawn_exactly_as_given():
             text: el && el.textContent, shown: el && !el.hidden,
             // an OVERLAY, not a mark in the scene: the drawing library is not
             // asked to draw text, because measured against a real browser it
-            // draws none (see _seal.js, carried knowledge 3 of 3)
+            // draws none (§ 12.3)
             askedTheLibrary: calls.some((c) => c[0] === "addLabel"),
         }));
     """)
@@ -490,7 +519,7 @@ def test_the_chosen_rate_is_honoured_on_a_display_that_repaints_faster():
         vib.play();
         calls.length = 0;
         pump(12, 16.67);                       // 60 Hz, twelve repaints
-        const drawn = calls.filter((c) => c[0] === "render").length;
+        const paints = calls.filter((c) => c[0] === "render").length;
         vib.dispose();      // its loop shares this recorder; retire it first
         rafQ = [];
         // ...and asking for the display's own rate draws on every repaint
@@ -501,7 +530,7 @@ def test_the_chosen_rate_is_honoured_on_a_display_that_repaints_faster():
         calls.length = 0;
         pump(12, 16.67);
         const drawn60 = calls.filter((c) => c[0] === "render").length;
-        console.log(JSON.stringify({ drawn, drawn60 }));
+        console.log(JSON.stringify({ drawn: paints, drawn60 }));
     """)
     assert out["drawn"] == 6      # every second repaint, not every third
     assert out["drawn60"] == 12   # every repaint
@@ -509,8 +538,9 @@ def test_the_chosen_rate_is_honoured_on_a_display_that_repaints_faster():
 
 def test_a_rate_the_door_cannot_honour_is_brought_into_range():
     """§ 10.1: "a frame rate below the floor or above the ceiling is brought into
-    range rather than honoured or refused, and the animation keeps running across
-    the change" — asserted AT THE DOOR, which is where a caller reaches.
+    range at the handle ... zero and negative rates keep the animation running at
+    the floor rather than freezing it" — asserted AT THE DOOR, which is where a
+    caller reaches.
 
     The clock divides by the rate to decide when a frame is due, so an unclamped
     one does not merely animate oddly: ``1000/0`` is Infinity, a frame is never
@@ -604,9 +634,7 @@ def test_the_handle_offers_no_read_of_what_it_holds():
     """
     out = _run("""
         const vib = await mount(host, {});
-        // Every key, unfiltered.  An earlier draft carried a `_capture` hatch and
-        // this line filtered it out to stay green -- a check laundering the thing
-        // it exists to catch.  If a hatch comes back, this fails.
+        // Every key, unfiltered: a filtered count would pass with a hatch in it.
         const doors = Object.keys(vib);
         console.log(JSON.stringify({ doors: doors.sort() }));
     """)
@@ -618,8 +646,8 @@ def test_the_handle_offers_no_read_of_what_it_holds():
 
 
 def test_dispose_stops_the_clock_and_empties_the_host():
-    """§ 8: "dispose stops the clock, releases the drawing surface, and leaves the
-    host element empty.  Calling it twice is safe"."""
+    """§ 8: "`dispose()` stops the clock, gives the drawing surface back ... and
+    leaves the host element empty.  Calling it twice is safe"."""
     out = _run("""
         const vib = await mount(host, {});
         vib.setStructure(WATER);
@@ -749,27 +777,33 @@ def test_the_surface_and_playback_are_restored_after_an_export():
 
 
 def test_a_failed_export_still_restores_the_surface():
-    """§ 12: "on every path out — done, failed, cancelled"."""
+    """§ 12: "endCapture must run on every path out — success, failure,
+    cancellation" -- here a failure after the capture began, on a transparent
+    ground: a browser that cannot record video."""
     out = _run("""
         const vib = await mount(host, {});
         vib.setStructure(WATER);
         vib.showMode({ index: 1, displacements: [[1,0,0],[0,1,0],[0,0,1]] });
         vib.play();
-        const before = [glCanvas.width, glCanvas.height];
+        calls.length = 0;
         let msg = "";
-        try { await vib.exportAnimation({ format: "mpeg", width: 900, height: 700 }); }
+        try { await vib.exportAnimation({ format: "webm", background: "transparent" }); }
         catch (e) { msg = e.message; }
+        const grounds = calls.filter((c) => c[0] === "background");
         console.log(JSON.stringify({
-            msg, restored: glCanvas.width === before[0], playing: vib.isPlaying() }));
+            msg, captured: grounds.length > 0 && grounds[0][2] === 0,
+            restored: grounds.length > 1 && grounds[grounds.length - 1][2] === 1,
+            playing: vib.isPlaying() }));
     """)
-    assert "cannot export 'mpeg'" in out["msg"]
+    assert out["msg"] == "this browser cannot record video (no MediaRecorder)"
+    assert out["captured"] is True, "the export failed before its capture began"
     assert out["restored"] is True
     assert out["playing"] is True
 
 
-def test_an_export_reports_progress_and_can_be_cancelled():
+def test_an_export_reports_its_progress_honestly():
     """§ 12: "the reported fraction reaches 1 exactly when the last frame is
-    encoded", and "a cancelled export rejects rather than resolving"."""
+    encoded"."""
     out = _run("""
         const vib = await mount(host, { fps: 30 });
         vib.setStructure(WATER);
@@ -777,23 +811,203 @@ def test_an_export_reports_progress_and_can_be_cancelled():
         const seen = [];
         await vib.exportAnimation({ format: "png-zip",
                                     onProgress: (f) => seen.push(f) });
-
-        // ...and one aborted part-way rejects, handing back no file
-        const ac = new AbortController();
-        let cancelled = "resolved";
-        const p = vib.exportAnimation({ format: "png-zip",
-                                        onProgress: (f) => { if (f > 0.2) ac.abort(); },
-                                        signal: ac.signal });
-        try { await p; } catch (e) { cancelled = e.message; }
         console.log(JSON.stringify({
-            first: seen[0], last: seen[seen.length - 1], count: seen.length,
-            monotonic: seen.every((v, i) => i === 0 || v > seen[i - 1]),
-            cancelled }));
+            last: seen[seen.length - 1], count: seen.length,
+            monotonic: seen.every((v, i) => i === 0 || v > seen[i - 1]) }));
     """)
     assert out["count"] == 30
     assert out["last"] == 1.0
     assert out["monotonic"] is True
-    assert out["cancelled"] == "the export was cancelled"
+
+
+#: (what is asked while an export runs, the call, what is true once the next
+#: export has run): each reaches none of the running export's frames, and is
+#: applied when it ends.  The viewer is playing as each export starts.
+ASKED_MID_EXPORT_ROWS = [
+    ("a mode", 'vib.showMode({ index: 6, displacements: [[0,1,0],[1,0,0],[0,0,1]], '
+               'label: "Mode 6" })', "next.meta.mode === 6"),
+    ("the amplitude", "vib.setAmplitude(0.5)", "next.meta.amplitude === 0.5"),
+    ("the rate", "vib.setFps(10)", "next.meta.fps === 10"),
+    ("the cycle length", "vib.setCycleSec(2)", "next.meta.cycleSeconds === 2"),
+    ("the caption", "vib.setLabelVisible(false)", "nextCaptions.length === 0"),
+    ("a pause", "vib.pause()", "!vib.isPlaying()"),
+]
+
+
+@pytest.mark.parametrize("what, call, after", ASKED_MID_EXPORT_ROWS,
+                         ids=[r[0] for r in ASKED_MID_EXPORT_ROWS])
+def test_an_export_holds_what_it_was_set_to_while_it_runs(what, call, after):
+    """§ 5.3, § 12: the export carries what it was set to -- so a mode, an
+    amplitude, the rate, the cycle length or the caption asked while it runs
+    reaches none of its frames, and a pause is not undone by the export
+    putting playback back; each is applied when it ends.  Each frame's drawn
+    atoms and caption are compared with an export left alone.
+
+    THE SILENT FAILURE: a file stamped for mode 5 at 0.13 whose frames switch
+    part-way to another mode, size or speed, the caption with them; after the
+    save, the molecule moving again under a button that reads Play."""
+    out = _run("""
+        const vib = await mount(host, { amplitude: 0.13 });
+        vib.setStructure(WATER);
+        vib.showMode({ index: 5, displacements: [[1,0,0],[0,1,0],[0,0,1]],
+                       label: "Mode 5" });
+        vib.play();
+        const at = () => JSON.stringify(drawn());
+        const run = async (during) => {
+            const frames = [];
+            painted.length = 0;
+            await vib.exportAnimation({ format: "png-zip", onProgress: () => {
+                frames.push(at());
+                if (frames.length === 1 && during) during();
+            } });
+            return { frames, captions: painted.slice() };
+        };
+        const alone = await run(null);
+        const asked = await run(() => { """ + call + """; });
+        painted.length = 0;
+        const next = await vib.exportAnimation({ format: "png-zip" });
+        const nextCaptions = painted.slice();
+        console.log(JSON.stringify({
+            sameFrames: JSON.stringify(asked.frames) === JSON.stringify(alone.frames),
+            sameCaptions: JSON.stringify(asked.captions) === JSON.stringify(alone.captions),
+            appliedAfter: """ + after + """ }));
+    """)
+    assert out["sameFrames"] is True, f"{what} asked mid-export reached its frames"
+    assert out["sameCaptions"] is True, (
+        f"{what} asked mid-export reached its frames' captions")
+    assert out["appliedAfter"] is True, (
+        f"{what} asked during the export was not applied after it")
+
+
+#: (what cancels it, on the frame whose reported progress `f` meets, the call,
+#: what the next export then answers).
+CANCEL_ROWS = [
+    ("the caller, part-way", "f > 0.2", "ac.abort()", "30 frames"),
+    ("the caller, on the last frame", "f === 1", "ac.abort()", "30 frames"),
+    ("the viewer disposed", "f > 0.2", "vib.dispose()", "vibrationview: disposed"),
+    ("a new structure", "f > 0.2", "vib.setStructure(WATER)",
+     "no mode is showing, so there is nothing to export"),
+]
+
+
+@pytest.mark.parametrize("what, when, call, then", CANCEL_ROWS,
+                         ids=[r[0] for r in CANCEL_ROWS])
+def test_a_cancelled_export_hands_back_no_file(what, when, call, then):
+    """§ 12: a cancelled export "rejects rather than resolving", however it
+    ends -- cancelled by the caller part-way or on its last frame, by the
+    viewer disposed (nothing left to draw), by a new structure (the mode it is
+    of has ended, § 5.1) -- in the cancel's words; and the next export
+    answers as though it had not run.
+
+    THE SILENT FAILURE: Cancel pressed, and the file saved all the same; a raw
+    "Cannot read properties of null" in the page's status line after a live
+    run's poll rebuilt the viewer."""
+    out = _run("""
+        const vib = await mount(host, {});
+        vib.setStructure(WATER);
+        vib.showMode({ index: 1, displacements: [[1,0,0],[0,1,0],[0,0,1]] });
+        const ac = new AbortController();
+        let asked = false;
+        let said = "resolved";
+        try {
+            await vib.exportAnimation({ format: "png-zip", signal: ac.signal,
+                onProgress: (f) => {
+                    if (asked || !(""" + when + """)) return;
+                    asked = true;
+                    """ + call + """;
+                } });
+        } catch (e) { said = e.message; }
+        let then;
+        try {
+            then = (await vib.exportAnimation({ format: "png-zip" })).meta.frames
+                 + " frames";
+        } catch (e) { then = e.message; }
+        console.log(JSON.stringify({ said, then }));
+    """)
+    assert out["said"] == "the export was cancelled", (
+        f"an export cancelled by {what} ended: {out['said']!r}")
+    assert out["then"] == then, (
+        f"the export after one cancelled by {what}: {out['then']!r}")
+
+
+def test_a_mode_asked_before_a_new_structure_is_not_shown_on_it():
+    """§ 5.1, § 12: a mode belongs to the structure it was computed against.
+    Asked during an export, then a new structure: the export is cancelled, and
+    the two are applied in the order asked -- so the new structure ends the
+    mode, which is never drawn or exported against it.
+
+    THE SILENT FAILURE: the new molecule displaced along the old one's mode,
+    under its caption."""
+    out = _run("""
+        const vib = await mount(host, {});
+        vib.setStructure(WATER);
+        vib.showMode({ index: 1, displacements: [[1,0,0],[0,1,0],[0,0,1]] });
+        const OTHER = { elements: ["O", "H", "H"],
+                        positions: [[5,5,5], [6,5,5], [5,6,5]] };
+        let asked = false;
+        try {
+            await vib.exportAnimation({ format: "png-zip", onProgress: () => {
+                if (asked) return;
+                asked = true;
+                vib.showMode({ index: 2, displacements: [[0,1,0],[1,0,0],[0,0,1]],
+                               label: "Mode 2" });
+                vib.setStructure(OTHER);
+            } });
+        } catch (_) {}   // cancelled: the cancel's own rows say how
+        const atRest = JSON.stringify(drawn()) === JSON.stringify(OTHER.positions);
+        let next = "resolved";
+        try { await vib.exportAnimation({ format: "png-zip" }); }
+        catch (e) { next = e.message; }
+        console.log(JSON.stringify({ atRest, next }));
+    """)
+    assert out["atRest"] is True, "the old structure's mode was drawn on the new one"
+    assert out["next"] == "no mode is showing, so there is nothing to export", (
+        f"the old structure's mode was there to export: {out['next']}")
+
+
+def test_a_mode_asked_mid_export_is_answered_by_the_structure_it_will_meet():
+    """§ 12: "`showMode` answers at the call whether the mode fits the
+    structure it will be shown against" -- a new structure asked before it,
+    not the one being exported -- and what each door was handed is taken at
+    the call.
+
+    THE SILENT FAILURE: a mode that fits the new molecule refused once the
+    export ends, or one that fits only the old one put on it; a caption
+    changed by a caller's later edit to the object it handed over."""
+    out = _run("""
+        const vib = await mount(host, {});
+        vib.setStructure(WATER);
+        vib.showMode({ index: 1, displacements: [[1,0,0],[0,1,0],[0,0,1]] });
+        const H2 = { elements: ["H", "H"], positions: [[0,0,0], [0.74,0,0]] };
+        const stretch = { index: 7, displacements: [[-1,0,0], [1,0,0]],
+                          label: "H2 stretch" };
+        let answers = null;
+        try {
+            await vib.exportAnimation({ format: "png-zip", onProgress: () => {
+                if (answers) return;
+                vib.setStructure(H2);
+                answers = {
+                    waterShaped: vib.showMode({ index: 2,
+                        displacements: [[0,1,0],[1,0,0],[0,0,1]] }),
+                    h2Shaped: vib.showMode(stretch),
+                };
+                stretch.label = "changed after the call";
+                H2.positions[1] = [9, 9, 9];
+            } });
+        } catch (_) {}   // cancelled by the new structure
+        const shownAt = drawn();
+        const next = await vib.exportAnimation({ format: "png-zip" });
+        console.log(JSON.stringify({ answers, caption: caption().textContent,
+                                     mode: next.meta.mode, atoms: shownAt.length,
+                                     farthest: Math.max(...shownAt.flat()) }));
+    """)
+    assert out["answers"] == {"waterShaped": False, "h2Shaped": True}, (
+        f"judged against the structure being exported: {out['answers']}")
+    assert out["mode"] == 7 and out["atoms"] == 2, (
+        f"the H2 mode was not shown on H2 once the export ended: {out}")
+    assert out["caption"] == "H2 stretch", (
+        f"the caption followed a later edit: {out['caption']!r}")
+    assert out["farthest"] < 2, "the structure followed a later edit"
 
 
 def test_the_caption_is_composited_into_every_exported_frame():
@@ -833,7 +1047,7 @@ def test_an_exported_caption_wraps_and_keeps_its_edge_as_on_screen():
     a caption longer than the window wraps between words within it, as the
     sheet's `max-width` wraps it on screen, and keeps the sheet's edge.
 
-    THE SILENT FAILURE (F10's reading, 2026-11-16): the compositor drew the
+    THE SILENT FAILURE: the compositor drew the
     caption as one line in a plain box -- a long caption ran off the picture's
     edge, without the outline the screen shows."""
     out = _run("""

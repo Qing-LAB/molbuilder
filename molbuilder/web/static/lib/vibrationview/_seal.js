@@ -194,7 +194,7 @@ export async function create(hostEl) {
         try { return viewer.getModel() || null; } catch (_) { return null; }
     }
 
-    /* CARRIED KNOWLEDGE (1 of 2) — THE ONE THAT MATTERS.
+    /* CARRIED KNOWLEDGE (1 of 3) — THE ONE THAT MATTERS.
      *
      * 3Dmol caches its representation meshes (stick cylinders, sphere instances)
      * at `setStyle` time. Writing `atom.x/y/z` afterwards updates the data model
@@ -436,7 +436,7 @@ export async function create(hostEl) {
             paint();
         },
 
-        /* CARRIED KNOWLEDGE (2 of 2). Getting an export's size means resizing the
+        /* CARRIED KNOWLEDGE (2 of 3). Getting an export's size means resizing the
          * REAL canvas — the picture comes from the surface that is already there,
          * not a second one built for the occasion. `viewer.resize()` is the entry
          * that updates both the WebGL viewport and the canvas pixel buffer;

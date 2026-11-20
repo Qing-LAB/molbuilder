@@ -81,8 +81,8 @@ function validStructure(s) {
  *
  * Asynchronous, and it ALWAYS RESOLVES. The handle it returns is live: the
  * surface is built and every door works from the first call. There is no
- * readiness flag and nothing deferred, because a viewer that is not ready yet is
- * a state a caller can get wrong — so it is not offered.
+ * readiness flag and nothing waits for one, because a viewer that is not ready
+ * yet is a state a caller can get wrong — so it is not offered.
  */
 export async function mount(hostEl, opts) {
     opts = opts || {};
@@ -100,7 +100,7 @@ export async function mount(hostEl, opts) {
      * once you ask WHICH viewer's fact you meant. */
     let structure  = null;       // the equilibrium
     let disp       = null;       // the current mode, scattered to global order
-    let amplitude  = typeof opts.amplitude === "number" ? opts.amplitude : DEFAULTS.amplitude;
+    let amplitude  = num(opts.amplitude, DEFAULTS.amplitude);
     /* WHAT WAS ASKED FOR, and what that comes to.
      *
      * The request is kept because it is the user's, and the derived triple —
@@ -115,13 +115,38 @@ export async function mount(hostEl, opts) {
     let frame       = 0;
     let playing    = false;
     let labelText  = null;
-    let labelOn    = opts.showLabel !== false;
+    let labelOn    = (opts.showLabel === undefined) ? DEFAULTS.showLabel
+                                                    : opts.showLabel !== false;
     let modeIndex  = null;       // carried for the export stamp; never interpreted
     let modeNorm   = null;       // ditto (§ 6.2)
     let rafId      = null;
     let lastDrawAt = 0;
     let disposed   = false;
     let exporting  = false;
+    /* WHILE AN EXPORT RUNS THE VIEWER HOLDS WHAT IT WAS SET TO (§ 12): a door
+     * that would change the picture -- a mode, an amplitude, the rate or the
+     * cycle length, the caption, play or pause, a new structure -- takes what
+     * it was handed at the call and waits here, in the order asked, to be
+     * applied when the export ends, so every frame, its caption and the
+     * stamped metadata are the export's.  `exportStop` is the export's own
+     * way to stop: a new structure ends the mode it is of (§ 5.1), and a
+     * dispose leaves it nothing to draw -- either cancels it. */
+    let waiting    = [];
+    let exportStop = null;
+    let structureAhead = null;   // a structure waiting to be put in, if any
+
+    // Runs now, or -- while an export runs -- when it ends.
+    function afterExport(act) {
+        if (exporting && !disposed) waiting.push(act);
+        else act();
+    }
+
+    function waitsForExport(door) {
+        return function () {
+            const args = arguments;
+            afterExport(function () { door.apply(null, args); });
+        };
+    }
 
     function draw() {
         if (disposed || !structure || !disp) return;
@@ -184,6 +209,75 @@ export async function mount(hostEl, opts) {
         surface.setLabel(labelOn ? labelText : null);
     }
 
+    /* The mode that was running ends: its clock, its numbers, its caption and
+     * its held-still marks go together -- a caption left naming a mode no
+     * longer shown is a confident label on nothing. */
+    function endMode() {
+        stop();
+        disp = null; modeIndex = null; modeNorm = null; labelText = null;
+        frame = 0;
+        surface.setHeldStill([]);
+        applyLabel();
+    }
+
+    // A copy: what the caller does with its own afterwards changes nothing here.
+    function copyStructure(s) {
+        return {
+            elements:  s.elements.slice(),
+            positions: s.positions.map(function (p) { return [p[0], p[1], p[2]]; }),
+        };
+    }
+
+    function putStructure(copy) {
+        endMode();
+        structure = copy;
+        surface.setStructure(structure.elements, structure.positions);
+        surface.refit();
+    }
+
+    /* What a mode asks to show, read whole at the call: whether it fits the
+     * structure it would be shown against and, if it does, its rows scattered
+     * onto that structure and what it is called.  Pure -- nothing is drawn. */
+    function judge(mode, against) {
+        if (!mode || !Array.isArray(mode.displacements)) {
+            return { why: "showMode needs { displacements: [[dx,dy,dz], ...] }" };
+        }
+        let m;
+        try {
+            m = scatter(mode.displacements,
+                        Array.isArray(mode.basis) ? mode.basis : null,
+                        against.positions.length);
+        } catch (e) {
+            return { why: (e && e.message) || "the mode does not fit this structure" };
+        }
+        return {
+            displacements: m.displacements,
+            heldStill:     m.heldStill,
+            index: (mode.index !== undefined && mode.index !== null) ? mode.index : null,
+            norm:  (mode.norm !== undefined && mode.norm !== null) ? String(mode.norm) : null,
+            label: (mode.label !== undefined && mode.label !== null && mode.label !== "")
+                ? String(mode.label) : null,
+        };
+    }
+
+    function applyMode(shown) {
+        disp      = shown.displacements;
+        modeIndex = shown.index;
+        modeNorm  = shown.norm;
+        labelText = shown.label;
+        frame = 0;
+        surface.setHeldStill(shown.heldStill);
+        applyLabel();
+        draw();
+    }
+
+    /* REFUSED, not padded (§ 6.3): nothing of the mode is drawn, and the
+     * mode that was showing ends -- the structure stands at rest. */
+    function refuse() {
+        endMode();
+        surface.setAtomCoords(structure.positions);
+    }
+
     return {
         ok: true,
 
@@ -199,20 +293,10 @@ export async function mount(hostEl, opts) {
                 warn("setStructure needs { elements, positions } of equal length");
                 return false;
             }
-            stop();
-            /* The caption goes with the mode. It names one — "Mode 7 · 1584.2
-             * cm⁻¹" — so leaving it up over a structure that now has no mode is a
-             * confident label on nothing, which is worse than no label. */
-            disp = null; modeIndex = null; modeNorm = null; labelText = null;
-            frame = 0;
-            structure = {
-                elements:  s.elements.slice(),
-                positions: s.positions.map(function (p) { return [p[0], p[1], p[2]]; }),
-            };
-            surface.setStructure(structure.elements, structure.positions);
-            surface.setHeldStill([]);
-            applyLabel();
-            surface.refit();
+            const copy = copyStructure(s);
+            if (exportStop) exportStop.abort();
+            if (exporting) structureAhead = copy;
+            afterExport(function () { putStructure(copy); });
             return true;
         },
 
@@ -220,51 +304,36 @@ export async function mount(hostEl, opts) {
          * refit — which is why browsing mode to mode of one result never disturbs
          * the camera.
          *
-         * The play/pause state is NOT touched. Playing is its own fact with its
-         * own home (§ 5.2); a new mode arriving is not a reason to overrule what
-         * the user asked the pause button for. Paused, you see the new mode at
-         * its peak, still. */
+         * An accepted mode does not touch the play/pause state. Playing is its
+         * own fact with its own home (§ 5.2); a new mode arriving is not a
+         * reason to overrule what the user asked the pause button for. Paused,
+         * you see the new mode at its peak, still.
+         *
+         * The answer -- does it fit the structure it will be shown against --
+         * and a refusal's warning are given at the call, even when the showing
+         * waits for an export. */
         showMode(mode) {
             if (disposed) return false;
-            if (!structure) {
+            const against = structureAhead || structure;
+            if (!against) {
                 warn("showMode before a structure: nothing to animate against");
                 return false;
             }
-            if (!mode || !Array.isArray(mode.displacements)) {
-                warn("showMode needs { displacements: [[dx,dy,dz], ...] }");
-                return false;
-            }
-            const basis = Array.isArray(mode.basis) ? mode.basis : null;
-            let m;
-            try {
-                m = scatter(mode.displacements, basis, structure.positions.length);
-            } catch (e) {
-                // REFUSED, not padded (§ 6.3): this is a mode computed against a
-                // different molecule, and zero-filling would animate the
-                // structure partially, plausibly and wrongly. Nothing is drawn.
-                warn((e && e.message) || "the mode does not fit this structure");
-                return false;
-            }
-            disp      = m.displacements;
-            modeIndex = (mode.index !== undefined && mode.index !== null) ? mode.index : null;
-            modeNorm  = (mode.norm !== undefined && mode.norm !== null) ? String(mode.norm) : null;
-            labelText = (mode.label !== undefined && mode.label !== null && mode.label !== "")
-                ? String(mode.label) : null;
-            frame = 0;
-            surface.setHeldStill(m.heldStill);
-            applyLabel();
-            draw();
-            return true;
+            const judged = judge(mode, against);
+            if (judged.why) warn(judged.why);
+            afterExport(judged.why ? refuse : function () { applyMode(judged); });
+            return !judged.why;
         },
 
-        play()      { start(); },
-        pause()     { stop(); },
+        play:  waitsForExport(function () { start(); }),
+        pause: waitsForExport(function () { stop(); }),
         isPlaying() { return playing; },
 
         /* The live knobs (§ 9.2): plain writes the running loop picks up on its
-         * next frame. No rebuild, no re-registration — a slider drag never stops
-         * the animation. */
-        setAmplitude(a, norm) {
+         * next frame -- or, while an export runs, once it ends (§ 12). No
+         * rebuild, no re-registration — a slider drag never stops the
+         * animation. */
+        setAmplitude: waitsForExport(function (a, norm) {
             if (disposed || typeof a !== "number" || !isFinite(a)) return;
             amplitude = a;
             // THE LABEL TRAVELS WITH THE NUMBER (§ 6.1): a caller that changes
@@ -273,7 +342,7 @@ export async function mount(hostEl, opts) {
             // setting the picture was drawn at.  Omitted, the label stands.
             if (norm !== undefined && norm !== null) modeNorm = String(norm);
             if (!playing) draw();          // paused: show the change now
-        },
+        }),
 
         /* Nonsense is IGNORED; a real number out of range is BROUGHT IN.
          *
@@ -282,25 +351,25 @@ export async function mount(hostEl, opts) {
          * at its end stop — a value with a clear intention that this module simply
          * cannot honour, so it is honoured as far as it goes. Left raw, the clock
          * would divide by zero and stop for good. */
-        setFps(n) {
+        setFps: waitsForExport(function (n) {
             if (disposed || typeof n !== "number" || !isFinite(n)) return;
             reqFps = n;
             reframe(rate(reqFps, reqCycleSec));
             if (!playing) draw();
-        },
+        }),
 
-        setCycleSec(s) {
+        setCycleSec: waitsForExport(function (s) {
             if (disposed || typeof s !== "number" || !isFinite(s)) return;
             reqCycleSec = s;
             reframe(rate(reqFps, reqCycleSec));
             if (!playing) draw();
-        },
+        }),
 
-        setLabelVisible(on) {
+        setLabelVisible: waitsForExport(function (on) {
             if (disposed) return;
             labelOn = !!on;
             applyLabel();
-        },
+        }),
 
         /* § 12. The context below is built HERE, from this closure, and reaches
          * the exporter as an argument — which is why the handle needs no accessor
@@ -315,8 +384,20 @@ export async function mount(hostEl, opts) {
                 return Promise.reject(new Error(
                     "vibrationview: an export is already running"));
             }
+            // The caller's signal still cancels it, through the export's own.
+            // Every answer is the promise's, a signal that is not one included.
+            const stopRun = new AbortController();
+            const asked = opts || {};
+            try {
+                if (asked.signal && asked.signal.aborted) stopRun.abort();
+                else if (asked.signal) asked.signal.addEventListener("abort",
+                    function () { stopRun.abort(); }, { once: true });
+            } catch (e) {
+                return Promise.reject(e);
+            }
             exporting = true;
-            return runExport(opts, {
+            exportStop = stopRun;
+            return runExport(Object.assign({}, asked, { signal: stopRun.signal }), {
                 surface:  surface,
                 coordsAt: function (n) {
                     return positionsAtFrame(structure.positions, disp, amplitude,
@@ -335,20 +416,22 @@ export async function mount(hostEl, opts) {
                 pause:   stop,
                 play:    start,
                 redraw:  draw,
-            }).finally(function () { exporting = false; });
+            }).finally(function () {
+                exporting = false;
+                exportStop = null;
+                structureAhead = null;
+                const todo = waiting;
+                waiting = [];
+                todo.forEach(function (act) { act(); });
+            });
         },
 
-        /* NO HATCH FOR THE EXPORT, and that is deliberate.
-         *
-         * The export runs INSIDE this closure, which already
-         * holds the structure, the mode, the amplitude, the rate and the surface;
-         * § 12's door hands them over as arguments at call time and none of them
-         * escapes.
-         */
         dispose() {
             if (disposed) return;
+            if (exportStop) exportStop.abort();
             stop();
             disposed = true;
+            waiting = [];
             structure = null; disp = null;
             try { surface.dispose(); } catch (_) {}
             try { if (hostEl.classList) hostEl.classList.remove("vibview-window"); } catch (_) {}

@@ -289,7 +289,7 @@ Held inside one viewer, and nowhere else:
 | the current mode's per-atom displacement | `showMode` | the maths |
 | the amplitude | `setAmplitude` | the maths, the export stamp |
 | the frame rate, and the cycle length | `setFps` / `setCycleSec` | the clock, the export stamp |
-| the frame number, and whether it is running | `play` / `pause`, and the loop | the maths, the export stamp |
+| the frame number, and whether it is running | `play` / `pause`, and the loop | the maths; the export, which stops the clock and puts it back |
 | the normalization label | `showMode`, or `setAmplitude` with the size | the export stamp only |
 | the caption, and whether it is shown | `showMode` / `setLabelVisible` | the drawing (§ 12.3) |
 
@@ -355,10 +355,11 @@ three atoms, and reading them in order would move the right atoms the wrong ways
 names an atom the structure does not have, or more rows than there are atoms, is
 a mode computed against a different molecule. Filling the gap with zeros produces
 a molecule that animates — partially, plausibly, and wrongly. So the door says no,
-and nothing is drawn.
+and nothing of it is drawn — and the mode that was showing ends with it: the clock
+stops, its caption and its held-still marks go, and the structure stands at rest. An old mode's caption
+over a new pick would be a wrong label.
 
-The refusal is this module's (`index.js` `showMode`: the scatter refuses, the
-viewer warns and draws nothing). The spectra viewer hands each mode over without a
+The refusal is this module's. The spectra viewer hands each mode over without a
 count of its own (`lib/spectra/core.js` `_animationInputs`): this refusal is the
 guard, and an atom count would not be one — any two molecules of the same size
 pass it.
@@ -405,8 +406,8 @@ const vib = await mount(hostEl, { amplitude: 0.15, fps: 30, showLabel: true });
 
 **`mount` is asynchronous and always resolves.** The handle it returns is live: the
 surface is built, and every door works from the first call. There is no readiness
-callback, no readiness flag, and nothing to defer — a viewer that is not ready yet
-is a state a caller can get wrong, so it is not offered.
+callback and no readiness flag — a viewer that is not ready yet is a state a
+caller can get wrong, so it is not offered.
 
 **Failure is a handle, never a rejection and never `null`:**
 
@@ -456,7 +457,8 @@ dispose()                                  stop, release, empty
 Eleven doors. Every one is behaviour; none is a way to read the module's insides.
 `isPlaying` is the single exception and it earns its place: a play/pause button
 has to draw itself from somewhere, and the alternative is the host keeping a
-mirror of a fact it does not own.
+mirror of a fact it does not own. While an export runs, the doors that change
+the picture wait for it, and a new structure or a dispose cancels it (§ 12).
 
 There is deliberately **no `getMode`**. The caller passed the index in; handing it
 back would be a second place to believe something, for a caller that already knows.
@@ -815,6 +817,15 @@ every path out — success, failure, cancellation, and a viewer disposed part-wa
 through.** Playback is restored the same way: whatever it was before, it is again
 after.
 
+**While it runs, the viewer holds what the export was set to.** A mode shown, the
+amplitude, the rate or the cycle length, the caption switched, play or pause, a
+new structure, asked meanwhile, are taken at the call and applied when the export
+ends, in the order asked — so every frame, its caption and the stamped metadata
+are the export's, whatever the page did (§ 5.3). `showMode` answers at the call
+whether the mode fits the structure it will be shown against. A new structure
+ends the mode the export is of (§ 5.1), and with it a mode asked before it; a
+viewer disposed has nothing left to draw. Either cancels the export.
+
 **One export at a time.** A second `exportAnimation` while one is in flight is
 refused. Two captures would each resize the same canvas and each restore it to what
 *it* believed was the original, and the loser leaves the viewer wrong.
@@ -824,8 +835,9 @@ a five-second clip at 30 fps is 150 frames, and for a GIF each is copied off the
 canvas on the page's thread before the encoder's two workers encode it. Without
 progress there is nothing to show a user who is waiting;
 without cancellation there is no way out of a wait they did not want. A cancelled
-export **rejects rather than resolving** — it never hands back a short file, and the
-next export begins as though it had not happened.
+export **rejects rather than resolving**, however it ends — a cancel landing on its
+last frame included: it never hands back a file, short or whole, and the next
+export begins as though it had not happened.
 
 **The result names itself.** `filename` is derived from what the module knows — the
 mode index and the format, as in `vibration-mode-7.gif` — so the tab has a sensible
@@ -1099,7 +1111,7 @@ the package" — is review's ([`process/code-audit.md`](?doc=process/code-audit.
 | Level | Runs | Derived from | Shows |
 |---|---|---|---|
 | **Behaviour, no browser** | node | § 6, § 10 | the scatter and the positions at a phase — values in, values out, with no clock to fake |
-| **Boundary behaviour** | node, with a stand-in that obeys § 9.3 | § 5, § 7, § 10 | what each change costs, and that each level refuses what its "never" column forbids |
+| **Boundary behaviour** | node, with a stand-in for the drawing library — the boundary the module has — that draws what it is told and keeps where it put the atoms | § 5, § 7, § 10 | what each change costs, and that each level refuses what its "never" column forbids |
 | **End to end** | a real page | § 1, § 12 | clicking a mode makes it move; exporting produces a file that plays |
 
 ### What each rule obliges a test to show
@@ -1119,13 +1131,13 @@ the package" — is review's ([`process/code-audit.md`](?doc=process/code-audit.
 | § 5.4 — no chrome | a mounted viewer contains no heading, button, menu or control of any kind |
 | § 6.2 — `norm` is carried, not interpreted | changing `norm` changes the export's metadata and **nothing** about what is drawn |
 | § 6.3 — one partition | held-still atoms are exactly the complement of the basis; a mode with no basis holds nothing still; a basis that is not a sorted run still scatters each row to the right atom |
-| § 6.3 — a mode that does not fit is refused | a basis naming an atom the structure lacks, and a mode with more rows than atoms, are each turned away with nothing drawn — never padded with zeros into a partial animation |
+| § 6.3 — a mode that does not fit is refused | a basis naming an atom the structure lacks, and a mode with more rows than atoms, are each turned away with nothing of it drawn — never padded with zeros into a partial animation — and the mode that was showing ends: no clock, no caption, no held-still marks, the atoms at rest |
 | § 6.4 — it holds no structure | the handle offers no read of the structure, the mode's vectors, the mode's index, or the camera |
 | § 4 — no hatch, for anyone | the handle's keys are enumerated **unfiltered**: no accessor reaches the drawing surface or the internal state, and a test may not except one from the count |
 | § 8, § 9.3a — dispose gives the window back | opening and closing a viewer many times leaves on the page — listeners on the window, the document or an element still on it; live graphics contexts — what opening and closing it once left |
 | § 9.3a — a window taken is a new one | a viewer on the window another left — turned by the mouse, on another ground, closed in the middle of an export at another size on a transparent ground — draws, in a host of another size, the pixels a viewer on a new window draws: empty, and with a structure and a mode |
 | § 8 — mount always resolves | a mount that cannot build a surface still resolves with `ok === false` **and** a working `dispose`; nothing rejects and nothing returns null |
-| § 8 — the handle is live | every door works on the first call after `await`, with no readiness wait and nothing deferred |
+| § 8 — the handle is live | every door works on the first call after `await`, with no readiness wait |
 | § 9.2 — the knobs are live | amplitude, fps and cycle-length changes take effect on the next frame, issue no call to the drawing surface while the animation runs (a paused viewer is redrawn at once, so its still picture shows the change), and never stop a running animation |
 | § 9.2 — the phase is continuous | pause then play resumes on the frame it stopped on |
 | § 9.2 — a rate change keeps the phase | going to a rate whose frames per cycle are a whole multiple of the old moves the atoms not at all, and any other change moves them by at most half a frame of the new rate's phase — read off what is drawn, not off the frame number |
@@ -1144,8 +1156,11 @@ the package" — is review's ([`process/code-audit.md`](?doc=process/code-audit.
 | § 12 — the export records itself | the metadata carries the amplitude, the frame rate, the cycle length, the normalization, the resolution and the frame count that produced the file, read from the same places the animation reads |
 | § 12 — an export changes two things | the picture differs from the screen in size and background, and in nothing else — same maths, same amplitude, same rate, same style, same caption. **Not yet guarded**: what an export leaves alone is most of the module, and a check for it in the small is a check that passes by saying nothing |
 | § 12 — the surface is put back | after an export the drawing surface is the size and colour it was, and playback is what it was — on success, on failure, on cancel, and when the viewer is disposed part-way through |
+| § 12 — the viewer holds what the export was set to | a mode, an amplitude, the rate, the cycle length or the caption asked while an export runs reaches neither its frames nor their captions, a pause asked then is not undone by the export putting playback back, and each is applied when it ends |
+| § 12 — what waits is answered and taken at the call | a mode asked while an export runs is answered by the structure it will be shown against — a new structure asked before it, not the one being exported — and what the caller changes afterwards in what it handed over reaches nothing |
+| § 12 — a mode asked before a new structure ends with it | it is never drawn or exported on the new structure |
 | § 12 — one export at a time | a second export started while one is running is refused, and the running one finishes with the viewer restored exactly once |
-| § 12 — cancelling yields nothing | an aborted export rejects; it never returns a short file, and a second export after a cancelled one behaves as though the first never ran |
+| § 12 — cancelling yields nothing | an export cancelled — by the caller part-way or on its last frame, by the viewer disposed, by a new structure — rejects with the cancel's words, never a raw error, and returns no file; the next export behaves as though the cancelled one never ran |
 | § 12 — progress is honest | the reported fraction reaches 1 exactly when the last frame is encoded, and never for an export that failed |
 | § 12.2 — amplitude travels with its norm | the export's metadata carries both, and carries them for every format; neither is recorded without the other |
 | § 12.3 — the caption is in the file | a caption shown on screen appears in every exported frame; hidden, it appears in none — the export is not asked separately |
