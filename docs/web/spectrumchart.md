@@ -416,7 +416,9 @@ intensity spectrum wherever modes crowd (§ 9).
 **The marking is drawn in the plot**, as the picture shows: the `×` on the
 axis. It is not a label beside the chart or a banner above it — a chart made of
 one drawing surface stays a chart made of one drawing surface, and § 5.3's "no
-controls" holds without an exception carved for it.
+controls" holds without an exception carved for it. **While any mode has one,
+a note says what the `×` means**: one line on the same surface, in the strip
+above the plot area (§ 6.3.1).
 
 **A lane with nothing to draw says why across its own panel, and its axis
 names its quantity alone.** The reason — *not computed*, the caller's words
@@ -476,8 +478,11 @@ would get.
 answers *what would a click take*, which has no answer in a wide gap; the words
 answer *what am I near*, which has one everywhere. So the readout names the
 nearest mode — its number, its frequency, its strength if there is one — whether
-or not a click there would take it, and it is drawn in the plot rather than
-beside it (§ 6.2).
+or not a click there would take it, and it is drawn on the chart's surface
+rather than beside it (§ 6.2) — in the strip above the plot area, below the
+library's toolbar, which shows in the same corner on the same hover (§ 5.3)
+and never covers it; the note of § 6.2, when there is one, has a row of its
+own above it.
 
 Three rules keep it honest and cheap:
 
@@ -490,6 +495,10 @@ Three rules keep it honest and cheap:
   costs nothing at all; crossing a gap from one mode's side to the next
   changes the words alone, and the colours are not repainted to say so; pointing at the mode already chosen
   changes the words alone as well, because chosen outranks hovered.
+- **The choice shows where something is drawn.** Chosen and pointed-at are
+  shown once, in the first panel with something drawn — a panel waiting on a
+  strength, or with no band, is passed over; with none drawn, the first — and
+  a mode with no strength there lights up its × (§ 6.2), as a stick would.
 
 ### 6.4 An imaginary mode is drawn, marked, and left out of the curve
 
@@ -770,17 +779,19 @@ picture = {
         words,                                    // what the lane says across its own
                                                   // panel when it has nothing to draw
                                                   // (§ 6.2), or nothing
-        known,                                    // whether this channel has numbers yet
         positions,                                // true on the positions lane only:
                                                   // its heights carry no number
         sticks: { x: [...], y: [...], width: [...],
-                  state: ["plain" | "chosen" | "hovered" | "pending" | "imaginary", …] },
+                  state: ["plain" | "chosen" | "hovered" | "imaginary", …],
+                  imaginary: [true | false, …],   // marked apart in every lane (§ 6.4)
+                  pending: [true | false, …],     // no strength here: an ×, no stick (§ 6.2)
+                  value: [...] },                 // what `drawn` reads back (§ 8.3)
         curve:  { x: [...], y: [...] } | null,    // null when there is no curve
     }, …],
-    rug: { x: [...], cls: [...], index: [...] }   // EVERY mode, position only
+    rug: { x: [...], cls: [...] }                 // EVERY mode, position only
           | null,
     xTitle,                                       // the words on the shared axis
-    note,                                         // one line inside the plot, or nothing
+    note,                                         // what the × means, while one is drawn (§ 6.2), or nothing
     readout,                                      // the mode nearest the pointer
 }
 ```
@@ -851,7 +862,11 @@ of the same nine hex literals. The sealed layer reads **this module's own tokens
 so the sheet stays the one source of truth for how the chart looks.
 
 **`recolour` is the cheap door § 5.1 is about.** It exists so that the expensive
-one does not have to be called for a click.
+one does not have to be called for a click. Its states are one per mode, as the
+picture's, and land each on the mark the drawing gave its mode in the panel
+showing the choice (§ 6.3.1) — a stick, or the × of a mode with no strength
+there. Which modes are ×s is the picture's `pending`, a fact of the data, so
+it never moves with the pointer.
 
 **A click, and the pointer, are read off the surface rather than off a mark.** The drawing library reports
 a click only when the pointer is over one of *its own* points — so nothing it
@@ -1003,7 +1018,9 @@ Five rules, and they are the ones peculiar to *this* module:
   type — and every rule below reads them by name. Changing how the chart looks is
   changing that block, not hunting through the rules.
 - **It inherits nothing from the page.** Those values are the module's own, so
-  deleting every page stylesheet leaves the chart looking right. It matches the
+  deleting every page stylesheet leaves the chart looking right — its type
+  among them: the library's toolbar is a line of it, and the words above the
+  plot keep clear of the toolbar by its height (§ 6.3.1). It matches the
   app because its values were *chosen* to, not because it reads the app's — and
   the app has one palette, with no light/dark switch to follow. If that ever
   changes, what changes here is this one block.
@@ -1017,7 +1034,7 @@ Five rules, and they are the ones peculiar to *this* module:
   change the box while the window sits still. There are no media queries in the
   sheet: one surface filling one frame has nothing to re-arrange, so responding
   is one thing: redraw at the box's new size. Its one window-dependent value is
-  the frame's height, 34 % of the window's height, kept between 220 and 460 px.
+  the frame's height, 34 % of the window's height, kept between 252 and 460 px.
 
 **The repository's CSS conventions apply here as they do everywhere else** — one
 class per rule, no ids, no `!important`, no value written twice — and they are
@@ -1081,9 +1098,10 @@ the difference, because § 8.4 is the whole of what it asks of that library.
 | § 6.3 — a band is never a target too small to hit | where the axis is zoomed out enough that the width is worth less than 8 pixels, the band is 8 pixels instead |
 | § 6.3 — the nearest band wins | where bands overlap, a click reports the mode whose frequency is closest to it |
 | § 6.3 — the band bends, never the picture | where the floor overrides, the envelope drawn is still the envelope for the width that was set |
-| § 6.3.1 — the pointer shows what a click would take | moving over a band recolours that mode, and only it |
+| § 6.3.1 — the pointer shows what a click would take | moving over a band recolours that mode, and only it — its stick, or its × where it has no strength — past a mode with no strength too |
+| § 6.3.1 — the choice shows where something is drawn | with the first panel waiting on a strength, the chosen mode is coloured in the next panel that draws |
 | § 6.3.1 — and says what it is near, everywhere | at any position, including a gap where a click would take nothing, the words name the nearest mode |
-| § 6.3.1 — the words are drawn in the plot | the module's markup is still a frame and a surface: no text node is added beside the chart, and the plot leaves room above itself for the line |
+| § 6.3.1 — the words are drawn on the surface | the module's markup is still a frame and a surface: no text node is added beside the chart, and the plot leaves room above itself for the line, below the library's toolbar — the two never cover each other, nor the note's row the readout's, at any chart height or page font size |
 | § 6.3.1 — one label, not two | the drawing library shows no hover label of its own: a tooltip needing exact aim would say less than the readout and undo what the bands are for |
 | § 6.3.1 — pointing costs only what changed | sliding inside one band makes no call at all; a move that changes the words alone does not repaint a colour |
 | § 6.3.1 — what you picked does not flicker | a chosen mode keeps its colour under the pointer |
@@ -1111,7 +1129,7 @@ the difference, because § 8.4 is the whole of what it asks of that library.
 | § 8.3 — an empty click is silent | a click landing in no band calls `onSelect` **not at all** — not with `null` — and changes nothing on screen |
 | § 8.3 — refit redraws at the box's size | a chart whose box was zero-sized when drawn fills its box after `refit`, with no other call |
 | § 8.4 — the seal faces downward | what is drawn, how it is laid out and what the axes span cannot be read out of it; its one answer upward beside a click is the drawing as an image (`image`) |
-| § 8.4 — a picture carries words, never colours | the object handed down names states (`chosen`, `pending`, `imaginary`) and carries every axis title, unit and note; no colour and no mode index appears in it |
+| § 8.4 — a picture carries words, never colours | the object handed down names each mark's state in § 8.4's words and which modes have no strength, and carries every axis title, unit and note; no colour and no mode index appears in it. Review's: the picture passes between two files of the module, where no test can stand (§ 4) |
 | § 8.4 — a click asked for before the first draw still arrives | `onClick` then `draw` reports a click, in that order as well as the other |
 | § 8.4 — a click comes up as a position | the seal reports where the click landed on the frequency axis and nothing more; a click in empty space beside a peak still reaches the handle |
 | § 8.4 — appearance is the seal's | nothing above the seal names a colour, and the palette the seal uses comes from the module's own values (§ 11) — never from a page variable, never from a literal in the module |

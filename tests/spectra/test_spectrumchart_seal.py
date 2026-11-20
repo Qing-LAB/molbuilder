@@ -86,10 +86,17 @@ globalThis.__host = function (values) {
         "--spectrumchart-grid": "#222222",
         "--spectrumchart-stick": "#3333ff",
         "--spectrumchart-chosen": "#00ff00",
-        "--spectrumchart-curve": "#999999",
+        "--spectrumchart-edge": "#444444",
         "--spectrumchart-pending": "#666666",
         "--spectrumchart-imaginary": "#ff0000",
         "--spectrumchart-hovered": "#cccc00",
+        "--spectrumchart-lane-up": "#0066bb",
+        "--spectrumchart-lane-down": "#bb6600",
+        "--spectrumchart-rug-both": "#550055",
+        "--spectrumchart-rug-ir": "#bb6601",
+        "--spectrumchart-rug-raman": "#0066bc",
+        "--spectrumchart-rug-silent": "#777777",
+        "--spectrumchart-rug-partial": "#888888",
     };
     document.body.appendChild(host);
     return host;
@@ -99,14 +106,16 @@ globalThis.__host = function (values) {
 PICTURE = """
 const picture = {
     lanes: [{
-        key: "raman", direction: "up", title: "strength", known: true,
+        key: "raman", direction: "up", title: "strength", words: "",
         sticks: { x: [100, 200, 300], y: [1, 2, 3], width: [2, 2, 2],
-                  state: ["plain", "chosen", "imaginary"] },
+                  state: ["plain", "chosen", "imaginary"],
+                  imaginary: [false, false, true],
+                  pending: [false, false, false],
+                  value: [1, 2, 3] },
         curve: { x: [90, 100, 110], y: [0.1, 1.0, 0.1] },
     }],
     rug: { x: [100, 200, 300],
-           cls: ["raman-only", "both", "silent"],
-           index: [1, 2, 3] },
+           cls: ["raman-only", "both", "silent"] },
     xTitle: "frequency (cm-1)",
 };
 """
@@ -228,7 +237,7 @@ class TestTheDoors:
             "const host = globalThis.__host({"
             '"--spectrumchart-bg": "#abcabc", "--spectrumchart-ink": "#defdef",'
             '"--spectrumchart-stick": "#010101", "--spectrumchart-chosen": "#020202",'
-            '"--spectrumchart-imaginary": "#030303", "--spectrumchart-curve": "#040404",'
+            '"--spectrumchart-imaginary": "#030303",'
             '"--spectrumchart-grid": "#050505", "--spectrumchart-pending": "#060606"'
             "});\n"
             f"const S = await import({json.dumps(SEAL.resolve().as_uri())});\n"

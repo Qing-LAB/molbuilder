@@ -1,6 +1,7 @@
 /**
  * MODULE: spectrumchart — the handle, and the only way in.
- * CALLERS: any page that wants a vibrational spectrum. Today: the Spectrum tab.
+ * CALLERS: any page that wants a vibrational spectrum. Today: the spectra viewer
+ *          on the Results tab (`lib/spectra/core.js`).
  *
  * `mount` is the whole importable surface of this module. Everything else here
  * is reached through the object it hands back: seven doors in, one door that
@@ -39,10 +40,8 @@ const isFiniteNumber = (v) => typeof v === "number" && Number.isFinite(v);
  * learns what Raman or IR are, which is what leaves room for the next
  * one (the plan's spectral density) without editing it.
  *
- * `direction` is the only thing a channel says about LAYOUT: "up" and
- * "down" put it above or below the axis.  Both channels peak at the same
- * frequencies, so sharing one half-plane makes them collide -- and
- * absorption drawn downward reads the way absorption does. */
+ * `direction` picks the lane's colour; its panel is its place in the list
+ * (§ 8.2). */
 const normaliseChannel = (c, i) => ({
     key: String(c && c.key ? c.key : `channel${i}`),
     label: String(c && c.label ? c.label : "activity"),
@@ -164,15 +163,19 @@ export async function mount(host, options = {}) {
      * spectrum that has real Raman in it. */
     const strengthsKnown = () => channels.some((c) => laneKnown(c.key));
 
-    const stateOf = (mode, known, key) => (
+    /* NOT COMPUTED, in a lane whose channel has numbers (§ 6.2): the one
+     * reading of it, for the × marks and for the note that explains them. */
+    const pendingIn = (mode, known, key) => (
+        known && !mode.imaginary && valueIn(mode, key) === null);
+
+    const stateOf = (mode) => (
         // Chosen outranks hovered: what you picked should not flicker away under
         // the pointer. Hovered outranks the rest, and only while the pointer is
         // there.
         mode.index === selected ? "chosen"
             : mode.index === hovered ? "hovered"
                 : mode.imaginary ? "imaginary"
-                    : (known && valueIn(mode, key) === null) ? "pending"
-                        : "plain"
+                    : "plain"
     );
 
     const pictureNow = () => {
@@ -181,9 +184,10 @@ export async function mount(host, options = {}) {
             ? Math.max(...modes.map((m) => m.freq)) - Math.min(...modes.map((m) => m.freq))
             : 100;
         const stickWidth = Math.max(span, 1) / STICK_WIDTH_FRACTION;
-        const anyPending = channels.some(
-            (c) => laneKnown(c.key)
-                && modes.some((m) => !m.imaginary && valueIn(m, c.key) === null));
+        const anyPending = channels.some((c) => {
+            const known = laneKnown(c.key);
+            return modes.some((m) => pendingIn(m, known, c.key));
+        });
 
         /* The strongest REAL band in a channel, which two different
          * things need: the display floor is a fraction of it, and a
@@ -204,7 +208,6 @@ export async function mount(host, options = {}) {
         const rug = {
             x: modes.map((m) => m.freq),
             cls: modes.map((m) => (typeof m.cls === "string" ? m.cls : "partial")),
-            index: modes.map((m) => m.index),
         };
 
         /* NONE KNOWN: MODE POSITIONS (§ 6.2).  One lane, one line of one
@@ -221,14 +224,14 @@ export async function mount(host, options = {}) {
                     direction: "up",
                     title: "mode positions — no intensities",
                     words: "",
-                    known: false,
                     positions: true,
                     sticks: {
                         x: modes.map((m) => m.freq),
                         y: modes.map(() => 1),
                         width: modes.map(() => stickWidth),
-                        state: modes.map((m) => stateOf(m, false, null)),
+                        state: modes.map(stateOf),
                         imaginary: modes.map((m) => Boolean(m.imaginary)),
+                        pending: modes.map(() => false),
                     },
                     curve: null,
                 }],
@@ -283,7 +286,6 @@ export async function mount(host, options = {}) {
                  * an axis title only as long as its panel is tall. */
                 words: !known ? (absentWords[c.key] || "not computed")
                     : !hasBand ? "no band" : "",
-                known,
                 sticks: {
                     x: modes.map((m) => m.freq),
                     // A band not drawn stands at zero (above); `value`
@@ -292,12 +294,16 @@ export async function mount(host, options = {}) {
                     y: drawnValues.map((v) => (v === null ? 0 : v)),
                     value: drawnValues,
                     width: modes.map(() => stickWidth),
-                    state: modes.map((m) => stateOf(m, known, c.key)),
+                    state: modes.map(stateOf),
                     // WHICH MODE IS IMAGINARY, beside its state: the state
                     // says the selection first, and every lane marks an
                     // imaginary mode apart (§ 6.4), the ones showing no
                     // selection too.
                     imaginary: modes.map((m) => Boolean(m.imaginary)),
+                    // WHICH MODE HAS NO STRENGTH HERE: an ×, not a stick
+                    // (§ 6.2) -- a fact of the data, so which modes are
+                    // sticks never moves with the pointer or the choice.
+                    pending: modes.map((m) => pendingIn(m, known, c.key)),
                 },
                 /* The envelope is a sum over the bands that are drawn,
                  * so a filtered band must not keep contributing to it --
@@ -332,8 +338,7 @@ export async function mount(host, options = {}) {
      * that is already chosen is the everyday case: the answer changes, the
      * picture does not, and the cheapest call is the one not made. */
     const recolour = () => {
-        const key = channels.length ? channels[0].key : "activity";
-        const states = modes.map((m) => stateOf(m, laneKnown(key), key));
+        const states = modes.map(stateOf);
         const same = states.length === painted.length && states.every((s, i) => s === painted[i]);
         if (same && readout === shown) return;      // nothing on screen would differ
         painted = states;

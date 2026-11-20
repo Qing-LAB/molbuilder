@@ -3,7 +3,7 @@
  *
  * Contract: docs/web/spectrumchart.md § 11. Three blocks, in this order — the
  * root and its values, the frame, the surface. The repository's CSS conventions
- * (docs/archive/2026-09-01-css-system-plan.md) apply here as everywhere else and are not
+ * (docs/web/ui-contract.md § 1, § 2) apply here as everywhere else and are not
  * restated. Nothing outside this module may style a `spectrumchart-` name, and
  * nothing here styles anything else.
  */
@@ -20,9 +20,8 @@
     --spectrumchart-edge:      #2b313b;
     --spectrumchart-stick:     #7f9cc0;
     --spectrumchart-chosen:    #7cc4a4;   /* the selected mode */
-    --spectrumchart-curve:     #9aa6b8;
     /* strength not computed (§ 6.2).  TEXT as well as marks -- the note
-       inside the plot -- so it clears 4.5:1 on the chart's ground: 5.8. */
+       above the plot -- so it clears 4.5:1 on the chart's ground: 5.8. */
     --spectrumchart-pending:   #959ba7;
     --spectrumchart-imaginary: #d98c7a;   /* not at rest (§ 6.4) */
     --spectrumchart-hovered:   #b9c8dc;   /* the mode a click would pick right now */
@@ -33,8 +32,8 @@
        belongs to which, so the axis title, its ticks and its curve all
        take the same value.  Chosen to read apart at low saturation rather
        than to compete -- the selection colour still has to win over both. */
-    --spectrumchart-lane-up:   #7aa6d2;   /* upper half-plane (Raman today) */
-    --spectrumchart-lane-down: #d2a06a;   /* lower half-plane (IR today)    */
+    --spectrumchart-lane-up:   #7aa6d2;   /* a channel declared "up" (Raman today) */
+    --spectrumchart-lane-down: #d2a06a;   /* one declared "down" (IR today)        */
 
     /* The rug's four classes.  These are the ONLY place a mode active in
        neither channel is visible, so "silent" must be legible rather than
@@ -57,7 +56,15 @@
     --spectrumchart-hairline:  1px;
     --spectrumchart-radius:    6px;
     --spectrumchart-pad:       8px;
-    --spectrumchart-height:    clamp(220px, 34vh, 460px);
+    /* At its floor, two panels keep the height they had before the strip
+       above the plot grew to a row each for the readout and the note. */
+    --spectrumchart-height:    clamp(252px, 34vh, 460px);
+    /* THE TYPE AROUND THE DRAWING, the app's body type.  The library's
+       toolbar is a line of it, so its height -- and the strip the words
+       above the plot keep clear of it, measured under this type (_seal.js)
+       -- is the module's, never the page's font size. */
+    --spectrumchart-type-size:    16px;
+    --spectrumchart-type-leading: 1.5;
 }
 
 /* --- 2. the frame: the box the chart lives in ---------------------------- */
@@ -72,6 +79,8 @@
     border: var(--spectrumchart-hairline) solid var(--spectrumchart-edge);
     border-radius: var(--spectrumchart-radius);
     background: var(--spectrumchart-bg);
+    font-size: var(--spectrumchart-type-size);
+    line-height: var(--spectrumchart-type-leading);
     /* Nothing drawn inside may spill across whatever sits beside it. */
     overflow: hidden;
 }

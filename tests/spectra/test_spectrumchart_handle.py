@@ -65,9 +65,13 @@ globalThis.__host = function () {
     host._customProps = {
         "--spectrumchart-bg": "#111111", "--spectrumchart-ink": "#eeeeee",
         "--spectrumchart-grid": "#222222", "--spectrumchart-stick": "#3333ff",
-        "--spectrumchart-chosen": "#00ff00", "--spectrumchart-curve": "#999999",
+        "--spectrumchart-chosen": "#00ff00", "--spectrumchart-edge": "#444444",
         "--spectrumchart-pending": "#666666", "--spectrumchart-imaginary": "#ff0000",
         "--spectrumchart-hovered": "#cccc00",
+        "--spectrumchart-lane-up": "#0066bb", "--spectrumchart-lane-down": "#bb6600",
+        "--spectrumchart-rug-both": "#550055", "--spectrumchart-rug-ir": "#bb6601",
+        "--spectrumchart-rug-raman": "#0066bc", "--spectrumchart-rug-silent": "#777777",
+        "--spectrumchart-rug-partial": "#888888",
     };
     document.body.appendChild(host);
     return host;
@@ -259,6 +263,77 @@ def test_the_chosen_mode_is_the_one_the_caller_named():
     assert calls[-1]["update"]["marker.color"] == [["#3333ff", "#00ff00", "#3333ff"]]
 
 
+#: A lane whose second mode has no strength yet: it is marked, not a stick.
+WITH_A_PENDING_MODE = [
+    {"index": 1, "freq": 100.0, "values": {"activity": 4.0}},
+    {"index": 2, "freq": 300.0},
+    {"index": 3, "freq": 500.0, "values": {"activity": 9.0}},
+    {"index": 4, "freq": 900.0, "values": {"activity": 2.0}},
+]
+
+
+def test_the_highlight_lands_on_its_own_mark_past_a_mode_with_no_strength():
+    """§ 6.3.1: "moving over a band recolours that mode, and only it", and a
+    chosen mode is drawn as chosen (§ 8.3) -- each on its own mark: its
+    stick, or, for a mode with no strength in the lane, its × (§ 6.2), which
+    stands through a redraw while it is chosen.
+
+    THE SILENT FAILURE: the chosen colour one stick to the side of the mode
+    the table shows, the pointer's colour on a neighbour."""
+    got = drive(
+        "chart.setModes(MODES);\nchart.setBroadening(20);\n"
+        "const last = (call) => __calls.filter(c => c.call === call).pop();\n"
+        "const traces = () => last('react').traces;\n"
+        "const at = { bars: traces().findIndex(t => t.type === 'bar'),\n"
+        "             marks: traces().findIndex(t => t.marker && t.marker.symbol === 'x') };\n"
+        "const xs = { bars: traces()[at.bars].x, marks: traces()[at.marks].x };\n"
+        "const painted = () => { const r = last('restyle');\n"
+        "  return { on: r.indices, colours: r.update['marker.color'] }; };\n"
+        "chart.setSelected(3);\nconst chosen = painted();\n"
+        "__move(host, 905);\nconst hovered = painted();\n"
+        "__move(host, 305);\nconst overMark = painted();\n"
+        "chart.setSelected(2);\nconst markChosen = painted();\n"
+        "chart.setBroadening(30);\n"
+        "const after = traces().find(t => t.marker && t.marker.symbol === 'x');\n"
+        "console.log(JSON.stringify({ at, xs, chosen, hovered, overMark, markChosen,\n"
+        "  after: after.marker.color }));",
+        modes=WITH_A_PENDING_MODE,
+    )
+    plain, chosen, hovered, pending = "#3333ff", "#00ff00", "#cccc00", "#666666"
+    assert got["xs"] == {"bars": [100, 500, 900], "marks": [300]}
+    on = [got["at"]["bars"], got["at"]["marks"]]
+    assert got["chosen"] == {"on": on, "colours": [[plain, chosen, plain], [pending]]}
+    assert got["hovered"] == {"on": on, "colours": [[plain, chosen, hovered], [pending]]}
+    assert got["overMark"] == {"on": on, "colours": [[plain, chosen, plain], [hovered]]}, (
+        "the pointer over the mode with no strength lit a stick, not its ×")
+    assert got["markChosen"] == {"on": on, "colours": [[plain, plain, plain], [chosen]]}
+    assert got["after"] == [chosen], "the chosen ×'s colour went at a redraw"
+
+
+def test_the_choice_shows_in_the_first_panel_that_draws():
+    """§ 6.3.1: chosen is shown once, "in the first panel with something
+    drawn" -- the spectrum page's Raman lane waiting on a laser above a drawn
+    infrared lane (`web/spectra.md` § 3.3).
+
+    THE SILENT FAILURE: the choice painted on the empty panel's invisible
+    sticks, and nothing on the chart saying which mode is picked.  Its plain
+    sticks keep their channel's colour."""
+    got = drive(
+        "const two = await mount(globalThis.__host(), { channels: [\n"
+        "  { key: 'raman', label: 'Raman', unit: 'A4/amu', direction: 'up' },\n"
+        "  { key: 'ir', label: 'IR', unit: 'km/mol', direction: 'down' }] });\n"
+        "two.setModes([{ index: 1, freq: 100, values: { ir: 4 } },\n"
+        "              { index: 2, freq: 500, values: { ir: 9 } }]);\n"
+        "const traces = __calls.filter(c => c.call === 'react').pop().traces;\n"
+        "const irBars = traces.findIndex(t => t.type === 'bar' && t.yaxis === 'y2');\n"
+        "two.setSelected(2);\n"
+        "const r = __calls.filter(c => c.call === 'restyle').pop();\n"
+        "console.log(JSON.stringify({ irBars, on: r.indices,\n"
+        "  colours: r.update['marker.color'][0] }));")
+    assert got["on"] == [got["irBars"]], got
+    assert got["colours"] == ["#bb6600", "#00ff00"], got
+
+
 def test_the_selection_is_recorded_before_any_modes_exist():
     """§ 8.3 — order does not matter, and a mirror that refused would drift."""
     calls = drive(
@@ -428,7 +503,8 @@ def test_a_mode_with_no_strength_is_marked_not_drawn_at_zero():
     )
     react = last_react(calls)
     bars = [t for t in react["traces"] if t["type"] == "bar"][0]
-    marks = [t for t in react["traces"] if t.get("mode") == "markers"]
+    marks = [t for t in react["traces"]
+             if (t.get("marker") or {}).get("symbol") == "x"]
     assert bars["x"] == [100]                    # the one with a strength
     assert marks and marks[0]["x"] == [500]      # the other is marked, not zero
     assert marks[0]["marker"]["symbol"] == "x"
@@ -562,7 +638,7 @@ def test_the_host_is_never_resized_by_the_module():
 def test_the_entry_resolves_by_the_path_the_page_uses():
     """§ 4 — one entry point, reached the way a browser reaches it.
 
-    The unit tests above import by file path; the Spectrum tab imports
+    The unit tests above import by file path; the spectra viewer imports
     "/static/lib/spectrumchart/index.js". This walks the real module graph
     through that specifier, so a wrong relative import inside the package
     fails here rather than in a browser.
@@ -635,8 +711,11 @@ def readouts(calls):
     out = []
     for c in calls:
         if c["call"] == "react":
-            notes = c["layout"]["annotations"]
-            out.append(notes[-1]["text"] if notes else "")
+            # The readout is the line at the right; a note and a lane's
+            # words stand elsewhere.
+            notes = [a for a in c["layout"]["annotations"]
+                     if a.get("xanchor") == "right"]
+            out.append(notes[0]["text"] if notes else "")
         elif c["call"] == "relayout":
             out.extend(v for k, v in c["patch"].items() if "text" in k)
     return out
@@ -655,7 +734,7 @@ def test_the_mode_nearest_the_pointer_is_named_at_every_position():
     assert got == [
         # No channels declared at mount, so the lane has no unit to name
         # -- the number stands alone.  A caller that declares units (the
-        # Spectrum tab does) gets them here.
+        # spectra viewer does) gets them here.
         "mode 1  ·  100.0 cm⁻¹  ·  4.00",
         "mode 3  ·  900.0 cm⁻¹  ·  2.00",
     ]
@@ -684,7 +763,7 @@ def test_leaving_the_plot_takes_the_words_with_it():
     assert got == [""]
 
 
-def test_the_readout_is_drawn_in_the_plot_not_beside_it():
+def test_the_readout_is_drawn_on_the_surface_not_beside_it():
     """§ 6.2 — the module's markup is a frame and a surface; every word the user
     reads is drawn on the surface."""
     got = drive(

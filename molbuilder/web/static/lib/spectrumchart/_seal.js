@@ -79,7 +79,6 @@ function paletteOf(win, frame) {
         grid: read("--spectrumchart-grid"),
         stick: read("--spectrumchart-stick"),
         chosen: read("--spectrumchart-chosen"),
-        curve: read("--spectrumchart-curve"),
         pending: read("--spectrumchart-pending"),
         imaginary: read("--spectrumchart-imaginary"),
         hovered: read("--spectrumchart-hovered"),
@@ -110,13 +109,30 @@ const laneColourFor = (direction, palette) => (
     direction === "down" ? palette.laneDown : palette.laneUp
 );
 
-const colourFor = (state, palette) => (
+/* A mark's colour, from its state's word -- a plain one taking the plain
+ * colour it is given; an × of a mode with no strength, the pending colour
+ * (§ 6.2). */
+const colourFor = (state, palette, plain) => (
     state === "chosen" ? palette.chosen
         : state === "hovered" ? palette.hovered
             : state === "imaginary" ? palette.imaginary
-                : state === "pending" ? palette.pending
-                    : palette.stick
+                : plain
 );
+const markColourFor = (state, palette) => colourFor(state, palette, palette.pending);
+
+/* THE WORDS ON THE SURFACE -- tick labels, titles, the readout, the note, a
+ * lane's reason -- in one size, which the strip's rows below are measured
+ * against. */
+const WORDS_PX = 11;
+
+/* THE STRIP ABOVE THE PLOT, in pixels, measured 2026-11-19 (plotly.js 4,
+ * under the module's own type, § 11): the library's toolbar ends 28 px down;
+ * a line of WORDS_PX words stands at most 15 px tall in any of the library's
+ * fonts, so a row is 16, a pixel between rows; and 2 more keep the first
+ * row's box off the toolbar's edge. */
+const TOOLBAR_PX = 28;
+const LINE_PX = 16;
+const GAP_PX = 2;
 
 /**
  * Build the drawing surface inside `host` and return its doors (§ 8.4).
@@ -141,29 +157,32 @@ export async function openSurface(host) {
 
     const palette = paletteOf(win, frame);
 
-    /* Everything the user reads is drawn IN the plot (§ 6.2): the pending note on
-     * the left, the pointer's readout on the right, and a lane's reason across
-     * the middle of its own panel. None is a text node beside the chart, which
-     * is what keeps a chart one drawing surface.
+    /* Everything the user reads is drawn ON THE SURFACE (§ 6.2): the
+     * pointer's readout at the right on the plot's top edge, the pending
+     * note at the left on its own line above it, and a lane's reason across
+     * the middle of its own panel. None is a text node beside the chart,
+     * which is what keeps a chart one drawing surface.
      *
      * The ORDER is fixed -- the note when there is one, then the readout, then
      * the lanes' words -- because `recolour` reaches the readout by index. */
     const annotationsFor = (picture) => {
-        const at = (text, x, anchor, colour) => ({
+        // `line` rows up from the plot's top edge -- see `t` in layoutFor.
+        const at = (text, x, anchor, colour, line) => ({
             text, showarrow: false,
-            xref: "paper", yref: "paper", x, y: 1.04,
-            xanchor: anchor, font: { color: colour, size: 11 },
+            xref: "paper", yref: "paper", x, y: 1, yanchor: "bottom",
+            yshift: line * LINE_PX,
+            xanchor: anchor, font: { color: colour, size: WORDS_PX },
         });
         const out = [];
-        if (picture.note) out.push(at(picture.note, 0, "left", palette.pending));
-        out.push(at(picture.readout || "", 1, "right", palette.ink));   // always present, may be empty
+        if (picture.note) out.push(at(picture.note, 0, "left", palette.pending, 1));
+        out.push(at(picture.readout || "", 1, "right", palette.ink, 0));   // always present, may be empty
         (picture.lanes || []).forEach((lane, i) => {
             if (!lane.words) return;
             out.push({
                 text: lane.words, showarrow: false,
                 xref: "paper", x: 0.5, xanchor: "center",
                 yref: `${axisRefFor(i)} domain`, y: 0.5, yanchor: "middle",
-                font: { color: palette.pending, size: 11 },
+                font: { color: palette.pending, size: WORDS_PX },
             });
         });
         return out;
@@ -172,14 +191,17 @@ export async function openSurface(host) {
     const layoutFor = (picture) => ({
         paper_bgcolor: palette.bg,
         plot_bgcolor: palette.bg,
-        font: { color: palette.ink, size: 11 },
-        /* `t` is room above the plot for the two lines that live there:
-         * the note on the left, the pointer's readout on the right
-         * (§ 6.2).  With less, both would sit in the margin's edge and
-         * be clipped.
+        font: { color: palette.ink, size: WORDS_PX },
+        /* `t` IS THE STRIP ABOVE THE PLOT (§ 6.2, § 6.3.1): the library's
+         * toolbar, which shows in the top-right corner on the same hover as
+         * the readout (§ 5.3); then the readout's row on the plot's top
+         * edge; then, while a strength is not computed, the note's row above
+         * it.  A row each, so no two cover one another at any width; rows in
+         * pixels, so they hold at any chart height.
          *
          * `r` is bare, because both axes are on the LEFT. */
-        margin: { l: 58, r: 14, t: 30, b: 40 },
+        margin: { l: 58, r: 14, b: 40,
+                  t: TOOLBAR_PX + GAP_PX + LINE_PX * (picture.note ? 2 : 1) },
         showlegend: false,
         /* No hover labels from the library. The chart carries its own readout,
          * which names the nearest mode wherever the pointer is (§ 6.3.1) -- a
@@ -241,9 +263,7 @@ export async function openSurface(host) {
      * read as two measurements of one sample, where a left/right pair
      * reads as one plot with a trick in it.
      *
-     * The panels are stacked in lane order, so a lane declared "down"
-     * sits below -- the direction decides position, and is not a sign on
-     * the numbers.
+     * The panels are stacked in lane order (§ 8.2).
      *
      * Plotly's domain runs bottom-to-top, so the FIRST lane takes the
      * upper band and the last takes the lower one. */
@@ -299,26 +319,26 @@ export async function openSurface(host) {
             zeroline: false,
             anchor: axisRefFor(Math.max(0, lanes.length - 1)),
         };
-        lanes.forEach((_, i) => {
-            if (i < lanes.length - 1) {
-                out[axisKeyFor(i)].matches = undefined;
-            }
-        });
         return out;
     };
 
-    /* Which trace holds the selectable sticks; set by `tracesFor`,
-     * read by `recolour`, which must reach the same one. */
-    let stickTraceIndex = 0;
+    /* Where the selection is shown -- its lane's bar trace, its × trace
+     * (-1 when it has none), which of its modes are ×s and its plain
+     * colour; set by `tracesFor`, read by `recolour`, which must colour the
+     * same marks. */
+    let chosenOn = { bars: 0, marks: -1, pending: [], plain: "" };
 
     const tracesFor = (picture) => {
         const lanes = picture.lanes || [];
         const traces = [];
-        /* Trace order is FIXED, because `recolour` reaches back into the
-         * sticks by index and a layout that reordered them would recolour
-         * the wrong thing.  Per lane: curve, then sticks, then the marks
-         * for modes with no height.  The rug goes last, on top. */
-        let firstSticks = -1;
+        /* Per lane, the curve and then the sticks; then the rug in every
+         * panel; the ×s last, over the rug's ticks at the same place and
+         * unclipped at the axis they sit on, so a lit one is seen whole. */
+        const markTraces = [];
+        /* THE SELECTION IS SHOWN ONCE, in the first panel with something
+         * drawn -- one waiting on a strength, or with no band, is passed
+         * over -- and in the first panel when none has (§ 6.3.1). */
+        const chosenLane = Math.max(0, lanes.findIndex((l) => !l.words));
 
         lanes.forEach((lane, laneIndex) => {
             /* Each lane draws in its own panel, upright: a channel is
@@ -327,7 +347,6 @@ export async function openSurface(host) {
              * an axis that reads 0 upward is one less thing between a
              * reader and the value. */
             const axis = axisRefFor(laneIndex);
-            const sign = 1;
             const laneColour = laneColourFor(lane.direction, palette);
 
             if (lane.curve) {
@@ -335,7 +354,7 @@ export async function openSurface(host) {
                     type: "scatter",
                     mode: "lines",
                     x: lane.curve.x,
-                    y: lane.curve.y.map((v) => v * sign),
+                    y: lane.curve.y,
                     yaxis: axis,
                     line: { color: laneColour, width: 1.5 },
                     /* A filled envelope is what lets two channels overlap
@@ -347,47 +366,55 @@ export async function openSurface(host) {
                 });
             }
 
-            const pending = [];
-            const drawn = { x: [], y: [], width: [], colour: [] };
+            /* The panel showing the selection colours its marks by their
+             * states; the others mark only an imaginary mode apart (§ 6.4).
+             * A plain stick is the stick colour in the first panel and its
+             * channel's own colour in any other, so the panels stay legible. */
+            const showsChoice = laneIndex === chosenLane;
+            const plain = laneIndex === 0 ? palette.stick : laneColour;
+            const pending = lane.sticks.pending;
+            const stateAt = (i) => (showsChoice ? lane.sticks.state[i]
+                : lane.sticks.imaginary[i] ? "imaginary" : "plain");
+            /* A MODE WITH NO STRENGTH IN THE LANE IS NO STICK (§ 6.2): its
+             * mark is an × on the axis, lit as a stick would be. */
+            const bars = { x: [], y: [], width: [], colour: [] };
+            const marks = { x: [], colour: [] };
             lane.sticks.x.forEach((x, i) => {
-                if (lane.sticks.state[i] === "pending") { pending.push(x); return; }
-                drawn.x.push(x);
-                drawn.y.push(lane.sticks.y[i] * sign);
-                drawn.width.push(lane.sticks.width[i]);
-                /* The FIRST lane keeps the selection colours -- it is the
-                 * one `recolour` can reach, and the one the mode table is
-                 * ordered by.  A second lane is drawn in its channel's own
-                 * colour so the panels stay legible; selection is shown
-                 * once, not twice -- and an imaginary mode is marked apart
-                 * in it too (§ 6.4). */
-                drawn.colour.push(firstSticks < 0
-                    ? colourFor(lane.sticks.state[i], palette)
-                    : (lane.sticks.imaginary && lane.sticks.imaginary[i])
-                        ? palette.imaginary : laneColour);
+                if (pending[i]) {
+                    marks.x.push(x);
+                    marks.colour.push(markColourFor(stateAt(i), palette));
+                    return;
+                }
+                bars.x.push(x);
+                bars.y.push(lane.sticks.y[i]);
+                bars.width.push(lane.sticks.width[i]);
+                bars.colour.push(colourFor(stateAt(i), palette, plain));
             });
 
-            if (firstSticks < 0) firstSticks = traces.length;
+            if (showsChoice) {
+                chosenOn = { bars: traces.length, marks: -1,
+                             pending: pending.slice(), plain };
+            }
             traces.push({
                 type: "bar",
-                x: drawn.x,
-                y: drawn.y,
-                width: drawn.width,
+                x: bars.x,
+                y: bars.y,
+                width: bars.width,
                 yaxis: axis,
-                marker: { color: drawn.colour },
+                marker: { color: bars.colour },
                 hoverinfo: "skip",
             });
 
-            if (pending.length) {
-                traces.push({
-                    type: "scatter",
-                    mode: "markers",
-                    x: pending,
-                    y: pending.map(() => 0),
-                    yaxis: axis,
-                    marker: { color: palette.pending, symbol: "x", size: 7 },
-                    hoverinfo: "skip",
-                });
-            }
+            if (marks.x.length) markTraces.push({ showsChoice, trace: {
+                type: "scatter",
+                mode: "markers",
+                x: marks.x,
+                y: marks.x.map(() => 0),
+                yaxis: axis,
+                cliponaxis: false,
+                marker: { color: marks.colour, symbol: "x", size: 7 },
+                hoverinfo: "skip",
+            } });
         });
 
         /* EVERY MODE, POSITION ONLY.  Ticks on the zero line, one per
@@ -426,7 +453,10 @@ export async function openSurface(host) {
                 hoverinfo: "skip",
             });
         }
-        stickTraceIndex = firstSticks < 0 ? 0 : firstSticks;
+        markTraces.forEach(({ showsChoice, trace }) => {
+            if (showsChoice) chosenOn.marks = traces.length;
+            traces.push(trace);
+        });
         return traces;
     };
 
@@ -538,9 +568,9 @@ export async function openSurface(host) {
     return {
         draw(picture) {
             if (disposed) return;
-            // `tracesFor` records which trace holds the selectable
-            // sticks as it builds them -- with lanes, a rug and optional
-            // curves the position is not guessable from outside.
+            // `tracesFor` records where the selection is shown as it
+            // builds the traces -- with lanes, a rug and optional curves
+            // the position is not guessable from outside.
             const traces = tracesFor(picture);
             readoutIndex = picture.note ? 1 : 0;
             lastReadout = picture.readout || "";
@@ -563,11 +593,20 @@ export async function openSurface(host) {
          * an unchanged readout when only the colours did. No rebuild, no axis. */
         recolour(states, readout) {
             if (disposed) return;
-            if (states) Plotly.restyle(
-                surface,
-                { "marker.color": [states.map((s) => colourFor(s, palette))] },
-                [stickTraceIndex],
-            );
+            if (states) {
+                // Each state on the mark the drawing gave its mode there: a
+                // stick, or the × of a mode with no strength.
+                const on = chosenOn;
+                const of = (isMark) => states.filter(
+                    (_, i) => Boolean(on.pending[i]) === isMark);
+                const colours = [of(false).map((s) => colourFor(s, palette, on.plain))];
+                const traces = [on.bars];
+                if (on.marks >= 0) {
+                    colours.push(of(true).map((s) => markColourFor(s, palette)));
+                    traces.push(on.marks);
+                }
+                Plotly.restyle(surface, { "marker.color": colours }, traces);
+            }
 
             /* The words move with the colours: both belong to the pointer, and
              * both are cheap. Only the text of one annotation changes, so this

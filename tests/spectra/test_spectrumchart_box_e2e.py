@@ -1,4 +1,4 @@
-"""The chart's box rule, measured after the cascade rather than read off it.
+"""The chart's box, and the words above its plot, measured in a real browser.
 
 `spectrumchart.md` § 11: *"The frame states its size; the surface fills it,
 carries no padding, and never spills past it."*  All three from real breakage
@@ -60,7 +60,7 @@ def test_the_frame_states_its_size_and_the_surface_carries_no_padding(
         const out = {surface: pad(surf),
                      overflow: cs.overflow,
                      // WHERE THE NUMBER CAME FROM, which is the whole claim.
-                     // The token is `clamp(220px, 34vh, 460px)`, so its raw
+                     // The token is `clamp(252px, 34vh, 460px)`, so its raw
                      // text can never equal a resolved `cs.height`: a PROBE
                      // is given that height and the browser resolves it, and
                      // the two resolved numbers are what get compared.
@@ -107,3 +107,87 @@ def test_the_frame_states_its_size_and_the_surface_carries_no_padding(
     assert got["overflow"] == "hidden", (
         f"the frame computes overflow:{got['overflow']} -- a drawing that "
         f"exceeds it spills across whatever sits beside it")
+
+
+#: (what, the window's height, the page's font size, the chart's width,
+#: whether a mode waits on its strength): 1400 and 600 px windows put the
+#: frame at its height's ceiling and floor (§ 11); a large page font is what
+#: the toolbar must not take its height from; a mode waiting draws the note's
+#: row; and a narrow chart puts the note and the readout side by side.
+STRIPS = [
+    ("a tall window", 1400, None, 900, False),
+    ("a short window", 600, None, 900, False),
+    ("a large page font", 1400, "24px", 900, False),
+    ("a mode waiting on its strength", 600, None, 900, True),
+    ("a narrow chart, a mode waiting", 900, None, 400, True),
+]
+
+
+@pytest.mark.parametrize("what, height, page_font, width, waits", STRIPS,
+                         ids=[s[0] for s in STRIPS])
+def test_the_words_above_the_plot_keep_clear_of_the_toolbar(
+        page, flask_server, what, height, page_font, width, waits):
+    """§ 6.3.1: the line naming the mode nearest the pointer is drawn on the
+    chart's surface, "in the strip above the plot area, below the library's
+    toolbar, which shows in the same corner on the same hover (§ 5.3) and
+    never covers it; the note of § 6.2 ... has a row of its own above it".
+
+    THE SILENT FAILURE: on a tall window the readout climbed under the
+    toolbar and its words were covered as the pointer moved; beside the note
+    on a narrow chart the two lines wrote over each other."""
+    page.set_viewport_size({"width": 1200, "height": height})
+    page.goto(f"{flask_server}/results")
+    page.evaluate("""async ([font, width, waits]) => {
+        if (font) {
+            document.documentElement.style.fontSize = font;
+            document.body.style.fontSize = font;
+        }
+        const m = await import("/static/lib/spectrumchart/index.js");
+        const host = document.createElement("div");
+        host.id = "readout-probe";
+        host.style.width = width + "px";
+        document.body.prepend(host);
+        const chart = await m.mount(host);
+        chart.setModes([
+            { index: 1, freq:  323.5, values: { activity:  2.9 } },
+            { index: 2, freq:  826.6, values: { activity:  5.4 } },
+            { index: 3, freq: 1131.8, values: { activity: 12.9 } },
+        ].concat(waits ? [{ index: 4, freq: 1490.0 }] : []));
+        chart.setBroadening(20);
+    }""", [page_font, width, waits])
+    area = page.locator("#readout-probe .nsewdrag").bounding_box()
+    page.mouse.move(area["x"] + area["width"] * 0.6, area["y"] + area["height"] / 2)
+    page.wait_for_function("""() => [...document.querySelectorAll(
+        '#readout-probe .annotation-text')].some((t) => /mode \\d/.test(t.textContent))""")
+    got = page.evaluate("""() => {
+        const box = (el) => { const r = el.getBoundingClientRect();
+                              return { top: r.top, bottom: r.bottom,
+                                       left: r.left, right: r.right }; };
+        const said = (re) => [...document.querySelectorAll(
+            '#readout-probe .annotation-text')].find((t) => re.test(t.textContent));
+        const bar = document.querySelector('#readout-probe .modebar');
+        const note = said(/not computed/);
+        return { readout: box(said(/mode \\d/)), note: note && box(note),
+                 toolbar: bar && box(bar),
+                 surface: box(document.querySelector('#readout-probe .spectrumchart-surface')),
+                 plot: box(document.querySelector('#readout-probe .nsewdrag')) };
+    }""")
+    readout, note, toolbar = got["readout"], got["note"], got["toolbar"]
+    surface, plot = got["surface"], got["plot"]
+    apart = lambda a, b: (a["bottom"] <= b["top"] or b["bottom"] <= a["top"]
+                          or a["right"] <= b["left"] or b["right"] <= a["left"])
+    assert toolbar, "no toolbar drawn to keep clear of"
+    assert apart(readout, toolbar), (
+        f"on {what} the toolbar {toolbar} covers the readout {readout}")
+    assert bool(note) == waits, f"on {what} the note is {'missing' if waits else 'drawn'}"
+    if waits:
+        assert apart(note, toolbar), f"on {what} the toolbar {toolbar} covers the note {note}"
+        assert apart(note, readout), (
+            f"on {what} the note {note} and the readout {readout} overlap")
+    for name, line in (("readout", readout), ("note", note)):
+        if not line:
+            continue
+        assert surface["top"] <= line["top"], (
+            f"on {what} the {name} {line} is cut off above the surface {surface}")
+        assert line["bottom"] <= plot["top"], (
+            f"on {what} the {name} {line} is inside the plot {plot}")
