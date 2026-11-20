@@ -258,7 +258,9 @@ of dashes.
 to show are *small*: in the BDT result, mode 1's HOMO moves **0.018 meV** between
 −A and +A, against an 11.4 eV span of drawn levels. That is 1/4000 of a pixel —
 literally invisible at full scale. So the figure opens on the whole picture and
-then **scroll to zoom the energy axis, drag to pan, double-click to fit**. The
+then **scroll to zoom the energy axis, drag to pan, double-click to fit** — the
+zoom kept while a run being followed brings more of the result, another mode
+or a load opening on the whole picture again. The
 energy axis is free; the horizontal axis is locked, because it is three
 geometries rather than a quantity and there is nothing between them.
 
@@ -518,8 +520,12 @@ and greys out frozen atoms).
 > Different modules, different jobs.
 
 **The mode box belongs to one result.** It is built the first time a mode is
-shown, kept while you move between that result's modes, and built afresh against
-the new structure when another result loads. Putting the panel away releases it,
+shown and kept while the result is on screen — while you move between its
+modes, and while a run being followed brings more of it, so the camera stays
+where you put it and an export running goes on; a load gives it its structure
+afresh, refitted. A mode it cannot
+show — its motion does not fit the structure on screen — is said in words
+under it, where the swing line would be. Putting the panel away releases it,
 so opening and closing spectra any number of times leaves on the page what one
 open and close left ([`vibrationview.md`](?doc=web/vibrationview.md) § 8). That
 includes a box still being built when the panel goes. Building it is
@@ -900,7 +906,7 @@ step 3) — and each engine's own
 (`GET /api/build/schema/<engine>?calculation=vibration&surface=own`).
 Frozen atoms travel with the structure, never as a form field (§ 8).
 
-## 7. Live updating, and what a refresh does
+## 7. Live updating, and what a reload does
 
 The file is the one picked in the Results tab's dropdown — the only route; a
 second way to name a file would be a second answer to which file is shown
@@ -924,21 +930,26 @@ stopped between phases says so on the status line, in the run's own words.
 A phase flag never stops the poll: a run killed mid-phase states no
 completion, and only the run's state says it has ended.
 
-**Coming back to the tab loads the file on screen once more**, live run or
-not, so a phase written while you were away is drawn; coming back is the page
-turning visible, the one event the viewer listens to, as the Results tab's
+**Coming back to the tab asks the file on screen once more**, as a poll asks
+it, live run or not — so a phase written while you were away is drawn, and the
+mode, the animation's camera and the level diagram's zoom you left stay as
+they were, and an ask that fails says so on the status line in the door's
+words, the drawing kept; coming back is the page turning visible, the one event the viewer listens to, as the Results tab's
 picker does ([`results.md`](?doc=web/results.md) § 2.1, *Come back to the
 browser tab*).
 
 Like every Results-tab viewer, the spectra viewer is a small **state machine**
-(idle → loading → loaded / watching → error), and **Refresh is a clean reload**
-of the same file — the same reset a file-switch does. The full "which state
+(idle → loading → loaded / watching → error), and **Reload opens the same file
+afresh** — the same reset a file-switch does. The full "which state
 resets what" rules live in [`results.md § 4`](?doc=web/results.md). One thing
 specific here: your view **preferences** (the broadening width, the animation
 amplitude and speed and its pairing, the thermal temperature, the table's sort
 and filter, and the choices the bar applied (§ 2.1) — the infrared's
 direction and partition of § 3.2, the Raman's laser and width of § 3.3)
-**survive a page reload**, not just a file-switch. **Read back, they are the file's ask**: the
+**survive a page reload**, not just a file-switch, and are applied as they
+land as the person's own change would be: each control's readout, and what it
+drives — the chart's width, the table's filter and order, the animation's
+size and speed. **Read back, they are the file's ask**: the
 read is async, so once it lands the file on screen is loaded again with them
 where they ask something other than the load did — its thermal spreads, its
 references and its infrared at the remembered choices. **An answer to an
@@ -946,9 +957,10 @@ older ask** — a load or a poll that left before *Update* applied a change,
 or before the temperature changed — is drawn, then the file is asked again
 with the choices as they now are, so a laser applied while a poll is out is
 never undone by its answer. A stored value is
-restored only where its control holds it — a direction or a partition among
-the select's options, a temperature of 0 K or more — so a value the door
-would refuse never turns every load into a refusal.
+restored only where its control holds it — a choice among its select's
+options, a temperature of 0 K or more — so a value the door would refuse
+never turns every load into a refusal, nor a pairing the page has no name
+for into a blank one.
 
 **They are kept where everything else is kept** — the workspace
 ([`workspace.md`](?doc=web/workspace.md)), as the draft of the tag
@@ -1222,4 +1234,16 @@ PySCF result with infrared off and one before and during its dipole sweep; and
 when the viewer stops waiting, infrared's own flag included, § 7 — the
 sentence for an infrared asked of charges that could not be given goes
 unseen, no run writing it),
-`test_vibrationview_maths_js.py` (the animation's eigenvector math).
+`test_vibrationview_maths_js.py` (the animation's eigenvector math);
+`test_the_viewers_follow_a_real_run_e2e.py::test_a_followed_runs_news_keeps_the_box_and_the_zoom`
+(§ 3.1, § 4: the probed water's run followed as it goes, the turned molecule
+and the level diagram's zoom kept through its news);
+`test_coming_back_to_the_tab_e2e.py::test_coming_back_keeps_the_spectrums_view`
+(§ 7: the mode and the turned molecule kept);
+`test_spectrum_results_e2e.py::test_remembered_settings_show_in_their_controls`
+(§ 7: the speed and size moved, the page reloaded, their readouts) and
+`::test_the_line_under_the_box_follows_the_size` (§ 4.2). Unseen: a mode the
+animation refuses (§ 4) — no run writes one, the result's reader refusing a
+file whose rows do not fit its atoms (§ 8). Not pinned: what a restored value
+drives besides its readout (the chart's width, the table's filter and order),
+and a load's refit and its level diagram opened whole.

@@ -173,8 +173,8 @@
 
         fileState: {
             // The file on screen, written by transition('LOADING') from
-            // the path loadByPath was handed -- the dropdown's pick, a
-            // return to the tab, or the registry's hot swap.
+            // the path loadByPath was handed -- the file the panel was
+            // mounted on, or a restore asking with its knobs.
             path:    null,
             // results: SpectraResults dict from /api/spectra/load.
             // Replaced atomically inside transition('APPLY').
@@ -247,12 +247,14 @@
         },
 
         // The VibrationView handle (vibrationview.md) -- the concealed normal-mode viewer.
-        // Cleared by renderResults on geometry change and by dispose() on unmount.  Lives at
-        // the top level of `state` (not in any bucket) because it's a wrapper-managed
-        // external resource.
+        // Kept while the panel is up (spectra.md § 4), released by dispose() on unmount.
+        // Lives at the top level of `state` (not in any bucket) because it's a
+        // wrapper-managed external resource.
         vib:            null,
         vibMounting:    false,   // one build per mount, not one per mode click
         vibStructure:   null,    // which structure the viewer holds (§ 5.1)
+        vibShown:       null,    // which mode it was last shown
+        vibUnavailable: false,   // a build that failed: not tried again until a load
         animPaused:     false,   // the USER's intent, not the viewer's state
         exporting:      null,    // the AbortController of a running export
     };
@@ -308,46 +310,65 @@
         _prefsTimer = setTimeout(_prefsFlush, PREFS_DELAY_MS);
     }
 
-    /* The controls must SHOW what was restored.
+    /* EACH KNOB'S CONTROL, in one table: the control, the knob it holds
+     * (`null` for the light's vector, three boxes for one knob, put in
+     * beside the table), the event a person's change fires, the handler it
+     * runs, and whether that handler is the knob's applier -- writing the
+     * control's readout and redrawing what the knob drives (the chart's
+     * width, the table's filter and with it its order, whose header buttons
+     * hold no value to put back; the animation's size and speed).  The others are asked of
+     * the door by a load instead: the temperature, the bar's choices, which
+     * wait on Update (web/spectra.md § 2.1).  The pairing last: it redraws
+     * the mode box at the size its pairing chooses. */
+    const PREF_CONTROLS = [
+        ["modesFilter",       "modeFilter",        "input",  onFilterInput,         true],
+        ["broadeningFwhm",    "broadeningFWHM",    "input",  onBroadeningChange,    true],
+        ["animAmplitude",     "animAmplitude",     "input",  onAnimAmplitudeChange, true],
+        ["animSpeed",         "animSpeed",         "input",  onAnimSpeedChange,     true],
+        ["animTemperature",   "animTemperature",   "input",  onTemperatureChange,   false],
+        ["irDirection",       "irDirection",       "input",  onBarInput,            false],
+        ["irVecX",            null,                "input",  onBarInput,            false],
+        ["irVecY",            null,                "input",  onBarInput,            false],
+        ["irVecZ",            null,                "input",  onBarInput,            false],
+        ["irPartition",       "irPartition",       "input",  onBarInput,            false],
+        ["ramanLaser",        "ramanLaserNm",      "input",  onBarInput,            false],
+        ["ramanBroaden",      "ramanBroadenEv",    "input",  onBarInput,            false],
+        ["animAmplitudeMode", "animAmplitudeMode", "change", onAmplitudeModeChange, true],
+    ];
+
+    /* Each knob the page shows, applied through its control's own handler,
+     * in the table's order -- at the first paint, and again when a restore
+     * puts the remembered values in. */
+    function _applyPrefControls() {
+        PREF_CONTROLS.forEach(function ([ctl, , , onChange, applies]) {
+            if (applies && els[ctl]) onChange();
+        });
+    }
+
+    /* The controls must SHOW what was restored, and the page must DO it
+     * (web/spectra.md § 7).
      *
      * Every handler reads its value out of the DOM (`onBroadeningChange` does
      * `parseFloat(els.broadeningFwhm.value)`), so state alone is not enough:
      * the box would still read 20 while the spectrum was broadened by the
      * restored 42, and the first touch of any control would push the stale
-     * default back into state AND persist it -- a feature that silently undoes
-     * itself is worse than none.
-     *
-     * init() already primes these from the markup and re-runs
-     * `onAmplitudeModeChange()` so the panel cannot contradict itself -- its
-     * own comment names a restored "thermal" leaving the temperature box
-     * hidden as the thing it prevents.  That priming runs BEFORE this async
-     * read, so it has to happen again here, with the values that came back.
-     */
+     * default back into state AND persist it.  And a value put in a control
+     * fires nothing, so each is then applied through its handler -- else the
+     * slider sits at 2.0x under a readout saying 1.0x, and the chart waits
+     * at the old width for a redraw nobody asked for. */
     function _prefsToControls() {
         var u = state.uiPrefs;
-        function put(el, v) { if (el && v !== undefined && v !== null) el.value = String(v); }
-        put(els.modesFilter,      u.modeFilter);
-        put(els.broadeningFwhm,   u.broadeningFWHM);
-        put(els.animAmplitude,    u.animAmplitude);
-        put(els.animSpeed,        u.animSpeed);
-        put(els.animAmplitudeMode, u.animAmplitudeMode);
-        put(els.animTemperature,  u.animTemperature);
-        put(els.irDirection,      u.irDirection);
-        put(els.irPartition,      u.irPartition);
+        PREF_CONTROLS.forEach(function ([ctl, knob]) {
+            const el = els[ctl], v = knob && u[knob];
+            if (el && v !== undefined && v !== null) el.value = String(v);
+        });
         const vec = _vectorOf(u.irVector);
         if (vec) [els.irVecX, els.irVecY, els.irVecZ].forEach(
-            (el, i) => put(el, vec[i]));
-        put(els.ramanLaser,       u.ramanLaserNm);
-        put(els.ramanBroaden,     u.ramanBroadenEv);
+            (el, i) => { if (el) el.value = String(vec[i]); });
         // THE BAR NOW SHOWS THE APPLIED CHOICES: nothing waits on Update.
         _barError = null;
         _renderBar(state.fileState.results);
-        // The mode pairing owns more than its own value: it decides whether the
-        // temperature box or the size slider is the one on screen.  Re-run the
-        // handler init() runs, for the same reason init() runs it.
-        if (els.animAmplitudeMode && typeof onAmplitudeModeChange === "function") {
-            try { onAmplitudeModeChange(); } catch (_) {}
-        }
+        _applyPrefControls();
     }
 
     /* Read the slot back and apply what is usable.
@@ -381,9 +402,9 @@
                 if (!_prefAdmissible(k, got[k])) continue;
                 state.uiPrefs[k] = got[k];      // the bucket, not the alias
             }
-            // Still inside the applying window: pushing values into the
-            // controls fires their handlers, which assign to the same knobs,
-            // and `_prefsApplying` is what stops that echoing into a write.
+            // Still inside the applying window: applying the values runs
+            // their controls' handlers, which assign to the same knobs, and
+            // `_prefsApplying` is what stops that echoing into a write.
             _prefsToControls();
         } finally {
             _prefsApplying = false;
@@ -407,9 +428,10 @@
      * so a direction or a partition no option carries would turn every load
      * into a refusal; a temperature is kelvin, 0 or more, the door's rule. */
     function _prefAdmissible(k, v) {
-        const sel = { irDirection: els.irDirection,
-                      irPartition: els.irPartition }[k];
-        if (sel) return [...sel.options].some(o => o.value === v);
+        const row = PREF_CONTROLS.find(([, knob]) => knob === k);
+        const sel = row && els[row[0]];
+        if (sel && sel.tagName === "SELECT")
+            return [...sel.options].some(o => o.value === v);
         if (k === "animTemperature") return v >= 0;
         if (k === "irVector") return _vectorOf(v) !== null;
         if (k === "ramanLaserNm" || k === "ramanBroadenEv")
@@ -458,19 +480,7 @@
                 configurable: true,
             });
         }
-        prefAlias("modeFilter");
-        prefAlias("sortColumn");
-        prefAlias("sortDir");
-        prefAlias("broadeningFWHM");
-        prefAlias("animAmplitude");
-        prefAlias("animSpeed");
-        prefAlias("animAmplitudeMode");
-        prefAlias("animTemperature");
-        prefAlias("irDirection");
-        prefAlias("irVector");
-        prefAlias("irPartition");
-        prefAlias("ramanLaserNm");
-        prefAlias("ramanBroadenEv");
+        Object.keys(state.uiPrefs).forEach(prefAlias);
         alias("watchTimer",     "lifecycle");
         alias("watchInFlight",  "lifecycle");
         alias("watchAbort",     "lifecycle");
@@ -488,8 +498,10 @@
     // transition() implementation.
     //
     // Targets (per contract § 2):
-    //   'LOADING'  -> { path }: empty fileState, reset viewState,
-    //                 abort in-flight controllers, clear timer,
+    //   'LOADING'  -> { path }: empty fileState, reset viewState and the
+    //                 drawings it holds (the mode box's structure, the
+    //                 level diagram), abort in-flight controllers, clear
+    //                 timer,
     //   'LOADED'   -> {}:       stop watchTimer.  Used when
     //                 allPhasesComplete, and when following stops --
     //                 a tick's error, or WATCH_MAX_ERRORS consecutive
@@ -530,6 +542,16 @@
             // Reset viewState per matrix.  selectedMode = null
             // forces _pickDefaultMode on the next renderResults.
             state.viewState.selectedMode = null;
+            // THE PER-FILE VIEW'S DRAWINGS GO WITH IT (results.md § 4: a
+            // load is the file afresh): the mode box takes its structure
+            // again at the next mode shown, its camera refitted (a box that
+            // could not be built is tried again), and the level diagram
+            // opens on its whole picture.  A poll keeps both.
+            state.vibStructure = null;
+            state.vibUnavailable = false;
+            if (els.esBarDiagram && root.molbuilder.plotBox) {
+                root.molbuilder.plotBox.release(els.esBarDiagram);
+            }
             // Clear transient lifecycle counters.
             state.lifecycle.watchErrors = 0;
             state.machine = "LOADING";
@@ -1160,8 +1182,8 @@
     }
     let _setTemp = null;
 
-    /** Load the file ``path`` names -- the dropdown's pick, a return to
-     *  the tab, or the registry's hot swap -- and FOLLOW it while
+    /** Load the file ``path`` names -- the file the panel was mounted on,
+     *  or a restore asking with its knobs -- and FOLLOW it while
      *  its run is live (web/spectra.md § 7): `_settlePostLoad` starts the
      *  poll when the run the server says the file belongs to is queued or
      *  running, and `watchTick` stops it when it no longer is. */
@@ -1191,19 +1213,7 @@
         if (signal.aborted) return;
         if (path !== state.fileState.path) return;
         if (!a.ok) {
-            const refused = a.body || {};
-            let msg = a.error;
-            if (refused.kind === "schema_mismatch") {
-                msg = "Schema version mismatch (expected "
-                    + refused.expected_version + ", got "
-                    + refused.actual_version + "). "
-                    + "Update molbuilder or use a matching script version.";
-            } else if (refused.kind === "not_found") {
-                // The dropdown lists files that exist, so this one went
-                // between the listing and the read.
-                msg = "File not found at " + path
-                    + " -- it was removed after the folder was listed.";
-            }
+            const msg = _refusedWords(a, path);
             setStatus(els.watchStatus, msg, "error");
             transition("ERROR");
             _announceReady({ error: msg });
@@ -1221,6 +1231,25 @@
         _showRunStatus(body.results);
         _announceReady({});
         _askAgainIfChanged(asked);
+    }
+
+    /* THE DOOR'S REFUSAL OF ``path``, in words, by its kind -- for a load
+     *  and for a tick alike. */
+    function _refusedWords(a, path) {
+        const refused = a.body || {};
+        if (refused.kind === "schema_mismatch") {
+            return "Schema version mismatch (expected "
+                + refused.expected_version + ", got "
+                + refused.actual_version + "). "
+                + "Update molbuilder or use a matching script version.";
+        }
+        if (refused.kind === "not_found") {
+            // The dropdown lists files that exist, so this one went
+            // between the listing and the read.
+            return "File not found at " + path
+                + " -- it was removed after the folder was listed.";
+        }
+        return a.error;
     }
 
     /* AN ANSWER TO AN OLDER ASK -- a load or a tick that left before Update
@@ -1305,6 +1334,9 @@
         // ends up painted under the wrong name -- and it is what every
         // guard below compares against.
         const myPath = state.fileState.path;
+        // A FOLLOW, or a coming back to a file not followed: what a failure
+        // stops is said as what it is.
+        const following = state.machine === "WATCHING";
         let a, asked;
         try {
             ({ answer: a, asked } = await fetchResults(myPath, signal));
@@ -1317,6 +1349,10 @@
          * passing trouble, asked again at the next tick, up to a limit. */
         if (!a.ok && a.body === undefined) {
             if (myPath !== state.fileState.path) return;
+            if (!following) {
+                setStatus(els.watchStatus, a.error, "error");
+                return;
+            }
             state.lifecycle.watchErrors++;
             setStatus(els.watchStatus,
                       a.error + " (" + state.lifecycle.watchErrors + "/"
@@ -1334,7 +1370,7 @@
         // that has already SETTLED:
         //
         //   watching A -> tick resolves, continuation queued
-        //   -> a return to the tab reloads A (the same file)
+        //   -> a restore's re-ask reloads A (the same file)
         //      -> transition('LOADING') aborts us, stops the timer,
         //         empties results
         //   -> our continuation runs.  myPath === fileState.path, both
@@ -1352,7 +1388,9 @@
             // The engine replaces the file atomically, so a poll never
             // finds it half-written or briefly missing: an error here --
             // the file gone included -- ends the follow, and says why.
-            stopWatch("Stopped following: " + a.error);
+            const words = _refusedWords(a, myPath);
+            if (following) stopWatch("Stopped following: " + words);
+            else setStatus(els.watchStatus, words, "error");
             return;
         }
         const body = a.body;
@@ -2011,13 +2049,12 @@
     function _barChoices() {
         const value = (el, dflt) => (el ? el.value.trim() : dflt);
         const unread = el => !!(el && el.validity && el.validity.badInput);
-        const c = {
-            irDirection: value(els.irDirection, state.irDirection),
-            irVector: state.irVector,
-            irPartition: value(els.irPartition, state.irPartition),
-            ramanLaserNm: value(els.ramanLaser, ""),
-            ramanBroadenEv: value(els.ramanBroaden, ""),
-        };
+        // The bar's knobs, read off their controls in the one table; the
+        // vector's three boxes are read below.
+        const c = { irVector: state.irVector };
+        PREF_CONTROLS.forEach(function ([ctl, knob, , onChange]) {
+            if (onChange === onBarInput && knob) c[knob] = value(els[ctl], state[knob]);
+        });
         if (c.irDirection === "vector") {
             const typed = [els.irVecX, els.irVecY, els.irVecZ]
                 .map(el => (el ? el.value : "")).join(" ");
@@ -2080,7 +2117,7 @@
                 || path !== state.fileState.path || !held) return;
             if (!a.ok || !a.body.results) {
                 _barError = a.ok ? "the load door answered no results"
-                                 : a.error;
+                                 : _refusedWords(a, path);
                 _renderBar(held);
                 return;
             }
@@ -2176,11 +2213,9 @@
         // Live-watch same-content guard.
         // ``watchTick`` polls /api/spectra/load every WATCH_INTERVAL_MS
         // and most ticks return identical results (Hessian phase still
-        // running, ES phase still cooking).  Without this gate the
-        // viewer-dispose block below tears down + rebuilds the VibrationView
-        // mode viewer every 2s, which resets the user's camera angle and
-        // pauses the vibration animation right when they're trying to
-        // study a mode.  Fingerprint on the fields that drive what's
+        // running, ES phase still cooking), and redrawing the chart, the
+        // table and the figures for an answer that changed nothing would be
+        // work with nothing to show.  Fingerprint on the fields that drive what's
         // rendered: atom count, mode count + per-mode ES presence,
         // phase markers, and currently-selected mode.  Same fingerprint
         // = nothing to redraw, bail.
@@ -2349,19 +2384,6 @@
         renderModesTable();
         renderESPanel();
         renderThermoPanel(results);
-        // Geometry changed (new results loaded) -- discard the old
-        // VibrationView mode viewer so the next render rebuilds with the
-        // fresh structure.
-        if (state.vib) {
-            _stopAnimation();
-            // Dispose the viewer so the next render builds one against the fresh
-            // structure.  It draws no controls of its own to tear down -- only a
-            // canvas, a caption and a clock (vibrationview.md § 5.4, § 8).
-            try { state.vib.dispose(); }
-            catch (_) {}
-            state.vib = null;
-            if (els.modeViewer) els.modeViewer.innerHTML = "";
-        }
         renderModeViewer();
     }
 
@@ -2469,6 +2491,9 @@
                     && results.relaxation.n_steps) || ""),
             (((results.thermo || {}).grid || {}).temperatures_K
                 ? "thermo" : ""),
+            // The temperature its spreads are at: a poll asked at another is
+            // news for the box's size.
+            results.temperature_k == null ? "" : String(results.temperature_k),
             selectedMode == null ? "-" : String(selectedMode),
         ].join("|");
     }
@@ -2956,9 +2981,11 @@
         const yMin = lo - pad, yMax = up + pad;
 
         /* THE FULL RANGE IS THE STARTING VIEW, not the only one: the user zooms
-         * from here.  Re-set on every mode change so switching modes always
-         * lands on the whole picture rather than inside the previous mode's
-         * zoom, which would show a different molecule's window without saying so. */
+         * from here.  The zoom belongs to the mode (`uirevision`): a redraw
+         * of the same mode -- a poll bringing more of the run -- keeps it, and
+         * switching modes lands on the whole picture rather than inside the
+         * previous mode's zoom, which would show a different molecule's window
+         * without saying so; a load lets the figure go (transition). */
         if (typeof Plotly === "undefined") {
             els.esBarDiagram.innerHTML =
                 '<p class="status muted">chart library unavailable on this page</p>';
@@ -2968,6 +2995,7 @@
                 homo_idx: hi, lumo_idx: li, amplitude: es.amplitude_ang,
             });
             fig.layout.yaxis.range = [yMin, yMax];
+            fig.layout.uirevision = m.index_1based;
             // ITS OWN EXPORT: drawn as dashes, so it hands its data, the
             // curves its builder made beside the drawing.
             root.molbuilder.plotBox.draw(els.esBarDiagram, fig.traces,
@@ -3376,11 +3404,11 @@
     }
 
     function renderModeViewer() {
-        // Top-level entry point.  Called whenever selection / results
-        // change.  Shows / hides the viewer, mounts the VibrationView
-        // module lazily (_ensureViewer), and starts (or stops) the
-        // animation depending on whether a mode is selected with a
-        // non-null eigenvector.
+        // Top-level entry point.  Called whenever the selection, the
+        // results, the size or the pairing change.  Shows / hides the
+        // viewer, mounts the VibrationView module lazily (_showMode), and
+        // starts (or stops) the animation depending on whether a mode is
+        // selected with a non-null eigenvector.
         if (!els.modeViewerWrap) return;
 
         const inputs = _animationInputs();
@@ -3393,19 +3421,33 @@
             // click did that.
             els.modeViewerWrap.hidden = !inputs.why;
             if (inputs.why) {
-                setStatus(els.viewerStatus, inputs.why, "muted");
-                if (els.modeViewer) els.modeViewer.innerHTML = "";
+                _sayUnderBox(inputs.why, "muted");
+                _releaseViewer();
             }
             return;
         }
         els.modeViewerWrap.hidden = false;
-        /* WHICH mode is showing is written into the picture itself (§ 12.3), so
-         * it rides into every exported frame -- and repeating it here would be the
-         * same sentence twice, one directly above the other.  The status line
-         * carries what the caption cannot: how big the motion actually is, which
-         * is the number a caption in a paper would have to quote. */
-        _reportSwing(inputs);
         _showMode(inputs);
+    }
+
+    /* THE LINE UNDER THE BOX, written whole -- its words, how they read and
+     * the note a hover shows -- so no write leaves another's note standing. */
+    function _sayUnderBox(text, kind, why) {
+        if (!els.viewerStatus) return;
+        setStatus(els.viewerStatus, text, kind);
+        els.viewerStatus.title = why || "";
+    }
+
+    /* THE MODE BOX LET GO -- its clock, its surface and the host's markup
+     * (vibrationview.md § 8) -- with what the page knew of it, so a box built
+     * after starts from nothing.  A result whose modes cannot be animated has
+     * none, and neither has a disposed panel. */
+    function _releaseViewer() {
+        if (state.vib) { try { state.vib.dispose(); } catch (_) {} }
+        state.vib = null;
+        state.vibStructure = null;
+        state.vibShown = null;
+        if (els.modeViewer) els.modeViewer.innerHTML = "";
     }
 
     /* Mounting is ASYNCHRONOUS (vibrationview.md § 8), so this returns a promise
@@ -3418,14 +3460,14 @@
             // A build is already running: this click will be picked up when it
             // finishes, because that path re-reads the selection rather than
             // using whatever was current when it started.
-            if (state.vibMounting) return;
+            if (state.vibMounting || state.vibUnavailable) return;
             const make = opts.mountVibrationView;
             if (typeof make !== "function") {
                 // The page that mounted this inspector did not hand the viewer
                 // in.  A module cannot be looked up in a global -- that is the
                 // point of it -- so this is a wiring fault, not a missing file.
-                setStatus(els.viewerStatus,
-                          "mode animation unavailable on this page", "muted");
+                state.vibUnavailable = true;
+                _sayUnderBox("mode animation unavailable on this page", "muted");
                 return;
             }
             state.vibMounting = true;
@@ -3451,14 +3493,13 @@
                 return;
             }
             if (!handle || handle.ok === false) {
-                setStatus(els.viewerStatus,
-                          "mode animation unavailable"
-                          + (handle && handle.error ? " (" + handle.error + ")" : ""),
-                          "muted");
+                state.vibUnavailable = true;
+                _sayUnderBox("mode animation unavailable"
+                             + (handle && handle.error ? " (" + handle.error + ")" : ""),
+                             "muted");
                 return;
             }
             state.vib = handle;
-            state.vibStructure = null;
 
             /* THE SELECTION MAY HAVE MOVED while the viewer was being built.
              * `inputs` was worked out before the await, and a mount is slow
@@ -3473,17 +3514,44 @@
          * (§ 5.1): a new result installs a structure and costs a redraw and a
          * refit; clicking through the modes of one result costs neither, which is
          * why the camera stays put while you browse. */
-        const key = JSON.stringify(inputs.structure.elements);
+        const key = JSON.stringify([inputs.structure.elements,
+                                    inputs.structure.positions]);
         if (state.vibStructure !== key) {
             state.vib.setStructure(inputs.structure);
             state.vibStructure = key;
+            state.vibShown = null;      // a new structure ends the mode (§ 5.1)
         }
         /* The amplitude is set BEFORE the mode, and it belongs to the pairing the
          * cut chose: a display eigenvector wants angstrom, a canonical one wants
          * √amu·Å (§ 12.2).  Amplitude has one home on the handle, so the tab
          * decides the number and the viewer just multiplies. */
-        state.vib.setAmplitude(inputs.amplitude);
-        state.vib.showMode(Object.assign({ norm: inputs.norm }, inputs.mode));
+        state.vib.setAmplitude(inputs.amplitude, inputs.norm);
+        /* THE MODE ONLY WHEN IT CHANGED: shown again it would restart from
+         * its peak, so a poll that brings nothing new for it leaves it
+         * moving.  A mode the viewer cannot show is said where the swing
+         * line would be -- that line would describe motion that is not
+         * there (vibrationview.md § 6.3). */
+        const shown = JSON.stringify(inputs.mode);
+        if (state.vibShown !== shown) {
+            if (!state.vib.showMode(Object.assign({ norm: inputs.norm }, inputs.mode))) {
+                state.vibShown = null;
+                _sayUnderBox("Mode " + inputs.mode.index
+                             + " can't be animated: its motion doesn't fit the"
+                             + " structure on screen.", "error");
+                _syncPlayButton();
+                return;
+            }
+            state.vibShown = shown;
+        }
+        /* WHICH mode is showing is written into the picture itself (§ 12.3), so
+         * it rides into every exported frame.  The line under the box carries
+         * what the caption cannot: how big the motion actually is, the number a
+         * caption in a paper would have to quote -- written here, by the door
+         * that has the viewer's verdict, after every change to the size.
+         * While an export runs, the box holds what the export was set to
+         * (vibrationview.md § 12), so the line waits with it: the export's
+         * end draws both again. */
+        if (!state.exporting) _reportSwing(inputs);
 
         /* IT RUNS UNLESS THE USER STOPPED IT.
          *
@@ -3736,7 +3804,7 @@
                 nodes: Number(asked.nodes), out: out },
         });
         if (!a.ok) {
-            setStatus(els.framesetStatus, a.error, "error");
+            setStatus(els.framesetStatus, _refusedWords(a, path), "error");
             return;
         }
         const body = a.body;
@@ -3809,6 +3877,9 @@
             state.exporting = null;
             if (els.animExportBtn)    els.animExportBtn.disabled = false;
             if (els.animExportCancel) els.animExportCancel.hidden = true;
+            // The box has let in what waited for the export: the line under
+            // it, held meanwhile, says what it now draws.
+            renderModeViewer();
         }
     }
 
@@ -3916,8 +3987,7 @@
         }
 
         text += " · " + inputs.saidPlainly;
-        setStatus(els.viewerStatus, text, "muted");
-        els.viewerStatus.title = why;
+        _sayUnderBox(text, "muted", why);
     }
 
     /* THE VIEWS OF ONE SELECTION.
@@ -3950,9 +4020,10 @@
         if (Number.isFinite(v)) state.animAmplitude = v;
         if (els.animAmplitudeVal)
             els.animAmplitudeVal.textContent = v.toFixed(2) + " Å";
-        // A live knob (vibrationview.md § 9.2): a plain write the running loop
-        // reads on its next frame, so dragging never stops the animation.
-        if (state.vib) { try { state.vib.setAmplitude(v); } catch (_) {} }
+        // A live knob (vibrationview.md § 9.2), through the one door that
+        // sets the box's size and rewrites the line under it -- the mode is
+        // not shown again, so dragging never restarts the animation.
+        renderModeViewer();
     }
     /* Switching between the two ways of asking "how big" (§ 12.2).
      *
@@ -3999,21 +4070,21 @@
         const a = (await fetchResults(path, _thermalAbort.signal)).answer;
         if (!a.ok) return;
         const body = a.body;
-        if (path !== state.fileState.path
+        // INTO THE RESULTS ON SCREEN NOW: a poll may have replaced the ones
+        // held when this ask left.
+        const now = state.fileState.results;
+        if (path !== state.fileState.path || !now || !Array.isArray(now.modes)
             || !body.results || !Array.isArray(body.results.modes)) return;
-        held.temperature_k = body.results.temperature_k;
+        now.temperature_k = body.results.temperature_k;
         body.results.modes.forEach((m, i) => {
-            if (held.modes[i]) {
-                held.modes[i].thermal_spread_amu12_ang = m.thermal_spread_amu12_ang;
+            if (now.modes[i]) {
+                now.modes[i].thermal_spread_amu12_ang = m.thermal_spread_amu12_ang;
             }
         });
-        const inputs = _animationInputs();
-        if (!inputs.ready || !state.vib) return;
         // The size and the label naming its setting go together, so a saved
         // animation says the temperature it was drawn at (vibrationview.md
-        // § 6.1).  A drawing aid either way (§ 12.2), not a physical claim.
-        state.vib.setAmplitude(inputs.amplitude, inputs.norm);
-        _reportSwing(inputs);
+        // § 6.1) -- set, with the line under the box, by the one door.
+        renderModeViewer();
     }
 
     /* Speed sets how long ONE OSCILLATION takes, not a frame rate: a cycle is a
@@ -4528,35 +4599,14 @@
                 onDisplayFloor();   // adopt whatever the markup starts at
             }
 
-            if (els.broadeningFwhm) {
-                _on(els.broadeningFwhm, "input", onBroadeningChange);
-                // Read initial value from the input so an
-                // HTML-default-modified value (sessionStorage etc.)
-                // propagates without needing a manual edit.
-                const v = parseFloat(els.broadeningFwhm.value);
-                if (Number.isFinite(v) && v >= 0) state.broadeningFWHM = v;
-            }
-
-            // 3D viewer control wiring.
-            if (els.animAmplitude) {
-                _on(els.animAmplitude, "input", onAnimAmplitudeChange);
-                onAnimAmplitudeChange();
-            }
-            if (els.animSpeed) {
-                _on(els.animSpeed, "input", onAnimSpeedChange);
-                onAnimSpeedChange();
-            }
+            // EACH KNOB'S CONTROL, wired from the one table and applied once:
+            // the markup's starting value made the state's, so the panel
+            // agrees with itself from the first paint.
+            PREF_CONTROLS.forEach(function ([ctl, , event, onChange]) {
+                if (els[ctl]) _on(els[ctl], event, onChange);
+            });
+            _applyPrefControls();
             _on(els.animToggle, "click", onAnimToggle);
-            if (els.animAmplitudeMode) {
-                _on(els.animAmplitudeMode, "change", onAmplitudeModeChange);
-                // Primed like the amplitude and speed handlers above: the markup
-                // carries the starting value, and running the handler once makes
-                // the state and the visible controls agree.  Without it a restored
-                // "thermal" would leave the temperature box hidden and the size
-                // slider showing -- the panel contradicting itself.
-                onAmplitudeModeChange();
-            }
-            _on(els.animTemperature,   "input",  onTemperatureChange);
             _on(els.animExportBtn,      "click",  onExportAnimation);
             _on(els.framesetBtn,        "click",  onWriteFrameSet);
             _on(els.animExportCancel,   "click",  onExportCancel);
@@ -4578,14 +4628,7 @@
                     items: "tr[data-mode]", current: "tr.active",
                     listeners: _listeners });
             }
-            _on(els.modesFilter,   "input", onFilterInput);
             _on(els.modesCsvBtn,   "click", exportCSV);
-            // THE BAR (web/spectra.md § 2.1): a change asks nothing --
-            // the line says it waits -- until Update.
-            for (const el of [els.irDirection, els.irVecX, els.irVecY,
-                              els.irVecZ, els.irPartition, els.ramanLaser,
-                              els.ramanBroaden])
-                _on(el, "input", onBarInput);
             _on(els.viewUpdate,    "click", onViewUpdate);
         }
 
@@ -4620,16 +4663,17 @@
         loadByPath(opts.file);
     }
 
-    // ---- coming back to the tab: the file on screen loaded again --- //
+    // ---- coming back to the tab: the file on screen asked again ---- //
     //
     // Coming back is the page turning visible, ``visibilitychange`` to
     // ``visible`` -- a tab brought to the front, or a page restored from
     // the back/forward cache, which turns visible just before its
     // ``pageshow`` -- the one event the /results file picker and the
     // trajectory inspector listen to (results.md § 2.1).  The file on
-    // screen is loaded again so a result written while you were away
-    // appears, rather than the snapshot from the previous visit
-    // (spectra.md § 7).
+    // screen is asked again AS A POLL ASKS IT, so a result written while
+    // you were away appears and the view you left -- the mode, the box's
+    // camera, the diagram's zoom -- stays (spectra.md § 7); a load would be
+    // the file afresh, its view reset (results.md § 4).
     //
     // Guard on ``state.results !== null`` so a never-loaded inspector
     // doesn't fire spurious /api/spectra/load on every visibility
@@ -4637,7 +4681,7 @@
     function _onVisibilityChange(_evt) {
         if (document.visibilityState === "visible"
             && state.results !== null && state.fileState.path) {
-            loadByPath(state.fileState.path);
+            watchTick();
         }
     }
     _on(document, "visibilitychange",  _onVisibilityChange);
@@ -4668,12 +4712,8 @@
             // clears fileState + viewState, sets machine='IDLE').
             transition("IDLE");
             // The viewer is an external resource rather than bucket state, so
-            // it is torn down explicitly: its own dispose stops the clock and
-            // releases the drawing surface (vibrationview.md § 8).
-            if (state.vib) {
-                try { state.vib.dispose(); } catch (_) {}
-                state.vib = null;
-            }
+            // it is torn down explicitly.
+            _releaseViewer();
             /* The spectrum chart takes itself down: one call, and its surface,
              * its box watcher and its markup go with it.  This tab neither
              * purges it nor knows what it was drawn with. */
@@ -4689,18 +4729,6 @@
                 }
             }
         },
-        /**
-         * Swap the displayed spectra results to ``path`` without
-         * re-mounting the inspector.  Mirrors lib/trajectory/core.js's
-         * load(path) so the /results registry can hot-swap files
-         * between dispatch ticks instead of dispose → remount.  The
-         * same door as the first load (POST /api/spectra/load, abort +
-         * render + status update, and a run still going followed).
-         */
-        load(path) {
-            return loadByPath(path);
-        },
-
         /* THE VIEWER THIS PAGE MOUNTED, handed over by the page that mounted
          * it.  On the handle, because the viewer it stores is per-mount state:
          * `_viewer` lives inside this function, so a module-level door would be

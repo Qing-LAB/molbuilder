@@ -1,5 +1,5 @@
 """THE VIEWERS FOLLOW A REAL RUN -- `web/results.md` § 4, § 4.1, § 4.2;
-`web/trajectory.md` § 4, § 5; `web/spectra.md` § 3, § 7.
+`web/trajectory.md` § 4, § 5; `web/spectra.md` § 3, § 3.1, § 4, § 7.
 
 The trajectory viewer's and the spectra viewer's own functions -- lifted from
 the shipped modules (`tests/_node_esm.lifted`) and run in node against fakes
@@ -13,6 +13,12 @@ answers (`runstatus.run_answer`), so a viewer that follows a run is asked
 here of the answers a run really gives: live while it goes, finished, or
 failed where SIESTA stopped it.
 
+And the spectra page itself, in a browser, on a run going: the probed water
+followed on the Results tab while it writes, the page's asks held and let go
+(`process/testing.md` § 5), the molecule turned and the level diagram zoomed
+by the person kept through the run's news
+(:func:`test_a_followed_runs_news_keeps_the_box_and_the_zoom`).
+
 The runs, each launched in a copy of a shared calculation (`copy_of`), in the
 background as a launch leaves a run, and followed while they go:
 
@@ -22,6 +28,8 @@ background as a launch leaves a run, and followed while they go:
   it, and the run is failed;
 * :func:`vibration_followed` -- the shared straight water's `freq` launched
   again, cold;
+* :func:`probed_going` -- the shared probed water's `freq` launched again,
+  cold, and left going for the Results tab to follow it in a browser;
 
 and :func:`stage_shaped`, an H2 optimization on PySCF made by the shared
 run's maker under the label `au_2_bdt` (`support.real_runs.pyscf`), whose
@@ -273,6 +281,21 @@ def vibration_followed(real_water_linear, tmp_path_factory):
             _caught(c, {"its result with the run live":
                         [a for a in c.answers if a["run"]["live"]]})
     return copy_of(real_water_linear, "followed", follow)
+
+
+@makes_a_real_run("module", "molbuilder-pySCF")
+def probed_going(real_water_probed, tmp_path_factory):
+    """THE SHARED PROBED WATER'S `freq`, LAUNCHED AGAIN COLD IN A COPY and left
+    going, for the spectra page to follow it as a person does (`web/spectra.md`
+    § 3.1, § 4, § 7): ``folder``, its new run's.  Waited to its end once the
+    module is done with it."""
+    from molbuilder.task import of as task_of
+    c = copy_of(real_water_probed, "followed-page", lambda c: None)
+    with road_at(c.tree.parent, tmp_path_factory,
+                 engine=str(task_of(c.bundle).engine)):
+        c.folder = _launched(c, "freq", "--cold")
+    yield c
+    left_to_end(c)
 
 
 def _not_launched(prepared) -> dict:
@@ -1329,3 +1352,97 @@ def test_a_run_that_ended_has_no_step_still_being_computed(
         case, answer["path"])
     assert not any(answer["data"]["in_progress"]), (
         case, answer["data"]["in_progress"])
+
+
+def test_a_followed_runs_news_keeps_the_box_and_the_zoom(probed_going, page,
+                                                         monkeypatch):
+    """`web/spectra.md` § 4: the mode box is "kept while a run being followed
+    brings more of it, so the camera stays where you put it", and § 3.1: the
+    level diagram's zoom is "kept while a run being followed brings more of
+    the result" -- the probed water's run followed on the Results tab as it
+    goes: opened once mode 1 is probed and mode 3 is not, the page's asks held
+    while the person turns the molecule and zooms mode 1's levels, and let go
+    once the run has written again (`process/testing.md` § 5: an order is
+    held, the answer still the server's).
+
+    THE SILENT FAILURE: every few seconds of a followed run, the turned
+    molecule snapped back to its fitted camera and a zoomed level diagram to
+    its whole range."""
+    from conftest import point_the_one_door_at
+    from molbuilder.runfiles import ROLE_SPECTRA
+    from molbuilder.runs import on_label_at
+    from playwright.sync_api import expect
+    from support.live_server import serve
+    from support.road import until as _until
+    from support.sidebar import WAIT_MS, result_picked, results_on
+    from support.spectra_page import (mode_box_picture, mode_box_turned,
+                                      pictures_alike)
+    c = probed_going
+
+    def written():
+        """The result as the run last wrote it -- its file, when, and what it
+        holds -- or None before its first write.  The engine replaces it
+        whole, so a read never finds it half written."""
+        path = on_label_at(c.folder, ROLE_SPECTRA) if c.folder.is_dir() else None
+        if path is None or not path.is_file():
+            return None
+        return path, path.stat().st_mtime_ns, json.loads(path.read_text())
+
+    def probed(body, index):
+        return any(m.get("index_1based") == index and m.get("electronic_structure")
+                   for m in body.get("modes") or [])
+
+    def until(holds, what):
+        # The page's own wait between looks: its routed requests go on.
+        return _until(holds, within=900, what=what,
+                      pause=lambda: page.wait_for_timeout(50))
+
+    held, holding = [], [True]
+    page.route("**/api/spectra/load",
+               lambda route: held.append(route) if holding[0] else route.continue_())
+    point_the_one_door_at(c.tree.parent, monkeypatch.setenv)
+    page.set_viewport_size({"width": 1400, "height": 900})
+    path, _, _ = until(written, "the run wrote no result")
+    with serve() as base:
+        results_on(page, base, c.folder)
+        result_picked(page, path)
+        until(lambda: held, "the page asked for no result")
+        _, at, body = until(lambda: (w := written()) and probed(w[2], 1) and w,
+                            "the run never probed mode 1")
+        assert not probed(body, 3), (
+            "the run probed mode 3 before the page could open: nothing left "
+            "to follow")
+        held.pop(0).continue_()                     # the page's load, answered now
+        page.locator("#mode-viewer").wait_for(state="visible", timeout=WAIT_MS)
+        page.locator('#modes-tbody tr[data-mode="1"]').click()
+        turned = mode_box_turned(page)
+        page.locator('[aria-controls="mode-tab-es"]').click()
+        diagram = page.locator("#es-bar-diagram")
+        diagram.scroll_into_view_if_needed()
+        area = diagram.locator(".nsewdrag").first.bounding_box()
+        whole = diagram.evaluate("(el) => el.layout.yaxis.range.slice()")
+        page.mouse.move(area["x"] + area["width"] / 2,
+                        area["y"] + area["height"] / 2)
+        page.mouse.wheel(0, -600)
+        page.wait_for_function(
+            "([el, whole]) => el.layout.yaxis.range[1] !== whole[1]",
+            arg=[diagram.element_handle(), whole], timeout=WAIT_MS)
+        zoomed = diagram.evaluate("(el) => el.layout.yaxis.range.slice()")
+        until(lambda: (w := written()) and w[1] != at,
+              "the run wrote nothing after the page's load")
+        holding[0] = False
+        while held:
+            held.pop(0).continue_()
+        # The news drawn: mode 3's probe, which only it brings, in the table
+        # -- its ES? mark, the first of the probe's columns.
+        expect(page.locator('#modes-tbody tr[data-mode="3"] td.es-col').first
+               ).to_have_text("✓", timeout=900_000)
+        expect(page.locator("#watch-status")).to_contain_text(
+            "Run complete", timeout=900_000)
+        after = diagram.evaluate("(el) => el.layout.yaxis.range.slice()")
+        page.locator('[aria-controls="mode-tab-table"]').click()
+        still = mode_box_picture(page)
+    assert after == pytest.approx(zoomed), (
+        f"the run's news put the level diagram back to {after} from {zoomed}")
+    assert pictures_alike(still, turned), (
+        "the run's news put the turned molecule back to its fitted camera")

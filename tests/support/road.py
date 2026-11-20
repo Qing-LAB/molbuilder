@@ -477,14 +477,17 @@ def described_and_prepared(tmp_path, monkeypatch, struct, engine, *,
     return (dest, stage, text, r.output) if said_too else (dest, stage, text)
 
 
-def until(holds, *, within: float, what: str) -> None:
+def until(holds, *, within: float, what: str, pause=None):
     """``holds()``, within ``within`` seconds -- a run's own files read as
-    it goes."""
+    it goes: what it last answered.  ``pause`` waits between looks, half a
+    second by default; a browser test passes the page's own wait, so the
+    page's events -- a request it routes among them -- go on meanwhile."""
     import time
     end = time.monotonic() + within
-    while not holds():
+    while not (held := holds()):
         assert time.monotonic() < end, f"{what}: not within {within} s"
-        time.sleep(0.5)
+        (pause or (lambda: time.sleep(0.5)))()
+    return held
 
 
 #: WHAT THE TEST'S OWN SHELL WOULD SLIP INTO A RUN SCRIPT AHEAD OF ITS

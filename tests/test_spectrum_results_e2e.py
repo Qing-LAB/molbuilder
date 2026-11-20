@@ -20,6 +20,10 @@ door would serve without their shares; a file older than this release's writers.
 What the runs' science says -- frequencies, intensities against their windows,
 the bends' degeneracy, the thermochemistry -- is `test_vibration_e2e.py`'s and
 `test_siesta_vibration_e2e.py`'s, on these same runs.
+
+Beside them, the Results tab's spectra page on those runs, in a browser
+(`support.spectra_page`): each chart's export, the animation's column, the
+remembered settings across a reload and the line under the animation.
 """
 from __future__ import annotations
 
@@ -468,20 +472,13 @@ def test_each_vibration_chart_exports_what_it_draws(real_water_probed, page,
     THE SILENT FAILURE: a sealed chart that exports nothing, a level diagram
     exporting its dashes, a thermochemistry in hartree; a chart with no zoom
     or reset, or an Export over its toolbar."""
-    from conftest import point_the_one_door_at
     from molbuilder import constants as C
     from molbuilder.postprocess import read_chart_data
-    from molbuilder.runfiles import ROLE_SPECTRA
-    from molbuilder.runs import on_label_at
-    from support.live_server import serve
     from support.pages import chart_exported, export_clear_of_the_chart
-    from support.sidebar import results_on
+    from support.spectra_page import spectrum_opened
     run = real_water_probed
-    folder = run.attempt("freq")
-    spectrum = str(on_label_at(folder, ROLE_SPECTRA))
     d = _read(_final(run))
     kcal = C.HARTREE_EV / C.KCAL_MOL_EV
-    point_the_one_door_at(run.tree.parent, monkeypatch.setenv)
 
     def curves(path, group):
         """The file read back through its reader: each curve of ``group``,
@@ -496,13 +493,7 @@ def test_each_vibration_chart_exports_what_it_draws(real_water_probed, page,
     def exported(box):
         export_clear_of_the_chart(box)
         return chart_exported(page, box, "NetCDF", tmp_path)
-    with serve() as base:
-        results_on(page, base, folder)
-        page.wait_for_function(
-            "(want) => [...document.querySelectorAll("
-            "  '#results-file-picker-select option')]"
-            "  .some(o => o.value === want)", arg=spectrum, timeout=60000)
-        page.select_option("#results-file-picker-select", value=spectrum)
+    with spectrum_opened(page, run, monkeypatch.setenv):
         page.wait_for_selector("#modes-tbody tr", state="attached",
                                timeout=60000)
         spec = exported(page.locator("#spectrum-chart-wrap"))
@@ -570,23 +561,10 @@ def test_the_animation_stays_in_view_beside_the_views(real_water_vibration,
 
     THE SILENT FAILURE: the animation behind a tab of its own, or scrolled out
     of sight, so a mode picked from the table is not seen moving."""
-    from conftest import point_the_one_door_at
-    from support.live_server import serve
-    from support.sidebar import WAIT_MS, results_on
-    run = real_water_vibration
-    folder = run.attempt("freq")
-    spectrum = str(on_label_at(folder, ROLE_SPECTRA))
-    point_the_one_door_at(run.tree.parent, monkeypatch.setenv)
     page.set_viewport_size({"width": 1400, "height": 900})
     box = lambda selector: page.locator(selector).first.bounding_box()
-    with serve() as base:
-        results_on(page, base, folder)
-        page.wait_for_function(
-            "(want) => [...document.querySelectorAll("
-            "  '#results-file-picker-select option')]"
-            "  .some(o => o.value === want)", arg=spectrum, timeout=WAIT_MS)
-        page.select_option("#results-file-picker-select", value=spectrum)
-        page.locator("#mode-viewer").wait_for(state="visible", timeout=WAIT_MS)
+    from support.spectra_page import spectrum_opened
+    with spectrum_opened(page, real_water_vibration, monkeypatch.setenv):
         beside = (box("#mode-viewer"), box(".modes-table-wrap"))
         page.locator('#modes-tbody tr[data-mode="2"]').click()
         # Down to the table, as the pane scrolls: the tab strip at its top.
@@ -618,6 +596,67 @@ def test_the_animation_stays_in_view_beside_the_views(real_water_vibration,
         f"the tabs: {chart}, {mode}, {tabs}")
 
 
+def test_remembered_settings_show_in_their_controls(real_water_vibration, page,
+                                                    monkeypatch):
+    """`web/spectra.md` § 7: the view preferences "survive a page reload ...
+    and are applied as they land as the person's own change would be: each
+    control's readout, and what it drives" -- the animation's speed and size
+    moved to their ends, kept, the page reloaded and the spectrum opened again.
+
+    THE SILENT FAILURE: the animation running at its remembered speed and
+    size under readouts saying 1.0x and 0.15 Å."""
+    from playwright.sync_api import expect
+    from molbuilder.runfiles import ROLE_SPECTRA
+    from molbuilder.runs import on_label_at
+    from support.sidebar import WAIT_MS, result_picked
+    from support.spectra_page import spectrum_opened
+    spectrum = on_label_at(real_water_vibration.attempt("freq"), ROLE_SPECTRA)
+    kept = lambda r: ("workspace-storage/write" in r.url
+                      and "results-spectra-ui-draft" in (r.request.post_data or ""))
+    speed, size = page.locator("#anim-speed"), page.locator("#anim-amplitude")
+    with spectrum_opened(page, real_water_vibration, monkeypatch.setenv):
+        ends = [float(s.get_attribute("max")) for s in (speed, size)]
+        with page.expect_response(kept, timeout=WAIT_MS):
+            for slider in (speed, size):
+                slider.focus()
+                page.keyboard.press("End")
+        page.reload()
+        result_picked(page, spectrum)
+        page.wait_for_function(
+            "(ends) => +document.querySelector('#anim-speed').value === ends[0]"
+            "  && +document.querySelector('#anim-amplitude').value === ends[1]",
+            arg=ends, timeout=WAIT_MS)
+        expect(page.locator("#anim-speed-val")).to_have_text(f"{ends[0]:.1f}×")
+        expect(page.locator("#anim-amplitude-val")).to_have_text(f"{ends[1]:.2f} Å")
+
+
+def test_the_line_under_the_box_follows_the_size(real_water_vibration, page,
+                                                 monkeypatch):
+    """`web/spectra.md` § 4.2: the line under the viewer says how far the
+    furthest atom moves "from rest" at the size drawn -- the Size slider moved
+    to its end, the line's distance with it.
+
+    THE SILENT FAILURE: the box drawing the motion twenty times larger under
+    a line still quoting the old distance."""
+    import re
+    from playwright.sync_api import expect
+    from support.spectra_page import spectrum_opened
+    said = lambda: float(re.search(r"further than ([0-9.]+) Å",
+                                   page.locator("#viewer-status").text_content())[1])
+    size = page.locator("#anim-amplitude")
+    with spectrum_opened(page, real_water_vibration, monkeypatch.setenv):
+        expect(page.locator("#viewer-status")).to_contain_text("further than")
+        before, start = said(), float(size.input_value())
+        end = float(size.get_attribute("max"))
+        size.focus()
+        page.keyboard.press("End")
+        expect(page.locator("#anim-amplitude-val")).to_have_text(f"{end:.2f} Å")
+        expect(page.locator("#viewer-status")).not_to_contain_text(
+            f"further than {before:.3f} Å")
+        after = said()
+    assert after == pytest.approx(before * end / start, rel=1e-2), (before, after)
+
+
 def test_a_raman_spectrums_bands_are_each_modes_activity(real_water_vibration,
                                                           page, monkeypatch,
                                                           tmp_path):
@@ -626,25 +665,12 @@ def test_a_raman_spectrums_bands_are_each_modes_activity(real_water_vibration,
     mode's activity at its frequency, the result file's, in angstrom^4/amu.
     THE SILENT FAILURE: the Raman lane exported scaled, or under another
     lane's name."""
-    from conftest import point_the_one_door_at
     from molbuilder.postprocess import read_chart_data
-    from molbuilder.runfiles import ROLE_SPECTRA
-    from molbuilder.runs import on_label_at
-    from support.live_server import serve
     from support.pages import chart_exported
-    from support.sidebar import results_on
+    from support.spectra_page import spectrum_opened
     run = real_water_vibration
-    folder = run.attempt("freq")
-    spectrum = str(on_label_at(folder, ROLE_SPECTRA))
     d = _read(_final(run))
-    point_the_one_door_at(run.tree.parent, monkeypatch.setenv)
-    with serve() as base:
-        results_on(page, base, folder)
-        page.wait_for_function(
-            "(want) => [...document.querySelectorAll("
-            "  '#results-file-picker-select option')]"
-            "  .some(o => o.value === want)", arg=spectrum, timeout=60000)
-        page.select_option("#results-file-picker-select", value=spectrum)
+    with spectrum_opened(page, run, monkeypatch.setenv):
         wrap = page.locator("#spectrum-chart-wrap")
         wrap.locator(".chart-export-open").wait_for(timeout=60000)
         path = chart_exported(page, wrap, "NetCDF", tmp_path)

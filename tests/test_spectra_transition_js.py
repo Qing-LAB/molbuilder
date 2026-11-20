@@ -90,6 +90,8 @@ def _viewer(script, *, machine, path=_A, results="A", polling=True,
                 "\n    function ")}
         {lifted(MODULE, "    function _abortViews() {", "\n    }")}
         }}
+        {lifted(MODULE, "    function _releaseViewer() {", "\n    }")}
+        }}
         const handle = {{
         {lifted(MODULE, "        dispose() {", "\n        },")}
         }}

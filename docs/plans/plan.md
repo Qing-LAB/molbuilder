@@ -12,36 +12,42 @@ at 2.77.9 is [`archive/2026-11-19-plan-consolidation.md`](?doc=archive/2026-11-1
 
 ## ▶ Where we are *(2026-11-19)*
 
-**2.77.14.** F0–F11 and F7a are closed (2.56.2–2.77.2). 2.77.10 brought Plotly's toolbar back on every chart, each chart's Export in a strip above it, and 2.77.12 a vibration mode's animation into a column beside the spectrum and its table, held in view *(the user, 2026-11-19)*. F12, *Proven*, walked
+**2.77.15.** F0–F11 and F7a are closed (2.56.2–2.77.2). 2.77.10 brought Plotly's toolbar back on every chart, each chart's Export in a strip above it, and 2.77.12 a vibration mode's animation into a column beside the spectrum and its table, held in view *(the user, 2026-11-19)*. F12, *Proven*, walked
 its three roads in the browser on real runs, ran the full batch (6106 fast
 and 805 e2e tests, none failed, at 2.77.2) and its two review rounds
 ([`archive/audits/2026-11-18-f12-review/`](?doc=archive/audits/2026-11-18-f12-review/TRIAGE-round1.md));
 its fix releases are running.
 
-**What runs next — F12's fix releases**, harm first, by module *(the user,
-2026-11-18)*. Each fixes its module's round-1 defects (`TRIAGE-round1.md`)
-through the one-home redesign round 2 found for it (`TRIAGE-round2.md`):
+**What runs next — five releases to the finish line** *(the user,
+2026-11-19: "a consolidated plan to get things finished, not to drag things
+along"; five releases, each with its two review rounds)*. F12's fix releases
+1–6 are done (2.77.4–2.77.11: the builders, the deck's value set, every
+scientific refusal a warning, the person's files, a failure in words, the
+pages' folder and run, MolView); 7, the viewers — the animation 2.77.13,
+the spectrum chart 2.77.14, the spectra page 2.77.15 (R1).
 
-1. the builders build what was asked — done, 2.77.4;
-2. the deck writes the value set — done, 2.77.5 (D7 and D11 left: a warning,
-   a cosmetic); 2b. every scientific refusal at prep a warning — done, 2.77.6;
-3. the person's files safe — done, 2.77.7;
-4. a failure said in words, never a traceback — done, 2.77.8;
-5. the pages show the folder and run they say — done, 2.77.9;
-6. MolView — done, 2.77.11;
-7. **the viewers** — the animation done, 2.77.13; the spectrum chart, its
-   pointer readout clear of Plotly's toolbar *(the user, 2026-11-19)*, done,
-   2.77.14; next the spectra page: a mode the
-   animation refuses said in words (L-U1's page side — today the swing line
-   stands over a still molecule), and a live run's poll no longer rebuilding
-   the animation (L-D4), which also cancels an export running;
-8. the run script and the machine.
-
-Then the rest of round 2 module by module, then the 85 chapter sentences
-(`TRIAGE-round1.md` § I; five need code: A-U6, B-U3, C-U3, H-U4, H-U5). Two
-answers for them *(the user, 2026-11-18)*: a SIESTA vibration's result keeps
-the structure's own notes, as PySCF's does; a report-cards copy that does
-not read stops only the monitor of a run that sends reports.
+1. **R1 — the viewers' last part, the spectra page** — done, 2.77.15.
+2. **R2 — the run script and the machine** (§ H: B-D1..D4, C-D2, C-D3,
+   O-D1..O-D9), **the user's two answers** *(2026-11-18)* — a SIESTA
+   vibration's result keeps the structure's own notes, as PySCF's does; a
+   report-cards copy that does not read stops only the monitor of a run that
+   sends reports — **and round 2's three safety items** (`TRIAGE-round2.md`
+   § Safety: the suite's scheduler stub lets `squeue`/`scancel` through; two
+   file-name rules; the pseudopotential README's folder).
+3. **R3 — one home per fact, the server side**: round 2's items for jobset,
+   run files and records, the run script and monitor, template and engines,
+   transport, spectra, parse, structure and builders, and the web server
+   (`TRIAGE-round2.md` § Biggest one-home items, and each `r2-*.md`), with
+   the five chapter sentences that need code (A-U6, B-U3, C-U3, H-U4, H-U5).
+4. **R4 — one home per fact, the pages and the tests**: round 2's items for
+   the pages, MolView, the viewers and the test harness — the Results
+   tab's file-menu pick copied in ten test files among them, its door now
+   `support.sidebar.result_picked` — and the deletions the readers
+   proposed, each shown to the user before it goes.
+5. **R5 — the documents and the proof**: the 80 chapter sentences that need
+   no code (`TRIAGE-round1.md` § I, one docs pass, no version), then the
+   finish line's proof: the full batch, and the three roads walked again in
+   the browser on real runs.
 
 **Waiting on the user:** nothing.
 

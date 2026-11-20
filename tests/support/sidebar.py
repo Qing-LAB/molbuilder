@@ -5,11 +5,11 @@ breadcrumb and rows, clicked.  What those clicks set -- the selection the tabs
 read -- is never set in its place (`process/testing.md` § 5, *Drive the page as
 a person does*; § 4: a page's input is what the server answers).
 
-Used by every browser test that reaches a folder or a file -- and the home of
-the two keystrokes every page's fields and editors take the same way
-(:func:`committed`, :func:`replace_text`): the module of doors a browser test
-drives a page through, where `support.pages` reads served pages with no
-browser at all.
+Used by every browser test that reaches a folder or a file -- the Results
+tab's file menu among them (:func:`result_picked`) -- and the home of the two
+keystrokes every page's fields and editors take the same way
+(:func:`committed`, :func:`replace_text`).  A page's own doors live in a
+module of its own (`support.spectra_page`, `support.task_setup_page`, ...).
 """
 from __future__ import annotations
 
@@ -90,6 +90,16 @@ def results_on(page, base: str, folder) -> None:
     """The Results tab opened and bound to ``folder`` (:func:`reload_from`)."""
     page.goto(f"{base}/results")
     reload_from(page, folder)
+
+
+def result_picked(page, path) -> None:
+    """``path`` chosen in the Results tab's file menu, once the folder's scan
+    lists it, as a person picks it (`web/results.md` § 2.1)."""
+    page.wait_for_function(
+        "(want) => [...document.querySelectorAll("
+        "  '#results-file-picker-select option')]"
+        "  .some(o => o.value === want)", arg=str(path), timeout=WAIT_MS)
+    page.select_option("#results-file-picker-select", value=str(path))
 
 
 def committed(page, field, value: str) -> None:

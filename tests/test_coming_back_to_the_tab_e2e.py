@@ -2,19 +2,25 @@
 cache, or a tab made visible again, sends one `GET /api/watch/data` at once,
 live run or not (`web/trajectory.md` § 5, *Coming back to the tab asks
 once*), and the Results tab's picker re-reads its folder once
-(`web/results.md` § 2.1, *Come back to the browser tab*) -- coming back being
-the page turning visible, the one event each listens to.
+(`web/results.md` § 2.1, *Come back to the browser tab*), and the spectra
+viewer asks its file once more as a poll asks it, the view the person left kept
+(`web/spectra.md` § 7) -- coming back being the page turning visible, the one
+event each listens to.
 
 THE SILENT FAILURES: the trajectory viewer's 15 s poll is a timer, and timers
 are paused while a page sits in the back/forward cache -- a restored page kept
 the frames it held when the person left, and a frame written while they were
-away showed only at the next tick (2026-06-02, #192); and a restore, which
+away showed only at the next tick (2026-06-02, #192); a restore, which
 fires `visibilitychange` (visible) and then `pageshow` (`persisted`), heard by
-a listener on each, scanned the folder twice, the first scan thrown away.
+a listener on each, scanned the folder twice, the first scan thrown away; and
+the spectra viewer loaded its file afresh on coming back, the mode picked and
+the molecule turned reset.
 
-The run is a real one, made once in this pass on the road
-(`support/real_runs.py`), and the Results tab opened on it as a person opens
-it: the file picked in the sidebar, the tab chosen in the tab bar.  The page
+The runs are real ones, made once in this pass on the road
+(`support/real_runs.py`), and the Results tab opened on each as a person opens
+it: the CO2 vibration's trajectory picked in the sidebar, the tab chosen in the
+tab bar; the PySCF water vibration's spectrum picked from the Results tab's
+file menu (`support.spectra_page`).  The page
 restored from the cache is the person's own way back: another tab chosen in
 the tab bar, then Back -- in a browser that keeps a page left, which the one
 the suite's ``page`` runs in does not (:func:`caching_browser`).  A tab made
@@ -226,3 +232,38 @@ def test_the_panel_scans_its_folder_once_and_only_reload_moves_it(
                               timeout=10_000):
         reload_from(page, elsewhere)
     assert scanned[1:] == [elsewhere], scanned
+
+
+def test_coming_back_keeps_the_spectrums_view(real_water_vibration, page,
+                                              monkeypatch):
+    """`web/spectra.md` § 7: "Coming back to the tab asks the file on screen
+    once more, as a poll asks it ... the mode, the animation's camera and the
+    level diagram's zoom you left stay as they were" -- `web/results.md`
+    § 4's per-file view goes with a load, and coming back is none.  The event
+    is dispatched in the page: no action makes it in a headless browser (the
+    module's header).  The run is finished, so the answer changes nothing on
+    the page that a wait could watch for: what follows waits on the answer
+    read whole.
+
+    THE SILENT FAILURE: back from another tab, the table and the animation on
+    the brightest mode again, the molecule turned by the person refitted."""
+    from playwright.sync_api import expect
+    from support.sidebar import WAIT_MS
+    from support.spectra_page import (mode_box_picture, mode_box_turned,
+                                      pictures_alike, spectrum_opened)
+    with spectrum_opened(page, real_water_vibration, monkeypatch.setenv):
+        first = page.locator("#modes-tbody tr.active").get_attribute("data-mode")
+        other = next(m for m in ("1", "2", "3") if m != first)
+        page.locator(f'#modes-tbody tr[data-mode="{other}"]').click()
+        turned = mode_box_turned(page)
+        with page.expect_response("**/api/spectra/load",
+                                  timeout=WAIT_MS) as asked:
+            page.evaluate(
+                "() => document.dispatchEvent(new Event('visibilitychange'))")
+        asked.value.finished()
+        expect(page.locator("#watch-status")).to_contain_text("Run complete")
+        expect(page.locator("#modes-tbody tr.active")).to_have_attribute(
+            "data-mode", other)
+        still = mode_box_picture(page)
+    assert pictures_alike(still, turned), (
+        "coming back put the turned molecule back to its fitted camera")
