@@ -5,7 +5,7 @@ Floor 3 (`execution/architecture.md` § 2.1).
 """
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, NamedTuple, Optional
 
 from ..scheduler.quantities import human_wall, mem_range
 from .model import AS_RESOURCE
@@ -16,19 +16,38 @@ from .model import AS_RESOURCE
 #: device run, and not `max_memory_mb`, a cap whose absence asks for nothing.
 _SHAPE_ITEMS = ("mpi_np", "omp_threads", "threads")
 
-#: What a person calls each launch value, and the flag that states it -- the
-#: words of the one refusal below and of the line that says where each value
-#: came from.
-_LAUNCH_WORDS = {
-    "domain":        ("queue", "--domain QUEUE"),
-    "time":          ("time limit", "--time 2-00:00:00"),
-    "mem":           ("memory", "--mem 64G"),
-    "mpi_np":        ("ranks", "--np N"),
-    "cpus_per_task": ("cores per rank", "--cpus-per-task N"),
-    "gres":          ("GPUs", "--gpus N"),
-    "max_memory_mb": ("memory cap", "--max-memory-mb MB"),
-    "gpu_binding":   ("GPU binding", "allocation.gpu_binding"),
+class LaunchField(NamedTuple):
+    """One launch value as a person meets it: ``words``, what they call
+    it; ``flag``, the prep flag that states it (``None``: none does);
+    ``shown``, an example beside the flag -- or, with no flag, where it is
+    set."""
+    words: str
+    flag: Optional[str]
+    shown: str
+
+
+#: What a person calls each launch value, the flag that states it (``None``:
+#: no flag does), and what is shown beside the flag -- or, with no flag, where
+#: it is set: the words of the one refusal below, of the line that says where
+#: each value came from, and of a flag's own refusal (`_cli`).
+LAUNCH_FIELDS = {
+    "domain":        LaunchField("queue", "--domain", "QUEUE"),
+    "time":          LaunchField("time limit", "--time", "2-00:00:00"),
+    "mem":           LaunchField("memory", "--mem", "64G"),
+    "mpi_np":        LaunchField("ranks", "--np", "N"),
+    "cpus_per_task": LaunchField("cores per rank", "--cpus-per-task", "N"),
+    "gres":          LaunchField("GPUs", "--gpus", "N"),
+    "max_memory_mb": LaunchField("memory cap", "--max-memory-mb", "MB"),
+    "gpu_binding":   LaunchField("GPU binding", None,
+                                 "allocation.gpu_binding"),
 }
+
+
+def flag_shown(field: str) -> str:
+    """How a launch field is stated, as a refusal shows it: its flag and an
+    example (``--np N``), or, with no flag, where it is set."""
+    stated = LAUNCH_FIELDS[field]
+    return f"{stated.flag} {stated.shown}" if stated.flag else stated.shown
 
 
 def launch_refusal(allocation, *, engine: str, header: bool, shape: bool,
@@ -80,10 +99,11 @@ def launch_refusal(allocation, *, engine: str, header: bool, shape: bool,
         if (getattr(allocation, "mpi_np", None) not in (None, "")
                 and _engine(engine).one_process):
             return (f"{'stage ' + repr(stage) + ' ' if stage else ''}states "
-                    f"a rank count (--np) for {engine}, which runs one "
-                    f"process -- a rank count names nothing it runs; the "
-                    f"cores it runs on are its threads (the run card's "
-                    f"`threads`, or --cpus-per-task).")
+                    f"a rank count ({LAUNCH_FIELDS['mpi_np'].flag}) for "
+                    f"{engine}, which runs one process -- a rank count "
+                    f"names nothing it runs; the cores it runs on are its "
+                    f"threads (the run card's `threads`, or "
+                    f"{LAUNCH_FIELDS['cpus_per_task'].flag}).")
     if header:
         for field in ("domain", "time", "mem"):
             if getattr(allocation, field, None) in (None, ""):
@@ -106,7 +126,7 @@ def launch_refusal(allocation, *, engine: str, header: bool, shape: bool,
         return None
     where = []
     for field, key in missing:
-        words, flag = _LAUNCH_WORDS[field]
+        words, stated = LAUNCH_FIELDS[field].words, flag_shown(field)
         # WHERE A PERSON STATES IT, on either road: the Task setup card that
         # writes it, the job-request.json key that card writes, and the flag --
         # the refusal reaches the page and the terminal alike.
@@ -121,11 +141,11 @@ def launch_refusal(allocation, *, engine: str, header: bool, shape: bool,
         else:
             card = (f'the run card\'s "{row_of[key]}" row on Task setup '
                     f'("execution": {{"{key}": N}} in {JOB_REQUEST_FILE})')
-        line = f"  {words:<15} {card}, or {flag}"
+        line = f"  {words:<15} {card}, or {stated}"
         if field == "domain":
             line += "\n" + _the_queues(asked, queues, engine)
         where.append(line)
-    what = ", ".join(f"{_LAUNCH_WORDS[f][0]} ({k})" for f, k in missing)
+    what = ", ".join(f"{LAUNCH_FIELDS[f].words} ({k})" for f, k in missing)
     return (f"{'stage ' + repr(stage) + ' ' if stage else ''}states no "
             f"{what} -- and nothing fills one in"
             f".  State each:\n"
@@ -219,10 +239,10 @@ def _sources_said(sources) -> str:
     from ..template import SAID
     by_source: dict = {}
     sources = sources or {}
-    for field in _LAUNCH_WORDS:            # in the one order of the words
+    for field in LAUNCH_FIELDS:            # in the one order of the words
         if field in sources:
             by_source.setdefault(sources[field], []).append(
-                _LAUNCH_WORDS[field][0])
+                LAUNCH_FIELDS[field].words)
     return "; ".join(f"{', '.join(fields)} from {SAID[source]}"
                      for source, fields in by_source.items())
 
@@ -331,5 +351,6 @@ def _machine_lines(row) -> List[str]:
     return out
 
 
-__all__ = ["placed", "launch_refusal", "no_queues_said",
+__all__ = ["placed", "launch_refusal", "no_queues_said", "LaunchField",
+           "LAUNCH_FIELDS", "flag_shown",
            "placement_line", "queue_table", "request_of", "stated_line"]

@@ -39,7 +39,6 @@ subclasses with the git stderr verbatim.
 from __future__ import annotations
 
 import fnmatch
-import hashlib
 import os
 import re
 import shutil
@@ -52,7 +51,7 @@ from molbuilder.runfiles import find_by_role as _rf_find_by_role
 from typing import Dict, List, Optional, Sequence, Tuple
 
 from .calcdirs import calculation_above, described
-from .persist import sha256_of
+from .persist import sha256_of, sha256_of_bytes
 from .task import FILENAME as _TASK_FILENAME
 from .runfiles import (GITIGNORE_FILE, HISTORY_DIR, NAME_CHARS, NAME_TOKEN,
                        SNAPSHOT_DIR)
@@ -760,7 +759,7 @@ def manifest_digest(raw: bytes) -> str:
     One value that locates the archive, proves it, and makes it impossible to
     modify without becoming a different archive.
     """
-    return hashlib.sha256(raw).hexdigest()
+    return sha256_of_bytes(raw)
 
 
 def archive_dir(root: Path, digest: str) -> Path:
@@ -1615,9 +1614,7 @@ class Repo:
         # whether *the state held a file at this path*, and a state holds files
         # in BOTH stores -- so answering from the MANIFEST alone calls a file
         # that crossed the size limit "added", when the state had it all along.
-        tracked = {name for name in
-                   _run_git(["ls-files", "-z"], cwd=self.path).stdout.split("\0")
-                   if name}
+        tracked = set(_tracked(self.path))
 
         for name, code in git_says.items():
             if _archives(name):
@@ -1790,9 +1787,8 @@ class Repo:
         # index FIRST -- the ignore rules do not reach a tracked file, so
         # `add` below would write its new bytes into `.git/objects`.  In
         # neither store (S1); the file itself stays.
-        tracked_scratch = [name for name in _run_git(
-            ["ls-files", "-z"], cwd=self.path).stdout.split("\0")
-            if name and never_carried(Path(name).name)]
+        tracked_scratch = [name for name in _tracked(self.path)
+                           if never_carried(Path(name).name)]
         _untrack(self.path, tracked_scratch)
 
         # THE BIG FILES ARE NEVER SHOWN TO `git add`, and that is not an
@@ -1936,9 +1932,7 @@ class Repo:
         # tracked file the target holds -- with nothing to put it back, since
         # only archived files are copied afterwards.  `-z` also
         # stops git quoting a non-ASCII name, which fails the same way.
-        tracked = {name for name in
-                   _run_git(["ls-files", "-z"], cwd=self.path).stdout.split("\0")
-                   if name}
+        tracked = set(_tracked(self.path))
         # `walk_entries`, not `walk_files`: SYMLINKS ARE LEFTOVERS TOO.
         #
         # `git clean` above removes an untracked link, but only when no ignore
@@ -2056,6 +2050,14 @@ class Repo:
             found.append(Tag(name=name, state=state or self.resolve(name),
                              note=subject))
         return sorted(found, key=lambda t: t.name)
+
+
+def _tracked(repo_path: str) -> List[str]:
+    """Every file git tracks in the folder at ``repo_path``, as git names it
+    -- ``-z``, so a non-ASCII name is never quoted."""
+    return [name for name in
+            _run_git(["ls-files", "-z"], cwd=repo_path).stdout.split("\0")
+            if name]
 
 
 def _untrack(repo_path: str, keys: Sequence[str]) -> None:

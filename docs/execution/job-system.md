@@ -235,17 +235,17 @@ writes nothing — and name each that differs: `mesh_cutoff: 300 → 400`.
 
 - **Only what the person changed is a difference.** A deck a newer molbuilder
   words otherwise is none, nor an item a newer molbuilder added or retired, nor
-  a point it words otherwise: points are compared by their folders, and a record
-  that names no folders by the words it holds, read as today words them. A run-card value stated or taken away is one: *run card
-  mpi_np: not stated → 4*.
+  a point it words otherwise: points are compared by their folders. A run-card
+  value stated or taken away is one: *run card mpi_np: not stated → 4*.
 - **A record that does not read** — not JSON, or another file's schema — is
   said in its reader's words, naming the file and the way back: the state
   saved before the last prep, or the file removed and every group prepared
   again. It is the stage's answer and its group's next step, *unreadable*,
   and a prep refuses over it in the same words.
-- **A stage whose prep recorded nothing** says so in one spelling on every
-  surface (`prepared_with.UNRECORDED_SAID`) and is compared with nothing;
-  prepared again, it is recorded.
+- **A stage whose prep recorded nothing** this molbuilder reads — no entry,
+  or one an older molbuilder wrote, missing a value this one records — says
+  so in one spelling on every surface (`prepared_with.UNRECORDED_SAID`) and is
+  compared with nothing; prepared again, it is recorded.
 - **A launch compares nothing**: it sends what prep wrote (§ 6.0). **But a
   launch that names no group offers none changed since its prep**, never
   launched: it is passed by — said *prepare it again*, as `status` says it,
@@ -492,7 +492,7 @@ name no refusal.
 | **R-P12** | a deck's own checks refuse it; a data file it needs is missing | the check's words | `prep.plan_stage` (`prep_calculation`) |
 | **R-P13** | a job walking several members — a group, a benchmark's shelf — whose members do not ask the same of what they share | the same values for each, or groups of their own | a group, `prep.group_header` (`group.envelope`); a benchmark, `prep.prep_jobset` (`shelves.shelf_request`) |
 | **R-P14** | a Prep whose plan differs from the one previewed | preview again | `prep._prep_groups` |
-| **R-P15** | the folder's state cannot be saved | the save's words | `checkpoint.save_before` |
+| **R-P15** | the folder's state cannot be saved | the save's words | `checkpoint.save_before`, said by `jobset/ledger.save_then_carry_out` |
 | **R-P16** | the structure is missing, or not the one described | the structure put back, or the calculation described anew | `rung.structure_for` |
 | **R-P17** | a run's GPU request disagrees with itself: GPUs used and none counted, or counted and not used | the count stated, or no GPU | `prep.plan_stage` (`model.gpu_request`) |
 | **R-P19** | a description stating a layout other than the one, `"shape": "flat"` among them ([`project-layout.md`](?doc=execution/project-layout.md) § 1) | the calculation described again | `task.of` — at describe, at Save and at every read |
@@ -519,7 +519,7 @@ name no refusal.
 | **R-L21** | a record the plan reads does not read, or a job of the plan no file can be named for (below) | the record's own words | each reader (`runrecord.LaunchRecordError`, `naming.NamingError`, `warmfiles.WarmFilesError`), refused once by `submit.plan_launch` (`_refusal_kinds`) |
 | **R-L22** | at the send, the folder is not what it was when planned — the plan made again from it now differs, or is refused | launch again, to see the new plan | `submit.send_launch` (`_same_folder`) |
 | **R-L23** | at the send, nobody to ask and no `--yes` | `--yes` | `submit.send_launch` |
-| **R-L24** | the folder's state cannot be saved | the save's words | `checkpoint.save_before` |
+| **R-L24** | the folder's state cannot be saved | the save's words | `checkpoint.save_before`, said by `jobset/ledger.save_then_carry_out` |
 | **R-L25** | the scheduler refuses the request | the scheduler's words; each run stays pending, and the next launch fills it anew | `submit._go` |
 | **R-L26** | a group the job request does not hold | the groups it holds | `submit._the_group` |
 | **R-L27** | the description does not read | its reader's words | `calculation.open` |
@@ -1433,7 +1433,7 @@ molbuilder jobset <verb> bench <stage> [<trial>]  [options]
 | `jobset launch bench <stage> [<trial>]` | under `submit`, the trials not yet launched as one job per resource shelf; under `direct`, each here in turn, in one walk; a named trial alone | `--mode`, `--only cpu\|gpu`, `--trial-timeout`, `--time`, `--yes`, `--dry-run` | each trial's `run.json`; the walk's script and log | § 6.0, § 7 |
 | `jobset summarize task` | a transport calculation's bias points into `<label>.transport.json` ([`engines/transport.md`](?doc=engines/transport.md) § 2a.12); a SIESTA vibration's force-constant stages into `<label>.fc-sweep.json` ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.9); any other calculation refused — its outputs *are* its results | `--tolerance-cm1` | that record | *The next step* |
 | `jobset summarize bench <stage>` | the trials' measurements, the winner, and the report — printed | — | `bench/bench-result.json` | § 7.1 |
-| `jobset status [<stage>]` | every stage, where it stands, and each group's next step; with a stage, that stage in full | — | nothing | below |
+| `jobset status [<stage>]` | every stage, where it stands, and each group's next step; with a stage, that stage in full | — | only a run's ending, once, in its launch record, when it finds the run ended (§ 6.0a) | below |
 | `jobset scratch` | an engine's scratch the runs hold, listed; with `--empty`, the files no run still going keeps, removed after one question | `--empty`, `--yes` | the ledger, when it removes | below |
 | `jobset migrate` | what an older molbuilder wrote in the calculation, rewritten, each change said — the road every reader names when it refuses such a file | — | the new files, each old one kept beside it | [`job-request.md`](?doc=execution/job-request.md) § 8 |
 | `jobset export` | a transport calculation's every result, as NetCDF or as CSV tables, from what is already there; a vibration calculation's data files and, with `--laser-nm`, its Raman view; an optimization's every finished step | `--format netcdf\|csv`, `--to`, and what the calculation's kind asks — `--laser-nm`, `--broaden-ev`, `--dos-per-orbital` — from the kind table's rows ([`model/datafiles.md`](?doc=model/datafiles.md) § 5a) | into the folder `--to` names, never inside the calculation | [`engines/transport.md`](?doc=engines/transport.md) § 2a.12; [`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 10 |
@@ -1483,7 +1483,7 @@ what the verbs and their refusals print.
   cannot import the composer, and prints plain text by the same rules; the way
   back it names is `identity.way_back_words`'s.
 
-#### The read-only verb
+#### The verb that reads
 
 ```bash
 molbuilder jobset status --bundle BDT-Au/optimization/bdt-relax   # every stage, where it stands, what is next
@@ -2428,7 +2428,7 @@ implementation and no file between the composer and either reader.
 flowchart LR
     A["the trials' own artifacts<br/>(scf-timing.log · monitor.log · util.csv · the deck)"]
     C["summarize.bench_record<br/>= the points, then the verdict,<br/>then how the winner computed"]
-    V["sweep_view<br/>+ jobset_status, read-only"]
+    V["sweep_view<br/>+ jobset_status, which reads"]
     R["run_summarize_jobset<br/>+ writes bench-result.json"]
     W["the Results panel<br/>GET /api/bench/summary"]
     T["the terminal<br/>jobset summarize"]

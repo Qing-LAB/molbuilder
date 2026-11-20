@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import dataclasses
 import json
-import re
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
@@ -45,13 +44,11 @@ def values_of(calc, stage: str, *, read=None) -> Dict[str, Any]:
     ``read`` reads a path's text where a record is this prep's plan's, not
     yet on disk (a rung of points' record, `points.PointsOf.rung_points`).
     Raises ``ValueError`` when the template does not resolve."""
-    from ..resolve import resolved_ladder
-    from ..identity import stage_key
     from ..template import run_settings
+    from .ladder import stage_config
     from .points import points_of
     task = calc.task
-    ladder = resolved_ladder(calc.template_text or "", task)
-    cfg = next(c for name, c in ladder if stage_key(name) == stage_key(stage))
+    cfg = stage_config(task, stage, calc.template_text or "")
     # A RUN SETTING IS THE RUN CARD'S: the resolved configuration holds it
     # at its default, which says nothing the person stated.
     on_the_card = run_settings(task.engine)
@@ -72,17 +69,25 @@ def values_of(calc, stage: str, *, read=None) -> Dict[str, Any]:
             "execution": request.run_condition(stage),
             "allocation": dataclasses.asdict(request.allocation),
             "notify": whole.get("notify")})
-    return {"settings": settings, "points": points,
-            "point_folders": folders, "run_card": run_card}
+    return {SETTINGS: settings, POINTS: points, POINT_FOLDERS: folders,
+            RUN_CARD: run_card}
 
 
 def _stages_in(load, path: Path) -> Dict[str, Dict[str, Any]]:
     """The record's stages, by stage name, from what ``load`` reads of it
     (`persist.read_object`, or a prep plan's) -- or ``ValueError`` naming
     ``path`` when it does not read as this record: not text, not JSON, not
-    one object, or another file's schema -- with the way back."""
+    one object, or another file's schema, or a stage's entry not an object
+    -- with the way back.  A stage's entry that does not hold every one of
+    :data:`RECORDED_KEYS` is left out: what it was prepared with is not
+    recorded as this molbuilder reads it."""
     try:
         d = load(path, schema=SCHEMA)
+        stages = dict(d.get("stages") or {})
+        bad = [name for name, entry in stages.items()
+               if not isinstance(entry, dict)]
+        if bad:
+            raise ValueError(f"stage {bad[0]!r}'s entry is not an object")
     except ValueError as exc:
         from ..identity import checkpoint_words
         raise ValueError(
@@ -90,7 +95,8 @@ def _stages_in(load, path: Path) -> Dict[str, Dict[str, Any]]:
             f"stage was prepared with: give it back from the state saved "
             f"before the last prep ({checkpoint_words(path.parent)}), or "
             f"remove it and prepare every group again") from None
-    return dict(d.get("stages") or {})
+    return {name: entry for name, entry in stages.items()
+            if all(k in entry for k in RECORDED_KEYS)}
 
 
 def path_of(base) -> Path:
@@ -149,10 +155,10 @@ _STATED = frozenset({"execution"})
 #: How a value the person did not state is said in a difference.
 _NOT_STATED = "not stated"
 
-#: The one spelling of a stage whose prep recorded nothing (prepared before
-#: 2.41.0) -- `status`, Task setup and the contract say it with this.
-UNRECORDED_SAID = ("what it was prepared with is not recorded (prepared "
-                   "before 2.41.0)")
+#: The one spelling of a stage whose prep recorded nothing this molbuilder
+#: reads -- `status`, Task setup and the contract say it with this.
+UNRECORDED_SAID = ("what it was prepared with is not recorded (prepared by "
+                   "an older molbuilder)")
 
 #: What a difference is OF (`job-system.md`, *The task*, *Changed since
 #: prepared*): the description's values -- ``settings``, ``points`` -- or
@@ -161,6 +167,14 @@ UNRECORDED_SAID = ("what it was prepared with is not recorded (prepared "
 #: in what it computes starts from the beginning.
 SETTINGS, POINTS, RUN_CARD = "settings", "points", "run_card"
 
+#: The points' folders, what points are compared by (:func:`differences`).
+POINT_FOLDERS = "point_folders"
+
+#: What the record holds of each stage (:func:`values_of`): a stage's entry
+#: missing one was written by a molbuilder whose record this one does not
+#: read, and is read as none recorded (:func:`_stages_in`).
+RECORDED_KEYS = (SETTINGS, POINTS, POINT_FOLDERS, RUN_CARD)
+
 
 @dataclasses.dataclass(frozen=True)
 class Difference:
@@ -168,19 +182,6 @@ class Difference:
     :data:`RUN_CARD`) and ``said``, ``name: was → now``."""
     kind: str
     said: str
-
-
-#: A frame as a record written before 2.67.2 words it.
-_OLDER_FRAME = re.compile(r"frame index (\d+) \(of (\d+)\)")
-
-
-def _words_now(points) -> List[str]:
-    """A record's points in today's words, a frame numbered as
-    :func:`structure.frame_words` numbers it."""
-    from ..structure import frame_words
-    return [_OLDER_FRAME.sub(
-                lambda m: frame_words(int(m[1]), int(m[2])), str(p))
-            for p in points or ()]
 
 
 def differences(was: Dict[str, Any], now: Dict[str, Any]
@@ -193,21 +194,18 @@ def differences(was: Dict[str, Any], now: Dict[str, Any]
     an item added or retired since -- never the person's, and is not
     compared; in a block that holds only what is stated (:data:`_STATED`)
     a key one side lacks is the person's, *run card mpi_np: not stated →
-    4*.  Points are compared by their folders, never their words; a record
-    written before it held them, by the words it holds (:func:`_words_now`)."""
+    4*.  Points are compared by their folders, never their words."""
     out: List[Difference] = []
-    s_was, s_now = was.get("settings") or {}, now.get("settings") or {}
+    s_was, s_now = was.get(SETTINGS) or {}, now.get(SETTINGS) or {}
     for name in sorted(set(s_was) & set(s_now)):
         if s_was[name] != s_now[name]:
             out.append(Difference(SETTINGS, f"{name}: {_words(s_was[name])}"
                                             f" → {_words(s_now[name])}"))
-    p_was, p_now = _words_now(was.get("points")), _words_now(now.get("points"))
-    if (was["point_folders"] != now.get("point_folders")
-            if "point_folders" in was else p_was != p_now):
+    if was[POINT_FOLDERS] != now[POINT_FOLDERS]:
         out.append(Difference(
-            POINTS, f"points: {', '.join(p_was or ['none'])} → "
-                    f"{', '.join(p_now or ['none'])}"))
-    rc_was, rc_now = was.get("run_card") or {}, now.get("run_card") or {}
+            POINTS, f"points: {', '.join(map(str, was[POINTS] or ['none']))}"
+                    f" → {', '.join(map(str, now[POINTS] or ['none']))}"))
+    rc_was, rc_now = was.get(RUN_CARD) or {}, now.get(RUN_CARD) or {}
     for block in sorted(set(rc_was) & set(rc_now)):
         a, b = rc_was.get(block) or {}, rc_now.get(block) or {}
         said = _BLOCK_WORDS.get(block, block)
@@ -244,7 +242,8 @@ def run_card_only(differences) -> bool:
 def changes(calc, stage: str) -> Tuple[bool, List[Difference]]:
     """WHETHER ``stage`` IS STILL WHAT ITS RECORDS GIVE -- ``(recorded,
     differences)``: ``recorded`` false when its prep recorded no values
-    (prepared before 2.41.0), and nothing is compared; else each value that
+    this molbuilder reads (:func:`_stages_in`), and nothing is compared;
+    else each value that
     differs (:class:`Difference`, ``mesh_cutoff: 300 → 400``), ``[]`` when
     none does.  A template that does not resolve now is said as the one
     difference, in its reader's words; a record that does not read raises

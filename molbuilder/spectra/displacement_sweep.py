@@ -306,7 +306,8 @@ def collect_sweep(calc, *,
                 f"at the geometry {ref_name!r} was measured at, launch it "
                 f"again taking that relaxation --\n"
                 + block(launch_lines("task", name, base=base,
-                                     flags=("--from", attempt_of[ref_name]))))
+                                     typed=(("--from",
+                                             attempt_of[ref_name]),))))
 
     # WHICH MODE IS WHICH, by shape, against the first stage with a result.
     masses = [mass_of(i, ref.equilibrium_elements, ref.equilibrium_masses_amu)

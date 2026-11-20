@@ -208,7 +208,10 @@ def test_write_json_uses_a_unique_temp_never_the_derived_name(tmp_path,
     p = tmp_path / "cfg.json"
     persist.write_json(p, {"schema": "molbuilder/x@1"})
     assert seen["src"] != str(tmp_path / "cfg.json.tmp")
-    assert "cfg.json." in seen["src"] and seen["src"].endswith(".tmp")
+    # THE TEMP IS ONE THE CATALOGUE CALLS TRANSIENT, so the checkpoint and
+    # every copier leave a stopped write's leftover out.
+    from molbuilder.runfiles import is_transient
+    assert is_transient(seen["src"]) and not is_transient(p)
 
 
 def test_write_json_preserves_the_targets_mode(tmp_path):

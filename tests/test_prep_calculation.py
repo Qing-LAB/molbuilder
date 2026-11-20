@@ -115,6 +115,67 @@ def test_what_a_stage_was_prepared_with_leaves_run_settings_to_its_card(
         set(settings) & run_settings("siesta"))
 
 
+def test_an_entry_an_older_molbuilder_wrote_reads_as_not_recorded(
+        tmp_path, monkeypatch):
+    """A stage's entry in `prepared-with.json` that lacks a value this
+    molbuilder records -- its points' folders, as one written before
+    them -- is compared with nothing and said in the one spelling
+    (`job-system.md`, *Changed since prepared*); an entry that is not an
+    object is a record that does not read, said naming the file.
+    PREVENTS: an older record's words compared as today's, naming a
+    change nobody made, or a hand-broken entry read as quietly
+    unrecorded."""
+    import json
+    import pytest
+    from molbuilder.calculation import open as open_calculation
+    from molbuilder.jobset.prepared_with import (UNRECORDED_SAID, changes,
+                                                 path_of)
+    calc = described(road_tree(tmp_path, monkeypatch))
+    _prep(calc)
+    record = path_of(calc)
+    held = json.loads(record.read_text())
+    del held["stages"]["coarse"]["point_folders"]
+    record.write_text(json.dumps(held))
+    assert changes(open_calculation(calc), "coarse") == (False, [])
+    r = jobset("status", "--bundle", calc)
+    assert UNRECORDED_SAID in r.output, r.output
+    held["stages"]["coarse"] = "x"
+    record.write_text(json.dumps(held))
+    with pytest.raises(ValueError, match="prepared-with.json"):
+        changes(open_calculation(calc), "coarse")
+
+
+def test_status_names_the_warm_files_a_run_left(tmp_path, monkeypatch):
+    """`status <stage>`'s *warm files* row names each file of the
+    calculation's kind's warm list in effect that the stage's run left --
+    what a next stage could take (`job-contracts.md` § 4.2a: the list in
+    effect, asked with the calculation's folder) -- and no file of another
+    kind's list, and no person's file.
+    PREVENTS: the row read from every kind's list, naming a file this kind
+    never carries; or from the stage's own job, empty for a stage that
+    starts clean though its run left what the next one takes."""
+    from molbuilder.runfiles import compose
+    from molbuilder.task import of as task_of
+    from molbuilder.warmfiles import warm_list
+    calc = described(road_tree(tmp_path, monkeypatch))
+    _prep(calc)
+    run = next(p for p in calc.rglob("run-0") if "coarse" in str(p))
+    label = task_of(calc).label
+    own = warm_list("siesta", "optimization", calc).carry
+    other = [s for s in warm_list("siesta", "transport", calc).carry
+             if s not in own]
+    left = compose(label, own[0])
+    (run / left).write_text("restart\n")
+    (run / compose(label, other[0])).write_text("another kind's\n")
+    (run / "notes.txt").write_text("the person's\n")
+    r = jobset("status", "coarse", "--bundle", calc)
+    assert r.exit_code == 0, r.output
+    (row,) = [ln for ln in r.output.splitlines()
+              if ln.strip().startswith("warm files")]
+    assert left in row, row
+    assert compose(label, other[0]) not in row and "notes.txt" not in row, row
+
+
 def test_a_calculation_this_molbuilder_prepared_is_current_to_migrate(
         tmp_path, monkeypatch):
     """`jobset migrate` on a calculation this molbuilder described and

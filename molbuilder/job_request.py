@@ -23,16 +23,15 @@ shape is checked here.
 """
 from __future__ import annotations
 
-import contextvars
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, List, Mapping, NoReturn, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Mapping, Optional, Tuple
 
 from . import report_fields as _report_fields
 from .config_dir import CHANNEL_NAME_RULE, is_channel_name
 from .identity import stage_key
-from .persist import (check_schema, object_of, read_object,
-                      unknown_keys, write_json)
+from .persist import (RecordRefusals, check_schema, object_of, read_object,
+                      write_json)
 from .scheduler.quantities import canonical_mem, canonical_time
 
 if TYPE_CHECKING:
@@ -45,8 +44,8 @@ from .runfiles import JOB_REQUEST_FILE as FILENAME  # noqa: E402
 from .runfiles import TASK_FILE  # noqa: E402
 
 
-_TOP_KEYS = ("schema", "allocation", "execution", "stages", "bench", "notify")
-_STAGE_KEYS = ("group", "execution")
+TOP_KEYS = ("schema", "allocation", "execution", "stages", "bench", "notify")
+STAGE_KEYS = ("group", "execution")
 #: The SCHEDULER asks of an `allocation` block (`job-request.md` § 3.1): the
 #: three SLURM spells as text, and the one it switches -- whether a GPU ask
 #: carries its binding (`execution/gpu.md` G9).  The launch SHAPE -- ranks,
@@ -329,31 +328,13 @@ class JobRequest:
 #  Refusals                                                             #
 # --------------------------------------------------------------------- #
 
-#: What a refusal calls the thing it is refusing -- the file, or the body
-#: a page sent.
-_SOURCE: contextvars.ContextVar[str] = contextvars.ContextVar(
-    "job_request_refusal_source", default=FILENAME)
-
-
-def _refuse(msg: str, *, where: str = "") -> NoReturn:
-    raise ValueError(
-        f"{_SOURCE.get()}{': ' + where if where else ''}: {msg}")
-
-
-def _as_object(value: Any, *, where: str) -> Mapping[str, Any]:
-    if not isinstance(value, Mapping):
-        _refuse(f"expected an object, got {type(value).__name__}", where=where)
-    return value
-
-
-def _check_keys(obj: Mapping[str, Any], allowed: Tuple[str, ...], *,
-                where: str, note: str = "") -> None:
-    """An unknown key is refused, not ignored -- an ignored key is a request
-    quietly different from the one written -- with the near-miss named, or
-    where the key belongs (``note``)."""
-    said = unknown_keys(obj, allowed, note)
-    if said:
-        _refuse(said, where=where)
+#: The job request reader's refusals (`persist.RecordRefusals`), each
+#: calling the thing it refuses by its file, or the body a page sent.
+_REFUSALS = RecordRefusals("job_request_refusal_source", FILENAME)
+_SOURCE = _REFUSALS.source
+_refuse = _REFUSALS.refuse
+_as_object = _REFUSALS.as_object
+_refuse_unknown_keys = _REFUSALS.refuse_unknown_keys
 
 
 #: A key of the description written here, said where it belongs.
@@ -374,7 +355,7 @@ def from_dict(obj: Mapping[str, Any], description: "Task") -> JobRequest:
     if not isinstance(obj, Mapping):
         _refuse(f"expected a JSON object, got {type(obj).__name__}")
     check_schema(str(obj.get("schema") or ""), SCHEMA, label=FILENAME)
-    _check_keys(obj, _TOP_KEYS, where="", note=_DESCRIPTION_NOTE)
+    _refuse_unknown_keys(obj, TOP_KEYS, where="", note=_DESCRIPTION_NOTE)
     engine, calc = str(description.engine), str(description.calculation)
     return JobRequest(
         stages=_stages_from_obj(obj, description),
@@ -420,7 +401,7 @@ def _stages_from_obj(obj: Mapping[str, Any], description: "Task"
     for name in names:
         where = f"stages {name!r}"
         body = _as_object(entries[name], where=where)
-        _check_keys(body, _STAGE_KEYS, where=where,
+        _refuse_unknown_keys(body, STAGE_KEYS, where=where,
                     note=f". A stage's overrides are the description's "
                          f"({TASK_FILE})")
         if "group" not in body:
@@ -473,7 +454,7 @@ def _allocation_from_obj(obj: Mapping[str, Any]) -> Allocation:
                 "empty would be two spellings of one state")
     # A LAUNCH SHAPE LANDING HERE IS THE ORDINARY MISTAKE: the refusal names
     # the block it belongs in.
-    _check_keys(raw, _ALLOCATION_KEYS + _ALLOCATION_SWITCHES,
+    _refuse_unknown_keys(raw, _ALLOCATION_KEYS + _ALLOCATION_SWITCHES,
                 where="allocation",
                 note=". Ranks, threads and GPUs are not asked here -- they "
                      "are the run card's (`execution`: \"mpi_np\": 8), and "
@@ -518,7 +499,7 @@ def _notify_from_obj(obj: Mapping[str, Any], *, engine: str,
         _refuse("'notify' is present but not a non-empty object. Omit the "
                 "key when nothing should be reported -- absent and empty "
                 "would be two spellings of one state")
-    _check_keys(raw, _NOTIFY_KEYS, where="notify")
+    _refuse_unknown_keys(raw, _NOTIFY_KEYS, where="notify")
     # A BLOCK STATES ALL FOUR: "every channel" and "every field" are
     # written `["*"]`, never a key left out.
     missing = [k for k in _NOTIFY_KEYS if k not in raw]
@@ -702,6 +683,7 @@ def write(base, request: JobRequest, *, plan=None):
 
 
 __all__ = ["SCHEMA", "FILENAME", "LANE_ASKS", "LANE_ASK_ROWS",
+           "TOP_KEYS", "STAGE_KEYS",
            "why_not_on_card",
            "Allocation", "Notify", "StageRequest", "JobRequest",
            "bench_from_obj", "from_dict", "from_text", "fresh", "of",

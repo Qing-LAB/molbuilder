@@ -70,3 +70,43 @@ def test_the_folder_is_emptied_as_each_round_begins_and_at_the_end(tmp_path):
         "device@f001/v0.2 not run -- what it builds on failed or did not run",
         "tsgf/ empty",
     ], said
+
+
+def test_the_emptying_removes_the_green_functions_a_device_run_writes(tmp_path):
+    """The emptying's globs reach the files themselves: each lead's Green's
+    function at each voltage under the name the deck gives it (the
+    catalogue's row, `runfiles.SIESTA_TSGF`) and under the engine's own
+    default name (the shipped list's suffixes), all removed and said; a
+    file of the person's beside them stays.  The globs are rendered into
+    the shell by `submit._empty_scratch_fn` -- a family the shell does not
+    read as a glob removes nothing and logs the folder empty.
+
+    PREVENTS: the walk's emptying matching nothing (a glob quoted whole),
+    leaving every voltage's pair of tens of GiB on the disk."""
+    from molbuilder.jobset.submit import _walk_script
+    from molbuilder.runfiles import SIESTA_TSGF, compose, names_made
+    from molbuilder.warmfiles import scratch_families
+    label = "AuBDT"
+    tsgf = tmp_path / "run-0" / "tsgf"
+    tsgf.mkdir(parents=True)
+    written = ([compose(label, made) for made in names_made(SIESTA_TSGF)]
+               + [label + family[1:] for family in scratch_families()
+                  if "TSGF" in family])
+    for name in written:
+        (tsgf / name).write_bytes(b"G" * 64)
+    (tsgf / "notes.txt").write_text("the person's own\n")
+    _members(tmp_path, ["f000/v0"])
+    script = _walk_script("device-sweep", [("device@f000/v0", "run-0/f000/v0",
+                                            "go.sh", "", ())],
+                          where="the device's sweep", log="walk.log",
+                          member_word="point", needs=[None],
+                          empties={0: "run-0/tsgf"},
+                          empty_at_end="run-0/tsgf")
+    (tmp_path / "walk.sh").write_text(script)
+    subprocess.run(["bash", "walk.sh"], cwd=tmp_path, capture_output=True,
+                   text=True)
+    assert sorted(p.name for p in tsgf.iterdir()) == ["notes.txt"]
+    emptied = [ln for ln in _log_lines(tmp_path / "walk.log")
+               if "tsgf/ emptied -- " in ln]
+    assert len(emptied) == 1 and all(n in emptied[0] for n in written), \
+        _log_lines(tmp_path / "walk.log")

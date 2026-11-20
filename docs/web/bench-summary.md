@@ -202,8 +202,8 @@ non-empty the card shows both.
 
 ## 4. The route
 
-`GET /api/bench/summary?path=<path to a job-set.json>` — read-only, no side
-effects, safe to poll. Shape pinned in
+`GET /api/bench/summary?path=<path to a job-set.json>` — writes no record and
+no proposal, safe to poll. Shape pinned in
 [`web-api.md`](?doc=web/web-api.md).
 
 Composition happens **server-side**, in one place, for the same reason B1
@@ -232,6 +232,7 @@ this be read"*), the HTTP refusals, and JSON.
 never writes `bench-result.json`, and the report is `summarize`'s to print —
 because once it exists it is the *user's* file, possibly edited, and a page
 that polls every 15 s must not race it. It does not promise to touch nothing:
-`jobset_status` decodes each run directory, and with `MOLBUILDER_PARSE_LOG`
-set a parser appends its parse log beside the output it reads
-(`parse/_log.py`, off unless asked).
+`jobset_status` decodes each run directory and writes a run's ending, once,
+into its launch record when it finds the run ended (`runs.concluded`); and
+with `MOLBUILDER_PARSE_LOG` set a parser appends its parse log beside the
+output it reads (`parse/_log.py`, off unless asked).

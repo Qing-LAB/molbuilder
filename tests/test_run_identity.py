@@ -205,8 +205,8 @@ def test_the_cap_is_derived_from_what_gets_appended_to_the_id():
     longest role, so a longer role added to `runfiles.WRITTEN` moves the cap
     (it was pinned to `.STRUCT_NEXT_ITER` until 2026-10-18, 8 bytes short of
     `_optimized.molstruct.json`)."""
-    from molbuilder.runfiles import engines, longest_tail
-    longest = longest_tail(engines())
+    from molbuilder.runfiles import longest_tail
+    longest = longest_tail()
     assert MAX_LABEL_BYTES == 255 - 32 - len(longest)
     assert len(longest) >= len(".siesta.hierarchical.pipeline.log")
     assert normalise_id("x" * MAX_LABEL_BYTES)
@@ -222,13 +222,13 @@ def test_a_known_ladder_tightens_the_cap_instead_of_guessing():
     file and one byte more is refused.  THE SILENT FAILURE: a cap counting
     the stage name without its ``NN_`` admits a label whose longest file
     name passes the filesystem's limit."""
-    from molbuilder.runfiles import engines, longest_tail
+    from molbuilder.runfiles import longest_tail
     long_stage = "a_very_long_stage_name_indeed_beyond_the_budget"
     at_default = "x" * MAX_LABEL_BYTES
     assert normalise_id(at_default)
     with pytest.raises(ValueError, match="the limit is"):
         normalise_id(at_default, stage_names=["coarse", long_stage])
-    cap = 255 - len(f"_01_{long_stage}") - len(longest_tail(engines()))
+    cap = 255 - len(f"_01_{long_stage}") - len(longest_tail())
     assert normalise_id("x" * cap, stage_names=["coarse", long_stage])
     with pytest.raises(ValueError, match="the limit is"):
         normalise_id("x" * (cap + 1), stage_names=["coarse", long_stage])

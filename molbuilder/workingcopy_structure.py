@@ -203,23 +203,24 @@ def pair_atom_index_map(geometry: Path, payload: dict, *,
 def pair_engine_listing(sidecar: Path) -> "Optional[bool]":
     """WHETHER THE CATALOGUE LISTS THIS PAIR BY ENGINE INDEX -- a
     calculation's composed junction, a PySCF run's ``_initial`` and
-    ``_optimized`` pairs (`runfiles.listed_by_of`, F3) -- and if so whether
+    ``_optimized`` pairs (`runs.catalogue_row`, F3) -- and if so whether
     its kind may be sorted: ``None`` for the user's pair (a pair in no
-    calculation of ours is the user's, whatever its name); ``True`` where
-    the pair's atom order sorts the stage it belongs to
-    (`kind_table.atom_order` -- the composed junction), and where the
-    calculation's description does not read, so nothing says; ``False`` for
-    a kind that sorts nothing (a PySCF run's)."""
+    calculation of ours is the user's, whatever its name, and a run's pair
+    where no label reads its name back -- the calculation's description
+    does not read); ``True`` where the pair's atom order sorts the stage it
+    belongs to (`kind_table.atom_order` -- the composed junction), and for
+    the junction where the description does not read, so nothing says;
+    ``False`` for a kind that sorts nothing (a PySCF run's)."""
     try:                                    # inside molbuilder
         from .atom_permutation import LISTED_BY_ENGINE
-        from .runfiles import listed_by_of
-        from .runs import place_of, run_of
+        from .runs import catalogue_row, place_of, run_of
         from .kind_table import atom_order
     except ImportError:                     # beside a job: no calculation
         return None
-    if listed_by_of(sidecar.name) != LISTED_BY_ENGINE:
-        return None
     place = place_of(sidecar.parent)
+    row = catalogue_row(sidecar, place)
+    if row is None or row.listed_by != LISTED_BY_ENGINE:
+        return None
     if place.root is None:
         return None
     if place.task is None:

@@ -2092,8 +2092,9 @@ def api_task_setup_prep_plan():
     # FROM THE CATALOGUE, like the stage rows: its fixed-name rows at the
     # calculation's root that prep writes (`runfiles.fixed`).
     from molbuilder.runfiles import fixed
-    bundle = fixed("calculation", when=("prep",),
-                   calculation=task.calculation, engine=task.engine)
+    bundle = _placed(fixed("calculation", when=("prep",),
+                           calculation=task.calculation, engine=task.engine),
+                     ("calculation",))
     # AND WHAT THE CALCULATION WRITES ONCE, beside the per-rung lists: the
     # deck's own files that carry no stage token.  The SETUP's three
     # (`.template.toml` and the source pair) are asked for by moment rather

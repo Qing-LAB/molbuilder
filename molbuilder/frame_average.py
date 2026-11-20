@@ -412,7 +412,8 @@ def average_block(n_frames: Optional[int], frame_set,
         **named,
         "rows": list(frame_set.structure) if frame_set is not None else [],
         "weights": weights,
-        "weight_sum": math.fsum(weights) if weights is not None else None,
+        "weight_sum": (frame_set.weight_sum if frame_set is not None
+                       else None),
         "tolerance": WEIGHT_SUM_TOLERANCE,
         "warnings": warnings_of(frame_set),
         "assumptions": (list(ASSUMPTIONS) if _states_a_mode(frame_set)
@@ -842,22 +843,21 @@ def with_meanings(variables: Tuple[Any, ...], structure) -> Tuple[Any, ...]:
         if v.name in said and said[v.name][1] else v for v in variables)
 
 
+#: WHAT EACH VOLTAGE'S ENTRY OF THE AVERAGE FILLS (:func:`at_voltage`): the
+#: variables of :func:`data_file_variables` along the voltage axis, each
+#: value at its record key (`ncdata.Var.key`).
+AT_VOLTAGE = tuple(v.name for v in data_file_variables()
+                   if "bias_v" in v.dims)
+
 #: THE FRAME PART'S VARIABLES OF THE SUMMARY -- the frames' average at each
-#: voltage, its weights' sum and tolerance -- across the points, where a
-#: grouped data file lays it (`engines/transport.md` § 2a.12, *The
-#: calculation as groups*); every other of :func:`data_file_variables` is the
-#: structure's: each frame's rows, the set's numbers.
-SUMMARY_PART = ("average_transmission", "average_delta_transmission",
-                "average_conductance_g0",
-                "average_conductance_change_percent", "average_why",
-                "average_conductance_why", "weight_sum", "weight_tolerance")
-
-
-#: WHAT EACH VOLTAGE'S ENTRY OF THE AVERAGE FILLS (:func:`at_voltage`), by
-#: the variable's name, each value at its record key (`ncdata.Var.key`).
-AT_VOLTAGE = ("average_transmission", "average_delta_transmission",
-              "average_conductance_g0", "average_conductance_change_percent",
-              "average_why", "average_conductance_why")
+#: voltage, then the set's own numbers that are no structure row (its
+#: weights' sum and tolerance) -- across the points, where a grouped data
+#: file lays it (`engines/transport.md` § 2a.12, *The calculation as
+#: groups*); every other of :func:`data_file_variables` is the structure's:
+#: each frame's rows, the set's numbers.
+SUMMARY_PART = AT_VOLTAGE + tuple(
+    v.name for v in data_file_variables()
+    if not v.dims and v.name not in {r.name for r in STRUCTURE_ROWS})
 
 
 #: THE FRAME PART'S ATTRIBUTES THAT HOLD RECORDS (:func:`fill_data_file`
@@ -969,11 +969,12 @@ def reaveraged(path, *, temperature_k, swing_quanta=0.0) -> Dict[str, Any]:
     transmission = np.full((len(bias), len(energy)), np.nan)
     conductance = np.full(len(bias), np.nan)
     change = np.full(len(bias), np.nan)
+    from .transport.stages import same_volts
     for b, v in enumerate(bias):
         # EACH VOLTAGE BY THE RECORD'S RULE, with these weights: no value
         # where it has none, its reason said (`engines/transport.md`
         # § 2a.12) -- the file's own axis, so a voltage is its own index.
-        at = at_voltage(v, n, weights, points, [], lambda a, c: a == c)
+        at = at_voltage(v, n, weights, points, [], same_volts)
         for why in (at["why"], at["conductance_why"]):
             if why:
                 said.append(f"at {v:g} V: {why}")

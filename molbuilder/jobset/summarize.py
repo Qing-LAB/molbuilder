@@ -286,35 +286,13 @@ def run_summarize_jobset(calc, jobset, *,
     from ..runfiles import BENCH_RESULT_FILE
     out_path = Path(container) / BENCH_RESULT_FILE
     write_json(out_path, res.to_dict())
-    return res, out_path, recommendation_text(res, stage=stage)
+    return res, out_path, recommendation_text(
+        res, kind=str(calc.task.calculation), stage=stage)
 
 
 
-#: Catalogue item type -> the python type its TOML value must carry.
-#: Non-scalar types (lists, text) are absent on purpose: nothing sweeps
-#: them, so no proposal writes them.
-_ITEM_TYPES = {"bool": bool, "int": int, "pow2": int, "float": float,
-               "str": str, "enum": str}
-
-
-def _pins_vocabulary(engine: str) -> Dict[str, type]:
-    """The [pins] section's legal fields: every non-machine ``execution``
-    item of this engine, typed from its catalogue declaration -- the SAME
-    one-door membership rule the declaration lane uses
-    (`_declared_execution_pins`, `generator.md` § 4.3a).
-    """
-    from ..template import catalogue, is_run_setting, select
-    vocab: Dict[str, type] = {}
-    for it in select(catalogue(), engine=engine):
-        if not is_run_setting(it) or it.allocation:
-            continue
-        py = _ITEM_TYPES.get(it.type)
-        if py is not None:
-            vocab[it.name] = py
-    return vocab
-
-
-def recommendation_text(res: BenchResult, *, stage: Optional[str] = None
+def recommendation_text(res: BenchResult, *, kind: str,
+                        stage: Optional[str] = None
                         ) -> Optional[str]:
     """The benchmark's REPORT, printed by ``jobset summarize``, or ``None``
     when the result concludes nothing.
@@ -351,28 +329,34 @@ def recommendation_text(res: BenchResult, *, stage: Optional[str] = None
     if rationale:
         out += [f"  {rationale}", ""]
 
-    # WHAT TO WRITE -- the `execution` block that would use this winner.
-    # `omp_threads` and `gpu_count` are `execution`'s names for what the
-    # record calls `cpus_per_task` and a `gres` string (`model.AS_RESOURCE`);
-    # naming them here in the RECORD's vocabulary would hand over a block
-    # `job-request.json` refuses.
+    # WHAT TO WRITE -- the `execution` block that would use this winner:
+    # each grid axis by its run-card name (`template.GRID_AXES`), read from
+    # the record's field for it (`model.AS_RESOURCE`) -- naming them in the
+    # RECORD's vocabulary would hand over a block `job-request.json`
+    # refuses.  A device count is the trial's own `gres` request, its count
+    # read by the door's own parser.
+    from ..scheduler.quantities import parse_gres_flag
+    from ..template import GRID_AXES
+    from .model import AS_RESOURCE
     block: Dict = {}
-    if knobs.get("mpi_np") is not None:
-        block["mpi_np"] = int(knobs["mpi_np"])
-    if knobs.get("cpus_per_task") is not None:
-        block["omp_threads"] = int(knobs["cpus_per_task"])
-    if knobs["gres"]:
-        # The trial's own request, the door's answer (`model.gpu_request`,
-        # `gpu:<n>`), its count read by the door's own parser.
-        from ..scheduler.quantities import parse_gres_flag
-        block["gpu_count"] = parse_gres_flag(str(knobs["gres"]))
+    for name in GRID_AXES:
+        field = AS_RESOURCE.get(name, name)
+        said = knobs.get(field)
+        if not said and said != 0:
+            continue
+        block[name] = (parse_gres_flag(str(said)) if field == "gres"
+                       else int(said))
     # THE VALUE AXES TOO, from the winner's own POINT -- not only from
     # `mechanism`.  `mechanism` is HOW the winner computed (the eigensolver,
     # the device); a value axis like `block_size` is a coordinate of the
     # grid and lives in `point`.
     # `res.system["engine"]` -- the description's own answer, put there by
     # `_read_system` from `task.of`.
-    vocab = _pins_vocabulary(res.system["engine"])
+    # THE RUN CARD'S OWN SETTINGS, by the catalogue's one membership rule
+    # (`template.items_in`) -- the machine's counts written above.
+    from ..template import items_in
+    vocab = {it.name for it in items_in("run_card", engine=res.system["engine"],
+                                        kind=kind) if not it.allocation}
     for src in ((choice.get("point") or {}), (mech or {})):
         for name, val in sorted(src.items()):
             if name in vocab:
@@ -577,9 +561,10 @@ def sweep_view(calc, jobset) -> Dict:
     figure worked out a second way can disagree with the one its door
     states, and a view comparing six trials has six chances to do that.
 
-    Read-only: unlike :func:`run_summarize_jobset` this writes nothing, so
-    it is safe to call while the sweep is still running -- which is
-    exactly when a person watches it.
+    Unlike :func:`run_summarize_jobset` this writes no record and no
+    proposal -- the one thing it may write is a run's ending, once, when
+    the status it reads finds the run ended -- so it is safe to call while
+    the sweep is still running, which is exactly when a person watches it.
 
     Returns a JSON-ready dict.  ``trials`` is one entry per job, in the
     job-set's own order.

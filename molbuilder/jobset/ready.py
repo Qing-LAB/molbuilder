@@ -83,7 +83,7 @@ class Readiness:
     #: now`` (`prepared_with.changes`) -- ``[]`` when none does, and for a
     #: stage not prepared.
     changed: list = field(default_factory=list)      # `prepared_with.Difference`
-    #: Prepared, and its prep recorded no values (prepared before 2.41.0):
+    #: Prepared, and its prep recorded no values this molbuilder reads:
     #: nothing is compared, and that is said.
     unrecorded: bool = False
 
@@ -622,12 +622,12 @@ def first_launch_takes(calc, stage: str, *,
                 f"from, and {cont.source} holds none of it done -- "
                 + (f"take it from a run of `{cont.stage}` that has --\n"
                    + block(launch_lines("task", stage, base=base,
-                                        flags=("--from", other)))
+                                        typed=(("--from", other),)))
                    + "\nor " if other else "")
                 + f"start `{stage}` from the calculation's structure, "
                 f"computing it itself --\n"
                 + block(launch_lines("task", stage, base=base,
-                                     flags=("--cold",)))
+                                     typed=(("--cold", True),)))
                 + "\n")
         # WHAT IT WOULD COPY, in the points' own words (`Continuation.line`).
         return (dataclasses.replace(cont, carries=tuple(

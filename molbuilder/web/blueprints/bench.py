@@ -5,8 +5,8 @@ Routes:
     GET /api/bench/summary?path=<a sweep's job-set.json>
                                     the sweep: every trial, what it asked
                                     for / ran / measured, where it is now,
-                                    and the verdict.  Read-only and safe to
-                                    poll.
+                                    and the verdict.  Writes no record; safe
+                                    to poll.
 
 Spec: ``docs/web/bench-summary.md``.
 

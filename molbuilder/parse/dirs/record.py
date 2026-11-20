@@ -37,6 +37,11 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Optional, Tuple
 from ..errors import ParseError
 
+#: THE RUN'S OWN LENGTH in its record (`model/parse.md` § 5d.2): its
+#: engine's wall, launch to exit -- the field the wrapper's contributor
+#: writes below, and what a reader asks the record for.
+ENGINE_WALL = "computation.time.engine_elapsed_s"
+
 #: How much of a ``.out`` the launch, build, solver and pseudopotential lines
 #: can sit in -- the solver is printed after the basis report, ~49 KB into a
 #: 42-atom run, and further for a bigger system -- the record's and the bench
@@ -451,8 +456,7 @@ _EVERY_RUN: Tuple[Contributor, ...] = (
                  "computation.host.node_sockets",
                  "computation.host.node_cores_per_socket",
                  "computation.launch.ranks_asked", "computation.launch.threads",
-                 "computation.engine.binary",
-                 "computation.time.engine_elapsed_s"),
+                 "computation.engine.binary", ENGINE_WALL),
                 None, _wrapper),
     Contributor("instruments",
                 _TIMING + ("computation.memory", "computation.host.machine"),

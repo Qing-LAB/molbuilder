@@ -1667,8 +1667,9 @@ Where each owed test stands:
 
 - **A3** — every act's save is asserted (§ 13.4); that a group's first launch and
   Save write nothing before it is held by the code — `save_before` is called
-  before `plan.writes.carry_out_or_say()` in `submit.send_launch`, and before
-  `write_task` in the Save route — with no test.
+  before the plan's writes in `jobset/ledger.save_then_carry_out`, which
+  `submit.send_launch` takes, and before `write_task` in the Save route — with
+  no test.
 - **A4, the CLI and the Python surface** — `checkpoint restore` has no
   partial-restore flag and `Repo.restore(state, force=False)` takes nothing
   else; no test asserts either, as the route's test does its own.
@@ -1946,7 +1947,8 @@ take. A test file in no entry is a file nobody maintains against this document.
 | `molbuilder/warmfiles.py` | `never_carried`, `is_scratch`, `scratch_families`, `never_carried_families` — what no copy carries (S1) |
 | `molbuilder/runtime_config.py` | the `checkpoint` section: `get_checkpoint`, `_validate_checkpoint`, `get_checkpoint_engines` (§ 4) |
 | `molbuilder/cli.py` | the `molbuilder checkpoint` verbs |
-| `molbuilder/jobset/prep.py` | `save_before` before `prep task`, `prep bench` and the junction's order record |
+| `molbuilder/jobset/ledger.py` | `save_then_carry_out`: `save_before`, the ledger's `saved` line, then the plan written — the one step `prep task`, `prep bench`, the junction's order record and a group's first launch take |
+| `molbuilder/jobset/prep.py` | `prep task`, `prep bench` and the junction's order record, each through `save_then_carry_out` |
 | `molbuilder/jobset/submit.py` | a group's first launch: `_planned` sets `plan.save_before`, `send_launch` saves before it writes or sends; a sequence's groups save through the same launch, inside the job (`_plan_sequence`) |
 | `molbuilder/web/blueprints/build.py` | Task setup's Save: `save_before`, then `task.json` and `job-request.json` |
 | `molbuilder/jobset/commands.py` | reads a history, never writes one: a launched stage's way back finds its state by the note (`redo_launched`, `_state_before`) |

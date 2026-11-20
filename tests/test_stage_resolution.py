@@ -60,8 +60,12 @@ def test_two_stages_with_one_name_are_refused_where_the_ladder_is_read():
         raw = _json.loads(p.read_text())
         raw["stages"][1]["name"] = "Tight"
         p.write_text(_json.dumps(raw))
-        with pytest.raises(ValueError, match="two stages named"):
+        # REFUSED AS THE FILE'S, naming the stage the two share.
+        with pytest.raises(ValueError) as e:
             task_of(p.parent)
+        assert "task.json" in str(e.value)
+        # EACH REPEAT NAMED AS WRITTEN (`engines/stages.md` § 6.6).
+        assert "'Tight'" in str(e.value) and "'tight'" in str(e.value)
 
 
 def test_a_stage_name_that_is_not_a_filename_is_refused():

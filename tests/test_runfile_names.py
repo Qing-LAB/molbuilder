@@ -34,7 +34,7 @@ LABEL = "my-job"
 LABELS = ["my-job", "job_2", "A"]
 #: A transport ladder's rungs carry `_` in the NAME
 #: (`02_electrode_L`) and the ordinal is two-or-more digits --
-#: `identity.STAGE_NAME_RE`.  A token pattern narrower than that
+#: `runfiles.STAGE_NAME_CHARS`.  A token pattern narrower than that
 #: refused every transport deck (found 2026-09-07 by the suite).
 STAGES = [None, "01_coarse", "02_medium", "02_electrode_L",
           "100_final"]

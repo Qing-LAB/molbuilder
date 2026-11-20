@@ -65,6 +65,7 @@ from .agreement import TrialNotCold, check_trial_starts_cold
 from .model import (KIND_LADDER, KIND_SWEEP, Job, JobSet, Resources,
                     warm_carry)
 from .continuation import Continuation, relaunch
+from .ledger import rel_to
 from .planned import Plan, found
 from ..identity import jobs_as_typed
 from ..runfiles import (GROUP_HEADER, GROUP_LOG, GROUP_RUN_SCRIPT,
@@ -434,18 +435,9 @@ def _ask(name: str, cmd: List[str], cwd: Path, *, kind,
                                           + (cp.stderr or "")))
 
 
-def _rel(path, base) -> str:
-    """``path`` from the calculation's folder when it lies in it -- how the
-    plan names what it holds."""
-    try:
-        return str(Path(path).relative_to(base))
-    except (TypeError, ValueError):
-        return str(path)
-
-
 def _as_found(path, base) -> str:
     """A file the plan reads where it lies, as it is now (`planned.found`)."""
-    return f"{_rel(path, base)}: {found(path)}"
+    return f"{rel_to(base, path)}: {found(path)}"
 
 
 def _gathered_from(took: List[dict]) -> str:
@@ -578,7 +570,7 @@ class _Member:
     def said(self) -> str:
         """The member as the plan holds it, in one line: where it runs, what
         it follows, how that run ended and what is copied from it."""
-        line = f"{self.name}: runs in {_rel(self.run_dir, self.base)}"
+        line = f"{self.name}: runs in {rel_to(self.base, self.run_dir)}"
         if self.walk is not None:
             line += "; " + self.walk
         elif self.again:
@@ -864,7 +856,7 @@ class LaunchPlan:
         out = [f"{r.name}: {r.shown}" for r in self.skipped]
         for s in self.submissions:
             out.append(f"{s.name}: {' '.join(s.command)} "
-                       f"(in {_rel(s.cwd, self.base)})")
+                       f"(in {rel_to(self.base, s.cwd)})")
             out += [m.said() for m in s.members]
         out += [line.replace(f"{self.base}{os.sep}", "")
                 for line in self.writes.described()]
@@ -906,7 +898,7 @@ def _no_run_open(who: str, container: Path, base: Path,
     `run.json` written and leave it silently launchable again
     (`project-layout.md` § 1.5, § 1.6.2); ``way_on`` opens one."""
     return SubmitError(
-        f"{who}: no run is open under {_rel(container, base)}/ -- it runs "
+        f"{who}: no run is open under {rel_to(base, container)}/ -- it runs "
         f"in run-<n>, never in its own folder.  To open it, " + way_on)
 
 
@@ -1113,7 +1105,8 @@ def _warm_impossible(stage: str, source, why, *, base) -> "SubmitError":
     return SubmitError(
         f"{stage}: launched again warm, it continues from {source} -- which "
         f"is impossible here:\n  {why}\n  Launch it again cold instead:\n"
-        + block(launch_lines("task", stage, base=base, flags=("--cold",))))
+        + block(launch_lines("task", stage, base=base,
+                                  typed=(("--cold", True),))))
 
 
 def _continues_run(base: Path, run: Path, source: Optional[RunRef],
@@ -1265,12 +1258,12 @@ def _carry_the_gather(source: Path, target: Path, writes: Plan, *,
         # naming the seed.
         if not (src.path(base) / fn).is_file():
             raise SubmitError(
-                f"{_rel(source, base)}: {fn}, gathered for it from {src}, is "
+                f"{rel_to(base, source)}: {fn}, gathered for it from {src}, is "
                 f"not there -- launched again, the stage takes the inputs "
                 f"gathered for its run, and they are gone.  Gather them "
                 f"anew, from the newest runs upstream:\n"
                 + block(launch_lines("task", stage, base=base,
-                                     flags=("--gather",))))
+                                     typed=(("--gather", True),))))
     return gather_into(base, target, took, writes)
 
 
@@ -1694,32 +1687,31 @@ def send_launch(plan: LaunchPlan, *, said) -> List[JobResult]:
         # a redo of the group restores, every run it builds on in it
         # (`job-system.md` § 6.0, step 4; `checkpointing.md` § 9).  A state
         # that cannot be saved sends nothing.
-        from ..checkpoint import CheckpointError, save_before
-        from ..runtime_config import RuntimeConfigError
-        try:
-            kept = save_before(plan.base, plan.save_before,
-                               engine=plan.engine)
-        except (CheckpointError, RuntimeConfigError) as exc:
-            why = (f"the folder's state could not be saved, so nothing was "
-                   f"sent: {exc}")
+        from .ledger import save_then_carry_out
+
+        def save_refused(why: str) -> SubmitError:
             plan.asked(said)
             plan.record("refused", reason=why)
-            raise SubmitError(why) from None
-        plan.saved = kept.said()
-        way_back = f"nothing was sent; {kept.way_back(plan.base)}"
-        plan.asked(said)
-        plan.record("saved", state=kept.state.short, note=kept.state.note,
-                    new=kept.new)
+            return SubmitError(why)
+
+        def asked_once_saved(kept) -> None:
+            # THE STATE SAVED, said even when a write then stops (the
+            # CLI prints it either way).
+            plan.saved = kept.said()
+            plan.asked(said)
+        save_then_carry_out(
+            plan.writes, plan.base, plan.save_before, engine=plan.engine,
+            say=plan.record, refuse=save_refused, stopped=SubmitError,
+            nothing="sent", asked=asked_once_saved,
+            way_back=lambda k: f"nothing was sent; {k.way_back(plan.base)}")
     else:
         plan.asked(said)
+        plan.writes.carry_out_or_say(plan.record, SubmitError,
+                                     way_back=way_back)
     # THE OTHER WAY, ANSWERED: a run here goes as the person said --
     # waited on, or left in the background (`job-system.md` § 6.0).
     if said.other:
         plan.background = not plan.background
-    # THE PLAN'S WRITES, a write that stops them said and how far it got
-    # recorded (`planned.Plan.carry_out_or_say`).
-    plan.writes.carry_out_or_say(plan.record, SubmitError,
-                                 way_back=way_back)
     # WHAT EACH STAGE TAKES, recorded where it lands (`job-system.md`
     # § 5.4): the run it continues from and what came across (`continues`),
     # a rung's gathered inputs (`gathers`), or nothing at a first launch
@@ -2728,7 +2720,8 @@ def _points_walk(plan: LaunchPlan, m: "_Member", calc, *, mode: str,
             + block(prep_group_lines([calc.request.group_of(stage)],
                                      base=base))
             + "or, to run them all here instead, launch it cold:\n"
-            + block(launch_lines("task", stage, base=base, flags=("--cold",))))
+            + block(launch_lines("task", stage, base=base,
+                                  typed=(("--cold", True),))))
     if not walked:
         # EVERY POINT DONE: refused, unless the run needs more than its
         # points -- then its last point runs again, its report step
@@ -3064,7 +3057,8 @@ def _all_done(calc, stage: str, prev: Path, names, record, launch) -> None:
         f"{stage}: every {record.unit} of {prev.relative_to(base)} is "
         f"done, so a warm launch has nothing to run -- to run them all "
         f"again, launch it cold:\n"
-        + block(launch_lines("task", stage, base=base, flags=("--cold",))))
+        + block(launch_lines("task", stage, base=base,
+                                  typed=(("--cold", True),))))
 
 
 def _shares(calc, job, prepared: Path, folder: Path, pt, held,
@@ -3168,7 +3162,7 @@ def _member_facts(s: "Submission") -> Dict[str, object]:
     member's plan -- which points are taken over and which walked, from
     what (`_points_walk`'s ``walk``) -- so a sweep's history reads from the
     ledger, not the terminal alone."""
-    runs = {m.name: _rel(m.run_dir, m.base) for m in s.members}
+    runs = {m.name: rel_to(m.base, m.run_dir) for m in s.members}
     walks = {m.name: m.walk for m in s.members if m.walk}
     return {"runs": runs, **({"walks": walks} if walks else {})}
 

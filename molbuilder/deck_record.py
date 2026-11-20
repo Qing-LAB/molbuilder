@@ -285,17 +285,14 @@ def read_parameters_fence(text: str) -> List[Dict[str, Any]]:
     ``{item, default, asked, used}``.  Lines in the block that are not rows --
     SIESTA's wrapper echoes the deck there too -- are the block's prose and
     are skipped."""
-    begin = begin_marker(BLOCK_PARAMETERS)
-    end = end_marker(BLOCK_PARAMETERS)
     rows: List[Dict[str, Any]] = []
     inside = False
     for line in text.splitlines():
-        stripped = line.strip()
-        if stripped == begin:
-            inside = True
-            continue
-        if stripped == end:
-            inside = False
+        # EITHER FENCE BY THE ONE GRAMMAR (:data:`MARKER_RE`), every block
+        # of the name in turn.
+        fence = MARKER_RE.match(line.strip())
+        if fence and fence.group(1) == BLOCK_PARAMETERS:
+            inside = fence.group(2) == "BEGIN"
             continue
         if not inside or not line.startswith(PARAMETER_ROW_PREFIX + "["):
             continue

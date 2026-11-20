@@ -368,11 +368,11 @@ def _by_default(calc, stage: str, prev: str, *, bench: bool = False
              if stage_key(n) != stage_key(stage)]
     alone = bench or not mates
 
-    def _taking(*flags) -> List[str]:
-        return launch_lines("task", stage, base=base, flags=flags)
+    def _taking(*typed) -> List[str]:
+        return launch_lines("task", stage, base=base, typed=typed)
     # THE WAY OUT THAT WORKS HERE (the W37 review's first finding).
     clean = (f"or start `{stage}` from the calculation's structure --\n"
-             + block(_taking("--cold")) + "\n" if alone else
+             + block(_taking(("--cold", True))) + "\n" if alone else
              f"or choose what `{stage}` starts from -- an earlier run of "
              f"`{prev}` (--from) or the calculation's structure (--cold): a "
              f"launch says that for one stage, and `{stage}` is in group "
@@ -410,7 +410,7 @@ def _by_default(calc, stage: str, prev: str, *, bench: bool = False
                  read_run(calc, prev, a)[1]))
              if not bench and alone else None)
     alt = (f"or continue from an earlier run of `{prev}` that finished --\n"
-           + block(_taking("--from", other)) + "\n"
+           + block(_taking(("--from", other))) + "\n"
            if other else "")
     return None, (f"`{stage}` continues from {what} {why}.  {first}\n"
                   f"{alt}{clean}")

@@ -1000,7 +1000,8 @@ was.
 `/api/results/dir`'s answer carries `about` — `{ours, what, writer, when, kind}`
 (`kind`, what losing the file costs, the catalogue row's —
 [`execution/project-layout.md`](?doc=execution/project-layout.md) § 5 —
-or `structure` for a saved pair),
+or `structure` for a saved pair; a catalogue row's answer also its wire
+form's `name`, `level`, `where` and `only`, `runfiles.row_words`),
 `{ours: null, unread}` (the reader's refusal of the folder's description,
 `runs.place_of`'s `problem`), or `{ours: false}` — the run door's `about(path)`
 ([`execution/architecture.md`](?doc=execution/architecture.md) § 3.2) over the

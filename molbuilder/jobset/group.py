@@ -58,22 +58,19 @@ SHARED = {"domain": "queue", "mpi_np": "ranks",
 
 
 def card_shares(request, stage: str) -> dict:
-    """``stage``'s run card (`JobRequest.run_condition`) on what a job's
-    members share (:data:`SHARED`), by field, as the run takes it: a setting
-    no card states at the catalogue's one default (`template.default_of`),
-    a queue none states at the allocation's (`job-request.md` § 3.2a) --
+    """``stage``'s run card on what a job's members share (:data:`SHARED`),
+    by field, as the run takes it (`resolve.card_as_run`: each value as the
+    setting door spells it, a setting no card states at the catalogue's one
+    default), a queue none states at the allocation's (`job-request.md`
+    § 3.2a) --
     ``None`` where nothing answers, and everywhere for a ladder with no
     request yet."""
     if request is None:
         return {f: None for f in SHARED}
-    from .. import template as _T
+    from ..resolve import card_as_run
     from .model import AS_RESOURCE
-    kind = str(request.calculation)
-    taken = {it.name: _T.default_of(it, kind)
-             for it in _T.select(_T.catalogue(), engine=str(request.engine))
-             if _T.is_run_setting(it)}
-    taken["domain"] = request.allocation.domain or None
-    taken.update(request.run_condition(stage))
+    taken = {"domain": request.allocation.domain or None,
+             **card_as_run(request, stage)}
     card = {AS_RESOURCE.get(k, k): v for k, v in taken.items()}
     return {f: card.get(f) for f in SHARED}
 
@@ -88,12 +85,45 @@ def may_join(task, request, stage: str, members: Sequence[str],
     group (`job-system.md` R-P13).  The one rule every writer of numbers
     asks -- a new calculation's (:func:`default_groups`) and an older one's
     (`migrate`)."""
-    from .ladder import upstream_of
-    return (bool(members)
-            and not upstream_of(task, stage, template_text)
-            & set(members)
-            and card_shares(request, stage)
-            == card_shares(request, members[0]))
+    return bool(members) and why_not_join(task, request, stage, members,
+                                          template_text) is None
+
+
+def summed_walls(walls) -> Optional[str]:
+    """The wall of members run one after another in one job: their walls
+    summed, in SLURM's spelling -- ``None`` where one states none
+    (`execution/job-request.md` § 3.3)."""
+    from ..scheduler.quantities import parse_walltime, slurm_time
+    walls = list(walls)
+    return (slurm_time(sum(parse_walltime(str(w)) for w in walls))
+            if all(walls) else None)
+
+
+def largest_memory(mems) -> Optional[str]:
+    """The memory members sharing one job ask: the largest -- ``0``, all of
+    the node's (`quantities.MEM_HELP`), the largest there is -- ``None``
+    where none states one (`execution/job-request.md` § 3.3)."""
+    from ..scheduler.quantities import parse_memory
+    mems = [str(m) for m in mems if m]
+    return ("0" if "0" in mems
+            else max(mems, key=parse_memory) if mems else None)
+
+
+#: Why a stage may not share one job with a stage it builds on
+#: (`execution/job-request.md` § 3.3) -- said by the Task setup row and the
+#: groups check alike.
+ONE_AFTER_ANOTHER = ("one job runs its members one after another with "
+                     "nothing handed between them")
+
+
+def _clean_way_out(task, on: str) -> str:
+    """THE OTHER WAY OUT, where there is one, as a clause each sentence
+    joins after its own: an independent stage builds on the stage before
+    it only while it continues, so set clean it builds on nothing; a linked
+    stage's input is its kind's, whatever its overrides say -- ``""``."""
+    from .ladder import independent
+    return (f"for it to start from its own deck rather than from {on}, set "
+            f"its `restart` override to `clean`" if independent(task) else "")
 
 
 def why_not_join(task, request, stage: str, members: Sequence[str],
@@ -101,22 +131,17 @@ def why_not_join(task, request, stage: str, members: Sequence[str],
     """Why ``stage`` may not share the job ``members`` make -- the sentence
     the Task setup page shows beside its row (`web/task-setup.md` § 5),
     said here and nowhere else -- or ``None`` where :func:`may_join` says
-    it may.  The two conditions :func:`may_join` asks, each in words."""
+    it may.  The two conditions, each in words; :func:`may_join` is this
+    answering none."""
     if not members:
         return None
-    from .ladder import independent, upstream_of
+    from .ladder import upstream_of
     fed = upstream_of(task, stage, template_text) & set(members)
     if fed:
         named_ = ", ".join(f"`{n}`" for n in members if n in fed)
-        # THE OTHER WAY OUT, where there is one: an independent stage
-        # builds on the stage before it only while it continues; a linked
-        # stage's input is its kind's, whatever its overrides say.
-        return (f"`{stage}` builds on {named_}, in the group above: one job "
-                f"runs its members one after another with nothing handed "
-                f"between them"
-                + (" -- or, for it to start from its own deck, set its "
-                   "`restart` override to `clean`" if independent(task)
-                   else ""))
+        way = _clean_way_out(task, named_)
+        return (f"`{stage}` builds on {named_}, in the group above: "
+                f"{ONE_AFTER_ANOTHER}" + (f" -- or, {way}" if way else ""))
     if card_shares(request, stage) != card_shares(request, members[0]):
         return (f"`{stage}`'s run card states other values than the group "
                 f"above's on what one job shares; set them alike, or give "
@@ -172,7 +197,7 @@ def check_groups(task, request, template_text: Optional[str] = None
     § 3.3): one job runs its members one after another with nothing handed
     between them.  The numbers are the request's; what a stage builds on,
     the description's."""
-    from .ladder import independent, upstream_of
+    from .ladder import upstream_of
     seen: dict = {}
     for st in task.stages:
         number = request.group_of(st.name)
@@ -182,20 +207,13 @@ def check_groups(task, request, template_text: Optional[str] = None
             names = [f"`{n}`" for n in members if n in fed]
             on = (", ".join(names[:-1]) + " and " + names[-1]
                   if len(names) > 1 else names[0])
-            # THE OTHER WAY OUT, where there is one: an independent stage
-            # builds on the stage before it only while it continues, so set
-            # clean it builds on nothing; a linked stage's input is its
-            # kind's, whatever its overrides say.
             return (f"`{st.name}` is in group {number} with {on}, which "
-                    f"it builds on: one job runs its members one after "
-                    f"another with nothing handed between them, so "
-                    f"`{st.name}` would start before you have looked at "
-                    f"what {on} produced.  "
-                    f"Give `{st.name}` a new group -- one more than the "
-                    f"group above" + (f"; or, for it to start from its own "
-                                      f"deck rather than from {on}, set its "
-                                      f"`restart` override to `clean`."
-                                      if independent(task) else "."))
+                    f"it builds on: {ONE_AFTER_ANOTHER}, so `{st.name}` "
+                    f"would start before you have looked at what {on} "
+                    f"produced.  Give `{st.name}` a new group -- one more "
+                    f"than the group above"
+                    + (f"; or, {way}" if (way := _clean_way_out(task, on))
+                       else "") + ".")
         members.append(st.name)
     return None
 
@@ -205,7 +223,6 @@ def envelope(jobs: Sequence) -> "Resources":
     the member that cannot: one queue (its placement's domain), one count of
     ranks, cores per rank and GPUs, one GPU binding; the wall the sum of the
     members' walls (they run one after another), the memory the largest."""
-    from ..scheduler.quantities import parse_memory, parse_walltime, slurm_time
     from .model import GPU_FIELDS, GpuRequestError, gpu_request
     first = jobs[0]
 
@@ -236,14 +253,8 @@ def envelope(jobs: Sequence) -> "Resources":
                 + ".  A group's members share one job's request; state "
                   "the same for each, or "
                   "give them groups of their own.")
-    walls = [j.resources.time for j in jobs]
-    wall = (slurm_time(sum(parse_walltime(str(w)) for w in walls))
-            if all(walls) else None)
-    # `0` ASKS FOR ALL OF THE NODE'S (`quantities.MEM_HELP`) -- the largest
-    # ask there is, so a member stating it gives the group it.
-    mems = [str(j.resources.mem) for j in jobs if j.resources.mem]
-    mem = ("0" if "0" in mems
-           else max(mems, key=parse_memory) if mems else None)
+    wall = summed_walls(j.resources.time for j in jobs)
+    mem = largest_memory(j.resources.mem for j in jobs)
     r = first.resources
     import dataclasses
     return dataclasses.replace(
@@ -279,7 +290,6 @@ def sequence_request(requests: Sequence[Tuple[int, "Resources"]]
     alike -- one count, one binding.  A group asking less runs with its own
     card inside it; one using no GPU runs on its cores."""
     import dataclasses
-    from ..scheduler.quantities import parse_memory, parse_walltime, slurm_time
     from .model import GpuRequest, GpuRequestError, gpu_request
     queues = {n: r.domain for n, r in requests}
     if len(set(queues.values())) > 1:
@@ -320,18 +330,14 @@ def sequence_request(requests: Sequence[Tuple[int, "Resources"]]
         return None if any(v is None for v in got) else max(got)
     gres = max((asks(n, r) for n, r in gpu),
                key=lambda g: g.count, default=GpuRequest()).gres
-    walls = [r.time for r in rs]
-    mems = [str(r.mem) for r in rs if r.mem]
     return dataclasses.replace(
         rs[0], domain=rs[0].domain,
         mpi_np=largest("mpi_np"), cpus_per_task=largest("cpus_per_task"),
         gres=gres, use_gpu=bool(gpu),
         gpu_binding=(gpu[0][1].gpu_binding if gpu
                      else rs[0].gpu_binding),
-        time=(slurm_time(sum(parse_walltime(str(w)) for w in walls))
-              if all(walls) else None),
-        mem=("0" if "0" in mems
-             else max(mems, key=parse_memory) if mems else None),
+        time=summed_walls(r.time for r in rs),
+        mem=largest_memory(r.mem for r in rs),
         exclusive=any(r.exclusive for r in rs))
 
 
@@ -393,7 +399,6 @@ def formed_again(request, jobs, numbers) -> List[int]:
     in one prep (`job-request.md` § 3.3) -- until none is
     left out."""
     from ..identity import stage_key
-    group_of = {stage_key(n): e.group for n, e in request.stages.items()}
     jobs_of = {stage_key(j.name): members_of(j) for j in jobs}
     out: Set[int] = set(numbers)
     while True:
@@ -403,8 +408,8 @@ def formed_again(request, jobs, numbers) -> List[int]:
             for st in members:
                 job = jobs_of.get(stage_key(st))
                 if job is not None and not same_members(job, members):
-                    more |= {group_of[stage_key(m)] for m in job
-                             if stage_key(m) in group_of}
+                    more |= {request.group_of(m) for m in job
+                             if request.group_of(m) is not None}
         if more <= out:
             return sorted(out)
         out |= more
@@ -437,7 +442,8 @@ def names_for(base, task, members: Sequence[str]) -> GroupNames:
                                              for n in members])
 
 
-__all__ = ["GroupError", "SHARED", "card_shares",
+__all__ = ["GroupError", "SHARED", "card_shares", "summed_walls",
+           "largest_memory",
            "may_join",
            "default_groups", "fresh_groups",
            "check_groups", "envelope", "named", "members_of",

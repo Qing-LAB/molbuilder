@@ -48,7 +48,7 @@ from typing import (Any, Callable, List, Mapping, Optional, Sequence, Tuple,
                     Union)
 
 from .jobset.model import AS_RESOURCE, Resources
-from .template import STATE_ITEMS, settings_in
+from .template import GRID_AXIS_LETTERS, STATE_ITEMS, settings_in
 
 
 class ResolveError(Exception):
@@ -291,6 +291,7 @@ def _check_fits(asks: Mapping[str, Any], allocation: Resources) -> None:
             continue
         if value > ceiling:
             said = "GPUs" if axis == "gres" else axis
+            from .jobset.placement import LAUNCH_FIELDS
             raise ResolveError(
                 f"this sweep asks for {said}={value}, which exceeds this "
                 f"prep's ask of {said}={ceiling}.\n"
@@ -298,10 +299,12 @@ def _check_fits(asks: Mapping[str, Any], allocation: Resources) -> None:
                 f"machine has -- asking for less is often the better choice, "
                 f"because how a job is scheduled depends on how much you ask "
                 f"for.\n"
-                f"  Either raise this prep's ask (--np, --cpus-per-task, "
-                f"--gpus), or drop the point. It is refused rather than "
-                f"clamped, because a clamped trial measures something you "
-                f"did not ask for.")
+                f"  Either raise this prep's ask ("
+                + ", ".join(LAUNCH_FIELDS[f].flag for f in
+                            ("mpi_np", "cpus_per_task", "gres"))
+                + "), or drop the point. It is refused rather than "
+                "clamped, because a clamped trial measures something you "
+                "did not ask for.")
 
 
 # --------------------------------------------------------------------- #
@@ -989,7 +992,7 @@ def _label_for(base: str, point: Mapping[str, Any],
 #: The machine axes of a benchmark trial's point, in the order they are
 #: spelled: ``G`` its GPUs, ``N`` its ranks in all, ``C`` each rank's cores
 #: (`job-contracts.md` § 6.3) -- ``G0`` a CPU trial.
-MACHINE_AXES = ("G", "N", "C")
+MACHINE_AXES = tuple(GRID_AXIS_LETTERS.values())
 
 
 def point_token(point: Mapping[str, Any]) -> str:
@@ -1010,7 +1013,7 @@ def point_token(point: Mapping[str, Any]) -> str:
     _machine = MACHINE_AXES
     for k, v in point.items():
         slug = _flat(v)
-        if k == "use_gpu" and "G" in point:
+        if k == "use_gpu" and GRID_AXIS_LETTERS["gpu_count"] in point:
             # A RIDER the machine coordinate already states (roadmap 7.10
             # M2): G0 IS use_gpu=False and G>=1 IS use_gpu=True -- spelling
             # both wrote 11 redundant characters into every trial name of
@@ -1066,6 +1069,44 @@ def _flat(v: Any) -> str:
 _DROP_RE = re.compile(r"[^A-Za-z0-9_]")
 
 
+def _card_read(request, stage):
+    """Each value the run card ``stage`` runs at states (the calculation's
+    with the rung's over it, `JobRequest.run_condition`), as
+    ``(name, item, value, why)``: ``item`` the setting it names (``None``
+    for a scheduler ask, and for a name that is no setting); ``why`` the
+    setting door's refusal of it, else ``None`` and ``value`` spelled by
+    the door (`engines/template.md` § 5.4) -- the one reading under
+    :func:`card_values` and :func:`card_as_run`."""
+    from . import template as _T
+    from .job_request import LANE_ASKS
+    engine, kind = str(request.engine), str(request.calculation)
+    items = {i.name: i for i in _T.select(_T.catalogue(), engine=engine)}
+    for name, val in request.run_condition(stage).items():
+        it = None if name in LANE_ASKS else items.get(name)
+        why = (_T.accepts(it, val, "run_card", engine=engine, kind=kind,
+                          stage=stage) if it is not None else None)
+        yield name, it, (val if it is None or why else _T.spell(it, val)), why
+
+
+def card_as_run(request, stage=None) -> dict:
+    """THE RUN CARD A RUN TAKES, by name: every run setting at the value
+    its card states -- spelled by the setting door where the door takes
+    it, as stated where it does not (that refusal is :func:`card_values`'
+    and the preflight's to say) -- else at the catalogue's one default
+    (`template.default_of`), as :func:`resolve` lays its run settings; a
+    scheduler ask its card states, as stated.  What stages compare to
+    share one job (`group.card_shares`) and a benchmark reads of the
+    calculation's card (`prep_inputs.bench_inputs`)."""
+    from . import template as _T
+    kind = str(request.calculation)
+    taken = {it.name: _T.default_of(it, kind)
+             for it in _T.select(_T.catalogue(), engine=str(request.engine))
+             if _T.is_run_setting(it)}
+    taken.update({name: val for name, _it, val, _why
+                  in _card_read(request, stage)})
+    return taken
+
+
 def card_values(request, stage=None):
     """``{name: (item, value)}`` -- the run card a rung runs at (the
     calculation's with the rung's over it, `JobRequest.run_condition`),
@@ -1078,25 +1119,18 @@ def card_values(request, stage=None):
     from .job_request import LANE_ASKS
     from .jobset.errors import PrepError
     engine, kind = str(request.engine), str(request.calculation)
-    items = {i.name: i for i in _T.select(_T.catalogue(), engine=engine)}
     out = {}
-    for name, val in request.run_condition(stage).items():
-        if name in LANE_ASKS:
-            out[name] = (None, val)
-            continue
-        it = items.get(name)
-        if it is None:
+    for name, it, val, why in _card_read(request, stage):
+        if it is None and name not in LANE_ASKS:
             # A NAME THAT IS NO SETTING, in the run card's one sentence --
             # the description's check says the same.
             from .job_request import why_not_on_card
             raise PrepError("the run card: " + why_not_on_card(
                 {name: val}, engine=engine, kind=kind) + ".")
-        why = _T.accepts(it, val, "run_card", engine=engine, kind=kind,
-                         stage=stage)
         if why:
             raise PrepError(f"the run card sets {name} = "
                             f"{_T.shown(val)}{why}.")
-        out[name] = (it, _T.spell(it, val))
+        out[name] = (it, val)
     return out
 
 
@@ -1157,7 +1191,8 @@ def card_settings(request, stage=None):
             if it is not None and not it.allocation}
 
 
-__all__ = ["card_settings", "card_values", "declared_run_shape",
+__all__ = ["card_settings", "card_values", "card_as_run",
+           "declared_run_shape",
            "ParameterSet", "ResolvedConfig", "ResolveError", "ALLOCATION_FIELDS",
            "MachineTranslation", "resolve", "point_token",
            "SET_AFTER", "BLANK_ANSWERED_BY", "said_by"]

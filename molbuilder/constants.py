@@ -108,13 +108,30 @@ HARTREE_BOHR_EV_ANGSTROM_ASE: float = 51.42208619
 #: Avogadro's number, per mole.  CODATA 2018 (exact by SI definition).
 AVOGADRO: float = 6.02214076e23
 
+#: The elementary charge, in coulombs.  CODATA 2018 (exact by SI
+#: definition).
+ELEMENTARY_CHARGE_C: float = 1.602176634e-19
+
 #: 1 joule in electronvolt — the reciprocal of the elementary charge in
 #: coulombs, which SI fixes exactly.
-JOULE_EV: float = 1.0 / 1.602176634e-19
+JOULE_EV: float = 1.0 / ELEMENTARY_CHARGE_C
 
-#: 1 kcal/mol in electronvolt — DERIVED, since a calorie is defined as
-#: exactly 4.184 J.
-KCAL_MOL_EV: float = 4184.0 * JOULE_EV / AVOGADRO
+#: The thermochemical calorie, in joules (exact by definition).
+CALORIE_J: float = 4.184
+
+#: 1 kcal/mol in electronvolt — DERIVED from the calorie.
+KCAL_MOL_EV: float = 1000.0 * CALORIE_J * JOULE_EV / AVOGADRO
+
+#: The unified atomic mass unit (dalton), in kilograms.  CODATA 2018.
+AMU_KG: float = 1.66053906660e-27
+
+#: The debye, in coulomb metres -- DERIVED: the atomic unit of dipole
+#: (e times the bohr) over its value in debye, so the three never disagree.
+DEBYE_C_M: float = (ELEMENTARY_CHARGE_C * BOHR_ANGSTROM * 1e-10
+                    / AU_DIPOLE_DEBYE)
+
+#: The standard atmosphere, in pascals (exact by definition).
+ATM_PA: float = 101325.0
 
 #: 1 hertz in electronvolt (Planck's constant in eV·s).  CODATA 2018.
 HZ_EV: float = 4.135667696e-15

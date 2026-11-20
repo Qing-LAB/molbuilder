@@ -890,9 +890,28 @@ def saved_pair_row(path) -> Optional["tuple[str, str]"]:
     return None
 
 
+def catalogue_row(path, place: Optional[Place] = None
+                  ) -> Optional[_rf.Artifact]:
+    """THE CATALOGUE ROW A FILE'S ATOMS ARE READ BY -- which index it lists
+    them by, and which numbering its own text counts them by (`atom_index`,
+    `workingcopy_structure`; `model/overview.md` § 2.2b).  In a folder a
+    calculation's description names, the file read back with the label its
+    files are named on (`runfiles.row_for`, as :func:`about` reads it);
+    where no label is known -- a folder no calculation claims, or one whose
+    description does not read -- by its name alone
+    (`runfiles.row_without_label`).  ``place``: its folder's, where the
+    caller holds it.  Not :func:`about`'s question -- whether molbuilder
+    wrote the file -- which a folder no calculation claims answers no."""
+    p = Path(path)
+    label = _label_of(p, place if place is not None else place_of(p.parent))
+    return _rf.row_for(p, label) if label else _rf.row_without_label(p)
+
+
 def about(path) -> Dict[str, Any]:
     """WHAT A FILE IS -- its row of the catalogue, read back with its run's
-    label (`runfiles.row_for`): ``{ours: True, what, writer, when, kind}``;
+    label (`runfiles.row_for`): ``{ours: True, what, writer, when, kind}``
+    -- a row's with its wire form's ``name``, ``level``, ``where`` and
+    ``only`` (`runfiles.row_words`);
     or ``{ours: False}``, a file molbuilder does not write -- the engine's,
     SLURM's own, a person's -- and every file of a folder no calculation
     claims (`web/results.md` § 3b, `job-contracts.md` § 2.2)."""
@@ -1113,11 +1132,6 @@ def state_of(run: "Run"):
         launched_in=run.launched_in))
 
 
-#: THE RUN'S OWN LENGTH in its record (`model/parse.md` § 5d.2): its
-#: engine's wall, launch to exit.
-WALL = "computation.time.engine_elapsed_s"
-
-
 def record_of(run: "Run", *, status=None, fields=None):
     """THE RUN'S RECORD (`model/parse.md` § 5d) -- the one place a run handle
     (:func:`run_of`) is read with its state (:func:`state_of`, or the one a
@@ -1205,8 +1219,10 @@ def _row_about(path: Path, label: Optional[str], *,
             return {"ours": False}
         return {"ours": True, "what": saved[0], "writer": saved[1],
                 "when": "saved", "kind": "structure"}
-    return {"ours": True, "what": row.what, "writer": row.writer,
-            "when": row.when, "kind": row.kind}
+    # THE ROW'S ONE FORM ON THE WIRE (`runfiles.row_words`), with who
+    # writes it and its kind.
+    return {"ours": True, **_rf.row_words(row, path.name),
+            "writer": row.writer, "kind": row.kind}
 
 
 def _openable(folder: Path, label: str, stage: Optional[str],
@@ -1221,11 +1237,10 @@ def _openable(folder: Path, label: str, stage: Optional[str],
     so the viewer and the readers of a stage's result find one file; a
     role's files are walked by name, as :meth:`Run.file` takes them."""
     from molbuilder.parse.dirs.rundir import claimed
-    staged = {a.role: a.staged for a in _rf.ON_THE_LABEL}
     for role in _rf.result_roles(calculation):
         hits = ([p for p, _rec in _rf.find(folder, label, role=role,
                                            stage=stage)]
-                if staged.get(role, True)
+                if _rf.is_staged(role, "runs._openable")
                 else _rf.find_on_label(folder, label, role))
         if not hits:
             continue
@@ -1531,4 +1546,4 @@ __all__ = ["Place", "place_of", "Run", "run_of", "Declared",
            "openable", "engine_at", "folder_answer", "concluded", "older_run",
            "ended_before_a_point",
            "state_of",
-           "record_of", "on_label_at", "WALL"]
+           "record_of", "on_label_at", "catalogue_row"]

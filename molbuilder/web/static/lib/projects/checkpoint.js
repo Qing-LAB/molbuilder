@@ -274,18 +274,19 @@ function _renderState(repoState) {
     elEmpty.hidden   = true;
     elActions.hidden = false;
 
-    // A HAND EDIT INSIDE THE GENERATED BLOCK IS NOT SUPPOSED TO HAPPEN, so say
-    // so.  molbuilder rewrites that block from the classification on every save,
-    // which is what makes the edit detectable at all -- and also what makes it
-    // vanish.  Detecting it and staying quiet leaves somebody editing a file
-    // that never survives, and wondering why their rule keeps coming undone.
-    // The note names the way to get what they wanted instead.
+    // THE GENERATED BLOCK IS NOT WHAT THIS MOLBUILDER WRITES -- edited by
+    // hand, or written by a release whose classification differed
+    // (`ignore_edited`, I2b): say which can be, and that the next save
+    // rewrites it.  Staying quiet leaves somebody editing a file that never
+    // survives, and wondering why their rule keeps coming undone; the note
+    // names the way to get what they wanted instead.
     if (repoState.ignore_edited) {
         _showAdvisory(
-            "The molbuilder block in .gitignore was edited by hand. It is "
-            + "rewritten from the classification on every save, so that edit "
-            + "will be lost. Put your own entries outside the molbuilder "
-            + "markers and they are left alone.");
+            "The molbuilder block in .gitignore is not what this molbuilder "
+            + "writes (edited, or written by another release). The next save "
+            + "rewrites it, so an edit there will be lost. Put your own "
+            + "entries outside the molbuilder markers and they are left "
+            + "alone.");
     }
 }
 

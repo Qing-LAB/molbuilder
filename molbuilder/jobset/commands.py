@@ -169,6 +169,19 @@ def launch_flag(flag: str) -> LaunchFlag:
     return next(f for f in LAUNCH_FLAGS if f.flag == flag)
 
 
+def _typed_words(typed, mode: Optional[str] = None) -> List[str]:
+    """``typed`` -- ``(flag, value)`` pairs as the verb records them, a
+    switch's value ``True`` -- as the words of a line, each value quoted;
+    with ``mode``, only the flags that mode reads (:data:`LAUNCH_FLAGS`; a
+    flag no row names -- `--yes` -- is every mode's).  The one shape typed
+    flags travel in, to every launch line."""
+    read = {f.flag: f.modes for f in LAUNCH_FLAGS}
+    return [x for flag, value in typed
+            if mode is None or mode in read.get(flag, (mode,))
+            for x in ((flag,) if value is True
+                      else (flag, shlex.quote(str(value))))]
+
+
 def launch_with(kind: str, *words, base, mode: str, typed=(),
                 groups=()) -> str:
     """The launch of ``words`` with ``mode`` stated, and the flags it was
@@ -180,17 +193,13 @@ def launch_with(kind: str, *words, base, mode: str, typed=(),
     command, never *"the same command with --mode X"*, an edit to a line the
     person may never have typed -- a bare launch takes its mode from config
     (`job-system.md` § 5.3)."""
-    read = {f.flag: f.modes for f in LAUNCH_FLAGS}
-    kept = [x for flag, value in typed
-            if mode in read.get(flag, (mode,))
-            for x in ((flag,) if value is True
-                      else (flag, shlex.quote(str(value))))]
     return command("launch", *words_for(kind, *words, groups=groups),
-                   base=base, flags=(*kept, "--mode", mode))
+                   base=base, flags=(*_typed_words(typed, mode), "--mode",
+                                     mode))
 
 
 def launch_lines(kind: str, *words, base,
-                 target: Optional[str] = None, flags=(),
+                 target: Optional[str] = None, typed=(),
                  groups=()) -> List[str]:
     """The launch of ``words`` as a person types it: the bare line where the
     calculation is launched on this machine and this machine's config names
@@ -198,11 +207,13 @@ def launch_lines(kind: str, *words, base,
     machine takes (:func:`takes_a_queue`), each a command (never
     ``--mode submit|direct``, which bash reads as a pipe).  A calculation
     set to another machine is launched there, whose config this one does
-    not read: its lines state their mode.  ``flags`` are switches every
-    line carries (``--cold``); ``groups`` the groups it names."""
+    not read: its lines state their mode.  ``typed`` are the flags every
+    line carries, ``(flag, value)`` pairs as :func:`launch_with` takes them
+    (``("--cold", True)``, ``("--from", run)``); ``groups`` the groups it
+    names."""
     if configured_mode() and launches_here(base, target):
         return [command("launch", *words_for(kind, *words, groups=groups),
-                        base=base, flags=flags)]
+                        base=base, flags=_typed_words(typed))]
     # EACH LINE SAYS WHAT IT DOES, the machine named as its record names it
     # (`job-system.md` § 5.3, *What molbuilder prints, you can type*; the
     # user, 2026-10-25: "just claim what it is doing: submitting to execute
@@ -210,7 +221,6 @@ def launch_lines(kind: str, *words, base,
     from ..scheduler.record import LOCAL_TARGET, calculation_machine
     machine = calculation_machine(base) or target or LOCAL_TARGET
     on = "this machine" if machine == LOCAL_TARGET else machine
-    typed = [(f, True) for f in flags]
     direct = (launch_with(kind, *words, base=base, mode="direct",
                           typed=typed, groups=groups)
               + f"   # runs directly on {on}")
@@ -513,11 +523,11 @@ def stage_lines(kind: str, *, base, groups=(), stages=(),
         out.append(command("summarize", BENCH, *stages, base=base))
         return out
     # WHAT IT CONTINUES FROM, said at its launch.
-    launch_flags = ((("--from", from_attempt) if from_attempt else ())
-                    + (("--cold",) if cold else ()))
+    launch_flags = ((("--from", from_attempt),) if from_attempt else ()) \
+        + ((("--cold", True),) if cold else ())
     if stages:
         return launch_lines(kind, *stages, base=base, target=target,
-                            flags=launch_flags)
+                            typed=launch_flags)
     if not prepared:
         out.append(command(
             "prep", *words_for(kind, groups=list(groups)), base=base,
@@ -526,7 +536,7 @@ def stage_lines(kind: str, *, base, groups=(), stages=(),
         # SEVERAL GROUPS PICKED FOR ONE PREP: each launched as its own job.
         return out
     out += launch_lines(kind, base=base, target=target, groups=list(groups),
-                        flags=launch_flags)
+                        typed=launch_flags)
     return out
 
 

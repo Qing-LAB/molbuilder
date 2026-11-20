@@ -32,7 +32,7 @@ engine into an L1 codec is the upward import the layer rule forbids
 Those belong to resolution (P2 below), which already has the schema in hand:
 
   here    the schema string's major · ``shape`` the one layout · stage names
-          in ``[A-Za-z0-9_]+`` and unique case-insensitively · no ``overrides``
+          of ``runfiles.STAGE_NAME_CHARS`` and unique case-insensitively · no ``overrides``
           key naming a stage field · ``overrides`` a SUBSET of ``varies`` ·
           unknown keys refused by name · ``run.id`` is what ``run.name`` and
           ``structure.formula`` derive (§ 6.1's first rule -- the check needs
@@ -57,17 +57,15 @@ what they probably meant.
 """
 from __future__ import annotations
 
-import contextvars
 import dataclasses as _dc
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import (Any, Dict, List, Mapping, NoReturn, Optional, Sequence,
-                    Tuple)
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
 from .identity import normalise_id, run_id, stage_key
-from .persist import (check_schema, object_of, read_object,
-                      unknown_keys, write_json)
+from .persist import (RecordRefusals, check_schema, object_of, read_object,
+                      write_json)
 
 
 SCHEMA = "molbuilder/task@2"
@@ -80,6 +78,7 @@ from .runfiles import JOB_REQUEST_FILE  # noqa: E402
 #: the catalogue's word (`runfiles.LAYOUT`).  Every writer writes it; the
 #: reader refuses any other by name.
 from .runfiles import LAYOUT  # noqa: E402
+from .runfiles import STAGE_NAME_CHARS  # noqa: E402
 
 #: § 2 — "two fields, and no others".  An ``overrides`` map naming one of
 #: these would be a stage redefining what a stage is.
@@ -92,17 +91,24 @@ from .runfiles import LAYOUT  # noqa: E402
 
 #: § 6.6 — a stage name becomes a filename, so the set is the narrow one.
 
-STAGE_NAME_RE = re.compile(r"^[A-Za-z0-9_]+$")
+STAGE_NAME_RE = re.compile(f"^[{STAGE_NAME_CHARS}]+$")
 
 
 _TOP_KEYS = ("schema", "engine", "shape", "run",
              "structure", "varies", "stages", "calculation",
              "slots", "bias", "swap_electrodes", "reuses")
-#: The job request's keys (`execution/job-request.md` § 3) -- refused here
-#: by name, saying where each belongs: nothing in one record is read as the
-#: other (A17).
-_JOB_KEYS = ("allocation", "execution", "bench", "notify")
-_JOB_STAGE_KEYS = ("group", "execution")
+
+
+def _job_request_keys(own: Tuple[str, ...], *, stage: bool) -> Tuple[str, ...]:
+    """The job request's keys (`execution/job-request.md` § 3; its own
+    tables, `job_request.TOP_KEYS` and ``STAGE_KEYS``) that a description
+    does not hold (``own``) -- refused here by name, saying where each
+    belongs: nothing in one record is read as the other (A17)."""
+    from .job_request import STAGE_KEYS, TOP_KEYS
+    return tuple(k for k in (STAGE_KEYS if stage else TOP_KEYS)
+                 if k not in own)
+
+
 _BIAS_KEYS = ("voltages_v", "low_bias_approximation")
 
 #: A slot citation names its junction explicitly, by its tree-relative
@@ -182,17 +188,15 @@ class Stage:
     overrides: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        """The name rule holds for the object too, not only for the file.
-
-        ``_stage_from_obj`` checks this when parsing, but a producer handed
-        hand-built stages would otherwise put an arbitrary string into a
-        filename (``<label>_<name>.fdf``) and into an unquoted bash array
-        literal in the runner.  The rule is the same one, read from the same
-        pattern -- not a second copy of it."""
+        """THE NAME RULE, held by the object: every route to a stage --
+        the reader (`_stage_from_obj`, which says this refusal as the
+        file's), a producer's hand-built stages -- passes here, and a name
+        becomes a filename (``<label>_<name>.fdf``) and an unquoted bash
+        array literal in the runner."""
         if not isinstance(self.name, str) or not STAGE_NAME_RE.fullmatch(self.name):
             raise ValueError(
-                f"stage name {self.name!r} must match [A-Za-z0-9_]+ -- it "
-                "becomes a filename and a shell word")
+                f"stage name {self.name!r} must match [{STAGE_NAME_CHARS}]+ "
+                "-- it becomes a filename and a shell word")
 
 
 def label_of(name: str, *, calculation: str,
@@ -310,12 +314,7 @@ class Task:
         (§ 6.2).  The two are absent together or present together, and
         ``stages`` is never an empty tuple: that would be the second
         spelling of "one stage" § 6.5 rules out."""
-        if not isinstance(self.calculation, str) \
-                or not STAGE_NAME_RE.fullmatch(self.calculation):
-            raise ValueError(
-                f"calculation {self.calculation!r} must match "
-                "[A-Za-z0-9_]+ -- it names a section of the engine's "
-                "warm-file vocabulary")
+        check_calculation_kind(self.calculation)
         if (self.varies is None) != (self.stages is None):
             raise ValueError(
                 "'varies' and 'stages' travel together "
@@ -447,23 +446,29 @@ class Task:
             raise ValueError(
                 "'stages' is present but empty. A job has at least one "
                 "stage -- give it a single entry rather than emptying it, "
-                "because an absent 'stages' is refused too")
+                "because an absent 'stages' is refused too: "
+                '"stages": [{"name": "coarse", "overrides": {}}]')
         # The two LADDER-level refusals live here, in the codec, because
         # every route to a Task -- describe on a laptop, `task.of` on the
         # cluster, a hand-edited file -- passes through this constructor.
         if self.stages is not None:
-            # CASE-INSENSITIVELY, like the reader (D6): the names key
-            # filenames, and the filesystems these run on include
-            # case-insensitive ones -- "Tight" and "tight" are one deck there.
-            names = [stage_key(s.name) for s in self.stages]
-            dups = sorted({n for n in names if names.count(n) > 1})
+            # CASE-INSENSITIVELY (D6): the names key filenames, and the
+            # filesystems these run on include case-insensitive ones --
+            # "Tight" and "tight" are one deck there.  Each repeat named as
+            # written (`engines/stages.md` § 6.6).
+            written: Dict[str, List[str]] = {}
+            for s in self.stages:
+                written.setdefault(stage_key(s.name), []).append(s.name)
+            dups = [names for names in written.values() if len(names) > 1]
             if dups:
                 raise ValueError(
-                    f"duplicate stage name(s) "
-                    f"{', '.join(map(repr, dups))} (compared "
-                    f"case-insensitively). A stage's name keys its "
-                    f"directory, its deck and its status row -- two stages "
-                    f"sharing one silently hand one the other's files")
+                    "duplicate stage name(s) "
+                    + "; ".join(" and ".join(map(repr, names))
+                                for names in dups)
+                    + " (compared case-insensitively). A stage's name keys "
+                      "its directory, its deck and its status row -- two "
+                      "stages sharing one silently hand one the other's "
+                      "files")
         self._check_id()
 
     # ----- identity (run-identity.md 2, 2.0a, 3) ---------------------- #
@@ -544,10 +549,13 @@ class Task:
 #  Refusals                                                             #
 # --------------------------------------------------------------------- #
 
-#: What a refusal calls the thing it is refusing -- ``task.json``, the file
-#: this module owns.
-_SOURCE: contextvars.ContextVar[str] = contextvars.ContextVar(
-    "task_refusal_source", default=FILENAME)
+#: The description reader's refusals (`persist.RecordRefusals`), each
+#: calling the thing it refuses ``task.json``, the file this module owns.
+_REFUSALS = RecordRefusals("task_refusal_source", FILENAME)
+_SOURCE = _REFUSALS.source
+_refuse = _REFUSALS.refuse
+_as_object = _REFUSALS.as_object
+_refuse_unknown_keys = _REFUSALS.refuse_unknown_keys
 
 
 class DescriptionError(ValueError):
@@ -560,11 +568,6 @@ class DescriptionError(ValueError):
     def __init__(self, msg: str, *, where: str = "") -> None:
         super().__init__(msg)
         self.where = where
-
-
-def _refuse(msg: str, *, where: str = "") -> NoReturn:
-    raise ValueError(
-        f"{_SOURCE.get()}{': ' + where if where else ''}: {msg}")
 
 
 def refuse_another_layout(obj) -> None:
@@ -583,31 +586,14 @@ def refuse_another_layout(obj) -> None:
                 f"calculation again, in a folder of its own.")
 
 
-def _as_object(value: Any, *, where: str) -> Mapping[str, Any]:
-    """Refuse a non-object where § 6 specifies one, *saying* so.
-
-    Without this the key check below iterates a string's characters and
-    reports ``unknown key 's'`` for ``"engine": "siesta"`` — technically a
-    refusal, but a person hand-editing the file (the plan's decision 3)
-    learns nothing from it."""
-    if not isinstance(value, Mapping):
-        _refuse(f"expected an object, got {type(value).__name__}", where=where)
-    return value
-
-
-def _check_keys(obj: Mapping[str, Any], allowed: Tuple[str, ...], *,
-                where: str, note: str = "") -> None:
-    """§ 6.1 rule 1 — an unknown key is refused, not ignored, because an
-    ignored key is a calculation quietly different from the one asked for.
-
-    ``note`` is appended when there is no near-miss: *"unknown"* is true but
-    useless when the name is a real setting that belongs in a DIFFERENT block,
-    and sending a person to look for a typo they did not make is worse than
-    saying nothing.
-    """
-    said = unknown_keys(obj, allowed, note)
-    if said:
-        _refuse(said, where=where)
+def check_calculation_kind(calc) -> None:
+    """THE CALCULATION'S KIND IS A WORD OF THE NARROW SET -- it names a
+    section of the engine's warm-file vocabulary: the one rule, asked by
+    :class:`Task` and, before it looks the kind up, by the reader."""
+    if not isinstance(calc, str) or not STAGE_NAME_RE.fullmatch(calc):
+        raise ValueError(
+            f"calculation {calc!r} must match [{STAGE_NAME_CHARS}]+ -- it "
+            "names a section of the engine's warm-file vocabulary")
 
 
 def _require(obj: Mapping[str, Any], key: str, *, where: str) -> Any:
@@ -637,21 +623,21 @@ def _task_from_dict(obj: Mapping[str, Any]) -> Task:
                 "enters its calculation centred in its cell.  "
                 f"`{migrate_as_typed()}` in the calculation's folder "
                 "removes the key", where="centre_junction")
-    for key in _JOB_KEYS:
+    for key in _job_request_keys(_TOP_KEYS, stage=False):
         if key in obj:
             _refuse(f"{key!r} says how the calculation runs, which is its job "
                     f"request's, {JOB_REQUEST_FILE} -- not the description's", where=key)
-    _check_keys(obj, _TOP_KEYS, where="")
+    _refuse_unknown_keys(obj, _TOP_KEYS, where="")
 
     engine_obj = _as_object(_require(obj, "engine", where=""), where="engine")
-    _check_keys(engine_obj, ("name",), where="engine")
+    _refuse_unknown_keys(engine_obj, ("name",), where="engine")
     engine = str(_require(engine_obj, "name", where="engine"))
 
     _require(obj, "shape", where="")
     refuse_another_layout(obj)
 
     run_obj = _as_object(_require(obj, "run", where=""), where="run")
-    _check_keys(run_obj, _RUN_KEYS, where="run")
+    _refuse_unknown_keys(run_obj, _RUN_KEYS, where="run")
     run = Run(name=str(_require(run_obj, "name", where="run")),
               id=str(_require(run_obj, "id", where="run")),
               created=str(run_obj.get("created", "")))
@@ -662,9 +648,10 @@ def _task_from_dict(obj: Mapping[str, Any]) -> Task:
         _refuse("names no 'calculation' -- every description states its kind "
                 "(an optimization left it out until 2026-10-06)")
     calc = obj["calculation"]
-    if not isinstance(calc, str) or not STAGE_NAME_RE.fullmatch(calc):
-        _refuse(f"calculation {calc!r} must match [A-Za-z0-9_]+ -- it "
-                "names a section of the engine's warm-file vocabulary")
+    try:
+        check_calculation_kind(calc)
+    except ValueError as exc:
+        _refuse(str(exc))
 
     from .kind_table import kind as _kind
     cites = _kind(calc).description.cites
@@ -678,7 +665,7 @@ def _task_from_dict(obj: Mapping[str, Any]) -> Task:
     else:
         struct_obj = _as_object(_require(obj, "structure", where=""),
                                 where="structure")
-        _check_keys(struct_obj, _STRUCTURE_KEYS, where="structure")
+        _refuse_unknown_keys(struct_obj, _STRUCTURE_KEYS, where="structure")
         structure = StructureRef(
             source=str(_require(struct_obj, "source", where="structure")),
             formula=str(struct_obj.get("formula", "")),
@@ -696,7 +683,7 @@ def _task_from_dict(obj: Mapping[str, Any]) -> Task:
                     f"{type(cite).__name__}", where="slots")
         slots[str(name)] = cite
     bias_obj = _as_object(obj.get("bias", {}), where="bias")
-    _check_keys(bias_obj, _BIAS_KEYS, where="bias")
+    _refuse_unknown_keys(bias_obj, _BIAS_KEYS, where="bias")
     bias_raw = bias_obj.get("voltages_v", [])
     if not isinstance(bias_raw, list):
         _refuse(f"voltages_v must be a list, got "
@@ -739,27 +726,30 @@ def _task_from_dict(obj: Mapping[str, Any]) -> Task:
                 '"stages": [{"name": "coarse", "overrides": {}}]')
 
     raw_stages = obj["stages"]
-    if not isinstance(raw_stages, (list, tuple)) or not raw_stages:
-        _refuse("'stages' is present but empty. A job has at least one stage "
-                "-- give it a single entry rather "
-                "than removing the key, which is refused the same way: "
-                '"stages": [{"name": "coarse", "overrides": {}}]')
+    if not isinstance(raw_stages, (list, tuple)):
+        _refuse(f"expected a list, got {type(raw_stages).__name__}",
+                where="stages")
 
     varies = tuple(str(v) for v in obj.get("varies", ()))
     stages = tuple(_stage_from_obj(s, varies, i)
                    for i, s in enumerate(raw_stages))
 
-    _refuse_duplicate_stage_names(stages)
-
     # ``varies`` stays a tuple here even when empty: it travels WITH
     # ``stages``, and an empty one is a real state -- several stages that
     # differ in nothing but their name.  (``None`` is reserved for the
     # no-stages case above, which § 6.5 spells by omitting both keys.)
-    return Task(engine=engine, run=run, structure=structure,
-                varies=varies, stages=stages, calculation=calc,
-                slots=slots, bias=bias,
-                low_bias_approximation=low_bias_approximation,
-                swap_electrodes=swap_electrodes, reuses=reuses)
+    # THE LADDER'S RULES ARE THE CONSTRUCTOR'S (an empty ladder, a name two
+    # stages share), said as this file's.
+    try:
+        return Task(engine=engine, run=run, structure=structure,
+                    varies=varies, stages=stages, calculation=calc,
+                    slots=slots, bias=bias,
+                    low_bias_approximation=low_bias_approximation,
+                    swap_electrodes=swap_electrodes, reuses=reuses)
+    except DescriptionError:
+        raise
+    except ValueError as exc:
+        _refuse(str(exc))
 
 
 def _stage_from_obj(obj: Mapping[str, Any], varies: Tuple[str, ...],
@@ -778,18 +768,15 @@ def _stage_from_obj(obj: Mapping[str, Any], varies: Tuple[str, ...],
                 "it is in the description or it is not.  "
                 "A description written before carries the key: `jobset "
                 "migrate` removes it", where=where)
-    for key in _JOB_STAGE_KEYS:
+    for key in _job_request_keys(STAGE_FIELDS, stage=True):
         if key in obj:
             _refuse(f"{key!r} says how the stage runs, which is the job "
                     f"request's, {JOB_REQUEST_FILE} -- its entry under "
                     f"'stages'",
                     where=where)
-    _check_keys(obj, STAGE_FIELDS, where=where)
+    _refuse_unknown_keys(obj, STAGE_FIELDS, where=where)
     if "name" not in obj:
         _refuse("missing required key 'name'", where=where)
-    if not STAGE_NAME_RE.fullmatch(name):
-        _refuse(f"stage name {name!r} must match [A-Za-z0-9_]+ -- it becomes "
-                "a filename")
     overrides = dict(_as_object(obj.get("overrides") or {},
                                 where=f"{where} overrides"))
     for key in overrides:
@@ -812,7 +799,12 @@ def _stage_from_obj(obj: Mapping[str, Any], varies: Tuple[str, ...],
                 "in 'varies'. A stage may only override a field the user "
                 "promoted, or a demoted parameter leaves a value hiding", where=where)
 
-    return Stage(name=name, overrides=overrides)
+    # ITS NAME'S RULE IS THE STAGE'S own (:class:`Stage`), said as this
+    # file's -- the refusal names the stage itself.
+    try:
+        return Stage(name=name, overrides=overrides)
+    except ValueError as exc:
+        _refuse(str(exc))
 
 
 def fresh_varies(stages) -> Tuple[str, ...]:
@@ -843,20 +835,6 @@ def varies_for(overrides_seq) -> Tuple[str, ...]:
             if key not in out:
                 out.append(key)
     return tuple(out)
-
-
-def _refuse_duplicate_stage_names(stages) -> None:
-    """The reader's case-insensitive duplicate check (D10).
-    Case folds because names key filenames (engines/stages.md § 2)."""
-    seen: dict[str, str] = {}
-    for st in stages:
-        low = stage_key(st.name)
-        if low in seen:
-            _refuse(f"two stages named {st.name!r}"
-                    + (f" and {seen[low]!r}" if seen[low] != st.name else "")
-                    + " -- names are compared case-insensitively because they "
-                      "become filenames")
-        seen[low] = st.name
 
 
 def derive_run(name: str, formula: str = "", *, created: str = "",
@@ -1036,7 +1014,7 @@ def write_task(base, task: Task, *, plan=None):
     return write_json(path_of(base), task.to_dict(), plan=plan)
 
 
-__all__ = ["SCHEMA", "FILENAME", "STAGE_FIELDS",
+__all__ = ["SCHEMA", "FILENAME", "STAGE_FIELDS", "check_calculation_kind",
            "Run", "StructureRef", "Stage", "Task",
            "derive_run", "label_of", "of", "from_text", "path_of",
            "refuse_another_layout", "varies_for", "write_task"]

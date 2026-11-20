@@ -71,16 +71,6 @@ def _cell(jobs) -> str:
     point."""
     from ..resolve import point_token
     pt = jobs[0].point or {}
-    if "K" in pt and "N" not in pt:
-        # A TRIAL NAMED BY ITS RANKS PER GPU, as a benchmark was prepared
-        # before 2.46.6 (`job-contracts.md` § 6.3): its trials are named by
-        # their ranks in all now, so it is prepared again.
-        raise ShelfError(
-            f"trial {jobs[0].name!r} is named by its ranks per GPU (K), as "
-            f"molbuilder before 2.46.6 prepared a benchmark; a trial is "
-            f"named by its ranks in all (N) now -- go back to the state "
-            f"saved before the benchmark's prep, and prepare it again "
-            f"(`molbuilder jobset prep bench <stage>`)")
     if not all(a in pt for a in MACHINE_AXES):
         raise ShelfError(
             f"trial {jobs[0].name!r} carries no machine point "

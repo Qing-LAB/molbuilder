@@ -7,7 +7,10 @@ from __future__ import annotations
 
 import pytest
 
+from fnmatch import fnmatchcase
+
 from molbuilder import warmfiles as W
+from molbuilder.runfiles import SIESTA_TSGF, names_made
 
 
 def test_siesta_optimization_carries_exactly_what_the_table_declares():
@@ -66,6 +69,35 @@ def test_an_optical_calls_scratch_lies_beside_it_and_its_spectrum_is_kept():
     assert not W.is_scratch("CO2.EPSIMG")
     assert not W.never_carried("CO2.EPSIMG")
     assert W.warm_list("siesta", "optical").scratch_dir is None
+
+
+@pytest.mark.parametrize("name, kept_out", [
+    # A DEVICE RUN'S GREEN'S FUNCTIONS, under the name its deck gives them
+    # (the catalogue's row) and under the engine's own default name.
+    *[(f"AuBDT{made}", True) for made in names_made(SIESTA_TSGF)],
+    ("AuBDT.TSGFL", True), ("AuBDT.TSGFR", True),
+    # A FILE OF THE PERSON'S that only looks like one is theirs, kept.
+    ("AuBDT.v0.2.TSGFL.bak", False), ("notes.on.TSGF.txt", False),
+    # THE ONE WRITER'S TEMP is left out; a person's file of two dots and
+    # `.tmp` is not one (`persist`'s random part is mkstemp's eight
+    # characters).
+    ("job-set.json.k3j9x_2a.tmp", True), ("notes.old.tmp", False),
+    ("run.v2.tmp", False), ("notes.Draft_v2.tmp", False),
+    ("fit.v2-final.tmp", False),
+])
+def test_what_no_copy_carries_is_exactly_the_engines_scratch_and_our_temps(
+        name, kept_out):
+    """What no copy of a run folder carries -- the checkpoint stores it
+    nowhere, a download and a take-over leave it out (`checkpointing.md`
+    S1) -- is the engines' scratch and molbuilder's own transient files,
+    by the names a run writes, and nothing a person names alike.
+    The rule and the families the generated `.gitignore` and a download's
+    exclude line are written from give one answer.
+    PREVENTS: a person's file saved by no state, or a run's tens of GiB of
+    scratch saved in every one."""
+    assert W.never_carried(name) is kept_out
+    assert any(fnmatchcase(name, family)
+               for family in W.never_carried_families()) is kept_out
 
 
 # --------------------------------------------------------------------- #

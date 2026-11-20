@@ -1097,15 +1097,15 @@ def export_asks_of(calculation: str, given: Mapping[str, Any], *,
 def part(ref: str, *, record: str, key: str) -> Any:
     """THE OBJECT A RECORD NAMES -- ``module:NAME`` -- imported by the floor
     that asks, the one it lives on (`execution/architecture.md` § 3.3); a
-    name that does not resolve refused naming the record and the key."""
-    module, sep, attr = str(ref).partition(":")
+    name that does not resolve refused naming the record and the key --
+    resolved by the one resolver (`runpoints.part`), its cause said."""
+    from .runpoints import part as resolved
     try:
-        if not sep:
-            raise ValueError("not \"module:NAME\"")
-        return getattr(importlib.import_module(module), attr)
-    except (ImportError, AttributeError, ValueError) as exc:
+        return resolved(ref)
+    except ValueError as exc:
         raise KindTableError(
-            f"{record}'s {key}, {ref!r}, does not resolve: {exc}") from exc
+            f"{record}'s {key}, {ref!r}, does not resolve: "
+            f"{exc.__cause__ or exc}") from exc
 
 
 __all__ = ["ExportAsk", "EXPORT_ASK_TYPES", "EXPORT_ASK_RESERVED",

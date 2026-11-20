@@ -12,7 +12,10 @@ machine difference is then *reading the ledger in order*, not re-running.
 **The layering** mirrors the rest of the engine: library layers RETURN
 decision data (a picked trial, a provenance table, a merged plan) and the
 VERB that acted on it appends the line — policy stays at the verb, the
-ledger only records.  A verb with one door appends at that surface; a verb
+ledger only records.  Beside it, the one step every writing verb shares
+(:func:`save_then_carry_out`: the save, then the plan written), here
+because its ``saved`` line is this ledger's and no bundle carries this
+module.  A verb with one door appends at that surface; a verb
 whose doors share ONE ENTRY appends in the entry, once, whichever door
 called — `prep`'s, `jobset/prep.prep_task` (`job-system.md` § 5.0), writes
 its lines (`preflight-report`, `saved`, `prepared`, and `refused`), after its save,
@@ -105,6 +108,37 @@ def prepared(base, *, kind: str, stage, dirs, provenance):
            job_dirs=sorted(rel_to(base, d) for d in dirs),
            provenance=provenance)
     return provenance
+
+
+def save_then_carry_out(plan, base, what: str, *, engine, say, refuse,
+                        stopped, nothing: str, asked=None, way_back=None):
+    """THE SAVE, THEN THE PLAN WRITTEN -- the one way prep's doors and a
+    group's first launch write a calculation's folder (`checkpointing.md`
+    § 9; `job-system.md` § 5.0, checkpoint 6, and § 6.0, step 4): the
+    checkpoint's save (`checkpoint.save_before`), a save that fails refused
+    in one sentence -- ``refuse(sentence)``, the verb's own error: "the
+    folder's state could not be saved, so nothing was ``nothing``";
+    ``asked(kept)``, the verb's record of what it was asked, handed the
+    state saved once it stands, so a write that then stops is said beside
+    it; this ledger's ``saved`` line through ``say``, the verb's own way of
+    writing a ledger line; then the plan carried out
+    (`planned.Plan.carry_out_or_say`), its way back ``way_back(kept)``,
+    else the state's own.  Returns the state saved.  Here, on floor 1 in a
+    module no bundle carries: not in the checkpoint, which knows a folder
+    as files (§ 9), nor in `planned`, which travels beside a job."""
+    from ..checkpoint import CheckpointError, save_before
+    from ..runtime_config import RuntimeConfigError
+    try:
+        kept = save_before(base, what, engine=engine)
+    except (CheckpointError, RuntimeConfigError) as exc:
+        raise refuse(f"the folder's state could not be saved, so nothing "
+                     f"was {nothing}: {exc}") from None
+    if asked is not None:
+        asked(kept)
+    say("saved", state=kept.state.short, note=kept.state.note, new=kept.new)
+    plan.carry_out_or_say(say, stopped, way_back=(
+        way_back(kept) if way_back is not None else kept.way_back(base)))
+    return kept
 
 
 def rel_to(base, d) -> str:

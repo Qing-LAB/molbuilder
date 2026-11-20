@@ -42,9 +42,8 @@ worse than no map. They report
 re-running is still a no-op -- the CONTENT is compared, which is what keeps
 that true while making a stale one impossible.
 
-**No new writer.**  The record goes through ``resolve_environment`` ->
-``diagnostics.local_facts`` -> ``record.probe_queues`` -> ``write_environment``,
-the same steps in the same order ``jobset probe --write`` takes, so the two
+**No new writer.**  The record goes through ``diagnostics.probe_this_machine``
+-> ``write_environment``, the probe ``jobset probe --write`` takes, so the two
 cannot disagree about what this machine is.  This module contributes the DIRECTORY, the CONFIG and the ANSWER it
 asked for; the record it delegates.
 """
@@ -577,10 +576,9 @@ def seed_environment_record() -> Step:
     """This machine's own ``environment.json``, via the probe's own doors --
     carrying the copy of ``env_init`` the probe makes.
 
-    Delegated to ``resolve_environment`` + ``local_facts`` + ``probe_queues``
-    + ``write_environment`` -- what ``jobset probe --write`` calls -- so there
-    is one prober and one writer, and re-probing later cannot disagree with
-    what was seeded here.  Ordered AFTER the config: the record copies its
+    Delegated to ``diagnostics.probe_this_machine`` + ``write_environment``
+    -- what ``jobset probe --write`` calls -- so there is one prober and one
+    writer, and re-probing later cannot disagree with what was seeded here.  Ordered AFTER the config: the record copies its
     ``env_init``, so a record written first would carry nothing.  An existing
     record is kept -- re-probing is `jobset probe`'s, which asks before it
     overwrites.
@@ -588,11 +586,11 @@ def seed_environment_record() -> Step:
     import getpass
     from datetime import datetime, timezone
 
-    from ..diagnostics import local_facts
     from ..runtime_config import get_env_init
     from ..scheduler import (machine_scope_path, read_environment,
-                             resolve_environment, write_environment)
-    from ..scheduler.record import probe_command, probe_queues, why_unread
+                             write_environment)
+    from ..diagnostics import probe_this_machine
+    from ..scheduler.record import probe_command, why_unread
     # Its own directory: a public function that worked only after another one
     # had made it is a trap (`_ensure_root`).
     _ensure_root()
@@ -619,13 +617,11 @@ def seed_environment_record() -> Step:
             f'the machine changes' if said else
             f"carries NO activation -- `{probe_command()}` copies env_init "
             f"into it"))
-    # THE SAME STEPS ``jobset probe --write`` TAKES, in the same order: the
-    # node, the three facts that travel (`local_facts`), the queues.  The
-    # stamp too.
+    # THE PROBE `jobset probe --write` TAKES (`diagnostics.probe_this_machine`),
+    # stamped now.
     now = datetime.now(timezone.utc).isoformat(timespec="seconds")
-    env, facts_notes = local_facts(resolve_environment(now_iso=now),
-                                   get_env_init())
-    queue_notes, _summary = probe_queues(env, getpass.getuser())
+    env, notes, _summary = probe_this_machine(get_env_init(), now_iso=now,
+                                              user=getpass.getuser())
     write_environment(env, path)
     sg = getattr(env, "env_init", None) or {}
     note = "probed this machine"
@@ -634,7 +630,7 @@ def seed_environment_record() -> Step:
     # WHAT THE QUEUE PROBE COULD NOT MEASURE is said here as `jobset probe`
     # says it -- a measurement that quietly did not happen is the defect
     # those notes exist for.
-    for n in [*queue_notes, *facts_notes]:
+    for n in notes:
         note += f"; {n.rstrip('.')}"
     if sg.get("activation"):
         note += f'; carries activation "{sg["activation"]}"'

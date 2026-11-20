@@ -105,20 +105,13 @@ def test_unknown_stage_key_is_refused_by_name(example):
     assert "tight" in str(e.value), "the message must name WHICH stage"
 
 
-def test_repeated_stage_name_is_refused_naming_the_repeat(example):
-    example["stages"][1]["name"] = "coarse"
-    with pytest.raises(ValueError) as e:
-        Task.from_dict(example)
-    assert "coarse" in str(e.value)
-
-
 def test_stage_names_collide_case_insensitively(example):
     """§ 6.6: 'compared case-insensitively' -- because the names become
     filenames, and two of those collide on a case-insensitive filesystem."""
     example["stages"][1]["name"] = "COARSE"
     with pytest.raises(ValueError) as e:
         Task.from_dict(example)
-    assert "COARSE" in str(e.value) or "coarse" in str(e.value)
+    assert "'COARSE'" in str(e.value) and "'coarse'" in str(e.value)
 
 
 @pytest.mark.parametrize("bad", ["with space", "has-hyphen", "dot.ted", ""])

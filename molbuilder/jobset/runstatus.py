@@ -154,7 +154,7 @@ class StageStatus:
     #: CHANGED SINCE PREPARED -- each value its records give now otherwise
     #: than its prep recorded, ``name: was → now`` (`ready.Readiness.
     #: changed`; `job-system.md`, *The task*) -- and whether its prep
-    #: recorded none (``unrecorded``, prepared before 2.41.0).
+    #: recorded none this molbuilder reads (``unrecorded``).
     changed: list = field(default_factory=list)      # `prepared_with.Difference`
     unrecorded: bool = False
 
@@ -255,14 +255,17 @@ class JobSetStatus:
 
 
 def _warm_present(run_dir: Path, label: str, engine: str,
-                  base) -> List[str]:
+                  calculation: Optional[str], base) -> List[str]:
     """Which engine warm-restart files exist in the run folder ``run_dir``
-    -- by the list in effect for the calculation in ``base``, its own
-    suffixes the vocabulary the composer is handed (a calculation's own copy
-    may name a file no table of the catalogue declares)."""
+    -- by the list in effect for the calculation in ``base``, its kind's
+    (``calculation``; every kind's where no description says it), whether
+    or not the stage itself continues: what a next stage could take
+    (`job-contracts.md` § 4.2a), its own suffixes the vocabulary the
+    composer is handed (a calculation's own copy may name a file no table
+    of the catalogue declares)."""
     out: List[str] = []
     from ..runfiles import compose
-    carried = _warm_list(engine, None, base).carry
+    carried = _warm_list(engine, calculation, base).carry
     for ext in carried:
         f = run_dir / compose(label, ext, roles=carried)
         if f.is_file():
@@ -527,7 +530,7 @@ def run_answer(path) -> Optional[Dict[str, Any]]:
     reading (`continuation.read_points` -- its state, its points').
     ``live`` -- `job.LIVE_STATES` -- is what the viewer follows; once ended
     (`job.FINAL_STATES`), the run's own length, its engine's wall from
-    launch to exit its record states (`runs.WALL`, the Run panel's), else
+    launch to exit its record states (`record.ENGINE_WALL`, the Run panel's), else
     ``None`` -- as for a run of points' root, which has no record.  ``None``
     for a file of no run of ours, as for an upload: nothing is asked of a
     folder no calculation claims (`model/parse.md` § 5).  A viewer names a
@@ -537,7 +540,8 @@ def run_answer(path) -> Optional[Dict[str, Any]]:
     says it (`web/results.md` § 4.1)."""
     from ..calculation import open as open_calculation
     from ..identity import stage_name
-    from ..runs import WALL, record_of, run_of, state_of
+    from ..parse.dirs.record import ENGINE_WALL
+    from ..runs import record_of, run_of, state_of
     run = run_of(path)
     took = None
     if run is None:
@@ -558,9 +562,9 @@ def run_answer(path) -> Optional[Dict[str, Any]]:
         state, detail = st.state, st.detail
         if state in FINAL_STATES:
             # AN ENDED RUN'S OWN LENGTH -- its record's, the field alone.
-            rec = record_of(run, status=st, fields=(WALL,)) or {}
-            took = ((rec.get("computation") or {}).get("time")
-                    or {}).get("engine_elapsed_s")
+            took = record_of(run, status=st, fields=(ENGINE_WALL,)) or {}
+            for key in ENGINE_WALL.split("."):
+                took = took.get(key) if isinstance(took, dict) else None
     return {"state": state, "detail": detail,
             "live": state in LIVE_STATES, "engine_elapsed_s": took}
 
@@ -660,7 +664,10 @@ def _one_run_status(calc, job, *, run: Path, columns: dict) -> StageStatus:
         converged=st.converged_words, attempt=run.name,
         launch=launch,
         # THE SAME LABEL THE STATE WAS READ WITH -- the stage's names'.
-        warm_files=_warm_present(run, names.label, calc.jobset.engine, base),
+        warm_files=_warm_present(
+            run, names.label, calc.jobset.engine,
+            str(calc.task.calculation) if calc.task is not None else None,
+            base),
         # WHAT THE RUN GATHERED (a transport rung), beside what it declares.
         gathered=gathered_lines(run),
         copied_from=_copied(base, run),

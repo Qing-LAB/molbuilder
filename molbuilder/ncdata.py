@@ -69,6 +69,11 @@ from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 import netCDF4
 import numpy as np
 
+try:                                        # inside molbuilder
+    from . import constants as _C
+except ImportError:                         # beside a job: it travels too
+    import constants as _C  # type: ignore[no-redef]
+
 # TWO WAYS, because this module travels beside the job.
 try:                                        # inside molbuilder
     from .persist import check_schema
@@ -310,6 +315,13 @@ def axis_values(axis: str, size: int) -> np.ndarray:
     return np.arange(int(size))
 
 
+def _scientific(value: float, digits: int) -> str:
+    """``value`` as a unit's meaning states it -- ``7.748092e-5``, its
+    exponent unpadded."""
+    mantissa, exponent = f"{value:.{digits}e}".split("e")
+    return f"{mantissa}e{int(exponent)}"
+
+
 #: ONE SPELLING FOR EACH UNIT (`model/datafiles.md` § 2c): every unit a data
 #: file states a number in, with what it means in words -- the writer refuses
 #: a number in another spelling, and each file states the meanings of the
@@ -322,31 +334,33 @@ UNITS: Dict[str, str] = {
     "K": "kelvin",
     "V": "volt",
     "A": "ampere",
-    "e": "the elementary charge, 1.602176634e-19 C",
-    "eV": "electronvolt, 1.602176634e-19 J",
+    "e": f"the elementary charge, {_scientific(_C.ELEMENTARY_CHARGE_C, 9)} C",
+    "eV": f"electronvolt, {_scientific(_C.ELEMENTARY_CHARGE_C, 9)} J",
     "eV/angstrom": "electronvolt per angstrom",
     "kbar": "kilobar, 1e8 Pa",
     "1/eV": "per electronvolt",
-    "Eh": "hartree, the atomic unit of energy, 27.211386 eV",
+    "Eh": f"hartree, the atomic unit of energy, {_C.HARTREE_EV:.6f} eV",
     "Eh^2": "hartree squared",
     "Eh/K": "hartree per kelvin",
-    "Eh/bohr": "hartree per bohr, the atomic unit of force (1 bohr = "
-               "0.529177 angstrom)",
-    "atm": "standard atmosphere, 101325 Pa",
-    "G0": "the conductance quantum, 2e^2/h = 7.748092e-5 S",
+    "Eh/bohr": f"hartree per bohr, the atomic unit of force (1 bohr = "
+               f"{_C.BOHR_ANGSTROM:.6f} angstrom)",
+    "atm": f"standard atmosphere, {_C.ATM_PA:g} Pa",
+    "G0": f"the conductance quantum, 2e^2/h = "
+          f"{_scientific(_C.CONDUCTANCE_QUANTUM_S, 6)} S",
     "nm": "nanometre",
     "cm-1": "wavenumber, per centimetre",
     "km/mol": "kilometre per mole",
     "angstrom": "angstrom, 1e-10 m",
     "angstrom^3": "cubic angstrom",
-    "amu": "the unified atomic mass unit (dalton), 1.66053907e-27 kg",
+    "amu": f"the unified atomic mass unit (dalton), "
+           f"{_scientific(_C.AMU_KG, 8)} kg",
     "amu^1/2 angstrom": "square-root amu times angstrom",
     "amu^-1/2": "per square-root amu",
     "angstrom^2/amu^1/2": "square angstrom per square-root amu",
-    "D/(angstrom amu^1/2)": "debye (3.33564e-30 C m) per angstrom per "
-                            "square-root amu",
+    "D/(angstrom amu^1/2)": f"debye ({_scientific(_C.DEBYE_C_M, 5)} C m) per "
+                            f"angstrom per square-root amu",
     "angstrom^4/amu": "angstrom to the fourth per amu",
-    "kcal/mol": "kilocalorie per mole, 4.184 kJ/mol",
+    "kcal/mol": f"kilocalorie per mole, {_C.CALORIE_J:g} kJ/mol",
     "GiB": "gibibyte, 2^30 bytes",
 }
 #: EACH UNIT AS A NAME SPELLS IT (`model/datafiles.md` § 2a rule 2, § 2c's

@@ -57,8 +57,8 @@ def _load_transport_task(path: Path) -> dict:
         raise TaskReadError(
             f"{p.name} does not read as a description: "
             f"{type(exc).__name__}: {exc}") from exc
-    from .kind_table import kind
-    if kind(task.calculation).root_opens != "description":
+    from .kind_table import ROOT_OPENS, kind
+    if kind(task.calculation).root_opens != ROOT_OPENS[0]:
         raise TaskReadError(
             f"{p.name} describes {kind(task.calculation).with_article}, "
             f"whose root opens no report")

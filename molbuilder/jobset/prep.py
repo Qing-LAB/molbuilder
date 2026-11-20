@@ -380,8 +380,8 @@ class Resolved:
         """Where this prep's record lives -- its job-set, `STAGE-PLAN.md` and
         pipeline log: the calculation's folder for a run, the stage's bench
         container for a benchmark (`job-contracts.md` § 6.3)."""
-        from ..paths import bench_container
-        return (Path(base) / bench_container(self.token)
+        from .naming import bench_dir
+        return (bench_dir(base, self.token)
                 if self.sweep is not None else Path(base))
 
     def log_path(self, calc) -> Path:
@@ -2020,9 +2020,9 @@ def prepared_already(calc, stage: str) -> Optional[str]:
     (:func:`prep_task`), so a benchmark is counted prepared only by a prep
     that finished."""
     from .commands import rollback
-    from ..paths import bench_container
+    from .naming import bench_dir
     base, task = Path(calc.base), calc.task
-    home = base / bench_container(stage_home(base, task, stage).token)
+    home = bench_dir(base, stage_home(base, task, stage).token)
     if JobSet.of(home) is None:
         return None
     return (f"the benchmark of stage {stage!r} is already prepared "
@@ -2434,30 +2434,12 @@ def prep_bench(calc, stage: Optional[str], *, target: Optional[str] = None,
                              allocation=allocation, env=env,
                              emit_sbatch=emit_sbatch, plan=plan, notes=notes)
         identity = plan.identity()
-        if plan_id is not None and plan_id != identity:
-            raise PrepError(PLAN_CHANGED)
         if preview:
             out.preview = True
             out.plan_id = identity
             return out
-        # 5 · THE SAVE -- always, once the whole plan stands and before
-        #     anything is written, the ledger included (`checkpointing.md`
-        #     § 9; user, 2026-10-03: "always save through checkpoint, notify
-        #     user").  A redo is a rollback, and this is the state it
-        #     restores, so a save that fails refuses the prep.
-        from ..checkpoint import CheckpointError, save_before
-        try:
-            # A molbuilder.json that does not read is the person's to fix,
-            # said in its own words (the save reads it again).
-            with user_error_as_prep():
-                kept = save_before(base, f"prep bench {stage}",
-                                   engine=str(task.engine))
-        except CheckpointError as exc:
-            raise PrepError(f"the folder's state could not be saved, so "
-                            f"nothing was prepared: {exc}")
-        out.saved = kept.said()
-        ledger(base, "prep", "saved", stage=stage, state=kept.state.short,
-               note=kept.state.note, new=kept.new)
+        if plan_id is not None and plan_id != identity:
+            raise PrepError(PLAN_CHANGED)
     except PrepError as exc:
         raise _refused(exc)
     except step_errors() as exc:
@@ -2466,14 +2448,21 @@ def prep_bench(calc, stage: Optional[str], *, target: Optional[str] = None,
         # own refusals (`errors.step_errors`) -- said the same way on both
         # doors.
         raise _refused(as_prep_error(exc)) from exc
-    # 6 · THE PLAN, WRITTEN -- deciding nothing and refusing nothing, so
-    #     after the refusals: a write that stops it is said with the way
-    #     back, and how far it got recorded (§ 5.0, checkpoint 6).
-    plan.carry_out_or_say(
-        lambda decision, **facts: ledger(base, "prep", decision, stage=stage,
-                                         **facts),
-        PrepStopped, way_back=kept.way_back(base))
-    # 7 · THE RECORD, after the save -- so the state saved holds no line of
+    # 5 · THE SAVE, THEN THE PLAN WRITTEN -- always, once the whole plan
+    #     stands, before anything is written, the ledger included
+    #     (`checkpointing.md` § 9; user, 2026-10-03: "always save through
+    #     checkpoint, notify user"): a redo is a rollback, and this is the
+    #     state it restores; a write that stops the plan is said with the
+    #     way back (§ 5.0, checkpoint 6).
+    from .ledger import save_then_carry_out
+    kept = save_then_carry_out(
+        plan, base, f"prep bench {stage}", engine=str(task.engine),
+        say=lambda decision, **facts: ledger(
+            base, "prep", decision, stage=stage, **facts),
+        refuse=lambda why: _refused(PrepError(why)), stopped=PrepStopped,
+        nothing="prepared")
+    out.saved = kept.said()
+    # 6 · THE RECORD, after the save -- so the state saved holds no line of
     #     this prep: the description's notes, then the stage's.
     _record_preflight(base, described.findings, stage=stage)
     return _record_prepared(base, out)
@@ -2520,7 +2509,7 @@ def _record_the_order(calc, record_order, *, refuse, asked, preview,
     folder's state saved first, nothing else written; ``None`` when it has
     nothing to record.  ``refuse`` and ``asked`` are the prep's own
     (:func:`_prep_groups`)."""
-    from ..checkpoint import CheckpointError, save_before
+    from .ledger import save_then_carry_out
     from .ledger import record as ledger
     from .planned import Plan
     base, task = calc.base, calc.task
@@ -2541,20 +2530,13 @@ def _record_the_order(calc, record_order, *, refuse, asked, preview,
         return answer
     if plan_id is not None and plan_id != identity:
         raise refuse(PLAN_CHANGED)
-    try:
-        with user_error_as_prep():
-            kept = save_before(base, "prep task: the citation's order record",
-                               engine=str(task.engine))
-    except (CheckpointError, PrepError) as exc:
-        raise refuse(f"the folder's state could not be saved, so nothing "
-                     f"was written: {exc}") from None
-    asked()
-    ledger(base, "prep", "saved", groups=[], state=kept.state.short,
-           note=kept.state.note, new=kept.new)
-    plan.carry_out_or_say(
-        lambda decision, **facts: ledger(base, "prep", decision, groups=[],
-                                         **facts),
-        PrepStopped, way_back=kept.way_back(base))
+    kept = save_then_carry_out(
+        plan, base, "prep task: the citation's order record",
+        engine=str(task.engine),
+        say=lambda decision, **facts: ledger(
+            base, "prep", decision, groups=[], **facts),
+        refuse=refuse, stopped=PrepStopped, nothing="written",
+        asked=lambda _kept: asked())
     ledger(base, "prep", "order recorded", writes=written)
     answer.saved = kept.said()
     return answer
@@ -2703,8 +2685,7 @@ def _prep_groups(calc, numbers: List[int], *, target, allocation,
     differs.  Then the folder is saved ONCE, the plan is written as it was
     made -- deciding nothing, refusing nothing (§ 5.0, rule 3) -- and each
     member's record and each group's written down after it."""
-    from ..checkpoint import CheckpointError, save_before
-    from ..identity import stage_key
+    from .ledger import save_then_carry_out
     from .ledger import record as ledger
     base = Path(calc.base).resolve()
 
@@ -2821,7 +2802,6 @@ def _prep_groups(calc, numbers: List[int], *, target, allocation,
                 f"already, so nothing is prepared -- send them one by one, "
                 f"each launched again.")
     members = {n: request.members(n) for n in numbers}
-    group_of = {stage_key(n): e.group for n, e in request.stages.items()}
     # 1a · THE JOBS PREPARED, matched by membership: a job whose members
     #      are no longer one group is formed again -- every group its
     #      members are in now, in this prep (`group.formed_again`).
@@ -3029,7 +3009,7 @@ def _prep_groups(calc, numbers: List[int], *, target, allocation,
         # named by its members' own files, a member the description no
         # longer holds among them (`group.header_of`).
         for j in prepared:
-            if any(group_of.get(stage_key(m)) in numbers
+            if any(request.group_of(m) in numbers
                    for m in members_of(j)):
                 old = header_of(description.calc, j)
                 if (old is not None and old not in headers.values()
@@ -3183,7 +3163,7 @@ def _prep_groups(calc, numbers: List[int], *, target, allocation,
     #      for a group of one.
     js = JobSet.of(base, plan=the_plan)
     for j in js.jobs:
-        g = group_of.get(stage_key(j.name))
+        g = request.group_of(j.name)
         if g in numbers:
             j.members = list(members[g]) if len(members[g]) > 1 else None
     js.write(base, plan=the_plan)
@@ -3220,34 +3200,24 @@ def _prep_groups(calc, numbers: List[int], *, target, allocation,
         return answers
     if plan_id is not None and plan_id != identity:
         raise _refuse(PLAN_CHANGED)
-    # 3 · THE SAVE, ONCE, before anything is written.
-    try:
-        with user_error_as_prep():
-            from .commands import copied_in_note
-            from .group import named
-            kept = save_before(
-                base, "prep task " + ", ".join(
-                    copied_in_note(named(request, n), reuse.name)
-                    if reuse is not None and reuse.copied(n)
-                    else named(request, n)
-                    for n in numbers),
-                engine=str(task.engine))
-    except (CheckpointError, PrepError) as exc:
-        # EITHER WAY WRITTEN DOWN (R-P15): the save's own refusal, or the
-        # configuration it reads, said as prep's.
-        raise _refuse(f"the folder's state could not be saved, so nothing "
-                      f"was prepared: {exc}") from None
-    _asked()
-    ledger(base, "prep", "saved", groups=numbers, state=kept.state.short,
-           note=kept.state.note, new=kept.new)
-    # 4 · THE PLAN, WRITTEN as it was made -- every member, every header --
-    #     deciding nothing and refusing nothing (§ 5.0, rule 3); a write that
-    #     stops it said, and how far it got recorded.
-    the_plan.carry_out_or_say(
-        lambda decision, **facts: ledger(base, "prep", decision,
-                                         groups=numbers, **facts),
-        PrepStopped, way_back=kept.way_back(base))
-    # 5 · THE RECORD: the description's notes, each member's, then each
+    # 3 · THE SAVE, ONCE, before anything is written; then THE PLAN,
+    #     WRITTEN as it was made -- every member, every header -- deciding
+    #     nothing and refusing nothing (§ 5.0, rule 3); a write that stops
+    #     it said, and how far it got recorded.
+    from .commands import copied_in_note
+    from .group import named
+    kept = save_then_carry_out(
+        the_plan, base, "prep task " + ", ".join(
+            copied_in_note(named(request, n), reuse.name)
+            if reuse is not None and reuse.copied(n)
+            else named(request, n)
+            for n in numbers),
+        engine=str(task.engine),
+        say=lambda decision, **facts: ledger(
+            base, "prep", decision, groups=numbers, **facts),
+        refuse=_refuse, stopped=PrepStopped, nothing="prepared",
+        asked=lambda _kept: _asked())
+    # 4 · THE RECORD: the description's notes, each member's, then each
     #     group's.
     _record_preflight(base, description.findings, groups=numbers)
     for a in answers:

@@ -810,5 +810,5 @@ launch = []
 launch_mode = "direct"
 launch_sends = true
 launch_unwritable = "coarse"
-launch_refused = ["writing ", "/01_coarse/", "failed (Permission denied)", "nothing was sent", "molbuilder checkpoint restore -p"]
+launch_refused = ["the folder's state was ", "writing ", "/01_coarse/", "failed (Permission denied)", "nothing was sent", "molbuilder checkpoint restore -p"]
 after_launch = { ledger_holds = ["launch stopped at a write that failed"], ledger_lacks = ["launch refused"] }

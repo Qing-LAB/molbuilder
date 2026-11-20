@@ -199,8 +199,14 @@ def _cell_resources(point, _environment) -> dict:
     count where it has one -- G=0 is a CPU trial, with NO gres, which is what
     lets `launch` put a CPU group on an allocation that holds no device
     (`generator.md` § 4.3a's split submission)."""
-    asked = {"mpi_np": point["N"], "cpus_per_task": point["C"]}
-    return {**asked, "gres": f"gpu:{point['G']}"} if point["G"] else asked
+    from ..template import GRID_AXIS_LETTERS
+    from .model import AS_RESOURCE, GpuRequest
+    asked = {AS_RESOURCE.get(name, name): point[letter]
+             for name, letter in GRID_AXIS_LETTERS.items()
+             if AS_RESOURCE.get(name) != "gres"}
+    devices = point[GRID_AXIS_LETTERS["gpu_count"]]
+    return ({**asked, "gres": GpuRequest(uses=True, count=devices).gres}
+            if devices else asked)
 
 
 def _cell_shape(g, n, c) -> str:
@@ -488,11 +494,8 @@ def bench_inputs(calc, target, *, bench_override=None, report=None,
     # catalogue's default -- what the calculation runs at, never a rung's
     # own card.  One name for both engines (`execution/gpu.md` G1).
     from .. import template as _T
-    card = request.run_condition(None)
-    on_gpu = (bool(card["use_gpu"]) if "use_gpu" in card
-              else bool(_T.default_of(
-                  _T.one(_T.catalogue(), "use_gpu", engine=str(task.engine)),
-                  str(task.calculation))))
+    from ..resolve import card_as_run
+    on_gpu = bool(card_as_run(request)["use_gpu"])
     if "use_gpu" in declared_pins:
         on_gpu = bool(declared_pins["use_gpu"])
 
@@ -522,9 +525,10 @@ def bench_inputs(calc, target, *, bench_override=None, report=None,
     # A BENCHMARK STATES ITS GRID (the user, 2026-11-04: "Refuse, you state
     # it"): its ranks and cores per rank, on the GPU its device counts too.
     cat = _T.catalogue()
-    unstated = [name for name in ("mpi_np", "omp_threads",
-                                  *(("gpu_count",) if any(families) else ()))
-                if not declared.get(name)]
+    from .model import AS_RESOURCE
+    unstated = [name for name in _T.GRID_AXES
+                if (any(families) or AS_RESOURCE.get(name) != "gres")
+                and not declared.get(name)]
     if unstated:
         said = [f'"{_T.one(cat, name, engine=str(task.engine)).label}" ({name})'
                 for name in unstated]

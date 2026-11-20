@@ -607,7 +607,7 @@ floor is [`architecture.md`](?doc=execution/architecture.md) § 2.1.
 |---|---|
 | `resolve.py` | `ParameterSet`, `ResolvedConfig`, `MachineTranslation`, `point_token`, `MACHINE_AXES` |
 | `jobset/prep_inputs.py` | the two assemblies (§ 6.0a), the declared bench split, the cell fit and the printed grid |
-| `template.py` | `TRIAL_PINS`, `GRID_AXES` |
+| `template.py` | `TRIAL_PINS`, `GRID_AXIS_LETTERS` (each axis's letter in a trial's name) and `GRID_AXES` |
 | `jobset/shelves.py` | sides, shelves, a shelf's one request |
 | `jobset/prep.py` | `walk_header_of` — each shelf's header at prep |
 | `jobset/submit.py` | `_plan_shelves`, `_plan_bench_here` — the send |

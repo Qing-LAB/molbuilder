@@ -174,6 +174,9 @@ every reader and writer import — but a deck's, asked by its engine
 - `about(path)`, on the run door — what one file is: its row, read back with
   its run's label, or *not written by molbuilder*, which the Results tab's
   file card shows ([`web/results.md`](?doc=web/results.md) § 3b);
+- `catalogue_row(path)`, on the run door — the row a file's atoms are read
+  by, as `about` reads it where a label is known, by its name alone where
+  none is ([`model/overview.md`](?doc=model/overview.md) § 2.2b);
 - the row's `reads`, the reader it names for each question —
   `reader(role, question)`, which every reader of an output asks, on the
   machine and beside a job, resolves it; by the rows the readers' modules
@@ -298,7 +301,8 @@ right:
 | a folder and a dotted role, before anything says whose | `find_by_role(directory, role)` |
 | a file → the run it belongs to, and that run's other files | `run_of(path)` → `Run`: `Run.file(role)`, `.on_label(role)`, `.deck`, `.stdout`, `.session_log` (`runs.on_label_at(folder, role)` at a run of points' root). The run door ([`architecture.md`](?doc=execution/architecture.md) § 3.2) reads the label from the description, never from a deck or a name |
 | a file → what it is | `about(path)`, on the run door |
-| a name known to be one of your run's outputs → its role | `role_of(name)` — never for a name met in a folder, which is read back with its label (`about`) |
+| a file → the catalogue row its atoms are read by (which index it lists them by, which numbering its own text counts them by) | `catalogue_row(path)`, on the run door: read back with its folder's label; where no label is known, by its name alone — `row_without_label`: a fixed name, else a dotted role |
+| a name known to be one of your run's outputs → its role | `role_of(name)` — never for a name met in a folder a calculation claims, which is read back with its label (`about`); where no label is known, a file's row by its name is `row_without_label` |
 | a role, in code | its constant, `runfiles.ROLE_*`; a deck's, `deck_role(engine)` |
 | an engine's file, in code | its constant, a row of `ENGINE_FILES` (`SIESTA_XV`, `PYSCF_CHK`, …) |
 | a role → the code that reads it | `reader(role, question)` — the row's `reads`, resolved (`reads_of` its name) |
@@ -351,7 +355,7 @@ manifest(label, stage, engine, when, calculation) -> list
 
 **Every door that takes a role asks one check** (`runfiles.declared`) —
 `compose`, `tail`, `find`'s `role`, `find_on_label`, `find_by_role`,
-`stem_before`, `named_beside`, `fields_of`, `family`, `RunNames.name`,
+`stem_before`, `named_beside`, `fields_of`, `family`, `is_staged`, `RunNames.name`,
 `reads_of`, `reader`, `stderr_apart`: a role of `WRITTEN` or of `ENGINE_FILES`
 — a templated one, or a name of it — or of the vocabulary a caller hands in as
 `roles`, and nothing else. `RunNames.name` takes a role of the two tables, its

@@ -46,12 +46,27 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Optional, Tuple, Union
 
-#: A stage artifact token: `01_coarse`, `02_electrode_L`.  The ordinal is
-#: **two or more** digits and the name is ``[A-Za-z0-9_]+`` -- `identity.py`'s
-#: ``STAGE_NAME_RE`` and ``stage_token``, which own the word itself; this
-#: is only the shape a NAME may carry, so a token that module would reject
-#: cannot reach a filename through here either.
-_STAGE = re.compile(r"[0-9]{2,}_[A-Za-z0-9_]+")
+#: THE ONE WRITER'S TEMP FILE beside its target (`persist`), named
+#: ``<target><TEMP_JOIN><random><TEMP_SUFFIX>``: the transient row is
+#: composed from these, so whatever temp a stopped write leaves is one the
+#: checkpoint and every copier leave out.
+TEMP_JOIN, TEMP_SUFFIX = ".", ".tmp"
+
+#: THE CHARACTERS OF A STAGE'S NAME -- `coarse`, `electrode_L` -- and of a
+#: calculation's kind (`optimization`), at the lowest floor, as
+#: :data:`NAME_CHARS` is: `task.STAGE_NAME_RE` (what a description may name
+#: a stage or its kind), `identity.parse_token` and the token below are
+#: built from it, so a name one admits the others read.
+STAGE_NAME_CHARS = "A-Za-z0-9_"
+
+#: A stage token's ordinal: **two or more** ASCII digits (`identity.
+#: stage_token` writes them), read by the token below and by
+#: `identity.parse_token`.
+STAGE_ORDINAL = "[0-9]{2,}"
+
+#: A stage artifact token: `01_coarse`, `02_electrode_L` -- the ordinal,
+#: then the stage's name.
+_STAGE = re.compile(f"{STAGE_ORDINAL}_[{STAGE_NAME_CHARS}]+")
 
 #: THE ROLES OF OUR FILES -- one constant per row of :data:`WRITTEN` named on
 #: the label, each spelled here and nowhere else (`model/parse.md` § 5.5
@@ -183,7 +198,17 @@ class Field:
     #: the leads its decks name -- so the names a templated row makes for a
     #: run of ours can be walked; ``()`` where the example stands for them.
     values: "tuple[str, ...]" = ()
+    #: HOW A GLOB SPELLS ANY VALUE OF IT (:func:`family`): ``*``, but where
+    #: a family decides what no store keeps and one glob spells the shape
+    #: exactly -- the temp's random part -- so that list admits only the
+    #: files the row makes (`checkpointing.md` S1: never in neither store).
+    glob: str = "*"
 
+
+#: THE CHARACTERS AND COUNT `tempfile.mkstemp` DRAWS for the one writer's
+#: temp's random part (`persist`) -- the field's shape and its glob are
+#: both made of these, so the store-nowhere list and the rule agree.
+MKSTEMP_CHARS, MKSTEMP_LENGTH = "a-z0-9_", 8
 
 FIELDS: "dict[str, Field]" = {
     # The fields of the catalogue's FIXED-NAME families (B13, 2026-10-04):
@@ -244,9 +269,10 @@ FIELDS: "dict[str, Field]" = {
         shape=r"[A-Za-z0-9_.-]+",
         example="bench-group-cpu-G0N4C1"),
     "random": Field(
-        what="a temporary file's random part",
-        shape=r"[A-Za-z0-9_.-]+",
-        example="k3j9x_2a"),
+        what="a temporary file's random part: the eight characters "
+             "`tempfile.mkstemp` draws for `persist`'s temp",
+        shape=f"[{MKSTEMP_CHARS}]{{{MKSTEMP_LENGTH}}}",
+        example="k3j9x_2a", glob=f"[{MKSTEMP_CHARS}]" * MKSTEMP_LENGTH),
     "target": Field(
         what="the name of the file a temporary one replaces, or a lock "
              "guards",
@@ -552,14 +578,14 @@ def parse(filename: str, label: str,
             return _carrying(label, after[:-len(role)], role)
     # Otherwise the token runs to the role's own separator, which for every
     # remaining role is the first `.`.
-    m = re.match(r"([0-9]{2,}_[A-Za-z0-9_]+)", after)
+    m = _STAGE.match(after)
     if m:
         # A TOKEN FOLLOWED BY ANYTHING BUT A ROLE is no file of this label:
         # a run's files are named once, on the stage's stem, so nothing
         # stands between a stage and its role (§ 2.2a; `project-layout.md`
         # § 1.6.1) -- ``_01_coarse-x.out`` is no name of a run's.
         role = after[m.end():]
-        return _carrying(label, m.group(1), role) if role[:1] == "." else None
+        return _carrying(label, m.group(0), role) if role[:1] == "." else None
     # No token: the role itself began with `_` (`_optimized.xyz`).
     return _carrying(label, None, rest)
 
@@ -584,6 +610,20 @@ def role_of(name) -> Optional[str]:
     return _role_of(str(name).rsplit("/", 1)[-1])
 
 
+def row_without_label(path) -> Optional[Artifact]:
+    """A FILE'S ROW READ BY ITS NAME ALONE -- where no label is known: a
+    fixed name (:func:`row_for` without one), else a dotted role of
+    :data:`WRITTEN` (:func:`role_of`), the roles a name is read by without
+    its label (`job-contracts.md` § 2.2a); never a role an underscore
+    begins, which no name tells from a stage's without its label."""
+    row = row_for(path)
+    if row is not None:
+        return row
+    role = role_of(Path(path).name)
+    return next((a for a in ON_THE_LABEL if a.role == role), None) \
+        if role else None
+
+
 def is_transient(name) -> bool:
     """Whether a file of this name is one the catalogue calls ``transient``
     -- there only while a write or a reading runs (a temp of the one
@@ -601,20 +641,24 @@ def _transient_rows() -> "tuple[Artifact, ...]":
 
 
 def transient_families() -> "tuple[str, ...]":
-    """:func:`is_transient` as families of file names -- each field a star,
-    a role on the label after one -- for an ignore list or an exclude line
-    (`warmfiles.never_carried_families`)."""
-    return tuple(sorted({family(a.role) if a.role
-                         else _FIELD_RE.sub("*", a.name)
+    """:func:`is_transient` as families of file names -- each field by its
+    own glob (:attr:`Field.glob`), a role on the label after a star -- for
+    an ignore list or an exclude line (`warmfiles.never_carried_families`)."""
+    return tuple(sorted({family(a.role) if a.role else _glob_of(a.name)
                          for a in _transient_rows()}))
 
 
 def family(role: str) -> str:
-    """EVERY NAME A ROLE MAKES, as a glob -- a star for the label and one
-    for each field: ``*.DM``, ``*.*.AVTRANS_*`` -- for an ignore list, an
+    """EVERY NAME A ROLE MAKES, as a glob -- a star for the label, each
+    field by its own glob: ``*.DM``, ``*.*.AVTRANS_*`` -- for an ignore list, an
     exclude line or a hint of which files are large (`runtime_config`'s
     checkpoint defaults); never a star placed by hand at the call."""
-    return "*" + _FIELD_RE.sub("*", declared(role, door="family"))
+    return "*" + _glob_of(declared(role, door="family"))
+
+
+def _glob_of(template: str) -> str:
+    """``template`` as a glob: each field as its own (:attr:`Field.glob`)."""
+    return _FIELD_RE.sub(lambda m: FIELDS[m.group(1)].glob, template)
 
 
 @functools.lru_cache(maxsize=65536)
@@ -806,21 +850,13 @@ def older_named(directory, stage: str) -> "list[OlderName]":
     return out
 
 
-def longest_tail(engine_names: "tuple[str, ...]") -> str:
+def longest_tail() -> str:
     """The longest text the catalogue appends to ``<label>_<stage>`` -- every
-    role, a templated one filled with the longest value its field takes:
-    the longest engine name.  What `identity.MAX_LABEL_BYTES` is derived
+    role as :func:`names_made` makes it: a field of declared values at each,
+    an open one at its example.  What `identity.MAX_LABEL_BYTES` is derived
     from (`run-identity.md` § 3)."""
-    fill = {"engine": max(engine_names, key=len)}
-    out = ""
-    for r in roles(engines=False):
-        try:
-            t = r.format(**fill)
-        except (KeyError, IndexError):
-            t = r
-        if len(t) > len(out):
-            out = t
-    return out
+    return max((t for r in roles(engines=False) for t in names_made(r)),
+               key=len, default="")
 
 
 def stem_before(name, role: str) -> Optional[str]:
@@ -884,7 +920,7 @@ def named_beside(name, role: str) -> Optional[str]:
         return None
     label, stage = split_stem(base[:cut])
     return compose(label, role,
-                   stage if _staged(role, "named_beside") else None)
+                   stage if is_staged(role, "named_beside") else None)
 
 
 def find_by_role(directory, role: str) -> "list[Path]":
@@ -1764,7 +1800,7 @@ WRITTEN: "tuple[Artifact, ...]" = (
              when="launch", level="launch", kind="record",
              writer='launch, before the job goes; its id once the scheduler gives it',
              door="jobset.sequence.read_record"),
-    Artifact(name="{target}.{random}.tmp",
+    Artifact(name="{target}" + TEMP_JOIN + "{random}" + TEMP_SUFFIX,
              what="a file being written; it replaces its target when the "
                   "write ends",
              when="run", level="transient", kind="transient",
@@ -1785,7 +1821,7 @@ _ENGINES: "tuple[str, ...]" = tuple(sorted({a.engine for a in WRITTEN
 FIELDS["engine"] = Field(
     what="the engine a prep rendered for",
     shape="|".join(re.escape(e) for e in _ENGINES),
-    example=_ENGINES[0])
+    example=_ENGINES[0], values=_ENGINES)
 
 #: The rows NAMED ON THE LABEL -- the role rows every reader of the run-file
 #: grammar walks; the fixed names are the rest of :data:`WRITTEN`.
@@ -2123,7 +2159,6 @@ def names_made(template: str) -> "tuple[str, ...]":
             FIELDS[f].values or (FIELDS[f].example,) for f in names]))
 
 
-
 @functools.lru_cache(maxsize=1)
 def _declared_roles() -> "frozenset[str]":
     """Every role either table declares."""
@@ -2155,35 +2190,7 @@ def declared(role: str, roles: "tuple[str, ...]" = (), *,
            if roles else "") + ".")
 
 
-def _row_named(name: str) -> "Optional[Artifact]":
-    """The catalogue row of a file of this name: the row of its whole name,
-    else of the longest role its name ends with; ``None`` for a file the
-    catalogue does not list."""
-    for a in WRITTEN:
-        if a.name and not a.role and a.name == name:
-            return a
-    found = [a for a in ON_THE_LABEL
-             if (_role_pattern(a.role).search(name) if a.fields
-                 else name.endswith(a.role))]
-    return max(found, key=lambda a: len(a.role)) if found else None
-
-
-def listed_by_of(name: str) -> str:
-    """WHICH INDEX A FILE OF THIS NAME IS LISTED BY -- its catalogue row's
-    (:attr:`Artifact.listed_by`, `model/overview.md` § 2.2b, F3); ``""`` for
-    a row that says nothing, and for a file the catalogue does not list."""
-    row = _row_named(name)
-    return row.listed_by if row is not None else ""
-
-
-def counted_by_of(name: str) -> "tuple[str, ...]":
-    """WHOSE NUMBERINGS A FILE OF THIS NAME'S OWN TEXT COUNTS ITS ATOMS BY --
-    an engine's input's (:attr:`Artifact.counted_by`, F5); empty for any
-    other file."""
-    row = _row_named(name)
-    return row.counted_by if row is not None else ()
-
-def _staged(role: str, door: str) -> bool:
+def is_staged(role: str, door: str) -> bool:
     """Whether a file of ``role`` -- a role of either table, or a concrete
     name of a templated one (:func:`declared`) -- is named on its stage's
     stem: its row's ``staged``."""
@@ -2242,7 +2249,7 @@ class RunNames:
         or of :data:`ENGINE_FILES` (:func:`declared`), on the stage's stem
         or on the label alone as its row says (``staged``); ``fields`` fill
         a templated role."""
-        staged = _staged(role, "RunNames.name")
+        staged = is_staged(role, "RunNames.name")
         return compose(self.label, role, self.stage if staged else None,
                        **fields)
 
@@ -2268,7 +2275,6 @@ class RunNames:
         if f is None or f.stage != source.stage:
             return name
         return replace(f, label=self.label, stage=self.stage).name
-
 
 
 @dataclass(frozen=True)
@@ -2692,8 +2698,7 @@ def fixed(level: Optional[str] = None,
             continue
         if engine and a.engine and a.engine != engine:
             continue
-        rows.append({"name": shown(a.name),
-                     "what": a.what, "when": a.when, "only": a.only})
+        rows.append(row_words(a, shown(a.name)))
     return rows
 
 

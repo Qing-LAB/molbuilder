@@ -3,7 +3,9 @@ schema convention + JSON IO (`execution/job-contracts.md` § 6).
 
 The one place the major-version check lives, for every persisted artifact.
 
-L1: pure stdlib, no molbuilder deps -- any layer may use it.
+L1: the standard library and `runfiles` (the catalogue's temp name, the
+lowest floor), so any layer may use it; it travels beside a job with
+`runfiles` (:data:`TRAVELS_WITH`).
 """
 
 from __future__ import annotations
@@ -15,7 +17,12 @@ import numbers
 import os
 import tempfile
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Mapping, NoReturn, Optional
+
+
+#: What travels beside a job with this module (`execution/architecture.md`
+#: § 3.3): the catalogue its temp name is read from.
+TRAVELS_WITH = ("molbuilder.runfiles",)
 
 
 def schema_major(schema: str) -> str:
@@ -69,6 +76,43 @@ def check_schema(got: str, want, *, label: str = "", error=ValueError,
             + ", this molbuilder reads "
             + ", ".join(f"{schema_name(w)}@{schema_major(w)}" for w in wants)
             + (f" -- {way}" if way else "") + ".")
+
+
+class RecordRefusals:
+    """THE REFUSALS A RECORD'S READER SAYS -- each prefixed with what is
+    read (``source``: the file by default, or what a caller sets for one
+    read, the body a page sent) and where in it.  One kit, so the
+    description's reader and the job request's word a refusal alike."""
+
+    def __init__(self, name: str, default: str) -> None:
+        import contextvars
+        self.source: "contextvars.ContextVar[str]" = contextvars.ContextVar(
+            name, default=default)
+
+    def refuse(self, msg: str, *, where: str = "") -> NoReturn:
+        raise ValueError(
+            f"{self.source.get()}{': ' + where if where else ''}: {msg}")
+
+    def as_object(self, value: Any, *, where: str) -> Mapping[str, Any]:
+        """A non-object where the record specifies one, refused SAYING so --
+        without it the key check iterates a string's characters and reports
+        ``unknown key 's'`` for ``"engine": "siesta"``, true and useless to a
+        person hand-editing the file."""
+        if not isinstance(value, Mapping):
+            self.refuse(f"expected an object, got {type(value).__name__}",
+                        where=where)
+        return value
+
+    def refuse_unknown_keys(self, obj: Mapping[str, Any], allowed, *,
+                            where: str, note: str = "") -> None:
+        """An unknown key refused, not ignored (:func:`unknown_keys`): an
+        ignored key is a record quietly different from the one written.
+        ``note`` says where it belongs when it is close to no known key --
+        *unknown* is true but useless when the name is a real setting that
+        belongs in a different block."""
+        said = unknown_keys(obj, allowed, note)
+        if said:
+            self.refuse(said, where=where)
 
 
 def unknown_keys(obj, allowed, note: str = "", *,
@@ -191,8 +235,13 @@ def stage_bytes(target, data: bytes, *, mode: Optional[int] = None,
             mode = target.stat().st_mode & 0o777
         except OSError:
             mode = 0o644
+    try:                                    # inside molbuilder
+        from .runfiles import TEMP_JOIN, TEMP_SUFFIX
+    except ImportError:                     # beside the job: it travels too
+        from runfiles import TEMP_JOIN, TEMP_SUFFIX  # type: ignore[no-redef]
     fd, tmp_name = tempfile.mkstemp(dir=str(target.parent),
-                                    prefix=target.name + ".", suffix=".tmp")
+                                    prefix=target.name + TEMP_JOIN,
+                                    suffix=TEMP_SUFFIX)
     tmp = Path(tmp_name)
     try:
         with os.fdopen(fd, "wb") as handle:
@@ -396,6 +445,7 @@ def sha256_of_bytes(data: bytes) -> str:
 
 
 __all__ = ["schema_major", "schema_name", "check_schema", "check_keys",
+           "RecordRefusals",
            "read_json", "object_of", "read_object", "unread_words",
            "unknown_keys",
            "json_text", "write_json", "stage_bytes", "write_bytes",

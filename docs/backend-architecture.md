@@ -191,7 +191,7 @@ The design intent ([`execution/job-system.md`](?doc=execution/job-system.md)):
 | Module | L | Role | Engine knowledge? |
 |---|---|---|---|
 | `jobset/` (`model` / `materialize` / `prep` / `plan` / `submit` / `summarize` / `agreement` / `ledger` / `_cli`) | L2 | engine-agnostic staged-execution core | **none** (correct) |
-| `jobset/runstatus.py` | L2 | read-only per-stage status + warm-file inventory | none — derives from the engines' `warm-files.toml` ([`job-contracts.md`](?doc=execution/job-contracts.md) § 4.2a) |
+| `jobset/runstatus.py` | L2 | per-stage status (writing a run's ending, once, when it finds it) + warm-file inventory | none — derives from the engines' `warm-files.toml` ([`job-contracts.md`](?doc=execution/job-contracts.md) § 4.2a) |
 | `bench/` | L2 | the benchmark's result reader (`result.py`); `prep bench` is the producer ([`execution/architecture.md`](?doc=execution/architecture.md) § 0) | none of its own — the result reader reads a run through `parse/` |
 | `runwrap.py` | L2 | the `.run.sh` / `.sbatch` launcher emitter | none of its own — every block is the engine record's (`engine_table`) |
 | `runtime_config.py` | L2 | `molbuilder.json` reader — one registry row per section (`configuration.md` § 4) | — (see W3) |

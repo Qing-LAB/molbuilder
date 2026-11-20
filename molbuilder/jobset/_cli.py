@@ -135,7 +135,7 @@ def _flags_may_stand(calc, allocation) -> None:
     from ..scheduler.quantities import parse_gres_flag
     from ..template import accepts, catalogue, select
     from .model import AS_RESOURCE
-    from .placement import _LAUNCH_WORDS
+    from .placement import LAUNCH_FIELDS
     engine, kind = str(calc.task.engine), str(calc.task.calculation)
     for it in select(catalogue(), engine=engine, allocation=True):
         field = AS_RESOURCE.get(it.name, it.name)
@@ -145,8 +145,8 @@ def _flags_may_stand(calc, allocation) -> None:
         clause = accepts(it, parse_gres_flag(said) if field == "gres"
                          else said, "flag", engine=engine, kind=kind)
         if clause:
-            flag = _LAUNCH_WORDS[field][1].split()[0]
-            raise click.ClickException(f"{flag} {said}{clause}.")
+            raise click.ClickException(
+                f"{LAUNCH_FIELDS[field].flag} {said}{clause}.")
 
 
 def _calc_of(folder):
@@ -765,7 +765,10 @@ def status_cmd(stage, bundle: str) -> None:
     """Show each stage, its group and its state -- finished, running,
     failed, queued or pending once prepared; described, ready to launch or
     waiting before -- its warm files, and each group's next step with the
-    line that moves it.  Read-only.
+    line that moves it.  It changes nothing of yours: the one thing it
+    writes is a run's ending, once, when it finds the run ended -- its
+    process gone, or its queue job ended or no longer listed (into the
+    run's launch record).
 
     With a STAGE (its name, or '#N' quoted): what it is and what happened
     to it -- its deck, what it carries, its resources, its runs, its launch
@@ -906,8 +909,8 @@ def _stage_bench_dir(calc, stage, verb: str = "launch"):
     listed — § 6.5 gives every description a ladder, so there is always a
     stage to name and never a bare form to fall back to.  Returns the
     container's path."""
-    from ..paths import bench_container
-    from .naming import stage_home
+    from .naming import bench_dir, stage_home
+    from .prep import prepared_already
     base, task = calc.base, calc.task
     # A CALCULATION THAT HAS NO BENCHMARK says so first -- `prep bench`'s own
     # answer (`bench_refusal`) -- or the command offered next is refused in
@@ -922,8 +925,7 @@ def _stage_bench_dir(calc, stage, verb: str = "launch"):
         from .commands import command, name_a_stage
         from .naming import described_refs
         refs = described_refs(base, task)
-        benched = [r for r in refs if JobSet.of(Path(base) / bench_container(
-            stage_home(base, task, r.name).token)) is not None]
+        benched = [r for r in refs if prepared_already(calc, r.name)]
         if not benched:
             raise click.ClickException(
                 "no stage has a prepared benchmark yet -- prep one first:\n"
@@ -931,7 +933,7 @@ def _stage_bench_dir(calc, stage, verb: str = "launch"):
         raise click.ClickException(
             "which stage's benchmark? "
             + name_a_stage(verb, "bench", benched, base=base))
-    return Path(base) / bench_container(stage_home(base, task, stage).token)
+    return bench_dir(base, stage_home(base, task, stage).token)
 
 
 def _pick_trial(js, trial):
@@ -2651,7 +2653,7 @@ def cmd_probe(do_write: bool, name, yes: bool,
     from datetime import datetime, timezone
 
     from ..scheduler import (machine_scope_path, read_environment,
-                             resolve_environment, write_environment)
+                             write_environment)
 
     user = getpass.getuser()
     now = datetime.now(timezone.utc).isoformat(timespec="seconds")
@@ -2721,33 +2723,22 @@ def cmd_probe(do_write: bool, name, yes: bool,
             f"required: `molbuilder envs init-config` asks for it, or state "
             f"it in that file; then probe again.")
 
-    # The NODE probe first -- scheduler, topology, default partition: the one
-    # node prober, the one `envs init-config` seeds this machine's record
-    # through too, so the two cannot disagree about what this machine is.
+    # THE PROBE OF THIS MACHINE -- the node, the facts that travel with its
+    # record (THIS machine's `env_init`, declared in its molbuilder.json and
+    # copied into whichever record this writes, this machine's or a named
+    # one: user, 2026-10-02 -- required, and checked above), its queues --
+    # the one probe `envs init-config` seeds this machine's record through
+    # too, so the two cannot disagree about what this machine is.
+    from ..diagnostics import probe_this_machine
     try:
-        env = resolve_environment(now_iso=now, overrides=overrides or None,
-                                  scheduler_override=scheduler_flag,
-                                  commands=commands)
+        env, notes, summary = probe_this_machine(
+            declared, now_iso=now, user=user, overrides=overrides or None,
+            scheduler_override=scheduler_flag, commands=commands)
     except ValueError as exc:
         # A SCHEDULER THAT CANNOT BE RECORDED -- a kind with a queue whose
         # submit command is neither found nor declared, or commands named
         # for a kind with none (`record.Scheduler`).
         raise click.ClickException(str(exc)) from None
-
-    # THE FOUR FACTS THAT TRAVEL WITH A RECORD -- how this machine enters
-    # its environment, which envs exist here, what they were built for, and
-    # whether its manager's `run` enters one.  `diagnostics.local_facts`
-    # owns them and states why.  The first is THIS machine's
-    # `env_init`, declared in its molbuilder.json and copied into whichever
-    # record this writes, this machine's or a named one (user, 2026-10-02) --
-    # required, and checked above.
-    from ..diagnostics import local_facts as _local_facts
-    env, facts_notes = _local_facts(env, declared)
-
-    # THE QUEUES -- `record.probe_queues`, the one queue probe; `envs
-    # init-config` seeds this machine's record through it too (M-3).
-    from ..scheduler.record import probe_queues
-    notes, summary = probe_queues(env, user)
     if summary:
         click.echo(summary)
 
@@ -2779,9 +2770,6 @@ def cmd_probe(do_write: bool, name, yes: bool,
         for d in env.domains:
             click.echo(f"  {d.name:<10} <= {str(d.max_time):<12} "
                        f"{d.partition}/{d.qos or '-'}")
-    # AFTER the queue probe, whose notes this extends (`record.probe_queues`
-    # builds them after `derive_domains`, which reassigns its list).
-    notes.extend(facts_notes)
     if notes:
         click.echo("\nNotes / assumptions (read before --write):")
         for n in notes:

@@ -458,6 +458,29 @@ def reset_capabilities() -> None:
 # --------------------------------------------------------------------- #
 
 
+def probe_this_machine(env_init, *, now_iso: str, user: str,
+                       overrides: Optional[dict] = None,
+                       scheduler_override: Optional[str] = None,
+                       commands: Optional[dict] = None):
+    """THE PROBE OF THIS MACHINE -- what `jobset probe` and `envs
+    init-config` both write, in one order: the node
+    (`scheduler.record.resolve_environment`), the facts that travel with
+    its record (:func:`local_facts`, ``env_init`` copied into it), its
+    queues (`scheduler.record.probe_queues`).  Returns ``(env, notes,
+    summary)``: the record, what a person reads before it is written -- the
+    queues' notes, then the facts' -- and the queues' one line.  Each
+    caller keeps its own policy on an activation the machine's config does
+    not state.  Here, above the scheduler's record, which it reads down
+    from."""
+    from .scheduler.record import probe_queues, resolve_environment
+    env = resolve_environment(now_iso=now_iso, overrides=overrides,
+                              scheduler_override=scheduler_override,
+                              commands=commands)
+    env, facts_notes = local_facts(env, env_init)
+    queue_notes, summary = probe_queues(env, user)
+    return env, [*queue_notes, *facts_notes], summary
+
+
 def local_facts(env: "Any", env_init: "Optional[Mapping[str, str]]"
                 = None) -> "Tuple[Any, List[str]]":
     """Attach this machine's four portable facts to a probed record.
@@ -493,8 +516,9 @@ def local_facts(env: "Any", env_init: "Optional[Mapping[str, str]]"
     running this, which is the machine those envs live on.
 
     Here rather than in ``scheduler/record.py`` because it enumerates envs, and
-    this module is where "what is true of this machine" already lives.  Two
-    callers, ``jobset probe`` and ``envs init-config``, so one copy.
+    this module is where "what is true of this machine" already lives.  Its
+    one caller is :func:`probe_this_machine`, the probe both ``jobset probe``
+    and ``envs init-config`` take.
     """
     import dataclasses as _dc
     sg_rec = {k: v for k, v in (env_init or {}).items() if v}
@@ -566,6 +590,6 @@ def local_facts(env: "Any", env_init: "Optional[Mapping[str, str]]"
 __all__ = [
     "DEFAULT_ENV_NAMES", "TOOL_TO_CATEGORY",
     "Capabilities",
-    "detect", "initialize", "local_facts",
+    "detect", "initialize", "local_facts", "probe_this_machine",
     "get_capabilities", "set_capabilities", "reset_capabilities",
 ]

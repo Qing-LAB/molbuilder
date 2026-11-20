@@ -97,6 +97,13 @@ def described_refs(base, task) -> List[StageRef]:
     return [StageRef(h.seq, h.name) for h in ladder_homes(base, task)]
 
 
+def bench_dir(base, token: str) -> Path:
+    """A stage's bench container in the calculation at ``base`` -- where its
+    trials, its job-set and its verdict live (`job-contracts.md` § 6.3):
+    the one place its path is composed."""
+    return Path(base) / _paths_bench_container(token)
+
+
 def stage_home(base, task, stage: Optional[str]) -> StageHome:
     """This stage's number, token and folder -- THE ONE DOOR every reader
     asks (`execution/architecture.md` § 3.2; W55 B8): :func:`ladder_homes`'
@@ -284,6 +291,7 @@ def stamp_containers(base: Path, dirs, plan) -> None:
         calcdirs.record(c, role=calcdirs.CONTAINER, root=base, plan=plan)
 
 
-__all__ = ["NamingError", "StageHome", "described_refs", "job_dir_names",
+__all__ = ["NamingError", "StageHome", "bench_dir", "described_refs",
+           "job_dir_names",
            "ladder_homes", "open_container", "run_names", "stage_home",
            "stage_refs", "stamp_containers", "trial_dir"]

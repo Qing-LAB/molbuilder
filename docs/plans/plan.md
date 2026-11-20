@@ -12,7 +12,7 @@ at 2.77.9 is [`archive/2026-11-19-plan-consolidation.md`](?doc=archive/2026-11-1
 
 ## ▶ Where we are *(2026-11-20)*
 
-**2.77.16.** F0–F11 and F7a are closed (2.56.2–2.77.2). 2.77.10 brought Plotly's toolbar back on every chart, each chart's Export in a strip above it, and 2.77.12 a vibration mode's animation into a column beside the spectrum and its table, held in view *(the user, 2026-11-19)*. F12, *Proven*, walked
+**2.77.17.** F0–F11 and F7a are closed (2.56.2–2.77.2). 2.77.10 brought Plotly's toolbar back on every chart, each chart's Export in a strip above it, and 2.77.12 a vibration mode's animation into a column beside the spectrum and its table, held in view *(the user, 2026-11-19)*. F12, *Proven*, walked
 its three roads in the browser on real runs, ran the full batch (6106 fast
 and 805 e2e tests, none failed, at 2.77.2) and its two review rounds
 ([`archive/audits/2026-11-18-f12-review/`](?doc=archive/audits/2026-11-18-f12-review/TRIAGE-round1.md));
@@ -25,14 +25,21 @@ along"; five releases, each with its two review rounds)*. F12's fix releases
 scientific refusal a warning, the person's files, a failure in words, the
 pages' folder and run, MolView); 7, the viewers — the animation 2.77.13,
 the spectrum chart 2.77.14, the spectra page 2.77.15 (R1); 8, the run script
-and the machine 2.77.16 (R2).
+and the machine 2.77.16 (R2); 9, the jobs, run files and records 2.77.17 (R3a).
 
 1. **R1 — the viewers' last part, the spectra page** — done, 2.77.15.
 2. **R2 — the run script and the machine** — done, 2.77.16 (§ H, the user's
    two answers of 2026-11-18, and "Two zones" for your own lines, 2026-11-19;
    [`fix8-review.md`](?doc=archive/audits/2026-11-18-f12-review/fix8-review.md)).
    Round 2's three safety items had shipped in 2.77.7.
-3. **R3 — one home per fact, the server side**: round 2's items for jobset,
+3. **R3 — one home per fact, the server side**, in six parts: R3a the jobs,
+   run files and records — done, 2.77.17
+   ([`fix9-review.md`](?doc=archive/audits/2026-11-18-f12-review/fix9-review.md));
+   R3b the run script, envs and server process; R3c templates and engines;
+   R3d transport and spectra, with the SIESTA vibration's data files on the
+   shared writers; R3e parse and builders; R3f the web server, with the side
+   rail's height measured on the real pages and brought to the user first
+   *(the user, 2026-11-20)*. Round 2's items for jobset,
    run files and records, the run script and monitor, template and engines,
    transport, spectra, parse, structure and builders, and the web server
    (`TRIAGE-round2.md` § Biggest one-home items, and each `r2-*.md`), with

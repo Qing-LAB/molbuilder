@@ -56,10 +56,11 @@ class TestAStatedValueIsNeverLostQuietly:
     def test_the_refusal_names_which_job(self):
         """A sweep holds six; a refusal you have to bisect a file to act on
         is most of the cost of the bug still being there."""
+        written = Job(name="G0N48C1", script="x.fdf").to_dict()
+        written["resources"]["walltime"] = "4h"
         with pytest.raises(ValueError) as e:
-            Job.from_dict({"name": "G0N48C1", "script": "x.fdf",
-                           "resources": {"walltime": "4h"}})
-        assert "G0N48C1" in str(e.value)
+            Job.from_dict(written)
+        assert "G0N48C1" in str(e.value) and "walltime" in str(e.value)
 
     def test_a_sliver_of_memory_never_becomes_all_of_it(self):
         """SLURM reads `--mem=0` as ALL the node's memory, so rounding a

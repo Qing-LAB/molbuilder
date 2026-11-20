@@ -115,9 +115,10 @@ def continues(cfg) -> bool:
 #: than a whole-string pattern: this module *builds* names, and the shipped
 #: patterns all *validate* them.
 try:                                        # inside molbuilder
-    from .runfiles import NAME_CHARS
+    from .runfiles import NAME_CHARS, STAGE_NAME_CHARS, STAGE_ORDINAL
 except ImportError:                         # beside the job (mb_vibration.pyz)
-    from runfiles import NAME_CHARS  # type: ignore[no-redef]
+    from runfiles import (NAME_CHARS,  # type: ignore[no-redef]
+                          STAGE_NAME_CHARS, STAGE_ORDINAL)
 _ALLOWED_CHAR = re.compile(f"[{NAME_CHARS}]")
 
 #: A run of two or more separators.  § 3: *"runs of two or more separators
@@ -141,10 +142,10 @@ def _longest_extension() -> str:
     catalogue's ``_optimized.molstruct.json`` was 25, so a label the cap
     admitted could name a file past the limit (2026-10-18)."""
     try:                               # inside molbuilder
-        from .runfiles import engines, longest_tail
+        from .runfiles import longest_tail
     except ImportError:                # beside a job (runfiles travels too)
-        from runfiles import engines, longest_tail  # type: ignore[no-redef]
-    return longest_tail(engines())
+        from runfiles import longest_tail  # type: ignore[no-redef]
+    return longest_tail()
 
 
 _LONGEST_EXTENSION = _longest_extension()
@@ -153,8 +154,8 @@ _LONGEST_EXTENSION = _longest_extension()
 #:
 #: **This one is a budget, not a derivation, and the difference is worth
 #: stating.** § 3 derives the cap from ``<label>_<NN>_<longest stage><longest
-#: role>``, and nothing in the system bounds a stage name — ``STAGE_NAME_RE``
-#: is ``[A-Za-z0-9_]+`` with no length. A calculation is usually named before
+#: role>``, and nothing in the system bounds a stage name — any run of
+#: ``runfiles.STAGE_NAME_CHARS``, of no length. A calculation is usually named before
 #: its stages exist, so when they are unknown this reserves a generous fixed
 #: budget; when they ARE known, pass ``stage_names`` and the real longest is
 #: used instead of this.
@@ -207,8 +208,9 @@ def stage_key(name: str) -> str:
     stage).  A name the description holds is compared with one from outside
     it through this: the description's duplicate check, the verbs' resolver,
     the role rule (plan § 5w K12); a verb resolves once, at its entry, and
-    uses the description's spelling after that.  A name is ``[A-Za-z0-9_]+``,
-    so this is ASCII's fold -- the browser's ``toLowerCase``."""
+    uses the description's spelling after that.  A name's characters are
+    ASCII's (``runfiles.STAGE_NAME_CHARS``), so this is ASCII's fold -- the
+    browser's ``toLowerCase``."""
     return str(name).lower()
 
 
@@ -406,7 +408,7 @@ def deck_launch(stage_token: str,
             f"group of one"]
 
 
-_TOKEN_RE = re.compile(r"(\d{2,})_([A-Za-z0-9_]+)")
+_TOKEN_RE = re.compile(f"({STAGE_ORDINAL})_([{STAGE_NAME_CHARS}]+)")
 
 
 def parse_token(token: str) -> Optional[Tuple[int, str]]:
@@ -516,7 +518,8 @@ def resolve_stage_ref(refs: Sequence["StageRef"], text: str) -> "StageRef":
         #3           the stage's number — '#' then its assigned ``seq``
 
     A bare number and the whole token (``03_tight``) are LEGAL STAGE NAMES
-    (`engines/stages.md` § 2 allows ``[A-Za-z0-9_]+``), so neither may mean
+    (`engines/stages.md` § 2: any run of ``runfiles.STAGE_NAME_CHARS``), so
+    neither may mean
     an ordinal.  ``#`` cannot appear in a name, which is what makes
     the prefix collision-free; everything without it is a name, full stop.
 

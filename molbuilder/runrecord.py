@@ -115,6 +115,24 @@ def write_continued_from(where, source: RunRef, *, plan=None) -> Path:
     return marker
 
 
+def _record_text(path: Path, what: str, empty: str) -> Optional[str]:
+    """A run record's text -- ``None`` when it is not there; a
+    :class:`LaunchRecordError` naming it when it does not read, or holds
+    nothing: ``what`` is what cannot be told without it ("what this run
+    continues from"), ``empty`` how a record holding nothing is said
+    ("names no run")."""
+    try:
+        text = path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return None
+    except (OSError, UnicodeDecodeError) as exc:
+        raise LaunchRecordError(
+            f"{path} does not read ({exc}) -- {what} cannot be told.") from None
+    if not text.strip():
+        raise LaunchRecordError(f"{path} {empty} -- {what} cannot be told.")
+    return text
+
+
 def read_continued_from(where) -> Optional[RunRef]:
     """The run :func:`write_continued_from` recorded for the run in
     ``where``, or ``None`` when there is no marker -- the run started from
@@ -122,20 +140,9 @@ def read_continued_from(where) -> Optional[RunRef]:
     does not read -- or names no run -- is a :class:`LaunchRecordError`
     naming it (`checkpointing.md` S3: a record that does not read stops
     what would build on it)."""
-    marker = continued_from_marker(where)
-    try:
-        text = marker.read_text(encoding="utf-8")
-    except FileNotFoundError:
-        return None
-    except (OSError, UnicodeDecodeError) as exc:
-        raise LaunchRecordError(
-            f"{marker} does not read ({exc}) -- what this run continues "
-            f"from cannot be told.") from None
-    if not text.strip():
-        raise LaunchRecordError(
-            f"{marker} names no run -- what this run continues from cannot "
-            f"be told.")
-    return RunRef.read(text)
+    text = _record_text(continued_from_marker(where),
+                        "what this run continues from", "names no run")
+    return None if text is None else RunRef.read(text)
 
 
 def conclude_line(code, note: str = "", *args: str) -> str:
@@ -520,14 +527,9 @@ def read_gathered_from(attempt_dir) -> "List[Tuple[RunRef, str]]":
     :class:`LaunchRecordError` naming it, as every run record's reader
     says one."""
     p = gathered_from_path(attempt_dir)
-    try:
-        text = p.read_text(encoding="utf-8")
-    except FileNotFoundError:
+    text = _record_text(p, "what this run gathered", "names nothing gathered")
+    if text is None:
         return []
-    except (OSError, UnicodeDecodeError) as exc:
-        raise LaunchRecordError(
-            f"{p} does not read ({exc}) -- what this run gathered cannot be "
-            f"told.") from None
     out = []
     for n, line in enumerate(text.splitlines(), start=1):
         name, sep, src = line.partition(" <- ")
@@ -536,10 +538,6 @@ def read_gathered_from(attempt_dir) -> "List[Tuple[RunRef, str]]":
                 f"{p}: line {n}, {line!r}, does not read as '<file> <- "
                 f"<run>' -- what this run gathered cannot be told.")
         out.append((RunRef.read(src), name.strip()))
-    if not out:
-        raise LaunchRecordError(
-            f"{p} names nothing gathered -- what this run gathered cannot be "
-            f"told.")
     return out
 
 
@@ -604,20 +602,9 @@ def read_copied_from(run_dir) -> Optional[str]:
     as :func:`write_copied_from` wrote it -- ``None`` for a run made here.
     A record that is there and does not read is a :class:`LaunchRecordError`
     naming it."""
-    p = copied_from_path(run_dir)
-    try:
-        said = p.read_text(encoding="utf-8").strip()
-    except FileNotFoundError:
-        return None
-    except (OSError, UnicodeDecodeError) as exc:
-        raise LaunchRecordError(
-            f"{p} does not read ({exc}) -- which run this one is a copy of "
-            f"cannot be told.") from None
-    if not said:
-        raise LaunchRecordError(
-            f"{p} names no run -- which run this one is a copy of cannot be "
-            f"told.")
-    return said
+    text = _record_text(copied_from_path(run_dir),
+                        "which run this one is a copy of", "names no run")
+    return None if text is None else text.strip()
 
 
 def copied_of(base, folder) -> Optional[str]:

@@ -156,10 +156,12 @@ def map_of_block(block, source: str) -> AtomIndexMap:
 
 def _counted(p: Path, atoms: AtomIndexMap) -> AtomIndexMap:
     """``atoms``, with what an engine's input's own text counts by said
-    beside it (`runfiles.counted_by_of`, F5) -- the map counts from 0."""
+    beside it (its catalogue row's ``counted_by``, `runs.catalogue_row`,
+    F5) -- the map counts from 0."""
     from .engine_atom_index import convert_to_engine_numbering
-    from .runfiles import counted_by_of
-    engines = counted_by_of(p.name)
+    from .runs import catalogue_row
+    row = catalogue_row(p)
+    engines = row.counted_by if row is not None else ()
     if not engines:
         return atoms
     words = (f"{p.name} is an engine's input: its own text numbers the atoms "
@@ -212,8 +214,8 @@ def _of_run(p: Path, folder: Path) -> AtomIndexMap:
     file whose catalogue row lists it by user index -- a result written
     before it said so -- is that map listed by user index."""
     from .kind_table import kind, rung_label
-    from .runfiles import listed_by_of, parse as read_name
-    from .runs import atom_index_map_of, place_of, run_of
+    from .runfiles import parse as read_name
+    from .runs import atom_index_map_of, catalogue_row, place_of, run_of
     point = read_with(folder)
     run = (run_of(p) if point == folder else None) or run_of(point)
     task = (run.place if run is not None else place_of(point)).task
@@ -235,7 +237,8 @@ def _of_run(p: Path, folder: Path) -> AtomIndexMap:
     if run is None:
         raise AtomIndexUnknown(_no_run_words(p, point, task))
     atoms = atom_index_map_of(run)
-    if listed_by_of(p.name) == LISTED_BY_USER:
+    row = catalogue_row(p)
+    if row is not None and row.listed_by == LISTED_BY_USER:
         atoms = atoms.as_listed_by_user()
     if run.deck is not None and p.resolve() == run.deck.resolve():
         return atoms
@@ -327,9 +330,10 @@ def _of_older_result(p: Path, n) -> Optional[AtomIndexMap]:
     column is its run's deck's where the deck answers -- and where it does
     not (no run of ours holds it, its deck states no atom count or no order,
     I9) not known, said.  ``None`` for any other file."""
-    from .runfiles import listed_by_of
-    from .runs import atom_index_map_of, run_of
-    if listed_by_of(p.name) != LISTED_BY_USER or not isinstance(n, int):
+    from .runs import atom_index_map_of, catalogue_row, run_of
+    row = catalogue_row(p)
+    if (row is None or row.listed_by != LISTED_BY_USER
+            or not isinstance(n, int)):
         return None
     run = run_of(read_with(p.parent))
     why = ("written before 2.32.0, and no run of ours holds it: its engine "

@@ -2658,7 +2658,11 @@ TRIAL_PINS = {"max_scf_iter": 3, "relax_steps": 0, "restart": "clean",
 #: devices (`execution/generator.md` § 4.3a): the machine-answered items a
 #: benchmark row may name.  Another (a memory cap) is no axis the grid
 #: resolves (:func:`home_of`).
-GRID_AXES = ("mpi_np", "omp_threads", "gpu_count")
+#: Each axis by its run-card name, with its letter in a trial's name, in
+#: the name's order (`resolve.point_token`: ``G0N48C1``) -- the one pairing
+#: of the two, `resolve.MACHINE_AXES` its letters.
+GRID_AXIS_LETTERS = {"gpu_count": "G", "mpi_np": "N", "omp_threads": "C"}
+GRID_AXES = tuple(GRID_AXIS_LETTERS)
 
 
 def is_run_setting(item: "Item") -> bool:
