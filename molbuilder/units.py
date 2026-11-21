@@ -44,7 +44,7 @@ from __future__ import annotations
 from typing import Mapping, Optional
 
 # TWO WAYS, because the fdf reader that reads unit words through this module
-# travels beside a SIESTA vibration job (`runwrap.vibration_companions`).
+# travels beside a SIESTA vibration job (`runwrap.members`).
 try:                                        # inside molbuilder
     from .constants import (AVOGADRO as _AVOGADRO, BOHR_ANGSTROM,
                             BOLTZMANN_EV_K, HARTREE_EV,

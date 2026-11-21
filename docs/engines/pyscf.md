@@ -237,9 +237,12 @@ and a blank one; any other value is the person's to delete
 The script runs under `molbuilder-pySCF`, where molbuilder
 is not installed, and everything of molbuilder's it runs it **imports** from
 `mb_pyscf.pyz`: a Python zip of those modules' own files, and of what each
-says it imports beside the job (`runwrap.pyscf_companions`), built by the one
-builder the monitor's and the
-SIESTA finish's bundles come from. Every PySCF script imports its thread and
+says it imports beside the job (`runwrap.members`), built from its row in
+`runwrap.BUNDLES` by the one builder the monitor's and the SIESTA finish's
+bundles come from. The modules the script imports from are that row's
+starting modules, both ways: a deck writer handing `emit_bundle_imports` an
+object from any other module is refused at render, and each of them is one a
+deck imports from. Every PySCF script imports its thread and
 GPU set-up (`runtime_info`: the thread count and the BLAS caps, set before
 numpy loads; the facts a run records about itself; the GPU's probe, and for an
 optimization the promotion of its SCF object onto the device);

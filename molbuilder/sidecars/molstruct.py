@@ -7,7 +7,7 @@ reader the read door asks is ``load_text`` in
 :mod:`molbuilder.parse.sidecars.molstruct` (``model/parse.md`` § 4).
 
 TRAVELS beside every PySCF script, in ``mb_pyscf.pyz``
-(``runwrap.pyscf_companions``): the codec's ``write_moved`` saves a run's
+(``runwrap.members``): the codec's ``write_moved`` saves a run's
 geometries through :func:`renewed`, :func:`geometry_hash`, :func:`dumps`
 and :func:`sidecar_path_for`.  So it imports the standard library, numpy
 (through ``atom_permutation``), ``persist`` and ``structure_pair`` at load,
@@ -184,7 +184,7 @@ def unread_keys(data) -> Optional[str]:
     :func:`apply_to_structure`'s.  A key nobody reads is metadata the writer
     thinks it saved."""
     try:                                        # inside molbuilder
-        from molbuilder.structure import (ATOM_COLUMNS, FILE_FIELDS,
+        from ..structure import (ATOM_COLUMNS, FILE_FIELDS,
                                           RETIRED_IDENTITY_KEYS,
                                           RETIRED_METADATA_KEYS)
     except ImportError:                         # beside a job, in a bundle
@@ -367,7 +367,7 @@ def structure_fields_via_dataclass(
     Raises :class:`MolstructJsonError` on any invalid field.
     """
     try:                                        # inside molbuilder
-        from molbuilder.structure import FILE_FIELDS, Structure
+        from ..structure import FILE_FIELDS, Structure
     except ImportError:                         # beside a job, in a bundle
         from structure import FILE_FIELDS, Structure
     import numpy as _np
@@ -404,7 +404,7 @@ def atom_columns_via_dataclass(n_atoms_total: int,
     Raises :class:`MolstructJsonError` on a stray key or an invalid column.
     """
     try:                                        # inside molbuilder
-        from molbuilder.structure import (ATOM_COLUMNS, RETIRED_IDENTITY_KEYS,
+        from ..structure import (ATOM_COLUMNS, RETIRED_IDENTITY_KEYS,
                                           SPECIES_LABELS, Structure)
     except ImportError:                         # beside a job, in a bundle
         from structure import (ATOM_COLUMNS, RETIRED_IDENTITY_KEYS,
@@ -451,7 +451,7 @@ def frozen_atoms(payload: Optional[Dict[str, Any]]) -> List[int]:
     lives.
     """
     try:                                        # inside molbuilder
-        from molbuilder.structure import FROZEN_LABEL   # lazy: not at load
+        from ..structure import FROZEN_LABEL   # lazy: not at load
     except ImportError:                         # beside a job, in a bundle
         from structure import FROZEN_LABEL
     if not isinstance(payload, dict):
@@ -666,7 +666,7 @@ def apply_to_structure(struct, sidecar_data: Dict[str, Any]) -> None:
             f"belong to these frames; write the pair again from the frame set "
             f"it describes.")
     try:                                        # inside molbuilder
-        from molbuilder.structure import (FILE_FIELDS, IDENTITY_FIELDS,
+        from ..structure import (FILE_FIELDS, IDENTITY_FIELDS,
                                           SPECIES_LABELS, split_species_label)
     except ImportError:                         # beside a job, in a bundle
         from structure import (FILE_FIELDS, IDENTITY_FIELDS, SPECIES_LABELS,
@@ -789,7 +789,7 @@ def load(sidecar_path: Union[str, Path], *,
     (every metadata field the file states, a null one among them).  The
     reader is imported here, not at load: it imports this module.
     """
-    from molbuilder.parse.sidecars.molstruct import load_text
+    from ..parse.sidecars.molstruct import load_text
     sidecar_path = Path(sidecar_path)
     try:
         # ``encoding="utf-8-sig"`` accepts an optional BOM (some

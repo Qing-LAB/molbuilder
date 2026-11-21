@@ -687,7 +687,7 @@ flowchart LR
   resolved through (`runfiles.reader` → `runpoints.part`, with `calcdirs`,
   `paths`, `persist`, `runrecord`, `quantities`) — each module naming what it
   needs beside it in its `TRAVELS_WITH`. They ship inside
-  `mb_monitor.pyz` beside every job (`runwrap.monitor_companions`), each
+  `mb_monitor.pyz` beside every job (`runwrap.members`), each
   importing the next from the package or from the bundle; what the monitor
   reads through them is [`execution/run-reports.md`](?doc=execution/run-reports.md) § 2.3's.
 * **A format of ours keeps its words in one module.** Its writer renders them and
@@ -2156,7 +2156,7 @@ engine's scratch ([`execution/job-contracts.md`](?doc=execution/job-contracts.md
 
 | file | its reader | answers |
 |---|---|---|
-| `<label>.EPSIMG` | `siesta_epsimg_reader.read_epsimg(path)` — numpy and its siblings; it travels in `mb_vibration.pyz` (`runwrap.vibration_companions`) | the photon energies, ascending; ε₂ over `(spin, energy)`; the spin channels, in the SIESTA family's names (`siesta_grammar.TBT_CHANNELS`: `unpolarized`; `up`, `down`); the header's range, f-sum and Drude term per channel |
+| `<label>.EPSIMG` | `siesta_epsimg_reader.read_epsimg(path)` — numpy and its siblings; it travels in `mb_vibration.pyz` (`runwrap.members`) | the photon energies, ascending; ε₂ over `(spin, energy)`; the spin channels, in the SIESTA family's names (`siesta_grammar.TBT_CHANNELS`: `unpolarized`; `up`, `down`); the header's range, f-sum and Drude term per channel |
 
 The registered parser, `siesta-epsimg` → `DielectricResult` (`result_kind`
 `dielectric`), answers through it — a person's script through
@@ -2231,7 +2231,7 @@ Per parser kind, the specifics:
   `finish()`. The first two are stdlib; the output's catalogue row names them
   (`reads`: `ending` for a run output, § 5.5; `live` for a pass the monitor
   runs; `loop_words` where its program reports a loop), and by that row the
-  modules it names travel beside the job (`runwrap.monitor_companions`) —
+  modules it names travel beside the job (`runwrap.members`) —
   each with the modules it states it needs beside it, its `TRAVELS_WITH`
   (its grammar, the rule engine it runs on). `can_parse` sniffs content markers in the **first few
   hundred lines** (SIESTA scans 300; molwatch keys off the first 5) — not a
@@ -2302,8 +2302,9 @@ These stop the next round of parallel parse paths:
     `pyscf/end_lines` — never by a second pattern; a generated program (the
     wrapper's awk) takes its pattern rendered from the table.
 11. **The reading layer is stdlib-only, and it travels** (§ 4a). A grammar, a
-    reading pass, and every module in `runwrap.monitor_companions` import
-    nothing but the stdlib and each other, and read the same whether imported
+    reading pass, and every module of the monitor's bundle
+    (`runwrap.members(MONITOR_BUNDLE)`) import nothing but the stdlib and
+    each other, and read the same whether imported
     from the package or from `mb_monitor.pyz`.
 12. **The run record never builds a trajectory** (§ 5d.1). It reads what its
     rows' readers state; the SCF plots read the trajectory the viewer loads.

@@ -12,7 +12,7 @@ an XYZ or PDB exported by a different tool can be fed straight in without
 re-building it from scratch.
 
 TRAVELS beside every PySCF script, in ``mb_pyscf.pyz``
-(``runwrap.pyscf_companions``, ``engines/pyscf.md`` § 3): the script saves its
+(``runwrap.members``, ``engines/pyscf.md`` § 3): the script saves its
 geometries through the codec (``to_xyz``) and a continuing run reads its last
 one back (``from_xyz``).  So it imports only the standard library and numpy
 at load; a method that reaches further (``to_wire``'s ``cell``, ASE in

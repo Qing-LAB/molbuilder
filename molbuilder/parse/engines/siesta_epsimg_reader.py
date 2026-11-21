@@ -4,7 +4,7 @@ calculation writes, read (`model/parse.md` § 5f; `engines/vibration.md`
 
 MODULE  parse.engines.siesta_epsimg_reader (numpy and its siblings; it
         travels beside the job in ``mb_vibration.pyz``,
-        `runwrap.vibration_companions`)
+        `runwrap.members`)
 ROLE    the file's one reader, :func:`read_epsimg`: its header -- the energy
         range, the spin components, the f-sum rule and the Drude plasma
         frequency squared, per spin -- and its rows, the photon energy and

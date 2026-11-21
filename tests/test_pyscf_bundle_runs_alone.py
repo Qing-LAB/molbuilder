@@ -1,7 +1,7 @@
 """The code a PySCF script imports runs beside the job with molbuilder absent.
 
 `engines/pyscf.md` § 3: the script imports everything of molbuilder's it
-runs from `mb_pyscf.pyz` beside it (`runwrap.pyscf_companions`), under
+runs from `mb_pyscf.pyz` beside it (`runwrap.members`), under
 `molbuilder-pySCF`, where molbuilder is not installed.  This reproduces that -- the bundle in a folder with nothing
 else, a python that cannot import molbuilder, the script's own head and import
 lines (`pyscf.input.emit_script_head`, `emit_bundle_imports`) -- imports every
@@ -43,12 +43,12 @@ def test_the_bundle_loads_alone_and_writes_a_pair_the_codec_reads(tmp_path):
                                         emit_script_head, run_file_expr)
     from molbuilder.runfiles import PYSCF_OPTIMIZED, RunNames
     from molbuilder.runfiles import PYSCF_BUNDLE
-    from molbuilder.runwrap import pyscf_companions, pyscf_bundle
+    from molbuilder.runwrap import build, members
     from molbuilder.spectra.selection import select_modes
     from molbuilder.structure import FROZEN_LABEL, Structure
     from molbuilder.workingcopy_structure import StructureCodec
 
-    (tmp_path / PYSCF_BUNDLE).write_bytes(pyscf_bundle())
+    (tmp_path / PYSCF_BUNDLE).write_bytes(build(PYSCF_BUNDLE))
     env = {k: v for k, v in os.environ.items() if k != "PYTHONPATH"}
     # The condition has to be real, or this proves nothing.
     control = subprocess.run([sys.executable, "-c", "import molbuilder"],
@@ -69,7 +69,7 @@ def test_the_bundle_loads_alone_and_writes_a_pair_the_codec_reads(tmp_path):
     # The script's run settings and its own head -- its anchor, the bundle
     # on the path, its threads sized -- then every member the bundle holds,
     # each found where the script's imports find it.
-    members = sorted(name[:-len(".py")] for name in pyscf_companions())
+    held = sorted(name[:-len(".py")] for name in members(PYSCF_BUNDLE))
     names = RunNames("w", "01_coarse")
     script = "\n".join([
         *emit_run_settings_block(PySCFConfig()),
@@ -77,7 +77,7 @@ def test_the_bundle_loads_alone_and_writes_a_pair_the_codec_reads(tmp_path):
         *emit_bundle_imports(StructureCodec, select_modes),
         "import importlib, json, os",
         f"_found = {{m: os.path.basename(os.path.dirname("
-        f"importlib.import_module(m).__file__)) for m in {members!r}}}",
+        f"importlib.import_module(m).__file__)) for m in {held!r}}}",
         "JOB = 'w'",
         f"_mb_StructureCodec().write_moved(_mb_outfile("
         f"{run_file_expr(names, PYSCF_OPTIMIZED)}), "
@@ -121,3 +121,48 @@ def test_the_bundle_loads_alone_and_writes_a_pair_the_codec_reads(tmp_path):
     assert np.allclose(back.positions, relaxed, atol=1e-6)
     assert back.frozen_atoms == [0]
     assert np.array_equal(back.engine_offset, np.zeros(3))
+
+
+def test_the_script_imports_from_exactly_the_bundles_starting_modules():
+    """`engines/pyscf.md` § 3: the modules the PySCF script imports from are
+    the bundle's starting modules (`runwrap.BUNDLES`), both ways -- each a
+    deck imports from is one of them, and each of them some deck imports
+    from -- so the declared list says what the script does.  An object from
+    any other module, a member among them, is refused at render: the
+    script would import from a module the list does not name.
+    THE SILENT FAILURE (to 2.77.19): any member was taken, so the list
+    could drift from what the decks import."""
+    import re
+    import pytest
+    from molbuilder import runfiles, script_emit
+    from molbuilder.engine_table import config_class
+    from molbuilder.jobset.engines import engine_seam
+    from molbuilder.kind_table import kind, kinds
+    from molbuilder.pyscf.input import emit_bundle_imports
+    from molbuilder.runfiles import PYSCF_BUNDLE, RunNames
+    from molbuilder.runwrap import bundle, members
+    from molbuilder.structure import Structure
+    water = Structure(elements=["O", "H", "H"],
+                      positions=[[0.0, 0.0, 0.119], [0.0, 0.757, -0.477],
+                                 [0.0, -0.757, -0.477]],
+                      vacuum=(8.0, 8.0, 8.0))
+    imported = set()
+    for calculation in (k for k in kinds() if "pyscf" in kind(k).engines):
+        config = config_class("pyscf")(job_name="w")
+        spec = engine_seam("pyscf").spec_for(
+            water, config, names=RunNames("w", "01_coarse"),
+            calculation=calculation)
+        deck = str(script_emit.render_deck(spec, water, config))
+        imported |= {a or b for a, b in re.findall(
+            r"^(?:from (\w+) import \w+|import (\w+)) as _mb_\w+$", deck,
+            re.M)} - set(sys.stdlib_module_names)
+    starts = {name[:-len(".py")]
+              for name, module in members(PYSCF_BUNDLE).items()
+              if module in bundle(PYSCF_BUNDLE).starting_modules}
+    assert imported == starts, (sorted(imported - starts),
+                                sorted(starts - imported))
+    # A MEMBER THAT IS NO STARTING MODULE travels for the members' sake,
+    # never as the script's own import.
+    assert "molbuilder.runfiles" in members(PYSCF_BUNDLE).values()
+    with pytest.raises(ValueError, match="molbuilder.runfiles is not one of"):
+        emit_bundle_imports(runfiles.travelling)

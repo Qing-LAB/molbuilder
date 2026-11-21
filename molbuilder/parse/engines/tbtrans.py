@@ -13,7 +13,7 @@ Its data file is :mod:`tbtrans_nc`'s.
 Not a registered viewer file: the transmission rung's result is the transport
 record (`engines/transport.md` § 2a.12).
 
-**Stdlib only, and it travels beside every job** (`runwrap.monitor_companions`),
+**Stdlib only, and it travels beside every job** (`runwrap.members`),
 for the monitor's summary line: imported from the package here, from its copy
 there.
 """
@@ -33,7 +33,7 @@ except ImportError:                         # beside a job, as the monitor's
 
 #: WHAT THIS MODULE NEEDS BESIDE IT in a job's bundle, which it travels in by
 #: the SIESTA-family output's catalogue row (`runfiles.WRITTEN`'s ``reads``,
-#: ``loop_words``; `runwrap.monitor_companions`).
+#: ``loop_words``; `runwrap.members`).
 TRAVELS_WITH = ("molbuilder.parse.dirs.job",
                 "molbuilder.report_fields",
                 "molbuilder.runfiles",

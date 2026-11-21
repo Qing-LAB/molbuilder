@@ -8,8 +8,8 @@ and `jobset/memory.py` say where a peak was read in its words, so a word reworde
 is reworded for its reader too (`model/parse.md` § 5c; `wrapper_log` is the same
 for the session log).
 
-**Stdlib only, and it travels beside every job** (`runwrap.
-monitor_companions`), since the monitor writes with it there.
+**Stdlib only, and it travels beside every job** (`runwrap.members`),
+since the monitor writes with it there.
 """
 from __future__ import annotations
 

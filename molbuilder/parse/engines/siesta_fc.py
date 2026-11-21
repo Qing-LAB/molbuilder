@@ -29,7 +29,7 @@ from typing import Sequence
 import numpy as np
 
 # TWO WAYS: the SIESTA vibration's finish reads the file beside the job
-# (`runwrap.vibration_companions`), where the package is not installed.
+# (`runwrap.members`), where the package is not installed.
 try:                                        # inside molbuilder
     from ...constants import BOHR_ANGSTROM, HARTREE_EV
     from ..errors import ParseError

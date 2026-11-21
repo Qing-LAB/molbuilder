@@ -106,7 +106,7 @@ from typing import (Any, Callable, Dict, List, Optional, Sequence,
 # SIESTA parser's and the ONE molwatch parser's reading passes, fed as the
 # output grows; the timing instrument; `runfiles` for every name; and what a
 # report may carry, from the one declaration of it -- and those
-# modules travel beside the job (`runwrap.monitor_companions`): imported from
+# modules travel beside the job (`runwrap.members`): imported from
 # the package here, from the copies beside the job there, as `config_dir`
 # always has been.
 try:                                        # inside molbuilder
@@ -2656,7 +2656,7 @@ def make_log_notifier(log: Path) -> Notifier:
 #
 # CRITICAL: shipped, this module needs ONLY the stdlib (os/re/signal/time/
 # urllib/dataclasses/pathlib/typing) and the framework modules that travel
-# with it (`runwrap.monitor_companions`) -- no molbuilder package, no numpy.
+# with it (`runwrap.members`) -- no molbuilder package, no numpy.
 # That is what lets the run script SHIP this file -- as ``mb_monitor.py``
 # inside ``mb_monitor.pyz`` -- next to the job and run it with the JOB's own
 # python, from the working directory, with no install and no repo on PATH,
@@ -2705,7 +2705,7 @@ def main(argv=None) -> int:
         return BUNDLE_VERBS[args[0]](args[1:])
     import argparse
     p = argparse.ArgumentParser(
-        prog="mb_monitor",
+        prog=_rf.MONITOR_BUNDLE,
         description="molbuilder background job-monitor + notifier hooks "
                     "(reads the run through the framework's readers, which travel in this same file).  Its other verbs: " + ", ".join(BUNDLE_VERBS)
                     + ".")
@@ -2827,7 +2827,8 @@ def _deck_main(args) -> int:
     § 2.6).  1, saying why on stderr, for a deck that does not read."""
     import sys
     if len(args) != 2:
-        print("usage: mb_monitor.pyz deck READER DECK", file=sys.stderr)
+        print(f"usage: {_rf.MONITOR_BUNDLE} {DECK_VERB} READER DECK",
+              file=sys.stderr)
         return 2
     reader, deck = args
     try:
@@ -2909,7 +2910,7 @@ def _point_main(argv) -> int:
     does not read, a message not sent -- is said in the point's session
     log."""
     import argparse
-    p = argparse.ArgumentParser(prog="mb_monitor point")
+    p = argparse.ArgumentParser(prog=f"{_rf.MONITOR_BUNDLE} {POINT_VERB}")
     p.add_argument("verb", choices=(POINT_STARTED, POINT_ENDED))
     p.add_argument("--label", required=True)
     p.add_argument("--stage", required=True)
@@ -3054,7 +3055,7 @@ def _notify_main(argv) -> int:
     none set up, nothing is sent -- the record holds what was said all the
     same, whether or not a channel took it."""
     import argparse
-    p = argparse.ArgumentParser(prog="mb_monitor notify")
+    p = argparse.ArgumentParser(prog=f"{_rf.MONITOR_BUNDLE} {NOTIFY_VERB}")
     p.add_argument("event",
                    choices=("start", "milestone", "part_failed", "finish"))
     p.add_argument("--label", required=True)
@@ -3139,14 +3140,20 @@ def _notify_main(argv) -> int:
     return 0
 
 
+#: THE BUNDLE'S OTHER VERBS BY NAME, beside :data:`POINT_VERB` and the
+#: ending's (`_run_ending.ENDING_VERB`): the deck as its engine reads it,
+#: which the run script calls (`runwrap`), and a run's events, which a
+#: point's report steps send.
+DECK_VERB, NOTIFY_VERB = "deck", "notify"
+
 #: THE BUNDLE'S VERBS THAT ARE NO MONITOR, verb -> its handler, which
 #: :func:`main` hands the rest of the command line: a question or a step the
 #: run script asks of the framework's readers.  The bundle's entry prints no
 #: load pair for them, and a bundle that does not load answers them 2,
-#: *cannot read* (`runwrap._BUNDLE_MAIN`, which reads the verbs from here).
+#: *cannot read* (`runwrap._MONITOR_MAIN`, which reads the verbs from here).
 BUNDLE_VERBS: Dict[str, Callable[[List[str]], int]] = {
     # HOW A RUN ENDED -- the run script's `_mb_ending` (`_run_ending`).
-    "ending": _ending.main,
+    _ending.ENDING_VERB: _ending.main,
     # A POINT'S REPORT STEPS, every run of points': its start and end into
     # the run's index, its kind's own steps in their place, and the run's
     # events (`execution/runs-of-points.md` § 3, ops 9-10).
@@ -3154,10 +3161,10 @@ BUNDLE_VERBS: Dict[str, Callable[[List[str]], int]] = {
     # A RUN OF POINTS REPORTS AS ONE RUN: its start, milestones, failed
     # parts and finish, sent by its points' report steps through this verb
     # (`execution/runs-of-points.md` § 4.6; `run-reports.md` § 2.4, § 2.9).
-    "notify": _notify_main,
+    NOTIFY_VERB: _notify_main,
     # THE DECK AS ITS ENGINE READS IT, for its run script's record of what
     # the engine will read (`running-a-job.md` § 1, step 16).
-    "deck": _deck_main,
+    DECK_VERB: _deck_main,
 }
 
 
@@ -3186,6 +3193,11 @@ __all__ = [
 if __name__ == "__main__":
     raise SystemExit(main())
 
+
+#: ITS NAME BESIDE A JOB (`runwrap.bundle_members`): the bundle's entry
+#: imports it by this name (`runwrap._MONITOR_MAIN`), apart from any module
+#: of the job's own.
+TRAVELS_AS = "mb_monitor"
 
 #: WHAT THIS MODULE NEEDS BESIDE IT in a job's bundle -- the modules it
 #: imports there by their bare names (`runwrap.bundle_members`).

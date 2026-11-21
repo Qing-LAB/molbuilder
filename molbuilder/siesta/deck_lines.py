@@ -13,7 +13,7 @@ ROLE    one spelling of each geometry row -- a coordinate row,
         (`spectra.siesta_vibration`, the ``plan`` verb) -- the rows SIESTA
         reads through ``%block AtomicCoordinatesAndAtomicSpecies <
         coordinates.fdf`` (`parse.fdf.read_deck`)
-TRAVELS in ``mb_vibration.pyz`` (`runwrap.vibration_companions`)
+TRAVELS in ``mb_vibration.pyz`` (`runwrap.members`)
 """
 from __future__ import annotations
 

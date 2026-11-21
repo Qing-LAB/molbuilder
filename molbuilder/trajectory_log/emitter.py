@@ -3,7 +3,7 @@
 This module is the **single source of truth** for the
 ``MolwatchEmitter`` class, and the PySCF script imports it: the file
 travels beside every PySCF job inside ``mb_pyscf.pyz``
-(``runwrap.pyscf_companions``, ``engines/pyscf.md`` § 3), where molbuilder
+(``runwrap.members``, ``engines/pyscf.md`` § 3), where molbuilder
 is not installed -- so it imports the standard library, numpy and the
 members its `TRAVELS_WITH` names, those the two ways a travelling module
 does.  It NEVER
@@ -38,7 +38,7 @@ import time
 import numpy as np
 
 # TWO WAYS, because this module travels: the PySCF script imports it from
-# `mb_pyscf.pyz` beside the job (`runwrap.pyscf_companions`), where the
+# `mb_pyscf.pyz` beside the job (`runwrap.members`), where the
 # package is not installed.  The force factor is the ASE convention, as the
 # log's reader converts with (`constants` says why there are two).
 # THE VOCABULARY IS `keys` (stdlib, travels with the monitor).

@@ -6,7 +6,7 @@ the devices it lists and a sampled field (:func:`gpu_models`,
 driver, the compute capability, a card's name, CUDA -- are other ones.
 
 THE SCRIPT IMPORTS IT, from ``mb_pyscf.pyz`` beside the job
-(``runwrap.pyscf_companions``, `engines/pyscf.md` § 3), and calls it on its
+(``runwrap.members``, `engines/pyscf.md` § 3), and calls it on its
 first lines: :func:`cap_threads` sizes the run's threads and caps BLAS's
 before numpy is imported -- the variables are read when numpy loads -- so
 this module imports only the standard library at load: psutil, when the env

@@ -422,17 +422,17 @@ def test_the_machine_is_the_logs_first_line(run, tmp_path):
 
 def test_every_file_that_ships_beside_a_job_reads_the_run_without_molbuilder(
         run, tmp_path):
-    """`runwrap.monitor_companions` travels to the machine that runs the job
+    """`runwrap.members` of the monitor's bundle travel to the machine that runs the job
     and executes under the job's own python, where molbuilder is not
     installed: staged into a copy of the run with the bundle beside it, the
     shipped monitor imports, reads the run through the SHIPPED readers, and
     answers how it ended as the package's own `run_status` does."""
     from molbuilder.parse.dirs import run_status
     from molbuilder.runfiles import MONITOR_BUNDLE
-    from molbuilder.runwrap import monitor_bundle
+    from molbuilder.runwrap import build
     there, _watched, _grow = replay(run, tmp_path, _whole(run))
     ran = _ran(run)
-    (there / MONITOR_BUNDLE).write_bytes(monitor_bundle())
+    (there / MONITOR_BUNDLE).write_bytes(build(MONITOR_BUNDLE))
     env = {k: v for k, v in os.environ.items() if k != "PYTHONPATH"}
     control = subprocess.run([sys.executable, "-c", "import molbuilder"],
                              cwd=there, env=env, capture_output=True,

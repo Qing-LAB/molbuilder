@@ -1465,7 +1465,8 @@ def emit_bundle_imports(*objects) -> List[str]:
 
     Each object is molbuilder's own -- a function, a class, or a module
     imported whole for its values -- and the module it is imported from is
-    the one it TRAVELS as, read off `runwrap.pyscf_companions`: the line names
+    the one it TRAVELS as, read off the bundle's members (`runwrap.members`),
+    and one of the bundle's starting modules (`runwrap.BUNDLES`): the line names
     exactly what the bundle holds, and an object that does not travel is
     refused here, at render, rather than on the machine that runs the job.
     Each is bound as ``_mb_<its name>``, molbuilder's prefix in a deck, so an
@@ -1474,9 +1475,11 @@ def emit_bundle_imports(*objects) -> List[str]:
     """
     import types
     from ..runfiles import PYSCF_BUNDLE
-    from ..runwrap import pyscf_companions
+    from ..runwrap import bundle, members
+    starts = set(bundle(PYSCF_BUNDLE).starting_modules)
     shipped = {module: name[:-len(".py")]
-               for name, module in pyscf_companions().items()}
+               for name, module in members(PYSCF_BUNDLE).items()
+               if module in starts}
     out: List[str] = []
     for obj in objects:
         # A MODULE is imported whole -- its values read by their own names
@@ -1485,9 +1488,9 @@ def emit_bundle_imports(*objects) -> List[str]:
                   else obj.__module__)
         if module not in shipped:
             raise ValueError(
-                f"{module} does not travel in {PYSCF_BUNDLE}: add it to "
-                f"the modules the script imports from "
-                f"(runwrap._PYSCF_IMPORTED)")
+                f"{module} is not one of the modules the PySCF script "
+                f"imports from {PYSCF_BUNDLE}: add it to that bundle's "
+                f"starting modules (runwrap.BUNDLES)")
         out.append(f"import {shipped[module]} as _mb_{shipped[module]}"
                    if isinstance(obj, types.ModuleType) else
                    f"from {shipped[module]} import {obj.__name__} "

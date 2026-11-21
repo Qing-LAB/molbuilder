@@ -20,7 +20,7 @@ from types import SimpleNamespace
 from typing import Dict, List, Optional, Tuple, Union
 
 # TWO WAYS, because this reader travels: the SIESTA vibration's finish reads
-# the deck with it beside the job (`runwrap.vibration_companions`), where the
+# the deck with it beside the job (`runwrap.members`), where the
 # package is not installed.  Stdlib and its two siblings only.
 try:                                        # inside molbuilder
     from ..constants import BOHR_ANGSTROM as _BOHR_ANG

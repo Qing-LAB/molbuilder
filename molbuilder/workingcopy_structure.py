@@ -47,7 +47,7 @@ from typing import List, NamedTuple, Optional, Sequence, Tuple
 
 # TWO WAYS, because this module travels: the PySCF script writes every
 # geometry it saves through it (`write_moved`), imported from `mb_pyscf.pyz`
-# beside the job (`runwrap.pyscf_companions`), where the package is not
+# beside the job (`runwrap.members`), where the package is not
 # installed.  What that call reaches imports only the standard library and
 # numpy; the rest of the codec reads through the package.
 try:                                        # inside molbuilder

@@ -11,7 +11,7 @@ and the monitor all ask :func:`timing_of`, so every surface states one number
 for one run.
 
 **Stdlib only, and it travels beside every job**
-(`runwrap.monitor_companions`, `execution/run-reports.md` § 2.3).
+(`runwrap.members`, `execution/run-reports.md` § 2.3).
 """
 from __future__ import annotations
 

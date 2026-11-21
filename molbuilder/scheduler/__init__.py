@@ -22,9 +22,9 @@ belong together.
   * :mod:`molbuilder.scheduler.kinds` — the scheduler kinds, ``kinds.toml``
     read: everything molbuilder says to a scheduler (`scheduler.md` § 6a).
 
-**Nothing here is shipped beside a job.**  The record is JSON and reads
-anywhere; what travels with a run is `runwrap.monitor_companions`
-(`record.py`'s header).
+**One module here travels beside a job**: `quantities`, which members of
+every bundle import (`runwrap.members`).  The record is JSON and reads
+anywhere (`record.py`'s header).
 
 The re-exports below are the subsystem's public surface — what the rest of
 molbuilder is meant to use.  Anything not listed is internal to its module.

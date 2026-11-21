@@ -2,7 +2,7 @@
 inside its run.
 
 The script imports them from ``mb_pyscf.pyz`` beside it
-(``runwrap.pyscf_companions``, ``engines/pyscf.md`` § 3), where molbuilder is
+(``runwrap.members``, ``engines/pyscf.md`` § 3), where molbuilder is
 not installed: this file travels as itself, so it imports the standard library,
 numpy and the members its `TRAVELS_WITH` names at load -- those the two ways a
 travelling module does -- and PySCF only inside the functions that drive it, under the job's own

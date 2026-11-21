@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from typing import Callable, List, Optional, Tuple
 
-# IT TRAVELS BESIDE EVERY JOB (`runwrap.monitor_companions`): the monitor
+# IT TRAVELS BESIDE EVERY JOB (`runwrap.members`): the monitor
 # reports how a run ended with `parse.dirs.job.run_status`, whose state is
 # built on :func:`ending` -- so this module is imported two ways, from the
 # package or from beside the job, as `wrapper_log` is.
@@ -28,7 +28,7 @@ def _persist():
     read or written -- from the package, or beside a job, where the
     monitor's `notify` verb writes the run's notification record
     (:func:`note_notified`), so it travels too
-    (`runwrap.monitor_companions`)."""
+    (`runwrap.members`)."""
     try:                                    # inside molbuilder
         from . import persist
     except ImportError:                     # beside a job, as the monitor's
@@ -474,7 +474,7 @@ def sent_wall_s(record: Optional[dict]) -> Optional[int]:
     ``placed_on.time``, in the record dialect (`scheduler.quantities.
     slurm_time` wrote it), read by that dialect's one reader,
     `scheduler.quantities.parse_walltime`, which travels beside the job with
-    this module (`runwrap.monitor_companions`) -- or ``None`` where it
+    this module (`runwrap.members`) -- or ``None`` where it
     states none: a run here, which no queue placed.  A wall that is there
     and does not read is a :class:`LaunchRecordError`, never read as no
     wall."""

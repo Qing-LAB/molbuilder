@@ -13,7 +13,7 @@ USED-BY each call's report steps (`mb_monitor.pyz point`), which run the
         `engines/vibration.md` § 5.11 § 3; `runfiles.VIBRATION_BUNDLE`); the
         bundle's ``finish`` verb is the door, by hand, for anything holding
         a finished force-constant call (§ 5.5)
-TRAVELS in ``mb_vibration.pyz`` (`runwrap.vibration_companions`)
+TRAVELS in ``mb_vibration.pyz`` (`runwrap.members`)
 
 SIESTA takes no second derivative.  Its force-constant run nudges the free
 atoms and writes ``<SystemLabel>.FC``; everything after that is the harmonic
@@ -1315,8 +1315,18 @@ def record_call(deck, output, exit_code: int) -> None:
         raise failed
 
 
-_USAGE = (f"vibration: usage: {VIBRATION_BUNDLE} plan <deck> | record <deck> "
-          "<output> --exit <rc> | finish-run <deck> | finish <deck> <output>")
+#: THE STEPS :func:`main` RUNS -- the vibration's own, which the kind
+#: table's ``steps`` name (`runwrap` refuses a step outside them at prep).
+#: Beside them it answers the force-constant analysis by hand,
+#: :data:`FINISH_VERB` (a deck and its output, never a step), and the
+#: bundle's entry answers ``loads`` (`runwrap.LOADS_VERB`); neither is a step.
+VERBS = PLAN_VERB, RECORD_VERB, FINISH_RUN_VERB = (
+    "plan", "record", "finish-run")
+FINISH_VERB = "finish"
+
+_USAGE = (f"vibration: usage: {VIBRATION_BUNDLE} {PLAN_VERB} <deck> | "
+          f"{RECORD_VERB} <deck> <output> --exit <rc> | {FINISH_RUN_VERB} "
+          f"<deck> | {FINISH_VERB} <deck> <output>")
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
@@ -1331,17 +1341,17 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
     verb = args[0] if args else None
     try:
-        if verb == "plan" and len(args) == 2:
+        if verb == PLAN_VERB and len(args) == 2:
             plan_call(args[1])
             return 0
-        if (verb == "record" and len(args) == 5 and args[3] == "--exit"
+        if (verb == RECORD_VERB and len(args) == 5 and args[3] == "--exit"
                 and args[4].lstrip("-").isdigit()):
             record_call(args[1], args[2], int(args[4]))
             return 0
-        if verb == "finish-run" and len(args) == 2:
+        if verb == FINISH_RUN_VERB and len(args) == 2:
             finish_run(args[1])
             return 0
-        if verb != "finish" or len(args) != 3:
+        if verb != FINISH_VERB or len(args) != 3:
             say("ERROR", _USAGE)
             return 2
         deck, output = args[1:]

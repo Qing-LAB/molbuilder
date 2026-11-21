@@ -31,7 +31,7 @@ def test_a_monitor_that_loads_says_so(real_h2_pyscf):
     has ended (`web/trajectory.md` § 4, the badge's *total*).
 
     MUTATIONS THIS MUST FAIL AGAINST: the bundle's entry importing the
-    monitor with nothing said (`runwrap._BUNDLE_MAIN` before 2026-09-27); a
+    monitor with nothing said (`runwrap._MONITOR_MAIN` before 2026-09-27); a
     PySCF run script writing no wall line, so a finished PySCF run's badge
     said no total (2.56.2's first revision).
     """

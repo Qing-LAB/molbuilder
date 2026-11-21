@@ -194,13 +194,14 @@ steps       = { before = "plan", after = "record", finish = "finish-run" }
 | `wall` | `one` or `each` (§ 1.2) | prep (the header's wall), the walk (the run's start stated once) |
 | `count` | the count's words, a part of floor 1 that travels beside the job | `status`, the monitor, the events; copied into the index |
 | `outcome` | a round's outcome, a part of floor 1 that travels | the events; copied into the index |
-| `steps` | the kind's steps, verbs of the job's bundle (`Job.finish`); absent where the kind does no work between points | prep renders them into each point's run script |
+| `steps` | the kind's steps, verbs of the job's bundle (`Job.finish`) — each one of the steps its bundle's module runs (its row's verbs, `runwrap.verbs` — neither `loads`, the wrapper's question before the engine, nor `finish`, a SIESTA vibration's analysis by hand), or prep refuses it, naming the steps there are; absent where the kind does no work between points | prep renders them into each point's run script |
 
 A pair without the table runs each rung once. The door refuses a key it does not know, a value outside its words
 and a part not named `module:NAME`, naming the file and the key. A part is resolved where it is asked
 ([`architecture.md`](?doc=execution/architecture.md) § 3.3), and a part that does not resolve is refused there,
 naming it: on this machine by `kind_table.part`; beside the job by `runpoints.part`, among the modules that travel
-beside it — the module's last name, as the bundle holds it (`runwrap.monitor_companions`).
+beside it — the module's last name, as the bundle holds it (`runwrap.members`); a part's module that states
+another name there (`TRAVELS_AS`) is refused when the bundle is gathered, naming the record.
 
 ### 2.2 The declaration — what a kind's points are
 
@@ -665,8 +666,7 @@ Every file has one reader; every side asks it.
 2. its declaration (§ 2.2) and its point type, which answers `rel` and `prepared` — which folder, below the run and
    below the stage; where that is, `calcdirs.RunPlace` composes (§ 2.4) — `words()` and `to_wire()`;
 3. its words — `count`, and `outcome`: its own where its rounds say more than their points' outcomes, else
-   `molbuilder.runpoints:outcomes` — in a module that travels beside the job (listed in the monitor bundle's
-   companions);
+   `molbuilder.runpoints:outcomes` — in a module that travels beside the job by its record (`runwrap.members`);
 4. where the kind works between its points, its steps: verbs of its job's bundle — `<before> <deck>`, `<after>
    <deck> <output> --exit <rc>`, `<finish> <deck>` — named in its record; each finds its point by its folder
    (`calcdirs.where`) and the point's entry in the index;

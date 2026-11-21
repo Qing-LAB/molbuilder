@@ -42,7 +42,7 @@ USED-BY a calculation's runs and their steps (`stepsdata`), the transport data f
         `web/blueprints/results.py` and `jobset export`); the vibration result's
         data file (`spectra.datafile`), its Raman and optical parts
         (`spectra.raman`, `spectra.optical_data`), beside the job in both bundles
-        (`runwrap.vibration_companions`, `runwrap.pyscf_companions`); a
+        (`runwrap.members`); a
         TBtrans data file and its digest (`parse.engines.tbtrans_nc`); a
         relaxation's ``.MD.nc`` (`parse.engines.siesta_mdnc`) and SIESTA's
         SCF columns (`parse.engines.siesta_grammar`); the atom index

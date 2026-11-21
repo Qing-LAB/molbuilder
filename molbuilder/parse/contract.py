@@ -379,7 +379,7 @@ def _declared_in_provenance(directory: Path) -> set:
     both, and each states its engine (`script_emit.render_deck` writes the
     deck's, transport decks included).
     """
-    from molbuilder.deck_record import read_provenance_block
+    from ..deck_record import read_provenance_block
     # THE ROLES COME FROM THE CATALOGUE: what every prepared run carries
     # (`runfiles.prepared_roles`), so the search is the catalogue's.
     from ..runfiles import find_by_role, prepared_roles
@@ -405,7 +405,7 @@ def _declared_in_molwatch(directory: Path) -> set:
     Only the header is read: the frames are irrelevant to the question
     and a growing log can be large.
     """
-    from molbuilder.parse.engines.molwatch_grammar import ENGINE as _ENGINE_RE
+    from .engines.molwatch_grammar import ENGINE as _ENGINE_RE
     out = set()
     from ..runfiles import ROLE_MOLWATCH, find_by_role
     for f in find_by_role(directory, ROLE_MOLWATCH):
@@ -444,7 +444,7 @@ def _from_cluster(directory: Path) -> set:
     nothing that ran says nothing of a run, and "there is a python file
     here" says nothing about the engine -- a person's own script.
     """
-    from molbuilder.warmfiles import WarmFilesError, warm_list
+    from ..warmfiles import WarmFilesError, warm_list
     from ..runfiles import find_by_role
     names = [f.name for f in directory.iterdir() if f.is_file()]
     out = set()

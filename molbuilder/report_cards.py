@@ -6,8 +6,8 @@ receiver -- Slack, Discord, the This machine tab: whether the fields sit side
 by side, how many at most, whether the summary line shows, and which fields a
 card shows for each event, in what order.  The title stays the code's.
 
-**Stdlib only, and it travels beside every job** (`runwrap.monitor_companions`,
-with the data file as the bundle's one data member, `runwrap.MONITOR_DATA`):
+**Stdlib only, and it travels beside every job** (`runwrap.members`,
+with the data file this module declares, `TRAVELS_DATA`):
 the monitor reads it there, as `config_dir` and `report_fields` travel.  The
 reader finds the file by the import's two ways: inside the package in
 `molbuilder/data/`, beside the job beside itself in the bundle -- read through
@@ -242,6 +242,11 @@ def _receiver(kind: str, spec: Any, refuse) -> Receiver:
     return Receiver(inline=spec["inline"], limit=limit,
                     summary=spec["summary"], order=order)
 
+
+#: WHAT TRAVELS WITH THIS MODULE THAT IS NO MODULE (`runwrap.build`): the
+#: chat card's layout, under its name beside the job, read there through
+#: ``__loader__.get_data`` -- in whatever bundle this module joins.
+TRAVELS_DATA = {FILENAME: SHIPPED}
 
 #: WHAT THIS MODULE NEEDS BESIDE IT in a job's bundle -- the modules it
 #: imports there by their bare names (`runwrap.bundle_members`).

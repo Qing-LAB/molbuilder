@@ -15,7 +15,7 @@ USED-BY script_emit (writes every block through these),
         the job), runs.declared, parse (a folder's engine, a run's record),
         runwrap and pyscf/input (the effective-parameters fence)
 TRAVELS in ``mb_vibration.pyz`` beside each call of a SIESTA vibration
-        (`runwrap.vibration_companions`), and in ``mb_monitor.pyz`` (a
+        (`runwrap.members`), and in ``mb_monitor.pyz`` (a
         transport rung's energies read their block through it)
 
 `execution/job-contracts.md` § 3.1 owns the grammar.  Its own module because

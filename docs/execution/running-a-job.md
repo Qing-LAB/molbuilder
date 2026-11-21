@@ -318,7 +318,7 @@ run script starts. There is nothing for bash to dereference, localise or wait fo
   monitor, the reader the run script asks how the run ended (§ 3.5), the deck as its engine reads it (§ 1 step
   16) and a point's report steps;
   `mb_vibration.pyz`, beside a SIESTA vibration's points; and `mb_pyscf.pyz`, which a PySCF deck imports. What
-  each carries, and the rule for joining one (*stdlib-only AND travels*), is
+  each carries, and the rule for joining one (*its bundle's packages AND travels*), is
   [`configuration.md`](?doc=configuration.md) § 2.3. None is a pattern to copy for anything that could run on the
   host instead.
 

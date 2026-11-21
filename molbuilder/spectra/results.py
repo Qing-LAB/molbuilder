@@ -50,7 +50,7 @@ from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 import numpy as np
 
 # TWO WAYS, because this module travels beside the SIESTA finish and the PySCF
-# script (`runwrap.vibration_companions`, `pyscf_companions`).
+# script (`runwrap.members`).
 try:                                        # inside molbuilder
     from .derived import DERIVED_MODE_KEYS, disagreements, with_derived
     from .normal_modes import display_form

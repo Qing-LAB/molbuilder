@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Union
 
 # TWO WAYS, because this module travels beside a job in
-# ``mb_vibration.pyz`` (`runwrap.vibration_companions`), where the
+# ``mb_vibration.pyz`` (`runwrap.members`), where the
 # package is not installed.
 try:                                       # inside molbuilder
     from ..deck_record import without_stamps

@@ -253,13 +253,14 @@ to decide the run is over is not.
 
 **The monitor has no reader of its own.** Every fact it reports is read by the reader the rest of molbuilder
 reads that file with, and those readers travel with the job in **one file**, `mb_monitor.pyz`
-(`runfiles.MONITOR_BUNDLE`) — a Python zip application of the modules `runwrap.monitor_companions` names, each its
+(`runfiles.MONITOR_BUNDLE`) — a Python zip application of the modules `runwrap.members` names, each its
 own file unchanged, run by the job's own python, `$_mb_py`
 ([`running-a-job.md`](?doc=execution/running-a-job.md) § 2.2a).
 
 - **Standard library only**, because it is the instrument that reports a failure: it must load when the
   environment's own packages do not — a broken numpy is reported by it, never hidden by it. What may travel is
-  [`configuration.md`](?doc=configuration.md) § 2.3's rule, *stdlib-only AND travels*. The trajectory log's
+  [`configuration.md`](?doc=configuration.md) § 2.3's rule, *its bundle's packages AND travels* — for this bundle
+  none, the standard library alone. The trajectory log's
   vocabulary the grammar reads is its own standard-library module (`trajectory_log/keys.py`), never the log's
   writer, which needs numpy and ships with PySCF decks, never with the monitor.
 - **One file**, because a directory of shipped modules reads as a directory of decks. `prep` writes it beside the
@@ -1009,7 +1010,8 @@ visually clean way to present the intermediate status".)*
 **One layout file says how the one picture is laid out for each receiver.** A receiver is a `kind` of § 4.1b
 (`slack`, `discord`) or `web`, the This machine tab. The file is `molbuilder/data/report-cards.json`, schema
 `molbuilder/report-cards@1`. Its reader is `report_cards.py`, standard library alone, run beside the job on the
-job's python (§ 2.3), and the file travels in the monitor's bundle as its one data member, beside the reader. The
+job's python (§ 2.3), and the file travels in the monitor's bundle as its one data member, beside the reader, by
+the reader's own word (`report_cards.TRAVELS_DATA`) — in whatever bundle the reader joins. The
 reader finds the file by the import's two ways: inside the package, in `molbuilder/data/`; beside the job, beside
 itself in the bundle — read through `__loader__.get_data`, which serves a zip member and a file alike. The server
 reads the same shipped file for the tab.
@@ -1197,7 +1199,7 @@ the run's events they send (`notify`) ([`runs-of-points.md`](?doc=execution/runs
 | how it reaches the run script | `jobset.model.Resources` ([`job-contracts.md`](?doc=execution/job-contracts.md) § 6.2) |
 | how it reaches the monitor | the flags on the `mb_monitor.pyz` line (§ 2.6), rendered by `runwrap._monitor_block` |
 | which run it watches | `--label` / `--stage`; every file named through `runfiles` (§ 2.3) |
-| what it reads, and with what | the framework's own readers in `mb_monitor.pyz` — `runwrap.monitor_companions` (§ 2.3) |
+| what it reads, and with what | the framework's own readers in `mb_monitor.pyz` — `runwrap.members` (§ 2.3) |
 | when to fire | `monitor.run_monitor` (§ 2); for a run of points, its start, milestones, failed parts and finish by its points' report steps (`monitor._point_main`: `mb_monitor.pyz point started`, `point ended`) through `mb_monitor.pyz notify` (§ 2.4, § 2.9) |
 | a run of points' index, and the rule each event is judged by | `runpoints` ([`runs-of-points.md`](?doc=execution/runs-of-points.md) § 2.3, § 4) — `rows_of`, `still_to_run`, `close`, `run_state`, `said`, `reason` |
 | what the summary line says | `monitor.JobStatus.as_text` (§ 4.1a), from the run's declared structure (§ 2.8) |

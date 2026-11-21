@@ -8,7 +8,7 @@ output grows (`execution/run-reports.md` § 2.3) -- one reader, so the Results
 tab and the report a person gets at 3am cannot say different things about one
 file.
 
-**Stdlib only, and it travels beside every job** (`runwrap.monitor_companions`):
+**Stdlib only, and it travels beside every job** (`runwrap.members`):
 its imports -- the SIESTA family's table, the rule engine, the runtime-header
 reader, the held atoms' numbering, the file catalogue -- are imported from the
 package here and from their copies there.

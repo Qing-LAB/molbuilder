@@ -1502,7 +1502,7 @@ _SIESTA = Recipe(
                     # beside the job after the force-constant run, its
                     # masses read from the deck, where prep states them
                     # (`engines/vibration.md` § 5.5,
-                    # `runwrap.vibration_companions`).  ASE: for the file
+                    # `runwrap.members`).  ASE: for the file
                     # IO a job's own python may need -- a monitor reader
                     # of a run's files among it (plan W36 ⑤; the user,
                     # 2026-10-10).  Both are in the GPU recipe too, so the

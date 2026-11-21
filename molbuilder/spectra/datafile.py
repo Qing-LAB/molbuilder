@@ -11,7 +11,7 @@ ROLE    :func:`write_spectra_data` -- the payload the JSON is written from, as
         file back as the payload, which is the file's test
 USED-BY `sidecars.spectra.write_spectra_payload`, the one writer of the
         result, at every write on both engines -- beside the job in both
-        bundles (`runwrap.vibration_companions`, `runwrap.pyscf_companions`)
+        bundles (`runwrap.members`)
 
 **The file states itself** (`model/datafiles.md` § 2b): its title, its
 schema, the molbuilder that wrote the result, and its source -- the engine

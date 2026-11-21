@@ -3,7 +3,7 @@
 `model/parse.md` § 5d.5.  The parser reads these patterns and each line's one
 reader; so do the cheap ending scan (`_run_ending`), the benchmark reader and
 the monitor, which imports this module from beside the job
-(`runwrap.monitor_companions`, `execution/run-reports.md` § 2.3); the
+(`runwrap.members`, `execution/run-reports.md` § 2.3); the
 wrapper's SCF-timing tee, being shell, gets its pattern rendered from here.
 
 Every pattern is read off SIESTA 5.4.2's own writer, named beside it.  The
@@ -1129,7 +1129,7 @@ def negf_criteria(options: dict, periodic: dict) -> dict:
 #: optimization cap is echoed whatever ``MD.TypeOfRun`` produced it.
 # THE TARGETS' KEYS are the trajectory log's own (`trajectory_log.keys`,
 # standard library only), imported as a package module here and as a flat
-# companion beside a job (`runwrap.monitor_companions`), the way `end_lines`
+# companion beside a job (`runwrap.members`), the way `end_lines`
 # is -- never the log's writer, which needs numpy the monitor's python may
 # not have.
 try:

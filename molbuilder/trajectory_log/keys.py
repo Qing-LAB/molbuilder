@@ -8,7 +8,7 @@ ROLE    the words and keys, named once; every producer and reader imports them
         patterns are built on the same text; `siesta/input.py`, `pyscf/input.py`,
         `jobset/prep.py`, `siesta_grammar.TARGET_LINES`, `parse/contract.py`,
         `deck_record`, the Results tab's rows)
-TRAVELS beside every job's monitor (`runwrap.monitor_companions`: the
+TRAVELS beside every job's monitor (`runwrap.members`: the
         SIESTA grammar reads its echo of these targets with it), beside a
         PySCF deck (the emitter imports it there) and a vibration finish
         (the deck's record reader does) --

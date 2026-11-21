@@ -24,7 +24,7 @@ So a SIESTA output's ending is the reading pass's own answer, asked without
 Frames.  The registered :mod:`~molbuilder.parse.engines.siesta` parser builds
 its Frames from the same pass, so SIESTA's lines are read ONE way.
 
-**It travels beside every job** (`runwrap.monitor_companions`,
+**It travels beside every job** (`runwrap.members`,
 `execution/run-reports.md` § 2.3): the monitor reports how a run ended with
 this reader, through `parse/dirs/job.py`'s `run_status`.  So everything it
 imports is stdlib-only and travels too -- the SIESTA reading pass, the
@@ -521,6 +521,10 @@ def _family(output: str) -> str:
     return _rf.role_of(Path(output).name)
 
 
+#: THE VERB the monitor's bundle answers this module's questions by
+#: (`monitor.BUNDLE_VERBS`; the run script's `_mb_ending`, `runwrap`).
+ENDING_VERB = "ending"
+
 #: What a shell may ask, by what it MEANS, never by an engine's marker --
 #: each answered by the exit status (0 yes, 1 no), from the asked output's
 #: own family.  ``out-of-time``: the engine stopped itself at the job's wall
@@ -575,8 +579,8 @@ def main(argv=None) -> int:
         stderr = args[at + 1]
         del args[at:at + 2]
     if not args:
-        print("usage: mb_monitor.pyz ending OUTPUT [--stderr FILE] "
-              "[QUESTION]", file=sys.stderr)
+        print(f"usage: {_rf.MONITOR_BUNDLE} {ENDING_VERB} OUTPUT "
+              f"[--stderr FILE] [QUESTION]", file=sys.stderr)
         return 2
     if len(args) > 1 and args[1] not in QUESTIONS and args[1] not in SAYS:
         print(f"_run_ending: not a question: {args[1]!r} "

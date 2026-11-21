@@ -1097,7 +1097,7 @@ class Artifact:
     #: SIESTA vibration call's coordinates; narrowed by the row's ``engine``
     #: and ``calculation``.  A job's finish is chosen by the job
     #: (`Job.finish`), not by this column; which travelling file is BUILT is
-    #: the run script builder's own map (`runwrap.bundles_for`).
+    #: the run script builder's own table (`runwrap.BUNDLES`).
     travels: bool = False
     #: THE CODE THAT READS IT, by the question each answers
     #: (:data:`READ_QUESTIONS`) -- ``(question, "module:NAME")`` pairs, the
@@ -1105,7 +1105,7 @@ class Artifact:
     #: (`job-contracts.md` § 2.2; :func:`reads_of`), resolved by
     #: `runpoints.part` on the machine and beside a job, and the modules of
     #: those a job asks (:data:`READ_BESIDE_A_JOB`) travel in its bundle by
-    #: this row (`runwrap.monitor_companions`).
+    #: this row (`runwrap.members`).
     reads: "tuple[tuple[str, str], ...]" = ()
     #: A RUN OUTPUT WHOSE ENGINE'S STDERR STAYS APART -- the SIESTA
     #: family's, kept in the session log: ``die`` flushes stdout on node 0
@@ -1847,7 +1847,7 @@ READ_QUESTIONS: "tuple[str, ...]" = (
     "ending", "stops", "live", "loop_words", "scf_rows", "timing",
     "used_log", "record", "contract")
 #: THE QUESTIONS A JOB ASKS, beside it: their readers' modules travel in its
-#: bundle by their rows (`runwrap.monitor_companions`).
+#: bundle by their rows (`runwrap.members`).
 READ_BESIDE_A_JOB: "tuple[str, ...]" = (
     "ending", "stops", "live", "loop_words", "timing")
 

@@ -22,8 +22,8 @@ from typing import TYPE_CHECKING, Any, Dict, Union
 # (through its data file's writer) and the members its `TRAVELS_WITH` names at
 # load: the
 # SIESTA vibration's finish writes the file beside the job through it
-# (`runwrap.vibration_companions`), and the PySCF vibration script does
-# (`runwrap.pyscf_companions`) -- the one writer every engine's result goes
+# (`runwrap.members`), and the PySCF vibration script does
+# (`runwrap.members`) -- the one writer every engine's result goes
 # through, where the package is not installed.  The results class is an
 # annotation here, nothing more.
 if TYPE_CHECKING:
@@ -212,7 +212,7 @@ def _validate_schema_version(actual: Any) -> None:
     read-time handling lives in the typed classes' ``from_dict`` methods).
     Rejects bool (``True == 1`` would otherwise sneak past), non-int types,
     and unsupported version numbers."""
-    from molbuilder.spectra.results import (READABLE_SCHEMA_VERSIONS,
+    from ..spectra.results import (READABLE_SCHEMA_VERSIONS,
                                             SCHEMA_VERSION)
     if not isinstance(actual, int) or isinstance(actual, bool):
         raise SpectraJsonSchemaError(SCHEMA_VERSION, actual)
@@ -225,7 +225,7 @@ def _validate_dict_to_results(d: Dict[str, Any],
     """Shared reconstitution + error-wrapping logic.  ``where`` is a
     short label (path or ``"input dict"``) interpolated into the
     FieldError message so callers can tell which input failed."""
-    from molbuilder.spectra.results import SpectraResults
+    from ..spectra.results import SpectraResults
     try:
         return SpectraResults.from_dict(d)
     except KeyError as e:
@@ -245,7 +245,7 @@ def parse_spectra_json(
     :class:`SpectraJsonNotFoundError` / :class:`SpectraJsonMalformedError`
     / :class:`SpectraJsonSchemaError` / :class:`SpectraJsonFieldError`
     on the corresponding failure modes."""
-    from molbuilder.spectra.results import SCHEMA_VERSION
+    from ..spectra.results import SCHEMA_VERSION
     p = os.fspath(path)
 
     if not os.path.exists(p):

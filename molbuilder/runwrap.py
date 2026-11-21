@@ -26,6 +26,7 @@ from .scheduler.kinds import (CPUS_PER_TASK, JOB_GPUS, JOB_ID,
 
 import functools
 import re
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Sequence, Tuple
@@ -225,7 +226,7 @@ def _monitor_block(names, notify_on_scf: bool,
     It tells the monitor WHICH RUN it watches -- its stage's names
     (`runfiles.RunNames`) -- and never a path: the monitor names its log, its utilisation CSV and every file it
     reads through `runfiles`, and reads them through the framework's readers
-    that travel beside it (:func:`monitor_companions`).  ``member`` makes it
+    that travel beside it (:func:`members`).  ``member`` makes it
     a MEMBER of a run of points' monitor (`run-reports.md` § 2.4;
     `execution/runs-of-points.md` § 1.4): it finds its run by its folder's
     record (`calcdirs.where`), counts the wall from the run's launch record
@@ -427,18 +428,17 @@ def _finish_check_block(finish: Optional[str]) -> str:
     from .parse.dirs.job import FINISH_CANNOT_LOAD
     return (
         f"# --- Can the job finish itself? (engines/vibration.md 5.5) -------\n"
-        f"# The bundle's `loads` verb imports the finish on the job's own\n"
+        f"# The bundle's `{LOADS_VERB}` verb imports the finish on the job's own\n"
         f"# python and answers; its words are the load error itself.\n"
         f'_mb_fin_said=""\n'
         f'if [ ! -f {finish} ] '
-        f'|| ! _mb_fin_said=$("$_mb_py" {finish} loads 2>&1); then\n'
+        f'|| ! _mb_fin_said=$("$_mb_py" {finish} {LOADS_VERB} 2>&1); then\n'
         f'    _log ERROR "finish: {finish} cannot run on the job\'s python ($_mb_py) -- '
         f'${{_mb_fin_said:-{finish} is not beside the deck}}"\n'
         f'    echo "ERROR: this job cannot finish itself: {finish} does not '
         f'load on the job\'s python ($_mb_py) -- the engine '
-        f'was not started, so no run is lost.  Its imports are the standard '
-        f'library, numpy and netCDF4, which the job env carries '
-        f'(envs/recipes.py)." >&2\n'
+        f'was not started, so no run is lost.  Its imports are '
+        f'{_what_it_imports(bundle(finish).packages)} (envs/recipes.py)." >&2\n'
         f'    [ -n "$_mb_fin_said" ] && echo "$_mb_fin_said" >&2\n'
         + "    " + conclude_line(1, f"{FINISH_CANNOT_LOAD} ({finish})")
         + "\n"
@@ -1172,7 +1172,7 @@ def _ending_question_func(stderr_apart: bool) -> str:
     run ended (`execution/run-reports.md` § 2.3).
 
     THE RUN SCRIPT ASKS, IT DOES NOT GREP.  ``_run_ending.py`` travels beside
-    every job (:func:`monitor_companions`), so the run script runs it with
+    every job (:func:`members`), so the run script runs it with
     the job's own python over the output -- read by the reader its role
     names -- and, where the output keeps its engine's stderr apart
     (``stderr_apart``, `runfiles.stderr_apart`: SIESTA's), over the
@@ -1206,7 +1206,7 @@ def _ending_question_func(stderr_apart: bool) -> str:
         "_mb_ending_able() {\n"
         '    if [ -z "${_mb_ending_state:-}" ]; then\n'
         f'        if [ -f {MONITOR_BUNDLE} ] && _mb_ending_words=$("$_mb_py" \\\n'
-        f'               {MONITOR_BUNDLE} ending "$_out_file"{stderr}); then\n'
+        f'               {MONITOR_BUNDLE} {ENDING_VERB} "$_out_file"{stderr}); then\n'
         "            _mb_ending_state=able\n"
         "        else\n"
         "            _mb_ending_state=unable\n"
@@ -1216,7 +1216,7 @@ def _ending_question_func(stderr_apart: bool) -> str:
         "}\n"
         "_mb_ending() {\n"
         "    _mb_ending_able || return 2\n"
-        f'    "$_mb_py" {MONITOR_BUNDLE} ending "$_out_file"{stderr} "$@"\n'
+        f'    "$_mb_py" {MONITOR_BUNDLE} {ENDING_VERB} "$_out_file"{stderr} "$@"\n'
         "}\n"
     )
 
@@ -1507,7 +1507,7 @@ def _effective_parameters_block(script_name: str, engine: str,
                                   default_of(item, calculation))))
     lines += [
         f'if [ -f {MONITOR_BUNDLE} ]; then',
-        f'    "$_mb_py" {MONITOR_BUNDLE} deck "{reader}" "{script_name}" '
+        f'    "$_mb_py" {MONITOR_BUNDLE} {DECK_VERB} "{reader}" "{script_name}" '
         f'2>>"$_runwrap_log" | sed "s/^/#   /" \\',
         f'        || _log WARN "what the engine will read: {script_name} did '
         f'not read -- the record holds none of its lines"',
@@ -2255,15 +2255,26 @@ def render_run_wrapper(script_path: Path, *,
     # A FINISH THE LAUNCHER CANNOT SHIP IS REFUSED, never dropped: a job
     # told to finish that ran without finishing would conclude rc=0 with no
     # result (`engines/vibration.md` § 5.5).
-    if finish is not None and finish not in _FINISH_BUNDLES:
+    finishes = sorted(n for n, b in BUNDLES.items() if b.finish)
+    if finish is not None and finish not in finishes:
         raise WrapperError(
             f"`{script_path.name}`: a job finishes with "
-            f"{', '.join(sorted(_FINISH_BUNDLES))}, never {finish!r}")
+            f"{', '.join(finishes)}, never {finish!r}")
     from .monitor import POINT_ENDED, POINT_STARTED
     if point is not None and point.steps and finish is None:
         raise WrapperError(
             f"`{script_path.name}`: a point's own steps are verbs of its "
             f"job's bundle, and the job names none")
+    # A STEP ITS FINISH DOES NOT RUN is refused here, never met on the
+    # node: each is one of its finish's steps (`verbs`,
+    # `runs-of-points.md` § 2.1).
+    if point is not None and point.steps:
+        unknown = sorted(set(point.steps.values()) - set(verbs(finish)))
+        if unknown:
+            raise WrapperError(
+                f"`{script_path.name}`: its kind's steps name "
+                f"{', '.join(unknown)} -- no step {finish} runs; the steps "
+                f"it runs are {', '.join(verbs(finish))}")
 
     # WHETHER THIS RUN USES THE GPU is its request -- `jobset.model.
     # gpu_request`, the one door (`execution/architecture.md` § 3.2) -- read
@@ -3095,37 +3106,33 @@ def render_run_wrapper(script_path: Path, *,
     )
 
 
-#: THE MONITOR, beside a job, as ``{name beside the job: the module whose
-#: source it is}`` -- the one member named apart, ``mb_monitor.py``.  Every
-#: other member travels because a member states it needs it beside it (its
-#: ``TRAVELS_WITH``: the monitor its own imports, each of those theirs) or a
-#: record names it (:func:`_members`): no module is listed here by hand.
-#:
-#: **A verbatim copy of each module's own file**, not a copy of its logic:
-#: each imports the next two ways -- from the package, or from beside the job
-#: -- as `config_dir` always has, so the monitor reads a run with the readers
-#: the Results tab's directory door reads it with.  The rule for joining is
-#: `configuration.md` § 2.3's: *stdlib-only AND travels*, and
-#: `tests/test_monitor_watches_a_live_run_e2e.py` runs the whole set with molbuilder
-#: absent.
-#:
-#: They travel as ONE file, :data:`MONITOR_BUNDLE`, which `render_wrappers`
-#: writes next to the wrapper and `materialize` brings into every attempt.
-_MONITOR_BASE: Dict[str, str] = {"mb_monitor.py": "molbuilder.monitor"}
+# A BUNDLE BESIDE A JOB is its monitor, a finish's code or a script's
+# imports; what each holds is its starting modules and every module each
+# says it needs beside it (its ``TRAVELS_WITH``), gathered by
+# :func:`bundle_members` -- no module is listed in a bundle by hand.
+#
+# **A verbatim copy of each module's own file**, not a copy of its logic:
+# each imports the next two ways -- from the package, or from beside the job
+# -- so the monitor reads a run with the readers the Results tab's
+# directory door reads it with.  The rule for joining is
+# `configuration.md` § 2.3's: *its bundle's packages AND travels*
+# (:attr:`Bundle.packages`), and `tests/test_monitor_watches_a_live_run_e2e.py`
+# runs the monitor's set with molbuilder absent.
 
 
-def bundle_members(roots, *, taken: Optional[Dict[str, str]] = None
-                   ) -> Dict[str, str]:
+def bundle_members(roots) -> Dict[str, str]:
     """THE ONE CLOSURE every bundle beside a job is built by
     (`execution/architecture.md` § 3.3): each of ``roots``, and every module
     each says it imports beside the job (its own ``TRAVELS_WITH``), in turn,
     as ``{name beside the job: module}`` -- a module's name there its own
     ``TRAVELS_AS``, else its last name; a module a record names as a part
     (``module:NAME``) travels under its last name, which `runpoints.part`
-    imports beside a job.  ``taken`` are names a bundle holds apart (the
-    monitor's entry).  No module is listed in a bundle by hand.
-    Two modules under one name are refused: the bundle holds one file of
-    each name, so the second would be the first's copy."""
+    imports beside a job (:func:`_record_parts` refuses one that declares
+    another).  No module is listed in a bundle by hand.  Refused: two
+    modules under one name -- the bundle holds one file of each name, so the
+    second would be the first's copy -- and a name the standard library's
+    module has, which the bundle, first on the job's import path, would
+    hide."""
     import importlib
     out: Dict[str, str] = {}
     todo = list(roots)
@@ -3138,7 +3145,15 @@ def bundle_members(roots, *, taken: Optional[Dict[str, str]] = None
                 f"could not read {module} to ship beside the job: "
                 f"{exc}") from None
         name = getattr(found, "TRAVELS_AS", module.rsplit(".", 1)[-1]) + ".py"
-        held = out.get(name) or (taken or {}).get(name)
+        if name[:-len(".py")] in sys.stdlib_module_names:
+            raise WrapperError(
+                f"{module} would travel as {name}, the standard library's "
+                f"module's name, which the bundle -- first on the job's "
+                f"import path -- would hide; rename the module, or give it "
+                f"a name of its own (TRAVELS_AS) unless a record names it "
+                f"as a part or it is a finish's starting module, which "
+                f"travel under their last name.")
+        held = out.get(name)
         if held == module:
             continue
         if held is not None:
@@ -3151,10 +3166,10 @@ def bundle_members(roots, *, taken: Optional[Dict[str, str]] = None
     return out
 
 
-def _members() -> Dict[str, str]:
-    """EVERY MEMBER BUT THE MONITOR -- what the monitor imports beside the job
-    (its ``TRAVELS_WITH``), and the members the records name
-    (`execution/architecture.md` § 3.3):
+def _record_parts() -> List[str]:
+    """THE MODULES THE RECORDS NAME as parts read beside a job
+    (`execution/architecture.md` § 3.3) -- the monitor's bundle's starting
+    modules beside the monitor itself:
     each kind's words, the run-of-points parts its pair names (the kind
     table's ``points.count`` and ``points.outcome`` -- a vibration's count, a
     transport rung's count and a round's outcome), and each engine's
@@ -3163,37 +3178,46 @@ def _members() -> Dict[str, str]:
     each output's role a job asks -- how it ended, its stops, its live pass,
     its loop's words, its timing (the file catalogue row's
     ``reads``, `runfiles.READ_BESIDE_A_JOB`) -- each with every module it
-    says it needs beside it (its own ``TRAVELS_WITH``).  So a new kind,
-    engine or output travels by its record, never an edit of this module."""
-    import importlib
+    says it needs beside it (its own ``TRAVELS_WITH``, which the closure
+    follows).  So a new kind, engine or output travels by its record, never
+    an edit of this module.
+
+    ONE NAME RULE: a part is imported beside a job by its module's last name
+    (`runpoints.part`), so a part's module that travels under another
+    (``TRAVELS_AS``) is refused here, naming the record that names it."""
     from .engine_table import engine as _engine, engines
     from .kind_table import kind as _kind, kinds, run_of_points
     from .runfiles import READ_BESIDE_A_JOB, ON_THE_LABEL
-    refs = [ref for k in kinds() for e in _kind(k).engines
-            for points in [run_of_points(k, e)] if points is not None
-            for ref in (points.count, points.outcome)]
-    refs += [_engine(e).keyword_reader for e in engines()
-             if _engine(e).keyword_reader]
-    refs += [ref for a in ON_THE_LABEL for question, ref in a.reads
-             if question in READ_BESIDE_A_JOB]
-    todo = [module_of(ref) for ref in refs]
-    # ...AND WHAT THE MONITOR ITSELF IMPORTS beside the job, by its own word.
-    todo += list(importlib.import_module(
-        _MONITOR_BASE["mb_monitor.py"]).TRAVELS_WITH)
-    return bundle_members(todo, taken=_MONITOR_BASE)
+    named = [(ref, f"the kind table's [{k}] on {e}")
+             for k in kinds() for e in _kind(k).engines
+             for points in [run_of_points(k, e)] if points is not None
+             for ref in (points.count, points.outcome)]
+    named += [(_engine(e).keyword_reader, f"the engine table's [{e}] "
+               f"keyword_reader") for e in engines()
+              if _engine(e).keyword_reader]
+    named += [(ref, f"the file catalogue's {a.name} row's reads")
+              for a in ON_THE_LABEL for question, ref in a.reads
+              if question in READ_BESIDE_A_JOB]
+    return [_by_its_last_name(module_of(ref), f"{where} names {ref}")
+            for ref, where in named]
 
 
-@functools.lru_cache(maxsize=1)
-def monitor_companions() -> Dict[str, str]:
-    """EVERY MODULE THAT TRAVELS IN :data:`MONITOR_BUNDLE`, ``{name beside
-    the job: the module whose source it is}`` -- the monitor and the
-    framework's readers it imports, and the members the records name
-    (:func:`_members`)."""
-    return {**_MONITOR_BASE, **_members()}
+def _by_its_last_name(module: str, where: str) -> str:
+    """``module``, which a record or a bundle's entry imports beside a job
+    by its last name -- refused, saying ``where`` it is named, when it
+    declares another (``TRAVELS_AS``): the one name rule beside a job."""
+    import importlib
+    own = getattr(importlib.import_module(module), "TRAVELS_AS", None)
+    if own is not None:
+        raise WrapperError(
+            f"{where}, whose module travels as {own}.py; a module named "
+            f"there travels under its last name, which is how it is "
+            f"imported beside a job.")
+    return module
 
 
 #: THE ONE FILE that travels beside every job for its monitor: a Python zip
-#: application (PEP 441) holding every module of :func:`monitor_companions`,
+#: application (PEP 441) holding every member (:func:`members`),
 #: each its own file verbatim under its shipped name, and a ``__main__`` that
 #: runs the monitor.  ``"$_mb_py" mb_monitor.pyz ...`` is the monitor;
 #: ``"$_mb_py" mb_monitor.pyz ending OUTPUT ...`` is `_run_ending`'s door, which
@@ -3201,14 +3225,9 @@ def monitor_companions() -> Dict[str, str]:
 #: put it in one single Python file?"*): still the package's own files, so still no second copy of any
 #: reader.
 from .runfiles import MONITOR_BUNDLE  # noqa: E402 -- the catalogue's name
-from .monitor import BUNDLE_VERBS  # noqa: E402 -- the bundle's own verbs
-from .report_cards import FILENAME as _CARDS_FILE, SHIPPED as _CARDS_SHIPPED  # noqa: E402
-
-#: The bundle's ONE DATA MEMBER (`run-reports.md` § 4.1c): the chat card's
-#: layout, the package's own file under its shipped name, beside its reader
-#: `report_cards.py`, which finds it there through ``__loader__.get_data``.
-#: ``{name beside the job: the package file}`` -- the path is the owner's.
-MONITOR_DATA: Dict[str, Path] = {_CARDS_FILE: _CARDS_SHIPPED}
+from .monitor import BUNDLE_VERBS, DECK_VERB  # noqa: E402 -- the bundle's own verbs
+from .parse.engines._run_ending import ENDING_VERB  # noqa: E402 -- the verb it answers by
+from .monitor import TRAVELS_AS as _MONITOR_MODULE  # noqa: E402 -- its name beside a job
 
 #: What the wrapper's log says when the ending cannot be asked: no bundle,
 #: a bundle that does not load on the job's python, or a reading of the
@@ -3235,7 +3254,7 @@ _ENDING_UNREADABLE = (f"the ending cannot be read here ({MONITOR_BUNDLE} "
 #: WRITTEN IN THE PYTHON EVERY INTERPRETER PARSES -- no f-strings, no print
 #: function -- because its whole job is to report a python that cannot load
 #: the members, and it has to parse on that python to say so.
-_BUNDLE_MAIN = (
+_MONITOR_MAIN = (
     "import sys, time\n"
     "def _say(level, message):\n"
     f"    sys.stderr.write({(LOG_LINE + chr(10))!r} % "
@@ -3246,7 +3265,7 @@ _BUNDLE_MAIN = (
     f"    _say('INFO', 'monitor: starting {MONITOR_BUNDLE} on python %s (%s)'"
     " % (sys.version.split()[0], sys.executable))\n"
     "try:\n"
-    "    import mb_monitor\n"
+    f"    import {_MONITOR_MODULE}\n"
     "except Exception as _e:\n"
     "    import traceback\n"
     f"    _say('ERROR', 'monitor: {MONITOR_BUNDLE} did not load -- %s: %s'"
@@ -3255,38 +3274,31 @@ _BUNDLE_MAIN = (
     "    raise SystemExit(2 if _asked else 1)\n"
     "if not _asked:\n"
     f"    _say('INFO', 'monitor: {MONITOR_BUNDLE} started')\n"
-    "raise SystemExit(mb_monitor.main())\n")
+    f"raise SystemExit({_MONITOR_MODULE}.main())\n")
 
 
-def monitor_bundle() -> bytes:
-    """The bytes of :data:`MONITOR_BUNDLE` -- each module's own file, read
-    (:func:`companion_source`), zipped beside the entry.  The same sources
-    give the same bytes (fixed member times), so a re-prep writes the file it
-    found."""
-    return _zip_bundle(_BUNDLE_MAIN, monitor_companions(), MONITOR_DATA)
-
-
-def _zip_bundle(main: str, companions: Dict[str, str],
+def _zip_bundle(main: str, members_: Dict[str, str],
                 data: Optional[Dict[str, Path]] = None) -> bytes:
     """ONE builder for every bundle that travels beside a job: ``main`` as
-    the zip application's ``__main__.py``, then each of ``companions`` as its
-    module's own file, read (:func:`companion_source`), then each of
+    the zip application's ``__main__.py``, then each of ``members_`` as its
+    module's own file, read (:func:`member_source`), then each of
     ``data`` -- a file that is not a module, read as text -- under its
-    member name."""
+    member name.  The same sources give the same bytes (fixed member
+    times), so a re-prep writes the file it found."""
     import io
     import zipfile
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
-        members = [("__main__.py", main)] + [
-            (name, companion_source(name, companions)) for name in companions]
+        entries = [("__main__.py", main)] + [
+            (name, member_source(name, members_)) for name in members_]
         for name, path in (data or {}).items():
             try:
-                members.append((name, path.read_text(encoding="utf-8")))
+                entries.append((name, path.read_text(encoding="utf-8")))
             except OSError as exc:
                 raise WrapperError(
                     f"could not read {name!r} to ship beside the job: "
                     f"{exc}") from None
-        for name, text in members:
+        for name, text in entries:
             info = zipfile.ZipInfo(name, date_time=(1980, 1, 1, 0, 0, 0))
             info.compress_type = zipfile.ZIP_DEFLATED
             info.external_attr = 0o644 << 16
@@ -3294,10 +3306,9 @@ def _zip_bundle(main: str, companions: Dict[str, str],
     return buf.getvalue()
 
 
-def companion_source(name: str,
-                     companions: Optional[Dict[str, str]] = None) -> str:
+def member_source(name: str, members_: Dict[str, str]) -> str:
     """The text that travels as ``name`` -- its module's own file, read --
-    from ``companions`` (the monitor's by default).
+    of a bundle's ``members_`` (:func:`members`).
 
     Read rather than restated: *"a comment is not a mechanism"*.
 
@@ -3306,18 +3317,20 @@ def companion_source(name: str,
     W7).
     """
     import importlib
-    table = monitor_companions() if companions is None else companions
+    if name not in members_:
+        raise WrapperError(f"{name!r} is no member of the bundle: its "
+                           f"members are {', '.join(sorted(members_))}")
     try:
-        module = importlib.import_module(table[name])
+        module = importlib.import_module(members_[name])
         return Path(module.__file__).read_text(encoding="utf-8")
-    except (KeyError, ImportError, OSError) as exc:
+    except (ImportError, OSError) as exc:
         raise WrapperError(
             f"could not read {name!r} to ship beside the job: {exc}") from None
 
 
 # Every file that travels beside each call of a SIESTA vibration for its
 # steps and its FINISH (`engines/vibration.md` § 5.11 § 3), gathered from
-# its entry by the one closure (:func:`vibration_companions`): the SIESTA route (`spectra.siesta_vibration`, whose
+# its starting module by the one closure (its row in :data:`BUNDLES`): the SIESTA route (`spectra.siesta_vibration`, whose
 # ``main`` the bundle runs), the engine-neutral analysis and its math, the
 # result's class, its activity classes and its one writer, the Methods
 # prose, and every reader the finish reads the attempt through -- the fdf
@@ -3336,15 +3349,8 @@ def companion_source(name: str,
 # the rule for joining is *imports only the standard library, numpy,
 # netCDF4 and the other members* (`engines/vibration.md` I23).  The SIESTA end-to-end run proves the set whole: its
 # job's python cannot import molbuilder (`tests/test_siesta_vibration_e2e.py`).
-def vibration_companions() -> Dict[str, str]:
-    """EVERY MODULE THAT TRAVELS IN :data:`VIBRATION_BUNDLE`, ``{name beside
-    the job: module}`` -- its entry, `spectra.siesta_vibration`, whose
-    ``main`` the bundle runs, and what it imports there, in turn
-    (:func:`bundle_members`)."""
-    return bundle_members(["molbuilder.spectra.siesta_vibration"])
-
 #: THE ONE FILE that is a SIESTA vibration's Python: a Python zip
-#: application of :func:`vibration_companions` whose ``__main__`` runs
+#: application of its members (:func:`members`) whose ``__main__`` runs
 #: `spectra.siesta_vibration.main` -- its verbs ``plan``, ``record`` and
 #: ``finish-run`` are the vibration's own steps, which each call's report
 #: steps run in their place (the kind table's ``steps``,
@@ -3356,43 +3362,59 @@ def vibration_companions() -> Dict[str, str]:
 #: call is brought a copy.
 from .runfiles import VIBRATION_BUNDLE  # noqa: E402 -- the catalogue's name
 
-#: The finish bundle's entry.  A set that cannot load on the job's python --
-#: most often an env without numpy -- says so in the session log's own
-#: line, with the traceback, and exits 1: the job then fails, because the
-#: spectrum IS this stage's result (`engines/vibration.md` § 5.5).
-_VIBRATION_MAIN = (
-    "import sys, time\n"
-    "try:\n"
-    "    import siesta_vibration\n"
-    "except Exception as _e:\n"
-    "    import traceback\n"
-    f"    sys.stderr.write({(LOG_LINE + chr(10))!r} % "
-    f"(time.strftime({LOG_CLOCK!r}), 'ERROR', "
-    f"'vibration: {VIBRATION_BUNDLE} did not load -- %s: %s (it needs "
-    f"numpy and netCDF4 in the job env: envs/recipes.py)' "
-    "% (type(_e).__name__, _e)))\n"
-    "    traceback.print_exc()\n"
-    "    raise SystemExit(1)\n"
-    # `loads`: the wrapper's question before the engine starts -- does the
-    # finish load on this python?  Answered by the import above.
-    "if sys.argv[1:2] == ['loads']:\n"
-    "    raise SystemExit(0)\n"
-    "raise SystemExit(siesta_vibration.main())\n")
+#: THE VERB EVERY FINISH'S ENTRY ANSWERS beside its module's own: the
+#: wrapper's question before the engine starts -- does the finish load on
+#: this python? (:func:`_finish_check_block`).
+LOADS_VERB = "loads"
 
 
-def vibration_bundle() -> bytes:
-    """The bytes of :data:`VIBRATION_BUNDLE`, from the one builder."""
-    return _zip_bundle(_VIBRATION_MAIN, vibration_companions())
+def _and(words: Sequence[str]) -> str:
+    """``a``, ``a and b``, ``a, b and c``."""
+    words = list(words)
+    return (", ".join(words[:-1]) + " and " + words[-1]) if len(words) > 1 \
+        else words[0]
 
 
-#: What a job's ``finish`` may name, and the builder of each -- the one
-#: lookup `render_wrappers` ships a finish bundle by.
-_FINISH_BUNDLES = {VIBRATION_BUNDLE: vibration_bundle}
+def _what_it_imports(packages: Sequence[str]) -> str:
+    """What a bundle's members import, and where it comes from -- the one
+    phrase the run script's finish check and a finish's entry say:
+    ``the standard library, numpy and netCDF4, which the job env must
+    carry`` -- said where they did not load, so it names the fix."""
+    return (f"{_and(('the standard library', *packages))}, which the job "
+            f"env must carry")
+
+
+def _finish_main(module: str, what: str, name: str,
+                 packages: Sequence[str]) -> str:
+    """A FINISH BUNDLE'S ENTRY: import its starting ``module`` (by its name
+    beside the job) and run its ``main``.  A set that cannot load on the job's python --
+    most often an env without one of its ``packages`` -- says so in the
+    session log's own line, naming its imports as the run script's check
+    does (:func:`_finish_check_block`), with the traceback, and exits 1: the job then
+    fails, because the finish's result IS the stage's
+    (`engines/vibration.md` § 5.5).  ``loads`` (:data:`LOADS_VERB`) answers
+    by that import alone."""
+    return (
+        "import sys, time\n"
+        "try:\n"
+        f"    import {module}\n"
+        "except Exception as _e:\n"
+        "    import traceback\n"
+        f"    sys.stderr.write({(LOG_LINE + chr(10))!r} % "
+        f"(time.strftime({LOG_CLOCK!r}), 'ERROR', "
+        f"'{what}: {name} did not load -- %s: %s (its imports are "
+        f"{_what_it_imports(packages)}: envs/recipes.py)' "
+        "% (type(_e).__name__, _e)))\n"
+        "    traceback.print_exc()\n"
+        "    raise SystemExit(1)\n"
+        f"if sys.argv[1:2] == [{LOADS_VERB!r}]:\n"
+        "    raise SystemExit(0)\n"
+        f"raise SystemExit({module}.main())\n")
 
 
 # Every file the PySCF script IMPORTS molbuilder's code from
 # (`engines/pyscf.md` § 3), and what those import beside the job, gathered
-# by the one closure (:func:`pyscf_companions`): the run's thread and GPU
+# by the one closure (its row in :data:`BUNDLES`): the run's thread and GPU
 # set-up, its threads sized
 # before numpy is imported (`runtime_info`, standard library only); the
 # progress-log writer and the unit factors it writes with; the structure
@@ -3403,7 +3425,7 @@ _FINISH_BUNDLES = {VIBRATION_BUNDLE: vibration_bundle}
 # thermochemistry, the structure the result states and the result's writer
 # (its JSON and its data file) -- and its mode selector.
 # The script imports them by their names there --
-# `pyscf.input.emit_bundle_imports` reads them from :func:`pyscf_companions`.
+# `pyscf.input.emit_bundle_imports` reads them from :func:`members`.
 #
 # **Each module's own file, imported two ways**, like the monitor's and the
 # finish's; the rule for joining is *imports the standard library, numpy
@@ -3412,9 +3434,9 @@ _FINISH_BUNDLES = {VIBRATION_BUNDLE: vibration_bundle}
 # with netCDF4, for it (`envs/recipes.py`) -- and PySCF itself, with gpu4pyscf and cupy for a run on the GPU; nothing else but
 # the other members*.
 
-#: THE MODULES THE SCRIPT IMPORTS FROM -- the bundle's entry: the objects
-#: the deck writers hand `pyscf.input.emit_bundle_imports`, which refuses
-#: at render an object whose module the bundle does not ship.
+#: THE MODULES THE SCRIPT IMPORTS FROM -- the bundle's starting modules:
+#: the objects the deck writers hand `pyscf.input.emit_bundle_imports`,
+#: which refuses at render an object from any other module.
 _PYSCF_IMPORTED = ("molbuilder.atom_permutation", "molbuilder.constants",
                    "molbuilder.pyscf.relax_policy", "molbuilder.runtime_info",
                    "molbuilder.sidecars.spectra", "molbuilder.spectra.activity",
@@ -3426,16 +3448,8 @@ _PYSCF_IMPORTED = ("molbuilder.atom_permutation", "molbuilder.constants",
                    "molbuilder.workingcopy_structure")
 
 
-def pyscf_companions() -> Dict[str, str]:
-    """EVERY MODULE THAT TRAVELS IN :data:`PYSCF_BUNDLE`, ``{name beside the
-    job: module}`` -- the modules the script imports from
-    (:data:`_PYSCF_IMPORTED`) and what each imports there, in turn
-    (:func:`bundle_members`); the script imports from the first by their
-    names here."""
-    return bundle_members(_PYSCF_IMPORTED)
-
 #: THE ONE FILE the PySCF script imports molbuilder's code from: a Python
-#: zip of :func:`pyscf_companions`.  `render_wrappers` writes it beside every
+#: zip of its members (:func:`members`).  `render_wrappers` writes it beside every
 #: PySCF script and `materialize` brings it into every attempt; the script
 #: puts it on its import path on its first lines.
 from .runfiles import PYSCF_BUNDLE  # noqa: E402 -- the catalogue's name
@@ -3448,9 +3462,96 @@ _PYSCF_MAIN = (
     "raise SystemExit(2)\n")
 
 
-def pyscf_bundle() -> bytes:
-    """The bytes of :data:`PYSCF_BUNDLE`, from the one builder."""
-    return _zip_bundle(_PYSCF_MAIN, pyscf_companions())
+@dataclass(frozen=True)
+class Bundle:
+    """ONE BUNDLE THAT TRAVELS BESIDE A JOB, whole (`execution/architecture.md`
+    § 3.3; `configuration.md` § 2.3).  ``name`` is its file catalogue row's;
+    ``starting_modules`` the modules it is gathered from (:func:`bundle_members`),
+    with the parts the records name when ``record_parts``; ``main`` its
+    zip application's ``__main__``; ``verbs_part`` the ``module:NAME`` of
+    the verbs of its module that the run script and a kind's ``steps`` may
+    name (its entry answers others too: a finish's ``loads``, a
+    vibration's analysis by hand), or
+    ``None`` for one that is imported, not run; ``packages`` what
+    its job environment carries for it beyond the standard library, at
+    load (a member shared with a stricter bundle obeys that bundle's);
+    ``finish`` whether a job names it as its finish (`Job.finish`) rather
+    than its catalogue row travelling with every deck of its engine and
+    kind."""
+    name: str
+    starting_modules: Tuple[str, ...]
+    main: str
+    verbs_part: Optional[str]
+    packages: Tuple[str, ...]
+    finish: bool = False
+    record_parts: bool = False
+
+
+def _finish_bundle(name: str, start: str, what: str,
+                   packages: Tuple[str, ...]) -> Bundle:
+    """A FINISH'S ROW: its entry (:func:`_finish_main`) imports ``start`` by
+    its last name beside the job -- as a record's part is (:func:`members`
+    refuses a ``TRAVELS_AS`` on it) -- and answers its module's ``VERBS``."""
+    return Bundle(name, (start,),
+                  _finish_main(start.rsplit(".", 1)[-1], what, name, packages),
+                  f"{start}:VERBS", packages, finish=True)
+
+
+#: EVERY BUNDLE, one row each -- what a new bundle is: a row here, its file
+#: catalogue row, and its starting module's own ``TRAVELS_WITH``.
+BUNDLES: Dict[str, Bundle] = {b.name: b for b in (
+    Bundle(MONITOR_BUNDLE, ("molbuilder.monitor",), _MONITOR_MAIN,
+           "molbuilder.monitor:BUNDLE_VERBS", (), record_parts=True),
+    _finish_bundle(VIBRATION_BUNDLE, "molbuilder.spectra.siesta_vibration",
+                   "vibration", ("numpy", "netCDF4")),
+    Bundle(PYSCF_BUNDLE, _PYSCF_IMPORTED, _PYSCF_MAIN, None,
+           ("numpy", "netCDF4")),
+)}
+
+
+def bundle(name: str) -> Bundle:
+    """The bundle called ``name``, or a refusal naming the ones there are."""
+    if name not in BUNDLES:
+        raise WrapperError(f"no bundle {name!r} travels beside a job: the "
+                           f"bundles are {', '.join(sorted(BUNDLES))}")
+    return BUNDLES[name]
+
+
+@functools.lru_cache(maxsize=None)
+def members(name: str) -> Dict[str, str]:
+    """EVERY MODULE THAT TRAVELS IN bundle ``name``, ``{name beside the job:
+    module}`` -- its starting modules, the parts the records name where it
+    carries them, and what each says it imports beside the job, in turn
+    (:func:`bundle_members`)."""
+    b = bundle(name)
+    if b.finish:
+        _by_its_last_name(b.starting_modules[0],
+                          f"{name}'s entry imports {b.starting_modules[0]}")
+    return bundle_members([*b.starting_modules,
+                           *(_record_parts() if b.record_parts else ())])
+
+
+def verbs(name: str) -> Tuple[str, ...]:
+    """The verbs of bundle ``name``'s module that the run script and a
+    kind's ``steps`` may name (:attr:`Bundle.verbs_part`), or none.  Its
+    entry answers others beside them, never as a step: a finish's
+    :data:`LOADS_VERB`, the wrapper's question, and a SIESTA vibration's
+    analysis by hand (`siesta_vibration.FINISH_VERB`)."""
+    from .runpoints import part
+    b = bundle(name)
+    return tuple(part(b.verbs_part)) if b.verbs_part else ()
+
+
+def build(name: str) -> bytes:
+    """The bytes of bundle ``name``: its entry, each member's own file, and
+    each file a member declares travels with it (``TRAVELS_DATA``)."""
+    import importlib
+    held = members(name)
+    data: Dict[str, Path] = {}
+    for module in held.values():
+        data.update(getattr(importlib.import_module(module),
+                            "TRAVELS_DATA", {}))
+    return _zip_bundle(bundle(name).main, held, data)
 
 
 def bundles_for(engine: str, calculation: str,
@@ -3466,15 +3567,21 @@ def bundles_for(engine: str, calculation: str,
     (:data:`MONITOR_BUNDLE`), and beside a PySCF script the molbuilder code
     it imports (:data:`PYSCF_BUNDLE`, `engines/pyscf.md` § 3) -- and the
     job's finish when it has one (`Job.finish`, `engines/vibration.md`
-    § 5.5)."""
+    § 5.5), which `render_run_wrapper` has refused unless it is a finish
+    row.  A travelling row that is a zip application (``.pyz``) with no
+    row in :data:`BUNDLES` is refused: nothing would build it."""
     from .runfiles import travelling
-    builders = {MONITOR_BUNDLE: monitor_bundle, PYSCF_BUNDLE: pyscf_bundle,
-                **_FINISH_BUNDLES}
-    names = [a.name for a in travelling(engine, calculation)
-             if a.name in builders]
+    rows = travelling(engine, calculation)
+    unbuilt = [a.name for a in rows
+               if a.name.endswith(".pyz") and a.name not in BUNDLES]
+    if unbuilt:
+        raise WrapperError(
+            f"the file catalogue says {', '.join(unbuilt)} travels beside "
+            f"a {engine} deck, and no bundle row (runwrap.BUNDLES) builds it")
+    names = [a.name for a in rows if a.name in BUNDLES]
     if finish is not None:
         names.append(finish)
-    return tuple((name, builders[name]) for name in names)
+    return tuple((name, functools.partial(build, name)) for name in names)
 
 
 @dataclass(frozen=True)

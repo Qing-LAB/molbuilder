@@ -22,9 +22,9 @@ scheduler; the ``detect_*`` wrappers add the (guarded) subprocess calls.
 Any command that is missing or fails degrades to ``None`` fields -- never
 an exception.
 
-This module is NOT shipped beside a job.  The files that travel are
-`runwrap.monitor_companions` -- the monitor and the framework readers it
-reads a run through; this one imports `..persist`, `..config_dir`,
+This module is NOT shipped beside a job.  The monitor's bundle is the
+monitor and the framework readers it reads a run through
+(`runwrap.members`); this one imports `..persist`, `..config_dir`,
 `.quantities` and `.fit` where it needs them.  The RECORD is JSON and reads anywhere.
 """
 

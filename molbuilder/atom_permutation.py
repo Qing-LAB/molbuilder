@@ -20,8 +20,8 @@ USED-BY structure.py (the type of ``Structure.atom_order``), transport/sort.py
         each kind's datafile), the structure and its sidecar and working
         copy, the deck writers, prep, the run door, the transport record
 TRAVELS in ``mb_vibration.pyz`` beside each call of a SIESTA vibration
-        (`runwrap.vibration_companions`), and in ``mb_pyscf.pyz``
-        (`runwrap.pyscf_companions`): the type ``structure.py`` holds, and
+        (`runwrap.members`), and in ``mb_pyscf.pyz``
+        (`runwrap.members`): the type ``structure.py`` holds, and
         the atom index map the script imports
 
 A deck written from a sorted copy -- held atoms first for a SIESTA

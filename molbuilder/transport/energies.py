@@ -15,7 +15,7 @@ energies of two runs agree to rounding (10⁻¹⁵ eV), and an energy a few
 as its broadening, 10⁻⁴ eV at the catalogue's defaults).
 
 **It travels beside a job** in the monitor's bundle
-(`runwrap.monitor_companions`), so a transmission run's report step joins a
+(`runwrap.members`), so a transmission run's report step joins a
 point's energies by this same rule (`transport.run_words`): imported from
 the package here, from its copy there; reading a deck stays the package's.
 """
@@ -380,7 +380,7 @@ def held(folder: Path, label: str) -> List[float]:
 
 
 #: WHAT TRAVELS WITH THESE ENERGIES beside the job
-#: (`runwrap.monitor_companions`): the sharing record's block, named by the
+#: (`runwrap.members`): the sharing record's block, named by the
 #: deck record.
 TRAVELS_WITH = ("molbuilder.deck_record",)
 

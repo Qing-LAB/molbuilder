@@ -180,7 +180,7 @@ every reader and writer import — but a deck's, asked by its engine
 - the row's `reads`, the reader it names for each question —
   `reader(role, question)`, which every reader of an output asks, on the
   machine and beside a job, resolves it; by the rows the readers' modules
-  travel with the job (`runwrap.monitor_companions`,
+  travel with the job (`runwrap.members`,
   [`architecture.md`](?doc=execution/architecture.md) § 3.3): a new engine's
   output is one row *(the user, 2026-11-03: "One column on the catalogue
   row")*;

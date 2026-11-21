@@ -183,3 +183,27 @@ def test_every_atom_held_is_refused_by_the_gate():
                for i in issues)
 
 
+@pytest.mark.parametrize("step", ["plann", "loads", "finish"])
+def test_a_kind_step_its_finish_does_not_run_is_refused_at_prep(
+        tmp_path, monkeypatch, step):
+    """`execution/runs-of-points.md` § 2.1: a kind's steps are the steps its
+    finish's module runs (`runwrap.verbs`) -- one it does not run is refused
+    at prep, naming the steps there are, never met on the node; ``loads``
+    is the wrapper's question before the engine, never a step (it would
+    answer 0 and do nothing), and ``finish`` is the analysis by hand, which
+    takes a deck and its output alone (as any step it would stop on its
+    usage line).  No shipped kind names such a
+    step, so the vibration's record is given one here -- the need: only a
+    record can reach this refusal."""
+    import dataclasses
+    from molbuilder.jobset import points
+    from support.road import H2, described_and_prepared, road_structure
+    shipped = points.record_of
+    monkeypatch.setattr(points, "record_of", lambda task: dataclasses.replace(
+        shipped(task), steps={**shipped(task).steps, "after": step}))
+    _dest, _stage, said = described_and_prepared(
+        tmp_path, monkeypatch, road_structure(H2), "siesta",
+        calculation="vibration", refused=True)
+    assert (f"its kind's steps name {step} -- no step mb_vibration.pyz runs; "
+            f"the steps it runs are plan, record, finish-run"
+            in said), said

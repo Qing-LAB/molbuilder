@@ -4,7 +4,7 @@ milestone says of each frame's point (`engines/transport.md` § 2a.11;
 § 2.9).
 
 MODULE  transport.run_words (floor 1 + stdlib; travels in
-        ``mb_monitor.pyz``, `runwrap.monitor_companions`)
+        ``mb_monitor.pyz``, `runwrap.members`)
 ROLE    the kind table's ``count`` and ``outcome`` parts of a transport
         rung's run of points: :func:`count_words` -- *k of N points done, m
         failed (F frames × V voltages)* -- over the job's rows
@@ -24,8 +24,8 @@ import math
 from pathlib import Path
 from typing import Any, Dict, Optional, Sequence
 
-# TWO WAYS, because this module travels beside a job (`runwrap.
-# monitor_companions`), where the package is not installed.
+# TWO WAYS, because this module travels beside a job (`runwrap.members`),
+# where the package is not installed.
 try:                                       # inside molbuilder
     from .. import runrecord as _rr
     from ..calcdirs import RunPlace
@@ -253,7 +253,7 @@ _SAID = {SCF: _ScfSays, PRODUCT: _ProductSays}
 
 
 #: WHAT TRAVELS WITH THESE WORDS beside the job, in its bundle
-#: (`runwrap.monitor_companions`): a round's conductance at E_F by the
+#: (`runwrap.members`): a round's conductance at E_F by the
 #: record's own rule, a transmission point's energies joined, and TBtrans's
 #: k-averaged files read.
 TRAVELS_WITH = ("molbuilder.calcdirs",

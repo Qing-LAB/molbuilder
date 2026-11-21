@@ -37,14 +37,15 @@ module's top or inside a function — apart from A7's named exceptions.
 
 ## Code that runs elsewhere
 
-Modules copied beside a job and imported there without molbuilder:
-`runwrap.pyscf_companions`, `runwrap.vibration_companions`, and the monitor's
-bundle (`runwrap.monitor_companions`) -- all three gathered by one closure
-(`runwrap.bundle_members`) from each module's `TRAVELS_WITH`. Each imports the other members both ways
+Modules copied beside a job and imported there without molbuilder: the
+members of each bundle in `runwrap.BUNDLES` (`runwrap.members`) -- the
+monitor's, a SIESTA vibration's finish and the PySCF script's imports --
+all gathered by one closure (`runwrap.bundle_members`) from each module's `TRAVELS_WITH`. Each imports the other members both ways
 (`try: from .x import ...` / `except ImportError: from x import ...`) and
 declares `TRAVELS_WITH` for what it imports. Check: build the bundle in
 scratch and import every member with `python -I` and no molbuilder on the
-path; `tests/test_pyscf_bundle_runs_alone.py` does the PySCF bundle.
+path; `tests/test_monitor_notify_policy.py::test_each_bundle_loads_on_the_packages_its_row_allows_alone`
+does every bundle on its row's packages alone.
 
 ## Shared answers to check first
 

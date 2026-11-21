@@ -25,6 +25,7 @@ import os
 import pytest
 
 from molbuilder import monitor as M
+from molbuilder.runwrap import BUNDLES
 
 
 # --------------------------------------------------------------------- #
@@ -733,7 +734,8 @@ def test_the_shipped_monitor_resolves_it_with_no_molbuilder_installed(
 
     ship = tmp_path / "jobdir"
     ship.mkdir()
-    (ship / runfiles.MONITOR_BUNDLE).write_bytes(runwrap.monitor_bundle())
+    (ship / runfiles.MONITOR_BUNDLE).write_bytes(
+        runwrap.build(runfiles.MONITOR_BUNDLE))
 
     env = dict(os.environ)
     env["XDG_CONFIG_HOME"] = str(tmp_path / "scratch")
@@ -749,43 +751,121 @@ def test_the_shipped_monitor_resolves_it_with_no_molbuilder_installed(
         tmp_path / "scratch/molbuilder/secrets/notify")
 
 
-def test_the_shipped_monitor_loads_on_a_python_with_nothing_installed(tmp_path):
-    """`run-reports.md` § 2.3: the monitor runs beside the job on the job's
-    own python, which on a cluster is a bare interpreter -- no numpy, no
-    molbuilder.  The bundle must import under one.  Measured 2026-10-19 on
-    Sol: a module-level numpy import in a companion (`emitter.py`, shipped
-    for the grammar's keys) killed every monitor at import, so a day's
-    runs reported nothing and kept no utilisation record.  Blocking numpy
-    in the interpreter (`sys.modules['numpy'] = None` makes its import
-    raise) is how a numpy-less python is had on a machine that has it."""
+#: WHAT EACH BUNDLE'S ENVIRONMENT CARRIES FOR IT AT LOAD, beyond the
+#: standard library, as `configuration.md` § 2.3 states it: the monitor
+#: nothing -- "it is the instrument that reports a broken environment, so it
+#: cannot need one" -- and a SIESTA vibration's finish and the PySCF
+#: script's imports numpy and netCDF4.
+CHAPTER_PACKAGES = {"mb_monitor.pyz": (),
+                    "mb_vibration.pyz": ("numpy", "netCDF4"),
+                    "mb_pyscf.pyz": ("numpy", "netCDF4")}
+
+
+def _a_python_allowing(packages, members):
+    """The first lines of a script that makes the job's python refuse, from
+    then on, every import but the standard library, ``packages`` -- each
+    imported first, with whatever it brings -- and ``members``: a job's
+    python carrying only what a bundle's row allows."""
+    return [
+        "import sys",
+        f"for package in {list(packages)!r}:",
+        "    __import__(package)",
+        # WHAT THE JOB'S PYTHON HOLDS BEFORE THE BUNDLE: its own start-up
+        # and the row's packages, with what each brings.
+        "allowed = (set(sys.stdlib_module_names) | set(" + repr(list(members))
+        + ") | {m.split('.')[0] for m in sys.modules})",
+        "class Refuse:",
+        "    def find_spec(self, name, path=None, target=None):",
+        "        if name.split('.')[0] not in allowed:",
+        "            raise ImportError(f'{name} is not the standard "
+        "library, a package its row allows, or a member')",
+        "sys.meta_path.insert(0, Refuse())",
+    ]
+
+
+@pytest.mark.parametrize("bundle", sorted(BUNDLES))
+def test_each_bundle_loads_on_the_packages_its_row_allows_alone(tmp_path,
+                                                                bundle):
+    """`configuration.md` § 2.3: a bundle runs beside the job on the job's
+    own python, which on a cluster is a bare interpreter plus what its env
+    carries for it -- the packages its row names (`runwrap.Bundle.packages`:
+    none for the monitor, numpy and netCDF4 for a vibration's finish and
+    the PySCF script's imports), never molbuilder.  Every member loads from
+    the bundle alone on an isolated python (``-I``) that may import the
+    standard library, those packages -- with whatever they bring -- and the
+    members, and nothing else.  Measured 2026-10-19 on Sol: a module-level
+    numpy import in a monitor member (`emitter.py`, shipped for the
+    grammar's keys) killed every monitor at import, so a day's runs
+    reported nothing and kept no utilisation record.
+    MUTATION THIS MUST FAIL AGAINST: a member importing at load a package
+    its bundle's row does not name (``import scipy`` atop `runfiles.py`)."""
+    import subprocess
+    import sys
+    from molbuilder import runwrap
+
+    # THE ROW SAYS WHAT THE CHAPTER SAYS, and the load is held to that.
+    assert bundle in CHAPTER_PACKAGES, f"{bundle}: a bundle § 2.3 states none for"
+    packages = CHAPTER_PACKAGES[bundle]
+    assert tuple(runwrap.bundle(bundle).packages) == packages, (
+        bundle, runwrap.bundle(bundle).packages)
+    ship = tmp_path / "jobdir"
+    ship.mkdir()
+    (ship / bundle).write_bytes(runwrap.build(bundle))
+    members = sorted(n[:-len(".py")] for n in runwrap.members(bundle))
+    script = "\n".join([
+        *_a_python_allowing(packages, members),
+        f"sys.path.insert(0, {bundle!r})",
+        f"for member in {members!r}:",
+        "    __import__(member)",
+        "print('loaded')",
+    ])
+    env = {k: v for k, v in os.environ.items() if k != "PYTHONPATH"}
+    env["XDG_CONFIG_HOME"] = str(tmp_path / "scratch")
+    proc = subprocess.run([sys.executable, "-I", "-c", script],
+                          cwd=str(ship), env=env, capture_output=True,
+                          text=True, timeout=120)
+    assert proc.returncode == 0 and "loaded" in proc.stdout, (
+        f"{bundle} needs beside the job what its row does not allow:\n"
+        f"{proc.stderr[-2000:]}")
+
+
+def test_the_shipped_monitor_reads_its_card_layout_from_its_own_bundle(
+        tmp_path):
+    """`run-reports.md` § 4.1c: the chat card's layout travels as a member
+    of the monitor's bundle -- declared by the module that reads it
+    (`report_cards.TRAVELS_DATA`) -- and is read through the zip's loader on
+    the job's python with molbuilder absent, never a file beside the job or
+    the package's; and a card is made there on the standard library alone,
+    the monitor row's rule (`configuration.md` § 2.3), since a card is
+    what a run's report is sent as."""
     import subprocess
     import sys
     from molbuilder import runfiles, runwrap
 
     ship = tmp_path / "jobdir"
     ship.mkdir()
-    (ship / runfiles.MONITOR_BUNDLE).write_bytes(runwrap.monitor_bundle())
+    (ship / runfiles.MONITOR_BUNDLE).write_bytes(
+        runwrap.build(runfiles.MONITOR_BUNDLE))
     env = dict(os.environ)
     env["XDG_CONFIG_HOME"] = str(tmp_path / "scratch")
     env.pop("PYTHONPATH", None)
+    script = "\n".join([
+        *_a_python_allowing(
+            CHAPTER_PACKAGES[runfiles.MONITOR_BUNDLE],
+            [n[:-len(".py")] for n in runwrap.members(runfiles.MONITOR_BUNDLE)]),
+        f"sys.path.insert(0, {runfiles.MONITOR_BUNDLE!r})",
+        "import mb_monitor, report_cards",
+        "lay = report_cards.load()",
+        "print('loaded', lay.source, mb_monitor.card("
+        "{'event': 'finish', 'energy': 1.5}, receiver='discord', "
+        "layout=lay)['fields'])",
+    ])
     proc = subprocess.run(
-        [sys.executable, "-c",
-         "import sys; sys.modules['numpy'] = None; "
-         f"sys.path.insert(0, {runfiles.MONITOR_BUNDLE!r}); "
-         f"members = {sorted(n[:-3] for n in runwrap.monitor_companions())!r}; "
-         "[__import__(m) for m in members]; "
-         "import mb_monitor, report_cards; "
-         "lay = report_cards.load(); "
-         "print('loaded', lay.source, mb_monitor.card("
-         "{'event': 'finish', 'energy': 1.5}, receiver='discord', "
-         "layout=lay)['fields'])"],
+        [sys.executable, "-I", "-c", script],
         cwd=str(ship), env=env, capture_output=True, text=True, timeout=60)
     assert proc.returncode == 0 and "loaded" in proc.stdout, (
-        f"the shipped monitor needs something a bare python lacks:\n"
+        f"the shipped monitor cannot read its card layout:\n"
         f"{proc.stderr[-2000:]}")
-    # THE LAYOUT IS THE BUNDLE'S OWN MEMBER (`run-reports.md` § 4.1c), read
-    # through the zip's loader -- not a file beside the job, not the
-    # package's.
     assert f"{runfiles.MONITOR_BUNDLE}/report-cards.json" in proc.stdout
     assert "[('energy', '1.5 eV')]" in proc.stdout, proc.stdout
 
@@ -793,9 +873,9 @@ def test_the_shipped_monitor_loads_on_a_python_with_nothing_installed(tmp_path):
 def test_the_shipped_vibration_finish_loads_its_readers_from_the_bundle_alone(
         tmp_path):
     """`engines/vibration.md` I23: the finish travels as one declared set
-    (`runwrap.vibration_companions`) that imports only what the job env
-    carries -- and what its own modules import of each other must be in
-    the set.  The SIESTA reader it ships reads the output's ending and,
+    (`runwrap.members`) that imports only what the job env carries -- and
+    what its own modules import of each other must be in the set.  The
+    SIESTA reader it ships reads the output's ending and,
     since 2.21.0, composes where a run is (`parse/engines/transiesta.py`):
     a module the reader imports and the set did not ship made every
     finish die at import on the real-junction e2e (2026-10-19).  The
@@ -814,15 +894,13 @@ def test_the_shipped_vibration_finish_loads_its_readers_from_the_bundle_alone(
 
     ship = tmp_path / "jobdir"
     ship.mkdir()
-    (ship / VIBRATION_BUNDLE).write_bytes(runwrap.vibration_bundle())
+    (ship / VIBRATION_BUNDLE).write_bytes(runwrap.build(VIBRATION_BUNDLE))
     env = dict(os.environ)
     env["XDG_CONFIG_HOME"] = str(tmp_path / "scratch")
     env.pop("PYTHONPATH", None)
     proc = subprocess.run(
         [sys.executable, "-I", "-c",
          f"import sys; sys.path.insert(0, {VIBRATION_BUNDLE!r}); "
-         f"[__import__(m) for m in "
-         f"{sorted(n[:-3] for n in runwrap.vibration_companions())!r}]; "
          "import siesta_reader, siesta_fc, fdf, results; "
          "steps = [{'atom': None, 'axis': None, 'side': 0}] + "
          "[{'atom': 1, 'axis': a, 'side': s} "
@@ -837,7 +915,39 @@ def test_the_shipped_vibration_finish_loads_its_readers_from_the_bundle_alone(
         f"check, from the bundle alone:\n{proc.stderr[-2000:]}")
 
 
-@pytest.mark.parametrize("bundle", ["monitor", "vibration", "pyscf"])
+def test_the_finish_entry_answers_loads_and_says_what_it_needs_when_not(
+        tmp_path):
+    """`engines/vibration.md` § 5.5: before the engine starts, the run script
+    asks the finish's entry ``loads`` on the job's python -- 0 when its
+    members load; on a python without numpy, 1, and the session log's line
+    naming the bundle and its imports -- the standard library, numpy and
+    netCDF4 -- so the job stops before any run is lost."""
+    import subprocess
+    import sys
+    from molbuilder import runwrap
+    from molbuilder.runfiles import VIBRATION_BUNDLE
+
+    (tmp_path / VIBRATION_BUNDLE).write_bytes(runwrap.build(VIBRATION_BUNDLE))
+    env = {k: v for k, v in os.environ.items() if k != "PYTHONPATH"}
+
+    def asked(first):
+        return subprocess.run(
+            [sys.executable, "-I", "-c",
+             first + "import runpy, sys; "
+             f"sys.argv = [{VIBRATION_BUNDLE!r}, {runwrap.LOADS_VERB!r}]; "
+             f"runpy.run_path({VIBRATION_BUNDLE!r}, run_name='__main__')"],
+            cwd=str(tmp_path), env=env, capture_output=True, text=True,
+            timeout=120)
+    loads = asked("")
+    assert loads.returncode == 0, loads.stderr[-2000:]
+    cannot = asked("import sys; sys.modules['numpy'] = None; ")
+    assert cannot.returncode == 1, cannot.stderr[-2000:]
+    assert (f"{VIBRATION_BUNDLE} did not load" in cannot.stderr
+            and "its imports are the standard library, numpy and netCDF4"
+            in cannot.stderr), cannot.stderr[-2000:]
+
+
+@pytest.mark.parametrize("bundle", sorted(BUNDLES))
 def test_every_module_a_member_imports_beside_the_job_travels_with_it(
         bundle):
     """`execution/architecture.md` § 3.3: a bundle beside a job is its entry
@@ -845,31 +955,35 @@ def test_every_module_a_member_imports_beside_the_job_travels_with_it(
     listed by hand -- and `engines/vibration.md` I23: what its own modules
     import of each other must be in the set.  Read on the built bundle, the
     file a job gets: every name a member imports by its bare name, in any
-    function, that is one of molbuilder's travelling modules is a member of
-    THIS bundle.  THE SILENT FAILURE: a member gaining an import shipped in
-    one bundle and missing from another, an ImportError on the compute node
-    the first time that path runs (the vibration bundle lacked `quantities`,
+    function, that names one of molbuilder's modules is a member of THIS
+    bundle; and no member imports molbuilder itself first, which beside a
+    job is whatever molbuilder its environment may hold, never the
+    bundle's.  THE SILENT FAILURE: a member gaining an import shipped in one
+    bundle and missing from another, an ImportError on the compute node the
+    first time that path runs (the vibration bundle lacked `quantities`,
     the PySCF bundle `runpoints`)."""
     import ast
     import io
+    import sys
     import zipfile
+    from pathlib import Path
+    import molbuilder
     from molbuilder import runwrap
-    # A TRAVELLING MODULE BY EITHER NAME: its name beside the job, and its
-    # own last name -- an import by the last name of a module that travels
-    # under another (`TRAVELS_AS`) finds no file there.
-    travelling = {spelled
-                  for build in (runwrap.monitor_companions,
-                                runwrap.vibration_companions,
-                                runwrap.pyscf_companions)
-                  for name, module in build().items()
-                  for spelled in (name[:-len(".py")],
-                                  module.rsplit(".", 1)[-1])}
-    built = {"monitor": runwrap.monitor_bundle,
-             "vibration": runwrap.vibration_bundle,
-             "pyscf": runwrap.pyscf_bundle}[bundle]()
-    held = zipfile.ZipFile(io.BytesIO(built))
+    from molbuilder.engine_table import engine, engines
+    # EVERY MODULE OF MOLBUILDER'S BY EITHER NAME: its own last name, and a
+    # travelling module's name beside the job -- an import by the last name
+    # of a module that travels under another (`TRAVELS_AS`) finds no file
+    # there.  The standard library's names are its own, and so is the name
+    # of an engine whose deck is a script the job's python runs (no program,
+    # `engine_table`): beside its job that is the engine's package.
+    ours = ({p.stem for p in Path(molbuilder.__file__).parent.rglob("*.py")}
+            | {name[:-len(".py")] for b in runwrap.BUNDLES
+               for name in runwrap.members(b)}) \
+        - set(sys.stdlib_module_names) - {"__init__", "__main__"} \
+        - {e for e in engines() if not engine(e).programs}
+    held = zipfile.ZipFile(io.BytesIO(runwrap.build(bundle)))
     members = {n[:-len(".py")] for n in held.namelist() if n.endswith(".py")}
-    unmet = []
+    unmet, absolute = [], []
     for name in sorted(n for n in held.namelist() if n.endswith(".py")):
         for node in ast.walk(ast.parse(held.read(name).decode("utf-8"))):
             if isinstance(node, ast.ImportFrom) and node.level == 0:
@@ -879,8 +993,12 @@ def test_every_module_a_member_imports_beside_the_job_travels_with_it(
             else:
                 continue
             unmet += [(name, b) for b in bare
-                      if b in travelling and b not in members]
+                      if b in ours and b not in members]
+            absolute += [(name, node.lineno) for b in bare
+                         if b == "molbuilder"]
     assert unmet == [], f"imported beside the job, not in the bundle: {unmet}"
+    assert absolute == [], (f"importing molbuilder itself, which beside a "
+                            f"job is not the bundle's: {absolute}")
 
 
 def test_two_modules_under_one_name_beside_the_job_are_refused():
@@ -892,3 +1010,48 @@ def test_two_modules_under_one_name_beside_the_job_are_refused():
     with pytest.raises(WrapperError, match="both travel as spectra.py"):
         runwrap.bundle_members(["molbuilder.validation.spectra",
                                 "molbuilder.parse.sidecars.spectra"])
+
+
+def test_a_part_whose_module_travels_under_another_name_is_refused(
+        monkeypatch):
+    """`configuration.md` § 2.3, one name rule beside a job: a module a
+    record names as a part is imported there by its last name
+    (`runpoints.part`), so one that states another (``TRAVELS_AS``) is
+    refused when the bundle is gathered, naming the record.  No shipped
+    record names such a module, so the vibration's record on SIESTA is
+    given one here -- the need: only a record reaches this refusal.  The
+    mode selection travels as ``mode_selection.py``; a count part in it
+    would be imported beside the job as ``selection``, which no member is."""
+    import dataclasses
+    from molbuilder import kind_table, runwrap
+    from molbuilder.jobset.errors import WrapperError
+    from molbuilder.runfiles import MONITOR_BUNDLE
+    shipped = kind_table.run_of_points
+
+    def named(calculation, engine):
+        got = shipped(calculation, engine)
+        if (calculation, engine) == ("vibration", "siesta"):
+            return dataclasses.replace(
+                got, count="molbuilder.spectra.selection:select_modes")
+        return got
+    monkeypatch.setattr(kind_table, "run_of_points", named)
+    runwrap.members.cache_clear()
+    try:
+        with pytest.raises(WrapperError, match=(
+                r"the kind table's \[vibration\] on siesta names "
+                r"molbuilder\.spectra\.selection:select_modes, whose module "
+                r"travels as mode_selection\.py")):
+            runwrap.members(MONITOR_BUNDLE)
+    finally:
+        runwrap.members.cache_clear()
+
+
+def test_a_module_travelling_under_a_standard_library_name_is_refused():
+    """The bundle is first on the job's import path, so a member travelling
+    as ``types.py`` would hide the standard library's `types` from every
+    module there -- refused when the bundle is gathered, naming a name of
+    its own (``TRAVELS_AS``) as the way out."""
+    from molbuilder import runwrap
+    from molbuilder.jobset.errors import WrapperError
+    with pytest.raises(WrapperError, match="types.py, the standard library"):
+        runwrap.bundle_members(["molbuilder.parse.types"])

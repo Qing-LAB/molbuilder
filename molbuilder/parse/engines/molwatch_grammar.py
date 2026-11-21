@@ -9,7 +9,7 @@ with), the cheap ending scan (`_run_ending`) and the timing rows
 (`scf_timing_rows`).
 
 **Stdlib only, and travels** (`configuration.md`'s rule for the monitor's
-modules): it goes beside every job (`runwrap.monitor_companions`), so the
+modules): it goes beside every job (`runwrap.members`), so the
 monitor reads a PySCF run's progress with the lines the Results tab reads it
 with, and what it imports of ours -- the physical constants, the log's own
 vocabulary (`trajectory_log.keys`) -- travels with it and is imported two ways.

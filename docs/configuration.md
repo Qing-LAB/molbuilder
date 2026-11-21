@@ -326,30 +326,46 @@ strategy:
 | the monitor's two files on a compute node — `<stem>.util.csv`, `<stem>.monitor.log` | appended to as the run goes, with `pathlib`, because the monitor ships beside the job (below; [`run-reports.md`](?doc=execution/run-reports.md) § 2.5) |
 | a file a PySCF deck writes as it runs — geomeTRIC's constraints file | the deck writes it once, just before geomeTRIC reads it in the same process: a write cut short ends the run that would have read it |
 
-**What ships beside a job: *stdlib-only AND travels*.** Some of molbuilder's
-modules run on the compute node, by the job's own python, in an engine
-environment where molbuilder is not installed. They travel as a bundle — one
-file per bundle, gathered by one closure in `runwrap` (`bundle_members`) from
-its entry, and for the monitor's the parts its records name, through each
-member's own `TRAVELS_WITH` — and the
+**What ships beside a job: *its bundle's packages AND travels*.** Some of
+molbuilder's modules run on the compute node, by the job's own python, in an
+engine environment where molbuilder is not installed. They travel as a bundle
+— one file per bundle, each bundle one row of `runwrap.BUNDLES`: its name, its
+starting modules (and for the monitor's the parts its records name), its
+entry, the verbs a kind's steps and the run script may name, and the packages its environment carries
+for it at load. Its members are gathered by one closure (`bundle_members`)
+from the starting modules, through each member's own `TRAVELS_WITH`, and the
 rule for joining a bundle is that a module depends only on what that bundle's
 environment carries, and travels. *Stdlib-only* means **depends only on the
 standard library**, never *imports nothing of ours*: `persist.py` and
 `config_dir.py` are pure standard library, so they travel (`config_dir.py`'s
 own header says so, and `scheduler/record.py` imports `persist` on the strength
-of it). Each member imports the next two ways — from the package, or from
-beside the job — so the same file runs in both places.
+of it). Each member imports the next two ways — its own package first, then
+beside the job — so the same file runs in both places; never `molbuilder`
+itself, which beside a job is whatever molbuilder the environment may hold.
+
+**One name rule beside a job.** A member travels under its last name, or a
+name of its own it states (`TRAVELS_AS`); a module a record names as a part,
+or a finish's starting module, is imported there by its last name, so one of those that
+states another is refused when the bundle is gathered, naming the record. A
+name the standard library has is refused too: the bundle is first on the
+job's import path and would hide the library's module from every member.
 
 | bundle | what it carries | its rule |
 |---|---|---|
-| `mb_monitor.pyz` (`runwrap.monitor_companions`) | the monitor and the framework readers it reads the run through — `config_dir`, `persist`, `runfiles`, the engines' grammars, `runrecord`, `constants` and the rest ([`run-reports.md`](?doc=execution/run-reports.md) § 2.3) | **the standard library only** — it is the instrument that reports a broken environment, so it cannot need one |
-| `mb_vibration.pyz` (`runwrap.vibration_companions`), beside every call of a SIESTA vibration | its plan and record steps and the analysis that turns force constants into a spectrum — reading the deck's order record through `deck_record` and `atom_permutation`, writing its files through `persist` and `ncdata` ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.5, § 5.11) | the standard library, numpy and netCDF4, which the SIESTA job environments carry for it (`envs/recipes.py`) |
-| `mb_pyscf.pyz` (`runwrap.pyscf_companions`), imported by a PySCF script | every molbuilder function the script runs, and what those modules import beside the job — the thread and GPU set-up, the progress-log writer, the structure codec, the relaxation, a vibration's rules and writer ([`engines/pyscf.md`](?doc=engines/pyscf.md) § 3) | the standard library, numpy and netCDF4 at load; ASE in the functions the script calls; PySCF itself, with gpu4pyscf and cupy on the GPU — all carried by the PySCF environment |
+| `mb_monitor.pyz` (`runwrap.members`) | the monitor and the framework readers it reads the run through — `config_dir`, `persist`, `runfiles`, the engines' grammars, `runrecord`, `constants` and the rest ([`run-reports.md`](?doc=execution/run-reports.md) § 2.3) | **the standard library only** — it is the instrument that reports a broken environment, so it cannot need one |
+| `mb_vibration.pyz` (`runwrap.members`), beside every call of a SIESTA vibration | its plan and record steps and the analysis that turns force constants into a spectrum — reading the deck's order record through `deck_record` and `atom_permutation`, writing its files through `persist` and `ncdata` ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.5, § 5.11) | the standard library, numpy and netCDF4, which the SIESTA job environments carry for it (`envs/recipes.py`) |
+| `mb_pyscf.pyz` (`runwrap.members`), imported by a PySCF script | every molbuilder function the script runs, and what those modules import beside the job — the thread and GPU set-up, the progress-log writer, the structure codec, the relaxation, a vibration's rules and writer ([`engines/pyscf.md`](?doc=engines/pyscf.md) § 3) | the standard library, numpy and netCDF4 at load; ASE in the functions the script calls; PySCF itself, with gpu4pyscf and cupy on the GPU — all carried by the PySCF environment |
+
+Each row's rule at load is its `packages` in `runwrap.BUNDLES`, and it is checked as
+stated: every member of each built bundle loads on an isolated python that may
+import the standard library, those packages and the members, and nothing else.
 
 Nothing of the vibration bundle's reaches the monitor's: a module joins a
-bundle only as its entry, as a part a record names (the monitor's,
+bundle only as one of its starting modules, as a part a record names (the monitor's,
 [`execution/architecture.md`](?doc=execution/architecture.md) § 3.3), or by a
-member stating it imports it there. The one member a PySCF script imports before numpy,
+member stating it imports it there. A member two bundles carry obeys the
+stricter rule — `runfiles` travels in all three, so it loads on the standard
+library alone. The one member a PySCF script imports before numpy,
 `runtime_info`, loads only the standard library — psutil, cupy and gpu4pyscf
 are imported inside the functions that need them — because the thread caps must
 be set before numpy loads.
