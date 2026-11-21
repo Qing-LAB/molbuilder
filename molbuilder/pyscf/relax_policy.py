@@ -4,7 +4,7 @@ imported by both PySCF decks (`docs/engines/pyscf.md` § 3).
 Two PySCF decks relax a geometry — the optimization deck, and the vibration
 deck for which relaxation is the measurement's precondition — and both honour
 ``on_nonconvergence``.  **Both relax through :func:`relax`**, which each
-imports from ``mb_pyscf.pyz`` beside it (``runwrap.PYSCF_COMPANIONS``), so one
+imports from ``mb_pyscf.pyz`` beside it (``runwrap.pyscf_companions``), so one
 implementation runs and the tests exercise the one that runs.  This file
 travels as itself: the standard library at load, PySCF inside :func:`relax`.
 
@@ -193,3 +193,8 @@ def relax(mf, policy, retries, *, keep=None, resumable=False,
 
 __all__ = ["past_wall", "policy_of", "relax", "stop_if_past_wall",
            "wall_deadline", "WallReached"]
+
+
+#: WHAT THIS MODULE NEEDS BESIDE IT in a job's bundle -- the modules it
+#: imports there by their bare names (`runwrap.bundle_members`).
+TRAVELS_WITH = ("molbuilder.runtime_info",)

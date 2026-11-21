@@ -20,7 +20,7 @@ from types import SimpleNamespace
 from typing import Dict, List, Optional, Tuple, Union
 
 # TWO WAYS, because this reader travels: the SIESTA vibration's finish reads
-# the deck with it beside the job (`runwrap.VIBRATION_COMPANIONS`), where the
+# the deck with it beside the job (`runwrap.vibration_companions`), where the
 # package is not installed.  Stdlib and its two siblings only.
 try:                                        # inside molbuilder
     from ..constants import BOHR_ANGSTROM as _BOHR_ANG
@@ -561,8 +561,8 @@ KEYWORDS = SimpleNamespace(key=fdf_key, true=fdf_true, read=read_fdf,
 
 
 
-#: WHAT TRAVELS WITH THIS READER beside the job
-#: (`runwrap.monitor_companions`): the units a value converts in.
+#: WHAT TRAVELS WITH THIS READER beside the job (`runwrap.bundle_members`):
+#: the units a value converts in.
 TRAVELS_WITH = ("molbuilder.constants",
                 "molbuilder.units")
 

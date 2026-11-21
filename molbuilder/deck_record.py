@@ -1,14 +1,13 @@
 """The molbuilder record a generated deck carries -- its fenced blocks, and the one reader of a block's JSON.
 
 MODULE  deck_record (L1, the job as described; beside a job the standard
-        library and the progress log's words at load, and the order record's
-        class where a deck's is read)
+        library and the progress log's words)
 ROLE    the grammar of every molbuilder block in a generated file -- the block
         names, the BEGIN/END fences (:func:`begin_marker`,
         :func:`end_marker`, :data:`MARKER_RE`) -- and the ONE reader of a
         block's JSON payload (:func:`read_json_block`), with the readers of
-        each block -- ATOM-METADATA and its order record
-        (:func:`order_record_of`), ENGINE-OFFSET, VIBRATION, SHARED, PROVENANCE
+        each block -- ATOM-METADATA (its order record read by
+        `atom_permutation.order_record_of`), ENGINE-OFFSET, VIBRATION, SHARED, PROVENANCE
         and who wrote the file (:func:`written_by`), BENCH-MARKS, the
         effective-parameters rows
 USED-BY script_emit (writes every block through these),
@@ -16,7 +15,8 @@ USED-BY script_emit (writes every block through these),
         the job), runs.declared, parse (a folder's engine, a run's record),
         runwrap and pyscf/input (the effective-parameters fence)
 TRAVELS in ``mb_vibration.pyz`` beside each call of a SIESTA vibration
-        (`runwrap.VIBRATION_COMPANIONS`)
+        (`runwrap.vibration_companions`), and in ``mb_monitor.pyz`` (a
+        transport rung's energies read their block through it)
 
 `execution/job-contracts.md` § 3.1 owns the grammar.  Its own module because
 a job reads blocks where the template does not exist: the grammar and its
@@ -184,7 +184,7 @@ def extract_atom_metadata(text: str) -> Optional[Dict[str, Any]]:
     """The ATOM-METADATA block's payload -- the structure's metadata but its
     box, the order record among it (`job-contracts.md` § 3.4) -- or ``None``
     for a deck that carries none.  Read by the run door (``runs.declared``)
-    and by the finish beside a job (:func:`order_record_of`)."""
+    and by the finish beside a job (`atom_permutation.order_record_of`)."""
     return read_json_block(text, BLOCK_ATOM_METADATA)
 
 
@@ -233,25 +233,6 @@ def box_of_run(engine_offset: Optional[Dict[str, Any]],
         # calculation*).
         out["offset_by"] = "engine"
     return out or None
-
-
-def order_record_of(block: Optional[Dict[str, Any]]):
-    """THE DECK'S ORDER RECORD (`model/overview.md` § 2.2a, I5): an
-    ATOM-METADATA payload's ``atom_order``, read by the order record's one
-    reader (``atom_permutation.Permutation.from_dict``) over the block's own
-    atom count -- ``None`` for a deck in the user order, or one that carries no
-    block.  Asked by the run door (``runs.declared``) and by the finish
-    beside a job, which reads its own deck's record (`model/overview.md`
-    § 2.2a, I5)."""
-    record = (block or {}).get("atom_order")
-    if record is None:
-        return None
-    try:                                    # inside molbuilder
-        from .atom_permutation import Permutation
-    except ImportError:                     # beside a job
-        from atom_permutation import Permutation  # type: ignore
-    return Permutation.from_dict(record, source="atom_order",
-                                 n_atoms=(block or {}).get("n_atoms_total"))
 
 
 def same_calculation(engine: str, a: str, b: str) -> List[str]:
@@ -446,7 +427,8 @@ def read_bench_marks_block(text: str) -> Optional[Dict[str, Any]]:
                 out[k] = _coerce_scalar(v)
     return out
 
-#: WHAT THIS MODULE NEEDS BESIDE IT in a job's bundle (`runwrap._members`).
+#: WHAT THIS MODULE NEEDS BESIDE IT in a job's bundle -- the modules it
+#: imports there by their bare names (`runwrap.bundle_members`).
 TRAVELS_WITH = ("molbuilder.trajectory_log.keys",)
 
 
@@ -455,7 +437,7 @@ __all__ = ["BUILD_NAME", "BLOCK_PROVENANCE", "BLOCK_BENCH_MARKS",
            "BLOCK_USER_CUSTOM", "BLOCK_USER_BEFORE_ENGINE",
            "BLOCK_PARAMETERS", "BLOCK_RUN_SETTINGS",
            "MARKER_RE", "same_calculation",
-           "begin_marker", "end_marker", "order_record_of", "read_json_block",
+           "begin_marker", "end_marker", "read_json_block",
            "DeckRecordUnreadable", "block_unreadable",
            "extract_atom_metadata",
            "extract_engine_offset", "extract_vibration_record",

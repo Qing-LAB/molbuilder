@@ -36,7 +36,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:            # annotations only -- importing
     # vibration_deck at run time would cycle (it imports this), and the
     # other is named in annotations and never called: this module travels
-    # beside a SIESTA vibration job (`runwrap.VIBRATION_COMPANIONS`), where
+    # beside a SIESTA vibration job (`runwrap.vibration_companions`), where
     # it is not importable.
     from ..pyscf.vibration_deck import VibrationConfigView
     from ..structure import Structure

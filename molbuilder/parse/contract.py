@@ -462,3 +462,9 @@ def _from_cluster(directory: Path) -> set:
         if any(n.endswith(s) for n in names for s in suffixes):
             out.add(engine)
     return out
+
+
+#: WHAT THIS MODULE NEEDS BESIDE IT in a job's bundle -- the modules it
+#: imports there by their bare names (`runwrap.bundle_members`).
+TRAVELS_WITH = ("molbuilder.runfiles",
+                "molbuilder.trajectory_log.keys")

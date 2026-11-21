@@ -2,10 +2,10 @@
 inside its run.
 
 The script imports them from ``mb_pyscf.pyz`` beside it
-(``runwrap.PYSCF_COMPANIONS``, ``engines/pyscf.md`` § 3), where molbuilder is
+(``runwrap.pyscf_companions``, ``engines/pyscf.md`` § 3), where molbuilder is
 not installed: this file travels as itself, so it imports the standard library,
-numpy and ``constants`` at load -- the last the two ways a travelling module
-does -- and PySCF only inside the functions that drive it, under the job's own
+numpy and the members its `TRAVELS_WITH` names at load -- those the two ways a
+travelling module does -- and PySCF only inside the functions that drive it, under the job's own
 env.  The SIESTA route's counterpart is
 ``spectra/siesta_vibration.py``.
 """
@@ -262,3 +262,10 @@ def as_numpy(x):
 
 
 __all__ = ["homo_index", "mo_window", "dipole_derivatives", "as_numpy"]
+
+
+#: WHAT THIS MODULE NEEDS BESIDE IT in a job's bundle -- the modules it
+#: imports there by their bare names (`runwrap.bundle_members`).
+TRAVELS_WITH = ("molbuilder.constants",
+                "molbuilder.sidecars.molstruct",
+                "molbuilder.structure")

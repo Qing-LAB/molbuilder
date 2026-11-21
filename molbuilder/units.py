@@ -44,7 +44,7 @@ from __future__ import annotations
 from typing import Mapping, Optional
 
 # TWO WAYS, because the fdf reader that reads unit words through this module
-# travels beside a SIESTA vibration job (`runwrap.VIBRATION_COMPANIONS`).
+# travels beside a SIESTA vibration job (`runwrap.vibration_companions`).
 try:                                        # inside molbuilder
     from .constants import (AVOGADRO as _AVOGADRO, BOHR_ANGSTROM,
                             BOLTZMANN_EV_K, HARTREE_EV,
@@ -215,5 +215,5 @@ def temperature_k(value, unit=None, *, what="a temperature",
 
 
 #: WHAT THIS MODULE NEEDS BESIDE IT in a job's bundle -- the modules it
-#: imports there by their bare names (`runwrap.monitor_companions`).
+#: imports there by their bare names (`runwrap.bundle_members`).
 TRAVELS_WITH = ("molbuilder.constants",)

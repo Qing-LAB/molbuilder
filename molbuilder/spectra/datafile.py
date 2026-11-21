@@ -11,7 +11,7 @@ ROLE    :func:`write_spectra_data` -- the payload the JSON is written from, as
         file back as the payload, which is the file's test
 USED-BY `sidecars.spectra.write_spectra_payload`, the one writer of the
         result, at every write on both engines -- beside the job in both
-        bundles (`runwrap.VIBRATION_COMPANIONS`, `runwrap.PYSCF_COMPANIONS`)
+        bundles (`runwrap.vibration_companions`, `runwrap.pyscf_companions`)
 
 **The file states itself** (`model/datafiles.md` § 2b): its title, its
 schema, the molbuilder that wrote the result, and its source -- the engine
@@ -882,3 +882,14 @@ MODE = {v.name: v for v in MODE_VARS}
 #: The modes' and the thermochemistry grid's variables -- the tables
 #: `data/chart_table.toml` points at, as every data file's.
 GRID_VARS = _grid_vars()
+
+
+#: WHAT THIS MODULE NEEDS BESIDE IT in a job's bundle -- the modules it
+#: imports there by their bare names (`runwrap.bundle_members`).
+TRAVELS_WITH = ("molbuilder.atom_permutation",
+                "molbuilder.ncdata",
+                "molbuilder.persist")
+
+
+#: ITS NAME BESIDE A JOB (`runwrap.bundle_members`) -- its own, apart from the transport data file's.
+TRAVELS_AS = "spectra_datafile"

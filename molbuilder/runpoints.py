@@ -3,9 +3,9 @@ its job sees them, and the one rule each for whether a point ran, is done,
 is still to run, what the run's state is and what a point's end says
 (`execution/runs-of-points.md` § 2.3, § 4).
 
-MODULE  runpoints (floor 1 + stdlib; travels beside the job in
-        ``mb_monitor.pyz`` and in every bundle whose steps write the index,
-        `runwrap.monitor_companions`, `runwrap.VIBRATION_COMPANIONS`)
+MODULE  runpoints (floor 1 + stdlib; travels beside the job in every
+        bundle a member's `TRAVELS_WITH` brings it into -- the monitor's,
+        a SIESTA vibration's, the PySCF script's: `runwrap.bundle_members`)
 ROLE    the run's index -- one per run, at its root
         (``<label>_<NN>_<stage>.points.json``, :func:`index_path`) --
         written by launch (:func:`empty_index`, :func:`add_point`),
@@ -573,7 +573,7 @@ __all__ = ["SCHEMA", "DONE", "RAN", "AGAIN", "CONTINUE", "NOT_RUN", "tally",
 
 
 #: WHAT THIS MODULE NEEDS BESIDE IT in a job's bundle -- the modules it
-#: imports there by their bare names (`runwrap.monitor_companions`).
+#: imports there by their bare names (`runwrap.bundle_members`).
 TRAVELS_WITH = ("molbuilder.parse.engines._run_ending",
                 "molbuilder.calcdirs",
                 "molbuilder.persist",

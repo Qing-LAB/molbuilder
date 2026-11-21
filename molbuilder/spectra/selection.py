@@ -52,3 +52,9 @@ def select_modes(frequencies_cm1: Sequence[float], selection: str, *,
 
 
 __all__ = ["select_modes"]
+
+
+#: ITS NAME BESIDE A JOB (`runwrap.bundle_members`): the name the PySCF
+#: script has always imported it by -- a rename would change the script's
+#: text and refuse a launched stage's prep as another calculation.
+TRAVELS_AS = "mode_selection"

@@ -3114,6 +3114,43 @@ def render_run_wrapper(script_path: Path, *,
 _MONITOR_BASE: Dict[str, str] = {"mb_monitor.py": "molbuilder.monitor"}
 
 
+def bundle_members(roots, *, taken: Optional[Dict[str, str]] = None
+                   ) -> Dict[str, str]:
+    """THE ONE CLOSURE every bundle beside a job is built by
+    (`execution/architecture.md` § 3.3): each of ``roots``, and every module
+    each says it imports beside the job (its own ``TRAVELS_WITH``), in turn,
+    as ``{name beside the job: module}`` -- a module's name there its own
+    ``TRAVELS_AS``, else its last name; a module a record names as a part
+    (``module:NAME``) travels under its last name, which `runpoints.part`
+    imports beside a job.  ``taken`` are names a bundle holds apart (the
+    monitor's entry).  No module is listed in a bundle by hand.
+    Two modules under one name are refused: the bundle holds one file of
+    each name, so the second would be the first's copy."""
+    import importlib
+    out: Dict[str, str] = {}
+    todo = list(roots)
+    while todo:
+        module = todo.pop()
+        try:
+            found = importlib.import_module(module)
+        except ImportError as exc:
+            raise WrapperError(
+                f"could not read {module} to ship beside the job: "
+                f"{exc}") from None
+        name = getattr(found, "TRAVELS_AS", module.rsplit(".", 1)[-1]) + ".py"
+        held = out.get(name) or (taken or {}).get(name)
+        if held == module:
+            continue
+        if held is not None:
+            raise WrapperError(
+                f"{module} and {held} both travel as {name}; a module that "
+                f"travels beside a job does so under its own name, which "
+                f"another already holds.")
+        out[name] = module
+        todo += list(getattr(found, "TRAVELS_WITH", ()))
+    return out
+
+
 def _members() -> Dict[str, str]:
     """EVERY MEMBER BUT THE MONITOR -- what the monitor imports beside the job
     (its ``TRAVELS_WITH``), and the members the records name
@@ -3143,24 +3180,7 @@ def _members() -> Dict[str, str]:
     # ...AND WHAT THE MONITOR ITSELF IMPORTS beside the job, by its own word.
     todo += list(importlib.import_module(
         _MONITOR_BASE["mb_monitor.py"]).TRAVELS_WITH)
-    out: Dict[str, str] = {}
-    while todo:
-        module = todo.pop()
-        name = module.rsplit(".", 1)[-1] + ".py"
-        held = out.get(name) or _MONITOR_BASE.get(name)
-        if held == module:
-            continue
-        if held is not None:
-            # TWO MODULES, ONE NAME BESIDE THE JOB: the bundle holds one
-            # file of each name, so the second would be the first's copy.
-            raise WrapperError(
-                f"{module} and {held} both travel as {name} in "
-                f"{MONITOR_BUNDLE}; a module the records name travels "
-                f"under its own name, which another already holds.")
-        out[name] = module
-        todo += list(getattr(importlib.import_module(module),
-                             "TRAVELS_WITH", ()))
-    return out
+    return bundle_members(todo, taken=_MONITOR_BASE)
 
 
 @functools.lru_cache(maxsize=1)
@@ -3295,94 +3315,36 @@ def companion_source(name: str,
             f"could not read {name!r} to ship beside the job: {exc}") from None
 
 
-#: Every file that travels beside each call of a SIESTA vibration for its
-#: steps and its FINISH (`engines/vibration.md` § 5.11 § 3), as ``{name beside the job: the module
-#: whose source it is}``: the SIESTA route (`spectra.siesta_vibration`, whose
-#: ``main`` the bundle runs), the engine-neutral analysis and its math, the
-#: result's class, its activity classes and its one writer, the Methods
-#: prose, and every reader the finish reads the attempt through -- the fdf
-#: reader and the unit words it reads with, the deck's block reader
-#: (`deck_record`), the ``.FC`` reader and its
-#: error, SIESTA's reading pass with its grammar and rule engine, the
-#: permutation record, the one door for engine atom numbering, the session
-#: log's line with the run-file grammar it is built on (`runfiles`), the
-#: commands a remedy names (`identity`: the launch and the way back, as a
-#: text read later says them) -- and the constants all of them convert
-#: with.
-#:
-#: **Each module's own file, imported two ways** (package, or beside the
-#: job), like the monitor's; unlike the monitor's, the set needs **numpy
-#: and netCDF4**, which the SIESTA job envs carry for it (`envs/recipes.py`):
-#: the rule for joining is *imports only the standard library, numpy,
-#: netCDF4 and the other members* (`engines/vibration.md` I23).  The SIESTA end-to-end run proves the set whole: its
-#: job's python cannot import molbuilder (`tests/test_siesta_vibration_e2e.py`).
-VIBRATION_COMPANIONS: Dict[str, str] = {
-    "siesta_vibration.py":     "molbuilder.spectra.siesta_vibration",
-    "vibrational_analysis.py": "molbuilder.spectra.vibrational_analysis",
-    "normal_modes.py":         "molbuilder.spectra.normal_modes",
-    "results.py":              "molbuilder.spectra.results",
-    "activity.py":             "molbuilder.spectra.activity",
-    "derived.py":              "molbuilder.spectra.derived",
-    "methods.py":              "molbuilder.spectra.methods",
-    "spectra_sidecar.py":      "molbuilder.sidecars.spectra",
-    "fdf.py":                  "molbuilder.parse.fdf",
-    "units.py":                "molbuilder.units",
-    "deck_record.py":          "molbuilder.deck_record",
-    "siesta_fc.py":            "molbuilder.parse.engines.siesta_fc",
-    "errors.py":               "molbuilder.parse.errors",
-    "siesta_reader.py":        "molbuilder.parse.engines.siesta_reader",
-    "siesta_grammar.py":       "molbuilder.parse.engines.siesta_grammar",
-    # AN OPTICAL CALL'S SPECTRUM, read by its one reader, and the optical
-    # calls' data file (`engines/vibration.md` § 5.11 § 8).
-    "siesta_epsimg_reader.py": "molbuilder.parse.engines.siesta_epsimg_reader",
-    "optical_data.py":         "molbuilder.spectra.optical_data",
-    "transiesta.py":           "molbuilder.parse.engines.transiesta",
-    "_section_rules.py":       "molbuilder.parse.engines._section_rules",
-    "molwatch_grammar.py":     "molbuilder.parse.engines.molwatch_grammar",
-    "emitter.py":              "molbuilder.trajectory_log.emitter",
-    "keys.py":                 "molbuilder.trajectory_log.keys",
-    "atom_permutation.py":     "molbuilder.atom_permutation",
-    # THE STRUCTURE, WHOLE, in the result (engines/vibration.md § 6.10): the
-    # result type builds and checks it through the one serialiser.
-    "structure.py":            "molbuilder.structure",
-    "structure_pair.py":       "molbuilder.structure_pair",
-    # THE RESULT'S TWO FILES (engines/vibration.md § 6.10.5): the data
-    # file's writer, the variable record it shares with the transport data
-    # file, and the one atomic writer both files go through.
-    "spectra_datafile.py":     "molbuilder.spectra.datafile",
-    "ncdata.py":               "molbuilder.ncdata",
-    "persist.py":              "molbuilder.persist",
-    "engine_atom_index.py":    "molbuilder.engine_atom_index",
-    "wrapper_log.py":          "molbuilder.wrapper_log",
-    "runfiles.py":             "molbuilder.runfiles",
-    "identity.py":             "molbuilder.identity",
-    "constants.py":            "molbuilder.constants",
-    # A RUN OF POINTS (`engines/vibration.md` § 5.11): the force constants'
-    # record step makes each optical call's folder and its files through
-    # the same doors this machine's launch uses -- the plan, the place record and the names' rules, the
-    # copier -- and picks the modes with PySCF's own selector.
-    "planned.py":              "molbuilder.jobset.planned",
-    "calcdirs.py":             "molbuilder.calcdirs",
-    "paths.py":                "molbuilder.paths",
-    "selection.py":            "molbuilder.spectra.selection",
-    "deck_lines.py":           "molbuilder.siesta.deck_lines",
-    "vibration_phases.py":     "molbuilder.siesta.vibration_phases",
-    # THE RUN'S INDEX, which the steps read and write (`runpoints`).
-    "runpoints.py":            "molbuilder.runpoints",
-    "runrecord.py":            "molbuilder.runrecord",
-    # THE RELAXATION RECORD'S ONE FUNCTION (`parse/contract.py`, the
-    # relax call's record in the index); the keys it reads are a member
-    # above.
-    "contract.py":             "molbuilder.parse.contract",
-    # A CALL'S VERDICT AND ITS DONE RULE, the status door's own
-    # (`_run_ending.verdict_of`, `not_done_why`; § 5.11 § 6), with the end
-    # lines its dispatch imports.
-    "_run_ending.py":          "molbuilder.parse.engines._run_ending",
-    "end_lines.py":            "molbuilder.pyscf.end_lines",
-}
+# Every file that travels beside each call of a SIESTA vibration for its
+# steps and its FINISH (`engines/vibration.md` § 5.11 § 3), gathered from
+# its entry by the one closure (:func:`vibration_companions`): the SIESTA route (`spectra.siesta_vibration`, whose
+# ``main`` the bundle runs), the engine-neutral analysis and its math, the
+# result's class, its activity classes and its one writer, the Methods
+# prose, and every reader the finish reads the attempt through -- the fdf
+# reader and the unit words it reads with, the deck's block reader
+# (`deck_record`), the ``.FC`` reader and its
+# error, SIESTA's reading pass with its grammar and rule engine, the
+# permutation record, the one door for engine atom numbering, the session
+# log's line with the run-file grammar it is built on (`runfiles`), the
+# commands a remedy names (`identity`: the launch and the way back, as a
+# text read later says them) -- and the constants all of them convert
+# with.
+#
+# **Each module's own file, imported two ways** (package, or beside the
+# job), like the monitor's; unlike the monitor's, the set needs **numpy
+# and netCDF4**, which the SIESTA job envs carry for it (`envs/recipes.py`):
+# the rule for joining is *imports only the standard library, numpy,
+# netCDF4 and the other members* (`engines/vibration.md` I23).  The SIESTA end-to-end run proves the set whole: its
+# job's python cannot import molbuilder (`tests/test_siesta_vibration_e2e.py`).
+def vibration_companions() -> Dict[str, str]:
+    """EVERY MODULE THAT TRAVELS IN :data:`VIBRATION_BUNDLE`, ``{name beside
+    the job: module}`` -- its entry, `spectra.siesta_vibration`, whose
+    ``main`` the bundle runs, and what it imports there, in turn
+    (:func:`bundle_members`)."""
+    return bundle_members(["molbuilder.spectra.siesta_vibration"])
 
 #: THE ONE FILE that is a SIESTA vibration's Python: a Python zip
-#: application of :data:`VIBRATION_COMPANIONS` whose ``__main__`` runs
+#: application of :func:`vibration_companions` whose ``__main__`` runs
 #: `spectra.siesta_vibration.main` -- its verbs ``plan``, ``record`` and
 #: ``finish-run`` are the vibration's own steps, which each call's report
 #: steps run in their place (the kind table's ``steps``,
@@ -3420,7 +3382,7 @@ _VIBRATION_MAIN = (
 
 def vibration_bundle() -> bytes:
     """The bytes of :data:`VIBRATION_BUNDLE`, from the one builder."""
-    return _zip_bundle(_VIBRATION_MAIN, VIBRATION_COMPANIONS)
+    return _zip_bundle(_VIBRATION_MAIN, vibration_companions())
 
 
 #: What a job's ``finish`` may name, and the builder of each -- the one
@@ -3428,62 +3390,52 @@ def vibration_bundle() -> bytes:
 _FINISH_BUNDLES = {VIBRATION_BUNDLE: vibration_bundle}
 
 
-#: Every file the PySCF script IMPORTS molbuilder's code from
-#: (`engines/pyscf.md` § 3), as ``{name beside the job: the module whose
-#: source it is}``: the run's thread and GPU set-up, its threads sized
-#: before numpy is imported (`runtime_info`, standard library only); the
-#: progress-log writer and the unit factors it writes with; the structure
-#: codec, with the structure module (its one XYZ reader among it), the order
-#: record its ``atom_order`` field holds (`model/overview.md` § 2.2a) and the
-#: sidecar module its ``write_moved`` reaches; the relaxation; and a
-#: vibration's rules -- the PySCF route's, the harmonic path and
-#: thermochemistry, the structure the result states and the result's writer
-#: (its JSON and its data file) -- and its mode selector.
-#: The script imports them by these names -- `pyscf.input.emit_bundle_imports`
-#: reads them here.
-#:
-#: **Each module's own file, imported two ways**, like the monitor's and the
-#: finish's; the rule for joining is *imports the standard library, numpy
-#: and netCDF4 at load (netCDF4 in `ncdata`, the data-file framework), and
-#: in the functions the script calls also ASE -- which the PySCF env carries,
-#: with netCDF4, for it (`envs/recipes.py`) -- and PySCF itself, with gpu4pyscf and cupy for a run on the GPU; nothing else but
-#: the other members*.
-PYSCF_COMPANIONS: Dict[str, str] = {
-    "runtime_info.py":          "molbuilder.runtime_info",
-    "molwatch_emitter.py":      "molbuilder.trajectory_log.emitter",
-    "keys.py":                  "molbuilder.trajectory_log.keys",
-    "constants.py":             "molbuilder.constants",
-    "workingcopy_structure.py": "molbuilder.workingcopy_structure",
-    "structure.py":             "molbuilder.structure",
-    "atom_permutation.py":      "molbuilder.atom_permutation",
-    "engine_atom_index.py":     "molbuilder.engine_atom_index",
-    "molstruct.py":             "molbuilder.sidecars.molstruct",
-    "structure_pair.py":        "molbuilder.structure_pair",
-    "relax_policy.py":          "molbuilder.pyscf.relax_policy",
-    "pyscf_vibration.py":       "molbuilder.spectra.pyscf_vibration",
-    "normal_modes.py":          "molbuilder.spectra.normal_modes",
-    "spectra_sidecar.py":       "molbuilder.sidecars.spectra",
-    # THE RESULT'S RECORD, one with the SIESTA finish's: the script builds its
-    # whole shape and each mode by it (`engines/vibration.md` § 6.5).
-    "results.py":               "molbuilder.spectra.results",
-    # THE RESULT'S TWO FILES (engines/vibration.md § 6.10.5): the data
-    # file's writer, the variable record it shares with the transport data
-    # file, the one atomic writer both files go through, and the catalogue
-    # the data file's name follows from.
-    "spectra_datafile.py":      "molbuilder.spectra.datafile",
-    "ncdata.py":                "molbuilder.ncdata",
-    "persist.py":               "molbuilder.persist",
-    "runfiles.py":              "molbuilder.runfiles",
-    # THE DERIVED VALUES, stated by the one writer at every write
-    # (`spectra.derived`, `engines/vibration.md` § 6.6), and the activity
-    # rule they ask.
-    "derived.py":               "molbuilder.spectra.derived",
-    "activity.py":              "molbuilder.spectra.activity",
-    "mode_selection.py":        "molbuilder.spectra.selection",
-}
+# Every file the PySCF script IMPORTS molbuilder's code from
+# (`engines/pyscf.md` § 3), and what those import beside the job, gathered
+# by the one closure (:func:`pyscf_companions`): the run's thread and GPU
+# set-up, its threads sized
+# before numpy is imported (`runtime_info`, standard library only); the
+# progress-log writer and the unit factors it writes with; the structure
+# codec, with the structure module (its one XYZ reader among it), the order
+# record its ``atom_order`` field holds (`model/overview.md` § 2.2a) and the
+# sidecar module its ``write_moved`` reaches; the relaxation; and a
+# vibration's rules -- the PySCF route's, the harmonic path and
+# thermochemistry, the structure the result states and the result's writer
+# (its JSON and its data file) -- and its mode selector.
+# The script imports them by their names there --
+# `pyscf.input.emit_bundle_imports` reads them from :func:`pyscf_companions`.
+#
+# **Each module's own file, imported two ways**, like the monitor's and the
+# finish's; the rule for joining is *imports the standard library, numpy
+# and netCDF4 at load (netCDF4 in `ncdata`, the data-file framework), and
+# in the functions the script calls also ASE -- which the PySCF env carries,
+# with netCDF4, for it (`envs/recipes.py`) -- and PySCF itself, with gpu4pyscf and cupy for a run on the GPU; nothing else but
+# the other members*.
+
+#: THE MODULES THE SCRIPT IMPORTS FROM -- the bundle's entry: the objects
+#: the deck writers hand `pyscf.input.emit_bundle_imports`, which refuses
+#: at render an object whose module the bundle does not ship.
+_PYSCF_IMPORTED = ("molbuilder.atom_permutation", "molbuilder.constants",
+                   "molbuilder.pyscf.relax_policy", "molbuilder.runtime_info",
+                   "molbuilder.sidecars.spectra", "molbuilder.spectra.activity",
+                   "molbuilder.spectra.normal_modes",
+                   "molbuilder.spectra.pyscf_vibration",
+                   "molbuilder.spectra.results",
+                   "molbuilder.spectra.selection",
+                   "molbuilder.trajectory_log.emitter",
+                   "molbuilder.workingcopy_structure")
+
+
+def pyscf_companions() -> Dict[str, str]:
+    """EVERY MODULE THAT TRAVELS IN :data:`PYSCF_BUNDLE`, ``{name beside the
+    job: module}`` -- the modules the script imports from
+    (:data:`_PYSCF_IMPORTED`) and what each imports there, in turn
+    (:func:`bundle_members`); the script imports from the first by their
+    names here."""
+    return bundle_members(_PYSCF_IMPORTED)
 
 #: THE ONE FILE the PySCF script imports molbuilder's code from: a Python
-#: zip of :data:`PYSCF_COMPANIONS`.  `render_wrappers` writes it beside every
+#: zip of :func:`pyscf_companions`.  `render_wrappers` writes it beside every
 #: PySCF script and `materialize` brings it into every attempt; the script
 #: puts it on its import path on its first lines.
 from .runfiles import PYSCF_BUNDLE  # noqa: E402 -- the catalogue's name
@@ -3498,7 +3450,7 @@ _PYSCF_MAIN = (
 
 def pyscf_bundle() -> bytes:
     """The bytes of :data:`PYSCF_BUNDLE`, from the one builder."""
-    return _zip_bundle(_PYSCF_MAIN, PYSCF_COMPANIONS)
+    return _zip_bundle(_PYSCF_MAIN, pyscf_companions())
 
 
 def bundles_for(engine: str, calculation: str,

@@ -13,7 +13,7 @@ USED-BY each call's report steps (`mb_monitor.pyz point`), which run the
         `engines/vibration.md` § 5.11 § 3; `runfiles.VIBRATION_BUNDLE`); the
         bundle's ``finish`` verb is the door, by hand, for anything holding
         a finished force-constant call (§ 5.5)
-TRAVELS in ``mb_vibration.pyz`` (`runwrap.VIBRATION_COMPANIONS`)
+TRAVELS in ``mb_vibration.pyz`` (`runwrap.vibration_companions`)
 
 SIESTA takes no second derivative.  Its force-constant run nudges the free
 atoms and writes ``<SystemLabel>.FC``; everything after that is the harmonic
@@ -62,7 +62,7 @@ import numpy as np
 # TWO WAYS, because this module travels beside the job (see the header).
 try:                                        # inside molbuilder
     from ..atom_permutation import (Permutation, map_rows_to_user_order,
-                                    map_to_user_index)
+                                    map_to_user_index, order_record_of)
     from ..parse.engines.siesta_epsimg_reader import CHANNELS, read_epsimg
     from ..parse.engines.siesta_grammar import fermi_levels
     from ..constants import BOHR_ANGSTROM, HARTREE_BOHR_EV_ANGSTROM_ASE
@@ -80,7 +80,7 @@ try:                                        # inside molbuilder
     from ..deck_record import (DeckRecordUnreadable, box_of_run,
                                extract_atom_metadata,
                                extract_engine_offset,
-                               extract_vibration_record, order_record_of)
+                               extract_vibration_record)
     from ..engine_atom_index import convert_from_engine_numbering, siesta_numbering
     from ..identity import command_stage
     from ..sidecars.spectra import dump_spectra_json
@@ -115,7 +115,8 @@ except ImportError:                         # beside a job, in mb_vibration.pyz
     from siesta_grammar import fermi_levels  # type: ignore[no-redef]
     from optical_data import write_optical_data  # type: ignore[no-redef]
     from atom_permutation import (Permutation,  # type: ignore[no-redef]
-                                  map_rows_to_user_order, map_to_user_index)
+                                  map_rows_to_user_order, map_to_user_index,
+                                  order_record_of)
     from constants import BOHR_ANGSTROM, HARTREE_BOHR_EV_ANGSTROM_ASE
     from siesta_fc import (ForceConstantFile, fc_block_asymmetry,
                            hessian_from_fc, read_fc, reference_frame_of)
@@ -128,8 +129,7 @@ except ImportError:                         # beside a job, in mb_vibration.pyz
     from contract import judged_force, relaxation_of_output  # type: ignore[no-redef]
     from deck_record import (DeckRecordUnreadable, box_of_run,
                              extract_atom_metadata,
-                             extract_engine_offset, extract_vibration_record,
-                             order_record_of)
+                             extract_engine_offset, extract_vibration_record)
     from engine_atom_index import convert_from_engine_numbering, siesta_numbering
     from identity import command_stage  # type: ignore[no-redef]
     from spectra_sidecar import dump_spectra_json
@@ -159,7 +159,7 @@ except ImportError:                         # beside a job, in mb_vibration.pyz
                                   force_constants_call, phase,
                                   point_entry)
     from normal_modes import displaced, mode_over_atoms, q_for_largest_move
-    from selection import select_modes
+    from mode_selection import select_modes
 
 #: What the result says about how the geometry was reached: the run it
 #: finishes relaxes nothing (`engines/vibration.md` § 5.5).
@@ -1373,3 +1373,36 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             say("WARN", f"vibration: {rx.get('warning')}")
     say("INFO", f"vibration: wrote {out.name}")
     return 0
+
+
+#: WHAT THIS MODULE NEEDS BESIDE IT in a job's bundle -- the modules it
+#: imports there by their bare names (`runwrap.bundle_members`).
+TRAVELS_WITH = ("molbuilder.atom_permutation",
+                "molbuilder.calcdirs",
+                "molbuilder.constants",
+                "molbuilder.deck_record",
+                "molbuilder.engine_atom_index",
+                "molbuilder.identity",
+                "molbuilder.jobset.planned",
+                "molbuilder.parse.contract",
+                "molbuilder.parse.engines.siesta_epsimg_reader",
+                "molbuilder.parse.engines.siesta_fc",
+                "molbuilder.parse.engines.siesta_grammar",
+                "molbuilder.parse.engines.siesta_reader",
+                "molbuilder.parse.fdf",
+                "molbuilder.paths",
+                "molbuilder.persist",
+                "molbuilder.runfiles",
+                "molbuilder.runpoints",
+                "molbuilder.runrecord",
+                "molbuilder.sidecars.spectra",
+                "molbuilder.siesta.deck_lines",
+                "molbuilder.siesta.vibration_phases",
+                "molbuilder.spectra.methods",
+                "molbuilder.spectra.normal_modes",
+                "molbuilder.spectra.optical_data",
+                "molbuilder.spectra.results",
+                "molbuilder.spectra.selection",
+                "molbuilder.spectra.vibrational_analysis",
+                "molbuilder.structure",
+                "molbuilder.wrapper_log")

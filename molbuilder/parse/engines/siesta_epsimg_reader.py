@@ -4,7 +4,7 @@ calculation writes, read (`model/parse.md` § 5f; `engines/vibration.md`
 
 MODULE  parse.engines.siesta_epsimg_reader (numpy and its siblings; it
         travels beside the job in ``mb_vibration.pyz``,
-        `runwrap.VIBRATION_COMPANIONS`)
+        `runwrap.vibration_companions`)
 ROLE    the file's one reader, :func:`read_epsimg`: its header -- the energy
         range, the spin components, the f-sum rule and the Drude plasma
         frequency squared, per spin -- and its rows, the photon energy and
@@ -193,3 +193,9 @@ def is_epsimg(path) -> bool:
 
 __all__ = ["EpsImg", "read_epsimg", "is_epsimg", "CHANNELS",
            "RANGE_TITLE", "SPIN_TITLE", "FSUM_TITLE", "DRUDE_TITLE"]
+
+
+#: WHAT THIS MODULE NEEDS BESIDE IT in a job's bundle -- the modules it
+#: imports there by their bare names (`runwrap.bundle_members`).
+TRAVELS_WITH = ("molbuilder.parse.engines.siesta_grammar",
+                "molbuilder.parse.errors")

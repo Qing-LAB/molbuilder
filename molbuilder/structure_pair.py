@@ -9,7 +9,7 @@ ROLE    the three refusals, named once: the codec (`sidecars.molstruct`)
         pairing refusal for a deck's atom-metadata block -- one name for one
         condition
 TRAVELS beside a PySCF script and a vibration finish, with the codec and
-        the structure (`runwrap.PYSCF_COMPANIONS`, `VIBRATION_COMPANIONS`)
+        the structure (`runwrap.pyscf_companions`, `vibration_companions`)
 """
 from __future__ import annotations
 

@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Union
 
 # TWO WAYS, because this module travels beside a job in
-# ``mb_vibration.pyz`` (`runwrap.VIBRATION_COMPANIONS`), where the
+# ``mb_vibration.pyz`` (`runwrap.vibration_companions`), where the
 # package is not installed.
 try:                                       # inside molbuilder
     from ..deck_record import without_stamps
@@ -391,3 +391,9 @@ def bring(plan: "Plan", names, *, into, from_dir, also=()) -> List[str]:
 
 
 __all__ = ["Plan", "CutShort", "bring", "found"]
+
+
+#: WHAT THIS MODULE NEEDS BESIDE IT in a job's bundle -- the modules it
+#: imports there by their bare names (`runwrap.bundle_members`).
+TRAVELS_WITH = ("molbuilder.deck_record",
+                "molbuilder.persist")

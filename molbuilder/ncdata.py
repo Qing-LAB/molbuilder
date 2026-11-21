@@ -42,7 +42,7 @@ USED-BY a calculation's runs and their steps (`stepsdata`), the transport data f
         `web/blueprints/results.py` and `jobset export`); the vibration result's
         data file (`spectra.datafile`), its Raman and optical parts
         (`spectra.raman`, `spectra.optical_data`), beside the job in both bundles
-        (`runwrap.VIBRATION_COMPANIONS`, `runwrap.PYSCF_COMPANIONS`); a
+        (`runwrap.vibration_companions`, `runwrap.pyscf_companions`); a
         TBtrans data file and its digest (`parse.engines.tbtrans_nc`); a
         relaxation's ``.MD.nc`` (`parse.engines.siesta_mdnc`) and SIESTA's
         SCF columns (`parse.engines.siesta_grammar`); the atom index
@@ -1337,3 +1337,11 @@ __all__ = ["Var", "Axis", "AXES", "UNITS", "CONVENTIONS", "ROOT_FACTS",
            "write_structure_group", "read_structure_group",
            "Exported", "export_format", "export_name", "export_stem",
            "exported"]
+
+
+#: WHAT THIS MODULE NEEDS BESIDE IT in a job's bundle -- the modules it
+#: imports there by their bare names (`runwrap.bundle_members`).
+TRAVELS_WITH = ("molbuilder.atom_permutation",
+                "molbuilder.constants",
+                "molbuilder.persist",
+                "molbuilder.structure")

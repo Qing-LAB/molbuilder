@@ -18,8 +18,8 @@ USED-BY the one writer of a result file, every engine's
         the reader's check (`SpectraResults.from_dict`); the spectrum tab's
         load door, which serves each mode's thermal spread at the
         temperature the tab asked (`web/spectra.md` § 4.1)
-TRAVELS in both bundles -- `runwrap.PYSCF_COMPANIONS` and
-        `VIBRATION_COMPANIONS` -- so it imports its siblings two ways and
+TRAVELS in both bundles -- `runwrap.pyscf_companions` and
+        `vibration_companions` -- so it imports its siblings two ways and
         nothing else of molbuilder
 
 **Written beside what they come from, and checked on read** (user,
@@ -189,3 +189,9 @@ def _same(a: Any, b: Any, rtol: float) -> bool:
             or not isinstance(b, (int, float))):
         return a == b
     return math.isclose(float(a), float(b), rel_tol=rtol, abs_tol=0.0)
+
+
+#: WHAT THIS MODULE NEEDS BESIDE IT in a job's bundle -- the modules it
+#: imports there by their bare names (`runwrap.bundle_members`).
+TRAVELS_WITH = ("molbuilder.constants",
+                "molbuilder.spectra.activity")

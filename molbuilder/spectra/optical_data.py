@@ -3,7 +3,7 @@ at the run's root, the record of the Raman phase so far (`engines/vibration.md`
 § 5.11 § 8; every name it holds, `model/datafiles.md` § 9.3).
 
 MODULE  spectra.optical_data (L2; numpy, netCDF4 and the shared variable
-        record; it travels beside the job, `runwrap.VIBRATION_COMPANIONS`)
+        record; it travels beside the job, `runwrap.vibration_companions`)
 ROLE    :func:`write_optical_data` -- the optical calls' payload, composed by
         `spectra.siesta_vibration` from the run's index and each call's own
         files, written as the file: every variable stating itself
@@ -387,3 +387,13 @@ __all__ = ["DATA_SCHEMA", "READABLE_DATA_SCHEMAS", "OpticalDataError", "WHAT",
 #: record key of (`ncdata.key_of`), and the reader reads the frames with,
 #: an older file's names under its own (`ncdata.read_variables`).
 FRAME = {v.name: v for v in _frame_vars("label")}
+
+
+#: WHAT THIS MODULE NEEDS BESIDE IT in a job's bundle -- the modules it
+#: imports there by their bare names (`runwrap.bundle_members`).
+TRAVELS_WITH = ("molbuilder.atom_permutation",
+                "molbuilder.ncdata",
+                "molbuilder.persist",
+                "molbuilder.runfiles",
+                "molbuilder.spectra.datafile",
+                "molbuilder.structure")

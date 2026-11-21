@@ -536,7 +536,7 @@ One line per fact; the detail is in the linked chapter.
 | a name that is not a calculation setting — in a template, `varies`, a stage's overrides, a run card, a migration | `template.why_not_items` — a retired or renamed one told so, with the way out the migration takes where it is written (`template.why_not_an_item`, `template.MIGRATE_AT`), a misspelt one with the setting it is close to among what its place may hold (the row below), by `persist.unknown_keys` without the list; a run card's through `job_request.why_not_on_card` (floor 2), a retired name alone told so, its few settings listed. A benchmark row's names and its pins, which no migration reaches, are the row above's | 1 | [`engines/template.md`](?doc=engines/template.md) § 3 |
 | the settings a place may hold — what a misspelt name there is matched against, and the stage table's columns | a run card's, a benchmark row's, a stage's overrides': `template.items_in(home, engine=, kind=, stage=)`, the one membership rule, asked of the setting door; their names, `template.settings_in`; a template's: `template.template_settings(config_cls)` — its fields without the run settings | 1 | [`engines/template.md`](?doc=engines/template.md) § 2, § 5.4 |
 | what `nvidia-smi` says — the devices a job sees, a sampled field | `runtime_info.gpu_models` (the `-L` listing's models), `runtime_info.gpu_reading` (one field, ``None`` for one the card does not expose) — the monitor beside a job, the server's load widget and the machine probe (the run script counts the listing in its shell, before any python; the environment builder's driver, compute capability, name and CUDA readings are other questions) | 1 | [`execution/scheduler.md`](?doc=execution/scheduler.md) R12; [`run-reports.md`](?doc=execution/run-reports.md) |
-| what travels beside a job, and how it imports | `runwrap.VIBRATION_COMPANIONS`, `runwrap.PYSCF_COMPANIONS`. The rule: each member imports both ways, molbuilder's path inside molbuilder and the bundle's beside a job, at load and in every function a job calls — measured 2026-11-13 over the three bundles a job carries, the monitor's too: of the 44 distinct imports of molbuilder's own inside functions, none lies on a path a job runs (the ledger, X-EXEC) | 3 | [`engines/vibration.md`](?doc=engines/vibration.md) I20, I23 |
+| what travels beside a job, and how it imports | each member's own `TRAVELS_WITH` (and `TRAVELS_AS`, a name of its own there), gathered from each bundle's entry, and for the monitor's the parts its records name, by one closure: `runwrap.bundle_members` — `monitor_companions`, `vibration_companions`, `pyscf_companions`; no member listed by hand (§ 3.3). The rule: each member imports both ways, molbuilder's path inside molbuilder and the bundle's beside a job, at load and in every function a job calls — measured 2026-11-13 over the three bundles a job carries, the monitor's too: of the 44 distinct imports of molbuilder's own inside functions, none lies on a path a job runs (the ledger, X-EXEC) | 3 | [`engines/vibration.md`](?doc=engines/vibration.md) I20, I23 |
 
 **Folders, files, kinds, engines, structure**
 
@@ -812,7 +812,12 @@ it (its own `TRAVELS_WITH`), gathered from the records when the bundle is
 built (`runwrap.monitor_companions`). The monitor travels the same way: it is
 the one member named apart (`mb_monitor.py`), and what it imports beside the
 job is its own `TRAVELS_WITH`, every member stating in turn the modules it
-imports there — no module is listed in the bundle by hand. So a new kind's parts, a new engine's
+imports there — no module is listed in the bundle by hand. The other two
+bundles are gathered the same way, by the same closure
+(`runwrap.bundle_members`), from their entries: a SIESTA vibration's from
+`spectra.siesta_vibration`, whose `main` it runs, and the PySCF script's from
+the modules the script imports from, which `pyscf.input.emit_bundle_imports`
+refuses at render to name a module the bundle does not ship (R2-3 F1). So a new kind's parts, a new engine's
 keyword reader and a new output's readers travel by their records, with no
 edit of the bundle's member list *(the user, 2026-11-03: "One column on the
 catalogue row"; "Finish bundle by row")*.

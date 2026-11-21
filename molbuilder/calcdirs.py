@@ -40,9 +40,9 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Optional, Tuple
 
-# TWO WAYS, because this module travels beside a job in ``mb_monitor.pyz``
-# and ``mb_vibration.pyz`` (`runwrap.monitor_companions`,
-# `VIBRATION_COMPANIONS`), where the package is not installed.
+# TWO WAYS, because this module travels beside a job, in every bundle a
+# member's `TRAVELS_WITH` brings it into (`runwrap.bundle_members`), where
+# the package is not installed.
 try:                                       # inside molbuilder
     from .identity import parse_token
     from .paths import BENCH_DIRNAME, attempt_index, trial_point
@@ -434,7 +434,7 @@ class RunPlace:
 
 
 #: WHAT THIS MODULE NEEDS BESIDE IT in a job's bundle -- the modules it
-#: imports there by their bare names (`runwrap.monitor_companions`).
+#: imports there by their bare names (`runwrap.bundle_members`).
 TRAVELS_WITH = ("molbuilder.identity",
                 "molbuilder.paths",
                 "molbuilder.persist",

@@ -213,7 +213,7 @@ def _phase_figures(rows: List[Row], phase: str) -> Dict[str, Any]:
 
 
 #: WHAT THIS MODULE NEEDS BESIDE IT in a job's bundle -- the modules it
-#: imports there by their bare names (`runwrap.monitor_companions`).
+#: imports there by their bare names (`runwrap.bundle_members`).
 TRAVELS_WITH = ("molbuilder.parse.engines.molwatch_grammar",
                 "molbuilder.runfiles",
                 "molbuilder.parse.engines.siesta_grammar")

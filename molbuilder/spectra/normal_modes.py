@@ -19,9 +19,9 @@ told.
 
 TRAVELS AS ITSELF, in both bundles: the PySCF vibration script imports it
 from ``mb_pyscf.pyz`` and runs the projection inside its run
-(`runwrap.PYSCF_COMPANIONS`, `engines/pyscf.md` § 3), and a SIESTA
+(`runwrap.pyscf_companions`, `engines/pyscf.md` § 3), and a SIESTA
 vibration's `fc` record step runs it from ``mb_vibration.pyz``
-(`runwrap.VIBRATION_COMPANIONS`, `engines/vibration.md` § 5.11 § 3) -- both where
+(`runwrap.vibration_companions`, `engines/vibration.md` § 5.11 § 3) -- both where
 this package is not installed, so it imports only the ``constants`` that
 travel beside it.
 """
@@ -430,3 +430,8 @@ __all__ = ["rigid_motions", "mode_count", "vibrational_modes", "signed_omega",
            "frequencies_cm1", "display_form", "thermo_temperatures",
            "vibrational_thermo", "vibrational_thermo_grid",
            "vibrational_only_thermo", "THERMO_GRID_K"]
+
+
+#: WHAT THIS MODULE NEEDS BESIDE IT in a job's bundle -- the modules it
+#: imports there by their bare names (`runwrap.bundle_members`).
+TRAVELS_WITH = ("molbuilder.constants",)

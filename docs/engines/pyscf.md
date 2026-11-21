@@ -236,8 +236,9 @@ and a blank one; any other value is the person's to delete
 **molbuilder's own code travels beside the script, in one file — `mb_pyscf.pyz`**.
 The script runs under `molbuilder-pySCF`, where molbuilder
 is not installed, and everything of molbuilder's it runs it **imports** from
-`mb_pyscf.pyz`: a Python zip of those modules' own files
-(`runwrap.PYSCF_COMPANIONS`), built by the one builder the monitor's and the
+`mb_pyscf.pyz`: a Python zip of those modules' own files, and of what each
+says it imports beside the job (`runwrap.pyscf_companions`), built by the one
+builder the monitor's and the
 SIESTA finish's bundles come from. Every PySCF script imports its thread and
 GPU set-up (`runtime_info`: the thread count and the BLAS caps, set before
 numpy loads; the facts a run records about itself; the GPU's probe, and for an

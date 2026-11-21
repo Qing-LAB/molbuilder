@@ -45,7 +45,7 @@ about the world, and the rug in the Results view colours them
 differently.  Every function here keeps the two apart.
 
 TRAVELS in ``mb_vibration.pyz`` beside each call of a SIESTA vibration
-(`runwrap.VIBRATION_COMPANIONS`, `engines/vibration.md` § 5.11 § 3), so it
+(`runwrap.vibration_companions`, `engines/vibration.md` § 5.11 § 3), so it
 imports nothing of molbuilder at module level.
 """
 from __future__ import annotations
@@ -291,3 +291,8 @@ def ir_strength_km_mol(dmu_dq_debye: Sequence[float],
         return IR_KM_MOL_PER_D2_A2_AMU * sum(x * x for x in v)
     along = sum(float(e) * x for e, x in zip(direction, v))
     return 3.0 * IR_KM_MOL_PER_D2_A2_AMU * along * along
+
+
+#: WHAT THIS MODULE NEEDS BESIDE IT in a job's bundle -- the modules it
+#: imports there by their bare names (`runwrap.bundle_members`).
+TRAVELS_WITH = ("molbuilder.constants",)

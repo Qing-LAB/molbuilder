@@ -18,10 +18,12 @@ import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, Union
 
-# THIS MODULE TRAVELS, and imports only the standard library at load: the
+# THIS MODULE TRAVELS, and imports the standard library, numpy and netCDF4
+# (through its data file's writer) and the members its `TRAVELS_WITH` names at
+# load: the
 # SIESTA vibration's finish writes the file beside the job through it
-# (`runwrap.VIBRATION_COMPANIONS`), and the PySCF vibration script does
-# (`runwrap.PYSCF_COMPANIONS`) -- the one writer every engine's result goes
+# (`runwrap.vibration_companions`), and the PySCF vibration script does
+# (`runwrap.pyscf_companions`) -- the one writer every engine's result goes
 # through, where the package is not installed.  The results class is an
 # annotation here, nothing more.
 if TYPE_CHECKING:
@@ -171,8 +173,8 @@ def dump_spectra_json(results: "SpectraResults",
 #  Read entry-point                                                      #
 #                                                                       #
 #  The results class is imported inside each reader, from the package:  #
-#  this module travels and imports only the standard library at load,   #
-#  and no module of either bundle asks the reader.                      #
+#  this module travels (what it loads is said at its head), and no      #
+#  module of either bundle asks the reader.                             #
 # --------------------------------------------------------------------- #
 
 
@@ -298,3 +300,17 @@ __all__ = [
     "SpectraJsonSchemaError",
     "SpectraJsonFieldError",
 ]
+
+
+#: WHAT THIS MODULE NEEDS BESIDE IT in a job's bundle -- the modules it
+#: imports there by their bare names (`runwrap.bundle_members`).
+TRAVELS_WITH = ("molbuilder.persist",
+                "molbuilder.runfiles",
+                "molbuilder.spectra.datafile",
+                "molbuilder.spectra.derived")
+
+
+#: ITS NAME BESIDE A JOB (`runwrap.bundle_members`): its last name,
+#: ``spectra``, is several modules' (validation's, the parsers', the page's
+#: route), so it travels under the one it has always had.
+TRAVELS_AS = "spectra_sidecar"

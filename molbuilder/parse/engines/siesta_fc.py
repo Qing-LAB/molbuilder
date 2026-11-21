@@ -29,7 +29,7 @@ from typing import Sequence
 import numpy as np
 
 # TWO WAYS: the SIESTA vibration's finish reads the file beside the job
-# (`runwrap.VIBRATION_COMPANIONS`), where the package is not installed.
+# (`runwrap.vibration_companions`), where the package is not installed.
 try:                                        # inside molbuilder
     from ...constants import BOHR_ANGSTROM, HARTREE_EV
     from ..errors import ParseError
@@ -186,3 +186,9 @@ def reference_frame_of(reading, *, name: str = "the output"):
 __all__ = ["ForceConstantFile", "read_fc", "hessian_from_fc",
            "fc_block_asymmetry", "reference_frame_of",
            "EV_PER_ANG2_TO_HARTREE_PER_BOHR2"]
+
+
+#: WHAT THIS MODULE NEEDS BESIDE IT in a job's bundle -- the modules it
+#: imports there by their bare names (`runwrap.bundle_members`).
+TRAVELS_WITH = ("molbuilder.constants",
+                "molbuilder.parse.errors")

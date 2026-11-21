@@ -7,10 +7,12 @@ reader the read door asks is ``load_text`` in
 :mod:`molbuilder.parse.sidecars.molstruct` (``model/parse.md`` § 4).
 
 TRAVELS beside every PySCF script, in ``mb_pyscf.pyz``
-(``runwrap.PYSCF_COMPANIONS``): the codec's ``write_moved`` saves a run's
+(``runwrap.pyscf_companions``): the codec's ``write_moved`` saves a run's
 geometries through :func:`renewed`, :func:`geometry_hash`, :func:`dumps`
-and :func:`sidecar_path_for`.  So it imports only the standard library at
-load; the functions that read through the package (``to_dict``,
+and :func:`sidecar_path_for`.  So it imports the standard library, numpy
+(through ``atom_permutation``), ``persist`` and ``structure_pair`` at load,
+and ``structure`` inside the functions that need it; the functions that
+read through the package (``to_dict``,
 ``apply_to_structure``, ``load``) import it inside themselves -- of them,
 a PySCF vibration's script asks ``apply_to_structure``
 (`spectra.pyscf_vibration.equilibrium_structure`), imported two ways.
@@ -449,7 +451,7 @@ def frozen_atoms(payload: Optional[Dict[str, Any]]) -> List[int]:
     lives.
     """
     try:                                        # inside molbuilder
-        from molbuilder.structure import FROZEN_LABEL   # lazy: stdlib-only at load
+        from molbuilder.structure import FROZEN_LABEL   # lazy: not at load
     except ImportError:                         # beside a job, in a bundle
         from structure import FROZEN_LABEL
     if not isinstance(payload, dict):
@@ -822,3 +824,11 @@ __all__ = [
     "sidecar_path_for",
     "to_dict",
 ]
+
+
+#: WHAT THIS MODULE NEEDS BESIDE IT in a job's bundle -- the modules it
+#: imports there by their bare names (`runwrap.bundle_members`).
+TRAVELS_WITH = ("molbuilder.atom_permutation",
+                "molbuilder.persist",
+                "molbuilder.structure",
+                "molbuilder.structure_pair")

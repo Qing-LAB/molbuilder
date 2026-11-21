@@ -772,7 +772,9 @@ def test_the_shipped_monitor_loads_on_a_python_with_nothing_installed(tmp_path):
         [sys.executable, "-c",
          "import sys; sys.modules['numpy'] = None; "
          f"sys.path.insert(0, {runfiles.MONITOR_BUNDLE!r}); "
-         "import mb_monitor, _run_ending, siesta_reader, report_cards; "
+         f"members = {sorted(n[:-3] for n in runwrap.monitor_companions())!r}; "
+         "[__import__(m) for m in members]; "
+         "import mb_monitor, report_cards; "
          "lay = report_cards.load(); "
          "print('loaded', lay.source, mb_monitor.card("
          "{'event': 'finish', 'energy': 1.5}, receiver='discord', "
@@ -791,7 +793,7 @@ def test_the_shipped_monitor_loads_on_a_python_with_nothing_installed(tmp_path):
 def test_the_shipped_vibration_finish_loads_its_readers_from_the_bundle_alone(
         tmp_path):
     """`engines/vibration.md` I23: the finish travels as one declared set
-    (`runwrap.VIBRATION_COMPANIONS`) that imports only what the job env
+    (`runwrap.vibration_companions`) that imports only what the job env
     carries -- and what its own modules import of each other must be in
     the set.  The SIESTA reader it ships reads the output's ending and,
     since 2.21.0, composes where a run is (`parse/engines/transiesta.py`):
@@ -819,6 +821,8 @@ def test_the_shipped_vibration_finish_loads_its_readers_from_the_bundle_alone(
     proc = subprocess.run(
         [sys.executable, "-I", "-c",
          f"import sys; sys.path.insert(0, {VIBRATION_BUNDLE!r}); "
+         f"[__import__(m) for m in "
+         f"{sorted(n[:-3] for n in runwrap.vibration_companions())!r}]; "
          "import siesta_reader, siesta_fc, fdf, results; "
          "steps = [{'atom': None, 'axis': None, 'side': 0}] + "
          "[{'atom': 1, 'axis': a, 'side': s} "
@@ -831,3 +835,60 @@ def test_the_shipped_vibration_finish_loads_its_readers_from_the_bundle_alone(
     assert proc.returncode == 0 and "loaded" in proc.stdout, (
         f"the shipped finish cannot import its readers, or run its charges "
         f"check, from the bundle alone:\n{proc.stderr[-2000:]}")
+
+
+@pytest.mark.parametrize("bundle", ["monitor", "vibration", "pyscf"])
+def test_every_module_a_member_imports_beside_the_job_travels_with_it(
+        bundle):
+    """`execution/architecture.md` § 3.3: a bundle beside a job is its entry
+    and every module each member says it imports there, in turn -- no module
+    listed by hand -- and `engines/vibration.md` I23: what its own modules
+    import of each other must be in the set.  Read on the built bundle, the
+    file a job gets: every name a member imports by its bare name, in any
+    function, that is one of molbuilder's travelling modules is a member of
+    THIS bundle.  THE SILENT FAILURE: a member gaining an import shipped in
+    one bundle and missing from another, an ImportError on the compute node
+    the first time that path runs (the vibration bundle lacked `quantities`,
+    the PySCF bundle `runpoints`)."""
+    import ast
+    import io
+    import zipfile
+    from molbuilder import runwrap
+    # A TRAVELLING MODULE BY EITHER NAME: its name beside the job, and its
+    # own last name -- an import by the last name of a module that travels
+    # under another (`TRAVELS_AS`) finds no file there.
+    travelling = {spelled
+                  for build in (runwrap.monitor_companions,
+                                runwrap.vibration_companions,
+                                runwrap.pyscf_companions)
+                  for name, module in build().items()
+                  for spelled in (name[:-len(".py")],
+                                  module.rsplit(".", 1)[-1])}
+    built = {"monitor": runwrap.monitor_bundle,
+             "vibration": runwrap.vibration_bundle,
+             "pyscf": runwrap.pyscf_bundle}[bundle]()
+    held = zipfile.ZipFile(io.BytesIO(built))
+    members = {n[:-len(".py")] for n in held.namelist() if n.endswith(".py")}
+    unmet = []
+    for name in sorted(n for n in held.namelist() if n.endswith(".py")):
+        for node in ast.walk(ast.parse(held.read(name).decode("utf-8"))):
+            if isinstance(node, ast.ImportFrom) and node.level == 0:
+                bare = [(node.module or "").split(".")[0]]
+            elif isinstance(node, ast.Import):
+                bare = [alias.name.split(".")[0] for alias in node.names]
+            else:
+                continue
+            unmet += [(name, b) for b in bare
+                      if b in travelling and b not in members]
+    assert unmet == [], f"imported beside the job, not in the bundle: {unmet}"
+
+
+def test_two_modules_under_one_name_beside_the_job_are_refused():
+    """A bundle holds one file of each name, so a second module under a
+    name another holds would travel as the first's copy -- refused when the
+    bundle is gathered (`runwrap.bundle_members`), never shipped."""
+    from molbuilder import runwrap
+    from molbuilder.jobset.errors import WrapperError
+    with pytest.raises(WrapperError, match="both travel as spectra.py"):
+        runwrap.bundle_members(["molbuilder.validation.spectra",
+                                "molbuilder.parse.sidecars.spectra"])

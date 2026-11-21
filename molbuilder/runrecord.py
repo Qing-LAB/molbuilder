@@ -687,7 +687,7 @@ __all__ = ["RUN_LAUNCH_SCHEMA", "LaunchRecordError", "RunRef", "run_output",
 
 
 #: WHAT THIS MODULE NEEDS BESIDE IT in a job's bundle -- the modules it
-#: imports there by their bare names (`runwrap.monitor_companions`).
+#: imports there by their bare names (`runwrap.bundle_members`).
 TRAVELS_WITH = ("molbuilder.persist",
                 "molbuilder.scheduler.quantities",
                 "molbuilder.runfiles")

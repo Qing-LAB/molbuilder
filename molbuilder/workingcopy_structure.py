@@ -47,7 +47,7 @@ from typing import List, NamedTuple, Optional, Sequence, Tuple
 
 # TWO WAYS, because this module travels: the PySCF script writes every
 # geometry it saves through it (`write_moved`), imported from `mb_pyscf.pyz`
-# beside the job (`runwrap.PYSCF_COMPANIONS`), where the package is not
+# beside the job (`runwrap.pyscf_companions`), where the package is not
 # installed.  What that call reaches imports only the standard library and
 # numpy; the rest of the codec reads through the package.
 try:                                        # inside molbuilder
@@ -825,3 +825,12 @@ class StructureCodec:
                 if tmp.exists():
                     tmp.unlink()
         return target
+
+
+#: WHAT THIS MODULE NEEDS BESIDE IT in a job's bundle -- the modules it
+#: imports there by their bare names (`runwrap.bundle_members`).
+TRAVELS_WITH = ("molbuilder.atom_permutation",
+                "molbuilder.persist",
+                "molbuilder.sidecars.molstruct",
+                "molbuilder.structure",
+                "molbuilder.structure_pair")

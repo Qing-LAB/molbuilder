@@ -615,7 +615,7 @@ if __name__ == "__main__":
 
 
 #: WHAT THIS MODULE NEEDS BESIDE IT in a job's bundle -- the modules it
-#: imports there by their bare names (`runwrap.monitor_companions`).
+#: imports there by their bare names (`runwrap.bundle_members`).
 TRAVELS_WITH = ("molbuilder.pyscf.end_lines",
                 "molbuilder.parse.engines.molwatch_grammar",
                 "molbuilder.runfiles",

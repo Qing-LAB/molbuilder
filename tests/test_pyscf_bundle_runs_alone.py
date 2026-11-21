@@ -1,7 +1,7 @@
 """The code a PySCF script imports runs beside the job with molbuilder absent.
 
 `engines/pyscf.md` § 3: the script imports everything of molbuilder's it
-runs from `mb_pyscf.pyz` beside it (`runwrap.PYSCF_COMPANIONS`), under
+runs from `mb_pyscf.pyz` beside it (`runwrap.pyscf_companions`), under
 `molbuilder-pySCF`, where molbuilder is not installed.  This reproduces that -- the bundle in a folder with nothing
 else, a python that cannot import molbuilder, the script's own head and import
 lines (`pyscf.input.emit_script_head`, `emit_bundle_imports`) -- imports every
@@ -43,7 +43,7 @@ def test_the_bundle_loads_alone_and_writes_a_pair_the_codec_reads(tmp_path):
                                         emit_script_head, run_file_expr)
     from molbuilder.runfiles import PYSCF_OPTIMIZED, RunNames
     from molbuilder.runfiles import PYSCF_BUNDLE
-    from molbuilder.runwrap import PYSCF_COMPANIONS, pyscf_bundle
+    from molbuilder.runwrap import pyscf_companions, pyscf_bundle
     from molbuilder.spectra.selection import select_modes
     from molbuilder.structure import FROZEN_LABEL, Structure
     from molbuilder.workingcopy_structure import StructureCodec
@@ -69,7 +69,7 @@ def test_the_bundle_loads_alone_and_writes_a_pair_the_codec_reads(tmp_path):
     # The script's run settings and its own head -- its anchor, the bundle
     # on the path, its threads sized -- then every member the bundle holds,
     # each found where the script's imports find it.
-    members = sorted(name[:-len(".py")] for name in PYSCF_COMPANIONS)
+    members = sorted(name[:-len(".py")] for name in pyscf_companions())
     names = RunNames("w", "01_coarse")
     script = "\n".join([
         *emit_run_settings_block(PySCFConfig()),

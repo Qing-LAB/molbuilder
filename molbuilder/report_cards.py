@@ -244,7 +244,7 @@ def _receiver(kind: str, spec: Any, refuse) -> Receiver:
 
 
 #: WHAT THIS MODULE NEEDS BESIDE IT in a job's bundle -- the modules it
-#: imports there by their bare names (`runwrap.monitor_companions`).
+#: imports there by their bare names (`runwrap.bundle_members`).
 TRAVELS_WITH = ("molbuilder.config_dir",
                 "molbuilder.persist",
                 "molbuilder.report_fields")

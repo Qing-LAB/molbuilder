@@ -261,7 +261,7 @@ own file unchanged, run by the job's own python, `$_mb_py`
   environment's own packages do not — a broken numpy is reported by it, never hidden by it. What may travel is
   [`configuration.md`](?doc=configuration.md) § 2.3's rule, *stdlib-only AND travels*. The trajectory log's
   vocabulary the grammar reads is its own standard-library module (`trajectory_log/keys.py`), never the log's
-  writer, which needs numpy and ships with PySCF decks and the vibration finish, never with the monitor.
+  writer, which needs numpy and ships with PySCF decks, never with the monitor.
 - **One file**, because a directory of shipped modules reads as a directory of decks. `prep` writes it beside the
   run script, and `materialize` copies it into every run.
 

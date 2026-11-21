@@ -365,6 +365,6 @@ def scf_history_row(line: str) -> Optional[Dict[str, Any]]:
 
 
 #: WHAT THIS MODULE NEEDS BESIDE IT in a job's bundle -- the modules it
-#: imports there by their bare names (`runwrap.monitor_companions`).
+#: imports there by their bare names (`runwrap.bundle_members`).
 TRAVELS_WITH = ("molbuilder.constants",
                 "molbuilder.trajectory_log.keys")

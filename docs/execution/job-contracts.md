@@ -967,7 +967,7 @@ it. The payload is the sidecar's schema
   (`structure.BOX_FIELDS` / `ATOM_METADATA_FIELDS`, `structure.VIEW_FIELDS`;
   the writer `script_emit.emit_atom_metadata`).
 - **One reader**, `deck_record.extract_atom_metadata` with the order record's
-  `deck_record.order_record_of`, used by `runs.declared`, the vibration finish
+  `atom_permutation.order_record_of`, used by `runs.declared`, the vibration finish
   beside the job and prep's run script,
   which states the atoms the deck holds on its banner (`runwrap._held_words`). **It applies no
   version gate**: a block is read as written, nothing retired is translated.

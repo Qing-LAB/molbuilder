@@ -367,10 +367,10 @@ class Declared:
     @property
     def atom_order(self):
         """THE RUN'S ORDER RECORD (`model/overview.md` § 2.2a, I5): its
-        deck's, read by the order record's one reader through
-        ``deck_record.order_record_of`` -- ``None`` for a run in the user order,
-        or a deck that states none."""
-        from molbuilder.deck_record import order_record_of
+        deck's, read through ``atom_permutation.order_record_of``, by the
+        record's one reader -- ``None`` for a run in the user order, or a
+        deck that states none."""
+        from molbuilder.atom_permutation import order_record_of
         return order_record_of(self.atom_metadata)
 
     def require_order(self) -> "Declared":

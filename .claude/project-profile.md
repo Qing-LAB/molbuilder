@@ -38,9 +38,9 @@ module's top or inside a function — apart from A7's named exceptions.
 ## Code that runs elsewhere
 
 Modules copied beside a job and imported there without molbuilder:
-`runwrap.PYSCF_COMPANIONS`, `runwrap.VIBRATION_COMPANIONS`, and the monitor's
-bundle (`runwrap.monitor_companions`, built from each module's
-`TRAVELS_WITH`). Each imports the other members both ways
+`runwrap.pyscf_companions`, `runwrap.vibration_companions`, and the monitor's
+bundle (`runwrap.monitor_companions`) -- all three gathered by one closure
+(`runwrap.bundle_members`) from each module's `TRAVELS_WITH`. Each imports the other members both ways
 (`try: from .x import ...` / `except ImportError: from x import ...`) and
 declares `TRAVELS_WITH` for what it imports. Check: build the bundle in
 scratch and import every member with `python -I` and no molbuilder on the

@@ -10,7 +10,8 @@ ROLE    the words and keys, named once; every producer and reader imports them
         `deck_record`, the Results tab's rows)
 TRAVELS beside every job's monitor (`runwrap.monitor_companions`: the
         SIESTA grammar reads its echo of these targets with it), beside a
-        PySCF deck and a vibration finish (the emitter imports it there) --
+        PySCF deck (the emitter imports it there) and a vibration finish
+        (the deck's record reader does) --
         so nothing but the standard library, on any python 3
         (`run-reports.md` § 2.3).  The log's WRITER, which needs numpy, is
         `emitter.py`, which never travels with the monitor.

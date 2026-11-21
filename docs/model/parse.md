@@ -2156,7 +2156,7 @@ engine's scratch ([`execution/job-contracts.md`](?doc=execution/job-contracts.md
 
 | file | its reader | answers |
 |---|---|---|
-| `<label>.EPSIMG` | `siesta_epsimg_reader.read_epsimg(path)` — numpy and its siblings; it travels in `mb_vibration.pyz` (`runwrap.VIBRATION_COMPANIONS`) | the photon energies, ascending; ε₂ over `(spin, energy)`; the spin channels, in the SIESTA family's names (`siesta_grammar.TBT_CHANNELS`: `unpolarized`; `up`, `down`); the header's range, f-sum and Drude term per channel |
+| `<label>.EPSIMG` | `siesta_epsimg_reader.read_epsimg(path)` — numpy and its siblings; it travels in `mb_vibration.pyz` (`runwrap.vibration_companions`) | the photon energies, ascending; ε₂ over `(spin, energy)`; the spin channels, in the SIESTA family's names (`siesta_grammar.TBT_CHANNELS`: `unpolarized`; `up`, `down`); the header's range, f-sum and Drude term per channel |
 
 The registered parser, `siesta-epsimg` → `DielectricResult` (`result_kind`
 `dielectric`), answers through it — a person's script through

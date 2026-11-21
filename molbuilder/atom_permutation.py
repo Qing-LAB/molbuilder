@@ -9,8 +9,9 @@ ROLE    the order record -- the class every reader crosses with, its one dict
         § 2.2b), which the data files (`ncdata`), their readers
         (`atom_index`, `postprocess`) and the transport record ask
 USED-BY structure.py (the type of ``Structure.atom_order``), transport/sort.py
-        (the keys, and the record it sorts by), deck_record.py (a deck's
-        record, read by ``order_record_of``), transport/rung.py (its
+        (the keys, and the record it sorts by), a deck's record (its
+        ATOM-METADATA block, read by :func:`order_record_of`: the run door
+        and the vibration finish), transport/rung.py (its
         refusal), spectra/vibrational_analysis.py and
         spectra/siesta_vibration.py (read it back, beside the job); the
         atom index map and its bounds check, wherever a file's atoms are
@@ -19,8 +20,9 @@ USED-BY structure.py (the type of ``Structure.atom_order``), transport/sort.py
         each kind's datafile), the structure and its sidecar and working
         copy, the deck writers, prep, the run door, the transport record
 TRAVELS in ``mb_vibration.pyz`` beside each call of a SIESTA vibration
-        (`runwrap.VIBRATION_COMPANIONS`), and in ``mb_pyscf.pyz``
-        (`runwrap.PYSCF_COMPANIONS`) as the type ``structure.py`` holds
+        (`runwrap.vibration_companions`), and in ``mb_pyscf.pyz``
+        (`runwrap.pyscf_companions`): the type ``structure.py`` holds, and
+        the atom index map the script imports
 
 A deck written from a sorted copy -- held atoms first for a SIESTA
 force-constant run (`engines/vibration.md` § 5.2), the electrode blocks for
@@ -543,5 +545,25 @@ __all__ = ["ATOM_INDEX_BASE", "AtomIndexError", "AtomIndexMap",
            "map_to_user_index",
            "LISTED_BY", "LISTED_BY_ENGINE", "LISTED_BY_USER",
            "LISTED_NOT_STATED", "MAP_KEY", "Permutation", "PermutationError",
+           "order_record_of",
            "SORT_HELD_FIRST", "SORT_KEY_NAMES", "SORT_KEY_WORDS",
            "SORT_TRANSPORT"]
+
+
+def order_record_of(block):
+    """THE DECK'S ORDER RECORD (`model/overview.md` § 2.2a, I5): an
+    ATOM-METADATA payload's ``atom_order`` (`deck_record.extract_atom_metadata`)
+    read by the record's one reader (:meth:`Permutation.from_dict`) over the
+    block's own atom count -- ``None`` for a deck in the user order, or one
+    that carries no block.  Asked by the run door (``runs.declared``) and by
+    the finish beside a job, which reads its own deck's record."""
+    record = (block or {}).get("atom_order")
+    if record is None:
+        return None
+    return Permutation.from_dict(record, source="atom_order",
+                                 n_atoms=(block or {}).get("n_atoms_total"))
+
+
+#: WHAT THIS MODULE NEEDS BESIDE IT in a job's bundle -- the modules it
+#: imports there by their bare names (`runwrap.bundle_members`).
+TRAVELS_WITH = ("molbuilder.persist",)

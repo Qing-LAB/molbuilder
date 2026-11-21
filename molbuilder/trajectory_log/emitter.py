@@ -3,9 +3,10 @@
 This module is the **single source of truth** for the
 ``MolwatchEmitter`` class, and the PySCF script imports it: the file
 travels beside every PySCF job inside ``mb_pyscf.pyz``
-(``runwrap.PYSCF_COMPANIONS``, ``engines/pyscf.md`` § 3), where molbuilder
-is not installed -- so it imports only the standard library, numpy and
-``constants``, the last the two ways a travelling module does.  It NEVER
+(``runwrap.pyscf_companions``, ``engines/pyscf.md`` § 3), where molbuilder
+is not installed -- so it imports the standard library, numpy and the
+members its `TRAVELS_WITH` names, those the two ways a travelling module
+does.  It NEVER
 travels with the monitor: the log's vocabulary the monitor's grammar reads
 is `keys` (standard library only), and this writer imports it from there
 *(the day the writer travelled with the monitor, every monitor on a
@@ -37,7 +38,7 @@ import time
 import numpy as np
 
 # TWO WAYS, because this module travels: the PySCF script imports it from
-# `mb_pyscf.pyz` beside the job (`runwrap.PYSCF_COMPANIONS`), where the
+# `mb_pyscf.pyz` beside the job (`runwrap.pyscf_companions`), where the
 # package is not installed.  The force factor is the ASE convention, as the
 # log's reader converts with (`constants` says why there are two).
 # THE VOCABULARY IS `keys` (stdlib, travels with the monitor).
@@ -291,3 +292,14 @@ class MolwatchEmitter:
 
 
 __all__ = ["MolwatchEmitter", "header_and_preview"]
+
+
+#: WHAT THIS MODULE NEEDS BESIDE IT in a job's bundle -- the modules it
+#: imports there by their bare names (`runwrap.bundle_members`).
+TRAVELS_WITH = ("molbuilder.constants",
+                "molbuilder.trajectory_log.keys")
+
+#: ITS NAME BESIDE A JOB (`runwrap.bundle_members`): the name the PySCF
+#: script has always imported it by -- a rename would change the script's
+#: text and refuse a launched stage's prep as another calculation.
+TRAVELS_AS = "molwatch_emitter"

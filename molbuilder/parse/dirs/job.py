@@ -753,7 +753,7 @@ def _build_status(out_paths: List[Path],
 
 
 #: WHAT THIS MODULE NEEDS BESIDE IT in a job's bundle -- the modules it
-#: imports there by their bare names (`runwrap.monitor_companions`).
+#: imports there by their bare names (`runwrap.bundle_members`).
 TRAVELS_WITH = ("molbuilder.parse.engines._run_ending",
                 "molbuilder.monitor_log",
                 "molbuilder.report_fields",

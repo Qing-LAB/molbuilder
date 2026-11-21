@@ -678,5 +678,5 @@ __all__ = ["BENCH", "JOBSET_PROG", "TASK", "words_for",
 
 
 #: WHAT THIS MODULE NEEDS BESIDE IT in a job's bundle -- the modules it
-#: imports there by their bare names (`runwrap.monitor_companions`).
+#: imports there by their bare names (`runwrap.bundle_members`).
 TRAVELS_WITH = ("molbuilder.runfiles",)

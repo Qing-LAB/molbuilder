@@ -236,9 +236,9 @@ def test_the_block_carries_every_field_but_the_box(row):
     """Written from the structure, read back by the block's one reader onto
     the atoms as the deck lists them: every field the block carries comes
     back -- the order record through its own reader
-    (`deck_record.order_record_of`) -- and the box is the ENGINE-OFFSET
+    (`atom_permutation.order_record_of`) -- and the box is the ENGINE-OFFSET
     block's, never this one's."""
-    from molbuilder.deck_record import order_record_of
+    from molbuilder.atom_permutation import order_record_of
     from molbuilder.structure import (ATOM_METADATA_FIELDS, BOX_FIELDS,
                                       AtomChannel, Structure)
     from support.road import co2_in_engine_order, road_structure

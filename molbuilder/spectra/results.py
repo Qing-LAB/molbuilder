@@ -50,7 +50,7 @@ from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 import numpy as np
 
 # TWO WAYS, because this module travels beside the SIESTA finish and the PySCF
-# script (`runwrap.VIBRATION_COMPANIONS`, `PYSCF_COMPANIONS`).
+# script (`runwrap.vibration_companions`, `pyscf_companions`).
 try:                                        # inside molbuilder
     from .derived import DERIVED_MODE_KEYS, disagreements, with_derived
     from .normal_modes import display_form
@@ -1485,3 +1485,12 @@ __all__ = [
     "ModeData",
     "SpectraResults",
 ]
+
+
+#: WHAT THIS MODULE NEEDS BESIDE IT in a job's bundle -- the modules it
+#: imports there by their bare names (`runwrap.bundle_members`).
+TRAVELS_WITH = ("molbuilder.atom_permutation",
+                "molbuilder.persist",
+                "molbuilder.spectra.derived",
+                "molbuilder.spectra.normal_modes",
+                "molbuilder.structure")
