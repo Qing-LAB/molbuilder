@@ -76,7 +76,6 @@ DEFAULT_ENV_NAMES: Mapping[str, str] = {
 # ``playwright`` is intentionally NOT routed: browser E2E runs under the
 # host env (in-process Flask app), not a dedicated env.
 TOOL_TO_CATEGORY: Mapping[str, str] = {
-    "siesta":      "siesta",
     "tleap":       "mdtools",
     "parmchk2":    "mdtools",
     "antechamber": "mdtools",

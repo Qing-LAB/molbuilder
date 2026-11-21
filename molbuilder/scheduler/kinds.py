@@ -72,13 +72,16 @@ QUERIES = ("listed", "standing", "cancel", "cluster")
 #: molbuilder's protocol, read by name where this module cannot be imported
 #: (the monitor and the scripts beside a job); static review keeps them to
 #: this list.
+JOB_ID, NTASKS, CPUS_PER_TASK, CPUS_ON_NODE, JOB_GPUS, JOB_NODELIST = (
+    "MB_JOB_ID", "MB_NTASKS", "MB_CPUS_PER_TASK", "MB_CPUS_ON_NODE",
+    "MB_JOB_GPUS", "MB_JOB_NODELIST")
 JOB_VARIABLES: Dict[str, str] = {
-    "MB_JOB_ID":        "the scheduler's id for this job",
-    "MB_NTASKS":        "the ranks the scheduler granted the job",
-    "MB_CPUS_PER_TASK": "the cores the scheduler granted each rank",
-    "MB_CPUS_ON_NODE":  "the cores the job holds on its node",
-    "MB_JOB_GPUS":      "the GPUs the scheduler granted the job",
-    "MB_JOB_NODELIST":  "the nodes the job runs on",
+    JOB_ID:        "the scheduler's id for this job",
+    NTASKS:        "the ranks the scheduler granted the job",
+    CPUS_PER_TASK: "the cores the scheduler granted each rank",
+    CPUS_ON_NODE:  "the cores the job holds on its node",
+    JOB_GPUS:      "the GPUs the scheduler granted the job",
+    JOB_NODELIST:  "the nodes the job runs on",
 }
 
 #: A command-line token that is one brace name and stands for several words.

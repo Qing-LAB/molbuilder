@@ -738,12 +738,16 @@ class BuildSpec:
 
     activate_hook
         Template body for ``$CONDA_PREFIX/etc/conda/activate.d/zz-<artifact_subdir>.sh``.
-        Receives the same placeholders as component fields.  Empty
+        Its layout placeholders are the component fields' ``{prefix}`` and
+        ``{dep_<name>}``, filled with the literal ``$CONDA_PREFIX`` root
+        (`builds.render_activate_hook`), so the hook stays right when the
+        env is cloned or moved.  Empty
         string means "no hook" (rare; almost always needed to publish
         the binary on PATH).
     deactivate_hook
-        Template body for ``$CONDA_PREFIX/etc/conda/deactivate.d/zz-<artifact_subdir>.sh``.
-        Should reverse exactly what activate_hook did.
+        Template body for ``$CONDA_PREFIX/etc/conda/deactivate.d/zz-<artifact_subdir>.sh``,
+        with the activate hook's placeholders.  Should reverse exactly what
+        activate_hook did.
     """
     artifact_subdir: str
     components: Tuple[BuildComponent, ...]
@@ -1606,12 +1610,12 @@ _mbsg_prepend_libpath() {
 # So the env's lib goes on first (ending up last), and the source-built
 # components after it -- the same "component beats env" order the install
 # rpath and CMAKE_PREFIX_PATH use.  Read the list bottom-up.
-_mbsg_prepend_path     "$CONDA_PREFIX/opt/siesta-gpu-stack/siesta/bin"
+_mbsg_prepend_path     "{dep_siesta}/bin"
 _mbsg_prepend_libpath  "$CONDA_PREFIX/lib"
-_mbsg_prepend_libpath  "$CONDA_PREFIX/opt/siesta-gpu-stack/elpa/lib"
-_mbsg_prepend_libpath  "$CONDA_PREFIX/opt/siesta-gpu-stack/netcdf_fortran/lib"
+_mbsg_prepend_libpath  "{dep_elpa}/lib"
+_mbsg_prepend_libpath  "{dep_netcdf_fortran}/lib"
 
-export MOLBUILDER_SIESTA_GPU_PREFIX="$CONDA_PREFIX/opt/siesta-gpu-stack"
+export MOLBUILDER_SIESTA_GPU_PREFIX="{prefix}"
 
 # OpenMPI shared-memory backing files MUST live on node-local fast
 # storage -- NEVER on the NFS-mounted conda env prefix or $HOME.
@@ -1647,9 +1651,9 @@ _mbsg_drop_from_path_var() {
     export "$var=$out"
 }
 
-_mbsg_drop_from_path_var PATH            "$CONDA_PREFIX/opt/siesta-gpu-stack/siesta/bin"
-_mbsg_drop_from_path_var LD_LIBRARY_PATH "$CONDA_PREFIX/opt/siesta-gpu-stack/elpa/lib"
-_mbsg_drop_from_path_var LD_LIBRARY_PATH "$CONDA_PREFIX/opt/siesta-gpu-stack/netcdf_fortran/lib"
+_mbsg_drop_from_path_var PATH            "{dep_siesta}/bin"
+_mbsg_drop_from_path_var LD_LIBRARY_PATH "{dep_elpa}/lib"
+_mbsg_drop_from_path_var LD_LIBRARY_PATH "{dep_netcdf_fortran}/lib"
 _mbsg_drop_from_path_var LD_LIBRARY_PATH "$CONDA_PREFIX/lib"
 
 # Only unset OMPI_MCA_orte_tmpdir_base if WE set it -- never trample
@@ -2702,6 +2706,29 @@ def builtin_recipes() -> Tuple[Recipe, ...]:
 def recipe_by_name(name: str) -> Optional[Recipe]:
     """Look up a recipe by its canonical (default) env name."""
     return next((r for r in builtin_recipes() if r.name == name), None)
+
+
+def recipe_of_category(category: Optional[str]) -> Recipe:
+    """The recipe whose env holds ``category`` -- ``None``, the host env's
+    -- the lookup every surface outside the recipes asks to name what
+    installs an env (a recipe's own data names itself): `install` takes a
+    recipe, and an env's name is the person's (``envs.<category>`` in
+    ``molbuilder.json``), equal to its recipe's only by default."""
+    for recipe in builtin_recipes():
+        if recipe.category == category:
+            return recipe
+    raise KeyError(
+        f"no recipe holds the env category {category!r} -- the categories "
+        f"are {', '.join(str(r.category) for r in builtin_recipes())}")
+
+
+def recipe_of_env(name: str, caps: Capabilities) -> Optional[Recipe]:
+    """The recipe whose env is called ``name`` on this machine (its
+    :func:`effective_name`) -- what installs the env a run enters, routed or
+    forced by `prep --env`; ``None`` for an env molbuilder does not
+    install."""
+    return next((r for r in builtin_recipes()
+                 if effective_name(r, caps) == name), None)
 
 
 def effective_name(recipe: Recipe, caps: Capabilities) -> str:

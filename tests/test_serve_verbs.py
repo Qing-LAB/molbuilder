@@ -82,23 +82,62 @@ def test_a_dead_pid_reads_dead_and_a_live_foreign_one_foreign(tmp_path):
         sleeper.wait()
 
 
-def test_signalling_a_stale_pidfile_reports_and_cleans_never_signals(
-        tmp_path, monkeypatch):
-    # The pidfile lives under the RUNTIME directory, and the real one
-    # (/run/user/$UID) exists -- so this test names a temporary root rather
-    # than writing a pidfile into the live location.
+@pytest.mark.parametrize("which, what", [("serve", "molbuilder serve"),
+                                         ("notebook", "molbuilder notebook")])
+@pytest.mark.parametrize("found, said, kept", [
+    ("stale", "stale pidfile: pid {pid} is gone (removed {path})", False),
+    ("names-no-pid", "not running ({path} names no pid)", True),
+    ("recycled", "refusing: pid {pid} is not your {what} -- the pidfile is "
+                 "stale and the pid was recycled", True),
+])
+def test_both_pidfiles_are_verified_by_one_step_in_one_set_of_words(
+        tmp_path, monkeypatch, which, what, found, said, kept):
+    """Every verb verifies before it acts (`deployment.md` § 1.0a; the
+    notebook's, `web/jupyter.md` § 3.3): the supervisor's pidfile and the
+    notebook shepherd's by ONE step, in one set of words -- a stale file
+    removed and said by its path; a file that names no pid said as such,
+    never as no file at all; a pid that is alive and not ours refused, the
+    file kept.  THE SILENT FAILURE: a recycled pid signalled -- an innocent
+    process killed.  The pidfile lives under a temporary RUNTIME root."""
     monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path / "runtime"))
-    # The pidfile's one door is `config_dir.serve_pidfile` -- the daemon asks
-    # it directly, and so does this test.
-    from molbuilder.config_dir import serve_pidfile
-    serve_pidfile(7777).parent.mkdir(parents=True, exist_ok=True)
-    serve_pidfile(7777).write_text("999999999\n")
-    sent = []
+    from molbuilder.config_dir import jupyter_pidfile, serve_pidfile
+    path = (serve_pidfile if which == "serve" else jupyter_pidfile)(7777)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    sleeper = subprocess.Popen([sys.executable, "-c",
+                                "import time; time.sleep(30)"])
+    pid = {"stale": 999_999_999, "recycled": sleeper.pid}.get(found)
+    path.write_text(f"{pid}\n" if pid is not None else "not a pid\n")
+    sent, real_kill = [], os.kill
     monkeypatch.setattr(os, "kill", lambda *a: sent.append(a))
-    ok, msg = sd.signal_supervisor(7777, signal.SIGTERM)
-    assert not ok and "stale" in msg
-    assert sent == [], "a stale pid was SIGNALLED"
-    assert not serve_pidfile(7777).exists(), "the stale file must be cleaned"
+    try:
+        if which == "serve":
+            ok, msg = sd.signal_supervisor(7777, signal.SIGTERM)
+        else:
+            ok, msg = sd.stop_by_pidfile(path, marker=sd.SHEPHERD_MARKER,
+                                         what=what)
+    finally:
+        # THE TEST'S OWN PROCESS, stopped by the real call, not counted.
+        real_kill(sleeper.pid, signal.SIGKILL)
+        sleeper.wait()
+    assert not ok and sent == [], "a pid that is not ours was SIGNALLED"
+    assert msg == said.format(pid=pid, path=path, what=what), msg
+    assert path.exists() is kept
+
+
+def test_status_says_a_pidfile_that_names_no_pid_in_the_same_words(
+        tmp_path, monkeypatch):
+    """`serve status` answers "is the process up" by the pidfile checks
+    `stop` makes (`deployment.md` § 1.0b), so a pidfile that is there and
+    names no pid is said as such -- never as no pidfile at all."""
+    from click.testing import CliRunner
+    from molbuilder.cli import cli
+    from molbuilder.config_dir import serve_pidfile
+    monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path / "runtime"))
+    path = serve_pidfile(7778)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("not a pid\n")
+    r = CliRunner().invoke(cli, ["serve", "status", "--port", "7778"])
+    assert f"not running ({path} names no pid)" in r.output, r.output
 
 
 # ---------------------------------------------------- the respawn policy

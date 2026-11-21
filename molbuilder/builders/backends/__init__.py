@@ -107,9 +107,9 @@ def install_command(env: Optional[str]) -> Optional[str]:
     if env is None:
         return None
     from ...envs.hints import fix_cmd, install_cmd
-    from ...envs.recipes import builtin_recipes
+    from ...envs.recipes import recipe_of_category
     category = None if env == "host" else env
-    recipe = next(r for r in builtin_recipes() if r.category == category)
+    recipe = recipe_of_category(category)
     return (fix_cmd("repair", recipe.name, "--include-optional")
             if category is None else install_cmd(recipe.name))
 

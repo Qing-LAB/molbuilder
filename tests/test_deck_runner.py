@@ -301,3 +301,18 @@ def test_a_real_engine_reports_the_keywords_its_deck_writes(engine):
         assert line in present, (
             f"{engine}: reported writing {line!r} and the rendered deck does "
             f"not contain that line -- the report is the gate's only input")
+
+
+def test_one_write_states_one_moment(monkeypatch):
+    """*"Every file in the calculation folder is put there by one act, at one
+    moment"* (`project-layout.md` § 2): a deck's record says one time, the
+    PROVENANCE block's ``generated-at`` and the ATOM-METADATA block's
+    ``created_at``.  The clock here ticks a second at every
+    read -- the second that, on a real clock, can turn over between two
+    reads during one render."""
+    ticks = iter(f"2026-11-20T10:00:{s:02d}-07:00" for s in range(60))
+    monkeypatch.setattr(se, "generated_at_now", lambda: next(ticks))
+    out = se.render_deck(_spec(), _struct(), _cfg())
+    generated = dr.read_provenance_block(out.text)["generated-at"]
+    created = dr.extract_atom_metadata(out.text)["created_at"]
+    assert generated == created, (generated, created)

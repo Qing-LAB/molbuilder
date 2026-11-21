@@ -183,6 +183,10 @@ class Domain:
               "max_cpus_per_job", "max_cpus_per_node", "max_submit_jobs",
               "gpu", "node_types")
 
+    #: The keys a row must state to be a domain -- ``qos`` as ``null``
+    #: where the pair has none.
+    ROW_KEYS = ("name", "partition", "qos")
+
     #: The tri-state policy columns (see their field note): ``None`` is a
     #: real answer here and lands as ``null``; only ``UNSET`` stays off
     #: the disk.  Every other ``_KNOWN`` column keeps the record style --
@@ -195,13 +199,14 @@ class Domain:
         """A mapping -> a Domain, or ``None`` when it is not one.
 
         The ONE parser, used by the probe and by the record reader alike.
-        ``name``/``partition``/
-        ``qos`` have no default: a row missing one is not a domain, and
-        dropping it beats inventing a blank one that a `prep` check would then
-        compare an ask against.
+        ``name``/``partition``/``qos`` have no default (:data:`ROW_KEYS`): a
+        row missing one is not a domain -- never a blank one invented for a
+        `prep` check to compare an ask against.  The record keeps it as
+        written and says it (:attr:`Environment.unread_domains`,
+        `scheduler.md` R2: nothing is dropped).
         """
         d = dict(row)
-        if not {"name", "partition", "qos"} <= set(d):
+        if not set(cls.ROW_KEYS) <= set(d):
             return None
         known = {k: d.pop(k) for k in list(d) if k in cls._KNOWN}
         return cls(**known, extra=d)
@@ -223,27 +228,36 @@ class Domain:
         return row
 
     @property
+    def sizes(self) -> Tuple[Tuple[Any, ...], Tuple[Any, ...]]:
+        """``(cores, memories in GB)`` of the machines this domain lists
+        (``node_types``) that state their cores, each as it states its
+        sizes -- or, where none does, its largest machine's (``max_cores``,
+        ``max_mem_gb``): `scheduler.md` § 2 and R3, read as the fit reads
+        them (`fit.fit`: a listed machine counts by its stated cores).  THE
+        ONE READING of a queue's sizes: its ranges below and the machines
+        listing (:func:`known_machines`) are said from it."""
+        listed = [t for t in (self.node_types or [])
+                  if isinstance(t, dict) and t.get("cores")]
+        if not listed:
+            return (self.max_cores,), (self.max_mem_gb,)
+        return (tuple(t["cores"] for t in listed),
+                tuple(t.get("mem_gb") for t in listed))
+
+    @property
     def core_range(self) -> str:
         """The core range across this domain's machines -- ``"48-128"``, one
-        number when they are one size -- else ``max_cores``, the largest
-        machine's, for a record that lists none (`scheduler.md` R0).  ONE
-        spelling, read by the queue table and the machines listing."""
+        number when they are one size (:attr:`sizes`) -- ``"-"`` when none
+        is stated."""
         from .quantities import core_range
-        said = core_range([t.get("cores") for t in (self.node_types or [])
-                           if isinstance(t, dict)])
-        return said or (str(self.max_cores) if self.max_cores else "-")
+        return core_range(self.sizes[0]) or "-"
 
     @property
     def mem_range(self) -> str:
         """The memory range across this domain's machines --
-        ``"501-1511.2 GB"`` -- else ``max_mem_gb``, the largest machine's
-        (`scheduler.md` R0)."""
+        ``"501-1511.2 GB"`` (:attr:`sizes`) -- ``"-"`` when none is
+        stated."""
         from .quantities import mem_range
-        said = mem_range([t.get("mem_gb") for t in (self.node_types or [])
-                          if isinstance(t, dict)])
-        if said:
-            return said
-        return f"{float(self.max_mem_gb):g} GB" if self.max_mem_gb else "-"
+        return mem_range(self.sizes[1]) or "-"
 
     @property
     def devices(self) -> Tuple[Device, ...]:
@@ -338,6 +352,21 @@ if tuple(f.name for f in fields(Scheduler))[1:] != _ROLES:
                       f"({', '.join(_ROLES)})")
 
 
+def unread_row_words(row: Mapping[str, Any]) -> str:
+    """A queue row that is no queue (:attr:`Environment.unread_domains`),
+    said by what it lacks -- ``queue htc (no qos)`` -- as the machines
+    listing and a re-probe's question say it (`scheduler.md` R2)."""
+    return (f"queue {row.get('name', '?')} (no "
+            f"{', '.join(k for k in Domain.ROW_KEYS if k not in row)})")
+
+
+#: THE KEYS OF ``env_init`` -- the record's, carried under the same name as
+#: this machine's ``molbuilder.json`` section states them; the section's
+#: reader (`runtime_config`) and the record's own (:meth:`Environment.
+#: from_dict`) read them here.
+ENV_INIT_KEYS = ("activation", "preamble")
+
+
 @dataclass
 class Environment:
     """The portable target description.  Produced by probes,
@@ -350,6 +379,11 @@ class Environment:
     #: wall.  Empty on a workstation, and empty on a cluster until `jobset
     #: probe` has run.
     domains:   List["Domain"] = field(default_factory=list)
+    #: A QUEUE ROW THAT IS NOT ONE -- a hand-edited row missing a key a
+    #: domain states (:data:`Domain.ROW_KEYS`; ``"QoS"`` for ``"qos"``):
+    #: kept as written, written back, and said by the machines listing,
+    #: never dropped and never read as a queue (`scheduler.md` R2).
+    unread_domains: List[Dict[str, Any]] = field(default_factory=list)
     #: HOW A SHELL ON THIS MACHINE ENTERS THE ENVIRONMENT -- the preamble
     #: to run and the activation form to use, as that machine states them
     #: in its own ``molbuilder.json`` (``env_init``, the same name there),
@@ -459,7 +493,8 @@ class Environment:
             "scheduler": self.scheduler.to_dict(),
             "topology": asdict(self.topology),
             "site": asdict(self.site),
-            "domains": [d.to_row() for d in self.domains],
+            "domains": ([d.to_row() for d in self.domains]
+                        + [dict(r) for r in self.unread_domains]),
             # Absent, not empty, when the probe could read no config: a key
             # that is missing and a key that is {} are different claims to
             # anything testing for it.
@@ -487,19 +522,20 @@ class Environment:
                            if k in topo_fields})
         site = Site(**{k: v for k, v in (d.get("site") or {}).items()
                        if k in site_fields})
-        domains = [d for d in (Domain.from_row(r)
-                               for r in (d.get("domains") or []))
-                   if d is not None]
+        read = [(r, Domain.from_row(r)) for r in (d.get("domains") or [])]
+        domains = [dom for _, dom in read if dom is not None]
+        unread_domains = [dict(r) for r, dom in read if dom is None]
         return cls(
             # AS WRITTEN: a record states its scheduler -- a missing one is
             # a record that does not read, never a workstation; a writer it
             # does not name is not guessed.
             scheduler=Scheduler.from_dict(d.get("scheduler")),
             topology=topo, site=site, domains=domains,
+            unread_domains=unread_domains,
             env_init={
                 k: str(v) for k, v in
                 (d.get("env_init") or {}).items()
-                if k in ("preamble", "activation") and v is not None},
+                if k in ENV_INIT_KEYS and v is not None},
             conda_envs=[str(e) for e in (d.get("conda_envs") or [])],
             env_arch=(str(d["env_arch"]) if d.get("env_arch") else None),
             manager_run=({"manager": str(d["manager_run"]["manager"]),
@@ -737,8 +773,8 @@ def _slurm_site(scheduler: Scheduler) -> Tuple[Site, str]:
 def _slurm_in_a_job() -> bool:
     """Whether this runs inside one of SLURM's jobs -- the variable its kind
     names for the job's id is set (`kinds.toml`, ``job``)."""
-    from .kinds import kind
-    return bool(os.environ.get(kind("slurm").job["MB_JOB_ID"]))
+    from .kinds import JOB_ID, kind
+    return bool(os.environ.get(kind("slurm").job[JOB_ID]))
 
 
 def detect_topology(scheduler: Scheduler, *,
@@ -969,15 +1005,22 @@ def calculation_environment(bundle_dir) -> Optional["Environment"]:
     """The record a calculation carries -- its copy of its machine's, taken
     at its first prep (`configuration.md` M-3) -- read; ``None`` before its
     first prep.  A copy that is there and does not read is refused by name
-    (:meth:`UnknownTarget.unreadable_copy`), never read past to another
+    (:meth:`UnknownTarget.unreadable_copy`), and so is one that names no
+    machine (:meth:`UnknownTarget.unnamed_copy`), never read past to another
     scope's record: two stages of one calculation cannot disagree about
-    their machine."""
+    their machine.  The one reader of the copy -- :func:`machine_for` asks
+    it for the calculation's scope."""
     path = calculation_record(bundle_dir)
     env = read_environment(path)
-    if env is None and path.is_file():
-        raise UnknownTarget.unreadable_copy(bundle_dir)
-    if env is not None:
-        env.scope = CALCULATION_SCOPE
+    if env is None:
+        if path.is_file():
+            raise UnknownTarget.unreadable_copy(bundle_dir)
+        return None
+    if env.machine is None:
+        # A COPY THAT NAMES NO MACHINE is no answer to *which machine*: an
+        # explicit error, never any target's (the user, 2026-10-25).
+        raise UnknownTarget.unnamed_copy(bundle_dir)
+    env.scope = CALCULATION_SCOPE
     return env
 
 
@@ -1081,11 +1124,9 @@ def known_machines() -> List[Dict[str, object]]:
         bits = [env.scheduler.kind]
         cores_of, mem_of = [], []
         for d in env.domains or []:
-            listed = [t for t in (d.node_types or []) if isinstance(t, dict)]
-            cores_of += ([t.get("cores") for t in listed] if listed
-                         else [d.max_cores])
-            mem_of += ([t.get("mem_gb") for t in listed] if listed
-                       else [d.max_mem_gb])
+            cores, memories = d.sizes
+            cores_of += cores
+            mem_of += memories
         if env.domains:
             spread = _core_range(cores_of)
             mem = _mem_range(mem_of)
@@ -1123,6 +1164,9 @@ def known_machines() -> List[Dict[str, object]]:
         # stops being invisible.  Here rather than in either surface, because
         # this list has two readers and they must not be able to disagree.
         uninterpreted = sorted({k for d in env.domains for k in d.extra})
+        # A ROW THAT IS NOT A QUEUE is said the same way, by what it lacks
+        # (R2: nothing is dropped) -- the queue it meant is not offered.
+        uninterpreted += [unread_row_words(r) for r in env.unread_domains]
         if uninterpreted:
             # `??` LEADS IT (user, 2026-09-06): this sits mid-way through a
             # dot-separated line of ordinary facts, and a reader scanning for
@@ -1605,17 +1649,13 @@ def machine_for(bundle_dir=None, *, target: Optional[str] = None
             raise AmbiguousTarget(list(_named) + [LOCAL_LABEL])
 
     for label, path in record_scopes(bundle_dir, target):
-        env = read_environment(path)
+        # THE CALCULATION'S OWN COPY, through its one door: there and not
+        # read, or naming no machine, is refused there -- an error, not a
+        # miss, because the next scope is another machine's answer.
+        env = (calculation_environment(bundle_dir)
+               if label == CALCULATION_SCOPE else read_environment(path))
         if env is None:
-            # THE CALCULATION'S OWN COPY, there and unreadable, is an error,
-            # not a miss: the next scope is another machine's answer.
-            if label == CALCULATION_SCOPE and Path(path).is_file():
-                raise UnknownTarget.unreadable_copy(bundle_dir)
             continue
-        if label == CALCULATION_SCOPE and env.machine is None:
-            # A COPY THAT NAMES NO MACHINE is no answer to *which machine*:
-            # an explicit error, never any target's (the user, 2026-10-25).
-            raise UnknownTarget.unnamed_copy(bundle_dir)
         if label == CALCULATION_SCOPE and target is not None \
                 and env.machine != target:
             # SET AT ITS FIRST PREP, AND IT DOES NOT CHANGE (M-3; user,

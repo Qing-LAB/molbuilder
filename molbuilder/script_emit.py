@@ -570,10 +570,9 @@ __all__ = [
 #  It lives HERE, not in one engine, because § 2 of `engines/overview.md` #
 #  makes this module the shared script-contract wrapper both emitters     #
 #  call, and because the note is per-ITEM: an item may serve one engine   #
-#  or several, so the lookup takes the ENGINE and asks the one read API   #
-#  (`template.one`), which answers None for "not for this engine" and     #
-#  raises for "no such item" -- two different answers that must not read  #
-#  the same.                                                             #
+#  or several, so the lookup takes the ENGINE (`_declaration`, over      #
+#  `template.one`): an item not for this engine and a name the catalogue  #
+#  never had both answer None -- the doors are asked catalogue names.    #
 # --------------------------------------------------------------------- #
 
 
@@ -597,11 +596,7 @@ def deck_note(item_name, engine, *lead, extra=()):
     catalogue writes help with a hard newline between thoughts.
     """
     import textwrap
-    from . import template as _T
-    try:
-        it = _T.one(_T.catalogue(), item_name, engine=engine)
-    except KeyError:
-        it = None
+    it = _declaration(item_name, engine)
     out = [""]
     for ln in lead:
         out.append("# %s" % ln)
@@ -661,7 +656,8 @@ class Parameter:
     #: EMPTY rather than handing over another engine's guidance.
     engine: str
     #: The catalogue's declaration, or ``None`` when this engine has no such
-    #: item. Callers test :attr:`known` rather than this.
+    #: item (or the catalogue none of that name: :func:`_declaration`).
+    #: Callers test :attr:`known` rather than this.
     declaration: Any = None
     #: What THIS calculation resolved it to, when the caller supplied a
     #: config or a rendered deck to read it from; ``None`` when unknown.
@@ -697,6 +693,19 @@ class Parameter:
 
 
 _UNSET = object()
+
+
+def _declaration(name: str, engine: str):
+    """The catalogue's declaration of item ``name`` for ``engine``, or
+    ``None`` -- where that engine has no such item, and for a name the
+    catalogue never had (the doors below are asked catalogue names) -- the
+    one lookup they make (:func:`deck_note`, :func:`parameter`,
+    :func:`deck_values`)."""
+    from . import template as _T
+    try:
+        return _T.one(_T.catalogue(), name, engine=engine)
+    except KeyError:
+        return None
 
 
 def declarations(engine: str = None, *, calculation: str = None,
@@ -751,11 +760,7 @@ def parameter(name: str, engine: str, *, config=None,
     a calculation is the one default, `template.default_of`, asked with its
     kind.
     """
-    from . import template as _T
-    try:
-        decl = _T.one(_T.catalogue(), name, engine=engine)
-    except KeyError:
-        decl = None
+    decl = _declaration(name, engine)
     if value is not _UNSET:
         # A DERIVED value -- one the engine worked out rather than one a field
         # answers.  A block size computed from this deck's rank count is nobody's
@@ -765,11 +770,12 @@ def parameter(name: str, engine: str, *, config=None,
         # the note still come from the catalogue; only the number is the
         # caller's.
         return Parameter(name=name, engine=engine, declaration=decl, value=value)
+    unread = Parameter(name=name, engine=engine, declaration=decl)
     resolved = None
     if decl is not None and config is not None:
         resolved = getattr(config, name, None)
     elif decl is not None and deck_text is not None:
-        resolved = _deck_answer(decl, deck_text, engine)
+        resolved = _deck_answer(unread, deck_text)
     return Parameter(name=name, engine=engine, declaration=decl, value=resolved)
 
 
@@ -792,7 +798,7 @@ def not_set_line(param: "Parameter", keyword: str = "") -> str:
     return f"# {key} not written: {said}"
 
 
-def _deck_answer(decl, deck_text: str, engine: str):
+def _deck_answer(param: "Parameter", deck_text: str):
     """What a RENDERED deck says for this item, or ``None`` -- its first
     keyword's answer (:func:`_deck_answers`).
 
@@ -802,12 +808,13 @@ def _deck_answer(decl, deck_text: str, engine: str):
     reader that needs each -- the run record's asked column (`model/parse.md`
     § 5d.3) -- asks :func:`deck_values`.
     """
-    answers = _deck_answers(decl, deck_text, engine)
+    answers = _deck_answers(param, deck_text)
     return next(iter(answers.values()), None) if answers else None
 
 
-def _deck_answers(decl, deck_text: str, engine: str) -> Dict[str, Any]:
-    """``{keyword: value}`` for each keyword this item writes that the deck
+def _deck_answers(param: "Parameter", deck_text: str) -> Dict[str, Any]:
+    """``{keyword: value}`` for each keyword this item writes
+    (:attr:`Parameter.writes`) that the deck
     carries, in the item's order -- ``{}`` for an engine whose deck states no
     keywords (a script's values are its own).
 
@@ -819,8 +826,7 @@ def _deck_answers(decl, deck_text: str, engine: str) -> Dict[str, Any]:
     is the whole line after the keyword, unit included** -- ``200.0 Ry``, not
     ``200.0``.
     """
-    keys = (tuple(decl.expands) if decl.expands
-            else ((decl.anchor,) if decl.anchor else ()))
+    keys, engine = param.writes, param.engine
     if not keys:
         return {}
     # `parse` imports THIS module (`parse/contract.py`), so the import is
@@ -852,28 +858,24 @@ def _deck_answers(decl, deck_text: str, engine: str) -> Dict[str, Any]:
 def deck_values(name: str, engine: str, deck_text: str) -> Dict[str, Any]:
     """``{keyword: value}`` -- what a rendered deck says for EACH keyword an
     item writes.  :func:`parameter`'s ``value`` is the first of them."""
-    from . import template as _T
-    try:
-        decl = _T.one(_T.catalogue(), name, engine=engine)
-    except KeyError:
-        decl = None
-    return (_deck_answers(decl, deck_text, engine) if decl is not None
-            else {})
+    return _deck_answers(Parameter(name=name, engine=engine,
+                                   declaration=_declaration(name, engine)),
+                         deck_text)
 
 
-def restart_group(engine: str, deck_text: Optional[str]
+def restart_group(engine: str, deck_text: str
                   ) -> Optional[Dict[str, bool]]:
     """A deck's RESTART GROUP -- ``{keyword: reads}`` for each keyword the
     catalogue's ``restart`` item writes (its ``expands``) that the deck
     states, spelled as the catalogue spells it and read as the deck's
     keywords read a switch (its engine's keyword reader's ``true``, `engine_table`);
-    ``None`` for a script deck, or no text.  The ONE reader of whether a
+    ``None`` for a script deck.  The ONE reader of whether a
     deck reads the state a run before it left: the run script's Mode line
     (`runwrap`) and a benchmark trial's cold check (`jobset.agreement`).
     First match wins, as the engine's reader does."""
     from .engine_table import keywords
     kw = keywords(engine)
-    if deck_text is None or kw is None:
+    if kw is None:
         return None
     return {k: kw.true(str(v).split())
             for k, v in deck_values("restart", engine, deck_text).items()}
@@ -1308,9 +1310,12 @@ def render_deck(spec: "DeckSpec", struct, cfg, *,
     # WHO SET EACH VALUE -- `resolve`'s rows, handed over by every road that
     # renders (`sources`; `job-contracts.md` § 3.2).  None handed is said,
     # never left blank.
+    # ONE MOMENT FOR THE WRITE: the provenance and the atoms' record say
+    # the same time.
+    written_at = generated_at_now()
     record: List[str] = [emit_provenance(
         generator_version=generator_version(),
-        generated_at=generated_at_now(),
+        generated_at=written_at,
         engine=spec.engine,
         parameters=sources,
         parameters_unrecorded=sources is None)]
@@ -1324,7 +1329,7 @@ def render_deck(spec: "DeckSpec", struct, cfg, *,
             record.append(emit_bench_marks(**marks))
             in_record.append("BENCH-MARKS")
     record.append(emit_atom_metadata(struct, created_by=spec.created_by,
-                                     created_at=generated_at_now()))
+                                     created_at=written_at))
     in_record.append("ATOM-METADATA")
     # PLACED AT THE HAND-OFF (user, 2026-09-25): the cell origin at (0,0,0)
     # and every atom inside the cell, or the deck refuses (§ 6.0, check 3).

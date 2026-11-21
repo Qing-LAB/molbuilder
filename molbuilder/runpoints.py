@@ -526,15 +526,28 @@ def count(index: Dict[str, Any], rows) -> str:
 #  A part, resolved on either side                                       #
 # --------------------------------------------------------------------- #
 
+def _parts_of(ref: str) -> Tuple[str, str]:
+    """``(module, NAME)`` of a record's ``module:NAME`` -- the one reading
+    of the form; one without its ``:`` is refused naming it."""
+    module, sep, name = str(ref).partition(":")
+    if not sep:
+        raise ValueError(f"{ref!r} is no part: \"module:NAME\"")
+    return module, name
+
+
+def module_of(ref: str) -> str:
+    """The module a record's ``module:NAME`` names -- what travels beside a
+    job for it (`runwrap`'s bundle)."""
+    return _parts_of(ref)[0]
+
+
 def part(ref: str) -> Any:
     """THE OBJECT A RECORD NAMES -- ``module:NAME`` -- from where this
     module itself came (`runs-of-points.md` § 2.1): the package on this
     machine; beside a job, the module the bundle holds under its last name
     -- never a molbuilder the job's environment may hold, which need not be
     the bundle's.  A name that does not resolve is refused naming it."""
-    module, sep, name = str(ref).partition(":")
-    if not sep:
-        raise ValueError(f"{ref!r} is no part: \"module:NAME\"")
+    module, name = _parts_of(ref)
     try:
         mod = importlib.import_module(
             module if _IN_PACKAGE else module.rsplit(".", 1)[-1])
@@ -556,7 +569,7 @@ __all__ = ["SCHEMA", "DONE", "RAN", "AGAIN", "CONTINUE", "NOT_RUN", "tally",
            "note", "rows_of", "still_to_run", "close", "state_word",
            "not_done_words",
            "run_state", "reason", "round_ended", "round_outcome", "said",
-           "outcomes", "count", "part"]
+           "outcomes", "count", "part", "module_of"]
 
 
 #: WHAT THIS MODULE NEEDS BESIDE IT in a job's bundle -- the modules it

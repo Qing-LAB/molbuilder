@@ -13,6 +13,14 @@
 # A RULE CHANGES, ITS ROWS CHANGE.  A case is a row here, never a function.
 
 [[case]]
+name = "a queue row that is no queue is in the record's queue list: a re-probe asks about it with the queues, and --yes takes the probe's (configuration.md M-6; scheduler.md R2)"
+ends_at = "probe"
+record = { unread_domains = [{ name = "htc", partition = "htc", QoS = "public" }] }
+probe = [[]]
+probe_said = ["domains"]
+record_says = { domains = [] }
+
+[[case]]
 name = "a fact the probe cannot see is declared to it, and lands typed"
 ends_at = "probe"
 probe = [["--set", "gpus_per_node=4", "--set", "gpu_type=a100", "--set", "mem_total_gb=1536.5", "--set", "arch=aarch64"]]

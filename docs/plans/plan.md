@@ -12,7 +12,7 @@ at 2.77.9 is [`archive/2026-11-19-plan-consolidation.md`](?doc=archive/2026-11-1
 
 ## ▶ Where we are *(2026-11-20)*
 
-**2.77.17.** F0–F11 and F7a are closed (2.56.2–2.77.2). 2.77.10 brought Plotly's toolbar back on every chart, each chart's Export in a strip above it, and 2.77.12 a vibration mode's animation into a column beside the spectrum and its table, held in view *(the user, 2026-11-19)*. F12, *Proven*, walked
+**2.77.18.** F0–F11 and F7a are closed (2.56.2–2.77.2). 2.77.10 brought Plotly's toolbar back on every chart, each chart's Export in a strip above it, and 2.77.12 a vibration mode's animation into a column beside the spectrum and its table, held in view *(the user, 2026-11-19)*. F12, *Proven*, walked
 its three roads in the browser on real runs, ran the full batch (6106 fast
 and 805 e2e tests, none failed, at 2.77.2) and its two review rounds
 ([`archive/audits/2026-11-18-f12-review/`](?doc=archive/audits/2026-11-18-f12-review/TRIAGE-round1.md));
@@ -25,7 +25,8 @@ along"; five releases, each with its two review rounds)*. F12's fix releases
 scientific refusal a warning, the person's files, a failure in words, the
 pages' folder and run, MolView); 7, the viewers — the animation 2.77.13,
 the spectrum chart 2.77.14, the spectra page 2.77.15 (R1); 8, the run script
-and the machine 2.77.16 (R2); 9, the jobs, run files and records 2.77.17 (R3a).
+and the machine 2.77.16 (R2); 9, the jobs, run files and records 2.77.17 (R3a);
+10, the run script, envs and server process 2.77.18 (R3b).
 
 1. **R1 — the viewers' last part, the spectra page** — done, 2.77.15.
 2. **R2 — the run script and the machine** — done, 2.77.16 (§ H, the user's
@@ -35,23 +36,25 @@ and the machine 2.77.16 (R2); 9, the jobs, run files and records 2.77.17 (R3a).
 3. **R3 — one home per fact, the server side**, in six parts: R3a the jobs,
    run files and records — done, 2.77.17
    ([`fix9-review.md`](?doc=archive/audits/2026-11-18-f12-review/fix9-review.md));
-   R3b the run script, envs and server process; R3c templates and engines;
+   R3b the run script, envs and server process — done, 2.77.18
+   ([`fix10-review.md`](?doc=archive/audits/2026-11-18-f12-review/fix10-review.md));
+   R3b2 the two job bundles built from their modules' own lists, as the
+   monitor's is (R2-3 F1: about 50 modules state what they import beside a
+   job, 6 a travel name, the trajectory emitter and the mode selection one
+   name each — its own release after R3b, *the user, 2026-11-20*); R3c
+   templates and engines;
    R3d transport and spectra, with the SIESTA vibration's data files on the
    shared writers; R3e parse and builders; R3f the web server, with the side
    rail's height measured on the real pages and brought to the user first
-   *(the user, 2026-11-20)*. Round 2's items for jobset,
-   run files and records, the run script and monitor, template and engines,
-   transport, spectra, parse, structure and builders, and the web server
+   *(the user, 2026-11-20)*. Round 2's items for template and engines
+   (with `r2-3` F3, the pipeline log's order beside `template.SAID`, its
+   owner), transport, spectra, parse, structure and builders, and the web
+   server
    (`TRIAGE-round2.md` § Biggest one-home items, and each `r2-*.md`), with
-   the five chapter sentences that need code (A-U6, B-U3, C-U3, H-U4, H-U5);
-   and three R2 left here: the monitor samples every GPU on the machine, not
-   the job's (`run-reports.md` § 2.1a; the system-load page shares the
-   sampler); two run-script messages hand `install` an env's name, not its
-   recipe's; a structure title pasted with a line separator (U+2028) cannot
-   be saved -- the title is one line, at its door. Left to its parts by
-   R3a's review (`fix9-review.md`): **R3b** — `runwrap` splits a part's
-   module off `module:NAME` itself (`runpoints.part` is the one reader);
-   **R3c** — `pyscf/script_input` and `script_emit` find block fences by
+   the chapter sentences that need code (H-U4, H-U5); and one R2 left
+   here: a structure title pasted with a line separator (U+2028) cannot be
+   saved — the title is one line, at its door. Left to its parts by R3a's
+   review (`fix9-review.md`): **R3c** — `pyscf/script_input` and `script_emit` find block fences by
    exact text (`deck_record.MARKER_RE` is the grammar), the generated
    PySCF scripts write the standard atmosphere and the atomic mass unit as
    numbers (`constants.ATM_PA`, `AMU_KG`), `template._refuse` copies the
@@ -162,7 +165,12 @@ design with its science first.
   SCHED-R, § 1ac's proofs 3a and 3b, the PySCF environment's `netcdf4`, the
   gcc 15 pin (the ledger's *After — Sol*, 13 rows), and the monitor's cgroup
   v1 readings (`tests/field/test_the_monitor_reads_its_job.py`), in one pass
-  on Sol.
+  on Sol; and **each rank's cores** (`fix10-review.md`, round 2 #14): under
+  `mpirun` with no binding flags — a GPU job under a scheduler, and every CPU
+  launch — OpenMPI binds a rank to one core, so a rank's `-c`/`-omp` threads
+  may share it; a Sol GPU run's session log says each rank's cores
+  (`molbuilder[rank i/n] … cpus=`), and a hybrid CPU build has no such line
+  yet. The binding is decided on that evidence (`running-a-job.md` § 3.3).
 - **When needed**: a real fully relativistic pseudopotential — take one from
   PseudoDojo's `nc-fr` set into `tests/fixtures/psml/` and read
   `relativity="dirac"` as spin-orbit on it.

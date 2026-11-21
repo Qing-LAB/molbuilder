@@ -951,8 +951,9 @@ def _label_of(path: Path, place: Place) -> Optional[str]:
 
 def _copy_of_its_machine(base):
     """The calculation's copy of its machine's record, through its door
-    (`record.calculation_environment`) -- ``None`` when there is none or it
-    does not read here: an answer about a run reads on without it."""
+    (`record.calculation_environment`) -- ``None`` when there is none, or
+    it does not read here or names no machine: an answer about a run reads
+    on without it."""
     from molbuilder.scheduler.record import (UnknownTarget,
                                              calculation_environment)
     try:

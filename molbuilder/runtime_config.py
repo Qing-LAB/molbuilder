@@ -48,7 +48,8 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, List, Mapping, Optional, Tuple
+from typing import (TYPE_CHECKING, Any, Dict, List, Mapping, NamedTuple,
+                    Optional, Tuple)
 
 from .config_dir import PRIVATE_FILE_MODE, config_dir
 from .persist import read_object, unknown_keys, write_json
@@ -677,9 +678,6 @@ def _read_scheduler_retired(raw: Mapping[str, Any]):
         path=CONFIG_FILENAME, probe=probe_command()))
 
 
-_ENV_INIT_KEYS = ("activation", "preamble")
-
-
 def _read_env_init(raw: Mapping[str, Any]):
     """``env_init`` -- how a shell on THIS machine enters a conda environment
     (`configuration.md` § 4): ``activation``, one of :data:`ACTIVATION_FORMS`
@@ -687,10 +685,11 @@ def _read_env_init(raw: Mapping[str, Any]):
     `jobset probe` copies both into every record it writes, and prep reads
     them from the target's record.  Another key is refused by name; a ``_``
     key is a comment."""
+    from .scheduler.record import ENV_INIT_KEYS
     section = _require_object_section(raw, "env_init")
     if section is None:
         return None
-    _refuse_unknown(section, _ENV_INIT_KEYS, "env_init")
+    _refuse_unknown(section, ENV_INIT_KEYS, "env_init")
     activation = section.get("activation")
     if activation is not None and activation not in ACTIVATION_FORMS:
         raise RuntimeConfigError(
@@ -710,9 +709,10 @@ def _read_script_generation_renamed(raw: Mapping[str, Any]):
     to write in its place -- its own values, so the message moves them."""
     if raw.get("script_generation") is None:
         return None
+    from .scheduler.record import ENV_INIT_KEYS
     section = raw["script_generation"]
     section = section if isinstance(section, Mapping) else {}
-    block = {k: section[k] for k in _ENV_INIT_KEYS
+    block = {k: section[k] for k in ENV_INIT_KEYS
              if isinstance(section.get(k), str) and section[k].strip()}
     raise RuntimeConfigError(_SCRIPT_GENERATION_RENAMED.format(
         path=CONFIG_FILENAME, env_init=json.dumps(block)))
@@ -1272,10 +1272,37 @@ def get_checkpoint(engine: Optional[str] = None) -> Dict[str, Any]:
     }
 
 
-#: The activation's two legal values, in ONE home: `env_init` is checked
-#: against them, and `envs init-config` offers them as the choices.
-#: Presentation order is the caller's business.
-ACTIVATION_FORMS: tuple = ("source activate", "conda activate")
+class ActivationForm(NamedTuple):
+    """One way a shell enters a conda env (:data:`ACTIVATION_ROWS`)."""
+    #: The words ``env_init.activation`` states, and the line runs.
+    words: str
+    #: Whether a non-interactive shell needs conda's hook sourced first --
+    #: the preamble.  ``conda activate`` is a shell function the hook
+    #: defines; ``source activate`` is a script on PATH and needs none.
+    needs_hook: bool
+    #: How `envs init-config`'s question describes it.
+    menu: str
+
+
+#: HOW A SHELL ENTERS A CONDA ENV, in ONE home, one row each, in the order
+#: `configuration.md` § 4 states them: `env_init` is checked against their
+#: words, the question lists them (in its own order), and whether a
+#: preamble belongs with one is its row's.
+ACTIVATION_ROWS: Tuple[ActivationForm, ...] = (
+    ActivationForm("source activate", False,
+                   "HPC, `module load mamba` toolchain"),
+    ActivationForm("conda activate", True,
+                   "conda's hook is sourced (typical workstation)"),
+)
+
+#: The activation's legal values -- the rows' words.
+ACTIVATION_FORMS: tuple = tuple(row.words for row in ACTIVATION_ROWS)
+
+
+def activation_form(words: Optional[str]) -> Optional[ActivationForm]:
+    """The row whose words are ``words``, or ``None`` for words no row
+    states."""
+    return next((row for row in ACTIVATION_ROWS if row.words == words), None)
 
 
 # --------------------------------------------------------------------- #
@@ -1496,8 +1523,9 @@ def get_env_init() -> Dict[str, str]:
     only when stated -- from this machine's own ``molbuilder.json``
     (`configuration.md` § 4).  What `jobset probe` copies into the record it
     writes."""
+    from .scheduler.record import ENV_INIT_KEYS
     section = read_config().get("env_init") or {}
-    return {k: section[k] for k in _ENV_INIT_KEYS
+    return {k: section[k] for k in ENV_INIT_KEYS
             if isinstance(section.get(k), str) and section[k].strip()}
 
 
@@ -1620,4 +1648,7 @@ __all__ = [
     "get_launch_mode",
     "get_env_init",
     "ACTIVATION_FORMS",
+    "ACTIVATION_ROWS",
+    "ActivationForm",
+    "activation_form",
 ]

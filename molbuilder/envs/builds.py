@@ -50,6 +50,7 @@ from .abi import (
     Finding,
     Severity,
     check_toolchain_executes,
+    run_capture,
 )
 from . import hints as _hints
 from .recipes import BuildComponent, BuildSpec
@@ -882,15 +883,6 @@ class ToolchainProbe:
         return f"sm_{self.cuda_cc_numeric}"
 
 
-def _run_capture(argv: Sequence[str], *, env: Optional[Mapping[str, str]] = None,
-                 timeout: int = 60) -> subprocess.CompletedProcess:
-    """Run a subprocess capturing stdout+stderr; never raises on rc != 0."""
-    return subprocess.run(
-        list(argv), capture_output=True, text=True, timeout=timeout,
-        env=dict(env) if env is not None else None,
-    )
-
-
 def _detect_cuda_home(env_prefix: Optional[str]) -> Optional[str]:
     """Find the CUDA toolkit root.
 
@@ -919,7 +911,7 @@ def detect_nvidia_driver() -> Optional[str]:
     smi = shutil.which("nvidia-smi")
     if not smi:
         return None
-    cp = _run_capture([
+    cp = run_capture([
         smi, "--query-gpu=driver_version", "--format=csv,noheader",
     ])
     if cp.returncode != 0:
@@ -933,7 +925,7 @@ def _detect_cuda_version(cuda_home: str) -> Optional[str]:
     nvcc = Path(cuda_home, "bin", "nvcc")
     if not nvcc.exists():
         return None
-    cp = _run_capture([str(nvcc), "--version"])
+    cp = run_capture([str(nvcc), "--version"])
     if cp.returncode != 0:
         return None
     # Output line: "Cuda compilation tools, release 12.4, V12.4.131"
@@ -959,7 +951,7 @@ def _detect_compute_cap() -> Optional[str]:
     smi = shutil.which("nvidia-smi")
     if not smi:
         return None
-    cp = _run_capture([
+    cp = run_capture([
         smi, "--query-gpu=compute_cap", "--format=csv,noheader",
     ])
     if cp.returncode != 0:
@@ -984,7 +976,7 @@ def _detect_gcc_version(env_prefix: str) -> Optional[str]:
     ]
     for cand in candidates:
         if cand.exists():
-            cp = _run_capture([str(cand), "-dumpfullversion"])
+            cp = run_capture([str(cand), "-dumpfullversion"])
             if cp.returncode == 0 and cp.stdout.strip():
                 return cp.stdout.strip()
     return None
@@ -995,7 +987,7 @@ def _detect_openmpi_version(env_prefix: str) -> Optional[str]:
     mpirun = Path(env_prefix, "bin", "mpirun")
     if not mpirun.exists():
         return None
-    cp = _run_capture([str(mpirun), "--version"])
+    cp = run_capture([str(mpirun), "--version"])
     if cp.returncode != 0:
         return None
     # Output line: "mpirun (Open MPI) 5.0.5"
@@ -1073,7 +1065,7 @@ def detect_gpu_name() -> Optional[str]:
     smi = shutil.which("nvidia-smi")
     if not smi:
         return None
-    cp = _run_capture([
+    cp = run_capture([
         smi, "--query-gpu=name", "--format=csv,noheader",
     ])
     if cp.returncode != 0:
@@ -1196,10 +1188,8 @@ def check_url_reachable(url: str, *, timeout: int = 15) -> Optional[str]:
     if shutil.which("curl") is None:
         return "curl CLI not found on PATH; install curl."
     try:
-        cp = subprocess.run(
-            ["curl", "-fsI", "--max-time", str(timeout), url],
-            capture_output=True, text=True, timeout=timeout + 5,
-        )
+        cp = run_capture(["curl", "-fsI", "--max-time", str(timeout), url],
+                         timeout=timeout + 5)
     except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as exc:
         return f"curl HEAD failed: {exc}"
     if cp.returncode != 0:
@@ -1219,10 +1209,8 @@ def check_repo_reachable(repo_url: str, *, timeout: int = 15
     if shutil.which("git") is None:
         return "git CLI not found on PATH; install git."
     try:
-        cp = subprocess.run(
-            ["git", "ls-remote", "--heads", repo_url],
-            capture_output=True, text=True, timeout=timeout,
-        )
+        cp = run_capture(["git", "ls-remote", "--heads", repo_url],
+                         timeout=timeout)
     except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as exc:
         return f"git ls-remote failed: {exc}"
     if cp.returncode != 0:
@@ -1767,7 +1755,7 @@ def _build_substitutions(component: BuildComponent,
     separator and rejects ``{dep:elpa}``.
     """
     subs = {
-        "prefix": str(paths.root),
+        **_layout_substitutions(spec, paths),
         # ``env_prefix`` points at $CONDA_PREFIX itself -- used to pin
         # cmake to the conda env's compilers / MPI / CUDA / libs so
         # FindMPI / FindCUDA / FindBLAS can't pick up system installs.
@@ -1783,9 +1771,17 @@ def _build_substitutions(component: BuildComponent,
         "cuda_home": probe.cuda_home or probe.env_prefix,
         "jobs": str(probe.jobs),
     }
-    for other in spec.components:
-        subs[f"dep_{other.name}"] = str(paths.component_install(other.name))
     return subs
+
+
+def _layout_substitutions(spec: BuildSpec, paths: BuildPaths
+                          ) -> Dict[str, str]:
+    """The layout's placeholders, a component field's and a hook's alike:
+    ``{prefix}``, the stack's root, and ``{dep_<name>}``, each component's
+    install (:func:`resolve_paths`)."""
+    return {"prefix": str(paths.root),
+            **{f"dep_{c.name}": str(paths.component_install(c.name))
+               for c in spec.components}}
 
 
 def _apply_template(argv: Sequence[str], subs: Mapping[str, str]) -> Tuple[str, ...]:
@@ -1802,22 +1798,39 @@ def _apply_template(argv: Sequence[str], subs: Mapping[str, str]) -> Tuple[str, 
     return tuple(out)
 
 
-def render_activate_hook(spec: BuildSpec) -> str:
-    """Render the activate.d hook body for the spec.
+#: A layout placeholder in a hook's text -- ``{prefix}``, ``{dep_<name>}``
+#: -- and never bash's own ``${...}``.
+_HOOK_PLACEHOLDER = re.compile(r"(?<!\$)\{([a-z_][a-z0-9_]*)\}")
 
-    The hook uses literal ``$CONDA_PREFIX`` (resolved at activation
-    time by conda itself) -- no install-time-baked absolute paths
-    means the hook still works if the env is cloned or moved.  This
-    function is therefore a pass-through; the BuildSpec writes the
-    hook text it wants verbatim.
-    """
-    return spec.activate_hook or ""
+
+def _render_hook(spec: BuildSpec, text: str) -> str:
+    """A hook's text with the stack's layout filled in, as
+    :func:`resolve_paths` lays it out -- the one spelling of it -- under the
+    literal ``$CONDA_PREFIX``, resolved at activation by conda itself: no
+    install-time path is baked in, so the hook still works when the env is
+    cloned or moved.  ``{prefix}`` is the stack's root and ``{dep_<name>}``
+    a component's install, as in a component's fields; a placeholder the
+    layout does not name is refused, naming the ones it does -- a renamed
+    component cannot leave a hook putting the old folder on PATH."""
+    subs = _layout_substitutions(spec, resolve_paths(spec, "$CONDA_PREFIX"))
+
+    def _fill(m) -> str:
+        if m.group(1) not in subs:
+            raise ValueError(
+                f"unknown placeholder in the {spec.artifact_subdir} hook: "
+                f"{m.group(0)} (available: {sorted(subs)})")
+        return subs[m.group(1)]
+    return _HOOK_PLACEHOLDER.sub(_fill, text)
+
+
+def render_activate_hook(spec: BuildSpec) -> str:
+    """The activate.d hook body for the spec (:func:`_render_hook`)."""
+    return _render_hook(spec, spec.activate_hook or "")
 
 
 def render_deactivate_hook(spec: BuildSpec) -> str:
-    """Render the deactivate.d hook body (pass-through; see
-    :func:`render_activate_hook`)."""
-    return spec.deactivate_hook or ""
+    """The deactivate.d hook body for the spec (:func:`_render_hook`)."""
+    return _render_hook(spec, spec.deactivate_hook or "")
 
 
 # --------------------------------------------------------------------- #

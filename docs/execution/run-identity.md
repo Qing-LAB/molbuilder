@@ -386,7 +386,9 @@ notion.** A design that names only the filename has described none of it.
 
 - **SIESTA** reads a `.DM` it finds *unless* told `.false.`, and a `.XV` or
   `.CG` only when told `.true.` (`Src/read_options.F90`,
-  `Src/struct_init.F`). So every deck writes each member its run has a use
+  `Src/struct_init.F`; measured 2026-08-18 too: a deck carrying none of the
+  keys, with a `.DM` beside it, read the `.DM`). So every deck writes each
+  member its run has a use
   for, with its answer — `MD.UseSaveCG` in a CG relaxation alone, the one
   branch where SIESTA reads it (`siesta/input.py::_restart_keys`).
 - **PySCF**'s script takes the SCF initial guess from `<JOB>.chk` when that
@@ -402,11 +404,12 @@ neither is the scheduler's business.
 **So they are one named group per engine, and the group is the generator's:**
 
 1. **An engine declares its group** — its identity literal, the parameters
-   bound to it, and the restart files they govern
-   (`identity.RestartGroup`: `config/siesta.py::SIESTA_RESTART_GROUP`,
-   `config/pyscf.py::PYSCF_RESTART_GROUP`; the files in each engine's
-   `warm-files.toml`, [`job-contracts.md`](?doc=execution/job-contracts.md)
-   § 4.2a). *A new engine that cannot fill this in is a new engine whose
+   bound to it, and the restart files they govern — each in the one home
+   its readers ask: the literal's field is the engine record's
+   `identity_field` (`engine_table`), the bound keywords the catalogue's
+   `[item.restart].expands` (for a script, the read branches it
+   generates), and the files each engine's `warm-files.toml`
+   ([`job-contracts.md`](?doc=execution/job-contracts.md) § 4.2a). *A new engine that cannot fill this in is a new engine whose
    restart behaviour nobody has thought about yet.*
 2. **You say one thing; the generator sets the group.** `restart` is one
    field — `continue` or `clean` — and the renderer expands it into that

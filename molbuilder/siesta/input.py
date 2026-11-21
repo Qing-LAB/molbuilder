@@ -248,7 +248,7 @@ def _restart_group_lines(cfg, relax_type=None) -> List[str]:
 
     **`clean` writes `.false.`; it does not stay silent**: SIESTA reads
     ``<SystemLabel>.DM`` when the file is there whatever the deck omits
-    (measured — see ``SIESTA_RESTART_GROUP.mechanism``), so a stage told to
+    (measured: `run-identity.md` § 4), so a stage told to
     start clean would warm-start from whatever the directory held.
 
     The members are read from the catalogue's ``expands``, so a member cannot

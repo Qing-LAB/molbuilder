@@ -2204,7 +2204,7 @@ def _domains_shown(before, probed):
         who = (f"all {len(names)} domains" if len(names) == len(before)
                else ", ".join(names))
         bits.append(f"{who}: {desc}")
-    return "(same domains)", "; ".join(bits) or "(no visible change)"
+    return "(same domains)", "; ".join(bits) or "(same domains)"
 
 
 def _probe_consent_merge(before, probed, *, yes: bool):
@@ -2226,6 +2226,8 @@ def _probe_consent_merge(before, probed, *, yes: bool):
     Returns the record to write.
     """
     import dataclasses as _dc
+
+    from ..scheduler.record import unread_row_words
 
     diffs = []                                # (name, recorded, probed, keep)
     # THE SCHEDULER IS ONE FACT -- its kind and where its commands are,
@@ -2268,13 +2270,20 @@ def _probe_consent_merge(before, probed, *, yes: bool):
             diffs.append((_f, b, pv,
                           lambda n=_f, v=b: setattr(probed, n, v)))
     # The reachable-domain SET is one fact -- a per-row question would ask
-    # about a menu nobody composed row by row.
-    if [d.to_row() for d in before.domains] != \
-            [d.to_row() for d in probed.domains]:
+    # about a menu nobody composed row by row.  Its rows as the record
+    # writes them, a row that is no queue among them: nothing leaves the
+    # record without being shown and answered (`scheduler.md` R2; M-6).
+    if before.to_dict()["domains"] != probed.to_dict()["domains"]:
         shown_b, shown_p = _domains_shown(before.domains, probed.domains)
-        diffs.append((
-            "domains", shown_b, shown_p,
-            lambda: setattr(probed, "domains", list(before.domains))))
+        unread = [unread_row_words(r) for r in before.unread_domains]
+        if unread:
+            shown_b = (shown_b + unread if isinstance(shown_b, list)
+                       else "; ".join([shown_b, *unread]))
+
+        def _keep_domains():
+            probed.domains = list(before.domains)
+            probed.unread_domains = list(before.unread_domains)
+        diffs.append(("domains", shown_b, shown_p, _keep_domains))
 
     if not diffs:
         click.echo("\nnothing else differs -- refreshing detected_at."

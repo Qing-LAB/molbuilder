@@ -81,6 +81,15 @@ said = ["lists no ``molbuilder-siesta-gpu`` environment",
 run_sh = ["molbuilder-siesta-gpu"]
 
 [[case]]
+name = "the GPU env named otherwise on this machine: the note names it by that name and installs it by its recipe (gpu.md G6; configuration.md § 4, envs.<category>)"
+run = { use_gpu = true, gpu_count = 1 }
+machine_config = { envs = { "siesta-gpu" = "my-gpu" } }
+record = { conda_envs = ["molbuilder-siesta"] }
+said = ["lists no ``my-gpu`` environment",
+        "bash scripts/install-env.sh install molbuilder-siesta-gpu"]
+run_sh = ["my-gpu"]
+
+[[case]]
 name = "a GPU job on a queue that lists no GPUs is prepared as asked, its fit saying so (scheduler.md R2a, R6)"
 run = { use_gpu = true, gpu_count = 1, mpi_np = 4 }
 allocation = { domain = "cpu" }

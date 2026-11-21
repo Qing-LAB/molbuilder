@@ -37,6 +37,7 @@ from .chemistry import BackendUnavailable as _BackendUnavailable
 from .chemistry import BuildRefused as _BuildRefused
 from .envs._cli import envs_group
 from .runtime_config import RuntimeConfigError, get_tls, read_config
+from .serve_daemon import SHEPHERD_VERB
 from .atom_permutation import MAP_KEY
 from .engine_table import engines as _engines
 from .kind_table import kinds as _kinds
@@ -3022,7 +3023,7 @@ def _survey_notebooks() -> int:
     return 0 if answered else 1
 
 
-@jupyter_group.command("_shepherd", hidden=True)
+@jupyter_group.command(SHEPHERD_VERB, hidden=True)
 @click.option("--serve-port", type=int, required=True)
 def cmd_jupyter_shepherd(serve_port):
     """NOT FOR PEOPLE -- the process the supervisor launches.
@@ -3138,7 +3139,8 @@ def cmd_serve_status(port):
     that has to be told which port can only ever confirm a guess.
     """
     from .config_dir import serve_log, serve_pidfile
-    from .serve_daemon import pid_state, read_bound_host, read_pid
+    from .serve_daemon import (nothing_named, pid_state, read_bound_host,
+                               read_pid)
 
     if port is None:
         raise SystemExit(_survey())
@@ -3150,7 +3152,7 @@ def cmd_serve_status(port):
             click.echo(f"not running -- stale pidfile at {serve_pidfile(port)} "
                        f"(pid {pid} is gone)")
         else:
-            click.echo(f"not running (no pidfile at {serve_pidfile(port)})")
+            click.echo(nothing_named(serve_pidfile(port)))
         _say_where_else(port)
         raise SystemExit(3)
     if state == "foreign":

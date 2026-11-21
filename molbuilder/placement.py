@@ -31,7 +31,8 @@ from typing import Callable, List, Optional, Tuple
 from .identity import jobs_as_typed
 from .config_dir import (JUPYTER_PIDFILES, PRIVATE_FILE_MODE,
                          PRIVATE_DIR_MODE, SECRETS_DIRNAME, SERVE_PIDFILES,
-                         client_secret, config_dir, pidfile_pattern,
+                         client_secret, config_dir, jupyter_runtime_pattern,
+                         log_pattern, pidfile_pattern,
                          jobs_dir, jupyter_lab_home, logs_dir,
                          reports_dir, runtime_dir, secrets_dir, session_key,
                          state_dir)
@@ -131,7 +132,8 @@ def places() -> Tuple[Place, ...]:
               "the serve log carries a provider's client_secret, routed there "
               "deliberately to keep it out of a user-visible response"),
         Place("a serve log", logs_dir, False, PRIVATE_FILE_MODE,
-              "measured 2026-09-12 carrying a client_secret", "serve-*.log"),
+              "measured 2026-09-12 carrying a client_secret",
+              log_pattern(SERVE_PIDFILES)),
         Place("reports/", reports_dir, True, None,
               "per-run measurements, kept and grepped; a scientific report, "
               "with nothing in it to guard"),
@@ -153,7 +155,7 @@ def places() -> Tuple[Place, ...]:
               "jupyter-server prints its own URL with the token in it at "
               "every start -- measured 2026-09-14 at 0664 with 14 "
               "occurrences of `token=`, and the token reaches a live kernel",
-              "jupyter-*.log"),
+              log_pattern(JUPYTER_PIDFILES)),
         Place("a notebook pidfile", runtime_dir, False, None,
               "an address, not a secret -- the shepherd's, beside the "
               "serve pidfile", pidfile_pattern(JUPYTER_PIDFILES)),
@@ -171,7 +173,7 @@ def places() -> Tuple[Place, ...]:
               PRIVATE_FILE_MODE,
               "it holds the notebook's TOKEN, which authenticates a browser "
               "to a live kernel -- arbitrary code execution as this account",
-              "jupyter-*.json"),
+              jupyter_runtime_pattern()),
         Place("the framed Lab's home", jupyter_lab_home, True,
               PRIVATE_DIR_MODE,
               "molbuilder's own Lab settings and per-server workspaces; it "

@@ -28,7 +28,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple, Union
 
-from ..identity import RestartGroup
 from ..runfiles import NAME_CHARS, NAME_TOKEN
 from ..issues import Issue
 
@@ -226,7 +225,8 @@ class SiestaConfig:
 
     # SCF / MD continuation
     # ``restart`` is the ONE field a user sets; it expands into the keys of
-    # SIESTA_RESTART_GROUP below (docs/execution/run-identity.md § 4).  Nobody is asked to keep three engine keys in step -- they state
+    # the catalogue's `[item.restart].expands` (docs/execution/run-identity.md
+    # § 4).  Nobody is asked to keep three engine keys in step -- they state
     # the intent once and the generator does the rest.
     #
     # It is a shared-schema field, not a stage field: engines/stages.md § 3
@@ -475,45 +475,6 @@ class SiestaConfig:
 #: Spin treatments under which SIESTA stops on a fixed total spin
 #: (``read_options.F90``: ``if (nspin .ne. 2) call die(...)``).
 _ALWAYS_FREE = frozenset({"non-collinear", "spin-orbit"})
-
-
-#: § 4 rule 1 — SIESTA's identity group, declared in one place.
-#:
-#: The literal is what every warm file is keyed by (`job-contracts.md § 4.1`);
-#: the three keys tell SIESTA whether to read those files -- `.true.` to
-#: resume, `.false.` to start clean; it reads a .DM it finds unless told
-#: `.false.`, and an .XV or .CG only when told `.true.` (§ 4.2,
-#: ``mechanism`` below).
-#: Both halves are needed, and stating one without the other is how a deck
-#: comes to say it resumed while the engine started cold.
-#:
-#: ``MD.UseSaveCG`` is emitted only for CG relaxations — Broyden, FIRE and the
-#: dynamics modes ignore it. That conditionality lives in the renderer beside
-#: the optimizer it depends on, not here: this declares what the group *is*,
-#: and the emitter decides which members are meaningful for a given run.
-#: WHICH KEYWORDS: the one authority is `[item.restart].expands`, and every
-#: production reader goes there through `script_emit.parameter`.  This tuple
-#: has no production reader and no test holds it to the catalogue.
-SIESTA_RESTART_GROUP = RestartGroup(
-    literal="SystemLabel",
-    keys=("DM.UseSaveDM", "MD.UseSaveXV", "MD.UseSaveCG"),
-    # MEASURED, not assumed (2026-08-18): a deck carrying NONE of these
-    # keys, with a `.DM` beside it, printed:
-    #     Attempting to read DM from file... Succeeded...
-    #     DM from file: <dSpData2D:IO-DM: bdt-e2e-K1C1.DM
-    # -- so the read is not gated on the key being present.  Every member is
-    # therefore written for BOTH answers: `.true.` to continue and `.false.`
-    # to start clean.  Omission is not a refusal, and a design that expressed
-    # "clean" by leaving the keys out was expressing nothing.
-    #
-    # This is the same lesson `Diag.ELPA.GPU` records one file away -- *the
-    # explicit `.false.` is load-bearing* -- learned twice, for the same
-    # reason: what a keyword does when ABSENT is the engine's business, and
-    # the only way to state an intention is to state it.
-    mechanism="declared .fdf keys, written for both answers; SIESTA reads "
-              "a .DM unless told .false., an .XV or .CG only when told .true.",
-    field="system_label",
-)
 
 
 #: What each tier is CALLED.  Decision 27 (2026-08-10) put the ordinal in the

@@ -1053,7 +1053,11 @@ LD_LIBRARY_PATH after activate:
 ```
 
 Sourcing it twice adds no duplicates; the deactivate hook restores
-`/pre/existing` exactly.
+`/pre/existing` exactly. The hooks name the stack's folders by the build's own
+placeholders — `{prefix}` and `{dep_<component>}`, as a component's fields do —
+filled at install under the literal `$CONDA_PREFIX`, so a cloned or moved env
+keeps its paths; a placeholder the build lacks (a component renamed since) is
+refused at install, naming the ones it has.
 **The conda package is not declared, so exactly one `libnetcdff` and one set of
 `.mod` files exist in the env.** Be precise about why, because the obvious reason
 turns out not to hold:

@@ -45,48 +45,6 @@ from dataclasses import dataclass
 from typing import List, Optional, Sequence, Tuple
 
 
-@dataclass(frozen=True)
-class RestartGroup:
-    """§ 4 — what an engine means by *"may I continue this?"*.
-
-    § 4's claim is that this is **not a SIESTA quirk**: every engine has a
-    notion of which prior state belongs to a run, and a set of parameters that
-    decides whether that state is honoured when found. A design naming only the
-    filename has described none of it.
-
-    Two failures follow from getting the second half wrong, and they are
-    silent in opposite directions — *honoured with nothing to load* (the deck
-    says resume, the engine cold-starts) and *present but not honoured* (the
-    files are right there and the stage starts from scratch). **One field
-    cannot produce either**, which is why ``restart`` is one field and this is
-    what it expands into.
-
-    ``literal`` is the engine's job identity — the thing every warm file is
-    keyed by. ``keys`` are declared input keys where the engine has them, and
-    is empty where the mechanism is generated control flow instead;
-    ``mechanism`` says which, in prose, because the difference is real and
-    hiding it behind an empty tuple would be a lie of omission.
-
-    § 4 rule 1: *"A new engine that cannot fill this in is a new engine whose
-    restart behaviour nobody has thought about yet."* That sentence is the
-    reason this is a declared object rather than an ``if engine ==`` somewhere
-    in a renderer — a missing declaration is visible, and a missing branch is
-    not.
-    """
-    literal: str
-    keys: Tuple[str, ...]
-    mechanism: str
-    #: WHICH CONFIG FIELD carries the literal — ``system_label`` / ``job_name``.
-    #:
-    #: ``literal`` is what the engine calls it; this is what molbuilder calls
-    #: it, and a surface that has a config in hand and needs the calculation's
-    #: name needs this one: a calculation named from anything else carries a
-    #: second name, and § 4's *"there is no second name"* is false on disk.
-    #:
-    #: Defaulted so an engine that has not been revisited still constructs;
-    #: the two shipped engines both fill it in.
-    field: str = ""
-
 def continues(cfg) -> bool:
     """Does this run start from what is already in the folder? (§ 4 rule 2.)
 
@@ -709,7 +667,7 @@ __all__ = ["BENCH", "JOBSET_PROG", "TASK", "words_for",
            "started_by_launch",
            "LAUNCHED_WAY_BACK", "launched_way_back", "LAUNCH_MODE_NOTE",
            "MAX_LABEL_BYTES",
-           "RestartGroup", "StageRef", "command_stage", "continues",
+           "StageRef", "command_stage", "continues",
            "checkpoint_as_typed", "checkpoint_words",
            "deck_launch", "electrode_hs_stem", "launch_as_typed",
            "next_run_words", "holds_a_start",

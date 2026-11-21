@@ -266,3 +266,28 @@ def test_a_calculation_whose_machine_record_is_gone_is_refused(cluster):
     assert r.exit_code != 0, r.output
     assert "holds no record of its machine" in r.output, r.output
     assert calls_made(calls) == [], calls_made(calls)
+
+
+def test_a_calculation_whose_machine_record_names_no_machine_is_refused(
+        cluster):
+    """`job-system.md` R-L38 and `preparing-for-another-machine.md` § 4: a
+    calculation's copy of its machine's record that names no machine is no
+    answer to *which machine* -- refused, never any target's -- by the
+    copy's one reader, so the launch refuses it as prep's next look would,
+    in the same words.
+    The name is taken out of the copy after prep, as a person's hand would.
+
+    THE SILENT FAILURE: the job sent on a record that says no machine,
+    with whatever scheduler line it happens to carry."""
+    from molbuilder.scheduler.record import calculation_record
+    bundle, calls = cluster
+    _prep(bundle, "coarse", "--domain", "debug")
+    copy = calculation_record(bundle)
+    record = json.loads(copy.read_text())
+    assert record.pop("machine"), "prep names the machine it sets"
+    copy.write_text(json.dumps(record))
+    r = jobset("launch", "task", "--stage", "coarse", "--bundle", bundle,
+               "--mode", "submit", "--yes")
+    assert r.exit_code != 0, r.output
+    assert "names no machine" in r.output, r.output
+    assert calls_made(calls) == [], calls_made(calls)

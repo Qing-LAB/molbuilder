@@ -259,9 +259,9 @@ def test_template_substitution_in_plan(tiny_spec, fake_probe, tmp_path):
 
 
 def test_activate_hook_uses_literal_conda_prefix(siesta_gpu_spec, fake_probe):
-    """Per the 2026-06-15 design correction: the activate hook is a
-    pass-through (no template substitution).  It uses literal
-    ``$CONDA_PREFIX`` so the hook stays valid if the env is moved.
+    """Per the 2026-06-15 design correction: no install-time path in the
+    activate hook.  Its layout placeholders are filled with the literal
+    ``$CONDA_PREFIX`` root, so the hook stays valid if the env is moved.
     No ``/usr/local/cuda`` paths -- the toolkit ships in the env's lib."""
     rendered = B.render_activate_hook(siesta_gpu_spec)
     # Literal $CONDA_PREFIX, not the install-time-resolved /tmp/env path
@@ -271,6 +271,23 @@ def test_activate_hook_uses_literal_conda_prefix(siesta_gpu_spec, fake_probe):
     assert "/usr/local/cuda" not in rendered
     # Install-time prefix must NOT be baked in either
     assert "/tmp/env/opt/siesta-gpu-stack" not in rendered
+
+
+def test_a_hook_naming_a_component_the_build_lacks_is_refused(
+        siesta_gpu_spec):
+    """A hook's folders are the build's own layout filled into its
+    placeholders (`ops/installation.md` § 6.4), so a hook naming a
+    component the build
+    does not have -- one renamed since -- is refused, naming the ones it
+    has.  THE SILENT FAILURE: the build installs SIESTA to its new folder
+    while the hook puts the old one on PATH, and SIESTA is not found in
+    the env."""
+    import dataclasses
+    spec = dataclasses.replace(
+        siesta_gpu_spec,
+        activate_hook='export PATH="{dep_siesta_old}/bin${PATH:+:}${PATH}"\n')
+    with pytest.raises(ValueError, match=r"dep_siesta_old.*dep_siesta"):
+        B.render_activate_hook(spec)
 
 
 def test_template_substitution_rejects_unknown_placeholder(

@@ -181,8 +181,7 @@ def parse_memory(text) -> Optional[float]:
     if t.endswith("B") and len(t) > 1 and not t[-2].isdigit():
         t = t[:-1]
     mult = 1.0
-    for suffix, mu in (("T", 1024.0), ("G", 1.0),
-                       ("M", 1 / 1024.0), ("K", 1 / 1048576.0)):
+    for suffix, mu in _MEM_UNITS.items():
         if t.endswith(suffix):
             mult, t = mu, t[:-1]
             break

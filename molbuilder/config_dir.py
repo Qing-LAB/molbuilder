@@ -307,9 +307,15 @@ def jobs_dir() -> Path:
     return state_dir() / "jobs"
 
 
-#: THE PROCESSES MOLBUILDER KEEPS A PIDFILE FOR, each its file's family:
-#: the supervisor, and the notebook's shepherd.
+#: THE PROCESSES MOLBUILDER KEEPS FILES FOR BY PORT, each the family its
+#: files' names start with -- pidfile, log, runtime file: the supervisor,
+#: and the notebook's shepherd.
 SERVE_PIDFILES, JUPYTER_PIDFILES = "serve", "jupyter"
+
+
+def _with_port(pattern: str, port: int) -> str:
+    """A name ``pattern`` (``<family>-*.<suffix>``) with its port."""
+    return pattern.replace("*", str(int(port)))
 
 
 def pidfile_pattern(family: str) -> str:
@@ -320,7 +326,7 @@ def pidfile_pattern(family: str) -> str:
 
 
 def _pidfile(family: str, port: int) -> Path:
-    return runtime_dir() / pidfile_pattern(family).replace("*", str(int(port)))
+    return runtime_dir() / _with_port(pidfile_pattern(family), port)
 
 
 def serve_pidfile(port: int) -> Path:
@@ -353,15 +359,29 @@ def ports_with_pidfile(family: str = SERVE_PIDFILES) -> List[int]:
     return sorted(out)
 
 
+def log_pattern(family: str) -> str:
+    """Every log of ``family`` as a name pattern, ``<family>-*.log``: the
+    one spelling of the shape -- each log's name is it with its port
+    (:func:`serve_log`, :func:`jupyter_log`), and the server's stacks log
+    (:func:`serve_stacks_log`) falls inside it too."""
+    return f"{family}-*.log"
+
+
+def jupyter_runtime_pattern() -> str:
+    """Every notebook runtime file as a name pattern -- the shape
+    :func:`jupyter_runtime` fills with its port."""
+    return f"{JUPYTER_PIDFILES}-*.json"
+
+
 def serve_log(port: int) -> Path:
     """Everything the server prints."""
-    return logs_dir() / f"serve-{port}.log"
+    return logs_dir() / _with_port(log_pattern(SERVE_PIDFILES), port)
 
 
 def serve_stacks_log(port: int) -> Path:
     """Thread stacks, appended by the server child's ``faulthandler`` on
     ``SIGUSR1``."""
-    return logs_dir() / f"serve-{port}.stacks.log"
+    return logs_dir() / _with_port(f"{SERVE_PIDFILES}-*.stacks.log", port)
 
 
 # --------------------------------------------------------------------- #
@@ -386,7 +406,7 @@ def jupyter_pidfile(serve_port: int) -> Path:
 
 def jupyter_log(serve_port: int) -> Path:
     """Everything the notebook server prints."""
-    return logs_dir() / f"jupyter-{serve_port}.log"
+    return logs_dir() / _with_port(log_pattern(JUPYTER_PIDFILES), serve_port)
 
 
 def jupyter_runtime(serve_port: int) -> Path:
@@ -397,7 +417,7 @@ def jupyter_runtime(serve_port: int) -> Path:
     through `persist.write_json(mode=PRIVATE_FILE_MODE)` and read by the tab's
     own blueprint -- never by the browser directly.
     """
-    return runtime_dir() / f"jupyter-{serve_port}.json"
+    return runtime_dir() / _with_port(jupyter_runtime_pattern(), serve_port)
 
 
 def jupyter_lab_home() -> Path:

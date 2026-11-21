@@ -234,7 +234,17 @@ def unverified_ctx():
     return ctx
 
 
-def pid_state(pid: Optional[int], *, marker: bytes = b"serve") -> str:
+#: THE WORD each of the two command lines carries beside ``molbuilder`` --
+#: the verb that started it -- which :func:`pid_state` checks before a
+#: signal: the supervisor's (``molbuilder serve``), and the notebook
+#: shepherd's, the hidden verb the supervisor launches (``molbuilder jupyter
+#: _shepherd``: `jupyter.shepherd_argv`, the command `cli` registers).
+SUPERVISOR_MARKER = b"serve"
+SHEPHERD_VERB = "_shepherd"
+SHEPHERD_MARKER = SHEPHERD_VERB.encode()
+
+
+def pid_state(pid: Optional[int], *, marker: bytes = SUPERVISOR_MARKER) -> str:
     """``"ours"`` | ``"foreign"`` | ``"dead"`` — what the pid actually is.
 
     ``foreign`` covers both *someone else's process* and *a recycled pid
@@ -242,8 +252,9 @@ def pid_state(pid: Optional[int], *, marker: bytes = b"serve") -> str:
     module may signal.
 
     ``marker`` is the second word the command line must carry, beside
-    ``molbuilder``: ``serve`` for the supervisor, ``_shepherd`` for the
-    notebook server it holds (`molbuilder.jupyter`).  One verification, two
+    ``molbuilder``: :data:`SUPERVISOR_MARKER` for the supervisor,
+    :data:`SHEPHERD_MARKER` for the notebook server it holds
+    (`molbuilder.jupyter`).  One verification, two
     pidfiles -- a second copy of "alive, yours, actually ours" is how one of
     them comes to be laxer than the other.
     """
@@ -263,8 +274,39 @@ def pid_state(pid: Optional[int], *, marker: bytes = b"serve") -> str:
     return "ours"
 
 
-def stop_by_pidfile(path: Path, *, marker: bytes, grace_s: float = 5.0,
-                    ) -> Tuple[bool, str]:
+def nothing_named(path: Path) -> str:
+    """What a pidfile naming no process says -- no file at ``path``, or one
+    that names no pid -- in the words the verify step (:func:`_verified`)
+    and `serve status` both say it."""
+    return (f"not running (no pidfile at {path})" if not path.exists()
+            else f"not running ({path} names no pid)")
+
+
+def _verified(path: Path, *, what: str,
+              marker: bytes = SUPERVISOR_MARKER) -> Tuple[Optional[int], str]:
+    """THE ONE VERIFY STEP before a signal: ``(pid, "")`` when the pidfile
+    at ``path`` names a process that is ours (:func:`pid_state`), else
+    ``(None, what was found)`` -- nothing named, a stale file (removed, and
+    said) or a recycled pid (refused, never signalled).  ``what`` names the
+    process the file is for, in the refusal's words."""
+    pid = read_pidfile(path)
+    state = pid_state(pid, marker=marker)
+    if state == "ours":
+        return pid, ""
+    if state == "foreign":
+        return None, (f"refusing: pid {pid} is not your {what} -- the "
+                      f"pidfile is stale and the pid was recycled")
+    if pid is None:
+        return None, nothing_named(path)
+    try:
+        path.unlink()
+    except OSError:
+        pass
+    return None, f"stale pidfile: pid {pid} is gone (removed {path})"
+
+
+def stop_by_pidfile(path: Path, *, marker: bytes, what: str,
+                    grace_s: float = 5.0) -> Tuple[bool, str]:
     """Verify, SIGTERM, wait, and take the group if it did not go.
 
     The general form of what `signal_supervisor` does for the serve pidfile,
@@ -277,21 +319,11 @@ def stop_by_pidfile(path: Path, *, marker: bytes, grace_s: float = 5.0,
     dies outright.
 
     A stale file is cleaned up and REPORTED; a recycled pid is never
-    signalled.
+    signalled (:func:`_verified`).
     """
-    pid = read_pidfile(path)
-    state = pid_state(pid, marker=marker)
-    if state == "dead":
-        if pid is not None:
-            try:
-                path.unlink()
-            except OSError:
-                pass
-            return False, f"stale pidfile: pid {pid} is gone (removed)"
-        return False, "not running"
-    if state == "foreign":
-        return False, (f"refusing: pid {pid} is not ours -- the pidfile is "
-                       f"stale and the pid was recycled")
+    pid, said = _verified(path, what=what, marker=marker)
+    if pid is None:
+        return False, said
     os.kill(pid, signal.SIGTERM)
     deadline = time.monotonic() + grace_s
     while time.monotonic() < deadline:
@@ -446,7 +478,9 @@ def supervise(port: int, child_argv: List[str], *,
     if jupyter_argv is not None:
         nb_pidfile = jupyter_pidfile(port)
         if nb_pidfile.exists():
-            ok, said = stop_by_pidfile(nb_pidfile, marker=b"_shepherd")
+            ok, said = stop_by_pidfile(nb_pidfile,
+                                       marker=SHEPHERD_MARKER,
+                                       what="molbuilder notebook")
             _note(roll, f"notebook left from a previous run: {said}")
 
     state: dict = {"child": None, "hup": False, "term": False,
@@ -682,19 +716,8 @@ def signal_supervisor(port: int, sig: int) -> Tuple[bool, str]:
     the kernel would refuse a foreign pid anyway (EPERM), but *"that pid
     is not yours / not a molbuilder serve"* beats *"permission denied"*.
     """
-    pid = read_pid(port)
-    state = pid_state(pid)
-    if state == "dead":
-        if pid is not None:
-            try:
-                serve_pidfile(port).unlink()      # stale file: say so, clean up
-            except OSError:
-                pass
-            return False, (f"stale pidfile: pid {pid} is gone "
-                           f"(removed {serve_pidfile(port)})")
-        return False, f"not running (no pidfile at {serve_pidfile(port)})"
-    if state == "foreign":
-        return False, (f"refusing: pid {pid} is not your molbuilder serve "
-                       f"-- the pidfile is stale and the pid was recycled")
-    os.kill(pid, sig)                        # state == "ours"
+    pid, said = _verified(serve_pidfile(port), what="molbuilder serve")
+    if pid is None:
+        return False, said
+    os.kill(pid, sig)
     return True, f"signalled pid {pid}"

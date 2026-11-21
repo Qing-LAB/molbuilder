@@ -40,7 +40,7 @@ def home(tmp_path, monkeypatch):
     return tmp_path
 
 
-def _write_record(home, name, *, valid=True):
+def _write_record(home, name, *, valid=True, domains=()):
     from molbuilder.scheduler import named_environment_path
     p = named_environment_path(name)
     if not valid:
@@ -56,7 +56,7 @@ def _write_record(home, name, *, valid=True):
         scheduler=SLURM,
         topology=Topology(sockets=2, cores_per_socket=64),
         site=Site(partition="general", qos="public"),
-        domains=[],
+        domains=list(domains),
         source={"scheduler": "flag"},
         detected_at="2026-08-22T00:00:00+00:00",
     )
@@ -123,6 +123,54 @@ class TestTheTerminalAndTheBrowserCannotDisagree:
         assert [m["name"] for m in served["machines"]] == \
                [m["name"] for m in direct]
         assert served["choice_required"] is choice_required(direct)
+
+    def test_a_queue_is_said_by_the_machines_it_lists_else_its_largest(
+            self, home):
+        """`scheduler.md` § 2 and R3: a queue's machines are the machines it
+        lists, each with the size it states; a record that lists no
+        machines is read by its largest machine's figures -- as the fit
+        reads them.  A listed machine that states no memory (a probe that
+        read none for it) shows none, never the queue's largest figure,
+        which the fit does not hold it to; the queue table and the machines
+        listing say the same."""
+        from molbuilder.scheduler import Domain, known_machines
+        queues = [Domain(name="unlisted", partition="u", qos="public",
+                         max_cores=128, max_mem_gb=512),
+                  Domain(name="listed", partition="l", qos="public",
+                         node_types=[{"cores": 48, "mem_gb": 256}]),
+                  Domain(name="no-mem", partition="n", qos="public",
+                         node_types=[{"cores": 64, "nodes": 4}],
+                         max_mem_gb=1000)]
+        _write_record(home, "sol", domains=queues)
+        assert [(q.core_range, q.mem_range) for q in queues] == [
+            ("128", "512 GB"), ("48", "256 GB"), ("64", "-")]
+        summary = next(m["summary"] for m in known_machines()
+                       if m["name"] == "sol")
+        assert "48-128 cores" in summary and "256-512 GB" in summary, summary
+
+    def test_a_queue_row_that_is_not_one_is_said_and_kept(self, home):
+        """`scheduler.md` R2: *"Nothing is refused and nothing is dropped; a
+        typo stops being invisible."*  A hand-edited queue row that spells
+        ``qos`` as ``QoS`` is no queue -- not offered, never read as one
+        with no QoS -- and the machine's line says it, while the record
+        keeps the row as written when it is written again."""
+        import json
+        from molbuilder.scheduler import (Domain, known_machines,
+                                          read_environment, write_environment)
+        path = _write_record(home, "sol", domains=[
+            Domain(name="debug", partition="htc", qos="debug")])
+        record = json.loads(path.read_text())
+        record["domains"].append({"name": "htc", "partition": "htc",
+                                  "QoS": "public"})
+        path.write_text(json.dumps(record))
+        sol = next(m for m in known_machines() if m["name"] == "sol")
+        assert "?? not understood: queue htc (no qos)" in sol["summary"], (
+            sol["summary"])
+        env = read_environment(path)
+        assert [q.name for q in env.domains] == ["debug"]
+        write_environment(env, path)
+        assert {"name": "htc", "partition": "htc", "QoS": "public"} in \
+            json.loads(path.read_text())["domains"]
 
     def test_a_named_record_makes_the_choice_required(self, home):
         """Rule: "this machine" is always a candidate, so ANY named record

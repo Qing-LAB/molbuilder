@@ -518,7 +518,7 @@ def check_toolchain_executes(env_prefix: str,
             source = Path(scratch, "probe.c")
             binary = Path(scratch, "probe")
             source.write_text(_EXEC_PROBE_SOURCE)
-            compiled = _quiet_run(
+            compiled = run_capture(
                 [str(compiler), str(source), "-o", str(binary)],
                 env=env, timeout=timeout)
             if compiled.returncode != 0:
@@ -536,7 +536,7 @@ def check_toolchain_executes(env_prefix: str,
                         "diagnosis."
                     ),
                 )
-            ran = _quiet_run([str(binary)], env=env, timeout=timeout)
+            ran = run_capture([str(binary)], env=env, timeout=timeout)
             if ran.returncode == 0:
                 return None
             return _cannot_run_finding(compiler, ran, contract,
@@ -589,10 +589,12 @@ def _cannot_run_finding(compiler: Path,
     )
 
 
-def _quiet_run(argv: Sequence[str],
-               *,
-               env: Optional[Mapping[str, str]],
-               timeout: int) -> subprocess.CompletedProcess:
+def run_capture(argv: Sequence[str], *,
+                env: Optional[Mapping[str, str]] = None,
+                timeout: int = 60) -> subprocess.CompletedProcess:
+    """Run a subprocess capturing stdout and stderr; never raises on a
+    non-zero exit -- the quiet run the ABI checks and the build's own
+    probes share."""
     return subprocess.run(
         list(argv), capture_output=True, text=True, timeout=timeout,
         env=dict(env) if env is not None else None,

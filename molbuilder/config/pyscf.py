@@ -25,7 +25,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple, Union
 
-from ..identity import RestartGroup
 from ..selection import parse_index_list
 from .siesta import _validate_basename     # shared with SiestaConfig
 
@@ -85,30 +84,6 @@ PYSCF_STAGE_PRESETS: Dict[int, Dict[str, Any]] = {
         "geom_max_steps": 100,
     },
 }
-
-
-#: § 4 rule 1 — PySCF's identity group.
-#:
-#: Read across from ``SIESTA_RESTART_GROUP`` and the contract's point is
-#: visible: the identity is the same *idea* in both engines and a different
-#: *mechanism*. SIESTA declares three keys; PySCF carries generated control
-#: flow, so ``keys`` is empty and ``mechanism`` says what actually happens.
-#: An empty tuple alone would read as "nothing is bound", which is the
-#: opposite of true.
-#:
-#:
-#: **Rule 2 is answered by the ``restart`` field below**, and by the same one
-#: field SIESTA answers it with: two values, ``clean`` and ``continue``, and
-#: a rerun that says ``clean`` writes its checkpoint without reading the one
-#: already beside it.
-PYSCF_RESTART_GROUP = RestartGroup(
-    literal="JOB",
-    keys=(),
-    mechanism="generated control flow: mf.chkfile + init_guess='chkfile' "
-              "when the file exists, and <JOB>_optimized.xyz overriding the "
-              "literal geometry",
-    field="job_name",
-)
 
 
 @dataclass
@@ -282,15 +257,6 @@ class PySCFConfig:
         the kind's check turns that into a refusal at ``prep``, so no deck
         is written from it."""
         return parse_index_list(self.es_explicit_indices, first=1)
-
-    # ``molwatch_log`` reads and writes ``write_molwatch_log``.
-    @property
-    def molwatch_log(self) -> bool:                  # pragma: no cover
-        return self.write_molwatch_log
-
-    @molwatch_log.setter
-    def molwatch_log(self, value: bool) -> None:     # pragma: no cover
-        self.write_molwatch_log = value
 
     # ----- What PySCF does with two state settings together -------------
     # Asked through the engine's config class, as SIESTA's are

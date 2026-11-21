@@ -181,6 +181,9 @@ be indistinguishable from a deliberate extra (`max_tme` lands in `extra`, and
 sol   slurm · 48 cores · 1 queue · ?? not understood: gpu_parition
 ```
 
+A queue row missing a key a queue states (`name`, `partition`, `qos` — `null`
+where the pair has none) is no queue: it is not offered, it is kept as written,
+and the line says it by what it lacks (`?? not understood: queue htc (no qos)`).
 Nothing is refused and nothing is dropped; a typo stops being invisible. The
 line is built by `record.known_machines`, which both `jobset machines` and
 `GET /api/task-setup/machines` read, so they cannot disagree about a machine.

@@ -24,7 +24,9 @@ import click
 from ..config_dir import config_dir
 from ..diagnostics import DEFAULT_ENV_NAMES, get_capabilities
 from ..runfiles import MACHINE_RECORD_FILE
-from ..runtime_config import ACTIVATION_FORMS
+from ..runtime_config import (ACTIVATION_FORMS, ACTIVATION_ROWS,
+                               activation_form)
+from .recipes import recipe_of_category
 from . import builds as _builds
 from . import hints as _hints
 from . import doctor as _doctor
@@ -1631,14 +1633,13 @@ def _install_one(recipe, effective: str, caps, *,
             click.echo("install OK")
             if (result.build_result is not None
                     and result.build_result.activate_hook_written):
-                click.echo(
-                    f"  activate hook: $CONDA_PREFIX/etc/conda/activate.d/"
-                    f"zz-{recipe.build_spec.artifact_subdir}.sh"
-                )
-                click.echo(
-                    f"  binaries:      $CONDA_PREFIX/opt/"
-                    f"{recipe.build_spec.artifact_subdir}/siesta/bin/"
-                )
+                # WHERE THE BUILD PUT THEM, by its own layout, under the
+                # literal $CONDA_PREFIX the hook itself names.
+                layout = _builds.resolve_paths(recipe.build_spec,
+                                               "$CONDA_PREFIX")
+                click.echo(f"  activate hook: {layout.activate_hook}")
+                click.echo(f"  binaries:      "
+                           f"{layout.component_install('siesta') / 'bin'}/")
                 click.echo(
                     f"  re-activate the env (`conda activate {effective}`) "
                     f"to pick up the new PATH + LD_LIBRARY_PATH."
@@ -1953,7 +1954,7 @@ def cmd_bootstrap(dry_run: bool, skip_existing: bool, clean: bool,
         click.echo("# committing; the host env from this bootstrap is the")
         click.echo("# prerequisite):")
         click.echo(
-            _hints.install_cmd(DEFAULT_ENV_NAMES["siesta-gpu"])
+            _hints.install_cmd(recipe_of_category("siesta-gpu").name)
         )
     click.echo("")
     click.echo("# Re-verify env health after any change:")
@@ -2020,9 +2021,9 @@ def _recommended_activation(conda_binary: "Optional[str]") -> tuple:
     ``source activate`` is the form that works.
     """
     preamble = initconfig.conda_hook(conda_binary)
-    if preamble:
-        return "conda activate", preamble
-    return "source activate", None
+    form = next(row for row in ACTIVATION_ROWS
+                if row.needs_hook == bool(preamble))
+    return form.words, (preamble if form.needs_hook else None)
 
 
 def _render_init_config(steps: "Iterable") -> None:
@@ -2117,20 +2118,22 @@ def _seed_config(activation: "Optional[str]", auto_yes: bool,
         else:
             click.echo("")
             click.echo("How does this machine enter a conda env?")
-            click.echo("  1) conda activate   -- conda's hook is sourced "
-                       "(typical workstation)")
-            click.echo("  2) source activate  -- HPC, `module load mamba` "
-                       "toolchain")
-            default = "1" if recommended == "conda activate" else "2"
-            choice = click.prompt("Choice", default=default,
-                                  type=click.Choice(("1", "2")),
-                                  show_choices=False)
-            activation = "conda activate" if choice == "1" else "source activate"
-    if activation not in (None, "conda activate"):
-        # The hook line is what makes the ``conda activate`` FUNCTION exist in
-        # a non-interactive shell.  ``source activate`` is a script on PATH and
-        # needs no such thing, so carrying the line there would be a preamble
-        # that sources a file for no reason.
+            # THE QUESTION'S OWN ORDER: the form that sources conda's hook
+            # first, as it has always been offered (a workstation's).
+            offered = sorted(ACTIVATION_ROWS, key=lambda r: not r.needs_hook)
+            for number, row in enumerate(offered, 1):
+                click.echo(f"  {number}) {row.words:<17}-- {row.menu}")
+            numbers = [str(n) for n in range(1, len(offered) + 1)]
+            choice = click.prompt(
+                "Choice",
+                default=numbers[[r.words for r in offered].index(recommended)],
+                type=click.Choice(numbers), show_choices=False)
+            activation = offered[int(choice) - 1].words
+    form = activation_form(activation)
+    if activation is not None and (form is None or not form.needs_hook):
+        # The hook line is what makes the activation FUNCTION exist in a
+        # non-interactive shell; a form that needs no hook would carry a
+        # preamble that sources a file for no reason.
         preamble = None
     if "projects" in typed or initconfig.PROJECTS_QUESTION in asks:
         projects = _ask_projects_root(auto_yes, projects)

@@ -1,8 +1,8 @@
 """Routing tables, Capabilities snapshot, singleton lifecycle.
 
 
-The module under test exposes three small dicts (``DEFAULT_ENV_NAMES``,
-``TOOL_TO_CATEGORY``, ``EXTENSION_TO_CATEGORY``), one frozen dataclass
+The module under test exposes two small dicts (``DEFAULT_ENV_NAMES``,
+``TOOL_TO_CATEGORY``), one frozen dataclass
 (:class:`Capabilities`), one probe (:func:`detect`), and four singleton
 lifecycle helpers.
 
@@ -55,13 +55,6 @@ def test_every_engine_the_catalogue_names_has_an_env():
     assert set(engines()) <= set(DEFAULT_ENV_NAMES)
 
 
-def test_known_tools_present():
-    """Spot-check the README-documented entries."""
-    assert TOOL_TO_CATEGORY["tleap"]      == "mdtools"
-    assert TOOL_TO_CATEGORY["siesta"]     == "siesta"
-    # playwright is NOT routed: browser E2E runs under the host env.
-    assert "playwright" not in TOOL_TO_CATEGORY
-
 
 # --------------------------------------------------------------------- #
 #  Capabilities -- pure lookups                                         #
@@ -88,6 +81,8 @@ def test_env_for_tool_picks_up_override():
 def test_routed_env_none_when_unrouted():
     caps = _caps(conda_envs={"random-env"})
     assert caps.routed_env("ls") is None
+    # The browser tests run under the host env, never a routed one.
+    assert caps.env_for_tool("playwright") is None
 
 
 def test_tool_available_via_routed_env():

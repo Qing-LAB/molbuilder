@@ -170,12 +170,6 @@ def _run(argv, *, cwd: Optional[Path] = None,
     return cp.returncode, (cp.stdout or "") + (cp.stderr or "")
 
 
-def _stack_root(env_prefix: str, recipe: Recipe) -> Path:
-    """Return ``$env_prefix/opt/<artifact_subdir>`` for a source-build
-    recipe (where build dirs + install dirs live)."""
-    return Path(env_prefix) / "opt" / recipe.build_spec.artifact_subdir
-
-
 # --------------------------------------------------------------------- #
 #  Per-probe implementations                                             #
 # --------------------------------------------------------------------- #
@@ -188,7 +182,7 @@ def _probe_binary_links(env_prefix: str, recipe: Recipe) -> ProbeResult:
     and that ``siesta --version`` exits 0.  Anything before this and
     the user can't even ``conda activate && which siesta``.
     """
-    siesta_install = _stack_root(env_prefix, recipe) / "siesta"
+    siesta_install = _builds.resolve_paths(recipe.build_spec, env_prefix).component_install("siesta")
     bin_dir = siesta_install / "bin"
     # SIESTA 5.4.2 ships these binaries.  ``transiesta`` is NOT a
     # separate executable -- TranSiesta is a run mode of ``siesta``
@@ -240,7 +234,7 @@ def _probe_siesta_ctest_simple(env_prefix: str, recipe: Recipe) -> ProbeResult:
     Output streams live (via ``_builds.run_streaming``) so the user
     sees ctest's own per-test progress instead of a 20 s silent gap.
     """
-    build_dir = _stack_root(env_prefix, recipe) / "build" / "siesta"
+    build_dir = _builds.resolve_paths(recipe.build_spec, env_prefix).component_build("siesta")
     if not (build_dir / "CTestTestfile.cmake").is_file():
         return ProbeResult(
             name="siesta ctest",
@@ -289,7 +283,7 @@ def _probe_elpa_make_check(env_prefix: str, recipe: Recipe) -> ProbeResult:
     ``-k`` so one flake doesn't mask other failures.  Output streams
     live so the user sees per-validator pass/fail as they run.
     """
-    build_dir = _stack_root(env_prefix, recipe) / "build" / "elpa"
+    build_dir = _builds.resolve_paths(recipe.build_spec, env_prefix).component_build("elpa")
     if not (build_dir / "Makefile").is_file():
         return ProbeResult(
             name="elpa make check",
@@ -354,7 +348,7 @@ def _probe_elpa_gpu_codepath(env_prefix: str,
     upstream ELPA; reported behaviour: elpa#15 (same A100 + sm_80
     build config we use).
     """
-    build_dir = _stack_root(env_prefix, recipe) / "build" / "elpa"
+    build_dir = _builds.resolve_paths(recipe.build_spec, env_prefix).component_build("elpa")
     validator = build_dir / "validate_real_double_eigenvectors_1stage_gpu_random"
     if not validator.is_file():
         return ProbeResult(

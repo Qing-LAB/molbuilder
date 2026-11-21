@@ -935,11 +935,17 @@ def _read_mem_limit_gb() -> Optional[float]:
 _PROC = "/proc"
 
 
+#: THE SCHEDULER'S ID FOR THE JOB in molbuilder's name
+#: (`scheduler/kinds.JOB_ID`): the monitor travels without `kinds`, so the
+#: name is spelled once here, as `kinds.py` allows.
+_JOB_ID_VARIABLE = "MB_JOB_ID"
+
+
 def _in_scheduler_job() -> bool:
     """Is this run inside a scheduler's job?  Then the job is its cgroup.
     The scheduler's id for it, in molbuilder's name (`scheduler/kinds.py`),
     says so."""
-    return bool(os.environ.get("MB_JOB_ID"))
+    return bool(os.environ.get(_JOB_ID_VARIABLE))
 
 
 def _proc_stat(pid: str) -> Optional[List[str]]:
@@ -1891,9 +1897,13 @@ def _channels_from_flag(value: Optional[str]) -> Optional[Tuple[str, ...]]:
     reason this is a function**: those spellings are a character apart on a
     command line and opposite in meaning.
     """
+    try:                                        # inside the package
+        from .config_dir import ALL_CHANNELS
+    except ImportError:                         # beside the job
+        from config_dir import ALL_CHANNELS  # type: ignore[no-redef]
     if value is None:
         return ()
-    if value.strip() == "*":
+    if value.strip() == ALL_CHANNELS:
         return None
     return tuple(n for n in (part.strip() for part in value.split(",")) if n)
 
@@ -2048,7 +2058,7 @@ def run_identity(watched: Optional["WatchedRun"] = None) -> Dict[str, str]:
             pass                     # an identity never stops a report
     # THE SCHEDULER'S ID FOR THE JOB, in molbuilder's name -- set only
     # inside one (`scheduler/kinds.py`).
-    v = os.environ.get("MB_JOB_ID")
+    v = os.environ.get(_JOB_ID_VARIABLE)
     if v:
         ident["job"] = str(v)[:64]
     try:

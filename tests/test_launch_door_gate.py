@@ -170,6 +170,57 @@ def test_a_failure_of_its_own_concludes_a_stop_signal_does_not(
         assert said["code"] == rc and said["note"].startswith(note), said
 
 
+def test_a_job_without_its_envs_python_names_the_recipe_that_installs_it(
+        tmp_path, monkeypatch, machine_config):
+    """`install` takes a RECIPE, and an env's name is the person's
+    (``envs.<category>`` in ``molbuilder.json``, `configuration.md` § 4),
+    equal to its recipe's only by default: a job whose env gave it no python
+    of its own names the env by its name here, and the command that
+    installs it again by its recipe.  THE SILENT FAILURE: a remedy that
+    asks `install` for a recipe that does not exist."""
+    from molbuilder.envs.hints import install_cmd
+    from molbuilder.envs.recipes import builtin_recipes
+    machine_config({"envs": {"siesta": "my-siesta"}})
+    sh, run, names = _prepared(tmp_path, monkeypatch, activation="true")
+    cp = _start(sh, run, claim=LAUNCH_CLAIM)
+    recipe = next(r.name for r in builtin_recipes() if r.category == "siesta")
+    assert "no python of its env 'my-siesta'" in cp.stderr, cp.stderr
+    assert install_cmd(recipe) in cp.stderr, cp.stderr
+
+
+@pytest.mark.parametrize("forced, says", [
+    ("molbuilder-siesta-gpu", "install molbuilder-siesta-gpu --yes"),
+    ("molbuilder", "bootstrap --yes"),
+    ("my-own-env", "no env molbuilder installs"),
+], ids=["a-recipes-env", "molbuilders-own-env", "a-persons-own-env"])
+def test_a_forced_env_is_installed_by_its_own_recipe_or_none(
+        tmp_path, monkeypatch, forced, says):
+    """`prep --env NAME` forces one environment for every job, a GPU job's
+    included (`running-a-job.md` § 2.3), so the run script's stop names
+    what installs THAT env: the recipe whose env it is (the GPU build's own
+    command, `gpu.md` G6; molbuilder's own env by `bootstrap`,
+    `ops/installation.md` § 2), or none for an env molbuilder does not
+    install.
+    THE SILENT FAILURE: a remedy that installs another env, and the job
+    stopping in the same place after it."""
+    from conftest import write_machine_record
+    from molbuilder.jobset.materialize import latest_attempt
+    from molbuilder.jobset.naming import stage_home
+    from molbuilder.task import of as task_of
+    from support.road import described, group_words, jobset, road_tree
+    write_machine_record(env_init={"activation": "true", "preamble": "true"})
+    bundle = described(road_tree(tmp_path, monkeypatch))
+    r = jobset("prep", "task", *group_words(bundle, "coarse"), "--bundle",
+               bundle, "--target", "this", "--env", forced)
+    assert r.exit_code == 0, r.output
+    home = stage_home(bundle, task_of(bundle), "coarse")
+    text = (latest_attempt(home.dir) / home.names.run_script).read_text()
+    stop = next(ln for ln in text.splitlines()
+                if f"no python of its env '{forced}'" in ln)
+    assert says in stop, stop
+    assert ("install-env.sh" in stop) is (forced != "my-own-env"), stop
+
+
 # ---- config provenance ------------------------------------------------ #
 
 def test_provenance_names_each_values_source(tmp_path, machine_config):

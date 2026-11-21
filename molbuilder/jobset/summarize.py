@@ -145,7 +145,8 @@ def _read_environment(bundle: Path) -> Dict:
 
     Through the one door (N1): it reads the object and asks it for its own
     dict, so the shape a result records is the shape the record has.  A
-    copy that does not read is refused by that door, naming it
+    copy that does not read or names no machine is refused by that door,
+    naming it
     (`scheduler.record.UnknownTarget`): a result is never written as
     measured on no machine."""
     from ..scheduler.record import calculation_environment

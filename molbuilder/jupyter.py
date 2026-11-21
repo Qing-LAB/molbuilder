@@ -200,7 +200,8 @@ def shepherd_argv(serve_port: int) -> List[str]:
     child's own argv is -- so the supervisor holds a list of strings and never
     imports what runs at the other end.
     """
-    return [sys.executable, "-m", "molbuilder", "jupyter", "_shepherd",
+    from .serve_daemon import SHEPHERD_VERB
+    return [sys.executable, "-m", "molbuilder", "jupyter", SHEPHERD_VERB,
             "--serve-port", str(serve_port)]
 
 
@@ -224,11 +225,6 @@ def read_pid(serve_port: int) -> Optional[int]:
     return read_pidfile(jupyter_pidfile(serve_port))
 
 
-#: What a shepherd's command line carries, beside ``molbuilder`` -- the word
-#: `serve_daemon.pid_state` checks for before it signals anything.
-_MARKER = b"_shepherd"
-
-
 def pid_state(pid: Optional[int]) -> str:
     """``"ours"`` | ``"foreign"`` | ``"dead"`` -- what that pid actually is.
 
@@ -239,8 +235,8 @@ def pid_state(pid: Optional[int]) -> str:
     anyway (EPERM), but *"that pid is not a notebook of yours"* beats
     *"permission denied"*, and a recycled pid must never be signalled.
     """
-    from .serve_daemon import pid_state as _verify
-    return _verify(pid, marker=_MARKER)
+    from .serve_daemon import SHEPHERD_MARKER, pid_state as _verify
+    return _verify(pid, marker=SHEPHERD_MARKER)
 
 
 def read_runtime(serve_port: int) -> Dict[str, object]:
@@ -768,7 +764,7 @@ def run_shepherd(serve_port: int) -> int:
     from . import repo_root
     from .diagnostics import get_capabilities
     from .envs.builds import dispatch_into_env
-    from .envs.recipes import effective_name, recipe_by_name
+    from .envs.recipes import effective_name, recipe_of_category
     from .persist import write_json
     from .config_dir import (PRIVATE_FILE_MODE, ensure_runtime_dir,
                              jupyter_pidfile, jupyter_runtime)
@@ -787,7 +783,7 @@ def run_shepherd(serve_port: int) -> int:
         sys.stderr.write("molbuilder jupyter: " + no_manager(
             "the notebook", caps.conda_binary_source) + "\n")
         return 2
-    recipe = recipe_by_name("molbuilder-jupyternb")
+    recipe = recipe_of_category("jupyter")
     env_name = effective_name(recipe, caps)
     if not caps.env_available(env_name):
         # THE REMEDY HAS ONE HOME (`envs.hints`): a hand-copied remedy drifts

@@ -18,9 +18,11 @@ Testing hook: tests inject a synthetic Capabilities via
 
 from __future__ import annotations
 
-#: THE LAUNCH CLAIM is the scheduler protocol's (`scheduler/kinds.py`:
-#: `LAUNCH_CLAIM_VAR`, `LAUNCH_CLAIM`), read here by the wrapper's gate.
-from .scheduler.kinds import LAUNCH_CLAIM, LAUNCH_CLAIM_VAR
+#: THE LAUNCH CLAIM and the job's variables are the scheduler protocol's
+#: (`scheduler/kinds.py`): the claim read here by the wrapper's gate, the
+#: variables' names written into the run script by their owner.
+from .scheduler.kinds import (CPUS_PER_TASK, JOB_GPUS, JOB_ID,
+                               LAUNCH_CLAIM, LAUNCH_CLAIM_VAR, NTASKS)
 
 import functools
 import re
@@ -43,7 +45,7 @@ from .identity import (command_stage, holds_a_start, next_run_words,
 from .jobset.errors import WrapperError
 # The thread chain's rungs, one list for the script's chain and the run
 # script's (`running-a-job.md` § 3.2).
-from .runpoints import AGAIN, CONTINUE
+from .runpoints import AGAIN, CONTINUE, module_of
 from .parse.dirs.job import STOPPED
 from .runrecord import conclude_line
 from .runtime_info import (JOB_STARTED_VAR, NODE_CORES_VAR, THREAD_SOURCES,
@@ -166,7 +168,13 @@ def _bash_fill(name: str) -> str:
     return name
 
 
-def _env_python_block(names, stdout_role: str, target_env: str) -> str:
+def _env_name(target_env: str) -> str:
+    """The env a run enters, by name -- ``--env`` may give its folder."""
+    return str(target_env).rstrip("/").rsplit("/", 1)[-1]
+
+
+def _env_python_block(names, stdout_role: str, target_env: str,
+                      recipe) -> str:
     """Bash that names the run's output -- every writer of it below writes
     this name (`project-layout.md` § 1.6.3); the conclusion marker's is
     named with the session log's (:func:`_one_start_block`); ``names`` are
@@ -176,11 +184,19 @@ def _env_python_block(names, stdout_role: str, target_env: str) -> str:
     **Then the one check every job makes before anything runs**
     (`running-a-job.md` § 2): the activation gave this job its env --
     ``CONDA_PREFIX`` names ``target_env`` -- and that env's own python,
-    ``$_mb_py``, is there.  Refused otherwise, the conclusion saying why
+    ``$_mb_py``, is there -- else ``recipe`` (`envs.recipes.Recipe`), the
+    recipe of that env, installed again by its one line
+    (`hints.install_again_cmd`: the host env's is `bootstrap`); ``None``
+    for an env molbuilder does not install (`prep --env`).  Refused otherwise, the conclusion saying why
     (`parse.dirs.job.NO_ENV_PYTHON`), whatever the engine -- a dry run
     refused alike, but concluding nothing: it starts nothing."""
     from .parse.dirs.job import NO_ENV_PYTHON
-    env_name = str(target_env).rstrip("/").rsplit("/", 1)[-1]
+    env_name = _env_name(target_env)
+    remedy = (f"rebuild it on this machine "
+              f"({_hints.install_again_cmd(recipe)})"
+              if recipe is not None else
+              "rebuild it as it was made -- it is no env molbuilder "
+              "installs")
     return (
         f'_out_file="{names.name(stdout_role)}"\n'
         f"# --- The job's python: its env's own (running-a-job.md 2) ---\n"
@@ -188,9 +204,8 @@ def _env_python_block(names, stdout_role: str, target_env: str) -> str:
         + f'    echo "ERROR: this job has no python of its env \'{env_name}\' -- '
         f'CONDA_PREFIX is ${{CONDA_PREFIX:-<unset>}}, and '
         f'${{_mb_py:-<no python>}} is not there.  The activation did not '
-        f'take, or the env holds no python of its own: rebuild it on this '
-        f'machine ({_hints.fix_cmd("install", env_name)}).  Nothing was '
-        f'started." >&2\n'
+        f'take, or the env holds no python of its own: {remedy}.  Nothing '
+        f'was started." >&2\n'
         + '    [ "$_dry_run" = "1" ] || ' + conclude_line(
             1, f"{NO_ENV_PYTHON} (%s)",
             '"${_mb_py:-${CONDA_PREFIX:-no CONDA_PREFIX}}"') + "\n"
@@ -690,7 +705,7 @@ def _runtime_status_block(
     )
 
 
-def _held_words(deck_text: Optional[str]) -> str:
+def _held_words(deck_text: str) -> str:
     """THE ATOMS THE DECK HOLDS, in words for the run script's banner -- as
     the deck's own record states them: its ATOM-METADATA block, read by its
     one reader (`deck_record.extract_atom_metadata`), the held atoms asked of
@@ -701,7 +716,7 @@ def _held_words(deck_text: Optional[str]) -> str:
     the caller refuses."""
     from .deck_record import extract_atom_metadata
     from .sidecars.molstruct import frozen_atoms
-    meta = extract_atom_metadata(deck_text or "")
+    meta = extract_atom_metadata(deck_text)
     if meta is None:
         return "not stated -- the deck carries no atom record"
     held = frozen_atoms(meta)
@@ -944,7 +959,7 @@ def _gpu_per_rank_launcher_block(program: str) -> str:
         "cat > \"$_rank_helper\" <<'HELPEREOF'\n"
         '#!/bin/bash\n'
         '_lr=${OMPI_COMM_WORLD_LOCAL_RANK:-${PMIX_RANK:-0}}\n'
-        '_ls=${OMPI_COMM_WORLD_LOCAL_SIZE:-${MB_NTASKS:-1}}\n'
+        f'_ls=${{OMPI_COMM_WORLD_LOCAL_SIZE:-${{{NTASKS}:-1}}}}\n'
         '[ "${_ls:-0}" -lt 1 ] && _ls=1\n'
         '# The job\'s GPUs, by the rule the run script lists them by; none\n'
         '# seen, the rank runs on GPU 0.\n'
@@ -974,10 +989,10 @@ def _gpu_per_rank_launcher_block(program: str) -> str:
         # per rank) governs CPU/memory placement.  Do NOT also numactl-wrap
         # / --map-by -- that double-binds and can fight the scheduler.  P1
         # in running-a-job.md § 3.3
-        'if [ -n "${MB_JOB_ID:-}" ]; then\n'
+        f'if [ -n "${{{JOB_ID}:-}}" ]; then\n'
         '    _numa_wrap_gpu=""\n'
         '    _mpirun_bind=""\n'
-        '    echo "molbuilder: under the scheduler (job $MB_JOB_ID) -- '
+        f'    echo "molbuilder: under the scheduler (job ${JOB_ID}) -- '
         'trusting scheduler cpuset for CPU/mem binding '
         '(no manual numactl)" >&2\n'
         # Off a scheduler with >1 GPU in play, the whole-job wrap would set
@@ -1076,9 +1091,9 @@ def _dry_run_block(launch_line: str, gpu_ranks: bool, words: str) -> str:
         f'    echo "  OMP threads  : $_omp_threads   '
         f'(source: ${{_omp_source:-?}})"\n'
         f'    echo "  Env          : ${{CONDA_DEFAULT_ENV:-<none active>}}"\n'
-        f'    echo "  Scheduler    : job=${{MB_JOB_ID:-<none>}} '
-        f'ntasks=${{MB_NTASKS:-?}} cpus/task=${{MB_CPUS_PER_TASK:-?}} '
-        f'gpus=${{MB_JOB_GPUS:-?}}"\n'
+        f'    echo "  Scheduler    : job=${{{JOB_ID}:-<none>}} '
+        f'ntasks=${{{NTASKS}:-?}} cpus/task=${{{CPUS_PER_TASK}:-?}} '
+        f'gpus=${{{JOB_GPUS}:-?}}"\n'
         + (
             '    echo "  Visible GPUs : ${_ngpu:-0}"\n'
             '    echo "  Ranks/GPU    : ${_ranks_per_gpu:-?} '
@@ -1358,7 +1373,7 @@ def _launch_again(resumes: bool, continues: bool,
             "saved -- or, " + back)
 
 
-def _deck_restart(engine: str, text: Optional[str], warm: "WarmList"
+def _deck_restart(engine: str, text: str, warm: "WarmList"
                   ) -> Tuple[Optional[bool], Dict[str, Tuple[str, bool]]]:
     """What a deck whose settings are KEYWORDS (`engine_table`'s
     ``keyword_reader``) says of the state a previous run left -- read from
@@ -1368,7 +1383,7 @@ def _deck_restart(engine: str, text: Optional[str], warm: "WarmList"
     ``honoured``: its ``restart`` item's answer (the catalogue's
     ``expands``, `script_emit.parameter`), read by the one reader of a
     deck's restart group (`script_emit.restart_group`) -- ``None`` where the
-    deck states none or cannot be read.  ``reads``: FILE BY FILE, ``{suffix: (keyword, reads)}``
+    deck states none.  ``reads``: FILE BY FILE, ``{suffix: (keyword, reads)}``
     for each restart file whose deck keyword (`warm-files.toml`'s
     ``honoured_by``, in ``warm``, the list in effect) the deck states.  One
     restart group may say yes to one
@@ -1420,15 +1435,13 @@ def _reads_words(words: str, reads: Dict[str, Tuple[str, bool]]) -> str:
     return out + "."
 
 
-def _n_orbitals_est(text: Optional[str]) -> Optional[int]:
+def _n_orbitals_est(text: str) -> Optional[int]:
     """The deck's own orbital estimate -- its BENCH-MARKS block's
     ``n_orbitals_est`` (`job-contracts.md` § 3.3), read by the block's one
     reader (`deck_record.read_bench_marks_block`) -- or ``None``: a deck with
     no such block, or one that states none.  It feeds the occupancy NOTICE
     (:func:`_orbitals_per_rank_notice`) and clamps nothing (user ruling,
     2026-09-03)."""
-    if not text:
-        return None
     from .deck_record import read_bench_marks_block
     got = (read_bench_marks_block(text) or {}).get("n_orbitals_est")
     try:
@@ -1576,8 +1589,8 @@ def _thread_chain(default: str) -> str:
 #: (KeyError).
 _THREAD_SOURCE_WORDS = {
     "OMP_NUM_THREADS":  "OMP_NUM_THREADS env",
-    "MB_CPUS_PER_TASK": "MB_CPUS_PER_TASK (the cores per rank the scheduler "
-                        "granted)",
+    CPUS_PER_TASK: f"{CPUS_PER_TASK} (the cores per rank the scheduler "
+                   "granted)",
 }
 
 
@@ -1747,8 +1760,8 @@ def env_python_check(env_name: str) -> str:
 def host_env_name() -> str:
     """molbuilder's own environment's name -- its recipe's, the one with no
     engine category (`envs.recipes`, `configuration.md` § 2.1c)."""
-    from .envs.recipes import builtin_recipes
-    return next(r.name for r in builtin_recipes() if r.category is None)
+    from .envs.recipes import recipe_of_category
+    return recipe_of_category(None).name
 
 
 def _mps_block() -> str:
@@ -2118,7 +2131,7 @@ def render_run_wrapper(script_path: Path, *,
                        relaunch_continues: bool,
                        trial: bool,
                        warm: "WarmList",
-                       deck_text: Optional[str] = None,
+                       deck_text: str,
                        notes: Optional[list] = None,
                        point: Optional[PointOfRun] = None) -> str:
     """Return the bash text of the run script that runs ``script_path``.
@@ -2155,13 +2168,15 @@ def render_run_wrapper(script_path: Path, *,
     (:func:`_point_block`) -- which run the kind's own steps, verbs of the
     ``finish`` bundle, where it has them -- and its relaunch said after a
     stop.  ``deck_text``: the deck as it will be written, for one `prep` has
-    planned and not yet written (`jobset.planned`); read from
-    ``script_path`` when omitted.
+    planned and not yet written (`jobset.planned`), or as its caller read it
+    from ``script_path`` (:func:`render_wrappers`, which refuses a deck that
+    does not read).
 
     **The allocation arrives whole** — `architecture.md` § 3.1, rule A8.
     ``env`` stays loose: a per-invocation override (``prep --env``).
     """
     from .engine_table import EngineTableError, engine as _engine
+    from .envs.recipes import recipe_of_category, recipe_of_env
     from .parse.engines._run_ending import (advice_of as _advice_of,
                                             wall_causes as _wall_causes)
     from .parse.instruments.scf_timing_rows import scf_row_patterns
@@ -2170,12 +2185,6 @@ def render_run_wrapper(script_path: Path, *,
         eng = _engine(engine)
     except EngineTableError as exc:
         raise WrapperError(f"`{Path(script_path).name}`: {exc}") from None
-    if deck_text is None:
-        from .engine_table import read_deck
-        try:
-            deck_text = read_deck(engine, script_path)
-        except (OSError, ValueError):
-            deck_text = None
     r = resources
     mpi_np, omp_threads = r.mpi_np, r.cpus_per_task
     max_memory_mb = r.max_memory_mb
@@ -2316,6 +2325,11 @@ def render_run_wrapper(script_path: Path, *,
     # WHICH MACHINE IS ASKED WHETHER THE ENV EXISTS: the one that will run
     # this, by its record (`configuration.md` § 5 M-1) -- including when
     # that record cannot answer.
+    # WHAT INSTALLS THE ENV THE RUN ENTERS: a routed one, its category's
+    # recipe; one forced by `prep --env`, the recipe whose env is called
+    # that here, or none (`envs.recipes`).
+    _recipe = (recipe_of_category(category) if env is None
+               else recipe_of_env(_env_name(target_env), caps))
     _known_envs = [str(e) for e in (machine_record.conda_envs or [])]
     if (env is None and category != eng.environment and _known_envs
             and target_env not in _known_envs):
@@ -2329,7 +2343,8 @@ def render_run_wrapper(script_path: Path, *,
             f"request), and {_where} lists no ``{target_env}`` environment, "
             f"{eng.words}'s GPU build.  The run script enters it at its "
             f"start and stops there if it is absent -- so install it before "
-            f"launching, {_there}: ``{_hints.install_cmd(target_env)}`` "
+            f"launching, {_there}: "
+            f"``{_hints.install_again_cmd(_recipe)}`` "
             f"-- or turn ``Use GPU`` off and prep again.")
         if notes is not None and _said not in notes:
             notes.append(_said)
@@ -2490,14 +2505,14 @@ def render_run_wrapper(script_path: Path, *,
     counts = (
         "# --- The counts, resolved (running-a-job.md § 3.1-3.2) ---\n"
         + ("# MPI rank-count precedence (highest first): the -np flag,\n"
-           "# MB_NP, MB_NTASKS (the ranks the scheduler granted, said in\n"
+           f"# MB_NP, {NTASKS} (the ranks the scheduler granted, said in\n"
            "# molbuilder's name by the job's header), the stated value.\n"
-           '_mpi_np="${_np_flag:-${MB_NP:-${MB_NTASKS:-$_mpi_np_default}}}"\n'
+           f'_mpi_np="${{_np_flag:-${{MB_NP:-${{{NTASKS}:-$_mpi_np_default}}}}}}"\n'
            '_np_source="stated at prep"\n'
            'if [ -n "$_np_flag" ]; then _np_source="-np flag"\n'
            'elif [ -n "${MB_NP:-}" ]; then _np_source="MB_NP env"\n'
-           'elif [ -n "${MB_NTASKS:-}" ]; then '
-           '_np_source="MB_NTASKS (the ranks the scheduler granted)"\n'
+           f'elif [ -n "${{{NTASKS}:-}}" ]; then '
+           f'_np_source="{NTASKS} (the ranks the scheduler granted)"\n'
            'fi\n' if ranks else
            "# One process: no rank count (running-a-job.md § 3.1).\n"
            '_mpi_np=1\n'
@@ -2522,7 +2537,7 @@ def render_run_wrapper(script_path: Path, *,
                   for var in THREAD_SOURCES)
         + 'fi\n'
         "\n"
-        + _env_python_block(names, stdout_role, target_env)
+        + _env_python_block(names, stdout_role, target_env, _recipe)
         # THE COUNTS AS RESOLVED, once the start has begun: a value from
         # the environment that is no count is refused naming where it came
         # from, and the run concludes.
@@ -3124,7 +3139,7 @@ def _members() -> Dict[str, str]:
              if _engine(e).keyword_reader]
     refs += [ref for a in ON_THE_LABEL for question, ref in a.reads
              if question in READ_BESIDE_A_JOB]
-    todo = [str(ref).partition(":")[0] for ref in refs]
+    todo = [module_of(ref) for ref in refs]
     # ...AND WHAT THE MONITOR ITSELF IMPORTS beside the job, by its own word.
     todo += list(importlib.import_module(
         _MONITOR_BASE["mb_monitor.py"]).TRAVELS_WITH)

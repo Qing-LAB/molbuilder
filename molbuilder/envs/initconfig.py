@@ -154,6 +154,8 @@ def seed_document(activation: str, preamble: Optional[str] = None,
     COMMAND and the DOCUMENT that own its subject rather than restating
     either, so no second copy can drift from its owner.
     """
+    import json
+    from ..runtime_config import ACTIVATION_FORMS
     doc = {
         "_README": [
             "molbuilder's server-wide configuration for THIS machine:",
@@ -191,7 +193,8 @@ def seed_document(activation: str, preamble: Optional[str] = None,
         "_env_init": [
             "How a shell on THIS machine enters a conda environment -- asked",
             "at install, which is why it is filled in below.  `activation` is",
-            "\"conda activate\" or \"source activate\" and has NO default.",
+            f"{' or '.join(json.dumps(f) for f in ACTIVATION_FORMS)} and has "
+            "NO default.",
             "`preamble` is shell run BEFORE it: the `module load` lines on a",
             "cluster, or sourcing conda's hook on a workstation.",
             "`molbuilder jobset probe --write` copies both into every record",
@@ -645,15 +648,16 @@ def _preamble_note(activation: str, preamble: Optional[str]) -> str:
     its activation line."""
     if preamble:
         return f"preamble {preamble!r}"
-    if activation == "conda activate":
-        # ``conda activate`` is a shell function that a non-interactive shell
-        # has never defined, so no preamble here means a wrapper that will
-        # fail inside the job.
-        return ("no preamble -- `conda activate` needs conda's hook "
-                "sourced in a non-interactive shell, and none was found")
-    # ``source activate`` is a script on PATH.  It needs no hook, so the
-    # absence is the correct state and must not be reported as a miss.
-    return "no preamble (source activate needs none)"
+    from ..runtime_config import activation_form
+    form = activation_form(activation)
+    if form is not None and form.needs_hook:
+        # A shell function a non-interactive shell has never defined, so no
+        # preamble here means a wrapper that will fail inside the job.
+        return (f"no preamble -- `{activation}` needs conda's hook "
+                f"sourced in a non-interactive shell, and none was found")
+    # A form that needs no hook: the absence is the correct state and must
+    # not be reported as a miss.
+    return f"no preamble ({activation} needs none)"
 
 
 def init_config(activation: str,

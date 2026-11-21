@@ -209,8 +209,9 @@ class Asked:
 def scheduler_of(job):
     """The scheduler a queue job was sent to: the one its calculation's copy
     of its machine's record names (`configuration.md` M-3) -- ``None`` when
-    that copy is not there; a copy there that does not read is its door's
-    refusal (`record.calculation_environment`, `UnknownTarget`)."""
+    that copy is not there; a copy there that does not read or names no
+    machine is its door's refusal (`record.calculation_environment`,
+    `UnknownTarget`)."""
     from .scheduler.record import calculation_environment
     rec = calculation_environment(job.calculation)
     return rec.scheduler if rec is not None else None
@@ -244,8 +245,8 @@ def asked_here(job: "Job", here: "Asked") -> "Tuple[Optional[Any], str]":
     try:
         scheduler = scheduler_of(job)
     except UnknownTarget as exc:
-        # THERE AND NOT READ, in the door's own words -- an older
-        # molbuilder's copy naming `jobset migrate`.
+        # THERE AND NOT READ, or NAMING NO MACHINE, in the door's own words
+        # -- an older molbuilder's copy naming `jobset migrate`.
         return None, " ".join(str(exc).split())
     if scheduler is None:
         return None, ("its calculation's record of its machine is not here, "

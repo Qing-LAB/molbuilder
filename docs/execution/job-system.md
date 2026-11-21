@@ -530,7 +530,7 @@ name no refusal.
 | **R-L35** | the line could not be run at all | its words | `submit._go` |
 | **R-L36** | a stage the description does not hold | the stages it holds | `_cli._described_stage` |
 | **R-L37** | `--from` naming what cannot be taken (below) | a run that has run, and holds what the stage takes; at a vibration stage's first launch, neither flag | `continuation.cannot_be_named`, `materialize.continuation_files`, `ready.first_launch_takes` (`continuation.carried_points`) |
-| **R-L38** | the calculation's copy of its machine's record is missing or does not read | a calculation is launched after its prep, which copies the record; the record's words | `submit._machine_of` (`record.calculation_environment`) |
+| **R-L38** | the calculation's copy of its machine's record is missing, does not read, or names no machine | a calculation is launched after its prep, which copies the record and names its machine; one naming no machine: the state saved before its first prep, and prep again naming the machine; the record's words | `submit._machine_of` (`record.calculation_environment`) |
 | **R-L39** | a benchmark trial named that was launched before | `summarize bench`; to measure it again, the state saved before the benchmark's prep | `submit._plan_trial` |
 | **R-L40** | a benchmark whose trials — of the side `--only` names — are all launched, or `--only` a side the sweep has none of | `summarize bench` | `submit._all_launched`, `submit._plan_shelves` |
 | **R-L41** | `launch bench` on a calculation that takes no benchmark, with no stage named, on a stage with no benchmark prepared, a trial the sweep does not hold (a trial is named by its point, `G1N4C6`), or a kind that is not the set's | the benchmark's prep; the stages with one; the sweep's trials; the set's kind | `_cli._stage_bench_dir` (`prep_inputs.bench_refusal`), `_cli._load_bench_set`, `_cli._pick_trial`, `_cli._check_kind` |
@@ -2277,7 +2277,7 @@ sequence still going holds a group asks it (`ready.held_by_sequence`); so do
   ten seconds per job (`joblist.asked_here`, `asked_lately`); the run door asks
   by the same rule and hears the same answer. A record naming no query
   command, or a command that does not run here, says it cannot ask; a copy
-  that does not read is said in its own refusal's words.
+  that does not read or names no machine is said in its own refusal's words.
 - **Each member's own state is its run's**, read through its launch record by
   the run door — that run, never its stage's newest; a run of points by the
   one door that answers a run's state whichever kind it is

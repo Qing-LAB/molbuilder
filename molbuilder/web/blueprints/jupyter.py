@@ -176,7 +176,7 @@ def api_jupyter_status():
     """
     from ...diagnostics import get_capabilities
     from ...envs.hints import install_cmd
-    from ...envs.recipes import effective_name, recipe_by_name
+    from ...envs.recipes import effective_name, recipe_of_category
     from ...jupyter import status
 
     port = serve_port()
@@ -189,7 +189,7 @@ def api_jupyter_status():
     st = status(port, include_private=may_control)
 
     # THE ENV, PROBED -- the browser cannot ask conda anything.
-    recipe = recipe_by_name("molbuilder-jupyternb")
+    recipe = recipe_of_category("jupyter")
     caps = get_capabilities()
     env_name = effective_name(recipe, caps)
     installed = bool(caps.env_available(env_name))

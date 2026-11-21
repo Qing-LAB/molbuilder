@@ -76,7 +76,8 @@ from .materialize import (CONTINUED, GATHERED, HandOver, ever_launched,
                           newest_launched)
 from .naming import job_dir_names, open_container, run_names
 from ..runrecord import LaunchRecordError, RunRef
-from ..scheduler.kinds import LAUNCH_CLAIM, LAUNCH_CLAIM_VAR
+from ..scheduler.kinds import (CPUS_PER_TASK, JOB_ID, LAUNCH_CLAIM,
+                               LAUNCH_CLAIM_VAR, NTASKS)
 from .commands import block, command as _cmd, launch_lines, rollback
 
 
@@ -2301,9 +2302,9 @@ def _walk_script(name: str, steps, *, where: str, log: str,
            "done"] if started else []),
         f'echo "{head} {when} start {member_word}s={len(steps)} per-{member_word}-bound='
         f'{f"{bound_s}s" if bound_s else "none"} '
-        'job=${MB_JOB_ID:-none} node=$(hostname) '
-        'alloc_ntasks=${MB_NTASKS:-unset} '
-        'alloc_cpus=${MB_CPUS_PER_TASK:-unset}" >> "$LOG"',
+        f'job=${{{JOB_ID}:-none}} node=$(hostname) '
+        f'alloc_ntasks=${{{NTASKS}:-unset}} '
+        f'alloc_cpus=${{{CPUS_PER_TASK}:-unset}}" >> "$LOG"',
         # THE WALK'S OWN ENVIRONMENT, where its steps run molbuilder (a
         # sequence's): entered here, once, before the first step.
         *([enters] if enters else []),
@@ -3375,7 +3376,7 @@ def _plan_sequence(calc, jobset: JobSet, numbers: Sequence[int], *,
                   shlex.quote(str(base)), "--mode", "direct", "--foreground",
                   "--yes", "--in-sequence", shlex.quote(names.stem),
                   "--in-job",
-                  f'"${{MB_JOB_ID:-{here_id("$(hostname)", "$$")}}}"'])),
+                  f'"${{{JOB_ID}:-{here_id("$(hostname)", "$$")}}}"'])),
          "", ())
         for g in groups]
     # EACH GROUP BUILDS ON THE ONE BEFORE IT: a group that failed stops the

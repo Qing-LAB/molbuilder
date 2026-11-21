@@ -221,11 +221,14 @@ def test_the_hooks_publish_the_stack_and_take_back_only_what_they_set(
     is wrong still holds every word."""
     prefix = "/stub/env"
     stack = f"{prefix}/opt/siesta-gpu-stack"
+    from molbuilder.envs.builds import (render_activate_hook,
+                                        render_deactivate_hook)
+    # THE HOOKS AS THE INSTALL WRITES THEM (`builds.render_activate_hook`).
     spec = recipe.build_spec
     activate = tmp_path / "activate.sh"
-    activate.write_text(spec.activate_hook)
+    activate.write_text(render_activate_hook(spec))
     deactivate = tmp_path / "deactivate.sh"
-    deactivate.write_text(spec.deactivate_hook)
+    deactivate.write_text(render_deactivate_hook(spec))
     show = ('printf "%s\\n" "$PATH" "${LD_LIBRARY_PATH:-}" '
             '"${OMPI_MCA_orte_tmpdir_base:-unset}"')
     r = _subprocess.run(
