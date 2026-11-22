@@ -58,8 +58,9 @@ holds, GPU builds, and what to do when one refuses:
 [`ops/installation.md`](?doc=ops/installation.md). Every
 `molbuilder <verb>` below means `"${CONDA_PREFIX:?}/bin/python" -m molbuilder <verb>` — the host
 env's own Python, by its path ([`installation.md`](?doc=ops/installation.md)
-M6) — from the activated host env in the clone — molbuilder is deliberately not
-pip-installed.
+M6) — in any folder, the host env active (its path file finds the clone,
+[`deployment.md`](?doc=ops/deployment.md) § 0) — molbuilder is deliberately
+not pip-installed.
 
 ---
 

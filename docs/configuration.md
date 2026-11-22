@@ -607,7 +607,8 @@ record it writes — this machine's `environment.json`, or a named `<name>.json`
 written on the machine it names — and every prep reads it from the **target's**
 record. **It is required** — *"this is required explicitly"* (user,
 2026-10-03): `jobset probe --write` refuses on a machine whose `molbuilder.json`
-states no `env_init.activation`, naming `molbuilder envs init-config`. **The
+states no `env_init.activation`, naming `bash scripts/install-env.sh
+init-config`. **The
 probe copies it as it stands and asks nothing** (user, 2026-10-24) and says when
 the copy changed; to change it, change that machine's `molbuilder.json` and
 probe again.

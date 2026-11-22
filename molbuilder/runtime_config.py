@@ -51,6 +51,7 @@ from pathlib import Path
 from typing import (TYPE_CHECKING, Any, Dict, List, Mapping, NamedTuple,
                     Optional, Tuple)
 
+from .identity import as_typed, in_template
 from .config_dir import PRIVATE_FILE_MODE, config_dir
 from .persist import read_object, unknown_keys, write_json
 from .runfiles import (JOB_REQUEST_FILE, PYSCF_CHK, PYSCF_CUBE, SIESTA_DM,
@@ -251,7 +252,8 @@ _NAMED_SECRET_REFUSED = (
     "{path}: auth.providers[{idx}]: '{key}' is refused -- molbuilder.json "
     "names no secret but the cert files.  "
     "The {kind} client secret's home is {home}: write it there, mode 0600 "
-    "(`molbuilder auth-setup` does it for Google), and delete '{key}'.")
+    "(`" + in_template(as_typed("auth-setup"))
+    + "` does it for Google), and delete '{key}'.")
 
 
 def _refuse_a_named_secret(entry: Mapping[str, Any], idx: int) -> None:
@@ -301,7 +303,7 @@ def provider_client_secret(entry: Mapping[str, Any]) -> str:
         raise RuntimeConfigError(
             f"{CONFIG_FILENAME}: auth.providers[id={pid!r}]: the {kind} "
             f"client secret, {where}, could not be read ({exc.strerror}).  "
-            f"Write it there, mode 0600 (`molbuilder auth-setup` does it "
+            f"Write it there, mode 0600 (`{as_typed('auth-setup')}` does it "
             f"for Google), readable by the server."
         ) from exc
     if not text:
@@ -619,15 +621,15 @@ _NOTIFY_SETTINGS_MOVED = (
     "{f}: '{key}' is no longer read.\n"
     "\n"
     "The listener is switched on by the KEY FILE, which carries its own\n"
-    "route: `<config dir>/secrets/notify_keys`, written by `molbuilder\n"
-    "notify-token`.  Both settings were things molbuilder already knew --\n"
+    "route: `<config dir>/secrets/notify_keys`, written by molbuilder's\n"
+    "`notify-token`.  Both settings were things molbuilder already knew --\n"
     "it chose the path and it issued the route -- so requiring them typed\n"
     "here meant a working key file could sit beside a listener that was\n"
     "never registered, answering 404 to everything.\n"
     "\n"
-    "Delete this key.  If you have no `notify_keys` yet, run\n"
-    "`molbuilder notify-token <user>`; to keep a route already in\n"
-    "service, re-issue with `--route <your existing segment>`."
+    "Delete this key.  If you have no `notify_keys` yet, run molbuilder's\n"
+    "`notify-token`, the user's name after it; to keep a route already in\n"
+    "service, re-issue it with `--route` and your existing segment."
 )
 
 

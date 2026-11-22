@@ -122,7 +122,7 @@ refused = ["'paths.logs' is no longer configured", "XDG_STATE_HOME"]
 [[case]]
 name = "a retired notify setting is refused, saying the key file carries its route"
 machine_config = { notify_keys_file = "~/.mb/notify_keys" }
-refused = ["'notify_keys_file' is no longer read", "molbuilder notify-token"]
+refused = ["'notify_keys_file' is no longer read", "`notify-token`"]
 
 [[case]]
 name = "unknown sections are refused all at once, each with the live section it is close to, naming the live ones and no retired one"

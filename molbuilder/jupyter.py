@@ -78,6 +78,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional
 
+from .identity import MODULE
+
 #: What the kernel is asked to send the shepherd when its parent dies.
 #: Linux-only, which matches this project's stated platform.
 _PR_SET_PDEATHSIG = 1
@@ -201,7 +203,7 @@ def shepherd_argv(serve_port: int) -> List[str]:
     imports what runs at the other end.
     """
     from .serve_daemon import SHEPHERD_VERB
-    return [sys.executable, "-m", "molbuilder", "jupyter", SHEPHERD_VERB,
+    return [sys.executable, "-m", MODULE, "jupyter", SHEPHERD_VERB,
             "--serve-port", str(serve_port)]
 
 

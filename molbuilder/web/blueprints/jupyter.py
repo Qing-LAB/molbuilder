@@ -41,6 +41,7 @@ import os
 from flask import Blueprint, Response, jsonify, request
 from ._shared import err
 
+from ...identity import as_typed
 from ...jupyter import BASE_PATH
 from ..app import serve_port
 from ...reload_protocol import SUPERVISED_ENV
@@ -253,8 +254,8 @@ def _refuse():
         return err(
             "this molbuilder has no supervisor to hold a notebook: "
             "it was started with `serve foreground` or "
-            "`--no-supervise`.  `molbuilder serve start` gives it "
-            "one.",
+            f"`--no-supervise`.  `{as_typed('serve', 'start')}` gives "
+            "it one.",
             404)
     if not _may_control():
         return err(
@@ -426,7 +427,7 @@ def _headers_for_jupyter():
 def _not_answering():
     return err(
         "no notebook is answering on this machine -- start it "
-        "from the JupyterLab tab, or `molbuilder jupyter start`.",
+        f"from the JupyterLab tab, or `{as_typed('jupyter', 'start')}`.",
         502)
 
 

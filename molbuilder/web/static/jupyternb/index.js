@@ -339,11 +339,14 @@ const STATES = [
       // NOTEBOOK log.
       sayError("Asked for a notebook and none started. The molbuilder "
                + "server may have been started before this feature, and a "
-               + "code reload keeps it -- `molbuilder serve stop` then "
-               + "`serve start` gives it one. "
-               + "`molbuilder serve status` names the server log; "
-               + "`molbuilder jupyter status` names the notebook log, which "
-               + "is where jupyter's own refusals are written.");
+               + "code reload keeps it -- `" + window.molbuilder.typed("serve", "stop")
+               + "` then `" + window.molbuilder.typed("serve", "start")
+               + "` gives it one. `"
+               + window.molbuilder.typed("serve", "status")
+               + "` names the server log; `"
+               + window.molbuilder.typed("jupyter", "status")
+               + "` names the notebook log, which is where jupyter's own "
+               + "refusals are written.");
       actions.appendChild(recheckButton());
     },
   },
@@ -358,8 +361,8 @@ const STATES = [
     enter: () => say(
       "JupyterLab is not running, and this molbuilder cannot start one "
       + "-- it was started with `serve foreground` or `--no-supervise`. "
-      + "Restart it with `molbuilder serve start` and the button appears "
-      + "here."),
+      + "Restart it with `" + window.molbuilder.typed("serve", "start")
+      + "` and the button appears here."),
     pollMs: 30000,
   },
   {
@@ -369,7 +372,8 @@ const STATES = [
     enter: () => say(
       "JupyterLab is not running. Starting one runs code on this machine, "
       + "so it is an admin action — ask whoever administers this server, or "
-      + "start it there with `molbuilder jupyter start`."),
+      + "start it there with `" + window.molbuilder.typed("jupyter", "start")
+      + "`."),
     pollMs: 30000,
   },
   {

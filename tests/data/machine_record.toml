@@ -154,7 +154,7 @@ ends_at = "probe"
 machine_config = {}
 record = { env_init = { activation = "source activate", preamble = "module load mamba" } }
 probe = [["--scheduler", "workstation"]]
-probe_refused = ["states no `env_init.activation`", "molbuilder envs init-config"]
+probe_refused = ["states no `env_init.activation`", "scripts/install-env.sh init-config"]
 
 [[case]]
 name = "a probe nobody answers copies this machine's env_init over the record's, asking nothing, and says so -- and the stamp follows the probe"

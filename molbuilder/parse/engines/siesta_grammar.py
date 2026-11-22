@@ -712,11 +712,8 @@ ADVICE = {
         "   'rc=  0.000010   Ekb=  0.000000' rows -- a valence element\n"
         "   missing its p or d channel is broken.  Replace that .psml with a\n"
         "   vetted one (PseudoDojo; the generator version and XC of the rest\n"
-        "   of your set).  Screen the whole set:\n"
-        # A FORMAT TEMPLATE (``{output}`` above), so the shell's braces
-        # are doubled.
-        '     "${{CONDA_PREFIX:?}}/bin/python" -m molbuilder pseudo check '
-        '<pseudo-dir>\n'
+        "   of your set).  Screen the whole set with molbuilder's\n"
+        "   `pseudo check` on the folder holding the .psml files.\n"
         "\n"
         "2) THE MPI RANK COUNT (a legitimate tunable here).\n"
         "   With clean pseudopotentials, some rank counts leave trailing\n"

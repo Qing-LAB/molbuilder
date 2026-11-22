@@ -571,9 +571,14 @@ def create_app(*, config=None) -> Flask:
         # FILE IS, the pairing rule's suffixes -- those read, and the one
         # written -- which the page header states for the projects door
         # (`projects.isStructureFile`, `isPairedFile`): one source.
+        # AND THE PROGRAM AS A PERSON TYPES IT (`identity.PROG`,
+        # `job-system.md` § 5.3), which the page head hands to every
+        # page's scripts (`molbuilder.typed`): a page never spells it.
         from .. import __version__
+        from ..identity import PROG
         from ..sidecars.molstruct import GEOMETRY_SUFFIXES, PAIRED_SUFFIX
         return {"tabs": TABS, "molbuilder_version": __version__,
+                "molbuilder_typed": PROG,
                 "structure_suffixes": GEOMETRY_SUFFIXES,
                 "paired_suffix": PAIRED_SUFFIX}
 

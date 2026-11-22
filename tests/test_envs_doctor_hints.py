@@ -34,8 +34,9 @@ NAME = RECIPE.name
 #: The host env's recipe -- the env the install script runs its verbs from.
 _HOST_RECIPE = next(r for r in builtin_recipes() if r.category is None)
 
-#: One that DOES have post-install steps on a default run, for the other branch.
-RECIPE_WITH_STEPS = next(r for r in builtin_recipes() if r.extra_set())
+#: Each that DOES have post-install steps on a default run, for the other
+#: branch -- the host env's (its path file) among them.
+RECIPES_WITH_STEPS = [r for r in builtin_recipes() if r.extra_set()]
 
 
 def _report(**kw):
@@ -130,26 +131,28 @@ def test_required_missing_packages_carry_the_repair_command(capsys):
     assert "next:    " + _fix_cmd("repair", NAME) in out
 
 
-def test_a_recipe_with_post_install_steps_needs_both_verbs(capsys):
+@pytest.mark.parametrize("recipe", RECIPES_WITH_STEPS, ids=lambda r: r.name)
+def test_a_recipe_with_post_install_steps_needs_both_verbs(capsys, recipe):
     """**Neither verb alone finishes it**, so doctor names both.
 
     `repair` installs what the audit reported and does not re-run
     `extra_steps`.  `install` runs the whole plan but SKIPS THE CREATE STEP on
     an env that already exists -- and conda packages enter a plan only through
-    create, so it adds no missing package.
+    create, so it adds no missing package.  The host env's step, its path
+    file naming this checkout, is `bootstrap`'s (`ops/deployment.md` § 0).
 
     Measured 2026-09-14: `install` on a present env goes from "conda create:
     SKIPPED" straight to verify, having installed nothing.
     """
-    rep = _report(recipe=RECIPE_WITH_STEPS,
-                  effective_name=RECIPE_WITH_STEPS.name,
+    rep = _report(recipe=recipe, effective_name=recipe.name,
                   package_audit=_audit(_issue("conda-missing")))
     code, out = _render(capsys, rep)
     assert code == 1
     # The one that installs the missing package comes FIRST.
-    assert "next:    " + _fix_cmd("repair", RECIPE_WITH_STEPS.name) in out
-    assert "then:    " + _fix_cmd(
-        "install", RECIPE_WITH_STEPS.name, "--yes") in out
+    assert "next:    " + _fix_cmd("repair", recipe.name) in out
+    again = (_fix_cmd("bootstrap", "--yes") if recipe.category is None
+             else _fix_cmd("install", recipe.name, "--yes"))
+    assert "then:    " + again in out
     assert "post-install steps" in out
 
 
@@ -202,6 +205,24 @@ def test_a_failed_verify_offers_repair_then_the_rebuild(capsys, which,
     if recipe.category is None:
         assert _fix_cmd("install", recipe.name, "--clean", "--yes") \
             not in out, out
+
+
+def test_a_host_env_that_does_not_find_molbuilder_is_pointed_back(capsys):
+    """`ops/deployment.md` § 0, *When something moves*: the checkout moved,
+    the host env's check fails -- molbuilder not found -- and doctor names
+    `bootstrap`, which writes the path file again, after `repair`, which
+    installs packages only and runs no extra step.  THE SILENT FAILURE: a
+    moved checkout answered with `repair` alone, which finds nothing to do,
+    and doctor failing again."""
+    rep = _report(recipe=_HOST_RECIPE, effective_name=_HOST_RECIPE.name,
+                  verify_ok=False,
+                  verify_output="ModuleNotFoundError: No module named "
+                                "'molbuilder'",
+                  manager="/opt/mgr/bin/micromamba")
+    code, out = _render(capsys, rep)
+    assert code == 1
+    assert "next:    " + _fix_cmd("repair", _HOST_RECIPE.name) in out, out
+    assert "then:    " + _fix_cmd("bootstrap", "--yes") in out, out
 
 
 def test_a_failed_verify_on_the_RUNNING_env_does_not_offer_clean(capsys):

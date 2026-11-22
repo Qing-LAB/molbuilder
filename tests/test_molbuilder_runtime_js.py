@@ -285,3 +285,42 @@ class TestGet:
             }));
         ''')
         assert out == {"missing": True}
+
+
+# --------------------------------------------------------------------- #
+#  typed() -- molbuilder's command as a person types it                  #
+# --------------------------------------------------------------------- #
+
+def _head_holding(prog):
+    """The page head as `_page_head.html` writes it: one
+    ``<meta name="molbuilder-typed">`` -- stood in by a document holding
+    that one element (a named need: this harness has no DOM)."""
+    meta = ("null" if prog is None else
+            "{ getAttribute: (n) => n === 'content' ? %s : null }"
+            % __import__("json").dumps(prog))
+    return ("globalThis.document = { querySelector: (s) => "
+            "s === 'meta[name=\"molbuilder-typed\"]' ? " + meta + " : null };")
+
+
+def test_a_page_spells_a_command_as_its_head_hands_it():
+    """`job-system.md` § 5.3: a page says molbuilder's command as a person
+    types it, the server's one spelling (`identity.PROG`), handed in its
+    head -- never spelled by the page."""
+    from support.road import TYPED
+    out = run_node([MODULE], '''
+        console.log(JSON.stringify(
+            window.molbuilder.typed("serve", "status", "--port", 8888)));
+    ''', globals_js=_head_holding(TYPED))
+    assert out == TYPED + " serve status --port 8888"
+
+
+def test_a_page_whose_head_hands_no_spelling_says_so():
+    """No meta, no command spelled: a page whose head is not the shared one
+    is said at once, never a bare `molbuilder`."""
+    out = run_node([MODULE], '''
+        let thrown = null;
+        try { window.molbuilder.typed("describe"); }
+        catch (e) { thrown = e.message; }
+        console.log(JSON.stringify(thrown));
+    ''', globals_js=_head_holding(None))
+    assert "molbuilder-typed" in out

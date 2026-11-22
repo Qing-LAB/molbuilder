@@ -62,7 +62,7 @@ from support.real_runs import (RealRun, Said, copy_of, makes_a_real_run,
                                notified, on_the_road, point_row, road_at,
                                stage_status, stopped_by_its_line, taken, told,
                                typed)
-from support.road import (all_written, molbuilder, one_rank,
+from support.road import (TYPED, all_written, molbuilder, one_rank,
                           set_by_the_person)
 
 
@@ -764,9 +764,9 @@ def junction(tmp_path_factory):
             # stands, the state before the group's first launch restored --
             # which puts the calculation's own files back too.
             import shlex
-            back = [shlex.split(ln.strip())[1:]
+            back = [shlex.split(ln.strip())[len(shlex.split(TYPED)):]
                     for ln in refusal.splitlines()
-                    if ln.strip().startswith("molbuilder checkpoint ")]
+                    if ln.strip().startswith(TYPED + " checkpoint ")]
             assert [w[:2] for w in back] == [["checkpoint", "save"],
                                             ["checkpoint", "restore"]], \
                 refusal
@@ -1049,7 +1049,7 @@ def _described_as_printed(said) -> tuple:
             break
         files.append(ln.strip())
     first = next(ln.strip() for ln in lines[at + 1:]
-                 if ln.strip().startswith("molbuilder jobset prep task"))
+                 if ln.strip().startswith(f"{TYPED} jobset prep task"))
     return lines[at], files, first
 
 
@@ -5974,7 +5974,7 @@ def test_a_rung_of_points_changed_after_its_prep_is_said_by_status(reused):
     step = next(s for s in jobset_status(open_calculation(bundle)).steps
                 if "transmission" in s.stages)
     assert step.state == "changed since prepared", step
-    assert any(ln.startswith("molbuilder jobset prep task --group")
+    assert any(ln.startswith(f"{TYPED} jobset prep task --group")
                for ln in step.lines), step
 
 

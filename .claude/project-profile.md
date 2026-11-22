@@ -64,7 +64,9 @@ own children are `sys.executable`. A bare `python`/`python3`/`jupyter` or an
 env's program left to `PATH`, `shutil.which(...)` for an env's program, a
 fallback to the host's, a `#!/usr/bin/env python` line, or a `pip install`
 remedy is a finding at every review — activation does not put an env's `bin`
-first. Check: `tests/test_envs_enters_the_env_through_the_manager.py`'s M6
+first. A printed molbuilder command is `identity.as_typed`'s (`job-system.md`
+§ 5.3): a bare `molbuilder <verb>` a person is told to type is a finding.
+Check: `tests/test_envs_enters_the_env_through_the_manager.py`'s M6
 rows (decoys first on `PATH` in a shell with an env active, the real manager)
 and `tests/test_launch_door_gate.py`'s job rows.
 

@@ -852,3 +852,64 @@ def test_validate_refuses_a_mirrored_cell_with_or_without_an_engine(
     body = json.loads(capsys.readouterr().out)
     assert [i["where"] for i in body["issues"]
             if i["severity"] == "error"] == ["cell.left_handed"], body
+
+
+def _every_command(group=cli.cli, path=()):
+    """Each command's words under ``group``, groups included."""
+    for name, command in sorted(getattr(group, "commands", {}).items()):
+        yield (*path, name)
+        yield from _every_command(command, (*path, name))
+
+
+def _command_at(path):
+    command = cli.cli
+    for name in path:
+        command = command.commands[name]
+    return command
+
+
+@pytest.mark.parametrize("columns", [80, 52], ids=lambda c: f"{c}-columns")
+@pytest.mark.parametrize("path", list(_every_command()), ids=" ".join)
+def test_help_names_the_program_as_a_person_types_it(capsys, monkeypatch,
+                                                     path, columns):
+    """`job-system.md` § 5.3: each command's ``--help`` says molbuilder's
+    command as a person types it (`support.road.TYPED`, the chapter's
+    words) -- its ``Usage:`` line and every example -- never click's own
+    guess, ``python -m molbuilder``, nor a bare ``molbuilder <verb>`` that
+    no shell finds; and each such line on one line, whole, a line a person
+    copies: never refilled into a run-on paragraph, never broken where the
+    help's column ends, on a wide terminal or a narrow one, its prose after
+    ``#`` (*one command a line*)."""
+    from support.road import TYPED
+    monkeypatch.setenv("COLUMNS", str(columns))
+    with pytest.raises(SystemExit) as done:
+        cli.main([*path, "--help"])
+    assert done.value.code == 0
+    said = capsys.readouterr().out
+    usage = next((ln for ln in said.splitlines()
+                  if ln.lower().startswith("usage: ")), "")
+    assert usage[len("usage: "):].startswith(f"{TYPED} {' '.join(path)}"), said
+    verbs = "|".join(map(re.escape, cli.cli.commands))
+    bare = re.compile(rf"(?<![\w./-])(?<!-m )molbuilder (?:{verbs})\b")
+    assert not bare.search(said), said
+    lines = said.splitlines()
+    assert " ".join(said.split()).count(TYPED) == sum(
+        ln.count(TYPED) for ln in lines), f"a line broken mid-program:\n{said}"
+    for ln in lines:
+        for at in (m.start() for m in re.finditer(re.escape("`" + TYPED), ln)):
+            assert "`" in ln[at + 1:], f"a line broken mid-command: {ln}\n{said}"
+    for ln in lines:
+        typed = ln.strip()
+        outside = re.sub(r"`[^`]*`", "", typed)
+        if TYPED in outside and not typed.lower().startswith("usage: "):
+            # a shell's continuation of the line before (`&&`, `|`) aside
+            assert re.sub(r"^(&&|\|\|?)\s*", "", outside).startswith(TYPED), (
+                f"a typed line not first on its line: {ln}\n{said}")
+        if typed.startswith(TYPED + " "):
+            assert not re.search(r"\S {2,}[^#\s]", typed[len(TYPED):]), (
+                f"prose on a typed line, not after `#`: {ln}\n{said}")
+    printed = {ln.strip() for ln in lines}
+    written = [ln.strip() for ln in (_command_at(path).help or "").splitlines()
+               if ln.strip().startswith(TYPED + " ")]
+    for line in written:
+        assert line in printed, f"refilled, not printed whole: {line}\n{said}"

@@ -23,6 +23,8 @@ one stage**, so every verb that acts on a stage is given the stage's name.
 from __future__ import annotations
 
 from .model import KIND_SWEEP
+from ..identity import JOBSET_PROG, as_typed
+from ..envs import hints as _hints
 
 from pathlib import Path
 from typing import Optional
@@ -31,6 +33,7 @@ import click
 
 from .ledger import record as _ledger
 from ..scheduler.emit import Directives
+from ..scheduler.record import probe_command
 from ..scheduler.kinds import names as scheduler_kinds
 from ..ncdata import EXPORT_FORMATS as _EXPORT_FORMATS
 from .model import JobSet
@@ -124,7 +127,7 @@ def _load(bundle: str) -> tuple:
     raise click.ClickException(
         f"no {_JOBSET_FILE} in {base} -- nothing to do.  The host "
         "describes it and `prep` derives it; run "
-        "`molbuilder describe` first.")
+        f"`{as_typed('describe')}` first.")
 
 
 def _flags_may_stand(calc, allocation) -> None:
@@ -530,7 +533,7 @@ def describe_cmd(structure, bundle: str,
     """Write the portable description and its job request: the template,
     ``task.json``, ``job-request.json`` (each stage's group, nothing else
     asked yet), and the data files.  Describing is not a job verb, so it is
-    not under `molbuilder jobset`.
+    not under molbuilder's `jobset`.
 
     **It writes no deck.**  A deck carries values that depend
     on how it will be launched, so rendering belongs to ``prep``, for the
@@ -1055,7 +1058,8 @@ def _resolve_stage_name(js, stage: str) -> str:
                    "-- or prep refuses and lists them.")
 @click.option("--target", default=None, metavar="NAME",
               help="which MACHINE this is for -- a record written by "
-                   "`jobset probe --write --name NAME`, or `this` for this "
+                   "molbuilder's `jobset probe --write --name NAME`, or "
+                   "`this` for this "
                    "machine's own.  A calculation's first prep names it "
                    "whenever any other machine's record is on file -- "
                    "otherwise prep refuses, listing them; a calculation "
@@ -1646,7 +1650,7 @@ def _show_and_ask(plan, *, dry_run: bool, auto_yes: bool,
                    "ending with how the run ended.  Without it a run here "
                    "starts in the background and the launch returns at once, "
                    "leaving it running -- closing the terminal does not end "
-                   "it, `molbuilder jobs stop` does -- and nothing is lost: "
+                   "it, molbuilder's `jobs stop` does -- and nothing is lost: "
                    "the run script copies everything it prints into its "
                    f"{ROLE_SESSION_LOG} in the run folder, a walk appends "
                    "each member's output to its log under launch/, and `jobset "
@@ -2580,7 +2584,7 @@ def cmd_machines() -> None:
         # THE NAME IS THE PERSON'S, so it is asked for in words -- a
         # `<name>` in a command is a redirect to bash.
         click.echo("No named targets yet.  To prepare for another machine, "
-                   "run `molbuilder jobset probe --write --name` on THAT "
+                   f"run `{JOBSET_PROG} probe --write --name` on THAT "
                    "machine with the name you will prep it by (`--target`), "
                    "then copy the file it writes into:\n    "
                    f"{environments_dir()}/")
@@ -2606,10 +2610,11 @@ def cmd_machines() -> None:
 @click.option("--name", default=None, metavar="NAME",
               help="write THIS machine's record as environments/NAME.json, "
                    "the name another machine preps it by.  The probe always "
-                   "measures the machine it runs on: run `probe --write "
+                   "measures the machine it runs on: run its `probe --write "
                    "--name sol` on Sol's login node, copy the file it writes "
-                   "to the directory `jobset machines` prints, and `prep "
-                   "--target sol` sizes for Sol from there.  Without it the "
+                   "to the directory its `machines` prints, and its `prep "
+                   "task --target sol` sizes for Sol from there (the lines "
+                   "as typed: this command's help).  Without it the "
                    f"record is this machine's own {MACHINE_RECORD_FILE}.")
 @click.option("--yes", is_flag=True, default=False,
               help="with --write: take every probed value without asking "
@@ -2636,15 +2641,21 @@ def cmd_probe(do_write: bool, name, yes: bool,
 
     \b
     TWO USES, and the second is the one people miss:
-      the machine you are ON      probe --write
-      a cluster you prep FOR      probe --write --name sol
+      molbuilder jobset probe --write               # the machine you are ON
+      molbuilder jobset probe --write --name sol    # a cluster you prep FOR
 
     The named form answers *"I describe calculations on my laptop and run them
-    on Sol"*.  Run it ON Sol's login node, copy the file it writes to the
-    directory `jobset machines` prints, and `prep --target sol` sizes for Sol
-    from anywhere.  **Without it, a bench prepared on a laptop is measured
-    against the laptop's cores and queues, silently** -- which is the whole
-    reason named records exist.
+    on Sol"*.  Run the first line ON Sol's login node, copy the file it
+    writes to the directory the second prints here, and the third sizes for
+    Sol from anywhere:
+
+        molbuilder jobset probe --write --name sol
+        molbuilder jobset machines
+        molbuilder jobset prep task --target sol
+
+    **Without it, a bench prepared on a laptop is measured against the
+    laptop's cores and queues, silently** -- which is the whole reason named
+    records exist.
 
     The unnamed form writes ``environment.json`` at the machine scope, so one
     probe serves every calculation here.
@@ -2729,7 +2740,7 @@ def cmd_probe(do_write: bool, name, yes: bool,
             f"no `env_init.activation` -- how a shell enters an environment "
             f"here, which every record this probe writes carries and every "
             f"prep for this machine reads.  It is "
-            f"required: `molbuilder envs init-config` asks for it, or state "
+            f"required: `{_hints.fix_cmd('init-config')}` asks for it, or state "
             f"it in that file; then probe again.")
 
     # THE PROBE OF THIS MACHINE -- the node, the facts that travel with its
@@ -2788,7 +2799,6 @@ def cmd_probe(do_write: bool, name, yes: bool,
         # THE LINE THAT WRITES WHAT WAS SHOWN, its flags as typed
         # (`job-system.md` § 5.3).
         import shlex
-        from ..scheduler.record import probe_command
         again = (probe_command(name)
                  + "".join(f" --set {shlex.quote(s)}" for s in sets)
                  + (f" --scheduler {scheduler_flag}" if scheduler_flag else "")

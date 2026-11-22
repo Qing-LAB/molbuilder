@@ -33,6 +33,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
+from ..identity import JOBSET_PROG
+
 #: The orbital types a selection may be narrowed to, as ``(l, m)`` --
 #: ``m`` ``None`` for every orbital of that ``l``.  SIESTA's own naming
 #: (``atmfuncs.f`` ``symfio``); a polarization orbital is of its ``l``.
@@ -50,7 +52,8 @@ ORBITAL_NOTE = ("TBtrans writes each orbital's own DOS, not the terms "
 #: THE WAY TO A POINT'S DOS PER ORBITAL, said wherever one is missing --
 #: the report's line, the export's, a PDOS from the files.
 READ_WAY = ("read it from the report's DOS tab (Read the DOS per orbital), "
-            "or `jobset summarize task`")
+            f"or, in the calculation's folder, `{JOBSET_PROG} summarize "
+            f"task`")
 
 #: The words a point without its kept reading is said in.
 NOT_READ = f"its DOS per orbital is not read yet -- {READ_WAY}"

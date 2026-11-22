@@ -30,6 +30,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Dict, Tuple
+from ..identity import as_typed
 
 if TYPE_CHECKING:                                    # pragma: no cover
     from ..config.siesta import SiestaConfig
@@ -239,7 +240,7 @@ def check_pseudopotentials(cited, psml_lib) -> None:
         raise ValueError(
             f"{cited.path.name} is a structure pair, and a pair brings no "
             f"pseudopotentials: name the directory that holds them all "
-            f"(`molbuilder describe --psml-lib DIR`, the template's `psml_lib`), as a "
+            f"(`{as_typed('describe', '--psml-lib', 'DIR')}`, the template's `psml_lib`), as a "
             f"structure optimization does -- the convention is the bare name "
             f"`pseudopotential`, the projects tree's own"
             f".")

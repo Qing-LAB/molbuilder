@@ -67,7 +67,7 @@ from .model import (KIND_LADDER, KIND_SWEEP, Job, JobSet, Resources,
 from .continuation import Continuation, relaunch
 from .ledger import rel_to
 from .planned import Plan, found
-from ..identity import jobs_as_typed
+from ..identity import JOBS_PROG, checkpoint_as_typed, jobs_as_typed
 from ..runfiles import (GROUP_HEADER, GROUP_LOG, GROUP_RUN_SCRIPT,
                         ROLE_RUN_SCRIPT, ROLE_SESSION_LOG, GroupNames,
                         RunNames)
@@ -385,7 +385,7 @@ def _sbatch_request(*, header: Path, placement: "Optional[_Placed]",
             f"the launch cannot say what it sends -- prep writes one into "
             f"every header, so this one was edited since.  Prepare it again "
             f"where nothing of it was launched, or restore the state saved "
-            f"before it was edited (`molbuilder checkpoint list`); --time "
+            f"before it was edited (`{checkpoint_as_typed()[0]}`); --time "
             f"states the time limit for this launch alone.")
     restated = (kind.restated(row.says, sent.time) if sent.restated
                 else [])
@@ -2050,8 +2050,8 @@ def _keep(job):
     try:
         joblist.write(job)
     except OSError as exc:
-        return job, (f"its address could not be kept, so `molbuilder jobs` "
-                     f"will not list it: {exc}")
+        return job, (f"its address could not be kept, so "
+                     f"`{JOBS_PROG}` will not list it: {exc}")
     return job, None
 
 
@@ -2267,6 +2267,7 @@ def _walk_script(name: str, steps, *, where: str, log: str,
     the starts and bounds; each member's own ``.run.sh`` activates its
     environment and launches its engine, exactly as when it runs alone."""
     from ..identity import holds_a_start
+    from ..runwrap import shell_literal
     from ..runtime_info import JOB_STARTED_VAR
     when = "$(date '+%Y-%m-%dT%H:%M:%S')"
     head = f"[{tag}]"
@@ -2295,8 +2296,12 @@ def _walk_script(name: str, steps, *, where: str, log: str,
         # THE WALK STARTS ONCE: a point it runs already holds a start.
         *([f"for _s in {' '.join(started)}; do",
            '    if [ -e "$_s" ]; then',
-           f'        echo "{head} {when} refused -- '
-           f'{holds_a_start("$_s", again)}" >> "$LOG"',
+           # The sentence a literal -- it names a launch as a person
+           # types it (`identity.as_typed`) -- the point's file and the
+           # time spliced in live.
+           "        echo " + shell_literal(
+               f"{head} \0W\0 refused -- {holds_a_start(chr(0) + 'S' + chr(0), again)}",
+               {"\0W\0": when, "\0S\0": "$_s"}) + ' >> "$LOG"',
            "        exit 2",
            "    fi",
            "done"] if started else []),
@@ -3374,9 +3379,9 @@ def _plan_sequence(calc, jobset: JobSet, numbers: Sequence[int], *,
     enters = _molbuilder_env_entry(machine)
     # THE COMMAND'S ONE GRAMMAR (`identity.words_for`), run by molbuilder's
     # own python as a module.
-    from ..identity import JOBSET_PROG, TASK, words_for
+    from ..identity import TASK, run_as, words_for
     steps = [(f"group {g['number']}", str(home), WalkCommand(
-        " ".join(['"$_mb_py" -m', JOBSET_PROG, "launch",
+        " ".join([run_as('"$_mb_py"', "jobset", "launch"),
                   *words_for(TASK, groups=[g["number"]]), "--bundle",
                   shlex.quote(str(base)), "--mode", "direct", "--foreground",
                   "--yes", "--in-sequence", shlex.quote(names.stem),

@@ -1854,7 +1854,7 @@ async function readFolder(projects, dir, opts) {
                  + "parameters here from Structure optimization or Spectrum "
                  + "calculation, or press Describe on Transport calculation "
                  + "(which writes straight into the folder selected there), "
-                 + "or run `molbuilder describe`.");
+                 + "or run `" + window.molbuilder.typed("describe") + "`.");
         await setBuffers({ task: "", request: "" }, { fromDisk: true });
         return;
     }

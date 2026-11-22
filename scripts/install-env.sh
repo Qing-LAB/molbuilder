@@ -77,9 +77,10 @@
 #   This shim is the canonical entry point.  molbuilder is not
 #   pip-installed into the host env, so after ``conda activate
 #   molbuilder`` the bare ``molbuilder`` command does NOT exist on
-#   PATH -- you'd need the env's own Python running ``-m molbuilder ...``
-#   with PYTHONPATH pointed at the repo root.  Sticking with the shim
-#   avoids that footgun.
+#   PATH -- you'd need the env's own Python running ``-m molbuilder ...``,
+#   which finds the package through the path file ``bootstrap`` writes
+#   into the host env (docs/ops/deployment.md section 0).  The shim works
+#   before that, from any CWD.
 #
 # EXIT CODES:
 #   0 = OK
@@ -93,8 +94,11 @@ set -euo pipefail
 # ---- repo root resolution ------------------------------------------------
 #
 # molbuilder is NOT pip-installed (intentional convention -- the
-# host env's site-packages does not contain ``molbuilder``).  So
-# ``-m molbuilder`` needs the repo on PYTHONPATH.  Resolving
+# host env's site-packages does not contain ``molbuilder``).  So the
+# shim's ``-m molbuilder`` puts the repo on PYTHONPATH: before
+# ``bootstrap`` has written the host env's path file it is the only way
+# the package is found, and after, it keeps the shim on THIS checkout.
+# Resolving
 # the repo root from the script's own location lets us call the
 # shim from any CWD; the user's CWD is preserved.  (A ./molbuilder.json
 # is NOT read -- retired 2026-08-31; the machine config has one home.)
@@ -475,9 +479,10 @@ Two equivalent entry points (use whichever you prefer):
   (Note: molbuilder is intentionally NOT pip-installed into the
   host env, so the bare ``molbuilder`` command does NOT exist on
   PATH after activation -- the env's Python running ``-m molbuilder``
-  is the form,
-  and PYTHONPATH must point at the repo root.  The shim sets
-  PYTHONPATH for you, which is why it Just Works from any CWD.)
+  is the form.  It finds molbuilder from any folder through the path
+  file ``bootstrap`` writes into the host env, molbuilder-source.pth,
+  naming this checkout (docs/ops/deployment.md section 0).  The shim
+  sets PYTHONPATH itself, so it works before bootstrap has run.)
 
   Equivalent EXCEPT for two things.  ``--gcc`` only the shim understands
   (it must be set before Python imports the recipes); on path (b), export

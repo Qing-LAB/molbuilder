@@ -1446,6 +1446,24 @@ molbuilder jobset <verb> bench <stage> [<trial>]  [options]
 
 #### What molbuilder prints, you can type
 
+**The program is named as you type it** *(the user, 2026-11-21: "Spell in
+full, one printer")*: the host env's own Python running molbuilder,
+`"${CONDA_PREFIX:?}/bin/python" -m molbuilder <verb> …` — never a bare
+`molbuilder`, which no install puts on `PATH`, nor a bare `python`, which
+activation does not put first ([`ops/installation.md`](?doc=ops/installation.md)
+M6) — and it runs **from any folder where the host env is active**, a
+calculation's included: the env finds molbuilder through the path file
+`bootstrap` writes it ([`ops/deployment.md`](?doc=ops/deployment.md) § 0).
+**One spelling**, `identity.as_typed` (`identity.PROG`), for every line a
+person is told to type: the verbs' and their refusals', a layer below `jobset`
+(a machine record's refusal, a run script's banner, a deck's header), the
+CLI's `--help` — its `Usage:` line and its examples — and the pages (the
+template context's `molbuilder_typed`, read by `molbuilder.typed` in the
+runtime script every page loads first). A job's own line runs molbuilder on
+the job's Python, `"$_mb_py" -m molbuilder …` (`identity.run_as`). In this
+chapter and the guides, `molbuilder <verb>` is shorthand for the typed
+spelling.
+
 **A command molbuilder prints** — a deck's header, a *next:* line, a remedy, a
 refusal's list — **names the stage by its NAME**: never the token (`03_tight`
 is itself a legal name, of another stage), never `#N` (a pasted line would lose

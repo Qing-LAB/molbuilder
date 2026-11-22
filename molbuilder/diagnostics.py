@@ -570,10 +570,15 @@ def local_facts(env: "Any", env_init: "Optional[Mapping[str, str]]"
             manager_run = {"manager": caps.conda_binary, "run_works": works}
     notes: List[str] = []
     if not sg_rec.get("activation"):
+        # The env command's one spelling (`envs.hints`, M3), asked here,
+        # not at load: `envs` imports this module as it loads
+        # (`envs/__init__` -> `recipes` -> `diagnostics`), a cycle.
+        from .envs.hints import fix_cmd as _env_command
         notes.append(
             "this machine's molbuilder.json states no `env_init.activation` "
             "-- how a shell enters an environment here -- so `--write` "
-            "refuses until it does: `molbuilder envs init-config` asks for it")
+            "refuses until it does: `" + _env_command("init-config")
+            + "` asks for it")
     if why_none:
         # WHAT IS LEFT OUT, AND WHY (M-2): an empty inventory is unknown,
         # never none, so nothing is checked against it.

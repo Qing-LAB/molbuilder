@@ -62,10 +62,12 @@ def install_cmd(recipe: str) -> str:
 
 
 def install_again_cmd(recipe) -> str:
-    """The line that installs ``recipe`` again once its env is gone: the
-    host env by `bootstrap`, which makes the molbuilder every other verb
+    """The line that installs ``recipe`` again once its env is gone, or
+    re-runs its post-install steps on a present one (doctor's ``then:``):
+    the host env by `bootstrap`, which makes the molbuilder every other verb
     needs -- the install script runs its other verbs from that env, and
-    refuses them while it is missing -- any other by :func:`install_cmd`."""
+    refuses them while it is missing -- and writes its path file
+    (`ops/deployment.md` § 0); any other by :func:`install_cmd`."""
     return (fix_cmd("bootstrap", "--yes") if recipe.category is None
             else install_cmd(recipe.name))
 

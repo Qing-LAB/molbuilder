@@ -30,8 +30,10 @@ from typing import Any, Dict, List, Optional, Tuple
 
 try:                                        # inside molbuilder
     from .trajectory_log.keys import WALL_TIME as _WALL_TIME
+    from .identity import checkpoint_as_typed
 except ImportError:                         # beside a job, in a bundle
     from keys import WALL_TIME as _WALL_TIME
+    from identity import checkpoint_as_typed
 
 
 BLOCK_PROVENANCE    = "provenance"
@@ -122,7 +124,7 @@ def block_unreadable(name: str, why: str) -> DeckRecordUnreadable:
     return DeckRecordUnreadable(
         f"its molbuilder {name} block {why}.  The block is a record "
         f"molbuilder writes, not one edited by hand: restore the folder to "
-        f"a saved state (`molbuilder checkpoint restore`), or prepare the "
+        f"a saved state (`{checkpoint_as_typed()[1]}`), or prepare the "
         f"stage again")
 
 
@@ -429,7 +431,8 @@ def read_bench_marks_block(text: str) -> Optional[Dict[str, Any]]:
 
 #: WHAT THIS MODULE NEEDS BESIDE IT in a job's bundle -- the modules it
 #: imports there by their bare names (`runwrap.bundle_members`).
-TRAVELS_WITH = ("molbuilder.trajectory_log.keys",)
+TRAVELS_WITH = ("molbuilder.trajectory_log.keys",
+                "molbuilder.identity")
 
 
 __all__ = ["BUILD_NAME", "BLOCK_PROVENANCE", "BLOCK_BENCH_MARKS",

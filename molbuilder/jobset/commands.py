@@ -25,7 +25,7 @@ from typing import List, Optional, Tuple
 #: The program as a person types it, the kinds and the grammar every line
 #: takes -- the naming module's (`identity`), which a text read later says
 #: too.
-from ..identity import BENCH, JOBSET_PROG as PROG, TASK, words_for
+from ..identity import BENCH, JOBSET_PROG, TASK, as_typed, words_for
 
 
 def prep_group_lines(numbers, *, base) -> List[str]:
@@ -62,7 +62,7 @@ def command(verb: str, *words, base, flags=()) -> str:
     ``None`` for a line that names none (`molbuilder describe`, `probe`).  A word that is
     ``None`` is left out -- the verb's form without it -- never printed as
     ``None``."""
-    parts = [PROG, verb, *(str(w) for w in words if w is not None),
+    parts = [JOBSET_PROG, verb, *(str(w) for w in words if w is not None),
              *(str(f) for f in flags)]
     return " ".join(parts) + (bundle_flag(base) if base is not None else "")
 
@@ -402,7 +402,7 @@ def redo_launched(stage: Optional[str], *, calc) -> str:
     return (f"start {group} from the beginning -- save the folder as it "
             f"stands, so its runs are kept in a saved state; go back to the "
             f"state saved before {what}; prepare it again --\n"
-            + block([f"molbuilder checkpoint save -p {folder} -m {note}",
+            + block([as_typed("checkpoint", "save", "-p", folder, "-m", note),
                      f"{restore} {state}",
                      *(prep_group_lines([g], base=base) if g is not None
                        else [command("prep", "task", base=base)])]))
@@ -540,7 +540,7 @@ def stage_lines(kind: str, *, base, groups=(), stages=(),
     return out
 
 
-__all__ = ["PROG", "TASK", "BENCH", "words_for", "bundle_flag", "command",
+__all__ = ["TASK", "BENCH", "words_for", "bundle_flag", "command",
            "configured_mode", "prep_group_lines",
            "prep_sequence_lines",
            "launch_lines", "lines", "run_first", "name_a_stage",

@@ -500,11 +500,19 @@ def pip_steps_for(recipe: Recipe, conda: str, env_name: str, *,
     return steps
 
 
+def extra_step_for(extra, conda: str, env_name: str) -> InstallStep:
+    """What an ``extra_steps`` entry MEANS -- one place
+    (`ops/env-framework.md` § 5): its argv run inside the env, through the
+    manager."""
+    return InstallStep(label="extra", role=StepRole.EXTRA,
+                       argv=conda_run_argv(conda, env_name, *extra.argv))
+
+
 def extra_steps_for(recipe: Recipe, conda: str, env_name: str, *,
                     include_opt_in: bool = False) -> List[InstallStep]:
-    """What an ``extra_steps`` entry MEANS -- one place, per § 4.2."""
-    return [InstallStep(label="extra", role=StepRole.EXTRA,
-                        argv=conda_run_argv(conda, env_name, *extra.argv))
+    """A recipe's extra steps a run dispatches (:func:`extra_step_for`
+    each) -- the opt-in ones only when asked."""
+    return [extra_step_for(extra, conda, env_name)
             for extra in recipe.extra_set(include_opt_in=include_opt_in)]
 
 
@@ -1449,6 +1457,7 @@ __all__ = [
     "conda_run_argv",
     "pip_steps_for",
     "conda_packages_step_for",
+    "extra_step_for",
     "extra_steps_for",
     "remove_step_for",
     "create_step_for",

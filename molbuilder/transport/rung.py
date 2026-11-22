@@ -26,6 +26,9 @@ from ..siesta.seam import pseudo_dir
 from ..jobset.errors import PrepError, user_error_as_prep
 from ..jobset.naming import stage_home
 from ..jobset.rung import Rung, citation_of
+from .compose import (RELAX_THROUGH, ComposeError, cited_frames,
+                      junction_said, load_compose_record,
+                      read_provenance, write_compose_record)
 
 
 def provide_pseudos(struct, base: Path, citation: str, *,
@@ -75,8 +78,8 @@ def provide_pseudos(struct, base: Path, citation: str, *,
                 f"directory ({citation}).  The pseudopotentials travel "
                 f"with the citation: a "
                 f"relaxation run of molbuilder's own holds the .psml it "
-                f"ran with, so relax the junction through `molbuilder describe` -> "
-                f"`prep task` -> `launch task` and cite that run.")
+                f"ran with, so relax the junction through {RELAX_THROUGH} "
+                f"and cite that run.")
 
 
 def resolve_transport(task, stage: str, allocation, *, template_text,
@@ -254,7 +257,6 @@ def compose_refusals() -> tuple:
     saying it as its own refusal."""
     from ..atom_permutation import PermutationError
     from ..deck_record import DeckRecordUnreadable
-    from .compose import ComposeError
     from .sort import SortError
     return (ComposeError, SortError, PermutationError, DeckRecordUnreadable)
 
@@ -274,7 +276,6 @@ def junction_record(calc):
     resolved BEFORE the record is loaded: the reload holds a cited pair to
     the bytes it was composed from (`compose.load_compose_record`)."""
     from ..projects import find_projects_root
-    from .compose import load_compose_record, read_provenance
     base, task = calc.base, calc.task
     try:
         root = find_projects_root(base)
@@ -300,7 +301,6 @@ def frames_had(calc, *, read=None) -> int:
     (`compose.cited_frames`).  A junction that prep would refuse is the
     prep's to say: until then the record's count answers."""
     from ..projects import find_projects_root
-    from .compose import cited_frames, read_provenance
     from .stages import frames_of
     if read_provenance(calc.base, read=read) is None:
         if calc.task.reuses:
@@ -364,7 +364,6 @@ def written_and_read_back(base, composed, plan, *, root, task):
     sets of numbers ~1e-10 apart (measured 2026-09-25 on the ENGINE-OFFSET
     record), and a deck rendered from each differs."""
     import tempfile
-    from .compose import load_compose_record, write_compose_record
     why: list = []
     with tempfile.TemporaryDirectory(prefix="molbuilder-compose-") as tmp:
         names = write_compose_record(tmp, composed)
@@ -522,7 +521,6 @@ def transport_rung_of(calc, pset, *, seam, sweep, log, plan,
     # WHAT THE JUNCTION SAYS, said by prep as the Transport card says it
     # (`compose.junction_said`): every rung carries it, so a prep that
     # writes several says it once, above them (`prep.prep_said`).
-    from .compose import junction_said
     return Rung(struct=struct, render_kind=task.calculation, configure=configure,
                 said=junction_said(composed, extending=bool(task.reuses)),
                 sources=lambda element: transport_sources(

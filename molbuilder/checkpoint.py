@@ -47,6 +47,7 @@ import tempfile
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+from molbuilder.identity import as_typed
 from molbuilder.runfiles import find_by_role as _rf_find_by_role
 from typing import Dict, List, Optional, Sequence, Tuple
 
@@ -958,7 +959,7 @@ def publish_archive(root: Path, big: Sequence[Path]) -> str:
                 f"removing it and saving again rebuilds it from the files in "
                 f"this folder:\n"
                 f"    rm -rf {archive_dir(root, digest)}\n"
-                f"    molbuilder checkpoint save -m \"…\""
+                f"    {as_typed('checkpoint', 'save', '-m', chr(34) + '…' + chr(34))}"
             ) from exc
         return digest
 
@@ -1230,7 +1231,7 @@ class Repo:
         if not self.initialized:
             raise CheckpointError(
                 f"{self.path} is not a checkpoint folder; run "
-                f"`molbuilder checkpoint init` first.")
+                f"`{as_typed('checkpoint', 'init')}` first.")
 
     def init(self, engine: Optional[str] = None,
              note: str = "set up",
@@ -1390,11 +1391,12 @@ class Repo:
                 f"so it was lost rather than never written, and nothing here "
                 f"can be called saved or unsaved until that is resolved.\n\n"
                 f"Two ways on, and neither needs git:\n"
-                f"    molbuilder checkpoint save -m \"…\"\n"
+                f"    {as_typed('checkpoint', 'save', '-m', chr(34) + '…' + chr(34))}\n"
                 f"        records what is on disk now -- and rebuilds THIS "
                 f"archive byte-identically if those large files are "
                 f"unchanged, since an archive is named by its content;\n"
-                f"    molbuilder checkpoint restore <other-state> --force\n"
+                f"    molbuilder's `checkpoint restore --force`, another "
+                f"state's name after it,\n"
                 f"        leaves this state, accepting whatever is here.\n")
         raw = man.read_bytes()
         if manifest_digest(raw) != state.archive:
@@ -1770,9 +1772,9 @@ class Repo:
             raise CalculationNameError(
                 f"{exc}\n\nThis folder is a git repository that molbuilder did "
                 f"not name -- most likely `git init` was run here by hand. "
-                f"Give it one, and nothing else changes:\n"
-                f"    molbuilder checkpoint init --calculation <name>\n"
-                f"Nothing was saved.") from exc
+                f"Give it one -- molbuilder's `checkpoint init "
+                f"--calculation`, the name after it -- and nothing else "
+                f"changes.  Nothing was saved.") from exc
         cls = self.classification()
         always = cls["always_large"]
         # I2b: `.gitignore` records a DERIVATION, so the derivation is the
@@ -1905,8 +1907,9 @@ class Repo:
                     "this folder has work that is not saved, and restoring "
                     "will lose it:\n"
                     + _describe(here)
-                    + "\n\nSave it first with `molbuilder checkpoint save "
-                      "-m \"…\"`, or pass --force to accept the loss.")
+                    + "\n\nSave it first with `"
+                    + as_typed("checkpoint", "save", "-m", '"…"')
+                    + "`, or pass --force to accept the loss.")
 
         # --- from here on the folder is being changed --------------- #
         _run_git(["checkout", "--force", "--detach", sha], cwd=self.path)

@@ -319,8 +319,11 @@
         if (!rel) {
             body.textContent =
                 "# The page could not read where the channels file lives.\n"
-                + "# Reload; if it persists, `molbuilder notify-token` prints\n"
-                + "# the same recipe with the path resolved server-side.";
+                + "# Reload.  The key just issued is not shown again: if this\n"
+                + "# persists, molbuilder's `notify-token`, given the user and\n"
+                + "# --replace, issues that user's key anew -- the old one stops\n"
+                + "# working -- and prints a recipe with the path resolved\n"
+                + "# server-side.";
             box.hidden = false;
             return;
         }

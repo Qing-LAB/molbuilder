@@ -1,6 +1,8 @@
 {#- THE SHELL'S HEAD (`ui-contract.md` § 1): what every page draws on, loaded
     first and in one order -- the tokens, the shell, the one dialog, the page
-    links -- and the two scripts every page's own read before they run: the
+    links, molbuilder's command as a person types it (`identity.PROG`, read
+    by `molbuilder.typed`) -- and the two scripts every page's own read
+    before they run: the
     runtime (`molbuilder-runtime.js` before any other molbuilder script) and
     the one status writer (`lib/status.js`).  A page's head includes this
     after its title, then adds its own sheets and scripts. -#}
@@ -8,5 +10,6 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/page-shell.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/dialog.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/tabs.css') }}">
+<meta name="molbuilder-typed" content="{{ molbuilder_typed }}">
 <script src="{{ url_for('static', filename='lib/molbuilder-runtime.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/status.js') }}"></script>

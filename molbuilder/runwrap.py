@@ -23,6 +23,7 @@ from __future__ import annotations
 #: variables' names written into the run script by their owner.
 from .scheduler.kinds import (CPUS_PER_TASK, JOB_GPUS, JOB_ID,
                                LAUNCH_CLAIM, LAUNCH_CLAIM_VAR, NTASKS)
+from .identity import JOBSET_PROG, TASK, words_for
 
 import functools
 import re
@@ -530,11 +531,37 @@ def _args_parse(*, stated: str, omp_aliases: str, usage: str,
         "\n")
 
 
+def shell_literal(text: str, live: Optional[Dict[str, str]] = None) -> str:
+    """``text`` as ONE double-quoted shell word, word for word -- ``\\``,
+    ``"``, ``$`` and the backquote escaped, so a sentence naming a command
+    as a person types it, with its quotes and ``${...}``
+    (`identity.as_typed`, `job-system.md` § 5.3), is never read by the
+    shell, and every other sentence is written as it reads -- each
+    placeholder in ``live`` spliced in as the shell expression it maps to
+    (a file's variable, the time), read live."""
+    import re
+    keys = list(live or {})
+    parts = (re.split("(" + "|".join(map(re.escape, keys)) + ")", text)
+             if keys else [text])
+    return '"' + "".join(
+        (live[p] if p in (live or {}) else re.sub(r'([\\"$`])', r"\\\1", p))
+        for p in parts if p) + '"'
+
+
+def _echo_literal(text: str) -> str:
+    """``text`` as the run script's ``echo`` says it, word for word
+    (:func:`shell_literal`): a sentence that names a command as typed --
+    its quotes, ``${...}`` and backquotes -- printed, never run, and
+    readable as written in the script, apostrophes and all.  (The
+    parameter rows' ``echo`` quotes data, a JSON row, by ``shlex.quote``.)"""
+    return "echo " + shell_literal(text)
+
+
 def _again_line(again: str, said: str = "what a launch again will do") -> str:
     """The run script's line after a failure: what a launch again will do
     (`running-a-job.md` § 3.5), ``said`` the cause where it is a stop at the
     wall (§ 3.6)."""
-    return f'echo "{said}: {again}" >&2\n'
+    return f"{_echo_literal(f'{said}: {again}')} >&2\n"
 
 
 #: HOW LONG THE EXIT TRAP WAITS FOR ITS MONITOR'S CLOSING LINES, in seconds:
@@ -597,7 +624,7 @@ def _one_start_block(names, trial: bool) -> str:
         f'_runwrap_log="$PWD/{log}"\n'
         f'_concluded="{names.name(ROLE_CONCLUDED)}"\n'
         f'if [ "$_dry_run" = "0" ] && [ -e "$_runwrap_log" ]; then\n'
-        f'    echo "ERROR: {holds_a_start(log, way)}." >&2\n'
+        f"    {_echo_literal(f'ERROR: {holds_a_start(log, way)}.')} >&2\n"
         "    exit 2\n"
         "fi\n"
     )
@@ -2448,7 +2475,7 @@ def render_run_wrapper(script_path: Path, *,
             f"unsafe script basename for run-script emission: "
             f"{basename!r}.  Allowed characters: letters, digits, "
             f"``.``, ``_``, ``-``.  Rename the script and prep "
-            f"again (`molbuilder jobset prep`)."
+            f"again (`{' '.join((JOBSET_PROG, 'prep', *words_for(TASK)))}`)."
         )
     if not _SAFE_WRAPPER_NAME_RE.fullmatch(script_name):
         raise WrapperError(
@@ -3129,8 +3156,7 @@ def render_run_wrapper(script_path: Path, *,
         f"# request and a dry run start nothing, and pass.\n"
         f'if [ "$_dry_run" = "0" ] '
         f'&& [ "${{{LAUNCH_CLAIM_VAR}:-}}" != "{LAUNCH_CLAIM}" ]; then\n'
-        f'    echo "ERROR: {run_sh} was not started by its launch: '
-        f'{started_by_launch(command_stage(names.stage), trial)}." >&2\n'
+        f"    {_echo_literal(f'ERROR: {run_sh} was not started by its launch: ' + started_by_launch(command_stage(names.stage), trial) + '.')} >&2\n"
         f'    echo "launched-by: ${{{LAUNCH_CLAIM_VAR}:-NONE}} -- refused at '
         f'the launch-door gate"\n'
         f"    exit 2\n"

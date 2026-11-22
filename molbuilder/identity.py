@@ -187,21 +187,57 @@ def command_stage(token: str) -> str:
     return got[1]
 
 
+#: The module a Python runs molbuilder as.
+MODULE = "molbuilder"
+#: THE PYTHON A PERSON TYPES molbuilder ON -- the host env's own, by its
+#: path, the env active (`ops/installation.md` M6): never a bare `python`,
+#: which activation does not put first on PATH; ``:?`` stops the line where
+#: no env is active, rather than reaching ``/bin/python``.
+TYPED_PYTHON = '"${CONDA_PREFIX:?}/bin/python"'
+
+
+def run_as(python: str, *words) -> str:
+    """``<python> -m molbuilder <words>`` -- molbuilder run by ``python``,
+    the ONE spelling of its command line: as a person types it
+    (:func:`as_typed`), or as a job runs it on its own Python
+    (``"$_mb_py"``)."""
+    return " ".join((python, "-m", MODULE, *(str(w) for w in words)))
+
+
+def as_typed(*words) -> str:
+    """molbuilder's command ``words`` as a person types it -- the host env's
+    own Python running it (:data:`TYPED_PYTHON`): every line molbuilder
+    prints for a person to type starts here (`job-system.md` § 5.3; the
+    user, 2026-11-21: "Spell in full, one printer").  Never a bare
+    ``molbuilder``, which no install puts on PATH."""
+    return run_as(TYPED_PYTHON, *words)
+
+
+def in_template(text: str) -> str:
+    """``text`` -- a line :func:`as_typed` spelled -- placed in a
+    ``str.format`` template, its braces doubled: the typed spelling's
+    ``${...}`` would otherwise be read as a field, and the template's own
+    sentence lost (a refusal, an engine's advice)."""
+    return text.replace("{", "{{").replace("}", "}}")
+
+
+#: The program as a person types it (:func:`as_typed`).
+PROG = as_typed()
 #: THE JOBSET VERBS' COMMAND, and the kinds of work each names: the
 #: calculation as a TASK -- its groups named with ``--group``, a stage alone
 #: with ``--stage`` -- and a BENCHMARK of one stage, named by position
 #: (`job-system.md` § 5.3).  Here, below every surface, because a text read
 #: later says them (a deck's header, a result's remedy) as the command
 #: composer does (`jobset.commands`).
-JOBSET_PROG = "molbuilder jobset"
+JOBSET_PROG = as_typed("jobset")
 TASK, BENCH = "task", "bench"
 #: ...and the jobs launched from this machine, by their addresses
-#: (`job-system.md` § 6.0a): ``molbuilder jobs status``, ``stop <id>``.
-JOBS_PROG = "molbuilder jobs"
+#: (`job-system.md` § 6.0a): ``jobs status``, ``stop <id>``.
+JOBS_PROG = as_typed("jobs")
 
 
 def jobs_as_typed(verb: str, *words) -> str:
-    """``molbuilder jobs <verb> <words>`` -- the one spelling of a line on
+    """``jobs <verb> <words>``, as typed -- the one spelling of a line on
     the jobs launched from this machine, which a refusal and a launch's
     line print (`job-system.md` § 6.0a)."""
     return " ".join([JOBS_PROG, verb, *(str(w) for w in words)])
@@ -247,7 +283,7 @@ def next_run_words(stage: str) -> str:
     the next run (:func:`launch_as_typed`).  ``stage`` is the stage's
     NAME."""
     return (f"to continue it, launch the stage again -- "
-            f"'{launch_as_typed(stage)}' opens the next run")
+            f"`{launch_as_typed(stage)}` opens the next run")
 
 
 def holds_a_start(log: str, way: str) -> str:
@@ -268,8 +304,8 @@ def checkpoint_as_typed(folder=None) -> Tuple[str, str]:
     sentence around them says so."""
     import shlex
     p = "" if folder is None else f" -p {shlex.quote(str(folder))}"
-    return (f"molbuilder checkpoint list{p}",
-            f"molbuilder checkpoint restore{p}")
+    return (as_typed("checkpoint", "list") + p,
+            as_typed("checkpoint", "restore") + p)
 
 
 def migrate_as_typed(folder=None) -> str:
@@ -342,7 +378,7 @@ def started_by_launch(stage: str, bench: bool = False) -> str:
     benchmark's, for a trial (``bench``)."""
     launch = (" ".join((JOBSET_PROG, "launch", *words_for(BENCH, stage)))
               if bench else launch_as_typed(stage))
-    return (f"a run is started by '{launch}', which writes its records; "
+    return (f"a run is started by `{launch}`, which writes its records; "
             f"no other start is taken")
 
 
@@ -663,7 +699,9 @@ def run_id(label: str, formula: str = "", *,
     return f"{stem}_{normalise_id(formula, what='formula')}"
 
 
-__all__ = ["BENCH", "JOBSET_PROG", "TASK", "words_for",
+__all__ = ["BENCH", "JOBSET_PROG", "JOBS_PROG", "MODULE", "PROG",
+           "TYPED_PYTHON", "TASK", "as_typed", "in_template", "run_as",
+           "words_for",
            "started_by_launch",
            "LAUNCHED_WAY_BACK", "launched_way_back", "LAUNCH_MODE_NOTE",
            "MAX_LABEL_BYTES",

@@ -531,7 +531,7 @@ def ensure_runtime_dir() -> Path:
                 f"logged in to, carried in with the job's environment.  "
                 f"`unset XDG_RUNTIME_DIR` -- the pidfile then goes to "
                 f"{state_dir() / 'run'} -- or set it to a directory you own, "
-                f"in every shell you run `molbuilder serve` from.") from None
+                f"in every shell you start molbuilder's server from.") from None
         raise RuntimeDirError(
             f"the pidfile directory {d} cannot be made ({why}).") from None
 

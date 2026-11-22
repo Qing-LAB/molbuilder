@@ -73,7 +73,7 @@
       region labels in the deck.  Or <strong>a structure pair that
       records the optimization its geometry came from</strong> — its
       <code>.xyz</code>, saved from such a run (the Results tab's Export,
-      or <code>molbuilder xv2xyz --from-run</code>), or a frame set a
+      or <code>{{ molbuilder_typed }} xv2xyz --from-run</code>), or a frame set a
       script wrote onto that pair through the structure's own doors —
       every frame then runs at every voltage of the list.  Either answers the
       basis, the functional and the real-space mesh, and step 2 shows them
@@ -524,16 +524,16 @@
     <div class="hint">
       <ol>
         <li data-extension-only hidden><strong>Prepare the task, then
-            launch what it prepares here</strong> &mdash; <code>jobset prep
-            task</code> copies in the groups the plan above names as copied
+            launch what it prepares here</strong> &mdash; <code>{{ molbuilder_typed }}
+            jobset prep task</code> copies in the groups the plan above names as copied
             from the finished calculation, and prepares the others here;
-            each <code>jobset launch task</code> sends the next group
-            prepared here whose upstream has finished.</li>
+            each <code>{{ molbuilder_typed }} jobset launch task</code> sends
+            the next group prepared here whose upstream has finished.</li>
         <li data-new-only><strong>Prepare the task, then launch it group by group</strong>
-            &mdash; <code>jobset prep task</code> prepares every stage at
+            &mdash; <code>{{ molbuilder_typed }} jobset prep task</code> prepares every stage at
             once, from the command line or from
             <a href="/task-setup">Task setup</a>'s Prep on that folder;
-            each <code>jobset launch task</code> sends the next group whose
+            each <code>{{ molbuilder_typed }} jobset launch task</code> sends the next group whose
             upstream has finished: first the <code>seed</code> and both leads
             as one job; run it again once they have finished for the
             <code>device</code>, and again for the
@@ -547,7 +547,7 @@
             the one before it; under the low-bias approximation the device
             and the transmission run once, at 0 V.</li>
         <li><strong>Read it back</strong> on the Results tab, or with
-            <code>summarize task</code>, which writes
+            <code>{{ molbuilder_typed }} jobset summarize task</code>, which writes
             <code>&lt;label&gt;.transport.json</code>: T(E) per point,
             the conductance at E_F, and the I–V — each point's TBtrans
             current, or the record's own from T(E, 0) under the

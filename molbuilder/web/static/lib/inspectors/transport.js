@@ -230,7 +230,8 @@ const WORKSPACE_TAG = "results:transport";
                 "Atoms are numbered as in your structure (user index + 1). "
                 + "The engine's own files list them by engine index -- the "
                 + "digest, and .TBT.nc as sisl reads it, counted from 0; ");
-            line.appendChild(_el("code", null, "molbuilder atom-index"));
+            line.appendChild(_el("code", null,
+                root.molbuilder.typed("atom-index")));
             line.appendChild(root.document.createTextNode(
                 " shows both, and "));
             const how = _el("a", null, "the post-processing document");

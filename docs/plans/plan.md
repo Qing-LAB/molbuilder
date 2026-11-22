@@ -10,9 +10,9 @@ at 2.77.9 is [`archive/2026-11-19-plan-consolidation.md`](?doc=archive/2026-11-1
 
 ---
 
-## ▶ Where we are *(2026-11-21)*
+## ▶ Where we are *(2026-11-22)*
 
-**2.77.22.** F0–F11 and F7a are closed (2.56.2–2.77.2). 2.77.10 brought Plotly's toolbar back on every chart, each chart's Export in a strip above it, and 2.77.12 a vibration mode's animation into a column beside the spectrum and its table, held in view *(the user, 2026-11-19)*. F12, *Proven*, walked
+**2.77.23.** F0–F11 and F7a are closed (2.56.2–2.77.2). 2.77.10 brought Plotly's toolbar back on every chart, each chart's Export in a strip above it, and 2.77.12 a vibration mode's animation into a column beside the spectrum and its table, held in view *(the user, 2026-11-19)*. F12, *Proven*, walked
 its three roads in the browser on real runs, ran the full batch (6106 fast
 and 805 e2e tests, none failed, at 2.77.2) and its two review rounds
 ([`archive/audits/2026-11-18-f12-review/`](?doc=archive/audits/2026-11-18-f12-review/TRIAGE-round1.md));
@@ -29,7 +29,8 @@ and the machine 2.77.16 (R2); 9, the jobs, run files and records 2.77.17 (R3a);
 10, the run script, envs and server process 2.77.18 (R3b); 11, the job
 bundles gathered from their members' own word 2.77.19 (R3b2); 12, the
 bundle framework 2.77.20 (R3b3a); 13, a run keeps its files 2.77.21 (R3b3b);
-14, what runs in an environment is its own 2.77.22 (R3c1).
+14, what runs in an environment is its own 2.77.22 (R3c1); 15, every printed
+command is one you can type 2.77.23 (R3c2).
 
 1. **R1 — the viewers' last part, the spectra page** — done, 2.77.15.
 2. **R2 — the run script and the machine** — done, 2.77.16 (§ H, the user's
@@ -67,10 +68,13 @@ bundle framework 2.77.20 (R3b3a); 13, a run keeps its files 2.77.21 (R3b3b);
    and its kernel, the written scripts and every typed command alike
    ([`ops/installation.md`](?doc=ops/installation.md) M6;
    [`fix14-review.md`](?doc=archive/audits/2026-11-18-f12-review/fix14-review.md)).
-   **Next: R3c2**, every printed `molbuilder <verb>` line spelled in full
-   through one printer, `"${CONDA_PREFIX:?}/bin/python" -m molbuilder …`, deck
-   headers included *(the user's answer, 2026-11-21: "Spell in full, one
-   printer")*; then **R3c** templates and engines;
+   R3c2, **every printed command is one you can type** *(the user's answer,
+   2026-11-21: "Spell in full, one printer")* — done, 2.77.23: molbuilder's
+   command spelled once, `identity.as_typed`, for every printed line, the
+   CLI's help and `Usage:` lines and the pages
+   ([`fix15-review.md`](?doc=archive/audits/2026-11-18-f12-review/fix15-review.md)).
+   **Next: the vibration framework's design** for the user's review, then
+   **R3c** templates and engines;
    R3d transport and spectra, with the SIESTA vibration's data files on the
    shared writers; R3e parse and builders, with two migrations *(the user,
    2026-11-21: "do the run dir and sidecar migration in R3e")* — a

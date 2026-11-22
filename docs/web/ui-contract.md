@@ -20,8 +20,10 @@ distinct thing**. What must come first on every app page is loaded by one
 partial, `templates/_page_head.html`, which a page's head includes right after
 its title: the tokens, the shell, and two components every page has — the one
 dialog and the page links' sheet, which name only their own classes, so they
-sit with the shell ahead of `form-components.css` — then the runtime and the
-status writer. A page
+sit with the shell ahead of `form-components.css` — then the command a person
+types, a `molbuilder-typed` meta the runtime's `typed` reads
+([`runtime.md`](?doc=web/runtime.md) § 3), the runtime and the status writer.
+A page
 adds its own sheets and scripts after it; the rest every page uses (the
 element builder, the page's kept values, the tab strip, the one list, the
 server's reader, the path door, the notifications, the one confirm) the shared

@@ -393,8 +393,8 @@ def cmd_run(args):
         print("[testrun] REFUSING: spreading the run needs pytest-xdist, which "
               "this env does not have.", file=sys.stderr)
         print('[testrun]   install what the env declares: '
-              '"${CONDA_PREFIX:?}/bin/python" -m molbuilder envs repair '
-              'molbuilder', file=sys.stderr)
+              'bash scripts/install-env.sh repair molbuilder',
+              file=sys.stderr)
         print("[testrun]   or run in one process: --workers 1", file=sys.stderr)
         return 2
 

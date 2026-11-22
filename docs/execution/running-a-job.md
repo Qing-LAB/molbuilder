@@ -1194,7 +1194,7 @@ flowchart TD
 ```
 
 - **The gate asks nothing and takes no override.** A start without the claim is refused, at a terminal or not:
-  *ERROR: &lt;stem&gt;.run.sh was not started by its launch: a run is started by '&lt;the launch&gt;', which writes
+  *ERROR: &lt;stem&gt;.run.sh was not started by its launch: a run is started by `&lt;the launch&gt;`, which writes
   its records; no other start is taken.*, then `launched-by: NONE -- refused at the
   launch-door gate`, exit 2
   *(the user's reason, 2026-11-01: a script started by hand has no context — no launch record, nothing to read

@@ -2688,14 +2688,16 @@ def _sleep_until_stopped(seconds: float) -> None:
         time.sleep(min(0.2, left))
 
 
-def main(argv=None) -> int:
+def main(argv=None, *, prog=None) -> int:
     """The entry of the SHIPPED bundle, ``mb_monitor.pyz``
     (`runfiles.MONITOR_BUNDLE`): argparse for the monitor, and each verb that
     is no monitor -- ``ending``, ``point``, ``notify``, ``deck`` -- handed to
     its handler (:data:`BUNDLE_VERBS`), all travelling in the same file.
 
     ONE command line: ``molbuilder monitor`` hands its arguments here, so
-    the monitor a person starts from the package is the one the job runs.
+    the monitor a person starts from the package is the one the job runs;
+    ``prog`` is how its usage names it, the command as that person types
+    it (`job-system.md` § 5.3) -- the bundle's file name for the job's.
     Zero third-party deps, so it runs in any python.  Self-lowers priority
     via ``os.nice`` and installs the default log notifier.
     """
@@ -2705,7 +2707,7 @@ def main(argv=None) -> int:
         return BUNDLE_VERBS[args[0]](args[1:])
     import argparse
     p = argparse.ArgumentParser(
-        prog=_rf.MONITOR_BUNDLE,
+        prog=prog or _rf.MONITOR_BUNDLE,
         description="molbuilder background job-monitor + notifier hooks "
                     "(reads the run through the framework's readers, which travel in this same file).  Its other verbs: " + ", ".join(BUNDLE_VERBS)
                     + ".")

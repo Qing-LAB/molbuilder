@@ -573,8 +573,8 @@ package's alternatives.
 A record becomes a step in exactly one place per kind — `create_step_for` for
 the env itself, `conda_packages_step_for` for the recipe's conda set,
 `pip_steps_for` for its pip packages (the plain ones batched into one step, each
-other one through `pip_step_for`), `extra_steps_for` for its extra steps,
-`verify_step_for` for its verify fields, `remove_step_for` for `--clean`'s
+other one through `pip_step_for`), `extra_step_for` for each extra step
+(`extra_steps_for` the recipe's, and `bootstrap`'s host path step), `verify_step_for` for its verify fields, `remove_step_for` for `--clean`'s
 removal, and `conda_step_for` for `repair`'s batched conda install. One
 place writes each command line: `pip_argv` and `conda_argv`. So force flags,
 optionality, fallbacks and verify criteria are each read off one record by one

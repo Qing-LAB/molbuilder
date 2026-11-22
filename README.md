@@ -136,8 +136,9 @@ conda activate molbuilder
 ```
 
 Open <http://127.0.0.1:8000>. The app opens on the **Molbuilder** workspace.
-The supported command form is `"${CONDA_PREFIX:?}/bin/python" -m molbuilder ...` from the repository
-checkout, the host environment active: its own Python, named by its path, never
+The supported command form is `"${CONDA_PREFIX:?}/bin/python" -m molbuilder ...` in any folder,
+the host environment active (`bootstrap` points it at this checkout,
+`docs/ops/deployment.md` § 0): its own Python, named by its path, never
 a bare `python` — activation does not put the env's Python first on `PATH`
 ([installation guide](docs/ops/installation.md), M6). You activate only the host
 environment. The web application and

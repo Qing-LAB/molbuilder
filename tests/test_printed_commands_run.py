@@ -26,8 +26,10 @@ nothing.  Nothing here launches an engine.
 """
 from __future__ import annotations
 
-from support.road import (described, each_is_taken, jobset, printed_commands,
-                          road_tree, set_by_the_person)
+from pathlib import Path
+
+from support.road import (TYPED, described, each_is_taken, jobset,
+                          printed_commands, road_tree, set_by_the_person)
 
 
 def _described(tmp_path, monkeypatch, **blocks):
@@ -89,11 +91,11 @@ def test_the_lines_task_setup_shows_are_the_terminals_and_are_taken(
     set_by_the_person(bundle, {"mesh_cutoff": was + 50})
     changed = lines(1)
     assert changed[0].split(" --bundle ")[0] == \
-        "molbuilder jobset prep task --group 1", changed
+        f"{TYPED} jobset prep task --group 1", changed
     assert each_is_taken("\n".join(changed)) == len(changed), changed
     medium = lines(2, cold=True)
     assert medium[0].split(" --bundle ")[0] == \
-        "molbuilder jobset prep task --group 2", medium
+        f"{TYPED} jobset prep task --group 2", medium
     # The prep line needs no `--target` and carries no `--cold`, which is
     # its launch's -- and there IS a launch line to carry it.
     assert "--target" not in medium[0] and "--cold" not in medium[0], medium
@@ -154,3 +156,54 @@ def test_a_calculation_with_no_benchmark_says_so_first(tmp_path,
         assert r.exit_code != 0, (verb, r.output)
         assert "Benchmarks measure SIESTA runs only" in r.output, (verb, r.output)
         each_is_taken(r.output)
+
+
+def test_a_printed_line_runs_in_a_shell_with_the_host_env_active(
+        tmp_path, monkeypatch):
+    """§ 5.3, *the program is named as you type it* (the user, 2026-11-21:
+    "Spell in full, one printer"): a command line molbuilder prints, typed
+    into a shell where the host env is active -- its folder in
+    ``CONDA_PREFIX`` -- in the calculation's own folder, runs molbuilder on
+    that env's own Python, which finds this checkout by the path file its
+    recipe writes (`ops/deployment.md` § 0; the user, 2026-11-22: "Host env
+    points at the repo").  Asked for its ``--help``, so it answers and
+    changes nothing.  THE SILENT FAILURES: a printed ``molbuilder jobset
+    ...`` that a shell answered with *command not found* -- no install puts
+    a ``molbuilder`` on PATH -- and a full line answered with *No module
+    named molbuilder* outside the checkout.
+
+    The host env is a scratch one -- a named need: the real host env is off
+    limits to a test -- a venv whose own folder names the suite's packages
+    (so no path file of the real env's is read), the host recipe's default
+    steps after its packages run in it as its manager runs them
+    (``CONDA_PREFIX`` its folder)."""
+    import os
+    import subprocess
+    import sys
+    import sysconfig
+    from molbuilder.envs.recipes import recipe_by_name
+    bundle = _described(tmp_path, monkeypatch)
+    r = jobset("status", "--bundle", bundle)
+    assert r.exit_code == 0, r.output
+    line = next((ln.strip().split("   #")[0] for ln in r.output.splitlines()
+                 if ln.strip().startswith(TYPED + " jobset ")), None)
+    assert line, r.output
+    host_env = tmp_path / "host-env"
+    subprocess.run([sys.executable, "-m", "venv", "--without-pip",
+                    str(host_env)], check=True, timeout=120)
+    own = Path(subprocess.run(
+        [str(host_env / "bin" / "python"), "-I", "-c",
+         "import sysconfig; print(sysconfig.get_paths()['purelib'])"],
+        capture_output=True, text=True, check=True).stdout.strip())
+    (own / "the-suites-packages.pth").write_text(
+        sysconfig.get_paths()["purelib"] + "\n")
+    active = {k: v for k, v in os.environ.items() if k != "PYTHONPATH"}
+    active["CONDA_PREFIX"] = str(host_env)
+    for step in recipe_by_name("molbuilder").extra_set():
+        subprocess.run(step.argv, env=active, cwd=tmp_path, check=True,
+                       capture_output=True, timeout=60)
+    done = subprocess.run(["bash", "-c", line + " --help"], env=active,
+                          cwd=bundle, capture_output=True, text=True,
+                          timeout=120)
+    assert done.returncode == 0, (line, done.stderr)
+    assert done.stderr.startswith("molbuilder "), (line, done.stderr)

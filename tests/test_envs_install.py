@@ -264,10 +264,12 @@ def test_opt_in_is_the_difference_between_the_two_plans():
                  "molbuilder-js"):
         assert name not in default, f"{name} is opt-in; a default run must skip it"
         assert name in opted, f"--with-dev-tools must install {name}"
-    # Both of this recipe's extra steps are opt-in, so a default plan
-    # dispatches none at all.
-    assert not [s for s in install.plan_install(recipe)[1]
-                if s.role is install.StepRole.EXTRA]
+    # The one extra step a default plan dispatches is the one no machine
+    # opts out of: the host env naming this checkout (`ops/deployment.md`
+    # § 0); the test tooling's two are opt-in.
+    extras = [s for s in install.plan_install(recipe)[1]
+              if s.role is install.StepRole.EXTRA]
+    assert len(extras) == 1 and PATH_FILE in " ".join(extras[0].argv), extras
 
 
 def test_opt_in_absence_is_reported_but_does_not_fail_the_audit(tmp_path):
@@ -1820,6 +1822,127 @@ def test_bootstrap_runs_doctor_at_end(monkeypatch):
     assert doctor_called, (
         "bootstrap must call doctor at the end so the user sees a "
         "smoke check of every env it just installed.")
+
+
+#: The host env's path file naming this checkout, by its name in
+#: `ops/deployment.md` § 0.
+PATH_FILE = "molbuilder-source.pth"
+
+
+@pytest.fixture
+def scratch_host_env(tmp_path):
+    """A host env this machine's manager made, holding a Python of its own
+    whose ``site-packages`` is the env's (a venv laid into it: the real
+    host env is off limits to a test), and the manager that made it."""
+    import sys
+    from molbuilder import diagnostics as D
+    manager, _source = D._find_conda_binary()
+    if not manager:
+        pytest.skip("no env manager on this machine")
+    prefix = tmp_path / "envs" / "molbuilder"
+    made = subprocess.run(
+        [manager, "create", "-y", "-q", "--offline", "-p", str(prefix)],
+        capture_output=True, text=True, timeout=180)
+    assert made.returncode == 0, made.stderr
+    subprocess.run([sys.executable, "-m", "venv", "--without-pip",
+                    str(prefix)], check=True, timeout=120)
+    return manager, prefix
+
+
+def _where_the_env_finds_molbuilder(prefix, cwd):
+    """What the env's own Python, started in ``cwd``, finds as molbuilder."""
+    found = subprocess.run(
+        [str(prefix / "bin" / "python"), "-I", "-c",
+         "import importlib.util as u; s = u.find_spec('molbuilder'); "
+         "print(s.origin if s else 'none')"],
+        cwd=cwd, capture_output=True, text=True, timeout=60)
+    assert found.returncode == 0, found.stderr
+    return found.stdout.strip()
+
+
+def test_doctor_s_host_check_does_not_count_the_checkout_it_stands_in(
+        monkeypatch, scratch_host_env):
+    """`ops/deployment.md` § 0, *When something moves*: doctor's host check
+    finds molbuilder as a line typed in any folder does -- through the path
+    file, never the folder it is typed in -- so typed in the checkout
+    itself, `molbuilder/` beside it, it fails until the path file names the
+    checkout, and passes after.  THE SILENT FAILURE: a moved checkout's
+    doctor, run where people run it, in the checkout, says OK with no path
+    file, and every line typed in a calculation's folder fails.  The env
+    sees the suite's packages by a path file of its own, whose folder's
+    path files are not read."""
+    import sysconfig
+    from molbuilder import repo_root
+    from molbuilder.envs import doctor
+    from molbuilder.envs.recipes import recipe_by_name
+    manager, prefix = scratch_host_env
+    site = Path(subprocess.run(
+        [str(prefix / "bin" / "python"), "-I", "-c",
+         "import sysconfig; print(sysconfig.get_paths()['purelib'])"],
+        capture_output=True, text=True, check=True).stdout.strip())
+    (site / "the-suites-packages.pth").write_text(
+        sysconfig.get_paths()["purelib"] + "\n")
+    caps = Capabilities(runtime_config={}, conda_binary=manager,
+                        conda_envs={"molbuilder": str(prefix)})
+    # THE SNAPSHOT doctor's env lookup asks first: the manager knows an env
+    # made by its path by no name, and by name it would answer the
+    # person's own host env.
+    set_capabilities(caps)
+    host = (recipe_by_name("molbuilder"),)
+    monkeypatch.chdir(repo_root())
+
+    before, = doctor.report_all(caps, recipes=host)
+    assert before.verify_ok is False, before.verify_output
+    assert "molbuilder" in before.verify_output, before.verify_output
+    (site / PATH_FILE).write_text(f"{repo_root()}\n")
+    after, = doctor.report_all(caps, recipes=host)
+    assert after.verify_ok is True, after.verify_output
+
+
+@pytest.mark.parametrize("dry_run", [False, True], ids=["bootstrap",
+                                                       "dry-run"])
+def test_bootstrap_points_the_host_env_at_this_checkout(
+        monkeypatch, tmp_path, scratch_host_env, dry_run):
+    """`ops/deployment.md` § 0 (the user, 2026-11-22: "Host env points at
+    the repo"): every bootstrap writes the host env's path file naming this
+    checkout -- the host env already there, its install skipped, and its
+    path file naming a folder the checkout has moved from -- so a printed
+    line finds molbuilder from any folder; a dry run says so and writes
+    nothing."""
+    from molbuilder import diagnostics as _diag_mod
+    from molbuilder import repo_root
+    from molbuilder.envs import _cli
+    manager, prefix = scratch_host_env
+    caps = Capabilities(runtime_config={}, conda_binary=manager,
+                        conda_envs={"molbuilder": str(prefix)})
+    set_capabilities(caps)
+    monkeypatch.setattr(_diag_mod, "detect", lambda: caps)
+    install_stub, install_calls = _make_install_stub()
+    monkeypatch.setattr(_cli._install, "run_install", install_stub)
+    monkeypatch.setattr(_cli._doctor, "report_all", lambda caps, **kw: [])
+    monkeypatch.setattr(_cli, "_render_doctor", lambda reports: 0)
+    site = Path(subprocess.run(
+        [str(prefix / "bin" / "python"), "-I", "-c",
+         "import sysconfig; print(sysconfig.get_paths()['purelib'])"],
+        capture_output=True, text=True, check=True).stdout.strip())
+    moved_from = tmp_path / "where-the-checkout-was"
+    (site / PATH_FILE).write_text(f"{moved_from}\n")
+    elsewhere = tmp_path / "a-calculation-folder"
+    elsewhere.mkdir()
+    assert _where_the_env_finds_molbuilder(prefix, elsewhere) == "none"
+
+    result = _make_runner().invoke(
+        _cli.envs_group,
+        ["bootstrap", "--yes", *(["--dry-run"] if dry_run else [])])
+
+    assert "molbuilder" not in install_calls, install_calls
+    found = _where_the_env_finds_molbuilder(prefix, elsewhere)
+    if dry_run:
+        assert found == "none", f"a dry run wrote the path file:\n{found}"
+    else:
+        assert found == str(Path(repo_root()) / "molbuilder" / "__init__.py"), (
+            f"after bootstrap the host env finds {found}:\n{result.output}")
+    assert PATH_FILE in result.output, result.output
 
 
 # --------------------------------------------------------------------- #

@@ -18,6 +18,63 @@ development server**, so anything production-grade (TLS, real auth, per-IP
 throttling at scale) is either configured here or handled by a **reverse proxy in
 front of it**.
 
+## 0. After `bootstrap` — what you have, and how it fits together
+
+*(The user, 2026-11-22: "in the deployment section/part, explain what is the
+design/setup after bootstrap".)* `bash scripts/install-env.sh bootstrap --yes`
+([`installation.md`](?doc=ops/installation.md) § 2) leaves five parts on the
+machine. Everything later in this guide runs on them.
+
+| part | where | what it is | made by |
+|---|---|---|---|
+| **the checkout** | the folder you cloned | molbuilder's source — the code every command and the server run. It is installed nowhere else, so a `git pull` in it is the update (then § 1.1: restart the server) | you |
+| **the host env** `molbuilder` | the manager's env folder | the Python molbuilder runs on and its packages (`molbuilder/envs/host-env.txt`), and **one path file in its `site-packages`, `molbuilder-source.pth`, naming the checkout** — so this env's own Python finds molbuilder from any folder. Nothing is copied; the file goes when the env does | the shim creates the env; `bootstrap` writes the path file every time it runs |
+| **the engine envs** | beside the host env | `molbuilder-siesta`, `molbuilder-pySCF`, `molbuilder-MDtools` by default; the GPU build of SIESTA and the notebook's env when you install them — each entered only as [`installation.md`](?doc=ops/installation.md) M1–M6 say, its own programs by their paths | `bootstrap`, `install` |
+| **the config directory** | `~/.config/molbuilder/`, or `$MOLBUILDER_CONFIG_DIR` | `molbuilder.json`, this machine's record `environment.json`, the records of machines you prepare for in `environments/`, and every credential in `secrets/` ([`installation.md`](?doc=ops/installation.md) § 2's tree; § 5 here) | `init-config`, at the end of `bootstrap`; `jobset probe` |
+| **the projects tree** | `paths.projects`, asked at `bootstrap` | every calculation's folder — where the server reads and writes your work (§ 6) | you, through the pages and `describe` |
+
+```mermaid
+flowchart LR
+  CO["the checkout<br/>(molbuilder's source)"]
+  HE["the host env 'molbuilder'<br/>its Python + packages"]
+  PTH["molbuilder-source.pth<br/>(in the env's site-packages)"]
+  SRV["the server + every CLI verb<br/>#quot;${CONDA_PREFIX:?}/bin/python#quot; -m molbuilder …"]
+  ENG["the engine envs<br/>siesta · pySCF · MDtools · (GPU, notebook)"]
+  CFG["the config directory<br/>molbuilder.json · records · secrets/"]
+  PRJ["the projects tree<br/>your calculations"]
+  JOB["a job's run script<br/>(here or on a cluster)"]
+  HE --> PTH --> CO
+  HE --> SRV
+  SRV -->|reads| CFG
+  SRV -->|reads and writes| PRJ
+  SRV -->|prep writes| JOB
+  JOB -->|enters, by the machine's record| ENG
+```
+
+**How you run it.** Activate the host env and run its own Python —
+`conda activate molbuilder`, then `"${CONDA_PREFIX:?}/bin/python" -m molbuilder <verb>` — **from any
+folder**: the path file finds the checkout. That is the spelling of every
+command molbuilder prints ([`execution/job-system.md`](?doc=execution/job-system.md)
+§ 5.3): a deck's header, a refusal's next step, this guide's own lines. The
+server is one of those commands (`serve start`, § 1); what it starts of its
+own — its worker, the notebook's shepherd — runs on the same Python. A job runs
+apart from all of this: its run script enters its engine's env on the machine
+it runs on, as that machine's record says
+([`execution/running-a-job.md`](?doc=execution/running-a-job.md) § 2), on a
+cluster as well as here.
+
+**When something moves.**
+
+- **The checkout moved:** run `bootstrap` again from where it is now — it
+  rewrites the path file to name it. Until then, `doctor`'s host check fails
+  (molbuilder is not found), naming `bootstrap` after `repair`.
+- **You cloned a second checkout:** the host env finds the one whose
+  `bootstrap` ran last, and `doctor` cannot tell you meant the other — run
+  `bootstrap` from the one you work in.
+- **A new release in the same checkout:** nothing to rerun; restart the
+  server (§ 1.1) so it runs the new code.
+- **An env removed or broken:** `doctor` names the command that repairs it.
+
 ## 1. Running it
 
 **`serve` is a group of verbs** — a verb is named, never implied:

@@ -359,6 +359,11 @@ def test_a_server_started_on_one_address_is_asked_there(
             env=env, cwd=_REPO, capture_output=True, text=True, timeout=60)
         assert r.returncode == 0, r.stdout + r.stderr
         assert "answering: yes" in r.stdout, r.stdout
+        if not names_the_port:
+            # THE SURVEY'S WAY ON, a line per server it found, its port in
+            # it -- never a `<port>` the shell reads as a redirect (§ 5.3).
+            from support.road import TYPED
+            assert f"{TYPED} serve status --port {port}" in r.stdout, r.stdout
         log = tmp_path / "state" / "molbuilder" / "logs" / f"serve-{port}.log"
         assert "DETECTED" not in (log.read_text() if log.exists() else "")
     finally:

@@ -37,7 +37,7 @@ from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
 from typing import Any, ClassVar, Dict, List, Mapping, Optional, Tuple
 
-from ..identity import checkpoint_words, migrate_as_typed
+from ..identity import JOBSET_PROG, checkpoint_words, migrate_as_typed
 
 SCHEMA = "molbuilder/environment@3"
 
@@ -1522,8 +1522,8 @@ def probe_command(name: Optional[str] = None) -> str:
     spelling for every refusal that asks for a record (`configuration.md`
     M-4)."""
     if name in (None, LOCAL_TARGET):
-        return "molbuilder jobset probe --write"
-    return f"molbuilder jobset probe --write --name {name}"
+        return f"{JOBSET_PROG} probe --write"
+    return f"{JOBSET_PROG} probe --write --name {name}"
 
 
 def probe_steps(name: Optional[str] = None) -> str:

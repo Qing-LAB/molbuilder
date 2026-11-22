@@ -364,8 +364,9 @@ Two scripts divide the work, and the split is the design:
 
 **And the spelling convention every document uses:** `molbuilder <verb>`
 means `"${CONDA_PREFIX:?}/bin/python" -m molbuilder <verb>` — the host env's own Python, by its path
-([`ops/installation.md`](?doc=ops/installation.md) M6) — run in the activated
-host env from the repo clone. That is the **supported form** — molbuilder is deliberately *not*
+([`ops/installation.md`](?doc=ops/installation.md) M6) — run in any folder,
+the host env active (its path file finds the clone,
+[`ops/deployment.md`](?doc=ops/deployment.md) § 0). That is the **supported form** — molbuilder is deliberately *not*
 pip-installed into its env ([`ops/installation.md`](?doc=ops/installation.md);
 a console-script entry point exists in `pyproject.toml` but is not the
 supported invocation). An evaluation that goes looking for `molbuilder` on
@@ -381,10 +382,9 @@ projects root** — the same three levels the tree is built from:
 --bundle <project>/<topic>/<calculation>
 ```
 
-So one place to stand, any job:
+So any place to stand, any job:
 
 ```bash
-cd ~/molbuilder                                  # where molbuilder runs from
 molbuilder jobset status         --bundle Au-BDT-Au/optimization/Relax
 molbuilder jobset prep   bench coarse --bundle Au-BDT-Au/optimization/Relax
 molbuilder jobset launch bench coarse --bundle Au-BDT-Au/optimization/Relax --mode submit

@@ -63,7 +63,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
-from .identity import normalise_id, run_id, stage_key
+from .identity import migrate_as_typed, normalise_id, run_id, stage_key
 from .persist import (RecordRefusals, check_schema, object_of, read_object,
                       write_json)
 
@@ -391,7 +391,8 @@ class Task:
                 f"{_kind(self.calculation).with_article}'s description "
                 f"states its voltages -- [0.0] for a single bias"
                 f"; one written before 2.16.3 "
-                f"states none: `jobset migrate` writes it", where="bias")
+                f"states none: `{migrate_as_typed()}` writes it",
+                where="bias")
         if self.bias:
             if any(not isinstance(v, (int, float)) or isinstance(v, bool)
                    for v in self.bias):
@@ -618,7 +619,6 @@ def _task_from_dict(obj: Mapping[str, Any]) -> Task:
     # 2.5.0'S CENTRING CHOICE IS RETIRED: a transport junction enters its
     # calculation centred (`model/structure-periodicity.md` § 6.0).
     if "centre_junction" in obj:
-        from .identity import migrate_as_typed
         _refuse("centre_junction is retired (2.6.0): a transport junction "
                 "enters its calculation centred in its cell.  "
                 f"`{migrate_as_typed()}` in the calculation's folder "
@@ -766,8 +766,8 @@ def _stage_from_obj(obj: Mapping[str, Any], varies: Tuple[str, ...],
     if "enabled" in obj:
         _refuse("\"enabled\" -- a stage has no on/off switch since 2026-10-03: "
                 "it is in the description or it is not.  "
-                "A description written before carries the key: `jobset "
-                "migrate` removes it", where=where)
+                "A description written before carries the key: "
+                f"`{migrate_as_typed()}` removes it", where=where)
     for key in _job_request_keys(STAGE_FIELDS, stage=True):
         if key in obj:
             _refuse(f"{key!r} says how the stage runs, which is the job "
@@ -899,7 +899,6 @@ def _from_obj(obj, *, said_as: str, base: Optional[Path]) -> Task:
     refuse_another_layout(obj)
     before = _written_before(obj) if isinstance(obj, Mapping) else []
     if before:
-        from .identity import migrate_as_typed
         raise ValueError(
             f"{said_as} was written before every description stated "
             f"{' and '.join(before)}: "

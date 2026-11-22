@@ -21,7 +21,7 @@ import pytest
 
 from molbuilder.runtime_config import config_provenance, format_provenance
 from molbuilder.scheduler.kinds import LAUNCH_CLAIM
-from support.road import SHELL_CARRIED, prepared_here
+from support.road import SHELL_CARRIED, TYPED, prepared_here
 
 pytestmark = pytest.mark.usefixtures("in_a_folder_of_its_own")
 
@@ -61,11 +61,14 @@ def test_a_start_not_made_by_its_launch_is_refused(tmp_path, monkeypatch,
     is written, naming the launch that starts it (the user, 2026-11-01:
     "we always have molbuilder as the foundation of the whole system").
     THE SILENT FAILURE: a run no launch recorded, read by nothing -- or a
-    stage that builds on another run started from its deck alone."""
+    stage that builds on another run started from its deck alone.  The
+    launch named word for word as a person types it (`job-system.md`
+    § 5.3), its quotes and ``${CONDA_PREFIX:?}`` as written, never read by
+    the shell that prints it."""
     sh, run, names = _prepared(tmp_path, monkeypatch)
     cp = _start(sh, run, claim=claim)
     assert cp.returncode == 2, cp.stderr
-    assert "molbuilder jobset launch task --stage coarse" in cp.stderr
+    assert f"{TYPED} jobset launch task --stage coarse" in cp.stderr, cp.stderr
     assert not (run / names.name(".runwrap.log")).exists()
 
 
@@ -101,7 +104,7 @@ def test_a_folder_that_holds_a_start_refuses_another(tmp_path, monkeypatch):
     cp = _start(sh, run, claim=LAUNCH_CLAIM)
     assert cp.returncode == 2, cp.stderr
     assert "already holds a start" in cp.stderr
-    assert "jobset launch" in cp.stderr
+    assert f"{TYPED} jobset launch" in cp.stderr, cp.stderr
     assert log.read_bytes() == first
 
 

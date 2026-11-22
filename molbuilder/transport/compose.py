@@ -26,6 +26,7 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 import numpy as np
 
+from ..identity import JOBSET_PROG, TASK, as_typed, words_for
 from ..cell import entering
 from ..parse.fdf import read_deck
 from ..persist import sha256_of
@@ -197,6 +198,13 @@ class CitedPair:
         return self.structure.n_frames
 
 
+#: How a junction is relaxed to be cited (§ 3.1), each line as typed.
+RELAX_THROUGH = " -> ".join(
+    f"`{line}`" for line in (
+        as_typed("describe"),
+        " ".join((JOBSET_PROG, "prep", *words_for(TASK))),
+        " ".join((JOBSET_PROG, "launch", *words_for(TASK)))))
+
 #: The citation condition, in one sentence — used verbatim by every
 #: refusal so the user always learns the WHOLE condition, not just the
 #: half they tripped on.
@@ -206,11 +214,12 @@ CITATION_CONDITION = (
     "it ended, its region labels in its deck's block -- or a structure pair "
     "that records the optimization it came from -- its .xyz, its "
     ".molstruct.json carrying info.calculation: one geometry, as the "
-    "Results tab or `molbuilder xv2xyz --from-run` saves a finished "
+    "Results tab or `" + as_typed("xv2xyz", "--from-run") + "` saves a "
+    "finished "
     "relaxation, or a frame set, the junction moved along one vibration "
     "mode, as the Results tab's Write frame set saves it from a vibration's "
     "result.  Relax the junction through "
-    "`molbuilder describe` -> `prep task` -> `launch task`, then cite that "
+    + RELAX_THROUGH + ", then cite that "
     "run or the pair saved from it; to move it along a vibration, open the "
     "vibration's result on the Results tab, select the mode, press Write "
     "frame set and cite the .xyz it saves -- a vibration's own folder is "
@@ -569,8 +578,8 @@ def _run_geometry(cited: CitedRun, kinds):
             f"the cited relaxation in {cited.path} carries no region labels "
             f"for its {struct.n_atoms} atoms: {why}.  "
             f"Transport derives the electrodes FROM the labels (L-electrode / R-electrode) -- label the junction "
-            f"on the Molbuilder tab and relax it through `molbuilder describe` -> "
-            f"`prep task` -> `launch task`, then cite that run from a new "
+            f"on the Molbuilder tab and relax it through {RELAX_THROUGH}, "
+            f"then cite that run from a new "
             f"calculation folder.")
     return (struct, np.asarray(steps.first.positions, dtype=float),
             Path(output))
@@ -936,7 +945,7 @@ def _pair_unchanged(cited: CitedPair, provenance, citation: str) -> None:
             f"{'holds' if len(changed) == 1 else 'hold'} the bytes "
             f"{PROVENANCE_FILE} pinned.  This calculation's stages ran on "
             f"the pair as it was; cite the pair as it is now in a new "
-            f"transport calculation (`molbuilder describe`), or restore it"
+            f"transport calculation (`{as_typed('describe')}`), or restore it"
             f".")
 
 

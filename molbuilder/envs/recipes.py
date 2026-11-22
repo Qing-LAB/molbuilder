@@ -1224,6 +1224,35 @@ class Recipe:
 # --------------------------------------------------------------------- #
 
 
+#: THE HOST ENV FINDS THIS CHECKOUT: one path file in its ``site-packages``,
+#: naming the folder that holds the ``molbuilder`` package, so the env's own
+#: Python finds molbuilder from any folder -- every printed line runs where it
+#: is typed (`ops/deployment.md` § 0; the user, 2026-11-22: "Host env points
+#: at the repo").  Nothing is copied, and the file goes with the env.
+SOURCE_PATH_FILE = "molbuilder-source.pth"
+
+
+def _source_path_step() -> "ExtraStep":
+    """The step that writes :data:`SOURCE_PATH_FILE` into the env it runs in
+    -- its ``site-packages`` asked of its own Python (`installation.md` M6),
+    the checkout passed as bash's ``$1``, so no path is spliced into the
+    script.  A host env's install step, and `bootstrap` runs it again every
+    time (`envs._cli`), so a moved checkout follows."""
+    from .. import repo_root
+    return ExtraStep((
+        "bash", "-c",
+        'set -e; site="$("${CONDA_PREFIX:?}/bin/python" -c '
+        '"import sysconfig; print(sysconfig.get_paths()[\'purelib\'])")"; '
+        f'printf "%s\\n" "$1" > "$site/{SOURCE_PATH_FILE}"; '
+        f'echo "[molbuilder] this env finds molbuilder at $1 '
+        f'($site/{SOURCE_PATH_FILE})" >&2',
+        "molbuilder-source", str(repo_root())))
+
+
+#: The host env's step that points it at this checkout (:func:`_source_path_step`).
+SOURCE_PATH_STEP = _source_path_step()
+
+
 _HOST = Recipe(
     name="molbuilder",
     category=None,
@@ -1287,15 +1316,19 @@ _HOST = Recipe(
     # the prefix beside pip's.  No hook: a test finds the packages under the
     # prefix of the env it runs in.
     extra_steps=(
+        SOURCE_PATH_STEP,
         ExtraStep(("bash", "-c", 'set -e; D="$CONDA_PREFIX/share/ms-playwright"; H="$CONDA_PREFIX/etc/conda/activate.d"; mkdir -p "$D" "$H"; printf \'export PLAYWRIGHT_BROWSERS_PATH="$CONDA_PREFIX/share/ms-playwright"\\n\' > "$H/playwright-browsers.sh"; export PLAYWRIGHT_BROWSERS_PATH="$D"; "${CONDA_PREFIX:?}/bin/python" -m playwright install chromium; echo "[molbuilder] chromium -> $D (inside the env; removed with it, no sudo, nothing in ~/.cache)" >&2'), opt_in='test tooling -- a ~115 MB browser download, and nobody should pay for it by accident'),
         ExtraStep(("bash", "-c", f'set -e; D="$CONDA_PREFIX/{JS_TEST_PACKAGES_HOME}"; mkdir -p "$D"; cp "$1/package.json" "$1/package-lock.json" "$D/"; cd "$D"; "${{CONDA_PREFIX:?}}/bin/npm" ci --ignore-scripts --no-audit --no-fund --no-update-notifier; echo "[molbuilder] JS test packages -> $D (inside the env; removed with it, no sudo, nothing in ~/.npm)" >&2', "js-test-packages", str(_JS_TEST_PACKAGES)), opt_in='test tooling -- the DOM the Node tests run the page scripts on (jsdom), pinned by molbuilder/envs/js/package-lock.json'),
     ),
     # NOT A NOTEBOOK KERNEL.  The user's design: the notebook env is
     # SELF-CONTAINED and no other env carries notebook tooling.  See
     # `_JUPYTER`.
-    verify_argv=("python", "-c",
-                 "import ase, sisl, netCDF4, rdkit, flask, click, plotly; "
-                 "print('host env OK')"),
+    # ``-I``: no working folder, no PYTHONPATH -- molbuilder found only as
+    # every printed line finds it, through :data:`SOURCE_PATH_FILE`
+    # (`ops/deployment.md` § 0).
+    verify_argv=("python", "-I", "-c",
+                 "import ase, sisl, netCDF4, rdkit, flask, click, plotly, "
+                 "molbuilder; print('host env OK')"),
     verify_expect_contains="host env OK",
 )
 

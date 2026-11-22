@@ -35,6 +35,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 
+from ..identity import as_typed
 from ..persist import sha256_of
 
 #: The rules the generator writes -- three frames by default, five or seven
@@ -117,7 +118,8 @@ def _relaxation_record(run, res) -> Tuple[Optional[Dict[str, Any]], str]:
             f"and states no record of the relaxation it came from, so this "
             f"set states no info.calculation and is no transport citation -- "
             f"save the structure from its relaxation run (the Results tab, or "
-            f"`molbuilder xv2xyz --from-run`) and run the vibration from it")
+            f"`{as_typed('xv2xyz', '--from-run')}`) and run the vibration "
+            f"from it")
     return stated, ""
 
 

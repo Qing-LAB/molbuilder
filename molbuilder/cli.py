@@ -36,6 +36,7 @@ from .builders.backends import (BACKENDS, DEFAULT_FORM, DEFAULT_TERMINAL,
 from .chemistry import BackendUnavailable as _BackendUnavailable
 from .chemistry import BuildRefused as _BuildRefused
 from .envs._cli import envs_group
+from .identity import MODULE, PROG, as_typed
 from .runtime_config import RuntimeConfigError, get_tls, read_config
 from .serve_daemon import SHEPHERD_VERB
 from .atom_permutation import MAP_KEY
@@ -724,7 +725,8 @@ def _parse_electrode_spec(spec):
     if not sep or not after_at:
         raise click.BadParameter(
             f"--electrode {spec!r}: missing '@contact=...' "
-            f"section.  See `molbuilder modify --help` for the format."
+            f"section.  See `{as_typed('modify', '--help')}` for the "
+            f"format."
         )
     # Strip whitespace on every parsed field so e.g. ``+z = 3`` (with
     # spaces) and ``Au : 111 : 3x3x2`` are accepted gracefully.
@@ -978,7 +980,7 @@ def cmd_modify(input_path, output_path,
     if not given:
         raise click.UsageError(
             "exactly one of --delete, --orient-axis, --rotate, --electrode "
-            "is required.  Run separate `molbuilder modify` invocations "
+            f"is required.  Run separate `{as_typed('modify')}` invocations "
             "for multiple operation types (use '-' for stdin/stdout to chain)."
         )
     if len(given) > 1:
@@ -1239,7 +1241,8 @@ def _say_a_file_is_not_its_run(path):
             f"note: {Path(path).name} is {said.atom_order.said} -- this reads "
             f"the file as the engine wrote it, and the atom indices in it "
             f"count in that order; the Results tab shows the run marked so, "
-            f"and `molbuilder xv2xyz --from-run` writes it in the user order",
+            f"and `{as_typed('xv2xyz', '--from-run')}` writes it in the "
+            f"user order",
             err=True)
     elif said.order_unstated:
         click.echo(f"note: {said.order_unstated}", err=True)
@@ -1348,7 +1351,7 @@ def cmd_monitor(args) -> None:
     ``--help`` lists the rest.  One command line, so the two cannot drift.
     """
     from . import monitor as _mon
-    raise SystemExit(_mon.main(list(args)))
+    raise SystemExit(_mon.main(list(args), prog=as_typed("monitor")))
 
 
 # --------------------------------------------------------------------- #
@@ -1419,7 +1422,7 @@ def _enforce_tls_for_remote_bind(host: str, ssl_ctx,
         f"For a real deployment you have three reasonable options:\n"
         f"  1. Pass --cert / --key to enable TLS.  TLS IS NOT "
         f"AUTHENTICATION -- it encrypts the wire and gates nothing; if "
-        f"sign-in is not on, turn it on too (`molbuilder auth-setup`).\n"
+        f"sign-in is not on, turn it on too (`{as_typed('auth-setup')}`).\n"
         f"  2. Put molbuilder behind a reverse proxy that adds TLS + "
         f"auth (recommended).\n"
         f"  3. Pass --allow-insecure-binding to override this check "
@@ -1627,7 +1630,7 @@ def _refuse_an_unsafe_bind(host, cert, key, allow_insecure, no_auth):
                    "carries.  Everything else -- in `auth` and outside it "
                    "-- survives: the write is a merge.")
 def cmd_auth_setup(provider, asurite, google_email, hosted_domain, force):
-    """Interactive wizard to wire up sign-in for ``molbuilder serve``.
+    """Interactive wizard to wire up sign-in for molbuilder's server.
 
     Generates a ``molbuilder.json`` carrying one or both of:
 
@@ -1820,12 +1823,8 @@ def cmd_auth_setup(provider, asurite, google_email, hosted_domain, force):
     click.echo(f"Wrote {output_path} (mode 0600)", err=True)
     click.echo("", err=True)
     click.echo("Next steps:", err=True)
-    # THE HOST ENV'S OWN PYTHON, by its path (`ops/installation.md` M6).
-    click.echo(
-        '  "${CONDA_PREFIX:?}/bin/python" -m molbuilder serve start '
-        '--port 8888 --host 127.0.0.1',
-        err=True,
-    )
+    click.echo("  " + as_typed("serve", "start", "--port", "8888",
+                               "--host", "127.0.0.1"), err=True)
     click.echo(
         "  (the session key is the server's: created at "
         "<config dir>/secrets/secret_key on its first start and kept from then on)",
@@ -2112,7 +2111,7 @@ def _supervise_forever() -> int:
     import subprocess
 
     env = server_environment(os.environ)
-    args = [sys.executable, "-m", "molbuilder", *sys.argv[1:]]
+    args = [sys.executable, "-m", MODULE, *sys.argv[1:]]
     from .serve_daemon import child_exit_action, flapping
     _crashes: list = []
     while True:
@@ -2257,8 +2256,9 @@ def cmd_notify_token(user, host, route, channel, replace):
                     "in that run's")
         click.echo( "                             monitor log ([NOTIFY] ... not "
                     "delivered).")
-        click.echo( "                                 molbuilder serve restart "
-                    "--port <port>")
+        click.echo( "                             -- molbuilder's `serve "
+                    "restart --port`, the")
+        click.echo( "                             server's port after it.")
     if route and existing_route and route != existing_route:
         click.echo(f"\n  MOVED the route from {existing_route} to {seg} "
                    f"because you passed --route.")
@@ -2610,8 +2610,8 @@ def cmd_serve_start(host, port, cert, key, allow_insecure_binding, no_auth,
     if state == "ours":
         raise click.ClickException(
             f"already running (pid {read_pid(port)}, port {port}).  "
-            f"`molbuilder serve status` to look, `serve restart` to "
-            f"recycle it.")
+            f"`{as_typed('serve', 'status')}` to look, "
+            f"`{as_typed('serve', 'restart')}` to recycle it.")
     # AND IS THE PORT ACTUALLY FREE?  The pidfile answers "is a supervisor of
     # mine there", which is not the same question (`plan.md` § 5n.8).
     #
@@ -2666,7 +2666,7 @@ def cmd_serve_start(host, port, cert, key, allow_insecure_binding, no_auth,
     # (`reload_protocol.server_environment`) marks it supervised, which is
     # what makes it the server rather than another supervisor -- and its
     # command line then does not name a mode it is not in.
-    child = [sys.executable, "-m", "molbuilder", "serve", "foreground",
+    child = [sys.executable, "-m", MODULE, "serve", "foreground",
              "--host", host, "--port", str(port)]
     if cert:
         child += ["--cert", cert]
@@ -2683,7 +2683,7 @@ def cmd_serve_start(host, port, cert, key, allow_insecure_binding, no_auth,
     click.echo(f"  log:     {serve_log(port)}  (cap {log_max_mb} MB, "
                f"keep {log_keep} archives)")
     click.echo(f"  pidfile: {serve_pidfile(port)}")
-    click.echo("  then:    molbuilder serve status")
+    click.echo("  then:    " + as_typed("serve", "status"))
     _logout = _runtime_dir_dies_at_logout()
     if _logout:
         click.echo(_logout, err=True)
@@ -2739,10 +2739,11 @@ def jupyter_group():
 #: that has been running molbuilder since before the feature landed.
 _PREDATES_NOTE = (
     "  If the notebook does not come up, this supervisor may PREDATE the\n"
-    "  notebook feature -- it survives a code reload, so `molbuilder serve\n"
-    "  stop` then `serve start` is what gives it one.  `molbuilder serve\n"
-    "  status` names the server log, which says `notebook: not configured\n"
-    "  for this server` in that case.")
+    "  notebook feature -- it survives a code reload, so\n"
+    f"  `{as_typed('serve', 'stop')}` then\n"
+    f"  `{as_typed('serve', 'start')}` is what gives it\n"
+    f"  one.  `{as_typed('serve', 'status')}` names the server log, which\n"
+    "  says `notebook: not configured for this server` in that case.")
 
 
 def _port_in_use(host: str, port: int):
@@ -2838,9 +2839,8 @@ def _jupyter_signal(port: int, sig: int, verb: str) -> None:
     if not ok:
         raise click.ClickException(
             f"cannot {verb} the notebook: {msg}.\n"
-            f"  The notebook server is held by `molbuilder serve`'s "
-            f"supervisor; start one with `molbuilder serve start --port "
-            f"{port}`.")
+            f"  The notebook server is held by the server's supervisor; "
+            f"start one with `{as_typed('serve', 'start', '--port', port)}`.")
     click.echo(f"asked the supervisor to {verb} the notebook: {msg}")
     if sig_starts_a_notebook(sig):
         click.echo(_PREDATES_NOTE, err=True)
@@ -2858,7 +2858,7 @@ def cmd_jupyter_start(port):
     """Ask the supervisor to start the notebook server (idempotent)."""
     import signal as _signal
     _jupyter_signal(port, _signal.SIGUSR1, "start")
-    click.echo("  then:  molbuilder jupyter status --port %d" % port)
+    click.echo("  then:  " + as_typed("jupyter", "status", "--port", port))
 
 
 @jupyter_group.command("stop", short_help="stop the notebook server; its kernels go with it")
@@ -2915,8 +2915,8 @@ def cmd_jupyter_restart(port):
             _time.sleep(0.25)
         else:
             click.echo("  the notebook did not stop within 20s; not starting "
-                       "a second one.  `molbuilder jupyter status --port %d`"
-                       % port)
+                       "a second one.  `"
+                       + as_typed("jupyter", "status", "--port", port) + "`")
             return
     _jupyter_signal(port, _signal.SIGUSR1, "start")
 
@@ -2947,7 +2947,7 @@ def cmd_jupyter_status(port):
                        "not a notebook of yours")
         else:
             click.echo("not running")
-        click.echo(f"  start it:  molbuilder jupyter start --port {port}")
+        click.echo("  start it:  " + as_typed("jupyter", "start", "--port", port))
         # BOTH LOGS, NAMED WHEN IT IS NOT RUNNING -- which is exactly when a
         # person needs them, and they hold DIFFERENT failures.  Everything
         # `_start_jupyter` cannot do (no argv, the log would not open, the
@@ -2994,7 +2994,7 @@ def _say_which_notebooks_else(missing_port: int) -> None:
     if others:
         click.echo("  but a notebook IS running beside the server on port "
                    + ", ".join(str(p) for p in others)
-                   + " -- `molbuilder jupyter status` with no --port surveys "
+                   + f" -- `{as_typed('jupyter', 'status')}` with no --port surveys "
                      "them all.")
 
 
@@ -3010,8 +3010,8 @@ def _survey_notebooks() -> int:
     ports = _live_notebook_ports()
     if not ports:
         click.echo("no notebook server is running.")
-        click.echo("  start one:  molbuilder jupyter start --port <serve "
-                   "port>   (or the JupyterNB tab's button)")
+        click.echo("  start one: molbuilder's `jupyter start --port`, the "
+                   "server's port after it (or the JupyterNB tab's button)")
         return 1
     answered = False
     for p in ports:
@@ -3021,7 +3021,9 @@ def _survey_notebooks() -> int:
                    f"port {st['port']:<6} "
                    f"answering: {'yes' if st['answering'] else 'NO'}   "
                    f"log {jupyter_log(p)}")
-    click.echo("  detail on one:  molbuilder jupyter status --port <port>")
+    click.echo("  detail on one:")
+    for p in ports:
+        click.echo("    " + as_typed("jupyter", "status", "--port", p))
     return 0 if answered else 1
 
 
@@ -3171,8 +3173,8 @@ def cmd_serve_status(port):
         # asked at the default bind -- the wrong place for a server started
         # on another (`deployment.md` § 1.0b).
         click.echo("  NOTE: this supervisor kept no host, so it was asked at "
-                   f"{_DEFAULT_SERVE_HOST}; `molbuilder serve stop` then "
-                   "`serve start` records it.")
+                   f"{_DEFAULT_SERVE_HOST}; `{as_typed('serve', 'stop')}` then "
+                   f"`{as_typed('serve', 'start')}` records it.")
     # A SUPERSET OF THE SURVEY ROW THAT SENT YOU HERE.  The survey prints
     # `notebook: yes|no` and the port-clash note and then says "detail on
     # one: ... --port <port>" (`plan.md` § 5n.8).
@@ -3180,14 +3182,14 @@ def cmd_serve_status(port):
     from .jupyter import read_pid as nb_pid
     nb_up = nb_state(nb_pid(port)) == "ours"
     click.echo(f"notebook:  {'running' if nb_up else 'not running'}"
-               f"   (molbuilder jupyter status --port {port})")
+               f"   ({as_typed('jupyter', 'status', '--port', port)})")
     clash = port_clash(port)
     if clash:
         click.echo(f"  NOTE: {clash}")
     if ok:
         return
     click.echo("  `kill -USR1` the child pid and read the stacks log, or "
-               "`molbuilder serve restart`.")
+               f"`{as_typed('serve', 'restart')}`.")
     _note_wedge(port, pid, said)
     raise SystemExit(4)
 
@@ -3206,7 +3208,7 @@ def _say_where_else(missing_port: int) -> None:
     if others:
         click.echo("  but a molbuilder IS running on port "
                    + ", ".join(str(p) for p in others)
-                   + " -- `molbuilder serve status` with no --port surveys "
+                   + f" -- `{as_typed('serve', 'status')}` with no --port surveys "
                      "them all.")
 
 
@@ -3266,7 +3268,9 @@ def _survey() -> int:
     if stale:
         click.echo("stale pidfile(s) for port "
                    + ", ".join(str(p) for p in stale) + ".")
-    click.echo("  detail on one:  molbuilder serve status --port <port>")
+    click.echo("  detail on one:")
+    for p, _pid in rows:
+        click.echo("    " + as_typed("serve", "status", "--port", p))
     return 0 if answered else 4
 
 
@@ -3344,7 +3348,7 @@ def _repo_or_exit(path):
     repo = Repo(_resolve_repo_path(path))
     if not repo.initialized:
         click.echo(f"Error: {repo.path} is not a checkpoint folder.  "
-                   f"Run `molbuilder checkpoint init` first.", err=True)
+                   f"Run `{as_typed('checkpoint', 'init')}` first.", err=True)
         sys.exit(2)
     return repo
 
@@ -3501,7 +3505,7 @@ def cmd_checkpoint_list(limit, check, path):
         sys.exit(1)
     if not status.clean:
         click.echo(f"   {len(status.unsaved())} unsaved change(s) here; "
-                   f"`molbuilder checkpoint save` keeps them.")
+                   f"`{as_typed('checkpoint', 'save')}` keeps them.")
         for name in status.unsaved():
             click.echo(f"     {name}")
     elif check:
@@ -3819,6 +3823,47 @@ def cmd_watch_tail(input_path, poll_ms, max_frames):
 # --------------------------------------------------------------------- #
 
 
+def _spelled_in_full(text: str, verbs) -> str:
+    """``text`` with each ``molbuilder <verb>`` whose verb is one of
+    ``verbs`` spelled as a person types it (`identity.PROG`;
+    `execution/job-system.md` § 5.3): the docstrings keep the short form,
+    and the help they become is what a person copies."""
+    import re
+    names = "|".join(map(re.escape, sorted(verbs, key=len, reverse=True)))
+    return re.sub(rf"(?<![\w./-])(?<!-m )molbuilder(?= (?:{names})\b)",
+                  lambda _m: PROG, text)
+
+
+def _kept_as_written(text: str) -> str:
+    """``text`` with each indented paragraph -- an example to type, a table
+    -- marked for click to print line by line as written (its ``\\b``),
+    never refilled into one run-on line that no shell takes."""
+    import inspect
+    kept = []
+    for paragraph in inspect.cleandoc(text).split("\n\n"):
+        if paragraph[:1].isspace() and paragraph.lstrip()[:1] != "\b":
+            paragraph = "\b\n" + paragraph
+        kept.append(paragraph)
+    return "\n\n".join(kept)
+
+
+def _help_as_typed(command, verbs) -> None:
+    """Every command's help under ``command`` as a person reads and types
+    it -- its commands spelled in full (:func:`_spelled_in_full`), its
+    examples and tables as written (:func:`_kept_as_written`): ONE place for
+    the whole CLI."""
+    for attr in ("help", "epilog"):
+        said = getattr(command, attr, None)
+        if said:
+            setattr(command, attr,
+                    _kept_as_written(_spelled_in_full(said, verbs)))
+    for sub in getattr(command, "commands", {}).values():
+        _help_as_typed(sub, verbs)
+
+
+_help_as_typed(cli, set(cli.commands))
+
+
 def main(argv: Optional[Sequence[str]] = None) -> int:
     """The int-returning entry point, for ``project.scripts`` and for tests
     that call ``cli.main([...])`` directly.
@@ -3859,7 +3904,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     # first reader binds it for the rest of the invocation, so every
     # backend's ``is_available`` and every ``run_tool`` still read one view.
     try:
-        rc = cli.main(args=args, standalone_mode=False)
+        # THE PROGRAM AS TYPED in every `Usage:` line (`identity.PROG`):
+        # click's own guess is "python -m molbuilder", a bare `python`.
+        rc = cli.main(args=args, prog_name=PROG, standalone_mode=False)
     except click.UsageError as e:
         # Missing required command, unknown subcommand, missing arg,
         # bad type conversion -- all of these must exit(2) per the

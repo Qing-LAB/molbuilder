@@ -26,7 +26,7 @@ from ..diagnostics import DEFAULT_ENV_NAMES, get_capabilities
 from ..runfiles import MACHINE_RECORD_FILE
 from ..runtime_config import (ACTIVATION_FORMS, ACTIVATION_ROWS,
                                activation_form)
-from .recipes import recipe_of_category
+from .recipes import SOURCE_PATH_FILE, SOURCE_PATH_STEP, recipe_of_category
 from . import builds as _builds
 from . import hints as _hints
 from . import doctor as _doctor
@@ -246,6 +246,14 @@ def _render_doctor(reports: Iterable[_doctor.EnvReport]) -> int:
                 click.echo(indented)
             click.echo("    next:    "
                        + _fix_cmd("repair", rep.recipe.name))
+            if rep.recipe.category is None:
+                # THE HOST ENV'S CHECK ALSO IMPORTS MOLBUILDER, found by the
+                # path file naming this checkout (`ops/deployment.md` § 0),
+                # which `repair` -- packages only, no extra steps -- never
+                # writes: a moved checkout is answered by `bootstrap`.
+                click.echo("    then:    "
+                           + _hints.install_again_cmd(rep.recipe)
+                           + "   # points this env at this checkout again")
             if (_install.runs_from_prefix(rep.prefix)
                     or rep.recipe.category is None):
                 # `installation.md` M5: a printed remedy may not destroy
@@ -397,18 +405,17 @@ def _render_doctor(reports: Iterable[_doctor.EnvReport]) -> int:
                     # mismatch is answered with `--include-version-fix` above.
                     click.echo("    next:    "
                                + _fix_cmd("repair", rep.recipe.name, *_flags))
-                    # THE DEFAULT SET, not every declared step.  `_HOST` has
-                    # opt-in `extra_steps` entries -- the chromium download,
-                    # the JS test packages -- and keying on the raw tuple
-                    # would tell every
-                    # host-env reader that `install --yes` has post-install work
-                    # to re-run, when a default install dispatches none.
+                    # THE DEFAULT SET, not every declared step: `_HOST`'s
+                    # opt-in ones -- the chromium download, the JS test
+                    # packages -- are no work a default install re-runs; its
+                    # one default step, the path file, `bootstrap` writes
+                    # again (`install_again_cmd`).
                     if rep.recipe.extra_set():
                         click.echo("    then:    "
-                                   + _hints.install_cmd(rep.recipe.name))
+                                   + _hints.install_again_cmd(rep.recipe))
                         click.echo("             (repair installs the packages; "
                                    "this recipe also has post-install steps, "
-                                   "which only `install` re-runs)")
+                                   "which only the line above re-runs)")
 
                     if _has_version and not _has_missing:
                         click.echo("             (only version/build pins "
@@ -1671,6 +1678,33 @@ def _install_one(recipe, effective: str, caps, *,
 # --------------------------------------------------------------------- #
 
 
+def _point_the_host_env_here(caps) -> bool:
+    """Run the host env's step that names this checkout in its
+    ``site-packages`` (`recipes.SOURCE_PATH_STEP`), through the one door
+    (`install.run_step`); ``True`` when it failed, said."""
+    env_name = effective_name(recipe_of_category(None), caps)
+    prefix = caps.env_prefix(env_name)
+    click.echo("")
+    click.echo(f"[bootstrap] the host env `{env_name}` finds this checkout "
+               f"({SOURCE_PATH_FILE})", err=True)
+    if prefix is None:
+        click.echo(f"[bootstrap]   ! `{env_name}` is not on this machine; "
+                   f"`{_fix_cmd('bootstrap', '--yes')}` makes it", err=True)
+        return True
+    step = _install.extra_step_for(SOURCE_PATH_STEP, caps.conda_binary,
+                                   env_name)
+    done = _install.run_step(step, prefix=prefix, sink=sys.stderr,
+                             timeout=120)
+    if done.outcome.is_success:
+        return False
+    click.echo(f"[bootstrap]   ! could not point `{env_name}` at this "
+               f"checkout (rc={done.returncode})", err=True)
+    reason = _install.unlaunched_reason(done)
+    if reason:
+        click.echo(f"[bootstrap]     {reason}", err=True)
+    return True
+
+
 @envs_group.command(
     "bootstrap",
     short_help="install every conda-only recipe + run doctor at the end")
@@ -1722,7 +1756,7 @@ def cmd_bootstrap(dry_run: bool, skip_existing: bool, clean: bool,
     included by default because each takes 30-45 minutes.  Use
     ``--include-source-builds`` to opt in.
 
-    At the end runs ``molbuilder envs doctor`` so the user sees the
+    At the end runs molbuilder's ``envs doctor`` so the user sees the
     health of every env in one report.
     """
     failures: list = []      # recipes whose install did not finish
@@ -1772,7 +1806,8 @@ def cmd_bootstrap(dry_run: bool, skip_existing: bool, clean: bool,
             click.echo(f"        {r.opt_in}", err=True)
             hint = _hints.install_cmd(r.name)
             if r.build_spec is not None:
-                hint += "   (or `bootstrap --include-source-builds`)"
+                hint += ("   (or `"
+                         f"{_fix_cmd('bootstrap', '--include-source-builds')}`)")
             click.echo(f"        {hint}", err=True)
         click.echo("", err=True)
 
@@ -1827,16 +1862,21 @@ def cmd_bootstrap(dry_run: bool, skip_existing: bool, clean: bool,
             click.echo("Without --dry-run this run would:")
             click.echo(f"  - seed the config directory at {config_dir()} "
                        f"(if it is not already there)")
+            click.echo("  - point the host env at this checkout "
+                       f"({SOURCE_PATH_FILE})")
             click.echo("  - run doctor over every env to verify it")
             return
         click.echo("Every env in the default stack is already present.  "
-                   "Running doctor to verify.")
+                   "Pointing the host env at this checkout, then running "
+                   "doctor to verify.")
     else:
         # Per-recipe banner.
         click.echo(f"bootstrap plan: {len(plan)} env(s)")
         for r in plan:
             click.echo(
                 f"  - {r.name:<30}  {r.description}")
+        click.echo("then: seed the config directory, point the host env at "
+                   f"this checkout ({SOURCE_PATH_FILE}), run doctor")
         if dry_run:
             click.echo("(dry-run: no install executed.)")
             return
@@ -1938,6 +1978,13 @@ def cmd_bootstrap(dry_run: bool, skip_existing: bool, clean: bool,
     # Refresh capabilities so doctor sees newly-created envs.
     from .. import diagnostics as _diag
     caps_after = _diag.initialize()
+
+    # THE HOST ENV FINDS THIS CHECKOUT, every bootstrap -- a moved checkout
+    # follows (`ops/deployment.md` § 0): the host recipe's own step
+    # (`recipes.SOURCE_PATH_STEP`), run through the one door into the host
+    # env, present or just made; doctor's host verify then reads it.
+    host_failed = _point_the_host_env_here(caps_after)
+
     click.echo("")
     click.echo("=" * 70)
     click.echo("doctor (post-bootstrap smoke check):")
@@ -1980,12 +2027,14 @@ def cmd_bootstrap(dry_run: bool, skip_existing: bool, clean: bool,
     # and doctor's report.
     click.echo("")
     click.echo("=" * 70)
-    if failures or seed_failed or exit_code != 0:
+    if failures or seed_failed or host_failed or exit_code != 0:
         parts = []
         if failures:
             parts.append(f"{len(failures)} install(s) failed")
         if seed_failed:
             parts.append("the config directory was not seeded")
+        if host_failed:
+            parts.append("the host env was not pointed at this checkout")
         if exit_code != 0:
             parts.append("doctor reported a problem above")
         click.echo(f"bootstrap did NOT finish its job: {'; '.join(parts)}.",
@@ -2221,8 +2270,9 @@ def _ask_projects_root(auto_yes: bool,
                    "it into the record, and without it every prep for this "
                    "machine refuses.")
 @click.option("--no-probe", "probe", flag_value=False, default=True,
-              help=f"do not write {MACHINE_RECORD_FILE}; `molbuilder jobset "
-                   "probe --write` makes it later, copying `env_init` into it.")
+              help=f"do not write {MACHINE_RECORD_FILE}; molbuilder's "
+                   "`jobset probe --write` makes it later, copying "
+                   "`env_init` into it.")
 @click.option("--yes", "-y", "auto_yes", is_flag=True,
               help="take the recommended activation without asking.  The "
                    "value chosen is printed either way.")

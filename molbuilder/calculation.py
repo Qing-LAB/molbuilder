@@ -25,6 +25,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
+from .identity import as_typed
 from . import job_request as _job_request
 from . import task as _task
 from . import template_file as _template_file
@@ -172,8 +173,8 @@ def refusal(base) -> str:
                     f"Task setup's Save writes them together.")
         return (f"{base} holds {_task.FILENAME} but no template beside it "
                 f"-- a described calculation is the two together"
-                f"; run `molbuilder describe` "
+                f"; run `{as_typed('describe')}` "
                 f"in a folder of its own.")
     return (f"{base} is not a described calculation -- no "
             f"{_task.FILENAME} + template pair; "
-            f"run `molbuilder describe` first.")
+            f"run `{as_typed('describe')}` first.")

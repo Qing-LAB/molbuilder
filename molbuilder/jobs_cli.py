@@ -20,12 +20,14 @@ from .identity import jobs_as_typed
                                 "what each is doing, and stop one")
 def jobs_group() -> None:
     """The jobs launched from this machine -- a run here or a queue job --
-    each kept by its address, the way `molbuilder serve status` keeps a
+    each kept by its address, the way molbuilder's `serve status` keeps a
     server's.
 
     \b
-        molbuilder jobs status          every job, and what each is doing
-        molbuilder jobs stop <id>       stop one -- shown and asked first
+        molbuilder jobs status          # every job, and what each is doing
+
+    One is stopped by molbuilder's `jobs stop` with the id `jobs status`
+    gives it -- shown and asked first.
 
     What a job is doing is read fresh each time: its process, or the
     scheduler, and each member's run as `jobset status` reads it.  A job
@@ -105,7 +107,7 @@ def cmd_jobs_status() -> None:
               help="Stop it without being asked -- the answer given in "
                    "advance.")
 def cmd_jobs_stop(job_id: str, yes: bool) -> None:
-    """Stop the job JOB_ID names (`molbuilder jobs status` lists them): a
+    """Stop the job JOB_ID names (molbuilder's `jobs status` lists them): a
     run here left in the background -- SIGTERM to its process group, which
     reaches the engine -- or a queue job, its scheduler's cancel.  Shown and asked
     first; the calculation's ledger records the stop."""

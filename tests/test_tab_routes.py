@@ -127,3 +127,20 @@ def test_canonical_page_marks_its_own_tab_active(
         f"{page_path!r} expected only {expected_active_href!r} active; "
         f"got {active!r}"
     )
+
+
+def test_every_page_hands_its_scripts_the_typed_command(web):
+    """`execution/job-system.md` § 5.3: every page's head carries
+    molbuilder's command as a person types it -- the server's one spelling,
+    `identity.PROG` -- which its scripts read (`molbuilder.typed`) rather
+    than spelling it.  Every tab, and the notebook's and This machine's."""
+    import html
+    from support.road import TYPED
+    from molbuilder.web.tabs import TABS
+    for path in [t["path"] for t in TABS] + ["/jupyternb", "/this-machine"]:
+        r = web.get(path)
+        assert r.status_code == 200, (path, r.status_code)
+        found = re.search(r'<meta name="molbuilder-typed" content="([^"]*)">',
+                          r.get_data(as_text=True))
+        assert found, path
+        assert html.unescape(found.group(1)) == TYPED, (path, found.group(1))

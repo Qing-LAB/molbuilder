@@ -130,6 +130,23 @@
         return Array.from(_waiters.keys()).sort();
     }
 
+    // MOLBUILDER'S COMMAND AS A PERSON TYPES IT (`job-system.md` § 5.3):
+    // the server's one spelling (`identity.PROG`), handed to every page in
+    // its head (`_page_head.html`, `<meta name="molbuilder-typed">`) -- a
+    // page never spells it.  `typed("serve", "stop")`.
+    function typed() {
+        const meta = root.document
+            && root.document.querySelector('meta[name="molbuilder-typed"]');
+        const prog = meta && meta.getAttribute("content");
+        if (!prog) {
+            throw new Error("molbuilder.typed: this page's head carries no "
+                            + "molbuilder-typed meta (_page_head.html)");
+        }
+        return [prog].concat(Array.prototype.map.call(arguments, String))
+                     .join(" ");
+    }
+    root.molbuilder.typed = typed;
+
     root.molbuilder.runtime = {
         register:        register,
         whenReady:       whenReady,

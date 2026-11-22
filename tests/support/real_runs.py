@@ -89,7 +89,7 @@ from pathlib import Path
 from typing import Dict, Optional
 
 import pytest
-from support.road import (all_written, described, molbuilder,
+from support.road import (TYPED, all_written, described, molbuilder,
                           structure_saved, until)
 
 
@@ -307,9 +307,10 @@ def stopped_by_its_line(run: RealRun, step: str, launched: Said) -> None:
     import shlex
     line = next(ln.split("to stop it:", 1)[1].strip()
                 for ln in launched.output.splitlines() if "to stop it:" in ln)
+    program = shlex.split(TYPED)
     words = shlex.split(line)
-    assert words[0] == "molbuilder", line
-    said = _at_a_terminal(words[1:], "y")
+    assert words[:len(program)] == program, line
+    said = _at_a_terminal(words[len(program):], "y")
     run.said[step] = said
     assert said.exit_code == 0, f"{step}: {said.output}"
     pid = _launched_here(run)

@@ -18,6 +18,7 @@ from __future__ import annotations
 #: catalogue's (`runfiles.WRITTEN`, `job-contracts.md` § 2.2): every file
 #: molbuilder writes is a row there.
 from ..runfiles import PLAN_FILE as FILENAME  # noqa: E402
+from ..identity import JOBSET_PROG
 from .model import KIND_LADDER  # noqa: E402
 
 from pathlib import Path
@@ -124,8 +125,8 @@ def render_plan(jobset: JobSet, this_prep: Optional[List[str]] = None) -> str:
                      "its members one after another; a group's first launch "
                      "takes what each member builds on from the newest run "
                      "of the stage it builds on, which must have finished"
-                     ", and `molbuilder jobset "
-                     "status` names the next command.")
+                     ", and `" + JOBSET_PROG + " status` names the next "
+                     "command.")
     else:
         lines.append(f"Order: {len(js.jobs)} independent job(s) -- no ordering "
                      "between them.  Submit one at a time; a scheduler is "

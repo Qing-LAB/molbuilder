@@ -81,14 +81,26 @@ def jobset(*args, input=None):
                               input=input)
 
 
+#: molbuilder's command as a person types it, word for word as
+#: `execution/job-system.md` § 5.3 states it: the host env's own Python,
+#: named by its path, running the package.  Every printed line to type
+#: starts with it.
+TYPED = '"${CONDA_PREFIX:?}/bin/python" -m molbuilder'
+
+
 def printed_commands(output: str):
-    """Every ``molbuilder jobset`` command line an output prints, as a shell
-    splits it -- a ``#`` comment cut off, as bash does -- without the
-    program's two words."""
+    """Every ``jobset`` command line an output prints, as a shell splits it
+    -- a ``#`` comment cut off, as bash does -- without the program's
+    words: the program as a person types it (:data:`TYPED`).  A line that
+    starts ``molbuilder jobset`` bare fails here: no shell finds that
+    program."""
+    program = shlex.split(TYPED) + ["jobset"]
     for line in output.splitlines():
         line = line.strip()
-        if line.startswith("molbuilder jobset "):
-            yield shlex.split(line, comments=True)[2:]
+        assert not line.startswith("molbuilder jobset "), (
+            f"printed bare, a line no shell takes: {line}")
+        if line.startswith(TYPED + " jobset "):
+            yield shlex.split(line, comments=True)[len(program):]
 
 
 def each_is_taken(output: str) -> int:
