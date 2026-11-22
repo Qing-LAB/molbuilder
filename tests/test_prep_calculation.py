@@ -212,3 +212,27 @@ def test_a_template_that_does_not_read_is_refused_by_migrate(tmp_path,
     assert r.exit_code != 0, r.output
     assert "does not read, so nothing was" in r.output, r.output
     assert template.read_text() == edited
+
+
+def test_a_prep_takes_away_a_bundle_no_deck_of_its_carries(tmp_path,
+                                                            monkeypatch):
+    """`job-system.md` § 5.0, checkpoint 6: every file prep lays beside a
+    deck is prep's, and one an earlier prep wrote that this prep does not is
+    taken away -- the bundle of a finish the job no longer has or of
+    another engine among them (every bundle, `runwrap.BUNDLES`), never left
+    to be sent, run or read as this prep's.  The suite cannot prepare one
+    stage under two engines, so the bundles an earlier prep left are laid
+    beside the deck here -- the need: only such a folder shows the sweep.
+    The bundle this deck carries stays.  THE SILENT FAILURE (to 2.77.20):
+    the sweep asked only this engine's and this finish's names, so another's
+    bundle stayed beside the deck as if this prep had written it."""
+    from molbuilder.runfiles import MONITOR_BUNDLE, PYSCF_BUNDLE, VIBRATION_BUNDLE
+    calc = described(road_tree(tmp_path, monkeypatch))
+    _prep(calc)
+    stage = next(p for p in calc.iterdir() if p.name.endswith("_coarse"))
+    for name in (VIBRATION_BUNDLE, PYSCF_BUNDLE):
+        (stage / name).write_bytes(b"an earlier prep's bundle")
+    _prep(calc)
+    assert not (stage / VIBRATION_BUNDLE).exists()
+    assert not (stage / PYSCF_BUNDLE).exists()
+    assert (stage / MONITOR_BUNDLE).is_file()

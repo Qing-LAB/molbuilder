@@ -1191,8 +1191,9 @@ def beside_the_deck(engine: str, calculation: str, finish: Optional[str],
     the one list, the catalogue's travelling rows (:func:`travelling`) by
     the stage's names, then the job's finish when it has one
     (`Job.finish`): what prep renders beside the deck, what a launch brings
-    into a run (`materialize.bring_files`), and what a run's own plan step
-    brings into a call it opens (`spectra.siesta_vibration`); the
+    into a run (`materialize.bring_files`), and what the force constants'
+    record step brings into each optical call it opens, from the run's own
+    copy (`spectra.siesta_vibration`); the
     calculation's shared package (`JobSet.shared`, the pseudopotentials)
     comes beside them."""
     out = [names.name(a.role) if a.role else a.name
@@ -1211,7 +1212,7 @@ WRITTEN: "tuple[Artifact, ...]" = (
     Artifact(".fdf", "the SIESTA deck — every keyword this stage runs with",
              engine="siesta",
              when="prep", level="stage", kind="derived",
-             writer="prep, in the stage's folder; a copy in each run",
+             writer="prep, in the stage's folder; a copy in each run -- a run of points' container keeps one for the points its job plans, and its planner's step copies it into each, and a launch into one it opens again",
              door="runfiles.find_by_role",
              listed_by="engine_index", counted_by=("siesta",),
              reads=(("contract", "molbuilder.parse.engines.siesta_contract:"
@@ -1326,7 +1327,7 @@ WRITTEN: "tuple[Artifact, ...]" = (
     Artifact(ROLE_RUN_SCRIPT, "the run script — activates the environment, "
                               "tees the output, catches a kill",
              when="prep", level="stage", kind="derived", travels=True,
-             writer='prep, beside its deck; a copy in each run'),
+             writer="prep, beside its deck; a copy in each run -- a run of points' container keeps one for the points its job plans, and its planner's step copies it into each, and a launch into one it opens again"),
     # ON A MACHINE WITH A QUEUE, whether the run is then submitted or not --
     # unless prep is told `--no-sbatch`, and never for a run of points, which
     # its walk's header sends (`jobset.prep`).
@@ -1662,7 +1663,7 @@ WRITTEN: "tuple[Artifact, ...]" = (
                   "call's own in its folder",
              when="prep", level="stage", kind="derived", engine="siesta",
              calculation="vibration", travels=True,
-             writer="prep, beside each phase's deck; the run's own Python for each call",
+             writer="prep, beside each phase's deck; a copy in each call the opener opens and in the run's `optical/`; the run's own Python for each optical call",
              door="parse.fdf.read_deck"),
     # A RUN'S OWN RECORDS, in its folder: the launch record -- written at
     # launch -- the notification record, and the run it continues from.
@@ -1703,7 +1704,7 @@ WRITTEN: "tuple[Artifact, ...]" = (
     Artifact(name=MONITOR_BUNDLE,
              what="the monitor, and the readers it runs on — one file",
              when="prep", level="stage", kind="derived", travels=True,
-             writer='prep, beside each run script; a copy in each run'),
+             writer="prep, beside each run script; a copy in each run -- a run of points' container keeps one for the points its job plans, and its planner's step copies it into each, and a launch into one it opens again"),
     Artifact(name=VIBRATION_BUNDLE,
              what="the SIESTA vibration's own steps -- each call's `plan` "
                   "and `record` and the run's `finish-run`: the coordinates, "
@@ -1711,7 +1712,7 @@ WRITTEN: "tuple[Artifact, ...]" = (
                   "optical calls' data file",
              engine="siesta", calculation="vibration",
              when="prep", level="stage", kind="derived",
-             writer="prep, in each phase's folder beside its run script; a copy in each call"),
+             writer="prep, in each phase's folder beside its run script; a copy in each call, and in the run's `optical/`, from which its record step copies one into each optical call, and a launch into one it opens again"),
     Artifact(name=PYSCF_BUNDLE,
              what="molbuilder's own code the PySCF script runs, which it "
                   "imports from here -- the core count, the progress-log "

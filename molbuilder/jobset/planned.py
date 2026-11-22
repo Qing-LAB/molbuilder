@@ -370,9 +370,10 @@ def bring(plan: "Plan", names, *, into, from_dir, also=()) -> List[str]:
     ``from_dir`` by its basename, else in each folder of ``also`` by the
     name and then by its basename -- the one copy step every run folder is
     filled by: a stage's run and a run of points' point on this machine
-    (`materialize.bring_files`), and a phase's call folder on the node,
-    from the stage's phase folder (`spectra.siesta_vibration`, the ``plan``
-    verb; `engines/vibration.md` § 5.11 § 3).  COPIED, never linked
+    (`materialize.bring_files`), and a planned call's folder on the node,
+    from the run's own copy of its phase's files -- a run opened before
+    2.77.21, which holds none, from the stage's (`spectra.siesta_vibration`,
+    the ``record`` verb; `engines/vibration.md` § 5.11 § 2-3).  COPIED, never linked
     (`project-layout.md` § 1.0: the run directory holds everything), and
     refreshed every time: a reused unlaunched run must see the prep's deck,
     not an earlier one's.  Returns the basenames brought, in order."""

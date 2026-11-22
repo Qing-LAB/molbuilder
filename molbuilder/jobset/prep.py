@@ -236,14 +236,18 @@ def prep_jobset(jobset: JobSet, base_dir, *, calculation: str, plan,
             for _deck, _x in _decks:
                 _wrap(_deck, _x)
                 # EVERY FILE BESIDE THE DECK IS PREP'S (`runfiles.
-                # beside_the_deck`, the one list): one this prep does not
-                # write is one an earlier prep left -- a header for a queue
-                # since dropped, a correction script for a charge since made
-                # 0 -- and is taken away, never sent, run or read as this
-                # one's (`job-system.md` § 5.0, checkpoint 6;
-                # `scheduler.md` § 5.1, *every header is prep's*).
-                for _name in beside_the_deck(jobset.engine, calculation,
-                                             job.finish, _names):
+                # beside_the_deck`, the one list, and every bundle,
+                # `runwrap.BUNDLES`): one this prep does not write is one an
+                # earlier prep left -- a header for a queue since dropped, a
+                # correction script for a charge since made 0, the bundle of
+                # a finish the job no longer has or of another engine -- and
+                # is taken away, never sent, run or read as this one's
+                # (`job-system.md` § 5.0, checkpoint 6; `scheduler.md` § 5.1,
+                # *every header is prep's*).
+                from ..runwrap import BUNDLES
+                for _name in dict.fromkeys([
+                        *beside_the_deck(jobset.engine, calculation,
+                                         job.finish, _names), *BUNDLES]):
                     _left = _deck.parent / _name
                     if not plan.decides(_left) and _left.is_file():
                         plan.remove(_left)
@@ -1128,6 +1132,63 @@ def prepared_differs(calc, plan, prepared, planned) -> List[str]:
     if planned is None or row(planned) != row(prepared):
         differ.append(f"its row in {JOBSET_FILENAME}")
     return differ
+
+
+def _shipped_code_changed(base, plan, answer, calc) -> Optional[str]:
+    """WHAT A LAUNCHED STAGE'S NEXT RUN RUNS BESIDE ITS DECK THAT ITS LAST
+    DID NOT -- each bundle this prep writes for it (`runwrap.BUNDLES`)
+    whose bytes differ from a copy its newest launched run
+    (`materialize.newest_launched`) holds of its own: any folder of it --
+    a point's, a container's, a planned call's -- but a point it took over,
+    whose copy is the run's that computed it (`runpoints.taken_from`).
+    One release's copies are one bytes (fixed member times), so the first
+    answers.  Said as one sentence naming the release that prepared that
+    run (the run script beside that copy, `deck_record.written_by`) and
+    this one; ``None`` when none differs.
+    The decks are the same calculation (:func:`_computes_else`), and what
+    the code beside them computes with is the release's: the next launch
+    runs this one's, so the prep says it and goes on
+    (`execution/job-request.md` § 5; the user, 2026-11-21: "Say it, prep
+    anyway")."""
+    from .. import __version__
+    from ..deck_record import molbuilder_words, written_by
+    from ..paths import attempt_index
+    from ..runwrap import BUNDLES
+    from ..runpoints import taken_from
+    from .materialize import newest_launched
+    home = stage_home(base, calc.task, answer.stage).dir
+    last = newest_launched(home)
+    if last is None:
+        return None
+    names = run_names(calc.jobset, answer.job)
+    written: Dict[str, bytes] = {}
+    for p in plan.writes():
+        if p.name not in BUNDLES:
+            continue
+        try:
+            rel = Path(p).relative_to(home)
+        except ValueError:
+            continue
+        if not any(attempt_index(part) is not None for part in rel.parts):
+            written.setdefault(p.name, plan.read_bytes(p))
+    changed: Dict[str, Path] = {}
+    for name, now in written.items():
+        for copy in sorted(last.rglob(name)):
+            if taken_from(last, names, str(copy.parent.relative_to(last))):
+                continue
+            if copy.read_bytes() != now:
+                changed[name] = copy.parent
+            break
+    if not changed:
+        return None
+    script = next(iter(changed.values())) / names.run_script
+    was = (written_by(script.read_text(encoding="utf-8", errors="replace"))
+           if script.is_file() else None)
+    return (f"stage {answer.stage!r}: the code molbuilder ships beside its "
+            f"decks changed since its last run, {last.name} "
+            f"({molbuilder_words(was)}) -- {', '.join(sorted(changed))}: its "
+            f"next launch runs {molbuilder_words(__version__)}'s; its decks "
+            f"are the same calculation")
 
 
 def _taken_by_its_run(path, names, home) -> bool:
@@ -2928,6 +2989,11 @@ def _prep_groups(calc, numbers: List[int], *, target, allocation,
                     f"alone; to change what it "
                     f"computes, " + redo_launched(a.stage,
                                                    calc=description.calc))
+            # ...AND THE CODE BESIDE ITS DECKS, which the decks do not show:
+            # said, never refused.
+            said = _shipped_code_changed(base, the_plan, a, description.calc)
+            if said:
+                a.notes.append(said)
     # 2b · EACH GROUP'S OWN FILE AND REQUEST, in the same plan -- its one
     #      header, where the machine has a scheduler, rendered for the
     #      members' shared allocation, which is placed as a run's is; the

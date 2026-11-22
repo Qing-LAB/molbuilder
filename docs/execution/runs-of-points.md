@@ -70,8 +70,8 @@ Where each of these lies on disk, and the one door that names each, is § 2.4.
 | **unit** | what the kind calls one point in a person's words | *point* | *call* |
 | **listing order** | the order the run's points are listed in everywhere — `status`, the index, the Results ladder, the first point short of done | frames outer, each frame's voltages in the description's order | `relax`, `fc`, then the optical frames in the order they were planned |
 | **prepared point** | a point whose deck prep writes, in its **prepared folder** below the stage | every point: `04_device/f001/v0.2/` | `relax`, `fc`: `01_freq/relax/`, `01_freq/fc/` |
-| **planned point** | a point the run's own job adds while the run goes, by the after-step of its **planner** (§ 1.2), in a **container** below the run; its deck is its container's prepared folder's | — | each optical frame, planned by `fc`, in `optical/`, its deck `01_freq/optical/`'s |
-| **container** | a folder below the run that holds planned points — a container folder ([`project-layout.md`](?doc=execution/project-layout.md) § 1.4a), opened with the run | — | `optical/` |
+| **planned point** | a point the run's own job adds while the run goes, by the after-step of its **planner** (§ 1.2), in a **container** below the run; its deck is its container's prepared folder's, copied from the run's own copy in the container | — | each optical frame, planned by `fc`, in `optical/`, its deck `01_freq/optical/`'s |
+| **container** | a folder below the run that holds planned points — a container folder ([`project-layout.md`](?doc=execution/project-layout.md) § 1.4a), opened with the run, holding the run's own copy of its points' prepared files, from which each is filled | — | `optical/` |
 | **phase** | what work a point does — one kind of deck. Points of one phase cost alike, so a pace and a count are a phase's. (A run's phase, not a part of an engine's output, [`run-reports.md`](?doc=execution/run-reports.md) § 2.8) | the rung: every point one phase | `relax`, `fc`, `optical` |
 | **round** | the points walked together and reported together: every point of a round runs before the next round's, and the last of a round to end says the round's outcome | one voltage at every frame | one phase |
 
@@ -328,6 +328,7 @@ CO2/                                  the calculation (task.json)
         ├── relax/                    POINT                     run
         ├── fc/                       POINT                     run
         └── optical/                  CONTAINER                 container
+            │ CO2_01_freq.fdf  CO2_01_freq.run.sh  coordinates.fdf  mb_*.pyz  *.psml   the run's copy
             ├── f000/                 PLANNED POINT             run
             ├── f001/                 PLANNED POINT             run
             └── …
@@ -343,8 +344,8 @@ CO2/                                  the calculation (task.json)
 | **run** | one launch of the stage: the run of points | `run-<n>` — `paths.attempt_name(n)`, `paths.attempt_dir` | container | its launch record, its notification record, its index, its monitor log, its gathered inputs, the kind's result — each named by the catalogue (`runfiles`) | the opener (`materialize.open_sweep_run`), at prep for `run-0`, at a launch after |
 | **point** | one engine run of the run | the point's `rel` (below) | run | its own copies of the deck and run script, its output, session log, monitor log, conclusion; its `.continued-from` / `.gathered-from` | `RunPlace.point(rel)` |
 | **frame folder** | a transport run's level above its voltages, where both vary — where only the frame varies, the frame's folder is its point | `f<NNN>` — `paths.frame_token` | container | the frame's points | the opener |
-| **container** | a folder below the run for points the job plans | the planned phase's name (`optical`) — `Call(phase).rel` | container | its planned points | the opener, with the run (`PointsOf.containers`) |
-| **planned point** | a point the job adds while the run goes | `<container>/f<NNN>` — `paths.frame_token` of its place in the planning (`Call.rel`) | run | as a point | the planner's own step, through the opener's travelling core (`calcdirs.record`, `planned.bring`) at `RunPlace.point(rel)`; a launch again at the same |
+| **container** | a folder below the run for points the job plans | the planned phase's name (`optical`) — `Call(phase).rel` | container | the run's copy of its points' prepared files — the deck, the run script, the files beside them, the shared package — and its planned points | the opener, with the run (`PointsOf.containers`, `materialize.open_sweep_run`) |
+| **planned point** | a point the job adds while the run goes | `<container>/f<NNN>` — `paths.frame_token` of its place in the planning (`Call.rel`) | run | as a point | the planner's own step, through the opener's travelling core (`calcdirs.record`, `planned.bring`) at `RunPlace.point(rel)`, from its container's copy; a launch again at the same, from the same |
 | **scratch** | the engine's scratch of the run | the rung's `scratch_dir` (`tsgf`) — the warm-files vocabulary, `Job.scratch_dir` | scratch | the round's leads' surface Green's functions | the opener, `RunPlace.scratch(name)` |
 | **shared** | a transmission point's energies shared with a finished calculation | `shared` — `SHARED_DIR` of `transport.energies` | shared | the finished point's files, `.copied-from` | the reuse (`reuse.shared_into`, `carry_shared`) |
 
@@ -413,6 +414,10 @@ flowchart TD
         O3 --> O5["5 hand a start (recorded)"]
         O4 --> O5
         O6 --> O5
+        O1 --> OP["the opener: prep's run-0, each launch's run<br/>(materialize.open_sweep_run)"]
+        OP --> CP[("each container's copy of its<br/>points' prepared files, in the run")]
+        OP -.->|"at a launch, before the walk is planned"| O2
+        CP --> O6
     end
     subgraph job["the job"]
         O8["8 walk, round by round"] --> O9["9 a point started"]
@@ -423,23 +428,24 @@ flowchart TD
         O10 -->|"points left"| O8
     end
     O7 --> O8
+    CP -->|"the run's own copy (where the run's steps predate 2.77.21: the stage's -- vibration § 5.11 § 2)"| O11
     O5 -->|"files copied just before the point runs"| O9
     O10 -->|"none left: the run's finish"| R["12 to 16 judged, counted and read: status, the views"]
 ```
 
 | # | operation | where · when | reads | writes | door |
 |---|---|---|---|---|---|
-| 1 | **prepare the points** | this machine · `prep` | the declaration's prepared points; the record's `steps` | each prepared point's deck and run script — its report steps, and the kind's steps where it has them — in its prepared folder; the run's first folder, its points and containers opened | the conductor (`prep`), `materialize.open_sweep_run` |
+| 1 | **prepare the points** | this machine · `prep` | the declaration's prepared points; the record's `steps` | each prepared point's deck and run script — its report steps, and the kind's steps where it has them — in its prepared folder; the run's first folder, its points and containers opened — each container with the run's copy of its points' prepared files | the conductor (`prep`), `materialize.open_sweep_run` |
 | 2 | **plan the walk** | this machine · `launch`, before the question | the stage's newest launched run: each point by the done rule, its index (the points it took over, the points each planner planned); a run continuing from another stage's run, that run and its index instead | nothing: the plan — which points are taken over, which are walked, each walked point's start and needs, the rounds' order, the loop steps | `submit._points_walk` |
 | 3 | **take a point over** | launch · the send | the done point's folder | its copy but the engine's scratch, and its record naming the run that computed it | `submit._take_over` → `materialize.hand_over` |
 | 4 | **continue a point** | launch · the send | its last run's folder | its job's warm files, and its record | `materialize.hand_over` |
 | 5 | **hand a start** | launch records it; the walk copies it | the source's files | the record now; the files just before the point runs — a planned point's by its loop step | `materialize.hand_over` (`walk=True`), the walk |
-| 6 | **open a planned point again** | launch · the send | its prepared folder; the inputs its planning wrote in the last run | its folder, its deck and those inputs — never the last run's outputs — and its start's record (op. 5) | `materialize.open_run`, `bring_files`, `materialize.hand_over` |
+| 6 | **open a planned point again** | launch · the send | its container's copy of its prepared files, in this run; the inputs its planning wrote in the last run | its folder, its deck and those inputs — never the last run's outputs — and its start's record (op. 5) | `materialize.open_run`, `bring_files`, `materialize.hand_over` |
 | 7 | **write the index** | launch · the send | the declaration's entries, the kind table's record | the index | `runpoints.empty_index`, `add_point` |
 | 8 | **walk** | the job | the walk script | the walk's log | `submit._walk_script` |
 | 9 | **a point started** | the job · before the engine | the index | `started`; the before-step's work; the run's `start`, once | `mb_monitor.pyz point started` |
 | 10 | **a point ended** | the job · after the engine | the index; the point's output | `ended`, `exit`, `verdict`; the after-step's work and `step_error`; the run's end — `not_run`, the finish step, `finish` — and its events | `mb_monitor.pyz point ended` |
-| 11 | **plan points** | the job · a planner's after-step | what its point computed | each planned point's folder, its inputs, its start's record (its planner, op. 5), its entry | the kind's after-step, through `runpoints.add_point` and the opener's travelling core (`calcdirs.record`, `planned.bring`) |
+| 11 | **plan points** | the job · a planner's after-step | what its point computed; its container's copy of the points' prepared files | each planned point's folder, its inputs, its start's record (its planner, op. 5), its entry | the kind's after-step, through `runpoints.add_point` and the opener's travelling core (`calcdirs.record`, `planned.bring`) |
 | 12 | **judge a point** | both sides | the job: its entry and its files; this machine: its own files | — | `runpoints.rows_of`; `continuation.point_done` |
 | 13 | **the run's state** | both sides | the points judged; this machine: the jobs launched from it | — | `runpoints.run_state`; `continuation.points_state` |
 | 14 | **count** | both sides | the points judged, the index's `facts` | — | the record's `count` |

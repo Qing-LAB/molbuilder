@@ -546,7 +546,7 @@ starts the engine a second time.
 **After a failure the run script says three things**, on its stderr and in the session log:
 
 1. **How it ended**, asked of the framework's reader, never grepped, whatever the engine: `_mb_ending` runs
-   `"$_mb_py" mb_monitor.pyz ending` over the output — read by the reader its role names — and the session log,
+   `"$_mb_py" -I mb_monitor.pyz ending` over the output — read by the reader its role names — and the session log,
    which holds the engine's stderr where it is kept apart from the output (SIESTA's: its `die` flushes stdout
    on node 0 alone, so another rank may say why it died only there). The cause is the first fatal line; the
    markers are the engine family's table (SIESTA's `parse/engines/siesta_grammar.py`), and the run script

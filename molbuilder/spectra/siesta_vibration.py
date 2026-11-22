@@ -837,9 +837,11 @@ def _plan_optical(here: _CallHere, run: ForceConstantRun, res: SpectraResults,
     `vibration` block's ``raman``), each picked mode's ``δQ = δ /
     max_k |L_k|`` -- ``δ`` the `.FC` header's displacement -- and for each
     frame a call folder below the run's `optical/`, opened through the
-    opener's travelling core (`calcdirs.record`, `planned.bring` from the
-    stage's `optical/`), its `coordinates.fdf` (``R₀ ± δQ·L``, the one
-    displacement rule, `normal_modes.displaced`) and its index entry.
+    opener's travelling core (`calcdirs.record`, `planned.bring` from
+    :func:`_optical_source` -- the run's own copy of the optical phase's
+    files, which the opener put in its `optical/` container), its
+    `coordinates.fdf` (``R₀ ± δQ·L``, the one displacement rule,
+    `normal_modes.displaced`) and its index entry.
     Returns how many were planned -- 0 with Compute Raman off, the stage
     running no optical phase, or when a range keeps no mode."""
     if "raman" not in run.record:
@@ -849,7 +851,7 @@ def _plan_optical(here: _CallHere, run: ForceConstantRun, res: SpectraResults,
     raman = run.record["raman"]
     if raman is None:
         return 0
-    stage_optical = here.place.prepared(Call(OPTICAL).prepared)
+    files_from = _optical_source(here)
     freqs = [float(m.frequency_cm1) for m in res.modes]
     picked = select_modes(freqs, str(raman.get("modes")),
                           freq_min_cm1=raman.get("freq_min_cm1"),
@@ -862,11 +864,12 @@ def _plan_optical(here: _CallHere, run: ForceConstantRun, res: SpectraResults,
         "delta_ang": delta}
     if not picked:
         return 0
-    if not stage_optical.is_dir():
+    if not (files_from / here.deck.name).is_file():
         raise FinishError(
-            f"Raman for picks {len(picked)} mode(s) and the stage holds "
-            f"no {OPTICAL}/ folder for their calls -- a stage prepared "
-            f"before its optical phase (2.42.0): prepare it again")
+            f"Raman for picks {len(picked)} mode(s) and neither the run nor "
+            f"its stage holds an {OPTICAL}/ deck for their calls -- a stage "
+            f"prepared before its optical phase (2.42.0): prepare it again "
+            f"and launch it")
     n = len(run.elements)
     r0 = np.asarray(run.positions_ang, dtype=float)
     # THE MODE OVER EVERY ATOM, in the deck's order: the result lists it by
@@ -888,15 +891,22 @@ def _plan_optical(here: _CallHere, run: ForceConstantRun, res: SpectraResults,
     plan = Plan()
     # WHAT A CALL'S FOLDER HOLDS -- the deck and the one list of what
     # travels beside it (`runfiles.beside_the_deck`, as a launch brings a
-    # run: `materialize.bring_files`), from the stage's phase folder; and
-    # the calculation's shared package -- the pseudopotentials under its
-    # `pseudos/`, the engine seam's rule (`jobset.engines`): SIESTA opens
-    # `<label>.psml` in the folder it runs from and no other.
+    # run: `materialize.bring_files`), and the calculation's shared package
+    # -- each species' pseudopotential, the engine seam's rule
+    # (`jobset.engines`): SIESTA opens `<label>.psml` in the folder it runs
+    # from and no other -- ALL FROM THE RUN'S OWN COPY in its `optical/`
+    # (:func:`_optical_source`), never the stage's, which a prep may have
+    # written again since the run was launched (`job-request.md` § 5).  A
+    # run opened before 2.77.21 holds no copy: its calls are filled from the
+    # stage's `optical/` and the calculation's `pseudos/`, as they always
+    # were.
     files = [here.deck.name,
              *beside_the_deck("siesta", "vibration", VIBRATION_BUNDLE,
                               here.names)]
-    shared = sorted(f"{PSEUDO_DIR}/{p.name}" for p, _fields
-                    in find_fixed(here.root / PSEUDO_DIR, PSEUDO_FILE))
+    shared = (sorted(p.name for p, _fields in find_fixed(files_from,
+                                                         PSEUDO_FILE))
+              or sorted(f"{PSEUDO_DIR}/{p.name}" for p, _fields
+                        in find_fixed(here.root / PSEUDO_DIR, PSEUDO_FILE)))
     # EACH CALL'S START, recorded as every point's is (`runs-of-points.md`
     # § 1.2, § 3 op. 5, 11): the call of its phase's seed -- the force
     # constants' -- whose files the walk's loop step copies in just before
@@ -906,10 +916,10 @@ def _plan_optical(here: _CallHere, run: ForceConstantRun, res: SpectraResults,
     for call, positions in frames:
         folder = here.place.point(call.rel)
         plan.folder(folder)
-        # ...then the call's own over the phase folder's: its place record
-        # (a call of the run, below it) and its coordinates.
-        bring(plan, files, into=folder, from_dir=stage_optical)
-        bring(plan, shared, into=folder, from_dir=stage_optical,
+        # ...then the call's own over the copy's: its place record (a call
+        # of the run, below it) and its coordinates.
+        bring(plan, files, into=folder, from_dir=files_from)
+        bring(plan, shared, into=folder, from_dir=files_from,
               also=(here.root,))
         calcdirs.record(folder, role=calcdirs.RUN, root=here.root, plan=plan)
         plan.text(folder / COORDINATES_FILE,
@@ -967,14 +977,27 @@ def _deck_cited(deck: Path) -> dict:
                                  for label, name in pseudos]}
 
 
+def _optical_source(here: _CallHere) -> Path:
+    """WHERE THE OPTICAL CALLS ARE FILLED FROM (§ 5.11 § 2, *A run keeps
+    its files*): the run's own copy of the optical phase's files -- its
+    `optical/` container, which the opener filled from the stage's when it
+    opened the run (`materialize.open_sweep_run`) -- or, for a run opened
+    before 2.77.21, which holds none, the stage's `optical/`, as that run's
+    calls always were filled."""
+    copy = here.place.point(Call(OPTICAL).rel)
+    if (copy / here.deck.name).is_file():
+        return copy
+    return here.place.prepared(Call(OPTICAL).prepared)
+
+
 def _optical_deck(here: _CallHere) -> Path:
-    """The stage's optical deck -- the one each optical call copies
-    (§ 5.11 § 4)."""
-    return here.place.prepared(Call(OPTICAL).prepared) / here.deck.name
+    """The optical deck each optical call copies (§ 5.11 § 4), where
+    :func:`_optical_source` finds it."""
+    return _optical_source(here) / here.deck.name
 
 
 def _optical_settings(here: _CallHere, index: dict) -> dict:
-    """``/settings``: every optical keyword as the stage's optical deck
+    """``/settings``: every optical keyword as the run's optical deck
     (:func:`_optical_deck`) writes it, the light's direction (its
     ``Optical.Vector``), the selection as asked and as applied, ``δ``, and
     the deck's whole text and sha256."""

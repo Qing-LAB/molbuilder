@@ -1055,3 +1055,25 @@ def test_a_module_travelling_under_a_standard_library_name_is_refused():
     from molbuilder.jobset.errors import WrapperError
     with pytest.raises(WrapperError, match="types.py, the standard library"):
         runwrap.bundle_members(["molbuilder.parse.types"])
+
+
+def test_a_kind_step_runs_its_bundle_isolated_from_the_environment(
+        tmp_path, monkeypatch):
+    """`configuration.md` § 2.3, *Each bundle starts isolated*: a point's
+    report step runs its kind's own step on the job's python with ``-I``,
+    so a ``PYTHONPATH`` the person's environment carries -- here one
+    holding a `numpy` that cannot load, ahead of the env's own -- never
+    reaches the bundle, and the finish's ``loads`` answers 0.  On 2.77.20
+    the step ran the bundle without it: the decoy took numpy's place and
+    ``loads`` answered 1, a job that could finish refused as one that
+    cannot."""
+    from molbuilder import monitor, runwrap
+    from molbuilder.runfiles import VIBRATION_BUNDLE
+    bundle = tmp_path / VIBRATION_BUNDLE
+    bundle.write_bytes(runwrap.build(VIBRATION_BUNDLE))
+    decoy = tmp_path / "elsewhere" / "numpy"
+    decoy.mkdir(parents=True)
+    (decoy / "__init__.py").write_text(
+        "raise ImportError('a numpy from elsewhere')\n")
+    monkeypatch.setenv("PYTHONPATH", str(decoy.parent))
+    assert monitor._kind_step(str(bundle), runwrap.LOADS_VERB) == 0

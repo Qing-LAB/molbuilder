@@ -2604,8 +2604,9 @@ def _points_walk(plan: LaunchPlan, m: "_Member", calc, *, mode: str,
     taken over with it, planned anew when it runs again.  Warm, each point
     DONE in the newest launched run is taken over (its folder whole but the
     engine's scratch, its record naming the run that computed it, one hop);
-    the rest are walked -- a planned point opened again from its prepared
-    folder with the inputs its planning wrote, a point whose relaunch is
+    the rest are walked -- a planned point opened again from its
+    container's copy of its prepared folder with the inputs its planning
+    wrote, a point whose relaunch is
     *continue* given its job's warm files, every walked point its START,
     one hand-over recorded now and copied by the walk just before it runs.
     Cold, or at a first launch, nothing is taken over; a first launch of a
@@ -2764,16 +2765,17 @@ def _points_walk(plan: LaunchPlan, m: "_Member", calc, *, mode: str,
                         given=[t["file"] for t in m.took])
         taken_from.update((t.point.rel, t.copied_from)
                           for t in across.taken)
-    # A PLANNED POINT RUN AGAIN: opened from its prepared folder with the
-    # inputs its planning wrote in the last run -- never its outputs
-    # (§ 3, op. 6).
+    # A PLANNED POINT RUN AGAIN: opened from its container's copy of its
+    # prepared files -- the copy this run keeps, as its planner fills a
+    # point it plans -- with the inputs its planning wrote in the last run,
+    # never its outputs (§ 3, op. 6).
     inputs = {c.planner.rel: c.inputs for c in containers}
+    copies = {c.point.prepared: place.point(c.point.rel) for c in containers}
     for pdir, pt in walked:
         if pt.rel not in is_planned:
             continue
         open_run(base, pdir, plan.writes)
-        bring_files(calc, job, place.prepared(pt.prepared), pdir, names,
-                    plan.writes)
+        bring_files(calc, job, copies[pt.prepared], pdir, names, plan.writes)
         for f in inputs.get(entry_of(prev_index, pt.rel)["planned_by"], ()):
             if (last.point(pt.rel) / f).is_file():
                 plan.writes.copy(last.point(pt.rel) / f, pdir / f)

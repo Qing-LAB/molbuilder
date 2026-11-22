@@ -191,7 +191,7 @@ class Run:
     def prepared(self) -> Path:
         """THE FOLDER PREP WROTE THIS RUN'S FILES IN -- its deck, the
         `.validation.txt` beside it, its run script (`project-layout.md`
-        § 5.2) -- which launch copies into the run: the nearest folder of
+        § 5.2), what its deck is compared with (:attr:`current`): the nearest folder of
         the stage, at the run's place with its ``run-<n>`` level taken out,
         that holds the run's deck (`architecture.md` § 3.2).  A stage's
         ``run-<n>/``, the stage's folder; a bias point's

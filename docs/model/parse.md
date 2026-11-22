@@ -352,7 +352,7 @@ over*.
 | door | answers | cost · asked by |
 |---|---|---|
 | `ending_of(path, *, stderr=None)` | the ending of any run-output file, dispatched on its ROLE through the reader its catalogue row names (`runfiles.reads_of(role, "ending")`, § 5.5): an `.out` through the SIESTA reading pass (§ 4a) — with `stderr`, the file SIESTA's stderr went to, read after the output when the output states no ending, because `die` flushes stdout on node 0 alone; a PySCF stdout through its decks' end lines; a progress log through its footer | one pass, stdlib, no Frames · `run_status`, which passes a SIESTA output's session log, its run's `<base>.runwrap.log`; the wrapper's door below; the bench summary |
-| `"$_mb_py" mb_monitor.pyz ending OUTPUT [--stderr FILE] [QUESTION]` | `out-of-time`, by exit status (0 yes, 1 no, 2 unreadable); `advice`, the advice for the cause in words (exit 1 for none); with no question, the ending in words | the run script's `_mb_ending`: its failure hint (`execution/running-a-job.md` § 3.5) |
+| `"$_mb_py" -I mb_monitor.pyz ending OUTPUT [--stderr FILE] [QUESTION]` | `out-of-time`, by exit status (0 yes, 1 no, 2 unreadable); `advice`, the advice for the cause in words (exit 1 for none); with no question, the ending in words | the run script's `_mb_ending`: its failure hint (`execution/running-a-job.md` § 3.5) |
 | `run_status(run_dir, basename, *, launch=, launched_in=)` | a run's state, from its outputs' endings, how it ended — `runrecord.ending`, the one door — and its `run.json`; each output's ending read once per version of the file (its size and modification time, `_run_ending.ending_of`), and an output that states how it ended takes its own parse's reading (`keep_reading`, through the one read, `siesta_reader.read_output`), so a run asked about again and again — a Results viewer following it — costs a look at its folder, and a load reads its file once | `execution/running-a-job.md` § 4.2 |
 | the registered parsers (§ 3) | frames, energies, forces — and the same `run_state` and `scf_converged`, from the same grammar | callers that want the arrays |
 
@@ -1796,8 +1796,8 @@ with the default alone — SIESTA has not started, so `asked` is the deck's and
 Its name and sha256 · `current`, whether the stage's deck is still the
 calculation it ran — the run settings aside, a re-prep for its job request
 keeping it so (`deck_record.same_calculation`, [`job-request.md`](?doc=execution/job-request.md) § 6) — against the deck prep wrote, in the folder
-the run's was copied from — the stage's, a bias point's within it, or a
-vibration call's phase folder (`runs.Run.prepared`), where the run door places
+prep wrote it in — the stage's, a bias point's within it, or a vibration
+call's phase folder (`runs.Run.prepared`), where the run door places
 it — `runs.Run.stage_deck`; a benchmark trial's record states none, its deck
 rendered into its run. That deck is read with the files beside the run's own,
 so what a deck reads from a file beside it — a vibration call's coordinates,

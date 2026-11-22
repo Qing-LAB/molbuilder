@@ -811,7 +811,9 @@ def calls_made(calls: Path):
 # `{atom, line}`: the calculation's structure file edited by hand after it was
 # described, its `atom`-th atom line replaced by `line`, its sidecar
 # untouched; `held_edited` -- its held atoms set anew after it was
-# described, written back through the codec; `own_warm_files` -- the calculation's own restart-file
+# described, written back through the codec; `shipped_before` -- a release,
+# `"2.77.19"`: the stage's newest run made as one that release launched would
+# hold it (`_road_shipped_before`); `own_warm_files` -- the calculation's own restart-file
 # list, the engine's
 # copied beside `task.json` with `withhold` / `add` / `resumes`
 # (`_road_own_warm_files`),
@@ -1071,6 +1073,29 @@ def _road_source_edited(edit, bundle) -> None:
     lines = src.read_text().split("\n")
     lines[2 + edit["atom"]] = edit["line"]
     src.write_text("\n".join(lines))
+
+
+def _road_shipped_before(version, bundle, stage) -> None:
+    """The stage's newest run as a run another molbuilder launched --
+    ``version`` -- holds it: each bundle copy in it another build (its zip's
+    comment set: the same members, other bytes) and each run script copy
+    stamped by that release (its PROVENANCE ``generator-version``).  The
+    suite runs one release, so a run of another is made so here -- the
+    need: only such a run shows what a prep says of the code beside a
+    launched stage's decks that changed since (`job-request.md` § 5)."""
+    import re
+    import zipfile
+    from molbuilder.jobset.materialize import latest_attempt
+    from molbuilder.jobset.naming import stage_home
+    from molbuilder.task import of as task_of
+    home = stage_home(bundle, task_of(bundle), stage)
+    last = latest_attempt(home.dir)
+    for pyz in last.rglob("*.pyz"):
+        with zipfile.ZipFile(pyz, "a") as z:
+            z.comment = f"molbuilder {version}".encode()
+    for script in last.rglob(home.names.run_script):
+        script.write_text(re.sub(r"(#\s+generator-version\s+)\S+",
+                                 rf"\g<1>{version}", script.read_text()))
 
 
 def _road_held_edited(held, bundle) -> None:
@@ -1876,6 +1901,9 @@ def run_road_case(table, case, tmp_path, monkeypatch, *, ran=None) -> None:
         _road_source_edited(case["source_edited"], bundle)
     if "held_edited" in case:
         _road_held_edited(case["held_edited"], bundle)
+    if "shipped_before" in case:
+        _road_shipped_before(case["shipped_before"], bundle,
+                             case.get("stage", "coarse"))
     if "regrouped" in case and not _road_regrouped(
             case["regrouped"], bundle, case.get("regroup_refused"),
             case.get("regroup_status", 409)):

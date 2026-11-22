@@ -350,6 +350,14 @@ states another is refused when the bundle is gathered, naming the record. A
 name the standard library has is refused too: the bundle is first on the
 job's import path and would hide the library's module from every member.
 
+**Each bundle starts isolated.** The run script starts each bundle on the
+job's python with `-I`, and so does a point's report step for its kind's own
+steps (`monitor.BUNDLE_PYTHON_FLAGS`): no `PYTHONPATH`, no user site-packages,
+no script directory on the path — so a member imports the bundle, first on its
+path, and the job environment's packages, never a molbuilder or a module a
+person's environment puts in front. A PySCF script imports its bundle by
+putting it first on its own path.
+
 | bundle | what it carries | its rule |
 |---|---|---|
 | `mb_monitor.pyz` (`runwrap.members`) | the monitor and the framework readers it reads the run through — `config_dir`, `persist`, `runfiles`, the engines' grammars, `runrecord`, `constants` and the rest ([`run-reports.md`](?doc=execution/run-reports.md) § 2.3) | **the standard library only** — it is the instrument that reports a broken environment, so it cannot need one |

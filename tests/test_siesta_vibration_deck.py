@@ -207,3 +207,86 @@ def test_a_kind_step_its_finish_does_not_run_is_refused_at_prep(
     assert (f"its kind's steps name {step} -- no step mb_vibration.pyz runs; "
             f"the steps it runs are plan, record, finish-run"
             in said), said
+
+
+def test_a_run_keeps_its_own_copy_of_what_its_optical_calls_run_from(
+        tmp_path, monkeypatch):
+    """`engines/vibration.md` § 5.11 § 2, *A run keeps its files* (the user,
+    2026-11-21): the optical calls are opened while the run goes, so the
+    run's `optical/` container holds its own copy of the stage's
+    `optical/` files -- the deck, the run script, the coordinates, both
+    bundles and each species' pseudopotential -- made when the run is
+    opened (the calls filled from it on the node, and what the data file
+    states read from it: the SIESTA vibration e2e's
+    `test_the_optical_calls_are_filled_from_the_runs_own_copy` and
+    `test_a_prep_while_the_run_goes_never_reaches_its_optical_calls`).  READ
+    BACK BY THE RESULTS TAB (`runs.folder_answer`): the container opens
+    nothing -- its copy holds no result -- and lists each file by its
+    catalogue row.  THE SILENT FAILURE (to 2.77.20): the container was
+    empty and each optical call took its deck, run script and bundles from
+    the stage folder on the node, so a prep while the run was queued gave
+    its later calls another release's files."""
+    from pathlib import Path
+    from molbuilder.runfiles import MONITOR_BUNDLE, VIBRATION_BUNDLE
+    from molbuilder.runs import folder_answer
+    from support.road import (CO2, described, group_words, jobset,
+                              road_tree, set_by_the_person)
+    bundle = described(road_tree(tmp_path, monkeypatch, CO2), name="CO2",
+                       calculation="vibration")
+    set_by_the_person(bundle, {"compute_raman": True})
+    r = jobset("prep", "task", *group_words(bundle, "freq"),
+               "--bundle", bundle, "--target", "this")
+    assert r.exit_code == 0, r.output
+    names = RunNames("CO2", "01_freq")
+    stage, held = (bundle / "01_freq" / "optical",
+                   bundle / "01_freq" / "run-0" / "optical")
+    wanted = {names.name(".fdf"), names.run_script, "coordinates.fdf",
+              MONITOR_BUNDLE, VIBRATION_BUNDLE, "C.psml", "O.psml"}
+    got = {p.name for p in held.iterdir() if p.is_file()}
+    assert wanted <= got, sorted(wanted - got)
+    for name in wanted - {"C.psml", "O.psml"}:
+        assert (held / name).read_bytes() == (stage / name).read_bytes(), name
+    answer = folder_answer(held)
+    assert answer["place"]["role"] == "container", answer["place"]
+    assert answer["openable"] is None, answer["attempts"]
+    roles = {Path(row["path"]).name: row["role"] for row in answer["files"]}
+    assert roles[names.name(".fdf")] == ".fdf", roles
+
+
+def test_the_run_scripts_finish_check_starts_the_bundle_isolated(
+        tmp_path, monkeypatch):
+    """`configuration.md` § 2.3, *Each bundle starts isolated*: before the
+    engine starts, the run script asks the finish whether it loads on the
+    job's python -- with ``-I``, so a ``PYTHONPATH`` the person's
+    environment carries, here one holding a `numpy` that cannot load ahead
+    of the env's own, never reaches it, and the job is not stopped as one
+    that cannot finish itself.  Run as the run script runs it: its check,
+    under bash, in the force constants' folder.  On 2.77.20 the check ran
+    the bundle without it: the decoy took numpy's place and the job said it
+    could not finish."""
+    import os
+    import subprocess
+    import sys
+    from support.road import CO2, described, group_words, jobset, road_tree
+    bundle = described(road_tree(tmp_path, monkeypatch, CO2), name="CO2",
+                       calculation="vibration")
+    r = jobset("prep", "task", *group_words(bundle, "freq"),
+               "--bundle", bundle, "--target", "this")
+    assert r.exit_code == 0, r.output
+    script = (bundle / "01_freq" / FC_PART
+              / RunNames("CO2", "01_freq").run_script)
+    text = script.read_text()
+    begin = text.index("# --- Can the job finish itself?")
+    block = text[begin:text.index("\nfi\n", begin) + len("\nfi\n")]
+    decoy = tmp_path / "elsewhere" / "numpy"
+    decoy.mkdir(parents=True)
+    (decoy / "__init__.py").write_text(
+        "raise ImportError('a numpy from elsewhere')\n")
+    done = subprocess.run(
+        ["bash", "-c", f'_mb_py="{sys.executable}"\n'
+                       '_runwrap_log=/dev/null\n'
+                       '_log() { echo "$2" >&2; }\n' + block],
+        cwd=script.parent, capture_output=True, text=True, timeout=120,
+        env={**os.environ, "PYTHONPATH": str(decoy.parent)})
+    assert done.returncode == 0 and "cannot finish itself" not in (
+        done.stdout + done.stderr), done.stdout + done.stderr

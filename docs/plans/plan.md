@@ -12,7 +12,7 @@ at 2.77.9 is [`archive/2026-11-19-plan-consolidation.md`](?doc=archive/2026-11-1
 
 ## ▶ Where we are *(2026-11-21)*
 
-**2.77.20.** F0–F11 and F7a are closed (2.56.2–2.77.2). 2.77.10 brought Plotly's toolbar back on every chart, each chart's Export in a strip above it, and 2.77.12 a vibration mode's animation into a column beside the spectrum and its table, held in view *(the user, 2026-11-19)*. F12, *Proven*, walked
+**2.77.21.** F0–F11 and F7a are closed (2.56.2–2.77.2). 2.77.10 brought Plotly's toolbar back on every chart, each chart's Export in a strip above it, and 2.77.12 a vibration mode's animation into a column beside the spectrum and its table, held in view *(the user, 2026-11-19)*. F12, *Proven*, walked
 its three roads in the browser on real runs, ran the full batch (6106 fast
 and 805 e2e tests, none failed, at 2.77.2) and its two review rounds
 ([`archive/audits/2026-11-18-f12-review/`](?doc=archive/audits/2026-11-18-f12-review/TRIAGE-round1.md));
@@ -28,7 +28,7 @@ the spectrum chart 2.77.14, the spectra page 2.77.15 (R1); 8, the run script
 and the machine 2.77.16 (R2); 9, the jobs, run files and records 2.77.17 (R3a);
 10, the run script, envs and server process 2.77.18 (R3b); 11, the job
 bundles gathered from their members' own word 2.77.19 (R3b2); 12, the
-bundle framework 2.77.20 (R3b3a).
+bundle framework 2.77.20 (R3b3a); 13, a run keeps its files 2.77.21 (R3b3b).
 
 1. **R1 — the viewers' last part, the spectra page** — done, 2.77.15.
 2. **R2 — the run script and the machine** — done, 2.77.16 (§ H, the user's
@@ -48,19 +48,24 @@ bundle framework 2.77.20 (R3b3a).
    `runwrap.BUNDLES`, one name rule, a kind's step its finish does not run
    refused at prep, the checks as strong as the rules
    ([`fix12-review.md`](?doc=archive/audits/2026-11-18-f12-review/fix12-review.md));
-   **R3b3b, next**, the user's three answers (2026-11-21): **a run keeps its
-   files** — a SIESTA vibration's optical calls take their deck, run
-   script and bundles from the run, never the stage folder, so a re-prep
-   changes only the next launch (`job-request.md` § 5); **a stage whose
-   shipped code changed since its last run is said at prep**, naming both
-   releases, and prepared as asked (with `-I` for the monitor and the
-   finish, and the re-prep sweep removing bundles of another engine or
-   finish); **the page's Prep runs the
-   `molbuilder jobset prep` command as its own process** (R3f, designed and
-   shown first) — so it is never a server's stale code. Then R3c
-   templates and engines;
+   R3b3b, the user's answers (2026-11-21) — done, 2.77.21: **a run keeps
+   its files** (a run of points' container holds the run's own copy of its
+   points' prepared files, and a SIESTA vibration's optical calls are filled
+   from it); a launched stage's changed bundled code said at prep, which
+   goes on; each bundle started isolated (`-I`); the re-prep sweep of every
+   bundle; every run on disk read alike by 2.77.20 and 2.77.21
+   ([`fix13-review.md`](?doc=archive/audits/2026-11-18-f12-review/fix13-review.md)).
+   **The page's Prep runs the `molbuilder jobset prep` command as its own
+   process** (R3f, designed and shown first) — so it is never a server's
+   stale code. **Next: R3c** templates and engines;
    R3d transport and spectra, with the SIESTA vibration's data files on the
-   shared writers; R3e parse and builders; R3f the web server, with the side
+   shared writers; R3e parse and builders, with two migrations *(the user,
+   2026-11-21: "do the run dir and sidecar migration in R3e")* — a
+   calculation's records from before 2.60.0 (a `job-set.json` holding the
+   retired `continue_retries`, as `AuBDTAu/transport/lowbias2`'s does), and
+   the v6 structure sidecars (`hemeC`, `hemeC-dithiol`), whose refusal's way
+   out, *open the structure in Modify and save it*, cannot be followed, since
+   Modify reads the pair through the same reader; R3f the web server, with the side
    rail's height measured on the real pages and brought to the user first
    *(the user, 2026-11-20)*. Round 2's items for template and engines
    (with `r2-3` F3, the pipeline log's order beside `template.SAID`, its

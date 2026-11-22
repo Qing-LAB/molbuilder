@@ -32,6 +32,17 @@ kept = ["01_coarse/run-0/H2_01_coarse.fdf", "01_coarse/run-0/run.json", "01_coar
 made_lacks = ["01_coarse/run-3", "01_coarse/H2_01_coarse.molwatch.log"]
 said = ["prepared coarse again: launched -- its runs are kept", "mpi_np 4",
         "at its next launch: launched again, it continues from its own latest run, or `--cold` starts it over"]
+# ...and its runs ran this release's code beside their decks: nothing said of it.
+said_lacks = ["the code molbuilder ships beside its decks changed"]
+
+[[case]]
+name = "...and a launched group whose last run an older molbuilder launched is prepared again as asked, saying the code beside its decks changed since, naming that release, each bundle and that its decks are the same calculation (job-request.md 5; the user, 2026-11-21: \"Say it, prep anyway\")"
+on = "layered"
+shipped_before = "2.77.19"
+changed = { execution = { mpi_np = 4, omp_threads = 1 } }
+said = ["prepared coarse again: launched -- its runs are kept",
+        "stage 'coarse': the code molbuilder ships beside its decks changed since its last run, run-2 (molbuilder 2.77.19) -- mb_monitor.pyz: its next launch runs molbuilder ",
+        "its decks are the same calculation"]
 
 [[case]]
 name = "...and a change to what it computes is refused at Save, nothing saved or written -- naming the stage, what differs and the way back, which starts the group from the beginning: the folder saved as it stands, the state saved before its first launch restored by its id, its prep (task-setup.md 8; the user, 2026-10-25, 2026-10-27)"

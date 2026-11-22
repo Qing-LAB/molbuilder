@@ -1536,7 +1536,7 @@ output with no marker yet, beside the session log's `finish started:` line,
 reads **running**, and **failed** once the monitor saw the process go
 (`execution/running-a-job.md` § 4.2). **And it is asked before the run is
 paid for**: once the job's python is checked and before SIESTA starts, the wrapper
-asks the bundle whether it loads on the job's python (`$_mb_py mb_vibration.pyz
+asks the bundle whether it loads on the job's python (`"$_mb_py" -I mb_vibration.pyz
 loads`, which imports the finish with numpy and netCDF4 (§ 6.10.6);
 `runwrap._finish_check_block`); a job env that cannot
 run it stops there, with a marker saying so (`rc=1 at …; finish cannot load
@@ -2295,7 +2295,9 @@ segment is the token, `01_freq`; the walk's files are a run of points'
       …runwrap.log  …monitor.log  …util.csv  ….concluded   its own records
       <label>.XV  <label>.DM  <label>.CG …    SIESTA's
     fc/                                     … <label>.FC  <label>.FCC  <label>.DM
-    optical/                                a container (stamped), the optical calls below it:
+    optical/                                a container (stamped): the run's own copy of the stage's
+                                              optical/ files -- its deck, run script, coordinates and
+                                              bundles -- and the pseudopotentials, then the optical calls below it:
       f000/  f001/  f002/  …                … <label>.DM (the seed)  <label>.EPSIMG  <label>.contrib.EPSIMG
 ```
 
@@ -2311,6 +2313,26 @@ the result pair and the data file. `coordinates.fdf` is a fixed name on no
 label: a row of the catalogue (`runfiles.fixed`), so the file card and the
 checkpoint know it.
 
+**A run keeps its files** *(the user, 2026-11-21: "A run keeps its files")*.
+The calls the force constants plan are opened while the run goes, so the run
+holds its own copy of what they run from: its `optical/` container gets the
+stage's `optical/` files — the deck, the run script, `coordinates.fdf` and
+the bundles — and the calculation's pseudopotentials when the run is opened,
+and every optical call is filled from that copy, on the node and by a launch
+that opens one again. A prep of the stage while the run is queued or going
+changes only the next launch
+([`execution/job-request.md`](?doc=execution/job-request.md) § 5). The
+steps that plan the calls are the run's own release's, the copy its
+force-constant call holds: a stage prepared before 2.77.21 carries steps that
+fill the calls from the stage's `optical/` when they are planned, as they
+always were — so a prep meanwhile still reaches them — and a run opened before
+2.77.21 holds no copy, so its calls' later steps read the stage too. A prep
+meanwhile is the same calculation (prep refuses one that is not), so the deck
+the data file cites and the one such calls ran differ only in lines that
+compute nothing. The container's copy holds no
+result: the Results tab opens nothing in it, and lists its files by their
+catalogue rows.
+
 **Who makes each folder and file** *(the user, 2026-10-25: "who take
 charge in construction of the f* dirs")* — **every hand-over is launch's,
 decided on this machine and recorded in the ledger, as every hand-over is**
@@ -2322,11 +2344,11 @@ step copies:
 
 | who | runs on | makes |
 |---|---|---|
-| **prep** | this machine | `01_freq/` and one folder per phase the stage's settings turn on (`vibration_phases.phases_on`: `relax/` unless the structure is stated relaxed, `fc/`, `optical/` when *Compute Raman* is on) — each with that phase's deck, its run script (its two report steps, the vibration's steps their arguments, § 3), the structure's `coordinates.fdf` and the progress-log seed; the bundles; `launch/` with the header; the stage's first run, `run-0/`, opened and stamped as every prepared stage's is (`materialize.open_sweep_run`: the run, its `optical/` container and the calls every run of it holds — `relax/` when on, `fc/` — each with its phase's files, as a transport prep opens its points) |
-| **launch** | this machine | `run-<n>/` — the first launch takes the `run-0/` prep opened, a launch again opens the next through the same opener (`materialize.open_sweep_run`) — and its `run.json`; the walk script and its log in `launch/` (`submit._points_walk`, the one walk of a run of points); **the call folders it can know, through the one opener** (`open_run` + the copier, § 3): `relax/` and `fc/` on every launch, and on a warm launch every call taken over from the last run (its index names them, the optical ones included) — each taken-over call copied whole, its `.continued-from` written; a displacement sweep's later stage, the `relax` call taken over from the run it continues from, each file named for this stage (§ 6); a `relax` call not done, its warm files copied in; an optical call not done, opened again with the `coordinates.fdf` its planning wrote and its start's `.continued-from`, naming this run's `fc` (§ 6); `fc`'s seed, one hand-over — its `.continued-from` written now, `relax`'s `.DM` copied by the walk just before `fc` runs; the index, every call it knows in the listing order ([`execution/runs-of-points.md`](?doc=execution/runs-of-points.md) § 3, operations 2–7) |
+| **prep** | this machine | `01_freq/` and one folder per phase the stage's settings turn on (`vibration_phases.phases_on`: `relax/` unless the structure is stated relaxed, `fc/`, `optical/` when *Compute Raman* is on) — each with that phase's deck, its run script (its two report steps, the vibration's steps their arguments, § 3), the structure's `coordinates.fdf` and the progress-log seed; the bundles; `launch/` with the header; the stage's first run, `run-0/`, opened and stamped as every prepared stage's is (`materialize.open_sweep_run`: the run, its `optical/` container with the run's own copy of the optical phase's files, and the calls every run of it holds — `relax/` when on, `fc/` — each with its phase's files, as a transport prep opens its points) |
+| **launch** | this machine | `run-<n>/` — the first launch takes the `run-0/` prep opened, a launch again opens the next through the same opener (`materialize.open_sweep_run`) — and its `run.json`; the walk script and its log in `launch/` (`submit._points_walk`, the one walk of a run of points); **the call folders it can know, through the one opener** (`open_run` + the copier, § 3): `relax/` and `fc/` on every launch, and on a warm launch every call taken over from the last run (its index names them, the optical ones included) — each taken-over call copied whole, its `.continued-from` written; a displacement sweep's later stage, the `relax` call taken over from the run it continues from, each file named for this stage (§ 6); a `relax` call not done, its warm files copied in; an optical call not done, opened again from the run's `optical/` copy with the `coordinates.fdf` its planning wrote and its start's `.continued-from`, naming this run's `fc` (§ 6); `fc`'s seed, one hand-over — its `.continued-from` written now, `relax`'s `.DM` copied by the walk just before `fc` runs; the index, every call it knows in the listing order ([`execution/runs-of-points.md`](?doc=execution/runs-of-points.md) § 3, operations 2–7) |
 | **the report step before the engine** — `mb_monitor.pyz point started`, every point's, which runs the vibration's **plan step**, `mb_vibration.pyz plan <deck>`, in its place | the node | the call's start into the index (the report step's); the call's coordinates where they are another call's result — the force constants' from the `relax` call's output — and what its entry keeps of it (the plan step's); the run's `start`, once (the report step's, § 7a) |
 | **each call's run script**, bash | the node | in its own folder: the output, the SCF timing log, the session log, the monitor log and `util.csv`, the conclusion; SIESTA's own files |
-| **the report step after the engine** — `mb_monitor.pyz point ended`, success or failure, which runs the vibration's **record step**, `mb_vibration.pyz record <deck> <output> --exit <rc>`, in its place | the node | the call's end, exit and verdict into the index (the report step's); the call's facts and outcome; the force constants' analysis — the result pair at the run's root — and the optical calls planned, each folder through the opener's travelling core (`calcdirs.record`, the copier) from the stage's `optical/` folder with its `coordinates.fdf` and its start's `.continued-from`, naming the run's `fc`, and its index entry; an optical call's $\varepsilon_2$ and facts into `optical.nc` (the record step's); once no call is left to run, the index closed and the finish step run (the report step's) |
+| **the report step after the engine** — `mb_monitor.pyz point ended`, success or failure, which runs the vibration's **record step**, `mb_vibration.pyz record <deck> <output> --exit <rc>`, in its place | the node | the call's end, exit and verdict into the index (the report step's); the call's facts and outcome; the force constants' analysis — the result pair at the run's root — and the optical calls planned, each folder through the opener's travelling core (`calcdirs.record`, the copier) from the run's own copy in its `optical/` container with its `coordinates.fdf` and its start's `.continued-from`, naming the run's `fc`, and its index entry; an optical call's $\varepsilon_2$ and facts into `optical.nc` (the record step's); once no call is left to run, the index closed and the finish step run (the report step's) |
 | **the finish step** — `mb_vibration.pyz finish-run <deck>`, run by the report step that leaves no call to run | the node | the result pair and the data file, final; the report step stamps its entry in the index — started, ended, exit — and sends the run's `finish` (§ 7a) |
 
 **Where each datum is stored** — nothing derived in any file; `raman_view`
@@ -2384,7 +2406,7 @@ job's own python, as the kind table's record names them (`steps = { before =
 | step | runs | does |
 |---|---|---|
 | `plan <deck>` | before the engine, by `point started` (after the bundle's load check); **its failure is the call's**: no engine is started, `point ended` is told the step's exit, and the conclusion names the step (`finish failed (mb_vibration.pyz plan)`) | the call's coordinates where they are another call's result — `fc`'s from the `relax` call's output; an optical call's were written when it was planned (below) — and what the call's entry keeps of it (`runpoints.note`): its deck's and coordinates' sha256, where the coordinates came from, its seed and where from. The call's start and the run's `start` are the report step's (§ 7a) |
-| `record <deck> <out> --exit <rc>` | after the engine, by `point ended`, **success or failure**, once the call's end, exit and verdict — what its output says it converged, § 6 — are stamped, so it asks the one rule whether its call is done; after a clean engine **its failure is the call's**, as a finish's is (`finish failed (mb_vibration.pyz record)`) | `relax`: the relaxation record and its outcome; `fc`, where it is done: the finish's analysis, the selection (`select_modes`), each picked mode's $\delta Q$, and **the optical calls planned** — each folder opened through the opener's travelling core (`calcdirs.record`, `planned.bring` from the stage's `optical/`, the `optical/` container stamped), its `coordinates.fdf` ($R_0 \pm \delta Q\cdot L$, `normal_modes.displaced`), its start's record — `.continued-from` naming the run's `fc` (`runrecord.write_continued_from`; [`execution/runs-of-points.md`](?doc=execution/runs-of-points.md) § 3, operation 11) — its index entry (`runpoints.add_point`, planned by `fc`) — then the result pair at the run's root, written once: `phase_raman` *running* where calls were planned; where none were, *not requested* with *Compute Raman* off and *complete* where Raman was asked and its range kept no mode — the Methods paragraph naming the range; and its outcome; an optical call: its facts into the data file (§ 8). What it could not do is its call's, stamped in the index (`step_error`); **it sends nothing** — the run's events are the report step's (§ 7a) |
+| `record <deck> <out> --exit <rc>` | after the engine, by `point ended`, **success or failure**, once the call's end, exit and verdict — what its output says it converged, § 6 — are stamped, so it asks the one rule whether its call is done; after a clean engine **its failure is the call's**, as a finish's is (`finish failed (mb_vibration.pyz record)`) | `relax`: the relaxation record and its outcome; `fc`, where it is done: the finish's analysis, the selection (`select_modes`), each picked mode's $\delta Q$, and **the optical calls planned** — each folder opened through the opener's travelling core (`calcdirs.record`, `planned.bring` from the run's own copy in its `optical/` container, which the opener filled from the stage's), its `coordinates.fdf` ($R_0 \pm \delta Q\cdot L$, `normal_modes.displaced`), its start's record — `.continued-from` naming the run's `fc` (`runrecord.write_continued_from`; [`execution/runs-of-points.md`](?doc=execution/runs-of-points.md) § 3, operation 11) — its index entry (`runpoints.add_point`, planned by `fc`) — then the result pair at the run's root, written once: `phase_raman` *running* where calls were planned; where none were, *not requested* with *Compute Raman* off and *complete* where Raman was asked and its range kept no mode — the Methods paragraph naming the range; and its outcome; an optical call: its facts into the data file (§ 8). What it could not do is its call's, stamped in the index (`step_error`); **it sends nothing** — the run's events are the report step's (§ 7a) |
 | `finish-run <deck>` | by `point ended`, once no call the walk may still run is left — every call listed has ended, or needs a call that did not run (§ 5) — after the index is closed | the result pair final where the force constants are done, the Raman phase complete, and the data file final; the report step stamps its entry (started, ended, exit) and sends `finish` with the run's state from the one rule (§ 7) — a finish that exited non-zero makes the run failed |
 
 No step knows whether it is first or last: the index and the notification
@@ -2555,7 +2577,7 @@ run again plans its calls anew
 ([`execution/runs-of-points.md`](?doc=execution/runs-of-points.md) § 3,
 *Plan the walk*). The optical calls taken over are
 listed to the walk's loop step, which passes their folders over; a planned optical call **not done** runs again
-from the stage's `optical/` files and the coordinates its planning wrote —
+from the run's `optical/` copy of the stage's files and the coordinates its planning wrote —
 launch opens its folder with the last run's call folder's inputs (its
 `coordinates.fdf`), never its outputs, and writes its start's record, its
 `.continued-from` naming this run's `fc` — and the loop seeds it from this
@@ -3374,7 +3396,7 @@ SIESTA from the label (§ 5.4).
 | `<label>.FC` · `<label>.FCC` | the `fc` call's folder, `run-<n>/fc/` | **the raw force constants**: one header (atoms, the displacement in Å), then one row of three numbers in eV/Å² per displaced atom, direction, side and atom (§ 5.4); `.FCC` the same with the held atoms' rows zeroed | SIESTA |
 | `<label>_<NN>_<stage>.out` | each SIESTA call's folder — `relax/`, `fc/`, `optical/f<NNN>/` under `run-<n>/` | the engine's own account — every displacement's SCF and forces; FC step 0, in the `fc` call's, is the reference geometry and its forces (§ 5.5) | SIESTA's stdout |
 | `<label>_<NN>_<stage>.pyscf.log` · `<label>_<NN>_<stage>.log` · `<label>_<NN>_<stage>_geom_optim.xyz` | the PySCF run | the engine's own account; PySCF's own log; geomeTRIC's trajectory | PySCF |
-| `<label>_<NN>_<stage>.fdf` | the stage's phase folders, copied into each call's folder | the deck, and in its record the `engine-offset` and `vibration` blocks and the ATOM-METADATA block's order record — the order the deck is written in and the way back to the user order — which the finish reads (§ 5.2, § 5.3; `model/overview.md` § 2.2a, I5) | `prep` |
+| `<label>_<NN>_<stage>.fdf` | the stage's phase folders, copied into each call's folder and into the run's `optical/`, from which each optical call's is copied (§ 5.11 § 2) | the deck, and in its record the `engine-offset` and `vibration` blocks and the ATOM-METADATA block's order record — the order the deck is written in and the way back to the user order — which the finish reads (§ 5.2, § 5.3; `model/overview.md` § 2.2a, I5) | `prep` |
 | `<label>_<NN>_<stage>.runwrap.log` | each SIESTA call's folder; the run on PySCF | the session log: the wrapper's lines, the monitor's start, and the finish's (§ 5.5) | the wrapper |
 | `<label>_<NN>_<stage>.points.json` · `notified.json` · `<label>_<NN>_<stage>.monitor.log` | a SIESTA run's root, `run-<n>/` | the run's index (every call, what it is and how it ended, the finish step's entry), its notifications, its monitor log (§ 5.11 § 2, § 7a) | launch, and the calls' report steps |
 

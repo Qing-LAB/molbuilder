@@ -638,6 +638,111 @@ def test_unticked_the_run_relaxes_first_and_measures_at_the_relaxed_geometry(
         "a refused launch opened a run")
 
 
+def _prepared_again_by_another_release(copy, fc) -> str:
+    """The stage's optical deck as a later prep of the launched stage
+    writes it -- the same calculation (`job-request.md` § 5: a prep that
+    changes what it computes is refused), stamped by another release (its
+    PROVENANCE ``generator-version``).  Returns the deck as the run's copy
+    holds it, the stage's before.  The suite runs one release, so the
+    stamp is put here -- the need: only a stage written again while the
+    run goes shows where the run's calls take their files from."""
+    import re
+    stage_deck = copy.attempt("freq").parent / "optical" / fc.deck.name
+    was = stage_deck.read_text()
+    now = re.sub(r"(#\s+generator-version\s+)\S+", r"\g<1>2.77.99", was)
+    assert now != was, "the stage's optical deck states no release"
+    stage_deck.write_text(now)
+    return was
+
+
+def test_the_optical_calls_are_filled_from_the_runs_own_copy(
+        real_co2_vibration):
+    """`engines/vibration.md` § 5.11 § 2, *A run keeps its files*: the
+    force constants' record step opens each optical call from the run's own
+    copy of the optical phase's files, never from the stage, which a later
+    prep may have written again.  On a copy of the shared run, the stage's
+    optical deck written again as a later prep of the launched stage
+    writes it (:func:`_prepared_again_by_another_release`), the planned
+    calls -- their folders and their entries in the run's index -- taken
+    out (the need: only then does the record step plan them again), and
+    the force constants' record step run in place, on the job's python,
+    isolated: every optical call it opens holds the run's copy of the deck,
+    never the stage's new one.  THE SILENT FAILURE (to 2.77.20): the calls
+    were filled from the stage, so a prep while the run was queued gave its
+    later calls another release's files."""
+    import json
+    import shutil
+    import subprocess
+    import sys
+    from molbuilder.runfiles import VIBRATION_BUNDLE
+    from molbuilder.runpoints import index_path
+    from molbuilder.runs import run_of
+    from molbuilder.siesta.vibration_phases import FC, OPTICAL
+
+    def planned_again(copy):
+        fc = run_of(copy.call("freq", FC))
+        copy.said["was"] = _prepared_again_by_another_release(copy, fc)
+        run = copy.attempt("freq")
+        for call in sorted((run / OPTICAL).glob("f*")):
+            shutil.rmtree(call)
+        index = index_path(run, fc.names)
+        held = json.loads(index.read_text())
+        held["points"] = [p for p in held["points"]
+                          if not p["rel"].startswith(f"{OPTICAL}/")]
+        index.write_text(json.dumps(held, indent=1))
+        copy.said["record"] = subprocess.run(
+            [sys.executable, "-I", str(fc.folder / VIBRATION_BUNDLE),
+             "record", fc.deck.name, fc.stdout.name, "--exit", "0"],
+            cwd=fc.folder, capture_output=True, text=True, timeout=300)
+    copy = copy_of(real_co2_vibration, "planned-again", planned_again)
+    said = copy.said["record"]
+    assert said.returncode == 0, said.stdout + said.stderr
+    run = copy.attempt("freq")
+    deck = run_of(copy.call("freq", FC)).deck.name
+    calls = sorted((run / OPTICAL).glob("f*"))
+    assert calls, "the record step planned no optical call"
+    for call in calls:
+        assert (call / deck).read_text() == copy.said["was"], call.name
+
+
+def test_a_prep_while_the_run_goes_never_reaches_its_optical_calls(
+        real_co2_vibration):
+    """`engines/vibration.md` § 5.11 § 2, *A run keeps its files* (the user,
+    2026-11-21): the run holds its own copy of the optical phase's files,
+    so a prep of the stage while the run goes reaches nothing of it.  On a
+    copy of the shared run (`support.real_runs.copy_of`), the stage's
+    optical deck is written again as a later prep of the launched stage
+    writes it -- the same calculation, stamped by another release
+    (:func:`_prepared_again_by_another_release`) -- and the run's finish is
+    run in place, as the report step that leaves no call runs it
+    (`mb_vibration.pyz finish-run`, on the job's python, isolated): the
+    data file's settings state the deck the run's own copy holds, never the
+    stage's new one.  THE SILENT
+    FAILURE (to 2.77.20): the finish read the stage's optical deck, so a
+    prep while the run was queued changed what its result says it ran
+    with."""
+    import subprocess
+    import sys
+    from molbuilder.runfiles import ROLE_OPTICAL, VIBRATION_BUNDLE
+    from molbuilder.runs import on_label_at, run_of
+    from molbuilder.siesta.vibration_phases import FC
+    from molbuilder.spectra.optical_data import read_optical_data
+
+    def prepared_again_meanwhile(copy):
+        fc = run_of(copy.call("freq", FC))
+        copy.said["was"] = _prepared_again_by_another_release(copy, fc)
+        copy.said["finish"] = subprocess.run(
+            [sys.executable, "-I", str(fc.folder / VIBRATION_BUNDLE),
+             "finish-run", fc.deck.name],
+            cwd=fc.folder, capture_output=True, text=True, timeout=300)
+    copy = copy_of(real_co2_vibration, "prepared-again-meanwhile",
+                   prepared_again_meanwhile)
+    said = copy.said["finish"]
+    assert said.returncode == 0, said.stdout + said.stderr
+    data = read_optical_data(on_label_at(copy.attempt("freq"), ROLE_OPTICAL))
+    assert data["settings"]["deck_text"] == copy.said["was"]
+
+
 def test_the_finish_by_hand_states_what_the_runs_own_finish_states(
         real_co2_vibration):
     """`engines/vibration.md` § 5.5, *When the finish fails*: the analysis

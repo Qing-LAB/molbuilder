@@ -562,7 +562,7 @@ def say(end: RunEnding) -> str:
 
 def main(argv=None) -> int:
     """``OUTPUT [--stderr FILE] [QUESTION]`` -- beside a job,
-    ``"$_mb_py" mb_monitor.pyz ending ...`` (the bundle's entry hands ``ending``
+    ``"$_mb_py" -I mb_monitor.pyz ending ...`` (the bundle's entry hands ``ending``
     here; `runfiles.MONITOR_BUNDLE`): with a question, the exit status answers
     it (:data:`QUESTIONS`), or the words are printed, exit 0 where there are
     any (:data:`SAYS`); without one, the ending is printed as :func:`say`

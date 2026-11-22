@@ -771,11 +771,22 @@ setup's run card shows each default in its place before anyone fills it.
   engine computes unchanged — the test is the engine's input, never which file
   was edited.
 - **Its runs are untouched.** Each holds its own copy of the deck and scripts it
-  ran with ([`project-layout.md`](?doc=execution/project-layout.md) § 1.5). The
+  ran with ([`project-layout.md`](?doc=execution/project-layout.md) § 1.5) — a
+  run of points its points' too, those its job plans while it goes among them
+  (a SIESTA vibration's optical calls, from its `optical/` container — where
+  the run's steps are 2.77.21's or later,
+  [`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 2). The
   next launch opens the next run with the new files, and that run's launch
   record says what it was sent with (`placed_on`, `command`): status shows a
   stage's row, which is what its next launch sends, and each run's own request
   is its launch record's.
+- **The code beside the decks is said, not refused.** What molbuilder ships
+  beside a deck — its bundles — is the release's, and the decks are what the
+  check above reads. A launched member whose bundles this prep writes differ
+  from a copy its newest launched run holds of its own (a point that run took
+  over aside, its copy the run's that computed it) is said at prep, naming
+  the release that prepared that run and this one, and prepared as asked: its next launch runs
+  this release's code *(the user, 2026-11-21: "Say it, prep anyway")*.
 - **The members of a launched group stay fixed.** A stage put into it or taken
   out takes the way back (`job-system.md` R-P5, R-L7). What may be done to a
   group now is one answer, `ready.GroupAnswer` — prep's offer and refusals, the

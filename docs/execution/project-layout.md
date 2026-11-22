@@ -566,7 +566,12 @@ device run's `tsgf/`; `transport.reuse` for a transmission point's `shared/`, ro
 `shared`, as it copies the point in; and a point a run's own job plans — a vibration's optical
 call — is opened in the job by its planner's step, through the opener's
 travelling core (`calcdirs.record`, `jobset.planned.bring`;
-[`runs-of-points.md`](?doc=execution/runs-of-points.md) § 3).
+[`runs-of-points.md`](?doc=execution/runs-of-points.md) § 3), from the copy
+of its phase's files the opener put in the run's container when it opened
+the run: the run holds every input before its first point starts, and a prep
+of the stage meanwhile changes only the next launch (where the run's steps are
+2.77.21's or later: [`engines/vibration.md`](?doc=engines/vibration.md)
+§ 5.11 § 2).
 
 **What goes in follows one path each.** `materialize.bring_files` copies in
 what a run runs from — the stage's deck, scripts and bundles. What a run takes
@@ -680,7 +685,7 @@ run record reads them as its launch and its exit
 
 | what | how it gets into the run | when |
 |---|---|---|
-| the deck, the run script, the monitor and other bundles, the pseudopotentials | the deck and the files beside it from the stage's folder (a point's, from its prepared folder) and nowhere else; the shared package from prep's copy beside the deck, else the calculation's root (`materialize.bring_files`) | by prep into the first run; by the launch that fills or opens a run |
+| the deck, the run script, the monitor and other bundles, the pseudopotentials | the deck and the files beside it from the stage's folder (a point's, from its prepared folder; a point the job plans, from its container's copy in the run) and nowhere else; the shared package from prep's copy beside the deck, else the calculation's root (`materialize.bring_files`) | by prep into the first run; by the launch that fills or opens a run |
 | what the run continues from | copied from the run it names (`materialize.hand_over`) | by the launch, before it sends anything |
 | everything the run writes | made in place — it is the working folder | as it runs |
 
@@ -1211,15 +1216,15 @@ pair's sidecar, never in a file of its own
 <!-- manifest:stage -->
 | file | what it is for | written by | the door | kind |
 |---|---|---|---|---|
-| `<base>.fdf` *(SIESTA)* | the SIESTA deck — every keyword this stage runs with | prep, in the stage's folder; a copy in each run | `runfiles.find_by_role` | derived |
+| `<base>.fdf` *(SIESTA)* | the SIESTA deck — every keyword this stage runs with | prep, in the stage's folder; a copy in each run -- a run of points' container keeps one for the points its job plans, and its planner's step copies it into each, and a launch into one it opens again | `runfiles.find_by_role` | derived |
 | `<base>.py` *(PySCF)* | the PySCF script this stage runs | prep, in the stage's folder; a copy in each run | `runfiles.find_by_role` | derived |
 | `<base>.validation.txt` | what the generator checked before it wrote the deck | prep, beside the deck | `runs.Run.report` | record |
-| `<base>.run.sh` | the run script — activates the environment, tees the output, catches a kill | prep, beside its deck; a copy in each run | none | derived |
+| `<base>.run.sh` | the run script — activates the environment, tees the output, catches a kill | prep, beside its deck; a copy in each run -- a run of points' container keeps one for the points its job plans, and its planner's step copies it into each, and a launch into one it opens again | none | derived |
 | `<base>.sbatch` — only: a machine with a queue, no `--no-sbatch`, and a stage run once -- a run of points is sent by its walk's header | the queue header — `sbatch` reads it | prep, beside the run script; a copy in each run | none | derived |
-| `coordinates.fdf` *(SIESTA, vibration)* | the coordinate rows of one SIESTA call, which the deck beside it reads as its AtomicCoordinatesAndAtomicSpecies block -- the structure's beside each phase's deck, a call's own in its folder | prep, beside each phase's deck; the run's own Python for each call | `parse.fdf.read_deck` | derived |
+| `coordinates.fdf` *(SIESTA, vibration)* | the coordinate rows of one SIESTA call, which the deck beside it reads as its AtomicCoordinatesAndAtomicSpecies block -- the structure's beside each phase's deck, a call's own in its folder | prep, beside each phase's deck; a copy in each call the opener opens and in the run's `optical/`; the run's own Python for each optical call | `parse.fdf.read_deck` | derived |
 | `calcdir.json` | what this folder is in its calculation — a container, a run, a run's scratch folder, or a transmission point's shared energies — and where the calculation is | prep and launch, as they make the folder: a stage's run, a bias point's, a benchmark trial's and the folders above each; a submission's `launch/`, `pseudos/` and a point's folder below its stage; a device run's folder of the electrodes' Green's functions, `tsgf/`; a transmission point's shared energies, `shared/` | `calcdirs.where` | record |
-| `mb_monitor.pyz` | the monitor, and the readers it runs on — one file | prep, beside each run script; a copy in each run | none | derived |
-| `mb_vibration.pyz` *(SIESTA, vibration)* | the SIESTA vibration's own steps -- each call's `plan` and `record` and the run's `finish-run`: the coordinates, the index, the modes from `.FC`, the result and the optical calls' data file | prep, in each phase's folder beside its run script; a copy in each call | none | derived |
+| `mb_monitor.pyz` | the monitor, and the readers it runs on — one file | prep, beside each run script; a copy in each run -- a run of points' container keeps one for the points its job plans, and its planner's step copies it into each, and a launch into one it opens again | none | derived |
+| `mb_vibration.pyz` *(SIESTA, vibration)* | the SIESTA vibration's own steps -- each call's `plan` and `record` and the run's `finish-run`: the coordinates, the index, the modes from `.FC`, the result and the optical calls' data file | prep, in each phase's folder beside its run script; a copy in each call, and in the run's `optical/`, from which its record step copies one into each optical call, and a launch into one it opens again | none | derived |
 | `mb_pyscf.pyz` *(PySCF)* | molbuilder's own code the PySCF script runs, which it imports from here -- the core count, the progress-log writer, the structure codec, the relaxation, a vibration's rules | prep, beside the PySCF script; a copy in each run | none | derived |
 | `makov_payne_correction.py` *(SIESTA)* — only: a charged, isolated deck | the energy correction a charged, isolated deck asks a person to run afterwards | prep; a copy in each run | none | derived |
 <!-- /manifest -->

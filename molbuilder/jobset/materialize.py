@@ -349,8 +349,9 @@ def open_scratch(base, folder, plan) -> Path:
 def bring_files(calc, job, src_dir, run, names, plan) -> List[str]:
     """Copy into ``run`` what it runs from -- the deck and the files that
     travel beside it (its wrappers, the bundles) from ``src_dir`` alone,
-    where prep rendered them (the stage's folder, or a swept point's); then
-    the calculation's shared package, ``src_dir``'s copy, else the
+    where prep rendered them (the stage's folder, or a swept point's) or
+    the run's own copy of them (a container's, for a point the job plans);
+    then the calculation's shared package, ``src_dir``'s copy, else the
     calculation's root.  COPIED, never linked
     (`project-layout.md` § 1.0: the run directory "holds everything"; a
     synced-back bundle's links would dangle).  Returns what was brought.
@@ -359,7 +360,8 @@ def bring_files(calc, job, src_dir, run, names, plan) -> List[str]:
 
     ONE COPY STEP for every run folder: a stage's attempt
     (:func:`prepare_attempt`) and a swept run's point
-    (:func:`open_sweep_run`)."""
+    (:func:`open_sweep_run`) -- and for the run's copy a container keeps of
+    its planned points' files, and a planned point opened again from it."""
     jobset = calc.jobset
     base, src_dir, run = Path(calc.base), Path(src_dir), Path(run)
     from ..runfiles import beside_the_deck
@@ -401,8 +403,9 @@ class SweepRun:
 def open_sweep_run(calc, stage_name: str, *, plan) -> SweepRun:
     """Open a swept stage's run -- ``run-<n>/`` -- and in it each point's
     folder, holding copies of that point's prepared files (its deck, run
-    script and the shared package; :func:`bring_files`), and the run's
-    scratch folder where the rung keeps one.  ``points`` is the listing
+    script and the shared package; :func:`bring_files`), each container its
+    kind declares, holding copies of its planned points' prepared files the
+    same way, and the run's scratch folder where the rung keeps one.  ``points`` is the listing
     order (frames outer); the walk runs them round by round
     (`engines/transport.md` § 2a.11).  The run is the
     stage's newest when it has not been launched -- reused, and emptied
@@ -441,9 +444,18 @@ def open_sweep_run(calc, stage_name: str, *, plan) -> SweepRun:
     # THE CONTAINERS THE RUN HOLDS FOR ITS PLANNED POINTS, by its kind's
     # declaration (`points.PointsOf.containers`, `execution/runs-of-
     # points.md` § 1.1): a vibration's optical calls' (`engines/vibration.md`
-    # § 5.11 § 2).
+    # § 5.11 § 2) -- EACH KEEPING ITS OWN COPY of the files its points run
+    # from, its prepared folder's, by the one copy step: a point planned
+    # while the run goes, or opened again by a later launch, is filled from
+    # the run's copy, never from the stage, which a prep may have written
+    # again since (`job-request.md` § 5: a run holds its own copy of what
+    # it ran with).
     for c in declared.containers(calc, stage_name):
-        open_container(base, place.point(c.point.rel), plan)
+        container = place.point(c.point.rel)
+        open_container(base, container, plan)
+        source = place.prepared(c.point.prepared)
+        if plan.is_file(source / deck):
+            bring_files(calc, job, source, container, rn, plan)
     # THE RUN'S SCRATCH FOLDER, opened with the run (`engines/transport.md`
     # § 2a.11): the rung declares it (`Job.scratch_dir`).
     if job.scratch_dir:

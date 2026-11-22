@@ -268,7 +268,7 @@ def _monitor_block(names, notify_on_scf: bool,
         f'if [ "${{MB_MONITOR:-1}}" = "1" ] '
         f'&& command -v nice >/dev/null 2>&1 '
         f'&& [ -f {MONITOR_BUNDLE} ]; then\n'
-        f'    nice -n 19 "$_mb_py" {MONITOR_BUNDLE} '
+        f'    nice -n 19 {_bundle_python()} {MONITOR_BUNDLE} '
         f'--label "{names.label}" --stage "{names.stage}" '
         + f'--util --cores "{cores}" '
         + ("--gpu " if gpu else "")
@@ -352,7 +352,7 @@ def _point_block(names, verb: str, point: Optional[PointOfRun],
     own = [(m, point.step(m)) for m in (("after", "finish") if ended
                                         else ("before",)) if point.step(m)]
     words = f"{POINT_VERB} {verb}"
-    call = (f'"$_mb_py" {MONITOR_BUNDLE} {words} --label "{names.label}" '
+    call = (f'{_bundle_python()} {MONITOR_BUNDLE} {words} --label "{names.label}" '
             f'--stage "{names.stage}" --deck "{script_name}"'
             + (' --exit "$_engine_exit" --output "$_out_file"' if ended
                else "")
@@ -432,7 +432,7 @@ def _finish_check_block(finish: Optional[str]) -> str:
         f"# python and answers; its words are the load error itself.\n"
         f'_mb_fin_said=""\n'
         f'if [ ! -f {finish} ] '
-        f'|| ! _mb_fin_said=$("$_mb_py" {finish} {LOADS_VERB} 2>&1); then\n'
+        f'|| ! _mb_fin_said=$({_bundle_python()} {finish} {LOADS_VERB} 2>&1); then\n'
         f'    _log ERROR "finish: {finish} cannot run on the job\'s python ($_mb_py) -- '
         f'${{_mb_fin_said:-{finish} is not beside the deck}}"\n'
         f'    echo "ERROR: this job cannot finish itself: {finish} does not '
@@ -1205,7 +1205,7 @@ def _ending_question_func(stderr_apart: bool) -> str:
         "# _mb_ending advice: the advice for the cause; alone: the ending.\n"
         "_mb_ending_able() {\n"
         '    if [ -z "${_mb_ending_state:-}" ]; then\n'
-        f'        if [ -f {MONITOR_BUNDLE} ] && _mb_ending_words=$("$_mb_py" \\\n'
+        f'        if [ -f {MONITOR_BUNDLE} ] && _mb_ending_words=$({_bundle_python()} \\\n'
         f'               {MONITOR_BUNDLE} {ENDING_VERB} "$_out_file"{stderr}); then\n'
         "            _mb_ending_state=able\n"
         "        else\n"
@@ -1216,7 +1216,7 @@ def _ending_question_func(stderr_apart: bool) -> str:
         "}\n"
         "_mb_ending() {\n"
         "    _mb_ending_able || return 2\n"
-        f'    "$_mb_py" {MONITOR_BUNDLE} {ENDING_VERB} "$_out_file"{stderr} "$@"\n'
+        f'    {_bundle_python()} {MONITOR_BUNDLE} {ENDING_VERB} "$_out_file"{stderr} "$@"\n'
         "}\n"
     )
 
@@ -1507,7 +1507,7 @@ def _effective_parameters_block(script_name: str, engine: str,
                                   default_of(item, calculation))))
     lines += [
         f'if [ -f {MONITOR_BUNDLE} ]; then',
-        f'    "$_mb_py" {MONITOR_BUNDLE} {DECK_VERB} "{reader}" "{script_name}" '
+        f'    {_bundle_python()} {MONITOR_BUNDLE} {DECK_VERB} "{reader}" "{script_name}" '
         f'2>>"$_runwrap_log" | sed "s/^/#   /" \\',
         f'        || _log WARN "what the engine will read: {script_name} did '
         f'not read -- the record holds none of its lines"',
@@ -1692,6 +1692,14 @@ LOG_FUNCTION = (
     f"_log() {{\n"
     f"    printf '{LOG_LINE}\\n' \"$(date '+{LOG_CLOCK}')\" \"$1\" \"$2\" >&2\n"
     f"}}\n")
+
+def _bundle_python() -> str:
+    """HOW THE RUN SCRIPT STARTS A BUNDLE: the job's python (:data:`JOB_PYTHON`),
+    isolated as every bundle is (`monitor.BUNDLE_PYTHON_FLAGS`,
+    `configuration.md` § 2.3)."""
+    from .monitor import BUNDLE_PYTHON_FLAGS
+    return " ".join(['"$_mb_py"', *BUNDLE_PYTHON_FLAGS])
+
 
 #: THE JOB'S PYTHON -- the activated env's own, never the first ``python3``
 #: on PATH (`running-a-job.md` § 2.2a): set right after the activation.
@@ -3219,8 +3227,8 @@ def _by_its_last_name(module: str, where: str) -> str:
 #: THE ONE FILE that travels beside every job for its monitor: a Python zip
 #: application (PEP 441) holding every member (:func:`members`),
 #: each its own file verbatim under its shipped name, and a ``__main__`` that
-#: runs the monitor.  ``"$_mb_py" mb_monitor.pyz ...`` is the monitor;
-#: ``"$_mb_py" mb_monitor.pyz ending OUTPUT ...`` is `_run_ending`'s door, which
+#: runs the monitor.  ``"$_mb_py" -I mb_monitor.pyz ...`` is the monitor;
+#: ``"$_mb_py" -I mb_monitor.pyz ending OUTPUT ...`` is `_run_ending`'s door, which
 #: `monitor.main` hands on.  One file holds them all (user: *"can't we just
 #: put it in one single Python file?"*): still the package's own files, so still no second copy of any
 #: reader.

@@ -1182,8 +1182,10 @@ the deck's engine and kind — its bundles, a charged SIESTA deck's correction
 script, its run script and header, a SIESTA vibration call's coordinates
 file): one
 an earlier prep wrote that this prep does not — a header for a queue since
-dropped, a correction script for a charge since made 0 — is taken away, never
-left to be sent, run or read as this prep's.
+dropped, a correction script for a charge since made 0, the bundle of a
+finish the job no longer has or of another engine (every bundle,
+`runwrap.BUNDLES`) — is taken away, never left to be sent, run or read as this
+prep's.
 
 Each refusal node names its row in the refusal table (*Every refusal, and its way on*, above):
 

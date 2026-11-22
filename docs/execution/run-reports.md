@@ -475,7 +475,7 @@ The run script renders one line, the same for every engine (`runwrap._monitor_bl
 `jobset.model.Resources` ([`job-contracts.md`](?doc=execution/job-contracts.md) § 6.2):
 
 ```bash
-nice -n 19 "$_mb_py" mb_monitor.pyz --label "<label>" --stage "<stage>" \
+nice -n 19 "$_mb_py" -I mb_monitor.pyz --label "<label>" --stage "<stage>" \
     --util --cores "<cores>" [--gpu] [--member] --interval "${MB_MONITOR_INTERVAL:-10}" \
     [--notify-on-scf] [--notify-every-hours N] [--notify-channels "a,b"] \
     [--notify-report "f1,f2"] --watch-pid $$ >/dev/null 2>>"$_runwrap_log" &

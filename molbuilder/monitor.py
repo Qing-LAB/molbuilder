@@ -40,7 +40,7 @@ channel this machine has, absent or ``""`` for none (`run-reports.md` 3.0).
 
 CLI (also available as ``molbuilder monitor``)::
 
-    nice -n 19 "$_mb_py" mb_monitor.pyz \\
+    nice -n 19 "$_mb_py" -I mb_monitor.pyz \\
         --label job --stage 01_coarse --util --cores 8 \\
         --notify-every-hours 6 --watch-pid $$ &
 
@@ -2869,14 +2869,16 @@ def _run_of(folder: Path) -> Optional[Path]:
 def _kind_step(bundle: Optional[str], verb: str, *args: str) -> int:
     """ONE OF THE KIND'S OWN STEPS, run in its place (`runs-of-points.md`
     § 1.2): the job's bundle beside the deck, with the job's python -- this
-    one -- its lines in the point's session log; its exit."""
+    one, isolated as every bundle is (:data:`BUNDLE_PYTHON_FLAGS`) -- its
+    lines in the point's session log; its exit."""
     import subprocess
     import sys
     if not bundle or not Path(bundle).is_file():
         say("ERROR", f"report step: {bundle or 'the job bundle'} is "
             f"not beside the deck -- its {verb} step not run")
         return 1
-    return subprocess.run([sys.executable, bundle, verb, *args]).returncode
+    return subprocess.run([sys.executable, *BUNDLE_PYTHON_FLAGS, bundle,
+                           verb, *args]).returncode
 
 
 def _point_main(argv) -> int:
@@ -3139,6 +3141,15 @@ def _notify_main(argv) -> int:
         _append(log, f"[{_iso(now)}] [NOTIFY] not recorded: {exc}")
     return 0
 
+
+#: HOW A BUNDLE'S PYTHON IS STARTED beside a job, by the run script
+#: (`runwrap`) and by a point's report step for its kind's own steps
+#: (:func:`_kind_step`): ISOLATED (``-I``) -- no ``PYTHONPATH``, no user
+#: site-packages, no script directory on the path -- so what its members
+#: import is the bundle, first on the path, and the job env's packages,
+#: never a molbuilder or a module a person's environment puts in front
+#: (`configuration.md` § 2.3).
+BUNDLE_PYTHON_FLAGS = ("-I",)
 
 #: THE BUNDLE'S OTHER VERBS BY NAME, beside :data:`POINT_VERB` and the
 #: ending's (`_run_ending.ENDING_VERB`): the deck as its engine reads it,
