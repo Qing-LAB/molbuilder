@@ -55,10 +55,12 @@ def _cas_client(entry: Mapping):
     try:
         from cas import CASClient
     except ImportError:
+        # THE HOST ENV'S REPAIR, the one spelling (`envs.hints`; M3, M6).
+        from ...envs.hints import fix_cmd
         raise ImportError(
             "molbuilder auth: 'python-cas' is required for the CAS "
-            "backend.  Install with `pip install python-cas` or "
-            "`conda install -c conda-forge python-cas`."
+            "backend, and the host env declares it.  Install what it "
+            f"declares: `{fix_cmd('repair', 'molbuilder')}`."
         ) from None
 
     service_url = (

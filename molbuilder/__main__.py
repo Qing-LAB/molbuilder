@@ -1,4 +1,5 @@
-"""Entry point so ``python -m molbuilder ...`` works without installing.
+"""Entry point so ``-m molbuilder ...`` works without installing -- on the host
+env's own Python, named by its path (`ops/installation.md` M6).
 
 Mirrors the ``if __name__ == "__main__":`` block at the bottom of
 ``cli.py``.  Useful because the project is invoked directly from the

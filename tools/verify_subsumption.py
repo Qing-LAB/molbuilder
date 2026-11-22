@@ -1,6 +1,6 @@
 """Does the COVERER die whenever the CANDIDATE dies?  Verify one "subsumed" claim.
 
-    python tools/verify_subsumption.py pairs.json
+    "${CONDA_PREFIX:?}/bin/python" tools/verify_subsumption.py pairs.json
     # pairs.json: [["tests/f.py::test_candidate", "tests/f.py::test_coverer"], ...]
 
 WHY THIS EXISTS.  A test-retirement audit (2026-09-08) classified ~110 tests

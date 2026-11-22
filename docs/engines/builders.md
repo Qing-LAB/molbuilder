@@ -387,7 +387,7 @@ flowchart TD
 | Backend | Helix shape | Install | Notes |
 |---|---|---|---|
 | **`threedna`** (X3DNA `fiber`/`rebuild`) | canonical B/A/Z (+ A-RNA); the duplexes | x3dna.org — **license-gated**, non-commercial; not pip/conda-installable | the only true-helix backend; molbuilder detects it (in-tree dir → `$X3DNA` → `fiber` on PATH) but never auto-downloads |
-| **`amber`** (AmberTools `tleap`) | extended chain | its own env (`ENV = "mdtools"`, its command said, § 1), or `tleap` on the host env's PATH | clean OL15/OL3 force-field chemistry; a `timeout=120` guards a hung `tleap` |
+| **`amber`** (AmberTools `tleap`) | extended chain | its own env (`ENV = "mdtools"`, its command said, § 1) — never a `tleap` on the host's PATH ([`ops/installation.md`](?doc=ops/installation.md) M6) | clean OL15/OL3 force-field chemistry; a `timeout=120` guards a hung `tleap` |
 | **`rdkit`** | folded conformer (not helical) | one of the host env's packages (`ENV = "host"`, its command said, § 1) | fine for short oligos a DFT run will fully optimize; poor for 10+ mers |
 
 ---

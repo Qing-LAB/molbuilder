@@ -33,14 +33,14 @@ item says so:
   by review. These keep the parse module reusable and testable without a
   filesystem.
 - **The package is `pyflakes`-clean, checked at every milestone's review**
-  (`plans/plan.md`, *How a release closes*, step 2): `python -m pyflakes $(git ls-files 'molbuilder/*.py'
+  (`plans/plan.md`, *How a release closes*, step 2): `"${CONDA_PREFIX:?}/bin/python" -m pyflakes $(git ls-files 'molbuilder/*.py'
   ':!:molbuilder/data/*')` answers nothing. It doesn't lint style, only "would
   this actually run" (undefined names, unused imports). pyflakes reads no
   `# noqa`, so an import kept for what importing does says so in code
   (`importlib.import_module`), never in a comment. `molbuilder/data/` is left
   out: nothing there is imported — the notebook server's config is executed by
   Jupyter, which gives it its `c`. The tests, `tools/` and `scripts/` are
-  clean too: `python -m pyflakes $(git ls-files '*.py' ':!:molbuilder/*'
+  clean too: `"${CONDA_PREFIX:?}/bin/python" -m pyflakes $(git ls-files '*.py' ':!:molbuilder/*'
   ':!:tests/data/*')` answers nothing. `.pre-commit-config.yaml` runs pyflakes and a
   `node -c` syntax check on every commit where a person installs the hook;
   nothing here depends on that.

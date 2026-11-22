@@ -5,15 +5,15 @@ functions, both stateless except for reading the diagnostics singleton:
 
   * :func:`run_in_env` -- run one argv inside a named env, through the
     one door (`builds.dispatch_into_env`).
-  * :func:`run_tool`   -- "routed env wins over host PATH" dispatch.
+  * :func:`run_tool`   -- a tool run in its env, as that env's own program.
 
-Dispatch policy in :func:`run_tool`: when a tool has a routing entry
-(:data:`~molbuilder.diagnostics.TOOL_TO_CATEGORY`) AND the routed env
-exists, dispatch into that env even if the tool is also on host PATH.
-This prevents a stray system install (e.g. system-wide AmberTools in
-``/usr/local/bin``) from silently shadowing the curated env the user
-prepared per ``docs/ops/installation.md``.  Falling back to host PATH
-happens only when no routing applies, or the routed env doesn't exist.
+Dispatch policy in :func:`run_tool`: a tool runs in the env its routing
+entry (:data:`~molbuilder.diagnostics.TOOL_TO_CATEGORY`) names, or the one
+its caller names, by its path there -- never from the host's PATH
+(`docs/ops/installation.md` M6): a stray system install (e.g. system-wide
+AmberTools in ``/usr/local/bin``) makes different chemistry from the
+curated env, and nothing about the run would say so.  No env holding it:
+refused, naming what installs or repairs it.
 
 Testing hook: tests inject synthetic Capabilities via
 :func:`molbuilder.diagnostics.set_capabilities` before calling these
@@ -23,12 +23,11 @@ call sites simple.
 
 from __future__ import annotations
 
-import shutil
 import subprocess
 from pathlib import Path
 from typing import Optional, Sequence
 
-from ..diagnostics import get_capabilities
+from ..diagnostics import TOOL_TO_CATEGORY, get_capabilities
 from . import builds as _builds
 from . import hints as _hints
 from .builds import conda_run_argv
@@ -82,42 +81,42 @@ def run_tool(tool: str,
              cwd: Optional[Path] = None,
              timeout: Optional[int] = None,
              ) -> subprocess.CompletedProcess:
-    """Dispatch ``tool argv...`` to the routed env (preferred) or host PATH.
+    """Run ``tool argv...`` in its env, as that env's own program, by its
+    path (`installation.md` M6) -- never one the host's PATH holds.
 
-    Resolution order (`route`):
+    Which env (`route`): an explicit ``env=...``, else the one
+    :data:`~molbuilder.diagnostics.TOOL_TO_CATEGORY` routes it to; neither
+    on this machine raises :class:`FileNotFoundError`, naming what installs
+    it.  An env without the tool in its ``bin`` raises too, naming `doctor`,
+    which names the repair.
 
-      1. Explicit ``env=...`` -- dispatch into that env, or raise
-         :class:`FileNotFoundError` if it doesn't exist on this machine.
-      2. Routed env (via :data:`~molbuilder.diagnostics.TOOL_TO_CATEGORY`)
-         exists -- dispatch into it.
-      3. Tool is on host PATH -- run it directly.
-      4. Otherwise raise :class:`FileNotFoundError` with a message
-         naming every candidate that was tried.
-
-    Output is captured as text either way; ``cwd`` and ``timeout`` are the
-    two things a caller has to say.  ``**popen_kwargs`` cannot be offered:
-    the env branch is not a `subprocess.run`, so every other Popen knob
-    would be accepted on one route and silently dropped on the other.
+    Output is captured as text; ``cwd`` and ``timeout`` are the two things
+    a caller has to say.  ``**popen_kwargs`` cannot be offered: the door is
+    not a `subprocess.run`, so a Popen knob would be accepted and silently
+    dropped.
     """
-    routed = route(tool, env=env)
-    if routed is None:
-        return subprocess.run([tool, *argv], capture_output=True, text=True,
-                              cwd=cwd, timeout=timeout)
-    return run_in_env(routed, [tool, *argv], cwd=cwd, timeout=timeout)
+    env_name = route(tool, env=env)
+    own = get_capabilities().program_of(env_name, tool)
+    if own is None:
+        raise FileNotFoundError(
+            f"`{tool}` is not a program of env `{env_name}`, and no other "
+            f"`{tool}` is tried -- the host's PATH included.  "
+            f"`{_hints.fix_cmd('doctor')}` names the repair.")
+    return run_in_env(env_name, [own, *argv], cwd=cwd, timeout=timeout)
 
 
-def route(tool: str, *, env: Optional[str] = None) -> Optional[str]:
-    """WHICH ENV should run `tool` -- the decision, with nothing dispatched.
+def route(tool: str, *, env: Optional[str] = None) -> str:
+    """WHICH ENV runs `tool` -- the decision, with nothing dispatched.
 
-    Returns the env name, or ``None`` meaning *"run it from host PATH"*.
-    Raises :class:`FileNotFoundError` when neither is possible, naming every
-    candidate that was tried.
+    Returns the env name: an explicit ``env``, else the routed one.  The
+    host's PATH is never the answer (`installation.md` M6): a stray system
+    AmberTools in ``/usr/local/bin`` makes different chemistry from the
+    pinned one, and nothing about the run would say so.  Raises
+    :class:`FileNotFoundError` when no env on this machine runs it, naming
+    what installs the routed one.
 
-    The policy -- routed env beats host PATH, an explicit env beats both --
-    is the thing worth being sure of, so it is separated from the dispatch
-    and can be ASKED.  Tangled with the dispatch it is only observable by
-    executing it: a fake manager, fake tools, a PATH and a log file read
-    back afterwards, to recover one decision.
+    The policy is the thing worth being sure of, so it is separated from
+    the dispatch and can be ASKED.
     """
     caps = get_capabilities()
 
@@ -131,30 +130,25 @@ def route(tool: str, *, env: Optional[str] = None) -> Optional[str]:
             )
         return env
 
-    # (2) routed env, if registered and available.  IT WINS OVER HOST PATH,
-    # which is what stops a stray system AmberTools in /usr/local/bin from
-    # silently shadowing the curated env the person prepared.
+    # (2) the routed env, if registered and on this machine.
     routed = caps.routed_env(tool)
     if routed is not None:
         return routed
 
-    # (3) host PATH
-    if shutil.which(tool):
-        return None
-
-    # (4) not reachable -- pick the most informative error
+    # (3) no env runs it -- and the host's PATH is not one.
     routed_name = caps.env_for_tool(tool)
     if routed_name is not None:
+        from .recipes import recipe_of_category
+        recipe = recipe_of_category(TOOL_TO_CATEGORY[tool])
         raise FileNotFoundError(
-            f"`{tool}`: not reachable.  Its routed env `{routed_name}` "
-            f"does not exist on this machine, and `{tool}` is not on "
-            f"host PATH.  Either create the env or install `{tool}` on the host."
-        )
+            f"`{tool}` runs in its routed env `{routed_name}`, which is not "
+            f"on this machine; no other `{tool}` is tried -- the host's "
+            f"PATH included.  `{_hints.install_cmd(recipe.name)}` installs "
+            f"it.")
     raise FileNotFoundError(
-        f"`{tool}`: not on host PATH, and no conda env routing is "
-        f"registered for it.  Install on the host env, or pass "
-        f"env=<name> to run_tool() explicitly."
-    )
+        f"`{tool}`: no conda env routing is registered for it, and "
+        f"molbuilder runs nothing from the host's PATH.  Pass env=<name> "
+        f"to run_tool() to name the env that holds it.")
 
 
 __all__ = ["route", "run_in_env", "run_tool"]

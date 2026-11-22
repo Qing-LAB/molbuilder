@@ -132,8 +132,8 @@ def test_read_config_rejects_non_string_tls_value(tmp_path):
 
 def test_read_config_rejects_empty_string_envs_value(tmp_path):
     """An empty env-name override silently breaks dispatch
-    (``routed_env`` returns None, falls back to host PATH).  Caught
-    at the config boundary instead."""
+    (``routed_env`` returns None, the tool refused for want of its env).
+    Caught at the config boundary instead."""
     (tmp_path / CONFIG_FILENAME).write_text(json.dumps({
         "envs": {"siesta": ""},
     }))

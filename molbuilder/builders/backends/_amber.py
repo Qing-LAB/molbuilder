@@ -12,14 +12,13 @@ that's fine: the bond lengths are right, the optimiser doesn't care
 that the chain isn't pre-coiled.
 
 Install:
-    See ``docs/ops/installation.md`` § ``molbuilder-MDtools`` -- the
-    canonical place for ``tleap`` in the four-env model.  A
-    single-env developer setup that puts ``tleap`` on the host PATH
-    also works; this backend's :func:`is_available` checks both.
+    See ``docs/ops/installation.md`` § ``molbuilder-MDtools`` -- the one
+    place ``tleap`` runs from: its own env, never the host's PATH
+    (`installation.md` M6).
 
 Detected via: the diagnostics :class:`~molbuilder.diagnostics.Capabilities`
-snapshot, which reports ``tleap`` as available iff its routed env
-exists, OR ``tleap`` was on host PATH at detect time.
+snapshot, which reports ``tleap`` as available iff its routed env is on
+this machine and holds it.
 """
 
 from __future__ import annotations
@@ -43,17 +42,17 @@ from ._common import (first_chain,
 #: This backend builds a single strand only.
 DUPLEX = False
 #: How it is installed: its own env, AmberTools' recipe's (``ENV``, its
-#: category; `ops/installation.md`), or tleap on the host env's PATH.
-INSTALL = ("it runs from its own env, or from AmberTools' tleap on the "
-           "host env's PATH")
+#: category; `ops/installation.md`) -- never a tleap on the host's PATH
+#: (`installation.md` M6).
+INSTALL = "it runs from its own env, AmberTools'"
 ENV = "mdtools"
 
 
 def is_available() -> bool:
-    """``tleap`` reachable, either via routed conda env or host PATH.
+    """``tleap`` can run: its routed env is on this machine and holds it.
 
     Asked of the diagnostics :class:`~molbuilder.diagnostics.Capabilities`
-    snapshot (`tool_available`: the routed env, else ``shutil.which``).  The
+    snapshot (`tool_available`; never the host's PATH).  The
     snapshot is the server's, bound at start, or a command's, taken on its
     first use (`diagnostics.get_capabilities`), which lists the conda envs
     once for the process.
@@ -84,10 +83,10 @@ quit
 """)
 
         try:
-            # run_tool dispatches into the molbuilder-MDtools env when it
-            # exists (through the one door, `builds.dispatch_into_env`),
-            # else to the host PATH.  Output is captured as text either way;
-            # through the door stdout and stderr come back as one stream.
+            # run_tool runs the molbuilder-MDtools env's own tleap, by its
+            # path, through the one door (`builds.dispatch_into_env`) --
+            # never the host's PATH (`installation.md` M6).  Through the
+            # door stdout and stderr come back as one stream.
             result = run_tool(
                 "tleap", ["-f", in_path], cwd=workdir, timeout=120,
             )
@@ -95,7 +94,8 @@ quit
             raise RuntimeError(
                 "tleap did not finish within 120 s -- likely hung or "
                 "stuck on a slow filesystem.  Try shorter sequence, or "
-                "run tleap by hand to diagnose."
+                "run the env's own tleap by hand to diagnose "
+                "(\"${CONDA_PREFIX:?}/bin/tleap\", its env active)."
             ) from exc
         # tleap returns 0 even on some errors; check the actual output instead.
         if not os.path.isfile(pdb_path):

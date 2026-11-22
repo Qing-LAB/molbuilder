@@ -110,6 +110,7 @@ same question**, and the answer is the same: ask the thing that knows.
 | **M3** | **A remedy names the DETECTED manager** — `caps.conda_binary` | a literal `conda env remove …` printed on a machine that has only micromamba: a remedy the person cannot run |
 | **M4** | **A manager's bug is MEASURED, then worked around — inside the one door.** Taken only when that bug's signature actually appears, reported once, and **not** recorded as the step's outcome: a broken manager is a fact about the machine — so **the machine's record remembers it** (`jobset probe` measures it there, `manager_run`, [`configuration.md`](?doc=configuration.md) § 5 M-2) and the door reads the record before it tries, trying nothing the record says is broken; calling every step on such a machine `RECOVERED` would say the PACKAGE came from elsewhere | making the workaround unconditional: every other machine loses the manager's real activation, the bug becomes invisible, and the hand-written copy drifts — twice, here |
 | **M5** | **A remedy the program prints may not destroy working state.** A fix command must be runnable *and* must not be ruinous: nothing may propose removing the env the process is running from | `doctor` printing `install molbuilder --clean --yes` for the host env |
+| **M6** | **What runs in an env is the env's own — its Python and its programs, named by its path; no other is ever tried.** The door hands the manager no active env, so the manager's activation puts the env's `bin` first on `PATH`; a Python it carries is named `<prefix>/bin/python` (or `python3`) (`builds.env_python_argv`); a tool molbuilder routes (`tleap`, `parmchk2`, `antechamber`) runs from its env by its path, and where the env lacks it nothing runs (`envs.run_tool`); a probe names the env's binaries by path — `envs validate`'s `python`, `ctest`, `make`, `mpiexec` and `mpirun`, its ELPA check entered through the door so the validators' own bare `mpiexec` is the env's; a step or self-test written as a shell line names `"${CONDA_PREFIX:?}/bin/python"` and the env's own program likewise (an env not entered stops the line, never reaching `/bin/python`); a program of the env's Python is started as that Python running it (the notebook: `python -m jupyterlab`, its kernel the env's own); a job's Python is `$_mb_py` ([`running-a-job.md`](?doc=execution/running-a-job.md) § 2.2a), its program the first on `PATH` in a folder of its env and its MPI `$CONDA_PREFIX/bin/mpirun`, else the job stops before its engine starts (§ 2.3). An env lacking one fails, said, naming the repair. A file molbuilder writes for a person to run carries no interpreter line, and a line it prints names the env's Python the same way. The machine's own programs — the shell, the driver's `nvidia-smi` — are the machine's | `shutil.which("python") or "python"` when the env has none; `shutil.which("mpirun")` when it has none; `python -c …` or `tleap` in a self-test, which the host's answers when the env lacks one; a routed tool run from the host's `PATH` when its env is missing; `#!/usr/bin/env python3` atop a written script; `jupyter lab`, which PATH's `jupyter` answers when the env lacks JupyterLab |
 
 **Why M4 is stated as a fallback rather than a version check.** Some mambas'
 `run` generates a shell stub whose `exec --` bash rejects (mamba 1.x; the `mamba`
@@ -142,6 +143,48 @@ install steps, build phases and tool routing — through one door,
 verified, no generated shell) and, for the mamba-1.x stub this machine cannot
 produce, by a fake manager that emits exactly its signature
 (`tests/test_envs_enters_the_env_through_the_manager.py`).
+
+**M6 has no exception** *(the user, 2026-11-21: "we should never try to reach
+out of designated environment"; "make sure that no bare python or out-of-env
+python is ever tried. period."; "apply the same rule to ctest, make, mpirun and
+tleap too")*. A program that is not the env's own answers for another env: a
+self-test imports the host's packages and calls the env verified; `python -m
+pip install` installs into whichever interpreter answered — the host env, or
+`~/.local` — and leaves the env as it was; a probe measures a library through
+another install, or runs ELPA's validator under an MPI it was not built
+against; a system AmberTools builds different chemistry from the pinned one.
+Nor is a bare word the env's because the env was entered. The manager's `run`,
+called from a shell where an env is active — molbuilder's own always is — puts
+the entered env's `bin` on `PATH` where the active env's stood, not first:
+whatever stands ahead of it answers, an env holding its own program included
+(measured 2026-11-21, conda 26.7.1: a `python` placed ahead on `PATH` ran for
+both). Called with no env active, it puts the entered env's `bin` first (the
+same measurement). A site's activation can leave its own ahead as well (ASU
+Sol, 2026-08-21 and 2026-10-24,
+[`running-a-job.md`](?doc=execution/running-a-job.md) § 2.2a). So the word is
+never left to `PATH`. **Where it is enforced:** the door, for every command it
+carries — the caller's active env not handed to the manager (`CONDA_PREFIX`,
+`CONDA_SHLVL`, `CONDA_DEFAULT_ENV`, `CONDA_PROMPT_MODIFIER`, `CONDA_PREFIX_<n>`),
+so its own activation, which it still performs (M1), is a first one; a bare
+`python`/`python3`/`python3.N` the env's by path, another path to a Python
+refused, an env without one refused before anything starts, naming `doctor`,
+which names the repair. The tool router (`envs.run_tool`, `route`) names the
+tool by its path in its env and refuses where the env is missing or lacks it.
+The job's run script takes its program from a folder of its env and launches
+it under its env's `mpirun`, stopping otherwise
+([`running-a-job.md`](?doc=execution/running-a-job.md) § 2.3,
+`runwrap._program_launcher_block`).
+**Where it is checked:** tests that put a decoy `python`, `python3`, `jupyter`,
+`ctest`, `make`, `mpirun` and `tleap` first on `PATH` in a shell with an env
+active, each failing loudly if reached, and run through them the door, every
+self-test, a package step, the notebook's command line and its kernel, the
+tool router and every `envs validate` probe; an env without its Python, which
+must be refused, said (`tests/test_envs_enters_the_env_through_the_manager.py`);
+and a run script started with a site's `siesta` and `mpirun` ahead of its
+env's (`tests/test_launch_door_gate.py`).
+molbuilder itself runs on the host env's Python, the one the person started;
+what it starts of its own (the server's child, the notebook's shepherd, a
+re-run of itself) is that one, `sys.executable`.
 
 **M3**: the remedy speller lives below the surfaces (`envs/hints.py`), so
 `recipes.py` imports it rather than hand-copying a command that could name a
@@ -177,8 +220,8 @@ bash scripts/install-env.sh bootstrap --yes
 That script is a small **bootstrap shim** whose only job is the chicken-and-egg
 problem — you can't run `molbuilder envs` until the host env exists. It: finds
 conda/mamba, creates the **host `molbuilder`** env from its package list,
-**`molbuilder/envs/host-env.txt`**, then hands off to `python -m molbuilder envs
-bootstrap`, which creates the
+**`molbuilder/envs/host-env.txt`**, then hands off to `molbuilder envs bootstrap` on that
+env's own Python, which creates the
 **conda-only backend envs** (siesta, pySCF, MDtools) and runs a health check
 (`doctor`). Add `--include-source-builds` to also build the GPU SIESTA env (§6).
 
@@ -214,12 +257,16 @@ Then you're ready:
 
 ```bash
 conda activate molbuilder
-python -m molbuilder serve start      # the web UI on 127.0.0.1:8000
+"${CONDA_PREFIX:?}/bin/python" -m molbuilder serve start      # the web UI on 127.0.0.1:8000
 ```
 
-> **molbuilder is run with `python -m molbuilder`, not pip-installed** into the host
-> env — the shim puts the repo on `PYTHONPATH`. (A `molbuilder` console-script
-> entry point exists in `pyproject.toml`, but the supported form is `python -m`.)
+> **molbuilder is run as the host env's own Python running `-m molbuilder`,
+> named by its path** — `"${CONDA_PREFIX:?}/bin/python"` once the env is active, never a bare
+> `python`, which activation does not put first on `PATH` (M6; `:?` stops the
+> line where no env is active, rather than reaching `/bin/python`). It is not
+> pip-installed into the host env — the shim puts the repo on `PYTHONPATH`. (A
+> `molbuilder` console-script entry point exists in `pyproject.toml`, but the
+> supported form is `-m`.)
 
 Once the host env exists, **`molbuilder envs` is the same surface** the shim used —
 `list`, `install <name>`, `bootstrap`, `doctor`, `validate`, `clean`, `repair`,
@@ -484,8 +531,8 @@ activities have no fallback path at all.
 
 ## 4. The `molbuilder` command
 
-After install, `python -m molbuilder <cmd>` gives you the CLI, and
-`python -m molbuilder --help` lists every command with what it does — the one
+After install, `"${CONDA_PREFIX:?}/bin/python" -m molbuilder <cmd>` — the host env active — gives you
+the CLI, and `"${CONDA_PREFIX:?}/bin/python" -m molbuilder --help` lists every command with what it does — the one
 list, kept by the CLI itself. The ones a person starts with: `serve` (the web
 UI), `describe` and `jobset` (a calculation: describe it, prepare it, launch
 it, read it back), `jobs` (the jobs launched from this machine), `envs` (this
@@ -502,8 +549,8 @@ bash scripts/install-env.sh bootstrap --yes
 # → creates molbuilder, molbuilder-siesta, molbuilder-pySCF, molbuilder-MDtools
 #   then runs `molbuilder envs doctor`
 conda activate molbuilder
-python -m molbuilder envs list      # every default env exists (the doctor at the end of bootstrap verifies them)
-python -m molbuilder serve start    # open http://127.0.0.1:8000
+"${CONDA_PREFIX:?}/bin/python" -m molbuilder envs list      # every default env exists (the doctor at the end of bootstrap verifies them)
+"${CONDA_PREFIX:?}/bin/python" -m molbuilder serve start    # open http://127.0.0.1:8000
 ```
 
 A SIESTA job's run script enters `molbuilder-siesta`, and a PySCF job's
@@ -1167,7 +1214,7 @@ step 1 finds it: no shell config, no environment variable.
 cd /path/to/molbuilder            # the repo root, alongside pyproject.toml
 tar -xzf x3dna-v2.4-<platform>.tar.gz
 ls x3dna-v2.4/bin/fiber           # smoke check
-python -c "from molbuilder.builders.backends import available_backends; print(available_backends())"
+"${CONDA_PREFIX:?}/bin/python" -c "from molbuilder.builders.backends import available_backends; print(available_backends())"
 # expect: {'threedna': True, ...}
 ```
 
@@ -1263,6 +1310,6 @@ its own header documents the three and its error text names all three.
 - `test_envs_validate.py` — the verdict `envs validate` reaches (the part a
   person acts on). The probes themselves need a built GPU env and ~30 minutes,
   so they are not exercised here.
-- `test_envs.py` — which env runs a tool: the routed env over host PATH, an
-  explicit env over both, a refusal naming what was tried, and `run_in_env`'s
-  refusal when no manager was found.
+- `test_envs.py` — which env runs a tool: the routed env, an explicit env over
+  it, never the host's PATH (M6), a refusal naming what was tried, and
+  `run_in_env`'s refusal when no manager was found.

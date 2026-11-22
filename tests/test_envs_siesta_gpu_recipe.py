@@ -369,8 +369,10 @@ def test_build_step_exports_search_paths_to_the_compiler(
     joined empty element means "the current directory" to gcc.
     """
     env_prefix = tmp_path / "env"
-    stub_bin = tmp_path / "bin"
-    stub_bin.mkdir()
+    # The env's own cmake, where the build step names it
+    # (`{env_prefix}/bin/cmake`, `ops/installation.md` M6).
+    stub_bin = env_prefix / "bin"
+    stub_bin.mkdir(parents=True)
     seen = tmp_path / "seen.txt"
     stub = stub_bin / "cmake"
     stub.write_text(

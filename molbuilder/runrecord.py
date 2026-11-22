@@ -162,7 +162,8 @@ def read_concluded(text: Optional[str]) -> Optional[dict]:
     the wrapper writes it (`runwrap.py`), as ``{"code": N, "at": when,
     "note": note}`` -- ``at`` and ``note`` only when stated -- or ``None``
     when the text is not one.  The note is what the wrapper adds when the
-    job had no python of its env (`parse.dirs.job.NO_ENV_PYTHON`), when its
+    job had no python of its env (`parse.dirs.job.NO_ENV_PYTHON`), its
+    program or `mpirun` was not its env's own (`NOT_IN_ITS_ENV`), when its
     finish -- or a point's own step, before or after its engine -- failed
     or cannot run (`FINISH_FAILED`, `FINISH_CANNOT_LOAD`), or when its exit
     trap concluded a failure of the script's own (`STOPPED`).  THE one

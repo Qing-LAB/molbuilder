@@ -345,8 +345,9 @@ def calc_dir(tmp_path, monkeypatch):
 
 #: The binaries molbuilder resolves from the environment it ENTERS, never
 #: from whatever the developer's box happens to have on PATH.  A wrapper
-#: activates its conda env and then looks up ``siesta`` there -- its own
-#: failure text says so: *"not on PATH after activating '<env>'"*.
+#: activates its conda env and then takes ``siesta`` from that env's own
+#: folders only -- its own failure text says so: *"is not a program of
+#: '<env>'"* (`running-a-job.md` § 2.3).
 _PRODUCT_TOOLCHAIN = ("siesta", "tbtrans", "mpirun", "conda", "mamba")
 
 #: `conda activate` / `mamba activate` succeed silently -- that is all a

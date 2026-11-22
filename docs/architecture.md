@@ -85,7 +85,7 @@ Two habits make the reuse rule work:
 **Layer key.** **L1** core types (import nothing above them) · **L2** domain
 verbs (may import L1) · **L3** surfaces (cli / web; may import both).
 **Which is which is read, never judged:** L1 is exactly the index below; L3
-is `cli` and `web`, and `__main__`, the `python -m molbuilder` entry, which
+is `cli` and `web`, and `__main__`, the `-m molbuilder` entry, which
 calls `cli`; every other module is L2. **The package root**
 (`molbuilder/__init__.py`) loads before every module inside it, so it imports
 only L1 — `structure` — and re-exports no builder: each caller imports the

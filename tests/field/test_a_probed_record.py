@@ -12,7 +12,7 @@ machine (`molbuilder jobset probe --write`, there), and these checks assert
 only what the contract says of any record -- never what one site's SLURM
 prints.  Run by the person, never in the basic suite:
 
-    MOLBUILDER_FIELD_RECORD=<the record> python tools/testrun.py run field
+    MOLBUILDER_FIELD_RECORD=<the record> "${CONDA_PREFIX:?}/bin/python" tools/testrun.py run field
 """
 from __future__ import annotations
 

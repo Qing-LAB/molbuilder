@@ -927,8 +927,14 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
                 "# Or drive SIESTA yourself, from this directory -- all "
                 "outputs share the")
             out.append("# SystemLabel basename below:")
-            out.append(f"#     mpirun -np {_np_hint} siesta "
-                       f"< {_fdf_name} > {_out_name}"
+            # THE ENV'S OWN mpirun AND siesta, by path, as the run script
+            # starts them (`running-a-job.md` § 2.3, `ops/installation.md`
+            # M6): the GPU build's siesta in the folder its activation hook
+            # names, the packaged one in the env's bin.
+            _siesta = ('"${MOLBUILDER_SIESTA_GPU_PREFIX:?}/siesta/bin/siesta"'
+                       if cfg.use_gpu else '"${CONDA_PREFIX:?}/bin/siesta"')
+            out.append(f'#     "${{CONDA_PREFIX:?}}/bin/mpirun" -np {_np_hint} '
+                       f"{_siesta} < {_fdf_name} > {_out_name}"
                        + ("   # <ranks>: the run's stated rank count"
                           if cfg.mpi_np is None else ""))
             out.append(
@@ -1325,8 +1331,9 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
                 "# terms can not be applied\" and adds nothing.",
                 "#",
                 f"# molbuilder emits ``{MAKOV_PAYNE_SCRIPT}`` next to",
-                "# this FDF.  After SIESTA finishes, run:",
-                f"#     python3 {MAKOV_PAYNE_SCRIPT}",
+                "# this FDF.  After SIESTA finishes, with the run's",
+                "# environment active (its run script names it), run:",
+                f'#     "${{CONDA_PREFIX:?}}/bin/python" {MAKOV_PAYNE_SCRIPT}',
                 "# It reads `siesta: Emadel` first and adds only what SIESTA",
                 "# did not: nothing when SIESTA applied the term, and",
                 "# DeltaE_MP for the final lattice vectors when it did not.",

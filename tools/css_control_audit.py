@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 """Measure MolView's control sizing -- the check that outlives the CSS rename.
 
 WHY THIS IS A TOOL AND NOT A MEMORY.  The panel's controls were inconsistent
@@ -12,8 +11,8 @@ see a computed style.
 So the acceptance check after each rename phase is this measurement, not an
 opinion about whether it still looks right.
 
-    python tools/css_control_audit.py            # against the running server
-    python tools/css_control_audit.py --url ...  # somewhere else
+    "${CONDA_PREFIX:?}/bin/python" tools/css_control_audit.py            # against the running server
+    "${CONDA_PREFIX:?}/bin/python" tools/css_control_audit.py --url ...  # somewhere else
 
 Prints one line per distinct (font-size, family, height) and exits non-zero if
 the panel shows more than one of any -- checkboxes excepted, which are sized

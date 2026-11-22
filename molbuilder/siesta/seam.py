@@ -24,7 +24,8 @@ def _siesta_sibling_artifacts(struct, cfg, deck_path: Path, *,
                               plan=None) -> None:
     """The sibling files a SIESTA deck's own text PROMISES.
 
-    A charged deck instructs ``python3 makov_payne_correction.py`` in its
+    A charged deck instructs ``"${CONDA_PREFIX:?}/bin/python"
+    makov_payne_correction.py`` -- the run env's own Python -- in its
     header -- a promise this keeps, the script reading the energy of the
     step the deck's ``role`` makes the structure's own (a vibration
     phase's ``energy_step``: a force-constant run's reference geometry,

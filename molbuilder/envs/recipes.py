@@ -1227,7 +1227,7 @@ class Recipe:
 _HOST = Recipe(
     name="molbuilder",
     category=None,
-    description="Host env: runs `python -m molbuilder ...`, build-time "
+    description="Host env: its Python runs molbuilder (`-m molbuilder`), build-time "
                 "chemistry, and the web UI.",
     channels=("conda-forge",),
     # THE DEFAULT PACKAGES ARE THE FILE'S (`host-env.txt`), each one's reason
@@ -1287,8 +1287,8 @@ _HOST = Recipe(
     # the prefix beside pip's.  No hook: a test finds the packages under the
     # prefix of the env it runs in.
     extra_steps=(
-        ExtraStep(("bash", "-c", 'set -e; D="$CONDA_PREFIX/share/ms-playwright"; H="$CONDA_PREFIX/etc/conda/activate.d"; mkdir -p "$D" "$H"; printf \'export PLAYWRIGHT_BROWSERS_PATH="$CONDA_PREFIX/share/ms-playwright"\\n\' > "$H/playwright-browsers.sh"; export PLAYWRIGHT_BROWSERS_PATH="$D"; python -m playwright install chromium; echo "[molbuilder] chromium -> $D (inside the env; removed with it, no sudo, nothing in ~/.cache)" >&2'), opt_in='test tooling -- a ~115 MB browser download, and nobody should pay for it by accident'),
-        ExtraStep(("bash", "-c", f'set -e; D="$CONDA_PREFIX/{JS_TEST_PACKAGES_HOME}"; mkdir -p "$D"; cp "$1/package.json" "$1/package-lock.json" "$D/"; cd "$D"; npm ci --ignore-scripts --no-audit --no-fund --no-update-notifier; echo "[molbuilder] JS test packages -> $D (inside the env; removed with it, no sudo, nothing in ~/.npm)" >&2', "js-test-packages", str(_JS_TEST_PACKAGES)), opt_in='test tooling -- the DOM the Node tests run the page scripts on (jsdom), pinned by molbuilder/envs/js/package-lock.json'),
+        ExtraStep(("bash", "-c", 'set -e; D="$CONDA_PREFIX/share/ms-playwright"; H="$CONDA_PREFIX/etc/conda/activate.d"; mkdir -p "$D" "$H"; printf \'export PLAYWRIGHT_BROWSERS_PATH="$CONDA_PREFIX/share/ms-playwright"\\n\' > "$H/playwright-browsers.sh"; export PLAYWRIGHT_BROWSERS_PATH="$D"; "${CONDA_PREFIX:?}/bin/python" -m playwright install chromium; echo "[molbuilder] chromium -> $D (inside the env; removed with it, no sudo, nothing in ~/.cache)" >&2'), opt_in='test tooling -- a ~115 MB browser download, and nobody should pay for it by accident'),
+        ExtraStep(("bash", "-c", f'set -e; D="$CONDA_PREFIX/{JS_TEST_PACKAGES_HOME}"; mkdir -p "$D"; cp "$1/package.json" "$1/package-lock.json" "$D/"; cd "$D"; "${{CONDA_PREFIX:?}}/bin/npm" ci --ignore-scripts --no-audit --no-fund --no-update-notifier; echo "[molbuilder] JS test packages -> $D (inside the env; removed with it, no sudo, nothing in ~/.npm)" >&2', "js-test-packages", str(_JS_TEST_PACKAGES)), opt_in='test tooling -- the DOM the Node tests run the page scripts on (jsdom), pinned by molbuilder/envs/js/package-lock.json'),
     ),
     # NOT A NOTEBOOK KERNEL.  The user's design: the notebook env is
     # SELF-CONTAINED and no other env carries notebook tooling.  See
@@ -1527,7 +1527,8 @@ _SIESTA = Recipe(
     # (`engines/vibration.md` § 6.10.6; the user, 2026-10-26: "siesta can
     # check for numpy and netcdf4").
     verify_argv=("bash", "-c",
-                 "python -c 'import numpy, netCDF4' && siesta --version"),
+                 "\"${CONDA_PREFIX:?}/bin/python\" -c 'import numpy, netCDF4' "
+                 "&& \"${CONDA_PREFIX:?}/bin/siesta\" --version"),
     verify_expect_contains="siesta",
 )
 
@@ -1549,15 +1550,18 @@ _MDTOOLS = Recipe(
     # FEED IT A `quit`, SO IT STOPS BY ITSELF.  An empty script falls through
     # to tleap's interactive prompt, finds no terminal and exits 1 with
     # "*** Error: tl_getline(): not interactive".  With `quit` as the script
-    # it exits 0 ("Exiting LEaP: Errors = 0"), so the exit code counts, and "LEaP" in the banner proves it was THIS env's tleap.
+    # it exits 0 ("Exiting LEaP: Errors = 0"), so the exit code counts, and
+    # "LEaP" in the banner proves tleap answered -- this env's, by its path.
     # /dev/stdin, not a temp file: nothing to clean up, and no leap.log is
     # written into the caller's directory (measured 2026-09-29).
     # ``bash -c`` (no -l) -- we don't need a LOGIN shell here.  -l would
     # source ~/.bash_profile / ~/.profile and pull in user-shell state
     # that can shadow the env's tools (module loads, PATH munging, etc.)
-    # The env's bin/ is on PATH because the manager activates the env,
-    # which is the only setup tleap needs.
-    verify_argv=("bash", "-c", "echo quit | tleap -f /dev/stdin"),
+    # The manager's activation is the only setup tleap needs; the env's
+    # OWN tleap is named by its path (`installation.md` M6): a bare `tleap`
+    # is PATH's, which a system AmberTools answers where this env lacks it.
+    verify_argv=("bash", "-c",
+                 'echo quit | "${CONDA_PREFIX:?}/bin/tleap" -f /dev/stdin'),
     verify_expect_contains="LEaP",
 )
 
@@ -1922,7 +1926,10 @@ _ELPA = BuildComponent(
         'echo "molbuilder ELPA: AVX-512 -> $AVX512_FLAG '
         '(set MOLBUILDER_ELPA_AVX512=1 to enable)" >&2; '
         '"{src}/configure" '
-        ' FC=mpifort CC=mpicc CXX=mpicxx '
+        # THE ENV'S MPI COMPILERS, by path (`installation.md` M6), as
+        # `_PIN_MPI_TOOLS` pins SIESTA's.
+        ' FC={env_prefix}/bin/mpifort CC={env_prefix}/bin/mpicc '
+        ' CXX={env_prefix}/bin/mpicxx '
         ' --prefix={install} '
         ' --enable-shared '
         ' --enable-openmp '
@@ -1957,7 +1964,7 @@ _ELPA = BuildComponent(
         # <cuda_runtime.h>``.
         'cd "{build}"; '
         + _CONDA_CUDA_ENV_BRIDGE +
-        'make -j{jobs}'
+        '"{env_prefix}/bin/make" -j{jobs}'
     ),
     install_argv=(
         "sh", "-c",
@@ -1966,7 +1973,7 @@ _ELPA = BuildComponent(
         # _CONDA_CUDA_ENV_BRIDGE for the assumption that drives this.
         'cd "{build}"; '
         + _CONDA_CUDA_ENV_BRIDGE +
-        'make install'
+        '"{env_prefix}/bin/make" install'
     ),
     # ``--enable-openmp`` makes ELPA's autotools tag the library name
     # with ``_openmp`` (libelpa_openmp.so).  The non-OpenMP build would
@@ -1996,10 +2003,12 @@ _NETCDF_FORTRAN = BuildComponent(
         # build system SIESTA itself uses here, and it reproduces the
         # library version conda-forge publishes (libnetcdff.so.7.1.0;
         # the autotools path emits 7.3.0 from the same source).
-        "cmake",
+        "{env_prefix}/bin/cmake",
         "-S", "{src}",
         "-B", "{build}",
         "-G", "Ninja",
+        # THE ENV'S ninja, by path (`installation.md` M6).
+        "-DCMAKE_MAKE_PROGRAM={env_prefix}/bin/ninja",
         "-DCMAKE_BUILD_TYPE=Release",
         "-DCMAKE_INSTALL_PREFIX={install}",
         "-DCMAKE_INSTALL_LIBDIR=lib",
@@ -2030,19 +2039,20 @@ _NETCDF_FORTRAN = BuildComponent(
         # built with parallel4 + pnetcdf on (``nc-config --has-parallel4``
         # -> yes), which makes CMakeLists run FIND_PACKAGE(MPI REQUIRED)
         # and abort with a fatal error unless the Fortran compiler does
-        # MPI-IO.  They resolve through the env because the installer
-        # dispatches under ``conda run``, whose activation sets
-        # OPAL_PREFIX and puts <env>/bin first on PATH.
-        "-DCMAKE_C_COMPILER=mpicc",
-        "-DCMAKE_Fortran_COMPILER=mpif90",
+        # MPI-IO.  The env's own, by path (`installation.md` M6), as
+        # `_PIN_MPI_TOOLS` pins SIESTA's.
+        "-DCMAKE_C_COMPILER={env_prefix}/bin/mpicc",
+        "-DCMAKE_Fortran_COMPILER={env_prefix}/bin/mpif90",
         # Nothing downstream consumes the test tree or the examples, and
         # the tests want live MPI launches.  Flip these on to have the
         # build self-check.
         "-DENABLE_TESTS=OFF",
         "-DBUILD_EXAMPLES=OFF",
     ),
-    build_argv=("cmake", "--build", "{build}", "-j", "{jobs}"),
-    install_argv=("cmake", "--install", "{build}"),
+    # THE ENV'S cmake, by path (`installation.md` M6).
+    build_argv=("{env_prefix}/bin/cmake", "--build", "{build}", "-j",
+                "{jobs}"),
+    install_argv=("{env_prefix}/bin/cmake", "--install", "{build}"),
     # VERIFY BY COMPILING, NOT BY LOOKING.  `test -f netcdf.mod` passes in
     # exactly the situation this component exists to prevent: the broken
     # env had a perfectly good .so next to a perfectly present .mod that
@@ -2060,7 +2070,9 @@ _NETCDF_FORTRAN = BuildComponent(
         'set -e; d=$(mktemp -d); '
         'printf "program p\n use netcdf\n print *, nf90_noerr\nend program\n"'
         ' > $d/p.f90; '
-        'test -n "$FC" || FC=gfortran; '
+        # The env's own gfortran where conda's activation set none --
+        # never PATH's (`installation.md` M6).
+        'test -n "$FC" || FC={env_prefix}/bin/gfortran; '
         '"$FC" -I"{install}/include" -c $d/p.f90 -o $d/p.o || '
         '( echo "[molbuilder] netcdf.mod is not readable by $FC --"'
         ' "the module ABI does not match this toolchain"'
@@ -2076,10 +2088,12 @@ _SIESTA_GPU_COMPONENT = BuildComponent(
     repo_url=_SIESTA_REPO,
     ref=_SIESTA_REF,
     configure_argv=(
-        "cmake",
+        "{env_prefix}/bin/cmake",
         "-S", "{src}",
         "-B", "{build}",
         "-G", "Ninja",
+        # THE ENV'S ninja, by path (`installation.md` M6).
+        "-DCMAKE_MAKE_PROGRAM={env_prefix}/bin/ninja",
         "-DCMAKE_BUILD_TYPE=Release",
         "-DCMAKE_INSTALL_PREFIX={install}",
         # SIESTA's cmake searches both the env (for conda-installed
@@ -2243,15 +2257,15 @@ _SIESTA_GPU_COMPONENT = BuildComponent(
         # attempt 3 falls back to ``-j1`` for any other parallel-
         # ordering quirk.  cmake --build is incremental; each retry
         # only re-runs pending targets.
-        "cmake --build {build} -j {jobs} "
+        "{env_prefix}/bin/cmake --build {build} -j {jobs} "
         "|| ( echo '[molbuilder] build attempt 1 failed; retrying "
         "parallel (absorbs flook lua.h race)' >&2 "
-        "&& cmake --build {build} -j {jobs} ) "
+        "&& {env_prefix}/bin/cmake --build {build} -j {jobs} ) "
         "|| ( echo '[molbuilder] build attempt 2 failed; final "
         "retry serial -j1' >&2 "
-        "&& cmake --build {build} -j 1 )",
+        "&& {env_prefix}/bin/cmake --build {build} -j 1 )",
     ),
-    install_argv=("cmake", "--install", "{build}"),
+    install_argv=("{env_prefix}/bin/cmake", "--install", "{build}"),
     verify_argv=("{install}/bin/siesta", "--version"),
     # Submodule recursion brings libfdf + libpsml + xmlf90 + libgridxc
     # + ELSI + libxc as External/ subdirectories; SIESTA's cmake
@@ -2545,7 +2559,12 @@ def _siesta_gpu(cuda_version: str) -> Recipe:
             'esac; '
             # numpy and netCDF4 for a vibration's finish, as in
             # `_SIESTA`'s self-test.
-            "python -c 'import numpy, netCDF4' && siesta --version",
+            "\"${CONDA_PREFIX:?}/bin/python\" -c 'import numpy, netCDF4' "
+            # ITS OWN siesta, in the folder its build installs it to, which
+            # its own activation hook names -- never PATH's
+            # (`installation.md` M6); a hook that did not take stops here.
+            "&& \"${MOLBUILDER_SIESTA_GPU_PREFIX:?}/siesta/bin/siesta\" "
+            "--version",
         ),
         verify_expect_contains="siesta",
         system_preconditions=(
@@ -2670,9 +2689,14 @@ _JUPYTER = Recipe(
         # everywhere.  A notebook that inspects a calculation folder wants it.
         "git",
     ),
+    # THE ENV'S OWN PYTHON for both halves -- JupyterLab's version asked
+    # of it, as the notebook is started (`jupyter.notebook_argv`), never a
+    # `jupyter` PATH finds (`installation.md` M6).
     verify_argv=("bash", "-c",
-                 "set -e; jupyter lab --version; "
-                 "python -c \"import jupyter_server, ipykernel, numpy, "
+                 "set -e; \"${CONDA_PREFIX:?}/bin/python\" -m jupyterlab "
+                 "--version; "
+                 "\"${CONDA_PREFIX:?}/bin/python\" -c \"import jupyter_server, "
+                 "ipykernel, numpy, "
                  "scipy, pandas, matplotlib, ase, sisl, netCDF4, xarray; "
                  "print('jupyternb OK')\""),
     verify_expect_contains="jupyternb OK",

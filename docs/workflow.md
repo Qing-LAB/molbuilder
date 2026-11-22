@@ -363,8 +363,9 @@ Two scripts divide the work, and the split is the design:
 | **the Python half** — molbuilder before the run, the engine and the monitor (`mb_monitor.pyz`) during it | everything that computes | describe, resolve, render, arrange, watch |
 
 **And the spelling convention every document uses:** `molbuilder <verb>`
-means `python -m molbuilder <verb>`, run in the activated host env from the
-repo clone. That is the **supported form** — molbuilder is deliberately *not*
+means `"${CONDA_PREFIX:?}/bin/python" -m molbuilder <verb>` — the host env's own Python, by its path
+([`ops/installation.md`](?doc=ops/installation.md) M6) — run in the activated
+host env from the repo clone. That is the **supported form** — molbuilder is deliberately *not*
 pip-installed into its env ([`ops/installation.md`](?doc=ops/installation.md);
 a console-script entry point exists in `pyproject.toml` but is not the
 supported invocation). An evaluation that goes looking for `molbuilder` on

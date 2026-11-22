@@ -40,3 +40,25 @@ def test_a_verdicts_kept_words_read_back_as_the_verdict(verdict):
     from molbuilder.parse.engines._run_ending import (verdict_read,
                                                        verdict_words)
     assert verdict_read(verdict_words(verdict)) == verdict
+
+
+def test_a_stop_s_advice_is_said(tmp_path, capsys):
+    """`running-a-job.md` § 3.5: after a failure the run script asks the
+    advice for its cause (``_mb_ending advice``), and the door prints it --
+    a SIESTA run stopped by ``propor: ERROR: IMAX = 0`` is told to check its
+    pseudopotentials first, with the command that screens them, on the
+    env's own Python (`ops/installation.md` M6).  The advice is a template
+    (``{output}``): a brace of the shell's in it read as a field, and the
+    door said only that the ending cannot be read -- the advice lost on the
+    failure it was written for."""
+    from molbuilder.parse.engines._run_ending import main
+    out = tmp_path / "JOB_01_coarse.out"
+    out.write_text("Siesta Version  : 5.4.2\n"
+                   "reinit: Reading from standard input\n\n"
+                   "propor: ERROR: IMAX = 0\n"
+                   "Stopping Program from Node:    0\n")
+    assert main([str(out), "advice"]) == 0, capsys.readouterr().err
+    said = capsys.readouterr().out
+    assert str(out) in said, said
+    assert ('"${CONDA_PREFIX:?}/bin/python" -m molbuilder pseudo check'
+            in said), said

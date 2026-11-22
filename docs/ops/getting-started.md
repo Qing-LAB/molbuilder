@@ -56,8 +56,9 @@ bash scripts/install-env.sh bootstrap    # finds conda, creates the host
 The bootstrap creates one env per engine (SIESTA, PySCF, …). What each env
 holds, GPU builds, and what to do when one refuses:
 [`ops/installation.md`](?doc=ops/installation.md). Every
-`molbuilder <verb>` below means `python -m molbuilder <verb>` from the
-activated host env in the clone — molbuilder is deliberately not
+`molbuilder <verb>` below means `"${CONDA_PREFIX:?}/bin/python" -m molbuilder <verb>` — the host
+env's own Python, by its path ([`installation.md`](?doc=ops/installation.md)
+M6) — from the activated host env in the clone — molbuilder is deliberately not
 pip-installed.
 
 ---

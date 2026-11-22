@@ -15,7 +15,8 @@ import os
 if "PYTEST_VERSION" not in os.environ:
     raise ImportError(
         "tests/ is test code: it runs only inside pytest "
-        "(`python tools/testrun.py run <files>`), where the suite's sandbox "
+        "(`\"${CONDA_PREFIX:?}/bin/python\" tools/testrun.py run <files>`), "
+        "where the suite's sandbox "
         "keeps every write away from your home, config, state and projects "
         "folders (docs/process/testing.md § 2b) -- never import it into a "
         "script")

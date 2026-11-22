@@ -609,6 +609,9 @@ def cmd_repair(name: str, include_optional: bool,
         else:
             failures.extend(names)
             click.echo(f"[repair]   conda install: FAILED (rc={rc})", err=True)
+            reason = _install.unlaunched_reason(done)
+            if reason:
+                click.echo(f"[repair]     {reason}", err=True)
             if rc in (137, -9):
                 # SIGKILL mid-solve: the classic login-node memory cap
                 # (seen on ASU Sol 2026-08-21 -- mamba's "Resolving
@@ -660,6 +663,9 @@ def cmd_repair(name: str, include_optional: bool,
                 failures.append(pkg.name)
                 click.echo(f"[repair]   {pkg.name}: FAILED "
                            f"(rc={done.returncode})", err=True)
+                reason = _install.unlaunched_reason(done)
+                if reason:
+                    click.echo(f"[repair]     {reason}", err=True)
 
     # Re-audit so the user sees the new state.
     click.echo("[repair]   re-running audit...", err=True)
@@ -877,8 +883,8 @@ def cmd_clean(name: str, auto_yes: bool, dry_run: bool,
         err=True,
     )
     click.echo(
-        f"[clean] runtime binaries intact: `siesta --version` should "
-        f"still work after ``conda activate {effective}``.",
+        f"[clean] runtime binaries intact: the env's own siesta still "
+        f"answers `--version` after ``conda activate {effective}``.",
         err=True,
     )
 
@@ -1229,6 +1235,11 @@ def cmd_install(name: str, dry_run: bool, check: bool,
     if dry_run:
         click.echo(f"# dry-run plan for `{recipe.name}` "
                    f"(effective env: `{effective}`)")
+        # EACH LINE AS THE DOOR CARRIES IT (`builds.as_carried`): at the
+        # env's folder, its Python named by its path -- the line that runs,
+        # and one a person can copy without a bare `python` that PATH
+        # answers (`installation.md` M6).
+        folder = caps.env_prefix(effective)
         for step in plan:
             # A dry run that hides a command which may actually run is a
             # dry run that lied.  A step can carry ALTERNATIVES (tried in
@@ -1237,10 +1248,10 @@ def cmd_install(name: str, dry_run: bool, check: bool,
             # reader is agreeing to -- so both are printed.
             optional = "" if step.fatal else "   [optional -- failure does not stop the install]"
             click.echo(f"# -- {step.label} --{optional}")
-            click.echo(_shell_join(step.argv))
+            click.echo(_shell_join(_builds.as_carried(step.argv, folder)))
             for alt in step.fallbacks:
                 click.echo("# ...or, if that source is unreachable:")
-                click.echo(_shell_join(alt))
+                click.echo(_shell_join(_builds.as_carried(alt, folder)))
         if recipe.build_spec is not None:
             click.echo("")
             # If env exists, probe it.  Otherwise env-specific tools (gcc,

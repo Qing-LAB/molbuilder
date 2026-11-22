@@ -45,7 +45,6 @@ Deliberately not probed:
 """
 from __future__ import annotations
 
-import os
 import re
 import shutil
 import subprocess
@@ -57,6 +56,7 @@ from typing import List, Optional, Tuple
 
 from ..diagnostics import DEFAULT_ENV_NAMES
 from . import builds as _builds
+from . import hints as _hints
 from .recipes import Recipe, recipe_by_name
 
 
@@ -175,6 +175,15 @@ def _run(argv, *, cwd: Optional[Path] = None,
 # --------------------------------------------------------------------- #
 
 
+def _not_its_own(program: str, path: Path) -> str:
+    """What a probe says when the env lacks a program it runs: the env's
+    own, by its path, or none -- no other is tried, and the repair is named
+    (`installation.md` M6).  The driver's own tools (``nvidia-smi``, MPS)
+    are the machine's, not an env's."""
+    return (f"the env has no {program} of its own ({path} is not there); no "
+            f"other is tried -- `{_hints.fix_cmd('doctor')}` names the repair")
+
+
 def _probe_binary_links(env_prefix: str, recipe: Recipe) -> ProbeResult:
     """The conda-forge floor.
 
@@ -241,19 +250,18 @@ def _probe_siesta_ctest_simple(env_prefix: str, recipe: Recipe) -> ProbeResult:
             passed=False,
             detail=f"build dir missing CTestTestfile.cmake at {build_dir}",
         )
-    # Prefer the env's ctest (matches the cmake we built with) over
-    # /usr/bin/ctest (host's, possibly older).  Fall back if needed.
-    env_ctest = Path(env_prefix) / "bin" / "ctest"
-    ctest = str(env_ctest) if env_ctest.is_file() else shutil.which("ctest")
-    if ctest is None:
+    # THE ENV'S ctest, the cmake the build ran with -- never PATH's
+    # (`installation.md` M6).
+    ctest = Path(env_prefix) / "bin" / "ctest"
+    if not ctest.is_file():
         return ProbeResult(
             name="siesta ctest",
             passed=False,
-            detail="ctest not found in env or on PATH",
+            detail=_not_its_own("ctest", ctest),
         )
     start = time.monotonic()
     rc, out = _builds.run_streaming(
-        [ctest, "-E", "verify", "-L", "simple", "--output-on-failure"],
+        [str(ctest), "-E", "verify", "-L", "simple", "--output-on-failure"],
         cwd=build_dir, sink=sys.stderr,
         timeout=120,
     )
@@ -283,20 +291,33 @@ def _probe_elpa_make_check(env_prefix: str, recipe: Recipe) -> ProbeResult:
     ``-k`` so one flake doesn't mask other failures.  Output streams
     live so the user sees per-validator pass/fail as they run.
     """
-    build_dir = _builds.resolve_paths(recipe.build_spec, env_prefix).component_build("elpa")
+    paths = _builds.resolve_paths(recipe.build_spec, env_prefix)
+    build_dir = paths.component_build("elpa")
     if not (build_dir / "Makefile").is_file():
         return ProbeResult(
             name="elpa make check",
             passed=False,
             detail=f"build dir missing Makefile at {build_dir}",
         )
-    env_make = Path(env_prefix) / "bin" / "make"
-    make = str(env_make) if env_make.is_file() else shutil.which("make")
-    if make is None:
+    # THE ENV'S make and mpiexec, the build's and the MPI its validators
+    # were built against -- never PATH's (M6).
+    make = Path(env_prefix) / "bin" / "make"
+    mpiexec = Path(env_prefix) / "bin" / "mpiexec"
+    for program, path in (("make", make), ("mpiexec", mpiexec)):
+        if not path.is_file():
+            return ProbeResult(
+                name="elpa make check",
+                passed=False,
+                detail=_not_its_own(program, path),
+            )
+    from ..diagnostics import get_capabilities
+    caps = get_capabilities()
+    if caps.conda_binary is None:
         return ProbeResult(
             name="elpa make check",
             passed=False,
-            detail="make not found in env or on PATH",
+            detail=_hints.no_manager("ELPA's make check",
+                                     caps.conda_binary_source),
         )
     start = time.monotonic()
     # CHECK_LEVEL=fast is the upstream knob for "smoke test only".
@@ -308,10 +329,18 @@ def _probe_elpa_make_check(env_prefix: str, recipe: Recipe) -> ProbeResult:
     # the user's shell having ``-jN`` set globally.
     # Timeout 1800 s (30 min): realistic for 300+ validators on a
     # consumer GPU.
-    rc, out = _builds.run_streaming(
-        [make, "-j1", "check", "CHECK_LEVEL=fast", "-k"],
-        cwd=build_dir, sink=sys.stderr,
-        env=dict(os.environ, MAKEFLAGS="-j1"),
+    #
+    # THROUGH THE DOOR, under the build's own environment, as the build ran
+    # (M1): ELPA's check scripts start each validator with a bare `mpiexec`
+    # (its Makefile's ``MPI_BINARY``), which the env's own activation finds
+    # first -- the env's -- and ``MPI_BINARY`` named by its path for the
+    # scripts this check writes.
+    rc, out = _builds.dispatch_into_env(
+        _builds.conda_run_prefix_argv(
+            caps.conda_binary, env_prefix, str(make), "-j1", "check",
+            "CHECK_LEVEL=fast", "-k", f"MPI_BINARY={mpiexec}"),
+        env_prefix, cwd=build_dir, sink=sys.stderr,
+        env=dict(_builds.build_env(env_prefix, paths), MAKEFLAGS="-j1"),
         timeout=1800,
     )
     elapsed = time.monotonic() - start
@@ -358,15 +387,15 @@ def _probe_elpa_gpu_codepath(env_prefix: str,
         )
     # ELPA's GPU validators require >= 2 MPI ranks (the runtime
     # explicitly aborts with "must be run with more than 1 task" when
-    # launched bare).  Use the env's mpirun -- both ranks share the
-    # one GPU on a typical workstation, which ELPA handles fine.
-    env_mpirun = Path(env_prefix) / "bin" / "mpirun"
-    mpirun = str(env_mpirun) if env_mpirun.is_file() else shutil.which("mpirun")
-    if mpirun is None:
+    # launched bare).  The env's mpirun, the MPI the validator was built
+    # against -- never PATH's (M6); both ranks share the one GPU on a
+    # typical workstation, which ELPA handles fine.
+    mpirun = Path(env_prefix) / "bin" / "mpirun"
+    if not mpirun.is_file():
         return ProbeResult(
             name="elpa gpu codepath",
             passed=False,
-            detail="mpirun not found in env or on PATH",
+            detail=_not_its_own("mpirun", mpirun),
         )
     # 1000 / 500 / 16 -- small enough to run in <5 s, large enough to
     # exercise the kernel meaningfully.  argv order is "na nev nblk"
@@ -374,7 +403,7 @@ def _probe_elpa_gpu_codepath(env_prefix: str,
     # ``--oversubscribe`` lets us run 2 ranks on a single-socket box
     # without conda's mpirun complaining about CPU count.
     rc, out = _run(
-        [mpirun, "--oversubscribe", "-n", "2", str(validator),
+        [str(mpirun), "--oversubscribe", "-n", "2", str(validator),
          "1000", "500", "16"],
         cwd=build_dir,
         timeout=120,
@@ -503,13 +532,19 @@ def _probe_cuda_stack(env_prefix: str, recipe: Recipe) -> ProbeResult:
     # libcuda.so.1 lives in /usr/lib/x86_64-linux-gnu/ (driver pkg);
     # if it can't be dlopen'd, SIESTA's CUDA-linked code will segfault
     # on first call.
+    # THE ENV'S OWN PYTHON, by its path -- never PATH's, which would measure
+    # the library through another install (`installation.md` M6).
     py = Path(env_prefix) / "bin" / "python"
     if not py.is_file():
-        py_str = shutil.which("python") or "python"
-    else:
-        py_str = str(py)
+        return ProbeResult(
+            name="cuda stack",
+            passed=False,
+            detail=_not_its_own("Python", py),
+            output=_trim(out),
+        )
     rc2, out2 = _run(
-        [py_str, "-c", "import ctypes; ctypes.CDLL('libcuda.so.1'); print('ok')"],
+        [str(py), "-c",
+         "import ctypes; ctypes.CDLL('libcuda.so.1'); print('ok')"],
         timeout=15,
     )
     if rc2 != 0 or "ok" not in out2:

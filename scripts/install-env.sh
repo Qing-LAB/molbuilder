@@ -15,8 +15,8 @@
 #        found and ask the user to confirm (unless --yes is passed).
 #     2. On ``bootstrap``: ensure the host env exists (auto-create
 #        from the inlined HOST_*_PACKAGES list if missing).
-#     3. Forward "$@" verbatim to `python -m molbuilder envs ...`
-#        inside the host env.
+#     3. Forward "$@" verbatim to `-m molbuilder envs ...` on the host
+#        env's own Python, by its path (docs/ops/installation.md M6).
 #
 #   TWO flags break rule 3, and only two: ``--gcc <X.Y>`` and
 #   ``--python <X.Y>``.  Both are consumed here and re-exported
@@ -77,9 +77,9 @@
 #   This shim is the canonical entry point.  molbuilder is not
 #   pip-installed into the host env, so after ``conda activate
 #   molbuilder`` the bare ``molbuilder`` command does NOT exist on
-#   PATH -- you'd need ``python -m molbuilder ...`` with PYTHONPATH
-#   pointed at the repo root.  Sticking with the shim avoids that
-#   footgun.
+#   PATH -- you'd need the env's own Python running ``-m molbuilder ...``
+#   with PYTHONPATH pointed at the repo root.  Sticking with the shim
+#   avoids that footgun.
 #
 # EXIT CODES:
 #   0 = OK
@@ -94,7 +94,7 @@ set -euo pipefail
 #
 # molbuilder is NOT pip-installed (intentional convention -- the
 # host env's site-packages does not contain ``molbuilder``).  So
-# ``python -m molbuilder`` needs the repo on PYTHONPATH.  Resolving
+# ``-m molbuilder`` needs the repo on PYTHONPATH.  Resolving
 # the repo root from the script's own location lets us call the
 # shim from any CWD; the user's CWD is preserved.  (A ./molbuilder.json
 # is NOT read -- retired 2026-08-31; the machine config has one home.)
@@ -467,13 +467,15 @@ Two equivalent entry points (use whichever you prefer):
   (a) This shim:
         bash scripts/install-env.sh <subcommand> [flags]
 
-  (b) The Python CLI, after activating the host env:
+  (b) The Python CLI, after activating the host env -- its own Python,
+      named by its path (docs/ops/installation.md M6):
         conda activate molbuilder
-        python -m molbuilder envs <subcommand> [flags]
+        "${CONDA_PREFIX:?}/bin/python" -m molbuilder envs <subcommand> [flags]
 
   (Note: molbuilder is intentionally NOT pip-installed into the
   host env, so the bare ``molbuilder`` command does NOT exist on
-  PATH after activation -- ``python -m molbuilder`` is the form,
+  PATH after activation -- the env's Python running ``-m molbuilder``
+  is the form,
   and PYTHONPATH must point at the repo root.  The shim sets
   PYTHONPATH for you, which is why it Just Works from any CWD.)
 
@@ -529,11 +531,11 @@ Environment variables:
                                  pyproject.toml's requires-python;
                                  the --python flag refuses below it before the
                                  solver runs.  EVERY env, with no
-                                 exception: the generated wrapper runs its job
-                                 monitor on whatever python the activated env
-                                 supplies, so an env declaring none falls
-                                 through to the compute node's interpreter --
-                                 a version nothing here can promise exists.
+                                 exception: a job runs its monitor, its
+                                 ending reader and its finish on the
+                                 activated env's own python, and a job whose
+                                 env holds none stops at its first check,
+                                 before anything runs.
                                  Equivalent to the --python <X.Y> flag.
   MOLBUILDER_GCC                 source-build recipes: which
                                  gcc/gxx/gfortran_linux-64 to install.
@@ -1083,12 +1085,13 @@ recreate_host_env() {
 # Why: some mambas' ``run`` (1.x; Sol's 2.9.0 module too) generate a shell stub that uses
 # ``exec -- "$@"`` -- bash's exec builtin rejects ``--`` with
 # ``line 5: exec: --: invalid option`` and the whole dispatch dies.
-# Calling the env's python directly avoids the buggy stub and works
-# the same way as a ``conda activate molbuilder && python ...``
-# without needing activate.d hooks (which only set up shell PATH /
-# LD_LIBRARY_PATH that this python invocation doesn't need).
+# Calling the env's own python by its path avoids the buggy stub, and is
+# the one Python M6 allows (docs/ops/installation.md): never a bare
+# ``python``, which activation does not put first on PATH.  It needs no
+# activate.d hooks (they only set up shell PATH / LD_LIBRARY_PATH that this
+# invocation doesn't need).
 #
-# PYTHONPATH=$REPO_ROOT so ``python -m molbuilder`` finds the package
+# PYTHONPATH=$REPO_ROOT so ``-m molbuilder`` finds the package
 # regardless of the user's CWD (molbuilder is intentionally not
 # pip-installed into the host env).
 

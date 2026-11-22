@@ -59,10 +59,15 @@ def _get_oauth(app):
     try:
         from authlib.integrations.flask_client import OAuth
     except ImportError:
+        # THE HOST ENV'S REPAIR, the one spelling (`envs.hints`): it installs
+        # what the env declares through the env's own Python -- never a
+        # `pip` PATH answers (`ops/installation.md` M3, M6).
+        from ...envs.hints import fix_cmd
         raise ImportError(
             "molbuilder auth: 'Authlib' is required for OAuth backends "
-            "(google / github / microsoft / orcid).  Install with "
-            "`pip install molbuilder[auth]` or `pip install authlib`."
+            "(google / github / microsoft / orcid), and the host env "
+            "declares it.  Install what it declares: "
+            f"`{fix_cmd('repair', 'molbuilder')}`."
         ) from None
     if _OAUTH_CLIENTS_EXT_KEY not in app.extensions:
         app.extensions[_OAUTH_CLIENTS_EXT_KEY] = {

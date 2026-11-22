@@ -325,9 +325,9 @@ prefix of the env it runs in. A pin is changed in `package.json`, and the lockfi
 rewritten in that folder by the host env's own npm, its cache in that env:
 
 ```
-conda activate molbuilder      # its npm, and its $CONDA_PREFIX
+conda activate molbuilder      # its $CONDA_PREFIX, whose own npm runs below (installation.md M6)
 cd molbuilder/envs/js
-npm_config_cache="$CONDA_PREFIX/var/cache/npm" npm install --package-lock-only --ignore-scripts
+npm_config_cache="$CONDA_PREFIX/var/cache/npm" "${CONDA_PREFIX:?}/bin/npm" install --package-lock-only --ignore-scripts
 ```
 
 `doctor` does not check what an install step puts down — the browser or these
@@ -631,7 +631,10 @@ through `run_step`, so the wipe carries an `Outcome` and a line in the result
 the verdict is derived from (§ 5.3).
 
 `validate.py`'s post-install probes (SIESTA's `ctest`, ELPA's `make check`)
-dispatch on their own. They are not install steps and do not become them: they
+are not install steps and do not become them — ELPA's check enters the env
+through the one door (§ 5.6), so the bare `mpiexec` its scripts start is the
+env's ([`installation.md`](?doc=ops/installation.md) M6), and the others run
+the env's binaries by path: they
 answer "is this build scientifically sane", they need a working directory and
 their own output parsing, and they report a `ProbeResult`. The rule is that every
 `InstallStep` goes through `run_step`, not that no subprocess may exist.
@@ -650,7 +653,12 @@ than re-derives.
 
 `run_step` decides *whether* a step is accepted; this is about *how* its argv
 reaches the env's packages — and the rule is that molbuilder does not answer
-that question itself.
+that question itself. **What it reaches is the env's own**
+([`installation.md`](?doc=ops/installation.md) M6): the door hands the manager
+no active env, so the manager's activation puts the env's `bin` first on
+`PATH`; a Python it carries is named by its path, or refused
+(`builds.env_python_argv`); a tool molbuilder routes runs from its env by its
+path, never the host's `PATH` (`envs.run_tool`).
 
 **The manager activates.** `_run_argv` is the one spelling —
 `<mgr> run -n <env> --no-capture-output …`, re-addressed at `--prefix` once the
@@ -692,7 +700,7 @@ rejects. Two things follow:
 the prefix so `env remove` really cleans up (a verify, which creates nothing in
 the env it reads, is handed only those folders that are there), and `builds.build_subprocess_env()`'s stripping of host `CPATH` /
 `CFLAGS` / `CUDA_HOME` / `OMPI_*` leakage — is computed by `builds.env_for_step`
-inside `run_step` (and by `builds._build_env` for a build phase). A step does not
+inside `run_step` (and by `builds.build_env` for a build phase and `envs validate`'s ELPA check). A step does not
 choose its environment; `run_step` takes none from its caller.
 
 **What this does NOT cover: a generated job script.** `runwrap.py` writes the
@@ -713,12 +721,13 @@ detected manager and never proposes destroying the env the process is running
 from: [`installation.md`](?doc=ops/installation.md) § *"One door for RUNNING"*
 M2, M3, M5.
 
-**Where it lives.** `dispatch_into_env`, `activation_wrapper`, `env_for_step`
-and the run speller are in `builds.py`, beside `run_streaming` and
+**Where it lives.** `dispatch_into_env`, `env_python_argv`, `as_carried` (the
+line a dry run prints, as the door carries it), `activation_wrapper`,
+`env_for_step` and the run speller are in `builds.py`, beside `run_streaming` and
 `build_subprocess_env` — the lowest layer, because every caller must enter an
 env identically: the step runner (`install.run_step`), the build executor
 (`builds._run_build_phase`) and its installed-and-working gate, the tool router
-(`_dispatch.run_in_env`), and the notebook's start (`jupyter.py`, which passes
+(`_dispatch.run_in_env`), `envs validate`'s ELPA check, and the notebook's start (`jupyter.py`, which passes
 no pipe and so gives up the automatic fallback). One place writes the command line (`_run_argv`) and there
 are two public addresses — `conda_run_argv` by name, for the planner, which has
 no prefix because `plan_install` runs nothing; `conda_run_prefix_argv` by prefix,

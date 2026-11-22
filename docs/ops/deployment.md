@@ -23,11 +23,12 @@ front of it**.
 **`serve` is a group of verbs** — a verb is named, never implied:
 
 ```bash
-python -m molbuilder serve start        # background: detach, log, pidfile
-python -m molbuilder serve status       # SURVEYS every server; --port for one
-python -m molbuilder serve restart      # recycle the server in place
-python -m molbuilder serve stop         # bring it down
-python -m molbuilder serve foreground   # today's terminal-bound run (dev)
+conda activate molbuilder               # the host env; its own Python below (installation.md M6)
+"${CONDA_PREFIX:?}/bin/python" -m molbuilder serve start        # background: detach, log, pidfile
+"${CONDA_PREFIX:?}/bin/python" -m molbuilder serve status       # SURVEYS every server; --port for one
+"${CONDA_PREFIX:?}/bin/python" -m molbuilder serve restart      # recycle the server in place
+"${CONDA_PREFIX:?}/bin/python" -m molbuilder serve stop         # bring it down
+"${CONDA_PREFIX:?}/bin/python" -m molbuilder serve foreground   # today's terminal-bound run (dev)
 ```
 
 ### 1.0a `serve start` — the background server
@@ -251,7 +252,7 @@ first** — anything you conclude before that describes the old build. A route
 that 404s while `create_app()` lists it is this, every time:
 
 ```bash
-python -c "from molbuilder.web.app import create_app; \
+"${CONDA_PREFIX:?}/bin/python" -c "from molbuilder.web.app import create_app; \
 print([str(r) for r in create_app(config={}).url_map.iter_rules() if 'bench' in str(r)])"
 ```
 
@@ -359,7 +360,7 @@ reach your server.
 **Step 2 — run the wizard on the server**, in the clone:
 
 ```bash
-python -m molbuilder auth-setup --provider google
+"${CONDA_PREFIX:?}/bin/python" -m molbuilder auth-setup --provider google
 ```
 
 Paste the client ID and secret at the prompts (the secret is typed
@@ -371,7 +372,7 @@ and the secret into `<config dir>/secrets/google_client_secret`
 **Step 3 — restart and test:**
 
 ```bash
-python -m molbuilder serve restart --port 8888
+"${CONDA_PREFIX:?}/bin/python" -m molbuilder serve restart --port 8888
 ```
 
 Open the site: you get a login page with a Google button. Sign in
@@ -380,7 +381,7 @@ with one of the allowed accounts.
 ### 3.2 ASURITE sign-in (CAS)
 
 ```bash
-python -m molbuilder auth-setup --provider asu
+"${CONDA_PREFIX:?}/bin/python" -m molbuilder auth-setup --provider asu
 ```
 
 No console, no secret — CAS has neither. The allowed user is your
@@ -648,7 +649,7 @@ mkdir -p -m 700 "$cfg"
 # creates it on first run if you skip this.  Every credential lives in
 # `secrets/`; nothing molbuilder keeps sits beside the config.
 mkdir -p -m 700 "$cfg/secrets"
-python -c "import secrets; print(secrets.token_hex(32))" > "$cfg/secrets/secret_key"
+"${CONDA_PREFIX:?}/bin/python" -c "import secrets; print(secrets.token_hex(32))" > "$cfg/secrets/secret_key"
 chmod 600 "$cfg/secrets/secret_key"
 
 # One file per OAuth provider KIND, at the name molbuilder reads it from:

@@ -306,7 +306,9 @@ of a vibration's run (a transport rung's charge is 0 by rule, so it never gets
 one) — `siesta/seam.py::_siesta_sibling_artifacts` →
 `siesta/makov_payne.py` — that estimates the residual image-charge energy after
 the run. It is not part of the `.fdf` itself: the deck's own text instructs
-`python3 makov_payne_correction.py`, and that file has to exist, which is why
+`"${CONDA_PREFIX:?}/bin/python" makov_payne_correction.py`, the run's env active — its own Python, by
+its path ([`ops/installation.md`](?doc=ops/installation.md) M6; the script
+carries no interpreter line) — and that file has to exist, which is why
 one writer owns both routes. **It reports the structure's own energy** — the
 step each phase's rule names (`vibration_phases.PhaseRule.energy_step`): a run's
 last, but a force-constant run's first, its reference geometry before the
@@ -762,7 +764,9 @@ running stage, and `# frozen_atoms: <i> ...`, the atoms the run holds
 A verbose "Run with" header names the managed way first — `molbuilder jobset
 launch task`, its group's first launch, and `launch task --stage <stage>`, the
 stage alone (`identity.deck_launch`) — and then the plain
-`mpirun -np N siesta < <deck>.fdf > <deck>.out`, to drive SIESTA yourself,
+`"${CONDA_PREFIX:?}/bin/mpirun" -np N "${CONDA_PREFIX:?}/bin/siesta" < <deck>.fdf > <deck>.out`
+(the GPU build's `siesta` by the folder its activation hook names), the env's own programs by their paths
+([`ops/installation.md`](?doc=ops/installation.md) M6), to drive SIESTA yourself,
 whose names come from
 `runfiles` like every name a deck prints. The Results tab opens the run's own
 `.out` before the seeded `.molwatch.log`

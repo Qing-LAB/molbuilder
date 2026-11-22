@@ -4,18 +4,16 @@
 #    make test         every test except ``slow``, e2e included, in one
 #                      process (the runner is tools/testrun.py)
 #    make test-all     full pytest sweep INCLUDING slow-marked tests
-#    make web          launch the dev server on :8080 (foreground)
-#    make web-bg       launch the dev server in the background
-#    make stop-web     kill any background dev server
 #    make precommit    install + run pre-commit hooks once on all files
 #    make clean        drop pyc / __pycache__ / pytest cache
 
-PY        ?= python
+# THE HOST ENV'S OWN PYTHON, by its path (docs/ops/installation.md M6):
+# never a bare `python`, which activation does not put first on PATH.  No
+# env active: said, nothing run.
+PY        ?= $(if $(CONDA_PREFIX),$(CONDA_PREFIX)/bin/python,$(error no env is active -- run `conda activate molbuilder` first; molbuilder runs on the host env's own Python))
 PYTEST    ?= $(PY) -m pytest
-HOST      ?= 127.0.0.1
-PORT      ?= 8080
 
-.PHONY: test test-all web web-bg stop-web precommit clean help
+.PHONY: test test-all precommit clean help
 
 help:
 	@grep -E '^\.PHONY|^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | head -20
@@ -33,37 +31,13 @@ test:
 test-all:
 	$(PYTEST) -q
 
-# Launch the Flask dev server in the foreground.  Ctrl-C to stop.
-web:
-	$(PY) -m molbuilder web --host $(HOST) --port $(PORT)
-
-# Background variant -- writes PID file, redirects logs.
-web-bg:
-	@if [ -f /tmp/molbuilder-web.pid ] && kill -0 $$(cat /tmp/molbuilder-web.pid) 2>/dev/null; then \
-		echo "dev server already running (PID $$(cat /tmp/molbuilder-web.pid))"; \
-		exit 1; \
-	fi
-	@nohup $(PY) -m molbuilder web --host $(HOST) --port $(PORT) >/tmp/molbuilder-web.log 2>&1 & \
-		echo $$! > /tmp/molbuilder-web.pid && \
-		sleep 1 && \
-		echo "dev server up at http://$(HOST):$(PORT)  (PID $$(cat /tmp/molbuilder-web.pid); log /tmp/molbuilder-web.log)"
-
-stop-web:
-	@if [ -f /tmp/molbuilder-web.pid ]; then \
-		kill $$(cat /tmp/molbuilder-web.pid) 2>/dev/null || true; \
-		rm -f /tmp/molbuilder-web.pid; \
-		echo "dev server stopped"; \
-	else \
-		echo "no PID file at /tmp/molbuilder-web.pid"; \
-	fi
-
 # One-shot pre-commit run over the whole tree (useful before pushing
 # a long-pending branch -- normal commits trigger only modified files).
 precommit:
-	@command -v pre-commit >/dev/null 2>&1 || \
-		(echo "pre-commit not installed; run 'pip install pre-commit'"; exit 1)
-	pre-commit install
-	pre-commit run --all-files
+	@$(PY) -c "import pre_commit" 2>/dev/null || \
+		(echo "pre-commit is not in the host env: molbuilder declares none, and the hook is optional (docs/process/conventions.md)"; exit 1)
+	$(PY) -m pre_commit install
+	$(PY) -m pre_commit run --all-files
 
 clean:
 	find . -name __pycache__ -type d -prune -exec rm -rf {} +

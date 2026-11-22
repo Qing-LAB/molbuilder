@@ -6,7 +6,7 @@ pytest's stdout to a file, which buffers until the process exits.
 
 Enable it on any pytest run:
 
-    python -m pytest <targets> -p tools.progress_plugin --progress-file=PATH
+    "${CONDA_PREFIX:?}/bin/python" -m pytest <targets> -p tools.progress_plugin --progress-file=PATH
 
 ``tools/testrun.py`` wires this up for you (per-batch files under
 ``.test-progress/``) and reads the file back with ``status``.

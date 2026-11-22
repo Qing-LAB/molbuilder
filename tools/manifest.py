@@ -12,8 +12,8 @@ owns:
     <!-- manifest:<level> -->  ...  <!-- /manifest -->
 
 Usage, from the repository's root:
-    python -m tools.manifest           # rewrite the tables in place
-    python -m tools.manifest --check   # exit 1 when the document differs
+    "${CONDA_PREFIX:?}/bin/python" -m tools.manifest           # rewrite the tables in place
+    "${CONDA_PREFIX:?}/bin/python" -m tools.manifest --check   # exit 1 when the document differs
 
 A DOOR THAT DOES NOT EXIST IS REFUSED, not rendered: a contract that names a
 function the code does not have is how `project-layout.md` § 4.5 came to send
@@ -91,7 +91,8 @@ def main(argv=None) -> int:
         if rendered != text:
             print(f"{DOC}: § 5 differs from the catalogue "
                   f"(runfiles.WRITTEN, ENGINE_FILES) -- run "
-                  f"`python -m tools.manifest`", file=sys.stderr)
+                  '`"${CONDA_PREFIX:?}/bin/python" -m tools.manifest`',
+                  file=sys.stderr)
             return 1
         return 0
     DOC.write_text(rendered, encoding="utf-8")

@@ -103,7 +103,7 @@ rather than depending on hidden browser state.
 2. Inspect the structure and save it to a project folder.
 3. On **Structure optimization**, choose PySCF and **Send to Task setup**.
 4. On **Task setup**, save the description and press **Prep**; launch it from a
-   terminal: `python -m molbuilder jobset launch task --bundle <project>/<topic>/<calculation>`.
+   terminal, the host env active: `"${CONDA_PREFIX:?}/bin/python" -m molbuilder jobset launch task --bundle <project>/<topic>/<calculation>`.
 5. On **Spectrum calculation**, load the optimized structure, describe the
    vibration, Send it to Task setup, and prep and launch it the same way.
 6. Open the resulting `.spectra.json` in **Results** to inspect peaks, modes,
@@ -132,12 +132,15 @@ bash scripts/install-env.sh bootstrap --yes
 
 # Start the local web application.
 conda activate molbuilder
-python -m molbuilder serve start
+"${CONDA_PREFIX:?}/bin/python" -m molbuilder serve start
 ```
 
 Open <http://127.0.0.1:8000>. The app opens on the **Molbuilder** workspace.
-The supported command form is `python -m molbuilder ...` from the repository
-checkout. You activate only the host environment. The web application and
+The supported command form is `"${CONDA_PREFIX:?}/bin/python" -m molbuilder ...` from the repository
+checkout, the host environment active: its own Python, named by its path, never
+a bare `python` — activation does not put the env's Python first on `PATH`
+([installation guide](docs/ops/installation.md), M6). You activate only the host
+environment. The web application and
 generated run scripts select and activate the correct SIESTA or PySCF backend
 environment for you. The job files preserve that backend choice when you run
 locally or transfer a prepared run directory to a cluster. The [installation guide](docs/ops/installation.md) covers SIESTA,
@@ -185,7 +188,7 @@ flowchart TD
     P["Shared deployment<br/>reverse proxy + TLS + optional SSO"] --> S
 ```
 
-- **Local workstation:** `python -m molbuilder serve start` binds to loopback
+- **Local workstation:** `"${CONDA_PREFIX:?}/bin/python" -m molbuilder serve start` binds to loopback
   by default. This is the simplest and safest starting point.
 - **Lab network:** a non-loopback bind requires TLS. TLS encrypts traffic, but
   it does not add user authentication by itself.

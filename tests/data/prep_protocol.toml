@@ -565,10 +565,15 @@ refused = ["Benchmarks measure SIESTA runs only", "a PySCF run"]
 made_lacks = ["01_coarse/bench"]
 
 [[case]]
-name = "a charged deck tells a person to run the Makov-Payne correction, and prep ships that script beside it (siesta.md, the correction script)"
+name = "a charged deck tells a person to run the Makov-Payne correction on the run env's own Python, and prep ships that script beside it (siesta.md, the correction script; installation.md M6)"
 template = { net_charge = 1 }
-deck = ["python3 makov_payne_correction.py"]
+deck = ['"${CONDA_PREFIX:?}/bin/python" makov_payne_correction.py']
 made = ["01_coarse/makov_payne_correction.py", "01_coarse/run-0/makov_payne_correction.py"]
+
+[[case]]
+name = "a PySCF deck tells a person who drives it by hand to start it on the env's own Python, by its path (running-a-job.md, to drive the engine yourself; installation.md M6)"
+engine = "pyscf"
+deck = ['"${CONDA_PREFIX:?}/bin/python" ']
 
 # ===================================================================== #
 #  A GROUP: STAGES THAT SHARE ONE JOB -- `engines/stages.md` § 2        #

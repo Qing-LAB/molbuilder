@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Every place molbuilder SEARCHES for a path, and the door that NAMES it.
 
 WHY THIS IS A TOOL AND NOT A TABLE IN A DOCUMENT.  `plans/plan.md` § 5k is the
@@ -19,9 +18,9 @@ one exception, none that FINDS it, so a caller with a question spells a
 pattern and the layout rule gains a site.  This counts the sites and names the
 door each one should have asked.
 
-    python tools/classify_path_finders.py            # the summary
-    python tools/classify_path_finders.py --list owned
-    python tools/classify_path_finders.py --json
+    "${CONDA_PREFIX:?}/bin/python" tools/classify_path_finders.py            # the summary
+    "${CONDA_PREFIX:?}/bin/python" tools/classify_path_finders.py --list owned
+    "${CONDA_PREFIX:?}/bin/python" tools/classify_path_finders.py --json
 
 OVERRIDES ARE KEYED BY (file, enclosing function, pattern) -- NEVER BY LINE.
 An earlier classifier keyed its reasons by line number and two of them came

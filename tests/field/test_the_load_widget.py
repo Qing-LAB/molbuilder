@@ -5,7 +5,7 @@ Goal: the widget's GPU cells are the tool's own numbers, one row per device.
 What the tool prints is read where it is printed: this runs on the target,
 against its real tool, and is skipped where no device is visible.
 
-    MOLBUILDER_FIELD_RECORD=<the record> python tools/testrun.py run field
+    MOLBUILDER_FIELD_RECORD=<the record> "${CONDA_PREFIX:?}/bin/python" tools/testrun.py run field
 """
 from __future__ import annotations
 

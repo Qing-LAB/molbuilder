@@ -76,7 +76,7 @@ section named in the last column.
 | 8 | the job's python | checks that `CONDA_PREFIX` names its environment and `$_mb_py` is there; otherwise it concludes `no env python (<path>)` | § 2.2a |
 | 9 | the counts | resolves the rank and thread counts (flag, then environment, then the stated value); one that is not a positive integer stops the start, concluding `a count that is not a positive integer (<flag>)` | § 3.1, § 3.2 |
 | 10 | threads, GPUs, memory | exports the thread count; where the engine runs ranks, pins BLAS to one thread, balances the ranks over the GPUs of a job that uses one, starting MPS where ranks share a GPU, and prints the occupancy notice; sets the memory cap the run states, unless its engine's deck applies it | § 3.1a, § 3.2, § 3.3 |
-| 11 | the banner | where the engine runs a program, asks it what it was built with and picks `mpirun` or the program alone — a deck that is a script runs on the job's python; prints the banner (§ 4.1), its held atoms as prep read them from the deck's own record | § 2.3, § 4.1 |
+| 11 | the banner | where the engine runs a program, takes its environment's own (otherwise it concludes `<program> not in its env (<env folder>)`), asks it what it was built with and picks its environment's own `mpirun` (none: `mpirun not in its env (<path>)`) or the program alone — a deck that is a script runs on the job's python; prints the banner (§ 4.1), its held atoms as prep read them from the deck's own record | § 2.3, § 4.1 |
 | 12 | the resolved launch, and a dry run | logs the command's shape, the launch mode and the counts (`resolved launch :`) — the time limit's words are counted at step 17; `--dry-run` then prints them with each count's source and exits 0, nothing started | § 3.4 |
 | 13 | the monitor | starts `mb_monitor.pyz` at `nice 19`, watching the run script's own PID (`MB_MONITOR=0`: none) | [`run-reports.md`](?doc=execution/run-reports.md) § 2.4, § 2.6 |
 | 14 | can the job finish itself | *(a job with a finish)* checks that the finish bundle loads on the job's python; otherwise it concludes `finish cannot load (<bundle>)` | § 2.2a |
@@ -124,13 +124,13 @@ molbuilder: detected phys_cores=20, n_sockets=2, cores_per_socket=10
   Threading      : OMP_NUM_THREADS=1 (from -omp flag), OPENBLAS=1, MKL=1
   Mode           : a clean start (no restart file here)
   Held atoms     : none held -- every atom free
-  Command        :  mpirun -np 1  siesta H2_01_coarse.fdf > H2_01_coarse.out
+  Command        :  <env>/bin/mpirun -np 1  <env>/bin/siesta H2_01_coarse.fdf > H2_01_coarse.out
   Time limit     : 1800s from the job's start; SIESTA stops 600s before it
 [09:58:43-0700] [INFO ] monitor: mb_monitor.pyz started
 [09:58:43-0700] [INFO ] time limit: 1798s left of 1800s; SIESTA stops 600s before it
-[09:58:43-0700] [INFO ] the command:  mpirun -np 1  siesta -fdf MaxWalltime=1798:s -fdf MaxWalltime.Slack=600:s H2_01_coarse.fdf > H2_01_coarse.out
+[09:58:43-0700] [INFO ] the command:  <env>/bin/mpirun -np 1  <env>/bin/siesta -fdf MaxWalltime=1798:s -fdf MaxWalltime.Slack=600:s H2_01_coarse.fdf > H2_01_coarse.out
 [09:59:08-0700] [INFO ] benchmark: SIESTA wall 24.9s, 54 SCF rows in H2_01_coarse.scf-timing.log
-SIESTA completed:  mpirun -np 1  siesta -fdf MaxWalltime=1798:s -fdf MaxWalltime.Slack=600:s H2_01_coarse.fdf > H2_01_coarse.out
+SIESTA completed:  <env>/bin/mpirun -np 1  <env>/bin/siesta -fdf MaxWalltime=1798:s -fdf MaxWalltime.Slack=600:s H2_01_coarse.fdf > H2_01_coarse.out
 ```
 
 and its `H2_01_coarse.concluded`: `rc=0 at Mon Nov  2 09:59:08 AM MST 2026`. A PySCF run's banner, from the same
@@ -237,8 +237,9 @@ The rule, at the two moments that matter:
 So at run time the script never runs `which conda`, never reads `molbuilder.json` and never uses `conda run`.
 It runs the activation **verbatim** (`conda activate <env>` or `source activate <env>`), then launches the
 engine. What it asks on the node about its own environment — whether the activation gave it its environment's
-python (§ 2.2a) and its program (§ 2.2) — is a check of what it was given, not a choice; and its program's build
-is asked what it was compiled with only to choose `mpirun` or the program alone (§ 2.3;
+python (§ 2.2a), its program and, for a launch under MPI, its `mpirun` (§ 2.3) — is a check of what it was
+given, not a choice; and its program's build is asked what it was compiled with only to choose `mpirun` or the
+program alone (§ 2.3;
 [`job-contracts.md`](?doc=execution/job-contracts.md) § 2.1).
 
 ### 2.2 What prep bakes in, and what it says
@@ -252,8 +253,9 @@ is asked what it was compiled with only to choose `mpirun` or the program alone 
 - **What is missing is said, never installed.** A job that uses a GPU on a target whose record lists no GPU build
   of SIESTA is said at prep, with the command that installs it, and prepared as asked
   ([`gpu.md`](?doc=execution/gpu.md) G6); the run script then stops at its activation. On the node, the run
-  script checks what only the node can check: its environment's python (§ 2.2a), and that its program is on
-  `PATH` (otherwise it concludes `<program> not on PATH`).
+  script checks what only the node can check: its environment's python (§ 2.2a), that its program is its
+  environment's own (otherwise it concludes `<program> not in its env (<env folder>)`), and, for a launch under
+  MPI, that its environment holds its own `mpirun` (otherwise `mpirun not in its env (<path>)`) — § 2.3.
 - **What does not hold together is refused, naming the way out** — an engine record that runs ranks and names
   no program (when the table loads), a job's program its engine's record does not name, an environment category
   no environment is registered for (`diagnostics.DEFAULT_ENV_NAMES`, overridable in `molbuilder.json`'s `envs`,
@@ -336,10 +338,18 @@ it — never from the deck's name ([`architecture.md`](?doc=execution/architectu
 - **The record's `environment`** — SIESTA's `siesta` category, `molbuilder-siesta`; PySCF's `pyscf`,
   `molbuilder-pySCF`.
 - **The program, where the record names one** — SIESTA's `siesta`, or the job's own (`Job.program`: a
-  transmission's `tbtrans`). How it is launched is decided on the node by what the build says it was compiled
-  with (`<program> --version`'s `Parallelisations` line): an MPI build runs under `mpirun -np N`; an
-  OpenMP-only build and a serial build run alone; a probe that says nothing runs under `mpirun`, the safe
-  default for an MPI-compiled binary. The banner says which (`Launch mode`). **A record that names no program**
+  transmission's `tbtrans`) — **is its environment's own, and so is its `mpirun`** *(the user, 2026-11-21:
+  "Env's own, else stop"; [`ops/installation.md`](?doc=ops/installation.md) M6)*: the first by that name on
+  `PATH` in a folder of the environment's — its `bin`, or a folder its own activation hooks add (the GPU
+  build's) — never one `PATH` holds ahead of it, which a site's module loaded by the record's preamble can;
+  and `$CONDA_PREFIX/bin/mpirun`, the MPI the program was built against. Where the environment has no such
+  program, or a launch under MPI finds no `mpirun` of its own, the job stops before its engine starts, saying
+  which and naming the repair — its recipe installed again, as for its python (§ 2.2a) — its conclusion
+  `<program> not in its env (<env folder>)` or `mpirun not in its env (<path>)`. How it is launched
+  is decided on the node by what the build says it was compiled with (`<program> --version`'s
+  `Parallelisations` line): an MPI build runs under that `mpirun -np N`; an OpenMP-only build and a serial
+  build run alone; a probe that says nothing runs under `mpirun`, the safe default for an MPI-compiled
+  binary. The banner says which (`Launch mode`). **A record that names no program**
   — PySCF's, whose deck is a script — runs the deck as `"$_mb_py" <deck>`, on the environment's own python
   (§ 2.2a).
 - **A job that uses a GPU → the record's `gpu_environment`**, where it names one: SIESTA's `siesta-gpu`,
@@ -736,7 +746,7 @@ where it is kept apart from the output (SIESTA's), the start lines, the banner, 
 line and the monitor's start (*starting*, then *started* or the error that stopped it). The conclusion marker is
 written on the main line after a point's `point ended`, when the run is a point; it reads `rc=<code> at <date>`,
 and adds why where a step of ours, not the engine, ended the run: `no env python (<path>)` (§ 2.2a);
-`<program> not on PATH` (§ 2.2); `a count that is not a positive integer (<flag>)`, a count from the environment
+`<program> not in its env (<env folder>)`, `mpirun not in its env (<path>)` (§ 2.3); `a count that is not a positive integer (<flag>)`, a count from the environment
 (§ 3.4); `finish cannot load (<bundle>)` (§ 2.2a); `finish failed (<bundle> <verb>)`, a point's own step before or after its engine
 ([`runs-of-points.md`](?doc=execution/runs-of-points.md) § 3); `stopped before its end`, a failure of the
 script's own before its engine, other than a signal (§ 2.0a).
@@ -791,8 +801,8 @@ The set is closed (`job.RUN_STATES`). Each state's **detail** is one line for a 
   - *stopped by the scheduler: &lt;its words&gt; (&lt;its file&gt;)*
   - *stopped before its end: &lt;the line that stopped it&gt;* · *out of memory: &lt;its line&gt;*
   - *concluded (rc=1 at …)* · *concluded (rc=1 at …) before any output* — the marker's own words where it
-    carries them: *no env python (…)*, *a count that is not a positive integer (-np)*, *finish cannot load (…)*,
-    *stopped before its end*
+    carries them: *no env python (…)*, *&lt;program&gt; not in its env (…)*, *mpirun not in its env (…)*, *a count
+    that is not a positive integer (-np)*, *finish cannot load (…)*, *stopped before its end*
   - *the engine's output ended, but the job exited with an error (rc=1 at …)*
   - *the engine ended, but its step after the engine failed (&lt;the marker&gt;); the session log says why*
   - *the engine ended and the job's finish began, but the job stopped before it concluded*
@@ -974,8 +984,9 @@ A launched run reads `queued` until its start begins — its session log — and
 yet*) from then on. A run that ends before any output reads `failed`, told by the first of these that speaks:
 
 1. **its marker** — the exit trap writes one when the script fails on its own (an activation that failed, a
-   step that exited: *stopped before its end*); a job with no python of its environment, or one that cannot run
-   its finish, says so in its own (*no env python*, *finish cannot load*);
+   step that exited: *stopped before its end*); a job with no python, program or `mpirun` of its environment, or
+   one that cannot run its finish, says so in its own (*no env python*, *&lt;program&gt; not in its env*, *mpirun
+   not in its env*, *finish cannot load*);
 2. **the answer about its job** — its recorded answer or its scheduler's line; for a run here, its process
    gone, recorded once — a job that ended before its start began reads *never started*;
 3. **its monitor's closing record**;
@@ -1195,8 +1206,11 @@ flowchart TD
   nothing, and the folder stays free for the start it was opened for.
 - **A help request** (`-h`) answers before the gate, with none of the bootstrap run — asking what a script does
   needs neither a claim nor a working activation. **A dry run** (`--dry-run`) starts nothing and passes.
-- **To drive the engine yourself**, the deck's own header prints its plain line (`mpirun -np … siesta <
-  <label>.fdf`, `python <label>.py`) — perfectly good, and a calculation molbuilder neither started nor reads.
+- **To drive the engine yourself**, the deck's own header prints its plain line (`"${CONDA_PREFIX:?}/bin/mpirun"
+  -np … "${CONDA_PREFIX:?}/bin/siesta" < <label>.fdf`, the GPU build's `siesta` by the folder its hook names;
+  `"${CONDA_PREFIX:?}/bin/python" <label>.py` — the env's own programs by their paths,
+  [`ops/installation.md`](?doc=ops/installation.md) M6) — perfectly good, and a calculation molbuilder neither
+  started nor reads.
 
 ---
 

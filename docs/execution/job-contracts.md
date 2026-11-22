@@ -75,9 +75,10 @@ depends on, and differently under the two launchers.
 
 **One carve-out: the run script asks the engine build it is about to run.**
 `siesta --version` tells it which parallelisations the binary has, and that
-decides the launcher (`mpirun` or the bare binary). The binary on the
-machine's `PATH` may have been rebuilt since `prep`, so the answer cannot be
-baked. The probe reads the engine alone — never a config file, the
+decides the launcher (`mpirun` or the bare binary). The binary — the
+environment's own, the first in a folder of it on `PATH`
+([`running-a-job.md`](?doc=execution/running-a-job.md) § 2.3) — may have been
+rebuilt since `prep`, so the answer cannot be baked. The probe reads the engine alone — never a config file, the
 description or anything molbuilder wrote; those had their moment at prep
 ([`running-a-job.md`](?doc=execution/running-a-job.md) § 2.1).
 
@@ -629,7 +630,8 @@ arranges files belongs to Python on the host.
 | **Thread / BLAS pinning** | the OpenMP thread export; where the engine runs ranks, MKL and OpenBLAS pinned to one thread; where ranks are placed on GPUs, the threads bound (`OMP_PROC_BIND`, `OMP_PLACES`) |
 | **MPS daemon** | *(a job that uses a GPU, its engine running ranks)* the per-job daemon when ranks share a GPU |
 | the memory cap | *(the run states `max_memory_mb`, and the item's `limit_applied_by` says the run script applies it, [`engines/template.md`](?doc=engines/template.md) § 5)* `ulimit -v` before the program |
-| **Probe the program's build** | *(an engine that runs a program)* the build's parallelisations, which choose the launcher (§ 2.1) |
+| **The program: its env's own** | *(an engine that runs a program)* the program, the first on `PATH` in a folder of the job's environment; none there stops the job before its engine starts ([`running-a-job.md`](?doc=execution/running-a-job.md) § 2.3) |
+| **Probe the program's build** | *(an engine that runs a program)* the build's parallelisations, which choose the launcher (§ 2.1) — under MPI the environment's own `mpirun`, none stopping the job |
 | **The deck is a script** | *(an engine whose deck is a script)* the launch on the job's python, one process |
 | **GPU<->CPU socket co-location** | *(a job that uses a GPU, its engine running ranks)* ranks pinned beside the GPU's NUMA node, each rank starting the job's program |
 | **Record resolved launch command + placement** | the command's shape and the placement, logged before the wall is counted; the command as you would type it — the time limit's words included — logged as the engine starts (`the command:`, in the launch block) |

@@ -1062,13 +1062,22 @@ def _report(tag: str, done: InstallStep) -> None:
     note = f" -- {done.outcome.note}" if done.outcome.note else ""
     sys.stderr.write(f"[{tag}] {done.label}: "
                      f"{done.outcome.word}{note}{rc}\n")
-    # A step that never dispatched streamed nothing, so its reason has
-    # only been recorded -- say it here or the user sees a bare verdict.
-    if done.returncode is None and done.outcome is not Outcome.OK:
-        first = (done.output or "").strip().splitlines()
-        if first:
-            sys.stderr.write(f"[{tag}]   {first[0]}\n")
+    reason = unlaunched_reason(done)
+    if reason:
+        sys.stderr.write(f"[{tag}]   {reason}\n")
     sys.stderr.flush()
+
+
+def unlaunched_reason(done: InstallStep) -> Optional[str]:
+    """Why a step that never started did not -- its recorded output's first
+    line (the door's refusal, `installation.md` M6, or a launch failure);
+    ``None`` for a step that ran or succeeded.  A step that never dispatched
+    streamed nothing, so its reason has only been recorded: each verb that
+    reports a step says it, or the person sees a bare verdict."""
+    if done.returncode is not None or done.outcome is Outcome.OK:
+        return None
+    first = (done.output or "").strip().splitlines()
+    return first[0] if first else None
 
 
 def _create_decision(step: InstallStep, dispatcher: _Dispatcher, *,

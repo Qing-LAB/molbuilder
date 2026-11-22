@@ -1,17 +1,18 @@
 """Which env runs a tool -- the routing policy (`molbuilder.envs`).
 
 **This is not the installer.**  `run_tool` is how molbuilder runs `tleap` when
-it builds a structure: the question is whether to use the `tleap` inside
-`molbuilder-MDtools` or whatever `tleap` happens to be on the system.
+it builds a structure: the question is which `tleap` -- the one inside
+`molbuilder-MDtools`, and never whatever `tleap` happens to be on the system
+(`ops/installation.md` M6; the user, 2026-11-21: "apply the same rule to
+ctest, make, mpirun and tleap too").  A stray system AmberTools in
+`/usr/local/bin` silently produces different chemistry from the pinned one,
+and nothing about the run would say so.
 
-The rule -- **the curated env wins over host PATH** -- is the one worth being
-sure of.  A stray system AmberTools in `/usr/local/bin` silently produces
-different chemistry from the pinned one, and nothing about the run would say
-so.  An explicit `env=` beats both; host PATH is the fallback; anything else is
-a refusal that names what was tried.
-
-`route()` answers all of that and dispatches nothing, so these are ordinary
-calls.
+An explicit `env=` beats the routing; no env on this machine is a refusal
+that names what installs it.  `route()` answers all of that and dispatches
+nothing, so these are ordinary calls.  The tool run from its env by its path
+is pinned on the real manager in
+`test_envs_enters_the_env_through_the_manager.py`.
 """
 
 from __future__ import annotations
@@ -49,11 +50,12 @@ def test_the_routed_env_wins_even_when_the_tool_is_on_host_path(
     assert envs.route("tleap") == "molbuilder-MDtools"
 
 
-def test_host_path_is_the_fallback_when_the_routed_env_is_absent(
-        tool_on_host_path):
-    """``None`` means "run it straight from PATH" -- no conda hop."""
+def test_the_hosts_path_is_never_the_answer(tool_on_host_path):
+    """Its routed env not on this machine, a `tleap` on the host's PATH:
+    refused, naming what installs the env -- no conda hop, and no PATH."""
     _machine_with()
-    assert envs.route("tleap") is None
+    with pytest.raises(FileNotFoundError, match="the host's PATH included"):
+        envs.route("tleap")
 
 
 def test_an_explicit_env_overrides_the_routing(nothing_on_host_path):
@@ -62,9 +64,9 @@ def test_an_explicit_env_overrides_the_routing(nothing_on_host_path):
 
 
 @pytest.mark.parametrize("tool,env,envs_present,expected", [
-    # routed, but the env is not on this machine and the tool is not on PATH
+    # routed, but the env is not on this machine
     ("tleap", None, (), "routed env"),
-    # not routed at all, and not on PATH
+    # not routed at all
     ("definitely-not-a-real-tool", None, (), "no conda env routing"),
     # an explicit env that does not exist
     ("tleap", "nonexistent-env", ("something-else",), "does not exist"),

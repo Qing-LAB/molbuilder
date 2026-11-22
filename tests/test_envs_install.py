@@ -49,6 +49,16 @@ _ALL_PHASES_RECIPE = Recipe(
 ENVS = Path.home() / "envs"
 
 
+def _with_its_python(prefix: Path) -> Path:
+    """An env's folder holding its own Python, as the manager's create of
+    any recipe leaves it (each declares ``python``): the door starts that
+    one, by its path, and refuses a folder without it
+    (`installation.md` M6)."""
+    (prefix / "bin").mkdir(parents=True, exist_ok=True)
+    (prefix / "bin" / "python").touch()
+    return prefix
+
+
 def _bind(*, conda_envs=(), conda_binary="/usr/bin/conda"):
     """Bind a synthetic snapshot.
 
@@ -154,6 +164,7 @@ class _Manager:
         self.ran.append(argv)
         if argv[1:3] == ["create", "-n"]:
             self.listed.append(f"{ENVS}/{argv[3]}")
+            _with_its_python(ENVS / argv[3])
         return next(self._outputs)
 
 
@@ -170,8 +181,8 @@ def test_run_install_succeeds_when_all_steps_zero(monkeypatch):
     _bind()
     recipe = recipe_by_name("molbuilder-siesta")
     # The manager lists nothing, so the env reads FRESH; the create, the
-    # conda set and verify run.  The env's directory does not exist, so the
-    # audit gate finds every declared package absent and the set is
+    # conda set and verify run.  The env's folder holds no `conda-meta/`, so
+    # the audit gate finds every declared package absent and the set is
     # dispatched.
     _Manager(monkeypatch, [(0, "siesta 5.4.2")] * 3)
     result = install.run_install(recipe)
@@ -195,7 +206,7 @@ def test_conda_set_is_not_dispatched_when_the_env_already_has_it(
     step is SKIPPED and no solve is dispatched for it.
     """
     recipe = _ALL_PHASES_RECIPE
-    fake_env = tmp_path / recipe.name
+    fake_env = _with_its_python(tmp_path / recipe.name)
     meta = fake_env / "conda-meta"
     meta.mkdir(parents=True)
     for spec in recipe.conda_set():
@@ -365,6 +376,8 @@ def test_run_install_skips_create_when_env_already_present(monkeypatch, tmp_path
     (fake_env / "conda-meta").mkdir(parents=True)
 
     _bind(conda_envs=(recipe.name,))
+    # The folder the snapshot names for it, where its steps run.
+    _with_its_python(ENVS / recipe.name)
 
     def fake_run(argv, *a, **kw):
         argv_list = list(argv) if not isinstance(argv, str) else [argv]
@@ -670,7 +683,8 @@ def test_index_fallback_is_flagless_and_recovers(monkeypatch):
                         _stream_stub_factory(
                             (1, "Could not resolve host: github.com"),
                             (0, "Successfully installed pyscf-properties")))
-    done = install.run_step(step, prefix=None)
+    done = install.run_step(
+        step, prefix=str(_with_its_python(ENVS / "molbuilder-pySCF")))
     assert done.outcome is install.Outcome.RECOVERED, (
         "a step that succeeded on its alternative is RECOVERED, not OK")
     assert done.argv == indexed, (
@@ -881,6 +895,32 @@ def test_the_dry_run_says_what_the_machine_must_provide(monkeypatch):
     assert "OPTIONAL" in " ".join(driver), (
         "the driver line must say it is optional: it is not needed to "
         f"build.\n{result.output}")
+
+
+@pytest.mark.parametrize("made", [True, False], ids=["its env made",
+                                                     "not made yet"])
+def test_a_dry_run_prints_each_line_as_the_door_runs_it(made, tmp_path):
+    """`envs install --dry-run` prints the lines that will run -- at the
+    env's folder, a Python named as the env's own by its path, never a bare
+    `python` a copied line would hand to PATH (`ops/installation.md` M2,
+    M6).  An env not made yet: its folder said as such."""
+    from molbuilder.envs import _cli as envs_cli
+    prefix = tmp_path / "envs" / "molbuilder-pySCF"
+    _bind(conda_binary="/fake/conda",
+          conda_envs={"molbuilder-pySCF": str(prefix)} if made else {})
+    result = _make_runner().invoke(
+        envs_cli.envs_group, ["install", "molbuilder-pySCF", "--dry-run"],
+        catch_exceptions=False)
+    assert result.exit_code == 0, result.output
+    runs = [l for l in result.output.splitlines()
+            if l.startswith("/fake/conda run ")]
+    assert runs, result.output
+    own = (f"{prefix}/bin/python" if made else "<its folder>/bin/python")
+    for line in runs:
+        assert " --no-capture-output python " not in line, line
+    assert any(f" --no-capture-output {own} -m pip install " in line
+               or f" --no-capture-output '{own}' -m pip install " in line
+               for line in runs), result.output
 
 
 def _cli_hint(*args):

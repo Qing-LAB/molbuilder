@@ -551,8 +551,8 @@ def _read_envs(raw: Mapping[str, Any]):
             )
         # An empty string would silently degrade dispatch (env_for_category
         # returns "", env_available("") is False, routed_env returns
-        # None, the call falls through to host PATH or errors).  Catch
-        # it at the config boundary instead.
+        # None, and the tool is refused for want of its env).  Catch it at
+        # the config boundary instead.
         if not k or not v:
             raise RuntimeConfigError(
                 f"{CONFIG_FILENAME}: 'envs' entries cannot be empty "

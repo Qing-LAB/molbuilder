@@ -500,7 +500,12 @@ another trait name fails too.
 (`installation.md` § 1), and it holds **everything a notebook needs**: the
 JupyterLab server, the `ipykernel` a cell runs on, and the analysis stack —
 `numpy`, `scipy`, `pandas`, `matplotlib`. Jupyter is installed, activated and
-runs here. **No other env carries notebook tooling.**
+runs here. **No other env carries notebook tooling.** **It starts as this
+env's own Python running JupyterLab** — `python -m jupyterlab`, which the door
+names as `<prefix>/bin/python` ([`ops/installation.md`](?doc=ops/installation.md)
+M6), never a `jupyter` the activation's `PATH` finds: where this env lacks its
+Python nothing starts, said in the notebook log, and where it lacks JupyterLab
+its own Python says so.
 
 **And the file-level science libraries: `ase` and `sisl`** *(user ruling,
 2026-09-24)*. **A notebook has to read
@@ -559,7 +564,13 @@ start · stop · the `/jupyter/` pass-through), and the **JupyterLab** tab at
 `/jupyternb`.
 
 There is deliberately **no kernel search path**. The kernel lives in the
-same prefix the server runs in, so Jupyter finds it through `sys.prefix`. A
+same prefix the server runs in, and **the notebook is told to take it first**
+(`JUPYTER_PREFER_ENV_PATH=1`, in `jupyter.notebook_environment`, beside the
+token and molbuilder's source on `PYTHONPATH`): Jupyter takes an env's kernels
+ahead of a person's own folders only where the account owns the env's prefix —
+a lab-shared env, or a service account, does not — and a `--user` kernel
+installed once, on another Python, then answered (measured 2026-11-21;
+[`ops/installation.md`](?doc=ops/installation.md) M6). A
 search path would be a cross-env leak: with the host env's `share/jupyter`
 first on `JUPYTER_PATH`, the framed Lab would get a `jupyterlab-plotly`
 extension built against a `plotly` the notebook env does not have.

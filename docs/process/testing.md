@@ -20,9 +20,9 @@ touched (§ 6.1), and a tier whole only when the change reaches that far.
 
 | tier | answers | where | needs | command |
 |---|---|---|---|---|
-| **1 · basic** | is molbuilder installed whole, and does it do what its contracts say? | anywhere — the development box, a fresh install | the `molbuilder` env; no engine, no browser, no scheduler | `python tools/testrun.py run none2e` |
-| **2 · field** | does molbuilder work with **this** target — its scheduler, its queues, its environments? | the target machine, or here with its record | the target's record, made there by `jobset probe --write`; for a field run, its engine environments | `MOLBUILDER_FIELD_RECORD=<record> python tools/testrun.py run field`, then a field run (below) |
-| **3 · e2e** | does the science come out right, and does the whole workflow — the pages, the road, the engines — hold together? | a machine with the engine environments and a browser | `molbuilder-siesta`, `molbuilder-pySCF`, Playwright's Chromium | `python tools/testrun.py run e2e` — on the person's word: it runs real engines |
+| **1 · basic** | is molbuilder installed whole, and does it do what its contracts say? | anywhere — the development box, a fresh install | the `molbuilder` env; no engine, no browser, no scheduler | `"${CONDA_PREFIX:?}/bin/python" tools/testrun.py run none2e` |
+| **2 · field** | does molbuilder work with **this** target — its scheduler, its queues, its environments? | the target machine, or here with its record | the target's record, made there by `jobset probe --write`; for a field run, its engine environments | `MOLBUILDER_FIELD_RECORD=<record> "${CONDA_PREFIX:?}/bin/python" tools/testrun.py run field`, then a field run (below) |
+| **3 · e2e** | does the science come out right, and does the whole workflow — the pages, the road, the engines — hold together? | a machine with the engine environments and a browser | `molbuilder-siesta`, `molbuilder-pySCF`, Playwright's Chromium | `"${CONDA_PREFIX:?}/bin/python" tools/testrun.py run e2e` — on the person's word: it runs real engines |
 
 ### Tier 1 — the basic suite: installation and correctness
 
@@ -78,7 +78,7 @@ steps:
 
    ```bash
    MOLBUILDER_FIELD_RECORD=~/.config/molbuilder/environments/<name>.json \
-       python tools/testrun.py run field
+       "${CONDA_PREFIX:?}/bin/python" tools/testrun.py run field
    ```
 
    It holds the record to its contract
@@ -581,7 +581,7 @@ Ask in order, and stop at the first *yes*:
 
 1. **Is it subsumed?** Would another test already fail for this cause?
    **A subsumption verdict needs a MUTANT, not an argument** — break the code and
-   watch the *coverer* go red too: `python tools/verify_subsumption.py pairs.json`.
+   watch the *coverer* go red too: `"${CONDA_PREFIX:?}/bin/python" tools/verify_subsumption.py pairs.json`.
    Measured 2026-09-09: this reasoning was **wrong on 9 of 19 candidates**.
    The harness needs an operator that drops a clause from an `or` — the
    commonest shape in a validator (`not isinstance(x, T) or not x`, whose two
@@ -766,7 +766,7 @@ to react to is *"the real check is elsewhere"*, never *"proves nothing"*.
 > **Know what a missing tool costs you.** Without the env's `node`, **every
 > Node test skips** — and pytest counts a skip toward a green run, so the
 > suite reports healthy while every one of those modules goes unexercised:
-> `python tools/testrun.py status` lists what did not run, counted by that
+> `"${CONDA_PREFIX:?}/bin/python" tools/testrun.py status` lists what did not run, counted by that
 > reason.
 
 
@@ -990,14 +990,14 @@ the output buffers until the process ends, and a `tail` silently truncates the
 failure list, so you draw conclusions from a fraction of the failures.
 
 ```bash
-python tools/testrun.py run tests/test_a.py tests/test_b.py   # a targeted set
-python tools/testrun.py run none2e   # tier 1: every non-e2e test (§ 0)
-MOLBUILDER_FIELD_RECORD=<record> python tools/testrun.py run field   # tier 2
-python tools/testrun.py run e2e      # tier 3: the engine and browser batch
-python tools/testrun.py run lf       # rerun ONLY the last run's failures
-python tools/testrun.py status              # live summary of every batch
-python tools/testrun.py status --fails      # every failed id + its reason
-python tools/testrun.py failed none2e       # bare node-ids, to feed back to pytest
+"${CONDA_PREFIX:?}/bin/python" tools/testrun.py run tests/test_a.py tests/test_b.py   # a targeted set
+"${CONDA_PREFIX:?}/bin/python" tools/testrun.py run none2e   # tier 1: every non-e2e test (§ 0)
+MOLBUILDER_FIELD_RECORD=<record> "${CONDA_PREFIX:?}/bin/python" tools/testrun.py run field   # tier 2
+"${CONDA_PREFIX:?}/bin/python" tools/testrun.py run e2e      # tier 3: the engine and browser batch
+"${CONDA_PREFIX:?}/bin/python" tools/testrun.py run lf       # rerun ONLY the last run's failures
+"${CONDA_PREFIX:?}/bin/python" tools/testrun.py status              # live summary of every batch
+"${CONDA_PREFIX:?}/bin/python" tools/testrun.py status --fails      # every failed id + its reason
+"${CONDA_PREFIX:?}/bin/python" tools/testrun.py failed none2e       # bare node-ids, to feed back to pytest
 ```
 
 `tools/progress_plugin.py` streams **each test outcome** to

@@ -35,7 +35,8 @@ repos:
       # JS check.
       - id: node-js-syntax
         name: node -c (syntax-check modified .js)
-        entry: bash -c 'for f in "$@"; do node -c "$f" || exit 1; done' --
+        # The host env's own node, by its path (docs/ops/installation.md M6).
+        entry: bash -c 'n="${CONDA_PREFIX:?}/bin/node"; [ -x "$n" ] || { echo "no node in the host env ($n) -- it is its opt-in test tooling (docs/ops/env-framework.md 3.2a)" >&2; exit 1; }; for f in "$@"; do "$n" -c "$f" || exit 1; done' --
         language: system
         files: '\.js$'
         exclude: '^(molbuilder/web/static/vendor/)'

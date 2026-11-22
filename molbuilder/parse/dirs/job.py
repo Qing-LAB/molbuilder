@@ -144,6 +144,15 @@ FINISH_CANNOT_LOAD = "finish cannot load"
 #: the words say why.  Declared here beside its siblings; the wrapper
 #: imports it.
 NO_ENV_PYTHON = "no env python"
+#: What a conclusion marker says when the job STOPPED BEFORE ITS ENGINE because
+#: its program, or the `mpirun` it launches under, is not its environment's
+#: own -- none in a folder of ``$CONDA_PREFIX`` on PATH, or no
+#: ``$CONDA_PREFIX/bin/mpirun`` (`runwrap._program_launcher_block`,
+#: `execution/running-a-job.md` § 2.3).  Written as ``rc=1 at <date>;
+#: <program> not in its env (<env folder>)`` or ``...; mpirun not in its env
+#: (<path>)``; the words say why.  Declared here beside its siblings; the
+#: wrapper imports it.
+NOT_IN_ITS_ENV = "not in its env"
 
 
 def _monitor_ended(run_dir: Path, basename: str) -> bool:

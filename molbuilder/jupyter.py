@@ -49,7 +49,7 @@ buttons.  A restart of the server stops it -- no notebook runs on code its
 server no longer runs -- and it dies with the daemon.
 
 **WHY A SHEPHERD PROCESS AT ALL**, rather than the supervisor running
-``<mgr> run -n molbuilder-jupyternb jupyter lab`` itself:
+``<mgr> run -n molbuilder-jupyternb <its python> -m jupyterlab`` itself:
 
 * the supervisor **imports nothing of the application** -- that is the whole
   reason a child which fails to import leaves the parent alive -- so it cannot
@@ -714,7 +714,8 @@ def prepare_lab_home(serve_port: int) -> Dict[str, str]:
 def notebook_argv(conda: str, env_name: str, *, port: int,
                   root_dir: str,
                   lab_dirs: Optional[Dict[str, str]] = None) -> List[str]:
-    """The ``jupyter lab`` command line, as the door will carry it.
+    """The notebook's command line -- the env's own Python running
+    JupyterLab -- as the door will carry it.
 
     Every setting here is Jupyter's own (`jupyter.md` § 4): molbuilder states
     what it needs and re-implements none of it.  **One map, one emitter** --
@@ -726,7 +727,7 @@ def notebook_argv(conda: str, env_name: str, *, port: int,
     process knows, which is the file's own admission rule read backwards:
 
     **The token is not emitted here** *(2026-09-20)*.  It rides
-    ``JUPYTER_TOKEN`` in the child's environment (`start_notebook`), because
+    ``JUPYTER_TOKEN`` in the child's environment (`notebook_environment`), because
     ``/proc/<pid>/cmdline`` is world-readable and ``/proc/<pid>/environ`` is
     not.  jupyter-server reads that variable through its own ``token``
     default, so the flag has to be ABSENT rather than duplicated -- an
@@ -750,8 +751,49 @@ def notebook_argv(conda: str, env_name: str, *, port: int,
         "ServerApp.root_dir": root_dir,
     })
     settings.update(lab_dirs or {})
-    inner = ["jupyter", "lab", "--no-browser", *option_argv(settings)]
+    # THE ENV'S OWN PYTHON RUNNING JUPYTERLAB -- the door names it by its
+    # path (`installation.md` M6) -- never a `jupyter` the activation's PATH
+    # finds, which is another env's or the host's where this one lacks it.
+    inner = ["python", "-m", "jupyterlab", "--no-browser",
+             *option_argv(settings)]
     return list(conda_run_argv(conda, env_name, *inner))
+
+
+def notebook_environment(token: str,
+                         base: Optional[Dict[str, str]] = None
+                         ) -> Dict[str, str]:
+    """The environment the notebook server starts in -- ``base``, this
+    process's own unsaid -- with what the notebook needs said (`web/jupyter.md`
+    § 7).
+
+    * ``JUPYTER_TOKEN``: the token travels here rather than on the command
+      line -- ``environ`` is owner-only, ``cmdline`` is not (verified end to
+      end 2026-09-20).
+    * ``JUPYTER_PREFER_ENV_PATH=1``: **the kernel is the env's own Python**
+      (`ops/installation.md` M6).  The kernel lives in the prefix the server
+      runs in, and Jupyter takes the env's kernels ahead of a person's own
+      folders only where the account owns that prefix -- a lab-shared env, or
+      a service account, does not -- so a ``--user`` kernel installed once,
+      on another Python, answered instead (measured 2026-11-21).
+    * ``PYTHONPATH``: molbuilder itself, for a notebook's import -- the
+      source folder this server runs from, first on the path every kernel
+      inherits, so a cell imports the molbuilder that wrote the files it
+      reads (`molbuilder.postprocess`), nothing installed into this env.
+
+    NO ``JUPYTER_PATH``: a search path would be a cross-env leak -- the host
+    env's ``share/jupyter`` first on it hands the framed Lab a
+    ``jupyterlab-plotly`` labextension built against a ``plotly`` this env
+    does not have.
+    """
+    from . import repo_root
+    env = dict(base if base is not None else os.environ)
+    env["JUPYTER_TOKEN"] = token
+    env["JUPYTER_PREFER_ENV_PATH"] = "1"
+    source = str(repo_root())
+    env["PYTHONPATH"] = os.pathsep.join(
+        [source] + [p for p in env.get("PYTHONPATH", "").split(os.pathsep)
+                    if p and p != source])
+    return env
 
 
 def run_shepherd(serve_port: int) -> int:
@@ -761,7 +803,6 @@ def run_shepherd(serve_port: int) -> int:
     Runs in the foreground of its own process; the SUPERVISOR is what puts it
     in the background, and what it is parented to.
     """
-    from . import repo_root
     from .diagnostics import get_capabilities
     from .envs.builds import dispatch_into_env
     from .envs.recipes import effective_name, recipe_of_category
@@ -828,28 +869,7 @@ def run_shepherd(serve_port: int) -> int:
     signal.signal(signal.SIGTERM, _on_stop)
     signal.signal(signal.SIGINT, _on_stop)
 
-    # NO `JUPYTER_PATH`.  The kernel lives in the SAME prefix the server runs
-    # in, so jupyter finds it through `sys.prefix` with no search path at all
-    # (verified 2026-09-14: `jupyter kernelspec list` with the variable unset
-    # resolves `python3` in this env).  A search path would also be a
-    # cross-env leak: the host env's `share/jupyter` first on it hands the
-    # framed Lab a `jupyterlab-plotly` labextension built against a `plotly`
-    # this env does not have.
-    env = dict(os.environ)
-    # The token travels here rather than on the command line: `environ` is
-    # owner-only, `cmdline` is not.  Verified end to end 2026-09-20 -- the
-    # runtime file's token authenticates against the running server, and the
-    # argv carries no token at all.
-    env["JUPYTER_TOKEN"] = token
-    # MOLBUILDER ITSELF, for a notebook's import: the source folder this
-    # server runs from, first on the path every kernel inherits -- so a cell
-    # imports the molbuilder that wrote the files it reads
-    # (`molbuilder.postprocess`), nothing installed into this env
-    # (`web/jupyter.md` § 7).
-    source = str(repo_root())
-    env["PYTHONPATH"] = os.pathsep.join(
-        [source] + [p for p in env.get("PYTHONPATH", "").split(os.pathsep)
-                    if p and p != source])
+    env = notebook_environment(token)
     try:
         # NO PIPE AND NO SINK.  This process's stdout and stderr ARE the
         # notebook log -- the supervisor opened it and handed it over -- so

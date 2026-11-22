@@ -676,6 +676,119 @@ def _inner_command(argv: Sequence[str]) -> Tuple[str, ...]:
     return cmd
 
 
+#: The name of a Python (`installation.md` M6): ``python``, ``python3``,
+#: ``python3.12`` -- a command's first word, or the last part of a path it
+#: names.
+_PYTHON_NAME = re.compile(r"python(?:\d+(?:\.\d+)?)?")
+
+
+def env_python_argv(argv: Sequence[str], env_prefix: Optional[str]
+                    ) -> Tuple[Tuple[str, ...], Optional[str]]:
+    """A ``<mgr> run`` argv whose command starts a Python, that Python named
+    as the env's own by its path -- or the sentence refusing it
+    (`installation.md` M6: no other Python is ever tried).
+
+    The command's first word decides.  A bare ``python``, ``python3`` or
+    ``python3.N`` becomes ``<prefix>/bin/<word>``: the manager's activation
+    would find it on PATH, and where the env holds none PATH answers with
+    another interpreter -- the host's, the system's.  A path to a Python is
+    kept when it is in the env's ``bin``, refused otherwise.  Any other
+    command is the activation's to find, the env's ``bin`` first
+    (`dispatch_into_env` hands the manager no active env): a source-built
+    binary the env's own hook puts on PATH, ``bash`` running a self-test
+    that names ``"${CONDA_PREFIX:?}/bin/python"`` itself.  Refused too when
+    the env's folder is not known -- its Python cannot be named -- and when
+    the folder holds no such Python, naming `doctor`, which names the
+    repair.
+    """
+    argv = tuple(str(a) for a in argv)
+    word = _started_python(argv)
+    if word is None:
+        return argv, None
+    name = Path(word).name
+    cmd = _inner_command(argv)
+    asked = " ".join(cmd)
+    if len(asked) > 120:
+        asked = asked[:117] + "..."
+    if env_prefix is None:
+        return argv, (
+            f"`{asked}` was not run: the folder of the environment it was "
+            f"asked of is not known, so that environment's own Python "
+            f"cannot be named, and no other Python is tried.")
+    own = _own_program(env_prefix, name)
+    if "/" in word and (Path(word).parent.resolve()
+                        != own.parent.resolve()):
+        return argv, (
+            f"`{word}` is not a Python of the environment at {env_prefix} "
+            f"(its own is {own}), so `{asked}` was not run -- no other "
+            f"Python is tried.")
+    if not own.is_file():
+        return argv, (
+            f"the environment at {env_prefix} has no Python of its own "
+            f"({own} is not there), so `{asked}` was not run -- no other "
+            f"Python is tried.  `{_hints.fix_cmd('doctor')}` names the "
+            f"repair.")
+    return _starting(argv, str(own)), None
+
+
+def _started_python(argv: Sequence[str]) -> Optional[str]:
+    """The word a ``<mgr> run`` argv's command starts a Python by -- a bare
+    ``python``/``python3``/``python3.N``, or a path to one -- else ``None``
+    (not a ``run``, one carrying no command, or another program)."""
+    if not _is_run_argv(argv) or len(argv) <= 5:
+        return None
+    word = str(argv[5])
+    return word if _PYTHON_NAME.fullmatch(Path(word).name) else None
+
+
+def _starting(argv: Sequence[str], program: str) -> Tuple[str, ...]:
+    """The ``<mgr> run`` argv with its command starting ``program``."""
+    return tuple(argv[:5]) + (program,) + tuple(argv[6:])
+
+
+def _own_program(env_prefix: str, name: str) -> Path:
+    """Where an env keeps a program of its own by that name: its ``bin``."""
+    return Path(env_prefix) / "bin" / name
+
+
+def as_carried(argv: Sequence[str], env_prefix: Optional[str]
+               ) -> Tuple[str, ...]:
+    """An argv as the door carries it, for a line a person reads before
+    anything runs (`envs install --dry-run`): re-addressed at the env's
+    folder (M2) and a Python it starts named as the env's own, by its path
+    (M6) -- ``<its folder>/bin/<word>`` where the folder is not made yet.
+    What the door then refuses, it refuses when it runs."""
+    argv = tuple(str(a) for a in argv)
+    if env_prefix is not None and _is_addressable(argv):
+        argv = addressed_by_prefix(argv, env_prefix)
+    word = _started_python(argv)
+    if word is None or "/" in word:
+        return argv
+    return _starting(argv, str(_own_program(env_prefix, word))
+                     if env_prefix is not None
+                     else f"<its folder>/bin/{word}")
+
+
+#: The marks of an env active in the caller's shell -- molbuilder's own
+#: always is.  Handed to the manager, its ``run`` puts the entered env's
+#: ``bin`` on PATH where the active env's stood, behind whatever stands
+#: ahead of it; handed none, its activation is a first one and puts the
+#: entered env's ``bin`` first (measured 2026-11-21, conda 26.7.1;
+#: `installation.md` M6).  The manager still activates (M1).
+_ACTIVE_ENV_VARIABLES = ("CONDA_PREFIX", "CONDA_SHLVL", "CONDA_DEFAULT_ENV",
+                         "CONDA_PROMPT_MODIFIER")
+
+
+def _with_no_env_active(env: Optional[Mapping[str, str]]
+                        ) -> Dict[str, str]:
+    """``env`` (this process's own, unsaid) without the marks of an active
+    env, the stacked ones' (``CONDA_PREFIX_<n>``) included."""
+    source = dict(env if env is not None else os.environ)
+    return {k: v for k, v in source.items()
+            if k not in _ACTIVE_ENV_VARIABLES
+            and not k.startswith("CONDA_PREFIX_")}
+
+
 def activation_wrapper(argv: Sequence[str], env_prefix: str) -> Tuple[str, ...]:
     """THE FALLBACK -- a bash wrapper that does what the manager would.
 
@@ -785,12 +898,34 @@ def dispatch_into_env(argv: Sequence[str],
     Not a step outcome.  A broken manager is a property of the machine, and
     reporting every step on such a machine as ``RECOVERED`` would say the
     PACKAGE came from an alternative source, which is a different fact.
+
+    **What it carries is the env's own** (M6), on either route.  The
+    manager is handed no active env (`_with_no_env_active`), so its
+    activation puts the env's ``bin`` first on PATH; a Python is named by
+    its path (`env_python_argv`), and one it cannot name so is refused
+    before anything starts -- ``(None, the sentence)``, as a command that
+    cannot launch, the sentence in ``log_file`` too, and on stderr under
+    ``inherit_stdio``, whose caller reads no transcript.
     """
     argv = tuple(str(a) for a in argv)
     if env_prefix is not None and _is_addressable(argv):
         # M2: the directory the manager gave us, not the name it may not
         # find (conda resolves ``-n`` against ``envs_dirs`` only).
         argv = addressed_by_prefix(argv, env_prefix)
+    argv, refused = env_python_argv(argv, env_prefix)
+    if refused is not None:
+        if log_file is not None:
+            try:
+                log_file.parent.mkdir(parents=True, exist_ok=True)
+                write_bytes(log_file, refused.encode("utf-8"))
+            except OSError:
+                pass
+        if inherit_stdio:
+            sys.stderr.write(refused + "\n")
+            sys.stderr.flush()
+        return None, refused
+    if _is_run_argv(argv):
+        env = _with_no_env_active(env)
     if env_prefix is None or not _is_run_argv(argv):
         # Nothing to enter: `conda create`, `conda install --prefix ...`,
         # `env remove`, or a bare command.  The manager is the whole command.
@@ -1733,7 +1868,7 @@ def component_install_valid(
     rc, _out = dispatch_into_env(
         conda_run_prefix_argv(conda_binary, probe.env_prefix, *argv),
         probe.env_prefix,
-        env=_build_env(probe.env_prefix, paths),
+        env=build_env(probe.env_prefix, paths),
         sink=None, timeout=120,
     )
     return rc == 0
@@ -2006,7 +2141,7 @@ def plan_build_spec(spec: BuildSpec,
     return steps
 
 
-def _build_env(env_prefix: str, paths: BuildPaths) -> Dict[str, str]:
+def build_env(env_prefix: str, paths: BuildPaths) -> Dict[str, str]:
     """The environment every source-build command runs in -- the phases and
     the presence gate alike, so one command is never measured under two
     conditions.
@@ -2065,14 +2200,14 @@ def _run_build_phase(step: BuildStep,
     written to ``step.log_file`` for post-hoc inspection.
 
     **It enters the env through `dispatch_into_env`, like every other step**
-    (`installation.md` M1).  What a build needs BEYOND activation is `_build_env`'s dict, not a
+    (`installation.md` M1).  What a build needs BEYOND activation is `build_env`'s dict, not a
     shell string, so the route and the fallback cannot differ.
     """
     step.log_file.parent.mkdir(parents=True, exist_ok=True)
     rc, combined = dispatch_into_env(
         conda_run_prefix_argv(conda_binary, env_prefix, *step.argv),
         env_prefix,
-        env=_build_env(env_prefix, paths),
+        env=build_env(env_prefix, paths),
         sink=sys.stderr,            # a person is watching a long build
         log_file=step.log_file,
         timeout=timeout,

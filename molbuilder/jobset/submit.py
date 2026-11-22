@@ -3270,10 +3270,12 @@ def _molbuilder_env_entry(machine) -> str:
     preamble line that fails stops the walk there -- then the check every
     script makes after its activation: a walk whose activation did not
     give it molbuilder's python stops before any group, its log saying
-    which.  The environment is installed on that machine, as every
-    engine's is."""
+    which and naming its repair (`runwrap.env_repair`, the host env's).
+    The environment is installed on that machine, as every engine's
+    is."""
+    from ..envs.recipes import recipe_of_category
     from ..runwrap import (LOG_FUNCTION, WrapperError, env_bootstrap,
-                           env_python_check, host_env_name)
+                           env_python_check, env_repair, host_env_name)
     host = host_env_name()
     try:
         boot = env_bootstrap(machine, host)
@@ -3289,7 +3291,8 @@ def _molbuilder_env_entry(machine) -> str:
             + env_python_check(host)
             + f"    _log ERROR \"molbuilder's environment '{host}' was not "
               f"entered -- CONDA_PREFIX is ${{CONDA_PREFIX:-<unset>}}, and "
-              f"${{_mb_py:-<no python>}} is not there: no group was "
+              f"${{_mb_py:-<no python>}} is not there: "
+              f"{env_repair(recipe_of_category(None))}; no group was "
               f"launched\"\n"
             + "    exit 1\n"
             + "fi")

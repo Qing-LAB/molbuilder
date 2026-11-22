@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 """Batched test runner + LIVE progress reader.
 
 Runs the pytest suite in two speed-separated batches -- ``none2e`` (fast unit /
@@ -10,20 +9,20 @@ live at any moment (no buffered-until-exit blindness).
 Usage
 -----
     # launch a batch (run it in the BACKGROUND from the shell / harness):
-    python tools/testrun.py run none2e         # all non-e2e tests
-    python tools/testrun.py run e2e            # all *_e2e.py
-    python tools/testrun.py run all            # everything, one file
-    python tools/testrun.py run e2e tests/test_molbuilder_e2e.py   # a part of it,
+    "${CONDA_PREFIX:?}/bin/python" tools/testrun.py run none2e         # all non-e2e tests
+    "${CONDA_PREFIX:?}/bin/python" tools/testrun.py run e2e            # all *_e2e.py
+    "${CONDA_PREFIX:?}/bin/python" tools/testrun.py run all            # everything, one file
+    "${CONDA_PREFIX:?}/bin/python" tools/testrun.py run e2e tests/test_molbuilder_e2e.py   # a part of it,
                                                                    # recorded as a part
-    python tools/testrun.py run tests/test_a.py tests/test_b.py     # a targeted set
-    python tools/testrun.py run none2e --workers 1                   # one process
-    python tools/testrun.py run lf             # rerun ONLY last-run failures (any batch)
+    "${CONDA_PREFIX:?}/bin/python" tools/testrun.py run tests/test_a.py tests/test_b.py     # a targeted set
+    "${CONDA_PREFIX:?}/bin/python" tools/testrun.py run none2e --workers 1                   # one process
+    "${CONDA_PREFIX:?}/bin/python" tools/testrun.py run lf             # rerun ONLY last-run failures (any batch)
 
     # read progress LIVE, any time, from another shell:
-    python tools/testrun.py status             # summarise every batch
-    python tools/testrun.py status e2e         # one batch
-    python tools/testrun.py status --fails     # also print each failed id + reason
-    python tools/testrun.py failed e2e         # bare failed node-ids (feed back to pytest)
+    "${CONDA_PREFIX:?}/bin/python" tools/testrun.py status             # summarise every batch
+    "${CONDA_PREFIX:?}/bin/python" tools/testrun.py status e2e         # one batch
+    "${CONDA_PREFIX:?}/bin/python" tools/testrun.py status --fails     # also print each failed id + reason
+    "${CONDA_PREFIX:?}/bin/python" tools/testrun.py failed e2e         # bare failed node-ids (feed back to pytest)
 
 Design notes
 ------------
@@ -393,8 +392,9 @@ def cmd_run(args):
     if workers > 1 and importlib.util.find_spec("xdist") is None:
         print("[testrun] REFUSING: spreading the run needs pytest-xdist, which "
               "this env does not have.", file=sys.stderr)
-        print("[testrun]   install what the env declares: python -m molbuilder "
-              "envs repair molbuilder", file=sys.stderr)
+        print('[testrun]   install what the env declares: '
+              '"${CONDA_PREFIX:?}/bin/python" -m molbuilder envs repair '
+              'molbuilder', file=sys.stderr)
         print("[testrun]   or run in one process: --workers 1", file=sys.stderr)
         return 2
 
@@ -411,8 +411,8 @@ def cmd_run(args):
         if not args.force:
             print(f"[testrun] REFUSING: batch {batch_file!r} is already "
                   f"running{who}.", file=sys.stderr)
-            print(f"[testrun]   watch it: python tools/testrun.py status "
-                  f"{batch_file}", file=sys.stderr)
+            print('[testrun]   watch it: "${CONDA_PREFIX:?}/bin/python" '
+                  f"tools/testrun.py status {batch_file}", file=sys.stderr)
             print(f"[testrun] Two runs of one batch share {prog} and make the "
                   f"counts meaningless.  Pass --force to run anyway.",
                   file=sys.stderr)

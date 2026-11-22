@@ -1820,8 +1820,10 @@ def cmd_auth_setup(provider, asurite, google_email, hosted_domain, force):
     click.echo(f"Wrote {output_path} (mode 0600)", err=True)
     click.echo("", err=True)
     click.echo("Next steps:", err=True)
+    # THE HOST ENV'S OWN PYTHON, by its path (`ops/installation.md` M6).
     click.echo(
-        "  python -m molbuilder serve start --port 8888 --host 127.0.0.1",
+        '  "${CONDA_PREFIX:?}/bin/python" -m molbuilder serve start '
+        '--port 8888 --host 127.0.0.1',
         err=True,
     )
     click.echo(

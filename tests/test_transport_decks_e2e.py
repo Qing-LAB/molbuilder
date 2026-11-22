@@ -362,9 +362,9 @@ def test_a_tbtrans_step_s_run_script_starts_tbtrans_its_banner_lined_up(
                        name="T", calculation="transport")
     prep_groups(bundle, "1", "2", "3")
     text = stage_file(bundle, "transmission", ".run.sh").read_text()
-    assert '_program_bin="$(command -v tbtrans ' in text, \
-        "the run script does not start tbtrans"
-    assert "command -v siesta " not in text
+    assert 'if [ -x "$_mb_dir/tbtrans" ]' in text, \
+        "the run script does not start its env's own tbtrans"
+    assert '"$_mb_dir/siesta"' not in text
     head = text[text.index("===== molbuilder run script"):]
     head = head[:head.index('echo "========')]
     rows = re.findall(r'echo "  (\S[^"]*?) : ', head)

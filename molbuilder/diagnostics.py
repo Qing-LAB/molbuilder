@@ -6,8 +6,9 @@ The snapshot answers three questions:
   * What does the machine config say (TLS paths, env-name overrides)?
   * Where is the ``conda`` CLI?
 
-It does NOT pre-probe host PATH for individual tools -- ``shutil.which``
-is sub-millisecond and runs on demand in :meth:`Capabilities.tool_available`.
+It does NOT pre-probe the tools an env holds -- :meth:`Capabilities.
+program_of` asks the env's ``bin`` on demand; the host's PATH is never
+where a routed tool runs from (`installation.md` M6).
 The snapshot is therefore small, plus the singleton lifecycle.
 
 Routing tables
@@ -71,8 +72,9 @@ DEFAULT_ENV_NAMES: Mapping[str, str] = {
     "jupyter":    "molbuilder-jupyternb",
 }
 
-# Executable name -> category.  Drives ``env_for_tool``.  Tools not
-# listed here are not routed: the caller falls through to host PATH.
+# Executable name -> category.  Drives ``env_for_tool``.  A tool not
+# listed here runs in no env unless its caller names one, and never from the
+# host's PATH (`envs.run_tool`, `installation.md` M6).
 # ``playwright`` is intentionally NOT routed: browser E2E runs under the
 # host env (in-process Flask app), not a dedicated env.
 TOOL_TO_CATEGORY: Mapping[str, str] = {
@@ -180,15 +182,23 @@ class Capabilities:
             return env
         return None
 
-    def tool_available(self, tool: str) -> bool:
-        """Whether ``tool`` is reachable -- either via routed env or host PATH.
+    def program_of(self, env_name: str, program: str) -> Optional[str]:
+        """Where env ``env_name`` keeps ``program`` of its own -- its
+        ``bin`` -- or ``None`` where this snapshot knows no such env or the
+        env holds no such file: the one place a routed tool runs from
+        (`envs.run_tool`), never the host's PATH (`installation.md` M6)."""
+        prefix = self.env_prefix(env_name)
+        if prefix is None:
+            return None
+        path = os.path.join(prefix, "bin", program)
+        return path if os.path.isfile(path) else None
 
-        Composes :meth:`routed_env` with ``shutil.which`` for the host-
-        PATH check.  Backends use this in their ``is_available()``.
-        """
-        if self.routed_env(tool) is not None:
-            return True
-        return shutil.which(tool) is not None
+    def tool_available(self, tool: str) -> bool:
+        """Whether ``tool`` can run: its routed env is on this machine and
+        holds it (:meth:`program_of`).  Backends use this in their
+        ``is_available()``."""
+        env = self.routed_env(tool)
+        return env is not None and self.program_of(env, tool) is not None
 
 # --------------------------------------------------------------------- #
 #  Probe                                                                #

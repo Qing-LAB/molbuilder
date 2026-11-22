@@ -250,3 +250,93 @@ def test_provenance_never_carries_secret_material(tmp_path, machine_config):
     assert "tls" not in text
     assert "secret" not in text.lower()
     assert "launch.mode = 'direct'" in text
+
+
+# ---- the program and its mpirun: the env's own -------------------------- #
+
+@pytest.mark.parametrize("env_holds, stopped", [
+    (("python3",), "siesta not in its env"),
+    (("python3", "siesta"), "mpirun not in its env"),
+], ids=["an-env-without-its-program", "an-env-without-its-mpirun"])
+def test_a_job_starts_only_its_envs_own_program_and_mpirun(
+        env_holds, stopped, tmp_path, monkeypatch):
+    """`running-a-job.md` § 2.3 (the user, 2026-11-21: "Env's own, else
+    stop"; `ops/installation.md` M6): the run script starts its env's own
+    program -- the first on PATH in a folder of the env's -- under its env's
+    own `mpirun`, and where the env lacks either the job stops before
+    its engine starts, its conclusion saying which.  The activation here
+    leaves a site's `siesta` and `mpirun` AHEAD of the env's `bin` on PATH,
+    as a module the record's preamble loads can.  THE SILENT FAILURE: a
+    SIESTA built against the env's OpenMPI started under another MPI, or a
+    site's own SIESTA run for the env's."""
+    import sys
+    from molbuilder.runrecord import read_concluded
+    site = tmp_path / "site-module" / "bin"
+    site.mkdir(parents=True)
+    marks = tmp_path / "reached"
+    for name in ("siesta", "mpirun"):
+        exe = site / name
+        exe.write_text(f'#!/bin/sh\necho "{name}" >> "{marks}"\nexit 97\n')
+        exe.chmod(0o755)
+    env = tmp_path / "envs" / "molbuilder-siesta"
+    (env / "bin").mkdir(parents=True)
+    (env / "bin" / "python3").symlink_to(sys.executable)
+    if "siesta" in env_holds:
+        own = env / "bin" / "siesta"
+        own.write_text("#!/bin/sh\nprintf 'Version         : 5.4.2\\n"
+                       "Parallelisations: MPI\\n'\n")
+        own.chmod(0o755)
+    sh, run, names = _prepared(
+        tmp_path, monkeypatch,
+        # The record's activation is followed by the env's name, as
+        # `conda activate <name>` is: `true` takes it.
+        activation=f"export CONDA_PREFIX={env}; "
+                   f"export PATH={site}:{env}/bin:$PATH; true")
+    cp = _start(sh, run, claim=LAUNCH_CLAIM)
+    assert not marks.exists(), (marks.read_text(), cp.stderr)
+    assert cp.returncode == 1, cp.stderr
+    said = read_concluded((run / names.name(".concluded")).read_text())
+    assert said["note"].startswith(stopped), (said, cp.stderr[-3000:])
+    # ...naming the repair, as the stop for its python does: its recipe
+    # installed again.
+    from molbuilder.envs.hints import install_cmd
+    from molbuilder.envs.recipes import builtin_recipes
+    recipe = next(r.name for r in builtin_recipes() if r.category == "siesta")
+    assert install_cmd(recipe) in cp.stderr, cp.stderr[-3000:]
+
+
+def test_a_job_launches_its_envs_own_program_under_its_envs_own_mpirun(
+        tmp_path, monkeypatch):
+    """...and where the env holds both, the launch is the env's `mpirun`
+    handed the env's `siesta` -- a site's ahead on PATH reached by
+    neither.  The env's `mpirun` stood in by one that records what it was
+    handed (a named need: a site module's PATH order cannot be made with
+    the real engine)."""
+    import sys
+    site = tmp_path / "site-module" / "bin"
+    site.mkdir(parents=True)
+    marks = tmp_path / "reached"
+    for name in ("siesta", "mpirun"):
+        exe = site / name
+        exe.write_text(f'#!/bin/sh\necho "{name}" >> "{marks}"\nexit 97\n')
+        exe.chmod(0o755)
+    env = tmp_path / "envs" / "molbuilder-siesta"
+    (env / "bin").mkdir(parents=True)
+    (env / "bin" / "python3").symlink_to(sys.executable)
+    handed = tmp_path / "handed"
+    (env / "bin" / "siesta").write_text(
+        "#!/bin/sh\nprintf 'Version         : 5.4.2\\n"
+        "Parallelisations: MPI\\n'\n")
+    (env / "bin" / "mpirun").write_text(
+        f'#!/bin/sh\necho "$@" > "{handed}"\n')
+    for name in ("siesta", "mpirun"):
+        (env / "bin" / name).chmod(0o755)
+    sh, run, names = _prepared(
+        tmp_path, monkeypatch,
+        activation=f"export CONDA_PREFIX={env}; "
+                   f"export PATH={site}:{env}/bin:$PATH; true")
+    cp = _start(sh, run, claim=LAUNCH_CLAIM)
+    assert not marks.exists(), (marks.read_text(), cp.stderr)
+    assert handed.is_file(), cp.stderr[-3000:]
+    assert f"{env}/bin/siesta" in handed.read_text().split(), \
+        handed.read_text()

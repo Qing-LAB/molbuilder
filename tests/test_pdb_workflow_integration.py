@@ -16,7 +16,7 @@ What it pins (in order):
 
 Run::
 
-    python -m pytest tests/test_pdb_workflow_integration.py -v
+    "${CONDA_PREFIX:?}/bin/python" -m pytest tests/test_pdb_workflow_integration.py -v
 """
 from __future__ import annotations
 

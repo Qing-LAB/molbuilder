@@ -2484,9 +2484,15 @@ class Structure:
         try:
             from ase import Atoms
         except ImportError as exc:  # pragma: no cover
+            # Every env that reads a structure declares ase, so its absence
+            # is the env's to repair -- never a `pip` PATH answers
+            # (`ops/installation.md` M6).  Said without a command: this
+            # module travels beside a job, where molbuilder's remedy
+            # speller is not.
             raise ImportError(
-                "to_ase() needs the 'ase' package; install with "
-                "`pip install ase`"
+                "to_ase() needs the 'ase' package, which every molbuilder "
+                "env that reads a structure declares; this env lacks it -- "
+                "molbuilder's `envs doctor` names the repair"
             ) from exc
         # WITH THE BOX, because `pbc` exists precisely as the ASE-interop view
         # of `axis_kind` (§ 1) and this is the one ASE door: atoms alone

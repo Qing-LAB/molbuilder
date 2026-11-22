@@ -217,14 +217,17 @@ def render_correction_script(
     from ..runfiles import (MAKOV_PAYNE_SCRIPT as script_name,
                             MONITOR_BUNDLE as monitor_bundle,
                             ROLE_SIESTA_OUT as output_role)
-    return f'''#!/usr/bin/env python3
-"""Makov-Payne post-process correction for SIESTA total energy.
+    # NO INTERPRETER LINE, and the usage names the run's environment's own
+    # Python by its path (`installation.md` M6): ``#!/usr/bin/env python3``
+    # would start whichever ``python3`` PATH finds first.
+    return f'''"""Makov-Payne post-process correction for SIESTA total energy.
 
-Run AFTER SIESTA has finished:
+Run AFTER SIESTA has finished, in the run's folder, on the Python of the
+environment its run script activates -- that environment active:
 
-    python3 {script_name}
-    python3 {script_name} --epsilon 4.0
-    python3 {script_name} --out my-job{output_role}
+    "${{CONDA_PREFIX:?}}/bin/python" {script_name}
+    "${{CONDA_PREFIX:?}}/bin/python" {script_name} --epsilon 4.0
+    "${{CONDA_PREFIX:?}}/bin/python" {script_name} --out my-job{output_role}
 
 Reads the converged total energy from the SIESTA {output_role} file, then
 SIESTA's own monopole correction, `siesta: Emadel`.  SIESTA applies it

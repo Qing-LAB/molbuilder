@@ -1152,8 +1152,8 @@ one fact ([`architecture.md`](?doc=execution/architecture.md) § 3.2, rule A14;
 **One source.** The rows of § 5.1–§ 5.3, § 5.5 and § 5.6 are `runfiles.WRITTEN`'s
 — the catalogue of every file molbuilder writes into a calculation folder
 ([`job-contracts.md`](?doc=execution/job-contracts.md) § 2.2) — rendered here by
-`python -m tools.manifest`: **a row is edited in the catalogue, never in this
-document** *(user, 2026-10-04)*; `python -m tools.manifest --check` fails when
+`"${CONDA_PREFIX:?}/bin/python" -m tools.manifest`: **a row is edited in the catalogue, never in this
+document** *(user, 2026-10-04)*; `"${CONDA_PREFIX:?}/bin/python" -m tools.manifest --check` fails when
 the two differ. The same rows answer the Task setup card and the Results tab's
 file card ([`web/results.md`](?doc=web/results.md) § 3b). § 5.4 is rendered the
 same way from `runfiles.ENGINE_FILES`: not what an engine writes — that is the

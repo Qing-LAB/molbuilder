@@ -505,10 +505,10 @@ its `check` command):
 # screen a whole directory (CI gate; exits non-zero on any ERROR-status pseudo:
 # missing / misnamed, a file SIESTA cannot open -- the same set the preflight
 # blocks):
-python -m molbuilder pseudo check projects/pseudopotential --xc-functional GGA --xc PBE
+"${CONDA_PREFIX:?}/bin/python" -m molbuilder pseudo check projects/pseudopotential --xc-functional GGA --xc PBE
 
 # require specific species labels + a relativistic level:
-python -m molbuilder pseudo check <dir> --elements Au1,Au2,C,H,S --xc-functional GGA --xc PBE --relativistic scalar
+"${CONDA_PREFIX:?}/bin/python" -m molbuilder pseudo check <dir> --elements Au1,Au2,C,H,S --xc-functional GGA --xc PBE --relativistic scalar
 ```
 
 With no `--elements` the folder's own files say what to check

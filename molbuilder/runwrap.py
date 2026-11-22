@@ -174,6 +174,19 @@ def _env_name(target_env: str) -> str:
     return str(target_env).rstrip("/").rsplit("/", 1)[-1]
 
 
+def env_repair(recipe) -> str:
+    """What a run script's stop for its env names as the repair: its
+    recipe installed again (`hints.install_again_cmd`), or, for an env
+    molbuilder does not install (``None``, `prep --env`), rebuilt as it was
+    made -- the one sentence every such stop says (`ops/installation.md`
+    M6: an env lacking one fails, said, naming the repair)."""
+    return (f"rebuild it on this machine "
+            f"({_hints.install_again_cmd(recipe)})"
+            if recipe is not None else
+            "rebuild it as it was made -- it is no env molbuilder "
+            "installs")
+
+
 def _env_python_block(names, stdout_role: str, target_env: str,
                       recipe) -> str:
     """Bash that names the run's output -- every writer of it below writes
@@ -193,11 +206,7 @@ def _env_python_block(names, stdout_role: str, target_env: str,
     refused alike, but concluding nothing: it starts nothing."""
     from .parse.dirs.job import NO_ENV_PYTHON
     env_name = _env_name(target_env)
-    remedy = (f"rebuild it on this machine "
-              f"({_hints.install_again_cmd(recipe)})"
-              if recipe is not None else
-              "rebuild it as it was made -- it is no env molbuilder "
-              "installs")
+    remedy = env_repair(recipe)
     return (
         f'_out_file="{names.name(stdout_role)}"\n'
         f"# --- The job's python: its env's own (running-a-job.md 2) ---\n"
@@ -926,10 +935,11 @@ def _gpu_socket_affinity_block() -> str:
     )
 
 
-def _gpu_per_rank_launcher_block(program: str) -> str:
+def _gpu_per_rank_launcher_block() -> str:
     """Bash that writes the per-rank GPU launcher + picks the CPU-bind
     policy.  Emit ONLY where ranks are placed on GPUs; each rank starts
-    ``program``, the job's own (`Job.program`, else its engine's).
+    the program it is handed -- the env's own, ``$_program_bin``
+    (:func:`_program_launcher_block`).
 
     GOAL: give every MPI rank its own GPU and (under a scheduler) defer CPU/mem
     placement to the scheduler.  Implements the general load-balance
@@ -939,12 +949,12 @@ def _gpu_per_rank_launcher_block(program: str) -> str:
     WRITES a runtime helper ``.mb-rank-launch-$$.sh`` (``trap``-removed on
     EXIT) in which each rank computes ``gpu = local_rank*ngpu/localsize``,
     resolves that GPU's NUMA node, sets ``CUDA_VISIBLE_DEVICES``, logs its
-    GPU+NUMA+cpuset, then ``exec``s the program.  The heredoc is QUOTED
+    GPU+NUMA+cpuset, then ``exec``s the program it is handed.  The heredoc is QUOTED
     (``'HELPEREOF'``) so the rank-time variables resolve when the rank
     runs, not when the wrapper writes the file.
-    SETS  ``$_program_target="bash $_rank_helper"`` (the launch target the
-          ``_launch_cmd`` assembly interpolates in place of the bare
-          program).
+    SETS  ``$_program_target="bash $_rank_helper $_program_bin"`` (the launch
+          target the ``_launch_cmd`` assembly interpolates in place of the
+          program alone).
     UNDER A SCHEDULER (``$MB_JOB_ID`` set): clears ``$_numa_wrap_gpu`` and
           ``$_mpirun_bind`` so we do NOT double-bind against the scheduler's
           cgroup cpuset (running-a-job.md § 3.3; the benchmark logs the
@@ -977,14 +987,14 @@ def _gpu_per_rank_launcher_block(program: str) -> str:
         'CUDA_VISIBLE_DEVICES=$_gpu (numa=$_numa) '
         'cpus=${_cpus:-?}" >&2\n'
         + _gpu_socket_affinity_block()
-        + f'exec $_pin {program} "$@"\n'
+        + 'exec $_pin "$@"\n'
         'HELPEREOF\n'
         'chmod +x "$_rank_helper"\n'
         # Cleanup is handled by the single unified EXIT trap (_mb_cleanup,
         # set near the top): it rm's $_rank_helper.  A local ``trap ...
         # EXIT`` here would CLOBBER the MPS cleanup trap (bash keeps only
         # the last EXIT trap) -- hence the centralised function.
-        '_program_target="bash $_rank_helper"\n'
+        '_program_target="bash $_rank_helper $_program_bin"\n'
         # Under a scheduler, its cgroup cpuset (the GPU binding + the cores
         # per rank) governs CPU/memory placement.  Do NOT also numactl-wrap
         # / --map-by -- that double-binds and can fight the scheduler.  P1
@@ -1882,7 +1892,7 @@ def _mps_block() -> str:
 
 
 def _program_launcher_block(prog: str, words: str, target_env: str, *,
-                            ranks: bool, gpu_ranks: bool) -> str:
+                            ranks: bool, gpu_ranks: bool, recipe=None) -> str:
     """Bash that finds the program ``prog`` -- the job's, else its engine's
     own (``words``, as its record names it) -- asks what it was built with
     and decides how it is launched (`running-a-job.md` § 2.3).
@@ -1907,21 +1917,44 @@ def _program_launcher_block(prog: str, words: str, target_env: str, *,
     user sees the build and the launcher choice in the log -- adapting if
     the program is rebuilt, with no new prep.  Where ranks are placed on
     GPUs (``gpu_ranks``) the per-rank helper starts the program
-    (:func:`_gpu_per_rank_launcher_block`).  Sets ``$_launch_cmd``,
+    (:func:`_gpu_per_rank_launcher_block`).  ``recipe`` is the recipe of
+    the job's env (`envs.recipes.Recipe`), whose repair its two stops name
+    (:func:`env_repair`); ``None`` for an env molbuilder does not install
+    (`prep --env`).  Sets ``$_launch_cmd``,
     ``$_launch_note`` and ``$_mb_cores`` -- the cores this launch uses, the
     monitor's cpu% denominator (`run-reports.md` § 2.1a).
     """
+    from .parse.dirs.job import NOT_IN_ITS_ENV
     return (
-            # The block NAME is job-contracts.md § 2.6's row.
-            "# --- Probe the program's build at runtime ---\n"
-            f'_program_bin="$(command -v {prog} || echo \"\")"\n'
+            # THE PROGRAM IS ITS ENV'S OWN (`running-a-job.md` § 2.3,
+            # `ops/installation.md` M6; the user, 2026-11-21: "Env's own,
+            # else stop"): the first on PATH in a folder of the env's --
+            # its bin, or one its own activation hooks add -- never one
+            # PATH holds ahead of it, which a site's module can.  None:
+            # the job stops before its engine starts, said, the repair
+            # named.
+            "# --- The program: its env's own ---\n"
+            '_program_bin=""\n'
+            'IFS=: read -r -a _mb_path_dirs <<< "$PATH"\n'
+            'for _mb_dir in "${_mb_path_dirs[@]}"; do\n'
+            '    case "$_mb_dir" in\n'
+            f'        "$CONDA_PREFIX"/*) if [ -x "$_mb_dir/{prog}" ]; then '
+            f'_program_bin="$_mb_dir/{prog}"; break; fi ;;\n'
+            '    esac\n'
+            'done\n'
             f'if [ -z "$_program_bin" ]; then\n'
-            f"    echo \"ERROR: '{prog}' not on PATH after activating "
-            f"'{target_env}'.  Is {words} installed in this env?\" >&2\n"
+            f"    echo \"ERROR: '{prog}' is not a program of '{target_env}' "
+            f"($CONDA_PREFIX: no folder of it on PATH holds one; PATH's "
+            f"own: $(command -v {prog} || echo none)).  Is {words} installed "
+            f"in this env?  If not: {env_repair(recipe)}.  The engine was "
+            f"not started.\" >&2\n"
             + '    [ "$_dry_run" = "1" ] || '
-            + conclude_line(1, f"{prog} not on PATH") + "\n"
-            f"    exit 1\n"
-            f"fi\n"
+            + conclude_line(1, f"{prog} {NOT_IN_ITS_ENV} (%s)",
+                            '"$CONDA_PREFIX"') + "\n"
+            "    exit 1\n"
+            "fi\n"
+            # The block NAME is job-contracts.md § 2.6's row.
+            + "# --- Probe the program's build at runtime ---\n"
             # THE PROBE CANNOT BLOCK THE JOB (2026-08-25).  Each of these
             # is needed and none alone is enough; this is the order they
             # were found in, live on the dev workstation:
@@ -1960,39 +1993,39 @@ def _program_launcher_block(prog: str, words: str, target_env: str, *,
             # `timeout` the bare call stands: nothing portable bounds it,
             # and refusing to probe at all would cost every machine its
             # version banner to guard against one broken binary.
-            f'_mb_probe_out="$(mktemp 2>/dev/null '
-            f'|| echo "${{TMPDIR:-/tmp}}/mb-probe.$$")"\n'
-            f'if command -v timeout >/dev/null 2>&1; then\n'
-            f'    timeout -k 2 5 {prog} --version >"$_mb_probe_out" 2>/dev/null '
-            f'</dev/null || true\n'
-            f'else\n'
-            f'    {prog} --version >"$_mb_probe_out" 2>/dev/null '
-            f'</dev/null || true\n'
-            f'fi\n'
-            f"_program_ver=\"$(awk -F': *' '/^Version/ {{print $2; exit}}' "
-            f'"$_mb_probe_out" 2>/dev/null || true)"\n'
-            f"_program_par=\"$(awk -F': *' '/^Parallelisations/ {{print $2; exit}}' "
-            f'"$_mb_probe_out" 2>/dev/null || true)"\n'
-            f'rm -f "$_mb_probe_out"\n'
-            f"# Decide launcher from probe.  Default to mpirun (safe\n"
-            f"# for any MPI-compiled binary) when the probe can't\n"
-            f"# tell us anything.\n"
-            f'_has_mpi=0; _has_omp=0\n'
-            f'# Word-boundary match.  ``*MPI*`` alone would falsely\n'
-            f'# catch ``NoMPI`` / ``pre-MPI`` / ``nompi``.  Strategy:\n'
-            f'# focus on CONTENT, not formatting -- normalise ANY\n'
-            f'# whitespace (space, tab, vertical-tab, ...) AND the\n'
-            f'# comma/semicolon list-separators to single spaces, then\n'
-            f'# space-anchor the token match.  ``tr "[:space:]" " "``\n'
-            f'# rewrites every POSIX whitespace char; ``tr ",;" "  "``\n'
-            f'# absorbs the list separators; ``tr -s " "`` collapses\n'
-            f'# runs.  Robust against any SIESTA build that prints the\n'
-            f'# Parallelisations line with tabs / extra spaces /\n'
-            f'# mixed list separators -- the value semantics carry.\n'
-            f'_par_norm=" $(echo \"$_program_par\" '
-            f'| tr "[:space:]" " " | tr ",;" "  " | tr -s " ") "\n'
-            f'case "$_par_norm" in *" MPI "*) _has_mpi=1 ;; esac\n'
-            f'case "$_par_norm" in *" OMP "*|*" OpenMP "*) _has_omp=1 ;; esac\n'
+            '_mb_probe_out="$(mktemp 2>/dev/null '
+            '|| echo "${TMPDIR:-/tmp}/mb-probe.$$")"\n'
+            'if command -v timeout >/dev/null 2>&1; then\n'
+            '    timeout -k 2 5 "$_program_bin" --version >"$_mb_probe_out" '
+            '2>/dev/null </dev/null || true\n'
+            'else\n'
+            '    "$_program_bin" --version >"$_mb_probe_out" 2>/dev/null '
+            '</dev/null || true\n'
+            'fi\n'
+            "_program_ver=\"$(awk -F': *' '/^Version/ {print $2; exit}' "
+            '"$_mb_probe_out" 2>/dev/null || true)"\n'
+            "_program_par=\"$(awk -F': *' '/^Parallelisations/ {print $2; exit}' "
+            '"$_mb_probe_out" 2>/dev/null || true)"\n'
+            'rm -f "$_mb_probe_out"\n'
+            "# Decide launcher from probe.  Default to mpirun (safe\n"
+            "# for any MPI-compiled binary) when the probe can't\n"
+            "# tell us anything.\n"
+            '_has_mpi=0; _has_omp=0\n'
+            '# Word-boundary match.  ``*MPI*`` alone would falsely\n'
+            '# catch ``NoMPI`` / ``pre-MPI`` / ``nompi``.  Strategy:\n'
+            '# focus on CONTENT, not formatting -- normalise ANY\n'
+            '# whitespace (space, tab, vertical-tab, ...) AND the\n'
+            '# comma/semicolon list-separators to single spaces, then\n'
+            '# space-anchor the token match.  ``tr "[:space:]" " "``\n'
+            '# rewrites every POSIX whitespace char; ``tr ",;" "  "``\n'
+            '# absorbs the list separators; ``tr -s " "`` collapses\n'
+            '# runs.  Robust against any SIESTA build that prints the\n'
+            '# Parallelisations line with tabs / extra spaces /\n'
+            '# mixed list separators -- the value semantics carry.\n'
+            '_par_norm=" $(echo \"$_program_par\" '
+            '| tr "[:space:]" " " | tr ",;" "  " | tr -s " ") "\n'
+            'case "$_par_norm" in *" MPI "*) _has_mpi=1 ;; esac\n'
+            'case "$_par_norm" in *" OMP "*|*" OpenMP "*) _has_omp=1 ;; esac\n'
             # GPU mode: pin threads to cores in the same package so
             # OpenMP doesn't spill across sockets (SIESTA performance-
             # options guidance), and tell OpenMPI to place ranks one
@@ -2048,8 +2081,24 @@ def _program_launcher_block(prog: str, words: str, target_env: str, *,
             # Default launch target is the bare binary; GPU mode swaps in
             # the per-rank launcher (assigns each rank its GPU + picks the
             # CPU-bind policy).  See _gpu_per_rank_launcher_block.__doc__.
-            + f'_program_target="{prog}"\n'
-            + (_gpu_per_rank_launcher_block(prog) if gpu_ranks else "")
+            + '_program_target="$_program_bin"\n'
+            + (_gpu_per_rank_launcher_block() if gpu_ranks else "")
+            # MPI IS THE ENV'S OWN, the one its program was built against
+            # (`running-a-job.md` § 2.3, M6): a launch under MPI with none
+            # in the env stops before its engine starts, said, the repair
+            # named.
+            + '_mb_mpirun="$CONDA_PREFIX/bin/mpirun"\n'
+            + (('if { [ "$_has_mpi" = 1 ] || [ -z "$_program_par" ]; } '
+                '&& [ ! -x "$_mb_mpirun" ]; then\n'
+                f"    echo \"ERROR: '{prog}' runs under MPI, and "
+                f"'{target_env}' holds no mpirun of its own ($_mb_mpirun): "
+                f"{env_repair(recipe)}.  The engine was not started.\" "
+                f">&2\n"
+                + '    [ "$_dry_run" = "1" ] || '
+                + conclude_line(1, f"mpirun {NOT_IN_ITS_ENV} (%s)",
+                                '"$_mb_mpirun"') + "\n"
+                "    exit 1\n"
+                "fi\n") if ranks else "")
             # ``_mb_cores``: the cores THIS launch uses -- what the job holds
             # when it was started directly, the monitor's cpu% denominator
             # (`run-reports.md` § 2.1a).  Decided here, with the launcher:
@@ -2057,32 +2106,32 @@ def _program_launcher_block(prog: str, words: str, target_env: str, *,
             # serial one, whatever -np and -omp said.
             + ((
                 # RANKS: the launcher the build calls for.
-                f'if [ "$_has_mpi" = 1 ]; then\n'
-            f'    _launch_cmd="$_numa_wrap_gpu mpirun -np $_mpi_np $_mpirun_bind $_program_target"\n'
-            f'    if [ "$_has_omp" = 1 ]; then\n'
-            f'        _launch_note="hybrid MPI+OMP ($_mpi_np ranks x $_omp_threads OMP threads)"\n'
-            f'        _mb_cores=$(( _mpi_np * _omp_threads ))\n'
-            f'    else\n'
-            f'        _launch_note="pure MPI ($_mpi_np ranks; OMP setting irrelevant to this binary)"\n'
-            f'        _mb_cores=$_mpi_np\n'
-            f'    fi\n'
-            f'elif [ "$_has_omp" = 1 ]; then\n'
-            f'    _launch_cmd="{prog}"\n'
-            f'    _launch_note="OMP-only build ($_omp_threads threads)"\n'
-            f'    _mb_cores=$_omp_threads\n'
-            f'elif [ -z "$_program_par" ]; then\n'
-            f'    _launch_cmd="$_numa_wrap_gpu mpirun -np $_mpi_np $_mpirun_bind $_program_target"\n'
-            f'    _launch_note="MPI fallback (probe inconclusive; safe default for an MPI-compiled binary)"\n'
-            f'    _mb_cores=$_mpi_np\n'
-            f'else\n'
-            f'    _launch_cmd="{prog}"\n'
-            f'    _launch_note="serial build (no parallelisation compiled in)"\n'
-            f'    _mb_cores=1\n'
-            f"fi\n"
-            f"\n"
+                'if [ "$_has_mpi" = 1 ]; then\n'
+            '    _launch_cmd="$_numa_wrap_gpu $_mb_mpirun -np $_mpi_np $_mpirun_bind $_program_target"\n'
+            '    if [ "$_has_omp" = 1 ]; then\n'
+            '        _launch_note="hybrid MPI+OMP ($_mpi_np ranks x $_omp_threads OMP threads)"\n'
+            '        _mb_cores=$(( _mpi_np * _omp_threads ))\n'
+            '    else\n'
+            '        _launch_note="pure MPI ($_mpi_np ranks; OMP setting irrelevant to this binary)"\n'
+            '        _mb_cores=$_mpi_np\n'
+            '    fi\n'
+            'elif [ "$_has_omp" = 1 ]; then\n'
+            '    _launch_cmd="$_program_bin"\n'
+            '    _launch_note="OMP-only build ($_omp_threads threads)"\n'
+            '    _mb_cores=$_omp_threads\n'
+            'elif [ -z "$_program_par" ]; then\n'
+            '    _launch_cmd="$_numa_wrap_gpu $_mb_mpirun -np $_mpi_np $_mpirun_bind $_program_target"\n'
+            '    _launch_note="MPI fallback (probe inconclusive; safe default for an MPI-compiled binary)"\n'
+            '    _mb_cores=$_mpi_np\n'
+            'else\n'
+            '    _launch_cmd="$_program_bin"\n'
+            '    _launch_note="serial build (no parallelisation compiled in)"\n'
+            '    _mb_cores=1\n'
+            "fi\n"
+            "\n"
             ) if ranks else (
                 # ONE PROCESS: the program alone, its threads.
-                f'_launch_cmd="{prog}"\n'
+                '_launch_cmd="$_program_bin"\n'
                 '_launch_note="one process ($_omp_threads OpenMP threads)"\n'
                 '_mb_cores=$_omp_threads\n'
                 '\n'
@@ -2610,7 +2659,7 @@ def render_run_wrapper(script_path: Path, *,
            if caps_memory else "")
         + "\n"
         + (_program_launcher_block(prog, words, target_env, ranks=ranks,
-                                   gpu_ranks=gpu_ranks)
+                                   gpu_ranks=gpu_ranks, recipe=_recipe)
            if prog is not None else
            "# --- The deck is a script, run on the job's python ---\n"
            '_launch_note="a script deck on the job\'s python '

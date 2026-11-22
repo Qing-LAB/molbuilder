@@ -6,7 +6,7 @@ read where it is, so the first test runs on any Linux target, and the others
 only inside a scheduled job, whose request they compare the readings with:
 
     srun --mem=8G -c 4 env MOLBUILDER_FIELD_RECORD=<the record> \\
-        python tools/testrun.py run tests/field/test_the_monitor_reads_its_job.py
+        "${CONDA_PREFIX:?}/bin/python" tools/testrun.py run tests/field/test_the_monitor_reads_its_job.py
 
 Measured on ASU Sol 2026-08-26, cgroup v1: the task's cgroup carried the no-limit
 sentinel while the job's, one level up, carried the real `--mem=8G`.

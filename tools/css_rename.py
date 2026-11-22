@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 """Rename MolView CSS classes across every file that names them.
 
 WHY A TOOL.  docs/plans/molview-css-namespace-plan.md moves 167 class names in
@@ -19,8 +18,8 @@ eight passes, and the two ways this goes wrong are both mechanical:
 So: every occurrence in one pass, comments masked, and a before/after class-list
 diff printed so the change can be checked rather than trusted.
 
-    python tools/css_rename.py --area cell --dry-run
-    python tools/css_rename.py --area cell
+    "${CONDA_PREFIX:?}/bin/python" tools/css_rename.py --area cell --dry-run
+    "${CONDA_PREFIX:?}/bin/python" tools/css_rename.py --area cell
 
 The suite cannot verify this -- no unit test has a computed style. After each
 area, look at the page (tools/css_control_audit.py has the circuit).

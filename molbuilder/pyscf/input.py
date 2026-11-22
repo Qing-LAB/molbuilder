@@ -1520,7 +1520,10 @@ def emit_run_with(names) -> List[str]:
     out.append("Or drive PySCF yourself, with the bundles beside this deck:")
     # THE ROLE PySCF'S OWN STDOUT HAS, not SIESTA's: every reader
     # dispatches on the role (`model/parse.md` § 5.5).
-    out.append(f"    python {names.name(deck_role('pyscf'))} > "
+    # THE ENV'S OWN PYTHON, by its path (`installation.md` M6): after an
+    # activation a bare `python` can still be a site's own.
+    out.append(f'    "${{CONDA_PREFIX:?}}/bin/python" '
+               f"{names.name(deck_role('pyscf'))} > "
                f"{names.name(PYSCF_STDOUT_ROLE)} 2>&1")
     out.append("")
     out.append("    Perfectly good, and the reason the plain invocation is")

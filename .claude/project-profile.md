@@ -43,9 +43,30 @@ monitor's, a SIESTA vibration's finish and the PySCF script's imports --
 all gathered by one closure (`runwrap.bundle_members`) from each module's `TRAVELS_WITH`. Each imports the other members both ways
 (`try: from .x import ...` / `except ImportError: from x import ...`) and
 declares `TRAVELS_WITH` for what it imports. Check: build the bundle in
-scratch and import every member with `python -I` and no molbuilder on the
-path; `tests/test_monitor_notify_policy.py::test_each_bundle_loads_on_the_packages_its_row_allows_alone`
+scratch and import every member with the job env's own Python, by its path,
+`-I` and no molbuilder on the path; `tests/test_monitor_notify_policy.py::test_each_bundle_loads_on_the_packages_its_row_allows_alone`
 does every bundle on its row's packages alone.
+
+## What runs in an env is the env's own
+
+`docs/ops/installation.md` M6 (the user, 2026-11-21: *"make sure that no bare
+python or out-of-env python is ever tried. period."*; *"apply the same rule to
+ctest, make, mpirun and tleap too"*). Wherever the touched code or text starts
+a Python or an env's program, or tells a person to: inside an env, the door
+(`envs.builds.dispatch_into_env`: no active env handed to the manager,
+`env_python_argv`) names it, a routed tool runs by its path in its env
+(`envs.run_tool`), a shell line names `"${CONDA_PREFIX:?}/bin/<program>"`, a
+probe names `<prefix>/bin/<program>`, a job's Python is `$_mb_py`, its program
+the first on PATH in a folder of `$CONDA_PREFIX` and its MPI
+`$CONDA_PREFIX/bin/mpirun`, else it stops (`runwrap._program_launcher_block`);
+a build step names the env's tools by `{env_prefix}/bin/...`; molbuilder's
+own children are `sys.executable`. A bare `python`/`python3`/`jupyter` or an
+env's program left to `PATH`, `shutil.which(...)` for an env's program, a
+fallback to the host's, a `#!/usr/bin/env python` line, or a `pip install`
+remedy is a finding at every review — activation does not put an env's `bin`
+first. Check: `tests/test_envs_enters_the_env_through_the_manager.py`'s M6
+rows (decoys first on `PATH` in a shell with an env active, the real manager)
+and `tests/test_launch_door_gate.py`'s job rows.
 
 ## Shared answers to check first
 

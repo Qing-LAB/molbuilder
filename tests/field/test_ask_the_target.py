@@ -20,7 +20,7 @@ instead of queueing it.
 
 Run ON the target, with its record (`molbuilder jobset probe --write`):
 
-    MOLBUILDER_FIELD_RECORD=<the record> python tools/testrun.py run field
+    MOLBUILDER_FIELD_RECORD=<the record> "${CONDA_PREFIX:?}/bin/python" tools/testrun.py run field
 """
 from __future__ import annotations
 

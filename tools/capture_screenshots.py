@@ -3,7 +3,7 @@ top-level README.
 
 Run from the repo root::
 
-    python tools/capture_screenshots.py
+    "${CONDA_PREFIX:?}/bin/python" tools/capture_screenshots.py
 
 Writes PNGs to ``docs/img/``.  Requires playwright + chromium
 (already installed for the pytest-playwright E2E suite).

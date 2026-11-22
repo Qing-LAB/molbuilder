@@ -6,7 +6,7 @@ What a driver answers is read where it answers: this runs on the target, against
 its real ``nvidia-smi``, and is skipped where there is none.  In a subprocess,
 because the recipes are read once in a process.
 
-    MOLBUILDER_FIELD_RECORD=<the record> python tools/testrun.py run field
+    MOLBUILDER_FIELD_RECORD=<the record> "${CONDA_PREFIX:?}/bin/python" tools/testrun.py run field
 """
 from __future__ import annotations
 

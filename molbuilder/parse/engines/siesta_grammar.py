@@ -713,7 +713,10 @@ ADVICE = {
         "   missing its p or d channel is broken.  Replace that .psml with a\n"
         "   vetted one (PseudoDojo; the generator version and XC of the rest\n"
         "   of your set).  Screen the whole set:\n"
-        "     python -m molbuilder pseudo check <pseudo-dir>\n"
+        # A FORMAT TEMPLATE (``{output}`` above), so the shell's braces
+        # are doubled.
+        '     "${{CONDA_PREFIX:?}}/bin/python" -m molbuilder pseudo check '
+        '<pseudo-dir>\n'
         "\n"
         "2) THE MPI RANK COUNT (a legitimate tunable here).\n"
         "   With clean pseudopotentials, some rank counts leave trailing\n"

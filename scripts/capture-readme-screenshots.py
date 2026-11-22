@@ -1,13 +1,13 @@
-#!/usr/bin/env python3
 """Capture the 10 PNG screenshots referenced by the top-level README.
 
-Usage:
+Usage -- the host env active, on its own Python (`ops/installation.md` M6):
 
-    conda run -n molbuilder --no-capture-output \\
-        python scripts/capture-readme-screenshots.py
+    conda activate molbuilder
+    "${CONDA_PREFIX:?}/bin/python" scripts/capture-readme-screenshots.py
 
 The script drives Chromium via Playwright against a fresh
-``molbuilder serve`` process and writes the 10 PNGs to ``docs/img/``.
+``molbuilder serve foreground`` process, started on the host env's own
+Python by its path, and writes the 10 PNGs to ``docs/img/``.
 Demo data is the BDT project under ``projects/``.  Re-runnable; PNGs
 are overwritten in place.
 
@@ -22,19 +22,20 @@ updated.
 The script obeys three load-bearing constraints documented in the
 molbuilder code; each is cited inline at the implementation site:
 
-  (1) Package discovery. ``python -m molbuilder`` is run from outside
+  (1) Package discovery. ``-m molbuilder`` is run from outside
       the repo root, so ``PYTHONPATH`` must include the repo root --
       molbuilder is not pip-installed (see ``feedback_no_pip_install_e``
       in memory + ``docs/ops/installation.md``).
-  (2) Runtime config discovery. ``molbuilder.runtime_config.read_config``
-      reads ``./molbuilder.json`` from CWD (``molbuilder/runtime_config.py
-      :73``); there is NO ``MOLBUILDER_CONFIG`` env var.  The server
-      must be run from a directory without ``molbuilder.json`` so the
-      production config (TLS + active auth) is not loaded.  Otherwise
-      plain-HTTP requests are reset because the server expects TLS.
-  (3) Projects discovery. ``molbuilder.projects.projects_root`` returns
-      ``<cwd>/projects`` (``molbuilder/projects.py:131``).  We symlink
-      the repo's ``projects/`` into the temp cwd so demo data resolves.
+  (2) Its own folders.  The server reads its config from its config
+      folder (``$MOLBUILDER_CONFIG_DIR``, ``config_dir.machine_config_dir``)
+      and keeps its state and runtime files under ``$XDG_STATE_HOME`` and
+      ``$XDG_RUNTIME_DIR``: the child is given folders of its own in the
+      temp folder, so the person's config (TLS, sign-in) is never loaded
+      and nothing of theirs is written; ``--no-auth`` says the capture
+      needs no sign-in.
+  (3) Projects discovery.  ``projects.projects_root`` reads
+      ``$MOLBUILDER_PROJECTS``, set to the repo's ``projects/`` so the demo
+      data resolves.
 
 Playwright runs Chromium at a fixed 1440x900 viewport with
 device-scale-factor 2 (retina-style sharpness) so the captures form
@@ -46,7 +47,6 @@ block the server.
 from __future__ import annotations
 
 import os
-import shutil
 import socket
 import subprocess
 import sys
@@ -79,63 +79,40 @@ def _free_port() -> int:
         return s.getsockname()[1]
 
 
-def _pick_env_manager() -> str:
-    """Mamba > micromamba > conda, falling back to env vars.
-
-    Mirrors ``molbuilder.diagnostics._find_conda_binary`` exactly so
-    HPC users with only mamba/micromamba can run this script too.
-    """
-    for candidate in ("mamba", "micromamba", "conda"):
-        path = shutil.which(candidate)
-        if path:
-            return path
-    fallback = os.environ.get("MAMBA_EXE") or os.environ.get("CONDA_EXE")
-    if fallback and os.path.isfile(fallback):
-        return fallback
-    raise RuntimeError(
-        "no conda / mamba / micromamba on PATH and no $MAMBA_EXE / "
-        "$CONDA_EXE.  Activate the molbuilder env manually and rerun."
-    )
-
-
 @contextmanager
 def _serve(port: int, capture_cwd: Path) -> Iterator[subprocess.Popen]:
-    """Spawn ``molbuilder serve`` and yield its Popen handle.
+    """Spawn ``molbuilder serve foreground`` and yield its Popen handle.
 
     Terminates the child on context exit (SIGTERM, then SIGKILL after
     a 5 s grace).  Raises ``RuntimeError`` if the server fails to bind
     the port within 20 s and surfaces the server log in the message.
 
-    ``capture_cwd`` must satisfy the constraints documented at module
-    top: no ``molbuilder.json``, ``projects/`` symlinked in.
+    ``capture_cwd`` is the temp folder the child runs in and keeps its
+    own config, state and runtime folders under (constraint (2)).
     """
     env = dict(os.environ)
-    # Constraint (1): PYTHONPATH lets ``python -m molbuilder`` find the
+    # Constraint (1): PYTHONPATH lets ``-m molbuilder`` find the
     # package from the temp cwd.  Prepend so REPO_ROOT wins over any
     # parent-shell PYTHONPATH.
     existing_pp = env.get("PYTHONPATH", "")
     env["PYTHONPATH"] = (
         str(REPO_ROOT) + (os.pathsep + existing_pp if existing_pp else "")
     )
+    # Constraints (2) and (3): its own folders, the repo's demo projects.
+    for variable, folder in (("MOLBUILDER_CONFIG_DIR", "config"),
+                             ("XDG_STATE_HOME", "state"),
+                             ("XDG_RUNTIME_DIR", "run")):
+        where = capture_cwd / folder
+        where.mkdir(mode=0o700, exist_ok=True)
+        env[variable] = str(where)
+    env["MOLBUILDER_PROJECTS"] = str(REPO_ROOT / "projects")
 
-    # ASK THE ONE DOOR, do not re-spell the rule.  This read
-    # `os.environ.get("MOLBUILDER_HOST_ENV", "molbuilder")`, a second answer
-    # to the host env's name beside `effective_name`'s; the name is
-    # `molbuilder` always now (configuration.md § 2.1c), and the door says so.
-    #
-    # Importing is safe HERE though not everywhere: this script's documented
-    # usage runs it inside the host env with Playwright, so the package and
-    # its dependencies are present.  Constraint (1) above, applied to this
-    # process rather than the child -- molbuilder is not pip-installed.
-    sys.path.insert(0, str(REPO_ROOT))
-    from molbuilder.diagnostics import get_capabilities
-    from molbuilder.envs.recipes import effective_name, recipe_by_name
-    host_env = effective_name(recipe_by_name("molbuilder"), get_capabilities())
-    env_mgr  = _pick_env_manager()
+    # THE HOST ENV'S OWN PYTHON: the one this script runs on, by its usage
+    # line -- the server child is that one, as `serve start`'s is
+    # (`ops/installation.md` M6); never a `python` a PATH would find.
     cmd = [
-        env_mgr, "run", "-n", host_env, "--no-capture-output",
-        "python", "-m", "molbuilder", "serve",
-        "--host", "127.0.0.1",
+        sys.executable, "-m", "molbuilder", "serve", "foreground",
+        "--host", "127.0.0.1", "--no-auth",
         "--port", str(port),
         # ONE process, so the handle below really owns it.  Supervision became
         # the default on 2026-08-04; under it this Popen would hold the PARENT,
@@ -197,20 +174,14 @@ def _serve(port: int, capture_cwd: Path) -> Iterator[subprocess.Popen]:
 
 
 def _prepare_capture_cwd(td_path: Path) -> Path:
-    """Build the temp cwd per the constraints at module top.
-
-    Returns ``td_path`` after writing a placeholder file noting why
-    the directory exists (for anyone who opens the log).  Does NOT
-    write a ``molbuilder.json`` -- absence is required to keep the
-    production config from being picked up.
-    """
+    """The temp folder the server runs in, its own folders under it
+    (constraint (2)); a note saying why it exists, for anyone who opens
+    the log."""
     (td_path / "README.txt").write_text(
-        "Working directory for capture-readme-screenshots.py.\n"
-        "Intentionally has no molbuilder.json so molbuilder.runtime_config\n"
-        "does not pick up the repo's production TLS + auth settings.\n"
+        "Working directory for capture-readme-screenshots.py: the server\n"
+        "it starts keeps its config, state and runtime folders here, so\n"
+        "the person's own (TLS, sign-in) are never loaded or written.\n"
     )
-    # Constraint (3): projects_root() = <cwd>/projects.
-    (td_path / "projects").symlink_to(REPO_ROOT / "projects")
     return td_path
 
 
@@ -345,10 +316,10 @@ def main() -> int:
     try:
         from playwright.sync_api import sync_playwright
     except ImportError as e:
-        print(f"ERROR: playwright not importable ({e}).  Re-run as:",
-              file=sys.stderr)
-        print(f"  conda run -n molbuilder --no-capture-output "
-              f"python {Path(__file__).relative_to(REPO_ROOT)}",
+        print(f"ERROR: playwright not importable ({e}).  Re-run on the "
+              f"host env's own Python, the env active:", file=sys.stderr)
+        print(f'  "${{CONDA_PREFIX:?}}/bin/python" '
+              f"{Path(__file__).relative_to(REPO_ROOT)}",
               file=sys.stderr)
         return 2
 

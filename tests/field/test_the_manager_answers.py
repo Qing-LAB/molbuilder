@@ -10,7 +10,7 @@ duplicate env.
 The env is empty, and made under this test's own home and folder, so nothing of
 the machine's changes.
 
-    MOLBUILDER_FIELD_RECORD=<the record> python tools/testrun.py run field
+    MOLBUILDER_FIELD_RECORD=<the record> "${CONDA_PREFIX:?}/bin/python" tools/testrun.py run field
 """
 from __future__ import annotations
 

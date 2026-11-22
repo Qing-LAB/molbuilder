@@ -85,21 +85,31 @@ def test_routed_env_none_when_unrouted():
     assert caps.env_for_tool("playwright") is None
 
 
-def test_tool_available_via_routed_env():
-    caps = _caps(conda_envs={"molbuilder-MDtools"})
+def test_a_tool_is_available_where_its_routed_env_holds_it(tmp_path):
+    """`installation.md` M6: a routed tool runs from its env, by its path --
+    so it is available exactly where that env is here and holds it."""
+    prefix = tmp_path / "molbuilder-MDtools"
+    (prefix / "bin").mkdir(parents=True)
+    (prefix / "bin" / "tleap").touch()
+    caps = _caps(conda_envs={"molbuilder-MDtools": str(prefix)})
     assert caps.tool_available("tleap") is True
 
 
-def test_tool_available_via_host_path(monkeypatch):
-    monkeypatch.setattr(diagnostics.shutil, "which",
-                         lambda t: "/usr/bin/tleap" if t == "tleap" else None)
-    caps = _caps(conda_envs=set())
-    assert caps.tool_available("tleap") is True
+def test_a_tool_its_env_lacks_is_not_available(tmp_path):
+    (tmp_path / "molbuilder-MDtools" / "bin").mkdir(parents=True)
+    caps = _caps(conda_envs={"molbuilder-MDtools":
+                             str(tmp_path / "molbuilder-MDtools")})
+    assert caps.tool_available("tleap") is False
 
 
-def test_tool_available_unreachable(monkeypatch):
-    monkeypatch.setattr(diagnostics.shutil, "which", lambda t: None)
-    caps = _caps(conda_envs=set())
+def test_a_tool_on_the_hosts_path_alone_is_not_available(tmp_path,
+                                                        monkeypatch):
+    """The host's PATH is never where a routed tool runs from (M6): a
+    system AmberTools makes different chemistry from the pinned one."""
+    (tmp_path / "tleap").write_text("")
+    (tmp_path / "tleap").chmod(0o755)
+    monkeypatch.setenv("PATH", str(tmp_path))
+    caps = _caps(conda_envs={})
     assert caps.tool_available("tleap") is False
 
 
