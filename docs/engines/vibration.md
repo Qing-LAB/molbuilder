@@ -3623,6 +3623,296 @@ the data-file framework the result is written through.
 **Registered** where every file molbuilder writes is: `runfiles.WRITTEN`'s
 `.spectra.nc` row, § 6.9's table and `execution/job-contracts.md` § 6.1.
 
+### 6.11 The vibration record — every per-mode quantity in the file, from one module *(designed 2026-11-22, the user's decisions in § 9; not built — R3d)*
+
+*The user, 2026-11-21: "why not make sure these calculation results are part
+of the netcdf results?"; "you can use a module either called vibration or
+something to unify these vibration related calculation"; of the probe's
+fixed 0.02–0.20 Å window (`r2-4` P2): "why should we have an arbitrary
+amplitude range?". 2026-11-22: "offer the theory and api for recalculation of
+zero-point amplitude and different distribution/probability distribution
+function for mode at different excitation state"; "those theory /
+calculation api should be scientifically validated in tests"; "the
+displacement of atoms from a given mode's displacement should be able to be
+calculated with clear theory/document".* The theory is
+[`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md)
+§ 2b; built in R3d, with the data files' writers
+([`plans/plan.md`](?doc=plans/plan.md) § 1, § 3), after the user's yes.
+
+#### 1. What the file holds today, and what it does not
+
+The result states, per mode, what the engine gave and what § 6.6 derives
+from it: the frequency, both eigenvector forms, the strengths, the dipole
+change, the activity classes, the zero-point amplitude $Q_{\mathrm{zp}}$ and
+displacement — and, on PySCF, the probe's orbital and SCF energies at $-A$,
+$0$, $+A$ (§ 4.8), from which only the page computes the shift it draws.
+**What a person cannot read from it** (read in the code, 2026-11-22):
+
+| quantity | where it is derived today | stored |
+|---|---|---|
+| each element's share of a mode's motion, $m_i\lvert L_i\rvert^2/\sum_k m_k\lvert L_k\rvert^2$ | `spectra/results.py` (`motion_share_by_element`), at load | no — a view (§ 6.6) |
+| the largest single-atom zero-point move, $\max_A\lvert u_{\mathrm{zp},A}\rvert$ | the spectra page itself, from the stored displacement (`onWriteFrameSet`) | no |
+| a mode's spread $\sigma(T) = Q_{\mathrm{zp}}\sqrt{\coth(\hbar\omega/2k_BT)}$ and mean quanta $n(T)$ | `spectra/derived.py`, at load for the temperature the tab asks | no |
+| a frame set's outermost move for a rule at a temperature | `spectra/mode_frames.py` (`outermost_move`, `at_temperature`) | in the frame set's own record only |
+| the distribution of a mode's coordinate in a state other than thermal — $n$ quanta exactly, a steady swing | nowhere | no |
+| each atom's move for a mode coordinate the person gives | nowhere as a door — `normal_modes.displaced` inside the frame-set maker | no |
+| the probe's slope $\partial\varepsilon/\partial Q$ and the coupling $g_\nu = (\partial\varepsilon/\partial Q)\,Q_{\mathrm{zp}}$ | nowhere — the page draws $\Delta E/(2A)$ per Å of the display form | no ([`science/normal-modes.md`](?doc=science/normal-modes.md) § 4b.5 F: "not computed today") |
+| the probe's gap and its shift | the spectra page itself (`renderESPanel`, `_gapEq`, `_dgapMax`) | no |
+
+#### 2. One module, `vibration`
+
+`molbuilder/vibration.py` owns **every per-mode quantity of a harmonic
+mode, its definition and its derivation** — the one door the writers, the
+reader's check (§ 6.7), the load door, the frame-set maker, the probe, the
+transport average's motion and `postprocess` ask. It takes in what
+`spectra/derived.py` holds today for the mechanics (the zero-point amplitude
+and displacement, the spread, the mean quanta, the temperature rule), the
+element shares, `normal_modes`' mode geometry (`mode_over_atoms`,
+`largest_move`, `q_for_largest_move`, `displaced`), `mode_frames`'
+`outermost_move` and `at_temperature`, `frame_average`'s motion weights,
+the states of § 2b of the science chapter, and the probe's derivations (§ 4
+below). The activity classes stay `spectra.activity`'s — a spectroscopic
+decision, not a mechanical quantity. It travels in both bundles with numpy,
+which both allow, its siblings imported two ways; the masses it weighs by
+are the record's, and a file before v7, which states none, takes them from
+`chemistry` in the reader, which does not travel. **A table states each
+quantity once** — its name, unit, definition, inputs, and whether it depends
+on a temperature or a state — and the data file's variables, the JSON's
+keys, the reader's check and `postprocess`' fields are all read off it. The
+page computes none of them: it draws what the record states, and asks the
+load door for a temperature or a state the record does not hold.
+
+**One rule where today there are two or more**: the displaced geometry
+$R_0 + Q\,L$ (`normal_modes.displaced`, and the PySCF probe's own push in its
+deck — VibrationView's drawn frames stay its own, sealed); **one meaning of
+"the largest move"**, the length of the atom's displacement vector (today also
+the largest Cartesian component, for the probe's $A$, which § 4 retires; the
+display form keeps its component scale for drawing alone); the thermal
+occupation $n(T)$ (`derived.mean_quanta` and `normal_modes.vibrational_thermo`);
+the imaginary flag (the SIESTA finish and the PySCF deck); the projection of
+a derivative onto a mode, $\sum_k (\partial X/\partial R_k)\cdot L_k$ (the
+infrared, the Raman, the free atoms' infrared view); and $Q_{\mathrm{zp}}$ read
+from the record, never recomputed beside it (the frame-set maker does today).
+
+#### 3. The per-mode record
+
+| quantity | unit | definition | depends on | stored |
+|---|---|---|---|---|
+| frequency, `has_imag`, both eigenvectors, strengths, $d\mu/dQ$ | as § 6.3 | the engine's, § 6.4 | — | yes (as today) |
+| activity classes | — | § 6.6 | — | yes (as today) |
+| $Q_{\mathrm{zp}}$, $u_{\mathrm{zp}}$ | amu^½·Å, Å | § 6.3; science § 2b.1 | — | yes (as today) |
+| **element shares** | 1 | $m_i\lvert L_i\rvert^2/\sum_k m_k\lvert L_k\rvert^2$, summed over each element's free atoms | — | **yes**, derived and checked on read |
+| **largest zero-point move** | Å | $\max_A\lvert u_{\mathrm{zp},A}\rvert$ | — | **yes**, derived and checked |
+| **spread** $\sigma(T)$ and **mean quanta** $n(T)$ | amu^½·Å, 1 | science § 2, § 2a | the thermochemistry grid's temperatures (§ 4.7): `/modes` gains a `temperature_k` coordinate holding them, `/thermo/grid`'s own axis staying where a script finds it today | **yes**, (mode, temperature) |
+| a state's distribution, its moments and frames; each atom's move at a coordinate; the spread at another temperature; a frame set's outermost move; the free atoms' infrared at a direction; the Raman at a laser | — | science § 2b; as today | the person's choice | **no** — a view asked with its inputs, derived by the same module |
+| the probe's node energies, nodes, weights, average and shift (§ 4) | — | § 4 | the probe's state | **yes**, PySCF, the probed modes; its slope, $g_\nu$, $S$ and checks a view |
+
+A derived value is written beside what it comes from and checked on read,
+as § 6.6 rules for the ones stored today; a file before the new schema reads
+as before, each computed on read.
+
+#### 4. The probe, at the frame rule's nodes *(D7, D8 — the user's, 2026-09-28; settles `r2-4` P2)*
+
+**The push is the one amplitude rule both engines share** (§ 5.10, D7 and
+D8): the Gauss–Hermite nodes of the mode's distribution at the temperature
+the person states — three by default, $\tfrac23$ at $0$ and $\tfrac16$ each at
+$\pm\sqrt3\,\sigma(T)$, five or seven on request — and
+`electronic_structure.amplitude_ang` gives way to the node record. Each mode
+is pushed by its own spread, a soft mode further than a stiff one, so no
+length in Å is right or wrong for every mode, and the fixed 0.02–0.20 Å window
+goes with its three warnings (`validation/spectra.py`), the catalogue's
+range and the Methods paragraph's push. A state other than thermal (science
+§ 2b) places the nodes by its own rule, where the user takes that up (§ 9
+item 2).
+
+**An imaginary mode the selection includes** — `all` with no lower bound,
+a negative minimum, or an explicit list (`spectra/selection.py`) — is probed
+at the width $|\omega|$ gives, and the run's output says so: nothing the
+person asked is dropped. Its record states the slope, and its coupling,
+Huang–Rhys factor and harmonicity `null` — an unstable mode has no harmonic
+width or energy, as an older file's rule has it too. **The largest atom move at the outer nodes is stated** with the
+probe, as a frame set's is — the number a person reads against that atom's
+bond length ([`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md)
+§ 2, § 5): a soft mode's push can reach a bond's length (a 10 cm⁻¹ hydrogen
+mode moves its atom up to 1.29 Å at one zero-point width, and at 298 K,
+where its spread is 6.4 of them, the outer node moves it about 14 Å). An SCF
+that fails at a node is recorded as failed and said, and the other nodes and
+modes go on.
+
+From the SCFs at the nodes — orbital energies $\varepsilon_j$ per orbital of
+the window, SCF energies $E_j$ — follow these numbers, each **an estimate from
+those points, named so**; the record holds the average and its shift, and the
+rest are views (below):
+
+| number | definition (three nodes, $Q_\pm = \pm\sqrt3\,\sigma$) | unit | meaning |
+|---|---|---|---|
+| the slope $\partial\varepsilon/\partial Q$ | $(\varepsilon_+ - \varepsilon_-)/(2Q_+)$ | Eh/(amu^½·Å) | a central difference; its error is $\varepsilon'''Q_+^2/6$ |
+| the coupling $g_\nu$ | slope $\times\,Q_{\mathrm{zp}}$ | Eh | Frederiksen's and Galperin's $M$ for a coupling written $g\,(b+b^\dagger)$ |
+| the Huang–Rhys factor $S$ | $(g_\nu/\hbar\omega)^2$ | 1 | no ½ for that convention (Mahan writes $g$ for this $S$); the linear, eigenvalue estimate — not a $\Delta$SCF displacement |
+| the level's average over the state | $\langle\varepsilon\rangle = \sum_j w_j\,\varepsilon_j$ | Eh | exact for a response polynomial to degree $2m-1$ ($m$ nodes): degree 5 for three |
+| its shift | $\langle\varepsilon\rangle - \varepsilon_0$ | Eh | one mode's adiabatic, frozen-mode contribution to the level's renormalisation at that state — Fan and Debye–Waller together, in Kohn–Sham eigenvalues; not the non-adiabatic, the polaron ($-g^2/\hbar\omega$) or the anharmonic terms. At 0 K, the mode's zero-point shift |
+| the even part's share | $\lvert\varepsilon_+ + \varepsilon_- - 2\varepsilon_0\rvert/\lvert\varepsilon_+ - \varepsilon_-\rvert$, `null` where $\varepsilon_+ = \varepsilon_-$ | 1 | small: **no quadratic part over the push**. A cubic part shows only in the slope (its leading error); five nodes show it as the inner pair's slope against the outer pair's, and the three- and five-node averages differ only by even terms of degree 6 and above |
+| the mode's harmonicity | $\bigl(\sum_j w_j E_j - E_0\bigr)/(\tfrac12\omega^2\sigma^2)$ | 1 | the energy the motion costs against the harmonic $\tfrac12\omega^2\langle Q^2\rangle$: 1 for a harmonic mode, where the probe's SCF is the Hessian's own model; blind to a cubic term, it reads $1 + \kappa_4\sigma^2/4\omega^2$ for a quartic one (not on the reduced route, which rebuilt its mean field without density fitting, § 4.4) |
+| the shift against the SCF's noise | $\lvert\varepsilon_+ - \varepsilon_-\rvert$ against PySCF's orbital-gradient tolerance, $\sqrt{\texttt{scf\_conv\_tol}}$ where none is set | 1 | an orbital energy's error is first order in that gradient (the energy's is second order); the grid's noise is not in it. The record states `scf_conv_tol`, and the gradient tolerance where one is set, so the check is made again on read |
+
+**What the numbers do not claim**: the orbitals are joined by their index
+about each geometry's own HOMO (`vibration_emitters.py`), so a degenerate
+level a mode splits, or two levels crossing inside the push, give a slope of
+zero and a "shift" that depends on the push — such an orbital is **marked**
+(degenerate at equilibrium within the SCF's own noise, $\sqrt{\texttt{scf\_conv\_tol}}$,
+or reordered between nodes), its energies at the nodes kept and its slope,
+coupling and Huang–Rhys factor `null` beside the mark. The mark is a
+decision, so its rule is part of the file's definition, as the activity
+class's is (§ 6.6). A slope that is zero by symmetry —
+a mode that is not totally symmetric, against a level that is not
+degenerate — is **expected, not noise**; a symmetric system's antisymmetric
+modes give the record's noise floor (§ 5.10). The last three rows are
+information, never a refusal or a fixed range.
+
+**What the record holds** (§ 9 item 5, decided): what the weights alone
+give — the energies at the nodes, the nodes, the weights,
+$\langle\varepsilon\rangle$ and its shift. The slope, $g_\nu$, $S$, the even
+part's share, the harmonicity and the noise ratio are derived *across* the
+nodes, so they are `postprocess.vibration`'s views, computed on request with
+the marks above — the user's ruling of 2026-10-10 for every record: *"a
+number shaped like one would mislead"* (science § 8). D8's *"$g_\nu$ is
+written"* (2026-09-28) is read so: the page shows $g_\nu$, as the load door
+derives it.
+
+**A file before the new schema** — its push $A$ in Å along the display form —
+reads with the slope and the coupling derived on read: its push in the normal
+coordinate is $Q = A/\max\lvert L_c\rvert$, the largest Cartesian
+**component** of the canonical vector (not the per-atom length, which would
+be wrong by up to $\sqrt3$); an imaginary mode it probed has no
+$Q_{\mathrm{zp}}$, so its slope is stated and its coupling `null`.
+
+#### 5. The data files and the reader
+
+`<label>.spectra.json` gains the new per-mode keys (schema 14 → 15); the
+data file (`spectra-data@10` → `@11`) gains in `/modes` the `element` and
+`temperature_k` coordinates and a variable per quantity, each stating its
+unit, meaning, definition and kind through the file's one variable table
+(`spectra/datafile.py`). **The probe's layout** becomes the node record's:
+in the JSON `electronic_structure.{state, nodes_amu12_ang, weights,
+mo_energies_eh, scf_energies_eh, marks, scf_conv_tol}` — the energies by node,
+then orbital — and in `/modes/electronic_structure` a `node` dimension in
+place of today's three fixed points. A file of schema 14 or before reads as
+today, its three points at $-A$, $0$, $+A$. The reader refuses a stored derived
+value that disagrees with its derivation, as § 6.7 does today. **The writer
+refuses a mode or probe key it has no variable for** — today it drops one
+silently, while the JSON's reader refuses it.
+
+#### 6. Reading it, and computing with it — `postprocess.vibration`
+
+```python
+from molbuilder.postprocess import vibration
+v = vibration("01_freq/run-0/<label>.spectra.nc")    # or the .spectra.json
+m = v.modes[6]                                        # mode 7
+m.frequency_cm1, m.zero_point_amplitude_amu12_ang, m.element_shares
+
+u = m.displacement(0.05)                    # each atom's move (Å, xyz) at Q = 0.05 amu^1/2·Å
+u = m.displacement(zero_point_widths=1.0)   # ... at Q = Q_zp
+q = m.coordinate(u)                         # back: Q = Σ_A m_A L_A·u_A
+
+s = m.state(temperature_k=300.0)            # or mean_quanta=0.5, quanta=2,
+                                            #    swing_quanta=4 (with temperature_k=10)
+s.pdf(q), s.cdf(q), s.moment(4), s.spread_amu12_ang, s.mean_quanta
+s.atom_rms_ang                              # each atom's r.m.s. move in that state
+s.frames(nodes=5)                           # positions and weights for averaging over it
+
+m.with_frequency(1517.0)                    # Q_zp, u_zp and every spread at a frequency given
+m.probe.coupling_eh, m.probe.huang_rhys, m.probe.shift_eh   # PySCF, a probed mode
+```
+
+Every field is the record's, in the user's atom order, its unit in its name;
+a temperature or a state the record does not hold is derived by the same
+module. **Every temperature is explicit** (§ 9 item 6): a call given one uses
+it, a call given none uses the temperature the record states, and the answer
+says which. `read_spectra_data` stays the whole result as data.
+
+#### 7. How it is validated *(the user, 2026-11-22)*
+
+Every test's expectation comes from the science, never from molbuilder's own
+output: the closed forms, the textbook numbers and the sum rules of science
+§ 2b.5 — the H₂ zero-point amplitude; a harmonic diatomic built from a spring
+constant and two masses; each state's normalisation, moments, nodes and
+limits; Mehler's sum; the swing's moments; each rule's exactness for the
+state it samples; the displacement and its projection back — and, end to
+end, a real PySCF H₂ run against CODATA's constants: the bond's r.m.s.
+$\sqrt{\hbar/2\mu\omega}$ from the file's frequency and masses, each atom
+moving half of it, and the projection giving $Q_{\mathrm{zp}}$ back. Each is
+seen failing on the release before. `postprocess.outermost_move` and
+`postprocess.reaveraged` keep their signatures as their functions move into
+`vibration`.
+
+#### 8. Its documents
+
+The theory, science § 2b, new; § 6.3, § 6.4, § 6.6, § 4.8, § 4.10 and the data
+file's table ([`model/datafiles.md`](?doc=model/datafiles.md)) rewritten for
+the record; the catalogue's probe item and the Methods paragraph; § 8.2's
+diagram and the road's diagram (§ 1) redrawn to show the Raman's optical
+calls with the run's own copy of their files (2.77.21), the data files, and
+the ways out — the Results tab's Export, the Python API, a frame set into a
+transport calculation; invariant I16 and § 5.10 ①, which keep the element
+shares at load and out of the file, rewritten for the shares stored;
+[`science/vibrational-optical-response.md`](?doc=science/vibrational-optical-response.md)
+§ 3.2 (the Raman step a choice) and § 6.5, § 6.6 and
+[`web/spectra.md`](?doc=web/spectra.md) (SIESTA's Raman verdict at a laser);
+[`engines/vibration-postprocessing.md`](?doc=engines/vibration-postprocessing.md)
+given a diagram and its missing sections (the zero-point fields, the
+spread at a temperature, the states, an atom's move, frame sets,
+`reaveraged`, `vibration`).
+
+#### 9. The user's decisions *(2026-11-22)*
+
+1. **A description that states `displacement_amplitude_ang`** — every
+   PySCF vibration's template does, at its default. **Decided** (the user,
+   2026-11-22): `jobset migrate` removes it and says so — the rule that
+   migrate removes a retired item only when its value runs as before
+   (`template.RETIRED_ITEMS`) changed for this one — and writes the probe's
+   temperature (item 6); prep then runs.
+2. **The frame-set maker's distributions**. **Decided** (the user,
+   2026-11-22): a multi-frame structure carries each frame's weight, the one
+   row a calculation reads, and its maker's rows say what motion the weights
+   stand for ([`model/structure.md`](?doc=model/structure.md) § 2.2f) — the
+   transport calculation is the same whatever the motion — and the maker
+   (`frameset from-mode`, *Write frame set*) places the frames and writes
+   their weights for a mode with $n$ quanta exactly, or a steady swing,
+   beside the thermal bell curve D7 decided; the probe, which takes the
+   maker's nodes (D8), follows.
+3. **Isotopes**. **Decided** (the user, 2026-11-22): the result stores the
+   force constants over the free atoms, on both engines, and
+   `postprocess.vibration`'s `with_masses` recomputes the modes, $Q_{\mathrm{zp}}$
+   and every per-mode quantity for other masses.
+4. **SIESTA's Raman step**. **Decided** (the user, 2026-11-22, both):
+   (i) the step is a choice — the force-constant run's own step, today's
+   (2026-10-24), or a fraction of each mode's zero-point width — stated in
+   the result either way; (ii) SIESTA's Raman view at a laser gives each mode
+   the same verdict PySCF's activities get, by the same relative rule
+   (`spectra.activity`, § 6.6), and states the gap it cut at, so a step that
+   brought the residue too near the bands shows. A forbidden mode's residue
+   grows as $1/\delta Q^2$, which a fixed threshold would follow and the
+   relative rule does not.
+5. **The probe's numbers in its record**. **Decided** (the user,
+   2026-11-22: *a*): the record holds what the weights alone give — the
+   energies at the nodes, the nodes, the weights, $\langle\varepsilon\rangle$
+   and its shift — as the 2026-10-10 ruling has it for every record; the
+   slope, $g_\nu$, $S$, the even part's share and the harmonicity are
+   `postprocess.vibration`'s views, computed on request with a degenerate or
+   crossing level said, and the page shows them as the load door derives
+   them.
+6. **The probe's temperature**. **Decided** (the user, 2026-11-22:
+   *"temperature should be a parameter and if possible can be
+   changed/tuned in post-data processing to calibrate for different
+   temperatures (if the parameter is not provided to api, then the stored
+   temperature is used), either way the temperature should be an explicit
+   value"*): the probe's temperature is an item of its own with an explicit
+   value — `jobset migrate` writes it from the description's thermochemistry
+   temperature and says so — and **every temperature the API takes is that
+   rule's**: given, it is used; not given, the temperature the record states.
+   The probe's node energies are re-weighted for another temperature within
+   the nodes' reach (science § 5.4), the API saying so beyond it.
+
 ---
 
 ## 7. The invariants — what the code must keep true

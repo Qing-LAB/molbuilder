@@ -50,7 +50,7 @@ closes*). Sources: the findings files in
 [`archive/audits/2026-11-18-f12-review/`](?doc=archive/audits/2026-11-18-f12-review/TRIAGE-round1.md)
 (`r2-<n>-*.md`), named per item as `<file> <row>`.
 
-### 1. The vibration framework — designed first, for the user's review
+### 1. The vibration framework — designed, the user's decisions taken (2026-11-22); built in R3d
 
 *(the user, 2026-11-21: "why not make sure these calculation results are part
 of the netcdf results?"; "Design now, then R3c"; "you can use a module either
@@ -75,15 +75,36 @@ built in R3d with the vibration's data files.
   motion, the frame weights at a temperature (`frame_average.py`), the mode
   over all atoms and the displaced geometry (`spectra/normal_modes.py`) — each
   its own helper.
-- **The design to write**: one `vibration` module owning every per-mode
-  quantity and its definition; a per-mode record in the data file, each
-  quantity with its unit, meaning and the temperature it holds at;
-  `postprocess.vibration(path)`; **the probe stated in zero-point widths** —
-  the displacement amplitude as a multiple of the mode's zero-point
-  amplitude, with its checks (the coupling g, the Huang–Rhys S, the
-  zero-point renormalisation, linearity), which settles `r2-4` P2 *(the user
-  rejected a fixed 0.02–0.2 Å range: "why should we have an arbitrary
-  amplitude range?")*.
+- **The design, written 2026-11-22** ([`engines/vibration.md`](?doc=engines/vibration.md)
+  § 6.11; the theory [`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md)
+  § 2b): one `vibration` module owning every per-mode quantity and its
+  definition, the rules today written two or more times folded into it; a
+  per-mode record in the data file — element shares, the largest zero-point
+  move, the spread and mean quanta on the thermochemistry's temperatures —
+  each derived, stored and checked on read; `postprocess.vibration(path)`;
+  **the probe on D7/D8's rule** (the user's, 2026-09-28: the frame set's
+  Gauss–Hermite nodes at the stated temperature), which settles `r2-4` P2 —
+  its slope, the coupling $g$, the Huang–Rhys factor, the level's average and
+  shift over the state, the even part's share, the mode's harmonicity and the
+  SCF's noise, each named as an estimate, a degenerate or crossing orbital
+  marked; and *(the user, 2026-11-22)* the zero-point amplitude recalculated
+  from any frequency, the distribution of a mode's coordinate in each state
+  ($n$ quanta, thermal, a swing, classical) with its moments and frames, each
+  atom's move for a coordinate given and back, all validated by tests whose
+  expectations are the science's closed forms. A science reader's review
+  (2026-11-22) corrected the first draft (D8 missed, estimates called exact,
+  the noise yardstick, an imaginary mode the person named); a second its
+  revision.
+- **The user's decisions, 2026-11-22** (§ 6.11 § 9): `jobset migrate` removes
+  `displacement_amplitude_ang`, saying so, and writes the probe's temperature;
+  the frame-set maker offers $n$ quanta and a swing beside the thermal bell
+  curve, the probe following — the transport calculation reads the weights
+  alone; the result stores the force constants, `with_masses` recomputing for
+  isotopes; SIESTA's Raman step a choice (the force-constant step, or a
+  fraction of the zero-point width) and its view's per-mode verdict by the
+  relative rule; the probe's record holds the weights' numbers only, its
+  slope, $g$ and $S$ views; every temperature explicit, the API's default the
+  record's.
 - **Its documents**: [`engines/vibration.md`](?doc=engines/vibration.md)'s
   two diagrams redrawn — they stop at the Results tab and show neither the
   Raman optical calls (with the run's own copy of their files, 2.77.21), nor
@@ -253,7 +274,7 @@ built in R3d with the vibration's data files.
 
 ## Waiting on the user
 
-- **Next**: the vibration framework's design (§ 1), brought for review.
+- **Next**: nothing — the vibration framework's design is decided (§ 1); R3c runs.
 - At their releases: R3d's two visible spellings; R3f's Prep-as-a-process
   design, the side rail's change after measuring, and deletions #6, #26; R4's
   selection-route design and MolView's atom filter; every deletion, listed

@@ -508,6 +508,135 @@ $\langle\Delta G\rangle/G\,(\sigma) = (\sigma/\sigma_T)^2 \times \langle\Delta G
 
 ---
 
+## 2b. One mode in any state — its zero-point amplitude, where it sits, and what each atom moves
+
+*(The user, 2026-11-22: "offer the theory and api for recalculation of
+zero-point amplitude and different distribution/probability distribution
+function for mode at different excitation state"; "the displacement of atoms
+from a given mode's displacement should be able to be calculated with clear
+theory/document"; "those theory / calculation api should be scientifically
+validated in tests".)* The API that computes each of these is designed in
+[`engines/vibration.md`](?doc=engines/vibration.md) § 6.11 § 6, not built.
+
+> **In short.** A mode's coordinate $Q$ has a natural length, the zero-point
+> amplitude $Q_{\mathrm{zp}}$, set by its frequency alone. Where the molecule
+> sits along the mode is a probability density $P(Q)$, and its shape depends
+> on the mode's state: a bell curve in equilibrium or under random quanta
+> (§ 2, § 2a.1), the oscillator's own standing-wave densities with exactly $n$
+> quanta, a bell curve riding a swing when driven in step (§ 2a.2). Every
+> atom moves along its own row of the mode's pattern, $\mathbf u_A = Q\,\mathbf
+> L_A$, so any coordinate — a number, a number of zero-point widths, a state's
+> r.m.s. — gives every atom's move in x, y, z.
+
+### 2b.1 The zero-point amplitude, from any frequency
+
+$$
+Q_{\mathrm{zp}} \;=\; \sqrt{\frac{\hbar}{2\omega}} \;=\; \sqrt{\frac{C}{\tilde\nu}},
+\qquad C = 16.8576\ \mathrm{amu}\,\text{Å}^2\,\mathrm{cm}^{-1}
+$$
+
+in amu$^{1/2}$·Å, $\tilde\nu$ the wavenumber in cm⁻¹ — `constants.ZERO_POINT_Q2_AMU_ANG2_CM1`,
+derived from the hartree in cm⁻¹, the Bohr radius and the amu in electron
+masses (16.857629, as SI's $\hbar$, $c$ and amu give). It is the
+ground state's r.m.s. coordinate, $\langle Q^2\rangle_0 = Q_{\mathrm{zp}}^2$, and the
+oscillator's natural length: the dimensionless coordinate is
+$\xi = Q/(\sqrt2\,Q_{\mathrm{zp}})$, $Q$ in units of $\sqrt{\hbar/\omega}$.
+
+It can be **recalculated from any frequency** with the mode's pattern kept —
+a scaled frequency (a factor for the harmonic picture's overestimate), a
+measured one — since $\mathbf L$ is unchanged by a scale on $\omega$. **Other
+masses** (an isotope) change both $\omega$ and $\mathbf L$: that needs the
+force constants and a new diagonalisation (`normal-modes.md` § 3), which the
+result stores from the vibration record on (`vibration.md` § 6.11 § 9 item 3;
+not built).
+
+### 2b.2 From the mode's coordinate to each atom's move
+
+The canonical eigenvector $\mathbf L$ is normalised with the masses,
+$\sum_A m_A\lvert\mathbf L_A\rvert^2 = 1$ ($m_A$ in amu, $\mathbf L_A$ in
+amu$^{-1/2}$; `vibration.md` § 6.3). A coordinate $Q$ moves **every atom $A$ by**
+
+$$
+\mathbf u_A(Q) \;=\; Q\,\mathbf L_A \qquad (\text{Å, its x, y and z}),
+\qquad \mathbf u_A = \mathbf 0 \ \text{for a held atom},
+$$
+
+and **back**, a set of atom moves along the mode gives its coordinate by the
+mass-weighted projection
+
+$$
+Q \;=\; \sum_A m_A\,\mathbf L_A\cdot\mathbf u_A ,
+$$
+
+exact because different modes are orthogonal with the masses. The coordinate
+may be given as a number (amu$^{1/2}$·Å), as $k$ zero-point widths
+($Q = k\,Q_{\mathrm{zp}}$, each atom moving $k\,\mathbf u_{\mathrm{zp},A}$ —
+`zero_point_displacement_ang`), or as a state's r.m.s. ($\sqrt{\langle
+Q^2\rangle}$, each atom's r.m.s. move $\sqrt{\langle Q^2\rangle}\,\lvert\mathbf
+L_A\rvert$ along $\mathbf L_A$).
+
+**H₂, worked.** At 4400 cm⁻¹, $Q_{\mathrm{zp}} = \sqrt{16.8576/4400} = 0.0619$
+amu$^{1/2}$·Å. The stretch moves the two atoms oppositely, $\lvert\mathbf
+L_{\mathrm H}\rvert = 1/\sqrt{2m_{\mathrm H}} = 0.7043$ amu$^{-1/2}$, so at
+$Q_{\mathrm{zp}}$ each atom moves 0.0436 Å and the bond changes by 0.0872 Å —
+$Q_{\mathrm{zp}}/\sqrt\mu$ with $\mu = m_{\mathrm H}/2$, the textbook zero-point
+amplitude (`normal-modes.md` § 4b.5 F).
+
+### 2b.3 Where the molecule sits — the distribution in each state
+
+| state | what it is | $P(Q)$ | $\langle Q^2\rangle$ | $\langle Q^4\rangle$ |
+|---|---|---|---|---|
+| **$n$ quanta exactly** (a number state) | the oscillator's $n$-th eigenstate — a molecule that has taken one photon's energy into the mode and nothing else | $\dfrac{H_n(\xi)^2\,e^{-\xi^2}}{2^n\,n!\,\sqrt{2\pi}\,Q_{\mathrm{zp}}}$, $\xi = \dfrac{Q}{\sqrt2\,Q_{\mathrm{zp}}}$, $H_n$ the Hermite polynomial | $(2n+1)\,Q_{\mathrm{zp}}^2$ | $3\,(2n^2+2n+1)\,Q_{\mathrm{zp}}^4$ |
+| **thermal**, at $T$ or at mean quanta $\bar n$ | equilibrium (§ 2), or quanta added at random moments (§ 2a.1): the number states weighted by $p_n = \bar n^n/(\bar n+1)^{n+1}$ | the Gaussian of § 2, $\sigma^2 = (2\bar n+1)\,Q_{\mathrm{zp}}^2$ — exactly, the weighted sum of the densities above (Mehler's formula) | $\sigma^2$ | $3\sigma^4$ |
+| **a steady swing** over a bath | a push in step with the mode (§ 2a.2): at each moment the bath's Gaussian, width $\sigma_T$, centred at $Q_0\cos\omega t$, $Q_0 = 2\,Q_{\mathrm{zp}}\sqrt{n_s}$ for $n_s$ swing quanta | that Gaussian averaged over the swing's phase | $\sigma_T^2 + Q_0^2/2$ | $3\sigma_T^4 + 3\sigma_T^2Q_0^2 + \tfrac38 Q_0^4$ |
+| **classical**, for comparison | the high-temperature limit; a classical swing alone | a Gaussian, $\sigma^2 = k_BT/\omega^2$; a swing alone, $1/\bigl(\pi\sqrt{Q_0^2 - Q^2}\bigr)$ inside $\pm Q_0$ | $k_BT/\omega^2$; $Q_0^2/2$ | $3\sigma^4$; $\tfrac38 Q_0^4$ |
+
+What each shape says. **With $n \ge 1$ quanta it is not a bell curve**:
+$P_n$ has $n$ zeros, its weight piles toward the classical turning points
+$\pm Q_{\mathrm{zp}}\sqrt{2(2n+1)}$, and some lies beyond them — 15.7 % for
+$n = 0$ (the bell curve at 0 K), 11.2 % for $n = 1$, 9.5 % for $n = 2$. **Thermal and random quanta are the same bell curve**,
+set by the mean number of quanta alone (§ 2a). **A swing spends its time near
+its turning points** (§ 2a.2). In every state the spread is set by the mean
+number of quanta, $\langle Q^2\rangle = Q_{\mathrm{zp}}^2(2\langle n\rangle+1)$ (§ 2a),
+and each atom's r.m.s. move is that spread times $\lvert\mathbf L_A\rvert$ (§ 2b.2).
+
+### 2b.4 Frames for a state
+
+An average over a state — a level's, a transmission's — is computed from a
+few frames placed by a quadrature for that state's $P(Q)$, its weights the
+frames' (§ 5): for a Gaussian state, the Gauss–Hermite rule,
+$Q_j = \sqrt2\,\sigma\,x_j$ (§ 5.1); for $n$ quanta exactly, the rule whose
+weight function is $P_n$ itself — its nodes and weights from that density's
+own orthogonal polynomials, computed from its moments — exact, as every
+Gauss rule of $m$ frames is, for a response polynomial up to degree $2m-1$;
+for a swing, the rule of § 2a.3. **The distribution is the maker's
+alone**: a multi-frame structure carries each frame's weight, the one row a
+calculation reads, and the maker's rows say what motion the weights stand
+for ([`model/structure.md`](?doc=model/structure.md) § 2.2f), so a transport
+calculation over the frames is the same whatever the state. The maker
+writes sets for $n$ quanta and a swing beside the thermal one (the user,
+2026-11-22; `vibration.md` § 6.11 § 9 item 2; not built); re-averaging frames already computed
+over another motion (§ 5.4, `reaveraged`) is the analysis's, from the
+frames' positions.
+
+### 2b.5 How each is validated
+
+Each test takes its expectation from the science below — never from
+molbuilder's own output — and is seen failing on the release before:
+
+| what | the test's expectation | where it comes from |
+|---|---|---|
+| $Q_{\mathrm{zp}}$ | H₂ at 4400 cm⁻¹: 0.0619 amu$^{1/2}$·Å; the bond's r.m.s. 0.0872 Å $= Q_{\mathrm{zp}}/\sqrt\mu$ | $\sqrt{\hbar/2\omega}$; the textbook zero-point amplitude |
+| a harmonic diatomic built from a spring constant $k$ and two masses | its frequency $\sqrt{k/\mu}$; at $Q_{\mathrm{zp}}$ the atoms move $\tfrac{m_2}{M}\,\tfrac{Q_{\mathrm{zp}}}{\sqrt\mu}$ and $\tfrac{m_1}{M}\,\tfrac{Q_{\mathrm{zp}}}{\sqrt\mu}$ in opposite directions, the centre of mass still | the two-body problem in closed form |
+| an atom's move and its way back | the projection $\sum_A m_A\mathbf L_A\cdot\mathbf u_A$ returns $Q$; the displaced geometry's harmonic energy $\tfrac12\mathbf u^{\mathsf T}H\mathbf u = \tfrac12\omega^2Q^2$ | the eigenproblem's orthonormality with the masses |
+| $n$ quanta exactly | each $P_n$ integrates to 1; the eigenfunctions are orthogonal; $\langle Q^2\rangle$ and $\langle Q^4\rangle$ as in § 2b.3; $n$ zeros; the potential energy half of $\hbar\omega(n+\tfrac12)$ | the oscillator's eigenfunctions; the virial theorem |
+| thermal | the $p_n$-weighted sum of the $P_n$ equals the Gaussian of $\sigma^2 = (2\bar n+1)Q_{\mathrm{zp}}^2$; $\bar n$ is Bose–Einstein's; $\sigma \to Q_{\mathrm{zp}}$ at 0 K and $\sigma^2 \to k_BT/\omega^2$ hot | Mehler's formula; § 2 |
+| a swing | its $\langle Q^2\rangle$ and $\langle Q^4\rangle$ as in § 2b.3; its density the bath's Gaussian averaged over the phase | § 2a.2, in closed form |
+| frames | each Gauss rule (a Gaussian state, $n$ quanta) reproduces its state's moments to degree $2m-1$; the swing's $N$ equal phases to degree $N-1$ (its five frames: 7) | Gauss quadrature; the trapezoidal rule on a period |
+| end to end | a real PySCF H₂ run: the bond's r.m.s. $\sqrt{\hbar/2\mu\omega}$ from CODATA's constants and the file's frequency and masses, each atom moving half of it at $Q_{\mathrm{zp}}$, and the projection giving $Q_{\mathrm{zp}}$ back | CODATA; the two-body problem |
+
+---
+
 ## 3. What a measurement averages
 
 The current at bias $V$ is linear in the transmission (Landauer),
