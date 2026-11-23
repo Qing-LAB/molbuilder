@@ -56,15 +56,16 @@ from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple
 from molbuilder.parse.base import FileParser
 from molbuilder.parse.errors import ParseError
 from molbuilder.parse.types import ParseResult, TransmissionResult
-from molbuilder.runfiles import (OUR_LEADS, ROLE_TBT_DIGEST,
-                                 ROLE_TBT_DIGEST_CLAIM,
+from molbuilder.runfiles import (CHANNEL_UNPOLARIZED, OUR_LEADS,
+                                 ROLE_TBT_DIGEST, ROLE_TBT_DIGEST_CLAIM,
                                  SIESTA_ORB_INDX, SIESTA_TS_HSX, TBTRANS_NC,
                                  compose, find_on_label, stem_before, tail)
 from . import siesta_grammar as _G
 from .tbtrans import PRINTED_HALF_DECIMAL_EV, averaged_files, read_averaged
 
 #: An unpolarized point's data file, as the registry's words name it.
-_UNPOLARIZED_NC = tail(TBTRANS_NC, tbt=dict(_G.TBT_CHANNELS)["unpolarized"])
+_UNPOLARIZED_NC = tail(TBTRANS_NC,
+                       tbt=dict(_G.TBT_CHANNELS)[CHANNEL_UNPOLARIZED])
 
 #: The digest's schema, stated in it.
 DIGEST_SCHEMA = "molbuilder/tbt-digest@5"

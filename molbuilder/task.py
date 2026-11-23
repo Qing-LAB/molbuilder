@@ -18,7 +18,8 @@ groups, a benchmark's plan and the reports are its job request's,
 written here is refused, saying where it belongs.
 
 LAYER.  L1: at load it imports only stdlib-only L1 modules (``persist``,
-``identity``, ``runfiles``) and the standard library, so this stays a leaf.
+``identity``, ``runfiles``, ``units``) and the standard library, so this
+stays a leaf.
 That is deliberate rather than incidental — see *the split preflight* below.
 ``identity`` is here because ``run.id`` is something this module DERIVES and
 checks; it is the same normaliser the CLI and the browser call, which is what
@@ -64,6 +65,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
 from .identity import migrate_as_typed, normalise_id, run_id, stage_key
+from .units import volts_words
 from .persist import (RecordRefusals, check_schema, object_of, read_object,
                       write_json)
 
@@ -127,6 +129,28 @@ def bias_token(v: float) -> str:
     refusal of two points that would share one folder -- all read this.
     Here, beside the list it spells: the codec is the lowest reader."""
     return f"v{v:g}"
+
+
+#: THE THREE TREATMENTS OF A BIAS LIST, by the names every surface uses
+#: (`engines/transport.md` § 2a.10; :attr:`Task.treatment`): one voltage,
+#: every voltage's current from the 0 V transmission, or each voltage its own
+#: self-consistent point.
+SINGLE_BIAS = "single-bias"
+LOW_BIAS_APPROXIMATION = "low-bias-approximation"
+SELF_CONSISTENT = "self-consistent"
+
+
+def token_volts(token: str) -> "float | None":
+    """The voltage a bias point's directory name holds -- ``v0.2`` is 0.2 --
+    the inverse of :func:`bias_token`, or ``None`` where ``token`` is not
+    one."""
+    if not token.startswith("v"):
+        return None
+    try:
+        return float(token[1:])
+    except ValueError:
+        return None
+
 
 _RUN_KEYS = ("name", "id", "created")
 _STRUCTURE_KEYS = ("source", "formula", "atoms", "fingerprint")
@@ -301,9 +325,9 @@ class Task:
         from .kind_table import kind as _kind
         if "bias" not in _kind(self.calculation).description.carries:
             return None
-        return ("single-bias" if len(self.bias) <= 1
-                else "low-bias-approximation" if self.low_bias_approximation
-                else "self-consistent")
+        return (SINGLE_BIAS if len(self.bias) <= 1
+                else LOW_BIAS_APPROXIMATION if self.low_bias_approximation
+                else SELF_CONSISTENT)
 
     def __post_init__(self) -> None:
         """§ 6.5 holds for the object too, not only for the file.
@@ -418,7 +442,7 @@ class Task:
             shared = [(tok, vs) for tok, vs in folders.items() if len(vs) > 1]
             if shared:
                 tok, vs = shared[0]
-                said = (f"repeats {vs[0]:g} V" if len(set(vs)) == 1 else
+                said = (f"repeats {volts_words(vs[0])}" if len(set(vs)) == 1 else
                         f"puts {' and '.join(repr(v) + ' V' for v in vs)} "
                         f"in one folder ({tok}/)")
                 raise DescriptionError(

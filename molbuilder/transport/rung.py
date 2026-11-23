@@ -293,15 +293,17 @@ def junction_record(calc):
 
 def frames_had(calc, *, read=None) -> int:
     """HOW MANY FRAMES THE JUNCTION THIS CALCULATION HAS OR WILL HAVE HOLDS
-    -- its record's, on disk or in a prep's plan (`stages.frames_of`,
-    ``read``).  Before its first prep has written one: an extension's, the
-    junction that prep will take (:func:`junction_record`;
-    `engines/transport.md` § 2a.16); any other's, what its citation holds
-    (`compose.cited_frames`).  A junction that prep would refuse is the
-    prep's to say: until then the record's count answers."""
+    -- THE ONE ANSWER, asked by prep, the gather, the reuse decision, the
+    record, the data file and the status line (`engines/transport.md`
+    § 2a.9): its record's, on disk or in a prep's plan (``read``), the
+    count the composition wrote with the junction it holds.  Before its
+    first prep has written one: an extension's, the junction that prep will
+    take (:func:`junction_record`; § 2a.16); any other's, what its citation
+    holds (`compose.cited_frames`).  A junction that prep would refuse is
+    the prep's to say: until then the record's count answers."""
     from ..projects import find_projects_root
-    from .stages import frames_of
-    if read_provenance(calc.base, read=read) is None:
+    recorded = read_provenance(calc.base, read=read)
+    if recorded is None:
         if calc.task.reuses:
             try:
                 composed = junction_record(calc)[0]
@@ -313,7 +315,8 @@ def frames_had(calc, *, read=None) -> int:
         citation = citation_of(calc.task)
         if root is not None and citation:
             return int(cited_frames(citation, root)["n_frames"] or 1)
-    return frames_of(calc.base, read=read)
+        return 1
+    return int(recorded.get("frames") or 1)
 
 
 def _launched(calc) -> bool:
@@ -380,14 +383,15 @@ def written_and_read_back(base, composed, plan, *, root, task):
 
 
 def rung_spec(task, stage: str, struct, config, state, point=None, *,
-                   base=None, contours=None):
+                   citation: str, base=None, contours=None):
     """One transport deck's ``(spec, cfg)`` -- its point's when ``point``
     is given: the config at its voltage (the point is the rung's answer,
     `engines/template.md` § 6.4; a single-bias rung keeps the 0 V `resolve`
     laid on) and the deck naming its run's shared files the way the point
     reaches them (`engines/transport.md` § 2a.11); ``contours`` a
     transmission point's sharing with a finished calculation's point
-    (`transport.energies.Contours`, § 2a.16)."""
+    (`transport.energies.Contours`, § 2a.16); ``citation`` the cited
+    junction's kind, as its record's provenance names it."""
     from ..jobset.engines import engine_seam
     cfg = at_point(config, point)
     # THE RUNG'S NAMES -- the one composer (`StageHome.names`): a lead's
@@ -397,7 +401,8 @@ def rung_spec(task, stage: str, struct, config, state, point=None, *,
         try:
             spec = engine_seam(task.engine).spec_for(
                 struct, cfg, names=names, calculation=task.calculation,
-                **spec_keywords(task, state, point, base, contours))
+                **spec_keywords(task, state, point, base, contours,
+                                citation=citation))
         except ValueError as exc:
             # The deck's spec (`transport.deck.transport_spec`, through
             # the engine's seam) refuses an unknown rung with a message
@@ -408,15 +413,18 @@ def rung_spec(task, stage: str, struct, config, state, point=None, *,
     return spec, cfg
 
 
-def spec_keywords(task, state, point, base, contours) -> dict:
+def spec_keywords(task, state, point, base, contours, *,
+                  citation: str) -> dict:
     """WHAT A TRANSPORT DECK'S SPEC IS TOLD beside its structure and config
     -- the one composition both roads give the engine's writer (prep's
     rung, the gather's "same calculation" check, `engines/transport.md`
     § 6.1): its electronic state, its point (the device names its run's
     shared files the way its point reaches them, § 2a.11), where the
     device keeps the leads' files, and what a transmission point computes
-    where it is not its window whole (§ 2a.16)."""
-    return {"state": state, "point": point,
+    where it is not its window whole (§ 2a.16), and the cited junction's
+    kind, by which the seed says where its pseudopotentials came from
+    (§ 3.1)."""
+    return {"state": state, "point": point, "citation": citation,
             "scratch_dir": scratch_dir_of(base, engine=task.engine,
                                           calculation=task.calculation),
             "contours": contours}
@@ -476,7 +484,7 @@ def transport_rung_of(calc, pset, *, seam, sweep, log, plan,
     description's ``reuse`` part), from which the rung's points' contours
     are its own (:func:`_contours`)."""
     from .gather import composed_for_prep
-    from .reuse import point_key
+    from .stages import point_key
     base, task, stage = calc.base, calc.task, pset.stage
     contours = _contours(calc, stage, reuse)
     # NO SWEEP REACHES IT: `prep bench` refuses the kind first, in its
@@ -502,7 +510,8 @@ def transport_rung_of(calc, pset, *, seam, sweep, log, plan,
             # § 2a.16); the folder still wins.
             from .reuse import carry_pseudos
             carry_pseudos(composed.junction, base, task.reuses, plan=plan)
-        if composed.provenance["kind"] == "pair":
+        from .citation_defaults import asked_of_the_person
+        if "psml_lib" in asked_of_the_person(composed.provenance["kind"]):
             seam.provide_data(composed.junction,
                               configure(pset[0].render_config()), base,
                               plan=plan)
@@ -530,7 +539,8 @@ def transport_rung_of(calc, pset, *, seam, sweep, log, plan,
                 spec_extra=lambda element, cfg, point: spec_keywords(
                     task, state, point, base,
                     # a rung that runs once, its one point
-                    (contours or {}).get(point_key(point))),
+                    (contours or {}).get(point_key(point)),
+                    citation=composed.provenance["kind"]),
                 points=points, at_point=at_point,
                 struct_at=lambda pt: at_frame(struct, pt),
                 provide_data=provide_data, job_facts=job_facts)
@@ -538,7 +548,7 @@ def transport_rung_of(calc, pset, *, seam, sweep, log, plan,
 
 def _contours(calc, stage: str, reuse) -> Optional[dict]:
     """WHAT EACH POINT OF THIS RUNG COMPUTES where it is not its window
-    whole, by the point's key (`reuse.point_key`;
+    whole, by the point's key (`stages.point_key`;
     `engines/transport.md` § 2a.16): a launched rung's as its decks record
     it -- never decided again -- else the prep's reuse decision's
     (``reuse``), else ``None``."""

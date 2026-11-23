@@ -142,6 +142,14 @@ def size_words(n_bytes: float) -> str:
     return f"{int(n_bytes)} B"
 
 
+def volts_words(v: float) -> str:
+    """A voltage as a person reads it -- *0 V*, *0.2 V*, *-0.5 V* -- its
+    number spelled as a bias point's folder spells it (`task.bias_token`):
+    the one spelling every sentence about a voltage uses; a table's aligned
+    column keeps its own width (`frame_average.summary_lines`)."""
+    return f"{float(v):g} V"
+
+
 def convert(value: float, unit: Optional[str], table: Mapping[str, float], *,
             what: str, source: str, default: Optional[str] = None) -> float:
     """*value* written in *unit*, as the number *table* is keyed to.

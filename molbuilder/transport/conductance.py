@@ -19,11 +19,12 @@ import math
 from bisect import bisect_right
 from typing import Dict, List, Optional, Sequence
 
-#: THE CHANNELS TBtrans WRITES for a deck's spin -- `siesta_grammar.
-#: TBT_CHANNELS`' names: both of a polarized device (`TBT.Spin` fixed at 0,
-#: `engines/transport.md` § 6.1), the one of any other.
-SPIN_CHANNELS = {"polarized": ("up", "down"),
-                 "non-polarized": ("unpolarized",)}
+try:                                        # inside molbuilder
+    from ..runfiles import (SPIN_NON_POLARIZED, SPIN_POLARIZED,
+                            TBT_SPIN_CHANNELS)
+except ImportError:                         # beside a job
+    from runfiles import (  # type: ignore[no-redef]
+        SPIN_NON_POLARIZED, SPIN_POLARIZED, TBT_SPIN_CHANNELS)
 
 
 def per_spin_channel(curves: Dict[str, Sequence[float]], spin: str
@@ -34,13 +35,13 @@ def per_spin_channel(curves: Dict[str, Sequence[float]], spin: str
     channel the run wrote, its T on the one grid; a channel the deck's
     ``spin`` has TBtrans write and ``curves`` lacks is :class:`ValueError`,
     in the words that say the point not done."""
-    want = SPIN_CHANNELS[spin]
+    want = TBT_SPIN_CHANNELS[spin]
     missing = [c for c in want if c not in curves]
     if missing:
         raise ValueError(
             f"the deck is spin-polarized and the run wrote no "
             f"{' or '.join(missing)} channel transmission"
-            if spin == "polarized" else "the run wrote no transmission file")
+            if spin == SPIN_POLARIZED else "the run wrote no transmission file")
     return [math.fsum(vals) / len(vals)
             for vals in zip(*(curves[c] for c in want))]
 
@@ -68,8 +69,13 @@ def spin_of(params) -> str:
     ``non-polarized`` or ``polarized`` -- in any word SIESTA accepts for it,
     SIESTA's own default, non-polarized, where the deck states none: the
     one rule the record and a transport run's index read it by."""
-    return ("polarized" if params.spin_treatment == "unrestricted"
-            else "non-polarized")
+    return (SPIN_POLARIZED if params.spin_treatment == "unrestricted"
+            else SPIN_NON_POLARIZED)
 
 
-__all__ = ["SPIN_CHANNELS", "at_fermi", "per_spin_channel", "spin_of"]
+__all__ = ["at_fermi", "per_spin_channel", "spin_of"]
+
+
+#: WHAT THIS MODULE NEEDS BESIDE IT in a job's bundle -- the modules it
+#: imports there by their bare names (`runwrap.bundle_members`).
+TRAVELS_WITH = ("molbuilder.runfiles",)

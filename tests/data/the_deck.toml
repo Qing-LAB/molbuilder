@@ -284,6 +284,13 @@ engine = "pyscf"
 deck = ["convergence_energy = _GEOM_ETOL,", "convergence_grms = _GEOM_GRMS,", "convergence_gmax = _GEOM_GMAX,", "convergence_drms = _GEOM_DRMS,", "convergence_dmax = _GEOM_DMAX,", "maxsteps = _GEOM_MAX_STEPS,"]
 deck_once = ["mol_eq, _GEOM_CONVERGED = _mb_relax("]
 
+# ...and its header says each gradient target in the catalogue's unit for it
+# (`engines/pyscf.md` § 3, *Optimizer*: the header's `Optimizer :` line).
+[[case]]
+name = "...its header saying each gradient target in its unit"
+engine = "pyscf"
+deck = ["Ha/Bohr, gmax=", "Ha/Bohr, conv_tol="]
+
 [[case]]
 name = "...and the relaxed geometry is evaluated through mf.reset, which drops the integrals of the geometry before it"
 engine = "pyscf"

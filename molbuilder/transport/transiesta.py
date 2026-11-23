@@ -27,9 +27,11 @@ import numpy as np
 
 from .sort import (
     ELECTRODE_LABELS,
+    ORDER_INVERTED,
     REGION_BUFFER,
     REGION_LEFT_ELECTRODE,
     REGION_RIGHT_ELECTRODE,
+    electrode_orientation,
 )
 from ..engine_atom_index import siesta_numbering, siesta_numbering_from_end
 from ..identity import electrode_hs_stem
@@ -155,25 +157,22 @@ def _find_electrode_regions(
     """Return (label, block_name, indices) for each of the two leads,
     ``L-electrode`` and ``R-electrode`` by exact name (`sort.ELECTRODE_LABELS`).
 
-    Sorted by z-centroid ascending so the first entry is the LOWER
-    electrode (minimum z) and the last the upper one.  This ordering
-    is what the emitter uses to assign ``semi-inf-direction -A3`` /
-    ``+A3`` and the ``elec-pos`` ends — the GEOMETRIC half of the
-    deck.  It does NOT decide the chemical potentials: those bind to
-    the region's own name (``L-electrode`` → ``Left`` → µ = +V/2), so
-    the two halves name different blocks on a junction labeled the
-    other way round, and the deck says so.
+    The LOWER electrode first, as the one door that decides which is
+    lower answers (`sort.electrode_orientation`, the one the sort asks to
+    put that block's atoms first).  This ordering is what the emitter uses
+    to assign ``semi-inf-direction -A3`` / ``+A3`` and the ``elec-pos``
+    ends — the GEOMETRIC half of the deck.  It does NOT decide the
+    chemical potentials: those bind to the region's own name
+    (``L-electrode`` → ``Left`` → µ = +V/2), so the two halves name
+    different blocks on a junction labeled the other way round, and the
+    deck says so.
     """
-    out: List[Tuple[str, str, List[int], float]] = []
     regions = struct.regions or {}
-    for label in ELECTRODE_LABELS:
-        indices = list(regions.get(label) or ())
-        if not indices:
-            continue
-        z_centroid = float(np.mean(struct.positions[indices, 2]))
-        out.append((label, _BLOCK_NAME[label], indices, z_centroid))
-    out.sort(key=lambda e: e[3])
-    return [(label, name, idxs) for (label, name, idxs, _z) in out]
+    labels = [label for label in ELECTRODE_LABELS if regions.get(label)]
+    if electrode_orientation(struct) == ORDER_INVERTED:
+        labels.reverse()
+    return [(label, _BLOCK_NAME[label], list(regions[label]))
+            for label in labels]
 
 
 # --------------------------------------------------------------------- #
@@ -303,7 +302,8 @@ def emit_electrode_declarations(struct: Structure, cfg, *,
     ``HS``, ``chem-pot``, ``used-atoms``, ``elec-pos``, ``bloch`` and
     ``semi-inf-direction``; chemical potentials in ``%block TS.ChemPots`` and
     one ``%block TS.ChemPot.<name>`` each.  The leads are the regions named
-    ``L-electrode`` and ``R-electrode``, ordered by z-centroid: the LOWER block
+    ``L-electrode`` and ``R-electrode``, the lower first as
+    `sort.electrode_orientation` answers -- the block the sort put first
     gets ``semi-inf-direction -A3`` and the first ``elec-pos``; the ``Left`` /
     ``Right`` chemical potential binds by the region's NAME, and the deck says
     which lead ends up at mu = +V/2.

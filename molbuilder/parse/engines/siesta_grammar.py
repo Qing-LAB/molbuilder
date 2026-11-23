@@ -1404,10 +1404,11 @@ def tbt_channels(line: str) -> Optional[Tuple[str, ...]]:
     if m is None:
         return None
     if m.group(1):
-        return ("up", "down")
+        return (_rf.CHANNEL_UP, _rf.CHANNEL_DOWN)
     if m.group(2):
-        return ("up",) if m.group(2).upper() == "UP" else ("down",)
-    return ("unpolarized",)
+        return ((_rf.CHANNEL_UP,) if m.group(2).upper() == "UP"
+                else (_rf.CHANNEL_DOWN,))
+    return (_rf.CHANNEL_UNPOLARIZED,)
 
 
 def tbt_channel_of(name: str) -> Optional[str]:

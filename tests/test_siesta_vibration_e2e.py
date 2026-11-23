@@ -285,6 +285,12 @@ def _the_optical_record(run, computed_in, n: int = 0):
         *printed, *printed], whole.attrs
     assert f"computed by SIESTA {next(iter(printed))}" in \
         whole.attrs["source"], whole.attrs["source"]
+    # ...AND THE RESULT'S OWN DATA FILE BESIDE IT, in the same words (the
+    # engine table's, the user, 2026-11-22): one run, one name for its engine.
+    from molbuilder.runfiles import ROLE_SPECTRA_DATA
+    spectra_nc = next(path.parent.glob(f"*{ROLE_SPECTRA_DATA}"))
+    assert "computed by SIESTA " in xarray.load_dataset(
+        spectra_nc).attrs["source"], spectra_nc.name
     settings = data["settings"]
     assert (cited["direction"], cited["selection"], cited["displacement_ang"]
             ) == (settings["direction"], settings["selection"],
@@ -1076,6 +1082,10 @@ def test_the_raman_at_a_laser_holds_co2s_symmetry_and_exports_whole(
                                        [c["energy"] for c in cycles])
         at += len(mine.energy_ev)
     assert at == len(by["steps"]["step"]) > 0
+    # ...WHAT THE STEPS WERE DERIVED FROM, the engine in its table's words
+    # (`model/datafiles.md` § 9.5; the user, 2026-11-22).
+    assert xarray.load_dataset(out / f"{label}.steps.nc").attrs[
+        "source"].startswith("derived from SIESTA's output of each run")
     for kept in (spectra_nc, optical):
         assert (out / kept.name).read_bytes() == kept.read_bytes(), kept
     # THE OPTICAL CALLS' FILE, exported, reads through the script's door

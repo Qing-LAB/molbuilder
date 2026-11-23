@@ -1791,7 +1791,7 @@ const WORKSPACE_TAG = "transport";
               + "field shows the value that would apply."
             : src.kind === "reuses"
             ? (_extend ? _extend.says.shared : "")
-            : src.kind === "deck"
+            : src.kind === "run"
             ? "Values from the run you cited (" + src.name + ").  Change "
               + "any of them; a change applies to every stage that reads it."
             : src.kind === "pair"

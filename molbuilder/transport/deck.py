@@ -33,15 +33,15 @@ notes (the three sections below); the electrode and reservoir declarations
 read the engine's own config (`engines/transport.md` § 6.1b).
 
 **ALL FIVE RUNGS ARE ON THE SEAM.**  Four deck shapes serve them
-(:data:`SHAPE_OF_RUNG`), and each is a layout in this module.  A composite
+(:func:`shape_of`), and each is a layout in this module.  A composite
 kind hands its renderer a **structure**, like every other kind: `prep` picks WHICH structure the rung
 describes (the junction, or the lead taken out of it by its region label) and
 ``spec_for(struct, cfg, names=)`` is unchanged.  Nothing reaches for the
 ``ComposedJunction`` from inside here.
 
-Which shape a rung gets is a TABLE.  Choosing the LAYOUT for a shape is a
-dispatch in :func:`transport_spec` over that table's four values.  A rung the
-table does not name is refused BY NAME rather than rendered partially; `prep`
+Which shape a rung gets is its ROLE's.  Choosing the LAYOUT for a shape is a
+dispatch in :func:`transport_spec` over the four shapes.  A rung that is no
+transport rung is refused BY NAME rather than rendered partially; `prep`
 translates that refusal, so it reaches a person as a message and not a
 traceback.
 
@@ -58,24 +58,26 @@ from ..siesta.engine_input import unit_word
 from ..structure import Structure
 from ..kmesh import TRANSMISSION_PER_SCF as _TBT_FACTOR
 
-#: Which deck SHAPE each rung renders — a table, because FOUR texts serve
-#: FIVE rungs (`engines/transport.md` § 6.1) and which text a rung gets is a
-#: fact about the ladder, not a decision to re-derive per call.
-#:
-#: The device and the transmission are two texts because two PROGRAMS read
-#: them (§ 6.1b): `siesta` reads no `TBT.*` keyword, so the device deck
-#: carries none, and `tbtrans` reads the `TS.*` junction description, so the
-#: transmission deck carries it beside its own settings.  What keeps them
-#: from drifting apart about what the junction IS is shared text, not shared
-#: bytes: one geometry block, one electrode-declaration block
-#: (`transiesta.emit_electrode_declarations`), one electronic description.
-SHAPE_OF_RUNG = {
-    "seed":         "seed",
-    "electrode_L":  "electrode",
-    "electrode_R":  "electrode",
-    "device":       "device",
-    "transmission": "transmission",
-}
+def shape_of(rung: str) -> Optional[str]:
+    """Which deck SHAPE ``rung`` renders, or ``None`` for no transport rung
+    -- FOUR texts serve FIVE rungs (`engines/transport.md` § 6.1), and
+    which text a rung gets is its role's fact (`stages`: the rungs by what
+    they are): a lead's, the electrode; the rung that reads the window, the
+    transmission; the seed and the device, each its own.
+
+    The device and the transmission are two texts because two PROGRAMS read
+    them (§ 6.1b): `siesta` reads no `TBT.*` keyword, so the device deck
+    carries none, and `tbtrans` reads the `TS.*` junction description, so the
+    transmission deck carries it beside its own settings.  What keeps them
+    from drifting apart about what the junction IS is shared text, not shared
+    bytes: one geometry block, one electrode-declaration block
+    (`transiesta.emit_electrode_declarations`), one electronic description.
+    """
+    from .stages import DEVICE_RUNG, LEAD_RUNGS, SEED_RUNG
+    from .window import window_rung
+    return {SEED_RUNG: "seed", DEVICE_RUNG: "device",
+            window_rung(): "transmission",
+            **{lead: "electrode" for lead in LEAD_RUNGS}}.get(rung)
 
 #: WHAT A SHAPE'S RUN IS, beside its text: the program that reads its deck
 #: where it is not the engine's own -- `tbtrans` the transmission's
@@ -553,7 +555,8 @@ def _emit_electrode_header(struct, cfg) -> str:
     ])
 
 
-def _seed_layout(derived, frame, state_block, point, scratch_dir):
+def _seed_layout(derived, frame, state_block, point, scratch_dir, *,
+                 citation):
     """The seed rung: an ordinary periodic SIESTA pass (§ 1, stage 1).
 
     Read down it and you have read the deck's SCIENCE, in order.  Not the
@@ -572,7 +575,7 @@ def _seed_layout(derived, frame, state_block, point, scratch_dir):
         _sc.Block("the k-point grid -- one k-point along z",
                   _k_mesh_block(derived["k_mesh"], advice=_TRANSVERSE_ADVICE)),
         _sc.Block("what the seed's solver must be, and must not",
-                  _emit_solver_note),
+                  _solver_note(citation)),
         _sc.Block("the restart group", _emit_restart_group),
         _sl.SCF_SECTION,
         _sl.FREE_ENERGY_SECTION,
@@ -659,7 +662,13 @@ def _emit_restart_group(struct, cfg) -> str:
     ])
 
 
-def _emit_solver_note(struct, cfg) -> str:
+def _solver_note(citation):
+    """The seed's solver note for a citation of kind ``citation``
+    (:func:`_emit_solver_note`)."""
+    return lambda struct, cfg: _emit_solver_note(struct, cfg, citation)
+
+
+def _emit_solver_note(struct, cfg, citation) -> str:
     """Why the seed solves with ``diagon``.
 
     ``SCF_SECTION`` is the ENGINE's object, shared with every other kind, so
@@ -687,22 +696,27 @@ def _emit_solver_note(struct, cfg) -> str:
         "# geometry was relaxed upstream and moving it here would invalidate",
         "# the electrode partition the whole ladder is built on.",
         "#",
-        *_pseudopotential_note(cfg),
+        *_pseudopotential_note(cfg, citation),
         "",
     ])
 
 
-def _pseudopotential_note(cfg) -> list:
+def _pseudopotential_note(cfg, citation: str) -> list:
     """Where this calculation's ``.psml`` files came from, by the citation's
-    kind (`engines/transport.md` § 3.1): a cited pair's from the directory
-    the template's ``psml_lib`` names, a cited run's with the run."""
-    lib = getattr(cfg, "psml_lib", None)
-    if lib:
+    kind (`engines/transport.md` § 3.1) -- the kind prep takes them by: a
+    cited pair's from the directory the template's ``psml_lib`` names, a
+    cited run's with the run (`citation_defaults.asked_of_the_person`)."""
+    from ..identity import as_typed
+    from .citation_defaults import asked_of_the_person
+    if "psml_lib" in asked_of_the_person(citation):
         return [
             "# PSEUDOPOTENTIALS: `prep` copies this calculation's .psml files",
-            f"# from {lib} -- the template's `psml_lib`, named at `jobset",
-            "# init` for a cited structure pair, which carries none -- into",
-            f"# the calculation's `{PSEUDO_DIR}/` directory beside this deck.",
+            f"# from {cfg.psml_lib} -- the template's `psml_lib`, named by",
+            f"# `{as_typed('describe', '--psml-lib', 'DIR')}` for a cited "
+            "structure pair, which",
+            "# carries none -- into the calculation's "
+            f"`{PSEUDO_DIR}/` directory beside",
+            "# this deck.",
         ]
     return [
         "# PSEUDOPOTENTIALS: this calculation's .psml files travel with the",
@@ -751,7 +765,7 @@ def _k_mesh_block(mesh, *, advice=()):
 #  The spec.                                                            #
 # ===================================================================== #
 
-def transport_spec(struct: Structure, cfg, *, state,
+def transport_spec(struct: Structure, cfg, *, state, citation: str,
                    stage_token: Optional[str] = None,
                    point=None,
                    scratch_dir: Optional[str] = None,
@@ -772,7 +786,10 @@ def transport_spec(struct: Structure, cfg, *, state,
     (`science/chemistry-correctness.md` § 2a).  ``contours`` is a transmission
     point's sharing with a finished calculation's point
     (`energies.Contours`; `engines/transport.md` § 2a.16), ``None`` for a
-    point that computes its window whole.
+    point that computes its window whole.  ``citation`` is the cited
+    junction's kind (`compose.CitedRun.kind` / `CitedPair.kind`, its
+    record's provenance), which the seed's note says the pseudopotentials
+    came by, as prep takes them.
 
     *cfg* is a :class:`~molbuilder.config.siesta.SiestaConfig` — carrying the
     calculation's own template ⊕ this rung's overrides, as
@@ -785,11 +802,12 @@ def transport_spec(struct: Structure, cfg, *, state,
     quietly omit every catalogue item rather than fail.
     """
     rung = rung_of(stage_token)
-    shape = SHAPE_OF_RUNG.get(rung)
+    shape = shape_of(rung)
     if shape is None:
+        from .stages import TRANSPORT_STAGES
         raise ValueError(
             f"{rung!r} is not a transport stage; the ladder is "
-            f"{', '.join(SHAPE_OF_RUNG)}.  "
+            f"{', '.join(TRANSPORT_STAGES)}.  "
             f"`prep` names the stage and hands it down as `stage_token`.")
 
     # THE RUNG'S K-POINT MESH(ES), worked out once (`kmesh.mesh_for`,
@@ -800,13 +818,16 @@ def transport_spec(struct: Structure, cfg, *, state,
     derived = _derived_for(state, cfg, k_mesh, tbt_mesh)
     from .transiesta import engine_frame_for
     frame = engine_frame_for(struct)
-    layout = ({"seed": _seed_layout,
-               "electrode": _electrode_layout,
-               "device": _device_layout}[shape](
-                   derived, frame, _state_block(state), point, scratch_dir)
-              if shape != "transmission" else _transmission_layout(
+    # WHAT EACH SHAPE IS TOLD beside the common five: the seed, the
+    # citation's kind; the transmission, its sharing with a finished point.
+    told = {"seed": {"citation": citation},
+            "transmission": {"contours": contours}}.get(shape, {})
+    layout = {"seed": _seed_layout,
+              "electrode": _electrode_layout,
+              "device": _device_layout,
+              "transmission": _transmission_layout}[shape](
                   derived, frame, _state_block(state), point, scratch_dir,
-                  contours=contours))
+                  **told)
     return _sc.DeckSpec(
         engine="siesta",
         engine_frame=frame,
@@ -845,7 +866,7 @@ def rung_meshes(cfg, axis_kind, rung: str):
     k_mesh = _kmesh.mesh_for(cfg, axis_kind, kind="transport", rung=rung)
     # THE RUNG'S OWN PROGRAM'S MESH, where another program reads its deck
     # (`SHAPE_RUN`): TBtrans's `TBT.k` on the transmission.
-    program = SHAPE_RUN[SHAPE_OF_RUNG[rung]]["program"]
+    program = SHAPE_RUN[shape_of(rung)]["program"]
     tbt_mesh = (_kmesh.mesh_for(cfg, axis_kind, kind="transport",
                                 rung=rung, program=program)
                 if program is not None else None)
@@ -910,8 +931,7 @@ def ladder_mesh_findings(template_text: str, task, axis_kind) -> list:
     out: list = []
     seen: set = set()
     for name, cfg in ladder:
-        shape = SHAPE_OF_RUNG.get(name)
-        if shape is None:
+        if shape_of(name) is None:
             continue
         meshes = [m for m in rung_meshes(cfg, axis_kind, name)
                   if m is not None]

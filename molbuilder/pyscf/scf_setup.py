@@ -210,10 +210,11 @@ def emit_solvent_lines(cfg) -> List[str]:
     if eps is None:
         raise ValueError(
             f"unknown solvent {solvent!r}; valid: {sorted(SOLVENTS)}")
+    from .layout import keyword
     return [
         "# PCM solvation -- continuum model.",
         "mf = mf.PCM()",
-        f'mf.with_solvent.method = "{cfg.solvent_method}"',
+        f'{keyword("solvent_method")} = "{cfg.solvent_method}"',
         f"mf.with_solvent.eps = {eps}    # {solvent} dielectric",
     ]
 

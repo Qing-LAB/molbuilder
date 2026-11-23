@@ -4,7 +4,8 @@ tab's Send and `jobset prep`.
 
 PINS: ``docs/engines/template.md`` § 6.4 (``stages`` names rung roles; one
 door refuses an override a rung does not read, or of an item the kind does
-not carry) and § 5.3 (a rung that relaxes takes a step);
+not carry), § 5.3 (a rung that relaxes takes a step; a value refused draws
+that refusal alone) and § 5.4 (the setting door);
 ``docs/engines/stages.md`` § 4 R3 (the ladder check reads ``tightens`` on
 every engine and compares rungs of one role); ``docs/engines/vibration.md``
 § 5.2a and § 5.5 (each stage's settings are its role's; the finish judges by
@@ -128,6 +129,67 @@ def test_an_override_its_rung_does_not_read_is_refused_where_it_is_saved(
     assert r.status_code == 400, r.get_json()
     assert "no_such_item" in r.get_json()["error"], r.get_json()["error"]
     assert kept, "a refused Save wrote a record"
+
+
+def test_a_refused_value_draws_its_refusal_alone_and_the_ladder_is_still_judged(
+        tmp_path, monkeypatch):
+    """`engines/template.md` § 5.4 and § 5.3: a value the setting door
+    refuses draws that refusal alone -- its range warning stands aside, and
+    so does any check on what is built from it -- while every other value is
+    judged as before (`engines/stages.md` § 4 R3).  A number given as text
+    on a setting the ladder compares stage by stage (its `tightens`) is
+    refused at Save by name, nothing written, and a tolerance loosening
+    from that stage to the next is still said beside it.
+
+    MUTATIONS THIS MUST FAIL AGAINST: the ladder check reading the value the
+    door refused (the Save crashes, 500); the ladder judged no further once
+    any value is refused (the loosening said nowhere)."""
+    from support.road import described, road_tree
+    h2 = described(road_tree(tmp_path, monkeypatch))
+    r, kept = _overridden(h2, {"coarse": {"mesh_cutoff": "a",
+                                          "dm_tolerance": 1e-5},
+                               "medium": {"dm_tolerance": 1e-3}})
+    assert r.status_code == 400, r.get_json()
+    assert kept, "a refused Save wrote a record"
+    said = [(f["severity"], f["message"]) for f in r.get_json()["findings"]]
+    assert [m for sev, m in said if sev == "error"] == [
+        m for sev, m in said if sev == "error" and "mesh_cutoff" in m], said
+    assert any(sev == "warn" and m.startswith("dm_tolerance loosens")
+               for sev, m in said), said
+
+
+@pytest.mark.parametrize("refused_item", [
+    "transmission_emin_ev", "transmission_n_points"])
+def test_a_window_check_built_from_a_refused_value_stands_aside(
+        refused_item):
+    """`engines/template.md` § 5.3: a value the setting door refuses draws
+    that refusal alone -- *and so does any check on what is built from it*:
+    a transport description whose transmission stage holds a window
+    setting typed as text answers one refusal naming it, and the kind's own
+    window check, which reads it, stands aside.  Asked of the description's
+    check (`validation.task.preflight`, what Save and prep ask) with the
+    template the description holds (the catalogue's values,
+    `template.template_with_values`), as Save asks it.
+
+    MUTATION THIS MUST FAIL AGAINST: the window check reading the refused
+    value (a crash -- a Save 500)."""
+    import json
+
+    from molbuilder.engine_table import config_class
+    from molbuilder.task import from_text
+    from molbuilder.template import template_with_values
+    from molbuilder.validation.task import preflight
+    task, _request = _transport()
+    for st in task["stages"]:
+        if st["name"] == "transmission":
+            st["overrides"] = {refused_item: "a"}
+    task["varies"] = [refused_item]
+    text = template_with_values(config_class("siesta")(), engine="siesta",
+                                calculation="transport")
+    found = preflight(from_text(json.dumps(task)), template_text=text)
+    said = [(i.severity, i.where, i.message) for i in found]
+    assert [w for sev, w, _m in said if sev == "error"] == [
+        f"config.{refused_item}"], said
 
 
 def test_a_run_card_value_its_rung_does_not_read_is_refused_where_it_is_saved(

@@ -86,7 +86,8 @@ WHAT = ("SIESTA's optical calculation: the imaginary part of the dielectric "
 #: The payload's keys, and its settings' -- a key this file does not know
 #: is refused by name rather than dropped; a frame's keys are its
 #: variables' (:data:`FRAME`, :func:`_checked`).
-_PAYLOAD_KEYS = ("label", "run", "engine_version", "molbuilder_version",
+_PAYLOAD_KEYS = ("label", "run", "engine", "engine_version",
+                 "molbuilder_version",
                  "settings", "structure", "atom_index_map", "masses_amu",
                  "photon_energy_ev", "spin", "frames")
 _SETTINGS_KEYS = ("keywords", "direction", "selection", "delta_ang",
@@ -235,7 +236,8 @@ def write_optical_data(payload: Mapping[str, Any], path) -> Path:
         ds = in_memory(p.name)
         state(ds, title=WHAT, schema=DATA_SCHEMA,
               molbuilder_version=str(payload.get("molbuilder_version") or ""),
-              engine="SIESTA", engine_version=version, computed_in=run)
+              engine=str(payload["engine"]), engine_version=version,
+              computed_in=run)
         ds.setncatts({"label": label, "run": run})
         g = ds.createGroup("settings")
         g.setncatts({
@@ -310,9 +312,10 @@ def write_optical_data(payload: Mapping[str, Any], path) -> Path:
 
 
 def read_optical_data(path, *, data=None) -> Dict[str, Any]:
-    """``<label>.optical.nc`` back as the payload it was written from -- the
-    file's door (`runfiles.WRITTEN`); a schema it does not read refused by
-    name.  A frame not run reads its fills as ``None``.  ``data``, the
+    """``<label>.optical.nc`` back as the payload it was written from, its
+    engine apart (the file says it in its ``source``, in the engine table's
+    words) -- the file's door (`runfiles.WRITTEN`); a schema it does not
+    read refused by name.  A frame not run reads its fills as ``None``.  ``data``, the
     file's bytes already in hand, is read from memory (`ncdata.reading`)."""
     out: Dict[str, Any] = {}
     with checked(path, schemas=READABLE_DATA_SCHEMAS, error=OpticalDataError,

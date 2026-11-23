@@ -425,7 +425,6 @@ def describe(*, calculation: str, engine: Optional[str],
         finally:
             if staging is not None:
                 shutil.rmtree(staging, ignore_errors=True)
-    pair = isinstance(cited, CitedPair)
     if finished is not None:
         from ..runfiles import TASK_FILE
         headline = (f"Described {rec.noun} '{task.run.name}' in {dest} -- "
@@ -436,6 +435,12 @@ def describe(*, calculation: str, engine: Optional[str],
                  "junction and the pseudopotentials "
                  f"{finished.base.name}'s runs read:",)
     else:
+        # A NEW CALCULATION'S CITATION, resolved above: its kind says where
+        # the values came from, and the one rule where the pseudopotentials
+        # come from (`citation_defaults.asked_of_the_person`).
+        from .citation_defaults import asked_of_the_person
+        pair = cited.kind == CitedPair.kind
+        named = "psml_lib" in asked_of_the_person(cited.kind)
         headline = (f"Described {rec.noun} '{task.run.name}' in {dest} -- "
                     f"composes {junction}.")
         after = ("The template carries the shared electronic description, "
@@ -445,7 +450,7 @@ def describe(*, calculation: str, engine: Optional[str],
                  + " -- change anything in it and every stage follows, "
                  "because there is one of it.  The structure arrives at "
                  "prep from the citation, and the pseudopotentials "
-                 + ("from the directory you named" if pair
+                 + ("from the directory you named" if named
                     else "from the run you cited")
                  + ".  On the machine that will run it:",)
     return Described(task=task, written=written, notes=tuple(notes),

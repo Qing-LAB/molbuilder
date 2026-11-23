@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import List, Optional, Tuple
 
 from .. import script_emit as _sc
-from ..calcdirs import RunPlace, prepared_folder
+from ..calcdirs import prepared_folder
 from ..parse.dirs.job import LIVE_STATES
 from ..deck_record import same_calculation
 from ..runrecord import RunRef
@@ -39,6 +39,7 @@ class ReadOnce:
     def __init__(self, calc):
         self.calc = calc
         self._junction = None
+        self._frames = None
         self._decks: dict = {}
         self._runs: dict = {}
 
@@ -48,10 +49,13 @@ class ReadOnce:
         return self._junction
 
     def frames(self) -> int:
-        """How many frames the junction this calculation has or will have
-        holds (:meth:`junction`) -- its record's count before prep has
-        written it here, as an extension's is at its first prep."""
-        return self.junction().junction.n_frames
+        """How many frames the junction holds, asked of the one door
+        (`rung.frames_had`) once for all this read's points: before an
+        extension's first prep that answer composes the finished junction."""
+        if self._frames is None:
+            from .rung import frames_had
+            self._frames = frames_had(self.calc)
+        return self._frames
 
     def deck_now(self, stage: str, point) -> str:
         key = (stage, point)
@@ -101,7 +105,7 @@ def transport_inputs(calc, stage: str, *, point=None,
     result can always say which electrode run fed it.  ``once`` is what the
     gather this belongs to reads for all its points (:class:`ReadOnce`).
     """
-    from .stages import frames_of, inputs_of, rung_points
+    from .stages import Point, inputs_of, run_folder_at, rung_points
     from ..jobset.continuation import usable
 
     base, task, jobset = Path(calc.base), calc.task, calc.jobset
@@ -115,7 +119,7 @@ def transport_inputs(calc, stage: str, *, point=None,
         # transmission -- is ONE RUN taken whole: its newest run, every point
         # done, the point this attempt is for read -- the same frame and the
         # same voltage (`engines/transport.md` § 2a.11).
-        up_points = rung_points(task, upstream, frames=frames_of(base))
+        up_points = rung_points(task, upstream, frames=once.frames())
         # THE WAYS ON, by what the upstream rung's state says (§ 5.3: what
         # molbuilder prints, you can type): one not prepared is prepared and
         # launched; a prepared one is launched, or let finish, or -- to run
@@ -205,9 +209,16 @@ def transport_inputs(calc, stage: str, *, point=None,
                     + (f", {newest.relative_to(base)}," if newest else "")
                     + f" {why}.  {first}{q2}")
         # WHERE THE FILE IS: the run -- or, for an upstream that runs per
-        # point, its point at this one.
-        where = (RunPlace.of(newest).point(point.rel) if up_points
-                 else newest)
+        # point, its point at this one (`stages.run_folder_at`, the one
+        # answer the reuse decision asks too).
+        where = run_folder_at(task, upstream, newest, point,
+                              frames=once.frames(), downstream=True)
+        if where is None:
+            raise PrepError(
+                f"{upstream}'s newest run, {newest.relative_to(base)}, holds "
+                f"no point at {(point or Point()).words()}, which the "
+                f"{stage} stage's "
+                f"point takes {filename} from.  To run it again, {redo}")
         # THE SAME ENGINE INPUT, not the same bytes (`engines/transport.md`
         # § 6.1): what SIESTA reads of the deck that ran against the deck
         # the upstream rung renders NOW (plan § 5w K11, T-F30) -- never the
@@ -277,11 +288,10 @@ def gather_sources(calc, stage: str
     strict composition).  Prep renders the decks without it: a
     deck is the reviewable artifact, whether or not the rungs before it have
     run."""
-    from .stages import frames_of, rung_points
-    base = Path(calc.base)
+    from .stages import rung_points
     once = ReadOnce(calc)
     return [(pt, transport_inputs(calc, stage, point=pt, once=once))
-            for pt in (rung_points(calc.task, stage, frames=frames_of(base))
+            for pt in (rung_points(calc.task, stage, frames=once.frames())
                        or (None,))]
 
 
@@ -438,7 +448,8 @@ def rung_deck_now(calc, stage: str, composed, *, point=None) -> str:
     contours = (that_point(calc, point, at_point(config, point))
                 if stage == window_rung() else None)
     spec, cfg = rung_spec(task, stage, struct, config, state, point,
-                                base=base, contours=contours)
+                          citation=composed.provenance["kind"],
+                          base=base, contours=contours)
     with user_error_as_prep():
         text = _sc.render_deck(spec, struct, cfg, dest_dir=base,
                                sources=transport_sources(

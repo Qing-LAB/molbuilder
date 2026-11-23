@@ -44,7 +44,7 @@ from functools import lru_cache
 from typing import Any, Dict, Mapping, Optional, Tuple
 
 from . import data_dir
-from .identity import electrode_hs_stem
+from .identity import COMPUTES_PRODUCT, COMPUTES_SCF, electrode_hs_stem
 from .persist import unknown_keys
 
 #: The file, beside the parameter catalogue.
@@ -54,7 +54,7 @@ TABLE_FILE = data_dir() / "kind_table.toml"
 #: a named set of roles a catalogue item's ``stages`` may cite
 #: (`engines/template.md` § 6.4; :func:`role_set`) -- ``"scf"``, every rung
 #: that runs an SCF.
-COMPUTES = ("scf", "product")
+COMPUTES = (COMPUTES_SCF, COMPUTES_PRODUCT)
 
 #: The fields a description may carry beyond every kind's -- each a
 #: kind's to carry (``description.carries``): the electrode rename, the

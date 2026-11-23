@@ -18,7 +18,10 @@ catalogue's in `template.catalogue`, the warm-file vocabularies' sections in
 
 Floor 1 (`execution/architecture.md` § 2.1): data, read once; it imports no
 engine.  A part that is code is named ``module:NAME`` and resolved by the
-floor it lives on (`kind_table.part`).
+floor it lives on (`kind_table.part`) -- so the functions that resolve one
+(``config_class``, ``keywords``, ``scf_columns``, ``stage_presets``), and the
+functions that ask them, are the package's alone; beside a job, in a bundle
+(:data:`TRAVELS_WITH`), the table and its engines' words are read.
 """
 from __future__ import annotations
 
@@ -28,10 +31,20 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Dict, Optional, Tuple
 
-from . import data_dir
+try:                                        # inside molbuilder
+    from . import data_dir as _data_dir
+    from .persist import read_shipped, unknown_keys
+    from .runfiles import engines as _catalogued
+    _HERE = _data_dir()
+except ImportError:                         # beside a job, in a bundle
+    from persist import read_shipped, unknown_keys  # type: ignore[no-redef]
+    from runfiles import engines as _catalogued  # type: ignore[no-redef]
+    _HERE = Path(__file__).parent
 
-#: The file, beside the parameter catalogue.
-TABLE_FILE = data_dir() / "engine_table.toml"
+#: The file, beside the parameter catalogue -- beside a job, beside this
+#: module in its bundle (:data:`TRAVELS_DATA`), read through the loader that
+#: brought this module either way.
+TABLE_FILE = _HERE / "engine_table.toml"
 
 #: What an engine computes the atoms in: the structure's own cell, or one
 #: molecule in free space whatever the cell.
@@ -145,7 +158,6 @@ def _engine(name: str, body: object) -> Engine:
     where = f"{TABLE_FILE.name} [{name}]"
     if not isinstance(body, dict):
         raise EngineTableError(f"{where} is not a table")
-    from .persist import unknown_keys
     said = unknown_keys(body, (*_KEYS, *_OPTIONAL))
     missing = [k for k in _KEYS if k not in body]
     if said or missing:
@@ -215,12 +227,12 @@ def _engine(name: str, body: object) -> Engine:
 
 @lru_cache(maxsize=1)
 def _table() -> Dict[str, Engine]:
-    raw = tomllib.loads(TABLE_FILE.read_text(encoding="utf-8"))
+    raw = tomllib.loads(read_shipped(
+        __loader__, __file__, TABLE_FILE).decode("utf-8"))  # type: ignore[name-defined]
     table = {name: _engine(name, body) for name, body in raw.items()}
     # THE FILE CATALOGUE'S ENGINES ARE THESE: a row naming another, or an
     # engine whose deck the catalogue does not name, refused here, where the
     # two lists meet (`execution/architecture.md` § 3.3).
-    from .runfiles import engines as _catalogued
     named = set(_catalogued())
     if named != set(table):
         raise EngineTableError(
@@ -327,3 +339,11 @@ def stage_presets(name: str) -> dict:
 __all__ = ["TABLE_FILE", "COMPUTES_IN", "EngineTableError", "Engine",
            "engines", "engine", "config_class", "relabelled", "engine_of_config",
            "keywords", "read_deck", "scf_columns", "stage_presets"]
+
+
+#: WHAT THIS MODULE NEEDS BESIDE IT in a job's bundle -- the modules it
+#: imports there by their bare names (`runwrap.bundle_members`) -- and its
+#: table, which travels with it, so a data file written beside a job names
+#: its engine as the table words it (`ncdata.state`).
+TRAVELS_WITH = ("molbuilder.persist", "molbuilder.runfiles")
+TRAVELS_DATA = {TABLE_FILE.name: TABLE_FILE}

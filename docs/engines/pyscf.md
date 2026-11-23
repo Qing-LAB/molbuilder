@@ -228,6 +228,10 @@ re-convergence at the relaxed geometry resets `mf` to it, `mf.reset(mol_eq)`);
 **Optimizer.** geomeTRIC is the one optimizer, a fact of the engine rather than a
 parameter: the `geometric` package is imported inside a `try/except ImportError`
 that raises `SystemExit` with an actionable message, not a traceback. `optimize=False` → a single-point `mf.kernel()`, no trajectory files.
+An optimizing deck's header says this rung's criteria on its `Optimizer :`
+line — the step bound by its geomeTRIC keyword (`maxsteps=`), each gradient
+target with the catalogue's unit for it (`grms=3.0e-04 Ha/Bohr`,
+`gmax=4.5e-04 Ha/Bohr`; `pyscf.layout.unit_of`), and the SCF tolerance.
 *PySCF's berny driver takes neither this rung's criteria (its own are
 `gradientmax` / `gradientrms` / `stepmax` / `steprms`, with no energy
 criterion), nor a constraints file, nor a trajectory prefix, and `pyberny` is

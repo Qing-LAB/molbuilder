@@ -305,9 +305,10 @@ def _bench_marks_for(struct, cfg, block_size, bs_range, *,
     relaxation's step count.
     """
     from ..template import inactive_settings
+    from .layout import keyword
     # BlockSize's row carries the range this deck's rank count makes legal, and
     # drops out entirely when the deck carries no BlockSize (state three).
-    block_kw = _bench_keyword("block_size")
+    block_kw = keyword("block_size")
     fields = [
         (dataclasses.replace(f, range_=bs_range) if f.anchor == block_kw
          else f)
@@ -330,15 +331,15 @@ def _bench_marks_for(struct, cfg, block_size, bs_range, *,
             # State three omits the row too: a BENCH-MARKS line claiming a
             # value the deck does not carry would be the block lying.
             **({block_kw: block_size} if block_size is not None else {}),
-            _bench_keyword("max_scf_iter"):  cfg.max_scf_iter,
+            keyword("max_scf_iter"):  cfg.max_scf_iter,
             # only when the DECK carries the line (CG/Broyden/FIRE): relax
             # "none" emits no MD.Steps, and a defaults row for an absent
             # keyword is the block lying -- the same rule as BlockSize's state
             # three one entry up (R11, 2026-08-12).
-            **({_bench_keyword("relax_steps"): cfg.relax_steps}
+            **({keyword("relax_steps"): cfg.relax_steps}
                if relaxes and "relax_steps" not in inactive_settings(
                    cfg, engine="siesta") else {}),
-            _bench_keyword("mesh_cutoff"):  cfg.mesh_cutoff,
+            keyword("mesh_cutoff"):  cfg.mesh_cutoff,
         },
     )
 
@@ -383,12 +384,6 @@ BENCH_ITEMS = ("block_size", "max_scf_iter", "relax_steps", "mesh_cutoff",
 #: § 2.11).  Its range is a launch quantity's, one deck's rank count, so the
 #: catalogue states none and each deck supplies it (``_block_size_bounds``).
 _BENCH_NARROWED = {"block_size": "pow2"}
-
-
-def _bench_keyword(name: str) -> str:
-    """The keyword item ``name`` writes in a SIESTA deck (the parameter
-    door's ``writes``)."""
-    return _sc.parameter(name, "siesta").writes[0]
 
 
 def bench_fields() -> "List[_sc.BenchField]":
@@ -521,16 +516,23 @@ def _relaxation_facts(cfg) -> Optional[dict]:
     # keyword the run type decides (siesta_init.F: idyn 0 bounds on
     # MD.Steps, the dynamics run types on MD.FinalTimeStep), and guessing
     # wrong gives a run that reports success.
-    _STEP_KW = {"CG": "MD.Steps", "BROYDEN": "MD.Steps", "FIRE": "MD.Steps"}
-    if relax_kind not in _STEP_KW:
+    # THE RUN TYPES molbuilder relaxes with, each bounding its loop by the
+    # step count's own keyword -- the one the catalogue's item writes
+    # (`siesta.layout.keyword`), as the displacement's is.
+    from ..template import catalogue, one
+    from .layout import keyword
+    _RELAXES = tuple(c.upper() for c in one(catalogue(), "relax_type",
+                                             engine="siesta").choices
+                     if c.lower() != "none")
+    if relax_kind not in _RELAXES:
         raise ValueError(
             f"relax_type {cfg.relax_type!r} is not a relaxation molbuilder "
             f"runs -- its step keyword is not known here (known: "
-            f"{', '.join(sorted(_STEP_KW))}).")
+            f"{', '.join(sorted(_RELAXES))}).")
     return {
         "relax_kind": relax_kind,
-        "step_kw":    _STEP_KW[relax_kind],
-        "displ_kw":   "MD.MaxDispl",
+        "step_kw":    keyword("relax_steps"),
+        "displ_kw":   keyword("relax_max_displ"),
     }
 
 
@@ -542,7 +544,8 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
                state=None,
                trial: Optional[str] = None,
                point=None, scratch_dir: Optional[str] = None,
-               contours=None) -> "_sc.DeckSpec":
+               contours=None,
+               citation: Optional[str] = None) -> "_sc.DeckSpec":
     """Describe a Structure's SIESTA .fdf deck -- the spec
     `script_emit.render_deck` renders into its text.
 
@@ -580,8 +583,9 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
     shared files; ``scratch_dir`` the folder of the run's own they live in
     (the vocabulary's, `warm-files.toml` [transport]; `engines/transport.md`
     § 2a.11); ``contours`` a transmission point's sharing with a finished
-    calculation's point (`transport.energies.Contours`, § 2a.16).  Only a
-    transport deck reads them.
+    calculation's point (`transport.energies.Contours`, § 2a.16);
+    ``citation`` the cited junction's kind, by which its seed says where the
+    pseudopotentials came from (§ 3.1).  Only a transport deck reads them.
 
     The box is the structure's own -- the cell it states, or its vacuum box
     (isolated axes ``bbox + 2*vacuum``) for one nobody typed -- as the one
@@ -624,12 +628,13 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
         return transport_spec(struct, config or SiestaConfig(),
                               stage_token=stage_token, state=state,
                               point=point, scratch_dir=scratch_dir,
-                              contours=contours)
-    if point is not None or scratch_dir is not None or contours is not None:
+                              contours=contours, citation=citation)
+    if (point is not None or scratch_dir is not None or contours is not None
+            or citation is not None):
         raise ValueError(
-            f"a {calculation} deck has no point and no scratch folder: a "
-            f"frame, a voltage and the leads' files are a transport stage's"
-            f".")
+            f"a {calculation} deck has no point, no scratch folder and no "
+            f"cited junction: a frame, a voltage, the leads' files and the "
+            f"citation are a transport stage's.")
     # WHICH KINDS SIESTA RUNS is the kind table's (`kind(...).on`), which
     # refuses another naming the engines it runs on.
     from ..kind_table import kind as _kind

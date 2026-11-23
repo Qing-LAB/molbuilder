@@ -31,17 +31,13 @@ try:                                       # inside molbuilder
     from ..calcdirs import RunPlace
     from ..runpoints import NOT_RUN
     from ..runpoints import state_word, tally, why_not_run
+    from ..identity import COMPUTES_PRODUCT, COMPUTES_SCF
 except ImportError:                        # beside a job
     import runrecord as _rr  # type: ignore[no-redef]
+    from identity import COMPUTES_PRODUCT, COMPUTES_SCF  # type: ignore[no-redef]
     from runpoints import NOT_RUN  # type: ignore[no-redef]
     from runpoints import state_word, tally, why_not_run  # type: ignore[no-redef]
     from calcdirs import RunPlace  # type: ignore[no-redef]
-
-#: WHAT A RUN'S POINTS COMPUTE, the kind table's words for the rung
-#: (``computes``, `transport.stages.STAGE_FACT`), in the run's facts: an
-#: SCF -- the device's NEGF loop -- or a product of one, the transmission.
-#: What a round's milestone says of each point is read by this (:data:`_SAID`).
-SCF, PRODUCT = "scf", "product"
 
 
 def count_words(rows, facts=None) -> str:
@@ -79,7 +75,7 @@ def round_outcome(index: Dict[str, Any], rows, round_: str, run_dir,
     rows = list(rows)
     facts = index.get("facts") or {}
     mine = [r for r in rows if r["round"] == round_]
-    said = _SAID[facts.get("computes") or SCF]
+    said = _SAID[facts.get("computes") or COMPUTES_SCF]
     out = [(r, _state_words(r, rows),
             point_fact(index, r, run_dir, names) if r["done"] else None)
            for r in mine]
@@ -92,7 +88,7 @@ def point_fact(index: Dict[str, Any], row: Dict[str, Any], run_dir, names):
     point's NEGF iterations; a transmission point's ``(G/G0, why none)``
     -- the number its round prints to four digits, here whole."""
     facts = index.get("facts") or {}
-    return _SAID[facts.get("computes") or SCF].fact(row, Path(run_dir),
+    return _SAID[facts.get("computes") or COMPUTES_SCF].fact(row, Path(run_dir),
                                                     names, facts)
 
 
@@ -163,17 +159,19 @@ class _ProductSays:
             from ..parse.engines.tbtrans import (PRINTED_HALF_DECIMAL_EV,
                                                  averaged_files,
                                                  read_averaged)
-            from .conductance import (SPIN_CHANNELS, at_fermi,
-                                      per_spin_channel)
+            from ..runfiles import SPIN_NON_POLARIZED, TBT_SPIN_CHANNELS
+            from .conductance import at_fermi, per_spin_channel
             from .energies import grid, joined
         except ImportError:                # beside a job
             from tbtrans import (  # type: ignore[no-redef]
                 PRINTED_HALF_DECIMAL_EV, averaged_files, read_averaged)
+            from runfiles import (  # type: ignore[no-redef]
+                SPIN_NON_POLARIZED, TBT_SPIN_CHANNELS)
             from conductance import (  # type: ignore[no-redef]
-                SPIN_CHANNELS, at_fermi, per_spin_channel)
+                at_fermi, per_spin_channel)
             from energies import grid, joined  # type: ignore[no-redef]
-        spin = facts.get("spin") or "non-polarized"
-        want = SPIN_CHANNELS[spin]
+        spin = facts.get("spin") or SPIN_NON_POLARIZED
+        want = TBT_SPIN_CHANNELS[spin]
         on = grid(*row["window"]) if row.get("window") else None
 
         def read(folder: Path) -> Dict[str, Any]:
@@ -246,9 +244,11 @@ def _on_grid(on: Sequence[float], e: float, tol: float) -> Optional[int]:
     return best if best is not None and abs(on[best] - e) <= tol else None
 
 
-#: WHAT A ROUND SAYS OF EACH POINT, by what the run's points compute
-#: (:data:`SCF`, :data:`PRODUCT`; the kind table's ``computes``).
-_SAID = {SCF: _ScfSays, PRODUCT: _ProductSays}
+#: WHAT A ROUND SAYS OF EACH POINT, by what the run's points compute -- the
+#: kind table's ``computes`` for the rung (`transport.stages.STAGE_FACT`),
+#: in the run's facts: an SCF, the device's NEGF loop, or a product of one,
+#: the transmission (`identity.COMPUTES_SCF`, `COMPUTES_PRODUCT`).
+_SAID = {COMPUTES_SCF: _ScfSays, COMPUTES_PRODUCT: _ProductSays}
 
 
 
@@ -257,6 +257,7 @@ _SAID = {SCF: _ScfSays, PRODUCT: _ProductSays}
 #: record's own rule, a transmission point's energies joined, and TBtrans's
 #: k-averaged files read.
 TRAVELS_WITH = ("molbuilder.calcdirs",
+                "molbuilder.identity",
                 "molbuilder.transport.conductance",
                 "molbuilder.transport.energies",
                 "molbuilder.runpoints",
@@ -265,4 +266,4 @@ TRAVELS_WITH = ("molbuilder.calcdirs",
                 "molbuilder.parse.engines.siesta_reader",
                 "molbuilder.parse.engines.tbtrans")
 
-__all__ = ["SCF", "PRODUCT", "count_words", "round_outcome", "point_fact"]
+__all__ = ["count_words", "round_outcome", "point_fact"]

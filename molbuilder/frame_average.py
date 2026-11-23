@@ -42,6 +42,7 @@ from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from .frameset import WEIGHT_ROW, finite_number
+from .units import volts_words
 
 # ----------------------------------------------------------------------- #
 #  A mode's frame set's vocabulary -- how its maker's rows are said        #
@@ -468,7 +469,7 @@ def at_voltage(v: float, n: int, weights: List[float],
         # frame's point, never computed from the frames that are done.
         entry["why"] = (f"{', '.join(frame_words(f, n) for f in waits)} "
                         f"{'has' if len(waits) == 1 else 'have'} no "
-                        f"transmission at {v:g} V yet: the average waits for "
+                        f"transmission at {volts_words(v)} yet: the average waits for "
                         f"every frame")
         return entry
     from .transport.energies import same_grid
@@ -479,7 +480,7 @@ def at_voltage(v: float, n: int, weights: List[float],
         # (`engines/transport.md` § 2a.16).
         if not same_grid(here[f]["energy_ev"], grid):
             raise AverageError(
-                f"at {v:g} V the transmission of {frame_words(f, n)} is on "
+                f"at {volts_words(v)} the transmission of {frame_words(f, n)} is on "
                 f"another energy grid than the first frame's -- every "
                 f"frame's transmission deck is the one template's")
     curves = np.asarray([here[f]["transmission"] for f in range(n)],
@@ -977,7 +978,7 @@ def reaveraged(path, *, temperature_k, swing_quanta=0.0) -> Dict[str, Any]:
         at = at_voltage(v, n, weights, points, [], same_volts)
         for why in (at["why"], at["conductance_why"]):
             if why:
-                said.append(f"at {v:g} V: {why}")
+                said.append(f"at {volts_words(v)}: {why}")
         if at["transmission"] is not None:
             transmission[b] = at["transmission"]
         if at["conductance_g0"] is not None:

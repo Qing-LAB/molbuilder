@@ -57,6 +57,9 @@ from typing import Callable, Dict, List, Optional, Sequence, Tuple
 from ..calcdirs import RunPlace
 from ..parse.fdf import read_deck
 from ..runrecord import LaunchRecordError
+from ..task import LOW_BIAS_APPROXIMATION, SELF_CONSISTENT
+from .rung import frames_had
+from .stages import point_key, run_folder_at
 from .window import window_rung
 
 
@@ -378,14 +381,16 @@ class Extension:
         calculation ran -- the window, the shared values, and each rung:
         one it keeps, :attr:`said`; one it offers, what a change there
         re-runs; and ``fixed``, the short form a kept row is marked with."""
-        volts = ", ".join(f"{float(v)} V" for v in self.finished.bias)
+        from ..units import volts_words
+        from .stages import DEVICE_RUNG
+        volts = ", ".join(volts_words(v) for v in self.finished.bias)
         treatment = {
-            "self-consistent": (
+            SELF_CONSISTENT: (
                 f"The low-bias approximation instead runs the device and the "
                 f"transmission once, at 0 V -- {self.name}'s 0 V results on "
                 f"its first frame, copied in -- every voltage's current "
                 f"taken from that T(E)."),
-            "low-bias-approximation": (
+            LOW_BIAS_APPROXIMATION: (
                 "Self-consistent instead runs the device and the "
                 "transmission at every voltage, each its own "
                 "self-consistent point, the 0 V ones taken over."),
@@ -406,10 +411,10 @@ class Extension:
                        "shared exactly."),
             "shared": f"The values {self.name} ran with -- {self.said}.",
             "fixed": f"fixed by {self.name}",
-            "device": ("A change here re-runs every device point, and the "
-                       "transmission on it."),
-            "transmission": ("A change here re-runs the whole "
-                             "transmission, every point."),
+            DEVICE_RUNG: ("A change here re-runs every device point, and "
+                          "the transmission on it."),
+            window_rung(): ("A change here re-runs the whole "
+                            "transmission, every point."),
         }
         for rung in self.fixed:
             out[rung] = f"{self.said[0].upper()}{self.said[1:]}."
@@ -760,13 +765,6 @@ def origin(base, folder) -> str:
     return address(folder, tree_of(base))
 
 
-def point_key(pt) -> Tuple[int, float]:
-    """A point as matched across two calculations: its frame and its
-    voltage -- a rung that runs once (``None``, its one point the run
-    itself, as the gather names it), frame 0 and 0 V."""
-    return (0, 0.0) if pt is None else (pt.frame or 0, float(pt.volts or 0.0))
-
-
 def _words(pt) -> str:
     """A point in words -- a rung that runs once, its 0 V point
     (`stages.Point.words`)."""
@@ -779,35 +777,6 @@ def _newest(calc, stage: str) -> Optional[Path]:
     from ..jobset.materialize import latest_attempt
     from ..jobset.naming import stage_home
     return latest_attempt(stage_home(Path(calc.base), calc.task, stage).dir)
-
-
-def _at(calc, stage: str, run: Path, pt) -> Optional[Path]:
-    """``run`` of ``stage`` in ``calc`` at the point ``pt`` -- a frame and a
-    voltage, matched as such (:func:`point_key`): its point's folder for a
-    rung of points, the run itself for a rung that ran once, which is its
-    0 V point on frame 0, as ``pt`` ``None`` is; ``None`` when it holds no
-    such point."""
-    from .stages import frames_of, rung_points
-    theirs = rung_points(calc.task, stage, frames=frames_of(calc.base))
-    if not theirs:
-        return run if point_key(pt) == (0, 0.0) else None
-    match = {point_key(q): q for q in theirs}.get(point_key(pt))
-    return (RunPlace.of(run).point(match.rel) if match is not None
-            else None)
-
-
-def _given_at(calc, upstream: str, run: Path, pt) -> Optional[Path]:
-    """What ``run`` of ``upstream`` in ``calc`` gives a point ``pt`` of a
-    rung downstream -- as the gather takes it: its point's folder at the
-    same frame and voltage for a rung of points, the run itself for a rung
-    that runs once, whichever point asks (`gather.transport_inputs`)."""
-    from .stages import frames_of, rung_points
-    theirs = rung_points(calc.task, upstream, frames=frames_of(calc.base))
-    if not theirs:
-        return run
-    match = {point_key(q): q for q in theirs}.get(point_key(pt))
-    return (RunPlace.of(run).point(match.rel) if match is not None
-            else None)
 
 
 def decide(calc, numbers: Sequence[int]) -> Optional[Reuse]:
@@ -889,7 +858,8 @@ def _decided(calc, numbers: Sequence[int]) -> Reuse:
     forecast: Dict[str, Dict[Tuple[int, float], str]] = {}
 
     def given_to(st) -> Callable:
-        return lambda pt: _forecast(calc, finished, st, pt, copied, forecast)
+        return lambda pt: _forecast(calc, finished, st, pt, copied, forecast,
+                                    once=once)
 
     def takes(st, points) -> Takes:
         t = _takes_over(calc, finished, st, points, once=once,
@@ -977,7 +947,8 @@ def launched_contours(calc, stage: str) -> Optional[dict]:
     from ..jobset.naming import stage_home
     job = calc.job(stage)
     out = {}
-    for d, pt in (point_folders(calc.base, calc.task, stage)
+    for d, pt in (point_folders(calc.base, calc.task, stage,
+                                frames=frames_had(calc))
                   or [(stage_home(calc.base, calc.task, stage).dir, None)]):
         deck = d / job.script
         c = (Contours.of_deck(read_deck(deck)) if deck.is_file() else None)
@@ -1016,10 +987,10 @@ def finished_window(finished) -> Tuple[float, float, int]:
     none done."""
     from ..runs import run_of
     from .energies import deck_window
-    from .stages import frames_of, rung_points
+    from .stages import rung_points
     said = ""
     for pt in (rung_points(finished.task, window_rung(),
-                           frames=frames_of(finished.base)) or (None,)):
+                           frames=frames_had(finished)) or (None,)):
         src, _run, why = _finished_point(finished, window_rung(), pt)
         said = said or why or ""
         run = run_of(src) if src is not None else None
@@ -1203,7 +1174,8 @@ def _finished_point(finished, stage: str, pt):
         return None, newest, f"{shown}: {exc}"
     if launch is None:
         return None, newest, f"{shown} was never launched"
-    src = _at(finished, stage, newest, pt)
+    src = run_folder_at(finished.task, stage, newest, pt,
+                        frames=frames_had(finished), downstream=False)
     if src is None:
         return None, newest, None
     ok, why = point_done(finished, stage, newest, src, pt, names)
@@ -1214,27 +1186,30 @@ def _finished_point(finished, stage: str, pt):
 
 
 def _forecast(calc, finished, stage: str, pt, copied: set,
-              forecast) -> Dict[str, Optional[str]]:
+              forecast, *, once) -> Dict[str, Optional[str]]:
     """What ``stage``'s point ``pt`` will be given by the rungs upstream at
     its first launch, by each file's origin (:func:`origin`): from a rung
     copied in by this decision, the finished run it copies; from a rung
     launched here, its newest run; from a rung of points prepared here, the
-    point it will take over -- ``None`` for one it computes here."""
+    point it will take over -- ``None`` for one it computes here.  ``once``
+    is what the decision reads for all its groups (`gather.ReadOnce`)."""
     from .stages import inputs_of
     out: Dict[str, Optional[str]] = {}
     for upstream, filename in inputs_of(calc.task, stage):
         if upstream in copied:
             run = _newest(finished, upstream)
-            at = (_given_at(finished, upstream, run, pt) if run is not None
-                  else None)
+            at = (run_folder_at(finished.task, upstream, run, pt,
+                                frames=frames_had(finished), downstream=True)
+                  if run is not None else None)
             out[filename] = (origin(finished.base, at) if at is not None
                              else None)
         elif upstream in forecast:
             out[filename] = forecast[upstream].get(point_key(pt))
         else:
             run = _newest(calc, upstream)
-            at = (_given_at(calc, upstream, run, pt) if run is not None
-                  else None)
+            at = (run_folder_at(calc.task, upstream, run, pt,
+                                frames=once.frames(), downstream=True)
+                  if run is not None else None)
             out[filename] = (origin(calc.base, at) if at is not None
                              else None)
     return out
@@ -1247,7 +1222,7 @@ def _member(calc, finished, stage: str, once, copied: set
     the finished run's state or each difference of its own deck."""
     from ..paths import FIRST_ATTEMPT, attempt_dir, attempts_in
     from ..runrecord import read_copied_from
-    from .stages import frames_of, inputs_of, rung_points
+    from .stages import inputs_of, rung_points
     from ..jobset.continuation import point_done, read_points, read_run, usable
     from .gather import ran_otherwise
     from ..jobset.naming import stage_home
@@ -1272,7 +1247,7 @@ def _member(calc, finished, stage: str, once, copied: set
     shown = _shown(fbase, newest)
     names = home.names
     points = rung_points(calc.task, stage, frames=once.frames())
-    theirs = rung_points(ftask, stage, frames=frames_of(fbase))
+    theirs = rung_points(ftask, stage, frames=frames_had(finished))
     if points and not theirs:
         # THIS CALCULATION RUNS POINTS WHERE THE FINISHED ONE RAN ONCE: its
         # one result is a point here (frame 0, 0 V), taken over at the
@@ -1290,10 +1265,12 @@ def _member(calc, finished, stage: str, once, copied: set
         launch = got.launch
         if launch is None and got.state != "unreadable":
             return no(f"{stage}: {shown} was never launched")
-        if got.state in ("queued", "running", "unreadable"):
+        from ..parse.dirs.job import LIVE_STATES
+        if got.state in LIVE_STATES or got.state == "unreadable":
             return no(f"{stage}: {shown} is {got.state} -- {got.detail}")
         for pt in (points or [None]):
-            src = _at(finished, stage, newest, pt)
+            src = run_folder_at(finished.task, stage, newest, pt,
+                                frames=frames_had(finished), downstream=False)
             if src is None:
                 return no(f"{stage}: {shown} holds no "
                           f"{_words(pt)} point")
@@ -1368,7 +1345,7 @@ def _unfinished(finished, stage: str) -> Optional[str]:
     It decides nothing: a stage run once is copied when its run finished
     (the user, 2026-10-25)."""
     from ..runrecord import launch_record
-    from .stages import frames_of, rung_points
+    from .stages import rung_points
     from ..jobset.continuation import point_done, stage_run_state
     from ..jobset.naming import stage_home
     newest = _newest(finished, stage)
@@ -1383,7 +1360,7 @@ def _unfinished(finished, stage: str) -> Optional[str]:
     from ..parse.dirs.job import NOT_ENDED_STATES
     if state in NOT_ENDED_STATES:
         return None
-    theirs = rung_points(ftask, stage, frames=frames_of(fbase))
+    theirs = rung_points(ftask, stage, frames=frames_had(finished))
     missed = []
     for pt in theirs or [None]:
         folder = (RunPlace.of(newest).point(pt.rel) if pt is not None
@@ -1401,8 +1378,8 @@ def _unfinished(finished, stage: str) -> Optional[str]:
               f"choices")
 
 
-def _laid_here(calc, finished, stage: str, *, frames: int
-               ) -> Dict[str, str]:
+def _laid_here(calc, finished, stage: str, *,
+               frames: int) -> Dict[str, str]:
     """WHERE THIS CALCULATION KEEPS EACH RESULT of the finished one's newest
     run of ``stage`` it describes -- and that run itself -- when it keeps
     them in other folders (`engines/transport.md` § 2a.16, *A group copied
@@ -1410,7 +1387,8 @@ def _laid_here(calc, finished, stage: str, *, frames: int
     both from their calculation's folder, ``run-0`` here; empty when the
     folders are the same, every run then copied whole under its own name.
     ``frames`` this calculation's junction holds (`gather.ReadOnce.frames`:
-    its record's before its first prep has written one here)."""
+    its record's, or before its first prep has written one here, the
+    junction it will take)."""
     from ..paths import FIRST_ATTEMPT, attempt_dir
     from .stages import rung_points
     from ..jobset.naming import stage_home
@@ -1421,7 +1399,8 @@ def _laid_here(calc, finished, stage: str, *, frames: int
     run = attempt_dir(stage_home(base, calc.task, stage).dir, FIRST_ATTEMPT)
     moved = {newest: run}
     for pt in rung_points(calc.task, stage, frames=frames) or [None]:
-        src = _at(finished, stage, newest, pt)
+        src = run_folder_at(finished.task, stage, newest, pt,
+                            frames=frames_had(finished), downstream=False)
         if src is not None:
             moved[src] = (RunPlace.of(run).point(pt.rel)
                           if pt is not None else run)
@@ -1446,7 +1425,7 @@ def _relaid_copy(finished, stage: str, newest: Path, run: Path,
     run copied whole keeps its name, and a result it continued from that
     this calculation does not hold is not named."""
     from ..runrecord import carried_gather, read_continued_from
-    from ..warmfiles import is_scratch, never_carried
+    from ..warmfiles import is_scratch
     from ..jobset.continuation import stage_run_state
     fbase = Path(finished.base)
     state, _detail = stage_run_state(finished, stage, newest)
@@ -1457,9 +1436,7 @@ def _relaid_copy(finished, stage: str, newest: Path, run: Path,
 
     size, left, given = 0, [], []
     if of_points:
-        for f in newest.iterdir():
-            if f.is_file() and not never_carried(f.name):
-                size += f.stat().st_size
+        size += sum(f.stat().st_size for f in _copied_files(newest))
         given.append((run, tuple((fn, here(src)) for src, fn
                                  in carried_gather(fbase, newest)),
                       None))
@@ -1467,11 +1444,9 @@ def _relaid_copy(finished, stage: str, newest: Path, run: Path,
         if any(is_scratch(f.name) for f in d.iterdir()):
             left.append(f"{d.relative_to(fbase)}/")
     for src, rel, _made in points:
-        for f in _files(src, carried=False):
-            if is_scratch(f.name):
-                left.append(f"{f.parent.relative_to(fbase)}/")
-            elif not never_carried(f.name):
-                size += f.stat().st_size
+        carried, behind = _measured(src, named_from=fbase)
+        size += carried
+        left += behind
         prev = read_continued_from(src) if rel else None
         given.append((RunPlace.of(run).point(rel),
                       tuple((fn, here(r)) for r, fn
@@ -1504,21 +1479,54 @@ def _copy_of(finished, stage: str, source: Path, run: Path, *,
              unasked: Tuple[str, ...] = ()) -> Copy:
     """One run, as it will be copied: how it ended, what it holds -- its
     size, and the engine's scratch it leaves behind, named."""
-    from ..warmfiles import is_scratch, never_carried
     from ..jobset.continuation import stage_run_state
     state, _detail = stage_run_state(finished, stage, source)
-    size, left = 0, []
-    for f in _files(source, carried=False):
-        if is_scratch(f.name):
-            folder = f.parent.relative_to(source)
-            left.append(f"{folder}/" if str(folder) != "." else f.name)
-        elif not never_carried(f.name):
-            size += f.stat().st_size
+    size, left = _measured(source, named_from=source)
     return Copy(stage=stage, source=source, run=run,
                 shown=(f"{Path(finished.base).name}/"
                        f"{source.relative_to(finished.base)}"),
                 copied_from=origin(finished.base, source), ended=state,
                 size=size, left=tuple(dict.fromkeys(left)), unasked=unasked)
+
+
+def _measured(folder: Path, *, named_from: Path) -> Tuple[int, List[str]]:
+    """WHAT THE FILES UNDER ``folder`` A COPY MAY CARRY WEIGH, in bytes --
+    every file but those no copy carries (`warmfiles.never_carried`), a
+    point's own records with them -- and the engine's scratch a copy leaves
+    behind, each named from ``named_from``: its folder, or a file lying in
+    ``named_from`` itself by its name.  The size and the scratch both
+    accounts of a copy state, a run copied whole (:func:`_copy_of`) and
+    each point of one copied re-laid (:func:`_relaid_copy`)."""
+    from ..warmfiles import is_scratch, never_carried
+    size, left = 0, []
+    for f in _files(folder, carried=False):
+        if is_scratch(f.name):
+            where = f.parent.relative_to(named_from)
+            left.append(f"{where}/" if str(where) != "." else f.name)
+        elif not never_carried(f.name):
+            size += f.stat().st_size
+    return size, left
+
+
+def _copied_files(folder: Path, *, also=()) -> List[Path]:
+    """THE FILES OF ``folder`` ITSELF A COPY TAKES, in a stable order -- the
+    one filter a re-laid copy (:func:`_copy_relaid`) and a point taken over
+    (:func:`take_into`) copy by, and a re-laid run's own files are counted
+    by (a run copied whole takes every file it carries but the records its
+    copy writes, :func:`copy_in`): never its sub-folders, a file no copy carries
+    (`warmfiles.never_carried`), its folder's stamp, nor a record of the
+    run's a copy writes itself or names runs by (`runrecord.RUN_RECORDS`,
+    every one but those carried as they lie) -- nor ``also``, the files a
+    gather gave a point taken over."""
+    from ..runfiles import CALCDIR_FILE
+    from ..runrecord import COPY_CARRIED, RUN_RECORDS
+    from ..warmfiles import never_carried
+    records = {CALCDIR_FILE,
+               *(r.name for r in RUN_RECORDS if r.copy != COPY_CARRIED),
+               *also}
+    return [f for f in sorted(folder.iterdir())
+            if f.is_file() and f.name not in records
+            and not never_carried(f.name)]
 
 
 def _files(run: Path, *, carried: bool = True) -> List[Path]:
@@ -1589,18 +1597,11 @@ def _copy_relaid(calc, c: Copy, record: Path, plan) -> None:
     the run the results come from, last, so a copy cut short reads as a run
     never launched."""
     from .. import calcdirs
-    from ..runfiles import CALCDIR_FILE
-    from ..runrecord import (COPY_CARRIED, RUN_RECORDS, RunRef,
-                             launch_record_path, write_continued_from,
-                             write_copied_from, write_gathered_from)
-    from ..warmfiles import never_carried
+    from ..runrecord import (RunRef, launch_record_path,
+                             write_continued_from, write_copied_from,
+                             write_gathered_from)
     from ..jobset.materialize import open_scratch
     base = Path(calc.base)
-    # NEVER COPIED AS THEY LIE: each folder's stamp, and the run's own
-    # records a copy writes itself or names runs by (`runrecord.RUN_RECORDS`,
-    # every one but those carried as they lie).
-    records = {CALCDIR_FILE,
-               *(r.name for r in RUN_RECORDS if r.copy != COPY_CARRIED)}
     of_points = any(rel for _src, rel, _made in c.points)
     calcdirs.record(
         c.run, role=calcdirs.CONTAINER if of_points else calcdirs.RUN,
@@ -1608,18 +1609,14 @@ def _copy_relaid(calc, c: Copy, record: Path, plan) -> None:
     for d in _scratch_folders(c.source):
         open_scratch(base, RunPlace.of(c.run).scratch(d.name), plan)
     if of_points:
-        for f in sorted(c.source.iterdir()):
-            if (f.is_file() and f.name not in records
-                    and not never_carried(f.name)):
-                plan.copy(f, c.run / f.name)
+        for f in _copied_files(c.source):
+            plan.copy(f, c.run / f.name)
     for src, rel, made in c.points:
         dest = RunPlace.of(c.run).point(rel)
         if rel:
             calcdirs.record(dest, role=calcdirs.RUN, root=base, plan=plan)
-        for f in sorted(src.iterdir()):
-            if (f.is_file() and f.name not in records
-                    and not never_carried(f.name)):
-                plan.copy(f, dest / f.name)
+        for f in _copied_files(src):
+            plan.copy(f, dest / f.name)
         carry_shared(src, dest, plan, root=base)
         if rel:
             write_copied_from(dest, made, plan=plan)
@@ -1736,18 +1733,12 @@ def take_into(calc, takes: Sequence[Take], points, plan, *,
     folder's stamp, a launch record, the engine's scratch, or the files
     the gather gave this point (``given``), which are this run's; then its
     ``.copied-from``."""
-    from ..runfiles import CALCDIR_FILE
-    from ..runrecord import COPY_CARRIED, RUN_RECORDS, write_copied_from
-    from ..warmfiles import never_carried
-    records = {CALCDIR_FILE,
-               *(r.name for r in RUN_RECORDS if r.copy != COPY_CARRIED), *given}
+    from ..runrecord import write_copied_from
     folder_of = {point_key(pt): pdir for pdir, pt in points}
     for t in takes:
         pdir = folder_of[point_key(t.point)]
-        for f in sorted(t.source.iterdir()):
-            if (f.is_file() and f.name not in records
-                    and not never_carried(f.name)):
-                plan.copy(f, pdir / f.name)
+        for f in _copied_files(t.source, also=given):
+            plan.copy(f, pdir / f.name)
         # ITS SHARED ENERGIES, with it (§ 2a.16).
         carry_shared(t.source, pdir, plan, root=calc.base)
         write_copied_from(pdir, t.copied_from, plan=plan)
@@ -1822,6 +1813,6 @@ __all__ = ["Extension", "Refused", "ReuseError", "citing",
            "finished_of", "finished_junction", "write_reusing",
            "carry_pseudos", "Copy", "Take", "Takes", "Decision",
            "Reuse", "finished_window", "origin",
-           "point_key", "decide", "launched_contours", "that_point",
+           "decide", "launched_contours", "that_point",
            "copy_in", "takes_over", "take_into", "carry_shared",
            "shared_into"]

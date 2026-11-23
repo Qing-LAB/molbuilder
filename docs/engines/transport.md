@@ -2521,12 +2521,16 @@ below (taken over whole, never run again) is a run of points'.
 
 **One door for each place.** A rung's runs are `paths.attempts_in`'s, as every
 stage's; a swept run's points are the ones it holds —
-`transport.stages.points_in(calc, stage, run)`'s: a point the description
+`transport.stages.points_in(task, stage, run, frames=)`'s: a point the description
 gained after the run was opened is not the run's
 ([`job-system.md`](?doc=execution/job-system.md), *Changed since prepared*),
 and a launch opens the points prep wrote; the prepared point decks
-`transport.stages.point_folders(base, task, stage)`'s. Every reader asks them: prep, the gather, the walk, `status`, Task
-setup's count, the record and the Results ladder. **A swept rung has one row in `status`**: the
+`transport.stages.point_folders(base, task, stage, frames=)`'s, each at the
+frames `rung.frames_had` answers; the folder a run holds at a point —
+`transport.stages.run_folder_at`'s, a point matched by its frame and its
+voltage, a rung run once the run itself. Every reader asks them: prep, the
+gather, the reuse decision, the walk, `status`, Task setup's count, the
+record and the Results ladder. **A swept rung has one row in `status`**: the
 run's state, by one rule the gather asks too (`continuation.points_state`) —
 *running* while a point runs, or between two points while a job launched
 from this machine that holds the run is going (`joblist.is_going`, the answer
@@ -2566,10 +2570,12 @@ from, and what each alone took (a transmission point's device point). Every tran
 
 A point is `transport.stages.Point` — a frame and a voltage, each `None`
 when its axis does not vary — and one door answers a rung's points,
-`rung_points` (the frames the citation's, from the composed record,
-`frames_of`; the voltages the description's), with `point_folders` and
-`points_in` placing them; prep, the gather, the walk, `status` and the record
-ask it. The record of a frame set — each frame's point and the mode's average
+`rung_points` (the frames the citation's, one answer, `rung.frames_had`:
+the composed record's count, or before the first prep has written one, the
+junction that prep will take — an extension's, or what the citation holds;
+the voltages the description's), with `point_folders` and `points_in`
+placing them; prep, the gather, the reuse decision, the walk, `status`, the
+record and the data file ask it. The record of a frame set — each frame's point and the mode's average
 at each voltage — is § 2a.12's.
 
 A device point is a frame and a voltage (§ 2a.9, *Both axes*), so a swept
@@ -4710,7 +4716,7 @@ the size of what it copies.
   relaxation run and a structure pair, **a transport calculation's folder**.
   The describe door answers its meta line — *a transport calculation ·
   lowbias_local · its junction, cited from …/run-2 · low-bias-approximation ·
-  0.0, 0.2 V · −2…2 eV at 401 points · every group finished* — its window
+  0 V, 0.2 V · −2…2 eV at 401 points · every group finished* — its window
   the one its transmission computed, the rung's own values over the
   template's — and the page draws an extension, with its limits
   (*Extending it*): the bias list and the treatment from its description,
@@ -5817,8 +5823,10 @@ reads a meaning into its name ([`science/validation.md`](?doc=science/validation
 § 5; user, 2026-10-02).
 
 **Emitter behavior** (`transiesta.py::emit_electrode_declarations`,
-`_find_electrode_regions`): the two leads are found by name, **sorted by
-z-centroid** (lowest first), and the modern SIESTA 4.1+/5.x syntax is emitted — one
+`_find_electrode_regions`): the two leads are found by name, **the lower
+first, as `sort.electrode_orientation` answers** — the one door the sort asks
+to put that block's atoms first, so the lead the deck anchors at the start is
+the one the atom list begins with — and the modern SIESTA 4.1+/5.x syntax is emitted — one
 `%block TS.Elec.<name>` per lead (`L-electrode` → `L`, `R-electrode` →
 `R`), a `%block TS.ChemPots` + per-name
 `%block TS.ChemPot.<name>`, and `SolutionMethod transiesta`. **`%block TS.Elecs`
@@ -6015,7 +6023,7 @@ list must be hand-swept on every deletion.
 |---|---|---|
 | Composition | `transport/compose.py` | citation — a run read through the run door (`runs.openable`, `runs.steps_of`), or a pair's frames — → categorical sort → electrode extraction, which IS the lead check (frozen, unmoved, evenly spaced — `wizard.extract_electrode_model`, each said as a warning and kept in the record's `warnings`); the travelling record (`junction.xyz` + sidecars, and a cited run's `junction.cited.fdf`) |
 | Electrode extraction | `transport/wizard.py` (`ElectrodeModel`, `extract_electrode_model`) | **derives** a bulk lead from the labeled device — it ASKS `transiesta._find_electrode_regions` for the partition and `cell.detect_layers` / `cell.bulk_z_period` for the z-period (§ 7.1) rather than re-deriving either. `as_structure()` hands `prep` a `Structure`, so the lead renders through the same seam as every other rung |
-| Stages | `transport/stages.py` | the five-rung ladder, its DAG (`stage_inputs` — which stage consumes which concluded stage before it, § 1), the per-rung bags (`stages_for_transport`), the bias points and the containers each rung runs in; it renders no deck (`transport/deck.py` tables the shapes) |
+| Stages | `transport/stages.py` | the five-rung ladder, its DAG (`stage_inputs` — which stage consumes which concluded stage before it, § 1), the per-rung bags (`stages_for_transport`), the bias points and the containers each rung runs in; it renders no deck (`transport/deck.py` answers the shapes) |
 | Deck | `transport/deck.py` | the NEGF arm of `spec_for` — **the one writer of all five rung texts**, reached as `siesta.input.spec_for(struct, cfg, calculation="transport")` → `DeckSpec` → `prepare_deck`. It reuses `transiesta._emit_geometry` and `emit_electrode_declarations` as its emission library |
 | Kind gate | `validation/transport.py` (`validate_transport_kind`, the kind table's `validator`) | the invariants that must fire on **every** transport prep, keyed on `task.calculation`: I12 (no vacuum where the crystal continues, measured from the lead — § 6.1c); on every rung, TranSIESTA's stop on more than two spin components; on the device, which reads them, the pole energy's 20-pole floor, the temperature's 10 K floor and the bias window's 2.5 kT reach (§ 6.1c) — each of TranSIESTA's stops said as information; on the transmission, its window against the bias window (P2, § 2a.10). § 5 names which holder holds which; the k-point sampling (I7–I9) is the mesh's, [`siesta.md`](?doc=engines/siesta.md) § 6.1 |
 | k-point mesh | `kmesh.py` | every rung's sampling — the shared transverse pair, the open axis's one point, a lead's `electrode_kz`, the transmission's `tbt_k_grid`, the offset on every rung — decided once and read by the writer, the settings gate and the record ([`siesta.md`](?doc=engines/siesta.md) § 6.1) |
@@ -6301,8 +6309,9 @@ sealed against the person.
 
 **These values are not parameters anyone answers.  They are the identity of
 the rungs.**  The dispatch is *total and exclusive* over the five rungs —
-`SHAPE_OF_RUNG` is the table, and every rung renders through
-`transport/deck.py`:
+`deck.shape_of` answers each rung's shape from its role (`stages.SEED_RUNG`,
+`LEAD_RUNGS`, `DEVICE_RUNG`, `window.window_rung`), and every rung renders
+through `transport/deck.py`:
 
 | rung | shape | the layout that renders it | and therefore |
 |---|---|---|---|

@@ -262,9 +262,15 @@ def spec_for(struct: Structure,
             # decks and N jobs (`stages.md` § 1.1a).  A summary of the whole
             # ladder would be this deck describing runs it cannot see.
             out.append(f"Optimizer : geomeTRIC   (stage {names.stage})")
-            out.append(f"            maxsteps={cfg.geom_max_steps}, "
-                       f"grms={cfg.geom_grms:.1e} Ha/Bohr, "
-                       f"gmax={cfg.geom_gmax:.1e}, "
+            # THE STEP BOUND BY ITS KEYWORD, EACH GRADIENT TARGET IN ITS
+            # UNIT, the catalogue's (`layout.keyword`, `layout.unit_of`,
+            # `engines/pyscf.md` § 3).
+            out.append(f"            {_layout.keyword('geom_max_steps')}="
+                       f"{cfg.geom_max_steps}, "
+                       f"grms={cfg.geom_grms:.1e} "
+                       f"{_layout.unit_of('geom_grms')}, "
+                       f"gmax={cfg.geom_gmax:.1e} "
+                       f"{_layout.unit_of('geom_gmax')}, "
                        f"conv_tol={cfg.scf_conv_tol:.1e}")
         out += solvent_header_lines(cfg)
         out.append("")
@@ -509,7 +515,7 @@ def spec_for(struct: Structure,
         if not cfg.level_shift:
             out += _layout.hard_scf_hint(state)
         if cfg.chkfile:
-            out.append(f'mf.chkfile = _mb_outfile('
+            out.append(f'{_layout.keyword("chkfile")} = _mb_outfile('
                        f'{run_file_expr(names, PYSCF_CHK)})')
             # Continuation: a rung that says ``continue`` starts its SCF from the
             # density the rung before it converged, instead of MINAO / atom.  That
@@ -532,7 +538,7 @@ def spec_for(struct: Structure,
                            f'{run_file_expr(names, PYSCF_CHK)})')
                 out.append("if _os.path.exists(_chk_path) and "
                            "_os.path.getsize(_chk_path) > 0:")
-                out.append('    mf.init_guess = "chkfile"')
+                out.append(f'    {_layout.keyword("scf_init_guess")} = "chkfile"')
                 out.append('    print(f"[molbuilder] continuation: loading '
                            'SCF init guess from {_chk_path}")')
 
@@ -564,17 +570,20 @@ def spec_for(struct: Structure,
                            "the usual reasons.")
                 out.append("#")
                 out.append("# Two behaviours change and neither is an error:")
-                out.append("#   * mf.max_cycle now counts MACRO iterations "
-                           "(each runs many micro-")
+                out.append(f"#   * {_layout.keyword('scf_max_cycle')} now "
+                           f"counts MACRO iterations (each runs many micro-")
                 out.append("#     iterations), so the same number buys far more "
                            "work than under DIIS.")
-                out.append("#   * mf.diis_space / mf.damp stop applying -- the "
-                           "Newton solver does not")
+                out.append(f"#   * {_layout.keyword('diis_space')} / "
+                           f"{_layout.keyword('damp')} stop applying -- the "
+                           f"Newton solver does not")
                 out.append("#     use them.  Its own damping knob is "
                            "mf.ah_level_shift (default 0).")
-            out.append("mf = mf.newton()")
-            out.append('print("[molbuilder] SCF solver: second-order (SOSCF, '
-                       'mf.newton()); max_cycle counts macro iterations.")')
+            _newton = _layout.keyword("scf_soscf")
+            out.append(f"mf = {_newton}()")
+            out.append(f'print("[molbuilder] SCF solver: second-order (SOSCF, '
+                       f'{_newton}()); {_layout.keyword("scf_max_cycle")} '
+                       f'counts macro iterations.")')
 
         # Record what the SCF will ACTUALLY converge to, read off the LIVE
         # object rather than restated from the config -- a reported value
@@ -883,12 +892,14 @@ def emit_scf_criteria_readback(mf: str) -> List[str]:
     recorded alongside: *we chose 3.2e-5* and *PySCF derived 3.2e-5* are
     different facts.  Both decks call it, so the progress log states the
     same criteria for either (`molwatch_grammar.scf_criteria`)."""
+    tol = _layout.keyword_on("scf_conv_tol", mf)
+    grad = _layout.keyword_on("scf_conv_tol_grad", mf)
     return [
-        f"{RUNTIME_NAME}['scf_conv_tol'] = float({mf}.conv_tol)",
-        f"{RUNTIME_NAME}['scf_conv_tol_grad'] = float({mf}.conv_tol_grad "
-        f"if {mf}.conv_tol_grad is not None else {mf}.conv_tol ** 0.5)",
+        f"{RUNTIME_NAME}['scf_conv_tol'] = float({tol})",
+        f"{RUNTIME_NAME}['scf_conv_tol_grad'] = float({grad} "
+        f"if {grad} is not None else {tol} ** 0.5)",
         f"{RUNTIME_NAME}['scf_conv_tol_grad_source'] = ('explicit' "
-        f"if {mf}.conv_tol_grad is not None else 'derived: sqrt(conv_tol)')",
+        f"if {grad} is not None else 'derived: sqrt(conv_tol)')",
     ]
 
 

@@ -43,8 +43,9 @@ TRAVELS_WITH = ("molbuilder.parse.dirs.job",
 
 #: A pass's channel, in words -- one for each of `siesta_grammar.TBT_CHANNELS`'
 #: names, which this module refuses to load without.
-CHANNEL_WORDS: Dict[str, str] = {"up": "spin up", "down": "spin down",
-                                 "unpolarized": "unpolarized"}
+CHANNEL_WORDS: Dict[str, str] = {_rf.CHANNEL_UP: "spin up",
+                                 _rf.CHANNEL_DOWN: "spin down",
+                                 _rf.CHANNEL_UNPOLARIZED: "unpolarized"}
 if set(CHANNEL_WORDS) != {ch for ch, _tag in _G.TBT_CHANNELS}:
     raise ValueError(
         f"tbtrans.CHANNEL_WORDS names {sorted(CHANNEL_WORDS)}, and "

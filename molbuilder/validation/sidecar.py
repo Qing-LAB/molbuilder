@@ -137,6 +137,7 @@ def check_junction_boundary(struct: Structure, cell=None, *,
     boundary wrong.
     """
     from ..cell import SEAM_VACUUM_FACTOR, transport_room
+    from ..kmesh import TRANSPORT_AXIS
     from ..transport.sort import ELECTRODE_LABELS
     regions = getattr(struct, "regions", None) or {}
     leads = [list(idx) for label, idx in regions.items()
@@ -161,7 +162,8 @@ def check_junction_boundary(struct: Structure, cell=None, *,
             f"measured.",
             where="cell.transport_vacuum")]
     import numpy as np
-    c_now = float(np.asarray(box, dtype=float).reshape(3, 3)[2, 2])
+    c_now = float(np.asarray(box, dtype=float).reshape(3, 3)[
+        TRANSPORT_AXIS, TRANSPORT_AXIS])
     # WHERE THE ROOM IS, and THE WAY OUT both findings name: on a junction,
     # between its two leads, closed on the Cell page; on a lead's own stage,
     # between the lead and its own repeat, whose cell molbuilder builds from

@@ -17,7 +17,7 @@ This module holds two facts and the renders that follow from them:
 **NOTHING IN THIS MODULE RENDERS A DECK.**  All five rungs go
 through the framework's own pipeline — ``siesta.input.spec_for`` with
 ``calculation="transport"`` -> :mod:`molbuilder.transport.deck`, whose
-``SHAPE_OF_RUNG`` tables the four deck shapes — which is what lets the
+``shape_of`` answers the four deck shapes — which is what lets the
 template's items reach them; the electronic contract is resolved by
 ``transport.rung.resolve_transport`` from the calculation's own template.
 
@@ -42,7 +42,8 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from ..structure import frame_words
-from ..kind_table import kind as _kind, rung_label
+from ..identity import COMPUTES_SCF
+from ..kind_table import KindTableError, kind as _kind, rung_label
 from ..paths import frame_token
 
 #: The composite's fixed ladder (§ 1) -- the five stages in
@@ -51,6 +52,23 @@ from ..paths import frame_token
 #: kind's rung ROLES too, so their one home is the kind table
 #: (`execution/architecture.md` § 3.3, `engines/template.md` § 6.4).
 TRANSPORT_STAGES = _kind("transport").role_names
+
+#: THE RUNGS BY WHAT THEY ARE, asked of their roles -- a role renamed in
+#: the kind table is renamed everywhere.  The leads are the roles
+#: that name a lead, left then right; the junction's own SCF rungs are the
+#: roles that are no lead and compute an SCF, in the ladder's order: the
+#: seed, whose density the device starts from, then the device (§ 1).  The
+#: transmission is the rung that reads the window (`window.window_rung`).
+LEAD_RUNGS = tuple(_kind("transport").leads)
+_JUNCTION_SCF = tuple(r.name for r in _kind("transport").roles
+                      if not r.lead and r.computes == COMPUTES_SCF)
+if len(LEAD_RUNGS) != 2 or len(_JUNCTION_SCF) != 2:
+    raise KindTableError(
+        f"the transport ladder is two leads and two SCF rungs of the "
+        f"junction, the seed then the device; the kind table's roles give "
+        f"leads {', '.join(LEAD_RUNGS) or 'none'} and SCF rungs "
+        f"{', '.join(_JUNCTION_SCF) or 'none'}")
+SEED_RUNG, DEVICE_RUNG = _JUNCTION_SCF
 
 #: **WHICH FACT EACH RUNG ANSWERS WITH** — a column, because the five rungs
 #: do not answer the same question and reading them as if they did is a
@@ -171,7 +189,8 @@ class Point:
     def round(self) -> str:
         """Its round in words -- the voltage it runs at: every frame's point
         at one voltage is one round (`engines/transport.md` § 2a.11)."""
-        return f"{self.bias_v:g} V"
+        from ..units import volts_words
+        return volts_words(self.bias_v)
 
     def facts(self) -> Dict[str, object]:
         """What the point is, as its entry in the run's index keeps it
@@ -219,17 +238,6 @@ class Point:
         return {"frame": self.frame, "of": self.of, "bias_v": self.bias_v}
 
 
-def frames_of(base, *, read=None) -> int:
-    """How many frames the cited junction holds -- the citation's, never
-    typed (`engines/transport.md` § 2a.9): the composed record's
-    (`slot-provenance.json`, written at the calculation's first prep).  No
-    record yet means nothing is prepared, so no rung has points on disk: 1.
-    ``read`` reads a path's text where the record is a prep's plan's, not
-    yet on disk."""
-    from .compose import read_provenance
-    return int((read_provenance(base, read=read) or {}).get("frames") or 1)
-
-
 def rung_points(task, stage: str, *, frames: int) -> Tuple[Point, ...]:
     """THE POINTS ``stage`` RUNS AT -- one door, asked by prep, the gather,
     the walk, `status` and the record (`engines/transport.md` § 2a.11): for a
@@ -247,36 +255,61 @@ def rung_points(task, stage: str, *, frames: int) -> Tuple[Point, ...]:
                  for f in (fs or (None,)) for v in (volts or (None,)))
 
 
-def point_folders(base, task, stage: str, *, frames: Optional[int] = None
+def point_folders(base, task, stage: str, *, frames: int
                   ) -> List[Tuple[Path, Point]]:
     """A rung's PREPARED points -- ``[(<stage>/<point>, Point)]``, each
     folder holding that point's deck and run script, what every run of the
     stage copies -- or ``[]`` for a rung that runs once
-    (`engines/transport.md` § 2a.11).  ``frames`` is the cited set's count
-    when the caller holds the junction (prep, before its record is on
-    disk); else the record's (:func:`frames_of`)."""
+    (`engines/transport.md` § 2a.11), at the junction's ``frames``
+    (`rung.frames_had`, or the junction prep holds)."""
     from ..calcdirs import prepared_folder
     from ..jobset.naming import stage_home
     stage_dir = stage_home(base, task, stage).dir
-    n = frames if frames is not None else frames_of(base)
     return [(prepared_folder(stage_dir, pt.prepared), pt)
-            for pt in rung_points(task, stage, frames=n)]
+            for pt in rung_points(task, stage, frames=frames)]
 
 
-def points_in(calc, stage: str, run) -> List[Tuple[Path, Point]]:
+def points_in(task, stage: str, run, *, frames: int
+              ) -> List[Tuple[Path, Point]]:
     """A run's points -- ``[(run-<n>/<point>, Point)]`` -- or ``[]`` for a
     run of a rung that runs once (`engines/transport.md` § 2a.11): the
     points it HOLDS, each opened at its launch -- a point the description
     gained after the run was opened is not the run's (`job-system.md`,
-    *Changed since prepared*).  ``calc`` is the calculation whole
-    (`calculation.Calculation`): its description's points, at the frames
-    its folder's record states (:func:`frames_of`)."""
+    *Changed since prepared*): ``task``'s points at the junction's
+    ``frames`` (`rung.frames_had`, which its caller asks)."""
     from ..calcdirs import RunPlace
     place = RunPlace.of(run)
     return [(place.point(pt.rel), pt)
-            for pt in rung_points(calc.task, stage,
-                                  frames=frames_of(calc.base))
+            for pt in rung_points(task, stage, frames=frames)
             if place.point(pt.rel).is_dir()]
+
+
+def point_key(pt) -> Tuple[int, float]:
+    """A point as matched across two calculations, or a rung and the one
+    downstream of it: its frame and its voltage -- a rung that runs once
+    (``None``, its one point the run itself, as the gather names it),
+    frame 0 and 0 V."""
+    return (0, 0.0) if pt is None else (pt.frame or 0, float(pt.volts or 0.0))
+
+
+def run_folder_at(task, stage: str, run: Path, pt, *, frames: int,
+                  downstream: bool) -> Optional[Path]:
+    """THE FOLDER ``run`` OF ``stage`` HOLDS AT THE POINT ``pt`` -- a frame
+    and a voltage, matched as such (:func:`point_key`), ``task``'s points
+    at the junction's ``frames`` (`rung.frames_had`, which its caller
+    asks) -- THE ONE ANSWER, asked by the gather and the reuse decision
+    (`engines/transport.md` § 2a.11, § 2a.16): for a rung of points, its
+    point's folder at the same frame and voltage; for a rung that ran once,
+    the run itself -- to whichever point of a rung ``downstream`` asks, as
+    the gather takes it, and else only at its own one point, frame 0 at
+    0 V, as ``pt`` ``None`` is.  ``None`` when it holds no such point."""
+    from ..calcdirs import RunPlace
+    theirs = rung_points(task, stage, frames=frames)
+    if not theirs:
+        return run if downstream or point_key(pt) == (0, 0.0) else None
+    match = {point_key(q): q for q in theirs}.get(point_key(pt))
+    return (RunPlace.of(run).point(match.rel) if match is not None
+            else None)
 
 
 def stage_inputs(stage: str, task_label: str):
@@ -296,16 +329,17 @@ def stage_inputs(stage: str, task_label: str):
     from ..runfiles import SIESTA_DM, SIESTA_TS_HSX, SIESTA_TSHS, compose
     elec = [(s, compose(rung_label(task_label, s), SIESTA_TSHS))
             for s in _kind("transport").leads]
-    if stage == "device":
-        return [("seed", compose(task_label, SIESTA_DM))] + elec
-    if stage == "transmission":
+    from .window import window_rung
+    if stage == DEVICE_RUNG:
+        return [(SEED_RUNG, compose(task_label, SIESTA_DM))] + elec
+    if stage == window_rung():
         # TBtrans reads the device's converged H -- which SIESTA 5.x
         # writes as <label>.TS.HSX (the sparse container that replaced
         # the 4.x device .TSHS; measured live 2026-08-29 on 5.4.2) --
         # plus the electrode .TSHS the TS.Elec blocks in the (shared)
         # deck text reference.  The .TSDE is NOT consumed: the TS.HSX
         # already carries the bias point's converged potential.
-        return [("device", compose(task_label, SIESTA_TS_HSX))] + elec
+        return [(DEVICE_RUNG, compose(task_label, SIESTA_TS_HSX))] + elec
     return []
 
 
@@ -349,12 +383,17 @@ def products_of(stage: str, task_label: str, *, base_dir=None) -> list:
     declares none).  The products a point must hold (:func:`must_hold`,
     which adds a shared point's ``shared/``) and the gather reads
     (`engines/transport.md` § 2a.11) -- here and nowhere else."""
-    from ..runfiles import TBT_CHANNEL_TAGS, TBTRANS_NC, compose
-    if stage == "transmission":
-        def nc(channel):
-            return compose(task_label, TBTRANS_NC,
-                           tbt=TBT_CHANNEL_TAGS[channel])
-        out = [((nc("unpolarized"),), (nc("up"), nc("down")))]
+    from ..runfiles import (SPIN_NON_POLARIZED, SPIN_POLARIZED,
+                            TBT_CHANNEL_TAGS, TBT_SPIN_CHANNELS, TBTRANS_NC,
+                            compose)
+    from .window import window_rung
+    if stage == window_rung():
+        def ncs(spin):
+            return tuple(compose(task_label, TBTRANS_NC,
+                                 tbt=TBT_CHANNEL_TAGS[c])
+                         for c in TBT_SPIN_CHANNELS[spin])
+        # ALTERNATIVE SETS, one per spin, the non-polarized first.
+        out = [(ncs(SPIN_NON_POLARIZED), ncs(SPIN_POLARIZED))]
     else:
         out = sorted({fn for downstream in TRANSPORT_STAGES
                       for up, fn in stage_inputs(downstream, task_label)
@@ -406,7 +445,7 @@ def warm_declaration(stage: str, task_label: str, base_dir=None):
     half-finished copy: launched again, one runs from its deck alone
     (`continuation.relaunch`).
     """
-    if stage not in ("seed", "device"):
+    if stage not in (SEED_RUNG, DEVICE_RUNG):
         return []
     from ..jobset.model import warm_declaration
     return warm_declaration(ENGINE, task_label, "transport", base_dir)
@@ -435,47 +474,49 @@ def rung_notes() -> Dict[str, str]:
     rung's position in TRANSPORT_STAGES, one-based."""
     from ..kmesh import TRANSMISSION_PER_SCF as _TBT_FACTOR
     from ..template import catalogue, default_of, one
+    from .window import window_rung
     _LEAD_KZ = default_of(one(catalogue(), "electrode_kz", engine=ENGINE),
                           "transport")
-    return {
-        "seed": ("A closed periodic SCF of the whole junction.  It writes the "
-                 "density the device starts from -- a starting guess only: it "
-                 "spares the device iterations and changes no result.  "
-                 "k-points: the shared k-point grid in the electrode plane "
-                 "(x, y), and one k-point along z, because the cell is long "
-                 "along z and the device only starts from this density."),
-        "electrode_L": ("The left lead as a bulk crystal.  It writes the "
-                        "Hamiltonian, overlap and Fermi level the device builds "
-                        "the left self-energy from, and the device takes them "
-                        "as given.  k-points: the shared k-point grid in the "
-                        "electrode plane (x, y), which must be the device's, "
-                        f"and many k-points along z (the lead's own count, "
-                        f"{_LEAD_KZ} unless set), because the lead's "
-                        "Hamiltonian and Fermi level depend on them."),
-        "electrode_R": ("The right lead, likewise, on the same k-points as the "
-                        "left.  Two lead runs even when the leads are "
-                        "identical, so the record stays auditable and the "
-                        "Results tab compares their Fermi levels."),
-        "device": ("The open-boundary NEGF SCF of the junction between the two "
-                   "leads, at the bias.  It writes the converged Hamiltonian "
-                   "the transmission reads -- one per bias point.  k-points: "
-                   "the shared k-point grid in the electrode plane (x, y), and "
-                   "one k-point along z, where the leads' self-energies stand "
-                   "in for everything beyond the cell."),
-        "transmission": ("T(E) over the energy window, from that Hamiltonian.  "
-                         "tbtrans runs no SCF, so this tab has no SCF settings: "
-                         "the ones behind this T(E) are the device's and the "
-                         "two leads', on their tabs, and T(E) is only as "
-                         "converged as those runs.  k-points: its own "
-                         "transmission k-point grid in the electrode plane "
-                         "(x, y), finer than the shared one -- "
-                         f"{_TBT_FACTOR} times it unless you set it -- because "
-                         "T(E) changes more "
-                         "sharply from one k-point to the next than the density "
-                         "does; and one k-point along z.  Nothing consumes its "
-                         "output, so changing the window or the grid re-runs "
-                         "the transmission alone, never an NEGF cycle."),
-    }
+    left, right = LEAD_RUNGS
+    seed = ("A closed periodic SCF of the whole junction.  It writes the "
+            "density the device starts from -- a starting guess only: it "
+            "spares the device iterations and changes no result.  "
+            "k-points: the shared k-point grid in the electrode plane "
+            "(x, y), and one k-point along z, because the cell is long "
+            "along z and the device only starts from this density.")
+    left_lead = ("The left lead as a bulk crystal.  It writes the "
+                 "Hamiltonian, overlap and Fermi level the device builds "
+                 "the left self-energy from, and the device takes them "
+                 "as given.  k-points: the shared k-point grid in the "
+                 "electrode plane (x, y), which must be the device's, "
+                 f"and many k-points along z (the lead's own count, "
+                 f"{_LEAD_KZ} unless set), because the lead's "
+                 "Hamiltonian and Fermi level depend on them.")
+    right_lead = ("The right lead, likewise, on the same k-points as the "
+                  "left.  Two lead runs even when the leads are "
+                  "identical, so the record stays auditable and the "
+                  "Results tab compares their Fermi levels.")
+    device = ("The open-boundary NEGF SCF of the junction between the two "
+              "leads, at the bias.  It writes the converged Hamiltonian "
+              "the transmission reads -- one per bias point.  k-points: "
+              "the shared k-point grid in the electrode plane (x, y), and "
+              "one k-point along z, where the leads' self-energies stand "
+              "in for everything beyond the cell.")
+    transmission = ("T(E) over the energy window, from that Hamiltonian.  "
+                    "tbtrans runs no SCF, so this tab has no SCF settings: "
+                    "the ones behind this T(E) are the device's and the "
+                    "two leads', on their tabs, and T(E) is only as "
+                    "converged as those runs.  k-points: its own "
+                    "transmission k-point grid in the electrode plane "
+                    "(x, y), finer than the shared one -- "
+                    f"{_TBT_FACTOR} times it unless you set it -- because "
+                    "T(E) changes more "
+                    "sharply from one k-point to the next than the density "
+                    "does; and one k-point along z.  Nothing consumes its "
+                    "output, so changing the window or the grid re-runs "
+                    "the transmission alone, never an NEGF cycle.")
+    return {SEED_RUNG: seed, left: left_lead, right: right_lead,
+            DEVICE_RUNG: device, window_rung(): transmission}
 
 
 def stages_for_transport(engine: str, bags=None):

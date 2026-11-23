@@ -197,7 +197,7 @@ def test_every_label_a_PREPPED_RUNG_emits_is_known_to_the_binary(
         binary_text, rung, groups, real_bridged_chain, tmp_path, monkeypatch):
     """THE DECKS THAT ACTUALLY RUN.
 
-    One case per deck SHAPE rather than per rung: `SHAPE_OF_RUNG` maps the
+    One case per deck SHAPE rather than per rung: `deck.shape_of` maps the
     five rungs onto four texts -- the device and the transmission are two,
     because two programs read them (`transport.md` § 6.1b).
     """

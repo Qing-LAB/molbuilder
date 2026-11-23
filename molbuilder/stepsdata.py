@@ -199,7 +199,7 @@ def data_file_bytes(calc, name: str) -> Tuple[bytes, str]:
     as one that was not asked.  :class:`DataFileError` names a calculation
     with no step at all, and runs that are not of one structure."""
     from . import __version__
-    from .engine_table import scf_columns
+    from .engine_table import engine as _engine_row, scf_columns
     from .ncdata import NC_LOCK, as_bytes, empty, flag, in_memory, state, write_group
     read = _runs_read(calc)
     gave = [row for row in read if row["steps"] is not None]
@@ -294,8 +294,8 @@ def data_file_bytes(calc, name: str) -> Tuple[bytes, str]:
                          f"cycles, and each run's own record"),
               schema=DATA_SCHEMA,
               molbuilder_version=__version__,
-              derived_from=(f"{engine}'s output of each run, named by its "
-                            f"output_file"))
+              derived_from=(f"{_engine_row(engine).words}'s output of each "
+                            f"run, named by its output_file"))
         ds.setncatts({"label": str(calc.task.label), "engine": engine})
         write_group(ds.createGroup("runs"), run_dims, RUN_VARS, runs,
                     title="each run's own record: how it ended, what it "

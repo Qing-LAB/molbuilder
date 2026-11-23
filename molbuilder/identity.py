@@ -45,6 +45,12 @@ from dataclasses import dataclass
 from typing import List, Optional, Sequence, Tuple
 
 
+#: WHAT A RUNG COMPUTES -- an SCF, or a product of one that runs none: the
+#: kind table's ``computes`` (`kind_table.COMPUTES`), here, where a job
+#: beside its run reads it too (`transport.run_words`).
+COMPUTES_SCF, COMPUTES_PRODUCT = "scf", "product"
+
+
 def continues(cfg) -> bool:
     """Does this run start from what is already in the folder? (§ 4 rule 2.)
 

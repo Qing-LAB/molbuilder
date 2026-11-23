@@ -17,6 +17,13 @@ from ..script_emit import Parameter, Section, not_set_line, parameter
 from .engine_input import unit_word
 
 
+def keyword(name: str) -> str:
+    """The fdf keyword a catalogue item writes in a SIESTA deck -- the
+    item's own ``writes`` through the one door (`script_emit.parameter`),
+    so a reader of a deck finds it as the writer wrote it."""
+    return parameter(name, "siesta").writes[0]
+
+
 def is_elpa(algorithm: str) -> bool:
     """Whether ``algorithm`` (``diag_algorithm``) is one of ELPA's solvers
     -- the one solver family with a GPU path (`engines/siesta.md` § 7):

@@ -47,6 +47,7 @@ _REL_TOL = 1e-9
 
 def check_ladder_does_not_loosen(
     resolved: Sequence[Tuple[str, Any]], *, engine: str, kind: str,
+    refused=frozenset(),
 ) -> List[Issue]:
     """§ 4 R3. One ``warn`` per parameter that goes backwards along the ladder.
 
@@ -77,6 +78,10 @@ def check_ladder_does_not_loosen(
 
     **No stage label.** The finding is about the description: naming one of the
     two stages would put the blame on a member for a property of the pair.
+
+    ``refused`` holds the ``(stage, item)`` overrides the setting door
+    refused: each drew that refusal alone, and nothing built from it is
+    judged here (`engines/template.md` § 5.3).
     """
     from ..template import catalogue, reads, select, stage_roles
     out: List[Issue] = []
@@ -88,7 +93,7 @@ def check_ladder_does_not_loosen(
             if not reads(it, engine, kind, name):
                 continue
             val = getattr(cfg, it.name, None)
-            if val is None:
+            if val is None or (name, it.name) in refused:
                 continue
             val = float(val)
             role = stage_roles(engine, kind, name)
@@ -113,6 +118,7 @@ def check_ladder_does_not_loosen(
 
 def check_a_relaxation_takes_a_step(
     resolved: Sequence[Tuple[str, Any]], *, engine: str, kind: str,
+    refused=frozenset(),
 ) -> List[Issue]:
     """A rung that relaxes takes at least one step (plan § 5w K4; M11 SS-C5).
 
@@ -134,6 +140,7 @@ def check_a_relaxation_takes_a_step(
     out: List[Issue] = []
     for name, cfg in resolved:
         if ("relax_steps" in inactive_settings(cfg, engine=engine)
+                or (name, "relax_steps") in refused
                 or getattr(cfg, "relax_steps", None) != 0
                 or not reads(steps, engine, kind, name)):
             continue

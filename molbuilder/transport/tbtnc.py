@@ -181,8 +181,8 @@ def point_dos(folder, label: str, regions: Dict[str, Sequence[int]],
             av = point_averages_of(folder, label)
         except (OSError, ValueError) as exc:
             raise TbtError(str(exc)) from exc
-    from .conductance import SPIN_CHANNELS
-    channels = SPIN_CHANNELS[spin]
+    from ..runfiles import TBT_SPIN_CHANNELS
+    channels = TBT_SPIN_CHANNELS[spin]
     missing = [c for c in channels if c not in av]
     if missing:
         raise TbtError(f"{Path(folder).name} holds no k-averaged file of "
@@ -225,7 +225,8 @@ def point_dos(folder, label: str, regions: Dict[str, Sequence[int]],
         if by_label is not None:
             per[channels[0]]["by_label"] = by_label
         return per[channels[0]]
-    up, dn = per["up"], per["down"]
+    from ..runfiles import SPIN_POLARIZED
+    up, dn = (per[c] for c in TBT_SPIN_CHANNELS[SPIN_POLARIZED])
     from .energies import same_grid
     if not same_grid(up["energy_ev"], dn["energy_ev"]):
         raise TbtError(f"{Path(folder).name}: its two spin channels are on "
@@ -250,7 +251,7 @@ def point_dos(folder, label: str, regions: Dict[str, Sequence[int]],
             out[key] = both
     out["by_spin"] = {
         s: {k: d[k] for k in ("total", "eigenchannels") if k in d}
-        for s, d in (("up", up), ("down", dn))}
+        for s, d in zip(TBT_SPIN_CHANNELS[SPIN_POLARIZED], (up, dn))}
     return out
 
 
@@ -434,7 +435,8 @@ def point_readings(calc) -> List[Dict]:
     from ..jobset.continuation import read_points as points_reading
     from ..runs import run_of, state_of
     from .record import result_folders
-    folders = result_folders(calc, "transmission")
+    from .window import window_rung
+    folders = result_folders(calc, window_rung())
     finished = set()
     for run in {r for _, w, r in folders if w is not None}:
         if not where(run).of_points:
@@ -446,7 +448,7 @@ def point_readings(calc) -> List[Dict]:
         # ITS ONE READING (`continuation.read_points`): a run not launched,
         # or one whose records do not read, holds no point finished -- the
         # stage's row says why.
-        got = points_reading(calc, "transmission", run)
+        got = points_reading(calc, window_rung(), run)
         if got.launch is None:
             continue
         place = RunPlace.of(run)

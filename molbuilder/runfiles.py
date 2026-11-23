@@ -166,8 +166,20 @@ NAME_TOKEN = re.compile(f"[{NAME_CHARS}]+")
 #: unpolarized, ``<label>.TBT_UP.nc`` / ``<label>.TBT_DN.nc`` for the two
 #: channels of a polarized run -- the ``tbt`` field's values, and every
 #: reader's channel (`siesta_grammar.TBT_CHANNELS`).
-TBT_CHANNEL_TAGS: "dict[str, str]" = {"unpolarized": "TBT", "up": "TBT_UP",
-                                      "down": "TBT_DN"}
+CHANNEL_UP, CHANNEL_DOWN, CHANNEL_UNPOLARIZED = "up", "down", "unpolarized"
+TBT_CHANNEL_TAGS: "dict[str, str]" = {CHANNEL_UNPOLARIZED: "TBT",
+                                      CHANNEL_UP: "TBT_UP",
+                                      CHANNEL_DOWN: "TBT_DN"}
+#: A DECK'S SPIN, as the transport record says it, and THE CHANNELS TBtrans
+#: WRITES FOR EACH, each one of :data:`TBT_CHANNEL_TAGS`: both of a
+#: polarized device (`TBT.Spin` fixed at 0, `engines/transport.md` § 6.1),
+#: the one of any other.  Every reader asks these names.
+SPIN_POLARIZED, SPIN_NON_POLARIZED = "polarized", "non-polarized"
+TBT_SPIN_CHANNELS: "dict[str, tuple]" = {
+    SPIN_POLARIZED: (CHANNEL_UP, CHANNEL_DOWN),
+    SPIN_NON_POLARIZED: (CHANNEL_UNPOLARIZED,)}
+assert {c for cs in TBT_SPIN_CHANNELS.values() for c in cs} == set(
+    TBT_CHANNEL_TAGS), "every channel of a spin is one TBtrans tags"
 
 #: THE LEADS MOLBUILDER'S DECKS NAME, the left one then the right one: each
 #: lead's ``TS.Elec.<name>`` block (`transport.transiesta`), and so the name

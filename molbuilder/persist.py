@@ -171,6 +171,20 @@ def unread_words(exc: ValueError) -> str:
     return f"invalid JSON ({exc})"
 
 
+def read_shipped(loader, module_file: str, path) -> bytes:
+    """A DATA FILE SHIPPED WITH A MODULE -- in the package's data folder, or
+    beside the module in its bundle (a ``TRAVELS_DATA`` member) -- read
+    through the module's ``loader``, which serves a zip member and a plain
+    file alike (`run-reports.md` § 4.1c).  A file beside the module is named
+    from ``module_file`` as the loader spells it: a zip importer keeps the
+    bundle's path as it stood on ``sys.path`` (``./mb_monitor.pyz``), and
+    finds no member under a path `Path` has normalised."""
+    here = os.path.dirname(module_file)
+    path = Path(path)
+    return loader.get_data(os.path.join(here, path.name)
+                           if path.parent == Path(here) else str(path))
+
+
 def text_of(data: bytes) -> str:
     """A file's bytes as text -- UTF-8, as the one writer writes it
     (:func:`json_text`); a byte-order mark is read past, since it says nothing

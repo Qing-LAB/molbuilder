@@ -39,9 +39,11 @@ SHARED_DIR = "shared"
 try:                                        # inside molbuilder
     from ..deck_record import (BLOCK_SHARED, block_unreadable,  # noqa: E402
                                read_json_block)
+    from ..units import energy_ev, volts_words  # noqa: E402
 except ImportError:                         # beside a job
     from deck_record import (BLOCK_SHARED, block_unreadable,  # type: ignore[no-redef]  # noqa: E402
                              read_json_block)
+    from units import energy_ev, volts_words  # type: ignore[no-redef]  # noqa: E402
 
 
 def spacing(window: Tuple[float, float, int]) -> float:
@@ -72,7 +74,7 @@ def window_short_of(emin_ev: float, emax_ev: float, volts: float,
     reach = half + WINDOW_TAILS_KT * float(kt_ev)
     lo, hi = float(emin_ev), float(emax_ev)
     if reach > hi or -reach < lo:
-        return (f"at {float(volts):g} V the current needs the transmission "
+        return (f"at {volts_words(volts)} the current needs the transmission "
                 f"from -{reach:.3f} to +{reach:.3f} eV (half the bias plus "
                 f"{WINDOW_TAILS_KT:g} kT on each side, at kT = "
                 f"{float(kt_ev):.4f} eV), but the energies computed reach "
@@ -115,9 +117,17 @@ def deck_window(text: str) -> Optional[Tuple[float, float, int]]:
     from ..parse.fdf import fdf_key, read_fdf
     rows = {r[0].lower(): r
             for r in read_fdf(text)[1].get(fdf_key("TBT.Contour.window")) or ()}
-    return ((float(rows["from"][1]), float(rows["from"][4]),
-             int(rows["points"][1]))
-            if "from" in rows and "points" in rows else None)
+    if "from" not in rows or "points" not in rows:
+        return None
+    # EACH BOUND IN ITS OWN UNIT, as the deck writer wrote it beside it
+    # (`transport.deck`, the item's unit word): ``from <lo> <unit> to <hi>
+    # <unit>``, read through the one unit table (`units`).
+    row = [str(t) for t in rows["from"]]
+    at = [t.lower() for t in row].index("to")
+    lo, hi = (energy_ev(float(part[0]), part[1] if len(part) > 1 else None,
+                        what="TBT.Contour.window", source="the deck")
+              for part in (row[1:at], row[at + 1:]))
+    return lo, hi, int(rows["points"][1])
 
 
 def _index(sorted_energies: Sequence[float], e: float) -> Optional[int]:
@@ -382,7 +392,7 @@ def held(folder: Path, label: str) -> List[float]:
 #: WHAT TRAVELS WITH THESE ENERGIES beside the job
 #: (`runwrap.members`): the sharing record's block, named by the
 #: deck record.
-TRAVELS_WITH = ("molbuilder.deck_record",)
+TRAVELS_WITH = ("molbuilder.deck_record", "molbuilder.units")
 
 __all__ = ["SAME_ENERGY_EV", "SHARED_DIR", "WINDOW_TAILS_KT", "spacing",
            "window_short_of", "sampled_window", "grid", "deck_window",

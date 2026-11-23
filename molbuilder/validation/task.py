@@ -135,6 +135,10 @@ def preflight(task, *,
     #  value, one refusal; the door `resolve` asks too.
     refused = _overrides_may_stand(task, fields)
     out.extend(refused)
+    # ...EACH (stage, item) IT REFUSED, which drew that refusal alone: its
+    # range warning stands aside, and so does any check on what is built
+    # from it (`engines/template.md` § 5.3).
+    refused_pairs = {(i.stage, i.where.split(".", 1)[1]) for i in refused}
 
     # The RESOLVED ladder (template ⊕ each stage's overrides) when the caller
     # has the template: the checks below that judge a rung as it will run
@@ -158,7 +162,8 @@ def preflight(task, *,
     # A rung that relaxes takes a step (plan § 5w K4): judged on the rung as
     # the description resolves it.
     stepless = check_a_relaxation_takes_a_step(ladder, engine=_engine,
-                                               kind=_kind)
+                                               kind=_kind,
+                                               refused=refused_pairs)
     # NO STAGE SHARES A GROUP WITH ONE IT BUILDS ON (`job-request.md`
     # § 3.3): the request's numbers against the ladder's links, asked with
     # the template -- an independent ladder's are its resolved stages'
@@ -176,8 +181,8 @@ def preflight(task, *,
     from ..template import inactive_settings
     out.extend(_values_in_range(
         task, cls, fields,
-        refused={(i.stage, i.where.split(".", 1)[1])
-                 for i in (*refused, *stepless)},
+        refused=refused_pairs | {(i.stage, i.where.split(".", 1)[1])
+                                 for i in stepless},
         inactive={(name, key) for name, cfg in ladder
                   for key in inactive_settings(cfg, engine=_engine,
                                                calculation=_kind)}))
@@ -190,11 +195,13 @@ def preflight(task, *,
     _checks = _kind_rec(_kind).description_checks
     if _checks is not None:
         out.extend(_resolve(_checks, record=_kind,
-                         key="description_checks")(task, ladder))
+                         key="description_checks")(task, ladder,
+                                                   refused=refused_pairs))
 
     # -- 5. the sequence's own findings (§ 6.4 / § 6.6a) -- warnings -------
     out.extend(check_ladder_does_not_loosen(ladder, engine=_engine,
-                                            kind=_kind))
+                                            kind=_kind,
+                                            refused=refused_pairs))
     out.extend(check_identical_stages(ladder))
     return out
 

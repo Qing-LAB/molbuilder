@@ -191,9 +191,9 @@ assumed is that reach.
 **The modules on each floor**, with the entry points other floors call:
 
 - **Floor 1 — names & plain facts.**
-  - `identity` — the stage token and the run id: `StageRef`, `resolve_stage_ref`, `stage_token`, `parse_token`, `run_id`, `stage_key`.
+  - `identity` — the stage token and the run id: `StageRef`, `resolve_stage_ref`, `stage_token`, `parse_token`, `run_id`, `stage_key`; and the words a rung computes (`COMPUTES_SCF`, `COMPUTES_PRODUCT`), which travel beside a job.
   - `paths` · `calcdirs` — is a folder a calculation's root (`described`), does it lie inside one or hold one (`calculation_above`, `calculation_below`), where a folder is (`where` → `Where`).
-  - `runfiles` — every file molbuilder writes and its name (`WRITTEN`, `compose`, `parse`, `tail`, `manifest`).
+  - `runfiles` — every file molbuilder writes and its name (`WRITTEN`, `compose`, `parse`, `tail`, `manifest`); and the words a TBtrans file's spin and channels are said in (`SPIN_POLARIZED`, `CHANNEL_UP`, `TBT_SPIN_CHANNELS`), the names its files are tagged by.
   - `runrecord` — a run's own records: `launch_record`, `write_launch`, `ending`, `read_continued_from`, `carried_gather`, `copied_of`, `read_notified`.
   - `runpoints` — a run of points' index and its rules ([`runs-of-points.md`](?doc=execution/runs-of-points.md) § 2.3).
   - `deck_record` — the grammar of a deck's record blocks, and the one door of *the same calculation* (`same_calculation`).
@@ -551,6 +551,7 @@ One line per fact; the detail is in the linked chapter.
 | a SIESTA deck's geometry — the counts, the lattice, the species, the coordinates | `siesta.deck_lines` — each block whole (`count_lines`, `lattice_block`, `species_block`, `coordinates_block`) and its rows; the SIESTA and TranSIESTA decks and a run's own coordinates file ask it; it travels beside a job | 1 | [`engines/siesta.md`](?doc=engines/siesta.md) § 3 |
 | what an engine's record answers for prep — a deck's suffix, the label written into its identity field, what a continuing stage takes from the run before | `runfiles.deck_role(engine)`; `engine_table.relabelled(engine, cfg, label)`; `jobset.model.warm_for(engine, label, cfg, kind, base)` — the warm-files table's rows, gated on the stage continuing — asked by the conductor with the engine's name, never through a seam member (A18) | 1; 3 | [`script-preparation.md`](?doc=execution/script-preparation.md) § 4 |
 | a calculation's electronic state — its charge, spin treatment, unpaired electrons and method, and whether its system is finite | `electronic_state.electronic_state(struct, cfg, kind=)` → `ElectronicState` (`finite` among its fields: the settings gate's dipole advisory reads it, works out no axes of its own); the charge a kind fixes is its record's (`kind_table.kind(k).charge`, a value and why), which the state's rule, the settings gate and the transport citation's refusal read | 1 | [`science/chemistry-correctness.md`](?doc=science/chemistry-correctness.md) § 2a |
+| a voltage, in words — a bias point's, a round's, a refusal's | `units.volts_words` — `0 V`, `0.2 V`, its number as a bias point's folder spells it (`task.bias_token`); a table's aligned column keeps its width | 1 | [`engines/transport.md`](?doc=engines/transport.md) § 2a.16 |
 | a size in bytes, in words — a file's, a folder's, free disk, a cap | `units.size_words` — the largest binary unit it reaches, one decimal (`776.4 KiB`, `49.2 GiB`); a memory request is the scheduler's quantity, said in its own terms (`scheduler/quantities`) | 1 | [`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 9 |
 | a length of time, in words | a run's own — its wall time, a loop, the time left, how long since it last wrote — `report_fields.span_words`, the page's `timeSpan` rule in Python (`12s`, `5m`, `6h`); a benchmark's measured times keep the second (`summarize._fmt_duration`, `4m05s`), a measurement compared across trials, not a run's length | 1 | [`model/parse.md`](?doc=model/parse.md) § 2a; [`web/ui-contract.md`](?doc=web/ui-contract.md) § 4 |
 | the order of a structure's atoms, and the way back | the structure's `atom_order`; `transport.sort.sort_by` into an engine's order, `Structure.restored()` back | 1 | [`model/overview.md`](?doc=model/overview.md) § 2.2a |
@@ -666,8 +667,10 @@ loads, and a name with no record is refused naming the file and the key.
   builder alike and read by the kind's own;
 - its description's own checks, before any deck is written, where it has its
   own (`description_checks`, a part, resolved by the description's check,
-  `validation.task.preflight`) — a transport calculation's bias list against
-  its setting, its window against the largest voltage;
+  `validation.task.preflight`, and handed what the setting door refused, so
+  a check built from a refused value stands aside) — a transport
+  calculation's bias list against its setting, its window against the
+  largest voltage;
 - the charge it fixes, where it fixes one, and why — a transport junction's
   (`charge`, its `why` the one statement of the reason);
 - why it takes no benchmark, where it takes none (`no_benchmark`) — a
@@ -714,7 +717,8 @@ loads, and a name with no record is refused naming the file and the key.
   `atom_permutation`'s, checked when the table loads, asked by prep, the run
   door and the working copy alike (`kind_table.atom_order`);
 - the line Status shows about a rung's scratch folder, for a pair whose rung
-  keeps one (`scratch_status`, a part — a transport device's lead files);
+  keeps one (`scratch_status`, a part, handed the calculation the verb opened
+  and the stage it is asked for — a transport device's lead files);
 - what `summarize task` adds up for it, and the options that summary reads (a
   part) — a transport calculation's current against voltage, a SIESTA
   vibration's displacement sweep with its `--tolerance-cm1`;
@@ -827,7 +831,9 @@ the modules the script imports from, both ways: `pyscf.input.emit_bundle_imports
 refuses at render an object from any other module, and every one of them
 is one a deck imports from (R2-3 F1). A data file a member needs travels by
 that member's word too (`TRAVELS_DATA`: the chat card's layout,
-[`run-reports.md`](?doc=execution/run-reports.md) § 4.1c). So a new kind's
+[`run-reports.md`](?doc=execution/run-reports.md) § 4.1c; the engine table),
+read through the member's loader by `persist.read_shipped`, which names a
+file beside the member as the loader spells its bundle's path. So a new kind's
 parts, a new engine's keyword reader and a new output's readers travel by
 their records, with no edit of the bundle's member list, and a new bundle is a
 row, its file catalogue row and its starting module's `TRAVELS_WITH`

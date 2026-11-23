@@ -714,7 +714,7 @@ the group that is their home; the coordinates more than one file shares are
 | `title` | the root, and every group | one sentence: what the file — the calculation and the result — or the group holds |
 | `schema` | the root | which file this is, at which version: `molbuilder/<file>@<n>`; a reader refuses a version it does not read, by name |
 | `molbuilder_version` | the root | the molbuilder that wrote the file — for a file a job writes (the vibration result, the optical calls), the one that ran the job |
-| `source` | the root | how its data were made, one sentence: *computed by* the engine and its version *in* where it ran; *derived from* the files it was read from; or both, for a view derived from files an engine computed. *Its version not stated by its output* where the engine's output states none |
+| `source` | the root | how its data were made, one sentence: *computed by* the engine, in the engine table's words (*SIESTA*, *PySCF*; `engine_table.Engine.words`, which travels beside a job with its table), and its version *in* where it ran; *derived from* the files it was read from; or both, for a view derived from files an engine computed. *Its version not stated by its output* where the engine's output states none |
 | `engine_version` | the root, where an engine computed the data; each run's group in the transport file | the engine's version, as its output's build header states it (`5.4.2` for SIESTA, `2.14.0` for PySCF); empty where its output states none. A file that states only what it was derived from (9.5, 9.6, 9.7) has none |
 | `Conventions` | the root | `CF-1.8` |
 | `unit_meanings` | the root | *JSON text*: each unit spelling the file's variables use, and what it means in words (§ 2c) |
@@ -1128,7 +1128,7 @@ A key is written where the result states it.
 
 | attribute | what it says |
 |---|---|
-| `title` · `schema` · `molbuilder_version` · `source` · `engine_version` · `Conventions` · `unit_meanings` · `label` | 9.0.1 — `source` *computed by pyscf 2.14.0* or *computed by siesta 5.4.2*: the engine as the result keys it (`siesta`, `pyscf`), where the other files write *SIESTA* |
+| `title` · `schema` · `molbuilder_version` · `source` · `engine_version` · `Conventions` · `unit_meanings` · `label` | 9.0.1 — `source` *computed by PySCF 2.14.0* or *computed by SIESTA 5.4.2*: the engine the result names, in the engine table's words, as every file writes it (the user, 2026-11-22) |
 | `engine` | the engine that computed it: `pyscf` or `siesta` |
 | `json_sha256` | the sha256 of the `<label>.spectra.json` written with this file — the pair tied at every rewrite |
 | `spectra_schema_version` | the schema version of that JSON result ([`engines/vibration.md`](?doc=engines/vibration.md) § 6.1) — not this file's, which is `schema` |
@@ -1438,7 +1438,7 @@ The science and examples:
 
 | attribute | what it says |
 |---|---|
-| `title` · `schema` · `molbuilder_version` · `source` · `Conventions` · `unit_meanings` · `label` | 9.0.1 — no `engine_version`; `source` *derived from <engine>'s output of each run, named by its output_file* |
+| `title` · `schema` · `molbuilder_version` · `source` · `Conventions` · `unit_meanings` · `label` | 9.0.1 — no `engine_version`; `source` *derived from <engine>'s output of each run, named by its output_file*, the engine in the engine table's words (*SIESTA's*, *PySCF's*) |
 | `engine` | the engine the runs ran: `siesta` or `pyscf` — whose SCF columns `/steps/scf` holds |
 
 #### `/runs` — each run's record

@@ -113,8 +113,12 @@ _CHANNEL_KINDS = ("tag", "flag", "value")
 #: boundary that touches both.
 FROZEN_LABEL = "frozen_atoms"
 
-#: What an axis of a structure is (`model/structure-periodicity.md`).
-AXIS_KINDS = ("periodic", "isolated", "transport")
+#: A junction's transport axis's own kind (`model/structure-periodicity.md`),
+#: and what an axis off its transport direction may be -- every other kind.
+AXIS_KIND_TRANSPORT = "transport"
+ACROSS_TRANSPORT = ("periodic", "isolated")
+#: What an axis of a structure is.
+AXIS_KINDS = (*ACROSS_TRANSPORT, AXIS_KIND_TRANSPORT)
 
 #: How many decimals of an Angstrom :meth:`Structure.to_xyz` writes each
 #: coordinate to -- the precision a geometry file keeps

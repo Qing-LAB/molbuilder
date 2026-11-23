@@ -4,8 +4,8 @@ and the tables every NetCDF file molbuilder writes or opens shares
 catalogue, § 9 there; each file's science, its chapter's).
 
 MODULE  ncdata (L2 by the index, `architecture.md`; it imports only numpy,
-        netCDF4 and L1's persist, atom_permutation and structure, as it
-        travels beside a job)
+        netCDF4 and L1's constants, engine_table, persist, atom_permutation
+        and structure, as it travels beside a job)
 ROLE    :class:`Var` -- one variable: its dimensions, its kind (given, raw,
         derived, state, coordinate), its units, its words; :data:`AXES` --
         every axis of every data file, one name for one concept, which
@@ -71,8 +71,10 @@ import numpy as np
 
 try:                                        # inside molbuilder
     from . import constants as _C
+    from . import engine_table as _engines
 except ImportError:                         # beside a job: it travels too
     import constants as _C  # type: ignore[no-redef]
+    import engine_table as _engines  # type: ignore[no-redef]
 
 # TWO WAYS, because this module travels beside the job.
 try:                                        # inside molbuilder
@@ -739,7 +741,8 @@ def state(ds, *, title: str, schema: str, molbuilder_version: str,
     """THE FILE'S OWN FACTS on its root (`model/datafiles.md` § 2b, § 3a):
     its ``title`` -- one sentence of what it holds --, its ``schema``, the
     ``molbuilder_version`` that wrote it, its ``source`` in ONE SENTENCE --
-    *derived from* ``derived_from``, and *computed by* the ``engine`` at
+    *derived from* ``derived_from``, and *computed by* the ``engine`` (its
+    name, said in the engine table's words, `engine_table.Engine.words`) at
     its ``engine_version`` *in* ``computed_in``, the attribute
     ``engine_version`` beside it -- one or both, a view derived from files
     an engine computed both -- and the ``Conventions`` it follows; one not
@@ -750,7 +753,7 @@ def state(ds, *, title: str, schema: str, molbuilder_version: str,
     said = [f"derived from {derived_from}"] if derived_from else []
     if engine:
         said.append(" ".join(w for w in (
-            "computed by", engine,
+            "computed by", _engines.engine(engine).words,
             engine_version or "-- its version not stated by its output --",
             f"in {computed_in}" if computed_in else "") if w))
         ds.setncattr("engine_version", str(engine_version or ""))
@@ -1343,5 +1346,6 @@ __all__ = ["Var", "Axis", "AXES", "UNITS", "CONVENTIONS", "ROOT_FACTS",
 #: imports there by their bare names (`runwrap.bundle_members`).
 TRAVELS_WITH = ("molbuilder.atom_permutation",
                 "molbuilder.constants",
+                "molbuilder.engine_table",
                 "molbuilder.persist",
                 "molbuilder.structure")

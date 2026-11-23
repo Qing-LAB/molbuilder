@@ -1141,7 +1141,7 @@ def _optical_payload(here: _CallHere, index: dict, res: SpectraResults
                      eps2=e.eps2)
         frames.append(f)
     masses = res.equilibrium_masses_amu
-    return {"label": here.label, "run": run_rel,
+    return {"label": here.label, "run": run_rel, "engine": res.engine,
             "engine_version": version or res.engine_version,
             "molbuilder_version": res.molbuilder_version,
             "settings": _optical_settings(here, index),

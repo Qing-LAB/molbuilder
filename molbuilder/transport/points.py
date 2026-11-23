@@ -17,6 +17,13 @@ from .stages import (STAGE_FACT, Point, hands_on, must_hold,
 from ..jobset.points import PointsOf, Start
 
 
+def _declared_points_in(calc, stage: str, run):
+    """A run's points (`stages.points_in`), at the frames its junction
+    holds (`rung.frames_had`)."""
+    from .rung import frames_had
+    return points_in(calc.task, stage, run, frames=frames_had(calc))
+
+
 def _deck_text(deck):
     """A deck's text, its includes read in (`parse.fdf.read_deck`)."""
     from ..parse.fdf import read_deck
@@ -105,7 +112,7 @@ def _run_facts(calc, stage: str, *, carried, deck) -> dict:
 #: ``points.declaration``): a transport rung's points are a frame of the
 #: cited set and a voltage each, decided at prep.
 POINTS = PointsOf(rung_points=_declared_rung_points,
-                  points_in=points_in,
+                  points_in=_declared_points_in,
                   entry=_entry,
                   point_of=Point.from_entry,
                   must_hold=_must_hold,

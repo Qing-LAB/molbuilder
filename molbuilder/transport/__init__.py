@@ -10,8 +10,8 @@ here:
   * :mod:`.stages`    — TRANSPORT_STAGES and the per-stage input DAG.
     Which rung reads an override is the catalogue's (``template.reads``).
   * :mod:`.deck`      — ``transport_spec``: the ``DeckSpec`` every one of
-    the five rungs renders through, and ``SHAPE_OF_RUNG``, the table
-    saying which of the four deck shapes each rung gets.
+    the five rungs renders through, and ``shape_of``, which of the four
+    deck shapes each rung gets.
   * :mod:`.citation_defaults` — what the cited run contributes to the
     template, once, at ``molbuilder describe``.
   * :mod:`.record`    — ``summarize task``'s ``<label>.transport.json``

@@ -60,16 +60,6 @@ _LEADS = _kind("transport").leads
 _REGIONS = tuple(g.name for g in _kind("transport").regions)
 
 
-def _lead(role: str) -> str:
-    """The region the lead role ``role`` is cut from, as the kind's record
-    names it -- refused when the record has no such lead role."""
-    if role not in _LEADS:
-        raise KindTableError(
-            f"transport/sort.py places the {role!r} lead, which the "
-            f"transport kind's roles do not name ({', '.join(_LEADS)})")
-    return _LEADS[role]
-
-
 def _region(name: str) -> str:
     """A label this sort places by its own rule, as the kind's record lists
     it (``regions``) -- refused when the record lists no such label, so the
@@ -81,8 +71,14 @@ def _region(name: str) -> str:
     return name
 
 
-REGION_LEFT_ELECTRODE  = _lead("electrode_L")
-REGION_RIGHT_ELECTRODE = _lead("electrode_R")
+#: THE TWO LEADS' REGIONS, left then right, each the region its lead role
+#: is cut from, as the kind's roles name them in order -- so a role renamed
+#: in the record is renamed for the sort too.
+if len(_LEADS) != 2:
+    raise KindTableError(
+        f"transport/sort.py places two leads, left then right; the "
+        f"transport kind's roles name {', '.join(_LEADS) or 'none'}")
+REGION_LEFT_ELECTRODE, REGION_RIGHT_ELECTRODE = _LEADS.values()
 REGION_BRIDGE          = _region("bridge")
 #: Atoms excluded from the NEGF region entirely (``TS.Atoms.Buffer``):
 #: padding at the OUTER ends of the device, beyond the electrode blocks.

@@ -13,6 +13,8 @@ from __future__ import annotations
 from typing import List
 
 from ..issues import Issue
+from ..kmesh import TRANSPORT_AXIS
+from ..units import volts_words
 from ..structure import Structure
 
 
@@ -201,7 +203,8 @@ def validate_transport_kind(struct: Structure, cfg, cell, *, engine: str,
                   (getattr(struct, "regions", None) or {}).items()
                   if label in ELECTRODE_LABELS and idx]
                  or ["the lead"])
-        for ax, name in ((0, "a"), (1, "b")):
+        for ax, name in ((ax, "abc"[ax]) for ax in range(3)
+                         if ax != TRANSPORT_AXIS):
             if kinds[ax] != "periodic":
                 continue
             for label, lead in zip(named, leads):
@@ -230,14 +233,18 @@ def validate_transport_kind(struct: Structure, cfg, cell, *, engine: str,
     return out
 
 
-def check_description(task, ladder) -> List[Issue]:
+def check_description(task, ladder, *, refused=frozenset()) -> List[Issue]:
     """A TRANSPORT DESCRIPTION'S OWN CHECKS, before any deck is written --
     the kind table's ``description_checks``, run by the description's check
     (`validation.task.preflight`): its bias list's points against their
     setting's recommended range, and the transmission window against the
     largest listed voltage.  ``ladder`` is the resolved ladder, ``[(stage,
-    config)]``, or empty where no template is in hand."""
-    return _bias_points_in_range(task) + _window_reaches_the_bias(task, ladder)
+    config)]``, or empty where no template is in hand; ``refused`` the
+    ``(stage, item)`` overrides the setting door refused, each of which drew
+    that refusal alone -- no check built from it is judged
+    (`engines/template.md` § 5.3)."""
+    return (_bias_points_in_range(task)
+            + _window_reaches_the_bias(task, ladder, refused=refused))
 
 
 def _bias_points_in_range(task) -> List[Issue]:
@@ -260,13 +267,14 @@ def _bias_points_in_range(task) -> List[Issue]:
                                         item.range)]
     return [Issue(
         "warn",
-        f"the bias list holds {', '.join(f'{v:g}' for v in out)} V, outside "
+        f"the bias list holds {', '.join(volts_words(v) for v in out)}, outside "
         f"the recommended range [{lo:g}, {hi:g}] V -- a recommendation, not "
         f"a limit",
         where="task.bias")] if out else []
 
 
-def _window_reaches_the_bias(task, ladder) -> List[Issue]:
+def _window_reaches_the_bias(task, ladder, *,
+                             refused=frozenset()) -> List[Issue]:
     """The transmission window reaches the largest listed voltage's bias
     window, ±(|V|/2 + 5 kT) -- the one rule `energies.window_short_of` states
     (`engines/transport.md` § 2a.10, P2), judged here on the description as
@@ -274,17 +282,28 @@ def _window_reaches_the_bias(task, ladder) -> List[Issue]:
     serve is said where it is written: under the low-bias approximation
     the record integrates every listed voltage over the one 0 V slice, and
     a sweep's point writes its own voltage into that window.  Nothing to
-    say without the resolved ladder (no template in hand)."""
+    say without the resolved ladder (no template in hand), nor on a rung
+    holding a refused value the rule reads (:func:`_window_reads`)."""
     bias = tuple(getattr(task, "bias", ()) or ())
     if not bias or not ladder:
         return []
     from ..transport.window import window_rung
     rung = window_rung()
+    if any((rung, item) in refused for item in _window_reads()):
+        return []
     cfg = next((c for name, c in ladder if name == rung), None)
     if cfg is None:
         return []
     largest = max(bias, key=lambda v: abs(float(v)))
     return _window_short(cfg, largest, stage=rung)
+
+
+def _window_reads() -> tuple:
+    """The settings the window's rule reads on its rung
+    (:func:`_window_short`): the window's own items (`window.WINDOW_ITEMS`)
+    and the temperature its tails are measured at."""
+    from ..transport.window import WINDOW_ITEMS
+    return (*WINDOW_ITEMS, "electronic_temperature")
 
 
 def _window_short(cfg, bias: float, *, stage=None) -> List[Issue]:
@@ -294,10 +313,8 @@ def _window_short(cfg, bias: float, *, stage=None) -> List[Issue]:
     § 2a.10) -- a warning on the window's edge when it cuts the current
     short, never a stop (the user, 2026-11-18), none when a value it needs
     is unset."""
-    emin = getattr(cfg, "transmission_emin_ev", None)
-    emax = getattr(cfg, "transmission_emax_ev", None)
-    n = getattr(cfg, "transmission_n_points", None)
-    temp = getattr(cfg, "electronic_temperature", None)
+    emin, emax, n, temp = (getattr(cfg, item, None)
+                           for item in _window_reads())
     if emin is None or emax is None or not n or temp is None:
         return []
     from ..constants import BOLTZMANN_EV_K

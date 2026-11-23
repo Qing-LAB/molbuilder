@@ -1,6 +1,6 @@
 """The one process line for the unit cell — resolve once, check once.
 
-MODULE  cell (L1; imports ``structure`` + ``issues`` and nothing else)
+MODULE  cell (L1; imports ``structure``, ``issues`` and ``kmesh`` and nothing else)
 ROLE    the ONE place a box is worked out, and the ONE place it is judged;
         and what each engine computes with -- the box, or free space
         (``engine_axis_kinds``, § 2.1)
@@ -51,7 +51,8 @@ from typing import Dict, List, Optional, Sequence, Tuple
 import numpy as np
 
 from .issues import Issue, ValidationError
-from .structure import Structure, atom_words
+from .kmesh import TRANSPORT_AXIS
+from .structure import AXIS_KIND_TRANSPORT, Structure, atom_words
 
 #: THE zero-volume threshold, in Å³.
 #:
@@ -347,7 +348,7 @@ def _no_volume_words(rc: ResolvedCell) -> str:
             f"length, and vacuum does not apply there: the box is only as "
             f"long as the structure. State a cell for that direction, or "
             f"change the axis's kind."
-            if rc.axis_kind[i] == "transport" else
+            if rc.axis_kind[i] == AXIS_KIND_TRANSPORT else
             f"Along {'abc'[i]}, the structure is flat and the vacuum set "
             f"there is {rc.vacuum[i]:g} Å. Set a larger vacuum there."
             for i in flat)
@@ -1271,13 +1272,14 @@ def transport_room(positions, cell,
     lead to the other across the molecule never counts as a step.  ``None``
     when no lead has two layers, and so no spacing to measure.
 
-    Transport runs along ``c`` = z, as the seam rule and the device's
-    k-grid assume; the vertical room reads ``c``'s z component.
+    Transport runs along ``c`` = z (`kmesh.TRANSPORT_AXIS`), as the seam
+    rule and the device's k-grid assume; the vertical room reads ``c``'s z
+    component.
     """
     pos = np.asarray(positions, dtype=float).reshape(-1, 3)
     box = np.asarray(cell, dtype=float).reshape(3, 3)
-    z = pos[:, 2]
-    room = float(z.min() + box[2, 2] - z.max())
+    z = pos[:, TRANSPORT_AXIS]
+    room = float(z.min() + box[TRANSPORT_AXIS, TRANSPORT_AXIS] - z.max())
     steps: List[float] = []
     for lead in leads:
         layers = detect_layers(z[list(lead)])

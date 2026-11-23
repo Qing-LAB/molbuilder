@@ -261,8 +261,10 @@ class RamanView:
     cell_volume_a3: float
     #: the spin channels the spectrum was summed over
     spins: Tuple[str, ...]
-    #: the run the optical calls were computed in, and SIESTA's version
+    #: the run the optical calls were computed in, the engine that computed
+    #: them (its name, the result's) and its version
     run: str
+    engine: str
     engine_version: str
     #: each file the view was derived from, ``{name, sha256}``
     derived_from: Tuple[Dict[str, str], ...]
@@ -334,10 +336,12 @@ def has_optical_route(result) -> bool:
 def require_optical_route(result, where: str = "") -> None:
     """Refused unless :func:`has_optical_route`."""
     if not has_optical_route(result):
+        from ..engine_table import engine
         raise RamanError(
-            f"{where}this {result.engine} result's Raman is not SIESTA's "
-            f"optical route ({result.raman_route!r}): there is no spectrum "
-            f"to take a laser to")
+            f"{where}this {engine(result.engine).words} result's Raman is "
+            f"not {engine('siesta').words}'s optical route "
+            f"({result.raman_route!r}): there is no spectrum to take a "
+            f"laser to")
 
 
 def _positive(key: str, value: Any, what: str) -> float:
@@ -445,7 +449,7 @@ def raman_view(result, optical: Mapping[str, Any], *, laser_nm: float,
         alpha_laser_imag_a3=None if eq is None else eq[1].imag, modes=modes,
         cell_volume_a3=volume,
         spins=tuple(str(s) for s in optical.get("spin") or ()),
-        run=str(optical.get("run") or ""),
+        run=str(optical.get("run") or ""), engine=str(result.engine),
         engine_version=str(optical.get("engine_version") or ""),
         derived_from=tuple(dict(d) for d in derived_from))
 
@@ -639,7 +643,7 @@ def raman_data_bytes(view: RamanView, *, label: str) -> Tuple[str, bytes]:
         state(ds, title=WHAT, schema=RAMAN_SCHEMA,
               molbuilder_version=__version__,
               derived_from=", ".join(d["name"] for d in view.derived_from),
-              engine="SIESTA", engine_version=view.engine_version,
+              engine=view.engine, engine_version=view.engine_version,
               computed_in=view.run)
         ds.setncatts({
             "label": label,

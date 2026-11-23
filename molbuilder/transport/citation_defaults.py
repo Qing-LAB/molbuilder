@@ -86,13 +86,16 @@ def _apply_kgrid(kw: dict, kgrid, shifts=None) -> None:
 class CitationAnswers:
     """What the citation answers of the items it defaults
     (`engines/transport.md` § 3.1, § 3.8.1): ``values`` in ``SiestaConfig``'s
-    field names;
-    ``source`` ``"deck"`` (a cited run's own deck), ``"pair"`` (a cited
-    pair's record) or ``"none"`` (a record that states nothing, or a deck
-    the unit door could not read); and ``source_name`` the file the answers
+    field names; ``kind`` the citation's (its class's word, ``"run"`` or
+    ``"pair"``); ``stated`` whether its record states a contract at all --
+    a record that states nothing, or a deck the unit door could not read,
+    answers no value; ``asks`` the items it asks of the person
+    (:func:`asked_of_the_person`); and ``source_name`` the file the answers
     were read from."""
     values: Dict[str, Any]
-    source: str
+    kind: str
+    stated: bool
+    asks: Tuple[str, ...] = ()
     source_name: str = ""
     #: The charge the cited run carried -- 0 when it answers none.  Not a
     #: value of the transport template (the junction is neutral by rule);
@@ -116,17 +119,19 @@ def citation_answers(cited) -> CitationAnswers:
     from .. import template as _T
 
     if isinstance(cited, CitedPair):
-        record, source, name = cited.calculation, "pair", cited.path.name
+        record, name = cited.calculation, cited.path.name
     else:
         deck = declared(cited.run).deck
         record = (view_of(cited.run).info or {}).get("calculation")
-        source, name = "deck", (deck.name if deck is not None else "")
+        name = deck.name if deck is not None else ""
     contract = (record or {}).get("contract") or {}
+    said = {"kind": cited.kind, "asks": asked_of_the_person(cited.kind),
+            "source_name": name}
     if not contract:
         # A record that states nothing -- a deck the unit door refuses
         # answers nothing here; the refusal itself is prep's to raise, by
         # name.
-        return CitationAnswers(values={}, source="none", source_name="")
+        return CitationAnswers(values={}, stated=False, **said)
     taken = [it.name for it in _T.select(_T.catalogue(), engine="siesta",
                                          citation="transport")
              if it.name not in K_MESH_RECORD_KEYS]
@@ -157,8 +162,8 @@ def citation_answers(cited) -> CitationAnswers:
         kw.pop("unpaired_electrons")
     if "mesh_cutoff" in kw:
         kw["mesh_cutoff"] = float(kw["mesh_cutoff"])
-    return CitationAnswers(values=kw, source=source, source_name=name,
-                           net_charge=charge)
+    return CitationAnswers(values=kw, stated=True, net_charge=charge,
+                           **said)
 
 
 def charge_finding(answers: CitationAnswers):
@@ -216,15 +221,19 @@ def siesta_config_from_citation(answers: CitationAnswers, *, label: str,
                          ({**mine, "system_label": label}, "person"))
 
 
-def asked_of_the_person(cited) -> Tuple[str, ...]:
-    """THE `setup` ITEMS A CITATION ASKS OF THE PERSON, by its kind
+def asked_of_the_person(kind: str) -> Tuple[str, ...]:
+    """THE `setup` ITEMS A CITATION ASKS OF THE PERSON, by its ``kind`` --
+    its class's word (`compose.CitedRun.kind`, `CitedPair.kind`), or the
+    composed record's provenance, which is written from it
     (`engines/transport.md` § 3.1, § 3.8.1): a cited pair brings no
     pseudopotentials, so its directory -- ``psml_lib`` -- is asked; a cited
-    run's travel with it, so nothing is.  Asked by the pseudopotential check
-    and by the shared panel alike, so the field shows exactly when the check
-    requires it."""
+    run's travel with it, so nothing is.  Asked by the pseudopotential
+    check, the shared panel, prep's source of the pseudopotentials, the
+    seed deck's note and describe's answer alike, so the field shows
+    exactly when the check requires it and the files come from where every
+    surface says."""
     from .compose import CitedPair
-    return ("psml_lib",) if isinstance(cited, CitedPair) else ()
+    return ("psml_lib",) if kind == CitedPair.kind else ()
 
 
 def check_pseudopotentials(cited, psml_lib) -> None:
@@ -235,7 +244,7 @@ def check_pseudopotentials(cited, psml_lib) -> None:
     brings none, so the directory that holds them all is required, as a
     structure optimization's is (:func:`asked_of_the_person`).  Raises
     ``ValueError`` naming the rule."""
-    asked = "psml_lib" in asked_of_the_person(cited)
+    asked = "psml_lib" in asked_of_the_person(cited.kind)
     if asked and not psml_lib:
         raise ValueError(
             f"{cited.path.name} is a structure pair, and a pair brings no "
@@ -296,8 +305,9 @@ def transport_template_text(answers: CitationAnswers, *, label: str,
                                     citation="transport")
         if it.name not in sources)
     # A CITED RUN'S PSEUDOPOTENTIALS TRAVEL WITH IT (`asked_of_the_person`):
-    # the citation answers the directory, so no surface says it is nobody's.
-    if cited.source == "deck":
+    # the citation answers the directory, whatever else its record states,
+    # so no surface says it is nobody's.
+    if "psml_lib" not in cited.asks:
         sources["psml_lib"] = "cited"
     return _T.template_with_values(cfg, engine="siesta",
                                    calculation="transport",

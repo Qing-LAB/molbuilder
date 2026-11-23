@@ -12,7 +12,7 @@ at 2.77.23 is [`archive/2026-11-22-plan-consolidation.md`](?doc=archive/2026-11-
 
 ## ▶ Where we are *(2026-11-22)*
 
-**2.77.24.** F0–F11 and F7a are closed (2.56.2–2.77.2). F12, *Proven*,
+**2.77.25.** F0–F11 and F7a are closed (2.56.2–2.77.2). F12, *Proven*,
 walked its three roads in the browser on real runs and ran the full batch
 (6106 fast and 805 e2e tests, none failed, at 2.77.2); its two review rounds
 ([`archive/audits/2026-11-18-f12-review/`](?doc=archive/audits/2026-11-18-f12-review/TRIAGE-round1.md))
@@ -20,7 +20,7 @@ sorted every finding into the releases below. **The finish plan** *(the
 user, 2026-11-19: "a consolidated plan to get things finished, not to drag
 things along")*: five releases, R1–R5, each with its review rounds. R1 and R2
 are done; R3, one home per fact on the server side, grew from one release
-into parts as reviews and the user's decisions added work, eight of them
+into parts as reviews and the user's decisions added work, nine of them
 shipped:
 
 | version | part | what it did | record |
@@ -36,6 +36,7 @@ shipped:
 | 2.77.22 | R3c1 | what runs in an environment is its own ([`ops/installation.md`](?doc=ops/installation.md) M6) | `fix14-review.md` |
 | 2.77.23 | R3c2 | every printed command is one you can type, from any folder (the host env's path file, [`ops/deployment.md`](?doc=ops/deployment.md) § 0) | `fix15-review.md` |
 | 2.77.24 | R3c3 | templates and engines, each fact in one home; every env command by the checkout's full path, in molbuilder's checkout in a file for another machine and in every run script | `fix16-review.md` |
+| 2.77.25 | R3d1a | transport, each fact in one home; every data file names its engine in the engine table's words, a voltage said one way | `fix17-review.md` |
 
 Records: `archive/audits/2026-11-18-f12-review/fix<N>-review.md`. Since
 2.77.23 the host env holds `molbuilder-source.pth` on the development machine
@@ -118,40 +119,11 @@ built in R3d with the vibration's data files.
   [`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md),
   [`science/vibrational-optical-response.md`](?doc=science/vibrational-optical-response.md)).
 
-### 2. R3d — transport and spectra
+### 2. R3d — spectra, then the vibration framework
 
-- **Carried from R3c** (`fix16-review.md`): the PySCF decks' deck attributes
-  still typed beside `pyscf.layout.keyword` (`mf.chkfile`, `mf.init_guess =
-  "chkfile"`, `mf.newton()`, `mf.with_solvent.method`, two SOSCF notes) and
-  the PySCF optimization header's `maxsteps=` and `Ha/Bohr` (the PySCF twin
-  of P20); a stage override of a number given as text (`mesh_cutoff: "a"`)
-  crashing the loosening check (`validation/stages`) where it should be
-  refused; `STAGE-PLAN.md`'s `warm-files:` line naming this checkout for a
-  calculation prepared for another machine.
-- **The vibration framework, built** (§ 1, after the user's yes), with the
-  SIESTA vibration's data files on the shared writers
-  (`ncdata.copy_stated`, `ncdata.json_attrs`, as the transport file and a
-  chart's use) — today they copy a record's values by their own `key_of`
-  loops and encode their attributes by hand; and the status door's
-  unreadable copy note in its own field, where the transport record says
-  `unreadable`; the record's and the data file's builders are long functions.
-- **Visible, said to the user at the release's start**: `r2-6` F7, the
-  spectrum data file says "computed by siesta" where the optical and Raman
-  files say "SIESTA" — the engine's words from `engine_table`, capitalised
-  everywhere; `r2-5` #11, extending a finished transport calculation reads
-  "0.0 V, 0.2 V" where everywhere else says "0 V" — one spelling.
-- **Transport** (`r2-5`): #1 the citation kind from its class
-  (`citation_defaults`, `deck._pseudopotential_note`); #2 leads ordered by
-  `sort.electrode_orientation`, the axis by `kmesh.TRANSPORT_AXIS`; #4 the
-  temperature default from `engine_defaults()`; #10 `gf_files` keywords via
-  the catalogue's anchors; #5 `deck_window` via `units.energy_ev`, the window
-  spacing via `energies.spacing`, and `transport.energies` T1's product
-  reader; #6 the vocabularies — spin channels (`runfiles.TBT_CHANNEL_TAGS`,
-  stating the grouping, = `r2-7` #11), SCF/PRODUCT in one travelling home,
-  `AXIS_KINDS`, the treatments beside `Task.treatment`; #7 `frames_had`, the
-  one door; #8 `SHAPE_OF_RUNG` from the roles, `gf_files`' "device" via
-  `SHAPE_RUN`; #9 `LIVE_STATES`; #12 one `_at`/`_given_at`; #13 one copy
-  helper; #15 the `layer_tol_ang` parameter deleted.
+R3d1b (2.77.26) is the spectra's one-home rows; R3d2 builds the framework
+(§ 1).
+
 - **Spectra** (`r2-6`): F1 sidecar readers through `persist.object_of`; F2
   `from_dict`'s version gate dropped; F3 `SUFFIX`/`PAIRED_SUFFIX` in
   `runfiles`; F4 the state words in one table; F5 the IR charges' row table;
@@ -159,7 +131,16 @@ built in R3d with the vibration's data files.
   `runrecord.stamp`; F10 `Structure.frozen_atoms`; F11 `to_dict(view=False)`;
   F12 an import-time table check; F13 the `siesta_fc` step pattern; F15 the
   SCF log's column order in `keys.py` and one atom-row formatter (= `r2-7`
-  #13).
+  #13). And the spectra page's Engine row, which says `siesta 5.4.2` where
+  every data file now says the engine table's words — its wire carries no
+  engine words yet (`fix17-review.md` round 1 #28).
+- **The vibration framework, built** (§ 1, after the user's yes), with the
+  SIESTA vibration's data files on the shared writers
+  (`ncdata.copy_stated`, `ncdata.json_attrs`, as the transport file and a
+  chart's use) — today they copy a record's values by their own `key_of`
+  loops and encode their attributes by hand; and the status door's
+  unreadable copy note in its own field, where the transport record says
+  `unreadable`; the record's and the data file's builders are long functions.
 
 ### 3. R3e — parse, structure and builders
 
@@ -167,6 +148,10 @@ built in R3d with the vibration's data files.
   `structure.py`'s two restate the vacuum floors `validation.siesta`
   holds (`VACUUM_MIN_NEUTRAL_ANG`, `VACUUM_MIN_CHARGED_ANG`) — the floors
   move below `validation` so the structure's notes ask them.
+- **Carried from R3d1a** (`fix17-review.md` round 2 #16): the electrode
+  builder in `modify.py` types its axis kinds, `("periodic", "periodic",
+  "transport")`, beside `structure.AXIS_KIND_TRANSPORT` and
+  `ACROSS_TRANSPORT`.
 - **Two migrations** *(the user, 2026-11-21: "do the run dir and sidecar
   migration in R3e")*: a calculation's records from before 2.60.0 — a
   `job-set.json` holding the retired `continue_retries`, as
@@ -267,8 +252,8 @@ built in R3d with the vibration's data files.
 
 ## Waiting on the user
 
-- **Next**: nothing — R3c is shipped (2.77.24); R3d runs.
-- At their releases: R3d's two visible spellings; R3f's Prep-as-a-process
+- **Next**: nothing — R3d1a is shipped (2.77.25); R3d1b runs.
+- At their releases: R3f's Prep-as-a-process
   design, the side rail's change after measuring, and deletions #6, #26; R4's
   selection-route design and MolView's atom filter; every deletion, listed
   before its commit.

@@ -606,7 +606,7 @@ def _job_status(calc, job, *, dirs, refs) -> StageStatus:
     and a queued row's standing (`runs.standing_of`, `running-a-job.md`
     § 4.2) asked the same way for both; a prepared stage with no run on
     disk is :data:`MISSING`, said."""
-    base, task = Path(calc.base), calc.task
+    base = Path(calc.base)
     d = base / dirs[job.name]
     # WHAT THE STAGE IS -- the plan's own columns, and its runs: every
     # row's, whatever its run says, read per stage by `status <stage>`
@@ -628,7 +628,7 @@ def _job_status(calc, job, *, dirs, refs) -> StageStatus:
            if where(run).of_points else
            _one_run_status(calc, job, run=run, columns=columns))
     row = dataclasses.replace(row, scratch=_scratch_line(
-        base, task, job, d, run if row.launch else None, row.attempts,
+        calc, job, d, run if row.launch else None, row.attempts,
         going=row.state in LIVE_STATES))
     if row.state != "queued":
         return row
@@ -674,7 +674,7 @@ def _one_run_status(calc, job, *, run: Path, columns: dict) -> StageStatus:
         **columns)
 
 
-def _scratch_line(base, task, job, stage_dir, run_dir, attempts, *,
+def _scratch_line(calc, job, stage_dir, run_dir, attempts, *,
                   going: bool) -> Optional[str]:
     """The line about the scratch folder of a rung that keeps one
     (`Job.scratch_dir`), by the pair's own ``scratch_status`` part (the kind
@@ -682,7 +682,9 @@ def _scratch_line(base, task, job, stage_dir, run_dir, attempts, *,
     ``run_dir`` ``None`` for a stage not launched, which the part answers
     with its estimate; ``going`` whether that run is queued or running --
     and, where the stage has older runs, each older run's after it, newest
-    first, those having ended; ``None`` for every other rung."""
+    first, those having ended; ``None`` for every other rung.  ``calc`` is
+    the calculation this verb opened, handed down whole."""
+    task = calc.task
     if task is None or not job.scratch_dir:
         return None
     from ..kind_table import part_of
@@ -691,15 +693,15 @@ def _scratch_line(base, task, job, stage_dir, run_dir, attempts, *,
     if status_line is None:
         return None
     from ..paths import attempt_dir
-    first = status_line(base, task, stage_dir, run_dir, job.scratch_dir,
-                        going=going)
+    first = status_line(calc, job.name, stage_dir, run_dir,
+                        job.scratch_dir, going=going)
     if run_dir is None or first is None or len(attempts) < 2:
         return first
     newest = max(attempts)
     return "; ".join(
         [f"{attempt_name(newest)}: {first}"]
         + [f"{attempt_name(n)}: "
-           + str(status_line(base, task, stage_dir,
+           + str(status_line(calc, job.name, stage_dir,
                              attempt_dir(Path(stage_dir), n),
                              job.scratch_dir))
            for n in sorted(attempts, reverse=True) if n != newest])

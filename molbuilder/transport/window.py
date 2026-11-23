@@ -13,10 +13,12 @@ import math
 import functools
 from dataclasses import dataclass
 from typing import Dict, Tuple
+from .energies import spacing
 
-#: THE WINDOW'S THREE ITEMS, by the catalogue's names -- what a fitted
-#: window is written into (the transmission's own fields, `reuse`'s
-#: rung of them).
+#: THE WINDOW'S THREE ITEMS, by the catalogue's names, in this order -- its
+#: lower end, its upper end, its number of energies, as every reader unpacks
+#: them -- what a fitted window is written into (the transmission's own
+#: fields, `reuse`'s rung of them).
 WINDOW_ITEMS = ("transmission_emin_ev", "transmission_emax_ev",
                 "transmission_n_points")
 
@@ -56,7 +58,7 @@ class Fitted:
 
     @property
     def spacing(self) -> float:
-        return (self.emax - self.emin) / self.points
+        return spacing((self.emin, self.emax, self.points))
 
     def values(self) -> Dict[str, float]:
         """The window as the catalogue names its items (:data:`WINDOW_ITEMS`)
@@ -96,7 +98,7 @@ def fitted(window: Tuple[float, float, int], lo: float, hi: float,
                          f"stays a point of the finer grid -- {finer!r} is "
                          f"not")
     a, b, n = float(window[0]), float(window[1]), int(window[2])
-    h = (b - a) / n / finer
+    h = spacing(window) / finer
     # WHOLE SPACINGS OUTWARD until the end energies -- half a spacing inside
     # each end -- cover the range asked.
     left = max(0, math.ceil((a + h / 2.0 - lo) / h - 1e-9))

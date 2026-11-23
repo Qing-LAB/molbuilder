@@ -27,12 +27,12 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 try:                                        # inside molbuilder
     from . import data_dir as _data_dir, report_fields as _fields
     from .config_dir import config_dir as _config_dir
-    from .persist import object_of
+    from .persist import object_of, read_shipped
     _HERE = _data_dir()
 except ImportError:                         # beside the job
     import report_fields as _fields
     from config_dir import config_dir as _config_dir
-    from persist import object_of
+    from persist import object_of, read_shipped  # type: ignore[no-redef]
     _HERE = Path(__file__).parent
 
 #: The file's name -- spelled here, in the module that owns it
@@ -142,7 +142,7 @@ def layout_path() -> Path:
 def shipped_bytes() -> bytes:
     """The shipped file's bytes, through the loader that brought this module
     -- a zip member in the bundle, a file in the package."""
-    return __loader__.get_data(str(SHIPPED))  # type: ignore[name-defined]
+    return read_shipped(__loader__, __file__, SHIPPED)  # type: ignore[name-defined]
 
 
 def load(path: Optional[Path] = None) -> Layout:

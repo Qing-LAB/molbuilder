@@ -439,14 +439,16 @@ def test_a_voltage_outside_its_recommended_range_is_warned_where_it_is_saved(
     set_by_the_person(bundle, {"transmission_emin_ev": -5.0,
                                "transmission_emax_ev": 5.0})
     task = json.loads((bundle / "task.json").read_text())
-    task["bias"]["voltages_v"] = [0.0, 6.0]
+    task["bias"]["voltages_v"] = [0.0, 6.0, 7.0]
     r = save_both(bundle, task, read_request(bundle), web_client)
     assert r.status_code == 200, r.get_json()
     (found,) = [f for f in r.get_json()["findings"]
                 if f["where"] == "task.bias"]
     assert found["severity"] == "warn", found
-    assert "the bias list holds 6 V, outside the recommended range" in \
-        found["message"], found
+    # ...EACH VOLTAGE IN THE ONE SPELLING (`units.volts_words`; the user,
+    # 2026-11-22).
+    assert "the bias list holds 6 V, 7 V, outside the recommended range" \
+        in found["message"], found
 
 
 def test_a_relaxation_at_another_charge_is_said_when_cited(

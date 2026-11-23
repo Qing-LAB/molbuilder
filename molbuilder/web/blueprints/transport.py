@@ -393,6 +393,7 @@ def _describe_reused(folder: str, root) -> Any:
     from molbuilder.transport.compose import recorded_junction
     from molbuilder.transport.reuse import Extension, ReuseError, reused
     from molbuilder.transport.rung import compose_refusals
+    from molbuilder.units import volts_words
     try:
         calc, rel = reused(folder, tree_root=root)
     except ReuseError as exc:
@@ -426,7 +427,7 @@ def _describe_reused(folder: str, root) -> Any:
         "a transport calculation", Extension(rel, task).name,
         f"its junction, cited from {citation_of(task)}",
         str(task.treatment),
-        ", ".join(str(float(v)) for v in task.bias) + " V", window,
+        ", ".join(volts_words(v) for v in task.bias), window,
         stands] + ([f"its junction's record does not read: {unread}"]
                    if unread else [])
         + ([unstated] if unstated else []))
@@ -874,7 +875,7 @@ def api_transport_schema() -> Any:
         try:
             _, cited = resolve_citation(citation_of(finished.task),
                                         projects_root())
-            asks = asked_of_the_person(cited)
+            asks = asked_of_the_person(cited.kind)
         except ComposeError:
             asks = ()
     elif citation:
@@ -895,8 +896,11 @@ def api_transport_schema() -> Any:
                                 engine=engine))
         except ValueError as exc:
             return err(str(exc), 400)
-        source = {"kind": answers.source, "name": answers.source_name}
-        asks = asked_of_the_person(cited)
+        # THE CITATION'S KIND, in its class's word -- or "none" for a
+        # record that states nothing, which answers no value.
+        source = {"kind": answers.kind if answers.stated else "none",
+                  "name": answers.source_name}
+        asks = asked_of_the_person(cited.kind)
     # ONE ID PER CONTROL ON THE PAGE: the five rung tabs render the same
     # items, so a rung's controls carry the rung in their ids
     # (`t-device-max-scf-iter`), and a finding's `stage` picks its own

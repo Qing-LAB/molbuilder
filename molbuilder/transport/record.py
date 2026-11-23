@@ -42,9 +42,16 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Sequence, Tuple
 from ..calcdirs import RunPlace
 from ..constants import BOLTZMANN_EV_K, CONDUCTANCE_QUANTUM_S
 from ..persist import json_safe
-from .conductance import SPIN_CHANNELS, at_fermi, per_spin_channel, spin_of
+from ..identity import COMPUTES_PRODUCT
+from ..task import LOW_BIAS_APPROXIMATION, SELF_CONSISTENT, SINGLE_BIAS
+from ..units import volts_words
+from ..runfiles import (CHANNEL_DOWN, CHANNEL_UNPOLARIZED, CHANNEL_UP,
+                        SPIN_NON_POLARIZED, SPIN_POLARIZED,
+                        TBT_SPIN_CHANNELS)
+from .conductance import at_fermi, per_spin_channel, spin_of
 from .energies import window_short_of
-from .run_words import PRODUCT
+from .stages import DEVICE_RUNG, SEED_RUNG
+from .window import window_rung
 
 if TYPE_CHECKING:
     from .stages import Point
@@ -56,13 +63,13 @@ if TYPE_CHECKING:
 #: spin (`m_tbt_save.F90`) -- while the conductance beside it is in
 #: G0 = 2e²/h, both channels.
 CURRENT_MEANS = {
-    "non-polarized": (
+    SPIN_NON_POLARIZED: (
         "The total current is the junction's, both spin channels: "
         "TBtrans prints one spin channel's (its Landauer integral has no "
         "factor 2 for spin), and the two channels of a non-polarized "
         "calculation carry the same current, so the total is twice the "
         "figure TBtrans printed."),
-    "polarized": (
+    SPIN_POLARIZED: (
         "The total current is the junction's, the sum of its two spin "
         "channels' currents as TBtrans printed each (empty when it printed "
         "only one)."),
@@ -151,9 +158,10 @@ def point_transmission(where, label: str, spin: str, *,
     from .energies import same_grid
     curves = {c: a["transmission"] for c, a in av.items()
               if "transmission" in a}
-    if (spin == "polarized" and "up" in curves and "down" in curves
-            and not same_grid(av["up"]["energy_ev"],
-                              av["down"]["energy_ev"])):
+    if (spin == SPIN_POLARIZED and CHANNEL_UP in curves
+            and CHANNEL_DOWN in curves
+            and not same_grid(av[CHANNEL_UP]["energy_ev"],
+                              av[CHANNEL_DOWN]["energy_ev"])):
         raise RecordError("the two spin channels' energy grids differ")
     # PER SPIN CHANNEL, the one rule (`conductance.per_spin_channel`), which a
     # transmission run's milestone reads by too (`run-reports.md` § 2.9).
@@ -161,18 +169,18 @@ def point_transmission(where, label: str, spin: str, *,
         transmission = per_spin_channel(curves, spin)
     except ValueError as exc:
         raise RecordError(str(exc)) from None
-    if spin == "polarized":
-        up, dn = av["up"], av["down"]
+    if spin == SPIN_POLARIZED:
+        up, dn = av[CHANNEL_UP], av[CHANNEL_DOWN]
         t_up, t_dn = up["transmission"], dn["transmission"]
         return {"energy_ev": up["energy_ev"],
                 "transmission": transmission,
-                "channels": {"up": t_up, "down": t_dn},
+                "channels": {CHANNEL_UP: t_up, CHANNEL_DOWN: t_dn},
                 # THE TOTAL, T↑ + T↓, what the report draws beside the two
                 # (`web/results.md` § 2.5).
                 "transmission_total": [a + b for a, b in zip(t_up, t_dn)],
                 "transmission_file": [up["files"]["transmission"],
                                       dn["files"]["transmission"]]}
-    one = av["unpolarized"]
+    one = av[CHANNEL_UNPOLARIZED]
     return {"energy_ev": one["energy_ev"],
             "transmission": transmission,
             "transmission_file": one["files"]["transmission"]}
@@ -194,7 +202,7 @@ def point_currents(now: Optional[Dict], spin: str) -> Dict:
     """The current TBtrans printed at one point -- its own Landauer integral,
     parsed, never recomputed -- as the record says it
     (:data:`CURRENT_MEANS`): ``printed_a``, every figure it printed by its
-    channel's name (`conductance.SPIN_CHANNELS`) -- a non-polarized run's
+    channel's name (`runfiles.TBT_SPIN_CHANNELS`) -- a non-polarized run's
     one, ``unpolarized``; a polarized run's ``up`` and ``down``, each also
     ``current_by_spin_a``; ``current_a``, the junction's total -- twice the
     one for a non-polarized run, the two channels' sum for a polarized one
@@ -230,16 +238,16 @@ def point_currents(now: Optional[Dict], spin: str) -> Dict:
     if not mine:
         return out
     out["printed_a"] = (
-        {ch: r["current_a"] for ch, r in mine} if spin == "polarized"
-        else {SPIN_CHANNELS[spin][0]: mine[0][1]["current_a"]})
-    if spin == "polarized":
+        {ch: r["current_a"] for ch, r in mine} if spin == SPIN_POLARIZED
+        else {TBT_SPIN_CHANNELS[spin][0]: mine[0][1]["current_a"]})
+    if spin == SPIN_POLARIZED:
         by = out["printed_a"]
-        if "up" in by and "down" in by:
-            out["current_a"] = by["up"] + by["down"]
+        if all(c in by for c in TBT_SPIN_CHANNELS[SPIN_POLARIZED]):
+            out["current_a"] = by[CHANNEL_UP] + by[CHANNEL_DOWN]
             # EACH SPIN'S, as TBtrans printed it -- the I-V draws them
             # beside the total (`web/results.md` § 2.5).
-            out["current_by_spin_a"] = {"up": by["up"],
-                                        "down": by["down"]}
+            out["current_by_spin_a"] = {
+                c: by[c] for c in TBT_SPIN_CHANNELS[SPIN_POLARIZED]}
     else:
         out["current_a"] = 2.0 * mine[0][1]["current_a"]
     return out
@@ -247,10 +255,22 @@ def point_currents(now: Optional[Dict], spin: str) -> Dict:
 
 def temperature_k_of(params) -> float:
     """The electronic temperature a deck's parameters state
-    (`parse.fdf.parse_fdf_params`), in kelvin (``300 K`` or an energy),
-    SIESTA's default 300 K when the deck states none."""
+    (`parse.fdf.parse_fdf_params`), in kelvin (``300 K`` or an energy), or
+    SIESTA's own default when the deck states none -- the catalogue's
+    ``engine_default`` (`siesta.engine_input.engine_defaults`): the one
+    rule the record's current and the scratch folder's estimate read it
+    by."""
     said = params.electronic_temperature_k
-    return 300.0 if said is None else float(said)
+    if said is not None:
+        return float(said)
+    from ..parse.fdf import fdf_key
+    from ..siesta.engine_input import engine_defaults
+    from ..siesta.layout import keyword as siesta_keyword
+    from ..units import temperature_k
+    keyword = siesta_keyword("electronic_temperature")
+    toks = engine_defaults()[fdf_key(keyword)]
+    return temperature_k(float(toks[0]), toks[1] if len(toks) > 1 else None,
+                         what=keyword, source="SIESTA's default")
 
 
 def deck_temperature_k(run_dir) -> float:
@@ -315,7 +335,7 @@ def low_bias_iv(energies: List[float], trans: List[float],
         currents.append(current(energies, trans, v, kt_ev, spacing_ev))
     return {"voltages_v": [float(v) for v in voltages],
             "current_a": currents,
-            "computed": "low-bias-approximation", "kt_ev": kt_ev,
+            "computed": LOW_BIAS_APPROXIMATION, "kt_ev": kt_ev,
             "window_ev": [lo, hi], "notes": notes}
 
 
@@ -332,10 +352,10 @@ def joined_currents(read: Dict, volts: float, kt_ev: float,
                                                volts, kt_ev, spacing_ev),
                  "printed_a": {}, "current_from": "joined"}
     chans = read.get("channels") or {}
-    if "up" in chans and "down" in chans:
+    if all(c in chans for c in TBT_SPIN_CHANNELS[SPIN_POLARIZED]):
         out["current_by_spin_a"] = {
             k: channel_current(e, chans[k], volts, kt_ev, spacing_ev)
-            for k in ("up", "down")}
+            for k in TBT_SPIN_CHANNELS[SPIN_POLARIZED]}
     return out
 
 
@@ -369,15 +389,17 @@ def result_folders(calc, stage: str, run: Optional[Path] = None
     the transmission gathered, § 2a.12)."""
     from ..jobset.materialize import latest_attempt
     from ..jobset.naming import stage_home
-    from .stages import Point, frames_of, points_in, rung_points
+    from .rung import frames_had
+    from .stages import Point, points_in, rung_points
     base, task = Path(calc.base), calc.task
     if run is None:
         run = latest_attempt(stage_home(base, task, stage).dir)
-    pts = rung_points(task, stage, frames=frames_of(base))
+    pts = rung_points(task, stage, frames=frames_had(calc))
     if pts:
         if run is None:
             return [(pt, None, None) for pt in pts]
-        return [(pt, p, run) for p, pt in points_in(calc, stage, run)]
+        return [(pt, p, run) for p, pt in points_in(
+            calc.task, stage, run, frames=frames_had(calc))]
     return [(Point(), run, run)]
 
 
@@ -409,7 +431,8 @@ def _stage_facts(calc, *, status) -> List[Dict]:
     (:func:`collect_record`) for every part of the record.
     """
     from ..jobset.naming import ladder_homes
-    from .stages import STAGE_FACT, TRANSPORT_STAGES, frames_of, rung_points
+    from .rung import frames_had
+    from .stages import STAGE_FACT, TRANSPORT_STAGES, rung_points
 
     base, task = Path(calc.base), calc.task
     by_name = {s.name: s for s in status.stages}
@@ -436,24 +459,24 @@ def _stage_facts(calc, *, status) -> List[Dict]:
                       **({"copied_from": s.copied_from}
                          if s.copied_from else {})}
         run = None
-        if name == "device" and device_run is not None:
+        if name == DEVICE_RUNG and device_run is not None:
             run = device_run
             fact["attempt"] = str(run.relative_to(base))
-            fact["gathered_by"] = "transmission"
+            fact["gathered_by"] = window_rung()
         elif s.attempt and s.dir:
             fact["attempt"] = f"{s.dir}/{s.attempt}"
             run = base / s.dir / s.attempt
         # WHICH QUESTION THIS RUNG ANSWERS -- a column, not a branch on the
         # name (`stages.STAGE_FACT`).  The transmission's answer is its
         # points; TBtrans converges nothing and reports no total energy.
-        answers = STAGE_FACT.get(name, "scf")
+        answers = STAGE_FACT[name]
         # THE RUN THE TRANSMISSION GATHERED answers for itself when it is not
         # the stage's newest (§ 2a.12: the device facts beside T(E) are that
         # run's): its state in its own words, and a detail naming both.
         newest = base / s.dir / s.attempt if s.dir and s.attempt else None
         another = run is not None and newest is not None and run != newest
-        per_point = bool(rung_points(task, name, frames=frames_of(base))
-                         and answers != PRODUCT)
+        per_point = bool(rung_points(task, name, frames=frames_had(calc))
+                         and answers != COMPUTES_PRODUCT)
         several = len(set(device_runs.values())) > 1
 
         def gathered_said(said: str) -> str:
@@ -474,7 +497,7 @@ def _stage_facts(calc, *, status) -> List[Dict]:
             if copied:
                 fact["copied_from"] = copied
         # A POINT WHOSE ``.gathered-from`` DOES NOT READ, said on the rung.
-        if name == "device" and device_unread:
+        if name == DEVICE_RUNG and device_unread:
             _say_unreadable(fact, *device_unread)
         # EVERY SWEPT RUNG'S POINTS, as the status door reads them: the
         # folder each ran in, what it started from and what it alone took
@@ -509,7 +532,7 @@ def _stage_facts(calc, *, status) -> List[Dict]:
             # its own run's rows (`_rung_points`).
             fact["by_point"] = _rung_points(
                 calc, name, run=run, rung=fact, rows=points,
-                runs=device_runs if name == "device" else None)
+                runs=device_runs if name == DEVICE_RUNG else None)
             _bridge_charge_from_0v(fact["by_point"])
             # THE PROVENANCE CHAIN'S PER-POINT LINES, each point's own run's.
             if points:
@@ -530,7 +553,7 @@ def _stage_facts(calc, *, status) -> List[Dict]:
                 fact["facts_at_v"] = first["bias_v"]
                 fact["facts_at_frame"] = first["frame"]
                 fact["facts_at"] = first["point"]
-                if name == "device":
+                if name == DEVICE_RUNG:
                     # ITS OWN PERIODIC START, as read; else where its chain
                     # began (:func:`_periodic_shift`).
                     fact["periodic"] = (
@@ -541,7 +564,7 @@ def _stage_facts(calc, *, status) -> List[Dict]:
             # A TRANSMISSION RUN WHOSE POINTS GATHERED FROM SEVERAL DEVICE
             # RUNS -- points taken over beside points run again -- says so;
             # each point's device facts are its own run's (above).
-            if name == "device" and several:
+            if name == DEVICE_RUNG and several:
                 gathered_from = sorted({str(r.relative_to(base))
                                         for r in device_runs.values()})
                 fact["detail"] = (
@@ -550,7 +573,7 @@ def _stage_facts(calc, *, status) -> List[Dict]:
                     f"{', '.join(gathered_from)}")
             out.append(fact)
             continue
-        if another and answers != PRODUCT:
+        if another and answers != COMPUTES_PRODUCT:
             # A RUN-ONCE RUNG'S GATHERED RUN, by the one door for a run's
             # state (`runs.concluded`) -- its facts below are that run's.
             from ..jobset.naming import stage_home
@@ -559,7 +582,7 @@ def _stage_facts(calc, *, status) -> List[Dict]:
                            base=base, launched_in=run)
             fact["state"], fact["detail"] = st.state, gathered_said(st.detail)
         output = (_output_of(run)
-                  if answers != PRODUCT and run is not None else None)
+                  if answers != COMPUTES_PRODUCT and run is not None else None)
         if output is None:
             out.append(fact)
             continue
@@ -568,7 +591,7 @@ def _stage_facts(calc, *, status) -> List[Dict]:
         fact.update(science)
         if unread:
             _say_unreadable(fact, unread)
-        if name == "device":
+        if name == DEVICE_RUNG:
             fact["periodic"] = (
                 {**fact["periodic"], "from": fact.get("attempt")}
                 if fact.get("periodic") else
@@ -624,11 +647,11 @@ def gathered_device_runs(calc) -> Tuple[Dict[str, Path], List[str]]:
     # THE DEVICE'S FILE, as the DAG names it (`stage_inputs`), and THE RUN
     # its folder lies in -- a point's folder lies below it
     # (`RunRef.run_folder`).
-    device = {fn for up, fn in inputs_of(calc.task, "transmission")
-              if up == "device"}
+    device = {fn for up, fn in inputs_of(calc.task, window_rung())
+              if up == DEVICE_RUNG}
     out: Dict[str, Path] = {}
     unread: List[str] = []
-    for pt, where, _run in result_folders(calc, "transmission"):
+    for pt, where, _run in result_folders(calc, window_rung()):
         if where is None:
             continue
         try:
@@ -998,7 +1021,8 @@ def collect_record(calc, *, partial: bool = False) -> Dict:
     from ..deck_record import DeckRecordUnreadable
     from .compose import read_provenance, recorded_junction
     from .rung import compose_refusals
-    from .stages import frames_of, rung_points, same_volts
+    from .rung import frames_had
+    from .stages import rung_points, same_volts
     from .energies import joined, sharing_of, spacing
     from .tbtnc import (DOS_CURVES, NO_CURVE, ORBITAL_NOTE,
                         ORBITAL_TYPES, TbtError, point_dos,
@@ -1020,7 +1044,7 @@ def collect_record(calc, *, partial: bool = False) -> Dict:
     pending: List[Dict] = []
     not_run: List[Dict] = []
     failed: List[Dict] = []
-    home = stage_home(base, task, "transmission")
+    home = stage_home(base, task, window_rung())
     names = home.names
     regions = device_regions(junction)
     # THE JUNCTION'S ATOM INDEX MAP, as the transmission's deck writes it
@@ -1028,7 +1052,7 @@ def collect_record(calc, *, partial: bool = False) -> Dict:
     # state (`model/overview.md` § 2.2b, F7).
     from ..runs import stage_atom_map
     junction_atoms = (stage_atom_map(junction.n_atoms, junction.atom_order,
-                                     task.calculation, "transmission")
+                                     task.calculation, window_rung())
                       if junction is not None else None)
     # WHERE EACH RUNG STANDS, the status door's one answer, read once for
     # every part of the record (`runstatus.jobset_status`).
@@ -1038,7 +1062,7 @@ def collect_record(calc, *, partial: bool = False) -> Dict:
     # A POINT NOT OPENED stands where its rung does -- the ready door's
     # `ready` / `waiting` and what for, on the rung's row (prep opens every
     # point at once).
-    rung = next(f for f in stages if f["stage"] == "transmission")
+    rung = next(f for f in stages if f["stage"] == window_rung())
     opened = False                        # an attempt open: it is prepared
     # THE TRANSMISSION'S POINTS AS THE STATUS DOOR READ THEM -- each one's
     # state, what it is a copy of -- one per point folder below its run
@@ -1046,7 +1070,7 @@ def collect_record(calc, *, partial: bool = False) -> Dict:
     # is *not run* there -- never one still to come, never failed
     # (`engines/transport.md` § 2a.11).
     rows = {r["folder"]: r for s in status.stages
-            if s.name == "transmission" for r in (s.points or ())}
+            if s.name == window_rung() for r in (s.points or ())}
     # WHAT TBTRANS AVERAGED AT EACH FOLDER, read once for the transmission
     # and the DOS (`point_averages_of`).
     averaged: Dict[Path, Dict] = {}
@@ -1056,7 +1080,7 @@ def collect_record(calc, *, partial: bool = False) -> Dict:
         if key not in averaged:
             averaged[key] = point_averages_of(folder, task.label)
         return averaged[key]
-    for pt, where, run in result_folders(calc, "transmission"):
+    for pt, where, run in result_folders(calc, window_rung()):
         # WHICH POINT, on every entry: its frame (``None`` with no frame
         # axis), its folder below the run, and in words.
         at = {**pt.to_wire(), "tokens": pt.rel, "point": pt.words()}
@@ -1262,10 +1286,10 @@ def collect_record(calc, *, partial: bool = False) -> Dict:
         raise RecordError(
             "no transmission point has its transmission yet -- "
             + ("launch the transmission stage, or let it finish:\n"
-               + block(launch_lines("task", "transmission", base=base_dir))
+               + block(launch_lines("task", window_rung(), base=base_dir))
                if opened else
                "run the transmission stage first:\n"
-               + block(run_first("transmission", calc=calc)))
+               + block(run_first(window_rung(), calc=calc)))
             + "\n"
             + "".join(f"  ({what}: "
                       + "; ".join(f"{p['point']}, "
@@ -1280,7 +1304,7 @@ def collect_record(calc, *, partial: bool = False) -> Dict:
         # tab's read draws a refused frame set where the average would be;
         # the record `summarize` writes is refused by name.
         average = (average_said if partial else average_block)(
-            frames_of(base) if junction is not None or junction_unread
+            frames_had(calc) if junction is not None or junction_unread
             else None, frame_set,
             points_out, pending + not_run + failed, same_volts)
     except AverageError as exc:
@@ -1302,7 +1326,7 @@ def collect_record(calc, *, partial: bool = False) -> Dict:
     treatment = task.treatment
     # A SPIN-POLARIZED CALCULATION, the one answer the I-V, the data file
     # and the report read: a point whose deck is polarized.
-    polarized = any(p.get("spin") == "polarized" for p in points_out)
+    polarized = any(p.get("spin") == SPIN_POLARIZED for p in points_out)
     record: Dict = {
         "schema": TRANSPORT_RESULT_SCHEMA,
         "label": task.label,
@@ -1324,8 +1348,8 @@ def collect_record(calc, *, partial: bool = False) -> Dict:
         "treatment": treatment,
         # WHETHER THE LOW-BIAS APPROXIMATION WAS MADE, the flag itself and
         # its words (`engines/transport.md` § 2a.10, *The labelling rule*).
-        "low_bias_approximation": treatment == "low-bias-approximation",
-        "low_bias_said": LOW_BIAS_SAID[treatment == "low-bias-approximation"],
+        "low_bias_approximation": treatment == LOW_BIAS_APPROXIMATION,
+        "low_bias_said": LOW_BIAS_SAID[treatment == LOW_BIAS_APPROXIMATION],
         "treatment_note": TREATMENT_NOTE[treatment],
         # EVERY RUNG'S E_F, said in its frame (`fermi_frames`).
         "fermi_frames": fermi_frames(stages),
@@ -1350,7 +1374,7 @@ def collect_record(calc, *, partial: bool = False) -> Dict:
         # every listed voltage (`low_bias_iv`, § 2a.10).
         "iv": _iv(base, task, treatment, points_out,
                   [pt.frame for pt in rung_points(
-                      task, "transmission", frames=frames_of(base))]
+                      task, window_rung(), frames=frames_had(calc))]
                   or [None], polarized),
         # THE FRAMES' AVERAGE at each voltage -- their post-process's
         # (`frame_average`, § 2a.12) -- and the frame set it is taken over,
@@ -1439,7 +1463,7 @@ def device_orbital_index(calc) -> Optional[Path]:
     from ..runfiles import SIESTA_ORB_INDX
     from ..runs import run_of
     for _pt, folder, _run in result_folders(
-            calc, "device", run=gathered_device_run(
+            calc, DEVICE_RUNG, run=gathered_device_run(
                 gathered_device_runs(calc)[0])):
         if folder is None:
             continue
@@ -1467,11 +1491,12 @@ def selection_pdos(calc, bias_v: float, atoms, orbitals: str,
     named for a frame set and for nothing else.  :class:`RecordError` names
     what is missing."""
     from ..atom_permutation import AtomIndexError
-    from .stages import Point, frames_of, same_volts
+    from .rung import frames_had
+    from .stages import Point, same_volts
     from ..parse.engines.tbtrans_nc import data_files
     from .tbtnc import TbtError, selection_pdos as _pdos
     base, task = Path(calc.base), calc.task
-    n = frames_of(base)
+    n = frames_had(calc)
     # THE POINT IS A FRAME AND A VOLTAGE (`engines/transport.md` § 2a.9):
     # a frame set's names its frame, one structure's names none.
     if n > 1 and frame is None:
@@ -1499,7 +1524,7 @@ def selection_pdos(calc, bias_v: float, atoms, orbitals: str,
         # every point, one that runs per frame every voltage (a single
         # bias, the low-bias approximation).  ``(point, folder)``.
         return next(((pt, w) for pt, w, _r in result_folders(
-                         calc, "transmission")
+                         calc, window_rung())
                      if (pt.frame is None or pt.frame == want.frame)
                      and (pt.volts is None
                           or same_volts(pt.bias_v, want.bias_v))),
@@ -1507,7 +1532,7 @@ def selection_pdos(calc, bias_v: float, atoms, orbitals: str,
 
     if not any(same_volts(v, bias_v)
                for v in task.bias):
-        raise RecordError(f"no transmission point at {bias_v:g} V")
+        raise RecordError(f"no transmission point at {volts_words(bias_v)}")
     # THE SELECTION CROSSES INTO THE JUNCTION'S ORDER through its own order
     # record, and the answer's atoms back (`model/overview.md` § 2.2a, I3):
     # the runs list the atoms as the composed junction does.  A record that
@@ -1550,7 +1575,7 @@ def selection_pdos(calc, bias_v: float, atoms, orbitals: str,
     # THE JUNCTION'S ATOM INDEX MAP, which each reading's must be (F7).
     from ..runs import stage_atom_map
     junction_atoms = stage_atom_map(junction.n_atoms, junction.atom_order,
-                                    calc.task.calculation, "transmission")
+                                    calc.task.calculation, window_rung())
     try:
         # THE POINT IT WAS READ AT, stated beside the answer: under the
         # low-bias approximation a voltage's PDOS is its frame's 0 V slice.
@@ -1598,12 +1623,13 @@ def _iv(base: Path, task, treatment: str, points_out: List[Dict],
     from ..structure import frame_words
     from .energies import spacing, window_of
     from .stages import same_volts
-    if treatment == "low-bias-approximation":
+    if treatment == LOW_BIAS_APPROXIMATION:
         out: Dict = {"frame": [], "voltages_v": [], "current_a": [],
-                     "computed": "low-bias-approximation",
+                     "computed": LOW_BIAS_APPROXIMATION,
                      "kt_ev": None, "window_ev": None, "notes": []}
         if polarized:
-            out["current_up_a"], out["current_down_a"] = [], []
+            for spin in TBT_SPIN_CHANNELS[SPIN_POLARIZED]:
+                out[f"current_{spin}_a"] = []
         for f in frames:
             zero = next((p for p in points_out if p["frame"] == f
                          and same_volts(p["bias_v"], 0.0)), None)
@@ -1613,8 +1639,8 @@ def _iv(base: Path, task, treatment: str, points_out: List[Dict],
                     out["voltages_v"].append(float(v))
                     out["current_a"].append(None)
                     if polarized:
-                        out["current_up_a"].append(None)
-                        out["current_down_a"].append(None)
+                        for spin in TBT_SPIN_CHANNELS[SPIN_POLARIZED]:
+                            out[f"current_{spin}_a"].append(None)
                 out["notes"].append({
                     "frame": f, "bias_v": None,
                     "note": (f"the 0 V transmission of "
@@ -1634,7 +1660,7 @@ def _iv(base: Path, task, treatment: str, points_out: List[Dict],
                              list(task.bias), kt, spacing(window))
             if polarized:
                 chans = zero.get("channels") or {}
-                for spin in ("up", "down"):
+                for spin in TBT_SPIN_CHANNELS[SPIN_POLARIZED]:
                     out[f"current_{spin}_a"].extend(
                         low_bias_iv(zero["energy_ev"], chans[spin],
                                     list(task.bias), kt, spacing(window),
@@ -1657,7 +1683,7 @@ def _iv(base: Path, task, treatment: str, points_out: List[Dict],
            "current_a": [p["current_a"] for p in points_out],
            "computed": "tbtrans", "notes": []}
     if polarized:
-        for spin in ("up", "down"):
+        for spin in TBT_SPIN_CHANNELS[SPIN_POLARIZED]:
             out[f"current_{spin}_a"] = [
                 (p.get("current_by_spin_a") or {}).get(spin)
                 for p in points_out]
@@ -1686,12 +1712,12 @@ def fermi_frames(stages: List[Dict]) -> Optional[Dict]:
     alone, saying why.  Nothing here enters T(E), G or the I-V.  ``None``
     until the device has a NEGF E_F."""
     by = {st["stage"]: st for st in stages}
-    device = by.get("device") or {}
+    device = by.get(DEVICE_RUNG) or {}
     dev = device.get("negf") or {}
     if dev.get("ef") is None:
         return None
     out: Dict = {"device_ef_ev": dev["ef"], "frame": "transiesta"}
-    seed_ef = (by.get("seed") or {}).get("fermi_ev")
+    seed_ef = (by.get(SEED_RUNG) or {}).get("fermi_ev")
     # THE LEADS, the kind table's (`CalculationKind.leads`).
     from ..kind_table import kind
     leads = {n: by[n].get("fermi_ev") for n in kind("transport").leads
@@ -1753,16 +1779,16 @@ LOW_BIAS_SAID = {
 #: (`engines/transport.md` § 2a.10, § 2a.12) -- the one wording, which the
 #: record carries and both the Results report and `summarize` print.
 TREATMENT_NOTE = {
-    "single-bias": ("One device SCF and one transmission, at the one "
+    SINGLE_BIAS: ("One device SCF and one transmission, at the one "
                     "voltage: T(E) there, with no approximation beyond the "
                     "method."),
-    "low-bias-approximation": (
+    LOW_BIAS_APPROXIMATION: (
         "The low-bias approximation: the device SCF is converged once, at "
         "0 V, and each voltage's current is the zero-bias transmission "
         "T(E, 0) integrated over that voltage's window \u2014 the "
         "transmission's dependence on bias neglected; a resonance entering "
         "the window is not re-converged, nor moved by the field."),
-    "self-consistent": ("The device SCF is converged at every voltage, so "
+    SELF_CONSISTENT: ("The device SCF is converged at every voltage, so "
                         "each slice is its own solution and the I-V carries "
                         "no approximation beyond the method."),
 }
@@ -1774,7 +1800,7 @@ def printed_said(p: Dict) -> str:
     channel's by name, ``--`` where it printed none -- a point that shares
     energies (:data:`CURRENT_MEANS`)."""
     got = p.get("printed_a") or {}
-    if list(got) == list(SPIN_CHANNELS["non-polarized"]):
+    if list(got) == list(TBT_SPIN_CHANNELS[SPIN_NON_POLARIZED]):
         return f"{next(iter(got.values())):>13.4e}"
     if got:
         return "  ".join(f"{k} {v:.4e}" for k, v in got.items())
@@ -1816,7 +1842,7 @@ def iv_table_text(record: Dict) -> str:
             lines.append(f"  {_frame(p.get('frame')):>8}  {p['bias_v']:>8.3f}  "
                          f"{said:>12}  {p['state']:>12}  ({p['why']})")
     iv = record.get("iv") or {}
-    if iv.get("computed") == "low-bias-approximation":
+    if iv.get("computed") == LOW_BIAS_APPROXIMATION:
         # THE RECORD'S OWN I-V, from each frame's 0 V slice
         # (`low_bias_iv`).
         kt = iv.get("kt_ev")

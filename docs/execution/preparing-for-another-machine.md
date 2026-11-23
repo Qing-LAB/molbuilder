@@ -158,7 +158,7 @@ prep, saying where to declare it. Which environment you *want* for a category
 stays a preference in `molbuilder.json`
 ([`configuration.md`](?doc=configuration.md) § 4).
 
-**Nothing else prep writes names the machine it was prepared on**: the decks,
+**Nothing else a run reads names the machine it was prepared on**: the decks,
 run scripts and headers of a prepared calculation carry no absolute path of
 this machine — the bootstrap lines are the target's, and an env command they
 name (a missing package's) is typed in molbuilder's checkout there, `bash
@@ -168,7 +168,9 @@ checkout's full path ([`ops/installation.md`](?doc=ops/installation.md) § 2).
 A run script's env stops say theirs as typed in molbuilder's checkout on every
 machine, since it is one file whichever machine it was prepared for
 ([`architecture.md`](?doc=execution/architecture.md) § 9; the user,
-2026-11-22: "Run script: words everywhere").
+2026-11-22: "Run script: words everywhere"). The plan prep leaves beside them,
+`STAGE-PLAN.md`, is the record of the prep itself, and says where it ran: which
+files supplied its settings and its warm-file list.
 
 ## 3. The bootstrap travels on the record
 

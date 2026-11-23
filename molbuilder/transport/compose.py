@@ -22,7 +22,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, ClassVar, Dict, List, Optional, Tuple
 
 import numpy as np
 
@@ -30,8 +30,8 @@ from ..identity import JOBSET_PROG, TASK, as_typed, words_for
 from ..cell import entering
 from ..parse.fdf import read_deck
 from ..persist import sha256_of
-from ..structure import (SAME_PLACE_ANG, Structure, farthest_apart,
-                         frame_words)
+from ..structure import (ACROSS_TRANSPORT, AXIS_KIND_TRANSPORT, SAME_PLACE_ANG,
+                         Structure, farthest_apart, frame_words)
 from ..kind_table import atom_order
 from .sort import (REGION_LEFT_ELECTRODE, REGION_RIGHT_ELECTRODE, SortError,
                    sort_by)
@@ -53,9 +53,6 @@ class ComposeError(Exception):
 from ..runfiles import JUNCTION_FILE as JUNCTION_GEOMETRY  # noqa: E402 -- the SORTED junction (codec pair)
 from ..runfiles import JUNCTION_CITED_FILE as JUNCTION_DECK  # noqa: E402 -- the attempt's own deck, verbatim
 from ..runfiles import SLOT_PROVENANCE_FILE as PROVENANCE_FILE  # noqa: E402
-
-#: The citation kinds a record names (`engines/transport.md` § 3.1).
-CITATION_KINDS = ("run", "pair")
 
 #: The composition record's schema (`execution/job-contracts.md` § 6.1),
 #: stamped by its one writer (:func:`write_compose_record`).
@@ -81,7 +78,7 @@ def record_files(kind: str) -> Tuple[str, ...]:
         raise ValueError(f"record_files: a citation is one of "
                          f"{', '.join(CITATION_KINDS)}, not {kind!r}")
     return ((JUNCTION_GEOMETRY, JUNCTION_SIDECAR_FILE, PROVENANCE_FILE)
-            + ((JUNCTION_DECK,) if kind == "run" else ()))
+            + ((JUNCTION_DECK,) if kind == CitedRun.kind else ()))
 
 
 def _unusable_cell(struct) -> Optional[str]:
@@ -175,6 +172,9 @@ class CitedRun:
     #: at all (:func:`refuse_failed_citation`).
     state: Optional[str] = None
     detail: Optional[str] = None
+    #: THE CITATION'S KIND, in the one word every surface says it by --
+    #: the record's provenance, the schema route's source, the page.
+    kind: ClassVar[str] = "run"
 
 
 @dataclass(frozen=True)
@@ -192,10 +192,16 @@ class CitedPair:
     #: states no atom order, read as listed by user index (`model/overview.md`
     #: § 2.2b, F4); one in an engine's order, put back in the user order.
     said: Tuple = ()
+    kind: ClassVar[str] = "pair"
 
     @property
     def n_frames(self) -> int:
         return self.structure.n_frames
+
+
+#: The citation kinds a record names (`engines/transport.md` § 3.1), each
+#: its class's own word.
+CITATION_KINDS = (CitedRun.kind, CitedPair.kind)
 
 
 #: How a junction is relaxed to be cited (§ 3.1), each line as typed.
@@ -466,16 +472,15 @@ def _with_transport(across, where: str) -> Tuple[str, str, str]:
     and every rung's k-point mesh read one statement.  A record that says
     something else across is refused, naming ``where`` it said it: read as
     periodic it would replace the person's declaration without a word."""
-    from ..kmesh import TRANSPORT_AXIS
     kinds = [str(k) for k in across]
     if len(kinds) != 3 or not all(
-            k in ("periodic", "isolated")
-            for i, k in enumerate(kinds) if i != TRANSPORT_AXIS):
+            k in ACROSS_TRANSPORT
+            for i, k in enumerate(kinds) if i != _TRANSPORT_AXIS):
         raise ComposeError(
             f"{where} records the axis kinds {kinds!r}; across the transport "
             f"axis a junction is periodic or isolated, so this record does "
             f"not say which")
-    kinds[TRANSPORT_AXIS] = "transport"
+    kinds[_TRANSPORT_AXIS] = AXIS_KIND_TRANSPORT
     return tuple(kinds)
 
 
@@ -705,13 +710,14 @@ def _refuse_outside(struct: Structure) -> None:
         from ..cell import transport_room
         from .sort import ELECTRODE_LABELS
         box = np.asarray(struct.cell, dtype=float).reshape(3, 3)
-        z = np.asarray(struct.positions, dtype=float)[:, 2]
+        z = np.asarray(struct.positions, dtype=float)[:, _TRANSPORT_AXIS]
         leads = [list(idx) for label, idx in (struct.regions or {}).items()
                  if label in ELECTRODE_LABELS and idx]
         room, spacing = (transport_room(struct.positions, box, leads)
                          if leads else (None, None))
+        length = float(box[_TRANSPORT_AXIS, _TRANSPORT_AXIS])
         fits = (f"set the cell's length along z to "
-                f"{float(box[2, 2]) - room + spacing:.3f} Å, one layer "
+                f"{length - room + spacing:.3f} Å, one layer "
                 f"spacing of the lead at its edge"
                 if spacing is not None else
                 f"make the cell longer along z than {float(np.ptp(z)):.3f} Å")
@@ -719,7 +725,7 @@ def _refuse_outside(struct: Structure) -> None:
             f"the junction, centred in its cell, has {where} outside it "
             f"along z, the transport direction: its atoms span "
             f"{float(np.ptp(z)):.3f} Å there, and the cell is "
-            f"{float(box[2, 2]):.3f} Å long.  TranSIESTA needs every atom "
+            f"{length:.3f} Å long.  TranSIESTA needs every atom "
             f"inside the cell along the transport direction: on the Cell "
             f"page, {fits}.")
     # THE WAY OUT IS THE PAIR'S OWN: a one-geometry pair is saved on the
@@ -805,7 +811,7 @@ def compose_junction(citation: str, *, tree_root, engine: str,
     provenance = {
         # WHICH KIND was cited (§ 3.1): it decides which files the record
         # holds (`record_files`).
-        "kind": "pair" if isinstance(cited, CitedPair) else "run",
+        "kind": cited.kind,
         # THE RENAME THIS COPY CARRIES (§ 4): the record answers for the
         # choice it was composed with, as it answers for its citation.
         "swap_electrodes": bool(swap_electrodes),
@@ -955,7 +961,7 @@ def read_provenance(base_dir, *, read=None) -> Optional[Dict]:
     (:func:`write_compose_record`) -- through `persist`, or ``None`` before
     anything was composed.  The one reader of that file: the record's own
     check below, the transport record, and the frame count
-    (`transport.stages.frames_of`).  ``read`` reads a path's text where the
+    (`transport.rung.frames_had`).  ``read`` reads a path's text where the
     record is a prep's plan's, not yet on disk (`prepared_with.record`).
     Read by the one record reader at ANY major (`job-contracts.md` § 6.1,
     *Older versions still read*): what it holds is asked of its files; one
@@ -1209,7 +1215,7 @@ def load_compose_record(base_dir, *, citation: str, engine: str,
     # what its checks said then is (`warnings`, said by
     # `junction_said`).
     elec_l, elec_r = _extract_and_gate_electrodes(dev)
-    deck_text = read_deck(deck_path) if kind == "run" else None
+    deck_text = read_deck(deck_path) if kind == CitedRun.kind else None
     return ComposedJunction(
         junction=dev,
         relaxed=None,

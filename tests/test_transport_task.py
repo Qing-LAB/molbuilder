@@ -295,3 +295,23 @@ def test_a_relaxation_cited_while_going_that_then_ends_is_refused_at_prep(
     assert "ended without concluding" in prep.output, prep.output
     assert "launch the relaxation again" in prep.output.lower(), prep.output
     assert "new transport calculation" in prep.output, prep.output
+
+
+def test_extending_a_finished_calculation_says_its_voltages_as_every_surface_does():
+    """`engines/transport.md` § 2a.16, *Extending it*: what the bias control
+    says of the finished calculation's voltages, in the one spelling every
+    surface says a voltage in (`units.volts_words`, the user, 2026-11-22) --
+    *0 V*, never *0.0 V*.  The finished calculation is its description
+    alone, as Task setup's Save holds one: what the control says is read
+    of the description (`reuse.Extension.says`), and a finished run of it
+    only an engine makes (the real junction's e2e)."""
+    from molbuilder.transport.reuse import Extension
+    finished = Task(engine="siesta",
+                    run=Run(name="T", id=run_id("T", _CITE,
+                                                stage_names=_STAGES)),
+                    structure=None, calculation="transport",
+                    slots={"junction": _CITE}, bias=(0.0, 0.2),
+                    low_bias_approximation=False, varies=(),
+                    stages=_stages())
+    said = Extension("P/transport/T", finished).says["bias"]
+    assert "computed 0 V, 0.2 V." in said, said

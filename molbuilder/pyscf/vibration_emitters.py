@@ -642,11 +642,14 @@ def _emit_equilibrium_scf(cfg: "VibrationConfigView", struct: Structure,
     # on the config -- self-documenting in the emitted text).
     if getattr(cfg, "chkfile", False):
         from .input import PYSCF_CHK, run_file_expr
-        out.append(f'mf.chkfile = _mb_outfile({run_file_expr(names, PYSCF_CHK)})')
+        from .layout import keyword
+        out.append(f'{keyword("chkfile")} = '
+                   f'_mb_outfile({run_file_expr(names, PYSCF_CHK)})')
     if getattr(cfg, "scf_soscf", False):
         out.append("# Second-order SCF (engines/pyscf.md § 7): Newton solver;")
         out.append("# DIIS/damp stop applying under it, by design.")
-        out.append("mf = mf.newton()")
+        from .layout import keyword
+        out.append(f"mf = {keyword('scf_soscf')}()")
     # THE RECORD, before the equilibrium SCF runs (`model/parse.md` § 5d.3a):
     # every item this kind carries, what it was set to and what the live
     # objects hold -- the optimization deck's own emitter, so the two decks

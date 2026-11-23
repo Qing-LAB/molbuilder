@@ -833,6 +833,43 @@ def test_the_shipped_monitor_reads_its_card_layout_from_its_own_bundle(
     assert "[('energy', '1.5 eV')]" in proc.stdout, proc.stdout
 
 
+@pytest.mark.parametrize("bundle, engine", [("mb_vibration.pyz", "siesta"),
+                                            ("mb_pyscf.pyz", "pyscf")])
+@pytest.mark.parametrize("on_path", ["{}", "./{}"])
+def test_a_data_file_written_beside_a_job_names_its_engine_in_the_tables_words(
+        tmp_path, bundle, engine, on_path):
+    """`model/datafiles.md` § 2b: a data file names the engine that
+    computed it in the engine table's words -- and a bundle that writes one
+    beside a job carries that table (`engine_table.TRAVELS_DATA`), read
+    through the zip's loader on the job's python with molbuilder absent,
+    the bundle on the path as typed: bare, or `./<bundle>`, the look-alike
+    of `engines/vibration.md` § 5.5's finish by hand.
+
+    MUTATIONS THIS MUST FAIL AGAINST: the table left out of the bundle (no
+    engine's words beside a job); the zip read under a path normalised away
+    from the one the loader keeps (`./`: no such member)."""
+    from molbuilder import runwrap
+    from molbuilder.engine_table import engine as engine_row
+
+    ship = tmp_path / "jobdir"
+    ship.mkdir()
+    (ship / bundle).write_bytes(runwrap.build(bundle))
+    proc = job_python.run(
+        [f"import sys; sys.path.insert(0, {on_path.format(bundle)!r})",
+         "import netCDF4, ncdata",
+         "ds = netCDF4.Dataset('said.nc', 'w')",
+         f"ncdata.state(ds, title='t', schema='s@1', "
+         f"molbuilder_version='0', engine={engine!r}, engine_version='1.0')",
+         "print(ds.getncattr('source')); ds.close()"],
+        packages=job_python.bundle_packages(bundle),
+        members=job_python.bundle_members(bundle),
+        cwd=ship, env={"XDG_CONFIG_HOME": str(tmp_path / "scratch")},
+        timeout=60)
+    assert proc.returncode == 0, proc.stderr[-2000:]
+    assert f"computed by {engine_row(engine).words} 1.0" in proc.stdout, (
+        proc.stdout)
+
+
 def test_the_shipped_vibration_finish_loads_its_readers_from_the_bundle_alone(
         tmp_path):
     """`engines/vibration.md` I23: the finish travels as one declared set

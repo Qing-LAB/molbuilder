@@ -48,7 +48,7 @@ from .input import (GEOMETRIC_APPENDS, emit_bundle_imports,
                     emit_words,
                     run_file_expr, ROLE_INITIAL, PYSCF_OPTIMIZED, ROLE_SPECTRA)
 from .layout import (GEOMETRY_SECTION, POLICY_CONSTANTS, geom_constant,
-                     geom_constants, keyword, policy_constants)
+                     geom_constants, keyword, keyword_on, policy_constants)
 from .script_input import WORDS_NAME
 
 # The science emitters, composed here.
@@ -231,7 +231,7 @@ def _vib_relax_block(cfg, names) -> List[str]:
             "    # table): every geometry step's SCF runs the same Newton",
             "    # solver the equilibrium one does; DIIS/damp stop",
             "    # applying under it, by design.",
-            "    _mf_relax = _mf_relax.newton()",
+            f"    _mf_relax = {keyword_on('scf_soscf', '_mf_relax')}()",
         ]
     if getattr(cfg, "write_molwatch_log", False):
         out += [

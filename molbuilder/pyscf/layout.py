@@ -68,6 +68,26 @@ def keyword(name: str) -> str:
     return parameter(name, "pyscf").writes[0]
 
 
+def keyword_on(name: str, solver: str) -> str:
+    """:func:`keyword` on another solver object than the deck's ``mf`` --
+    the relaxation's ``_mf_relax``, the probe's ``_mb_scf_probe`` -- its
+    attribute path moved onto ``solver``: ``mf.newton`` is
+    ``_mf_relax.newton``."""
+    head, _, attribute = keyword(name).partition(".")
+    if head != "mf" or not attribute:
+        raise ValueError(f"{name} sets {keyword(name)}, no attribute of the "
+                         f"SCF solver")
+    return f"{solver}.{attribute}"
+
+
+def unit_of(name: str) -> str:
+    """The unit a catalogue item's value is in, as the catalogue states it
+    (``Ha/Bohr`` for a gradient target) -- what a deck's header says beside
+    the value."""
+    from ..template import catalogue, one
+    return one(catalogue(), name, engine="pyscf").unit or ""
+
+
 def geom_constant(name: str) -> str:
     """The constant a deck names geometry item ``name``'s value by,
     ``_GEOM_<the item's name past geom_>`` -- ONE spelling, both decks'
@@ -348,11 +368,12 @@ def recorded_items(calculation: Optional[str] = None):
                                                calculation=calculation)]
 
 
-#: Anchors that name a CALL rather than a setting.  ``mf.newton()`` returns a
-#: new solver object; reading ``mf.newton`` back would record a bound method,
-#: which is not a value anybody asked about.  What it did is already visible in
+#: Items whose anchor names a CALL rather than a setting -- by the item's
+#: name, its anchor the catalogue's.  ``mf.newton()`` returns a new solver
+#: object; reading ``mf.newton`` back would record a bound method, which is
+#: not a value anybody asked about.  What it did is already visible in
 #: ``scf_solver_class``.
-_NOT_A_SETTING = {"mf.newton"}
+_NOT_A_SETTING = {"scf_soscf"}
 
 
 def readback(param: Parameter):
@@ -369,9 +390,9 @@ def readback(param: Parameter):
     """
     if param.name in _READBACK:
         return _READBACK[param.name]
+    if param.name in _NOT_A_SETTING:
+        return None
     for key in param.writes:
-        if key in _NOT_A_SETTING:
-            return None
         if key.startswith(("mf.", "mol.")):
             return key
     return None

@@ -60,6 +60,7 @@ from ..cell import (LAYER_TOL_ANG, bulk_z_period, classify_seam,
                     detect_layers, uneven_layers)
 from ..issues import Issue
 from ..structure import Structure
+from ..kmesh import TRANSPORT_AXIS
 from .sort import ELECTRODE_LABELS
 from .transiesta import _find_electrode_regions
 
@@ -209,7 +210,7 @@ def seam_finding(pos, cell) -> Issue:
         return Issue("warn", f"the periodic seam could not be classified "
                              f"({exc}); the lead's tiling is UNCHECKED",
                      where=SEAM_WHERE)
-    n_layers = len(detect_layers(pos[:, 2], LAYER_TOL_ANG))
+    n_layers = len(detect_layers(pos[:, TRANSPORT_AXIS], LAYER_TOL_ANG))
     if n_layers < 3:
         # TWO LAYERS CANNOT SAY.  A,B is fcc and hcp alike -- the block
         # carries only two registries, so ABAB and ABC agree on every
@@ -262,7 +263,7 @@ def _outer_end(device: Structure, idxs) -> int:
     lowest pair of layers, where the rest lies above (the left lead), -1
     the highest.  Measured from the structure, never from the lead's
     name."""
-    z = np.asarray(device.positions, dtype=float)[:, 2]
+    z = np.asarray(device.positions, dtype=float)[:, TRANSPORT_AXIS]
     rest = sorted(set(range(len(z))) - set(idxs))
     if not rest:
         return 0
@@ -355,7 +356,6 @@ def extract_electrode_model(
     *,
     prior_positions: Optional[np.ndarray] = None,
     held_by_relaxation: Optional[Sequence[int]] = None,
-    layer_tol_ang: float = LAYER_TOL_ANG,
 ) -> ElectrodeModel:
     """Build an :class:`ElectrodeModel` for one lead, ``L-electrode`` or
     ``R-electrode`` — and say what is not a bulk lead about it.
@@ -411,13 +411,14 @@ def extract_electrode_model(
     # always states its cell (the citation door refuses one that does not,
     # `engines/transport.md` § 2a.9).
     dc = np.asarray(device.cell, dtype=float)
-    lat_a, lat_b = dc[0].copy(), dc[1].copy()
+    lat_a, lat_b = (dc[ax].copy() for ax in range(3) if ax != TRANSPORT_AXIS)
 
     # Shift so the lowest layer is at z = 0 (clean periodic cell).
-    z = pos[:, 2]
-    layer_z = detect_layers(z, layer_tol_ang)
+    z = pos[:, TRANSPORT_AXIS]
+    layer_z = detect_layers(z, LAYER_TOL_ANG)
     pos = pos.copy()
-    pos[:, 2] = pos[:, 2] - float(min(layer_z)) if layer_z else pos[:, 2]
+    if layer_z:
+        pos[:, TRANSPORT_AXIS] -= float(min(layer_z))
     layer_z = [lz - float(min(layer_z)) for lz in layer_z] if layer_z else []
 
     notes: List[Issue] = []

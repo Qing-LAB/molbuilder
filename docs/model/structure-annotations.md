@@ -254,7 +254,8 @@ The canonical labels the Molbuilder tab ships and the emitter interprets:
 | `interface` *(optional)* | a sub-label flagging contact atoms still inside `bridge` (for projected-DOS / charge-transfer); does **not** change the partition |
 
 **The emitter behaviour** — how `transiesta.py::_find_electrode_regions`
-finds the two leads, sorts them by z-centroid, assigns chempot `Left`/`Right` +
+finds the two leads, orders them lower first by `sort.electrode_orientation`
+(their z centroids), assigns chempot `Left`/`Right` +
 `semi-inf-direction`, emits `%block TS.Elec.<stem>`, the atom-ordering
 contiguity requirement, the bias-direction convention, and the NEGF literature
 references (Brandbyge PRB 65 165401, Stokbro) — belongs with

@@ -1013,7 +1013,9 @@ visually clean way to present the intermediate status".)*
 job's python (§ 2.3), and the file travels in the monitor's bundle as its one data member, beside the reader, by
 the reader's own word (`report_cards.TRAVELS_DATA`) — in whatever bundle the reader joins. The
 reader finds the file by the import's two ways: inside the package, in `molbuilder/data/`; beside the job, beside
-itself in the bundle — read through `__loader__.get_data`, which serves a zip member and a file alike. The server
+itself in the bundle — read through `__loader__.get_data`, which serves a zip member and a file alike
+(`persist.read_shipped`, which names it beside the reader as the loader spells the bundle's path,
+`./mb_monitor.pyz` too). The server
 reads the same shipped file for the tab.
 
 **A copy replaces it whole**: `<config dir>/report-cards.json` ([`configuration.md`](?doc=configuration.md) § 3.1,

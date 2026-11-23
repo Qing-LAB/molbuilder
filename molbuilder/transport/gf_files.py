@@ -11,36 +11,39 @@ import math
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-from ..units import size_words
+from ..units import size_words, volts_words
 
 #: What the engine stores per matrix element: a complex double.
 _BYTES = 16
 
 
-def status_line(base, task, stage_dir, run_dir: Optional[Path],
+def status_line(calc, stage: str, stage_dir, run_dir: Optional[Path],
                 scratch_dir: str, *, going: bool = False) -> Optional[str]:
-    """The device's one line (`engines/transport.md` § 2a.11, *Checked by
-    the status verb*): for a launched run what its scratch folder holds;
-    for a prepared stage the estimate, once the leads have run.
-    ``scratch_dir`` is the job's declared folder (`Job.scratch_dir`, the
-    vocabulary's name as the stage was prepared); ``None`` with none."""
+    """The one line of ``stage`` of ``calc`` -- the calculation the status
+    verb opened -- the rung whose run keeps the scratch folder, the device
+    (`engines/transport.md` § 2a.11, *Checked by the status verb*): for a
+    launched run what its scratch folder holds; for a prepared stage the
+    estimate, once the leads have run.  ``scratch_dir`` is the job's
+    declared folder (`Job.scratch_dir`, the vocabulary's name as the stage
+    was prepared); ``None`` with none."""
     if not scratch_dir:
         return None
     if run_dir is not None:
-        return _holds(Path(run_dir) / scratch_dir, scratch_dir, task.label,
-                      Path(stage_dir), task, base, going=going)
-    return _estimate_line(base, task, Path(stage_dir), scratch_dir)
+        return _holds(Path(run_dir) / scratch_dir, scratch_dir, stage,
+                      Path(stage_dir), calc, going=going)
+    return _estimate_line(calc, stage, Path(stage_dir), scratch_dir)
 
 
-def _holds(folder: Path, scratch_dir: str, label: str, stage_dir: Path,
-           task, base, *, going: bool) -> str:
+def _holds(folder: Path, scratch_dir: str, stage: str, stage_dir: Path,
+           calc, *, going: bool) -> str:
+    label = calc.task.label
     if not folder.is_dir():
         return f"{scratch_dir}/: not there"
     from ..warmfiles import is_scratch
     files = sorted(p for p in folder.iterdir()
                    if p.is_file() and is_scratch(p.name))
     if not files:
-        decks = _decks_per_voltage(base, task, stage_dir)
+        decks = _decks_per_voltage(calc, stage, stage_dir)
         try:
             said = (_kept_in_memory(_reads(decks[0][1]), scratch_dir)
                     if decks else None)
@@ -74,12 +77,12 @@ def _kept_in_memory(first, scratch_dir: str) -> Optional[str]:
 
 
 def _volts_words(token: str) -> str:
-    """A bias token as a voltage a person reads -- ``v0.2`` is *0.2 V* -- or
-    the token as it is, where it is not one."""
-    try:
-        return f"{float(token[1:]):g} V" if token.startswith("v") else token
-    except ValueError:
-        return token
+    """A bias token as a voltage a person reads -- ``v0.2`` is *0.2 V*
+    (`task.token_volts`, `units.volts_words`) -- or the token as it is, where
+    it is not one."""
+    from ..task import token_volts
+    v = token_volts(token)
+    return token if v is None else volts_words(v)
 
 
 def _voltage_of(name: str, label: str) -> str:
@@ -107,9 +110,10 @@ class _Deck:
     def __init__(self, text: str):
         from ..parse.fdf import (SPIN_COMPONENTS, fdf_key, fdf_true,
                                  parse_fdf_params, read_fdf)
-        from ..siesta.engine_input import NEQ_LINE, NEQ_LINE_DELTA, \
-            engine_defaults
-        from ..units import energy_ev, temperature_k
+        from ..siesta.engine_input import (NEQ_LINE, NEQ_LINE_DELTA,
+                                           engine_defaults)
+        from ..siesta.layout import keyword
+        from ..units import energy_ev
         scalars, blocks = read_fdf(text)
         defaults = engine_defaults()
         where = "the device deck"
@@ -124,18 +128,20 @@ class _Deck:
             return energy_ev(float(toks[0]), toks[1] if len(toks) > 1
                              else None, what=key, source=where)
         p = parse_fdf_params(text, source=where)
-        self.out_of_core = fdf_true(said("TS.Elecs.Out-of-core"))
-        self.volts = abs(ev(said("TS.Voltage"), "TS.Voltage"))
-        self.pole_ev = ev(said("TS.Contours.Eq.Pole"), "TS.Contours.Eq.Pole")
-        toks = said("ElectronicTemperature")
-        self.temperature_k = (p.electronic_temperature_k
-                              if p.electronic_temperature_k is not None
-                              else temperature_k(
-                                  float(toks[0]),
-                                  toks[1] if len(toks) > 1 else None,
-                                  what="ElectronicTemperature",
-                                  source=where))
-        self.cutoff_kt = float(said("TS.Contours.nEq.Fermi.Cutoff")[0])
+        # EACH KEYWORD AS THE DECK WRITER WROTE IT: what its catalogue item
+        # writes (`siesta.layout.keyword`).
+        out_of_core, voltage, pole, cutoff = (
+            keyword(n) for n in (
+                "ts_elecs_out_of_core", "bias_voltage_v", "negf_eq_pole_ev",
+                "negf_neq_fermi_cutoff_kt"))
+        self.out_of_core = fdf_true(said(out_of_core))
+        self.volts = abs(ev(said(voltage), voltage))
+        self.pole_ev = ev(said(pole), pole)
+        # ITS TEMPERATURE, the deck's or SIESTA's own default -- the one
+        # rule the record's current reads it by (`record.temperature_k_of`).
+        from .record import temperature_k_of
+        self.temperature_k = temperature_k_of(p)
+        self.cutoff_kt = float(said(cutoff)[0])
         # HOW MANY SPIN COMPONENTS its Hamiltonian holds -- the factor of
         # the engine's own file estimate (`m_ts_electrode.F90`).
         if p.spin_treatment not in SPIN_COMPONENTS:
@@ -266,16 +272,20 @@ class _Unread(Exception):
     """A lead's run output that could not be read for its orbital count."""
 
 
-def _decks_per_voltage(base, task, stage_dir: Path) -> List[Tuple[float, Path]]:
-    """One prepared device deck per voltage -- any frame's, the decks being
-    the same across frames."""
+def _decks_per_voltage(calc, stage: str,
+                       stage_dir: Path) -> List[Tuple[float, Path]]:
+    """One prepared deck of ``stage`` per voltage -- any frame's, the decks
+    being the same across frames."""
+    from ..transport.rung import frames_had
     from ..transport.stages import point_folders
     from ..jobset.naming import stage_home
     from ..runfiles import deck_role
-    names = stage_home(base, task, "device").names
+    base, task = calc.base, calc.task
+    names = stage_home(base, task, stage).names
     deck = names.name(deck_role(task.engine))
     seen: Dict[float, Path] = {}
-    pts = point_folders(base, task, "device")
+    pts = point_folders(base, task, stage,
+                        frames=frames_had(calc))
     for d, pt in pts:
         v = pt.bias_v
         p = Path(d) / deck
@@ -288,8 +298,9 @@ def _decks_per_voltage(base, task, stage_dir: Path) -> List[Tuple[float, Path]]:
     return sorted(seen.items())
 
 
-def _estimate_line(base, task, stage_dir: Path, scratch_dir: str) -> str:
-    decks = _decks_per_voltage(base, task, stage_dir)
+def _estimate_line(calc, stage: str, stage_dir: Path,
+                   scratch_dir: str) -> str:
+    decks = _decks_per_voltage(calc, stage, stage_dir)
     if not decks:
         return f"{scratch_dir}/: one pair at a time"
     try:
@@ -298,7 +309,7 @@ def _estimate_line(base, task, stage_dir: Path, scratch_dir: str) -> str:
         said = _kept_in_memory(first, scratch_dir)
         if said:
             return said
-        orbitals = _lead_orbitals(base, task)
+        orbitals = _lead_orbitals(calc.base, calc.task)
     except _Unread as why:
         return (f"{scratch_dir}/: one pair at a time; the size cannot be "
                 f"said -- {why}")
@@ -311,11 +322,12 @@ def _estimate_line(base, task, stage_dir: Path, scratch_dir: str) -> str:
     for v, deck in read:
         energies.append(energy_points(deck))
         if same:
-            sizes.append(f"{size_words(file_bytes(one, deck))} a lead at {v:g} V")
+            sizes.append(f"{size_words(file_bytes(one, deck))} a lead at "
+                         f"{volts_words(v)}")
         else:
             sizes.append(", ".join(
                 f"{lead} {size_words(file_bytes(n, deck))}"
-                for lead, n in orbitals.items()) + f" a lead at {v:g} V")
+                for lead, n in orbitals.items()) + f" a lead at {volts_words(v)}")
     k = k_points_time_reversed(first.grid)
     orbs = (f"{one} orbitals" if same
             else ", ".join(f"{lead} {n}" for lead, n in orbitals.items())

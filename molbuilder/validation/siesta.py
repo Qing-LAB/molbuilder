@@ -12,6 +12,7 @@ from typing import List, Optional
 import numpy as np
 
 from ..issues import Issue
+from ..units import volts_words
 from ..runfiles import MAKOV_PAYNE_SCRIPT
 from ..structure import Structure
 from .sidecar import check_frozen_atoms_consumed
@@ -514,6 +515,15 @@ def _check_siesta_vacuum_adequacy(struct: Structure,
 # --------------------------------------------------------------------- #
 
 
+def _reads_spacing(rung: str) -> bool:
+    """Whether the transport rung ``rung`` reads the bias window's spacing
+    (``negf_neq_spacing_ev``) -- the catalogue's ``stages``, through the one
+    door (`template.reads`)."""
+    from ..template import catalogue, one, reads
+    return reads(one(catalogue(), "negf_neq_spacing_ev", engine="siesta"),
+                 "siesta", "transport", rung)
+
+
 def _bias_window_points(cfg) -> List[Issue]:
     """The device point's bias window at its spacing, counted as TranSIESTA
     counts it (`transport.gf_files.line_points`): a spacing that leaves the
@@ -535,7 +545,7 @@ def _bias_window_points(cfg) -> List[Issue]:
     return [Issue(
         "error",
         f"negf_neq_spacing_ev = {delta:g} eV leaves the bias window at "
-        f"{volts:g} V ({window:.4f} eV wide: |V| plus {cutoff:g} kT each "
+        f"{volts_words(volts)} ({window:.4f} eV wide: |V| plus {cutoff:g} kT each "
         f"side at {float(cfg.electronic_temperature):g} K) no point -- set it "
         f"at or below {largest:.4f} eV",
         "config.negf_neq_spacing_ev")]
@@ -657,9 +667,12 @@ def validate_siesta(struct: Structure, cfg,
     issues += _kmesh.check(meshes, struct, cell=cell, refused=refused)
 
     # THE BIAS WINDOW'S LINE (`engines/transport.md` § 2a.11, *The levers*):
-    # a device point under bias whose spacing leaves its window no point.
-    if (calculation == "transport" and rung == "device"
-            and "negf_neq_spacing_ev" not in refused):
+    # a device point under bias whose spacing leaves its window no point --
+    # judged on the rung that reads the spacing (`template.reads`), as every
+    # item is judged only where it is read.
+    if (calculation == "transport" and rung is not None
+            and "negf_neq_spacing_ev" not in refused
+            and _reads_spacing(rung)):
         issues += _bias_window_points(cfg)
 
     if cell is None:

@@ -383,6 +383,10 @@ def junction(tmp_path_factory):
         a = client.get(f"/api/transport/describe_attempt?path={cite}&engine=siesta")
         run.said["describe_attempt"] = Said(a.status_code,
                                             json.dumps(a.get_json()))
+        # ...AND A COPY OF IT, a pseudopotential directory typed into its
+        # template by hand, its seed prepared
+        # (:func:`_psml_lib_typed_on_a_cited_run`).
+        run.psml_lib_typed = _psml_lib_typed_on_a_cited_run(run)
 
         # THE REFUSAL THAT COMES AFTER A CITATION IS READ (`task.py`).
         r = molbuilder("describe", "--engine", "siesta",
@@ -1224,6 +1228,33 @@ def test_the_tab_shows_what_the_citation_measured(junction, page,
                                    said)
 
 
+@pytest.mark.parametrize("cited, says", [
+    ("run", "Values from the run you cited"),
+    ("pair", "Values from the record of the optimization your structure "
+             "pair carries"),
+])
+def test_the_shared_panel_says_which_kind_of_citation_its_values_came_from(
+        junction, page, monkeypatch, cited, says):
+    """`engines/transport.md` § 3.1, § 3.8.1: the shared panel is drawn
+    holding the citation's answers, and the line above it says where they
+    came from -- the run cited, or the record the cited pair carries -- the
+    citation's kind as the server sends it and the page reads it.
+
+    THE SILENT FAILURE: the kind spelled one way by the server and another
+    by the page, so the panel says the citation answered nothing while it
+    holds every value it answered."""
+    from playwright.sync_api import expect
+    from conftest import point_the_one_door_at
+    from support.live_server import serve
+    point_the_one_door_at(junction.tree.parent, monkeypatch.setenv)
+    with serve() as base:
+        _cited_on_the_tab(page, base, junction,
+                          junction.cite if cited == "run"
+                          else junction.frame_set)
+        expect(page.locator("#transport-shared-source")).to_contain_text(
+            says, timeout=15000)
+
+
 def test_describe_is_one_act_and_refuses_a_described_folder(junction):
     """`engines/transport.md` § 3.8.2a: the describe door writes a
     description into a folder that holds none and refuses one that holds one
@@ -1255,6 +1286,50 @@ def test_describe_refuses_a_folder_above_a_calculations(junction):
     named = address(junction.topic, find_projects_root(junction.topic))
     assert named in error and "under a topic" in error, (named, error)
     assert junction.topic_after == junction.topic_before
+
+
+def _psml_lib_typed_on_a_cited_run(junction) -> RealRun:
+    """The calculation the Transport tab described on the cited run, copied
+    (`support.real_runs.copy_of`), a pseudopotential directory typed into
+    its template by hand -- which `describe` refuses for a cited run, and
+    the template does not stop -- and its seed prepared: made by the
+    module's fixture, on the road it set up."""
+    from support.road import group_words
+
+    def typed_and_prepared(copy):
+        one_rank(copy.bundle)
+        set_by_the_person(copy.bundle, {"psml_lib": "pseudopotential"})
+        taken(copy, "prep seed", "prep", "task",
+              *group_words(copy.bundle, "seed"), "--target", "this")
+    return copy_of(RealRun(tree=junction.tree, bundle=junction.described_at),
+                   "psml-lib-typed", typed_and_prepared)
+
+
+@pytest.mark.parametrize("cited, says", [
+    ("run", "travel with the CITED run"),
+    # ...NAMING THE COMMAND THE DIRECTORY IS GIVEN BY, as typed
+    # (`job-system.md` § 5.3: what molbuilder prints, you can type).
+    ("pair", "copies this calculation's .psml files from pseudopotential "
+             f"-- the template's `psml_lib`, named by `{TYPED} describe "
+             f"--psml-lib DIR` for a cited structure pair"),
+])
+def test_the_seed_says_where_its_pseudopotentials_came_from_as_prep_took_them(
+        junction, cited, says):
+    """`engines/transport.md` § 3.1: a cited run's pseudopotentials travel
+    with it and a cited pair's come from the directory the person names, and
+    the seed deck's note names the one prep took them from -- by the
+    citation's kind, as prep takes them.
+
+    THE SILENT FAILURE: the note asked the template's `psml_lib` instead, so
+    a directory typed by hand on a cited run had the seed say its files came
+    from that directory while prep copied the run's."""
+    from support.road import stage_file
+    bundle = (junction.psml_lib_typed.bundle if cited == "run"
+              else junction.from_pair.bundle)
+    deck = stage_file(bundle, "seed", ".fdf").read_text()
+    words = " ".join(line.lstrip("#").strip() for line in deck.splitlines()
+                     if line.startswith("#"))
+    assert says in words, words
 
 
 def test_a_pair_saved_from_the_run_defaults_the_template_as_the_run_does(
@@ -1390,12 +1465,16 @@ def _prepared_decks(run, stage):
     each point's (`transport.stages.point_folders`) -- named by the run's
     one naming door (`runfiles.RunNames`)."""
     from molbuilder.jobset.naming import stage_home
+    from molbuilder.calculation import open as open_calculation
     from molbuilder.task import of as task_of
+    from molbuilder.transport.rung import frames_had
     from molbuilder.transport.stages import point_folders
     task = task_of(run.bundle)
     home = stage_home(run.bundle, task, stage)
     names = home.names
-    folders = [f for f, _v in point_folders(run.bundle, task, stage)]
+    folders = [f for f, _v in point_folders(
+        run.bundle, task, stage,
+        frames=frames_had(open_calculation(run.bundle)))]
     return [f / names.name(".fdf") for f in (folders or [home.dir])]
 
 
@@ -1810,11 +1889,12 @@ def test_every_difference_between_two_decks_is_said(junction):
     from molbuilder.calculation import open as open_calculation
     from molbuilder.transport.gather import composed_junction, rung_deck_now
     from molbuilder.siesta.engine_input import engine_input_differences
-    from molbuilder.transport.stages import frames_of, rung_points
+    from molbuilder.transport.rung import frames_had
+    from molbuilder.transport.stages import rung_points
     base = junction.bundle
     calc = open_calculation(base)
     point = next(p for p in rung_points(calc.task, "device",
-                                        frames=frames_of(base))
+                                        frames=frames_had(calc))
                  if p.volts == 0.2)
     ran = rung_deck_now(calc, "device", composed_junction(calc), point=point)
     now = ran
@@ -2290,9 +2370,10 @@ def test_the_leads_greens_functions_are_the_rounds_one_pair(junction):
     lead_out = run_of(run.attempt("electrode_L")).stdout
     n_orb = detect(str(lead_out)).parse(str(lead_out)).runtime_info["n_orbitals"]
     from molbuilder.calculation import open as open_calculation
-    device_job = open_calculation(run.bundle).jobset.job("device")
-    line = status_line(run.bundle, task, stage_home(run.bundle, task,
-                                                    "device").dir, None,
+    calc = open_calculation(run.bundle)
+    device_job = calc.jobset.job("device")
+    line = status_line(calc, "device",
+                       stage_home(run.bundle, task, "device").dir, None,
                        device_job.scratch_dir)
     # A SIZE IN THE UNIT IT REACHES (`units.size_words`, the one spelling).
     import re
@@ -5549,7 +5630,9 @@ def test_a_frame_set_of_the_same_junction_takes_over_frame_0(reused):
     from molbuilder.runrecord import read_copied_from, read_gathered_from
     from molbuilder.task import of as task_of
     from molbuilder.transport.compose import read_provenance, recorded_junction
-    from molbuilder.transport.stages import frames_of, rung_points
+    from molbuilder.calculation import open as open_calculation
+    from molbuilder.transport.rung import frames_had
+    from molbuilder.transport.stages import rung_points
     framed, once, junction = (reused["framed"], reused["once"],
                               reused["finished"])
     label = task_of(once.bundle).label
@@ -5577,7 +5660,8 @@ def test_a_frame_set_of_the_same_junction_takes_over_frame_0(reused):
         theirs = _runs_of(once, stage)[-1]
         run = _runs_of(framed, stage)[0]
         assert read_copied_from(run) is None, run
-        points = rung_points(task, stage, frames=frames_of(framed.bundle))
+        points = rung_points(task, stage, frames=frames_had(
+            open_calculation(framed.bundle)))
         assert len(points) == _N_FRAMES, points
         for pt in points:
             got = read_copied_from(run / pt.rel)
@@ -5992,6 +6076,10 @@ def test_the_transport_tab_describes_a_calculation_that_reuses_one(reused):
     attempt, code, answer, page = reused["page"]
     assert attempt["reuses"] == "P/transport/T"
     assert attempt["summary"].startswith("a transport calculation · T · ")
+    # ITS VOLTAGES IN THE ONE SPELLING every surface says a voltage in
+    # (`units.volts_words`; the user, 2026-11-22) -- as the bias control on
+    # the same page says them.
+    assert " · 0 V, 0.2 V · " in attempt["summary"], attempt["summary"]
     assert code == 200 and answer["ok"], answer
     task = json.loads((page / "task.json").read_text())
     assert task["reuses"] == "P/transport/T"

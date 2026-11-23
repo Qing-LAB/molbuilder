@@ -890,6 +890,7 @@ class PointsReading:
         fact in the kind table (``computes``; a transmission, a product of
         the device's, converges nothing) -- when every point's output says
         it converged; otherwise ``None``, nothing yet."""
+        from ..identity import COMPUTES_SCF
         from ..kind_table import kind
         from ..template import stage_roles
         pts = self.rows
@@ -897,7 +898,8 @@ class PointsReading:
         if no is not None:
             return no["verdict_words"]
         k = kind(str(task.calculation))
-        scf = any((r := k.role(name)) is not None and r.computes == "scf"
+        scf = any((r := k.role(name)) is not None
+                  and r.computes == COMPUTES_SCF
                   for name in stage_roles(str(task.engine),
                                           str(task.calculation), stage)
                   or ())

@@ -45,14 +45,19 @@ import numpy as np
 from ..ncdata import (Var, coordinate, copy_stated, json_attrs,
                       scf_history_values, scf_history_vars, structure_attrs,
                       structure_values, structure_vars)
-from ..runfiles import (ROLE_TBT_DIGEST, TBT_CHANNEL_TAGS, TBTRANS_AVADOS,
-                        TBTRANS_AVBDOS, TBTRANS_AVDOS, TBTRANS_AVTEIG,
-                        TBTRANS_AVTRANS, TBTRANS_NC, shown)
+from ..runfiles import (CHANNEL_UNPOLARIZED, ROLE_TBT_DIGEST,
+                        SPIN_POLARIZED, TBT_CHANNEL_TAGS, TBT_SPIN_CHANNELS,
+                        TBTRANS_AVADOS, TBTRANS_AVBDOS, TBTRANS_AVDOS,
+                        TBTRANS_AVTEIG, TBTRANS_AVTRANS, TBTRANS_NC, shown)
 
 #: The unpolarized channel's tag, which the variables' sources name.
-_TBT = TBT_CHANNEL_TAGS["unpolarized"]
+_TBT = TBT_CHANNEL_TAGS[CHANNEL_UNPOLARIZED]
+from ..engine_table import engine as _engine
+from ..kind_table import kind as _kind
+from ..units import volts_words
 from .sort import DEVICE_REGIONS
-from .stages import ENGINE, same_volts, voltages_once
+from .stages import DEVICE_RUNG, ENGINE, same_volts, voltages_once
+from .window import window_rung
 
 #: The file's schema, stated in it: an older file is refused by its
 #: version, and `summarize task` writes it again.
@@ -614,7 +619,7 @@ def _index(v: float, voltages: Sequence[float]) -> int:
     :class:`DataFileError`."""
     k = next((k for k, u in enumerate(voltages) if same_volts(v, u)), None)
     if k is None:
-        raise DataFileError(f"{float(v):g} V is not one of the file's "
+        raise DataFileError(f"{volts_words(v)} is not one of the file's "
                             f"voltages {list(voltages)}")
     return k
 
@@ -650,7 +655,8 @@ def data_file_bytes(calc, record: Dict, *,
     from .rung import compose_refusals
     from .record import iv_rows, order_unstated_said
     from ..paths import frame_token
-    from .stages import (TRANSPORT_STAGES, frames_of,
+    from .rung import frames_had
+    from .stages import (TRANSPORT_STAGES,
                          per_point_rungs, rung_points)
     from .transiesta import LEAD_NAMES
     base, task = Path(calc.base), calc.task
@@ -672,9 +678,9 @@ def data_file_bytes(calc, record: Dict, *,
         raise DataFileError(unstated)
     junction = (recorded.structure.restored() if recorded is not None
                 else None)
-    n_frames = frames_of(base)
+    n_frames = frames_had(calc)
     biases = voltages_once(pt.bias_v for pt in rung_points(
-        task, "transmission", frames=n_frames)) or [0.0]
+        task, window_rung(), frames=n_frames)) or [0.0]
     from .energies import same_grid
     done_points = list(record.get("points") or ())
     grid = done_points[0]["energy_ev"] if done_points else []
@@ -691,14 +697,13 @@ def data_file_bytes(calc, record: Dict, *,
     # one answer (`record.collect_record`).
     polarized = bool(record.get("polarized"))
     # EACH CHANNEL BY ITS NAME, the one table of a spin's channels
-    # (`conductance.SPIN_CHANNELS`): a non-polarized deck's one channel is
+    # (`runfiles.TBT_SPIN_CHANNELS`): a non-polarized deck's one channel is
     # ``unpolarized``, as every data file names it -- never the spin
     # option's own word.
-    from .conductance import SPIN_CHANNELS
     spins = (list(next(p["channels"] for p in done_points
                        if p.get("channels"))) if polarized
              else list(dict.fromkeys(c for p in done_points
-                                     for c in SPIN_CHANNELS[p["spin"]])))
+                                     for c in TBT_SPIN_CHANNELS[p["spin"]])))
     leads = list(LEAD_NAMES)
 
     def by_spin(p) -> List[Dict]:
@@ -743,7 +748,7 @@ def data_file_bytes(calc, record: Dict, *,
     from ..runs import stage_atom_map
     atoms = (stage_atom_map(recorded.structure.n_atoms,
                             recorded.structure.atom_order, task.calculation,
-                            "device")
+                            DEVICE_RUNG)
              if recorded is not None
              else AtomIndexMap.of_engine_record(None, 0)).as_listed_by_user()
     # EVERY RUN'S CONVERGENCE: the rungs that run once, by the stage table;
@@ -751,7 +756,7 @@ def data_file_bytes(calc, record: Dict, *,
     # longest; TranSIESTA's charge columns as its header named them.
     by_stage = {s.get("stage"): s for s in record.get("stages") or ()}
     once = [s for s in TRANSPORT_STAGES if s not in per_point_rungs()]
-    device = by_stage.get("device") or {}
+    device = by_stage.get(DEVICE_RUNG) or {}
     device_runs = list(device.get("by_point") or ()) or (
         [device] if device else [])
     histories = ([by_stage.get(r) or {} for r in once] + device_runs)
@@ -861,12 +866,10 @@ def data_file_bytes(calc, record: Dict, *,
         if i is not None:
             values["iv_current_a"][_cell(f, v, iv_biases)] = i
     # EACH SPIN'S I-V CURRENT, a polarized calculation's (the record's).
-    for s, key in ((spins.index("up") if "up" in spins else None,
-                    "current_up_a"),
-                   (spins.index("down") if "down" in spins else None,
-                    "current_down_a")):
-        if s is None:
+    for channel in TBT_SPIN_CHANNELS[SPIN_POLARIZED]:
+        if channel not in spins:
             continue
+        s, key = spins.index(channel), f"current_{channel}_a"
         for (f, v), i in zip(rows, iv.get(key) or ()):
             if i is not None:
                 values["iv_current_by_spin_a"][_cell(f, v, iv_biases)
@@ -931,7 +934,6 @@ def data_file_bytes(calc, record: Dict, *,
     # 2026-11-16: "transport can also save siesta version where appropriate
     # in the meta data").
     found = sorted({v for by in versions.values() for v in by.values()})
-    from ..engine_table import engine as engine_row
 
     # THE FILE, through the variable record's one writing loop (`ncdata`),
     # group by group, stating itself (`model/datafiles.md` § 2b).
@@ -942,12 +944,14 @@ def data_file_bytes(calc, record: Dict, *,
                          f"stage that runs once, each point and its device "
                          f"run, and a summary across the points"),
               schema=DATA_SCHEMA, molbuilder_version=__version__,
-              engine=engine_row(ENGINE).words,
+              engine=ENGINE,
               engine_version=" and ".join(found),
-              computed_in=("the calculation's runs -- its TranSIESTA and "
-                           "TBtrans -- each stage's run named in "
-                           "provenance_chain and each point's in its folder; "
-                           "each variable's source names its file"))
+              computed_in=(f"the calculation's runs -- its "
+                           f"{_kind('transport').engine_label(ENGINE)} and "
+                           f"{_engine(ENGINE).program_words('tbtrans')} -- "
+                           f"each stage's run named in provenance_chain and "
+                           f"each point's in its folder; each variable's "
+                           f"source names its file"))
         # A FRAME ROW'S DEFINITION is its meaning as the set writes it
         # (`model/datafiles.md` § 2).
         _write_groups(ds, dims, with_meanings(VARIABLES, junction), values,
