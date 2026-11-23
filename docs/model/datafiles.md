@@ -76,8 +76,8 @@ content, named once, read by the writer and the reader alike; the catalogue
 | field | what it says |
 |---|---|
 | name, dimensions | the variable, over its axes — every axis a row of § 2a and a coordinate of its own name, so a reader selects by value (`transmission.sel(bias_v=0.2)`) |
-| `kind` | `given` (an input as stated), `raw` (as the engine printed it), `measured` (read off the structures — a frame set's rows, [`structure.md`](?doc=model/structure.md) § 2.2f), `derived` (molbuilder's computation), `state` (what happened: a run's state, why a value is missing), `coordinate` |
-| `units` · `long_name` · `definition` | one spelling a unit (`angstrom`, `A`, `eV`); what it is; how it is obtained — the formula for a derived one. **A value cited from another record keeps what it means**: a variable holding a row a structure states (a frame set's, [`structure.md`](?doc=model/structure.md) § 2.2f) takes its `definition` from the row's meaning as written (`note`), so a number carried into a file still says what it is and how it was obtained |
+| `kind` | `given` (an input as stated), `raw` (as the engine printed it), `measured` (read off the structures — a frame set's rows, [`structure.md`](?doc=model/structure.md) § 2.2f; from `transport-data@14` no variable of this kind remains, the rows carried in the structure instead — said so here until a file has one again), `derived` (molbuilder's computation), `state` (what happened: a run's state, why a value is missing), `coordinate` |
+| `units` · `long_name` · `definition` | one spelling a unit (`angstrom`, `A`, `eV`); what it is; how it is obtained — the formula for a derived one. **A value cited from another record keeps what it means**: a variable holding a row a structure states (a frame set's, [`structure.md`](?doc=model/structure.md) § 2.2f) takes its `definition` from the row's meaning as written (`note`), so a number carried into a file still says what it is and how it was obtained — `transport-data@13`'s frame rows; from `@14` none, the rows read in `structure_json` with their meanings |
 | `source` | for a raw one, the file it was read from |
 | `auxiliary` | a label beside an axis (CF auxiliary coordinate, named in each variable's `coordinates`): an atom's element, a frame's folder — **of the kind its value is** (`given`, `raw`), never `coordinate`, which is an axis's own |
 | `atom_index` | its values are atom indices, counting by the file's atom index map (`free_atom`, a digest's `device_orbital_atom`) |
@@ -181,6 +181,7 @@ there, in the change that first writes it.
 | `angstrom^2/amu^1/2` | square ångström per square-root amu | `ang2_per_amu12` |
 | `D/(angstrom amu^1/2)` | debye (3.33564×10⁻³⁰ C m) per ångström per square-root amu | `d_per_ang_amu12` |
 | `angstrom^4/amu` | ångström to the fourth per amu | `ang4_per_amu` |
+| `mdyn/angstrom` | millidyne per ångström, 100 N/m — a mode's force constant, as Gaussian prints it (to be listed in § 9.2 with `spectra-data@11`, `engines/vibration.md` § 6.11 § 5) | `mdyn_per_ang` |
 
 **CF-1.8 and its units**: CF reads a unit through UDUNITS, which has no
 name for the hartree, the conductance quantum or a square-root mass; those
@@ -296,7 +297,7 @@ naming this section — in every file, every group, the root's included.
 | `mo` | molecular orbitals | from 0, ascending energy | 1 | vibration |
 | `probed_mode` | the modes the electronic-structure probe ran on | each mode's 1-based index | 1 | vibration |
 | `window` | an orbital's place in the probe's window | from 0, ascending energy | 1 | vibration |
-| `temperature_k` | the thermochemistry's temperatures | each temperature | K | vibration |
+| `temperature_k` | the temperatures a quantity is stated at — the thermochemistry's grid, and the modes' own (`/modes/thermal`, from `spectra-data@11`, which temperatures: [`engines/vibration.md`](?doc=engines/vibration.md) § 6.11 § 3) | each temperature | K | vibration |
 | `fc_step` | a SIESTA force-constant run's steps | from 0, step 0 the reference geometry, then each displacement in SIESTA's order | 1 | vibration (`/partial_charges`) |
 | `photon_energy_ev` | the light's energy, ħω — a concept apart from `energy_ev`, which is an electron's energy relative to the device's Fermi level at 0 V | each photon energy as SIESTA wrote it, ascending | eV | optical |
 | `run` | a calculation's runs, stage by stage and each stage's starts in turn | each run's folder below the calculation (`01_coarse/run-0`) | — | steps |
@@ -357,7 +358,8 @@ component's (§ 2a rule 1); and the attribute `structure_json`,
 `Structure.to_dict()` whole, **its labels among it — never a second encoding
 of them by hand**, read back as its dict by the framework. A kind adds its
 own variables to the same group in the same write (the transport file: each
-atom's region, the basis orbitals, each frame's rows); a reader asks the
+atom's region, the basis orbitals, each frame's rows at `@13` — from `@14`
+the frame set's rows are `structure_json`'s, § 9.1); a reader asks the
 structure's labels of `Structure.from_dict(structure_json)`. A
 calculation's runs and their steps (§ 9.5) are not laid out so: their
 geometry is a trajectory, each step's positions and each run's held atoms
@@ -778,7 +780,7 @@ file states it (9.6).
 |---|---|---|---|---|
 | `element` | atom | given | — | **label**: the atom's chemical symbol, in the file's atom order |
 | `position_ang` | atom, xyz — in the transport file frame, atom, xyz | given | angstrom | each atom's position, in the file's atom order: the structure's coordinates — in the transport file every frame's |
-| `mass_amu` | atom | given | amu | the atom's mass, the one the calculation used, as its result or its structure states it; NaN where neither does |
+| `mass_amu` | atom | given | amu | the atom's mass, the one the calculation used, as its result or its structure states it; NaN where neither does — a calculation that uses no masses, transport's from `transport-data@14`, writes it NaN, a frame set's masses being its structure's, in `structure_json` |
 | `held` | atom | given | 1 | **flag** (`1` or `0`): 1 for an atom the structure holds fixed — its `frozen_atoms` label — 0 for a free one |
 | `cell_ang` | cell_vector, xyz | given | angstrom | the cell: its three lattice vectors as rows; NaN where the structure has none |
 | `axis_kind` | cell_vector | given | — | each lattice vector's periodicity — `periodic`, `isolated` or `transport` — as the structure states it ([`model/structure-periodicity.md`](?doc=model/structure-periodicity.md)) |
@@ -832,7 +834,7 @@ notebook, [`engines/transport-postprocessing.md`](?doc=engines/transport-postpro
 
 ```text
 /                              the calculation's records -- attributes alone
-/structure                     the junction: its atoms, cell, basis orbitals, every frame and its rows
+/structure                     the junction: its atoms, cell, basis orbitals, every frame (@13: and its rows)
 /stages/<stage>                seed, electrode_L, electrode_R -- each stage that runs once
 /points/<point>                v0, v0.2, v-0.2 ... -- each point the description asks for, done or not
 /points/<point>/device         the device run that point's transmission gathered
@@ -851,12 +853,15 @@ where its group does not — `/summary`'s `point_state` is a point's `state`,
 its `device_fermi_level_ev` the device group's `fermi_level_ev`; a stage's
 values are its group's, the stage's name the group's. A point not done holds every variable at its fill, `done` `0`.
 
-**A frame set** — a calculation citing several structures, a mode's frames
+**A frame set** — a calculation citing several structures: a mode's own
+frames, snapshots of every mode, frames a person built
 ([`model/structure.md`](?doc=model/structure.md) § 2.2f) — adds the level
 `/points/<frame>` (title *the points of frame f000*, no variable), `frame`
 longer than 1, and *the frames' part*: each frame's rows and the set's numbers
-in `/structure`, the frames' average in `/summary`, and the set's records on
-`/` — every one of its variables written for one structure too, at its fill.
+in `/structure` at `@13` (from `@14` each frame's `weight` alone, the rows
+read from `structure_json`, below), the frames' average in `/summary`, and
+the set's records on `/` — every one of its variables written for one
+structure too, at its fill.
 
 #### `/` — the calculation's records
 
@@ -883,13 +888,13 @@ No variable.
 | `description` | *JSON text*: the calculation's description, its `task.json`, as read when the file was written |
 | `template` | the calculation's `<label>.template.toml`, as text |
 | `job_request` | *JSON text*: the calculation's `job-request.json` |
-| *the frames' part*, where the cited structure states them: | |
+| *the frames' part*, where the cited structure states them (`@13`; from `@14` every row is the maker's, carried in `/structure`'s `structure_json` — below): | |
 | `sampling_rule` | the rule, by name, that placed the frames along the mode and gave their weights (`gauss-hermite`) |
 | `mass_source` | which masses `/structure`'s `mass_amu` holds (`standard atomic weights`) — the masses the position along the mode is measured with |
 | `vibration_run` · `vibration_result_sha256` | the vibration result the frames were made from: its run's folder, and its JSON's sha256 |
-| `structure_rows` | **record**: every row the frame set's structure states, as written — its name, value, unit and meaning (`note`) |
-| `frame_warnings` | **record**: what is said of the frames' rows — their weights' sum off 1, a row written without its meaning; empty where nothing is |
-| `average_assumptions` | **record**: what a harmonic mode's average assumes ([`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md) § 7), where every frame states a weight |
+| `structure_rows` | **record** (`@13`): every row the frame set's structure states, as written — its name, value, unit and meaning (`note`) |
+| `frame_warnings` | **record**: what is said of the weights — their sum off 1, frames that state none; `@13` also a row written without its meaning; empty where nothing is |
+| `average_assumptions` | **record**: what a frames' average assumes, where every frame states a weight — transport's own, said of frames, as [`engines/transport.md`](?doc=engines/transport.md) § 2a.12 lists them (their one home); `@13` also a harmonic mode's, where the set states a mode — from `@14` the maker's own are its `assumptions` row, in `structure_json` |
 
 #### `/structure` — the junction
 
@@ -902,7 +907,8 @@ its basis and its frames:
 
 *Axes* `atom`, `xyz`, `cell_vector` (9.0.4), `frame`, `orbital` · *Labels*
 `element`, `atom_region`, `user_atom_index`, `engine_atom_index` (atom);
-`frame_token`, `frame_rows` and each frame's rows (frame)
+`frame_token`, `frame_rows` and each frame's rows (frame) — from `@14`
+`frame_token` and `weight` (the table above)
 
 | name | over | kind | units | what it is |
 |---|---|---|---|---|
@@ -914,11 +920,31 @@ its basis and its frames:
 | `orbital_n` · `orbital_l` · `orbital_m` · `orbital_zeta` | orbital | raw | 1 | the orbital's principal quantum number, angular momentum, magnetic number and zeta, as the device run's basis states them (n, l, m, z) — *from the device run's `<label>.ORB_INDX`* |
 | `orbital_type` | orbital | derived | — | its type from l and m, in the words a selection's orbital menu uses — `s`, `px`, `py`, `pz`, `d…`; empty for an l the menu does not offer |
 
-*The frames' part* — each frame's rows, labels beside `frame` (in `/summary`
-too), and the set's numbers. Each is NaN where the frame, or the set, states
-none; its `definition` is the meaning the frame set writes for it (its
-`note`), the vocabulary's of [`model/structure.md`](?doc=model/structure.md)
-§ 2.2f where it writes none:
+**From `transport-data@14` (R3d2b2) the frames' part is generic** — the
+frame set's rows are their maker's, carried as the structure carries them
+([`engines/transport.md`](?doc=engines/transport.md) § 2a.12). `/structure`'s
+`structure_json` already holds the composed junction whole — the structure's
+rows and every frame's, each with its unit and meaning, its `info` and its
+channels — so no row is written a second time:
+
+| `@14` | what it is |
+|---|---|
+| `weight` | **label** beside `frame`, in every group over that axis (`given`, `1`): the frame's share of the frames' average, its maker's |
+| `weight_sum` · `weight_tolerance` | the weights' sum and the container's tolerance, beside the average (transport's own, as `@13`) |
+| `average_transmission` and the average's variables | as `@13`, the definition said of frames: ⟨T(E)⟩ = Σ_f weight_f T_f(E) over every frame at its stated weight |
+| `frame_warnings` · `average_assumptions` | transport's own records, the weights' and the average's (above) |
+| `frame_rows`, `structure_rows`, the vocabulary's variables below | gone — the rows are read from `structure_json`, through the structure's door (`postprocess.frame_rows`, [`engines/transport-postprocessing.md`](?doc=engines/transport-postprocessing.md) § 3.2) |
+| `/structure`'s `mass_amu` | NaN — a transport calculation uses no masses; a set's masses are its structure's, in `structure_json` (§ 9.0.5) |
+
+The tables below are `@13`'s, where transport lays out a mode's own set's
+rows by its own table of them (`frame_average.ROWS`, which moves to the motion
+toolkit, [`engines/vibration-frames.md`](?doc=engines/vibration-frames.md)
+§ 5.1).
+
+*The frames' part, `@13`* — each frame's rows, labels beside `frame` (in
+`/summary` too), and the set's numbers. Each is NaN where the frame, or the
+set, states none; its `definition` is the meaning the frame set writes for
+it (its `note`), the vocabulary's where it writes none:
 
 | name | over | kind | units | what it is |
 |---|---|---|---|---|
@@ -927,14 +953,14 @@ none; its `definition` is the meaning the frame set writes for it (its
 | `max_atom_displacement_ang` | frame | measured | angstrom | **label**: the largest single atom's displacement from the first frame, max_A \|R_A − R0_A\| |
 | `q_amu12_ang` | frame | derived | amu^1/2 angstrom | **label**: the frame's position along the mode, the mass-weighted normal coordinate q — every atom displaced by q L_A, Σ_A m_A \|L_A\|² = 1 over the `mass_amu` masses; \|q\| = √(Σ_A m_A \|R_A − R0_A\|²), its sign the side of the first frame it sits on |
 | `node_sigma` | frame | derived | 1 | **label**: the same position in units of the spread, q / σ |
-| `weight` | frame | given | 1 | **label**: the frame's share of the mode's average — the sampling rule's weight at this frame's node, the weights summing to 1 |
+| `weight` | frame | given | 1 | **label**: the frame's share of the frames' average — its maker's weight, the weights summing to 1 |
 | `mode_index_1based` | — | given | 1 | which mode of the vibration result the frames sample, 1-based as the result counts them |
 | `frequency_cm1` | — | given | cm-1 | that mode's wavenumber, as the vibration result states it |
-| `temperature_k` | — | given | K | the temperature of the motion the frames sample — the junction's, or for a mode pumped out of equilibrium its effective temperature; the input that sets the spread |
+| `temperature_k` | — | given | K | the temperature of the motion the frames sample — the junction's, or for a mode pumped at random moments its effective temperature; the input that sets the spread |
 | `mean_quanta` | — | derived | 1 | the mode's mean number of vibrational quanta at that temperature, n = 1 / (exp(ħω/k_BT) − 1) |
 | `zero_point_amplitude_amu12_ang` | — | given | amu^1/2 angstrom | the mode's zero-point amplitude Q_zp = √(ħ/2ω) in q, as the vibration result states it |
 | `sigma_amu12_ang` | — | derived | amu^1/2 angstrom | the spread σ of the Gaussian in q the frames sample: σ = Q_zp √(2n + 1) |
-| `sampling_nodes` | — | given | 1 | m, the rule's number of nodes, one frame at each (the frame generator writes 3, 5 or 7) |
+| `sampling_nodes` | — | given | 1 | m, the rule's number of nodes, one frame at each (a mode's set of 3, 5 or 7) |
 | `max_displacement_ang` | — | measured | angstrom | the outermost move: the largest single atom's move at the outermost frames — the check against a bond length |
 
 | attribute | what it says |
@@ -1056,7 +1082,7 @@ Every raw variable here is *from the device point's SIESTA output*.
 
 *Axes* `frame` (home `/structure`), `bias_v`, `energy_ev`, `spin`,
 `iv_bias_v` · *Labels* `frame_token`, `frame_rows` and each frame's rows
-(`/structure`)
+(`/structure`) — from `@14` `frame_token` and `weight`
 
 | name | over | kind | units | what it is |
 |---|---|---|---|---|
@@ -1079,7 +1105,7 @@ Every raw variable here is *from the device point's SIESTA output*.
 | `iv_kt_ev` | — | given | eV | k_BT of the leads' Fermi functions in the low-bias integral — the electronic temperature the 0 V transmission's deck states; NaN where the I–V is TBtrans's own |
 | `iv_window_lowest_ev` · `iv_window_highest_ev` | — | derived | eV | the low-bias integral's range: the 0 V transmission's lowest and highest energy, E − E_F; NaN where the I–V is TBtrans's own |
 | *the frames' average* — NaN, or the empty text, where there is none: | | | | |
-| `average_transmission` | bias_v, energy_ev | derived | 1 | ⟨T(E)⟩ = Σ_f weight_f T_f(E) over every frame at its stated weight — the frame set's `sampling_rule` at its `sampling_nodes` frames |
+| `average_transmission` | bias_v, energy_ev | derived | 1 | ⟨T(E)⟩ = Σ_f weight_f T_f(E) over every frame at its stated weight — `@13`: the frame set's `sampling_rule` at its `sampling_nodes` frames; from `@14` said of frames alone, the maker's rule its own row in `structure_json` |
 | `average_delta_transmission` | bias_v, energy_ev | derived | 1 | ⟨T(E)⟩ − T_0(E): the average's change from frame 0's |
 | `average_conductance_g0` | bias_v | derived | G0 | ⟨G⟩/G0 = Σ_f weight_f G_f/G0, at the same weights |
 | `average_conductance_change_percent` | bias_v | derived | % | 100 (⟨G⟩ − G_f0)/G_f0, G_f0 frame 0's conductance |

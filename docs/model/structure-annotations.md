@@ -344,12 +344,16 @@ read from `channelKinds` instead of a literal list in `ui.js`.)*
 
 ## 7. Status
 
-**`mass_amu`, a mode's maker's channel** *(2026-10-10; 2026-10-18)* — each
-atom's mass, the one a mode's coordinate is weighted by, written by a mode's
-frame set's maker ([`model/structure.md`](?doc=model/structure.md) § 2.2f).
-Like every value channel it is the writer's: carried, remapped and shown
-(the transport data file keeps it as its `mass_amu` variable), never read for
-a meaning — no calculation reads a mass off a structure.
+**`mass_amu`, a vibration's maker's channel** *(2026-10-10; 2026-10-18)* —
+each atom's mass, the one the modes' coordinates are weighted by, written by
+a vibration's frame-set maker, the motion toolkit (from R3d2b2; the frame generator, `spectra.mode_frames`, until then)
+([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 5;
+[`model/structure.md`](?doc=model/structure.md) § 2.2f). Like every value
+channel it is the writer's: carried and remapped with the structure, never
+read for a meaning — no calculation reads a mass off a structure *(until
+R3d2b2 the transport data file also keeps it as its `mass_amu` variable; from
+`transport-data@14` it is in the junction's structure as cited,
+`structure_json`)*.
 
 **Open work:** **`value`-channel filtering and
 display** — the server must resolve a `by_value` rule, and MolView must show a

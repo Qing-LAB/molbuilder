@@ -1,52 +1,64 @@
-# Averaging the transmission over the junction's vibrations
+# Averaging over the molecule's vibrations
 
 **Role:** science reference
 **Domain:** science
-**Companions:** [`normal-modes.md`](?doc=science/normal-modes.md) § 4c (which
-mode moves the current: the screen this average feeds);
-[`engines/transport.md`](?doc=engines/transport.md) § 2a.9 (the frame set a
-transport calculation is handed); [`engines/vibration.md`](?doc=engines/vibration.md)
-§ 5.10 ③ (the frame rule's fields);
+**Companions:** [`engines/vibration-frames.md`](?doc=engines/vibration-frames.md)
+(the motion toolkit: the API that makes frames from the modes, by this
+chapter's recipes); [`engines/vibration.md`](?doc=engines/vibration.md) § 6
+(the vibration calculation: every mode's data);
+[`engines/transport.md`](?doc=engines/transport.md) § 2a.9 (a calculation
+over frames); [`normal-modes.md`](?doc=science/normal-modes.md) § 4c (which
+mode moves the current);
 [`archive/2026-10-10-q17.md`](?doc=archive/2026-10-10-q17.md) § 5z.1 (Q17, decision D5).
 
 *Written 2026-10-09 at the user's request: "add a discussion of this
-averaging as an independent document under science, expand the details".*
+averaging as an independent document under science, expand the details";
+widened 2026-11-23 to the whole molecule and every state of a mode.*
 
 ---
 
 ## 0. The question
 
 A molecule bridging two electrodes is never still. Every vibration moves it —
-a little even at absolute zero, more when warm — and a conductance measurement
-lasts millions of vibrational periods. What it reports is the transmission
-**averaged over every geometry the molecule passes through**, not the
-transmission of the relaxed geometry.
+a little even at absolute zero, more when warm — and a measurement lasts
+millions of vibrational periods. What it reports is a property — the
+transmission, a level's energy — **averaged over every geometry the molecule
+passes through**, not the property of the relaxed geometry.
 
-A transport calculation on a frame set computes that average from a handful of
-**static frames**: the relaxed junction and copies of it displaced along
-**one** normal mode — one frame set per mode *(user, 2026-10-09: "i would
-rather let one multi-frame focus on one mode")*. Each frame runs as an
-ordinary transport point, with its own device and transmission, inside the
-one transport calculation that cites the set. The average is assembled
-afterwards from the weight each frame's own rows state (`model/structure.md` § 2.2f; the mode's rows are
-carried and shown, and decide nothing in the average).
+A calculation over frames computes that average from a handful of **static
+frames**: geometries of the molecule, each computed as an ordinary static
+calculation and each carrying a weight, the average being
+$\sum_f w_f\,X_f$ ([`engines/transport.md`](?doc=engines/transport.md)
+§ 2a.9, § 2a.12). Which frames, with which weights, is a question about how
+the molecule moves — this chapter's — and choosing them is the person's
+research, made with the motion toolkit
+([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md)):
+
+- **one mode on its own** — the relaxed junction and a few copies displaced
+  along that mode, placed and weighted by the mode's state (§ 5): how much
+  that mode changes the result;
+- **the whole molecule** — snapshots in which every mode moves at once, each
+  drawn from its own state and weighted equally (§ 2c, § 5.5): the
+  molecule's average at its temperature, with a mode driven by light where
+  the person sets one.
 
 ```mermaid
 flowchart LR
-    R["relaxed junction<br/>(a finished relaxation)"] --> V["vibration run<br/>modes ω_ν, eigenvectors L_ν"]
-    V --> G["frame generator<br/>(its own module)"]
-    R --> G
-    G --> F["one multi-frame pair for one mode<br/>frame 0 = relaxed<br/>frames 1, 2 = ±displaced (1…4 for five points, 1…6 for seven)<br/>the mode in the structure's rows,<br/>each frame's node and weight in its own"]
-    F --> T["transport, per frame<br/>T_j(E): device + transmission"]
-    T --> A["the average<br/>⟨T(E)⟩ = Σ_j W_j T_j(E)"]
-    A --> C["⟨G⟩ = G₀ ⟨T(E_F)⟩<br/>for the mode"]
+    R["relaxed junction<br/>(a finished relaxation)"] --> V["vibration run<br/>modes ω_k, patterns L_k"]
+    V --> K["the motion toolkit<br/>a state for each mode"]
+    K --> F1["one mode's frames<br/>frame 0 relaxed, ±q_j,<br/>the state's Gauss weights"]
+    K --> F2["snapshots of every mode<br/>each frame weight 1/N"]
+    F1 --> T["a calculation per frame<br/>X_f"]
+    F2 --> T
+    T --> A["the average<br/>⟨X⟩ = Σ_f w_f X_f"]
 ```
 
-This document answers three questions: **where** the molecule is while it
-vibrates (§ 2; under light, § 2a), **what** the measurement averages and why a lopsided response
-gives a net change (§ 3–4), and **how** few frames can compute that average and
-when they cannot (§ 5); § 6 says what one mode's frames do not answer. § 7 lists what the picture assumes; § 8 what the
-record carries.
+This document answers: **where** the molecule is while it vibrates — one mode
+in each of its states (§ 2, § 2a, § 2b) and the whole molecule (§ 2c);
+**what** a measurement averages and why a lopsided response gives a net
+change (§ 3–4); **how** few frames compute that average and when they cannot
+(§ 5); what each kind of frame set answers (§ 6); what the picture assumes
+(§ 7); where each number is recorded (§ 8).
 
 ---
 
@@ -61,6 +73,9 @@ $$
 \mathbf R_A(Q_\nu) \;=\; \mathbf R_A^{0} \;+\; Q_\nu\,\mathbf L_{\nu,A},
 \qquad \mathbf L_{\nu,A} = \mathbf 0 \ \text{for every held atom.}
 $$
+
+With every mode moving at once, the moves add (§ 2c):
+$\mathbf R_A = \mathbf R_A^{0} + \sum_\nu Q_\nu\,\mathbf L_{\nu,A}$.
 
 The electrodes are held, so no frame moves a lead atom — the condition that
 lets every frame share one pair of lead calculations (`transport.md` § 2a.9).
@@ -147,8 +162,10 @@ what's the right way to propose a right amount of displacement?")*
 > - **A push in step with the mode** — a narrow-band infrared laser at the
 >   mode's frequency, or two lasers whose frequencies differ by it — makes the
 >   molecule *swing*. A swing spends most of its time near its turning points,
->   not in the middle, so its positions are not a bell curve (§ 2a.2). A
->   strongly curved response then needs frames placed for a swing (§ 2a.3).
+>   not in the middle, so its positions are not a bell curve (§ 2a.2): one
+>   driven molecule is in one state, a bell curve of its zero-point width
+>   riding the swing. A strongly curved response then needs frames placed by
+>   the swing's own distribution (§ 2a.3).
 
 ```mermaid
 flowchart TD
@@ -156,9 +173,9 @@ flowchart TD
     E --> R["quanta added at random moments<br/>(spontaneous Raman from a steady laser,<br/>a current through the junction)"]
     E --> C["a push in step with the mode<br/>(narrow-band infrared at ω,<br/>or two lasers differing by ω)"]
     R --> RB["still a bell curve, only wider:<br/>σ² = Q_zp²(2n+1)<br/>said as an effective temperature"]
-    C --> CS["a steady swing of amplitude Q₀<br/>carrying the thermal jiggle with it:<br/>σ² = σ_T² + Q₀²/2"]
+    C --> CS["a steady swing of amplitude Q₀:<br/>one coherent state, its zero-point width<br/>riding the swing (a warm mode: its thermal width)<br/>σ² = σ₀² + Q₀²/2"]
     RB --> F1["frames: the bell curve's rule,<br/>at the effective temperature (§ 5)"]
-    CS --> F2["frames: the swing's rule (§ 2a.3) —<br/>the bell curve's is right to second order only"]
+    CS --> F2["frames: the Gauss rule of the swing's own<br/>distribution (§ 2a.3) — the bell curve's<br/>is right to second order only"]
 ```
 
 ### What sets the spread: the mean number of quanta
@@ -236,10 +253,13 @@ L = \frac{n_{\mathrm{th}}+1}{\tau} + R_{\mathrm{aS}}
 n = \frac{n_{\mathrm{th}} + R\tau}{1 + (R_{\mathrm{aS}} - R)\,\tau} .
 $$
 
-When the two rate constants are equal, or the pumping is weak
-($R\tau \ll 1$), this is the familiar $n = n_{\mathrm{th}} + R\tau$, the
-weak-pumping form of [Kneipp1996]. With no anti-Stokes losses at all it
-grows without bound as $R\tau \to 1$.
+When the two rate constants are equal, or the pumping is weak and the mode
+cold ($R\tau \ll 1$ and $n_{\mathrm{th}} \ll 1$), this is the familiar
+$n = n_{\mathrm{th}} + R\tau$, the weak-pumping form of [Kneipp1996] — to
+first order in the rates it is
+$n \approx n_{\mathrm{th}} + \big[R(n_{\mathrm{th}}+1) - R_{\mathrm{aS}}n_{\mathrm{th}}\big]\tau$,
+so a warm soft mode with $R_{\mathrm{aS}} > R$ gains less. It grows without
+bound as $(R - R_{\mathrm{aS}})\,\tau \to 1$.
 
 **Why the shape stays a bell curve.** The populations $p_k \propto (G/L)^k$
 fall off by a constant factor per rung — exactly as a thermal state's do,
@@ -357,7 +377,7 @@ xychart-beta
     x-axis "u = Q / σ" [-1.25, -1, -0.75, -0.5, -0.25, 0, 0.25, 0.5, 0.75, 1, 1.25]
     y-axis "fraction of time per unit u" 0 --> 0.5
     line [0.183, 0.242, 0.301, 0.352, 0.387, 0.399, 0.387, 0.352, 0.301, 0.242, 0.183]
-    line [0.481, 0.318, 0.266, 0.241, 0.229, 0.225, 0.229, 0.241, 0.266, 0.318, 0.481]
+    line [0.481, 0.318, 0.265, 0.241, 0.229, 0.225, 0.229, 0.241, 0.265, 0.318, 0.481]
 ```
 
 *(Blue: the bell curve, thermal or randomly pumped. Orange: the steady swing,
@@ -382,9 +402,28 @@ Glauber's name for the corresponding states of the radiation field
 [Glauber1963]; their properties as states of the harmonic oscillator are
 [CohenTannoudji2020] Complement G$_\mathrm{V}$.
 
-**With the junction's temperature as well**, the equation of motion is
-linear, so its solution splits into two parts that do not disturb each
-other:
+**One driven molecule is in one state.** A laser is a classical field, and a
+classical push on a harmonic mode that starts in its ground state leaves it in
+exactly one pure state [CarruthersNieto1965] — the coherent state above: at every moment a bell
+curve of the zero-point width $Q_{\mathrm{zp}}$, centred on the swing.
+Photographed at a random moment, the molecule is where the swing is, plus a
+zero-point-sized spread — nothing thermal, and no other quanta mixed in. Its
+quanta are not a fixed number: a coherent state holds $n$ quanta with
+Poisson's probabilities, of mean $Q_0^2/4Q_{\mathrm{zp}}^2$
+([CohenTannoudji2020] Complement G$_\mathrm{V}$). A state with exactly $n$
+quanta is another pure state, which a steady classical push cannot make: one
+heralded event leaves it on a cold mode — one detected Stokes photon, one
+electron tunnelling inelastically — and it lasts about the energy lifetime
+$\tau$; on a warm mode one added quantum is not a number state (§ 2b.3).
+
+**A warm mode, driven.** A molecule in a junction touches its surroundings —
+the electrodes, the substrate. That contact is what damps the mode, giving
+its line its width, and the same contact keeps kicking it at random — the
+force $\xi(t)$ above. Quantum mechanically the mode is then not in one pure
+state but in a mixed one: on rung $n$ of its ladder with the thermal
+probability $p_n$ — the state of one molecule, no ensemble of molecules
+needed. The equation of motion is linear, so its solution splits into two
+parts that do not disturb each other:
 
 $$
 Q(t) = \underbrace{Q_0\cos(\omega_L t - \phi)}_{\text{the driven swing}}
@@ -393,18 +432,33 @@ Q(t) = \underbrace{Q_0\cos(\omega_L t - \phi)}_{\text{the driven swing}}
 \ddot{\delta Q} + \gamma\,\dot{\delta Q} + \omega^2\,\delta Q = \xi(t),
 $$
 
-$\delta Q$ answering the surroundings alone, as the mode would without the
-light: its positions are the thermal bell curve of spread $\sigma_T$. Averaged
-over time, the positions are the bell curve *smeared along* the U — each
-position of the swing carries a whole bell curve with it. Their spreads add,
-in agreement with the rule of quanta above:
+$\delta Q$ answering the surroundings alone, its positions the thermal bell
+curve of spread $\sigma_T$. The drive moves that whole mixture back and
+forth: the positions are the thermal bell curve carried along the swing, and
+the spreads add,
 
 $$
 \sigma^2 = \sigma_T^2 + \tfrac12 Q_0^2 = Q_{\mathrm{zp}}^2\,(2n+1), \qquad
 n = n_{\mathrm{th}} + \frac{Q_0^2}{4Q_{\mathrm{zp}}^2} ,
 $$
 
-and the shape is the bell curve's when $Q_0 \ll \sigma_T$, the U's when
+with $\sigma_T = Q_{\mathrm{zp}}$ when the mode is cold — the coherent state
+again. **Whether the warmth matters is the mode's frequency against the
+temperature** — the driven mode's width against the coherent state's,
+$\sigma_T/Q_{\mathrm{zp}} = \sqrt{\coth(\hbar\omega/2k_BT)}$:
+
+| mode | at 4 K | at 300 K |
+|---|---|---|
+| 1000 cm⁻¹ | 1.000 | 1.008 |
+| 300 cm⁻¹ | 1.000 | 1.27 |
+| 50 cm⁻¹ | 1.000 | 2.9 |
+
+The pure coherent state is right for a cold junction or a stiff mode; the
+thermal width only for a soft mode near room temperature. Which a driven mode
+is given is the person's, said with its frames
+([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 2, its
+rows § 5.1). The
+shape is the bell curve's when $Q_0 \ll \sigma_T$, the U's when
 $Q_0 \gg \sigma_T$.
 
 ### 2a.3 What the frames need — the spread to second order, the shape beyond
@@ -449,40 +503,84 @@ factor 2 between the two shapes' $\langle Q^4\rangle$:
 | 2.0 | 2.2796 | 2.7183 | **+19 %** |
 | 3.0 | 4.8808 | 9.4877 | **+94 %** |
 
-**The frames a swing needs: snapshots at equal steps through one period.**
-The time average over a period is an average over the swing's phase
-$\varphi$,
-$\langle T\rangle = \frac1{2\pi}\int_0^{2\pi} T(Q_0\cos\varphi)\,d\varphi$, of
-a function that repeats itself every $2\pi$. For such a function the plainest
-rule is the best: $N$ equally spaced phases $\varphi_k = 2\pi k/N$, each with
-weight $1/N$, are exact whenever the function is a sum of $\cos k\varphi$ and
-$\sin k\varphi$ with $k < N$, and converge faster than any power of $N$ for a
-smooth one ([TrefethenWeideman2014]). $T(Q_0\cos\varphi)$ is such a sum, with
-$k \le m$, whenever $T(Q)$ is a polynomial of degree $m$ in $Q$, because
-$\cos^m\varphi$ is. Equal phases fall at unequal positions, crowded near the
-turning points where the swing lingers; with $N = 8$, $\varphi$ and
-$360° - \varphi$ land at the same position, leaving five frames:
+**The frames a swing needs: the Gauss rule of its own distribution.** The
+frames are a few positions $Q_j$ with weights $w_j$ summing to 1, and the
+average is $\langle T\rangle \approx \sum_j w_j\,T(Q_j)$. Write the response
+as its series, $T = T_0 + T_1Q + T_2Q^2 + \dots$: averaged, each term is a
+coefficient times an average of a power, $\langle Q^k\rangle$. So frames
+that reproduce the distribution's own averages $\langle Q^k\rangle$ for every
+$k$ up to some degree get every term of the response up to that degree
+exactly. With $m$ frames the most that can be matched is
+$k = 0, 1, \dots, 2m-1$ — the $m$ positions and $m$ weights are $2m$ numbers —
+and the frames that do it are the distribution's **Gauss rule**
+[GolubWelsch1969]. It is the one recipe every state's frames follow: the
+bell curve's is Gauss–Hermite (§ 5.1).
 
-| position $Q$ | phases landing there | weight |
+For three frames on a symmetric distribution — the swing, the bell curve, or
+the two together — the steps are short. The odd averages are zero, so the
+frames are $0$ and $\pm x$, with weights $w_0$ and $w$:
+
+1. **Measure the distribution's shape with two numbers**, both from formulas,
+   no calculation of $T$: $\langle Q^2\rangle$, its width, and
+   $\langle Q^4\rangle$, how much of it sits far out. For the swing carrying
+   a bell curve of spread $\sigma$ (§ 2a.2),
+   $\langle Q^2\rangle = \sigma^2 + \tfrac12 Q_0^2$ and
+   $\langle Q^4\rangle = 3\sigma^4 + 3\sigma^2Q_0^2 + \tfrac38 Q_0^4$.
+2. **Choose the frames to reproduce them**: $2w\,x^2 = \langle Q^2\rangle$
+   and $2w\,x^4 = \langle Q^4\rangle$, so
+   $x^2 = \langle Q^4\rangle/\langle Q^2\rangle$,
+   $w = \langle Q^2\rangle^2/2\langle Q^4\rangle$ and $w_0 = 1 - 2w$.
+3. **Compute the response at the three geometries**: $T(0)$, $T(+x)$,
+   $T(-x)$.
+4. **Average**: $\langle T\rangle \approx w_0\,T(0) + w\,T(+x) + w\,T(-x)$ —
+   exact whenever $T$ is a polynomial of degree 5 or less over the motion.
+
+**Five frames, by hand.** The frames are $0$, $\pm x_1$ and $\pm x_2$,
+with weights $w_0$, $w_1$, $w_2$; they must reproduce four averages,
+$\mu_2 = \langle Q^2\rangle$ to $\mu_8 = \langle Q^8\rangle$:
+
+1. **Measure** $\mu_2, \mu_4, \mu_6, \mu_8$ from the formulas.
+2. **Find the two squared positions** $y_i = x_i^2$: they are the roots of
+   $y^2 + c_1 y + c_0 = 0$, whose $c_1$ and $c_0$ solve the 2×2 system
+   $\mu_6 + c_1\mu_4 + c_0\mu_2 = 0$, $\mu_8 + c_1\mu_6 + c_0\mu_4 = 0$ —
+   because the five positions are the zeros of $x\,(x^4 + c_1x^2 + c_0)$,
+   and that polynomial, multiplied by $x$ or by $x^3$, must average to zero
+   over the distribution, as every Gauss rule's node polynomial does against
+   the lower powers.
+3. **Find the weights**: $2w_1y_1 + 2w_2y_2 = \mu_2$ and
+   $2w_1y_1^2 + 2w_2y_2^2 = \mu_4$, then $w_0 = 1 - 2w_1 - 2w_2$.
+4. **Compute and average**, as for three: exact to degree 9.
+
+For seven frames and more the same matching is a small eigenvalue problem,
+built from the distribution's own averages [GolubWelsch1969]
+(`vibration.State.frames`).
+
+**Worked** — a swing $Q_0 = 2$ carrying a bell curve $\sigma = 1$ (any unit
+of $Q$): $\langle Q^2\rangle = 1 + 2 = 3$, $\langle Q^4\rangle = 3 + 12 + 6 =
+21$, so $x^2 = 7$, $x = 2.65$, $w = 9/42 = 0.214$, $w_0 = 0.571$. For five,
+$\mu_6 = 215$ and $\mu_8 = 2835$ give $c_1 = -19.559$, $c_0 = 65.245$, so
+$x_1 = 2.0656$, $x_2 = 3.9105$, $w_1 = 0.2644$, $w_2 = 0.0243$,
+$w_0 = 0.4225$. On the contact bond $T = T_0e^{-Q}$, whose true average is
+$I_0(2)\,e^{1/2}\,T_0 = 3.7584\,T_0$:
+
+| frames, the Gauss rule | the average | error |
 |---|---|---|
-| 0 | 90°, 270° | $\tfrac14$ |
-| $+Q_0/\sqrt2$ and $-Q_0/\sqrt2$ | 45° and 315°; 135° and 225° | $\tfrac14$ each |
-| $+Q_0$ and $-Q_0$ | 0°; 180° | $\tfrac18$ each |
+| 3 | 3.6068 | −4.0 % |
+| 5 | 3.7568 | −0.044 % |
+| 9 | 3.7584 | −0.0000004 % |
 
-These five are exact for a response of degree up to 7. On the contact bond at
-$aQ_0 = 2$: 2.3811 with four phases (frames $0, \pm Q_0$ at
-$\tfrac12, \tfrac14, \tfrac14$), 2.2828 with six, 2.2796 with eight, against
-the true 2.2796. When the thermal jiggle is comparable to the swing, every
-phase position carries a bell curve of its own: the frames are each phase
-position plus each bell-curve offset, and each frame's weight is the product
-of the two weights.
+For the bare swing ($\sigma \to 0$) the Gauss rule is Chebyshev's: frames at
+$Q_0\cos\big((2j-1)\pi/2m\big)$, each of weight $1/m$ — three at $0$ and
+$\pm0.866\,Q_0$. At $aQ_0 = 2$ the three give 2.2764 against the true 2.2796
+(−0.14 %), five agree to all the digits shown. The frames sit inside the
+turning points, never on them: the turning points hold the most time, but
+each is one position, and the rule places frames by what the averages need.
 
-**What molbuilder does.** The frame generator samples a bell curve (§ 5). Its
-frames are exact in shape for a mode in equilibrium, and for one pumped at
-random moments at its effective temperature (§ 2a.1).
-
-For a mode swung in step with light, the bell curve is right only up to the
-$Q^2$ term, and two things go wrong as the swing grows:
+**Why the bell curve's frames are not the swing's.** The bell curve's frames
+(§ 5) are exact in shape for a mode in equilibrium, and for one pumped at
+random moments at its effective temperature (§ 2a.1). For a mode swung in
+step with light they are right only up to the $Q^2$ term, and two things go
+wrong as the swing grows:
 
 1. **The bell curve's frames reach beyond the swing's turning points.** At
    the swing's own spread, $\sigma = Q_0/\sqrt2$, the outermost of three frames
@@ -497,9 +595,8 @@ response's length, $aQ_0 \lesssim 1$ in the example. Its temperature is then
 the one holding the swing's quanta,
 $n = n_{\mathrm{th}} + Q_0^2/4Q_{\mathrm{zp}}^2$ and
 $T_{\mathrm K} = \hbar\omega/\big(k_B\ln(1 + 1/n)\big)$. Beyond that, the
-frames already computed are re-averaged over the swing after the run (§ 5.4)
-— the same frames, the swing's weights — as long as they reach its turning
-points; frames at the swing's own phases are needed only past that reach.
+swing's own frames (above), or frames already computed re-averaged over it
+(§ 5.4).
 
 Within the range where only the $Q^2$ term matters, a wider spread also
 rescales a result already computed,
@@ -519,7 +616,9 @@ validated in tests".)* The API that computes each of these is
 `postprocess.vibration` ([`engines/vibration.md`](?doc=engines/vibration.md)
 § 6.11 § 6), by the module `vibration`; the tests of § 2b.5 are
 `tests/test_vibration_mechanics.py` and, end to end,
-`tests/test_vibration_mechanics_e2e.py`.
+`tests/test_vibration_mechanics_e2e.py`, and for snapshots (§ 2c) the motion
+toolkit's ([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md)
+§ 8).
 
 > **In short.** A mode's coordinate $Q$ has a natural length, the zero-point
 > amplitude $Q_{\mathrm{zp}}$, set by its frequency alone. Where the molecule
@@ -587,12 +686,22 @@ amplitude (`normal-modes.md` § 4b.5 F).
 
 ### 2b.3 Where the molecule sits — the distribution in each state
 
+**Which state for which experiment.** A conductance is a steady average over
+millions of vibrational periods (§ 0), so the state is the one the
+experiment holds steadily:
+
+| experiment | state (the toolkit's arguments for each: [`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 2) |
+|---|---|
+| quanta added at random moments — spontaneous Raman from a steady laser, a current through the junction — or equilibrium | thermal, at the junction's temperature or an effective one (§ 2a.1) |
+| a steady push in step with the mode — resonant infrared, two lasers differing by its frequency | driven: the coherent state, or a warm mode's thermal width carried by the swing (§ 2a.2) |
+| the moment after one heralded quantum — one inelastic tunnelling electron, one detected Stokes photon — for times below the energy lifetime $\tau$, **on a cold mode** ($\hbar\omega \gg k_BT$) | $n$ quanta exactly, a transient, not a steady state; a steady infrared drive is the row above, never this one. On a warm mode one added quantum is not a number state: from a thermal state of $\bar n$ quanta it leaves one quantum exactly with chance $1/(\bar n+1)^2$ — 0.83 at $\bar n = 0.1$, 0.25 at $\bar n = 1$, 0.045 for a 50 cm⁻¹ mode at 300 K, whose mean is then $2\bar n + 1 = 8.4$ quanta |
+
 | state | what it is | $P(Q)$ | $\langle Q^2\rangle$ | $\langle Q^4\rangle$ |
 |---|---|---|---|---|
-| **$n$ quanta exactly** (a number state) | the oscillator's $n$-th eigenstate — a molecule that has taken one photon's energy into the mode and nothing else | $\dfrac{H_n(\xi)^2\,e^{-\xi^2}}{2^n\,n!\,\sqrt{2\pi}\,Q_{\mathrm{zp}}}$, $\xi = \dfrac{Q}{\sqrt2\,Q_{\mathrm{zp}}}$, $H_n$ the Hermite polynomial | $(2n+1)\,Q_{\mathrm{zp}}^2$ | $3\,(2n^2+2n+1)\,Q_{\mathrm{zp}}^4$ |
+| **$n$ quanta exactly** (a number state) | the oscillator's $n$-th eigenstate — what one heralded event leaves on a cold mode, for about the energy lifetime $\tau$ | $\dfrac{H_n(\xi)^2\,e^{-\xi^2}}{2^n\,n!\,\sqrt{2\pi}\,Q_{\mathrm{zp}}}$, $\xi = \dfrac{Q}{\sqrt2\,Q_{\mathrm{zp}}}$, $H_n$ the Hermite polynomial | $(2n+1)\,Q_{\mathrm{zp}}^2$ | $3\,(2n^2+2n+1)\,Q_{\mathrm{zp}}^4$ |
 | **thermal**, at $T$ or at mean quanta $\bar n$ | equilibrium (§ 2), or quanta added at random moments (§ 2a.1): the number states weighted by $p_n = \bar n^n/(\bar n+1)^{n+1}$ | the Gaussian of § 2, $\sigma^2 = (2\bar n+1)\,Q_{\mathrm{zp}}^2$ — exactly, the weighted sum of the densities above (Mehler's formula) | $\sigma^2$ | $3\sigma^4$ |
-| **a steady swing** over a bath | a push in step with the mode (§ 2a.2): at each moment the bath's Gaussian, width $\sigma_T$, centred at $Q_0\cos\omega t$, $Q_0 = 2\,Q_{\mathrm{zp}}\sqrt{n_s}$ for $n_s$ swing quanta | that Gaussian averaged over the swing's phase | $\sigma_T^2 + Q_0^2/2$ | $3\sigma_T^4 + 3\sigma_T^2Q_0^2 + \tfrac38 Q_0^4$ |
-| **classical**, for comparison | the high-temperature limit; a classical swing alone | a Gaussian, $\sigma^2 = k_BT/\omega^2$; a swing alone, $1/\bigl(\pi\sqrt{Q_0^2 - Q^2}\bigr)$ inside $\pm Q_0$ | $k_BT/\omega^2$; $Q_0^2/2$ | $3\sigma^4$; $\tfrac38 Q_0^4$ |
+| **driven** — a steady swing | a push in step with the mode (§ 2a.2): the coherent state, a bell curve of the zero-point width $\sigma_0 = Q_{\mathrm{zp}}$ centred at $Q_0\cos\omega t$, $Q_0 = 2\,Q_{\mathrm{zp}}\sqrt{n_s}$ for $n_s$ swing quanta; a warm mode's, the thermal width $\sigma_T$ in its place | that bell curve averaged over the swing's phase | $\sigma_0^2 + Q_0^2/2$ | $3\sigma_0^4 + 3\sigma_0^2Q_0^2 + \tfrac38 Q_0^4$ |
+| **classical**, for comparison | the high-temperature limit; a classical swing alone; a classical swing carrying the classical bell curve — a warm driven mode, classically | a Gaussian, $\sigma^2 = k_BT/\omega^2$; a swing alone, $1/\bigl(\pi\sqrt{Q_0^2 - Q^2}\bigr)$ inside $\pm Q_0$; that Gaussian averaged over the swing's phase | $k_BT/\omega^2$; $Q_0^2/2$; $\sigma^2 + Q_0^2/2$ | $3\sigma^4$; $\tfrac38 Q_0^4$; $3\sigma^4 + 3\sigma^2Q_0^2 + \tfrac38 Q_0^4$ |
 
 What each shape says. **With $n \ge 1$ quanta it is not a bell curve**:
 $P_n$ has $n$ zeros, its weight piles toward the classical turning points
@@ -612,17 +721,26 @@ $Q_j = \sqrt2\,\sigma\,x_j$ (§ 5.1); for $n$ quanta exactly, the rule whose
 weight function is $P_n$ itself — its nodes and weights from that density's
 own orthogonal polynomials, built by the Lanczos recurrence of the
 oscillator's position operator from the state $\lvert n\rangle$ and Golub and
-Welsch's eigenproblem — exact, as every
-Gauss rule of $m$ frames is, for a response polynomial up to degree $2m-1$;
-for a swing, the rule of § 2a.3. **The distribution is the maker's
+Welsch's eigenproblem; for a swing, its own distribution's Gauss rule
+(§ 2a.3) — every state's frames by one recipe, $m$ frames exact for a
+response polynomial up to degree $2m-1$. **The distribution is the maker's
 alone**: a multi-frame structure carries each frame's weight, the one row a
 calculation reads, and the maker's rows say what motion the weights stand
-for ([`model/structure.md`](?doc=model/structure.md) § 2.2f), so a transport
-calculation over the frames is the same whatever the state. The maker
-writes sets for $n$ quanta and a swing beside the thermal one (the user,
-2026-11-22; `vibration.md` § 6.11 § 9 item 2; not built); re-averaging frames already computed
-over another motion (§ 5.4, `reaveraged`) is the analysis's, from the
-frames' positions.
+for ([`model/structure.md`](?doc=model/structure.md) § 2.2f), so a
+calculation over the frames is the same whatever the state. A mode's own
+frames for any state, and snapshots of the whole molecule (§ 2c), are the
+motion toolkit's ([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md)
+§ 3, § 4); re-averaging frames already computed over another motion (§ 5.4)
+is an analysis of their results.
+
+**A frame's weight is its share of the average, not the chance of finding
+the molecule there.** For one quantum exactly, the three-frame rule places
+frames at $0$ and $\pm\sqrt5\,Q_{\mathrm{zp}}$ with weights 0.4, 0.3 and 0.3
+($x^2 = \langle Q^4\rangle/\langle Q^2\rangle = 15/3$) — weight 0.4 at
+$Q = 0$, where $\lvert\psi_1\rvert^2$ is zero and the molecule is never
+found. The weights are what make the frames reproduce the state's averages
+(§ 2a.3); a frame's weight says how much its geometry counts in the average,
+not how often the molecule is there.
 
 ### 2b.5 How each is validated
 
@@ -640,9 +758,188 @@ is seen failing on the release before:
 | an atom's move and its way back | the projection $\sum_A m_A\mathbf L_A\cdot\mathbf u_A$ returns $Q$; the displaced geometry's harmonic energy $\tfrac12\mathbf u^{\mathsf T}H\mathbf u = \tfrac12\omega^2Q^2$ | the eigenproblem's orthonormality with the masses |
 | $n$ quanta exactly | each $P_n$ integrates to 1; $\langle Q^2\rangle$ and $\langle Q^4\rangle$ as in § 2b.3; $n$ zeros; the weight beyond the classical turning points (§ 2b.3's 15.7 %, 11.2 %, 9.5 %); the potential energy half of $\hbar\omega(n+\tfrac12)$ | the oscillator's eigenfunctions; the virial theorem |
 | thermal | the $p_n$-weighted sum of the $P_n$ equals the Gaussian of $\sigma^2 = (2\bar n+1)Q_{\mathrm{zp}}^2$; $\bar n$ is Bose–Einstein's; $\sigma \to Q_{\mathrm{zp}}$ at 0 K and $\sigma^2 \to k_BT/\omega^2$ hot | Mehler's formula; § 2 |
-| a swing | its $\langle Q^2\rangle$ and $\langle Q^4\rangle$ as in § 2b.3; its density the bath's Gaussian averaged over the phase | § 2a.2, in closed form |
-| frames | each Gauss rule (a Gaussian state, $n$ quanta) reproduces its state's moments to degree $2m-1$; the swing's $N$ equal phases to degree $N-1$ (its five frames: 7) | Gauss quadrature; the trapezoidal rule on a period |
+| a swing | its $\langle Q^2\rangle$ and $\langle Q^4\rangle$ as in § 2b.3; its density the bell curve averaged over the swing's phase | § 2a.2, in closed form |
+| frames | each state's Gauss rule — a bell curve, $n$ quanta, a swing — reproduces its state's moments to degree $2m-1$ | Gauss quadrature |
+| the average of $e^{aQ}$ in each state | thermal: $e^{a^2\sigma^2/2}$; driven: $I_0(aQ_0)\,e^{a^2\sigma_0^2/2}$, $\sigma_0$ the swing's carried width; $n$ quanta: $e^{\lambda^2/2}L_n(-\lambda^2)$, $\lambda = aQ_{\mathrm{zp}}$, $L_n$ the Laguerre polynomial; over snapshots of many modes, $\langle e^{\sum_k a_kQ_k}\rangle$ the product of each mode's own, each drive group one factor (the row below; § 2c.1) | the bell curve's moment generating function; the phase average of § 2a.3 ([DLMF] 10.32.1); $\langle n\rvert e^{\lambda(b+b^\dagger)}\lvert n\rangle$ by the oscillator's ladder operators |
+| a drive group (§ 2c.2) | its modes' coordinates correlated, $\mathrm{Cov}(Q_a, Q_b) = \tfrac12 Q_{0,a}Q_{0,b}\cos(\ell_a - \ell_b)$; the group's average of $e^{\sum_d a_dQ_d}$, one factor, $I_0\big(\lvert\sum_d a_dQ_{0,d}\,e^{-i\ell_d}\rvert\big)\prod_d e^{a_d^2\sigma_{0,d}^2/2}$ | the shared phase: $\sum_d a_dQ_{0,d}\cos(\varphi - \ell_d) = R\cos(\varphi - \theta)$ with $R = \lvert\sum_d a_dQ_{0,d}e^{-i\ell_d}\rvert$, then the phase average of § 2a.3 ([DLMF] 10.32.1) |
+| snapshots | each mode's draws follow its state's distribution; the modes' coordinates uncorrelated but within a drive group (the row above); each atom's displacement covariance $\sum_k\langle Q_k^2\rangle\,\mathbf L_{k,A}\mathbf L_{k,A}^{\mathsf T}$, plus each group's cross terms $\tfrac12Q_{0,a}Q_{0,b}\cos(\ell_a-\ell_b)\big(\mathbf L_{a,A}\mathbf L_{b,A}^{\mathsf T} + \mathbf L_{b,A}\mathbf L_{a,A}^{\mathsf T}\big)$; an antithetic pair's odd response cancels exactly; the average of $e^{\sum_k a_kQ_k}$ the product above, within its error — for $X = e^{\sum_k a_kQ_k}$, $X(Q)\,X(-Q) = 1$, so a paired set's pair-mean variance is $\tfrac12(\langle X^2\rangle + 1) - \langle X\rangle^2$, its error known before the draw | § 2c, § 5.5 |
 | end to end | a real PySCF H₂ run: the bond's r.m.s. $\sqrt{\hbar/2\mu\omega}$ from CODATA's constants and the file's frequency and masses, each atom moving half of it at $Q_{\mathrm{zp}}$, and the projection giving $Q_{\mathrm{zp}}$ back | CODATA; the two-body problem |
+
+## 2c. The whole molecule — every mode at once
+
+*(The user, 2026-11-23: "(1) correctly generate a full displacement map of
+all atoms with the included modes at specified temperature with thermal
+equilibrium assumption such that it takes care of the distribution while
+making a snapshot of one possible frame, (2) … the displacement of a selected
+mode where it is optically activated and therefore not in thermal
+equilibrium, but only samples that distribution with one snapshot, (3) a
+correct way/api to merge/add the two situation into a combined
+displacement/frame"; "each frame is like a Monte Caro sampling of the
+different combination of the thermal background and selected activation, and
+then the average can be done correctly (in this case then it would be an
+equal weight)".)* The API is
+[`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 3.
+
+### 2c.1 The modes move independently
+
+At a temperature every mode moves at once, and the molecule's geometry is
+all of them together, $\mathbf R_A = \mathbf R_A^0 + \sum_k Q_k\,\mathbf L_{k,A}$
+(§ 1). In the harmonic picture the energy is a sum over the modes,
+$\sum_k \tfrac12\big(\dot Q_k^2 + \omega_k^2 Q_k^2\big)$, with no term that
+joins two of them: each mode is an oscillator of its own, and in thermal
+equilibrium the probability of one set of coordinates is the product of each
+mode's,
+
+$$
+P(Q_1, \dots, Q_N) = P_1(Q_1)\,P_2(Q_2)\cdots P_N(Q_N),
+$$
+
+each $P_k$ the bell curve of § 2 at the mode's own spread $\sigma_k(T)$
+([Feynman1972] § 2.5, one oscillator at a time). A soft mode moves far, a
+stiff one barely beyond its zero-point motion, and no mode's position says
+anything about another's — save the modes one laser drives in step, which
+share its phase (§ 2c.2).
+
+### 2c.2 A driven mode among thermal ones
+
+Light driving one mode, $k^\ast$, puts that mode in its driven state
+(§ 2a.2) — the coherent state when the mode is cold against the junction
+($\hbar\omega \gg k_BT$); otherwise the junction's thermal width carried by
+the swing, the table of § 2a.2 saying which — and leaves the others at the
+junction's temperature. The molecule's distribution is the same product with
+that one factor changed:
+
+$$
+P = P^{\mathrm{driven}}_{k^\ast}(Q_{k^\ast})\;\prod_{k\neq k^\ast} P_k(Q_k).
+$$
+
+The driven mode's distribution **replaces** its thermal one: it is in one
+state of its own (a warm mode's driven state, § 2a.2, is still that one
+factor). The product holds because the harmonic energy separates into the
+modes (§ 2c.1) and the drive is resonant with $k^\ast$ alone: the other
+modes keep their thermal motion, which has no phase relation to the light,
+each factor drawn on its own. The toolkit's default for a driven mode is the
+pure coherent state, the user's (`engines/vibration-frames.md` § 2); inside a
+warm motion it says the thermal width that default leaves out, never
+deciding (§ 3.1 there).
+
+**Several modes driven by one laser swing in step.** In steady state a
+driven mode moves at the laser's frequency, not its own (§ 2a.2), so every
+mode one laser drives oscillates at that one frequency and their phases are
+locked: one phase $\varphi$ per snapshot, shared by the group, each mode $k$
+at its own lag $\ell_k$ behind the field,
+$Q_k = Q_{0,k}\cos(\varphi - \ell_k) + \sigma_{0,k}z_k$. **The lag** is
+§ 2a.2's angle at the laser's frequency, taken between 0 and π,
+$\ell_k = \operatorname{atan2}\big(\gamma_k\omega_L,\ \omega_k^2 - \omega_L^2\big)$
+— π/2 at resonance, near 0 for a mode above the laser, near π for one below
+it; written as a plain arctangent of the ratio it lands a mode below the
+laser in the wrong quadrant, $-0.05$ where it is $3.09$ rad 100 cm⁻¹ below
+it — plus π where the mode's dipole change along the field,
+$\hat z\cdot\partial\boldsymbol\mu/\partial Q_k$, is negative, the signed
+vector as `postprocess.infrared_view` gives it in the result's eigenvector
+sign on both engines (the record's own on PySCF, from the charges on SIESTA,
+whose result states no dipole change of its own): a mode's eigenvector sign is a convention, and the lag carries it,
+so a lag of 0 between two modes is no physics, and the toolkit takes every
+lag from the person, never a default (§ 3.1 there). **Two lasers at
+different frequencies** drive their modes at two frequencies, whose relative
+phase sweeps through every value over a measurement: independent phases, the
+toolkit's default for modes driven each alone. **One laser swings a mode off
+its resonance** less, by $\gamma\omega/\sqrt{(\omega_k^2 - \omega_L^2)^2 +
+\gamma^2\omega_L^2}$, about $\Gamma/2\Delta$ for a line of full width
+$\Gamma$ a detuning $\Delta$ away — 0.45 at one linewidth, 0.24 at two, about
+0.05 at 100 cm⁻¹ from the laser for a 10 cm⁻¹ line (§ 7, item 9) — so
+comparable swings in one group need the laser within about one linewidth of
+each mode. In step, the modes are correlated,
+$\mathrm{Cov}(Q_a, Q_b) = \tfrac12Q_{0,a}Q_{0,b}\cos(\ell_a - \ell_b)$, and the
+product above holds with each drive group taken as one factor (§ 2b.5).
+
+### 2c.3 Snapshots, and why each weighs the same
+
+The average of a property over the molecule's motion is an integral over all
+$N$ coordinates at once. A fixed grid of $m$ positions per mode needs $m^N$
+geometries — $3^{30} \approx 2\times10^{14}$ for 30 modes — which no
+calculation affords. **Random snapshots** need no grid:
+
+1. **Draw** each mode's coordinate $Q_k$ from its own distribution, every
+   mode independently — the modes of a drive group sharing one phase
+   (§ 2c.2): a bell curve's draw is its spread times a standard normal
+   number $z$; the driven mode's is $Q_0\cos\varphi$ for a uniformly drawn
+   phase $\varphi$, plus its carried spread times a normal number; a mode
+   with $n$ quanta, a normal number $z$, and the $Q$ where the chance of
+   finding the mode at $Q$ or less is $\Phi(z)$, the chance a standard normal
+   number falls below $z$. Every state takes one normal number per draw, so a
+   mirrored draw $-z$ is the mirror $-Q$.
+2. **Move** every atom by all of them at once,
+   $\mathbf R_A = \mathbf R_A^0 + \sum_k Q_k\,\mathbf L_{k,A}$: one frame.
+3. **Repeat** for $N$ frames, and compute the property at each.
+4. **Average** with equal weights,
+   $\langle X\rangle \approx \tfrac1N\sum_f X(\text{frame}_f)$.
+
+The weights are equal because the probabilities are already in where the
+frames were drawn: a likely geometry is drawn often, an unlikely one seldom.
+Each frame costs one calculation whatever the number of modes, and the
+average is right for any response, not only a low-degree polynomial
+[PatrickGiustino2013, ZachariasPatrickGiustino2015]: the number of frames
+needed is set by the spread of the results, not by $m^N$ — though every mode
+that moves the result adds to that spread. Its error and how to shrink it
+are § 5.5.
+
+**Worked — one snapshot of two modes.** A soft mode, 50 cm⁻¹, thermal at
+300 K: $Q_{\mathrm{zp}} = \sqrt{16.8576/50} = 0.581$ amu$^{1/2}$·Å and its
+spread $\sigma = 2.895\,Q_{\mathrm{zp}} = 1.681$. A stiff mode, 1000 cm⁻¹,
+driven with one swing quantum: $Q_{\mathrm{zp}} = 0.130$ and
+$Q_0 = 2Q_{\mathrm{zp}} = 0.260$. Take an atom whose rows are
+$\mathbf L_1 = (0, 0, 0.30)$ and $\mathbf L_2 = (0.50, 0, 0)$ amu$^{-1/2}$.
+Four frames, each from its own draws — for the soft mode a normal number
+$z_1$, for the driven one a phase $\varphi$ and a normal number $z_2$:
+
+| frame | $z_1$ | $Q_1 = \sigma z_1$ | $\varphi$ (rad) | $z_2$ | $Q_2 = Q_0\cos\varphi + Q_{\mathrm{zp}}z_2$ | the atom's move $Q_1\mathbf L_1 + Q_2\mathbf L_2$ (Å) |
+|---|---|---|---|---|---|---|
+| 1 | 0.31 | 0.521 | 1.2 | −0.75 | −0.003 | (−0.002, 0, 0.156) |
+| 2 | −1.20 | −2.017 | 3.9 | 0.40 | −0.137 | (−0.068, 0, −0.605) |
+| 3 | 0.85 | 1.429 | 5.1 | 1.10 | 0.241 | (0.120, 0, 0.429) |
+| 4 | −0.05 | −0.084 | 0.4 | −0.20 | 0.213 | (0.107, 0, −0.025) |
+
+Every other atom moves by its own rows with the same $Q_1$ and $Q_2$, and
+the property is computed at each of the four geometries. **The average, step
+by step.** Say the property is a tunnelling that falls as
+$X/X_0 = e^{-0.4\,Q_1 - 1.0\,Q_2}$ ($Q$ in amu$^{1/2}$·Å, each factor in
+amu$^{-1/2}$·Å$^{-1}$). At the four frames it is 0.8145, 2.5687, 0.4438 and
+0.8356:
+
+1. **The average** is the plain mean, each frame at ¼:
+   $(0.8145 + 2.5687 + 0.4438 + 0.8356)/4 = 1.1657$.
+2. **Its error** is the spread of the four values — their standard
+   deviation, 0.9525 — over $\sqrt4$: 0.48. The exact average is 1.2856
+   (§ 2b.5's product, $e^{a_1^2\sigma_1^2/2} \times I_0(a_2Q_0)\,e^{a_2^2Q_{\mathrm{zp}}^2/2}
+   = 1.2536 \times 1.0255$), within one error of the four-frame mean: four
+   frames say $1.17 \pm 0.48$, and $N$ times the frames shrink the error by
+   $\sqrt N$.
+3. **With mirrored pairs** (§ 5.5): draw only frames 1 and 3, and give each
+   its mirror — every $Q$ flipped. Four frames again, 0.8145 and 1.2277
+   (frame 1 and its mirror), 0.4438 and 2.2535 (frame 3 and its mirror). The
+   average is still the plain mean, 1.1849. Its error is the spread of the
+   two **pair means**, 1.0211 and 1.3486 — 0.2316 — over $\sqrt2$: 0.16,
+   here by the luck of two pairs. For this response pairs give on average
+   0.63 of the independent set's error — the same error from 2.5 times fewer
+   frames — because it is mostly odd in $Q$ (§ 5.5). An error read from two
+   pair means is itself rough: a real set takes tens of pairs.
+
+### 2c.4 What one set of snapshots answers
+
+The molecule's average at its temperature, every mode at once — the
+cross terms between modes included, because each snapshot moves them
+together and the property is computed at the geometry they make, never
+added up mode by mode (§ 6). With a driven mode among them, the average with
+that mode driven. **A drive's own effect is a difference between two states
+at one temperature** (§ 6): the warm driven state against the thermal one at
+the junction's temperature, or the coherent state against that one mode in
+its ground state, at 0 K, beside the warm others
+(`with_mode(k, temperature_k=0.0)`, `engines/vibration-frames.md` § 3.1).
+The baseline is a second set with the same seed — each mode drawn from its
+own streams of the seed, so every other mode's draws are the same in both
+sets, and their share of the spread cancels in the difference: exactly for a
+response that adds the modes' effects, in part where they multiply (§ 5.5).
 
 ---
 
@@ -811,14 +1108,21 @@ the curvature's sign, read off the frames, not assumed.
 
 ## 5. Computing the average from a few frames
 
-**The spread the frames sample is stated as a temperature** *(the user,
+This section is one mode's own frames, placed and weighted by its state's
+Gauss rule; snapshots of many modes are § 5.5. The temperature, the outermost
+move and the rules of § 5.1–§ 5.3 below are a **thermal** set's — the
+Gauss–Hermite rule; another state's own rule is § 2a.3's, and its outermost
+move is $\lvert q_{\mathrm{out}}\rvert\max_A\lvert\mathbf L_A\rvert$ at its own
+outermost node.
+
+**A thermal set's spread is stated as a temperature** *(the user,
 2026-10-28: "shall we actually use the sigma as the reference to state how
 much we want the max displacement to be? this is statistically making more
 sense especially if we propose the value based on temperature")*. The person names the temperature
 $T_{\mathrm K}$ of the motion the frames sample — the junction's, or for a
-mode pumped out of equilibrium its effective temperature (§ 2a.1). The
-generator (`engines/vibration.md` § 5.10 ③) sets the mode's mean number of
-quanta and its spread from it:
+mode pumped at random moments its effective temperature (§ 2a.1). A mode's
+own thermal set ([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md)
+§ 4) sets the mode's mean number of quanta and its spread from it:
 
 $$
 n = \frac{1}{e^{\hbar\omega/k_BT_{\mathrm K}} - 1}, \qquad
@@ -839,7 +1143,7 @@ $$
    (§ 2a). Its ratio to the zero-point amplitude, $\sigma/Q_{\mathrm{zp}} = \sqrt{2n+1}$,
    says how many times wider the motion is than its zero-point motion.
 
-**What the frames move is reported, in Å: the outermost move.** The
+**What a thermal set's frames move is reported, in Å: the outermost move.** The
 outermost frames move the atom that moves most in the mode — the one with the
 largest $\lvert\mathbf L_A\rvert$, often a light atom but not always — by
 
@@ -851,7 +1155,8 @@ $$
 $x_{\mathrm{out}}$ the rule's outermost node (§ 5.1: $\sqrt{3/2}$ for three
 frames, 2.0202 for five, 2.6520 for seven); $\max_A\lvert\mathbf L_A\rvert$ is
 `vibration.largest_move`, the one a Raman phase's $\pm\delta Q$ rests on too
-(`spectra.mode_frames.outermost_move` asks it). Each frame states its own largest
+(`spectra.mode_frames.outermost_move` asks it; from R3d2b2 the motion
+toolkit's `outermost_move`, for any state). Each frame states its own largest
 single-atom move beside it — the check a person reads against a bond length.
 
 **An example — mode 48 of the user's AuBDTAu vibration on Sol**
@@ -999,7 +1304,7 @@ spends $6\times10^{-6}$ of its time. That is also where the harmonic picture
 is least sure (§ 7, assumption 1). A response that needs nine frames is one
 whose shape across the frames tells more than one averaged number (§ 8).
 
-A frame set is one mode at one rule, its weights summing to 1. So the check
+A mode's own set is one mode at one rule, its weights summing to 1. So the check
 is a second set of the same mode, at the same temperature and another rule,
 and comparing the two is the person's.
 
@@ -1014,21 +1319,21 @@ statistics".)*
 frame 0 moved by $q_f$ along the mode, and its transmission $T_f(E)$ depends
 on that geometry alone. The weight a frame carries is not the frame's: it is
 the motion's — how much time the molecule spends near $q_f$ in the motion
-being averaged over. The set's own weights are those of the bell curve it was
-written for (§ 5.1). Once the frames have run, the same $T_f(E)$ can be
+being averaged over. The set's own weights are those of the state it was
+written for (§ 2b.4) — a thermal set's, a bell curve's (§ 5.1). Once the frames have run, the same $T_f(E)$ can be
 averaged over **another motion** with other weights, and no frame is
 computed again.
 
-**The motion, stated by two numbers.**
+**The motion, here stated by two numbers** — a bell curve and a swing on it; the toolkit's weights take any state's ([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 7):
 
 | what | gives | where it comes from |
 |---|---|---|
 | the temperature $T$ of the random part — the junction's, or a randomly pumped mode's effective one (§ 2a.1) | the bell curve of spread $\sigma_T = Q_{\mathrm{zp}}\sqrt{2n_{\mathrm{th}}+1}$, its zero-point motion included, $n_{\mathrm{th}} = 1/(e^{\hbar\omega/k_BT}-1)$ | § 2, § 5 |
-| the quanta a push in step with the mode adds, $n_{\mathrm{swing}}$, 0 or more | the swing of amplitude $Q_0 = 2Q_{\mathrm{zp}}\sqrt{n_{\mathrm{swing}}}$ | § 2a.2 |
+| the quanta a push in step with the mode adds, $n_s$, 0 or more | the swing of amplitude $Q_0 = 2Q_{\mathrm{zp}}\sqrt{n_s}$ | § 2a.2 |
 
-$n_{\mathrm{swing}} = 0$ is the bell curve alone. The two together are the
+$n_s = 0$ is the bell curve alone. The two together are the
 bell curve carried along the swing (§ 2a.2):
-$n = n_{\mathrm{th}} + n_{\mathrm{swing}}$ quanta in all, a spread
+$n = n_{\mathrm{th}} + n_s$ quanta in all, a spread
 $\sigma^2 = \sigma_T^2 + \tfrac12 Q_0^2$.
 
 **The weights.** With $m$ frames, the weights $w_f$ are the ones with which
@@ -1058,13 +1363,14 @@ answer, and these reproduce them.
 **How well — the contact bond of § 4.3**, $T = T_0\,e^{-aq}$ with
 $a\sigma_T = 1$, frames written at the junction's own spread $\sigma_T$ and a
 swing added on top (true: $I_0(aQ_0)\,e^{a^2\sigma_T^2/2}$; computed
-2026-10-29):
+2026-10-29, the share of the swing beyond the outermost frame in brackets
+2026-11-23):
 
 | the swing, $Q_0/\sigma_T$ | true average | a bell curve of the same spread | re-averaged: 3 / 5 / 7 frames |
 |---|---|---|---|
-| 1 | 2.0874 | 2.1170 (+1.4 %) | 1.9573 / 2.0815 / 2.0873 |
-| 2 | 3.7584 | 4.4817 (+19 %) | refused / 3.6405 / 3.7494 |
-| 3 | 8.0471 | 15.6426 (+94 %) | refused / refused / 7.9011 |
+| 1 | 2.0874 | 2.1170 (+1.4 %) | 1.9573 (16 % beyond) / 2.0815 (1.7 %) / 2.0873 (0.1 %) |
+| 2 | 3.7584 | 4.4817 (+19 %) | 2.9146 (36 % beyond) / 3.6405 (8.7 %) / 3.7494 (1.5 %) |
+| 3 | 8.0471 | 15.6426 (+94 %) | 4.5101 (57 % beyond) / 7.1067 (26 %) / 7.9011 (8.3 %) |
 
 The bell curve of the same spread is the shape-blind answer of § 2a.3; the
 re-averaged frames follow the swing's shape. Re-averaging to another
@@ -1075,13 +1381,14 @@ re-averaged to a bell curve of $1.5\sigma$ give 2.0517 against the true
 
 **What it needs, each said beside the number:**
 
-1. **Frames that reach the swing.** A swing spends most of its time near its
-   turning points $\pm Q_0$ (§ 2a.2); frames that stop short of them would
-   average values extrapolated past the frames. **A swing whose turning
-   points lie beyond the outermost frame is refused**, naming both: frames
-   written at a higher temperature, or more of them, reach further (§ 5.1a).
-   Three frames reach $1.73\,\sigma$, five $2.86\,\sigma$, seven
-   $3.75\,\sigma$ of the spread they were written at.
+1. **Frames that reach the motion.** The part of the motion beyond the
+   outermost frames is averaged by values the frames never computed. **The
+   share of the motion beyond them is said beside the number** — read from
+   the motion's own distribution (`State.cdf`), the column in brackets
+   above — never refused: frames written at a higher temperature, or more
+   of them, reach further (§ 5.1a). A thermal set's three frames reach
+   $1.73\,\sigma$, five $2.86\,\sigma$, seven $3.75\,\sigma$ of the spread
+   they were written at.
 2. **Enough frames to see the shape.** Three frames carry only the curvature,
    and up to the curvature a swing and a bell curve of the same spread agree
    (§ 2a.3); with three, the re-averaged number is said to be blind to the
@@ -1095,25 +1402,139 @@ re-averaged to a bell curve of $1.5\sigma$ give 2.0517 against the true
    averaged poorly by any weights (§ 5.3); the frames' own values, the family
    of curves, tell more.
 
-**Where.** The re-averaging is the post-process's, on the transport
-calculation's data file, where every frame's $q_f$ and $T_f(E)$ sit
-(`frame_average.reaveraged`, asked as `molbuilder.postprocess.reaveraged`,
-[`model/parse.md`](?doc=model/parse.md)
-§ 3; [`engines/transport-postprocessing.md`](?doc=engines/transport-postprocessing.md)
-§ 3.2). It writes nothing: the record and its data file keep the set's own
-average (§ 8). Each voltage is averaged by the record's own rule, the one
-`frame_average.at_voltage` that writes the set's average, with the new
-weights: a voltage whose points are not all done has no re-averaged value,
-as it has no average (`engines/transport.md` § 2a.12).
+**Where.** The re-averaging is an analysis of the frames' results: the
+motion toolkit gives the weights from each frame's coordinate and the new
+state ([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md)
+§ 7), and the frames' results are read from the calculation's data file,
+where each frame's $q_f$ and $T_f(E)$ sit
+([`engines/transport-postprocessing.md`](?doc=engines/transport-postprocessing.md)
+§ 3.2). It writes nothing: the calculation's record keeps the set's own
+average (§ 8).
+
+### 5.5 Many modes: snapshots, their error, and antithetic pairs
+
+Snapshots of the whole molecule (§ 2c.3) are averaged with equal weights,
+$\langle X\rangle \approx \bar X = \tfrac1N\sum_f X_f$. Unlike a Gauss rule
+it is right for any response, and its error is statistical. For **independent
+snapshots**,
+
+$$
+\text{error of } \bar X \approx \frac{s_X}{\sqrt N},
+$$
+
+$s_X$ the spread of the frames' own results — read from them, so the frames
+say how many more are needed: four times the frames halve the error.
+
+**Antithetic pairs.** In every state the toolkit draws from — thermal, $n$
+quanta, a driven mode averaged over its phase — the molecule is as likely
+displaced one way as the opposite way, every mode at once: a snapshot
+$(Q_1, Q_2, \dots)$ and its mirror $(-Q_1, -Q_2, \dots)$ are equally likely.
+So draw half the frames, and give each its mirror. Write the response as
+$X = X_0 + X_1Q + X_2Q^2 + \dots$ (for one mode; the same holds term by term
+for many): within each pair the odd terms — $X_1Q$, $X_3Q^3$, … — cancel
+**exactly** — antithetic variates [HammersleyMorton1956], used on snapshots
+of the modes in [ZachariasGiustino2016] — and only the even terms are left
+to fluctuate. The weights stay equal, $1/N$ each.
+
+**The error of a paired set** is the spread of the **pair means**,
+$\bar X_j = \tfrac12(X_{2j-1} + X_{2j})$, over $\sqrt{N/2}$ — never the
+frames' spread over $\sqrt N$: the two frames of a pair are not independent,
+and that formula is wrong both ways.
+
+**When pairs help, and when they hurt.** Split $X$ into its even and odd
+parts (§ 4.1). Independent frames give the mean a variance
+$\big[\mathrm{Var}(X_{\mathrm{even}}) + \mathrm{Var}(X_{\mathrm{odd}})\big]/N$;
+pairs give $2\,\mathrm{Var}(X_{\mathrm{even}})/N$ — the odd part's variance
+gone, the even part's doubled ([Owen2013] § 8.2, eq. 8.4). So pairs help a
+response dominated by its odd part and can be up to $\sqrt2$ worse for an
+even one:
+
+| response, over a bell curve, $u = Q/\sigma$ | independent | pairs |
+|---|---|---|
+| § 4.1's, $T = 0.100 + 0.0115\,u + 0.0033\,u^2$ — mostly odd | $0.0124/\sqrt N$ | $0.0066/\sqrt N$ — the same error from 3.5 times fewer frames |
+| a level at $E_F$ (§ 4.3, $g\sigma = 0.1$ eV), $T = 1/(1+u^2)$ — even | $0.265/\sqrt N$ | $0.374/\sqrt N$ — worse |
+
+A mode that is not totally symmetric in a symmetric junction — of a
+one-dimensional symmetry species — moves the response evenly, by symmetry,
+and pairs double its share of the spread; but a snapshot moves every mode at
+once, and whether pairs help the whole set depends on which share dominates,
+the totally symmetric modes (the contact stretches, mostly linear) supplying
+an odd one. **A paired set's own results say which**: the spread of the pair
+means is the even part's, the spread of the pair half-differences
+$\tfrac12(X_{2j-1} - X_{2j})$ the odd part's (`Snapshots.parts`,
+[`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 7).
+Whether to pair is the person's (§ 3.3 there).
+
+**More frames later.** The streams of a seed are drawn in blocks, each
+mode's own (`engines/vibration-frames.md` § 3.3), so a larger count drawn
+with the same seed begins with the smaller one's frames: more frames are the
+same seed drawn further — the next $N$ snapshots, written as a set of their
+own — or another seed. The two calculations' frames are pooled at equal
+weights, each set's frame 0 left out, and the pooled error is taken from all
+their pairs (or frames) together, $N$ counting both (`pooled`, § 3.3 there).
+
+**The seed, and a driven set against its baseline.** Every set states the
+seed it was drawn with, and the same seed gives the same frames, on the same
+numpy. Each mode draws from its own streams of the seed, its normal numbers
+first in one block, so changing one mode's state — driving it — leaves every
+other mode's draws as they were, and the driven mode's normal numbers are its
+baseline's own. Split a response into the driven mode's part and the rest:
+**for a response that adds the modes' effects**, the rest is the same in a
+driven set and its baseline and cancels exactly in their difference; **where
+the effects multiply** — the contact bond, § 2c.3's tunnelling — the rest
+scales the driven part and cancels only in part: on § 2c.3's response, the
+stiff mode warm-driven with one swing quantum against its thermal state, the
+difference spreads 0.30 per frame with one seed, against 0.19 for the driven
+mode's part alone and 1.43 with two seeds. So one seed gives a far better
+difference than two; it beats either set's own error only when the other
+modes move the result more than the driven mode does — when the driven mode
+moves it most, the difference can be the noisier number: on § 6's stiff
+example, the warm driven state against the thermal one, the difference
+spreads 8.77 per frame with the driven mode's own draws independent, against
+the driven set's 8.48 and the baseline's 2.21, and 7.39 with its normal
+numbers shared — the same error from 1.4 times fewer frames.
+
+**How many frames a difference needs**, $\varepsilon$ the error wanted:
+for independent snapshots $(s_\Delta/\varepsilon)^2$, $s_\Delta$ the spread
+of the frame-by-frame differences of a first set; for a paired set
+$2(\bar s_\Delta/\varepsilon)^2$, $\bar s_\Delta$ the spread of the pairs'
+mean differences. A small effect needs many: on § 2c.3's response, one swing
+quantum on the stiff mode raises the average by 1.7 %, 0.021, the
+differences spreading 0.30 per frame and 0.16 per pair — about 190 frames
+independent and about 120 paired for an error the size of the effect, about
+19 000 and 12 000 for a 10 % error, where 64 frames see noise. (The pairs
+cancel the difference's leading odd term, $-aQ_0\cos\varphi$; its cross term
+with the soft mode is even under the full mirror and stays.) That mode's own two sets, three
+frames each (§ 6), give its own relative effect, +1.69 %, from six — the
+same as the snapshots' for a response whose modes multiply; the snapshot
+difference adds what the cross terms change.
+
+**Why a snapshot set is not re-weighted** for another motion. Re-weighting
+frames drawn from one distribution, $P_{\mathrm{old}}$, to average over
+another, $P_{\mathrm{new}}$, gives each frame the weight
+$w = P_{\mathrm{new}}/P_{\mathrm{old}}$ at its geometry; the average stays
+right, but its error grows: the frames count as $N/\langle w^2\rangle$
+independent ones, $\langle w^2\rangle$ the mean square weight over the old
+draws. For one mode, thermal at its zero-point width $\sigma = Q_{\mathrm{zp}}$,
+re-weighted to the same mode driven with $n_s$ swing quanta,
+$\langle w^2\rangle = \int P_{\mathrm{new}}^2/P_{\mathrm{old}}\,dQ$; with
+$P_{\mathrm{new}}$ the bell curve averaged over the swing's phase,
+$\langle w^2\rangle = \overline{e^{Q_0^2\cos\varphi\cos\varphi'/\sigma^2}}
+= I_0\big(Q_0^2/2\sigma^2\big)^2$, averaged over both phases ([DLMF] 10.32.1
+twice), and with $Q_0 = 2Q_{\mathrm{zp}}\sqrt{n_s}$ that is $I_0(2n_s)^2$ —
+5.2 at one quantum, so 19 % of the frames count, and $1.8\times10^5$ at four,
+none. Over a warm width $\sigma_T$ it is $I_0\big(2n_sQ_{\mathrm{zp}}^2/\sigma_T^2\big)^2$,
+smaller; every other mode whose state changes multiplies it. Another motion
+is another set.
 
 ---
 
-## 6. One mode a set — and what its frames do not answer
+## 6. One mode, or the whole molecule — what each set answers
 
-A frame set samples **one** mode: frame 0 and the mode's displaced frames,
-**every frame stating its weight and the weights summing to 1** *(user,
-2026-10-09: "all weights should add up to 1 that's an explicit rule within
-error tolerance")*:
+**A mode's own set** samples **one** mode: frame 0 and the mode's displaced
+frames, **every frame stating its weight and the weights summing to 1**
+*(user, 2026-10-09: "all weights should add up to 1 that's an explicit rule
+within error tolerance")*:
 
 ```mermaid
 flowchart LR
@@ -1122,28 +1543,80 @@ flowchart LR
     F2["frame 2<br/>−√3 σ<br/>weight ⅙"] --> M
 ```
 
-Another mode is another frame set and another transport calculation. **How
-several modes act together is not answered here.** Whether their changes add,
-compound or cancel depends on the joint motion of the modes and on the
-cross-derivatives $\partial^2T/\partial Q_\nu\partial Q_\mu$, which frames
-displaced along one mode never measure; and no thermodynamic data at hand
-supports a claim about it. So each mode's average stands on its own, and
-weighing one mode against another is the person's post-processing *(user,
-2026-10-09: "it is cleaner and more focused to let user to post-process the
-results from different vibrational mode and decide how they can be weighed to
-give an overall impact ... it is baseless to discuss how different normal mode
-would mix because there is not thermal dynamic data to support any claims at
-this point")*.
+It answers how much that mode, in the state chosen, changes the result from
+the relaxed geometry. **The excitation's own effect** is another number: the
+relaxed geometry is not a state the molecule is ever in, and the mode's
+zero-point and thermal motion already change the result. A driven or excited
+mode's own effect is its state's average against the same mode's state
+without the excitation **at the same temperature** — the warm driven state
+against the thermal one at the junction's temperature, a pure state (the
+coherent state, $n$ quanta) against that one mode in its ground state, 0 K,
+the others as they are. **The default cold coherent state against a warm
+baseline** measures the drive less the mode's own thermal quanta. To second
+order (§ 2a.3), the cold coherent state has
+$\langle Q^2\rangle = Q_{\mathrm{zp}}^2(1 + 2n_s)$, the thermal one
+$Q_{\mathrm{zp}}^2(1 + 2n_{\mathrm{th}})$ and the warm driven one
+$Q_{\mathrm{zp}}^2(1 + 2n_{\mathrm{th}} + 2n_s)$: the cold-against-warm
+difference holds $n_s - n_{\mathrm{th}}$ quanta of the drive's $n_s$, a
+share $(n_s - n_{\mathrm{th}})/n_s$ of its effect —
+$n_{\mathrm{th}} = \tfrac12(\sigma_T^2/Q_{\mathrm{zp}}^2 - 1)$ read from the
+mode's warm width. On the contact bond of § 4.3 it is exact:
+$\langle e^{-aQ}\rangle$ over each state (§ 2b.5) gives the cold default
+against the warm baseline as the drive's own effect, $I_0(aQ_0)$, times
+$e^{-\lambda^2 n_{\mathrm{th}}}$, $\lambda = aQ_{\mathrm{zp}}$. A 50 cm⁻¹ mode
+at 300 K ($n_{\mathrm{th}} = 3.69$, $\lambda = 0.3$) with one swing quantum:
+$1.0920 \times 0.7174 = 0.783$, so it reads −22 %, where the drive's own
+effect, warm driven against thermal, is +9 %; with four swing quanta, −0.0 %
+against +39 %. Even a mode only a little warm reads a weak drive short: at
+$\sigma_T/Q_{\mathrm{zp}} = 1.1$ ($n_{\mathrm{th}} = 0.105$) a quarter-quantum
+drive reads 58 % of its effect. The cold default's exact baseline is the same
+mode at 0 K beside the warm others. On a stiff mode the comparisons agree: a
+1000 cm⁻¹ mode at 300 K with $aQ_{\mathrm{zp}} = 1$ has a thermal average of
+$1.66\,T_0$, and one swing quantum gives $3.76\,T_0$ cold and $3.79\,T_0$
+warm — +276 % against the relaxed geometry, +126 % cold against the thermal
+state, +128 % warm against it, the excitation's own.
+
+**From two sets, or one set re-weighted.** The two states' averages come
+best from two sets, each placed by its own state's rule and exact to degree
+$2m - 1$. One set's results re-weighted to the other state (§ 5.4) are exact
+only to degree $m - 1$: on the stiff example, three frames give +77 % (the
+thermal set re-weighted to the drive) or +92 % (the driven set re-weighted to
+the thermal state) against the true +126 % (the cold default against the
+thermal state — the two states these sets sample); five frames +119 % or
++132 %;
+seven +126 % or +125 % — against two sets' +118 %, +126 % and +126 %. So the
+one-calculation route needs five frames at least. Another mode is another
+set.
+
+**Snapshots of the whole molecule** answer the molecule's average at its
+temperature, every mode moving at once, with a driven mode where one is set
+(§ 2c) — what the user asked for on 2026-11-23: *"a full displacement map of
+all atoms with the included modes at specified temperature with thermal
+equilibrium assumption"*. A snapshot moves the modes together, as the
+harmonic picture's equilibrium does (§ 2c.1), and computes the property at
+the geometry they make, so no cross-derivative
+$\partial^2T/\partial Q_\nu\partial Q_\mu$ has to be known. Weighing one
+mode's own set against another's stays the person's, as ruled on 2026-10-09:
+*"it is cleaner and more focused to let user to post-process the results from
+different vibrational mode and decide how they can be weighed to give an
+overall impact"*.
 
 ---
 
 ## 7. What the picture assumes
 
-Each is stated beside the numbers it limits, never dropped:
+Each is stated beside the numbers it limits, never dropped: items 2–6 by
+a calculation over the frames, beside its average
+([`engines/transport.md`](?doc=engines/transport.md) § 2a.12); items 1, 7, 8
+and 9 by the frame set itself, in its maker's `assumptions` row, which every
+calculation carries as written
+([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 5):
 
-1. **A harmonic mode.** $P(Q)$ is a Gaussian — § 2's, at the temperature
-   the person states: the junction's, or a pumped mode's effective one
-   (§ 2a.1, § 5). A strongly
+1. **Harmonic modes.** Each mode's $P(Q)$ is its state's (§ 2b.3) — in
+   equilibrium § 2's Gaussian, at the temperature the person states: the
+   junction's, or for a mode pumped at random moments its effective one
+   (§ 2a.1, § 5) — and the modes move independently but within a drive
+   group (§ 2c.1, § 2c.2). A strongly
    anharmonic mode — a soft contact bond, softer outward than inward — has a
    *skewed* distribution, $\langle Q\rangle \neq 0$ and $\langle Q^3\rangle\neq0$,
    and then the odd part of $T$ no longer cancels: a second source of
@@ -1159,63 +1632,62 @@ Each is stated beside the numbers it limits, never dropped:
    [Frederiksen2007, Galperin2007] (`vibration.md` § 5.6, level two).
 3. **One distribution, one voltage at a time.** The average is taken over
    the frames at each voltage separately (`transport.md` § 2a.9, *Both
-   axes*), with the same weights at every voltage — a Gaussian of the spread
-   the set states, at the temperature the person states. A finite bias can
-   heat the modes the current couples to, and light can pump them (§ 2a);
-   their spread is then said by an effective temperature, measured, not
-   computed here, and stated as the set's temperature. At low bias the averaged $T(E_F)$ is the averaged conductance.
+   axes*), with the same weights at every voltage — the motion the set was
+   made for. A finite bias can
+   heat the modes the current couples to, and light can pump them at random
+   moments (§ 2a.1); their spread is then said by an effective temperature,
+   measured, not computed here, and stated as the set's temperature — a
+   driven mode has no effective temperature for its shape (§ 2a.3). At low bias the averaged $T(E_F)$ is the averaged conductance.
 4. **Each frame's electrons in their ground state for that frame** (the
    Born–Oppenheimer picture): every frame runs its own self-consistent device.
 5. **The level alignment is DFT's**, frame by frame (`normal-modes.md` § 4c.6).
 6. **The electrodes do not move**: the held atoms are the leads, shared by
-   every frame (§ 1).
+   every frame (§ 1); their own vibrations are not among the modes.
+7. **A finite number of snapshots.** A sampled set's average carries a
+   statistical error (§ 5.5), computed by the analysis that reads the
+   results (`engines/vibration-frames.md` § 7); a mode's own set carries
+   none, only its rule's degree (§ 5.3).
+8. **The light acts on the electrons too.** A drive strong enough to add one
+   quantum needs a local field near 0.1 V/Å (§ 2a.2's table) — about 1 V
+   across a 1 nm gap, oscillating at the light's frequency, some eight times
+   the photon energy at 1000 cm⁻¹. Such a field changes the current by
+   itself: photon-assisted tunnelling [TienGordon1963] and the optical
+   rectification measured in a nanogap [Ward2010], beyond anything static
+   frames of a displaced molecule give.
+9. **A drive pushes every infrared-active mode.** The field couples to each
+   mode through its own $\partial\boldsymbol\mu/\partial Q_k$; off resonance,
+   each answers with a small forced motion in step with the drive, of
+   amplitude about $\gamma\omega/\lvert\omega_k^2 - \omega_L^2\rvert$ times the
+   ratio of the dipole derivatives — about 0.05 for a neighbour 100 cm⁻¹ away
+   with a 10 cm⁻¹ line — which a one-mode drive (§ 2c.2) leaves out.
 
 ---
 
-## 8. What the record carries
+## 8. What is recorded where
 
-The frame set states what every frame is, raw values beside derived ones,
-as the maker's rows of [`model/structure.md`](?doc=model/structure.md)
-§ 2.2f, each with its meaning, carried as written:
+**The frame set** states what every frame is: its weight — the one row a
+calculation reads — and the maker's rows, the motion and the recipe, each
+with its meaning ([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md)
+§ 5; [`model/structure.md`](?doc=model/structure.md) § 2.2f).
 
-- **the mode**: its number as the vibration result counts it, its frequency,
-  its zero-point amplitude and which masses measure it;
-- **the motion sampled**: the temperature the person stated, the mean number
-  of quanta and the spread $\sigma$ it gives, and the outermost move;
-- **the rule**: what placed and weighted the frames, and how many;
-- **each frame**: its plain displacement, its mass-weighted position $Q_j$
-  and $Q_j/\sigma$, its largest single-atom move, its weight;
-- **every atom's mass**.
-
-The calculation reads each frame's weight alone.
-The transport record (`transport.md` § 2a.12) carries the frame set it
-averages over, cited whole (`frame_set`: its rows with their meanings, the
-vibration it came from, the masses, the pair and its sha256), and:
-
-- each frame's $T_j(E)$ and current — the family of curves — beside its rows;
-- $\langle T(E)\rangle = \sum_j W_j T_j(E)$, the mode's average at every
-  frame's stated weight, and $\Delta T(E) = \langle T(E)\rangle - T_0(E)$;
-- at $E_F$ the averaged conductance beside the base frame's, and
-  $\langle\Delta G\rangle / G$ in per cent;
-
-with § 7's assumptions beside them. It computes with the weights alone, and
-**no curvature or slope**: a level crossing $E_F$ within the vibration makes
-$T(Q)$ jump between frames, and a difference of three frames is then no
-derivative (§ 5.3) — so a number shaped like one would mislead (the user,
-2026-10-10). What is derived across the frames — a slope, the curvature where
-the response is smooth, a comparison with another mode's set — is the
-analysis's, made on the data file, where every frame's transmission sits
-beside its $Q_j$ and its weight (`transport.md` § 2a.12, *the data file*).
-So is an average over another motion than the set's — a bell curve at
-another temperature, a swing — re-weighted from every frame's $Q_j$ (§ 5.4)
-and never written into the record.
+**A calculation over the frames** records each frame's result — the family
+of curves — and the average at the stated weights, carrying the set's rows as
+written, and derives nothing else across the frames: no slope or curvature
+([`engines/transport.md`](?doc=engines/transport.md) § 2a.12, the user's
+2026-10-10 ruling; § 5.3 says why). What is derived across the frames — a
+slope, the curvature where the response is smooth, a comparison with another
+set, an average over another motion (§ 5.4), a snapshot set's error (§ 5.5) —
+is the analysis's, made on the calculation's data file, where every frame's
+result sits beside its weight and its rows, and never written into the
+record.
 
 ---
 
 ## References
 
 Each article checked against Crossref and each book against its publisher's
-or a library's record, 2026-10-28; each is in `references.bib`.
+or a library's record, 2026-10-28 (the eight added 2026-11-23, likewise; Owen's
+book against its author's page, 2026-11-23); each is in `references.bib`.
 
 - [Feynman1972] R. P. Feynman, *Statistical Mechanics: A Set of Lectures*
   (W. A. Benjamin, Reading, Mass., 1972; Frontiers in Physics 36), ch. 2,
@@ -1237,10 +1709,33 @@ or a library's record, 2026-10-28; each is in `references.bib`.
   (Wiley-VCH, Weinheim, 2020), Complement G$_\mathrm{V}$, "Coherent
   'quasi-classical' states of the harmonic oscillator" — the ground state's
   bell curve carried along the classical motion (§ 2a.2).
-- [TrefethenWeideman2014] L. N. Trefethen, J. A. C. Weideman, *SIAM Rev.*
-  **56**, 385–458 (2014), doi:10.1137/130932132 — equally spaced points
-  average a periodic function exactly when it is a sum of cosines and sines
-  of lower order, and converge exponentially for an analytic one (§ 2a.3).
+- [CarruthersNieto1965] P. Carruthers, M. M. Nieto, *Am. J. Phys.* **33**,
+  537–544 (1965), doi:10.1119/1.1971895 — a classical push leaves a harmonic
+  mode that starts in its ground state in a coherent state (§ 2a.2).
+- [HammersleyMorton1956] J. M. Hammersley, K. W. Morton, *Proc. Camb. Phil.
+  Soc.* **52**, 449–475 (1956), doi:10.1017/S0305004100031455 — antithetic
+  variates, the method of mirrored draws (§ 5.5).
+- [TienGordon1963] P. K. Tien, J. P. Gordon, *Phys. Rev.* **129**, 647–651
+  (1963), doi:10.1103/PhysRev.129.647 — photon-assisted tunnelling (§ 7).
+- [Ward2010] D. R. Ward, F. Hüser, F. Pauly, J. C. Cuevas, D. Natelson,
+  *Nature Nanotechnol.* **5**, 732–736 (2010), doi:10.1038/nnano.2010.176 —
+  optical rectification and field enhancement in a nanogap (§ 7).
+- [GolubWelsch1969] G. H. Golub, J. H. Welsch, *Math. Comp.* **23**,
+  221–230 (1969), doi:10.1090/S0025-5718-69-99647-1 — a distribution's Gauss
+  rule from its own averages, as an eigenvalue problem (§ 2a.3, § 2b.4).
+- [PatrickGiustino2013] C. E. Patrick, F. Giustino, *Nat. Commun.* **4**,
+  2006 (2013), doi:10.1038/ncomms3006 — properties averaged over the
+  harmonic nuclear distribution by random snapshots of every mode (§ 2c.3).
+- [ZachariasPatrickGiustino2015] M. Zacharias, C. E. Patrick, F. Giustino,
+  *Phys. Rev. Lett.* **115**, 177401 (2015),
+  doi:10.1103/PhysRevLett.115.177401 — the stochastic, equal-weight
+  average over snapshots of the modes (§ 2c.3).
+- [ZachariasGiustino2016] M. Zacharias, F. Giustino, *Phys. Rev. B* **94**,
+  075125 (2016), doi:10.1103/PhysRevB.94.075125 — snapshots in mirrored
+  pairs, whose odd contributions cancel (§ 5.5).
+- [Owen2013] A. B. Owen, *Monte Carlo theory, methods and examples* (2013),
+  https://artowen.su.domains/mc/, ch. 8, § 8.2, eq. 8.4 — antithetic sampling
+  removes the odd part's variance and doubles the even part's (§ 5.5).
 - [Frederiksen2007], [Galperin2007] — inelastic transport and the
   electron–vibration coupling (`references.bib`).
 - [Kneipp1996] K. Kneipp, Y. Wang, H. Kneipp, I. Itzkan, R. R. Dasari,

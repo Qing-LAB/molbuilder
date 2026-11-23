@@ -1106,14 +1106,15 @@ transmission $T(E, Q)$; then $\partial\varepsilon_r/\partial Q$ and $\partial T(
 question directly. *Tool:* built for $T(E, Q)$ and the device's PDOS — a
 transport calculation citing the frame set computes both at each frame;
 $\varepsilon_r(Q)$, $\Gamma(Q)$ and $\Delta\rho(r, Q)$ are not. The displaced frames are written by
-the frame-set generator (V1.25, a module of its own), as one multi-frame pair:
+the motion toolkit (V1.25; [`engines/vibration-frames.md`](?doc=engines/vibration-frames.md); from R3d2b2 — the frame generator, `spectra.mode_frames`, until then), as one multi-frame pair:
 frame 0 the relaxed structure, the displaced frames through the structure's
 own doors — `with_frames` for the coordinates, `set_customized(…, frame=i)`
 for the rows, the `mass_amu` channel for each atom's mass — stating what every
 frame is, raw values beside derived ones: the one mode the set samples, each
 frame's plain displacement and its mass-weighted position along the mode, every
-weight stated and the set's summing to 1 (`vibration.md` § 5.10 ③;
-`model/structure.md` § 2.2f). The
+weight stated and the set's summing to 1 (the rows: the toolkit's
+vocabulary, [`engines/vibration-frames.md`](?doc=engines/vibration-frames.md)
+§ 5.1; the container: `model/structure.md` § 2.2f). The
 displacement arithmetic exists twice (the PySCF probe, the animation), and
 the amplitude has one right answer rather than being a knob — the nodes of the
 thermal distribution, paired with the canonical eigenvector (`vibration.md`
@@ -1233,7 +1234,7 @@ implementation sections cited are [`engines/vibration.md`](?doc=engines/vibratio
 | on SIESTA, relax with $\Delta R_F = 0$ first; $F_A \approx 0$, $F_F$ need not vanish | **the same, as the `relax` phase of one run** when the box is unticked (§ 4b.6 A), and the tool **verifies** it: the reference-step forces are read back and judged, and the assertion `already_relaxed` is asked on this engine too (§ 4b.6 A) |
 | one $\pm\delta$ pair per column; only the active coordinates displaced; 90 columns rather than 900 for 30 of 300 atoms | **the same** (`FC.First..FC.Last` on the sorted copy): six whole-system SCFs per free atom, stated by the pre-run check (`vibration.md` § 5.8) |
 | converge $\delta$: $\Delta F \gg \sigma_F$, $H(\delta) \approx H(\delta/2)$, $H_{ij} \approx H_{ji}$, $\omega(\delta) \approx \omega(\delta/2)$ | **built, but for $\Delta F \gg \sigma_F$**: the range and the noise-floor note are on the item; the ladder is describable, a later stage taking the first stage's relaxation over — two stages at different geometries refused — and `summarize task` compares the stages — $\omega$ per mode matched by shape and $H(\delta)$ from the raw `.FC` — into `<label>.fc-sweep.json` (`engines/vibration.md` § 5.9); the asymmetry is recorded per stage. The force change against the SCF's own noise is not estimated |
-| mode-displaced structures on SIESTA for $\mathrm{PDOS}(E, Q)$, $\varepsilon_r(Q)$, $\Gamma(Q)$, $\Delta\rho(r, Q)$, $T(E, Q)$ | **built for transport, on both engines**: one mode as one multi-frame pair — frame 0 the Hessian's geometry, then the Gauss–Hermite nodes of a Gaussian along the mode, its spread set by the temperature the person states, the held atoms unmoved (`vibration.md` § 5.10 ③; `spectra.mode_frames.frameset_from_mode`, `molbuilder frameset from-mode`, the Spectrum tab's *Write frame set…*); a transport calculation citing it computes $T(E, Q)$ and the device's PDOS at each frame; $\varepsilon_r(Q)$, $\Gamma(Q)$ and $\Delta\rho(r, Q)$ are not built (V1.26) |
+| mode-displaced structures on SIESTA for $\mathrm{PDOS}(E, Q)$, $\varepsilon_r(Q)$, $\Gamma(Q)$, $\Delta\rho(r, Q)$, $T(E, Q)$ | **built for transport, on both engines**: one mode as one multi-frame pair — frame 0 the Hessian's geometry, then the Gauss–Hermite nodes of a Gaussian along the mode, its spread set by the temperature the person states, the held atoms unmoved (`vibration.md` § 5.10 ③; `spectra.mode_frames.frameset_from_mode`, `molbuilder frameset from-mode`, the Spectrum tab's *Write frame set…*; from R3d2b2 the motion toolkit's writer, a mode's own set in any state and snapshots of many modes, [`engines/vibration-frames.md`](?doc=engines/vibration-frames.md)); a transport calculation citing it computes $T(E, Q)$ and the device's PDOS at each frame; $\varepsilon_r(Q)$, $\Gamma(Q)$ and $\Delta\rho(r, Q)$ are not built (V1.26) |
 | the molecular dipole is undefined for the periodic metal; the metal electrons are signal; $\Delta\rho_\nu(r)$ as the intermediate quantity | **the same reasoning** (§ 4b.7); the Born-charge route recorded, the density-difference maps owed |
 | match PySCF and SIESTA modes by their displacement patterns, then read how adsorption moved them | **not built**; it is the same overlap calculation as the Model A/B/C comparison (§ 4b.9) |
 
@@ -1398,10 +1399,11 @@ the DC current).
 Each mode is scored on its own: one frame set, one transport calculation a
 mode (user, 2026-10-09: *"each vibration mode will have a separate prep and
 run as different task"*). How several modes act together — whether their
-changes add, compound or cancel — needs the cross-derivatives no single-mode
-frame measures and thermodynamic data no run here supplies, so it is not
-claimed; weighing the modes against each other is the person's
-(`vibrational-averaging.md` § 6).
+changes add, compound or cancel — is no score's: the modes' joint motion is
+computed by snapshots of every mode at once, the property taken at the
+geometry they make, no cross-derivative needed
+(`vibrational-averaging.md` § 2c, § 6; `engines/vibration-frames.md` § 3);
+weighing one mode's score against another's is the person's.
 
 The discussion's two scores, kept side by side and never merged:
 
@@ -1422,8 +1424,8 @@ larger than $T_0$ whatever the sign of the stretch.
 ### 4c.5 Three frames give the curvature and the average at once — the Gauss–Hermite nodes
 
 *The derivation in full — the thermal distribution, why a lopsided response is
-what moves the average, the rule's error and its check, one mode a set —
-is [`vibrational-averaging.md`](?doc=science/vibrational-averaging.md).*
+what moves the average, the rule's error and its check, a mode's own set
+and snapshots of every mode — is [`vibrational-averaging.md`](?doc=science/vibrational-averaging.md).*
 
 The frames along a mode belong where they answer § 4c.4's question. For a
 Gaussian distribution the $m$-point **Gauss–Hermite** rule places the frames at

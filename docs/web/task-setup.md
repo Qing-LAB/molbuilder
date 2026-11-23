@@ -232,12 +232,13 @@ is refused by name, as the Transport tab's Describe refuses it — measured agai
 folder's own description, so an extension the command line wrote saves; a
 Save of another junction is another calculation, refused by its id (§ 2). *(The user, 2026-10-22, 2026-10-23; built
 2.33.0.)* **A cited frame set says what its frames are**,
-under them: its count and, for a mode's set, its mode line and a row per
-frame — the frame-set card the Transport tab's junction card draws, from the
-describe door's own door (`frame_average.answer`,
-[`engines/transport.md`](?doc=engines/transport.md) § 3.8.1), through the
-folder answer's `frame_set`; a citation that does not read says why, and the
-folder still opens.
+under them: its count, its rows and a row per frame — the frame-set card
+the Transport tab's junction card draws, from the describe door's own door
+(`frame_average.answer`, [`engines/transport.md`](?doc=engines/transport.md)
+§ 3.8.1), through the folder answer's `frame_set`, with the set's provenance
+read from the pair *(from R3d2b2; until then a mode's set's mode line, and no
+provenance)*; a citation that does not read says why, and the folder still
+opens.
 
 **Under them, every value shared by every stage** — *Shared by every
 stage*: each item the catalogue marks `shared` for this calculation's kind,

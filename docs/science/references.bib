@@ -1315,7 +1315,8 @@
   doi     = {10.1137/130932132}
   % Checked against Crossref 2026-10-28.  Equally spaced points: exact for a
   % trigonometric polynomial of lower degree, exponentially convergent for a
-  % smooth periodic function -- the frames a swing needs.
+  % smooth periodic function -- the equal phases a swing's density and
+  % distribution are averaged over (`vibration._swing_phases`).
 }
 
 @misc{DLMF,
@@ -1515,4 +1516,134 @@
   % Checked against Crossref 2026-11-18.  The main-group van der Waals radii
   % Bondi gave none for (boron and aluminium among them), as ASE's table
   % holds them (`chemistry.van_der_waals_radius`, `engines/builders.md` § 6).
+}
+
+@article{GolubWelsch1969,
+  author  = {Golub, Gene H. and Welsch, John H.},
+  title   = {Calculation of Gauss Quadrature Rules},
+  journal = {Mathematics of Computation},
+  volume  = {23},
+  number  = {106},
+  pages   = {221--230},
+  year    = {1969},
+  doi     = {10.1090/S0025-5718-69-99647-1}
+  % Checked against Crossref 2026-11-23.  A distribution's Gauss rule from its
+  % own averages, as a symmetric tridiagonal eigenproblem
+  % (`science/vibrational-averaging.md` § 2a.3, § 2b.4; `vibration.State.frames`).
+}
+
+@article{PatrickGiustino2013,
+  author  = {Patrick, Christopher E. and Giustino, Feliciano},
+  title   = {Quantum nuclear dynamics in the photophysics of diamondoids},
+  journal = {Nature Communications},
+  volume  = {4},
+  pages   = {2006},
+  year    = {2013},
+  doi     = {10.1038/ncomms3006}
+  % Checked against Crossref 2026-11-23.  Properties averaged over the
+  % harmonic nuclear distribution by random snapshots of every mode
+  % (`science/vibrational-averaging.md` § 2c.3).
+}
+
+@article{ZachariasPatrickGiustino2015,
+  author  = {Zacharias, Marios and Patrick, Christopher E. and Giustino, Feliciano},
+  title   = {Stochastic Approach to Phonon-Assisted Optical Absorption},
+  journal = {Physical Review Letters},
+  volume  = {115},
+  pages   = {177401},
+  year    = {2015},
+  doi     = {10.1103/PhysRevLett.115.177401}
+  % Checked against Crossref 2026-11-23.  The equal-weight average over
+  % snapshots drawn from every mode's distribution
+  % (`science/vibrational-averaging.md` § 2c.3).
+}
+
+@article{ZachariasGiustino2016,
+  author  = {Zacharias, Marios and Giustino, Feliciano},
+  title   = {One-shot calculation of temperature-dependent optical spectra and phonon-induced band-gap renormalization},
+  journal = {Physical Review B},
+  volume  = {94},
+  pages   = {075125},
+  year    = {2016},
+  doi     = {10.1103/PhysRevB.94.075125}
+  % Checked against Crossref 2026-11-23.  Snapshots in mirrored pairs, whose
+  % odd contributions cancel (`science/vibrational-averaging.md` § 5.5).
+}
+
+@article{HammersleyMorton1956,
+  author  = {Hammersley, J. M. and Morton, K. W.},
+  title   = {A new Monte Carlo technique: antithetic variates},
+  journal = {Mathematical Proceedings of the Cambridge Philosophical Society},
+  volume  = {52},
+  number  = {3},
+  pages   = {449--475},
+  year    = {1956},
+  doi     = {10.1017/S0305004100031455}
+  % Checked against Crossref 2026-11-23.  Antithetic variates, the method
+  % of mirrored draws (`science/vibrational-averaging.md` § 5.5); the parity
+  % law the chapter states is Owen2013's eq. 8.4.
+}
+
+@article{CarruthersNieto1965,
+  author  = {Carruthers, P. and Nieto, Michael Martin},
+  title   = {Coherent States and the Forced Quantum Oscillator},
+  journal = {American Journal of Physics},
+  volume  = {33},
+  number  = {7},
+  pages   = {537--544},
+  year    = {1965},
+  doi     = {10.1119/1.1971895}
+  % Checked against Crossref 2026-11-23.  A classical force on a harmonic
+  % oscillator that starts in its ground state leaves it in a coherent state
+  % (`science/vibrational-averaging.md` § 2a.2).
+}
+
+@article{TienGordon1963,
+  author  = {Tien, P. K. and Gordon, J. P.},
+  title   = {Multiphoton Process Observed in the Interaction of Microwave Fields with the Tunneling between Superconductor Films},
+  journal = {Physical Review},
+  volume  = {129},
+  number  = {2},
+  pages   = {647--651},
+  year    = {1963},
+  doi     = {10.1103/PhysRev.129.647}
+  % Checked against Crossref 2026-11-23.  Photon-assisted tunnelling: an
+  % oscillating field across a junction changes the current by itself
+  % (`science/vibrational-averaging.md` § 7, item 8).
+}
+
+@article{Ward2010,
+  author  = {Ward, Daniel R. and H{\"u}ser, Falco and Pauly, Fabian and Cuevas, Juan Carlos and Natelson, Douglas},
+  title   = {Optical rectification and field enhancement in a plasmonic nanogap},
+  journal = {Nature Nanotechnology},
+  volume  = {5},
+  pages   = {732--736},
+  year    = {2010},
+  doi     = {10.1038/nnano.2010.176}
+  % Checked against Crossref 2026-11-23.  The optical voltage across a
+  % nanogap, measured by its rectified current
+  % (`science/vibrational-averaging.md` § 7, item 8).
+}
+
+@misc{Ochterski1999,
+  author       = {Ochterski, Joseph W.},
+  title        = {Vibrational Analysis in Gaussian},
+  howpublished = {Gaussian, Inc. white paper, \url{https://gaussian.com/vib/}},
+  year         = {1999},
+  note         = {October 29, 1999}
+  % Checked against the publisher's page 2026-11-23 (no DOI).  Gaussian's
+  % reduced mass, 1 / sum |L|^2 over the Cartesian displacements of the
+  % mass-weighted normal mode, and force constant, mu omega^2
+  % (`engines/vibration.md` § 6.11 § 3).
+}
+
+@book{Owen2013,
+  author       = {Owen, Art B.},
+  title        = {Monte Carlo theory, methods and examples},
+  year         = {2013},
+  howpublished = {\url{https://artowen.su.domains/mc/}},
+  note         = {Ch. 8, \S 8.2, eq. 8.4}
+  % Checked against the author's page 2026-11-23 (an online book, no DOI).
+  % Antithetic sampling removes the variance of the response's odd part and
+  % doubles its even part's (`science/vibrational-averaging.md` § 5.5).
 }

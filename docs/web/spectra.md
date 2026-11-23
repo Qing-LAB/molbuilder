@@ -753,12 +753,13 @@ is assembled in `lib/spectra/core.js :: _reportSwing`.
 
 On the selected mode, **Write frame set…** writes the mode as one
 multi-frame structure pair a transport calculation cites
-([`engines/vibration.md`](?doc=engines/vibration.md) § 5.10 ③). The dialog
-asks two things and then where to save:
+(`spectra.mode_frames`; the motion toolkit's from R3d2b2, [`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 4). The dialog
+asks two things and then where to save — from R3d2b2 three, the mode's state
+first (below):
 
 - **the temperature** *(the user, 2026-10-28: the spread, stated as a
   temperature, replacing the maximum displacement)* — of the motion the
-  frames sample: the junction's, or for a mode pumped out of equilibrium its
+  frames sample: the junction's, or for a mode pumped at random moments its
   effective temperature ([`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md)
   § 2a.1). The box starts at the run's thermochemistry temperature — the
   result's `thermo.temperature_K`, the number its thermochemistry was
@@ -772,22 +773,50 @@ asks two things and then where to save:
 computes it at the temperature typed (`frameset_temperature_k`, § 6): the
 mode's mean number of quanta $n$, its spread against the zero-point one
 $\sigma/Q_{\mathrm{zp}}$, and how far the outermost frames move the atom that
-moves most — the outermost move — for the rule chosen (`spectra.mode_frames.outermost_move`, `science/vibrational-averaging.md` § 5),
+moves most — the outermost move — for the rule chosen (`spectra.mode_frames.outermost_move`; from R3d2b2 the motion toolkit's `outermost_move`, for any state; `science/vibrational-averaging.md` § 5),
 beside this mode's largest zero-point atom move (the result's
 `zero_point_displacement_ang`). Typing another temperature asks the door again
 at it, and the sentence names the temperature the door computed the numbers
 at, never a value still on its way.
 
+**The mode's state** *(to build, R3d2b2 — the user's decision,
+[`engines/vibration.md`](?doc=engines/vibration.md) § 6.11 § 9 item 2: the
+doors write a mode's own set in any state)*. Above the frame count, the
+dialog asks which state the frames sample — the motion toolkit's states
+([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 2):
+
+| the state | its controls | the readout under them |
+|---|---|---|
+| **thermal** (the default) | the temperature box, as above | $n$, $\sigma/Q_{\mathrm{zp}}$, the outermost move — as above |
+| **$n$ quanta** | a whole number of quanta, 0 or more; no temperature | $n$, $\sigma/Q_{\mathrm{zp}} = \sqrt{2n+1}$, the outermost move of the $n$-quanta rule |
+| **driven** | the swing quanta $n_s$; *warm*, unticked by default — ticked, the temperature box returns, the environment's | the total $n$ (the swing's and, warm, the bath's), $\sigma/Q_{\mathrm{zp}}$, the swing's turning point $Q_0/Q_{\mathrm{zp}} = 2\sqrt{n_s}$, the outermost move of the swing's own rule; unticked, the mode's thermal quanta $n_{\mathrm{th}}$ and $\sigma_T/Q_{\mathrm{zp}}$ at the record's temperature said beside it — what the cold driven state leaves out ([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 3.1) |
+
+The load door answers the readout for the state asked — its `frameset` block
+per mode, at the state's arguments in place of `frameset_temperature_k`
+(§ 6): `{mean_quanta, spread_amu12_ang, spread_over_zero_point,
+outermost_move_ang}` for every state (today `sigma_amu12_ang` and
+`sigma_over_zero_point`, renamed with the vocabulary's `spread_amu12_ang`), a
+driven state adding `swing_over_zero_point` and, cold, `thermal_quanta` and
+`thermal_spread_over_zero_point` at the record's temperature — and the write
+asks the same state (`POST /api/spectra/frameset`,
+the state's arguments in place of `temperature_k`). Each state's frames are
+its own Gauss rule, frame 0 the relaxed geometry
+([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 4).
+
 **Then where in the tree to save the pair**: a folder, then the set's name
 alone — `mode6` offered for mode 6 — written as `<name>.xyz` and
 `<name>.molstruct.json`, the extension added by the save-where question
 (`chooseSavePath`, [`projects.md`](?doc=web/projects.md) § 5). The page writes
-nothing itself: it asks the one generator through
+nothing itself: it asks the frame-set writer (`spectra.mode_frames.frameset_from_mode`;
+the motion toolkit's one writer from R3d2b2) through
 `POST /api/spectra/frameset` (§ 6), and shows its answer — each frame, named
 as the frame-set card names it (*frame 1 (of 5)* for the first, the
 display's count from 1, `model/structure.md` § 2.2e), its $q/\sigma$, largest
 atom move and weight, the pair's path, and, where an electrode atom moves,
-which ones, in the words a transport calculation citing the set says too. The animation's amplitude (§ 4.1) is a
+which ones, in the words a transport calculation citing the set says too
+*(until R3d2b2; from then a transport calculation citing the set says it,
+[`engines/transport.md`](?doc=engines/transport.md) § 2a.9, and the writer
+checks only its held atoms)*. The animation's amplitude (§ 4.1) is a
 drawing choice and never this input.
 
 ## 5. The standalone tab — from a structure to a description
@@ -887,7 +916,7 @@ the run's root, so the launch is the last step on both engines
 
 ## 6. The API door
 
-Three spectra routes — the ARTIFACT reader, the export and the frame generator's door (full shape in
+Three spectra routes — the ARTIFACT reader, the export and the frame-set door (full shape in
 [`web-api.md`](?doc=web/web-api.md)); the compute half goes through the
 catalogue schema + hand-over doors (§ 5):
 
@@ -895,7 +924,7 @@ catalogue schema + hand-over doors (§ 5):
 |---|---|---|
 | `POST /api/spectra/load` | parses an existing `.spectra.json` into display data, with the page's constants beside it — among them `engine_words`, each engine as the engine table names it, which the run summary's *Engine* line says the result's engine by (a file naming an engine the table does not hold, by the file's own word) — and with `temperature_k`, each mode's thermal spread at it (§ 4.1); with `frameset_temperature_k` — the frame-set dialog's, the run's thermochemistry temperature when not asked — each mode's `frameset`: its mean number of quanta, its spread and that spread against its zero-point one, and the outermost frames' largest atom move for three, five and seven frames at it (§ 4.3); with `infrared: {direction, partition}`, the free atoms' infrared at those choices — along z by Hirshfeld charges when not asked, and derived with every load of a result that states its charges (§ 3.2); with `raman: {laser_nm, broaden_ev?}`, the Raman at that laser (§ 3.3) | `{ok, results}`, `results.infrared` the infrared view where the result has one, `results.raman` the Raman view when asked, `infrared_said` and `raman_said` the door's reason where it could not give one — or a **typed** error carrying a `kind` string (missing → 404, wrong schema version → 422, malformed or bad-field → 400) so the UI can react without reading the message |
 | `GET /api/export` | `?path=` the result the viewer shows, `format=` `netcdf` or `csv`, `laser_nm=` and `broaden_ev=` the view's — the calculation's vibration data files and the Raman view, one zip (§ 3.3) | the zip, its name the server's, a sentence beside it in `X-Molbuilder-Said` — or `{ok: false, error}`, 400 naming what is refused, 404 for nothing there |
-| `POST /api/spectra/frameset` | `{path, mode, temperature_k, nodes, out}` — the loaded result, whose folder the server takes as its run's, the frame count one of the load's `constants.frameset_nodes` (`spectra.mode_frames.NODES`, § 4.3), and the pair to write (the tree picker's choice), each fenced inside the tree as `/api/spectra/load`'s path is — through the one generator (`engines/vibration.md` § 5.10 ③) | `{ok, path, frames: [{q_sigma, max_atom_displacement_ang, weight}], said}` — or the generator's refusal in its words |
+| `POST /api/spectra/frameset` | `{path, mode, temperature_k, nodes, out}` — the loaded result, whose folder the server takes as its run's, the frame count one of the load's `constants.frameset_nodes` (`spectra.mode_frames.NODES`, folded into the motion toolkit in R3d2b2; § 4.3), and the pair to write (the tree picker's choice), each fenced inside the tree as `/api/spectra/load`'s path is — through `spectra.mode_frames.frameset_from_mode`, from R3d2b2 the motion toolkit's one writer (`engines/vibration-frames.md` § 4, § 5: a mode's own set in any state, the state's arguments in place of `temperature_k`, § 6 there) | `{ok, path, frames: [{q_sigma, max_atom_displacement_ang, weight}], said}` — or the writer's refusal in its words |
 
 Each follows the app's `{ok: …}` envelope convention, the export's file
 aside. The form schema comes

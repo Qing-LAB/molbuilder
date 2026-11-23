@@ -77,8 +77,8 @@ built in R3d with the vibration's data files.
   and mean quanta at a temperature, each element's share of a mode's motion,
   the mode over all atoms and the displaced geometry (`vibration`, 2.78.0),
   a frame set's outermost move (`spectra/mode_frames.py`), the frame weights
-  at a temperature (`frame_average.py`) — the last two folded into
-  `vibration` with the record (R3d2b).
+  at a temperature (`frame_average.py`) — the last two moving into the motion
+  toolkit (`vibration_frames`, and `State.weights_at`, R3d2b2).
 - **The design, written 2026-11-22** ([`engines/vibration.md`](?doc=engines/vibration.md)
   § 6.11; the theory [`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md)
   § 2b): one `vibration` module owning every per-mode quantity and its
@@ -108,7 +108,9 @@ built in R3d with the vibration's data files.
   fraction of the zero-point width) and its view's per-mode verdict by the
   relative rule; the probe's record holds the weights' numbers only, its
   slope, $g$ and $S$ views; every temperature explicit, the API's default the
-  record's.
+  record's — narrowed by the user on 2026-11-23 for a driven mode, whose
+  coherent state takes no temperature ([`engines/vibration.md`](?doc=engines/vibration.md)
+  § 6.11 § 9 item 6, quoted there).
 - **Its documents**: [`engines/vibration.md`](?doc=engines/vibration.md)'s
   two diagrams redrawn — they stop at the Results tab and show neither the
   Raman optical calls (with the run's own copy of their files, 2.77.21), nor
@@ -123,27 +125,248 @@ built in R3d with the vibration's data files.
 
 ### 2. R3d2 — the vibration framework
 
-R3d1 shipped (2.77.25, 2.77.26). R3d2 builds the framework (§ 1) in four
-releases, each read whole: **R3d2a** (2.78.0, done) the module `vibration`, its
-states and `postprocess.vibration`'s mechanics; **R3d2b** the record — the
-per-mode values stored in the result and its data file (schema 15, data file
-@11, § 6.11 § 3, § 5), the frame-set maker's `outermost_move` and
-`at_temperature` and the transport average's motion weights folded into the
-module — with the copies `fix19-review.md` found beside them: the
-maker's `_ordered_nodes` and its inline largest move, the swing moments in
-`frame_average`, the page's `onWriteFrameSet` largest zero-point move and its
-`_swingReport`, the load door's own composition of the free atoms' shares
-(the record's stored shares read instead) and its own reading of the record's
-temperature for a frame set (`Mode.state`'s rule asked instead), the frame
-rule's default three nodes typed in `vibration`'s two `frames` beside
-`mode_frames.NODES` (one constant, the module's), and
-`tests/spectra/test_derived.py`, whose rows are the module's and the maker's
-now, renamed for them — the maker's sets for $n$ quanta and a swing (§ 9 item
-2); **R3d2c**
-the probe at the frame rule's nodes (§ 6.11 § 4; § 9 items 1, 5, 6) with the
-PySCF deck changes below; **R3d2d** the force constants stored and
-`with_masses` (§ 9 item 3), SIESTA's Raman step and its verdict (§ 9 item 4),
-the data files on the shared writers and the diagrams (§ 6.11 § 8).
+R3d1 shipped (2.77.25, 2.77.26). R3d2 builds the framework (§ 1) in five
+releases, each read whole. **The design was re-cut on 2026-11-23** *(the
+user: "vibration calculation is the foundation that exposes the fundamental
+data of all modes"; "transport calculation should not overreach to design
+what the multiframe is"; molbuilder exposes "the correct facility/api/tools
+to help user to generate the correct multiframe data")*: the vibration
+calculation and its record are the foundation; the motion toolkit
+([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md)) makes
+frames from the modes; transport reads frames and weights alone. **Before any
+code: three review rounds of the documents, the design, the API, the
+framework and the examples, each with new readers among them a scientific
+and an API reviewer** *(the user, 2026-11-23)*.
+
+- **R3d2a** (2.78.0, done) — the module `vibration`, its states and
+  `postprocess.vibration`'s mechanics.
+- **R3d2b1, the record** (schema 15, data file @11; `engines/vibration.md`
+  § 6.11 § 3, § 5), the user's choices of 2026-11-23: each free atom's share
+  of every mode's motion, $m_A\lvert\mathbf L_A\rvert^2$, stored on the
+  `free_atom` axis (the shares by element, by species label and by region its
+  sums, on request; the spectrum tab's element shares from them); the largest
+  zero-point move; each mode's reduced mass and force constant by Gaussian's
+  convention, $\mu = 1/\sum\lvert\mathbf L\rvert^2$, $k = \mu\omega^2$
+  (`reduced_mass_amu`, `force_constant_mdyn_per_ang`, the definition stated);
+  each mode's spread and mean quanta on the modes' own temperature axis (its
+  temperatures: § 6.11 § 3's table, the user's 2026-11-23 decision) — in
+  `/modes/thermal`, a group of its own over its own `temperature_k` axis, so
+  the probe's group inherits no temperature axis (the group repeating the
+  `mode` coordinate); an imaginary mode's spread, mean quanta and largest move
+  `null` in the JSON (whose writer refuses a number that is not finite) and
+  NaN in the data file; its force constant positive, $\mu\lvert\omega\rvert^2$,
+  as Gaussian prints it; `vibration.mean_quanta` refusing a frequency that is
+  not positive; `mdyn/angstrom` a row of the data files'
+  units (`model/datafiles.md` § 2c, `ncdata.UNITS`); every value derived by
+  the module, written by both engines, checked on read; each atom's element
+  its species label's name (`Structure.chemical_symbols`, travelling), prep
+  having made it an element; `Mode`'s fields by the record's names; the load
+  door reading the stored shares.
+- **R3d2b2, the motion toolkit** ([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md);
+  its § 9 is the one list of each piece and each visible change of a built
+  call, transport's own in `engines/transport.md` § 2a.12; the design's three
+  review rounds, `design-round{1,2,3}`, and its last fixes decided it):
+  - **`vibration`** (L2, travels; numpy and the constants alone) — the
+    mechanics and the molecule's motion: `State.draw(size, *, seed,
+    start=0, phase=None)` (the mode's own three streams; one normal number per
+    draw for every state, $n$ quanta by $\Phi(z)$; a driven state's phases a
+    second block, or this mode's own phases from its drive group), `ModeState`
+    handing on `draw` and `weights_at`, `swing_amplitude_amu12_ang`,
+    `carried_spread_amu12_ang`; `cdf` on arrays; the classical swing carrying
+    the classical bell curve (`classical=True` with `swing_quanta` and
+    `temperature_k`; a drive group's likewise); a
+    driven mode named by `swing_quanta` alone the coherent state (a visible
+    change, the toolkit's § 9), `mean_quanta` beside `swing_quanta` out of the states' table; every
+    state's frames its own Gauss rule — the swing's included
+    ([`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md)
+    § 2a.3) — in the order $(0, +q_1, -q_1, \dots)$, `Frames.q_amu12_ang`
+    (frames × modes; `nodes_amu12_ang`, shipped in 2.78.0, renamed — a
+    deletion to list), `Frames.state`; each rule exactly symmetric (an odd
+    rule's middle node 0, its pairs $\pm q$, with a test); a `Frames` or a
+    `Snapshots` standing for the set as written, item $i$ frame $i$, frame 0
+    included, and every analysis taking one value per frame, frame 0 first;
+    `State.weights_at` → `Weights(weights, beyond, exact_to_degree, said)`;
+    `vibration.temperature_of_quanta` and its test; `v` from a run's folder
+    (read by `vibration_frames.vibration_of_run`), carrying `v.run`,
+    `v.read_path` (`v.source`, renamed — a deletion to list),
+    `v.result_sha256`, `v.structure`, `v.relaxation_calculation`;
+    `Mode.vibration` (out of repr and comparison), `v.mode(n)`,
+    `v.displaced({...})`, `v.with_frequency_scale(f)`; `Motion` (`v.motion()`;
+    a state per mode by number; `with_mode` taking a `ModeState` of that mode
+    alone; each driven mode its own phase; `with_drive({k: n_s}, lags_rad=…)`,
+    one laser's group sharing a phase drawn from `[seed, 0, k_min]`, its
+    smallest mode's number, every lag the person's, a mode in one group at
+    most, a mode set apart twice taking the later call's state; `said`, summary
+    sentences, a cold driven mode's $n_{\mathrm{th}}$ and
+    $\sigma_T/Q_{\mathrm{zp}}$) and `Snapshots` (`sample(n, seed, antithetic,
+    start=0)`; the seed required, a whole number 0 or more; three streams per
+    mode, `default_rng([seed, mode, 0|1|2])`, a drive group's
+    `[seed, 0, k_min]`, each drawn in one block, so `sample(2N)` begins with
+    `sample(N)`; `antithetic` the person's explicit choice, `n` and `start`
+    even with it; one shape with `Frames` — `q_amu12_ang`, `weights`,
+    `positions_ang`, `atom_moves_ang`, `max_atom_displacement_ang`,
+    `max_atom_mode_index_1based`, `said`, frame 0 the first item; values one
+    per frame, frame 0 first, the data file's whole; `standard_error` →
+    `Estimate(value, error, n)`, dropping a missing value's frame or pair,
+    said; `parts` → `Parts(even, odd)`); `pooled(*sets)` (one motion, one
+    seed in sequence or distinct seeds, pairs with pairs, two motions or
+    overlapping ranges refused; its analyses take each set's values whole, in
+    the order of the sets).
+  - **`vibration_frames`** (L2, the host's; imports `vibration`, the
+    structure, `frameset`, the result's reader and the run door, never
+    transport; imports with `molbuilder-jupyternb`'s packages) —
+    `vibration_of_run(run_folder)`, the one door from a run's folder to its
+    `Vibration` (the run, the JSON's sha256, the structure, frame 0's
+    relaxation record — `mode_frames._relaxation_record`'s rule, moved here),
+    asked by `postprocess.vibration`, `frameset from-mode`, *Write frame set…*
+    and `read_frame_set`; the one frame-set writer in its two forms,
+    returning `Written(path, n_frames, said)` (frame 0
+    the relaxed geometry — prepended at weight 0 for an even rule, snapshots,
+    and a person's frames whose first is not exactly it, a prepended frame 0
+    stating every frame row at 0; each frame's measured rows; the provenance
+    as rows; the `assumptions` row; `info.sampling` from the snapshot recipe;
+    rows and frame rows `{name, value, unit, note}`, a row with no unit `"1"`;
+    a person's `frame0_rows` for a prepended frame 0, a person's frame row
+    named like the writer's own refused by name; a snapshot set's `seed`,
+    `start` and `samples` rows, a pooled set's `pooled` 1 and its parts in
+    `info.sampling`; the `assumptions` row with science § 7 items 8–9 for a
+    driven set;
+    weights not summing to 1 written and said; a person's frames moving a
+    held atom said; a scaled mode's `result_frequency_cm1`,
+    `frequency_scale`) and its reader `read_frame_set(path, *,
+    vibration=None)` (every frame, frame 0 included: `Frames`, `Snapshots` or
+    `FrameSet`); `said_of(pair_path, recorded_files=None)` — the record's
+    `files` mapping, both files checked — the pages' words (where a row's unit
+    is the vocabulary's or it states none) and a cited pair's provenance;
+    `weights_for_set(rows, **state)`, the weights for a set's rows at a state
+    with the set's temperature and the refusals; `outermost_move` for any
+    state (behind `postprocess.outermost_move`, which takes any state's
+    arguments — a visible change) and `at_temperature`, folded from
+    `spectra/mode_frames.py`; the rows' vocabulary, moved from
+    `frame_average`, a row for every name it writes, each meaning for its kind
+    of set (`spread_amu12_ang`, an older set's `sigma_amu12_ang` read the
+    same); `frameset from-mode` and *Write frame set…* writing a mode's own
+    set in any state (`--quanta`, `--mean-quanta`, `--swing-quanta`; the
+    dialog's state — the user's decision, `engines/vibration.md` § 6.11 § 9
+    item 2). **No call of `vibration` reaches it.**
+  - **`postprocess`** — hands on `write_frame_set`, `read_frame_set`,
+    `pooled`, and `frame_rows(data_file)` (a transport data file's frame-set
+    rows through the structure's door); `vibration(path)` asking
+    `vibration_of_run` for a run's folder; `outermost_move` for any state;
+    `reaveraged(path, *, temperature_k=None, swing_quanta=None, quanta=None,
+    mean_quanta=None, classical=False)` joining two calls and adding nothing —
+    `vibration_frames.weights_for_set` on the rows `frame_rows` reads, and
+    transport's `frame_average.averaged_at(data_file, weights)`.
+  - **The electrode check stays transport's** (`compose.frames_moving_the_leads`,
+    its tolerance `wizard.FROZEN_TOL_ANG`): the toolkit's writer checks only
+    its held atoms. **A visible change**: `frameset from-mode` and *Write
+    frame set…* no longer say which electrode atoms move — a transport
+    calculation citing the set says it; `compose.frames_moving_the_leads`'
+    docstring follows.
+  - **The transport side generic** — it imports nothing of the toolkit and
+    reads, of a cited structure, its own facts alone (atoms, labels, box,
+    frame 0's `info.calculation`, `info.relaxation`), none of the maker's
+    rows or `info` keys: `frame_average` keeps the weighted average, its
+    summary, `at_voltage` and the data file's frame part, and **a door that
+    averages a data file's frames at weights a caller gives**,
+    `frame_average.averaged_at(data_file, weights)` (today
+    `frame_average.reaveraged`'s loop, kept transport's), and loses the
+    vocabulary (`Row`, `ROWS`, `STRUCTURE_ROWS`, `FRAME_ROWS` and their users
+    `warnings_of`, `_said`, `_in_order`, `_row_words`, `_wire`,
+    `data_file_variables`, `with_meanings`, `SUMMARY_PART`, `AT_VOLTAGE`,
+    `fill_data_file`; `transport/datafile.py`'s `_home` by `STRUCTURE_ROWS`),
+    the harmonic assumptions and their gate `_states_a_mode` with the page
+    answer's `mode` flag, `INFO_KEY` and `MASS_CHANNEL`, the unit check
+    `check_units` — so `answer_said` becomes `answer` at its three callers
+    (`transport/compose.py`, `web/blueprints/transport.py` twice) — and
+    `motion_weights`; the record's `average` block without the vocabulary's
+    named keys, a `transport-result` schema step; the data file's frames'
+    part generic, `transport-data@14` — no copy of the rows (they are
+    `structure_json`'s, read by `postprocess.frame_rows`), `weight` a label
+    beside `frame` in every group over it, `weight_sum` and
+    `weight_tolerance` kept, `average_transmission` and transport's own five
+    assumptions said of frames, `/structure`'s `mass_amu` NaN
+    (`transport/datafile.py`'s `mass_numbers`), `ncdata` and its rules
+    untouched (`model/datafiles.md` § 9.1, § 9.0.5, § 2's two rows;
+    `execution/job-contracts.md`'s two schema rows); the pages — the
+    frame-set card's "frames of one mode", the Results tab's "mode average" /
+    "Mode average at …" (`lib/frameset/card.js`, `inspectors/transport.js`) —
+    the frames' words, a whole number shown whole (a seed), the toolkit's
+    words and **a cited set's provenance read from the pair** through
+    `said_of(pair_path, recorded_files)`, carried as `frame_set_said` — by the
+    transport blueprint at the describe door and `/api/transport/record`, by
+    the build blueprint at Task setup's folder answer
+    (`/api/task-setup/folder`) — and shown on the Results tab's frame-set card
+    (`web/results.md` § 2.5: a card the Results tab draws for a cited set,
+    new; a pair either of whose files no longer matches the record's sha256
+    said so; an older
+    set's `info.vibration` shown — a visible change: the record no longer
+    carries it); `summarize` printing rows as written, a whole number whole.
+  - **The load door's frame-set block** `{mean_quanta, spread_amu12_ang,
+    spread_over_zero_point, outermost_move_ang}` per state (`sigma_amu12_ang`
+    and `sigma_over_zero_point` renamed — a page change listed with the
+    deletions; `web/web-api.md`, `web/spectra.md` § 4.3).
+  - **Documents the build brings into line**: `web/web-api.md`'s
+    `answer_said`, `/api/spectra/load`, `/api/spectra/frameset`,
+    `/api/task-setup/folder` and `/api/transport/record` rows
+    (`spectra.mode_frames.NODES`); `web/spectra.md` § 4.3 (the state choice,
+    the writer, the electrode clause) and its `spectra.mode_frames` mentions;
+    `web/task-setup.md` § 3's mode line; `web/results.md` § 2.5;
+    `model/datafiles.md`'s `frame_average.RECORD_ATTRS` sentence, § 3a's
+    and § 9.1's `@13` frames' part sentences;
+    `model/structure-annotations.md` § 7's `mass_amu` sentence;
+    `engines/vibration.md`'s `spectra.mode_frames` mentions (§ 5.11's phases
+    table, § 6.6); `science/vibrational-averaging.md` § 5's
+    `spectra.mode_frames.outermost_move`; `science/normal-modes.md`'s status
+    row (§ 4c) naming `frameset_from_mode`; every "the motion toolkit's one
+    writer" sentence marked to build until then.
+  - **Tests**: `tests/test_vibration_frames.py` and the notebook's run
+    (`tests/test_vibration_frames_notebook_e2e.py`, on `molbuilder-jupyternb`'s
+    Python); `tests/test_vibration_mechanics.py` (each state's draw,
+    `weights_at`, `temperature_of_quanta`, the motion and snapshots;
+    `nodes_amu12_ang` renamed; its swing frames' rows — folded equal phases
+    become the swing's Gauss rule; a swing alone's default temperature);
+    `tests/test_vibration_mechanics_e2e.py` (`v.source` → `v.read_path`, the
+    path); `tests/spectra/test_blueprint.py`
+    (`test_a_frame_set_asked_without_its_temperature_or_rule_is_refused` — the
+    write door now takes a state's arguments, so `{quanta: 1}` with no
+    temperature is a valid ask); `tests/spectra/test_derived.py`
+    (`mode_frames.at_temperature`, moved to `vibration_frames`, and the
+    `sigma_over_zero_point` key, renamed); retired or moved:
+    `tests/test_frame_set_units.py` (the unit refusal),
+    `tests/test_frame_set_meanings.py` (the vocabulary, now the toolkit's),
+    `tests/test_frame_reaveraging.py` whole (its five tests import
+    `frame_average.motion_weights`, which `State.weights_at` replaces; the
+    refusal beyond the frames now said);
+    `tests/test_transport_on_a_real_junction_e2e.py` — `_SET_ROWS`, the
+    `average` block's named keys and its six assumptions, `frame_set`'s
+    `vibration` and `MASS_CHANNEL`, the vocabulary's rows as data-file
+    variables and labels in `/structure` and `/summary`, `mass_amu` from
+    `MASS_CHANNEL`, `reaveraged`'s signature and its refusal, `from-mode`'s
+    printout with `sigma_amu12_ang`, the describe answer's `masses_amu`,
+    `vibration` and `mode`, `info.vibration` and `from-mode --temperature`;
+    `tests/test_spectrum_results_e2e.py` (`mode_frames.at_temperature` and
+    `NODES`, folded; its `sigma_amu12_ang`).
+  - **The example notebook** `docs/engines/vibration-frames.ipynb` on a PySCF
+    methanol run folder the repository carries beside it — made down the
+    road by a test helper (`support.real_runs`) — its kernel
+    `molbuilder-jupyternb` ([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md)
+    § 6.1; `web/jupyter.md`, `ops/installation.md`).
+  - **The page's state choice**: *Write frame set…*'s state — thermal, $n$
+    quanta, driven (warm optionally) — its readout per state, and the load
+    door's `frameset` block per state ([`web/spectra.md`](?doc=web/spectra.md)
+    § 4.3).
+  - **The copies `fix19-review.md` named**: the maker's `_ordered_nodes` and
+    its inline largest move, `frame_average`'s swing moments, the page's
+    `onWriteFrameSet` largest zero-point move and `_swingReport`, the load
+    door's own reading of the record's temperature for a frame set, the
+    frame rule's default three nodes beside `mode_frames.NODES`, and
+    `tests/spectra/test_derived.py` renamed for its rows.
+- **R3d2c** — the probe at the frame rule's nodes (§ 6.11 § 4; § 9 items 1,
+  5, 6) with the PySCF deck changes below.
+- **R3d2d** — the force constants stored and `with_masses` (§ 9 item 3),
+  SIESTA's Raman step and its verdict (§ 9 item 4), the data files on the
+  shared writers and the diagrams (§ 6.11 § 8).
 
 - **The vibration framework, built** (§ 1, after the user's yes), with the
   SIESTA vibration's data files on the shared writers

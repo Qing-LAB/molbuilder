@@ -1706,7 +1706,7 @@ and gated like every edit (§ 9.4): on a viewer that saves its structure — the
 Molbuilder tab, which holds one frame — a person adds, changes or removes a row,
 of the structure or of its frame, and the edit is recorded on the history; on
 every other viewer the section reads only. A frame set's rows are written by
-what made the set — the frame generator, a person's script through
+what made the set — the motion toolkit (from R3d2b2; the frame generator, `spectra.mode_frames`, until then), a person's script through
 `Structure.set_customized(…, frame=i)` — never in the browser.
 
 **`info` is not core data.**  § 9.4's one question — *does this change

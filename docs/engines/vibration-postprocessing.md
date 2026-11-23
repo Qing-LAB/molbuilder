@@ -6,7 +6,8 @@
 calculation these results come from, and its result file's contract (§ 6);
 [`model/datafiles.md`](?doc=model/datafiles.md) — the data files these calls
 read; [`web/results.md`](?doc=web/results.md) § 1.1 — the Export that hands
-them over;
+them over; [`engines/vibration-frames.md`](?doc=engines/vibration-frames.md)
+— the motion toolkit, frames from the modes (§ 2b);
 [`engines/optimization-postprocessing.md`](?doc=engines/optimization-postprocessing.md)
 and [`engines/transport-postprocessing.md`](?doc=engines/transport-postprocessing.md)
 — the same for an optimization and a transport calculation.
@@ -14,7 +15,8 @@ and [`engines/transport-postprocessing.md`](?doc=engines/transport-postprocessin
 What a finished vibration holds, which call answers what, and worked examples in
 Python: the modes atom by atom, the infrared and the Raman, the thermochemistry,
 the charges and the optical calls. Every example below, save § 2a's (whose
-tests § 2a names), ran on a real calculation before it was written here: on
+tests § 2a names) and § 2b's (to build), ran on a real calculation before it
+was written here: on
 SIESTA, a molecule of 4 free atoms held between 48 gold atoms, whose engine
 order differs from its user order; on PySCF, an H2, for what § 2, § 3, § 4 and
 § 7 say of that engine.
@@ -120,8 +122,11 @@ m.with_frequency(0.96 * m.frequency_cm1)          # the same pattern at a scaled
 ```
 
 **Where the molecule sits along the mode** is a state — at a temperature,
-at a mean number of quanta, with `quanta` exactly, a steady swing of
-`swing_quanta` over a bath, or the classical limits (`classical=True`):
+at a mean number of quanta, with `quanta` exactly, driven in a steady swing of
+`swing_quanta` (its coherent state from R3d2b2 — in 2.78.0 a swing alone
+takes the record's temperature for its bath; with a temperature, a warm mode
+driven), or the classical limits (`classical=True`) — the table of states is
+[`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 2:
 
 ```python
 s = m.state(temperature_k=0.0)        # the zero-point motion: spread Q_zp
@@ -129,16 +134,70 @@ s.spread_amu12_ang, s.mean_quanta
 s.atom_rms_ang                        # each atom's r.m.s. move, Å
 s.pdf(0.0), s.cdf(0.05), s.moment(4)  # density, distribution, <Q^4>
 f = m.state(quanta=1).frames(nodes=3) # three frames, exact to degree 5
-f.nodes_amu12_ang, f.weights          # where along the mode, and each one's weight
+f.nodes_amu12_ang, f.weights          # where along the mode (f.q_amu12_ang from R3d2b2), each one's weight
 f.positions_ang                       # each frame's geometry, every atom at R + Q L
 ```
 
-A thermal or classical state, or a swing's bath, given neither a temperature
-nor mean quanta takes the one the result's thermochemistry states, and says so —
-`s.temperature_k`, `s.temperature_from` (`"given"` or `"the record's"`); a
-result stating none asks for one. `quanta`, `mean_quanta` and a classical swing
-alone take no temperature. An imaginary mode has
-moves for a coordinate given and no state.
+Which state takes the record's temperature when none is given, and says so
+(`s.temperature_k`, `s.temperature_from`), is one table,
+[`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 2 —
+with what changes for a swing named by `swing_quanta` alone in R3d2b2 (§ 9
+there). An imaginary mode has moves for a coordinate given and no state.
+
+## 2b. Frames from the modes — the motion toolkit
+
+*(To build — [`plans/plan.md`](?doc=plans/plan.md) § 2; the design and every
+choice is [`engines/vibration-frames.md`](?doc=engines/vibration-frames.md),
+the theory [`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md)
+§ 2c, § 5.)* Frames for a calculation over them — transport's, any other —
+each written as a frame set the calculation reads by its weights alone.
+Paths come from the projects tree's doors, which check each name, so they
+hold wherever the script or notebook runs; `P` the project:
+
+```python
+from molbuilder.postprocess import vibration, write_frame_set, structure_dir, topic_dir
+v = vibration(structure_dir("P", "spectrum", "V") / "01_freq/run-0")   # the run's folder, or its result file
+out = topic_dir("P", "structure")                                     # where a transport citation reads sets
+
+# THE WHOLE MOLECULE: every mode thermal at 300 K, mode 7 driven, warm at 300 K too
+motion = v.motion(temperature_k=300.0).with_mode(7, swing_quanta=4, temperature_k=300.0)
+snaps = motion.sample(64, seed=20261123, antithetic=True)   # seed and pairing: yours, stated
+snaps.mode_index_1based            # the modes, one column each
+snaps.atom_moves_ang.shape         # (65, n_atoms, 3): frame 0 (the relaxed geometry), then the displacement map
+snaps.said                         # the largest move over the set, the mode moving it
+write_frame_set(out / "v-300K-drive7.xyz", snaps)   # frame 0 relaxed at weight 0, then the 64
+
+baseline = v.motion(temperature_k=300.0).sample(64, seed=20261123, antithetic=True)
+write_frame_set(out / "v-300K.xyz", baseline)       # the same temperature, every mode but 7 drawn alike
+
+# TWO MODES ON ONE LASER: one phase per snapshot, each mode's lag yours (the science says how)
+motion2 = v.motion(temperature_k=300.0).with_drive({9: 2.0, 11: 1.0}, lags_rad={9: 1.57, 11: 0.12})
+
+# ONE MODE ON ITS OWN: three frames of mode 7 at 300 K
+f = v.mode(7).state(temperature_k=300.0).frames(nodes=3)
+f.q_amu12_ang[:, 0], f.weights     # 0, ±sqrt(3) sigma; 2/3, 1/6, 1/6
+write_frame_set(out / "v-m7-300K.xyz", f)
+```
+
+A model of your own — a two-mode grid to see a cross term, frames from any
+rule — is built from the geometry (`v.displaced({...})`) and the writer's
+general form, worked in [`engines/vibration-frames.md`](?doc=engines/vibration-frames.md)
+§ 3.4. **How many frames** a small effect needs, and how much a 64-frame set
+can see, is the science's § 5.5: the error falls as $1/\sqrt N$, and a
+single mode's own effect is cheapest from that mode's own two sets.
+
+The driven mode is compared with its baseline **at one temperature** — the
+warm driven state against the thermal one — so the two differ by the drive
+alone; the cold coherent default against a warm baseline measures the drive
+less the mode's own thermal quanta, its exact baseline that one mode at 0 K
+beside the warm others, `with_mode(7, temperature_k=0.0)`
+([`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md)
+§ 6). After a transport calculation over a snapshot set, its average and that
+average's error are read from its data file, the pairs' means giving the
+error ([`engines/transport-postprocessing.md`](?doc=engines/transport-postprocessing.md)
+§ 3.2). The example notebook, `docs/engines/vibration-frames.ipynb`, runs
+each of these on a vibration result and checks each against the science
+([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 6.1).
 
 ## 3. The infrared and the Raman
 

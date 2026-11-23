@@ -593,7 +593,7 @@ up the first series colour, spin down the second, the total the ink, bold:
 
 | chart | a polarized point | from |
 |---|---|---|
-| T(E) | the selected point's **$T_\uparrow$**, **$T_\downarrow$** and **$T_\uparrow + T_\downarrow$ (total)**; the other voltages' totals as thin curves in the muted ink; under *all frames* each frame's $(T_\uparrow + T_\downarrow)/2$, the transmission the mode's average is of, the axis saying so | `channels.up` · `channels.down` · `transmission_total`; `transmission` |
+| T(E) | the selected point's **$T_\uparrow$**, **$T_\downarrow$** and **$T_\uparrow + T_\downarrow$ (total)**; the other voltages' totals as thin curves in the muted ink; under *all frames* each frame's $(T_\uparrow + T_\downarrow)/2$, the transmission the frames' average is of, the axis saying so | `channels.up` · `channels.down` · `transmission_total`; `transmission` |
 | DOS | the device's DOS **↑**, **↓** and **total**; the regions, the leads and your selections as totals; the eigenchannels per spin, *channel k ↑* / *↓* | `dos.by_spin.{up,down}.total` · `dos.total`; `dos.by_label` … summed over the two channels; `dos.by_spin.{up,down}.eigenchannels` |
 | I–V | **$I_\uparrow$**, **$I_\downarrow$** and **I total** | `iv.current_up_a` · `iv.current_down_a` · `iv.current_a` |
 
@@ -799,7 +799,7 @@ calculations so the logical way to present it is that each presentation of
 T(E), DOS etc would be able to either plot results from different frames in
 one plot with legends, or select a frame for display"; the record's half is
 [`engines/transport.md`](?doc=engines/transport.md) § 2a.12: each point names its frame and carries that frame's rows,
-the I–V a `frame` column, the record the mode's `average`)*. The frame is an
+the I–V a `frame` column, the record the frames' `average`)*. The frame is an
 axis, as the voltage is, and **every chart card carries the one frame control**
 — *one frame* or *all frames* — one component, shown only when the
 calculation holds several frames:
@@ -819,6 +819,17 @@ the same way and open the report at that point. A legend entry clicked hides
 its curve — Plotly's own legend, nothing built. **The selected frame's
 `customized` rows** are MolView's Info page's, which follows the frame bar
 ([`molview.md`](?doc=web/molview.md) § 6.4) — never a second copy here.
+**Where the frame set came from** *(to build, R3d2b2 — today the Results tab
+draws no frame-set card)*: a frame-set card the Results tab draws for a cited
+set, the Transport tab's (`lib/frameset/card.js`), with its provenance line —
+read from the cited pair at the record's path, a vibration's set's
+`vibration_run` and `vibration_result_sha256` rows, or an older set's
+`info.vibration` — and said when either file of the pair, its `.xyz` or its
+`.molstruct.json`, no longer matches the sha256 the record pinned for it; the
+transport blueprint asks it of the toolkit,
+`vibration_frames.said_of(pair_path, recorded_files)` with the record's
+`files` mapping, and `/api/transport/record` carries it as `frame_set_said`
+([`engines/transport.md`](?doc=engines/transport.md) § 3.8.1).
 **The PDOS of a selection** is asked at the selected frame and voltage
 (`/api/transport/pdos`, its `frame`) — once the frame has settled: while
 MolView's movie plays the charts follow each frame from the record and no

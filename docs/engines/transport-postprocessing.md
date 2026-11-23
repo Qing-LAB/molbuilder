@@ -106,34 +106,105 @@ root.attrs["iv_computed"]
 float(p.current_a) == float(s.current_a.sel(frame=0, bias_v=0.2))
 ```
 
-### 3.2 A frame set: along the mode, and the average
+### 3.2 A frame set: along the mode, the average, its error
+
+A mode's own set, read along the mode — its frames' coordinate a label in
+the summary in `@13`; from `transport-data@14` a row of the frame set's
+rows, which the file carries in the structure it cites (`structure_json`,
+[`engines/transport.md`](?doc=engines/transport.md) § 2a.12), read through
+the structure's door by `frame_rows` *(to build, R3d2b2)* and set beside
+`frame` in one line:
 
 ```python
-s = xr.load_dataset("F.transport.nc", group="summary")
-along_q = s.swap_dims(frame="q_amu12_ang").sortby("q_amu12_ang")
+from molbuilder.postprocess import frame_rows
+s = xr.load_dataset("F.transport.nc", group="summary")       # read whole, no handle held (§ 7)
+rows = frame_rows("F.transport.nc")                           # @14: the set's rows and each frame's
+s = s.assign_coords(q_amu12_ang=("frame", [rows.value("q_amu12_ang", f) for f in range(len(rows.frames))]))
+along_q = s.swap_dims(frame="q_amu12_ang").sortby("q_amu12_ang")   # @13: this line alone
 along_q.conductance_g0.differentiate("q_amu12_ang")
 s.average_transmission.sel(bias_v=0.0).plot(x="energy_ev")
 s.average_why.to_series()           # why an average is none, where it is
 ```
 
-**Averaged over another motion**. Each frame is its position along the mode; its weight is the
-motion's. The same frames averaged over a bell curve at another temperature,
-or with a swing added by a push in step with the mode
-([`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md)
+**Averaged over another motion** — a mode's own set. Each frame is its
+position along the mode; its weight is the motion's. The same frames
+averaged over a bell curve at another temperature, or with a swing added by a
+push in step with the mode, the weights the motion toolkit's
+([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 7;
+[`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md)
 § 5.4) — nothing computed again, nothing written:
 
 ```python
 from molbuilder.postprocess import reaveraged
-r = reaveraged("F.transport.nc", temperature_k=300, swing_quanta=0.0)
+r = reaveraged("F.transport.nc", temperature_k=300.0)   # the bell curve at 300 K
 r["motion"]                       # the quanta, the spreads, the swing's turning points
 r["weights"]                      # each frame's weight for this motion
 r["conductance_change_percent"]   # <ΔG>/G at each voltage
 r["said"]                         # the frames' reach, a weight below zero, ...
 ```
 
-A swing whose turning points lie beyond the outermost frame is refused, and
-with three frames the number is said to be blind to the shape (§ 5.4
-there).
+With three frames the number is said to be blind to the shape (§ 5.4
+there). *From R3d2b2* (today a temperature and a swing on it, and a swing
+reaching beyond the outermost frame refused): `reaveraged` takes any state's
+arguments and joins the toolkit's weights for the set's rows with
+transport's own averaging door — its rules, the temperature it takes and
+what it refuses, are the toolkit's
+([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 2's
+table, § 7). **Frames re-weighted are exact only to degree $m-1$**: a driven
+mode's effect read from one set re-weighted to the thermal state needs five
+frames at least, or two sets ([`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md)
+§ 6).
+
+**A snapshot set's average, and its error.** Every frame of a snapshot set
+weighs $1/N$ but frame 0, the relaxed geometry at weight 0. The record's
+average is the frames' average; its statistical error is read from the
+frames ([`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md)
+§ 5.5) — with mirrored pairs (the set's `antithetic` row 1: frames
+$2j-1$ and $2j$ a pair), the spread of the pair means over $\sqrt{N/2}$:
+
+```python
+import numpy as np
+g = s.conductance_g0.sel(bias_v=0.0).values       # frame 0 first, the relaxed geometry
+pairs = g[1:].reshape(-1, 2).mean(axis=1)         # each mirrored pair's mean
+mean, error = pairs.mean(), pairs.std(ddof=1) / np.sqrt(len(pairs))
+# independent snapshots (antithetic 0): g[1:].mean(), g[1:].std(ddof=1) / np.sqrt(len(g) - 1)
+```
+
+The motion toolkit gives the same from the data file's values whole, one
+per frame, frame 0 first — the set read back leaving frame 0 out itself
+(`read_frame_set(...).standard_error(g)`, an `Estimate`, and `parts` for the
+even and odd shares, [`engines/vibration-frames.md`](?doc=engines/vibration-frames.md)
+§ 3.3, § 7). **More frames** are the same seed drawn further, or another seed: the
+new set's calculation's results join the first's at equal weights, each
+set's frame 0 left out, the error from all their pairs together (`pooled`,
+`p.standard_error(g1, g2)`, [`engines/vibration-frames.md`](?doc=engines/vibration-frames.md)
+§ 3.3). **How many frames**: the error falls as $1/\sqrt N$, so a small
+effect needs many — how many, independent or paired, and the worked count,
+are [`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md)
+§ 5.5's, from the error a person's own frames give; one mode's effect alone is
+cheapest from that mode's own two sets — three frames each, driven and
+thermal ([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md)
+§ 4).
+
+**A driven set against its baseline.** Two transport calculations, over the
+driven set and over the thermal set drawn with the same seed **at the same
+temperature** — the warm driven state against the thermal one, so they differ
+by the drive alone ([`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md)
+§ 6: the cold default against a warm baseline measures the drive less the
+mode's own thermal quanta). Each frame of the one and the same frame of the
+other differ by the driven mode's draw alone ([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md)
+§ 3.3), so the difference is taken frame by frame, and its error from the
+spread of the differences — the other modes' part cancelling exactly only
+where the response adds over the modes, otherwise in part, as the spread
+says ([`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md)
+§ 5.5):
+
+```python
+d = xr.load_dataset("D.transport.nc", group="summary").conductance_g0.sel(bias_v=0.0).values
+b = xr.load_dataset("B.transport.nc", group="summary").conductance_g0.sel(bias_v=0.0).values
+diff = (d[1:] - b[1:]).reshape(-1, 2).mean(axis=1)            # pairs, as above
+change, error = diff.mean(), diff.std(ddof=1) / np.sqrt(len(diff))
+```
 
 ### 3.3 The convergence
 

@@ -482,7 +482,8 @@ structure's `customized` rows) and, per frame, its coordinates and its
 construction — the same atoms in the same order, the same species, the same
 cell, each frame's rows saying what it is (a displacement along a normal mode,
 `engines/transport.md` § 2a.9). It is MADE by code that understands this,
-through the doors below — the frame generator, a person's script. **It is never
+through the doors below — the motion toolkit (from R3d2b2; the frame
+generator, `spectra.mode_frames`, until then), a person's script. **It is never
 edited**: nothing moves atoms, adds or removes them, or rewrites coordinates in
 a frame set; the browser views one and the Molbuilder tab loads one frame of it
 (`web/molview.md` § 9.4, `web/tabs.md` § 2).
@@ -557,7 +558,7 @@ point per frame ([`engines/transport.md`](?doc=engines/transport.md) § 2a.9):
 |---|---|---|
 | every frame's coordinates | the `.xyz`, one block per frame (§ 2.2e) | each frame is its own geometry, run in turn |
 | one set of atoms, labels, box and `info.calculation`, shared by every frame | the pair (§ 2.2e: the same atoms in every frame, the structure's invariant) | the labels say which atoms are the electrodes and the bridge; `info.calculation` which settings the geometry was optimized with |
-| the electrode atoms where frame 0 has them, in every frame | the coordinates | every frame shares the leads' calculation (`engines/transport.md` § 2a.9) |
+| the electrode atoms where frame 0 has them, in every frame | the coordinates | every frame shares the leads' calculation (`engines/transport.md` § 2a.9). Which atoms are the leads is transport's to know: a transport citation names the frames that move one beyond the leads' tolerance (`engines/transport.md` § 2a.9, its home), said, never refused; a maker checks only the atoms it holds still |
 
 **The one row a calculation reads: each frame's `weight`**
 (`frameset.WEIGHT_ROW`) — its share of the combined result. Where every frame
@@ -566,94 +567,72 @@ states one as a number, the record averages the frames at those weights
 a number, there is no average and a warning says so; weights that do not sum
 to 1 (within `frameset.WEIGHT_SUM_TOLERANCE`, 10⁻⁶) are averaged as written,
 with a warning. Nothing is refused for a row. **A weight is the motion's,
-not the frame's**: the frame is its position along the mode (`q_amu12_ang`),
-and its weight the set's maker's for the motion the set was written for. An
-average over another motion is re-weighted from the positions after the run
-([`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md)
-§ 5.4) and never written into the set.
+not the frame's**: the set's maker's, for the motion the set was made for.
+An average over another motion is an analysis of the frames' results — for a
+mode's own set, with the motion toolkit's weights
+([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 7) —
+never written into the set.
+
+**Frame 0 is the set's reference**: the geometry a calculation measures
+each frame's change from ([`engines/transport.md`](?doc=engines/transport.md)
+§ 2a.12). What a maker puts there is the maker's; every set the motion
+toolkit writes has the relaxed geometry there (from R3d2b2; today's frame
+generator's sets too)
+([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 5, the
+rule's home).
 
 **Every other row is its maker's** — the structure's rows and each frame's:
-carried exactly as written into the calculation's record and data file, and
-shown on the pages and in the summary `summarize` prints — a row of the
-vocabulary below in its words and page unit, any other by its name and unit
-as written, one rule for every surface (`frame_average._said`); never computed from, and checked for one thing
-alone, a vocabulary name's unit (below) (`frameset.read`, the one reader). Of
-`info` and the channels, the mode's own two travel with the rows —
-`info.vibration` and the `mass_amu` channel (below); any other stays the
-structure's and is not carried.
+carried exactly as written into the calculation's record and data file,
+never computed from and never checked by the calculation (`frameset.read`,
+the one reader) *(from R3d2b2; until then a vibration vocabulary name
+written with another unit is refused, `frame_average.check_units`)*. The
+summary `summarize` prints, transport's, says each row by its name, value and
+unit as written, a whole number whole *(from R3d2b2; until then the
+vocabulary's words)*; the pages — above transport and the toolkit both — say
+a row in the plain words the vibration maker's vocabulary gives a name it
+knows, where the row's unit is the vocabulary's or it states none, and any
+other by its name and unit as written ([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md)
+§ 5.1, § 6). **What travels with the set**: its `info` keys and channels go
+wherever the structure goes, as every structure's do — into a composed
+junction, and with it into a calculation's sidecar and data file
+(`structure_json`), cited whole as the structure. **Of `info`, a calculation
+reads what it reads of every structure it cites** — transport frame 0's
+`info.calculation` (required) and a relaxation record of its geometry
+(`info.relaxation`), [`engines/transport.md`](?doc=engines/transport.md)
+§ 3.1 — **and none of a maker's own keys or channels** (`info.sampling`, an
+older set's `info.vibration`, `mass_amu`); its record cites the pair by its
+path and sha256 *(from
+R3d2b2; until then the record's frame set also carries `info.vibration` and
+the `mass_amu` channel)*. What a maker wants a calculation's record to carry
+it writes as rows — a vibration's run and result as `vibration_run` and
+`vibration_result_sha256`.
 
 **Every row says what it means, in the file** *(the user, 2026-10-27: "the
 details of what the weights and mass correction is used should be in meta
 data, and should be in contract so that when these data are cited and used
-in other places, the meaning is clear and tracked")*. A row of the
-vocabulary below is written with its meaning as its `note` — the
-vocabulary's own words (`frame_average.ROWS`' `means`), which the *meaning*
-column below states with its references — so a frame set read anywhere says
-what each number is without this page:
-what the weights average, over which distribution, along which coordinate,
-measured with which masses. **How the frames sample the mode is stated as
-rows of its own** — `sampling_rule`, `sampling_nodes` — and **which masses
-the coordinate is measured with** as `mass_source`, beside the `mass_amu`
-channel that holds them. A maker writing a vocabulary name writes its
-meaning with it; the one reader (`frameset.read`) carries every row's note
-as written, and a vocabulary row written without one — a frame row no frame
-writes one for, since a frame row is read with the first meaning any frame
-writes — is said so beside the frames by the vocabulary's owner
-(`frame_average.warnings_of`, one line naming the rows) — a warning, never a
-refusal, the row read as written and said in the vocabulary's meaning. **A citation
-carries a row whole** — name, value, unit and note — with `info.vibration`
-and the masses: a transport calculation's record and its data file
+in other places, the meaning is clear and tracked")*. Every row a maker
+writes carries its meaning as its `note` — the vibration maker's in its
+vocabulary's words ([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md)
+§ 5.1) — so a frame set read anywhere says what each number is without this
+page: what the weights average, over which distribution, along which
+coordinate, measured with which masses. **How the frames were made is stated
+as rows of their own** — the maker's `sampling_rule` and its parameters — and
+which masses a coordinate is measured with, beside the `mass_amu` channel
+that holds them. The one reader (`frameset.read`) carries every row's note
+as written, a frame row read with the first meaning any frame writes; a row
+the vibration maker's vocabulary names, written without one, is said so by
+the toolkit when it reads its own sets — a warning, never a refusal. **A
+citation carries a row whole** — name, value, unit and note: a transport
+calculation's record and its data file
 ([`engines/transport.md`](?doc=engines/transport.md) § 2a.12), and the pages
 that draw them, so a number cited downstream keeps what it means and where
 it came from.
 
-**A mode's frame set, as its maker writes it** — the vocabulary the frame
-generator writes ([`engines/vibration.md`](?doc=engines/vibration.md)
-§ 5.10 ③; a person's script may write the same), constants of the frames'
-post-process, `molbuilder/frame_average.py` (`ROWS`, `MASS_CHANNEL`,
-`INFO_KEY`): the names a page says in words, the frame rows the data file keeps
-as variables of their own, a structure row whose value is a number as a
-variable of no dimension and one whose value is a name — `sampling_rule`,
-`mass_source` — as an attribute. The names
-carry their units; a row's `unit` field, when written, spells the same unit in
-ASCII — `cm-1`, `K`, `angstrom`, `amu^1/2 angstrom`, and `1` for a name with
-none (—), the dimensionless unit the data file writes — and one of these names
-written with another unit is refused by name when the rows are read for a
-record, a data file or a page (`frame_average.check_units`, asked by
-`average_block`, `fill_data_file` and `answer`; a page draws the refusal in
-the frames' place and opens, `answer_said`): the one check made on a
-maker's rows, because the name itself is a claim about the unit.
-Any other name's unit is carried as written:
-
-| where | name | kind | meaning | unit | on a page |
-|---|---|---|---|---|---|
-| the `.xyz` | every frame's coordinates | given | frame 0 the equilibrium geometry the mode is taken at; frames 1… displaced along the mode | Å | — |
-| the `mass_amu` channel | each atom's mass | given | the masses the mode's coordinate is weighted by — the vibration result's own, `equilibrium.masses_amu`, which the vibration's deck stated and its analysis weighted the Hessian by; every atom, a positive finite number | amu | — |
-| the structure's rows | `mode_index_1based` | given | which mode, counted as the vibration result counts it (`index_1based`) | — | Mode |
-| | `frequency_cm1` | given | the mode's wavenumber, as the result states it | cm⁻¹ | Frequency (cm⁻¹) |
-| | `temperature_k` | given | the temperature of the motion the frames sample — the junction's, or for a mode pumped out of equilibrium its effective temperature, the one whose thermal state holds the same mean number of quanta (`science/vibrational-averaging.md` § 2a.1); the input that sets the spread, the set's maker's: the generator's, the person's (`engines/vibration.md` § 5.10 ③) | K | Temperature (K) |
-| | `mean_quanta` | derived | the mode's mean number of vibrational quanta at that temperature, `n = 1 / (exp(ħω / k_BT) − 1)` | — | Mean quanta n |
-| | `zero_point_amplitude_amu12_ang` | given | the mode's zero-point amplitude `Q_zp = √(ħ/2ω)`, as the result states it | amu^½·Å | Zero-point amplitude (amu½·Å) |
-| | `max_displacement_ang` | measured | the outermost move: `max_A \|ΔR_A\|` at the outermost frames, `= √2 x_out σ max_A \|L_A\|` — the check against a bond length | Å | Outermost move (Å) |
-| | `sigma_amu12_ang` | derived | the spread of the Gaussian the frames sample, from the temperature, `σ = Q_zp · √(2n + 1) = Q_zp · √coth(ħω / 2k_BT)` (`science/vibrational-averaging.md` § 5) | amu^½·Å | Spread σ (amu½·Å) |
-| | `sampling_rule` | given | the rule, by name, that placed the frames along the mode and gave their weights; `gauss-hermite`, the generator's: the frames sit at the nodes $q_f$ of an $m$-point Gauss–Hermite rule for a Gaussian of spread σ in $q$, density $\exp(-q^2/2\sigma^2)/(\sigma\sqrt{2\pi})$, and $\sum_f w_f\,X_f$ approximates that Gaussian's average of a property $X$ — exactly when $X$ is a polynomial in $q$ of degree below $2m$; a response not smooth over the spread, a level crossing $E_F$, is averaged poorly ([`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md) § 5.1, § 5.3) | — | Sampling rule |
-| | `sampling_nodes` | given | $m$, the rule's number of nodes, one frame at each — the generator writes 3 ($q = 0, \pm\sqrt3\,\sigma$; weights $\tfrac23, \tfrac16, \tfrac16$), 5 or 7 | — | Nodes |
-| | `mass_source` | given | which masses the `mass_amu` channel holds, by name, and so which $q$ is measured with; `standard atomic weights`, a molbuilder vibration's: the isotope-averaged standard atomic weights (`chemistry.atomic_mass`) the vibration's deck stated, as its result states them (`equilibrium.masses_amu`); the mode vector $L$ is normalised with them, $\sum_A m_A \lvert L_A\rvert^2 = 1$ | — | Masses |
-| each frame's rows | `displacement_ang` | measured | the frame's plain displacement from frame 0, `√(Σ_A \|ΔR_A\|²)` over every atom — no masses | Å | Displacement (Å) |
-| | `max_atom_displacement_ang` | measured | its largest single atom's, `max_A \|ΔR_A\|` | Å | Largest atom move (Å) |
-| | `q_amu12_ang` | derived | its position along the mode, the mass-weighted normal coordinate — ONE number for the whole mode, every atom displaced by `q · L_A` with `Σ_A m_A \|L_A\|² = 1` over the `mass_amu` masses: its size `√(Σ_A m_A \|ΔR_A\|²)`, its sign the side of frame 0 it sits on; the frames' node, `√2 σ x_f` | amu^½·Å | Position along the mode, q (amu½·Å) |
-| | `node_sigma` | derived | the same position in units of the spread, `q / σ` | — | q in units of σ |
-| | `weight` | given | the frame's share of the mode's average: the sampling rule's weight at this frame's node, the weights summing to 1, so `Σ_f weight_f X_f` is the rule's estimate of the Gaussian average of `X` (`sampling_rule`; `engines/transport.md` § 2a.12) | — | Weight |
-| `info.vibration` | `run` · `result_sha256` | given | the vibration run the mode was read from — its folder, read through the run door — and the sha256 of its result file (the geometry pin is a cited pair's, `structure-molstruct.md` § 3; no hash over the labels is kept) | — | — |
-
-*On a page* is how a page says the row (`frame_average.ROWS`' `words` and page unit): the plain words, the stored name on hover (`engines/transport.md` § 3.8.1). *Given* is stated by the vibration result, the coordinates or the script;
-*measured* is computed from the coordinates alone, before any correction;
-*derived* is computed from the others by the formula shown.
-
-How many frames there are, where they sit and what they state is the maker's
-— the frame generator's are the Gauss–Hermite nodes of a Gaussian whose spread
-the temperature the person states sets (`engines/vibration.md` § 5.10 ③;
-`science/vibrational-averaging.md` § 5).
+**A vibration's frame set, as its maker writes it** — its rows, their names,
+units, meanings and page words — is the motion toolkit's vocabulary
+([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 5.1).
+How many frames a set has, where they sit and what they state is its
+maker's.
 
 ### 2.3 Geometry I/O
 
