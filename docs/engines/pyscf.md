@@ -274,7 +274,8 @@ result's record and its non-finite scrub (`spectra/results.py`, and
 `thermo_block` in `spectra/normal_modes.py`: the SIESTA finish's too), its writer
 (`sidecars/spectra.py`), with the derived values the writer states beside
 every mode and the activity rule they ask (`spectra/derived.py`,
-`spectra/activity.py`, [`vibration.md`](?doc=engines/vibration.md) § 6.6);
+`spectra/activity.py`, [`vibration.md`](?doc=engines/vibration.md) § 6.6) and
+a mode's mechanics (`vibration`);
 the mode selector ([`vibration.md`](?doc=engines/vibration.md) § 4.8); and the `constants` module,
 for the one factor its Raman block converts with. Prep writes the file beside
 every PySCF script and copies it into every run with the script. Its first

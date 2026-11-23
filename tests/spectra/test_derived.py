@@ -8,8 +8,8 @@ from __future__ import annotations
 
 import pytest
 
-from molbuilder.spectra.derived import (thermal_spread_amu12_ang,
-                                        zero_point_amplitude_amu12_ang)
+from molbuilder.vibration import (thermal_spread_amu12_ang,
+                                  zero_point_amplitude_amu12_ang)
 from molbuilder.spectra.mode_frames import at_temperature
 
 

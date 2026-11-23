@@ -22,18 +22,20 @@ from ``mb_pyscf.pyz`` and runs the projection inside its run
 (`runwrap.members`, `engines/pyscf.md` § 3), and a SIESTA
 vibration's `fc` record step runs it from ``mb_vibration.pyz``
 (`runwrap.members`, `engines/vibration.md` § 5.11 § 3) -- both where
-this package is not installed, so it imports only the ``constants`` that
-travel beside it.
+this package is not installed, so it imports only the ``constants`` and a
+mode's mechanics (`vibration`) that travel beside it.
 """
 from __future__ import annotations
 
 # TWO WAYS, because this module travels (above).
 try:                                        # inside molbuilder
-    from ..constants import (BOLTZMANN_HARTREE_K,
+    from ..constants import (BOLTZMANN_HARTREE_K, CM1_KELVIN,
                              CM1_PER_SQRT_HARTREE_BOHR2_AMU, HARTREE_CM1)
+    from ..vibration import mean_quanta
 except ImportError:                         # beside a job, in either bundle
-    from constants import (BOLTZMANN_HARTREE_K,
+    from constants import (BOLTZMANN_HARTREE_K, CM1_KELVIN,
                            CM1_PER_SQRT_HARTREE_BOHR2_AMU, HARTREE_CM1)
+    from vibration import mean_quanta  # type: ignore[no-redef]
 
 
 def rigid_motions(positions, held, axis_kind, cell=None, tol_ang=1e-3):
@@ -280,17 +282,20 @@ def vibrational_thermo(freqs_cm1, temperature_K):
     which no temperature removes, with no thermal energy and no entropy.
     """
     import numpy as _np
-    w = _np.asarray(freqs_cm1, dtype=float).reshape(-1) * (1.0 / HARTREE_CM1)
+    nu = _np.asarray(freqs_cm1, dtype=float).reshape(-1)
+    w = nu * (1.0 / HARTREE_CM1)
     T = float(temperature_K)
     if w.size == 0:
         return 0.0, 0.0, 0.0
     zpe = float(0.5 * w.sum())
     if T <= 0.0:
         return zpe, 0.0, 0.0
-    x = _np.clip(w / (BOLTZMANN_HARTREE_K * T), 1e-12, 700.0)
-    u = float((w / (_np.exp(x) - 1.0)).sum())
-    s = float(BOLTZMANN_HARTREE_K * ((x / (_np.exp(x) - 1.0)
-                                      - _np.log1p(-_np.exp(-x))).sum()))
+    # EACH MODE'S MEAN QUANTA, the one occupation rule (`vibration`), and
+    # hbar omega / k_B T by the same constant it reads.
+    n = mean_quanta(nu, T)
+    x = nu * CM1_KELVIN / T
+    u = float((w * n).sum())
+    s = float(BOLTZMANN_HARTREE_K * ((x * n - _np.log1p(-_np.exp(-x))).sum()))
     return zpe, u, s
 
 
@@ -385,48 +390,7 @@ THERMO_GRID_K = tuple(float(x) for x in
                       __import__("numpy").linspace(50.0, 1500.0, 30))
 
 
-def mode_over_atoms(mode_free, free_idxs, n_atoms):
-    """A mode's pattern over EVERY atom -- its canonical eigenvector on the
-    free atoms, zero on every held one, so no held atom moves
-    (`engines/vibration.md` § 5.10 ③, § 5.11 § 3): shape ``(n_atoms, 3)``."""
-    import numpy as _np
-    L = _np.zeros((int(n_atoms), 3))
-    L[list(free_idxs)] = _np.asarray(mode_free, dtype=float)
-    return L
-
-
-def largest_move(mode_rows):
-    """How far the atom that moves most moves per unit ``Q``: ``max_k
-    |L_k|``, the largest of the mode's per-atom vector lengths, in Å per
-    amu^1/2 Å -- what a Raman phase's ``±δQ`` and a frame set's outermost
-    move both rest on (`engines/vibration.md` § 5.11 § 3;
-    `science/vibrational-averaging.md` § 4).  ``mode_rows`` is the mode's
-    pattern, a row per atom (the free atoms' or every atom's)."""
-    import numpy as _np
-    return float(_np.linalg.norm(_np.asarray(mode_rows, dtype=float),
-                                 axis=1).max())
-
-
-def q_for_largest_move(mode_over_atoms_, move_ang):
-    """The displacement along the mode, ``Q`` in amu^1/2 Å, at which the
-    atom that moves most moves ``move_ang`` Å: ``move / max_k |L_k|``
-    (:func:`largest_move`) -- a Raman phase's ``±δQ``
-    (`engines/vibration.md` § 5.11 § 3)."""
-    return float(move_ang) / largest_move(mode_over_atoms_)
-
-
-def displaced(positions, mode_over_atoms_, q):
-    """Every atom moved along the mode by ``q`` (amu^1/2 Å): ``R + q·L``,
-    the one displacement rule the frame generator and a Raman phase's
-    plan apply."""
-    import numpy as _np
-    return (_np.asarray(positions, dtype=float)
-            + float(q) * _np.asarray(mode_over_atoms_, dtype=float))
-
-
 __all__ = ["rigid_motions", "mode_count", "vibrational_modes", "signed_omega",
-           "mode_over_atoms", "largest_move", "q_for_largest_move",
-           "displaced",
            "frequencies_cm1", "display_form", "thermo_temperatures",
            "vibrational_thermo", "vibrational_thermo_grid",
            "vibrational_only_thermo", "THERMO_GRID_K"]
@@ -434,4 +398,5 @@ __all__ = ["rigid_motions", "mode_count", "vibrational_modes", "signed_omega",
 
 #: WHAT THIS MODULE NEEDS BESIDE IT in a job's bundle -- the modules it
 #: imports there by their bare names (`runwrap.bundle_members`).
-TRAVELS_WITH = ("molbuilder.constants",)
+TRAVELS_WITH = ("molbuilder.constants",
+                "molbuilder.vibration")

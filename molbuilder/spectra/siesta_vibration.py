@@ -114,7 +114,7 @@ try:                                        # inside molbuilder
                                            Call, calls_of,
                                            force_constants_call, phase,
                                            point_entry)
-    from .normal_modes import displaced, mode_over_atoms, q_for_largest_move
+    from ..vibration import displaced, mode_over_atoms, q_for_largest_move
     from .selection import select_modes
 except ImportError:                         # beside a job, in mb_vibration.pyz
     from siesta_epsimg_reader import CHANNELS, read_epsimg  # type: ignore[no-redef]
@@ -168,7 +168,8 @@ except ImportError:                         # beside a job, in mb_vibration.pyz
                                   RELAX, Call, calls_of,
                                   force_constants_call, phase,
                                   point_entry)
-    from normal_modes import displaced, mode_over_atoms, q_for_largest_move
+    from vibration import (  # type: ignore[no-redef]
+        displaced, mode_over_atoms, q_for_largest_move)
     from mode_selection import select_modes
 
 #: What the result says about how the geometry was reached: the run it
@@ -840,7 +841,7 @@ def _plan_optical(here: _CallHere, run: ForceConstantRun, res: SpectraResults,
     :func:`_optical_source` -- the run's own copy of the optical phase's
     files, which the opener put in its `optical/` container), its
     `coordinates.fdf` (``R₀ ± δQ·L``, the one displacement rule,
-    `normal_modes.displaced`) and its index entry.
+    `vibration.displaced`) and its index entry.
     Returns how many were planned -- 0 with Compute Raman off, the stage
     running no optical phase, or when a range keeps no mode."""
     if "raman" not in run.record:
@@ -1439,10 +1440,10 @@ TRAVELS_WITH = ("molbuilder.atom_permutation",
                 "molbuilder.siesta.deck_lines",
                 "molbuilder.siesta.vibration_phases",
                 "molbuilder.spectra.methods",
-                "molbuilder.spectra.normal_modes",
                 "molbuilder.spectra.optical_data",
                 "molbuilder.spectra.results",
                 "molbuilder.spectra.selection",
                 "molbuilder.spectra.vibrational_analysis",
                 "molbuilder.structure",
+                "molbuilder.vibration",
                 "molbuilder.wrapper_log")

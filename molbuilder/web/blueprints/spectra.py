@@ -38,7 +38,6 @@ from molbuilder.sidecars.spectra import (
     SpectraJsonSchemaError,
     parse_spectra_json,
 )
-from molbuilder.spectra.results import motion_share_by_element
 from ...spectra.methods import with_ir_route
 
 
@@ -102,11 +101,11 @@ def _temperature_k(body, key: str = "temperature_k"):
     dialog's -- in the JSON body, as a float, ``None`` when the request
     names none; a value that is not one is refused with the reason (a 400,
     `web-api.md` § 2), by the rule every door shares
-    (`spectra.derived.checked_temperature_k`)."""
+    (`vibration.checked_temperature_k`)."""
     raw = (body or {}).get(key)
     if raw is None or raw == "":
         return None
-    from molbuilder.spectra.derived import checked_temperature_k
+    from molbuilder.vibration import checked_temperature_k
     return checked_temperature_k(raw)
 
 
@@ -132,7 +131,7 @@ def _loaded(results, run: Optional[Dict[str, Any]] = None,
 
     ``temperature_k`` is the animation's temperature: each mode is served
     its ``thermal_spread_amu12_ang`` at it, from the one derivation
-    (`spectra.derived.thermal_spread_of`, `web/spectra.md` § 4.1); asked for
+    (`vibration.thermal_spread_of`, `web/spectra.md` § 4.1); asked for
     none, no mode carries it.  ``frameset_temperature_k`` is the frame-set
     dialog's: each mode is served its ``frameset`` at it -- its mean number
     of quanta, its spread and the outermost move for each rule
@@ -205,28 +204,35 @@ def _loaded(results, run: Optional[Dict[str, Any]] = None,
             payload.get("ir_route") or "",
             payload.get("ir_fd_step_ang"))
 
-    # THE ELEMENTS, from the structure the result states whole (v9; the
-    # reader serves that shape for every file, `engines/vibration.md` § 6.10).
-    from molbuilder.structure import Structure as _Structure
-    elements = (list(_Structure.from_dict(payload["structure"]).elements)
-                if payload.get("structure") else [])
-    masses = (payload.get("equilibrium") or {}).get("masses_amu")
     # THE FREE ATOMS, which the reader's partition rule guarantees -- one
-    # eigenvector row each.
+    # eigenvector row each -- each by its element and the mass the modes were
+    # weighted by, as the result reads them (`SpectraResults.atoms_weighted`),
+    # the shares by the mode's mechanics (`vibration.element_shares`).
+    from molbuilder.vibration import element_shares
     free = payload["free_atom_idxs"]
+    # A LABEL THE ELEMENT TABLE DOES NOT KNOW serves no shares; the result
+    # still loads (`web/spectra.md` § 4.2).
+    free_elements: list = []
+    try:
+        weighted = results.atoms_weighted(free)
+        if weighted is not None:
+            free_elements = list(weighted[0])
+            free_masses = [float(m) for m in weighted[1]]
+    except (IndexError, ValueError, KeyError):
+        free_elements = []
     for mode in payload.get("modes") or []:
         rows = mode.get("eigenvector_canonical") or mode.get("eigenvector_display")
-        if not rows or not elements:
+        if not rows or not free_elements:
             continue
         try:
-            mode["motion_share_by_element"] = motion_share_by_element(
-                elements, rows, free, masses_amu=masses)
+            mode["motion_share_by_element"] = element_shares(
+                free_elements, rows, free_masses)
         except (ValueError, KeyError):
             pass
     if temperature_k is not None:
         # the temperature the animation's spreads are at, said with them
         payload["temperature_k"] = temperature_k
-        from molbuilder.spectra.derived import thermal_spread_of
+        from molbuilder.vibration import thermal_spread_of
         for mode in payload.get("modes") or []:
             mode["thermal_spread_amu12_ang"] = thermal_spread_of(
                 mode, temperature_k)

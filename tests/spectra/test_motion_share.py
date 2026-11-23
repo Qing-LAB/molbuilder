@@ -1,4 +1,4 @@
-"""Which atoms a mode belongs to — ``spectra.results.motion_share_by_element``.
+"""Which atoms a mode belongs to — ``vibration.element_shares``.
 
 THE BUG THIS ANSWERS.  The mode panel used to describe a mode by the atom with
 the largest displacement.  In the benzene-dithiol result that is a hydrogen in
@@ -15,7 +15,14 @@ import numpy as np
 import pytest
 
 from molbuilder.chemistry import atomic_mass
-from molbuilder.spectra.results import motion_share_by_element
+from molbuilder.vibration import element_shares
+
+
+def shares_by_the_table(elements, rows):
+    """The shares with each atom weighted by the element table's mass -- a
+    result before schema 7 states none, and a reader weights its modes so
+    (`results.mass_of`)."""
+    return element_shares(elements, rows, [atomic_mass(e) for e in elements])
 
 
 # --------------------------------------------------------------------- #
@@ -33,7 +40,7 @@ class TestAtomicMass:
 
     That the masses are RIGHT is observable where it matters, in
     ``TestMotionShare`` below: real eigenvectors through
-    ``motion_share_by_element``, where a wrong table moves the answer.
+    ``element_shares``, where a wrong table moves the answer.
     What is ours, and is tested here, is the label handling and the
     refusal.
     """
@@ -73,7 +80,7 @@ class TestMotionShare:
         """
         elements = ["C", "C", "C", "C", "H", "H", "H", "H"]
         rows = ([[0.98, 0, 0]] * 4) + ([[1.15, 0, 0]] * 4)
-        share = motion_share_by_element(elements, rows)
+        share = shares_by_the_table(elements, rows)
 
         assert share["C"] > share["H"]
         assert share["C"] == pytest.approx(0.90, abs=0.02)
@@ -82,14 +89,14 @@ class TestMotionShare:
     def test_every_element_appears_once_ordered_by_how_much_it_carries(self):
         """The two things a caller can rely on, neither of which is arithmetic.
 
-        `sum(shares) == 1` cannot fail -- `results.py` returns `w / total` where `total` is that same sum, so
+        `sum(shares) == 1` cannot fail -- `vibration.py` returns `w / total` where `total` is that same sum, so
         the claim is division, not behaviour (measured 2026-09-09).  What can
-        fail is the element set (an atom silently dropped, or two rows mapped
-        to one atom) and the ORDER, which the docstring promises largest-first.
+        fail is the element set (an atom silently dropped) and the ORDER,
+        which the docstring promises largest-first.
         """
         elements = ["C", "H", "S", "Au"]
         rows = [[0.4, 0.1, 0], [1.0, 0, 0.2], [0.3, 0.3, 0], [0.05, 0, 0.05]]
-        share = motion_share_by_element(elements, rows)
+        share = shares_by_the_table(elements, rows)
 
         assert set(share) == {"C", "H", "S", "Au"}
         assert list(share) == sorted(share, key=share.get, reverse=True), (
@@ -103,40 +110,26 @@ class TestMotionShare:
         display = np.array([[0.9, 0.1, 0], [0.2, 0.8, 0],
                             [1.0, 0.3, 0], [0.4, 1.0, 0]])
         canonical = display * 0.1342          # what the emitter's scaling does
-        assert (motion_share_by_element(elements, display)
-                == pytest.approx(motion_share_by_element(elements, canonical)))
-
-    def test_a_free_atom_basis_maps_rows_onto_the_right_atoms(self):
-        """A mode over a partially frozen structure carries one row per FREE
-        atom.  Reading row k as atom k would attribute the motion to whatever
-        element happens to sit at that index — a silent, plausible wrong
-        answer, which is the kind this test exists to stop."""
-        elements = ["Au", "Au", "C", "H"]      # atoms 0,1 frozen
-        rows = [[1.0, 0, 0], [1.0, 0, 0]]      # equal motion on C and H
-        share = motion_share_by_element(elements, rows, atom_idxs=[2, 3])
-
-        assert set(share) == {"C", "H"}, "a frozen gold atom cannot carry motion"
-        assert share["C"] / share["H"] == pytest.approx(
-            atomic_mass("C") / atomic_mass("H"), rel=1e-9)
+        assert (shares_by_the_table(elements, display)
+                == pytest.approx(shares_by_the_table(elements, canonical)))
 
     def test_a_mode_that_does_not_move_reports_nothing(self):
         """Rather than dividing by zero.  Not hypothetical: a fully frozen
         selection produces all-zero rows."""
-        assert motion_share_by_element(["C", "H"], [[0, 0, 0], [0, 0, 0]]) == {}
+        assert shares_by_the_table(["C", "H"], [[0, 0, 0], [0, 0, 0]]) == {}
 
-    def test_a_mode_that_does_not_match_the_structure_is_refused(self):
-        with pytest.raises(ValueError) as exc:
-            motion_share_by_element(["C", "H"], [[1, 0, 0]], atom_idxs=[0, 1])
-        assert "does not match the structure" in str(exc.value)
-
-        with pytest.raises(ValueError) as exc:
-            motion_share_by_element(["C"], [[1, 0, 0]], atom_idxs=[7])
-        assert "outside the structure" in str(exc.value)
+    def test_a_mode_that_does_not_match_its_atoms_is_refused(self):
+        """A row per atom, an element and a mass per row -- a mode over
+        other atoms is refused, never paired row by row with whatever
+        atoms come first (`engines/vibration.md` § 6.3, the mode's
+        ``(n_free, 3)`` rows, one per free atom)."""
+        with pytest.raises(ValueError, match="does not match its atoms"):
+            shares_by_the_table(["C", "H"], [[1, 0, 0]])
 
     def test_rows_must_be_three_vectors(self):
-        with pytest.raises(ValueError) as exc:
-            motion_share_by_element(["C"], [[1.0, 0.0]])
-        assert "(n_atoms, 3)" in str(exc.value)
+        """A mode is an x, y, z move per atom (§ 6.3)."""
+        with pytest.raises(ValueError, match="x, y, z per atom"):
+            shares_by_the_table(["C"], [[1.0, 0.0]])
 
 
 # --------------------------------------------------------------------- #
@@ -151,17 +144,6 @@ class TestAgainstKnownSpectroscopy:
 
     def test_a_ch_stretch_is_hydrogen_motion(self):
         # C nearly still, H swinging: the classic high-frequency stretch.
-        share = motion_share_by_element(
+        share = shares_by_the_table(
             ["C", "H"], [[0.08, 0, 0], [1.0, 0, 0]])
         assert share["H"] > 0.9
-
-
-def test_a_labelled_atom_s_share_is_its_element_s():
-    """`web/spectra.md` § 4.2: each ELEMENT's share of the mode; a species is a
-    label and an element (`model/chemistry.md` § 3).  THE SILENT FAILURE: water's
-    labelled hydrogens read "44% H1, 44% H2", the mode's owner split in two."""
-    rows = [[0.0, 0.0, 0.1], [0.0, 0.5, 0.0], [0.0, 0.5, 0.0]]
-    labelled = motion_share_by_element(["O", "H1", "H2"], rows)
-    plain = motion_share_by_element(["O", "H", "H"], rows)
-    assert labelled == pytest.approx(plain)
-    assert set(labelled) == {"O", "H"}

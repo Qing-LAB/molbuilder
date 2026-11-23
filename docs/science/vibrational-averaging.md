@@ -515,8 +515,11 @@ zero-point amplitude and different distribution/probability distribution
 function for mode at different excitation state"; "the displacement of atoms
 from a given mode's displacement should be able to be calculated with clear
 theory/document"; "those theory / calculation api should be scientifically
-validated in tests".)* The API that computes each of these is designed in
-[`engines/vibration.md`](?doc=engines/vibration.md) § 6.11 § 6, not built.
+validated in tests".)* The API that computes each of these is
+`postprocess.vibration` ([`engines/vibration.md`](?doc=engines/vibration.md)
+§ 6.11 § 6), by the module `vibration`; the tests of § 2b.5 are
+`tests/test_vibration_mechanics.py` and, end to end,
+`tests/test_vibration_mechanics_e2e.py`.
 
 > **In short.** A mode's coordinate $Q$ has a natural length, the zero-point
 > amplitude $Q_{\mathrm{zp}}$, set by its frequency alone. Where the molecule
@@ -607,7 +610,9 @@ few frames placed by a quadrature for that state's $P(Q)$, its weights the
 frames' (§ 5): for a Gaussian state, the Gauss–Hermite rule,
 $Q_j = \sqrt2\,\sigma\,x_j$ (§ 5.1); for $n$ quanta exactly, the rule whose
 weight function is $P_n$ itself — its nodes and weights from that density's
-own orthogonal polynomials, computed from its moments — exact, as every
+own orthogonal polynomials, built by the Lanczos recurrence of the
+oscillator's position operator from the state $\lvert n\rangle$ and Golub and
+Welsch's eigenproblem — exact, as every
 Gauss rule of $m$ frames is, for a response polynomial up to degree $2m-1$;
 for a swing, the rule of § 2a.3. **The distribution is the maker's
 alone**: a multi-frame structure carries each frame's weight, the one row a
@@ -621,15 +626,19 @@ frames' positions.
 
 ### 2b.5 How each is validated
 
-Each test takes its expectation from the science below — never from
-molbuilder's own output — and is seen failing on the release before:
+Each test takes its expected numbers from the science below — never from
+molbuilder's own constants; a row holding two of its answers together holds
+them to the relation the science or the contract states between them
+(Mehler's sum and the hot limit, § 2b.3; the record's temperature,
+[`engines/vibration.md`](?doc=engines/vibration.md) § 6.11 § 9 item 6) — and
+is seen failing on the release before:
 
 | what | the test's expectation | where it comes from |
 |---|---|---|
 | $Q_{\mathrm{zp}}$ | H₂ at 4400 cm⁻¹: 0.0619 amu$^{1/2}$·Å; the bond's r.m.s. 0.0872 Å $= Q_{\mathrm{zp}}/\sqrt\mu$ | $\sqrt{\hbar/2\omega}$; the textbook zero-point amplitude |
 | a harmonic diatomic built from a spring constant $k$ and two masses | its frequency $\sqrt{k/\mu}$; at $Q_{\mathrm{zp}}$ the atoms move $\tfrac{m_2}{M}\,\tfrac{Q_{\mathrm{zp}}}{\sqrt\mu}$ and $\tfrac{m_1}{M}\,\tfrac{Q_{\mathrm{zp}}}{\sqrt\mu}$ in opposite directions, the centre of mass still | the two-body problem in closed form |
 | an atom's move and its way back | the projection $\sum_A m_A\mathbf L_A\cdot\mathbf u_A$ returns $Q$; the displaced geometry's harmonic energy $\tfrac12\mathbf u^{\mathsf T}H\mathbf u = \tfrac12\omega^2Q^2$ | the eigenproblem's orthonormality with the masses |
-| $n$ quanta exactly | each $P_n$ integrates to 1; the eigenfunctions are orthogonal; $\langle Q^2\rangle$ and $\langle Q^4\rangle$ as in § 2b.3; $n$ zeros; the potential energy half of $\hbar\omega(n+\tfrac12)$ | the oscillator's eigenfunctions; the virial theorem |
+| $n$ quanta exactly | each $P_n$ integrates to 1; $\langle Q^2\rangle$ and $\langle Q^4\rangle$ as in § 2b.3; $n$ zeros; the weight beyond the classical turning points (§ 2b.3's 15.7 %, 11.2 %, 9.5 %); the potential energy half of $\hbar\omega(n+\tfrac12)$ | the oscillator's eigenfunctions; the virial theorem |
 | thermal | the $p_n$-weighted sum of the $P_n$ equals the Gaussian of $\sigma^2 = (2\bar n+1)Q_{\mathrm{zp}}^2$; $\bar n$ is Bose–Einstein's; $\sigma \to Q_{\mathrm{zp}}$ at 0 K and $\sigma^2 \to k_BT/\omega^2$ hot | Mehler's formula; § 2 |
 | a swing | its $\langle Q^2\rangle$ and $\langle Q^4\rangle$ as in § 2b.3; its density the bath's Gaussian averaged over the phase | § 2a.2, in closed form |
 | frames | each Gauss rule (a Gaussian state, $n$ quanta) reproduces its state's moments to degree $2m-1$; the swing's $N$ equal phases to degree $N-1$ (its five frames: 7) | Gauss quadrature; the trapezoidal rule on a period |
@@ -841,7 +850,7 @@ $$
 
 $x_{\mathrm{out}}$ the rule's outermost node (§ 5.1: $\sqrt{3/2}$ for three
 frames, 2.0202 for five, 2.6520 for seven); $\max_A\lvert\mathbf L_A\rvert$ is
-`normal_modes.largest_move`, the one a Raman phase's $\pm\delta Q$ rests on too
+`vibration.largest_move`, the one a Raman phase's $\pm\delta Q$ rests on too
 (`spectra.mode_frames.outermost_move` asks it). Each frame states its own largest
 single-atom move beside it — the check a person reads against a bond length.
 

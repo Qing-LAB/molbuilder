@@ -697,7 +697,7 @@ class ModeData:
 
 
 # --------------------------------------------------------------------- #
-#  Which atoms a mode belongs to                                        #
+#  The masses a result's modes are weighted by                          #
 # --------------------------------------------------------------------- #
 
 
@@ -711,77 +711,6 @@ def mass_of(i: int, elements: Sequence[str],
         return float(masses_amu[i])
     from ..chemistry import atomic_mass
     return atomic_mass(str(elements[i]))
-
-
-def motion_share_by_element(elements: List[str],
-                            eigenvector: Any,
-                            atom_idxs: Optional[List[int]] = None,
-                            masses_amu: Optional[Sequence[float]] = None,
-                            ) -> Dict[str, float]:
-    """Each element's share of a mode's motion, summing to 1.
-
-    WHY THIS EXISTS, in one example.  In mode 30 of the benzene-dithiol
-    result, the hydrogens have the largest displacement vectors -- |L| =
-    1.15 against carbon's 0.98 -- so "which atom moves furthest" answers
-    *hydrogen*.  The mode is a ring stretch: carbon carries 91% of it.
-    Distance alone is the wrong question, because a light atom travels
-    further for the same energy, and hydrogen is the lightest thing in
-    most molecules.  Asking which atoms the mode BELONGS to means
-    weighting by mass.
-
-    WHAT IT COMPUTES.  The kinetic-energy distribution: atom *i*'s share
-    is ``mᵢ|Lᵢ|²`` over the sum across atoms.  For a harmonic mode the
-    ratio is the same at every phase of the oscillation, so it is a
-    property of the mode rather than of the instant you look at it --
-    which is what makes it the standard way modes are assigned.
-
-    EITHER EIGENVECTOR WORKS.  The two stored forms differ by one scalar
-    per mode (§ SCHEMA_VERSION v2: canonical is normalised in the
-    mass-weighted metric, display so the largest component is 1), and a
-    scalar cancels in a ratio.  Pass whichever is in hand.
-
-    ``atom_idxs`` maps eigenvector rows onto ``elements`` when the mode
-    covers only the free atoms -- the free-atom list from the result.
-    Omit it when there is one row per atom.  ``masses_amu`` is every
-    atom's mass as the result states it (``equilibrium.masses_amu``, schema
-    7); a result before it states none, and the shares are then weighted by
-    ``chemistry.atomic_mass``, the table every deck's masses are stated from
-    (`engines/vibration.md` § 6.6).  Shares are returned largest first, and
-    a mode with no motion at all returns ``{}`` rather than dividing by zero.
-    """
-    from ..chemistry import resolve_element
-    rows = np.asarray(eigenvector, dtype=float)
-    if rows.ndim != 2 or rows.shape[1] != 3:
-        raise ValueError(
-            f"motion_share_by_element: eigenvector must be (n_atoms, 3), "
-            f"got {rows.shape}"
-        )
-    if atom_idxs is None:
-        idxs = list(range(rows.shape[0]))
-    else:
-        idxs = [int(i) for i in atom_idxs]
-    if len(idxs) != rows.shape[0]:
-        raise ValueError(
-            f"motion_share_by_element: {rows.shape[0]} eigenvector rows but "
-            f"{len(idxs)} atom indices -- the mode does not match the structure"
-        )
-
-    weight: Dict[str, float] = {}
-    total = 0.0
-    for row, at in zip(rows, idxs):
-        if at < 0 or at >= len(elements):
-            raise ValueError(
-                f"motion_share_by_element: atom index {at} is outside the "
-                f"structure ({len(elements)} atoms)"
-            )
-        el = resolve_element(str(elements[at]))
-        w = mass_of(at, elements, masses_amu) * float(np.dot(row, row))
-        weight[el] = weight.get(el, 0.0) + w
-        total += w
-    if total <= 0.0:
-        return {}
-    return {el: w / total
-            for el, w in sorted(weight.items(), key=lambda kv: -kv[1])}
 
 
 # --------------------------------------------------------------------- #
@@ -1300,6 +1229,62 @@ class SpectraResults:
         # A RESULT FILE'S STRUCTURE, as both writers state it: the view's
         # fields left out (`Structure.to_dict(view=False)`).
         return s.to_dict(view=False)
+
+    def atoms_weighted(self, atoms: Optional[Sequence[int]] = None):
+        """EACH ATOM AS THE MODES WEIGHT IT -- its element (a species label
+        resolved, `chemistry.resolve_element`) and its mass (:func:`mass_of`:
+        the result's own, or the table's for a result before schema 7):
+        ``(elements, masses_amu)`` for the ``atoms`` asked, in the order
+        asked -- every atom in the user's order where none are -- or
+        ``None`` before any geometry exists.  The one reading the load
+        door's element shares (its free atoms alone) and :meth:`vibration`
+        (every atom) ask.  The host's alone: the element table does not
+        travel."""
+        from ..chemistry import resolve_element
+        stated = self.structure_stated()
+        if stated is None:
+            return None
+        labels = list(_Structure.from_dict(stated).elements)
+        asked = (range(len(labels)) if atoms is None
+                 else [int(i) for i in atoms])
+        return (tuple(resolve_element(str(labels[i])) for i in asked),
+                np.array([mass_of(i, labels, self.equilibrium_masses_amu)
+                          for i in asked], dtype=float))
+
+    def vibration(self, source: str = ""):
+        """THE RESULT'S MODES AS A PERSON COMPUTES WITH THEM
+        (`vibration.Vibration`, `engines/vibration.md` § 6.11 § 6): each mode
+        over every atom in the user's order, held atoms still, by the masses
+        the result states -- or, a result before schema 7, the table's
+        (:func:`mass_of`) -- each atom by its element (a species label
+        resolved, `chemistry.resolve_element`), at the geometry the result
+        states, the temperature its thermochemistry states; ``source`` the
+        file it was read from.  Refused by name before any geometry exists.
+        The host's alone, as :meth:`atoms_weighted` is."""
+        from ..vibration import Mode, Vibration
+        weighted = self.atoms_weighted()
+        if weighted is None:
+            raise ValueError("the result states no geometry yet: its modes "
+                             "come with its force constants")
+        elements, masses = weighted
+        positions = np.asarray(
+            _Structure.from_dict(self.structure_stated()).positions,
+            dtype=float)
+        free = tuple(int(i) for i in self.free_atom_idxs)
+        t = (self.thermo or {}).get("temperature_K")
+        temperature = None if t is None else float(t)
+        modes = tuple(
+            Mode(index_1based=int(m.index_1based),
+                 frequency_cm1=float(m.frequency_cm1),
+                 has_imag=bool(m.has_imag),
+                 eigenvector_canonical_per_amu12=np.asarray(
+                     m.eigenvector_canonical, dtype=float),
+                 free_atom_idxs=free, masses_amu=masses,
+                 element_symbols=elements,
+                 positions_ang=positions, record_temperature_k=temperature)
+            for m in self.modes)
+        return Vibration(modes=modes, record_temperature_k=temperature,
+                         source=str(source))
 
     def atom_index_map_stated(self):
         """THE ATOM INDEX MAP the result states (v10), or -- a file before

@@ -2,25 +2,20 @@
 file and for the reader's check (`engines/vibration.md` § 6.6, I16).
 
 MODULE  spectra.derived (L2 by the index, `architecture.md`; it imports
-        only the standard library and its siblings -- nothing that needs
-        the package installed)
+        the activity classes and the mode's mechanics (`vibration`, numpy)
+        -- nothing that needs the package installed)
 ROLE    from what a mode STATES -- its frequency, whether it is imaginary, its
-        canonical eigenvector and its two strengths -- the values derived from
-        them: the activity classes (`spectra.activity`, a decision against the
-        whole run), the zero-point amplitude ``Q_zp = sqrt(hbar / 2 omega)``
-        and every free atom's displacement at it, ``Q_zp * L_canonical``; and
-        a mode's thermal spread at a temperature,
-        ``sigma = Q_zp * sqrt(coth(hbar omega / 2 k_B T))``, and its mean
-        number of quanta there, ``n = 1 / (exp(hbar omega / k_B T) - 1)``
-        (`science/vibrational-averaging.md` § 2, § 2a)
+        canonical eigenvector and its two strengths -- the values a result
+        states derived from them: the activity classes (`spectra.activity`, a
+        decision against the whole run), the zero-point amplitude and every
+        free atom's displacement at it, each by the mode's mechanics' one
+        home (`vibration`)
 USED-BY the one writer of a result file, every engine's
         (`sidecars.spectra.write_spectra_payload`); `SpectraResults.to_dict`;
-        the reader's check (`SpectraResults.from_dict`); the spectrum tab's
-        load door, which serves each mode's thermal spread at the
-        temperature the tab asked (`web/spectra.md` § 4.1)
+        the reader's check (`SpectraResults.from_dict`)
 TRAVELS in both bundles -- the PySCF script's and a SIESTA vibration's
-(`runwrap.members`) -- so it imports its siblings two ways and
-        nothing else of molbuilder
+(`runwrap.members`) -- so it imports both two ways and nothing else of
+        molbuilder
 
 **Written beside what they come from, and checked on read** (user,
 2026-10-10: "explicit is always better than implicit in data science"): a
@@ -34,14 +29,15 @@ schema version.
 from __future__ import annotations
 
 import math
-from typing import Any, Dict, List, Mapping, Optional, Sequence
+from typing import Any, Dict, List, Mapping, Sequence
 
 # TWO WAYS, because this module travels beside the job (see the header).
 try:                                        # inside molbuilder
-    from ..constants import CM1_KELVIN, ZERO_POINT_Q2_AMU_ANG2_CM1
+    from ..vibration import atom_moves, zero_point_amplitude_amu12_ang
     from .activity import classify_modes
 except ImportError:                         # beside a job, in a bundle
-    from constants import CM1_KELVIN, ZERO_POINT_Q2_AMU_ANG2_CM1
+    from vibration import (  # type: ignore[no-redef]
+        atom_moves, zero_point_amplitude_amu12_ang)
     from activity import classify_modes
 
 #: THE KEYS A MODE'S ROW CARRIES THAT ARE DERIVED from its other keys
@@ -55,76 +51,6 @@ DERIVED_MODE_KEYS = ("ir_active", "raman_active", "activity_class",
 #: (`engines/vibration.md` § 6.7): a number written at full precision and
 #: read back is the derivation's own to the last bits.
 DERIVED_RTOL = 1e-9
-
-
-def zero_point_amplitude_amu12_ang(frequency_cm1: float,
-                                   has_imag: bool) -> Optional[float]:
-    """``Q_zp = sqrt(hbar / 2 omega)`` in amu^1/2.A,
-    ``sqrt(ZERO_POINT_Q2_AMU_ANG2_CM1 / nu)`` -- or ``None`` for an imaginary
-    mode, which has no amplitude."""
-    nu = float(frequency_cm1)
-    if has_imag or not nu > 0.0:
-        return None
-    return math.sqrt(ZERO_POINT_Q2_AMU_ANG2_CM1 / nu)
-
-
-def checked_temperature_k(raw: Any) -> float:
-    """A temperature as every door takes one: a number of kelvin, 0 or more
-    -- 0 K the zero-point motion alone (`science/vibrational-averaging.md`
-    § 2) -- refused by name otherwise."""
-    try:
-        t = float("nan") if isinstance(raw, bool) else float(raw)
-    except (TypeError, ValueError):
-        t = float("nan")
-    if not (math.isfinite(t) and t >= 0.0):
-        raise ValueError(f"temperature_k is a number of kelvin, 0 or more; "
-                         f"got {raw!r}")
-    return t
-
-
-def thermal_spread_amu12_ang(zero_point_amplitude_amu12_ang: float,
-                             frequency_cm1: float,
-                             temperature_k: float) -> float:
-    """The spread of a harmonic mode's coordinate at ``temperature_k``,
-    ``sigma = Q_zp * sqrt(coth(hbar omega / 2 k_B T))`` in amu^1/2.A --
-    exactly the Gaussian's width at every temperature, ``Q_zp`` at 0 K, its
-    limit (`science/vibrational-averaging.md` § 2).  ``hbar omega / k_B T``
-    is ``nu * CM1_KELVIN / T``."""
-    temperature_k = checked_temperature_k(temperature_k)
-    if temperature_k == 0.0:
-        return float(zero_point_amplitude_amu12_ang)
-    x = float(frequency_cm1) * CM1_KELVIN / (2.0 * float(temperature_k))
-    return float(zero_point_amplitude_amu12_ang) * math.sqrt(
-        1.0 / math.tanh(x))
-
-
-def mean_quanta(frequency_cm1: float, temperature_k: float) -> float:
-    """A harmonic mode's mean number of vibrational quanta at
-    ``temperature_k``, ``n = 1 / (exp(hbar omega / k_B T) - 1)`` -- 0 at
-    0 K -- so that its spread is ``Q_zp * sqrt(2n + 1)``
-    (`science/vibrational-averaging.md` § 2a).  Written as
-    ``e^-x / (1 - e^-x)``, which neither overflows for a stiff mode in the
-    cold nor loses digits for a soft one in the heat."""
-    temperature_k = checked_temperature_k(temperature_k)
-    if temperature_k == 0.0:
-        return 0.0
-    x = float(frequency_cm1) * CM1_KELVIN / float(temperature_k)
-    return math.exp(-x) / -math.expm1(-x)
-
-
-def thermal_spread_of(mode: Mapping[str, Any],
-                      temperature_k: float) -> Optional[float]:
-    """A mode row's thermal spread at ``temperature_k``, from the values the
-    row states -- its zero-point amplitude and its frequency -- or ``None``
-    for a mode with no zero-point amplitude (imaginary, or a row written
-    before the key).  What the spectrum tab's load door serves per mode
-    (`web/spectra.md` § 4.1): the tab draws it and derives nothing."""
-    temperature_k = checked_temperature_k(temperature_k)
-    q = mode.get("zero_point_amplitude_amu12_ang")
-    if q is None:
-        return None
-    return thermal_spread_amu12_ang(float(q), float(mode["frequency_cm1"]),
-                                    temperature_k)
 
 
 def mode_derivations(modes: Sequence[Mapping[str, Any]]
@@ -147,8 +73,7 @@ def mode_derivations(modes: Sequence[Mapping[str, Any]]
             "zero_point_amplitude_amu12_ang": q,
             "zero_point_displacement_ang": (
                 None if q is None or rows is None else
-                [[None if x is None else q * float(x) for x in row]
-                 for row in rows]),
+                atom_moves(rows, q).tolist()),
         })
     return out
 
@@ -193,5 +118,5 @@ def _same(a: Any, b: Any, rtol: float) -> bool:
 
 #: WHAT THIS MODULE NEEDS BESIDE IT in a job's bundle -- the modules it
 #: imports there by their bare names (`runwrap.bundle_members`).
-TRAVELS_WITH = ("molbuilder.constants",
-                "molbuilder.spectra.activity")
+TRAVELS_WITH = ("molbuilder.spectra.activity",
+                "molbuilder.vibration")

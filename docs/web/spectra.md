@@ -591,7 +591,7 @@ before schema 7 gains it on read); the animation reads it. The thermal factor
 below is served the same way: the load door derives each mode's
 `thermal_spread_amu12_ang` at the temperature the tab sends with its ask
 (`temperature_k`, the request's), from the one function
-(`spectra.derived.thermal_spread_of`); when the number in the box changes, the
+(`vibration.thermal_spread_of`); when the number in the box changes, the
 tab asks the door again and takes what it says. The tab holds no constant and
 computes neither size.
 
@@ -746,7 +746,7 @@ file. A result whose shares cannot be worked out — an element ASE does not kno
 or no stored geometry — is served without the field, and the panel simply drops
 that clause.
 
-The maths lives in `spectra/results.py :: motion_share_by_element`; the sentence
+The maths lives in `vibration.element_shares`, each free atom's element and mass as the result reads them (`SpectraResults.atoms_weighted`: the species label resolved, the mass by `results.mass_of`); the sentence
 is assembled in `lib/spectra/core.js :: _reportSwing`.
 
 ### 4.3 A mode's frame set — *Write frame set…*

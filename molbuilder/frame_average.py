@@ -291,8 +291,8 @@ def motion_weights(q, *, temperature_k, swing_quanta,
     zero-point amplitude, a temperature not kelvin 0 or more, swing quanta
     below 0, a swing whose turning points lie beyond the outermost frame."""
     import numpy as np
-    from .spectra.derived import (checked_temperature_k, mean_quanta,
-                                  thermal_spread_amu12_ang)
+    from .vibration import (checked_temperature_k, mean_quanta,
+                            thermal_spread_amu12_ang)
     from .structure import frame_words
     q = np.asarray(q, dtype=float).ravel()
     m = len(q)

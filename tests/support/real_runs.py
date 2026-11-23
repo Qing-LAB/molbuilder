@@ -65,6 +65,9 @@ Each is the session fixture of its name in `tests/conftest.py`:
 * :func:`charged_formate_relaxed` (``real_charged_formate``) -- a formate ion
   relaxed at its charge, and saved as a pair.
 
+A module's own run is made here too: :func:`h2_vibration`, the vibration
+kind on PySCF on a free H2, `test_vibration_mechanics_e2e.py`'s own fixture.
+
 A run with one thing changed is a copy of it beside it (:func:`copy_of`).
 A module that types a command on such a copy, or makes a run of its own,
 takes the doors these runs are made by: the tree with the engine on the
@@ -964,6 +967,17 @@ def water(tmp_path_factory) -> RealRun:
         settings={"compute_raman": True, "compute_ir": False},
         notify={"on_scf_converged": True, "every_hours": None,
                 "channels": ["*"], "report": ["*"]})
+
+
+def h2_vibration(tmp_path_factory) -> RealRun:
+    """A FREE H2's vibration on PySCF -- the science's worked molecule
+    (`science/vibrational-averaging.md` § 2b.5): the road's H2 with nothing
+    held, which PySCF computes in free space whatever its box; its one
+    stretch the mode whose every mechanical number has a closed form from
+    its frequency and its masses, which the run states."""
+    from support.road import H2
+    return water_vibration(tmp_path_factory, "h2free", structure={
+        key: H2[key] for key in ("elements", "positions", "cell")})
 
 
 def water_held(tmp_path_factory) -> RealRun:

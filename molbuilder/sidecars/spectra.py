@@ -246,10 +246,33 @@ def parse_spectra_json(
     return _validate_dict_to_results(d, repr(p))
 
 
+def read_vibration_result(path: Union[str, "os.PathLike[str]"]
+                          ) -> "SpectraResults":
+    """A vibration result from either of its two files, by the role its name
+    has (`runfiles.WRITTEN`): ``<label>.spectra.json`` through
+    :func:`parse_spectra_json`, its data file ``<label>.spectra.nc`` through
+    the data file's reader (`spectra.datafile.read_spectra_data`) into the
+    same typed result -- one answer whichever a person points at
+    (`engines/vibration.md` § 6.11 § 6).  Another name is refused."""
+    p = Path(os.fspath(path))
+    role = _role_of(p.name)
+    if role == ROLE_SPECTRA:
+        return parse_spectra_json(p)
+    if role == ROLE_SPECTRA_DATA:
+        from ..spectra.datafile import read_spectra_data
+        if not p.is_file():
+            raise SpectraJsonNotFoundError(f"no data file at {str(p)!r}")
+        return _validate_dict_to_results(read_spectra_data(p), repr(str(p)))
+    raise SpectraJsonError(
+        f"{p.name}: a vibration result is <label>{ROLE_SPECTRA} or its data "
+        f"file <label>{ROLE_SPECTRA_DATA}")
+
+
 __all__ = [
     "write_spectra_payload",
     "dump_spectra_json",
     "parse_spectra_json",
+    "read_vibration_result",
     "SpectraJsonError",
     "SpectraJsonNotFoundError",
     "SpectraJsonMalformedError",

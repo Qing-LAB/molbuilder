@@ -13,23 +13,25 @@ and [`engines/transport-postprocessing.md`](?doc=engines/transport-postprocessin
 
 What a finished vibration holds, which call answers what, and worked examples in
 Python: the modes atom by atom, the infrared and the Raman, the thermochemistry,
-the charges and the optical calls. Every example below ran on a real calculation
-before it was written here: on SIESTA, a molecule of 4 free atoms held between 48
-gold atoms, whose engine order differs from its user order; on PySCF, an H2, for
-what § 2, § 3, § 4 and § 7 say of that engine.
+the charges and the optical calls. Every example below, save § 2a's (whose
+tests § 2a names), ran on a real calculation before it was written here: on
+SIESTA, a molecule of 4 free atoms held between 48 gold atoms, whose engine
+order differs from its user order; on PySCF, an H2, for what § 2, § 3, § 4 and
+§ 7 say of that engine.
 
 ## 1. One import
 
 ```python
 from molbuilder.postprocess import (read_spectra_data, read_optical_data,
                                     infrared_view, raman_view, outermost_move,
-                                    read_steps, atom_index_map)
+                                    read_steps, atom_index_map, vibration)
 import xarray as xr
 ```
 
 | name | answers |
 |---|---|
 | `read_spectra_data(path)` | `<label>.spectra.nc`: the whole result as data, and its atom index map |
+| `vibration(path)` | the result's modes to compute with: each atom's move for a coordinate and back, a mode's states and their frames, the mode at another frequency (§ 2a) |
 | `infrared_view(path, direction=, partition=)` | the infrared the spectrum viewer draws |
 | `raman_view(path, laser_nm=, broaden_ev=)` | a SIESTA vibration's Raman at a laser |
 | `read_optical_data(path)` | `<label>.optical.nc`: the optical calls, each frame's ε₂ |
@@ -94,6 +96,49 @@ ds = xr.load_dataset("01_freq/run-0/v-molecule.spectra.nc", group="modes")
 ds.eigenvector_canonical_per_amu12.sel(mode=7, free_atom=free[0])   # the result's eigenvector_canonical, by its name in the file
 ds.frequency_cm1.attrs["units"], ds.frequency_cm1.attrs["long_name"]
 ```
+
+## 2a. Each mode's mechanics — `vibration`
+
+`vibration(path)` reads the result — its JSON or its `.nc`, one answer — as
+modes to compute with, every atom in your order, the theory
+[`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md)
+§ 2b ([`engines/vibration.md`](?doc=engines/vibration.md) § 6.11 § 6). The
+end-to-end test (`tests/test_vibration_mechanics_e2e.py`) makes the move, the
+projection back, the zero-point state and the shares on a real PySCF H₂; the
+rest are `tests/test_vibration_mechanics.py`'s, on the science's own modes:
+
+```python
+v = vibration("01_freq/run-0/v-h2.spectra.nc")    # or the .spectra.json
+m = v.modes[0]                                    # mode 1
+m.frequency_cm1, m.zero_point_amplitude_amu12_ang # Q_zp = sqrt(hbar / 2 omega)
+m.element_shares                                  # {'H': 1.0}
+
+u = m.displacement(zero_point_widths=1.0)         # each atom's move at Q_zp, Å (x, y, z)
+m.coordinate(u)                                   # back: sum_A m_A L_A . u_A = Q_zp
+m.displaced(0.05)                                 # every atom at R + Q L, Q = 0.05 amu^1/2.Å
+m.with_frequency(0.96 * m.frequency_cm1)          # the same pattern at a scaled frequency
+```
+
+**Where the molecule sits along the mode** is a state — at a temperature,
+at a mean number of quanta, with `quanta` exactly, a steady swing of
+`swing_quanta` over a bath, or the classical limits (`classical=True`):
+
+```python
+s = m.state(temperature_k=0.0)        # the zero-point motion: spread Q_zp
+s.spread_amu12_ang, s.mean_quanta
+s.atom_rms_ang                        # each atom's r.m.s. move, Å
+s.pdf(0.0), s.cdf(0.05), s.moment(4)  # density, distribution, <Q^4>
+f = m.state(quanta=1).frames(nodes=3) # three frames, exact to degree 5
+f.nodes_amu12_ang, f.weights          # where along the mode, and each one's weight
+f.positions_ang                       # each frame's geometry, every atom at R + Q L
+```
+
+A thermal or classical state, or a swing's bath, given neither a temperature
+nor mean quanta takes the one the result's thermochemistry states, and says so —
+`s.temperature_k`, `s.temperature_from` (`"given"` or `"the record's"`); a
+result stating none asks for one. `quanta`, `mean_quanta` and a classical swing
+alone take no temperature. An imaginary mode has
+moves for a coordinate given and no state.
 
 ## 3. The infrared and the Raman
 

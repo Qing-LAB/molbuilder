@@ -589,7 +589,7 @@ def atomic_mass(element: str) -> float:
     truth that no test would ever notice going stale.
 
     WHO NEEDS IT.  Any mass-weighted quantity: which atoms carry a
-    vibrational mode (``spectra.results.motion_share_by_element``),
+    vibrational mode (``vibration.element_shares``, the readers' masses),
     reduced masses, centre of mass.  Mass is a chemistry fact and lives
     beside the other chemistry facts, not in the module that happens to
     want it first.

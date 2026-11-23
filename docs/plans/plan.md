@@ -10,9 +10,9 @@ at 2.77.23 is [`archive/2026-11-22-plan-consolidation.md`](?doc=archive/2026-11-
 
 ---
 
-## ▶ Where we are *(2026-11-22)*
+## ▶ Where we are *(2026-11-23)*
 
-**2.77.25.** F0–F11 and F7a are closed (2.56.2–2.77.2). F12, *Proven*,
+**2.78.0.** F0–F11 and F7a are closed (2.56.2–2.77.2). F12, *Proven*,
 walked its three roads in the browser on real runs and ran the full batch
 (6106 fast and 805 e2e tests, none failed, at 2.77.2); its two review rounds
 ([`archive/audits/2026-11-18-f12-review/`](?doc=archive/audits/2026-11-18-f12-review/TRIAGE-round1.md))
@@ -20,7 +20,7 @@ sorted every finding into the releases below. **The finish plan** *(the
 user, 2026-11-19: "a consolidated plan to get things finished, not to drag
 things along")*: five releases, R1–R5, each with its review rounds. R1 and R2
 are done; R3, one home per fact on the server side, grew from one release
-into parts as reviews and the user's decisions added work, nine of them
+into parts as reviews and the user's decisions added work, eleven of them
 shipped:
 
 | version | part | what it did | record |
@@ -38,6 +38,7 @@ shipped:
 | 2.77.24 | R3c3 | templates and engines, each fact in one home; every env command by the checkout's full path, in molbuilder's checkout in a file for another machine and in every run script | `fix16-review.md` |
 | 2.77.25 | R3d1a | transport, each fact in one home; every data file names its engine in the engine table's words, a voltage said one way | `fix17-review.md` |
 | 2.77.26 | R3d1b | the spectra, each fact in one home; the spectra page names its engine in the engine table's words | `fix18-review.md` |
+| 2.78.0 | R3d2a | the vibration framework's module `vibration`, a mode's states and their frames, and the script door `postprocess.vibration` | `fix19-review.md` |
 
 Records: `archive/audits/2026-11-18-f12-review/fix<N>-review.md`. Since
 2.77.23 the host env holds `molbuilder-source.pth` on the development machine
@@ -73,11 +74,11 @@ built in R3d with the vibration's data files.
   `outermost_move`, `reaveraged`, `atom_index_map`), every row in the user's
   atom order.
 - **What is computed on request and kept nowhere**: a mode's thermal spread
-  and mean quanta at a temperature (`spectra/derived.py`), a frame set's
-  outermost move (`spectra/mode_frames.py`), each element's share of a mode's
-  motion, the frame weights at a temperature (`frame_average.py`), the mode
-  over all atoms and the displaced geometry (`spectra/normal_modes.py`) — each
-  its own helper.
+  and mean quanta at a temperature, each element's share of a mode's motion,
+  the mode over all atoms and the displaced geometry (`vibration`, 2.78.0),
+  a frame set's outermost move (`spectra/mode_frames.py`), the frame weights
+  at a temperature (`frame_average.py`) — the last two folded into
+  `vibration` with the record (R3d2b).
 - **The design, written 2026-11-22** ([`engines/vibration.md`](?doc=engines/vibration.md)
   § 6.11; the theory [`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md)
   § 2b): one `vibration` module owning every per-mode quantity and its
@@ -122,7 +123,27 @@ built in R3d with the vibration's data files.
 
 ### 2. R3d2 — the vibration framework
 
-R3d1 shipped (2.77.25, 2.77.26). R3d2 builds the framework (§ 1).
+R3d1 shipped (2.77.25, 2.77.26). R3d2 builds the framework (§ 1) in four
+releases, each read whole: **R3d2a** (2.78.0, done) the module `vibration`, its
+states and `postprocess.vibration`'s mechanics; **R3d2b** the record — the
+per-mode values stored in the result and its data file (schema 15, data file
+@11, § 6.11 § 3, § 5), the frame-set maker's `outermost_move` and
+`at_temperature` and the transport average's motion weights folded into the
+module — with the copies `fix19-review.md` found beside them: the
+maker's `_ordered_nodes` and its inline largest move, the swing moments in
+`frame_average`, the page's `onWriteFrameSet` largest zero-point move and its
+`_swingReport`, the load door's own composition of the free atoms' shares
+(the record's stored shares read instead) and its own reading of the record's
+temperature for a frame set (`Mode.state`'s rule asked instead), the frame
+rule's default three nodes typed in `vibration`'s two `frames` beside
+`mode_frames.NODES` (one constant, the module's), and
+`tests/spectra/test_derived.py`, whose rows are the module's and the maker's
+now, renamed for them — the maker's sets for $n$ quanta and a swing (§ 9 item
+2); **R3d2c**
+the probe at the frame rule's nodes (§ 6.11 § 4; § 9 items 1, 5, 6) with the
+PySCF deck changes below; **R3d2d** the force constants stored and
+`with_masses` (§ 9 item 3), SIESTA's Raman step and its verdict (§ 9 item 4),
+the data files on the shared writers and the diagrams (§ 6.11 § 8).
 
 - **The vibration framework, built** (§ 1, after the user's yes), with the
   SIESTA vibration's data files on the shared writers

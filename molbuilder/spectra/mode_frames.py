@@ -135,9 +135,9 @@ def _checked_nodes(nodes: int) -> int:
 
 def _checked_temperature(temperature_k) -> float:
     """The temperature the frames sample, by the rule every door shares
-    (`spectra.derived.checked_temperature_k`) -- stated every time, never
+    (`vibration.checked_temperature_k`) -- stated every time, never
     defaulted -- refused as the generator refuses."""
-    from .derived import checked_temperature_k
+    from ..vibration import checked_temperature_k
     try:
         return checked_temperature_k(temperature_k)
     except ValueError:
@@ -156,8 +156,7 @@ def outermost_move(mode: Dict[str, Any], temperature_k: float,
     § 5) -- what :func:`frameset_from_mode` measures on the frames it
     writes, by the same node rule.  ``None`` for a mode with no zero-point
     amplitude (an imaginary one)."""
-    from .derived import thermal_spread_of
-    from .normal_modes import largest_move
+    from ..vibration import largest_move, thermal_spread_of
     nodes = _checked_nodes(nodes)
     sigma = thermal_spread_of(mode, temperature_k)
     if sigma is None:
@@ -176,7 +175,7 @@ def at_temperature(mode: Dict[str, Any],
     outermost_move_ang: {"3": …, …}}`` -- from the derivations the
     generator writes by.  ``None`` for a mode with no zero-point
     amplitude."""
-    from .derived import mean_quanta, thermal_spread_of
+    from ..vibration import mean_quanta, thermal_spread_of
     sigma = thermal_spread_of(mode, temperature_k)
     if sigma is None:
         return None
@@ -212,8 +211,8 @@ def frameset_from_mode(run_folder, *, mode: int, temperature_k: float,
     from ..siesta.vibration_phases import force_constants_call
     from ..sidecars.molstruct import sidecar_path_for
     from ..sidecars.spectra import SpectraJsonError, parse_spectra_json
-    from .derived import (mean_quanta, thermal_spread_amu12_ang,
-                                  zero_point_amplitude_amu12_ang)
+    from ..vibration import (mean_quanta, thermal_spread_amu12_ang,
+                             zero_point_amplitude_amu12_ang)
     from ..structure import AtomChannel, Structure
     from ..workingcopy_structure import StructureCodec
 
@@ -282,9 +281,9 @@ def frameset_from_mode(run_folder, *, mode: int, temperature_k: float,
     # THE SPREAD AT THE TEMPERATURE -- n quanta, sigma = Q_zp sqrt(2n + 1)
     # (`science/vibrational-averaging.md` § 5) -- and each frame at a node,
     # q_j = sqrt(2) sigma x_j, by THE ONE DISPLACEMENT RULE
-    # (`spectra.normal_modes`): R + q·L, what a Raman phase's plan applies
-    # at ±δQ too (§ 5.11 § 3).
-    from .normal_modes import displaced, mode_over_atoms
+    # (`vibration`): R + q·L, what a Raman phase's plan applies at ±δQ too
+    # (§ 5.11 § 3).
+    from ..vibration import displaced, mode_over_atoms
     L = mode_over_atoms(m.eigenvector_canonical, res.free_atom_idxs,
                         base.n_atoms)
     n_quanta = mean_quanta(m.frequency_cm1, temperature_k)

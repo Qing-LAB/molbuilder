@@ -402,21 +402,29 @@ class TestOnSIESTA(_EveryState):
 # --------------------------------------------------------------------- #
 
 
-@pytest.mark.parametrize("fixture_name", ["water", "held"])
+#: Each label the runs below write, as the element it is
+#: (`model/chemistry.md` § 3: a species label names an element).
+_ELEMENT_OF_LABEL = {"O": "O", "H": "H", "H1": "H", "H2": "H"}
+
+
+@pytest.mark.parametrize("fixture_name", ["water", "held", "linear"])
 def test_each_elements_share_is_its_part_of_the_mass_weighted_motion(
-        fixture_name, real_water_vibration, real_water_held, web_client,
-        monkeypatch):
-    """`web/spectra.md` § 4.2, on real modes -- free water, and held water whose
-    rows are not the atoms' own numbers: an element's share is `sum m|L|^2` over
-    its atoms, and each row is the atom the free list names.  THE SILENT
-    FAILURE: a row read as the atom of its own position -- with the oxygen held,
-    a hydrogen's motion handed to the oxygen.  The trap the share exists for, a
-    heavy atom owning a mode while moving less, is `spectra/test_motion_share.py`'s,
-    on the numbers of the mode that showed it."""
-    run = {"water": real_water_vibration, "held": real_water_held}[fixture_name]
+        fixture_name, real_water_vibration, real_water_held, real_water_linear,
+        web_client, monkeypatch):
+    """`web/spectra.md` § 4.2, on real modes -- free water, held water whose
+    rows are not the atoms' own numbers, and water whose hydrogens carry labels
+    of their own: an ELEMENT's share is `sum m|L|^2` over its atoms, and each
+    row is the atom the free list names.  THE SILENT FAILURES: a row read as
+    the atom of its own position -- with the oxygen held, a hydrogen's motion
+    handed to the oxygen; a labelled water's owner split in two, "44% H1, 44%
+    H2".  The trap the share exists for, a heavy atom owning a mode while
+    moving less, is `spectra/test_motion_share.py`'s, on the numbers of the
+    mode that showed it."""
+    run = {"water": real_water_vibration, "held": real_water_held,
+           "linear": real_water_linear}[fixture_name]
     path = _final(run)
     d = _read(path)
-    elements = d["structure"]["elements"]
+    elements = [_ELEMENT_OF_LABEL[e] for e in d["structure"]["elements"]]
     masses = d["equilibrium"]["masses_amu"]
     served = spectra_served(web_client, monkeypatch, path)
     for row, mode in zip(d["modes"], served["modes"]):

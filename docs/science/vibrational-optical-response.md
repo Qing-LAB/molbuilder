@@ -683,7 +683,7 @@ frequency step zero (`dw = smooth/10`, `Src/optical.F`).
 - **The step is the vibration's own, taken, never typed.** Every free atom is
   moved by $\pm\delta Q\,\mathbf L_k^{(\nu)}$,
   $\delta Q = \delta/\max_k\lvert\mathbf L_k^{(\nu)}\rvert$ — the atom that moves
-  most by $\delta$ (`normal_modes.largest_move`, the one $\max_k\lvert\mathbf L_k\rvert$
+  most by $\delta$ (`vibration.largest_move`, the one $\max_k\lvert\mathbf L_k\rvert$
   the frame set's outermost move takes too), the force-constant run's own step, read from its
   `<label>.FC` header — the one source the finish reads, stated in the result
   as `engine_metadata.fc_displacement_ang` —
@@ -948,7 +948,7 @@ not a motion to average over.
 ### 4.1 An example — the toy junction's two real modes
 
 From the result of § 2.4's run, computed with the vibration code's own
-functions (`spectra.derived`):
+functions (`vibration`):
 
 | mode | frequency | $Q_{\mathrm{zp}}$ (amu$^{1/2}$ Å) | largest atom's zero-point move | $d_{\mathrm{out}}$, three frames, 4 K / 300 K | $d_{\mathrm{out}}$, five frames, 300 K |
 |---|---|---|---|---|---|

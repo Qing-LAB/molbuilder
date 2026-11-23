@@ -3278,7 +3278,7 @@
      *     The thermal form reduces to the zero-point one as T → 0, which is the
      *     check that they are one expression and not two.
      *
-     * THE ARITHMETIC IS THE SERVER'S (`spectra.derived`), not the tab's and not
+     * THE ARITHMETIC IS THE SERVER'S (`vibration`), not the tab's and not
      * the viewer's. VibrationView holds no frequency, no temperature and no
      * physical constant (§ 12.2); it is handed a displacement array and a number
      * and animates their product.
@@ -4060,7 +4060,7 @@
     let _thermalTimer = null, _thermalAbort = null;
     function onTemperatureChange() {
         const t = parseFloat(els.animTemperature.value);
-        // The door's rule (spectra.derived.checked_temperature_k): kelvin,
+        // The door's rule (vibration.checked_temperature_k): kelvin,
         // 0 or more -- 0 K the zero-point motion alone.
         if (!Number.isFinite(t) || t < 0) return;
         state.animTemperature = t;

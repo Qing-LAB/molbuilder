@@ -24,7 +24,9 @@ ROLE    ``parse`` -- an engine's file, a run's file → its result (the
         set's transport calculation averaged over another motion
         (`frame_average.reaveraged`); ``outermost_move`` -- how far
         a mode's frame set at a temperature moves its atom that moves most
-        (`spectra.mode_frames`); ``read_xv`` / ``read_xv_cell`` -- SIESTA's
+        (`spectra.mode_frames`); ``vibration`` -- a vibration result's modes
+        to compute with, each atom's move and a mode's states
+        (`vibration.Mode`, through `SpectraResults.vibration`); ``read_xv`` / ``read_xv_cell`` -- SIESTA's
         own ``.XV``, IN THE ENGINE'S ORDER, as its docstring says; and where
         a calculation is: ``projects_root``, ``project_dir``, ``topic_dir``,
         ``structure_dir``, ``list_projects``, ``list_topics``,
@@ -306,6 +308,21 @@ def outermost_move(path, *, mode: int, temperature_k: float,
                              **_said(nodes=nodes))
 
 
+def vibration(path):
+    """A VIBRATION RESULT'S MODES, as a person computes with them
+    (`engines/vibration.md` § 6.11 § 6) -- ``<label>.spectra.json`` or its
+    data file ``<label>.spectra.nc``, read through the result's own reader
+    (`sidecars.spectra.read_vibration_result`): ``v.modes[6]`` is mode 7,
+    each its frequency, zero-point amplitude and displacement, element
+    shares, an atom's move for a coordinate and the coordinate back, a
+    state's density, moments, spread and frames, the mode at another
+    frequency (`vibration.Mode`), every atom in the user's order.  A
+    temperature not given is the one the record states, and said so."""
+    from pathlib import Path
+    from .sidecars.spectra import read_vibration_result
+    return read_vibration_result(path).vibration(source=Path(path).name)
+
+
 __all__ = ["AtomIndexMap", "AtomIndexUnknown", "RunStepsError", "atom_index_map",
            "infrared_view", "list_runs", "parse", "raman_view", "read_optical_data",
            "read_steps_data", "read_raman_data", "read_spectra_data", "read_steps",
@@ -313,4 +330,5 @@ __all__ = ["AtomIndexMap", "AtomIndexUnknown", "RunStepsError", "atom_index_map"
            "read_structure", "read_transport_data", "read_xv", "read_xv_cell", "reaveraged",
            "pdos",
            "outermost_move", "projects_root", "project_dir", "topic_dir",
-           "structure_dir", "list_projects", "list_topics", "list_structures"]
+           "structure_dir", "list_projects", "list_topics", "list_structures",
+           "vibration"]
