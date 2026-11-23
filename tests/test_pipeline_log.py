@@ -136,6 +136,30 @@ def test_every_resolved_value_carries_its_source(tmp_path, monkeypatch):
     assert "mpi_np" not in who, who
 
 
+def test_a_rungs_rows_list_what_it_decided_first(tmp_path, monkeypatch):
+    """The rows a rung decided first, as the pipeline log orders them
+    (`engines/template.md` § 5.4, *who set it?*; `template.SAID`): a
+    stage's override, then the launch shape by where it was stated, then
+    the rung's own answers, then the template's baseline, then the
+    catalogue's defaults -- the first block the answer to *why is it 300
+    here and 350 there*."""
+    bundle = _calculation(tmp_path, monkeypatch, "siesta")
+    set_by_the_person(bundle, {"mesh_cutoff": 300.0})
+    # THE LAUNCH SHAPE FROM TWO PLACES: the cores per rank a flag, the rank
+    # count the run card's -- a flag before the run card.
+    r = jobset("prep", "task", *group_words(bundle, "coarse"), "--bundle",
+               bundle, "--target", "this", "--cpus-per-task", 1)
+    assert r.exit_code == 0, r.output
+    order = ["this stage's override", "a prep flag", "the run card",
+             "the stage's role", "the template", "the catalogue's default"]
+    said = [ln.split("<- ", 1)[1] for ln in _the_log(bundle).splitlines()
+            if ln.startswith("  ⊕")]
+    groups = [next(w for w in order if s.startswith(w)) for s in said
+              if any(s.startswith(w) for w in order)]
+    assert set(groups) == set(order), set(order) - set(groups)
+    assert groups == sorted(groups, key=order.index), groups
+
+
 def test_the_engines_derived_context_is_in_the_log(tmp_path, monkeypatch):
     """**W10's one per-render context**, which no other record carries.
 

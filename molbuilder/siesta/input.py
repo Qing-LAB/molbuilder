@@ -68,7 +68,7 @@ def _auto_block_size(n_atoms: int,
     stated in ORBITALS, not atoms: SIESTA distributes ORBITALS
     across ranks (BlockSize is a block of the ScaLAPACK orbital
     distribution), so the bound is ``floor(n_orbitals_est / mpi_np)``
-    with ``n_orbitals_est = 10 * n_atoms`` -- the SAME rough DZP
+    with ``n_orbitals_est = orbital_estimate(n_atoms)`` -- the SAME rough DZP
     estimate the deck's BENCH-MARKS block records as
     ``n_orbitals_est`` (job-contracts.md § 3.3).  It is an upper bound
     for the diag block, not a proper fix (see above).
@@ -85,7 +85,7 @@ def _auto_block_size(n_atoms: int,
         at 8 -- one rank has nothing to distribute over (single-rank
         runs ignore BlockSize anyway).
       * mpi_np >= 2: largest power of 2 satisfying
-        ``BlockSize <= min(256, floor(10 * n_atoms / mpi_np))``.
+        ``BlockSize <= min(256, floor(n_orbitals_est / mpi_np))``.
         The 256 ceiling is the LOAD-BALANCE ceiling shared with GPU
         mode below: past it, too few blocks circulate per rank for
         BLACS to balance, with no cache gain to pay for it.
@@ -94,9 +94,9 @@ def _auto_block_size(n_atoms: int,
       Orbital-aware formula with two caps:
 
         BlockSize = largest power of 2 in
-                    ``[8, min(256, 1024, floor(10·n_atoms/mpi_np))]``
+                    ``[8, min(256, 1024, floor(n_orbitals_est/mpi_np))]``
 
-      The 10·n_atoms term estimates n_orbitals (rough DZP heuristic;
+      ``n_orbitals_est`` (:func:`orbital_estimate`, a rough DZP heuristic;
       underestimates for heavy elements like Au where DZP gives
       ~25 orb/atom).  The 256 cap is a defensible upper bound:
       within the range of values
@@ -134,8 +134,8 @@ def _auto_block_size(n_atoms: int,
             "BlockSize's window is derived from the deck's rank count "
             "(mpi_np), and this deck states none.")
     if gpu_mode:
-        # Orbital-aware cap: ``floor(10 * n_atoms / mpi_np)`` (the
-        # 10x is a rough DZP-basis heuristic; underestimates for
+        # Orbital-aware cap: ``floor(n_orbitals_est / mpi_np)`` (the
+        # estimate is a rough DZP-basis heuristic; underestimates for
         # heavy elements like Au where DZP gives ~25 orb/atom).
         # The CPU branch below derives from
         # the same orbital estimate per job-contracts.md § 3.3;
@@ -156,8 +156,7 @@ def _auto_block_size(n_atoms: int,
         # defensible upper bound -- smaller than the kernel limit, and
         # within the range the literature has actually measured.
         np_ = max(1, int(mpi_np))
-        orbital_estimate = 10 * max(1, n_atoms)
-        upper = min(256, 1024, orbital_estimate // np_)
+        upper = min(256, 1024, orbital_estimate(n_atoms) // np_)
         pow2 = 8
         while pow2 * 2 <= upper:
             pow2 *= 2
@@ -173,13 +172,12 @@ def _auto_block_size(n_atoms: int,
     # is a block of that orbital distribution, so every rank must
     # get >= 1 ORBITAL block, i.e. ``BlockSize <=
     # floor(n_orbitals_est / mpi_np)`` with ``n_orbitals_est =
-    # 10 * n_atoms`` -- the SAME estimate the deck's BENCH-MARKS
+    # orbital_estimate(n_atoms)`` -- the SAME estimate the deck's BENCH-MARKS
     # block records (job-contracts.md § 3.3).  The 256 ceiling: the
     # load-balance ceiling shared with the GPU branch -- above 256
     # a low-rank run drops below ~12 blocks/rank and tail-effect
     # imbalance bites.  Take the LARGEST power of 2 under the cap.
-    orbital_estimate = 10 * max(1, n_atoms)
-    cap = max(1, min(256, orbital_estimate // int(mpi_np)))
+    cap = max(1, min(256, orbital_estimate(n_atoms) // int(mpi_np)))
     pow2 = 1
     while pow2 * 2 <= cap:
         pow2 *= 2
@@ -275,15 +273,19 @@ def _stage_science(cfg: "SiestaConfig") -> str:
     It also keeps ``Stage`` at the three fields ``engines/stages.md`` § 2
     allows -- a note would have been a fourth.
 
-    Units are the ones the deck itself writes a few lines down (``MeshCutoff
-    … Ry``, ``MD.MaxForceTol … eV/Ang``), so the comment and the keywords read
-    as one document.
+    Units are the ones the deck itself writes a few lines down, asked of the
+    one unit word (`engine_input.unit_word`, the catalogue's unit), so the
+    comment and the keywords read as one document.  A vibration's relaxation
+    call says this same line.
     """
     from ..template import inactive_settings
+    from .engine_input import unit_word
+    from .engine_input import mesh_words
     off = inactive_settings(cfg, engine="siesta")
-    bits = [f"MeshCutoff {cfg.mesh_cutoff} Ry"]
+    bits = [mesh_words(cfg)]
     if "relax_force_tol" not in off:
-        bits.append(f"force tol {cfg.relax_force_tol} eV/Ang")
+        bits.append(f"force tol {cfg.relax_force_tol} "
+                    f"{unit_word('relax_force_tol')}")
     if getattr(cfg, "relax_type", None):
         bits.append(str(cfg.relax_type))
     if getattr(cfg, "relax_steps", None) and "relax_steps" not in off:
@@ -305,16 +307,17 @@ def _bench_marks_for(struct, cfg, block_size, bs_range, *,
     from ..template import inactive_settings
     # BlockSize's row carries the range this deck's rank count makes legal, and
     # drops out entirely when the deck carries no BlockSize (state three).
+    block_kw = _bench_keyword("block_size")
     fields = [
-        (dataclasses.replace(f, range_=bs_range) if f.anchor == "BlockSize"
+        (dataclasses.replace(f, range_=bs_range) if f.anchor == block_kw
          else f)
-        for f in BENCH_FIELDS
-        if not (f.anchor == "BlockSize" and block_size is None)
+        for f in bench_fields()
+        if not (f.anchor == block_kw and block_size is None)
     ]
     return dict(
         metadata={
             "n_atoms":        struct.n_atoms,
-            "n_orbitals_est": 10 * struct.n_atoms,
+            "n_orbitals_est": orbital_estimate(struct.n_atoms),
             "gpu_mode":       str(bool(cfg.use_gpu)).lower(),
             # The rank count this deck was rendered for -- a record of the
             # request prep wrote it and its launch with, together
@@ -326,16 +329,16 @@ def _bench_marks_for(struct, cfg, block_size, bs_range, *,
         defaults={
             # State three omits the row too: a BENCH-MARKS line claiming a
             # value the deck does not carry would be the block lying.
-            **({"BlockSize": block_size} if block_size is not None else {}),
-            "MaxSCFIterations":  cfg.max_scf_iter,
+            **({block_kw: block_size} if block_size is not None else {}),
+            _bench_keyword("max_scf_iter"):  cfg.max_scf_iter,
             # only when the DECK carries the line (CG/Broyden/FIRE): relax
             # "none" emits no MD.Steps, and a defaults row for an absent
             # keyword is the block lying -- the same rule as BlockSize's state
             # three one entry up (R11, 2026-08-12).
-            **({"MD.Steps": cfg.relax_steps}
+            **({_bench_keyword("relax_steps"): cfg.relax_steps}
                if relaxes and "relax_steps" not in inactive_settings(
                    cfg, engine="siesta") else {}),
-            "MeshCutoff":        cfg.mesh_cutoff,
+            _bench_keyword("mesh_cutoff"):  cfg.mesh_cutoff,
         },
     )
 
@@ -363,31 +366,57 @@ def _spin_facts(state) -> dict:
     }
 
 
-#: THE FIELDS A SIESTA DECK'S BENCH-MARKS BLOCK DECLARES (`script_emit.
-#: BenchField`) -- SIESTA's own, beside its deck writer: which keyword carries
-#: the step count, and that ``BlockSize`` comes from a launch quantity.
-#
-# Anchor: ONE step-count keyword, ``MD.Steps``, bounds CG / Broyden / FIRE
-# alike (SIESTA 5.4.2 manual, Docs/tex/sections/Relaxation_phonons_md/
-# Structural_relaxation.tex), so a trial's deck -- rendered by
-# ``jobset prep bench`` -- needs no per-type dispatch.
-BENCH_FIELDS: "List[_sc.BenchField]" = [
-    # NO range here, and that is the declaration.  BlockSize is the one field
-    # in this list derived from a LAUNCH quantity (``engines/stages.md``
-    # § 5.2), so its legal window is a fact about one deck's rank count, not
-    # about the engine -- ``siesta/input.py`` supplies it per deck through
-    # ``_block_size_bounds``.  Leaving it None means a renderer that forgets emits NO
-    # range rather than a wrong one.
-    _sc.BenchField("BlockSize",        "BlockSize",        "pow2"),
-    _sc.BenchField("MaxSCFIterations", "MaxSCFIterations", "int"),
-    _sc.BenchField("MD.Steps",         "MD.Steps",         "int"),
-    _sc.BenchField("MeshCutoff",       "MeshCutoff",       "float", None, "Ry"),
-    # ELPA solver variant.  ELPA-1STAGE: direct dense.
-    # ELPA-2STAGE: tridiagonalises through a banded form; typically
-    # wins on N>1000 orbital problems and on GPU because the band
-    # step parallelises well.  Bench sweeps both.
-    _sc.BenchField("Diag.Algorithm",   "Diag.Algorithm",   "enum"),
-]
+#: THE ITEMS A SIESTA DECK'S BENCH-MARKS BLOCK DECLARES, by their catalogue
+#: names (`script_emit.BenchField`; `job-contracts.md` § 3.3: *"BENCH-MARKS
+#: and the template come from one source"*) -- each field's keyword,
+#: type, unit and choices read from the catalogue (:func:`bench_fields`).
+#: One step-count keyword, ``MD.Steps``, bounds CG / Broyden /
+#: FIRE alike (SIESTA 5.4.2 manual, Structural_relaxation.tex), so a trial's
+#: deck needs no per-type dispatch; ``Diag.Algorithm`` -- ELPA-1STAGE direct,
+#: ELPA-2STAGE through a banded form, which typically wins above ~1000
+#: orbitals and on a GPU -- is swept by the bench.
+BENCH_ITEMS = ("block_size", "max_scf_iter", "relax_steps", "mesh_cutoff",
+               "diag_algorithm")
+#: THE BENCH MAY BE NARROWER THAN THE DECK, NEVER WIDER: ``BlockSize`` is a
+#: plain ``int`` on the template and ``pow2`` on BENCH-MARKS -- the deck takes
+#: any positive integer, the bench sweeps powers of two (`engines/tuning.md`
+#: § 2.11).  Its range is a launch quantity's, one deck's rank count, so the
+#: catalogue states none and each deck supplies it (``_block_size_bounds``).
+_BENCH_NARROWED = {"block_size": "pow2"}
+
+
+def _bench_keyword(name: str) -> str:
+    """The keyword item ``name`` writes in a SIESTA deck (the parameter
+    door's ``writes``)."""
+    return _sc.parameter(name, "siesta").writes[0]
+
+
+def bench_fields() -> "List[_sc.BenchField]":
+    """The BENCH-MARKS fields a SIESTA deck declares, from the catalogue:
+    each item's keyword, its type (narrowed where :data:`_BENCH_NARROWED`
+    says), unit and choices."""
+    out = []
+    for name in BENCH_ITEMS:
+        param = _sc.parameter(name, "siesta")
+        item = param.declaration
+        out.append(_sc.BenchField(
+            param.writes[0], param.writes[0],
+            _BENCH_NARROWED.get(name, item.type), None, item.unit, None,
+            tuple(item.choices) if item.choices else None))
+    return out
+
+
+#: A SIESTA DECK'S ORBITAL COUNT, ESTIMATED: about ten basis orbitals an
+#: atom, the rough DZP figure -- the ONE estimate the block size's caps and
+#: the BENCH-MARKS block's ``n_orbitals_est`` share (`job-contracts.md`
+#: § 3.3).
+ORBITALS_PER_ATOM_EST = 10
+
+
+def orbital_estimate(n_atoms: int) -> int:
+    """The deck's orbital count, estimated: :data:`ORBITALS_PER_ATOM_EST`
+    an atom, one atom at least."""
+    return ORBITALS_PER_ATOM_EST * max(1, int(n_atoms))
 
 
 def _parallel_facts(cfg, mesh) -> dict:
@@ -946,9 +975,14 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
             out.append(
                 "# the modules first, and nothing cleans up if the job is "
                 "killed.")
+            # A VIBRATION'S CALL says its part's own line; its relaxation
+            # call the optimisation's, the one line-maker.
+            _part_line = (_vib_deck.stage_science(cfg, _derived, part)
+                          if _vibration else None)
             out.append(f"# Stage {stage_token} -- "
-                       + (_vib_deck.stage_science(cfg, _derived, part)
-                          if _vibration else _stage_science(cfg)))
+                       + (_part_line if _part_line is not None else
+                          ("the relaxation of the run: " if _vibration
+                           else "") + _stage_science(cfg)))
             # WHAT THIS STAGE ACTUALLY DOES WITH THE PREVIOUS ONE'S STATE,
             # from the same answer as its restart group: the banner is what
             # a person reads to decide whether the ladder is chaining.
@@ -1303,10 +1337,14 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
         # charged repeating cell -- a slab, a defect in a crystal -- does
         # not, and gets no formula.
         if q != 0 and v and state.finite:
+            # The floor the gate judges by, from the gate.
+            from ..validation.siesta import VACUUM_MIN_CHARGED_ANG
+            from .makov_payne import MADELUNG_CUBIC
             out += [
                 "# Note: SIESTA adds a uniform compensating background charge",
                 "# for periodic-cell consistency.  For vacuum calcs of charged",
-                "# molecules set the structure's vacuum >= 25 A per side (Modify ->",
+                f"# molecules set the structure's vacuum >= "
+                f"{VACUUM_MIN_CHARGED_ANG:g} A per side (Modify ->",
                 "# Cell) to suppress image-image Coulomb interactions; molbuilder",
                 "# warns if it's thinner.  To make a neutral system instead,",
                 "# either build with protonate_phosphates=True or state",
@@ -1318,7 +1356,8 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
                 "# energy carries a systematic bias from the molecule's",
                 "# interaction with its own periodic replicas, going as",
                 "#     E_bias ~ q^2 * alpha / (2 * L * eps_r)",
-                "# where alpha is the Madelung constant (~2.84 for simple",
+                f"# where alpha is the Madelung constant "
+                f"(~{MADELUNG_CUBIC:.3g} for simple",
                 "# cubic), L = V^(1/3) is the effective supercell side,",
                 "# and eps_r is the relative permittivity of the medium",
                 "# (1 in vacuum).  For q = +/- 1 at L ~ 15-25 A this is",

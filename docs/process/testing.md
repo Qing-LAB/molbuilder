@@ -312,7 +312,7 @@ the manager's list), the env manager itself, a visible NVIDIA GPU — **is
 stated once, where it is used, and an unmet need skips by one rule**,
 `support.tooling.unmet`: its reason says no env manager is found, or no GPU
 is visible, or names the command that installs the env, as `doctor` names
-it (`bash scripts/install-env.sh install <env> --yes`). A fixture that
+it (`bash <checkout>/scripts/install-env.sh install <env> --yes`). A fixture that
 makes a real run states its run's needs as it is declared
 (`support.real_runs.makes_a_real_run(scope, *needs)`, § 6.1a); a test whose
 own body uses one states it on itself or its module
@@ -1182,7 +1182,14 @@ deliberately not installed there.
   `h2_optimization`; the one maker of a displacement sweep, `swept`),
   `tooling.py` (what a test needs beyond the host env -- the opt-in
   tooling, an env, the env manager, a GPU -- and the one reason it skips
-  with when that is missing, § 3, § 4: `unmet`, `needs`), `suite.py` (a small suite
+  with when that is missing, § 3, § 4: `unmet`, `needs`), `job_python.py`
+  (a job's python, the one way a test runs what travels beside a job: the
+  standard library, the packages a bundle's row allows and its members --
+  molbuilder's absence enforced by an import hook, never assumed, since the
+  host env finds the checkout from any folder -- `lines`, `run`; and, for a
+  test that runs a job's whole work on an env carrying more than the
+  bundle's row, `lines_without_molbuilder`, molbuilder alone refused),
+  `suite.py` (a small suite
   run by the suite's own rules, for a test of the harness itself,
   `linked`), `machines.py` (a machine record's scheduler of each kind,
   `SLURM` and `WORKSTATION`, the GPU tool the load monitor asks,

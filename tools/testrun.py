@@ -392,9 +392,9 @@ def cmd_run(args):
     if workers > 1 and importlib.util.find_spec("xdist") is None:
         print("[testrun] REFUSING: spreading the run needs pytest-xdist, which "
               "this env does not have.", file=sys.stderr)
+        from molbuilder.envs.hints import fix_cmd
         print('[testrun]   install what the env declares: '
-              'bash scripts/install-env.sh repair molbuilder',
-              file=sys.stderr)
+              + fix_cmd('repair', 'molbuilder'), file=sys.stderr)
         print("[testrun]   or run in one process: --workers 1", file=sys.stderr)
         return 2
 

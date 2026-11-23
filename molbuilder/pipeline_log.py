@@ -203,15 +203,15 @@ def config_rows(values: Any, provenance: Mapping[str, str]
 
     Sorted so the fields this rung DECIDED come first and the template's
     baseline follows: the first block is normally three to ten lines and is
-    the answer to *"why is it 300 here and 350 there"*.
+    the answer to *"why is it 300 here and 350 there"*.  The order is who
+    set a value's own (`template.SAID`, declared in decision order).
     """
-    rank = {"pin": 0, "sweep": 1, "stage": 2, "stage_card": 3,
-            "calc_card": 4, "flag": 5, "run card": 5, "role": 6,
-            "allocation": 7, "template": 8, "default": 9}
+    from .template import SAID
+    rank = {source: i for i, source in enumerate(SAID)}
     rows = [(f.name, getattr(values, f.name, None),
              provenance.get(f.name, "template"))
             for f in dataclasses.fields(values)]
-    return sorted(rows, key=lambda r: (rank.get(r[2], 9), r[0]))
+    return sorted(rows, key=lambda r: (rank.get(r[2], len(rank)), r[0]))
 
 
 __all__ = ["PipelineLog", "log_name", "config_rows"]

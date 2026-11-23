@@ -68,6 +68,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:            # annotation only -- importing
     # vibration_deck at run time would cycle (it imports this).
     from .vibration_deck import VibrationConfigView
+from ..constants import AMU_KG, BOHR_ANGSTROM, IR_KM_MOL_PER_D2_A2_AMU
 from ..structure import Structure, atom_words
 
 def engine_label(cfg) -> str:
@@ -81,7 +82,8 @@ def engine_label(cfg) -> str:
 #: THE LINE THIS DECK PRINTS WHEN IT REACHES ITS OWN END -- the spectrum
 #: deck's own, declared in `end_lines` beside the relaxation deck's.
 from .end_lines import SPECTRUM_END_MARKER   # noqa: E402
-from ..envs.hints import fix_cmd as _fix_cmd   # noqa: E402
+from ..envs.hints import (fix_cmd as _fix_cmd,  # noqa: E402
+                           where_typed as _where_typed)
 
 from ..deck_record import BUILD_NAME
 from .script_input import (BIBLIOGRAPHY_NAME, CONFIG_NAME, METHODS_NAME,
@@ -120,7 +122,8 @@ def ir_repair_command() -> str:
     (`diagnostics.DEFAULT_ENV_NAMES`) -- written into the script for the
     job's own message (`spectra.pyscf_vibration.dipole_derivatives`)."""
     from ..diagnostics import DEFAULT_ENV_NAMES
-    return _fix_cmd("repair", DEFAULT_ENV_NAMES["pyscf"], "--include-optional")
+    return (_fix_cmd("repair", DEFAULT_ENV_NAMES["pyscf"],
+                     "--include-optional") + _where_typed())
 
 
 def _emit_header_docstring(struct: Structure,
@@ -179,7 +182,8 @@ def _emit_header_docstring(struct: Structure,
         out.append("*** IR INTENSITIES -- BAND-LEVEL VALIDATED ***")
         out.append("    `ir_intensity_km_mol` values in the JSON are the")
         out.append("    dipole-moment derivative projected onto each mode,")
-        out.append("    times the Gaussian/ORCA 42.2561 km/mol per")
+        out.append(f"    times the Gaussian/ORCA {IR_KM_MOL_PER_D2_A2_AMU:g} "
+                   f"km/mol per")
         out.append("    (D/Å)²/amu prefactor.  HOW dmu/dR was obtained is")
         out.append("    decided at RUN time and recorded in the JSON as")
         out.append("    `ir_route` -- analytic, off the Hessian's own CPHF")
@@ -204,7 +208,7 @@ def _emit_header_docstring(struct: Structure,
         out.append("")
     out.append("Dependencies:")
     out.append("    Use the generated molbuilder run script after bootstrap:")
-    out.append("        " + _fix_cmd("bootstrap", "--yes"))
+    out.append("        " + _fix_cmd("bootstrap", "--yes") + _where_typed())
     out.append("")
     # ---- Methods paragraph (verbatim).  Indented one space so the
     # triple-quoted docstring doesn't get confused by `"""` inside
@@ -579,11 +583,10 @@ def _emit_initial_state() -> List[str]:
     # write (vibration.md 4.9).
     out.append("    phase_relaxation=(PHASE_NOT_REQUESTED if ALREADY_RELAXED "
                "else PHASE_EMPTY),")
-    out.append("    relaxation={'enabled': (not ALREADY_RELAXED),")
-    out.append("                'already_relaxed': ALREADY_RELAXED,")
-    out.append("                'n_steps': 0, 'max_force_eh_bohr': None,")
-    out.append("                'max_force_all_atoms_eh_bohr': None,")
-    out.append("                'converged': None, 'warning': None},")
+    # THE ONE SHAPE both writers state (`spectra.results.relaxation_block`).
+    out.append("    relaxation=_mb_relaxation_block(")
+    out.append("        enabled=(not ALREADY_RELAXED),")
+    out.append("        already_relaxed=ALREADY_RELAXED),")
     out.append("    phase_raman=(PHASE_EMPTY if COMPUTE_RAMAN else PHASE_NOT_REQUESTED),")
     out.append("    phase_ir=(PHASE_EMPTY if COMPUTE_IR else PHASE_NOT_REQUESTED),")
     out.append("    phase_es=(PHASE_EMPTY if ES_MODE_SELECTION != 'skip' else PHASE_NOT_REQUESTED),")
@@ -1050,9 +1053,11 @@ def _emit_ir_projection() -> List[str]:
     out.append("# With μ in Debye, R in Å, Q the canonical mass-weighted normal")
     out.append("# coordinate (units Å·√amu), the prefactor that converts the")
     out.append("# squared derivative |dμ/dQ|² [D²/(Å²·amu)] to km/mol is the")
-    out.append("# Gaussian / ORCA / literature constant 42.2561 .  Derivation:")
+    out.append(f"# Gaussian / ORCA / literature constant "
+               f"{IR_KM_MOL_PER_D2_A2_AMU:g} .  Derivation:")
     out.append("#   K = N_A · π / (3·c²) · (D/Å)² / amu  →  km/mol")
-    out.append("# (CODATA 2018 N_A, c, e·a₀ → D; 1 Å = 10⁻¹⁰ m; 1 amu = 1.66054e-27 kg)")
+    out.append(f"# (CODATA 2018 N_A, c, e·a₀ → D; 1 Å = 10⁻¹⁰ m; "
+               f"1 amu = {AMU_KG:.6g} kg)")
     out.append("# Same value cited by Gaussian whitepaper on IR intensities,")
     out.append("# ORCA manual, and the psi4 source.")
     out.append("#")
@@ -1134,9 +1139,12 @@ def _emit_raman_block(cfg: "VibrationConfigView") -> List[str]:
     out.append("    import pyscf.prop.polarizability  # noqa: F401")
     out.append("except ImportError:")
     out.append("    raise SystemExit(")
-    out.append("        'COMPUTE_RAMAN=True requires the optional pyscf-properties '")
-    out.append("        'package.  Bootstrap or repair the managed backend: "
-               + _fix_cmd("bootstrap", "--yes") + "'")
+    # A PYTHON LITERAL, whatever the checkout's path holds: the command names
+    # it, quoted for a shell (`envs.hints.LAUNCHER`).
+    out.append("        " + repr(
+        "COMPUTE_RAMAN=True requires the optional pyscf-properties package.  "
+        "Bootstrap or repair the managed backend: "
+        + _fix_cmd("bootstrap", "--yes") + _where_typed()))
     out.append("    )")
     out.append("")
     out.append("def _polarizability(_mf):")
@@ -1208,13 +1216,14 @@ def _emit_raman_block(cfg: "VibrationConfigView") -> List[str]:
     out.append("# with units (a.u. polarizability)² / (Å² · amu) -- NOT yet the")
     out.append("# textbook Å^4/amu -- because PySCF reports polarizability in")
     out.append("# atomic units (volume = Bohr³).  The conversion is exact and")
-    out.append("# global: multiply by (Bohr/Å)^6 = BOHR_ANGSTROM^6 ≈ 0.021959.  We")
+    out.append(f"# global: multiply by (Bohr/Å)^6 = BOHR_ANGSTROM^6 ≈ "
+               f"{BOHR_ANGSTROM ** 6:.5g}.  We")
     out.append("# apply that factor once on the final scalar (see the loop")
     out.append("# below), so what lands in JSON under 'raman_activity_a4_amu'")
     out.append("# is in genuine Å^4/amu -- comparable to Gaussian/ORCA Raman")
     out.append("# activity columns.  Without this factor the relative spectrum")
     out.append("# shape is still correct (uniform scale), but absolute")
-    out.append("# intensities are ~45.5× too large.")
+    out.append(f"# intensities are ~{1 / BOHR_ANGSTROM ** 6:.3g}× too large.")
     out.append("#")
     out.append("# (Note: using the *display* form (max|L|=1) instead of the")
     out.append("# canonical mass-weighted L_cart would additionally shift")
@@ -1250,7 +1259,8 @@ def _emit_raman_block(cfg: "VibrationConfigView") -> List[str]:
     out.append("# Conversion from (a.u. polariz)² / (Å²·amu) to Å^4/amu:")
     out.append("# polarizability has units of volume; PySCF reports a.u. (Bohr³),")
     out.append("# and the textbook Raman activity formula expects Å³.")
-    out.append("# (Bohr/Å)^6 = BOHR_ANGSTROM^6  ≈ 0.021959 -- the one home's")
+    out.append(f"# (Bohr/Å)^6 = BOHR_ANGSTROM^6  ≈ {BOHR_ANGSTROM ** 6:.5g} "
+               f"-- the one home's")
     out.append(f"# factor, imported with the constants module from "
                f"{PYSCF_BUNDLE}.")
     out.append("_RAMAN_AU2_TO_A4AMU = _mb_constants.BOHR_ANGSTROM ** 6")

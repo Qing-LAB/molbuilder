@@ -20,8 +20,6 @@ from __future__ import annotations
 import json
 import os
 import re
-import subprocess
-import sys
 from pathlib import Path
 
 import pytest
@@ -433,10 +431,12 @@ def test_every_file_that_ships_beside_a_job_reads_the_run_without_molbuilder(
     there, _watched, _grow = replay(run, tmp_path, _whole(run))
     ran = _ran(run)
     (there / MONITOR_BUNDLE).write_bytes(build(MONITOR_BUNDLE))
-    env = {k: v for k, v in os.environ.items() if k != "PYTHONPATH"}
-    control = subprocess.run([sys.executable, "-c", "import molbuilder"],
-                             cwd=there, env=env, capture_output=True,
-                             text=True, timeout=120)
+    # A JOB'S PYTHON, molbuilder's absence enforced (`support.job_python`):
+    # the host env finds this checkout from any folder.
+    from support import job_python
+    held = dict(packages=job_python.bundle_packages(MONITOR_BUNDLE),
+                members=job_python.bundle_members(MONITOR_BUNDLE), cwd=there)
+    control = job_python.run(["import molbuilder"], **held)
     assert control.returncode != 0, (
         "molbuilder is importable from the run folder, so this cannot "
         "reproduce a compute node")
@@ -463,8 +463,7 @@ def test_every_file_that_ships_beside_a_job_reads_the_run_without_molbuilder(
         "print(json.dumps({'where': where, 'state': st.state,\n"
         "                  'detail': st.detail, 'converged': st.converged,\n"
         "                  'energy': st.energy, 'text': st.as_text()}))\n")
-    done = subprocess.run([sys.executable, "-c", probe], cwd=there, env=env,
-                          capture_output=True, text=True, timeout=120)
+    done = job_python.run(probe.splitlines(), **held)
     assert done.returncode == 0, f"{done.stdout}{done.stderr}"
     got = json.loads(done.stdout.strip().splitlines()[-1])
     assert got["where"] == {"status": "job", "siesta": "siesta_reader",

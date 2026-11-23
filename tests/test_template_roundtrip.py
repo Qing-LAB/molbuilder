@@ -241,20 +241,33 @@ def test_the_five_ungated_fields_round_trip_through_a_template():
     assert back.write_hs is False
 
 
-def test_a_per_name_table_survives_the_writer():
-    """The writer writes every key the reader reads: a kind's own
-    recommendation (`recommended`, § 6.3a) and a rung's own answer
-    (`role_values`, § 6.4) are tables, and `_toml_value` wrote none until
-    2026-09-29 -- a catalogue item handed to it crashed.  A calculation's
-    template carries neither (`template_with_values` strips both), so this
-    is the writer's totality, asked of the catalogue's own rows."""
-    cat = T.catalogue()
-    for name in ("solution_method", "relax_force_tol"):
-        item = T.one(cat, name, engine="siesta")
-        back = T.one(T.read_template(T._emit([item], engines=("siesta",))),
-                     name)
-        assert (back.role_values, back.recommended) == (
-            item.role_values, item.recommended), name
+#: The item keys `engines/template.md` § 5 says only the catalogue carries:
+#: a calculation's template holds none, and every reader asks the catalogue.
+_THE_CATALOGUES_OWN = {
+    "engines", "calculations", "recommended", "offered", "not_offered",
+    "role_values", "result", "active_when", "choice_labels", "why_fixed",
+    "why_shared", "per_point_from", "engine_default"}
+
+
+@pytest.mark.parametrize("calculation, engine", [
+    (k, e) for k in __import__("molbuilder.kind_table").kind_table.kinds()
+    for e in __import__("molbuilder.kind_table").kind_table.kind(k).engines],
+    ids=str)
+def test_a_calculations_template_carries_none_of_the_catalogues_own_keys(
+        calculation, engine):
+    """What `molbuilder describe` writes for each engine and kind, read as
+    the TOML it is: no item states a key only the catalogue carries, while
+    the catalogue states each of them somewhere."""
+    import tomllib
+    from molbuilder.engine_table import config_class
+    text = T.template_with_values(config_class(engine)(), engine=engine,
+                                  calculation=calculation)
+    written = {key for body in tomllib.loads(text)["item"].values()
+               for key in body}
+    assert written & _THE_CATALOGUES_OWN == set()
+    stated = {key for body in tomllib.loads(T.load_catalogue())["item"]
+              .values() for key in body}
+    assert _THE_CATALOGUES_OWN <= stated, _THE_CATALOGUES_OWN - stated
 
 
 def test_an_unknown_item_name_is_refused_not_dropped():

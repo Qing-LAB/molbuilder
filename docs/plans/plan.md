@@ -12,7 +12,7 @@ at 2.77.23 is [`archive/2026-11-22-plan-consolidation.md`](?doc=archive/2026-11-
 
 ## ▶ Where we are *(2026-11-22)*
 
-**2.77.23.** F0–F11 and F7a are closed (2.56.2–2.77.2). F12, *Proven*,
+**2.77.24.** F0–F11 and F7a are closed (2.56.2–2.77.2). F12, *Proven*,
 walked its three roads in the browser on real runs and ran the full batch
 (6106 fast and 805 e2e tests, none failed, at 2.77.2); its two review rounds
 ([`archive/audits/2026-11-18-f12-review/`](?doc=archive/audits/2026-11-18-f12-review/TRIAGE-round1.md))
@@ -20,7 +20,7 @@ sorted every finding into the releases below. **The finish plan** *(the
 user, 2026-11-19: "a consolidated plan to get things finished, not to drag
 things along")*: five releases, R1–R5, each with its review rounds. R1 and R2
 are done; R3, one home per fact on the server side, grew from one release
-into parts as reviews and the user's decisions added work, seven of them
+into parts as reviews and the user's decisions added work, eight of them
 shipped:
 
 | version | part | what it did | record |
@@ -35,8 +35,9 @@ shipped:
 | 2.77.21 | R3b3b | a run keeps its files (a run of points' container holds its points' prepared files) | `fix13-review.md` |
 | 2.77.22 | R3c1 | what runs in an environment is its own ([`ops/installation.md`](?doc=ops/installation.md) M6) | `fix14-review.md` |
 | 2.77.23 | R3c2 | every printed command is one you can type, from any folder (the host env's path file, [`ops/deployment.md`](?doc=ops/deployment.md) § 0) | `fix15-review.md` |
+| 2.77.24 | R3c3 | templates and engines, each fact in one home; every env command by the checkout's full path, in molbuilder's checkout in a file for another machine and in every run script | `fix16-review.md` |
 
-Records: `archive/audits/2026-11-18-f12-review/fix<N>-review.md`. After
+Records: `archive/audits/2026-11-18-f12-review/fix<N>-review.md`. Since
 2.77.23 the host env holds `molbuilder-source.pth` on the development machine
 (bootstrap run once, the user's yes, 2026-11-22); doctor: every env OK.
 
@@ -117,31 +118,16 @@ built in R3d with the vibration's data files.
   [`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md),
   [`science/vibrational-optical-response.md`](?doc=science/vibrational-optical-response.md)).
 
-### 2. R3c — templates and engines
+### 2. R3d — transport and spectra
 
-- **The user's answer, 2026-11-22: "Launcher by full path"** — every env
-  command molbuilder prints (`envs.hints.fix_cmd`, `LAUNCHER`) names
-  `scripts/install-env.sh` by the checkout's full path, typable from any
-  folder, as molbuilder's own command is since 2.77.23.
-- **Said to the user, no choice** (`r2-4`): P11, a PySCF deck's comment says
-  "(already)" for the basis and density fitting whatever was set — composed
-  from the config or dropped; P15, a PySCF result's relaxation block lacks
-  its `record`; P3, the benchmark block's `Diag.Algorithm` gains its choices.
-- **One door each** (`r2-4`): template — F3 (`r2-3`) the pipeline log's order
-  beside `template.SAID`, P9 the axis letters, P12 a–c, P19 catalogue-only
-  keys; validation P6, P13, P14, P24(a); the engine writers P3, P4, P20, P21,
-  P24(b); `spectra.results` P15's relaxation block; `kind_table`/`runpoints`/
-  `runfiles` P10, P17, P18; `resolve` P23, one layering helper; `quantities`
-  P7, `canonical_gres`; `bench.result` P24(c), `AS_RESOURCE`; `makov_payne`
-  P22, a deletion with its test (shown first).
-- **Left by R3a** (`fix9-review.md`): `pyscf/script_input` and `script_emit`
-  find block fences by `deck_record.MARKER_RE` (`r2-2` C19), not exact text;
-  the generated PySCF scripts take the standard atmosphere and the atomic
-  mass unit from `constants` (`ATM_PA`, `AMU_KG`); `template._refuse` uses
-  the record refusal kit (`persist.RecordRefusals`).
-
-### 3. R3d — transport and spectra
-
+- **Carried from R3c** (`fix16-review.md`): the PySCF decks' deck attributes
+  still typed beside `pyscf.layout.keyword` (`mf.chkfile`, `mf.init_guess =
+  "chkfile"`, `mf.newton()`, `mf.with_solvent.method`, two SOSCF notes) and
+  the PySCF optimization header's `maxsteps=` and `Ha/Bohr` (the PySCF twin
+  of P20); a stage override of a number given as text (`mesh_cutoff: "a"`)
+  crashing the loosening check (`validation/stages`) where it should be
+  refused; `STAGE-PLAN.md`'s `warm-files:` line naming this checkout for a
+  calculation prepared for another machine.
 - **The vibration framework, built** (§ 1, after the user's yes), with the
   SIESTA vibration's data files on the shared writers
   (`ncdata.copy_stated`, `ncdata.json_attrs`, as the transport file and a
@@ -175,8 +161,12 @@ built in R3d with the vibration's data files.
   SCF log's column order in `keys.py` and one atom-row formatter (= `r2-7`
   #13).
 
-### 4. R3e — parse, structure and builders
+### 3. R3e — parse, structure and builders
 
+- **Carried from R3c** (`fix16-review.md`): `cell.py`'s note and
+  `structure.py`'s two restate the vacuum floors `validation.siesta`
+  holds (`VACUUM_MIN_NEUTRAL_ANG`, `VACUUM_MIN_CHARGED_ANG`) — the floors
+  move below `validation` so the structure's notes ask them.
 - **Two migrations** *(the user, 2026-11-21: "do the run dir and sidecar
   migration in R3e")*: a calculation's records from before 2.60.0 — a
   `job-set.json` holding the retired `continue_retries`, as
@@ -206,7 +196,7 @@ built in R3d with the vibration's data files.
   C-16 the thresholds in `cell`; C-14 `pyscf_numbering` deleted (shown
   first); C-21 residues.
 
-### 5. R3f — the web server
+### 4. R3f — the web server
 
 - **The page's Prep runs `jobset prep` as its own process**, so it is never a
   server's stale code — designed and shown to the user first.
@@ -240,8 +230,11 @@ built in R3d with the vibration's data files.
   callback path, the config folder's shell spelling, `bounded_int`,
   `said_yes`).
 
-### 6. R4 — one home per fact, the pages and the tests
+### 5. R4 — one home per fact, the pages and the tests
 
+- **Carried from R3c** (`fix16-review.md`): the path tool's
+  (`tools/classify_path_finders.py`) stale `launch` row and its `--check`
+  failure on `jobset/submit.py`'s `rglob`, both older than R3c.
 - Round 2's items for the pages, MolView, the viewers and the test harness
   (`r2-10`…`r2-14`) — the Results tab's file-menu pick copied in ten test
   files, its door now `support.sidebar.result_picked`; every T row the
@@ -260,7 +253,7 @@ built in R3d with the vibration's data files.
   save bar's refusal, the export door's answers, the save door's page, the
   checkpoint Cancel's signal) and the installer's repair audit.
 
-### 7. R5 — the documents and the proof
+### 6. R5 — the documents and the proof
 
 - One docs pass, no version: the ~80 chapter sentences that need no code
   (`TRIAGE-round1.md` § I), `r2-1` F2's CLI sentence, F3 (SIESTA keywords in
@@ -274,7 +267,7 @@ built in R3d with the vibration's data files.
 
 ## Waiting on the user
 
-- **Next**: nothing — the vibration framework's design is decided (§ 1); R3c runs.
+- **Next**: nothing — R3c is shipped (2.77.24); R3d runs.
 - At their releases: R3d's two visible spellings; R3f's Prep-as-a-process
   design, the side rail's change after measuring, and deletions #6, #26; R4's
   selection-route design and MolView's atom filter; every deletion, listed
@@ -300,7 +293,11 @@ built in R3d with the vibration's data files.
 - **What runs in an env is its own** *(2026-11-21)*: named by its path, never
   `PATH`'s or the host's ([`ops/installation.md`](?doc=ops/installation.md)
   M6); **every printed command is typable as printed**, from any folder
-  ([`execution/job-system.md`](?doc=execution/job-system.md) § 5.3).
+  ([`execution/job-system.md`](?doc=execution/job-system.md) § 5.3); an env
+  command by the checkout's full path, and in a file for another machine or
+  a run script as typed in molbuilder's checkout *(2026-11-22: "Launcher by
+  full path", "Full path here, words there", "Run script: words
+  everywhere")* ([`ops/installation.md`](?doc=ops/installation.md) § 2).
 - **The job side and the result's reader change together**, with their
   documents and diagrams *(2026-11-21)*.
 - **Off the plan** *(2026-10-18)*: every feature the three roads do not need;
@@ -311,6 +308,8 @@ built in R3d with the vibration's data files.
 
 ## Open beside the finish line — low harm, waiting
 
+- `r2-4` P24(d), the SIESTA layout's two-line pair, and P24(e), its raw
+  `systemlabel`/`numberofatoms` keys — the R3 triage left them (low harm).
 - The page doors' rest — O-STATE's one save door, O-WORDS, O-KEYS with X-UI
   and X-PLOT — internal tidying no page shows; the test framework's TF3–TF10
   and the page tests on jsdom.

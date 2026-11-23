@@ -103,6 +103,20 @@ set -euo pipefail
 # shim from any CWD; the user's CWD is preserved.  (A ./molbuilder.json
 # is NOT read -- retired 2026-08-31; the machine config has one home.)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# A WORD AS PYTHON'S shlex.quote WRITES IT: bare when every character is one
+# a shell reads as itself, else single-quoted, each ' written '"'"'.
+_sh_quote() {
+    local s=$1 q="'\"'\"'"
+    if [[ -n "$s" && "$s" =~ ^[A-Za-z0-9_@%+=:,./-]+$ ]]; then
+        printf '%s' "$s"
+    else
+        printf "'%s'" "${s//\'/$q}"
+    fi
+}
+# THIS SCRIPT AS TYPED, by the checkout's full path, so a line it prints runs
+# typed in any folder -- the spelling molbuilder prints too, quoted by the
+# same rule (`envs.hints.LAUNCHER`; docs/ops/installation.md § 2).
+LAUNCHER_TYPED="bash $(_sh_quote "${SCRIPT_DIR}/install-env.sh")"
 REPO_ROOT="$(dirname "$SCRIPT_DIR")"
 
 # The host env is always `molbuilder` -- one name, no override
@@ -297,6 +311,19 @@ fi
 # ---- usage ---------------------------------------------------------------
 
 usage() {
+    # ITS EXAMPLES AS TYPED: written below against the checkout's root,
+    # printed by the full path (LAUNCHER_TYPED) -- the text kept a quoted
+    # heredoc, so its backquotes are never run.
+    local text typed
+    text="$(_usage_as_written)"
+    # Assigned, not expanded inside double quotes: bash 4.2 keeps a quoted
+    # replacement's quotes there (its compat42), and 5.2 reads an unquoted
+    # one's `&`.
+    typed=${text//"bash scripts/install-env.sh"/"${LAUNCHER_TYPED}"}
+    printf '%s\n' "${typed}"
+}
+
+_usage_as_written() {
     cat <<'EOF'
 molbuilder env installer -- thin shim over `molbuilder envs ...`.
 Base-system requirement: conda OR mamba installed on the system
@@ -711,7 +738,7 @@ EOF
 If conda/mamba lives somewhere not in that list, point the script
 at it explicitly:
 
-    CONDA_EXE=/path/to/conda bash ${SCRIPT_DIR}/install-env.sh ${ORIGINAL_ARGS[*]:-bootstrap --yes}
+    CONDA_EXE=/path/to/conda ${LAUNCHER_TYPED} ${ORIGINAL_ARGS[*]:-bootstrap --yes}
 
 If conda/mamba is not installed at all, install Miniforge,
 Miniconda, or your site's conda distribution by hand first, then
@@ -912,7 +939,7 @@ _env_python_not_found() {
     echo "    ${ENV_MGR} env list" >&2
     echo "If '${HOST_ENV}' is not listed, or is listed at a path whose" >&2
     echo "bin/python is genuinely missing, reinstall it:" >&2
-    echo "    bash ${SCRIPT_DIR}/install-env.sh bootstrap --yes" >&2
+    echo "    ${LAUNCHER_TYPED} bootstrap --yes" >&2
 }
 
 _resolve_env_python() {
@@ -1025,7 +1052,7 @@ _mb_host_rebuild_failed() {
     echo "[molbuilder] THE HOST ENV WAS REMOVED AND THE REBUILD FAILED." >&2
     echo "[molbuilder] There is no '${HOST_ENV}' env on this machine now." >&2
     echo "[molbuilder] Recreate it with:" >&2
-    echo "[molbuilder]     bash ${SCRIPT_DIR}/install-env.sh bootstrap --yes" >&2
+    echo "[molbuilder]     ${LAUNCHER_TYPED} bootstrap --yes" >&2
     echo "[molbuilder] ================================================" >&2
 }
 
@@ -1046,9 +1073,9 @@ recreate_host_env() {
     echo "[molbuilder] Everything in it that is not in the recipe goes --" >&2
     echo "[molbuilder] including any pip extras you installed by hand" >&2
     echo "[molbuilder] (playwright, node, ...).  Put them back with" >&2
-    echo "[molbuilder]   install-env.sh install molbuilder --with-dev-tools --yes" >&2
+    echo "[molbuilder]   ${LAUNCHER_TYPED} install molbuilder --with-dev-tools --yes" >&2
     echo "[molbuilder] If the create after the removal fails, re-run:" >&2
-    echo "[molbuilder]     bash ${SCRIPT_DIR}/install-env.sh bootstrap --yes" >&2
+    echo "[molbuilder]     ${LAUNCHER_TYPED} bootstrap --yes" >&2
     echo "" >&2
     if [[ "${AUTO_YES}" -eq 0 ]]; then
         if ! (exec 3</dev/tty) 2>/dev/null; then
@@ -1163,10 +1190,10 @@ dispatch() {
 # next step is bootstrap, not "copy this conda block."
 
 if [[ $# -eq 0 ]]; then
-    cat <<'EOF' >&2
+    cat <<EOF >&2
 No subcommand given.  First-time install on a fresh machine?
 
-    bash scripts/install-env.sh bootstrap --yes
+    ${LAUNCHER_TYPED} bootstrap --yes
 
 Full usage below.
 EOF
@@ -1242,8 +1269,8 @@ yet.  Creating it to print help would be the install you did not ask for.
 
 Create it, then ask again for the full flag list:
 
-    bash ${SCRIPT_DIR}/install-env.sh bootstrap --yes
-    bash ${SCRIPT_DIR}/install-env.sh bootstrap --help
+    ${LAUNCHER_TYPED} bootstrap --yes
+    ${LAUNCHER_TYPED} bootstrap --help
 EOF
             exit 0
         fi
@@ -1274,8 +1301,8 @@ says not to install anything.
 Create the host env (that step installs the same fixed package list
 every time, and nothing else), then the dry run shows you the rest:
 
-    bash ${SCRIPT_DIR}/install-env.sh bootstrap --yes
-    bash ${SCRIPT_DIR}/install-env.sh bootstrap --dry-run
+    ${LAUNCHER_TYPED} bootstrap --yes
+    ${LAUNCHER_TYPED} bootstrap --dry-run
 EOF
                 exit 2
             fi
@@ -1295,7 +1322,7 @@ EOF
 Error: host env '${HOST_ENV}' does not exist.
 
 Run this first:
-    bash scripts/install-env.sh bootstrap --yes
+    ${LAUNCHER_TYPED} bootstrap --yes
 EOF
             exit 2
         fi

@@ -396,7 +396,10 @@ that no other step can see:
 
 - **The shared package.** Which data files every job copies is the engine's
   answer, not a glob — a SIESTA fact stated in shared code would ship a second
-  engine's data files as none.
+  engine's data files as none. SIESTA's answer is one rule, asked by prep and
+  by a job that plans its own calls alike (`runfiles.pseudo_package`): each
+  `<label>.psml` in `pseudos/`, named `pseudos/<label>.psml` — the job choosing
+  from its run's own copy of them first, named `<label>.psml` there.
 - **Check** is the only step that reads a PRODUCED artifact, so it alone can
   see a writer bug (§ 4.3).
 - **Data files** and **promises** are the two rows an engine most often answers

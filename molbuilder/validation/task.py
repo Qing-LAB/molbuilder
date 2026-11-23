@@ -211,13 +211,6 @@ def request_checks(request) -> List[Issue]:
             *bench_points_fit_their_items(request)]
 
 
-def _items_of(request) -> Dict[str, Any]:
-    """The catalogue's items for ``request``'s engine, by name."""
-    from ..template import catalogue, select
-    return {it.name: it
-            for it in select(catalogue(), engine=str(request.engine))}
-
-
 def _run_cards_may_stand(request) -> List[Issue]:
     """Every name on a run card -- the calculation's, a stage's -- is a run
     setting, and its value one its item takes there (`job-request.md`
@@ -237,7 +230,8 @@ def _run_cards_may_stand(request) -> List[Issue]:
                            dict(entry.execution), name))
     if not any(b for _w, b, _s in blocks):
         return []
-    items = _items_of(request)
+    from ..template import items_of
+    items = items_of(engine=str(request.engine))
     engine, kind = str(request.engine), _kind_of(request)
     out: List[Issue] = []
     for where, block, stage in blocks:
@@ -275,7 +269,8 @@ def bench_points_fit_their_items(request) -> List[Issue]:
         return []
     from ..persist import unknown_keys
     from ..template import accepts, settings_in, shown, why_not_in
-    items = _items_of(request)
+    from ..template import items_of
+    items = items_of(engine=str(request.engine))
     engine, kind = str(request.engine), _kind_of(request)
     # A NAME THAT IS NO SETTING is a key of the row the record does not
     # hold, in the one sentence for unknown keys, the settings a row may
@@ -407,9 +402,9 @@ def _overrides_may_stand(task, fields) -> List[Issue]:
     quietly reinterprets -- refused where the description is written, never
     first at prep on the machine that runs it.  One value, one refusal; a
     name no field carries is :func:`_names_exist`'s."""
-    from ..template import accepts, catalogue, select, shown
+    from ..template import accepts, items_of, shown
     engine, kind = str(task.engine), _kind_of(task)
-    items = {it.name: it for it in select(catalogue(), engine=engine)}
+    items = items_of(engine=engine)
     out: List[Issue] = []
     for st in (task.stages or ()):
         for key, value in st.overrides.items():

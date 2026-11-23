@@ -293,6 +293,14 @@ def unit_word(name: str) -> Optional[str]:
     return _FDF_SPELLING.get(unit, unit) if unit else None
 
 
+def mesh_words(cfg) -> str:
+    """The real-space mesh as every stage line says it, in the unit fdf
+    reads beside it: ``MeshCutoff 300.0 Ry`` -- the optimisation's line
+    (`siesta.input._stage_science`) and each vibration call's
+    (`siesta.vibration_deck.stage_science`)."""
+    return f"MeshCutoff {cfg.mesh_cutoff} {unit_word('mesh_cutoff')}"
+
+
 def engine_defaults() -> Dict[str, List[str]]:
     """``{fdf keyword's key: [value, unit]}`` -- every SIESTA item whose
     catalogue row states the engine's own default (``engine_default``), as
@@ -308,5 +316,5 @@ def engine_defaults() -> Dict[str, List[str]]:
     return out
 
 
-__all__ = ["engine_input_differences", "engine_defaults",
+__all__ = ["engine_input_differences", "engine_defaults", "mesh_words",
            "run_setting_keywords", "unit_word"]

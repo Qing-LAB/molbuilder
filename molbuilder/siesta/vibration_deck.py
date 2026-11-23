@@ -233,29 +233,29 @@ def start_state_lines(cfg) -> List[str]:
     return [f"{k:<18}{answer[k]}" for k in keys if k in answer]
 
 
-def stage_science(cfg, derived: dict, part: Optional[str]) -> str:
-    """The one-line header for a vibration call, in the deck's own units --
-    `_stage_science`'s job for each part of the run (`engines/vibration.md`
-    § 5.11 § 4): the relaxation's as an optimisation's, the force-constant
-    run's range, the optical call's light."""
+def stage_science(cfg, derived: dict, part: Optional[str]) -> Optional[str]:
+    """The one-line header for a vibration call, in the deck's own units
+    (`engine_input.unit_word`) -- `_stage_science`'s job for each part of the
+    run (`engines/vibration.md` § 5.11 § 4): the force-constant run's range,
+    the optical call's light; ``None`` for the relaxation, whose line is the
+    optimisation's, said by `input._stage_science`."""
+    from .engine_input import mesh_words, unit_word
+    mesh = mesh_words(cfg)
     if part == FC_PART:
         f = derived["fc"]
         return (f"force constants over SIESTA's atoms {f['fc_first']}.."
                 f"{f['fc_last']} -- its own numbering, of the deck's "
                 f"held-first order ({f['n_free']} free, {f['n_held']} held), "
-                f"FC.Displacement {f['fc_displacement']:g} Bohr, "
-                f"MeshCutoff {cfg.mesh_cutoff} Ry")
+                f"FC.Displacement {f['fc_displacement']:g} "
+                f"{unit_word('fc_displacement')}, {mesh}")
     if part == OPTICAL_PART:
         o = derived["optical"]
         return (f"the optical single point: a field along "
                 f"({', '.join(f'{x:g}' for x in o['direction'])}), the sum "
                 f"over {'x'.join(map(str, o['mesh']))} k-points, "
-                f"Optical.Broaden {cfg.optical_broaden:g} Ry, "
-                f"MeshCutoff {cfg.mesh_cutoff} Ry")
-    return (f"the relaxation of the run: "
-            f"MeshCutoff {cfg.mesh_cutoff} Ry, force tol "
-            f"{cfg.relax_force_tol} eV/Ang, {cfg.relax_type}, max "
-            f"{cfg.relax_steps} steps")
+                f"Optical.Broaden {cfg.optical_broaden:g} "
+                f"{unit_word('optical_broaden')}, {mesh}")
+    return None
 
 
 __all__ = ["RELAX_PART", "FC_PART", "OPTICAL_PART", "PARTS", "optical_facts",

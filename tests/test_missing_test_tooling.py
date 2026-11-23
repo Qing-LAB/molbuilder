@@ -36,12 +36,15 @@ from pathlib import Path
 
 import pytest
 
+from molbuilder.envs.hints import install_cmd, opt_in_cmd
 from support import tooling
 from tools import testrun
 
 REPO = Path(__file__).resolve().parents[1]
-#: The command the contract names (`process/testing.md` § 4).
-THE_COMMAND = "scripts/install-env.sh install molbuilder --with-dev-tools"
+#: The command the contract names (`process/testing.md` § 4), as `doctor`
+#: names it -- by the checkout's full path, whatever it holds
+#: (`envs.hints.opt_in_cmd`; `ops/installation.md` § 2).
+THE_COMMAND = opt_in_cmd("molbuilder")
 
 #: A pytest with the browser tooling ABSENT, as on a plain install: an
 #: import finder answers "no such module" for the library and its plugin,
@@ -226,8 +229,7 @@ def test_what_a_test_needs_of_the_machine_skips_by_the_one_rule(tmp_path):
     for name, env in (("test_asks_for_the_run", "molbuilder-siesta"),
                       ("test_asks_for_it_through_another", "molbuilder-siesta"),
                       ("test_states_its_own_need", "molbuilder-pySCF")):
-        assert (f"bash scripts/install-env.sh install {env} --yes"
-                in why[name][1]), why
+        assert install_cmd(env) in why[name][1], why
     for name in ("test_drives_a_browser_on_the_run",
                  "test_states_its_own_need_and_drives_a_browser"):
         assert THE_COMMAND in why[name][1], why

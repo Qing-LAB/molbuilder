@@ -16,7 +16,8 @@ Public surface
 * The block grammar and every block's reader are
   :mod:`molbuilder.deck_record`'s, which this module imports.
 * Bench declarations — :class:`BenchField`; each engine's fields are its
-  own deck writer's (SIESTA's ``siesta.input.BENCH_FIELDS``).
+  own deck writer's (SIESTA's ``siesta.input.bench_fields``, built from the
+  catalogue).
 * Block emitters — :func:`emit_provenance`,
   :func:`emit_bench_marks`, :func:`emit_atom_metadata`,
   :func:`emit_user_custom_placeholder`.
@@ -55,7 +56,7 @@ from .deck_record import (BLOCK_ATOM_METADATA, BLOCK_BENCH_MARKS,
                           BLOCK_ENGINE_OFFSET,
                           BLOCK_PROVENANCE, BLOCK_USER_BEFORE_ENGINE,
                           BLOCK_USER_CUSTOM, BLOCK_VIBRATION,
-                          MARKER_RE, PARAMETER_ROW_PREFIX, PARAMETERS_KEY,
+                          PARAMETER_ROW_PREFIX, PARAMETERS_KEY, fence,
                           begin_marker, end_marker)
 
 if TYPE_CHECKING:                       # annotations only -- `issues`
@@ -166,13 +167,6 @@ class BenchField:
                 f"{', '.join(_legal)}. A field "
                 "whose type has no name cannot be read back, so the type is "
                 "added to the grammar rather than left off the declaration.")
-        # NOT checked here: ``type=enum`` with no ``choices`` --
-        # SIESTA's own ``Diag.Algorithm`` (`siesta.input.BENCH_FIELDS`) is
-        # exactly that
-        # case, and refusing it would refuse a block that ships today.
-        #
-        # ⚠ That shipped block IS thin: a bench tool reading it learns the
-        # field is an enum and not which values are legal.
 
 
 # --------------------------------------------------------------------- #
@@ -1503,9 +1497,12 @@ def check_deck(path, spec: "DeckSpec", rendered: "RenderedDeck",
     # raises.
     for block, label in ((BLOCK_USER_CUSTOM, "the section left for a reader"),
                          (BLOCK_PROVENANCE, "the provenance record")):
-        for marker, which in ((begin_marker(block), "BEGIN"),
-                              (end_marker(block), "END")):
-            n = text.count(marker)
+        # EACH FENCE AS EVERY READER OF THE BLOCK FINDS IT
+        # (`deck_record.fence`).
+        said = [f[1] for f in map(fence, text.splitlines())
+                if f is not None and f[0] == block]
+        for which in ("BEGIN", "END"):
+            n = said.count(which)
             if n != 1:
                 out.append(Issue(
                     "error",
@@ -1678,13 +1675,13 @@ def _user_custom_span(text: str, zone: str = BLOCK_USER_CUSTOM
     begin_idx: Optional[int] = None
     end_idx: Optional[int] = None
     for i, line in enumerate(lines):
-        m = MARKER_RE.match(line)
-        if not m or m.group(1) != zone:
+        f = fence(line)
+        if f is None or f[0] != zone:
             continue
-        if m.group(2) == "BEGIN":
+        if f[1] == "BEGIN":
             if begin_idx is None:          # the FIRST begin, and only it
                 begin_idx = i
-        elif m.group(2) == "END":
+        else:
             end_idx = i                    # the LAST end
     if begin_idx is None or end_idx is None or end_idx <= begin_idx:
         return None

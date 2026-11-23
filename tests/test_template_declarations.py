@@ -13,8 +13,7 @@ Contracts:
   vocabulary and where every key comes from), § 7 (membership is **total**, and
   the three things that are not items), § 10 (complete, lossless).
 * ``docs/execution/job-contracts.md`` § 3.1 (the reserved blocks of a generated
-  script, which the shared marker finds) · § 3.3 (BENCH-MARKS, whose
-  declarations come from the **same** field metadata — so the two cannot drift).
+  script, which the shared marker finds).
 * ``docs/engines/stages.md`` § 6.6 — the preflight rows.
 """
 from __future__ import annotations
@@ -25,7 +24,6 @@ import pytest
 
 from molbuilder.config.siesta import SiestaConfig
 from molbuilder.deck_record import MARKER_RE
-from molbuilder.script_emit import benchmark_declarable_types
 from molbuilder.template import items_of
 
 
@@ -42,56 +40,6 @@ def _cat(engine="siesta"):
 # --------------------------------------------------------------------- #
 #  The declaration grammar                                              #
 # --------------------------------------------------------------------- #
-
-
-def test_a_bench_marks_field_declares_the_same_type_as_its_template_item():
-    """The *one source* rule, checked where it can actually break.
-
-    `job-contracts.md` § 3.3: *"BENCH-MARKS and the template are emitted from
-    ONE source, and that is a rule rather than a convenience … two
-    hand-maintained copies of ``default=`` would drift, and the drift would be
-    silent."*  SIESTA's ``BENCH_FIELDS`` **is** hand-maintained, so the rule is
-    an intention there rather than a mechanism -- this test is the mechanism.
-    Matched by ANCHOR, which is what a BENCH-MARKS line and a template item
-    have in common.
-    """
-    from molbuilder.siesta.input import BENCH_FIELDS
-    # A keyword reaches the deck two ways: an ``engine`` item's ``anchor``, or
-    # a ``deck`` item's ``expands`` -- ``MD.Steps`` is the second, one of
-    # the two keywords ``relax_steps`` becomes depending on ``relax_type``.
-    # Both are the keyword a BENCH-MARKS anchor greps for.
-    by_keyword = {}
-    for d in _cat().values():
-        for kw in ((d.anchor,) if d.anchor else ()) + tuple(d.expands or ()):
-            by_keyword.setdefault(kw, d)
-    for bf in BENCH_FIELDS:
-        item = by_keyword.get(bf.anchor)
-        assert item is not None, (
-            f"BENCH-MARKS declares {bf.anchor!r}, which no config field "
-            f"anchors -- so a tool may override a line the template cannot "
-            f"describe (job-contracts.md § 3.3).")
-        # THE BENCH MAY BE NARROWER THAN THE DECK, NEVER WIDER.
-        #
-        # ``BlockSize`` is a plain ``int`` on the template and ``pow2`` on
-        # BENCH-MARKS, and the asymmetry is the point: the DECK honours any positive integer (SIESTA's own manual gives no
-        # power-of-two rule for ``BlockSize``), while the BENCHMARK sweeps
-        # powers of two because that is a sensible sweep, not a validity
-        # constraint (`engines/tuning.md` § 2.11).
-        #
-        # Narrower is safe -- the bench simply never proposes a value the
-        # deck would refuse.  WIDER is the dangerous direction, and it is
-        # what this assertion is really for: a bench that could hand back
-        # something the deck rejects.
-        _NARROWINGS = {("pow2", "int")}
-        assert (bf.type_ == item.type
-                or (bf.type_, item.type) in _NARROWINGS), (
-            f"{bf.anchor}: BENCH-MARKS says type={bf.type_!r}, the template "
-            f"item {item.name!r} says {item.type!r}.  A bench type may be a "
-            f"NARROWING of the template's (it sweeps a subset); anything "
-            f"else means a tool could propose an override the deck refuses "
-            f"(job-contracts.md § 3.3).")
-        assert bf.type_ in benchmark_declarable_types(), \
-            f"{bf.anchor}: {bf.type_}"
 
 
 @pytest.mark.parametrize("cls", ENGINES, ids=lambda c: c.__name__)

@@ -60,17 +60,48 @@ GEOMETRY_SECTION = Section(
      "geom_max_steps"),
 )
 
-def geom_keyword(name: str) -> str:
-    """The geomeTRIC keyword a catalogue item becomes: its own ``anchor``."""
-    from ..template import catalogue, one
-    return one(catalogue(), name, engine="pyscf").anchor
+def keyword(name: str) -> str:
+    """What a catalogue item sets in a PySCF deck -- ``mf.conv_tol``, a
+    geomeTRIC keyword (``gmax``, ``maxsteps``) -- the item's own ``writes``
+    through the one door (`script_emit.parameter`), never
+    typed by a writer."""
+    return parameter(name, "pyscf").writes[0]
+
+
+def geom_constant(name: str) -> str:
+    """The constant a deck names geometry item ``name``'s value by,
+    ``_GEOM_<the item's name past geom_>`` -- ONE spelling, both decks'
+    (the optimization's and a vibration's relaxation)."""
+    return f"_GEOM_{name[len('geom_'):].upper()}"
+
+
+def geom_constants(cfg) -> "tuple":
+    """The relaxation's targets as the deck's named constants, one per item
+    of the geometry section, in its order: ``_GEOM_GMAX = 0.00045``."""
+    return tuple(f"{geom_constant(n):<15} = {getattr(cfg, n)!r}"
+                 for n in GEOMETRY_SECTION.items)
+
+
+#: THE RELAXATION'S POLICY AND ITS BUDGET, as both decks name them: what it
+#: does when geomeTRIC reports its criteria unmet, and how many times it may
+#: continue (`relax_policy.policy_of`; `engines/pyscf.md` § 3).
+POLICY_CONSTANTS = ("_ON_NONCONVERGENCE", geom_constant("geom_continue_retries"))
+
+
+def policy_constants(cfg) -> "tuple":
+    """The policy and its budget as the deck's named constants, the ones its
+    relaxation call reads: ``_ON_NONCONVERGENCE = 'halt'``."""
+    from .relax_policy import policy_of
+    return tuple(f"{name} = {value!r}"
+                 for name, value in zip(POLICY_CONSTANTS, policy_of(cfg)))
 
 
 def geom_kwargs() -> "tuple":
     """The relaxation's geomeTRIC keyword lines (handed to ``relax(...)``,
-    `relax_policy`), in the section's own order."""
+    `relax_policy`), in the section's own order -- each keyword the item's
+    anchor, ``maxsteps`` among them."""
     return tuple(
-        f"        {geom_keyword(n):<21} = _GEOM_{n[5:].upper()},"
+        f"        {keyword(n):<21} = {geom_constant(n)},"
         for n in GEOMETRY_SECTION.items)
 
 
@@ -115,7 +146,7 @@ def hard_scf_hint(state) -> list:
             "Typical 0.1-0.3;",
             "# helps when the HOMO-LUMO gap is small or open-shell mixing "
             "makes the SCF oscillate.",
-            "# mf.level_shift = 0.2"]
+            f"# {keyword('level_shift')} = 0.2"]
 
 
 #: The SCF tolerances, written to two significant figures (`pyscf.md` § 7.1).
@@ -168,6 +199,9 @@ def line(cfg, *, is_dft: bool):
         return (_scf(name, value) or _theory(name, value)
                 or _geom(name, value))
 
+    # THE ATTRIBUTE EACH ITEM SETS is its own (:func:`keyword`) -- the
+    # record reads the same back (`readback`); only the value's format is
+    # this door's.
     def _theory(name, value):
         # The functional and the grid exist only in Kohn-Sham DFT.  The
         # dispersion correction does NOT depend on the method: Hartree-Fock
@@ -177,9 +211,9 @@ def line(cfg, *, is_dft: bool):
         # the method as 'hf' (`scf/dispersion.py`, `grad/rhf.py`,
         # `hessian/rhf.py`).
         if name == "functional":
-            return f'mf.xc = "{value}"' if is_dft else None
+            return f'{keyword(name)} = "{value}"' if is_dft else None
         if name == "grid_level":
-            return f"mf.grids.level = {value}" if is_dft else None
+            return f"{keyword(name)} = {value}" if is_dft else None
         if name == "density_fit":
             if not value:
                 return None
@@ -194,7 +228,7 @@ def line(cfg, *, is_dft: bool):
         if name == "dispersion":
             if value == "none":
                 return None
-            return f'mf.disp = "{value}"'
+            return f'{keyword(name)} = "{value}"'
         return None
 
     def _geom(name, value):
@@ -207,34 +241,30 @@ def line(cfg, *, is_dft: bool):
             return None
         if not getattr(cfg, "optimize", False):
             return None
-        return f"_GEOM_{name[5:].upper()} = {value!r}"
+        return f"{geom_constant(name)} = {value!r}"
 
     def _scf(name, value):
         if name == "scf_conv_tol":
-            return f"mf.conv_tol  = {value:.1e}"
+            return f"{keyword(name)}  = {value:.1e}"
         if name == "scf_conv_tol_grad":
             if not value or value <= 0:
                 # 0 LEAVES PYSCF'S OWN RULE, and the deck says which
                 # (`engines/template.md` § 6.6 obligation 4).
                 return not_set_line(parameter(name, "pyscf"),
-                                    keyword="mf.conv_tol_grad")
-            return f"mf.conv_tol_grad = {value:.1e}    # set explicitly"
+                                    keyword=keyword(name))
+            return f"{keyword(name)} = {value:.1e}    # set explicitly"
         if name == "scf_max_cycle":
-            return f"mf.max_cycle = {value}"
+            return f"{keyword(name)} = {value}"
         if name == "scf_init_guess":
-            return f'mf.init_guess = "{value}"'
+            return f'{keyword(name)} = "{value}"'
         # EVERY ITEM OF THE LAYOUT IS WRITTEN, a default as the deck's own
         # line (`engines/template.md` § 6.6 obligation 4: no value reaches
         # the engine by omission) -- so the record and the Results tab show
         # the SCF settings the run used, and a PySCF upgrade that moves its
         # own default moves no run of ours (2026-10-18; the three were
         # written only off their defaults before).
-        if name == "level_shift":
-            return f"mf.level_shift = {value}"
-        if name == "diis_space":
-            return f"mf.diis_space = {value}"
-        if name == "damp":
-            return f"mf.damp = {value}"
+        if name in ("level_shift", "diis_space", "damp"):
+            return f"{keyword(name)} = {value}"
         return None
 
     return _line

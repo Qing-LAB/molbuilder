@@ -39,6 +39,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ..diagnostics import DEFAULT_ENV_NAMES, Capabilities
+from ..identity import in_double_quotes
 from . import hints as _hints
 from typing import Any, Optional, Tuple
 
@@ -1461,12 +1462,16 @@ def _pyscf(cuda_version: str) -> Recipe:
                      "geometric {geometric.__version__}, prop: polarizability OK'); "
                      "print('  IR: analytic dmu/dR available "
                      "(pyscf.prop.infrared)' if ok else "
-                     "'  IR: WARNING -- pyscf.prop.infrared missing; the deck "
-                     "falls back to finite-difference dipoles (6N extra SCFs "
-                     "per run, same intensities).  Repair: "
-                     + _hints.fix_cmd("repair", DEFAULT_ENV_NAMES["pyscf"],
-                                      "--include-optional")
-                     + "')"),
+                     # A PYTHON LITERAL, whatever the checkout's path holds
+                     # (`envs.hints.LAUNCHER` quotes it for a shell).
+                     + repr("  IR: WARNING -- pyscf.prop.infrared missing; "
+                            "the deck falls back to finite-difference "
+                            "dipoles (6N extra SCFs per run, same "
+                            "intensities).  Repair: "
+                            + _hints.fix_cmd("repair",
+                                             DEFAULT_ENV_NAMES["pyscf"],
+                                             "--include-optional"))
+                     + ")"),
         verify_expect_contains="prop: polarizability OK",
         # NOT A NOTEBOOK KERNEL, DELIBERATELY: being a kernel would cost this
         # env `debugpy`,
@@ -2584,11 +2589,15 @@ def _siesta_gpu(cuda_version: str) -> Recipe:
             # takes canonical names only.  The launcher spelling is IMPORTED
             # (`hints.fix_cmd`, floor 1) -- this module is recipe DATA and may
             # not depend on the CLI that formats hints.
-            f'  *) echo "[molbuilder] WARNING: bare gcc resolves to'
+            '  *) echo "[molbuilder] WARNING: bare gcc resolves to'
             ' $(command -v gcc), outside $CONDA_PREFIX.  Bundled Makefiles'
             ' that call gcc directly (flook/lua) would use the HOST'
             ' toolchain.  The bare-name shims are created by: '
-            f'{_hints.fix_cmd("install", DEFAULT_ENV_NAMES["siesta-gpu"])}" >&2 ;; '
+            # Word for word inside the echo's quotes, whatever the
+            # checkout's path holds (`identity.in_double_quotes`).
+            + in_double_quotes(
+                _hints.fix_cmd("install", DEFAULT_ENV_NAMES["siesta-gpu"]))
+            + '" >&2 ;; '
             'esac; '
             # numpy and netCDF4 for a vibration's finish, as in
             # `_SIESTA`'s self-test.

@@ -180,7 +180,7 @@ CPU build, and a CPU deck never on the GPU one.
   `molbuilder-siesta-gpu` is not among them, **prep prepares the job as asked
   and says so** in its notes: the env the run script enters at its start and
   stops without, and the command that installs it
-  (`bash scripts/install-env.sh install molbuilder-siesta-gpu --yes`,
+  (`bash <checkout>/scripts/install-env.sh install molbuilder-siesta-gpu --yes`,
   `envs.hints.install_cmd`, the one spelling of an env command). A record that
   lists no environments at all does not know, and nothing is said. The person
   installs it, or turns `Use GPU` off and preps again.

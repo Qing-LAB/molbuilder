@@ -181,14 +181,17 @@ def test_a_job_without_its_envs_python_names_the_recipe_that_installs_it(
     of its own names the env by its name here, and the command that
     installs it again by its recipe.  THE SILENT FAILURE: a remedy that
     asks `install` for a recipe that does not exist."""
-    from molbuilder.envs.hints import install_cmd
+    from molbuilder.envs.hints import install_cmd, typed_in_checkout
     from molbuilder.envs.recipes import builtin_recipes
     machine_config({"envs": {"siesta": "my-siesta"}})
     sh, run, names = _prepared(tmp_path, monkeypatch, activation="true")
     cp = _start(sh, run, claim=LAUNCH_CLAIM)
     recipe = next(r.name for r in builtin_recipes() if r.category == "siesta")
     assert "no python of its env 'my-siesta'" in cp.stderr, cp.stderr
-    assert install_cmd(recipe) in cp.stderr, cp.stderr
+    # AS TYPED IN MOLBUILDER'S CHECKOUT, a run script's on every machine
+    # (`ops/installation.md` § 2).
+    with typed_in_checkout():
+        assert install_cmd(recipe) in cp.stderr, cp.stderr
 
 
 @pytest.mark.parametrize("forced, says", [
@@ -302,10 +305,11 @@ def test_a_job_starts_only_its_envs_own_program_and_mpirun(
     assert said["note"].startswith(stopped), (said, cp.stderr[-3000:])
     # ...naming the repair, as the stop for its python does: its recipe
     # installed again.
-    from molbuilder.envs.hints import install_cmd
+    from molbuilder.envs.hints import install_cmd, typed_in_checkout
     from molbuilder.envs.recipes import builtin_recipes
     recipe = next(r.name for r in builtin_recipes() if r.category == "siesta")
-    assert install_cmd(recipe) in cp.stderr, cp.stderr[-3000:]
+    with typed_in_checkout():
+        assert install_cmd(recipe) in cp.stderr, cp.stderr[-3000:]
 
 
 def test_a_job_launches_its_envs_own_program_under_its_envs_own_mpirun(

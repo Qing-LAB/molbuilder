@@ -49,13 +49,13 @@ import functools
 import re
 import tomllib
 from dataclasses import dataclass, field
-from typing import (Any, Dict, List, Mapping, NamedTuple, NoReturn,
+from typing import (Any, Dict, List, Mapping, NamedTuple,
                     Optional, Sequence, Tuple, Union)
 
 from .engine_table import engine_of_config
 from .identity import migrate_as_typed, stage_key
 from . import data_dir, kind_table as _kinds
-from .persist import check_schema, unknown_keys
+from .persist import RecordRefusals, check_schema, unknown_keys
 from .runfiles import (JOB_REQUEST_FILE, PSEUDO_FILE, ROLE_PYSCF_LOG,
                        SIESTA_XV, TASK_FILE, deck_role, fixed_name)
 
@@ -298,8 +298,10 @@ LIMIT_APPLIERS = ("run_script", "deck")
 RANK_COUNT_ITEM = "mpi_np"
 
 
-def _refuse(msg: str, *, where: str = "") -> NoReturn:
-    raise ValueError(f"template{': ' + where if where else ''}: {msg}")
+#: THE TEMPLATE READER'S REFUSALS, in the kit every record's reader words
+#: one with (`persist.RecordRefusals`): ``template: <where>: <why>``.
+_REFUSALS = RecordRefusals("template_refusal_source", "template")
+_refuse = _REFUSALS.refuse
 
 
 # --------------------------------------------------------------------- #
@@ -902,8 +904,8 @@ def _toml_value(v: Any) -> str:
     if isinstance(v, (list, tuple)):
         return "[" + ", ".join(_toml_value(x) for x in v) + "]"
     if isinstance(v, Mapping):
-        # An INLINE TABLE -- ``recommended`` (per kind) and ``role_values``
-        # (per rung) are the item keys that hold one, keyed by a name.
+        # An INLINE TABLE -- ``launch`` (per program), ``limit_applied_by``
+        # (per engine) and ``above`` are the written item keys that hold one.
         return ("{ " + ", ".join(f"{_toml_key(k)} = {_toml_value(x)}"
                                  for k, x in v.items()) + " }")
     raise TypeError(f"template: cannot write {type(v).__name__} to TOML")
@@ -938,14 +940,15 @@ def _launch_from(name: str, raw) -> Dict[str, Tuple[str, ...]]:
             isinstance(p, str) and isinstance(ws, list)
             and all(isinstance(w, str) for w in ws)
             for p, ws in raw.items()):
-        raise ValueError(
-            f"template: {name}: launch must be a table of program -> list "
-            f"of words (launch.siesta = [\"-fdf\", ...]); got {raw!r}")
+        _refuse(f"launch must be a table of program -> list of words "
+                f"(launch.siesta = [\"-fdf\", ...]); got {raw!r}", where=name)
     return {p: tuple(ws) for p, ws in raw.items()}
 
 
 def _item_payload(it: Item) -> Dict[str, Any]:
-    """The mapping one item becomes — omitting everything absent (§ 3)."""
+    """The mapping one item becomes in a calculation's template — omitting
+    everything absent (§ 3); no key only the catalogue carries (§ 5) has a
+    line here."""
     out: Dict[str, Any] = {"kind": it.kind, "type": it.type}
     if it.anchor:
         out["anchor"] = it.anchor
@@ -987,28 +990,6 @@ def _item_payload(it: Item) -> Dict[str, Any]:
         out["group"] = it.group
     if it.category:
         out["category"] = list(it.category)
-    if it.engines:
-        out["engines"] = list(it.engines)
-    if it.calculations:
-        out["calculations"] = list(it.calculations)
-    if it.recommended:
-        out["recommended"] = {k: (list(v) if isinstance(v, tuple) else v)
-                              for k, v in it.recommended}
-    if it.offered:
-        # One table per engine for an engine's own entries (the TOML dotted
-        # key `siesta.transport` is exactly that table), a list per kind.
-        offered_table: Dict[str, Any] = {}
-        for key, members in it.offered:
-            engine, _, kind = key.rpartition(".")
-            (offered_table.setdefault(engine, {}) if engine
-             else offered_table)[kind] = list(members)
-        out["offered"] = offered_table
-    if it.result:
-        out["result"] = dict(it.result)
-    if it.active_when:
-        out["active_when"] = active_when_of(it)
-    if it.choice_labels:
-        out["choice_labels"] = {str(c): w for c, w in it.choice_labels}
     if it.refs:
         out["refs"] = list(it.refs)
     if it.allocation:
@@ -1017,17 +998,8 @@ def _item_payload(it: Item) -> Dict[str, Any]:
         out["citation"] = list(it.citation)
     if it.role:
         out["role"] = list(it.role)
-    if it.role_values:
-        out["role_values"] = {k: (list(v) if isinstance(v, tuple) else v)
-                              for k, v in it.role_values}
-    if it.why_fixed:
-        out["why_fixed"] = it.why_fixed
-    if it.per_point_from:
-        out["per_point_from"] = it.per_point_from
     if it.shared:
         out["shared"] = list(it.shared)
-    if it.why_shared:
-        out["why_shared"] = it.why_shared
     if it.required:
         out["required"] = list(it.required)
     if it.stages:
@@ -1237,15 +1209,12 @@ def template_with_values(config, *, engine: str = "", catalogue: str = "",
         raise ValueError(f"source(s) {', '.join(map(repr, bad))} are not "
                          f"one of {', '.join(SOURCES)}")
     eng = engine or engine_of_config(config)
+    # WHAT ONLY THE CATALOGUE CARRIES is not written (§ 5, `_item_payload`):
+    # a per-calculation template serves ONE engine and one kind, selected
+    # here.
     items = [
         dataclasses.replace(
             it,
-            # A per-calculation template serves ONE engine AND one kind, so
-            # no item narrows anything and none carries `engines` or
-            # `calculations` (§ 6.3's writer rule) -- the selection already
-            # happened, here.
-            engines=(),
-            calculations=(),
             # Valueless for the answerer that is not floor 2's: the stage's
             # ROLE (§ 6.4) -- a role item has no value a description could
             # legitimately claim to have set, because the rung decides it.
@@ -1268,23 +1237,6 @@ def template_with_values(config, *, engine: str = "", catalogue: str = "",
             # travel -- a per-kind template has already answered which kind
             # it serves.
             default=default_of(it, calculation),
-            recommended=(),
-            # ...nor the rungs' own role answers: `resolve` reads them from
-            # the catalogue, and the template holds no value for a role item.
-            role_values=(),
-            # ...nor the kinds' choice sets: `resolve` and the gate hold a
-            # value to the catalogue's (§ 6.3a), naming why a choice is not
-            # this kind's -- a narrowed `choices` here would refuse it at
-            # read time with the reader's bare words instead.
-            offered=(),
-            # ...nor where the form draws it or what greys it out (§ 6.2a,
-            # § 5): the catalogue's, asked of the catalogue.
-            result=(),
-            active_when=(),
-            choice_labels=(),
-            # ...nor why a rung fixes it or the stages share it, nor the
-            # list that answers it point by point (§ 5): the catalogue's.
-            why_fixed=None, why_shared=None, per_point_from=None,
         )
         for it in select(parsed, engine=eng, calculation=calculation)
         # NO RUN SETTING, valueless or not: it is the job request's
@@ -1373,7 +1325,8 @@ def _emit(items, *, engines, title: str = "") -> str:
     return text
 
 
-def items_of(cls_or_cfg) -> "Dict[str, Item]":
+def items_of(cls_or_cfg=None, *, engine: Optional[str] = None
+             ) -> "Dict[str, Item]":
     """THE CATALOGUE'S ITEMS FOR A CONFIG, by field name -- the one home of
     every fact about a parameter (§ 2.1: a config class is a translator; its
     field's name, type, default and validators are its own, and every other
@@ -1383,8 +1336,10 @@ def items_of(cls_or_cfg) -> "Dict[str, Item]":
     engine whose record names the class (`engine_table.engine_of_config`).
     Every reader of such a fact asks this:
     the settings gate, the description check, the form's coercion, finding
-    placement, the template's membership."""
-    engine = engine_of_config(cls_or_cfg)
+    placement, the template's membership.  Asked with ``engine`` where the
+    caller holds an engine and no config."""
+    if engine is None:
+        engine = engine_of_config(cls_or_cfg)
     # THE SAME RULE `one` READS BY: an item naming no engines is every
     # engine's.
     return {it.name: it for it in catalogue().items
@@ -1436,9 +1391,8 @@ def _source_from(name: str, raw) -> Optional[str]:
     if raw is None:
         return None
     if raw not in SOURCES:
-        raise ValueError(
-            f"item {name!r}: source = {raw!r} is not one of "
-            f"{', '.join(SOURCES)}")
+        _refuse(f"source = {raw!r} is not one of {', '.join(SOURCES)}",
+                where=f"item {name!r}")
     return str(raw)
 
 
@@ -1898,10 +1852,8 @@ def _check_raw_value(name: str, key: str, raw, type_: str,
         return
     why = _type_refusal(type_, choices, as_declared(type_, raw))
     if why:
-        raise ValueError(
-            f"template: item {name!r}: its {key} is {raw!r}{why} -- the "
-            f"item's declared type, the contract for an edit"
-            f".")
+        _refuse(f"its {key} is {raw!r}{why} -- the item's declared type, "
+                f"the contract for an edit.", where=f"item {name!r}")
 
 
 def is_member(value, choices) -> bool:
@@ -2182,8 +2134,8 @@ def shared_by(name: str) -> str:
 def _scoped_shared(name: str) -> Optional["Item"]:
     """The catalogue item ``name`` when it is `shared` and names its
     ``stages`` -- one value for those rungs only -- else ``None``."""
-    return next((it for it in catalogue().items
-                 if it.name == name and it.shared and it.stages), None)
+    it = one(catalogue(), name)
+    return it if it.shared and it.stages else None
 
 
 def why_shared(name: str) -> str:
@@ -2191,8 +2143,7 @@ def why_shared(name: str) -> str:
     puts after *"is shared by <who>"* (:func:`shared_by`): the item's own
     ``why_shared`` where it states one (§ 5), else one of `shared`'s own
     rules, which the catalogue requires where the item states none."""
-    own = next((it.why_shared for it in catalogue().items
-                if it.name == name and it.why_shared), None)
+    own = one(catalogue(), name).why_shared
     if own is not None:
         return own
     if name in STATE_ITEMS:
@@ -2530,16 +2481,17 @@ def active_words(item: "Item", *, names: bool = False) -> Optional[str]:
     it."""
     if not item.active_when:
         return None
-    cat = {it.name: it for it in catalogue().items}
 
     def _named(n: str) -> str:
-        label = getattr(cat.get(n), "label", "") or ""
+        # Every name an item waits on is an item of the catalogue, which
+        # refuses one that is not (:func:`catalogue`).
+        label = one(catalogue(), n).label or ""
         if not label:
             return n
         return f"{label} ({n})" if names else label
 
     def _said(n: str, v: Any) -> str:
-        return choice_words(cat[n], v) if n in cat else shown(v)
+        return choice_words(one(catalogue(), n), v)
 
     def _wants(n: str, vs: Any) -> str:
         return ("set" if vs == ACTIVE_WHEN_SET
@@ -2604,9 +2556,7 @@ def why_role(name: str) -> str:
     """Why nobody may set a `role` item -- the clause a refusal puts after
     *"which the rung fixes"*: the item's own ``why_fixed`` (§ 5), else
     `role`'s own reason."""
-    own = next((it.why_fixed for it in catalogue().items
-                if it.name == name and it.why_fixed), None)
-    return own or "this stage needs this value"
+    return one(catalogue(), name).why_fixed or "this stage needs this value"
 
 
 # --------------------------------------------------------------------- #
@@ -2624,19 +2574,21 @@ HOMES = ("override", "run_card", "bench", "flag")
 #: provenance (``template`` ... ``role``) and the launch fold's
 #: (``flag``, ``run card``, ``allocation``, `prep_inputs.fold_allocation`).
 #: A template value says, after *the template*, its own record
-#: (:data:`SOURCE_WORDS`).
+#: (:data:`SOURCE_WORDS`).  DECLARED IN DECISION ORDER, the order a rung's
+#: rows are listed in (`pipeline_log.config_rows`): what this rung decided
+#: first, the template's baseline and the catalogue's default last.
 SAID = {
-    "template":   "the template",
+    "pin":        "a pin",
+    "sweep":      "a sweep point",
     "stage":      "this stage's override",
     "stage_card": "the stage's run card",
     "calc_card":  "the calculation's run card",
-    "run card":   "the run card",
     "flag":       "a prep flag",
-    "allocation": "the job request's allocation",
-    "default":    "the catalogue's default · not chosen",
-    "sweep":      "a sweep point",
-    "pin":        "a pin",
+    "run card":   "the run card",
     "role":       "the stage's role",
+    "allocation": "the job request's allocation",
+    "template":   "the template",
+    "default":    "the catalogue's default · not chosen",
 }
 
 
@@ -3140,8 +3092,10 @@ def why_zeros_written_before(tmpl: "Template", where: List[str]) -> str:
             f"meant.")
 
 
-def config_from_template(text: str, config_cls):
-    """An ordinary instance of *config_cls*, rebuilt from a template.
+def config_from_template(source: "Union[str, Template]", config_cls):
+    """An ordinary instance of *config_cls*, rebuilt from a template --
+    its text, or the file as :func:`read_template` read it, for a caller
+    that reads it once for more than this.
 
     What ``prep`` holds before it applies a stage's ``overrides``
     (`engines/stages.md` § 4).
@@ -3165,7 +3119,8 @@ def config_from_template(text: str, config_cls):
     # is the very thing the `engines` axis exists to prevent.  `select` refuses
     # an engine the file does not serve, so *"does not run on that engine"*
     # stays distinct from *"no items matched"*.
-    parsed = read_template(text)
+    parsed = (source if isinstance(source, Template)
+              else read_template(source))
     eng = engine_of_config(config_cls)
     mine = select(parsed, engine=eng) if parsed.engines else parsed.items
     vals = {it.name: it.value for it in mine if it.is_set}
@@ -3206,7 +3161,7 @@ def config_from_template(text: str, config_cls):
                   f"{config_cls.__name__} schema; check the spelling "
                   f"against its own names"))
         if said:
-            why.append(f"template: {said}.")
+            why.append(f"{_REFUSALS.source.get()}: {said}.")
         raise ValueError("  ".join(why))
     # A VALUE IS OF THE CATALOGUE'S TYPE -- today's, not the one the file
     # declares beside it (§ 5.4: the item's type is the catalogue's).  The
@@ -3218,7 +3173,7 @@ def config_from_template(text: str, config_cls):
     # number at all.  Asked of the ONE type check
     # (:func:`_type_refusal`), and the value spelled as the catalogue
     # declares it (:func:`as_declared`).
-    decls = {it.name: it for it in select(catalogue(), engine=eng)}
+    decls = items_of(engine=eng)
     for k, v in list(vals.items()):
         if k not in decls:
             continue

@@ -97,7 +97,8 @@ try:                                        # inside molbuilder
     from ..runfiles import (CALCDIR_FILE, COORDINATES_FILE,
                             PSEUDO_DIR, PSEUDO_FILE, ROLE_OPTICAL, ROLE_SPECTRA,
                             VIBRATION_BUNDLE,
-                            RunNames, beside_the_deck, find_fixed,
+                            RunNames, beside_the_deck, files_in,
+                            pseudo_package,
                             fixed_name, parse)
     from ..paths import frame_token, run_folder_of
     from ..runrecord import (RunRef, read_continued_from, run_output,
@@ -147,7 +148,7 @@ except ImportError:                         # beside a job, in mb_vibration.pyz
                           COORDINATES_FILE,
                           PSEUDO_DIR, PSEUDO_FILE, ROLE_OPTICAL,
                           ROLE_SPECTRA, VIBRATION_BUNDLE, RunNames, beside_the_deck,
-                          find_fixed, fixed_name, parse)
+                          files_in, fixed_name, parse, pseudo_package)
     from paths import frame_token, run_folder_of  # type: ignore[no-redef]
     from runrecord import (RunRef,  # type: ignore[no-redef]
                            read_continued_from, run_output, stamp,
@@ -892,8 +893,8 @@ def _plan_optical(here: _CallHere, run: ForceConstantRun, res: SpectraResults,
     # WHAT A CALL'S FOLDER HOLDS -- the deck and the one list of what
     # travels beside it (`runfiles.beside_the_deck`, as a launch brings a
     # run: `materialize.bring_files`), and the calculation's shared package
-    # -- each species' pseudopotential, the engine seam's rule
-    # (`jobset.engines`): SIESTA opens `<label>.psml` in the folder it runs
+    # -- each species' pseudopotential, chosen and named by the rule the
+    # engine seam asks too (`runfiles.pseudo_package`): SIESTA opens `<label>.psml` in the folder it runs
     # from and no other -- ALL FROM THE RUN'S OWN COPY in its `optical/`
     # (:func:`_optical_source`), never the stage's, which a prep may have
     # written again since the run was launched (`job-request.md` § 5).  A
@@ -903,10 +904,10 @@ def _plan_optical(here: _CallHere, run: ForceConstantRun, res: SpectraResults,
     files = [here.deck.name,
              *beside_the_deck("siesta", "vibration", VIBRATION_BUNDLE,
                               here.names)]
-    shared = (sorted(p.name for p, _fields in find_fixed(files_from,
-                                                         PSEUDO_FILE))
-              or sorted(f"{PSEUDO_DIR}/{p.name}" for p, _fields
-                        in find_fixed(here.root / PSEUDO_DIR, PSEUDO_FILE)))
+    shared = (pseudo_package((p.name for p in files_in(files_from)),
+                             folder=None)
+              or pseudo_package(p.name for p
+                                in files_in(here.root / PSEUDO_DIR)))
     # EACH CALL'S START, recorded as every point's is (`runs-of-points.md`
     # § 1.2, § 3 op. 5, 11): the call of its phase's seed -- the force
     # constants' -- whose files the walk's loop step copies in just before

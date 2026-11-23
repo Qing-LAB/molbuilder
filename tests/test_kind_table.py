@@ -356,6 +356,14 @@ _KIND_ROWS = [
     ("an export document with no export",
      '[k]\nnoun = "k"\ntopic = "k"\nexport_doc = "a.md"\n[k.on.siesta]\n',
      "export_doc with no export"),
+    # THE JOB'S OWN WORDS FOR A FINISHED POINT (`runs-of-points.md` § 2.1,
+    # `runpoints.DONE`, `runpoints.RAN`): a word it never writes would leave
+    # every point of the run unfinished, the run never gathered.
+    ("a run of points finished by a word the job never writes",
+     '[k]\nnoun = "k"\ntopic = "k"\n[k.on.siesta.points]\n'
+     'declaration = "m:D"\nunit = "point"\nfinished = "complete"\n'
+     'wall = "each"\ncount = "m:C"\noutcome = "m:O"\n',
+     "finished is 'complete' -- one of done, ran"),
     ("an export ask named as a surface's own",
      '[k]\nnoun = "k"\ntopic = "k"\nexport = "m"\nexport_doc = "d.md"\n'
      '[k.export_asks.format]\ntype = "flag"\nwords = "w"\n[k.on.siesta]\n',

@@ -83,9 +83,9 @@ def siesta_vibration_rung_of(calc, pset, *, seam, sweep, log, plan,
     is rendered with its own `resumes` (:attr:`Rung.wrapper_at`); its
     report steps and the kind's own steps are every run of points'
     (`PointOfRun`, the kind table's ``steps``)."""
-    from ..siesta.vibration_phases import (FC, RELAX, Call, phase, phases_on,
-                                           run_size_words)
-    from ..kind_table import atom_order
+    from ..siesta.vibration_phases import (FC, PHASES, RELAX, Call, phase,
+                                           phases_on, run_size_words)
+    from ..kind_table import atom_order, kind as _kind
     from ..transport.sort import sort_by
     from ..warmfiles import warm_list
     from ..jobset.naming import stage_home
@@ -104,6 +104,21 @@ def siesta_vibration_rung_of(calc, pset, *, seam, sweep, log, plan,
     # each a point of the run: its folder below the stage, holding the
     # phase's deck and run script every call of it copies (§ 5.11 § 2).
     on = phases_on(cfg0)
+    # EACH PHASE'S ROLE IS ONE ITS KIND NAMES: the phase table
+    # travels beside the job and cannot ask the kind table, so prep asks it
+    # here, before any deck is rendered -- a role renamed in one table and
+    # not the other would leave a phase's deck without the rows its role
+    # reads (the relaxation's restart group), silently.
+    _roles = _kind(task.calculation).role_names
+    _stray = sorted({p.role for p in PHASES} - set(_roles))
+    if _stray:
+        # A DEFECT OF THE SHIPPED TABLES, raised as one -- never answered as
+        # the person's error (as `transport.window` raises its own).
+        raise RuntimeError(
+            f"kind_table.toml: a SIESTA {task.calculation}'s phases play the "
+            f"roles {', '.join(_stray)}, which its kind does not name (its "
+            f"roles: {', '.join(_roles)}) -- molbuilder's two tables of it "
+            f"disagree")
     stage_dir = stage_home(base, task, pset.stage).dir
     points = tuple((calcdirs.prepared_folder(stage_dir, c.prepared), c)
                    for c in (Call(p.name, p.name) for p in on))

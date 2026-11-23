@@ -46,8 +46,7 @@ from __future__ import annotations
 import ast
 from typing import List, Optional, Set
 
-from ..deck_record import (BLOCK_RUN_SETTINGS, begin_marker, end_marker,
-                           without_stamps)
+from ..deck_record import BLOCK_RUN_SETTINGS, in_blocks, without_stamps
 
 
 #: THE NAMES A PySCF DECK ONLY REPORTS UNDER, which nothing PySCF computes
@@ -97,15 +96,8 @@ def script_lines(text: str) -> List[str]:
         tree = ast.parse(plain)
     except SyntaxError:
         return _as_written(text)
-    begin, end = begin_marker(BLOCK_RUN_SETTINGS), end_marker(BLOCK_RUN_SETTINGS)
-    settings: Set[int] = set()
-    inside = False
-    for number, line in enumerate(plain.split("\n"), start=1):
-        bare = line.strip()
-        if bare in (begin, end):
-            inside = bare == begin
-        elif inside:
-            settings.add(number)
+    settings: Set[int] = {i + 1 for i in in_blocks(plain.split("\n"),
+                                                    BLOCK_RUN_SETTINGS)}
     read = ast.unparse(_WhatItComputes(settings).visit(tree))
     masked = without_stamps(read.encode("utf-8")).decode("utf-8")
     return [line.rstrip() for line in masked.split("\n") if line.strip()]
@@ -193,19 +185,13 @@ def _as_written(text: str) -> List[str]:
     """The lines of a script that does not read as Python, as compared: its
     run-settings block, its comment lines and its blank lines aside, its
     stamps masked, its structure line by what it holds."""
-    begin, end = begin_marker(BLOCK_RUN_SETTINGS), end_marker(BLOCK_RUN_SETTINGS)
     masked = without_stamps(text.encode("utf-8")).decode("utf-8")
+    lines = masked.splitlines()
+    aside = in_blocks(lines, BLOCK_RUN_SETTINGS)
     out: List[str] = []
-    in_block = False
-    for line in masked.splitlines():
+    for i, line in enumerate(lines):
         bare = line.strip()
-        if bare == begin:
-            in_block = True
-            continue
-        if bare == end:
-            in_block = False
-            continue
-        if in_block or not bare or bare.startswith("#"):
+        if i in aside or not bare or bare.startswith("#"):
             continue
         out.append(_line_by_what_it_holds(line.rstrip()))
     return out

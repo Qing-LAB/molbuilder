@@ -24,6 +24,22 @@ threads = 1
 #  SIESTA                                                                #
 # ===================================================================== #
 
+# BENCH-MARKS and the template come from one source: each field line is built
+# from its catalogue item -- its keyword, type, unit and an enum's choices
+# (`execution/job-contracts.md` § 3.3).
+[[case]]
+name = "a SIESTA deck's BENCH-MARKS block states each field's catalogue type, unit and an enum's choices"
+stage_strategy = ""
+bench_marks = { "Diag.Algorithm" = { type = "enum", choices = "ScaLAPACK|ELPA-1STAGE|ELPA-2STAGE" }, MeshCutoff = { type = "float", unit = "Ry" } }
+
+# ...its BlockSize narrowed to `pow2` -- a benchmark may be narrower than the
+# deck, never wider (`execution/job-contracts.md` § 3.3).
+[[case]]
+name = "...and its BlockSize field narrowed to a power of two, never wider"
+stage_strategy = ""
+template = { block_size = 64 }
+bench_marks = { BlockSize = { type = "pow2" } }
+
 # A deck whose description states no solver solves with molbuilder's default,
 # not SIESTA's own (`docs/engines/siesta.md` § 7; user, 2026-10-12).
 [[case]]
@@ -62,6 +78,18 @@ stage_strategy = ""
 template = { relax_type = "none", relax_steps = 77 }
 deck_lacks = ["force tol ", "max 77 steps"]
 progress_log_targets = {}
+
+# A VIBRATION'S RELAXATION CALL SAYS THE OPTIMISATION'S OWN LINE, after
+# what it is (`engines/vibration.md` § 5.3): its numbers in
+# the deck's units and the line's one separator, a target nothing chases
+# left out by the same rule.
+[[case]]
+name = "a SIESTA vibration's relaxation call says the optimisation's own line"
+calculation = "vibration"
+stage = "freq"
+part = "relax"
+template = { relax_type = "CG", relax_steps = 77, relax_force_tol = 0.03 }
+deck = ["-- the relaxation of the run: MeshCutoff ", " Ry · force tol 0.03 eV/Ang · CG · max 77 steps"]
 
 # EACH RUNG CONVERGES TO ITS TIER (`engines/tuning.md` § 2.3, the authority
 # for SIESTA's force tolerance, one per tier): loose preopt 0.05 eV/Å,
@@ -224,6 +252,22 @@ deck = ["# mf.level_shift = 0.2"]
 name = "...and a clean organic's none"
 engine = "pyscf"
 deck_lacks = ["# mf.level_shift = 0.2"]
+
+# A hint names this deck's own value of the setting it suggests, never a
+# default or an "(already)" stated whatever was set (`engines/pyscf.md` § 1).
+[[case]]
+name = "a PySCF deck's hints say its own basis, density fitting and DIIS space, never a claim stated whatever was set"
+engine = "pyscf"
+template = { basis = "def2-TZVP", density_fit = false, diis_space = 10 }
+deck = ["(this deck: 'def2-TZVP')", "(this deck: False)", "(this deck: 10)"]
+deck_lacks = ["(already)", "(default 8)"]
+
+[[case]]
+name = "...a tolerance as the deck writes it, and no hint on a setting Hartree-Fock does not use"
+engine = "pyscf"
+template = { method = "HF", scf_conv_tol = 2.345e-9 }
+deck = ["(tighter SCF; this deck: 2.3e-09)"]
+deck_lacks = ["functional = 'PBE'", "cfg.grid_level = 5"]
 
 [[case]]
 name = "...a PySCF deck in the same fence, its run script echoing none"

@@ -106,7 +106,7 @@ def geometric_prefix_expr(names) -> str:
 from .. import script_emit as _sc
 from .script_input import (PARAMS_NAME, RUNTIME_NAME, SIDECAR_NAME,
                            TARGETS_NAME, WORDS_NAME)
-from ..envs.hints import fix_cmd as _fix_cmd
+from ..envs.hints import fix_cmd as _fix_cmd, where_typed as _where_typed
 from . import layout as _layout
 
 
@@ -281,7 +281,7 @@ def spec_for(struct: Structure,
         out.append("Environment:")
         out.append("    The run script activates it; this is how it gets built.")
         out.append("    Bootstrap managed environments once:")
-        out.append("        " + _fix_cmd("bootstrap", "--yes"))
+        out.append("        " + _fix_cmd("bootstrap", "--yes") + _where_typed())
         out.append("\n")
         out.append('"""')
         out.append("")
@@ -333,7 +333,10 @@ def spec_for(struct: Structure,
             out.append('        "molbuilder PySCF script needs the geometric '
                        'optimizer package.\\n"')
             out.append('        "Bootstrap or repair the managed backend:\\n"')
-            out.append(f'        "{_fix_cmd("bootstrap", "--yes")}\\n"')
+            # A PYTHON LITERAL, whatever the checkout's path holds
+            # (`envs.hints.LAUNCHER` quotes it for a shell).
+            out.append("        " + repr(_fix_cmd("bootstrap", "--yes")
+                                         + _where_typed() + "\n"))
             out.append('        f"(import error: {_exc})"')
             out.append("    )")
         if solvent_of(cfg):
@@ -727,7 +730,7 @@ def spec_for(struct: Structure,
 
         # ------------------------------------------------------------- hints
         if v:
-            out += _emit_troubleshooting_block(cfg)
+            out += _emit_troubleshooting_block(cfg, state=state)
 
         return "\n".join(out) if out else None
 
@@ -829,14 +832,13 @@ def _emit_effective_parameters(cfg: PySCFConfig,
     out.append("")
     out.append(f"{PARAMS_NAME} = {{}}")
     block = run_settings_block_names()
-    _resolved = {"net_charge": state.net_charge.value,
-                 "spin_treatment": state.spin_treatment.value,
-                 "unpaired_electrons": state.unpaired_electrons.value,
-                 "method": state.method.value}
+    # THE STATE ITEMS, as the one electronic state resolved them -- every
+    # item `template.STATE_ITEMS` names.
+    from ..template import STATE_ITEMS, default_of, inactive_settings
+    _resolved = {name: getattr(state, name).value for name in STATE_ITEMS}
     # WHAT ENTERS NOTHING HERE has no object to read back: a setting whose
     # `active_when` the others do not meet (`template.inactive_why`) -- a
     # solvent model with no solvent, the gas phase.
-    from ..template import default_of, inactive_settings
     _off = inactive_settings(cfg, engine="pyscf", calculation=calculation)
     for name in _layout.recorded_items(calculation):
         param = (_sc.parameter(name, "pyscf", value=_resolved[name])
@@ -1093,19 +1095,18 @@ def _emit_optimization(cfg: PySCFConfig,
     # geomeTRIC whether it converged -- `optimize()` cannot say -- and
     # applies this rung's on_nonconvergence to the answer.
     from .relax_policy import policy_of
-    policy, retries = policy_of(cfg)
+    policy = policy_of(cfg)[0]
     if v:
         out += _sc.parameter("on_nonconvergence", "pyscf").note()
         if policy == "continue":
             out += _sc.parameter("geom_continue_retries", "pyscf").note()
-    out.append(f"_ON_NONCONVERGENCE = {policy!r}")
-    out.append(f"_GEOM_CONTINUE_RETRIES = {retries}")
+    out.extend(_layout.policy_constants(cfg))
     # THE WALL (`engines/pyscf.md` § 3.9): the deadline the run script's
     # environment states, or none -- read once, kept by the relaxation and
     # by the SCF after it.
     out.append("_MB_WALL_DEADLINE = _mb_wall_deadline()")
     out.append("mol_eq, _GEOM_CONVERGED = _mb_relax(")
-    out.append("        mf, _ON_NONCONVERGENCE, _GEOM_CONTINUE_RETRIES,")
+    out.append(f"        mf, {', '.join(_layout.POLICY_CONSTANTS)},")
     out.append("        deadline = _MB_WALL_DEADLINE,")
     if cfg.save_optimized_xyz:
         # EVERY STEP'S GEOMETRY, KEPT, as SIESTA keeps its `.XV` (user,
@@ -1690,42 +1691,71 @@ def emit_save_helper(v: bool) -> List[str]:
     return out
 
 
-def _emit_troubleshooting_block(cfg: PySCFConfig) -> List[str]:
-    out: List[str] = []
-    out.append("")
-    out.append("# ============================================================")
-    out.append("# TROUBLESHOOTING / TUNING HINTS")
-    out.append("# ============================================================")
-    out.append("#")
-    out.append("# SCF won't converge:")
-    out.append("#   * mf.level_shift = 0.2          (Hartree, lifts virtuals)")
-    out.append("#   * mf.max_cycle = 300")
-    out.append("#   * mf.init_guess = 'atom'        (more diffuse start)")
-    out.append("#   * mf.diis_space = 12            (default 8)")
-    out.append("#   * mf.damp = 0.3                 (start, then 0)")
-    out.append("#")
-    out.append("# Open-shell / radical:")
-    out.append("#   * spin_treatment = unrestricted, unpaired_electrons = N")
-    out.append("#     (N = 2S, the number of unpaired electrons)")
-    out.append("#   * after SCF: mf.stability()")
-    out.append("#")
-    out.append("# Forces look noisy / anisotropic:")
-    out.append("#   * cfg.grid_level = 5            (denser DFT grid)")
-    out.append("#   * cfg.scf_conv_tol = 1e-10      (tighter SCF)")
-    out.append("#")
-    out.append("# Job too slow:")
-    out.append("#   * cfg.basis = 'def2-SVP' (already)")
-    out.append("#   * cfg.density_fit = True (already)")
-    out.append("#   * functional = 'PBE'            (pure GGA, 2-3x faster)")
-    out.append("#   * raise OMP_NUM_THREADS / MKL_NUM_THREADS")
-    out.append("#")
-    out.append("# Geometry optimization oscillates:")
-    out.append("#   * Go back to the state saved before this stage's prep,")
-    out.append("#     loosen its gmax / grms, and prep it anew")
-    out.append(f"#   * Add a looser warm-up stage ahead of it in {TASK_FILE}")
-    out.append("#   * Raise this stage's geom_max_steps")
-    out.append("#")
-    out.append("# Charged / open-shell anions need diffuse functions:")
-    out.append("#   * cfg.basis = 'aug-cc-pVDZ' or 'def2-SVPD'")
-    out.append("#   * cfg.scf_conv_tol = 1e-10")
-    return out
+def _emit_troubleshooting_block(cfg: PySCFConfig, *, state) -> List[str]:
+    """Hints for a deck that misbehaves, each that suggests a value of a
+    setting beside THIS deck's own value of it, as the deck writes it; a
+    setting that enters nothing here (Hartree-Fock's functional and grid,
+    `template.inactive_settings`) offers no hint.  Each deck attribute is
+    the item's own (`layout.keyword`)."""
+    import dataclasses
+    from ..template import STATE_ITEMS, inactive_settings
+    # THE DECK'S OWN VALUES, the electronic state's answers among them.
+    deck = dataclasses.replace(cfg, **{name: getattr(state, name).value
+                                       for name in STATE_ITEMS})
+    off = inactive_settings(deck, engine="pyscf")
+
+    def _hint(item: str, said: str, why: str = "") -> Optional[str]:
+        """One hint: what to set, why, and what this deck holds now."""
+        if item in off:
+            return None
+        held = (f"this deck: "
+                f"{_layout.as_written(item, getattr(deck, item))!r}")
+        return f"#   * {said:<30} ({why + '; ' if why else ''}{held})"
+
+    def _attr(item: str, value: str, why: str = "") -> Optional[str]:
+        """A hint naming the deck attribute the item sets."""
+        return _hint(item, f"{_layout.keyword(item)} = {value}", why)
+
+    def _item(item: str, value: str, why: str = "") -> Optional[str]:
+        """A hint naming the template item, set where it is described."""
+        return _hint(item, f"cfg.{item} = {value}", why)
+
+    return [line for line in [
+        "",
+        "# ============================================================",
+        "# TROUBLESHOOTING / TUNING HINTS",
+        "# ============================================================",
+        "#",
+        "# SCF won't converge:",
+        _attr("level_shift", "0.2", "Hartree, lifts virtuals"),
+        _attr("scf_max_cycle", "300"),
+        _attr("scf_init_guess", "'atom'", "more diffuse start"),
+        _attr("diis_space", "12"),
+        _attr("damp", "0.3", "start, then 0"),
+        "#",
+        "# Open-shell / radical:",
+        _hint("spin_treatment", "spin_treatment = unrestricted"),
+        _hint("unpaired_electrons", "unpaired_electrons = N",
+              "N = 2S, the number of unpaired electrons"),
+        "#   * after SCF: mf.stability()",
+        "#",
+        "# Forces look noisy / anisotropic:",
+        _item("grid_level", "5", "denser DFT grid"),
+        _item("scf_conv_tol", "1e-10", "tighter SCF"),
+        "#",
+        "# Job too slow:",
+        _item("basis", "'def2-SVP'"),
+        _item("density_fit", "True"),
+        _hint("functional", "functional = 'PBE'", "pure GGA, 2-3x faster"),
+        "#   * raise OMP_NUM_THREADS / MKL_NUM_THREADS",
+        "#",
+        "# Geometry optimization oscillates:",
+        "#   * Go back to the state saved before this stage's prep,",
+        "#     loosen its gmax / grms, and prep it anew",
+        f"#   * Add a looser warm-up stage ahead of it in {TASK_FILE}",
+        "#   * Raise this stage's geom_max_steps",
+        "#",
+        "# Charged / open-shell anions need diffuse functions:",
+        _item("basis", "'aug-cc-pVDZ' or 'def2-SVPD'"),
+        _item("scf_conv_tol", "1e-10"),
+    ] if line is not None]

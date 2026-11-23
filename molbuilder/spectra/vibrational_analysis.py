@@ -54,7 +54,7 @@ try:                                        # inside molbuilder
                                vibrational_modes, vibrational_only_thermo)
     from .results import (PHASE_COMPLETE, PHASE_NOT_REQUESTED,
                           SCHEMA_VERSION, ModeData, SpectraResults,
-                          removed_motions_of)
+                          relaxation_block, removed_motions_of)
     from ..runfiles import TASK_FILE
 except ImportError:                         # beside a job, in mb_vibration.pyz
     from atom_permutation import (AtomIndexMap, Permutation,  # type: ignore
@@ -68,7 +68,7 @@ except ImportError:                         # beside a job, in mb_vibration.pyz
                               vibrational_modes, vibrational_only_thermo)
     from results import (PHASE_COMPLETE, PHASE_NOT_REQUESTED,
                          SCHEMA_VERSION, ModeData, SpectraResults,
-                         removed_motions_of)
+                         relaxation_block, removed_motions_of)
     from runfiles import TASK_FILE  # type: ignore[no-redef]
 
 def vibrational_analysis(hessian, masses_amu: Sequence[float],
@@ -354,16 +354,15 @@ def _stationarity(reference_forces_ev_ang, n: int, free: Sequence[int],
                                    ladder_relaxation, Mapping) else None,
                                stage=stage))
     ladder = ladder_relaxation if isinstance(ladder_relaxation, Mapping) else None
-    return {"enabled": ladder is not None,
-            "already_relaxed": bool(already_relaxed),
-            "n_steps": (int(ladder.get("n_steps") or 0) if ladder else 0),
-            # THE RELAXING STAGE'S RECORD, WHOLE (`engines/vibration.md`
-            # § 6.10.1) -- what the relaxation reached, as its reader states
-            # it, not a step count alone.
-            "record": (dict(ladder) if ladder else None),
-            "max_force_eh_bohr": max_free_eh,
-            "max_force_all_atoms_eh_bohr": max_all_eh,
-            "converged": converged, "warning": warning}
+    return relaxation_block(
+        enabled=ladder is not None, already_relaxed=already_relaxed,
+        n_steps=(int(ladder.get("n_steps") or 0) if ladder else 0),
+        # THE RELAXING STAGE'S RECORD, WHOLE (`engines/vibration.md`
+        # § 6.10.1) -- what the relaxation reached, as its reader states it,
+        # not a step count alone.
+        record=(dict(ladder) if ladder else None),
+        max_force_eh_bohr=max_free_eh, max_force_all_atoms_eh_bohr=max_all_eh,
+        converged=converged, warning=warning)
 
 
 __all__ = ["vibrational_analysis", "nonstationary_remedy"]

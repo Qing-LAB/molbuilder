@@ -178,7 +178,7 @@ FAILING_VERDICTS = ("owned", "unclassified")
 #: Shrinking it is the point; growing it is the failure.
 #:
 #: Empty: each segment has one home its callers import -- `pseudos` in
-#: `pseudos.PSEUDO_DIRNAME`, `launch` in `runfiles.LAUNCH_DIR` (a launch
+#: `runfiles.PSEUDO_DIR`, `launch` in `runfiles.LAUNCH_DIR` (a launch
 #: group's files named by `runfiles.GroupNames`), the
 #: `checkpoint.ARCHIVE_DIR` arrangement.
 GUARDED_UNDECLARED = ()
@@ -325,7 +325,7 @@ def _calc_containers() -> "dict[str, str | None]":
         # declared as a constant, so the name has one home
         ARCHIVE_DIR: "checkpoint.ARCHIVE_DIR",
         # declared as a constant, and every caller imports it (2026-09-19)
-        "pseudos": "pseudos.PSEUDO_DIRNAME",
+        "pseudos": "runfiles.PSEUDO_DIR",
         # UNDECLARED -- the last one.  Five sites in `jobset/submit.py` spell
         # it; it needs a home before it can be closed the same way.
         "launch": None,
@@ -339,13 +339,6 @@ CALC_CONTAINERS = _calc_containers()
 _SEGMENT_OVERRIDES: "dict[tuple[str, str, str], str]" = {
     # Empty, and that is the finished state -- an exemption here excuses a
     # spelled segment, and there is none left to excuse.
-    #
-    # *(One row stood here until 2026-09-19: `prep._pseudo_dir`, "THE DOOR
-    # ITSELF, and the finding is that it is PRIVATE".  It went stale the way
-    # the header promises -- `pseudos.PSEUDO_DIRNAME` gave the name a home,
-    # the door imports it, and `stale_segment_overrides` reported the row
-    # against no site.  The exemption did not need re-anchoring; the thing it
-    # excused had stopped existing.)*
 }
 
 

@@ -10,8 +10,8 @@ import pytest
 
 from molbuilder.runfiles import RunNames
 from molbuilder.siesta.makov_payne import (
+    MADELUNG_CUBIC,
     compute_correction,
-    effective_L,
     render_correction_script,
     emit_correction_script,
 )
@@ -80,24 +80,52 @@ class TestComputeCorrection:
 _NAMES = RunNames("job", "01_relax")
 
 
-class TestTheLengthTheScriptUses:
-    """The correction scales as 1/L, and L is computed by the script a run
-    carries and by `effective_L` for a person's own: a wrong length is a wrong
-    energy with nothing to show for it, and the two are never to differ."""
+def _the_script(**kw) -> dict:
+    """The correction script a run carries, run as a module: its names."""
+    script = render_correction_script(system_label="job", q=1,
+                                      stage=_NAMES.stage, **kw)
+    made: dict = {"__name__": "the_script"}
+    exec(compile(script, "makov_payne_correction.py", "exec"), made)
+    return made
+
+
+class TestTheScriptAgreesWithMolbuilder:
+    """The script beside a finished run holds no molbuilder, so its length
+    and its formula are copies (`makov_payne.render_correction_script`): a
+    wrong length or a drifted formula is a wrong energy with nothing to show
+    for it.  The length is the cube root of the volume molbuilder measures
+    for that cell (`cell.resolve`), the formula is `compute_correction`'s."""
 
     @pytest.mark.parametrize("cell, length", [
         pytest.param([[15.0, 0, 0], [0, 15.0, 0], [0, 0, 15.0]], 15.0,
                      id="a cubic cell: its side"),
         pytest.param([[10.0, 0, 0], [0, 12.0, 0], [0, 0, 18.0]],
                      2160 ** (1 / 3), id="any other: the volume's cube root"),
+        pytest.param([[12.0, 0, 0], [6.0, 10.392304845, 0], [0, 0, 20.0]],
+                     2494.153162800 ** (1 / 3),
+                     id="a skewed cell: still the volume's cube root"),
     ])
     def test_L_is_the_cube_root_of_the_volume(self, cell, length):
-        script = render_correction_script(system_label="job", q=1,
-                                          stage=_NAMES.stage)
-        made: dict = {"__name__": "the_script"}
-        exec(compile(script, "makov_payne_correction.py", "exec"), made)
-        assert made["effective_length_angstrom"](cell) == pytest.approx(length)
-        assert effective_L(cell) == pytest.approx(length)
+        import numpy as np
+        from molbuilder.cell import resolve
+        from molbuilder.structure import Structure
+        measured = resolve(Structure(elements=["Na"],
+                                     positions=np.zeros((1, 3)),
+                                     cell=np.asarray(cell))).volume
+        assert measured ** (1 / 3) == pytest.approx(length)
+        assert (_the_script()["effective_length_angstrom"](cell)
+                == pytest.approx(length))
+
+    @pytest.mark.parametrize("q, L, epsilon_r, madelung", [
+        pytest.param(1, 15.0, 1.0, MADELUNG_CUBIC, id="a cation in vacuum"),
+        pytest.param(-2, 22.5, 4.0, MADELUNG_CUBIC,
+                     id="a dianion in a dielectric"),
+        pytest.param(3, 18.0, 1.0, 2.0, id="another shape's constant"),
+    ])
+    def test_the_formula_is_molbuilders(self, q, L, epsilon_r, madelung):
+        assert (_the_script()["compute_correction"](q, L, epsilon_r, madelung)
+                == pytest.approx(compute_correction(q, L, epsilon_r,
+                                                    madelung), rel=1e-12))
 
 
 class TestScriptGeneration:
@@ -108,7 +136,7 @@ class TestScriptGeneration:
 
     def test_carries_q_and_label(self):
         """What the script holds, read by running it, as
-        `TestTheLengthTheScriptUses` does.  THE SILENT FAILURE: a charged
+        `TestTheScriptAgreesWithMolbuilder` does.  THE SILENT FAILURE: a charged
         molecule's correction computed for another charge; a text pin passes
         ``NET_CHARGE   = -2 + 1``."""
         s = render_correction_script(

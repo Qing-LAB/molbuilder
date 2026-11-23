@@ -20,8 +20,7 @@ import dataclasses
 from typing import Optional
 from pathlib import Path
 
-from ..pseudos import PSEUDO_DIRNAME
-from ..runfiles import PSEUDO_FILE, find_fixed, fixed_name
+from ..runfiles import PSEUDO_DIR, PSEUDO_FILE, find_fixed, fixed_name
 from ..siesta.seam import pseudo_dir
 from ..jobset.errors import PrepError, user_error_as_prep
 from ..jobset.naming import stage_home
@@ -63,8 +62,8 @@ def provide_pseudos(struct, base: Path, citation: str, *,
         except OutsideRoot:
             cited = None
         if cited is not None:
-            if (cited / PSEUDO_DIRNAME).is_dir():
-                lib = cited / PSEUDO_DIRNAME
+            if (cited / PSEUDO_DIR).is_dir():
+                lib = cited / PSEUDO_DIR
             elif find_fixed(cited, PSEUDO_FILE):
                 lib = cited
         missing = (copy_pseudopotentials(want, lib, pdir, plan=plan)
@@ -73,7 +72,7 @@ def provide_pseudos(struct, base: Path, citation: str, *,
             raise PrepError(
                 f"this transport calculation needs "
                 f"{', '.join(fixed_name(PSEUDO_FILE, species=m) for m in missing)}"
-                f" and there is none in {base.name}/{PSEUDO_DIRNAME}/ or in "
+                f" and there is none in {base.name}/{PSEUDO_DIR}/ or in "
                 f"the cited "
                 f"directory ({citation}).  The pseudopotentials travel "
                 f"with the citation: a "

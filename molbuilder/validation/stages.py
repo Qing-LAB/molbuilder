@@ -1,6 +1,6 @@
 """Validation across a ladder — the members, and the sequence.
 
-**Module:** L3. Imports ``issues``, and ``template`` at call time; called by producers and
+**Module:** L2 (`docs/architecture.md`). Imports ``issues`` and ``identity``, and ``template`` at call time; called by producers and
 by the web Build path. Imported by nothing below it.
 
 **Contract:** [`engines/stages.md`](?doc=engines/stages.md) § 4 — R2 (*a stage
@@ -30,6 +30,7 @@ from __future__ import annotations
 import dataclasses
 from typing import Any, List, Sequence, Tuple
 
+from ..identity import continues
 from ..issues import Issue
 
 
@@ -193,7 +194,7 @@ def check_identical_stages(resolved: Sequence[Tuple[str, Any]]) -> List[Issue]:
     """
     out: List[Issue] = []
     for (a_name, a_cfg), (b_name, b_cfg) in zip(resolved, resolved[1:]):
-        if getattr(b_cfg, _RESTART, None) != "clean":
+        if continues(b_cfg):          # the field's one reading (`identity`)
             continue
         if not _same_but_for_restart(a_cfg, b_cfg):
             continue

@@ -658,7 +658,8 @@ phase.
 # constants from the description: JOB, ATOMS, ELEMENTS, N_ATOMS, FROZEN_INDICES_USER
 # (the held set as the structure gave it) → FROZEN_ATOM_IDXS / FREE_ATOM_IDXS,
 # AXIS_KIND (the axes gto.M computes on: a cluster's, cell.engine_axis_kinds),
-# ALREADY_RELAXED, GEOM_* criteria, THERMO_T_K, THERMO_P_ATM, COMPUTE_IR,
+# ALREADY_RELAXED, the _GEOM_* criteria and _ON_NONCONVERGENCE (the optimization
+# deck's names, `pyscf.layout`), THERMO_T_K, THERMO_P_ATM, COMPUTE_IR,
 # COMPUTE_RAMAN, RAMAN_FD_STEP_ANG, DISPLACEMENT_AMPLITUDE_ANG,
 # ES_MODE_SELECTION, ...
 # from mb_pyscf.pyz, imported as _mb_<name>: relax, homo_index, mo_window,
@@ -666,7 +667,8 @@ phase.
 # signed_omega, frequencies_cm1, display_form, thermo_temperatures,
 # vibrational_only_thermo, ir_strength_km_mol,
 # write_spectra_payload, finite_or_none, SpectraResults, ModeData,
-# ModeElectronicStructure, equilibrium_block, removed_motions_of, thermo_block,
+# ModeElectronicStructure, equilibrium_block, relaxation_block,
+# removed_motions_of, thermo_block,
 # select_modes, stop_if_past_wall,
 # wall_deadline, AtomIndexMap, MolwatchEmitter, StructureCodec, and the
 # constants module — each from its one home
@@ -683,7 +685,7 @@ COORDS_EQ_ANG = mol.atom_coords(unit='Angstrom')                     # the Hessi
 # Phase 1 — the equilibrium SCF (§ 4.3)
 mf = build_mf(COORDS_EQ_ANG).run();  E_eq, MO_ENERGIES_EQ, HOMO_IDX
 if ALREADY_RELAXED:
-    check  max|F_a| over a ∈ FREE  <  GEOM_GMAX    # R5 — warns with the numbers, never refuses
+    check  max|F_a| over a ∈ FREE  <  _GEOM_GMAX   # R5 — warns with the numbers, never refuses
 
 # Phase 2 — the Hessian and the one harmonic path (§ 4.4, § 4.5)
 HESS, DMU_DR, IR_ROUTE = dipole_derivatives(mf_for_hess, FREE_ATOM_IDXS, want_analytic_ir)
@@ -1399,7 +1401,10 @@ what they give, [`science/vibrational-optical-response.md`](?doc=science/vibrati
 § 2.
 
 The stage header line names the range, the counts and the displacement
-(`siesta/vibration_deck.py::stage_science`); the record blocks that every deck
+(`siesta/vibration_deck.py::stage_science`); the relaxation call's is the
+optimisation's own line after *the relaxation of the run:*
+(`siesta/input._stage_science`), in the deck's units, a target nothing chases
+left out; the record blocks that every deck
 carries follow, and one more that only this kind's deck carries — the
 **`vibration` block**, what the finish (§ 5.5) needs and no SIESTA keyword
 states:
@@ -2821,7 +2826,9 @@ taking its items (§ 4): a SIESTA vibration rung carries every role (its
 part's `stage_roles = "every"`; `template.stage_roles`, a tuple — `reads` is
 any-of), a PySCF rung `force_constants`; the named set `"scf"` holds
 `optical`; a stage override applies to every phase; the stage table offers
-one row.
+one row. Prep holds the two tables to each other before any deck is
+rendered: a phase whose role the kind does not name is a defect of the
+shipped tables, raised as one (`spectra.siesta_rung`).
 
 | phase | items |
 |---|---|
@@ -3130,7 +3137,7 @@ refused by name.
 | `hessian_scope` · `n_atoms_in_hessian` · `hessian_density_fit` | both | `free` (second derivatives for the free atoms only) or `all`; how many; whether the Hessian itself was density-fitted (`false` on the reduced route, `null` on SIESTA) |
 | `ir_route` · `ir_fd_step_ang` · `raman_route` · `raman_fd_step_ang` | both | which route produced each strength and the step of a difference (§ 4.6) — on SIESTA `ir_route` `charges` (the infrared derived from the stored charges, § 5.10 ②) and `raman_route` `optical` (§ 5.11 § 10); `none` when not computed; an older file reads `""` — absence of a record, never a claim |
 | `phase_relaxation` · `phase_frequencies` · `phase_raman` · `phase_ir` · `phase_es` | both | `empty` · `running` · `complete` · `not requested` (§ 4.9), and `phase_ir` `""` in a file written before 2026-09-28; the SIESTA writer writes `complete` for the frequencies, `not requested` for the probe, and for Raman `running` once its optical calls are planned and `complete` at the finish — `not requested` with *Compute Raman* off, `complete` with no call where the range kept no mode (§ 5.11 § 8); for the relaxation `complete` when the run's `relax` call ran (its record's `n_steps` in `relaxation.n_steps`, `enabled` true) or `not requested` when the box was ticked |
-| `relaxation.{enabled, already_relaxed, n_steps, record, max_force_eh_bohr, max_force_all_atoms_eh_bohr, converged, warning}` | both | the tracked precondition; the judged force is over the free atoms, in Eh/Bohr (§ 4.3), and `converged` is its verdict against the criterion on every route — after the relaxation, under the person's statement, at SIESTA's reference step (§ 4.2, § 4.3, § 5.5); SIESTA writes `enabled` true when the run's `relax` call ran, or was taken over from the first stage of a displacement sweep (§ 5.9) — its relaxation record, from the run's index (§ 5.11 § 3), gives `n_steps`, and `record` is that `relax` call's record whole, `null` when no call relaxed — and false when the box was ticked, `already_relaxed` as the person's statement, the judged force and verdict of § 5.5, and the warning the viewer shows in the phase's row |
+| `relaxation.{enabled, already_relaxed, n_steps, record, max_force_eh_bohr, max_force_all_atoms_eh_bohr, converged, warning}` | both | the tracked precondition; the judged force is over the free atoms, in Eh/Bohr (§ 4.3), and `converged` is its verdict against the criterion on every route — after the relaxation, under the person's statement, at SIESTA's reference step (§ 4.2, § 4.3, § 5.5); SIESTA writes `enabled` true when the run's `relax` call ran, or was taken over from the first stage of a displacement sweep (§ 5.9) — its relaxation record, from the run's index (§ 5.11 § 3), gives `n_steps`, and `record` is that `relax` call's record whole, `null` when no call relaxed — and PySCF's always `null`: it relaxes inside its one deck, whose relaxation the row's other keys state — and false when the box was ticked, `already_relaxed` as the person's statement, the judged force and verdict of § 5.5, and the warning the viewer shows in the phase's row |
 | `thermo` | both | `regime`, the headline temperature — and pressure for `rrho`, `null` for `vibrational-only` — with `zpe_eh`, `h_eh`, `s_eh_k`, `g_eh`, `n_modes`, `n_imag_excluded`, `n_rigid_removed`, `note`, and `grid` (§ 4.7) |
 | `selected_mode_idxs_1based` | PySCF | the modes that got the electronic-structure probe |
 | `config` | both | how it was computed: what the description held (the PySCF config as a dict); on SIESTA the engine, the kind (`calculation`) and the stage, and `deck` — the force-constant deck: its `name` and `sha256` (the deck file's alone); its `keywords` and `blocks`, every keyword and block it states as written, by their spelling, but its geometry (`parse.fdf.GEOMETRY_KEYS`: the coordinates and the lattice, which the result states from the structure) — the functional, the basis, the mesh, the k-points, the species; and its `pseudopotentials`, each species' `<label>.psml` SIESTA opened beside the deck, by name and sha256 |

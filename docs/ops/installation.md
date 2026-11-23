@@ -237,7 +237,17 @@ list ([`env-framework.md`](?doc=ops/env-framework.md) § 3.4).
 `pyscf` import probe, and AmberTools `LEaP`. **Every problem it detects
 ends with its exact fix command** *(user, 2026-08-20)* — a `next:` line
 (`enable:` for gated features, `add:` for opt-in packages) naming the
-`bash scripts/install-env.sh` invocation that repairs it (`install --yes` for a
+install script's invocation that repairs it, **by the checkout's full path**,
+`bash <checkout>/scripts/install-env.sh …`, so the line runs typed in any
+folder *(the user, 2026-11-22: "Launcher by full path"; `envs.hints.LAUNCHER`,
+every printed env command's one spelling)* — and in a file prepared for
+another machine, and in a run script on every machine, as typed in
+molbuilder's checkout, `bash scripts/install-env.sh … in molbuilder's
+checkout`, since nothing prep writes names the machine it was prepared on and
+a run script is one file for every machine
+([`preparing-for-another-machine.md`](?doc=execution/preparing-for-another-machine.md)
+§ 2; the user, 2026-11-22: "Full path here, words there", "Run script: words
+everywhere") (`install --yes` for a
 missing env — `bootstrap --yes` for the host env, the one the script runs its
 other verbs from — `repair` for missing packages, `repair --include-version-fix` when
 only version/build pins differ — `install --clean --yes` for a source build,
@@ -515,7 +525,7 @@ still audits OK:
     audit:   OK (11/12 ok; 1 optional unavailable -- gated features will be disabled)
         [pip-source-optional] pyscf-properties @ git+https://github.com/pyscf/properties.git  (installed: (default index))
           why: pyscf.prop.infrared -- the analytic dipole derivative -- was written 2022-02-22 …
-    enable:  bash scripts/install-env.sh repair molbuilder-pySCF --include-optional
+    enable:  bash /home/you/molbuilder/scripts/install-env.sh repair molbuilder-pySCF --include-optional
 ```
 
 Two independent surfaces catch it, deliberately: the **audit** compares provenance

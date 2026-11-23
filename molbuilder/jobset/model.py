@@ -57,8 +57,9 @@ _KINDS = (KIND_SWEEP, KIND_LADDER)
 #: vocabulary (`job-contracts.md` § 6.2): PySCF's ``threads`` is SIESTA's
 #: ``omp_threads``, the cores one process runs on; ``gpu_count`` is the count
 #: in ``gres``; a name missing here is the field's own.  Read by the run
-#: card's assembly, the placement's check and `resolve`'s hand-over to the
-#: deck writer -- one map, the three of them.
+#: card's assembly, the placement's check, `resolve`'s hand-over to the
+#: deck writer and a benchmark trial's asked-against-ran -- one map, every
+#: reader of the exchange names.
 AS_RESOURCE = {
     "omp_threads": "cpus_per_task",
     "threads": "cpus_per_task",
@@ -264,8 +265,10 @@ class GpuRequest:
     @property
     def gres(self) -> Optional[str]:
         """What ``--gres`` carries: ``gpu:<count>`` -- a count, never a card
-        (`scheduler.md` R2a) -- or ``None`` for a run on the CPU."""
-        return f"gpu:{self.count}" if self.uses else None
+        (`scheduler.md` R2a) -- or ``None`` for a run on the CPU; spelled by
+        the dialect's door."""
+        from ..scheduler.quantities import canonical_gres
+        return canonical_gres(str(self.count)) if self.uses else None
 
 
 #: THE FIELDS THE DOOR READS TOGETHER -- a reader comparing a job's

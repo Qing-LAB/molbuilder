@@ -40,12 +40,15 @@ from typing import List
 
 from .. import script_emit as _sc
 from ..structure import Structure
+from ..constants import ATM_PA
 from .input import (GEOMETRIC_APPENDS, emit_bundle_imports,
                     emit_constraints_file, emit_gpu_probe, emit_pyscf_threads,
                     emit_run_settings_block, emit_runtime_facts,
                     emit_save_call, emit_script_head, emit_title_by_verdict,
                     emit_words,
                     run_file_expr, ROLE_INITIAL, PYSCF_OPTIMIZED, ROLE_SPECTRA)
+from .layout import (GEOMETRY_SECTION, POLICY_CONSTANTS, geom_constant,
+                     geom_constants, keyword, policy_constants)
 from .script_input import WORDS_NAME
 
 # The science emitters, composed here.
@@ -129,7 +132,8 @@ def _vib_constants(cfg, names) -> List[str]:
     from ..sidecars.spectra import write_spectra_payload
     from ..spectra.results import (ModeData, ModeElectronicStructure,
                                    SpectraResults, equilibrium_block,
-                                   finite_or_none, removed_motions_of)
+                                   finite_or_none, relaxation_block,
+                                   removed_motions_of)
     from .. import constants
     from ..spectra.normal_modes import (display_form, frequencies_cm1,
                                         signed_omega, thermo_block,
@@ -143,9 +147,7 @@ def _vib_constants(cfg, names) -> List[str]:
     from ..spectra.selection import select_modes
     from ..trajectory_log.emitter import MolwatchEmitter
     from ..workingcopy_structure import StructureCodec
-    from .layout import GEOMETRY_SECTION
-    from .relax_policy import (policy_of, relax, stop_if_past_wall,
-                               wall_deadline)
+    from .relax_policy import relax, stop_if_past_wall, wall_deadline
     out = ["",
            "# ---- vibration-kind constants (framework deck) ----",
            f"ALREADY_RELAXED = {bool(cfg.already_relaxed)}",
@@ -154,13 +156,12 @@ def _vib_constants(cfg, names) -> List[str]:
            "# tier -- a frequency deserves a real stationary point).",
            # ONE CONSTANT PER ITEM OF THE GEOMETRY SECTION, read from it
            # (`layout.GEOMETRY_SECTION`), as the relaxation's call is.
-           *(f"GEOM_{_n[5:].upper():<9} = {getattr(cfg, _n)!r}"
-             for _n in GEOMETRY_SECTION.items),
+           *geom_constants(cfg),
            "# What the relaxation does when geomeTRIC reports its criteria",
-           "# unmet at GEOM_MAX_STEPS (engines/pyscf.md 3): halt, continue",
+           f"# unmet at {geom_constant('geom_max_steps')} (engines/pyscf.md "
+           "3): halt, continue",
            "# from the geometry reached, or proceed with it.",
-           f"ON_NONCONVERGENCE     = {policy_of(cfg)[0]!r}",
-           f"GEOM_CONTINUE_RETRIES = {policy_of(cfg)[1]}",
+           *policy_constants(cfg),
            f"THERMO_T_K     = {float(cfg.temperature_K)!r}",
            f"THERMO_P_ATM   = {float(cfg.pressure_atm)!r}",
            # Every molbuilder function the deck runs, from the bundle its
@@ -181,7 +182,8 @@ def _vib_constants(cfg, names) -> List[str]:
                write_spectra_payload, finite_or_none, select_modes,
                ir_strength_km_mol, constants, AtomIndexMap,
                SpectraResults, ModeData, ModeElectronicStructure,
-               equilibrium_block, thermo_block, removed_motions_of),
+               equilibrium_block, thermo_block, removed_motions_of,
+               relaxation_block),
            f"JSON_PATH = _mb_outfile({run_file_expr(names, ROLE_SPECTRA)})",
            # THE WALL (`engines/pyscf.md` § 3.9): the deadline this deck
            # keeps -- its relaxation stops at it, its displaced SCFs refuse
@@ -211,6 +213,7 @@ def _vib_relax_block(cfg, names) -> List[str]:
     against ``geom_gmax`` — the meaning the key has on every route
     (`engines/vibration.md` § 4.2, § 4.3, § 5.5); geomeTRIC's own verdict,
     all of its criteria, decides the policy."""
+    _gmax = geom_constant("geom_gmax")
     out: List[str] = [
         "",
         "# ============================================================",
@@ -270,15 +273,16 @@ def _vib_relax_block(cfg, names) -> List[str]:
     else:
         _cb = "_relax_cb"
     # The geomeTRIC keyword spellings are the catalogue's, as the optimization
-    # deck's section reads them (`layout.geom_keyword`).
-    from .layout import geom_keyword, GEOMETRY_SECTION
+    # deck's section reads them (`layout.keyword`).
     _conv_rows = [
-        f"'{geom_keyword(_n)}': GEOM_{_n[5:].upper()}"
+        f"'{keyword(_n)}': {geom_constant(_n)}"
         for _n in GEOMETRY_SECTION.items if _n != "geom_max_steps"]
     out += [
         "    _conv = {" + ",\n             ".join(_conv_rows) + "}",
     ]
-    _opt_kw = f"maxsteps=GEOM_MAX_STEPS, callback={_cb}"
+    # THE STEP BOUND under its own anchor (``maxsteps``), as every target.
+    _opt_kw = (f"{keyword('geom_max_steps')}="
+               f"{geom_constant('geom_max_steps')}, callback={_cb}")
     _frozen = list(getattr(cfg, "frozen_indices", []) or [])
     if _frozen:
         out += [
@@ -318,7 +322,7 @@ def _vib_relax_block(cfg, names) -> List[str]:
     unmet = f"{WORDS_NAME}['relaxation_unmet']"
     out += [
         "    mol, _geometric_converged = _mb_relax(",
-        "        _mf_relax, ON_NONCONVERGENCE, GEOM_CONTINUE_RETRIES,",
+        f"        _mf_relax, {', '.join(POLICY_CONSTANTS)},",
         "        deadline=_MB_WALL_DEADLINE,",
         f"        {_opt_kw}, **_conv)",
         # THE RELAXATION'S OWN VERDICT, into the progress log's footer
@@ -332,11 +336,13 @@ def _vib_relax_block(cfg, names) -> List[str]:
         "    _mb_stop_if_past_wall(_MB_WALL_DEADLINE)",
         "    _judged = state['relaxation']['max_force_eh_bohr']",
         "    state['relaxation']['converged'] = (",
-        "        None if _judged is None else bool(_judged <= GEOM_GMAX))",
+        "        None if _judged is None else bool(_judged <= "
+        f"{_gmax}))",
         "    if not _geometric_converged:",
         f"        {unmet} = (",
         '            f"the relaxation did not meet geomeTRIC\'s criteria in "',
-        '            f"{GEOM_MAX_STEPS} steps; on_nonconvergence = proceed kept "',
+        '            f"{' + geom_constant("geom_max_steps") + '} steps; '
+        'on_nonconvergence = proceed kept "',
         '            f"the geometry it reached, so the frequencies below are the "',
         '            f"curvature there, not at the minimum")',
         f"        state['relaxation']['warning'] = {unmet}",
@@ -366,6 +372,7 @@ def _vib_gradient_check() -> List[str]:
     literal at render time."""
     from ..spectra.vibrational_analysis import nonstationary_remedy
     _remedy = nonstationary_remedy(None)
+    _gmax = geom_constant("geom_gmax")
     warned = f"{WORDS_NAME}['not_stationary']"
     return [
         "",
@@ -382,13 +389,14 @@ def _vib_gradient_check() -> List[str]:
         "        _maxf = float(np.abs(_g0[FREE_ATOM_IDXS]).max())",
         "        state['relaxation']['max_force_eh_bohr'] = _maxf",
         "        state['relaxation']['max_force_all_atoms_eh_bohr'] = _maxf_all",
-        "        state['relaxation']['converged'] = bool(_maxf <= GEOM_GMAX)",
-        "        if _maxf > GEOM_GMAX:",
+        f"        state['relaxation']['converged'] = bool(_maxf <= {_gmax})",
+        f"        if _maxf > {_gmax}:",
         f"            {warned} = (",
         "                f'the input geometry is not a stationary point '",
         "                f'at this level of theory: the largest force on '",
         "                f'the free atoms is {_maxf:.2e} Eh/Bohr against '",
-        "                f'the geom_gmax of this calculation, {GEOM_GMAX:.1e}. '",
+        "                f'the geom_gmax of this calculation, {" + _gmax
+        + ":.1e}. '",
         "                f'The frequencies are the curvature at this point, '",
         "                f'not at the minimum, and will be off -- the low '",
         "                f'ones most.  already_relaxed was stated, so this '",
@@ -446,7 +454,8 @@ def _vib_thermo_block() -> List[str]:
         "            # The same signed omega the modes were reported from;",
         "            # pyscf's thermo keeps the positive ones itself.",
         "            _r = _pyscf_thermo.thermo(mf, _OMEGA_AU, float(_T),",
-        "                                   THERMO_P_ATM * 101325.0)",
+        # THE ATMOSPHERE IN PASCALS, from its one home (`constants`).
+        f"                                   THERMO_P_ATM * {ATM_PA!r})",
         "            return (float(_r['ZPE'][0]),",
         "                    float(_r['E_vib'][0]) - float(_r['ZPE'][0]),",
         "                    float(_r['H_tot'][0]), float(_r['S_tot'][0]),",

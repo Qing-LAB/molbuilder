@@ -46,6 +46,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 from molbuilder.calculation import open as open_calculation
+from molbuilder.envs.hints import launcher_of
 from support.machines import SLURM
 
 
@@ -86,6 +87,17 @@ def jobset(*args, input=None):
 #: named by its path, running the package.  Every printed line to type
 #: starts with it.
 TYPED = '"${CONDA_PREFIX:?}/bin/python" -m molbuilder'
+
+#: A CHECKOUT WHOSE PATH THE SHELL QUOTES -- a space and an apostrophe -- and
+#: the launcher it names, by the launcher's own door (`envs.hints.
+#: launcher_of`): a checkout cannot be moved for a test, so a row stands its
+#: launcher in (monkeypatched onto `envs.hints.LAUNCHER`;
+#: `ops/installation.md` § 2, the full path).
+QUOTED_CHECKOUT = "/home/a b/it's/molbuilder"
+QUOTED_LAUNCHER = launcher_of(QUOTED_CHECKOUT)
+#: ...and the part of its path every quoting of it leaves as written: what
+#: a row finds where the launcher was put.
+QUOTED_CHECKOUT_SEEN = QUOTED_CHECKOUT.split("'")[0]
 
 
 def printed_commands(output: str):
@@ -748,14 +760,18 @@ def calls_made(calls: Path):
 #      as the words each carries) -- and what the launch left
 #      (`launch_writes_nothing`: every file under the calculation as it was;
 #      `after_launch`: the after-prep checks below, asked again);
-#   2. WHAT IS PRODUCED -- the `.sbatch` header (`header`, or
+#   2. WHAT IS PRODUCED -- of a SIESTA vibration, the files of the call
+#      `part` names (its folder: `relax`, `fc` or `optical`) -- the
+#      `.sbatch` header (`header`, or
 #      `header_absent`), the deck (`deck`; `deck_says`, what the engine
 #      reads for each keyword it names -- a SIESTA deck through the one fdf
 #      reader, `parse.fdf.read_fdf`, its comments skipped, a PySCF deck's
 #      assignments at the top level as Python runs them, the last one
-#      standing; and `deck_reads`, what the one fdf reader's
+#      standing; `deck_reads`, what the one fdf reader's
 #      `parse_fdf_params`, the reader every consumer of a deck asks, reads
-#      from it, field by field), the run script
+#      from it, field by field; and `bench_marks`, its BENCH-MARKS block's
+#      fields as `deck_record.read_bench_marks_block` reads them), the run
+#      script
 #      (`run_sh`), each
 #      with a `_lacks` twin -- and the first three with an `_order` twin
 #      (lines standing in that order) and a `_once` twin (lines standing
@@ -1718,10 +1734,12 @@ def _road_runs(bundle: Path, pattern: str) -> "list[Path]":
             if "bench" not in p.relative_to(bundle).parts]
 
 
-def _the_runs(bundle: Path, pattern: str) -> Path:
+def _the_runs(bundle: Path, pattern: str, part: "str | None" = None) -> Path:
     """The file of this name the run's prep wrote -- in the stage's
-    folder and its first run, one text in both."""
-    found = _road_runs(bundle, pattern)
+    folder and its first run, one text in both; of a SIESTA vibration,
+    ``part``'s, in its call's folder (`engines/vibration.md` § 5.11 § 2)."""
+    found = [p for p in _road_runs(bundle, pattern)
+             if part is None or p.parent.name == part]
     assert found and len({p.read_text() for p in found}) == 1, found
     return found[-1]
 
@@ -1768,14 +1786,16 @@ def _unwritable(case, key, bundle):
         folder.chmod(0o700)
 
 
-def stage_file(bundle: Path, stage: str, role: str) -> Path:
+def stage_file(bundle: Path, stage: str, role: str,
+               part: "str | None" = None) -> Path:
     """The file ``stage``'s prep wrote for ``role`` -- ``.sbatch``,
     ``.run.sh``, the deck's suffix -- by the one composer's names
-    (`runfiles.RunNames`): on the calculation's label, its token."""
+    (`runfiles.RunNames`): on the calculation's label, its token; of a
+    SIESTA vibration, ``part``'s call's."""
     from molbuilder.jobset.naming import stage_home
     from molbuilder.task import of as task_of
     names = stage_home(bundle, task_of(bundle), stage).names
-    return _the_runs(bundle, names.name(role))
+    return _the_runs(bundle, names.name(role), part)
 
 
 def the_fence_holds(bundle, folder, listed, never) -> None:
@@ -1972,11 +1992,12 @@ def run_road_case(table, case, tmp_path, monkeypatch, *, ran=None) -> None:
         if any(k in case for k in (key, f"{key}_lacks", f"{key}_order",
                                    f"{key}_once")):
             _road_lines(case, key, stage_file(
-                bundle, case.get("stage", "coarse"), role).read_text())
+                bundle, case.get("stage", "coarse"), role,
+                case.get("part")).read_text())
     # ...and the deck as its engine reads it, keyword by keyword
     if "deck_says" in case:
         text = stage_file(bundle, case.get("stage", "coarse"),
-                          deck).read_text()
+                          deck, case.get("part")).read_text()
         said, key = _deck_says(case.get("engine", "siesta"), text)
         for keyword, want in case["deck_says"].items():
             assert key(keyword) in said, \
@@ -1990,11 +2011,26 @@ def run_road_case(table, case, tmp_path, monkeypatch, *, ran=None) -> None:
     if "deck_reads" in case:
         from molbuilder.parse.fdf import parse_fdf_params
         got = parse_fdf_params(stage_file(
-            bundle, case.get("stage", "coarse"), ".fdf").read_text())
+            bundle, case.get("stage", "coarse"), ".fdf",
+            case.get("part")).read_text())
         for field, want in case["deck_reads"].items():
             have = getattr(got, field)
             assert (have == want if isinstance(want, (bool, str))
                     else have == pytest.approx(want)), (field, have, want)
+    # ...and its BENCH-MARKS block as the block's reader reads it
+    # (`deck_record.read_bench_marks_block`): each field the row names, with
+    # what the row says of it.
+    if "bench_marks" in case:
+        from molbuilder.deck_record import read_bench_marks_block
+        block = read_bench_marks_block(stage_file(
+            bundle, case.get("stage", "coarse"), deck,
+            case.get("part")).read_text())
+        assert block is not None, "the deck holds no BENCH-MARKS block"
+        fields = {f["name"]: f for f in block["fields"]}
+        for name, want in case["bench_marks"].items():
+            assert name in fields, (name, sorted(fields))
+            have = {k: fields[name].get(k) for k in want}
+            assert have == want, (name, have, want)
     # ...a benchmark's trials, when the row names them
     if kind == "bench" and any(k in case for k in (
             "bench_gres", "bench_header", "bench_header_lacks")):

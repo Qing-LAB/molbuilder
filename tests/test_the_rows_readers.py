@@ -9,13 +9,11 @@ monitor's bundle carries each reader a row names (`runwrap.members`).
 from __future__ import annotations
 
 import json
-import os
-import subprocess
-import sys
 
 import pytest
 
 from molbuilder import runfiles
+from support import job_python
 from molbuilder.runfiles import READ_BESIDE_A_JOB, WRITTEN
 
 #: Every (role, question) a row names a reader for.
@@ -46,17 +44,17 @@ def test_the_readers_a_job_asks_beside_it_load_from_its_bundle_alone(
     from molbuilder.runfiles import MONITOR_BUNDLE
     from molbuilder.runwrap import build, members
     (tmp_path / MONITOR_BUNDLE).write_bytes(build(MONITOR_BUNDLE))
-    env = {k: v for k, v in os.environ.items() if k != "PYTHONPATH"}
-    # The condition has to be real, or this proves nothing.
-    control = subprocess.run([sys.executable, "-c", "import molbuilder"],
-                             cwd=tmp_path, env=env, capture_output=True,
-                             text=True, timeout=120)
+    # The condition has to be real, or this proves nothing: the job's python
+    # holds no molbuilder (`support.job_python`, absence enforced).
+    allowed = dict(packages=job_python.bundle_packages(MONITOR_BUNDLE),
+                   members=job_python.bundle_members(MONITOR_BUNDLE))
+    control = job_python.run(["import molbuilder"], cwd=tmp_path, **allowed)
     assert control.returncode != 0, (
-        "molbuilder is importable from the job's folder, so this test cannot "
-        "reproduce a compute node.  Is it pip-installed?")
+        "molbuilder is importable on the job's python, so this test cannot "
+        "reproduce a compute node")
     asked = sorted(f"{a.role} {q}" for a in WRITTEN for q, _ref in a.reads
                    if q in READ_BESIDE_A_JOB)
-    script = "\n".join([
+    script = [
         "import json, os, sys",
         f"sys.path.insert(0, {MONITOR_BUNDLE!r})",
         "import runfiles",
@@ -73,10 +71,8 @@ def test_the_readers_a_job_asks_beside_it_load_from_its_bundle_alone(
         "loaded = {m: os.path.basename(os.path.dirname(",
         "    importlib.import_module(m).__file__)) for m in members}",
         "print(json.dumps({'readers': got, 'members': loaded}))",
-    ])
-    done = subprocess.run([sys.executable, "-c", script], cwd=tmp_path,
-                          env=env, capture_output=True, text=True,
-                          timeout=120)
+    ]
+    done = job_python.run(script, cwd=tmp_path, **allowed)
     assert done.returncode == 0, (
         f"a reader a row names does not load from {MONITOR_BUNDLE} without "
         f"molbuilder:\n{done.stdout}{done.stderr}")

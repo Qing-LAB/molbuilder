@@ -23,6 +23,7 @@ import subprocess
 import sys
 
 import numpy as np
+from support import job_python
 
 
 def test_the_bundle_loads_alone_and_writes_a_pair_the_codec_reads(tmp_path):
@@ -43,20 +44,26 @@ def test_the_bundle_loads_alone_and_writes_a_pair_the_codec_reads(tmp_path):
                                         emit_script_head, run_file_expr)
     from molbuilder.runfiles import PYSCF_OPTIMIZED, RunNames
     from molbuilder.runfiles import PYSCF_BUNDLE
-    from molbuilder.runwrap import build, members
+    from molbuilder.runwrap import build
     from molbuilder.spectra.selection import select_modes
     from molbuilder.structure import FROZEN_LABEL, Structure
     from molbuilder.workingcopy_structure import StructureCodec
 
     (tmp_path / PYSCF_BUNDLE).write_bytes(build(PYSCF_BUNDLE))
     env = {k: v for k, v in os.environ.items() if k != "PYTHONPATH"}
-    # The condition has to be real, or this proves nothing.
-    control = subprocess.run([sys.executable, "-c", "import molbuilder"],
+    # The condition has to be real, or this proves nothing: the job's python
+    # holds no molbuilder (`support.job_python`, absence enforced).
+    # This test runs the job's write, not only its load, on what the PySCF
+    # env carries beyond the bundle's row (`ase`, `scipy`): molbuilder alone
+    # is refused (`job_python.lines_without_molbuilder`).
+    refuse = job_python.lines_without_molbuilder()
+    control = subprocess.run([sys.executable, "-c",
+                              "\n".join([*refuse, "import molbuilder"])],
                              cwd=tmp_path, env=env, capture_output=True,
                              text=True, timeout=120)
     assert control.returncode != 0, (
-        "molbuilder is importable from the job's folder, so this test cannot "
-        "reproduce a compute node.  Is it pip-installed?")
+        "molbuilder is importable on the job's python, so this test cannot "
+        "reproduce a compute node")
 
     # The structure as a calculation holds it -- the O held -- and the
     # payload the script carries for it, made at compose time.
@@ -69,9 +76,10 @@ def test_the_bundle_loads_alone_and_writes_a_pair_the_codec_reads(tmp_path):
     # The script's run settings and its own head -- its anchor, the bundle
     # on the path, its threads sized -- then every member the bundle holds,
     # each found where the script's imports find it.
-    held = sorted(name[:-len(".py")] for name in members(PYSCF_BUNDLE))
+    held = job_python.bundle_members(PYSCF_BUNDLE)
     names = RunNames("w", "01_coarse")
     script = "\n".join([
+        *refuse,
         *emit_run_settings_block(PySCFConfig()),
         *emit_script_head(),
         *emit_bundle_imports(StructureCodec, select_modes),

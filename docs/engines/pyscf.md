@@ -74,7 +74,11 @@ flowchart LR
   satisfy — and the framework renders it (`script_emit.render_deck`). The
   public surface is `spec_for` and `PySCFConfig`, which `molbuilder.pyscf`
   exports. Verbose comments are on by default so the script reads as
-  documentation of its own choices. A deck reaches disk one way —
+  documentation of its own choices — its troubleshooting hints too, each
+  that suggests a value beside **this deck's own value** of that setting, as
+  the deck writes it (*this deck: 'def2-SVP'*), and none for a setting that
+  enters nothing here — Hartree–Fock's functional and grid. A deck
+  reaches disk one way —
   `jobset prep`, which calls `spec_for` → `script_emit.prepare_deck` (validate
   → render → write → check) on the machine that will run it; a PySCF run
   states the cores it runs on and no rank count, and on a machine with a queue

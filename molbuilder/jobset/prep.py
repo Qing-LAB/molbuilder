@@ -2145,11 +2145,26 @@ def checked(described: Described, *, target) -> Described:
 
 
 def plan_stage(described: Described, kind: str, stage: str, *,
-               target: Optional[str] = None, allocation=None,
-               env: Optional[str] = None,
-               emit_sbatch: bool = True, plan, notes: Optional[list] = None,
-               copied: bool = False,
-               reuse=None) -> PrepAnswer:
+               target: Optional[str] = None, **planned) -> PrepAnswer:
+    """:func:`_planned_stage` for the machine the plan is for -- the one
+    ``target`` names, else the calculation's own copy of its record
+    (`execution/preparing-for-another-machine.md` § 4): what it writes for
+    another machine names no path of this one, its env commands typed in
+    molbuilder's checkout there (§ 2, `envs.hints.typed_in_checkout`)."""
+    from ..envs.hints import typed_in_checkout
+    from ..scheduler.record import LOCAL_TARGET
+    machine = target or described.environment.machine or LOCAL_TARGET
+    with typed_in_checkout(machine != LOCAL_TARGET):
+        return _planned_stage(described, kind, stage, target=target,
+                              **planned)
+
+
+def _planned_stage(described: Described, kind: str, stage: str, *,
+                   target: Optional[str] = None, allocation=None,
+                   env: Optional[str] = None,
+                   emit_sbatch: bool = True, plan,
+                   notes: Optional[list] = None, copied: bool = False,
+                   reuse=None) -> PrepAnswer:
     """**THE MEMBER PLANNER** -- one stage, planned into ``plan``, nothing
     written, saved or recorded (`job-system.md` § 5.0, checkpoints 4–4b):
     its inputs, assembled (`prep_inputs`, A12) -- a benchmark's grid

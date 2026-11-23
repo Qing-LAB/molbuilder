@@ -268,8 +268,9 @@ where it came from: *"NetCharge: -1 (detected: 1 deprotonated phosphate group)"*
 **no `cfg.cell_padding`** field. Too little vacuum on an isolated axis is
 **reported and never fixed for you**: the geometry is the user's, so molbuilder
 says what is wrong and leaves it alone. The thresholds are
-`_VACUUM_MIN_NEUTRAL = 8.0` and `_VACUUM_MIN_CHARGED = 25.0`
-(`validation/siesta.py`). ≥ 25 Å keeps a charged molecule's density well clear
+`VACUUM_MIN_NEUTRAL_ANG = 8.0` and `VACUUM_MIN_CHARGED_ANG = 25.0`
+(`validation/siesta.py`; the charged one is also the deck's note,
+`siesta/input`). ≥ 25 Å keeps a charged molecule's density well clear
 of its images; it does not make the image energy small. SIESTA gives any charged
 cell a uniform compensating background — that makes the periodic electrostatics
 finite, it corrects nothing — and the monopole's image energy falls only as

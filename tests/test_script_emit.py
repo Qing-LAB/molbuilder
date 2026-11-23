@@ -11,7 +11,7 @@ import pytest
 
 from molbuilder import deck_record as dr
 from molbuilder import script_emit as sc
-from molbuilder.siesta.input import BENCH_FIELDS
+from molbuilder.siesta.input import bench_fields
 from molbuilder.structure import atom_metadata_has_something
 from support.road import CO2, CO2_HELD_FIRST
 from molbuilder.structure_pair import MolstructPairingError
@@ -61,7 +61,7 @@ def test_emit_provenance_without_defaults_still_emits_block():
 def test_emit_bench_marks_default_value_appears_per_field():
     block = sc.emit_bench_marks(
         metadata={"n_atoms": 212},
-        fields=BENCH_FIELDS,
+        fields=bench_fields(),
         defaults={"BlockSize": 256, "MaxSCFIterations": 500,
                   "MD.Steps": 200, "MeshCutoff": 400.0},
     )
@@ -529,7 +529,7 @@ def test_bench_marks_extracts_version_and_fields():
     """
     marks = dr.read_bench_marks_block(sc.emit_bench_marks(
         metadata={"n_atoms": 5, "gpu_mode": "true"},
-        fields=BENCH_FIELDS,
+        fields=bench_fields(),
         defaults={"BlockSize": 256, "MaxSCFIterations": 500,
                   "MD.Steps": 200, "MeshCutoff": 400.0},
     ))
@@ -636,12 +636,26 @@ def test_the_check_gate_refuses_a_stray_marker_of_either_kind(tmp_path):
 
     clean = ["SystemLabel x", B, "# mine", E, PB, "#  k v", PE]
     assert issues_for(clean) == [], "a well-formed deck was refused"
+    # A MARKER'S TEXT WITHIN A LINE is no fence to any reader
+    # (`deck_record.fence`: a whole line), so the gate counts it as none.
+    mentioned = ["SystemLabel x", B, f"# keep {E} last", E, PB, "#  k v", PE]
+    assert issues_for(mentioned) == [], "a marker's mere mention was refused"
 
+    # A FENCE IS WHAT THE ONE GRAMMAR READS AS ONE (`deck_record.MARKER_RE`),
+    # spaced as a hand or an editor left it: the section's reader finds a
+    # pasted marker spaced otherwise, so the gate counts it too.
+    spaced = lambda marker: marker.replace("# === ", "#  ===  ")  # noqa: E731
     for name, body in (
             ("stray BEGIN", ["SystemLabel x", B, "# mine", B, "# more", E,
                              PB, "#  k v", PE]),
             ("stray END",   ["SystemLabel x", B, "# mine", E, "# more", E,
                              PB, "#  k v", PE]),
+            ("stray BEGIN spaced otherwise",
+             ["SystemLabel x", B, "# mine", spaced(B), "# more", E,
+              PB, "#  k v", PE]),
+            ("stray END spaced otherwise",
+             ["SystemLabel x", B, "# mine", spaced(E), "# more", E,
+              PB, "#  k v", PE]),
     ):
         found = issues_for(body)
         assert found, f"{name} was not refused"

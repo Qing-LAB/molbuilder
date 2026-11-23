@@ -123,8 +123,9 @@ def test_a_typed_value_is_ACCEPTED_because_the_citation_only_DEFAULTS():
     from molbuilder.config.siesta import SiestaConfig
     item = T.one(T.catalogue(), "basis_size", engine="siesta")
     assert "transport" in item.citation, "the worked case's item is cited"
-    text = T._emit([dataclasses.replace(item, value="TZP")],
-                   engines=("siesta",))
+    text = T.template_with_values(SiestaConfig(basis_size="TZP"),
+                                  calculation="transport",
+                                  sources={"basis_size": "person"})
     cfg = T.config_from_template(text, SiestaConfig)
     assert cfg.basis_size == "TZP", (
         "a transport template answering a cited item is now the ORDINARY "

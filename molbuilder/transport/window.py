@@ -30,9 +30,8 @@ def window_rung() -> str:
     on the items; a catalogue whose window items name another rung, or none,
     or more than one, is a defect of the shipped catalogue -- raised as one,
     never answered as the person's error."""
-    from ..template import catalogue
-    by_name = {it.name: it for it in catalogue().items}
-    rungs = {tuple(by_name[n].stages) for n in WINDOW_ITEMS if n in by_name}
+    from ..template import catalogue, one
+    rungs = {tuple(one(catalogue(), n).stages) for n in WINDOW_ITEMS}
     if len(rungs) != 1 or len(next(iter(rungs))) != 1:
         raise RuntimeError(
             f"catalogue.template.toml: the window items "

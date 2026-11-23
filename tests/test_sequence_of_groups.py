@@ -81,6 +81,37 @@ def test_one_job_asks_the_largest_request_and_every_wall(cluster, case):
     assert "runs with its own card inside it" in r.output, r.output
 
 
+def test_a_sequence_s_walk_parses_from_a_checkout_path_the_shell_quotes(
+        cluster, monkeypatch):
+    """`execution/job-system.md` § 6.0, *The walk*: a walk whose activation
+    did not give it molbuilder's environment stops before any group, its
+    log naming the repair as a run script names it, typed in molbuilder's
+    checkout (`ops/installation.md` § 2) -- whatever this checkout's path
+    holds.  The walk the launch wrote, from a checkout path with a space and
+    an apostrophe, names no path of it and parses.  THE SILENT FAILURE: the
+    quoted path closing the sentence -- the walk dying before any group,
+    every time."""
+    import subprocess
+    from molbuilder.envs import hints
+    from support.road import QUOTED_CHECKOUT_SEEN, QUOTED_LAUNCHER
+    monkeypatch.setattr(hints, "LAUNCHER", QUOTED_LAUNCHER)
+    bundle, _calls = cluster
+    _cards(bundle)
+    r = jobset("prep", "task", "--group", "1", "--group", "2", "--one-job",
+               "--domain", "htc", "--bundle", bundle, "--target", "this")
+    assert r.exit_code == 0, r.output
+    jobset("launch", "task", "--group", "1", "--group", "2",
+           "--bundle", bundle, "--mode", "submit", "--yes")
+    walk = bundle / "launch" / "H2_sequence-01_coarse-02_medium.run.sh"
+    said = walk.read_text()
+    assert QUOTED_CHECKOUT_SEEN not in said, "the walk names this checkout"
+    assert ("bash scripts/install-env.sh bootstrap --yes in molbuilder's "
+            "checkout") in said, "the walk names no repair"
+    parsed = subprocess.run(["bash", "-n", str(walk)], capture_output=True,
+                            text=True, timeout=60)
+    assert parsed.returncode == 0, parsed.stderr
+
+
 def test_the_job_sent_is_prep_s_header_and_its_record(cluster):
     """`launch task --group 1 --group 2 --mode submit` sends the header prep
     wrote, from the calculation's folder, after writing the sequence's walk

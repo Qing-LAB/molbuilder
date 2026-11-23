@@ -1,8 +1,9 @@
 """The doctor's report carries its own fix commands (user, 2026-08-20).
 
 The rule: **every problem the doctor detects ends with the exact command
-that fixes it**, in the ONE spelling that works from a bare shell
-(``bash scripts/install-env.sh ...``) -- a person looking at a broken env
+that fixes it**, in the ONE spelling that works from a bare shell in any
+folder (``bash <checkout>/scripts/install-env.sh ...``, `envs.hints.fix_cmd`)
+-- a person looking at a broken env
 must never have to tour the docs to learn the verb.
 
 The hints are KIND-PRECISE because bare ``repair`` skips version/build
@@ -205,6 +206,85 @@ def test_a_failed_verify_offers_repair_then_the_rebuild(capsys, which,
     if recipe.category is None:
         assert _fix_cmd("install", recipe.name, "--clean", "--yes") \
             not in out, out
+
+
+def test_a_printed_env_command_runs_typed_in_any_folder(tmp_path):
+    """`ops/installation.md` § 2 (the user, 2026-11-22: "Launcher by full
+    path"): an env command molbuilder prints names the install script by
+    the checkout's full path, so typed in a folder outside the checkout --
+    a calculation's -- it runs.  Asked for its usage, which changes nothing.
+    THE SILENT FAILURE: `bash scripts/install-env.sh ...` typed there,
+    answered "No such file or directory"."""
+    import os
+    import subprocess
+    from molbuilder.envs import hints
+    done = subprocess.run(["bash", "-c", _fix_cmd("--help")], cwd=tmp_path,
+                          env={**os.environ, "HOME": str(tmp_path)},
+                          capture_output=True, text=True, timeout=120)
+    assert done.returncode == 0, done.stderr
+    assert "env installer" in done.stdout, done.stdout
+    # ...AND WHAT IT PRINTS TO TYPE names it so too -- its examples, and the
+    # first step it names when asked nothing.
+    assert _fix_cmd("bootstrap", "--yes") in done.stdout, done.stdout
+    asked_nothing = subprocess.run(
+        ["bash", "-c", hints.LAUNCHER], cwd=tmp_path,
+        env={**os.environ, "HOME": str(tmp_path)},
+        capture_output=True, text=True, timeout=120)
+    assert _fix_cmd("bootstrap", "--yes") in asked_nothing.stderr, \
+        asked_nothing.stderr
+
+
+@pytest.mark.parametrize("calculation, template", [
+    ("optimization", None),
+    ("vibration", {"compute_raman": True}),
+], ids=["a PySCF optimization, its geomeTRIC remedy",
+        "a PySCF vibration with Raman, its pyscf-properties remedy"])
+def test_a_checkout_path_the_shell_quotes_still_writes_a_deck_that_parses(
+        tmp_path, monkeypatch, calculation, template):
+    """A PySCF deck prepared for this machine names the env command in its
+    own Python, by this checkout's full path, standing there word for word
+    whatever the path holds (`ops/installation.md` § 2; `execution/
+    script-preparation.md` § 4.3: check catches a generated program that
+    does not parse).  Prepared on the road, it parses.  THE SILENT FAILURE:
+    the quoted path closing a string early -- prep refusing every PySCF
+    calculation of a checkout in a folder with an apostrophe, a fault the
+    person cannot fix."""
+    from molbuilder.envs import hints
+    from support.road import (QUOTED_CHECKOUT_SEEN, QUOTED_LAUNCHER, WATER,
+                              described_and_prepared, road_structure)
+    monkeypatch.setattr(hints, "LAUNCHER", QUOTED_LAUNCHER)
+    _dest, _stage, deck = described_and_prepared(
+        tmp_path, monkeypatch, road_structure(WATER), "pyscf",
+        calculation=calculation, template=template)
+    compile(deck, "deck.py", "exec")
+    assert QUOTED_CHECKOUT_SEEN in deck, "the deck names no remedy"
+
+
+@pytest.mark.parametrize("env", ["pyscf", "siesta-gpu"])
+def test_a_checkout_path_the_shell_quotes_still_writes_an_env_check_that_parses(
+        monkeypatch, env):
+    """An env's check is a program -- PySCF's Python run by ``python -c``,
+    the GPU build's shell run by ``bash -c`` -- naming its repair command
+    (`ops/installation.md` § 2), which stands in it word for word whatever
+    the path holds.  THE SILENT FAILURE: a healthy env reported failing, its
+    check never parsed."""
+    import subprocess
+    from molbuilder.envs import hints, recipes
+    from support.road import QUOTED_CHECKOUT_SEEN, QUOTED_LAUNCHER
+    monkeypatch.setattr(hints, "LAUNCHER", QUOTED_LAUNCHER)
+    # THE RECIPES BUILT AFRESH, as a process started in that checkout builds
+    # them: the registry is built once a process (`builtin_recipes`, cached).
+    monkeypatch.setattr(recipes, "builtin_recipes",
+                        recipes.builtin_recipes.__wrapped__)
+    program, flag, check = recipes.recipe_by_name(
+        DEFAULT_ENV_NAMES[env]).verify_argv
+    assert QUOTED_CHECKOUT_SEEN in check, "the check names no repair"
+    if program == "python":
+        compile(check, "check", "exec")
+    else:
+        parsed = subprocess.run([program, "-n", flag, check],
+                                capture_output=True, text=True, timeout=60)
+        assert parsed.returncode == 0, parsed.stderr
 
 
 def test_a_host_env_that_does_not_find_molbuilder_is_pointed_back(capsys):

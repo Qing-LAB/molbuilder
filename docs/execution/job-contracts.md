@@ -882,24 +882,29 @@ Which engine-body fields a benchmark may override, and within what limits:
 #   field MaxSCFIterations anchor=MaxSCFIterations type=int   default=1000
 #   field MD.Steps         anchor=MD.Steps         type=int   default=200
 #   field MeshCutoff       anchor=MeshCutoff       type=float unit=Ry default=300.0
-#   field Diag.Algorithm   anchor=Diag.Algorithm   type=enum
+#   field Diag.Algorithm   anchor=Diag.Algorithm   type=enum choices=ScaLAPACK|ELPA-1STAGE|ELPA-2STAGE
 # === molbuilder bench-marks END ===
 ```
 
 - **`version v1`** is the block's format, recorded for a tool that reads it.
 - **The top keys are a record**: `n_atoms`, `n_orbitals_est`
-  (`10 × n_atoms`, a rough double-zeta-polarised estimate), `gpu_mode`, and
+  (`10 × n_atoms`, a rough double-zeta-polarised estimate,
+  `siesta.input.orbital_estimate` — the one the block size's caps use too),
+  `gpu_mode`, and
   `mpi_np`, the rank count the deck was rendered for. Nothing reads them as a
   launch: one prep renders a deck and its launch together, and launch sends
   what prep wrote (rule **A3**,
   [`architecture.md`](?doc=execution/architecture.md) § 7).
 - **`field` lines declare the only parameters a tool may override**
-  (SIESTA's, `siesta.input.BENCH_FIELDS`, beside its deck writer). `anchor` names the keyword a value
+  (SIESTA's, `siesta.input.BENCH_ITEMS`, beside its deck writer, each line
+  built from its catalogue item, `siesta.input.bench_fields`). `anchor` names the keyword a value
   belongs to; it is read back as a string and compared with `==` — a trial is
   rendered from the description with pins, never spliced into a deck
   ([`engines/template.md`](?doc=engines/template.md) § 8.1).
 - **`type`** is one of `int`, `float`, `str`, `pow2`, `enum`; `range=[a,b]`
-  and `unit=` are advisory bounds for checking a requested override.
+  and `unit=` are advisory bounds for checking a requested override, and an
+  `enum`'s `choices=` its members, `|`-separated — each the catalogue item's
+  own.
 - **Every field line is written, `BlockSize`'s only when the deck carries
   one, and a line carries `default=` only for a keyword the deck carries**
   (the example is a relaxation deck whose `BlockSize` was set): `MD.Steps`
@@ -919,9 +924,11 @@ Which engine-body fields a benchmark may override, and within what limits:
 
 **BENCH-MARKS and the template come from one source.** Both declare `type`,
 `range`, `unit` and `default` for the same fields, and two hand-kept copies
-of a default would drift silently. A `field` line's type must equal its
-catalogue item's (`tests/test_template_declarations.py` matches each line to
-the item that anchors its keyword). The five types are not a second
+of a default would drift silently — so a `field` line is **built from its
+catalogue item** (`bench_fields`): its keyword the item's anchor
+(or what it expands to, `MD.Steps`), its type, unit and choices the item's,
+`BlockSize`'s type narrowed to `pow2` — the bench may be narrower than the
+deck, never wider. The five types are not a second
 vocabulary: they are the members of the template's types
 ([`engines/template.md`](?doc=engines/template.md) § 5) a benchmark may
 vary — a scalar it can order or enumerate — derived by

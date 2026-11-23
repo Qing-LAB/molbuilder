@@ -63,7 +63,7 @@ the wrong one for a charged slab or crystal
 from __future__ import annotations
 
 from pathlib import Path
-from typing import List, Optional
+from typing import Optional
 
 # Cubic-cell Madelung constant (the most common molbuilder case:
 # vacuum padding around a small molecule).  For tetragonal /
@@ -130,32 +130,6 @@ def compute_correction(
     return dE_hartree * HARTREE_EV
 
 
-def _cell_volume_angstrom3(cell: List[List[float]]) -> float:
-    """Volume of a 3×3 lattice in Å³.  Used to derive an effective
-    L = V^(1/3) for the correction when the cell isn't strictly
-    cubic.
-    """
-    a, b, c = cell
-    # |a · (b × c)|
-    bx = b[1] * c[2] - b[2] * c[1]
-    by = b[2] * c[0] - b[0] * c[2]
-    bz = b[0] * c[1] - b[1] * c[0]
-    return abs(a[0] * bx + a[1] * by + a[2] * bz)
-
-
-def effective_L(cell: List[List[float]]) -> float:
-    """Effective supercell side length L = V^(1/3) in Å for use
-    with the cubic Madelung constant.  For a strictly cubic cell
-    this is the side length; for a slightly distorted cell it
-    gives the best-shape-matched estimate.  What :func:`compute_correction`
-    takes as its length; the script a run carries computes the same
-    (``effective_length_angstrom``), holding no molbuilder."""
-    V = _cell_volume_angstrom3(cell)
-    if V <= 0:
-        raise ValueError("Lattice volume must be positive")
-    return V ** (1.0 / 3.0)
-
-
 #: THE STEP A DECK'S STRUCTURE IS where no phase says otherwise: its last --
 #: a relaxation's result, a single point's one step.  A vibration phase
 #: states its own (`vibration_phases.PhaseRule.energy_step`).
@@ -200,8 +174,8 @@ def render_correction_script(
     #
     # SO THE FORMULA IS WRITTEN TWICE, ON PURPOSE.  `compute_correction`
     # above is the one molbuilder calls; the copy below is the one that runs
-    # beside a finished job.  They were MEASURED to agree (2026-09-09), to
-    # the six decimals the script prints.
+    # beside a finished job.  `test_makov_payne` holds them to agree, and the
+    # copy's L = V^(1/3) to the volume `cell.resolve` measures.
     #
     # WHAT IS NOT DUPLICATED: the constants.  `MADELUNG_CUBIC`, `HARTREE_EV` and
     # `BOHR_ANGSTROM` are interpolated in from their one home, so the copy

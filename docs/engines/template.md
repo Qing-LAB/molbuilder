@@ -219,7 +219,8 @@ label, the unit, the range, the choices, the engine keyword, the card
 (`group`), the category, the tier, the pattern, the null label, whether the
 machine answers it, what it expands to — has one home, the catalogue
 (`data/catalogue.template.toml`), and every reader asks it through
-`template.items_of(cls_or_cfg)`: the settings gate (`validation/metadata.py`),
+`template.items_of(cls_or_cfg)` — or, where an engine is named rather than a
+config, `items_of(engine=…)`: the settings gate (`validation/metadata.py`),
 the description check (`validation/task.py`), the form's coercion and finding
 placement (`web/blueprints/_shared.py`), the template's membership
 (`template_fields`, `resolve._emitter_fields`). A field's `validate` entry is
@@ -247,7 +248,8 @@ is the other, and its **dependencies are part of the design rather than an
 accident of imports.**
 
 **`molbuilder/template.py` imports the standard library and the ground floor
-alone** (L1, floor 1) — at its top `persist` (`check_schema`, `unknown_keys`),
+alone** (L1, floor 1) — at its top `persist` (`check_schema`, `unknown_keys`,
+`RecordRefusals`, the kit its refusals are worded with),
 `identity`, `engine_table`, `kind_table`, `runfiles` and the package root
 (`data_dir`); inside the functions that need them `kmesh` and the package's
 version. It
@@ -690,6 +692,15 @@ cannot know: that `pow2` must be a power of two, that `enum` is drawn from
 `choices`, that `text` is verbatim engine text to be copied rather than
 interpreted.
 
+**What only the catalogue carries.** A calculation's template states none of
+`engines`, `calculations`, `recommended`, `offered`, `not_offered`,
+`role_values`, `result`, `active_when`, `choice_labels`, `why_fixed`,
+`why_shared`, `per_point_from` or `engine_default`: the selection already
+happened (§ 6.3), and every reader of these asks the catalogue — `resolve`
+and the gate a kind's choices and a rung's answers, the form where an item is
+drawn and what greys it out. The writer has no line for any of them
+(`template._item_payload`).
+
 **Which key serves which reader** — this is G2 and G3 made concrete:
 
 ```mermaid
@@ -719,18 +730,18 @@ flowchart LR
 > without them a template cannot name its own fields, and `optional` says
 > *unset* is a real state while nothing says how to show it.
 
-> **BENCH-MARKS states a deck's own values, over a field list kept by hand.**
+> **BENCH-MARKS states a deck's own values, over the items it names, each line
+> built from the catalogue.**
 > A generated deck's
 > BENCH-MARKS block ([`job-contracts.md`](?doc=execution/job-contracts.md) § 3.3)
 > declares `type`, `range`, `unit` and `default` for the subset a tool may
 > override; a template declares them for every parameter. **BENCH-MARKS' values
 > are the deck's own** — the config the deck was rendered from
 > (`siesta/input.py` `_bench_marks_for`), so no second copy of a `default`
-> exists to drift (§ 9). **Its fields, their types and units are a hand-kept
-> list**, SIESTA's `siesta.input.BENCH_FIELDS`, and only each field's type is
-> checked against the catalogue item that writes its keyword, matched by
-> anchor: the same type, or a narrower one
-> (`tests/test_template_declarations.py`). Their `type` vocabularies differ in size on purpose: § 3.3's
+> exists to drift (§ 9). **Its fields are built from the catalogue**
+> (`siesta.input.bench_fields`, from the items `BENCH_ITEMS` names): each
+> line's keyword, type, unit and choices its item's, `BlockSize`'s type
+> narrowed to `pow2` — the same type, or a narrower one. Their `type` vocabularies differ in size on purpose: § 3.3's
 > `{int, float, str, pow2, enum}` is enough for the numeric knobs a benchmark
 > turns, and the template adds `bool`, `int3`, `float3`, `strlist`, `intlist`
 > and `text`
@@ -944,7 +955,7 @@ vocabularies.
 | **what is it, spelled?** | `spell(item, value)` → the value in its declared type | lossless only — a whole float for a count is the count, a list of three a triple (`as_declared`); **what a page sends** — a cell's or a card row's text, a form's value — is read by the same door, `read_text(item, text)` → `(value, refusal)`, its type judged, so no page keeps a reader of its own: a number as JSON writes one — decimal, with an exponent if any (`1e3` is 1000), never `0x10` or `1_000` — `true` / `false`, an enum's member by its spelling, a grid as `4,4,1`, `4x4x1`, `4 4 1` or the list `[4, 4, 1]`, a list by commas or spaces; and a refusal quotes a value through `shown(value)` — `null` for unset, `true` / `false`, a triple as the list it is written as |
 | **what does nobody's statement mean?** | `default_of(item, kind)` → the value, or none | the kind's `recommended`, else the item's `default` — **the one default**: `resolve` lays it for a run setting no card states, every door that writes a template from what was stated writes it for a value nobody stated (`stated_config`, § 6.3a) — and `molbuilder validate` judges a kind on that config, nothing stated — a form and Task setup show it beside a blank field or row, a run's record of its parameters states it as each setting's catalogue default ([`model/parse.md`](?doc=model/parse.md) § 5d.3a), migrate asks it whether a value was the default; for an item with neither, its `not_set` line says what applies (§ 6.6, obligation 4). A run setting states no `value` in the catalogue — no template starts from one — which the catalogue's reader checks |
 | **where may a value of it live?** | `home_of(item, kind)` → its homes; `why_not_in(item, home, *, engine, kind, stage=None)` → the clause for a home that may not hold it — `accepts`' first question, and asked alone where a name stands without a value (a `varies` column, a benchmark row's name) | read off the item's own markers: **a stage's overrides** — what is computed (not a run setting, not `role`, not `shared`), on a rung that reads it (`stages`); **a run card** — a run setting (`execution`); **a benchmark row** — a run setting a trial may vary (what every trial fixes, `TRIAL_PINS` — capped SCFs, no geometry step, a clean start, [`job-request.md`](?doc=execution/job-request.md) § 3.4 — says what is computed, so it is no run setting and that clause keeps it off a row), and of the launch shape only the grid's axes (`GRID_AXES` — ranks, cores per rank, devices; [`generator.md`](?doc=execution/generator.md) § 4.3a), a memory cap being no axis it sweeps; **a prep flag** — the launch shape (`allocation = true`). The scheduler's asks — `allocation`'s `domain`, `time`, `mem`, `gpu_binding`, a card's `time` and `domain` — are not catalogue items; the job request's reader judges and spells them, the allocation's and a card's alike ([`job-request.md`](?doc=execution/job-request.md) § 3.1, § 3.2a) |
-| **who set it?** | `SAID` — one vocabulary | *the template* with its own source words (*from the junction you cited · you set this · not chosen · not recorded*, § 6.6), *this stage's override*, *the stage's run card*, *the calculation's run card*, *a prep flag*, *the run card* (the launch fold's, which records a card as one — the placement line), *the job request's allocation*, *the catalogue's default · not chosen* (*not chosen* alone, beside who answers it, for an item with no default), *a sweep point*, *a pin*, *the stage's role* — composed once by `resolve` for every value of a rung (`ResolvedConfig.said`, the deck's table its own items' rows) and read by the deck's PROVENANCE rows, the pipeline log, prep's printed lines and its placement, and the page; none words its own |
+| **who set it?** | `SAID` — one vocabulary, **declared in decision order**, the order a rung's rows are listed in (`pipeline_log.config_rows`): *a pin*, *a sweep point*, *this stage's override*, *the stage's run card*, *the calculation's run card*, *a prep flag*, *the run card* (the launch fold's, which records a card as one — the placement line), *the stage's role*, *the job request's allocation*, *the template* with its own source words (*from the junction you cited · you set this · not chosen · not recorded*, § 6.6), *the catalogue's default · not chosen* (*not chosen* alone, beside who answers it, for an item with no default) — composed once by `resolve` for every value of a rung (`ResolvedConfig.said`, the deck's table its own items' rows) and read by the deck's PROVENANCE rows, the pipeline log, prep's printed lines and its placement, and the page; none words its own |
 
 **The homes ask; none decides.** Each place a value is written or read asks
 the door with its own home, and keeps no check, spelling, default or word of
@@ -2177,7 +2188,7 @@ flowchart LR
 | block | its content comes from | what carries it | emitted by |
 |---|---|---|---|
 | **PROVENANCE** | molbuilder's version, the moment of rendering, and who set each value (`parameters:`, `resolve`'s rows — § 6.6) | nothing — generated at `prep`, which is the honest answer for a *generation* snapshot | the deck writer |
-| **BENCH-MARKS** | the deck's own values, beside each field's type and unit | nothing — the values derived from the deck's config; the field list, types and units kept by hand (`siesta.input.BENCH_FIELDS`, § 5), only the type checked against the catalogue ([`job-contracts.md`](?doc=execution/job-contracts.md) § 3.3) | the deck writer — **SIESTA only.** A PySCF deck declares no override surface, so a benchmark has nothing to read from one ([`job-contracts.md`](?doc=execution/job-contracts.md) § 3.1) |
+| **BENCH-MARKS** | the deck's own values, beside each field's type and unit | nothing — the values derived from the deck's config; the fields built from their catalogue items (`siesta.input.bench_fields`, § 5; [`job-contracts.md`](?doc=execution/job-contracts.md) § 3.3) | the deck writer — **SIESTA only.** A PySCF deck declares no override surface, so a benchmark has nothing to read from one ([`job-contracts.md`](?doc=execution/job-contracts.md) § 3.1) |
 | **ATOM-METADATA** | the structure's regions, frozen atoms and annotations | **the structure and its `.molstruct.json` sidecar** — data files in the folder (§ 9.1) | the deck writer |
 | **USER-CUSTOM** | text a person wrote | **the deck it replaces** — every writer merges the zone forward (`script_emit.write_script`, [`job-contracts.md`](?doc=execution/job-contracts.md) § 3.5); a first prep writes it empty, and the text travels in no other file. A person's own engine text as an input of its own is [`plans/plan.md`](?doc=plans/plan.md) § 5e, not built | the deck writer, verbatim |
 | **ENGINE-OFFSET** | where the atoms were placed — the cell, the offset applied, the axis kinds, whether the offset was the structure's own | **the structure and its sidecar** (cell, axis kinds, a stated offset), placed by the rule (`cell.to_engine`) | the deck writer, on every deck |

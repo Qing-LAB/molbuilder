@@ -418,7 +418,7 @@ The launch counts and the memory cap carry one catalogue flag, `allocation`
 | where | what happens to `BlockSize` |
 |---|---|
 | **the run card** | auto by default; an explicit value taken at face value, never rounded — SIESTA rounds the GPU ELPA block itself (above) |
-| **`bench`** | sweeps the points the job request's `bench` block declares. The deck's BENCH-MARKS block (SIESTA's `BENCH_FIELDS`, `siesta/input.py`) declares `BlockSize` as `pow2`, with a window drawn from the deck's rank count (`_block_size_bounds`) — only when the deck carries a `BlockSize` |
+| **`bench`** | sweeps the points the job request's `bench` block declares. The deck's BENCH-MARKS block (SIESTA's `bench_fields`, `siesta/input.py`, built from the catalogue) declares `BlockSize` as `pow2`, with a window drawn from the deck's rank count (`_block_size_bounds`) — only when the deck carries a `BlockSize` |
 | **`prep`** | writes the value verbatim, or no `BlockSize` line when it is unset |
 
 The plain guidance in the table above (16 · 32 · 64 · 128) remains *guidance* for

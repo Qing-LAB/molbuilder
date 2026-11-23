@@ -338,15 +338,18 @@ def _check_siesta_mesh_cutoff(cfg, struct=None, *, dest_dir=None) -> List[Issue]
                 f"{high:g} Ry." if high else "")),
             "config.mesh_cutoff",
         )]
-    # Gated on >= 100 Ry: the dataclass metadata-range check (lower
-    # bound 100) already warns for values below the slider floor with
-    # the SAME ``where`` field (``config.mesh_cutoff``).  Without the
-    # 100 floor here, a value of 5 Ry would produce TWO warnings on
-    # the same field, and the existing tests counting issues by
-    # ``where`` would over-count.  Honest semantics: metadata-range
+    # Gated on the item's floor, the low end of its catalogue range: the
+    # range check already warns for a value below it with the SAME
+    # ``where`` field (``config.mesh_cutoff``).  Without the floor here,
+    # a value of 5 Ry would produce TWO warnings on the same field, and
+    # the existing tests counting issues by ``where`` would over-count.
+    # Honest semantics: metadata-range
     # owns the "below the slider floor" case; this rule owns the
-    # "above the floor but below production-defensible" case.
-    if 100.0 <= mc_val < 150.0:
+    # "above the floor but below production-defensible" case.  The floor is
+    # the catalogue's own range, asked of it, never typed here.
+    from ..template import catalogue, one
+    floor = one(catalogue(), "mesh_cutoff", engine="siesta").range[0]
+    if floor <= mc_val < 150.0:
         return [Issue(
             "warn",
             (f"mesh_cutoff = {mc_val:g} Ry is below the ~150 Ry floor "
@@ -445,8 +448,8 @@ def _check_siesta_charged_makov_payne_notice(struct: Structure,
 # basis and the inter-image gap is 2*vacuum, so the neutral floor is set above
 # the largest orbital radius; a charged system needs far more because the
 # image-charge Coulomb bias decays only as 1/L (see the Makov-Payne notice).
-_VACUUM_MIN_NEUTRAL = 8.0
-_VACUUM_MIN_CHARGED = 25.0
+VACUUM_MIN_NEUTRAL_ANG = 8.0
+VACUUM_MIN_CHARGED_ANG = 25.0
 
 
 def _check_siesta_vacuum_adequacy(struct: Structure,
@@ -466,7 +469,7 @@ def _check_siesta_vacuum_adequacy(struct: Structure,
     ``charge`` is the electronic state's resolved charge: a charged system
     needs far more vacuum (its image bias decays only as 1/L)."""
     q = int(charge)
-    min_vac = _VACUUM_MIN_CHARGED if q else _VACUUM_MIN_NEUTRAL
+    min_vac = VACUUM_MIN_CHARGED_ANG if q else VACUUM_MIN_NEUTRAL_ANG
     kinds = struct.axis_kind
 
     # MANUAL REGIME: an explicit cell IS the box, and vacuum is reference-only
@@ -622,7 +625,12 @@ def validate_siesta(struct: Structure, cfg,
     # `SCF.FreeE.Converge` is on (read_options.F90 / siesta_forces.F90).  A user
     # who tightens the tolerance to chase a convergence problem, with the switch
     # off, changes nothing and has no way to discover that from the run.
-    _tol_default = 1e-4
+    # "Away from its default" is the catalogue's one default for this
+    # calculation, asked of the default door.
+    from ..template import catalogue as _catalogue, default_of, one as _one
+    _tol_default = default_of(
+        _one(_catalogue(), "dm_energy_tolerance", engine="siesta"),
+        calculation)
     if (not getattr(cfg, "scf_energy_converge", False)
             and cfg.dm_energy_tolerance is not None
             and abs(float(cfg.dm_energy_tolerance) - _tol_default) > 1e-12):

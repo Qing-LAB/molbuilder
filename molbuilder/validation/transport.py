@@ -59,10 +59,15 @@ def validate_transport_kind(struct: Structure, cfg, cell, *, engine: str,
     # ``stages``, asked through `template.reads`, `template.md` § 6.4): the
     # template's value stays on a rung that never writes it, and nothing is
     # said of it there.  With no rung named, judged as it stands.
-    from ..template import items_of, reads
+    from ..template import default_of, items_of, reads
     pole = getattr(cfg, "negf_eq_pole_ev", None)
     temp = getattr(cfg, "electronic_temperature", None)
     pole_item = items_of(cfg).get("negf_eq_pole_ev")
+    # THE DEFAULTS THE SENTENCES NAME are the catalogue's, asked of the one
+    # default door: a transport calculation's items, each with its default.
+    temp_default = default_of(items_of(cfg)["electronic_temperature"],
+                              "transport")
+    pole_default = default_of(items_of(cfg)["negf_eq_pole_ev"], "transport")
     if pole is not None and (rung is None or pole_item is None or reads(
             pole_item, engine, "transport", rung)):
         from ..transport.transiesta import (MIN_EQ_POLES,
@@ -76,8 +81,8 @@ def validate_transport_kind(struct: Structure, cfg, cell, *, engine: str,
                 f"stops a device run below {MIN_TS_TEMPERATURE_K:g} K before "
                 f"it starts -- \"TranSiesta electronic temperature *must* be "
                 f"larger than 10 kT\".  At least "
-                f"{MIN_TS_TEMPERATURE_K:g} K runs; 300 K is the default"
-                f".",
+                f"{MIN_TS_TEMPERATURE_K:g} K runs; "
+                f"{float(temp_default):g} K is the default.",
                 where="config.electronic_temperature"))
         else:
             n = pole_count(pole, temp)
@@ -96,8 +101,8 @@ def validate_transport_kind(struct: Structure, cfg, cell, *, engine: str,
                     f"20 poles\", after the queue wait.  The count is "
                     f"derived, N = int(E / (pi kT)), so it moves with the "
                     f"temperature: at {float(temp):g} K the least energy is "
-                    f"{need:.2f} eV.  The default is 10 eV"
-                    f".",
+                    f"{need:.2f} eV.  The default is "
+                    f"{float(pole_default):g} eV.",
                     where="config.negf_eq_pole_ev"))
     # MORE THAN TWO SPIN COMPONENTS: TranSIESTA's own stop at the device's
     # start (`transiesta.STOPS_ON_SPIN`), said as information on every rung

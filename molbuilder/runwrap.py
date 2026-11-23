@@ -42,8 +42,8 @@ from .runfiles import (RANK_LAUNCHER, ROLE_CONCLUDED, ROLE_SESSION_LOG,
 from .config_dir import CHANNEL_NAME_RULE, is_channel_name
 # The way back a refusal names: the checkpoint commands, the folder in them;
 # and the one door a run script takes a start from.
-from .identity import (command_stage, holds_a_start, next_run_words,
-                       started_by_launch, way_back_words)
+from .identity import (command_stage, holds_a_start, in_double_quotes,
+                       next_run_words, started_by_launch, way_back_words)
 from .jobset.errors import WrapperError
 # The thread chain's rungs, one list for the script's chain and the run
 # script's (`running-a-job.md` § 3.2).
@@ -180,12 +180,16 @@ def env_repair(recipe) -> str:
     recipe installed again (`hints.install_again_cmd`), or, for an env
     molbuilder does not install (``None``, `prep --env`), rebuilt as it was
     made -- the one sentence every such stop says (`ops/installation.md`
-    M6: an env lacking one fails, said, naming the repair)."""
-    return (f"rebuild it on this machine "
-            f"({_hints.install_again_cmd(recipe)})"
-            if recipe is not None else
-            "rebuild it as it was made -- it is no env molbuilder "
-            "installs")
+    M6: an env lacking one fails, said, naming the repair).  As typed in
+    molbuilder's checkout, on every machine: a run script is one file
+    whichever machine it was prepared for (`execution/architecture.md`
+    § 9)."""
+    if recipe is None:
+        return ("rebuild it as it was made -- it is no env molbuilder "
+                "installs")
+    with _hints.typed_in_checkout():
+        command = _hints.install_again_cmd(recipe) + _hints.where_typed()
+    return f"rebuild it on this machine ({command})"
 
 
 def _env_python_block(names, stdout_role: str, target_env: str,
@@ -207,7 +211,9 @@ def _env_python_block(names, stdout_role: str, target_env: str,
     refused alike, but concluding nothing: it starts nothing."""
     from .parse.dirs.job import NO_ENV_PYTHON
     env_name = _env_name(target_env)
-    remedy = env_repair(recipe)
+    # SAID WORD FOR WORD inside the echo's quotes, whatever the checkout's
+    # path the command names holds (`identity.in_double_quotes`).
+    remedy = in_double_quotes(env_repair(recipe))
     return (
         f'_out_file="{names.name(stdout_role)}"\n'
         f"# --- The job's python: its env's own (running-a-job.md 2) ---\n"
@@ -544,7 +550,7 @@ def shell_literal(text: str, live: Optional[Dict[str, str]] = None) -> str:
     parts = (re.split("(" + "|".join(map(re.escape, keys)) + ")", text)
              if keys else [text])
     return '"' + "".join(
-        (live[p] if p in (live or {}) else re.sub(r'([\\"$`])', r"\\\1", p))
+        (live[p] if p in (live or {}) else in_double_quotes(p))
         for p in parts if p) + '"'
 
 
@@ -1973,7 +1979,8 @@ def _program_launcher_block(prog: str, words: str, target_env: str, *,
             f"    echo \"ERROR: '{prog}' is not a program of '{target_env}' "
             f"($CONDA_PREFIX: no folder of it on PATH holds one; PATH's "
             f"own: $(command -v {prog} || echo none)).  Is {words} installed "
-            f"in this env?  If not: {env_repair(recipe)}.  The engine was "
+            f"in this env?  If not: {in_double_quotes(env_repair(recipe))}."
+            f"  The engine was "
             f"not started.\" >&2\n"
             + '    [ "$_dry_run" = "1" ] || '
             + conclude_line(1, f"{prog} {NOT_IN_ITS_ENV} (%s)",
@@ -2119,7 +2126,8 @@ def _program_launcher_block(prog: str, words: str, target_env: str, *,
                 '&& [ ! -x "$_mb_mpirun" ]; then\n'
                 f"    echo \"ERROR: '{prog}' runs under MPI, and "
                 f"'{target_env}' holds no mpirun of its own ($_mb_mpirun): "
-                f"{env_repair(recipe)}.  The engine was not started.\" "
+                f"{in_double_quotes(env_repair(recipe))}.  The engine was "
+                f"not started.\" "
                 f">&2\n"
                 + '    [ "$_dry_run" = "1" ] || '
                 + conclude_line(1, f"mpirun {NOT_IN_ITS_ENV} (%s)",
@@ -2439,7 +2447,7 @@ def render_run_wrapper(script_path: Path, *,
             f"{eng.words}'s GPU build.  The run script enters it at its "
             f"start and stops there if it is absent -- so install it before "
             f"launching, {_there}: "
-            f"``{_hints.install_again_cmd(_recipe)}`` "
+            f"``{_hints.install_again_cmd(_recipe)}``{_hints.where_typed()} "
             f"-- or turn ``Use GPU`` off and prep again.")
         if notes is not None and _said not in notes:
             notes.append(_said)

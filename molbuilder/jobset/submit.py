@@ -67,7 +67,8 @@ from .model import (KIND_LADDER, KIND_SWEEP, Job, JobSet, Resources,
 from .continuation import Continuation, relaunch
 from .ledger import rel_to
 from .planned import Plan, found
-from ..identity import JOBS_PROG, checkpoint_as_typed, jobs_as_typed
+from ..identity import (JOBS_PROG, checkpoint_as_typed, in_double_quotes,
+                        jobs_as_typed)
 from ..runfiles import (GROUP_HEADER, GROUP_LOG, GROUP_RUN_SCRIPT,
                         ROLE_RUN_SCRIPT, ROLE_SESSION_LOG, GroupNames,
                         RunNames)
@@ -3297,7 +3298,10 @@ def _molbuilder_env_entry(machine) -> str:
             + f"    _log ERROR \"molbuilder's environment '{host}' was not "
               f"entered -- CONDA_PREFIX is ${{CONDA_PREFIX:-<unset>}}, and "
               f"${{_mb_py:-<no python>}} is not there: "
-              f"{env_repair(recipe_of_category(None))}; no group was "
+              # Word for word inside the sentence's quotes, whatever the
+              # checkout's path holds (`identity.in_double_quotes`).
+              f"{in_double_quotes(env_repair(recipe_of_category(None)))}; "
+              f"no group was "
               f"launched\"\n"
             + "    exit 1\n"
             + "fi")

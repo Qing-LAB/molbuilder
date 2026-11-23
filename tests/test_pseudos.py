@@ -473,3 +473,27 @@ def test_a_relative_lib_resolves_through_the_calculations_own_tree(
     server = point_the_one_door_at(tmp_path / "server", monkeypatch.setenv)
     assert resolve_psml_lib("pseudopotential", dest_dir=lone) == \
         server / "pseudopotential"
+
+
+def test_every_job_copies_the_calculations_pseudopotentials_and_nothing_else(
+        tmp_path):
+    """SIESTA's shared package (`script-preparation.md` § 4.1, the data
+    files): each ``<label>.psml`` in the calculation's ``pseudos/``, named
+    ``pseudos/<label>.psml`` -- the one rule prep and a job planning its own
+    calls both ask (`runfiles.pseudo_package`).  The input is the folder as
+    the road leaves it: files `describe` put loose at the root, adopted
+    into ``pseudos/``, beside a note of the person's own there.  THE SILENT
+    FAILURE: a person's note shipped to every call as a pseudopotential, or
+    a pseudopotential left out -- SIESTA stopping at a call's start, after
+    the queue.  Asked of the seam, since what it lists is the folder as prep
+    will leave it, not the disk."""
+    from molbuilder.jobset.engines import engine_seam
+    from molbuilder.siesta.seam import pseudo_dir
+    calc = tmp_path / "Relax"
+    calc.mkdir()
+    for label in ("H", "S"):
+        shutil.copyfile(_REAL[label], calc / f"{label}.psml")
+    folder = pseudo_dir(calc)
+    (folder / "notes.txt").write_text("from PseudoDojo v0.4\n")
+    assert engine_seam("siesta").shared_package(calc, None) == [
+        "pseudos/H.psml", "pseudos/S.psml"]

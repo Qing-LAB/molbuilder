@@ -221,6 +221,15 @@ def in_template(text: str) -> str:
     return text.replace("{", "{{").replace("}", "}}")
 
 
+def in_double_quotes(text: str) -> str:
+    """``text`` -- a line naming a command as typed, with its quotes and
+    ``${...}`` -- escaped to stand word for word inside a double-quoted
+    shell word whose other words the shell reads (an ``echo "..."`` saying
+    ``$CONDA_PREFIX``): ``\\``, ``"``, ``$`` and the backquote escaped, so
+    nothing of it is read by the shell."""
+    return re.sub(r'([\\"$`])', r"\\\1", text)
+
+
 #: The program as a person types it (:func:`as_typed`).
 PROG = as_typed()
 #: THE JOBSET VERBS' COMMAND, and the kinds of work each names: the

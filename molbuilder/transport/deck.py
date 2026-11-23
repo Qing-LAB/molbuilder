@@ -51,8 +51,8 @@ from __future__ import annotations
 from typing import Optional
 
 from .. import script_emit as _sc
-from ..runfiles import (SIESTA_DM, SIESTA_HSX, SIESTA_TS_HSX, SIESTA_TSDE,
-                        SIESTA_TSHS, compose, deck_role)
+from ..runfiles import (PSEUDO_DIR, SIESTA_DM, SIESTA_HSX, SIESTA_TS_HSX,
+                        SIESTA_TSDE, SIESTA_TSHS, compose, deck_role)
 from ..siesta import layout as _sl
 from ..siesta.engine_input import unit_word
 from ..structure import Structure
@@ -702,11 +702,12 @@ def _pseudopotential_note(cfg) -> list:
             "# PSEUDOPOTENTIALS: `prep` copies this calculation's .psml files",
             f"# from {lib} -- the template's `psml_lib`, named at `jobset",
             "# init` for a cited structure pair, which carries none -- into",
-            "# the calculation's `pseudos/` directory beside this deck.",
+            f"# the calculation's `{PSEUDO_DIR}/` directory beside this deck.",
         ]
     return [
         "# PSEUDOPOTENTIALS: this calculation's .psml files travel with the",
-        "# CITED run -- `prep` copies them into the calculation's `pseudos/`",
+        f"# CITED run -- `prep` copies them into the calculation's "
+        f"`{PSEUDO_DIR}/`",
         "# directory beside this deck.  If SIESTA cannot find a pseudo, the",
         "# cited run did not carry it.",
     ]

@@ -245,13 +245,12 @@ def _recorded(struct: Structure) -> Optional[Dict[str, Resolved]]:
         out["net_charge"] = Resolved(q, "recorded", why)
     # WHAT A RECORD MAY SAY of them is what the catalogue offers.  A count's
     # choices are whole numbers and one word, ``free``, so its type counts.
-    from .template import catalogue, one
+    from .template import catalogue, is_member, one
     t = contract.get("spin_treatment")
     if t in one(catalogue(), "spin_treatment").choices:
         out["spin_treatment"] = Resolved(t, "recorded", why)
     c = contract.get("unpaired_electrons")
-    if any(type(c) is type(m) and c == m
-           for m in one(catalogue(), "unpaired_electrons").choices):
+    if is_member(c, one(catalogue(), "unpaired_electrons").choices):
         out["unpaired_electrons"] = Resolved(c, "recorded", why)
     return out or None
 

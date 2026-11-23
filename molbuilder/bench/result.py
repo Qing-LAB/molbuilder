@@ -214,8 +214,12 @@ def compare_asked_to_ran(asked: Dict, effective: Dict) -> Dict:
     # would leave a legitimate benchmark with no winner at all.  A
     # mismatch here must mean the trial's LABEL is a lie, not that the
     # engine adapted a tuning parameter the way it documents.
+    # THE CORES ONE RANK RUNS ON by the exchange vocabulary's one map
+    # (`jobset.model.AS_RESOURCE`): the deck's ``omp_threads`` asked as the
+    # scheduler's field.
+    from ..jobset.model import AS_RESOURCE
     pairs = (("mpi_np", "mpi_np"),
-             ("cpus_per_task", "omp_threads"),
+             (AS_RESOURCE["omp_threads"], "omp_threads"),
              ("diag_algorithm", "diag_algorithm"))
     out: Dict = {}
     for asked_key, ran_key in pairs:

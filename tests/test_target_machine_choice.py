@@ -107,6 +107,52 @@ def _prep_next(bundle: str, *extra):
     return jobset("prep", "task", "--group", "2", "--bundle", bundle, *extra)
 
 
+@pytest.mark.parametrize("target, says, stage", [
+    ("sol", "bash scripts/install-env.sh", "coarse"),
+    ("this", None, "coarse"),
+    ("sol", "bash scripts/install-env.sh", "medium"),
+], ids=["another machine: the command as typed in its checkout",
+        "this machine: this checkout's full path",
+        "a later group, no --target: the calculation's own machine's"])
+def test_what_prep_writes_for_a_machine_names_its_env_commands_there(
+        machines, target, says, stage):
+    """`execution/preparing-for-another-machine.md` § 2: nothing prep writes
+    names the machine it was prepared on -- so the env commands in a deck
+    prepared for another machine are typed in molbuilder's checkout there;
+    prepared for this machine, by this checkout's full path; and a run
+    script's, on every machine, in molbuilder's checkout, one file whichever
+    machine it was prepared for (`execution/architecture.md` § 9; the user,
+    2026-11-22: "Full path here, words there", "Run script: words
+    everywhere").  THE SILENT FAILURE: a job on Sol, its env lacking a
+    package, naming a command by the workstation's path -- "No such file"
+    there."""
+    from molbuilder import repo_root
+    from molbuilder.envs.hints import LAUNCHER
+    from molbuilder.projects import projects_root
+    from support.road import stage_file
+    machines.write("sol")
+    machines.this_machine()
+    res = _prep("P/optimization/w", "--target", target)
+    assert res.exit_code == 0, res.output
+    if stage != "coarse":
+        # A CALCULATION ALREADY PREPARED NEEDS NO --target: its own copy of
+        # the record answers (`preparing-for-another-machine.md` § 4), as
+        # Task setup sends a later group.
+        res = _prep_next("P/optimization/w")
+        assert res.exit_code == 0, res.output
+    bundle = projects_root() / "P" / "optimization" / "w"
+    deck = stage_file(bundle, stage, ".py").read_text()
+    run_script = stage_file(bundle, stage, ".run.sh").read_text()
+    for written, text, in_checkout in ((".py", deck, says),
+                                       (".run.sh", run_script, True)):
+        if in_checkout:
+            assert str(repo_root()) not in text, written
+            assert ("bash scripts/install-env.sh " in text
+                    and "in molbuilder's checkout" in text), written
+        else:
+            assert f"{LAUNCHER} " in text, written
+
+
 class TestTheUserChoosesTheMachine:
 
     def test_c1_several_machines_and_no_target_is_refused(self, machines):

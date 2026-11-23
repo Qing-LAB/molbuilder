@@ -64,11 +64,12 @@ ITEMS = ("kgrid", "tbt_k_grid", "electrode_kz")
 
 
 def _grid_words(source: str) -> str:
-    """A grid as a sentence names it: its item's label, the axes it lists left
-    out."""
-    from .template import catalogue
-    label = next((it.label for it in catalogue().items
-                  if it.name == source and it.label), source).split(" (")[0]
+    """A grid as a sentence names it: its item's label (one of
+    :data:`ITEMS`, asked of the catalogue), the axes it lists left out;
+    ``open``, an axis answering itself, by its own word."""
+    from .template import catalogue, one
+    label = ((one(catalogue(), source).label if source in ITEMS else None)
+             or source).split(" (")[0]
     return label[:1].upper() + label[1:]
 
 #: What a kind with leads fixes in each item a k-point grid reads -- the

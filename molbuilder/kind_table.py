@@ -124,13 +124,8 @@ EXPORT_ASK_RESERVED = ("path", "format", "to", "bundle", "folder")
 WHOLE_MODULE_PARTS = {"describe": DESCRIBE_DOORS, "reuse": REUSE_DOORS,
                       "export": EXPORT_DOORS}
 
-#: A RUN OF POINTS' RECORD (`execution/runs-of-points.md` § 2.1): when its
-#: run is finished -- every point DONE, or every point RAN, the words the
-#: job reads in the index launch copies the record into (`runpoints.DONE`,
-#: `runpoints.RAN`: the job holds no kind table, and this table loads before
-#: the package can import that module) -- and whether its points share ONE
-#: wall or are told EACH their own.
-FINISHED = ("done", "ran")
+#: A RUN OF POINTS' RECORD (`execution/runs-of-points.md` § 2.1): whether its
+#: points share ONE wall or are told EACH their own.
 WALL_ONE, WALL_EACH = "one", "each"
 WALLS = (WALL_ONE, WALL_EACH)
 #: The moments a kind's own steps run at, around a point's engine
@@ -247,8 +242,8 @@ class RunOfPoints:
     declaration: str
     #: What one point is called in a person's words -- *point*, *call*.
     unit: str
-    #: When the run is finished (:data:`FINISHED`): every point ``done``,
-    #: or every point ``ran``.
+    #: When the run is finished: every point ``done``, or every point
+    #: ``ran`` (`runpoints.DONE`, `runpoints.RAN`).
     finished: str
     #: Whether its points share ``one`` wall or are told ``each`` their own
     #: (:data:`WALLS`).
@@ -488,7 +483,8 @@ def _run_of_points(where: str, body: object) -> RunOfPoints:
     if missing:
         _refuse(where, f"no {', '.join(missing)} -- a run of points states "
                        f"each")
-    for key, words in (("finished", FINISHED), ("wall", WALLS)):
+    from .runpoints import DONE, RAN       # the job's own words, asked here
+    for key, words in (("finished", (DONE, RAN)), ("wall", WALLS)):
         if body[key] not in words:
             _refuse(where, f"{key} is {body[key]!r} -- one of "
                            f"{', '.join(words)}")
@@ -1111,7 +1107,7 @@ def part(ref: str, *, record: str, key: str) -> Any:
 __all__ = ["ExportAsk", "EXPORT_ASK_TYPES", "EXPORT_ASK_RESERVED",
            "export_asks", "export_asks_of",
            "TABLE_FILE", "COMPUTES", "DESCRIPTION_FIELDS", "ROOT_OPENS",
-           "ROLE_OPENS", "PART_REFS", "FINISHED", "WALL_ONE", "WALL_EACH", "WALLS", "STEP_MOMENTS",
+           "ROLE_OPENS", "PART_REFS", "WALL_ONE", "WALL_EACH", "WALLS", "STEP_MOMENTS",
            "RunOfPoints", "run_of_points", "Description", "FixedCharge", "carrying", "KindTableError", "Role", "Result",
            "Retired", "KindOnEngine", "CalculationKind", "kinds", "kind",
            "pair", "lead_of", "rung_label", "role_set", "part_of", "part",

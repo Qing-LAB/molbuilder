@@ -26,6 +26,7 @@ import pytest
 
 from molbuilder import monitor as M
 from molbuilder.runwrap import BUNDLES
+from support import job_python
 
 
 # --------------------------------------------------------------------- #
@@ -728,8 +729,6 @@ def test_the_shipped_monitor_resolves_it_with_no_molbuilder_installed(
     This writes that file into an otherwise empty directory, runs the monitor
     from it with no molbuilder reachable, and asks it where it would look.
     """
-    import subprocess
-    import sys
     from molbuilder import runfiles, runwrap
 
     ship = tmp_path / "jobdir"
@@ -737,14 +736,15 @@ def test_the_shipped_monitor_resolves_it_with_no_molbuilder_installed(
     (ship / runfiles.MONITOR_BUNDLE).write_bytes(
         runwrap.build(runfiles.MONITOR_BUNDLE))
 
-    env = dict(os.environ)
-    env["XDG_CONFIG_HOME"] = str(tmp_path / "scratch")
-    env.pop("PYTHONPATH", None)          # nothing of molbuilder reachable
-    proc = subprocess.run(
-        [sys.executable, "-c",
-         f"import sys; sys.path.insert(0, {runfiles.MONITOR_BUNDLE!r}); "
+    # NOTHING OF MOLBUILDER REACHABLE, enforced (`support.job_python`): the
+    # host env finds this checkout from any folder.
+    proc = job_python.run(
+        [f"import sys; sys.path.insert(0, {runfiles.MONITOR_BUNDLE!r}); "
          "import mb_monitor; print(mb_monitor.default_notify_path())"],
-        cwd=str(ship), env=env, capture_output=True, text=True, timeout=60)
+        packages=job_python.bundle_packages(runfiles.MONITOR_BUNDLE),
+        members=job_python.bundle_members(runfiles.MONITOR_BUNDLE),
+        cwd=ship, env={"XDG_CONFIG_HOME": str(tmp_path / "scratch")},
+        timeout=60)
     assert proc.returncode == 0, (
         f"the shipped monitor could not resolve its own path:\n{proc.stderr}")
     assert proc.stdout.strip() == str(
@@ -759,28 +759,6 @@ def test_the_shipped_monitor_resolves_it_with_no_molbuilder_installed(
 CHAPTER_PACKAGES = {"mb_monitor.pyz": (),
                     "mb_vibration.pyz": ("numpy", "netCDF4"),
                     "mb_pyscf.pyz": ("numpy", "netCDF4")}
-
-
-def _a_python_allowing(packages, members):
-    """The first lines of a script that makes the job's python refuse, from
-    then on, every import but the standard library, ``packages`` -- each
-    imported first, with whatever it brings -- and ``members``: a job's
-    python carrying only what a bundle's row allows."""
-    return [
-        "import sys",
-        f"for package in {list(packages)!r}:",
-        "    __import__(package)",
-        # WHAT THE JOB'S PYTHON HOLDS BEFORE THE BUNDLE: its own start-up
-        # and the row's packages, with what each brings.
-        "allowed = (set(sys.stdlib_module_names) | set(" + repr(list(members))
-        + ") | {m.split('.')[0] for m in sys.modules})",
-        "class Refuse:",
-        "    def find_spec(self, name, path=None, target=None):",
-        "        if name.split('.')[0] not in allowed:",
-        "            raise ImportError(f'{name} is not the standard "
-        "library, a package its row allows, or a member')",
-        "sys.meta_path.insert(0, Refuse())",
-    ]
 
 
 @pytest.mark.parametrize("bundle", sorted(BUNDLES))
@@ -799,8 +777,6 @@ def test_each_bundle_loads_on_the_packages_its_row_allows_alone(tmp_path,
     reported nothing and kept no utilisation record.
     MUTATION THIS MUST FAIL AGAINST: a member importing at load a package
     its bundle's row does not name (``import scipy`` atop `runfiles.py`)."""
-    import subprocess
-    import sys
     from molbuilder import runwrap
 
     # THE ROW SAYS WHAT THE CHAPTER SAYS, and the load is held to that.
@@ -811,19 +787,14 @@ def test_each_bundle_loads_on_the_packages_its_row_allows_alone(tmp_path,
     ship = tmp_path / "jobdir"
     ship.mkdir()
     (ship / bundle).write_bytes(runwrap.build(bundle))
-    members = sorted(n[:-len(".py")] for n in runwrap.members(bundle))
-    script = "\n".join([
-        *_a_python_allowing(packages, members),
-        f"sys.path.insert(0, {bundle!r})",
-        f"for member in {members!r}:",
-        "    __import__(member)",
-        "print('loaded')",
-    ])
-    env = {k: v for k, v in os.environ.items() if k != "PYTHONPATH"}
-    env["XDG_CONFIG_HOME"] = str(tmp_path / "scratch")
-    proc = subprocess.run([sys.executable, "-I", "-c", script],
-                          cwd=str(ship), env=env, capture_output=True,
-                          text=True, timeout=120)
+    members = job_python.bundle_members(bundle)
+    proc = job_python.run(
+        [f"sys.path.insert(0, {bundle!r})",
+         f"for member in {members!r}:",
+         "    __import__(member)",
+         "print('loaded')"],
+        packages=packages, members=members, cwd=ship,
+        env={"XDG_CONFIG_HOME": str(tmp_path / "scratch")})
     assert proc.returncode == 0 and "loaded" in proc.stdout, (
         f"{bundle} needs beside the job what its row does not allow:\n"
         f"{proc.stderr[-2000:]}")
@@ -838,31 +809,23 @@ def test_the_shipped_monitor_reads_its_card_layout_from_its_own_bundle(
     the package's; and a card is made there on the standard library alone,
     the monitor row's rule (`configuration.md` § 2.3), since a card is
     what a run's report is sent as."""
-    import subprocess
-    import sys
     from molbuilder import runfiles, runwrap
 
     ship = tmp_path / "jobdir"
     ship.mkdir()
     (ship / runfiles.MONITOR_BUNDLE).write_bytes(
         runwrap.build(runfiles.MONITOR_BUNDLE))
-    env = dict(os.environ)
-    env["XDG_CONFIG_HOME"] = str(tmp_path / "scratch")
-    env.pop("PYTHONPATH", None)
-    script = "\n".join([
-        *_a_python_allowing(
-            CHAPTER_PACKAGES[runfiles.MONITOR_BUNDLE],
-            [n[:-len(".py")] for n in runwrap.members(runfiles.MONITOR_BUNDLE)]),
-        f"sys.path.insert(0, {runfiles.MONITOR_BUNDLE!r})",
-        "import mb_monitor, report_cards",
-        "lay = report_cards.load()",
-        "print('loaded', lay.source, mb_monitor.card("
-        "{'event': 'finish', 'energy': 1.5}, receiver='discord', "
-        "layout=lay)['fields'])",
-    ])
-    proc = subprocess.run(
-        [sys.executable, "-I", "-c", script],
-        cwd=str(ship), env=env, capture_output=True, text=True, timeout=60)
+    proc = job_python.run(
+        [f"sys.path.insert(0, {runfiles.MONITOR_BUNDLE!r})",
+         "import mb_monitor, report_cards",
+         "lay = report_cards.load()",
+         "print('loaded', lay.source, mb_monitor.card("
+         "{'event': 'finish', 'energy': 1.5}, receiver='discord', "
+         "layout=lay)['fields'])"],
+        packages=CHAPTER_PACKAGES[runfiles.MONITOR_BUNDLE],
+        members=job_python.bundle_members(runfiles.MONITOR_BUNDLE),
+        cwd=ship, env={"XDG_CONFIG_HOME": str(tmp_path / "scratch")},
+        timeout=60)
     assert proc.returncode == 0 and "loaded" in proc.stdout, (
         f"the shipped monitor cannot read its card layout:\n"
         f"{proc.stderr[-2000:]}")
@@ -887,20 +850,15 @@ def test_the_shipped_vibration_finish_loads_its_readers_from_the_bundle_alone(
     every SIESTA vibration recording its charges at its force-constant
     call's record step, before any result was written (2.69.56) -- so the
     check is called here, not only imported."""
-    import subprocess
-    import sys
     from molbuilder import runwrap
     from molbuilder.runfiles import VIBRATION_BUNDLE
 
     ship = tmp_path / "jobdir"
     ship.mkdir()
     (ship / VIBRATION_BUNDLE).write_bytes(runwrap.build(VIBRATION_BUNDLE))
-    env = dict(os.environ)
-    env["XDG_CONFIG_HOME"] = str(tmp_path / "scratch")
-    env.pop("PYTHONPATH", None)
-    proc = subprocess.run(
-        [sys.executable, "-I", "-c",
-         f"import sys; sys.path.insert(0, {VIBRATION_BUNDLE!r}); "
+    # NO MOLBUILDER ON ITS PATH, enforced (`support.job_python`).
+    proc = job_python.run(
+        [f"import sys; sys.path.insert(0, {VIBRATION_BUNDLE!r}); "
          "import siesta_reader, siesta_fc, fdf, results; "
          "steps = [{'atom': None, 'axis': None, 'side': 0}] + "
          "[{'atom': 1, 'axis': a, 'side': s} "
@@ -909,7 +867,10 @@ def test_the_shipped_vibration_finish_loads_its_readers_from_the_bundle_alone(
          "'steps': steps, "
          "'charges_e': {'hirshfeld': [[0.1, -0.1]] * len(steps)}}, "
          "2, [1]); print('loaded')"],
-        cwd=str(ship), env=env, capture_output=True, text=True, timeout=60)
+        packages=job_python.bundle_packages(VIBRATION_BUNDLE),
+        members=job_python.bundle_members(VIBRATION_BUNDLE),
+        cwd=ship, env={"XDG_CONFIG_HOME": str(tmp_path / "scratch")},
+        timeout=60)
     assert proc.returncode == 0 and "loaded" in proc.stdout, (
         f"the shipped finish cannot import its readers, or run its charges "
         f"check, from the bundle alone:\n{proc.stderr[-2000:]}")

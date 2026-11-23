@@ -44,7 +44,7 @@ import functools
 import re
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Any, Optional, Tuple, Union
+from typing import Any, Iterable, Optional, Tuple, Union
 
 #: THE ONE WRITER'S TEMP FILE beside its target (`persist`), named
 #: ``<target><TEMP_JOIN><random><TEMP_SUFFIX>``: the transient row is
@@ -733,15 +733,10 @@ def find(directory, label: str, *,
         # A CONCRETE NAME OF A TEMPLATED ROLE (``.TBT_UP.nc``) asks for its
         # template with those fields; the template itself, for every value.
         want, want_fields = canonical_role(role)
-    d = Path(directory)
-    try:
-        # FILES, which is what the first line of this docstring says and what
-        # every caller wants.
-        entries = sorted(e for e in d.iterdir() if e.is_file())
-    except OSError:
-        return []
     out: "list[tuple[Path, RunFile]]" = []
-    for entry in entries:
+    # FILES, which is what the first line of this docstring says and what
+    # every caller wants (:func:`files_in`).
+    for entry in files_in(directory):
         parsed = parse(entry.name, label, roles)
         if parsed is None:
             continue
@@ -955,16 +950,10 @@ def find_by_role(directory, role: str) -> "list[Path]":
             f"engine's file, or one name of a templated role, is found by its "
             f"label (`find`).  The dotted roles are "
             + ", ".join(sorted(r for r in known if r.startswith("."))))
-    d = Path(directory)
-    try:
-        # EQUALITY on the canonical role, through :func:`role_of` -- which
-        # reads each NAME's own role rather than testing it against the one
-        # asked for.  The difference is the `.log` case that function
-        # records.
-        return sorted(p for p in d.iterdir()
-                      if p.is_file() and role_of(p.name) == role)
-    except OSError:
-        return []
+    # EQUALITY on the canonical role, through :func:`role_of` -- which reads
+    # each NAME's own role rather than testing it against the one asked for.
+    # The difference is the `.log` case that function records.
+    return [p for p in files_in(directory) if role_of(p.name) == role]
 
 
 # --------------------------------------------------------------------- #
@@ -2665,17 +2654,39 @@ def find_fixed(directory, name: str) -> "list[tuple[Path, dict]]":
     fields read back (:func:`fixed_fields`), sorted by name:
     ``[(path, {"scheduler": "slurm", "jobid": "66027146"})]``."""
     _a_fixed_name(name, "find_fixed")
-    d = Path(directory)
-    try:
-        entries = sorted(d.iterdir())
-    except OSError:
-        return []
     out = []
-    for p in entries:
+    for p in files_in(directory):
         fields = fixed_fields(name, p.name)
-        if fields is not None and p.is_file():
+        if fields is not None:
             out.append((p, fields))
     return out
+
+
+def files_in(directory) -> "list[Path]":
+    """The files in ``directory``, sorted by name -- none when it is not
+    there: the one listing every finder here chooses from (:func:`find`,
+    :func:`find_by_role`, :func:`find_fixed`), and the shared package's rule
+    (:func:`pseudo_package`)."""
+    try:
+        return sorted(p for p in Path(directory).iterdir() if p.is_file())
+    except OSError:
+        return []
+
+
+def pseudo_package(names: "Iterable[str]",
+                   folder: Optional[str] = PSEUDO_DIR) -> "list[str]":
+    """A SIESTA run's SHARED PACKAGE -- its pseudopotentials: each of
+    ``names``, a listing of the folder that holds them, that is a
+    pseudopotential's name (:data:`PSEUDO_FILE`), named as the run's calls
+    take it -- ``pseudos/<label>.psml`` from the calculation's
+    :data:`PSEUDO_DIR`, ``<label>.psml`` from a ``folder`` of ``None``, a
+    run's own copy -- sorted.  The one rule for both sides: prep lists the
+    calculation's folder as it will leave it (`siesta.seam`), a job that
+    plans its own calls the run's copy beside it, else the calculation's
+    (`spectra.siesta_vibration`), so this module, which travels, holds
+    it."""
+    return sorted((f"{folder}/{n}" if folder else n) for n in names
+                  if fixed_fields(PSEUDO_FILE, n) is not None)
 
 
 def fixed(level: Optional[str] = None,

@@ -5412,7 +5412,7 @@ def test_a_question_the_finished_results_answer_is_copied_in(
         assert sorted(files) == sorted([f"{label}.template.toml",
                                         "task.json", "job-request.json"]), \
             made.said["describe"].output
-    from molbuilder.pseudos import PSEUDO_DIRNAME
+    from molbuilder.runfiles import PSEUDO_DIR
     from molbuilder.transport.compose import (junction_difference,
                                               read_provenance,
                                               recorded_junction)
@@ -5424,8 +5424,8 @@ def test_a_question_the_finished_results_answer_is_copied_in(
     if (read_provenance(made.bundle)["citation"]
             == read_provenance(theirs.bundle)["citation"]):
         assert junction_difference(ran, ours) is None
-    for psml in sorted((theirs.bundle / PSEUDO_DIRNAME).glob("*.psml")):
-        assert ((made.bundle / PSEUDO_DIRNAME / psml.name).read_bytes()
+    for psml in sorted((theirs.bundle / PSEUDO_DIR).glob("*.psml")):
+        assert ((made.bundle / PSEUDO_DIR / psml.name).read_bytes()
                 == psml.read_bytes()), psml.name
 
     def one_hop(status, folder):

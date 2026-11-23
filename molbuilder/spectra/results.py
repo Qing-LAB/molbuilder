@@ -787,6 +787,22 @@ def equilibrium_block(scf_energy_eh, mo_energies_eh, homo_idx,
             **({"masses_amu": masses_amu} if masses_amu is not None else {})}
 
 
+def relaxation_block(*, enabled, already_relaxed, n_steps=0, record=None,
+                     max_force_eh_bohr=None, max_force_all_atoms_eh_bohr=None,
+                     converged=None, warning=None) -> Dict[str, Any]:
+    """The result's relaxation block (`engines/vibration.md` § 6.2) -- ONE
+    shape, both engines' writers': every key stated from the first write,
+    ``None`` where not yet known, ``record`` the record of the call that
+    relaxed, whole, where one did -- SIESTA's `relax` call of the run, read
+    from its index (§ 5.11 § 3) -- else ``None``: PySCF relaxes inside its
+    one deck."""
+    return {"enabled": bool(enabled), "already_relaxed": bool(already_relaxed),
+            "n_steps": int(n_steps), "record": record,
+            "max_force_eh_bohr": max_force_eh_bohr,
+            "max_force_all_atoms_eh_bohr": max_force_all_atoms_eh_bohr,
+            "converged": converged, "warning": warning}
+
+
 def removed_motions_of(patterns) -> Dict[str, Any]:
     """What the harmonic analysis removed before diagonalising, as the result
     states it (`engines/vibration.md` § 6.2): the count and the Cartesian
@@ -903,9 +919,9 @@ class SpectraResults:
     #: already_relaxed (`engines/vibration.md` § 4.9), the gradient-check
     #: number in `relaxation` beside it.
     phase_relaxation:          str = PHASE_EMPTY
-    #: v5: relaxation progress/result -- {enabled, already_relaxed,
-    #: n_steps, max_force_eh_bohr, max_force_all_atoms_eh_bohr, converged, warning?}.  Written live so the
-    #: chip can show "step 14, max force 0.0042" ticking down.
+    #: v5: relaxation progress/result, the one shape both writers write
+    #: (:func:`relaxation_block`).  Written live so the chip can show
+    #: "step 14, max force 0.0042" ticking down.
     relaxation:                Dict[str, Any] = field(default_factory=dict)
     #: v5: RRHO thermochemistry -- headline numbers at
     #: temperature_K (and pressure_atm for "rrho"; null for

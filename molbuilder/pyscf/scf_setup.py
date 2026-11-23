@@ -29,15 +29,8 @@ def emit_scf_configure_fn(cfg, *, verbose: bool = True) -> List[str]:
     its line (the note-with-the-value rule reaches emitted functions the
     same way it reaches sections).
     """
-    from .. import script_emit as _sc
     from . import layout as _layout
-
-    is_dft = cfg.is_dft
-    spell = _layout.line(cfg, is_dft=is_dft)
-
-    out: List[str] = [
-        "",
-        "",
+    return _dresser(cfg, _layout.SCF_SECTION, [
         "def _mb_configure_scf(mf):",
         '    """The one SCF dresser (molbuilder: engines/pyscf.md § 7a).',
         "",
@@ -46,21 +39,7 @@ def emit_scf_configure_fn(cfg, *, verbose: bool = True) -> List[str]:
         "    displaced-point and relaxation cycles.  Site-specific extras",
         "    (checkpointing, GPU promotion, the Newton wrap) stay at the",
         '    construction sites -- see the contract\'s role table."""',
-    ]
-    emitted = 0
-    for name in _layout.SCF_SECTION.items:
-        p = _sc.parameter(name, "pyscf", config=cfg)
-        ln = spell(p)
-        if ln is None:
-            continue
-        if verbose:
-            out.extend("    " + n for n in p.note())
-        out.append("    " + ln)
-        emitted += 1
-    if not emitted:
-        out.append("    pass  # every SCF knob at its engine default")
-    out.append("    return mf")
-    return out
+    ], empty="every SCF knob at its engine default", verbose=verbose)
 
 
 def emit_theory_configure_fn(cfg, *, verbose: bool = True) -> List[str]:
@@ -83,15 +62,8 @@ def emit_theory_configure_fn(cfg, *, verbose: bool = True) -> List[str]:
     across the rebind in both directions, so dressing before the fitting
     call is safe.
     """
-    from .. import script_emit as _sc
     from . import layout as _layout
-
-    is_dft = cfg.is_dft
-    spell = _layout.line(cfg, is_dft=is_dft)
-
-    out: List[str] = [
-        "",
-        "",
+    return _dresser(cfg, _layout.THEORY_SECTION, [
         "def _mb_configure_theory(mf):",
         '    """The one level-of-theory dresser (molbuilder: engines/pyscf.md',
         "    § 7a).",
@@ -101,10 +73,26 @@ def emit_theory_configure_fn(cfg, *, verbose: bool = True) -> List[str]:
         "    Kohn-Sham deck only, the dispersion correction on every one.",
         "    density_fit is deliberately NOT here -- it rebinds mf and is",
         '    per-site conditional."""',
-    ]
+    ], skip=("density_fit",),
+        empty=("nothing to set: "
+               + ("every knob at its engine default" if cfg.is_dft
+                  else "Hartree-Fock, and dispersion \"none\"")),
+        verbose=verbose)
+
+
+def _dresser(cfg, section, head: List[str], *, empty: str,
+             skip: Tuple[str, ...] = (), verbose: bool = True) -> List[str]:
+    """ONE WALK for both dressers: ``head`` -- the function's
+    line and docstring -- then each of ``section``'s items but ``skip``,
+    spelled by ``layout.line``, its catalogue note above it, and ``pass``
+    saying ``empty`` when no knob writes a line."""
+    from .. import script_emit as _sc
+    from . import layout as _layout
+    spell = _layout.line(cfg, is_dft=cfg.is_dft)
+    out: List[str] = ["", "", *head]
     emitted = 0
-    for name in _layout.THEORY_SECTION.items:
-        if name == "density_fit":
+    for name in section.items:
+        if name in skip:
             continue
         p = _sc.parameter(name, "pyscf", config=cfg)
         ln = spell(p)
@@ -115,9 +103,7 @@ def emit_theory_configure_fn(cfg, *, verbose: bool = True) -> List[str]:
         out.append("    " + ln)
         emitted += 1
     if not emitted:
-        out.append("    pass  # nothing to set: "
-                   + ("every knob at its engine default" if is_dft
-                      else "Hartree-Fock, and dispersion \"none\""))
+        out.append(f"    pass  # {empty}")
     out.append("    return mf")
     return out
 

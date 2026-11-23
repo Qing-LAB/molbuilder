@@ -311,8 +311,7 @@ def _check_fits(asks: Mapping[str, Any], allocation: Resources) -> None:
 #  The resolver                                                         #
 # --------------------------------------------------------------------- #
 
-def _refuse_a_stated_answer(template_text: str, engine: str,
-                            kind: str) -> None:
+def _refuse_a_stated_answer(parsed, engine: str, kind: str) -> None:
     """A template value on an item the rung fixes is refused unless it IS
     the item's one answer wherever it is read (`engines/template.md` § 6.4,
     `template.fixed_answers`).
@@ -323,13 +322,12 @@ def _refuse_a_stated_answer(template_text: str, engine: str,
     answered rung by rung -- the device's solver -- or point by point -- the
     bias -- has no one answer a calculation-wide file could state, so any
     value there is refused; so is any other value, which the answer would be
-    laid over without a word.
+    laid over without a word.  ``parsed`` is the template as
+    `template.read_template` read it.
     """
-    from .template import (fixed_answers, fixed_by_role, read_template,
-                           select, why_role)
+    from .template import fixed_answers, fixed_by_role, select, why_role
     fixed = fixed_by_role(engine, kind)
     alike = fixed_answers(engine, kind)
-    parsed = read_template(template_text)
     mine = select(parsed, engine=engine) if parsed.engines else parsed.items
     for it in mine:
         if not it.is_set or it.name not in fixed:
@@ -491,15 +489,18 @@ def resolve(template_text: str, task, *,
     names something the schema does not have.
     """
     from .engine_table import config_class
-    from .template import config_from_template
+    from .template import config_from_template, read_template
     config_cls = config_class(str(task.engine))
 
     # THE TEMPLATE'S OWN REFUSALS ARE RESOLVE'S -- an item the schema does
     # not know, a value that is not one of today's choices, a pre-M6 item
     # naming the migration.  They arrive as ValueError, translated here,
-    # once, so this function raises what its docstring says it raises.
+    # once, so this function raises what its docstring says it raises.  The
+    # file is read once, for the values, the stated answers and whose each
+    # value is.
     try:
-        base = config_from_template(template_text, config_cls)
+        _parsed = read_template(template_text)
+        base = config_from_template(_parsed, config_cls)
     except ValueError as exc:
         raise ResolveError(str(exc)) from exc
     provenance = {f.name: "template" for f in dataclasses.fields(config_cls)}
@@ -521,21 +522,19 @@ def resolve(template_text: str, task, *,
     # Asked ONCE: every door below that could set one refuses, and the
     # answers are laid on each element last, so the gate, the record and
     # the deck read one value.
-    from .template import (accepts, catalogue, fixed_by_role,
-                           role_answers, select, shown, why_role)
+    from .template import (accepts, fixed_by_role, items_of,
+                           role_answers, shown, why_role)
     _engine = task.engine
     _kind = task.calculation
-    _items = {it.name: it for it in select(catalogue(), engine=_engine)}
+    _items = items_of(engine=_engine)
     fixed = fixed_by_role(_engine, _kind)
     answers = role_answers(_engine, _kind, stage_obj.name)
-    _refuse_a_stated_answer(template_text, _engine, _kind)
+    _refuse_a_stated_answer(_parsed, _engine, _kind)
 
     # WHOSE EACH TEMPLATE VALUE IS, as the file records it, and the items
     # this rung's deck is rendered from: the deck's PROVENANCE table says,
     # per value, who set it (`job-contracts.md` § 3.2).
-    from .template import (read_template, why_zeros_written_before,
-                           zeros_written_before)
-    _parsed = read_template(template_text)
+    from .template import why_zeros_written_before, zeros_written_before
     origins = {it.name: it.source for it in _parsed.items}
     deck_items = _deck_items(_engine, _kind, stage_obj.name)
     # WHO SET EACH VALUE is said of what this kind carries: an item of
@@ -573,10 +572,7 @@ def resolve(template_text: str, task, *,
         if _zeros:
             raise ResolveError(why_zeros_written_before(_parsed, _zeros))
         try:
-            base = effective_config(
-                base, stage_obj.overrides,
-                among=settings_in("override", engine=_engine, kind=_kind,
-                                  stage=stage_obj.name))
+            base = _overridden(base, stage_obj, engine=_engine, kind=_kind)
         except ValueError as exc:
             # An override naming no field, or a value outside its declared
             # range -- a person's edit, said by name (the same translation).
@@ -796,6 +792,23 @@ def resolve(template_text: str, task, *,
                         stage=stage_obj.name)
 
 
+def _overridden(base, stage_obj, *, engine: str, kind: str):
+    """THE STAGE'S LAYER, the one composition of it: ``base`` -- the
+    template's values -- with ``stage_obj``'s overrides laid on it, each
+    name among what a stage may override on its rung
+    (`template.settings_in`, ``"override"``).  :func:`resolve` lays it once
+    its refusals of an override have passed, then its run settings, a
+    point and its pins; :func:`resolved_ladder` lays it alone; both lay the
+    rung's own answers last.  An override naming no field, or a value past
+    its declared range, is ``ValueError`` (`effective_config`)."""
+    if not stage_obj.overrides:
+        return base
+    return effective_config(
+        base, stage_obj.overrides,
+        among=settings_in("override", engine=engine, kind=kind,
+                          stage=stage_obj.name))
+
+
 def resolved_ladder(template_text: str, task) -> List[Tuple[str, Any]]:
     """``[(stage name, resolved config)]`` for every stage of the ladder, in
     ladder order — the sequence checks' input (`engines/stages.md` § 6.4 /
@@ -816,11 +829,7 @@ def resolved_ladder(template_text: str, task) -> List[Tuple[str, Any]]:
     kind = task.calculation
     out: List[Tuple[str, Any]] = []
     for s in (task.stages or ()):
-        values = (effective_config(
-            base, s.overrides,
-            among=settings_in("override", engine=engine, kind=kind,
-                              stage=s.name))
-            if s.overrides else base)
+        values = _overridden(base, s, engine=engine, kind=kind)
         # ...and the rung's own answers, last, as `resolve` lays them.
         answers = role_answers(engine, kind, s.name)
         out.append((s.name,
@@ -1080,7 +1089,7 @@ def _card_read(request, stage):
     from . import template as _T
     from .job_request import LANE_ASKS
     engine, kind = str(request.engine), str(request.calculation)
-    items = {i.name: i for i in _T.select(_T.catalogue(), engine=engine)}
+    items = _T.items_of(engine=engine)
     for name, val in request.run_condition(stage).items():
         it = None if name in LANE_ASKS else items.get(name)
         why = (_T.accepts(it, val, "run_card", engine=engine, kind=kind,
@@ -1171,7 +1180,9 @@ def declared_run_shape(request, stage=None):
             continue                    # a parameter, or unset on this rung
         field = AS_RESOURCE.get(name, name)
         if field == "gres":
-            out["gres"] = f"gpu:{val}"  # the count, as the scheduler spells it
+            # The count, as the scheduler spells it -- its dialect's door.
+            from .scheduler.quantities import canonical_gres
+            out["gres"] = canonical_gres(str(val))
         elif field in _RESOURCE_FIELDS:
             out[field] = val
     return out

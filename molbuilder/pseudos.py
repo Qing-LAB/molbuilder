@@ -46,11 +46,8 @@ import sys
 import xml.etree.ElementTree as ET
 
 
-#: Where a calculation's staged pseudopotentials live, relative to it
-#: (roadmap 7.10 M6: grouped in one folder rather than N loose `<label>.psml`).
-from .runfiles import PSEUDO_DIR as PSEUDO_DIRNAME  # noqa: E402 -- the catalogue's name
-from .runfiles import (PSEUDO_FILE, RunFileError, fixed_fields,  # noqa: E402
-                       fixed_name)
+from .runfiles import (PSEUDO_DIR, PSEUDO_FILE,  # noqa: E402
+                       RunFileError, fixed_fields, fixed_name)
 from .structure import split_species_label  # noqa: E402 -- a label's name
 
 
@@ -107,7 +104,7 @@ def psml_sources(labels, *, dest_dir=None,
     """
     places: List[Path] = []
     if dest_dir is not None:
-        places += [Path(dest_dir) / PSEUDO_DIRNAME, Path(dest_dir)]
+        places += [Path(dest_dir) / PSEUDO_DIR, Path(dest_dir)]
     if library is not None:
         places.append(Path(library))
     out: Dict[str, Optional[Path]] = {}

@@ -4,7 +4,8 @@ MODULE  deck_record (L1, the job as described; beside a job the standard
         library and the progress log's words)
 ROLE    the grammar of every molbuilder block in a generated file -- the block
         names, the BEGIN/END fences (:func:`begin_marker`,
-        :func:`end_marker`, :data:`MARKER_RE`) -- and the ONE reader of a
+        :func:`end_marker`, :data:`MARKER_RE`, a line read as one by
+        :func:`fence`, a block's lines by :func:`in_blocks`) -- and the ONE reader of a
         block's JSON payload (:func:`read_json_block`), with the readers of
         each block -- ATOM-METADATA (its order record read by
         `atom_permutation.order_record_of`), ENGINE-OFFSET, VIBRATION, SHARED, PROVENANCE
@@ -13,7 +14,8 @@ ROLE    the grammar of every molbuilder block in a generated file -- the block
 USED-BY script_emit (writes every block through these),
         the SIESTA vibration's finish (`spectra.siesta_vibration`, beside
         the job), runs.declared, parse (a folder's engine, a run's record),
-        runwrap and pyscf/input (the effective-parameters fence)
+        runwrap and pyscf/input (the effective-parameters fence),
+        pyscf/script_input (the run-settings block set aside)
 TRAVELS in ``mb_vibration.pyz`` beside each call of a SIESTA vibration
         (`runwrap.members`), and in ``mb_monitor.pyz`` (a
         transport rung's energies read their block through it)
@@ -26,7 +28,7 @@ from __future__ import annotations
 
 import json
 import re
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
 
 try:                                        # inside molbuilder
     from .trajectory_log.keys import WALL_TIME as _WALL_TIME
@@ -78,6 +80,15 @@ def end_marker(name: str) -> str:
 #: Either fence of any block.  Group 1: the block's name; group 2: BEGIN | END.
 MARKER_RE = re.compile(
     r"^#\s*===\s+molbuilder\s+([a-z-]+)\s+(BEGIN|END)\s+===\s*$")
+
+
+def fence(line: str) -> Optional[Tuple[str, str]]:
+    """``(block, "BEGIN" | "END")`` when ``line`` is a fence -- a whole line
+    the one grammar reads as one (:data:`MARKER_RE`), its indentation aside
+    -- else ``None``.  Every reader of a block and the gate that counts its
+    fences ask this, so a line is a fence to all of them or to none."""
+    m = MARKER_RE.match(line.strip())
+    return (m.group(1), m.group(2)) if m else None
 
 
 
@@ -138,11 +149,11 @@ def _first_pair(text: str, name: str) -> Tuple[Optional[List[str]], bool]:
     begin: Optional[int] = None
     seen = False
     for i, line in enumerate(lines):
-        m = MARKER_RE.match(line)
-        if not m or m.group(1) != name:
+        f = fence(line)
+        if f is None or f[0] != name:
             continue
         seen = True
-        if m.group(2) == "BEGIN":
+        if f[1] == "BEGIN":
             begin = i
         elif begin is not None:
             return lines[begin + 1: i], True
@@ -263,21 +274,36 @@ PARAMETER_ROW_PREFIX = "#   "
 _ROW_FIELDS = ("item", "default", "asked", "used")
 
 
+def in_blocks(lines: Sequence[str], name: str) -> Set[int]:
+    """The indices of ``lines`` inside every block ``name``, its fences
+    included -- either fence found by the one grammar (:data:`MARKER_RE`),
+    every block of the name in turn, a BEGIN with no END running to the
+    last line.  The scan every reader that takes a block's lines, or sets
+    them aside, asks: the parameters record's rows
+    (:func:`read_parameters_fence`), a PySCF script's run settings
+    (`pyscf.script_input`)."""
+    out: Set[int] = set()
+    inside = False
+    for i, line in enumerate(lines):
+        f = fence(line)
+        if f is not None and f[0] == name:
+            inside = f[1] == "BEGIN"
+            out.add(i)
+        elif inside:
+            out.add(i)
+    return out
+
+
 def read_parameters_fence(text: str) -> List[Dict[str, Any]]:
     """Every row of every effective-parameters block in ``text``, in order:
     ``{item, default, asked, used}``.  Lines in the block that are not rows --
     SIESTA's wrapper echoes the deck there too -- are the block's prose and
     are skipped."""
     rows: List[Dict[str, Any]] = []
-    inside = False
-    for line in text.splitlines():
-        # EITHER FENCE BY THE ONE GRAMMAR (:data:`MARKER_RE`), every block
-        # of the name in turn.
-        fence = MARKER_RE.match(line.strip())
-        if fence and fence.group(1) == BLOCK_PARAMETERS:
-            inside = fence.group(2) == "BEGIN"
-            continue
-        if not inside or not line.startswith(PARAMETER_ROW_PREFIX + "["):
+    lines = text.splitlines()
+    for i in sorted(in_blocks(lines, BLOCK_PARAMETERS)):
+        line = lines[i]
+        if not line.startswith(PARAMETER_ROW_PREFIX + "["):
             continue
         try:
             arr = json.loads(line[len(PARAMETER_ROW_PREFIX):])
@@ -439,7 +465,7 @@ __all__ = ["BUILD_NAME", "BLOCK_PROVENANCE", "BLOCK_BENCH_MARKS",
            "BLOCK_ATOM_METADATA", "BLOCK_ENGINE_OFFSET", "BLOCK_VIBRATION",
            "BLOCK_USER_CUSTOM", "BLOCK_USER_BEFORE_ENGINE",
            "BLOCK_PARAMETERS", "BLOCK_RUN_SETTINGS",
-           "MARKER_RE", "same_calculation",
+           "MARKER_RE", "fence", "in_blocks", "same_calculation",
            "begin_marker", "end_marker", "read_json_block",
            "DeckRecordUnreadable", "block_unreadable",
            "extract_atom_metadata",

@@ -221,26 +221,9 @@ def spectra_render_checks(struct: Structure, cfg, *,
     # from 3 N_free, said before the run is paid for.
     _frozen_idx = sorted(int(i) for i in (struct.frozen_atoms or []))
     if _frozen_idx and getattr(struct, "positions", None) is not None:
-        try:
-            # ON THE AXES THE DECK COMPUTES ON -- PySCF's, a cluster's
-            # (`cell.engine_axis_kinds`, plan § 5w K8).
-            _n_free, _n_rigid, _n_modes = modes_of(struct, "pyscf")
-        except ValueError:
-            _n_rigid = None      # an index out of range is reported below
-        if _n_rigid:
-            issues.append(Issue(
-                severity="info",
-                message=(
-                    f"Holding {len(_frozen_idx)} atom(s) leaves {_n_rigid} "
-                    f"whole-body motion(s) of the free atoms that cost no "
-                    f"energy (a turn about the held atoms).  They are not "
-                    f"vibrations: the deck removes them before diagonalising, "
-                    f"so {_n_modes} modes will be reported, not "
-                    f"{3 * _n_free}, and the count removed is recorded with "
-                    f"the results."
-                ),
-                where="structure.regions",
-            ))
+        # ON THE AXES THE DECK COMPUTES ON -- PySCF's, a cluster's
+        # (`cell.engine_axis_kinds`, plan § 5w K8).
+        issues.extend(_whole_body_note(struct, "pyscf"))
 
     # A SETTING THAT ENTERS NOTHING IS NOT LEFT SILENT (engines/vibration.md
     # § 3.1; user, 2026-09-28).  The pressure enters only the free molecule's
@@ -287,15 +270,7 @@ def spectra_render_checks(struct: Structure, cfg, *,
             except Exception:
                 n = None
         if n is not None:
-            bad = [i for i in cfg.frozen_indices if not 0 <= int(i) < n]
-            if bad:
-                issues.append(Issue(
-                    severity="error",
-                    message=(f"the frozen atoms name {atom_words(bad)}, "
-                             f"outside this structure's {n} atoms -- its "
-                             f"indices are 0 … {n - 1}."),
-                    where="structure.regions",
-                ))
+            issues.extend(_held_outside(cfg.frozen_indices, n))
 
     # Boundary-condition guards (the three-stage contract): sidecar ->
     # form (cfg) -> script must be explicit, consistent, fully respected.
@@ -469,15 +444,9 @@ def siesta_vibration_checks(struct: Structure, cfg, *, state,
     issues: List[Issue] = []
     n = int(struct.n_atoms)
     held = sorted(int(i) for i in (struct.frozen_atoms or []))
-    bad = [i for i in held if not 0 <= i < n]
-    if bad:
-        issues.append(Issue(
-            severity="error",
-            message=(f"the frozen set names {struct.atoms_named(bad)}, outside "
-                     f"this structure's {n} atoms -- its indices are "
-                     f"0 … {n - 1}."),
-            where="structure.regions"))
-        return issues
+    outside = _held_outside(held, n)
+    if outside:
+        return outside
     n_free = n - len(held)
     if n_free == 0:
         issues.append(Issue(
@@ -487,19 +456,7 @@ def siesta_vibration_checks(struct: Structure, cfg, *, state,
             where="structure.regions"))
         return issues
     if held:
-        _f, n_rigid, n_modes = modes_of(struct, "siesta")
-        if n_rigid:
-            issues.append(Issue(
-                severity="info",
-                message=(
-                    f"Holding {len(held)} atom(s) leaves {n_rigid} "
-                    f"whole-body motion(s) of the free atoms that cost no "
-                    f"energy (a turn about the held atoms).  They are not "
-                    f"vibrations: they are removed before diagonalising, "
-                    f"so {n_modes} modes will be reported, "
-                    f"not {3 * n_free}, and the count removed is recorded "
-                    f"with the results."),
-                where="structure.regions"))
+        issues.extend(_whole_body_note(struct, "siesta"))
         issues.append(Issue(
             severity="info",
             message=(
@@ -666,6 +623,46 @@ def raman_issues(cfg, *, engine: str) -> List[Issue]:
                      "."),
             where="config.raman_modes")]
     return []
+
+
+def _held_outside(indices, n_atoms: int) -> List[Issue]:
+    """THE ONE REFUSAL of held indices outside the structure, both engines'
+    checks: ``[]`` when every index names one of its
+    ``n_atoms`` atoms."""
+    n = int(n_atoms)
+    bad = [int(i) for i in indices if not 0 <= int(i) < n]
+    if not bad:
+        return []
+    return [Issue(severity="error",
+                  message=(f"the frozen atoms name {atom_words(bad)}, outside "
+                           f"this structure's {n} atoms -- its indices are "
+                           f"0 … {n - 1}."),
+                  where="structure.regions")]
+
+
+def _whole_body_note(struct: Structure, engine: str) -> List[Issue]:
+    """THE ONE SENTENCE for the whole-body motions holding atoms leaves,
+    both engines' checks, from the one derivation (:func:`modes_of`,
+    `science/normal-modes.md` R1, R7): ``[]`` when none is
+    left, or when an index lies outside the structure, which
+    :func:`_held_outside` says."""
+    held = struct.frozen_atoms or []
+    try:
+        n_free, n_rigid, n_modes = modes_of(struct, engine)
+    except ValueError:
+        return []
+    if not n_rigid:
+        return []
+    return [Issue(
+        severity="info",
+        message=(
+            f"Holding {len(held)} atom(s) leaves {n_rigid} whole-body "
+            f"motion(s) of the free atoms that cost no energy (a turn about "
+            f"the held atoms).  They are not vibrations: they are removed "
+            f"before diagonalising, so {n_modes} modes will be reported, not "
+            f"{3 * n_free}, and the count removed is recorded with the "
+            f"results."),
+        where="structure.regions")]
 
 
 def modes_of(struct: Structure, engine: str):

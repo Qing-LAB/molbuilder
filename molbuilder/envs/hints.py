@@ -6,8 +6,9 @@ hard stop, a recipe's own build-time warning and `bootstrap`'s closing advice
 must all name the same thing, or a reader ends up touring the docs to find out
 which one is real.
 
-It lives here, on floor 1 with no dependencies, because a home up in the CLI
-cannot be reached from below.  `recipes.py` is recipe DATA (A7: nothing depends
+It lives here, on floor 1, asking only the package root (`repo_root`, the
+checkout the launcher is named in), because a home up in the CLI cannot be
+reached from below.  `recipes.py` is recipe DATA (A7: nothing depends
 upwards -- it may not import the CLI), so a spelling the CLI owns reaches a
 recipe's own build-time warning only as a hand-copied shell string, and a copy
 drifts: a remedy naming a recipe `recipe_by_name` does not accept is itself a
@@ -15,15 +16,63 @@ usage error, printed by the very code that detected the problem.
 """
 from __future__ import annotations
 
-from typing import Optional
+import shlex
+from contextlib import contextmanager
+from contextvars import ContextVar
+from pathlib import Path
+from typing import Iterator, Optional
+
+from .. import repo_root
 
 #: The launcher form, and why it is the launcher rather than ``molbuilder envs``:
-#: ``bash scripts/install-env.sh <verb> ...`` works from a bare shell -- it finds
-#: the manager, ensures the host env and dispatches -- which is exactly the
-#: situation a person with a broken env is in.  A second spelling of the same
-#: fix -- ``molbuilder envs install`` -- is how a reader ends up reading
-#: documentation instead of running the command.
-LAUNCHER = "bash scripts/install-env.sh"
+#: ``bash <checkout>/scripts/install-env.sh <verb> ...`` works from a bare shell
+#: -- it finds the manager, ensures the host env and dispatches -- which is
+#: exactly the situation a person with a broken env is in.  A second spelling of
+#: the same fix -- ``molbuilder envs install`` -- is how a reader ends up reading
+#: documentation instead of running the command.  **By the checkout's full
+#: path**, so a line typed in any folder runs, as molbuilder's own command does
+#: (the user, 2026-11-22: "Launcher by full path"; `ops/installation.md` § 2).
+def launcher_of(checkout) -> str:
+    """The launcher of the checkout at ``checkout`` as typed in any folder:
+    its install script by full path, quoted for a shell."""
+    return "bash " + shlex.quote(str(Path(checkout) / "scripts"
+                                     / "install-env.sh"))
+
+
+LAUNCHER = launcher_of(repo_root())
+
+#: THE LAUNCHER AS TYPED IN MOLBUILDER'S CHECKOUT, whichever machine it lies
+#: on -- what a file prepared for another machine names, since nothing prep
+#: writes names the machine it was prepared on
+#: (`execution/preparing-for-another-machine.md` § 2; the user, 2026-11-22:
+#: "Full path here, words there").
+LAUNCHER_IN_CHECKOUT = "bash scripts/install-env.sh"
+
+#: Whether an env command composed now is said as typed in molbuilder's
+#: checkout (:func:`typed_in_checkout`).
+_IN_CHECKOUT: "ContextVar[bool]" = ContextVar("env_commands_in_checkout",
+                                              default=False)
+
+
+@contextmanager
+def typed_in_checkout(on: bool = True) -> Iterator[None]:
+    """While ``on``, each env command composed is said as typed in
+    molbuilder's checkout (:data:`LAUNCHER_IN_CHECKOUT`, :func:`where_typed`)
+    rather than by this checkout's full path (:data:`LAUNCHER`): in what
+    prep writes for another machine, and in a run script on every machine,
+    which is one file whichever machine it was prepared for
+    (`execution/architecture.md` § 9)."""
+    token = _IN_CHECKOUT.set(on)
+    try:
+        yield
+    finally:
+        _IN_CHECKOUT.reset(token)
+
+
+def where_typed() -> str:
+    """Where a printed env command is typed, when it is not anywhere: in
+    molbuilder's checkout (:func:`typed_in_checkout`)."""
+    return " in molbuilder's checkout" if _IN_CHECKOUT.get() else ""
 
 
 def no_manager(what: str, refusal: Optional[str] = None) -> str:
@@ -49,8 +98,10 @@ def no_manager(what: str, refusal: Optional[str] = None) -> str:
 
 def fix_cmd(action: str, *args: str) -> str:
     """The ONE spelling of an env command: the launcher, the verb, then the
-    recipe and flags."""
-    return " ".join([LAUNCHER, action, *args])
+    recipe and flags -- by this checkout's full path, or as typed in
+    molbuilder's checkout (:func:`typed_in_checkout`)."""
+    launcher = LAUNCHER_IN_CHECKOUT if _IN_CHECKOUT.get() else LAUNCHER
+    return " ".join([launcher, action, *args])
 
 
 def install_cmd(recipe: str) -> str:
