@@ -33,9 +33,11 @@ import numpy as np
 try:                                        # inside molbuilder
     from ...constants import BOHR_ANGSTROM, HARTREE_EV
     from ..errors import ParseError
+    from .siesta_grammar import FC_STEP_PATTERN
 except ImportError:                         # beside a job, in mb_vibration.pyz
     from constants import BOHR_ANGSTROM, HARTREE_EV
     from errors import ParseError
+    from siesta_grammar import FC_STEP_PATTERN  # type: ignore[no-redef]
 
 #: eV/Å² -> Hartree/Bohr², from the two constants it is made of.
 EV_PER_ANG2_TO_HARTREE_PER_BOHR2 = (BOHR_ANGSTROM ** 2) / HARTREE_EV
@@ -84,14 +86,18 @@ def read_fc(path) -> ForceConstantFile:
     if rows.ndim != 2 or rows.shape[1] != 3:
         raise ParseError(f"{p.name}: force rows must carry three "
                          f"components; got shape {rows.shape}")
-    per_displaced = 6 * n_atoms
+    # SIESTA'S ORDER (`siesta_grammar.FC_STEP_PATTERN`): each axis, each
+    # side within it.
+    axes = len(dict.fromkeys(axis for axis, _side in FC_STEP_PATTERN))
+    per_displaced = len(FC_STEP_PATTERN) * n_atoms
     if rows.shape[0] == 0 or rows.shape[0] % per_displaced:
         raise ParseError(
             f"{p.name}: {rows.shape[0]} force rows is not a multiple of "
-            f"6 x {n_atoms} atoms -- the file is truncated or is not an FC "
-            f"file for this structure")
+            f"{len(FC_STEP_PATTERN)} x {n_atoms} atoms -- the file is "
+            f"truncated or is not an FC file for this structure")
     n_displaced = rows.shape[0] // per_displaced
-    k = rows.reshape(n_displaced, 3, 2, n_atoms, 3)
+    k = rows.reshape(n_displaced, axes, len(FC_STEP_PATTERN) // axes,
+                     n_atoms, 3)
     return ForceConstantFile(path=str(p), n_atoms=n_atoms,
                              displacement_ang=displacement_ang,
                              n_displaced=n_displaced, k=k)
@@ -164,8 +170,8 @@ def reference_frame_of(reading, *, name: str = "the output"):
     the run's output (`siesta_reader.SiestaReader.finish`): its steps carry
     every step's coordinates, as ``[label, x, y, z]`` rows in Å, and forces
     in eV/Å, so nothing here re-reads the file.  The same records the
-    parser's frames are built from, read beside the job where the parser is
-    not.
+    parser's frames are built from (`siesta_frames`), read beside the job
+    where the parser is not.
 
     SIESTA evaluates the reference geometry before the first nudge, so it is
     the first step carrying forces.  The finish takes both halves from it:
@@ -191,4 +197,5 @@ __all__ = ["ForceConstantFile", "read_fc", "hessian_from_fc",
 #: WHAT THIS MODULE NEEDS BESIDE IT in a job's bundle -- the modules it
 #: imports there by their bare names (`runwrap.bundle_members`).
 TRAVELS_WITH = ("molbuilder.constants",
+                "molbuilder.parse.engines.siesta_grammar",
                 "molbuilder.parse.errors")

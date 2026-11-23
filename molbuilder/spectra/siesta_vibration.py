@@ -64,12 +64,15 @@ try:                                        # inside molbuilder
     from ..atom_permutation import (Permutation, map_rows_to_user_order,
                                     map_to_user_index, order_record_of)
     from ..parse.engines.siesta_epsimg_reader import CHANNELS, read_epsimg
-    from ..parse.engines.siesta_grammar import fermi_levels
+    from ..parse.engines.siesta_grammar import (CHARGE_PARTITIONS,
+                                                FC_STEP_PATTERN, fc_step_count,
+                                                fermi_levels)
     from ..constants import BOHR_ANGSTROM, HARTREE_BOHR_EV_ANGSTROM_ASE
     from ..parse.engines.siesta_fc import (ForceConstantFile,
                                            fc_block_asymmetry,
                                            hessian_from_fc, read_fc,
                                            reference_frame_of)
+    from ..parse.engines.siesta_frames import structure_of, trajectory_of
     from ..parse.engines.siesta_reader import engine_version, read_output
     from ..parse.fdf import (GEOMETRY_KEYS, SPIN_COMPONENTS, deck_atoms,
                              fdf_key, parse_fdf_params, read_deck, read_fdf,
@@ -87,8 +90,10 @@ try:                                        # inside molbuilder
     from ..wrapper_log import log_of_run, read_wrapper_log, say
     from .methods import (extract_citation_keys, siesta_methods_text,
                           with_siesta_raman_route)
-    from .results import (FC_STEP_PATTERN, PHASE_COMPLETE,
-                          PHASE_NOT_REQUESTED, PHASE_RUNNING, SpectraResults)
+    from .results import (PHASE_COMPLETE, PHASE_NOT_REQUESTED,
+                          PHASE_RUNNING, ROUTE_CHARGES, ROUTE_NONE,
+                          ROUTE_OPTICAL, OPTICAL_FINISHED, OPTICAL_PENDING,
+                          SpectraResults)
     from .vibrational_analysis import vibrational_analysis
     from .. import calcdirs
     from ..jobset.planned import Plan, bring
@@ -105,7 +110,7 @@ try:                                        # inside molbuilder
                              stamp, write_continued_from)
     from .. import runpoints as _rp
     from ..siesta.deck_lines import coordinates_text
-    from ..siesta.vibration_phases import (FC, IR_CHARGES, OPTICAL, RELAX,
+    from ..siesta.vibration_phases import (FC, OPTICAL, RELAX,
                                            Call, calls_of,
                                            force_constants_call, phase,
                                            point_entry)
@@ -113,7 +118,8 @@ try:                                        # inside molbuilder
     from .selection import select_modes
 except ImportError:                         # beside a job, in mb_vibration.pyz
     from siesta_epsimg_reader import CHANNELS, read_epsimg  # type: ignore[no-redef]
-    from siesta_grammar import fermi_levels  # type: ignore[no-redef]
+    from siesta_grammar import (  # type: ignore[no-redef]
+        CHARGE_PARTITIONS, FC_STEP_PATTERN, fc_step_count, fermi_levels)
     from optical_data import write_optical_data  # type: ignore[no-redef]
     from atom_permutation import (Permutation,  # type: ignore[no-redef]
                                   map_rows_to_user_order, map_to_user_index,
@@ -121,6 +127,7 @@ except ImportError:                         # beside a job, in mb_vibration.pyz
     from constants import BOHR_ANGSTROM, HARTREE_BOHR_EV_ANGSTROM_ASE
     from siesta_fc import (ForceConstantFile, fc_block_asymmetry,
                            hessian_from_fc, read_fc, reference_frame_of)
+    from siesta_frames import structure_of, trajectory_of  # type: ignore[no-redef]
     from siesta_reader import engine_version, read_output
     from fdf import (GEOMETRY_KEYS,  # type: ignore[no-redef]
                      SPIN_COMPONENTS, deck_atoms, fdf_key, parse_fdf_params,
@@ -138,8 +145,10 @@ except ImportError:                         # beside a job, in mb_vibration.pyz
                              read_wrapper_log, say)
     from methods import (extract_citation_keys,  # type: ignore[no-redef]
                          siesta_methods_text, with_siesta_raman_route)
-    from results import (FC_STEP_PATTERN, PHASE_COMPLETE,  # type: ignore[no-redef]
-                         PHASE_NOT_REQUESTED, PHASE_RUNNING, SpectraResults)
+    from results import (PHASE_COMPLETE,  # type: ignore[no-redef]
+                         PHASE_NOT_REQUESTED, PHASE_RUNNING, ROUTE_CHARGES,
+                         ROUTE_NONE, ROUTE_OPTICAL, OPTICAL_FINISHED,
+                         OPTICAL_PENDING, SpectraResults)
     from vibrational_analysis import vibrational_analysis
     import calcdirs
     from planned import Plan, bring
@@ -155,7 +164,7 @@ except ImportError:                         # beside a job, in mb_vibration.pyz
                            write_continued_from)
     import runpoints as _rp  # type: ignore[no-redef]
     from deck_lines import coordinates_text
-    from vibration_phases import (FC, IR_CHARGES, OPTICAL,  # type: ignore[no-redef]
+    from vibration_phases import (FC, OPTICAL,  # type: ignore[no-redef]
                                   RELAX, Call, calls_of,
                                   force_constants_call, phase,
                                   point_entry)
@@ -263,7 +272,7 @@ class ForceConstantRun:
     #: § 5.10 ②)
     step_charges: Tuple[Optional[Mapping[str, Sequence[float]]], ...] = ()
     #: the partitions the deck asked for at every step -- its own
-    #: ``Charge.*`` lines (`vibration_phases.IR_CHARGES`): none with
+    #: ``Charge.*`` lines (`siesta_grammar.CHARGE_PARTITIONS`): none with
     #: Compute IR off.
     charges_asked: Tuple[str, ...] = ()
 
@@ -343,7 +352,8 @@ def read_force_constant_run(deck, output) -> ForceConstantRun:
     # THE RUN'S OWN ACCOUNT: FC step 0, and the version SIESTA states.
     reading = read_output(output).finish()
     step = reference_frame_of(reading, name=output.name)
-    said = tuple(str(r[0]) for r in step["coords"])
+    reference = structure_of(step["coords"])
+    said = tuple(reference.elements)
     if said != elements:
         raise FinishError(
             f"{output.name} describes {len(said)} atoms in an order that is "
@@ -358,7 +368,7 @@ def read_force_constant_run(deck, output) -> ForceConstantRun:
     return ForceConstantRun(
         deck=deck, output=output, label=label,
         elements=elements, atomic_numbers=atomic_numbers,
-        positions_ang=np.array([r[1:4] for r in step["coords"]], dtype=float),
+        positions_ang=reference.positions,
         reference_forces_ev_ang=np.asarray(step["forces"], dtype=float),
         displaced=displaced,
         cell=(np.asarray(cell, dtype=float) if cell is not None else None),
@@ -374,9 +384,9 @@ def read_force_constant_run(deck, output) -> ForceConstantRun:
         step_charges=tuple(s.get("charges") for s in reading["steps"]),
         # WHAT THE DECK ASKED, from its own lines -- the one statement of
         # it (`engines/vibration.md` § 5.3).
-        charges_asked=tuple(p for kw, value, p in IR_CHARGES
-                            if (scalars.get(fdf_key(kw)) or [None])[0]
-                            == value))
+        charges_asked=tuple(p.name for p in CHARGE_PARTITIONS
+                            if (scalars.get(fdf_key(p.keyword))
+                                or [None])[0] == p.value))
 
 
 def equilibrium_structure(run: ForceConstantRun) -> dict:
@@ -429,7 +439,7 @@ def partial_charges_of(run: ForceConstantRun) -> Optional[dict]:
             f"every step (Compute IR) and {run.output.name} prints none: the "
             f"run and its deck disagree")
     n = len(run.elements)
-    expected = 1 + len(FC_STEP_PATTERN) * len(run.displaced)
+    expected = fc_step_count(len(run.displaced))
     if len(run.step_charges) != expected:
         raise FinishError(
             f"{run.output.name} reads {len(run.step_charges)} steps; the "
@@ -553,7 +563,7 @@ def result_of(run: ForceConstantRun,
                    partial_charges=charges,
                    phase_ir=(PHASE_COMPLETE if charges
                              else PHASE_NOT_REQUESTED),
-                   ir_route="charges" if charges else "none")
+                   ir_route=ROUTE_CHARGES if charges else ROUTE_NONE)
 
 
 def _with_raman_phase(res, run, optical, phase: str):
@@ -567,7 +577,7 @@ def _with_raman_phase(res, run, optical, phase: str):
     over a range that kept no mode -- *complete*, nothing left to run, the
     Methods sentence naming the range."""
     raman = run.record.get("raman")
-    route = "optical" if optical is not None else "none"
+    route = ROUTE_OPTICAL if optical is not None else ROUTE_NONE
     methods = with_siesta_raman_route(res.methods_text, route, raman)
     return replace(
         res, optical=optical, raman_route=route,
@@ -732,9 +742,9 @@ def plan_call(deck) -> None:
         if last is None:
             raise FinishError(f"{out.name} holds no geometry step")
         text = read_deck(here.deck)
-        labels = [str(r[0]) for r in last["coords"]]
-        positions = [[float(x) for x in r[1:4]] for r in last["coords"]]
-        write_bytes(coords, coordinates_text(labels, positions,
+        taken = structure_of(last["coords"])
+        write_bytes(coords, coordinates_text(taken.elements,
+                                             taken.positions.tolist(),
                                              _species_index(text)
                                              ).encode("utf-8"))
         came_from = f"{source}/{out.name}, its last geometry step"
@@ -761,25 +771,13 @@ def _relaxation_record(output: Path) -> Optional[dict]:
     """The `relax` call's record -- the one record function
     (`parse.contract.relaxation_of_output`, `model/parse.md` § 5b.1) over
     SIESTA's one reading pass: each step a frame, its structure, its
-    forces and the engine's own Max lines; ``None`` for a run that relaxed
-    nothing."""
-    from types import SimpleNamespace
-    reading = read_output(output).finish()
-    frames = [
-        SimpleNamespace(
-            structure=Structure(
-                elements=[str(r[0]) for r in s["coords"]],
-                positions=np.array([r[1:4] for r in s["coords"]],
-                                   dtype=float)),
-            forces=s.get("forces"), max_force=s.get("max_force"),
-            max_force_constrained=s.get("max_force_constrained"),
-            step_index=i)
-        for i, s in enumerate(reading.get("steps") or []) if s.get("coords")]
+    forces and the engine's own Max lines, made the parser's trajectory by
+    its own conversion (`siesta_frames.trajectory_of`), so this record and
+    the one a viewer makes of the same output count the same steps;
+    ``None`` for a run that relaxed nothing."""
     return relaxation_of_output(
         output,
-        SimpleNamespace(frames=frames,
-                        runtime_info=reading.get("runtime_info") or {},
-                        run_state=reading.get("run_state")),
+        trajectory_of(read_output(output).finish(), source_format="siesta"),
         engine="siesta")
 
 
@@ -1044,7 +1042,7 @@ def _call_facts(here: _CallHere, folder: Path, spins) -> dict:
     if step is not None:
         scf = step.get("scf_history") or []
         facts.update(
-            coords=np.asarray([r[1:4] for r in step["coords"]], dtype=float),
+            coords=structure_of(step["coords"]).positions,
             scf_iterations=len(scf) if scf else None,
             total_energy_ev=step.get("energy"),
             fermi_level_ev=(list(fermi_levels(scf[-1], spins)) if scf
@@ -1056,6 +1054,16 @@ def _call_facts(here: _CallHere, folder: Path, spins) -> dict:
         if start:
             facts["engine_elapsed_s"] = start.get("engine_elapsed_s")
     return facts
+
+
+def _optical_state(row) -> str:
+    """An optical call's state in the citation's words
+    (`results.OPTICAL_STATES`): its point's own word
+    (`runpoints.state_word`) -- *finished* for done, *pending* for a call
+    not yet ended."""
+    word = _rp.state_word(row)
+    return (OPTICAL_FINISHED if word == _rp.DONE
+            else word if word in _rp.ENDED_WORDS else OPTICAL_PENDING)
 
 
 def _optical_payload(here: _CallHere, index: dict, res: SpectraResults
@@ -1083,10 +1091,7 @@ def _optical_payload(here: _CallHere, index: dict, res: SpectraResults
     # § 1.3): finished where the call is DONE -- its spectrum stands --
     # not done where it ran to its end without, failed where it ended
     # with an error, not run where its ended walk never started it.
-    states = {r["name"]: ("finished" if r["done"] else
-                          "not done" if r["state"] == "finished" else
-                          r["state"] if r["state"] in ("failed", _rp.NOT_RUN)
-                          else "pending")
+    states = {r["name"]: _optical_state(r)
               for r in _rp.rows_of(index, here.run_dir)
               if r["phase"] == OPTICAL}
     atoms = res.atom_index_map_stated()
@@ -1097,8 +1102,8 @@ def _optical_payload(here: _CallHere, index: dict, res: SpectraResults
         row = _rp.entry_of(index, c.rel) or {}
         known = row.get("facts") or {}
         folder = here.place.point(c.rel)
-        state = states.get(c.name, "pending")
-        facts = (_call_facts(here, folder, spins) if state != "pending"
+        state = states.get(c.name, OPTICAL_PENDING)
+        facts = (_call_facts(here, folder, spins) if state != OPTICAL_PENDING
                  else {})
         coords = facts.get("coords")
         version = version or facts.get("engine_version")
@@ -1123,7 +1128,7 @@ def _optical_payload(here: _CallHere, index: dict, res: SpectraResults
                                           "fermi_level_ev",
                                           "engine_elapsed_s")}}
         eps = folder / compose(here.label, phase(OPTICAL).products[0])
-        if state == "finished" and eps.is_file():
+        if state == OPTICAL_FINISHED and eps.is_file():
             e = read_epsimg(eps)
             if e.spin != spins:
                 raise FinishError(
@@ -1421,6 +1426,7 @@ TRAVELS_WITH = ("molbuilder.atom_permutation",
                 "molbuilder.parse.contract",
                 "molbuilder.parse.engines.siesta_epsimg_reader",
                 "molbuilder.parse.engines.siesta_fc",
+                "molbuilder.parse.engines.siesta_frames",
                 "molbuilder.parse.engines.siesta_grammar",
                 "molbuilder.parse.engines.siesta_reader",
                 "molbuilder.parse.fdf",

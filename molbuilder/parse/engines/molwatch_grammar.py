@@ -132,6 +132,16 @@ SCF_COLUMNS = (
      "|ddm|, as the run's log states it -- reported, not converged on",
      "f8", None),
 )
+# ONE ROW, TWO TABLES: these columns are the log's own (`keys.SCF_TABLE`, the
+# order a row is written in) but its clock, which a data file states apart --
+# checked at import, so a column one table gains stops the first thing that
+# loads this module (a ValueError: an importer's two-way import would say an
+# ImportError as a module not found).
+if (tuple(column[0] for column in SCF_COLUMNS)
+        != tuple(k for k in _k.SCF_TABLE_KEYS if k != _k.SCF_CLOCK)):
+    raise ValueError(
+        f"molwatch_grammar.SCF_COLUMNS {[c[0] for c in SCF_COLUMNS]} are not "
+        f"the progress log's SCF table {list(_k.SCF_TABLE_KEYS)} but its clock")
 
 #: The one SCF phase of a run this log records -- the key its
 #: :func:`scf_criteria` are stated under, beside SIESTA's ``periodic`` and
@@ -341,27 +351,31 @@ OLD_GNORM_TO_EV = HARTREE_EV / HARTREE_BOHR_EV_ANGSTROM_ASE
 
 
 def scf_history_row(line: str) -> Optional[Dict[str, Any]]:
-    """One ``scf_history`` row -- ``cycle energy delta_E gnorm ddm
-    [wall_time]`` -- as a dict, or ``None`` when the line is not one.
+    """One ``scf_history`` row as a dict, each value from its column's place
+    in the log's table (`trajectory_log.keys.SCF_TABLE`, the order its
+    writer writes) -- or ``None`` when the line is not one.
 
-    The optional sixth column is the emitter's epoch when the cycle finished.
-    It keeps its on-disk name and
-    is read as ``wall_clock_s``, because it is an epoch where SIESTA's
+    The last column, the emitter's epoch when the cycle finished, a log
+    written before it was kept lacks.  It keeps its on-disk name and is
+    read as ``wall_clock_s``, because it is an epoch where SIESTA's
     same-position value is an elapsed time (`model/parse.md` § 2a).
     """
     parts = line.split()
-    if len(parts) < 5 or line.lstrip().startswith("#"):
+    if (len(parts) < len(_k.SCF_TABLE_KEYS) - 1
+            or line.lstrip().startswith("#")):
         return None
+    cells = dict(zip(_k.SCF_TABLE_KEYS, parts))
     try:
-        cycle = int(parts[0])
-        energy = float(parts[1])
-        delta_e = float(parts[2])
+        cycle = int(cells["cycle"])
+        energy = float(cells["energy"])
+        delta_e = float(cells["delta_E"])
     except ValueError:
         return None
+    clock = cells.get(_k.SCF_CLOCK)
     return {"cycle": cycle, "energy": energy, "delta_E": delta_e,
-            "gnorm": maybe_float(parts[3]), "ddm": maybe_float(parts[4]),
-            "wall_clock_s": (maybe_float(parts[5])
-                             if len(parts) >= 6 else None)}
+            "gnorm": maybe_float(cells["gnorm"]),
+            "ddm": maybe_float(cells["ddm"]),
+            "wall_clock_s": None if clock is None else maybe_float(clock)}
 
 
 #: WHAT THIS MODULE NEEDS BESIDE IT in a job's bundle -- the modules it

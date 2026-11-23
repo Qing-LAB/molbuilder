@@ -73,11 +73,17 @@ def _page_constants():
     """The physical constants the spectrum page converts the file's numbers
     with, from their one home (`molbuilder.constants`) -- served with every
     load rather than copied into the browser (`architecture.md` § 3; user,
-    2026-09-27: one source per fact).  Named by what each converts."""
+    2026-09-27: one source per fact).  Named by what each converts.  And
+    each engine as a person reads its name, from the engine table, which the
+    run summary's Engine row says a result's engine by."""
     from molbuilder import constants as C
+    from molbuilder.engine_table import engine, engines
     from molbuilder.spectra.mode_frames import NODES
     from molbuilder.spectra import activity as A
     return {
+        # EACH ENGINE'S NAME, from its one home (the engine table), as the
+        # build door serves the cards theirs (`build._analyze_response`).
+        "engine_words": {name: engine(name).words for name in engines()},
         "hartree_ev":          C.HARTREE_EV,               # 1 Eh in eV
         "hartree_kcal_mol":    C.HARTREE_EV / C.KCAL_MOL_EV,  # 1 Eh in kcal/mol
         # each channel's band floor: a lane whose strongest real value is at

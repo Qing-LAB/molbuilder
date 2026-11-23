@@ -573,8 +573,8 @@ class SiestaReader:
     def _on_charges_start(self, line: str, line_no: int) -> None:
         """``<Partition> Atomic Populations:`` -- a step's partial charges
         begin (`siesta_grammar.PARTIAL_CHARGES_BEGIN`)."""
-        self._charges_partition = (
-            _G.PARTIAL_CHARGES_BEGIN.match(line).group(1).lower())
+        self._charges_partition = _G.charge_partition(
+            _G.PARTIAL_CHARGES_BEGIN.match(line).group(1)).name
         self._step_charges[self._charges_partition] = []
 
     def _consume_charges(self, line: str, line_no: int) -> str:
@@ -1139,7 +1139,9 @@ class SiestaReader:
             # A STEP'S PARTIAL CHARGES, each partition's block (`model/
             # parse.md` § 4a; `engines/vibration.md` § 5.10 ②).
             SectionRule(name="partial_charges",
-                        aliases=["Hirshfeld|Voronoi Atomic Populations:"],
+                        aliases=["|".join(row.method for row
+                                          in _G.CHARGE_PARTITIONS)
+                                 + " Atomic Populations:"],
                         start=matches_regex_ci(
                             _G.PARTIAL_CHARGES_BEGIN.pattern),
                         on_start=self._on_charges_start,

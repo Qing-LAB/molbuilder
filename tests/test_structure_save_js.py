@@ -28,7 +28,7 @@ ROOT = Path(__file__).resolve().parents[1]
 MODULE = ROOT / "molbuilder/web/static/modify/structure/save.js"
 #: What the page header loads before any click: the one path door.
 PATH_DOOR = ROOT / "molbuilder/web/static/lib/path-utils.js"
-from molbuilder.sidecars.molstruct import PAIRED_SUFFIX  # noqa: E402
+from molbuilder.runfiles import PAIRED_SUFFIX  # noqa: E402
 
 
 def _run_node(snippet: str) -> object:
@@ -46,7 +46,7 @@ def _run_node(snippet: str) -> object:
         // (`lib/path-utils.js`), which save.js reads when called...
         require({json.dumps(str(PATH_DOOR.resolve()))});
         // ...and the projects door's suffix, the server's pairing rule as
-        // the page header states it (`sidecars.molstruct.PAIRED_SUFFIX`).
+        // the page header states it (`runfiles.PAIRED_SUFFIX`).
         molbuilder.projects = {{ pairedSuffix: () => {json.dumps(PAIRED_SUFFIX)} }};
 
         /** A stand-in viewer DATA model: the two reads the panel makes, plus

@@ -2,15 +2,17 @@
 read door and the consumer helpers.
 
 The ONE DOOR for this sidecar: the write side and the read door
-(:func:`load`) live here, so a caller needs one import for both; the text
-reader the read door asks is ``load_text`` in
+(:func:`load`) live here, so a caller needs one import for both; the
+reader of its bytes the read door asks is ``load_record`` in
 :mod:`molbuilder.parse.sidecars.molstruct` (``model/parse.md`` § 4).
 
 TRAVELS beside every PySCF script, in ``mb_pyscf.pyz``
 (``runwrap.members``): the codec's ``write_moved`` saves a run's
 geometries through :func:`renewed`, :func:`geometry_hash`, :func:`dumps`
 and :func:`sidecar_path_for`.  So it imports the standard library, numpy
-(through ``atom_permutation``), ``persist`` and ``structure_pair`` at load,
+(through ``atom_permutation``), ``persist``, ``runfiles`` (the pair's
+suffixes and names), ``runrecord`` (the clock a sidecar is stamped by) and
+``structure_pair`` at load,
 and ``structure`` inside the functions that need it; the functions that
 read through the package (``to_dict``,
 ``apply_to_structure``, ``load``) import it inside themselves -- of them,
@@ -42,7 +44,6 @@ Public surface here
 
 from __future__ import annotations
 
-import datetime as _dt
 import hashlib as _hashlib
 import json as _json
 from pathlib import Path
@@ -53,9 +54,14 @@ from typing import Any, Dict, List, Optional, Union
 try:                                        # inside molbuilder
     from ..atom_permutation import MAP_KEY
     from ..persist import json_text, unknown_keys
+    from .. import runrecord as _runrecord
+    from ..runfiles import PAIRED_SUFFIX, SIDECAR_SUFFIX, sidecar_of
 except ImportError:                         # beside a job, in a bundle
     from atom_permutation import MAP_KEY  # type: ignore[no-redef]
     from persist import json_text, unknown_keys  # type: ignore[no-redef]
+    import runrecord as _runrecord  # type: ignore[no-redef]
+    from runfiles import (PAIRED_SUFFIX,  # type: ignore[no-redef]
+                          SIDECAR_SUFFIX, sidecar_of)
 
 
 #: The on-disk sidecar schema, READ STRICTLY (:data:`READABLE_VERSIONS`).
@@ -127,7 +133,7 @@ SCHEMA_VERSION = 17  # 17: `selection_rules` RETIRED -- never written; a
 #: provably additive.
 #:
 #: **AND ONLY WHEN A READER HAS BEEN RUN AGAINST A FILE AT THAT VERSION.**
-#: That is the check, not the reasoning: ``load_text`` reads the keys it
+#: That is the check, not the reasoning: ``load_record`` reads the keys it
 #: NAMES, so a key an older version kept elsewhere is never looked for.  It is
 #: made when the version joins the set and kept by no test: no test builds an
 #: older release's file (`process/testing.md`).
@@ -180,7 +186,7 @@ def unread_keys(data) -> Optional[str]:
     block; the retired keys an older sidecar still opens with are accepted,
     not applied, and never offered as known, so a typo is not steered to a
     key nothing applies.  Asked by each gate that reads a sidecar, the read
-    door's (`parse.sidecars.molstruct.load_text`) and
+    door's (`parse.sidecars.molstruct.load_record`) and
     :func:`apply_to_structure`'s.  A key nobody reads is metadata the writer
     thinks it saved."""
     try:                                        # inside molbuilder
@@ -199,22 +205,11 @@ def unread_keys(data) -> Optional[str]:
                               "reads is metadata the writer thinks it saved"))
 
 
-# Canonical sidecar suffix.  ``<job>.xyz`` -> ``<job>.molstruct.json``.
-#: PUBLIC: a suffix with a composer (:func:`sidecar_path_for`) has a public
-#: name (`project-layout.md` § 4.5).
-SUFFIX = ".molstruct.json"
-
 #: THE STRUCTURE FILES molbuilder READS -- the two formats the one read door
 #: opens (`StructureCodec.load`, `model/structure.md` § 2.4).  Asked here,
 #: beside the pairing rule, by everything that tells a structure file from
 #: another file.
-GEOMETRY_SUFFIXES = (".xyz", ".pdb")
-
-#: THE ONE GEOMETRY A SIDECAR PAIRS WITH, and the one molbuilder writes: a
-#: `.pdb` is read, never written (the user, 2026-11-09; `model/structure.md`
-#: § 2.4), so it holds no sidecar of its own.
-PAIRED_SUFFIX = ".xyz"
-
+GEOMETRY_SUFFIXES = (PAIRED_SUFFIX, ".pdb")
 
 # THE PAIR'S REFUSALS are the saved pair's own (`structure_pair`, L1), so the
 # structure raises the same pairing refusal for a deck's block.
@@ -242,12 +237,11 @@ def sidecar_path_for(structure_path: Union[str, Path]) -> Path:
     THE SUFFIX IS NOT READ -- the name alone: whether a geometry pairs with
     a sidecar at all is :func:`is_paired`'s.
 
-    ``Path.with_suffix`` can't be chained for compound suffixes
-    (it'd replace ``.molstruct`` with ``.json`` on the second call),
-    so build the name explicitly from the stem.
+    The name by the one rule a pair's names are spelled by
+    (`runfiles.sidecar_of`), which the file catalogue's rows ask too.
     """
     p = Path(structure_path)
-    return p.with_name(p.stem + SUFFIX)
+    return p.with_name(sidecar_of(p.name))
 
 
 def is_geometry(path: Union[str, Path]) -> bool:
@@ -274,8 +268,9 @@ def paired_sidecar(path: Union[str, Path]) -> Optional[Path]:
 
 
 def is_sidecar(path: Union[str, Path]) -> bool:
-    """Is this a sidecar?  Asked of the one module that names the suffix."""
-    return Path(path).name.endswith(SUFFIX)
+    """Is this a sidecar -- a name ending in the catalogue's suffix
+    (`runfiles.SIDECAR_SUFFIX`)?  Asked of the codec, never of the name."""
+    return Path(path).name.endswith(SIDECAR_SUFFIX)
 
 
 def geometry_for(sidecar: Union[str, Path]) -> Optional[Path]:
@@ -285,7 +280,7 @@ def geometry_for(sidecar: Union[str, Path]) -> Optional[Path]:
     p = Path(sidecar)
     if not is_sidecar(p):
         return None
-    geometry = p.parent / (p.name[:-len(SUFFIX)] + PAIRED_SUFFIX)
+    geometry = p.parent / (p.name[:-len(SIDECAR_SUFFIX)] + PAIRED_SUFFIX)
     return geometry if geometry.is_file() else None
 
 
@@ -330,16 +325,6 @@ def is_geometry_hash(value) -> bool:
     """A geometry hash's form: 64 lowercase hexadecimal characters."""
     return (isinstance(value, str) and len(value) == 64
             and all(c in "0123456789abcdef" for c in value))
-
-
-def stamp() -> str:
-    """THE MOMENT A SIDECAR IS WRITTEN -- current UTC time as ISO-8601 with
-    an explicit ``Z``, its writer's ``created_at`` (``StructureCodec.pair``,
-    :func:`renewed`).
-    ``datetime.utcnow`` is deprecated in 3.12+; use
-    ``datetime.now(timezone.utc)`` and format manually for ``Z``
-    semantics."""
-    return _dt.datetime.now(_dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 # --------------------------------------------------------------------- #
@@ -479,7 +464,7 @@ def to_dict(
     """THE ONE BUILDER of a sidecar payload -- the envelope, and the
     metadata fields, the per-atom columns and ``info`` spread in, each
     checked here -- for a payload written (``StructureCodec.pair``) and for
-    one read (``parse.sidecars.molstruct.load_text``) alike, so the two can
+    one read (``parse.sidecars.molstruct.load_record``) alike, so the two can
     never check or assemble it differently.
 
     ``fields`` is the metadata field dict -- the SAME shape
@@ -602,7 +587,7 @@ def renewed(sidecar: Dict[str, Any], *, geometry_hash: str,
     the periodicity -- is the payload's, never derived a second time.  The
     standard library alone: a PySCF run asks it beside the job."""
     return dict(sidecar, geometry_hash=geometry_hash,
-                created_at=stamp(), **{MAP_KEY: atom_index_map})
+                created_at=_runrecord.stamp(), **{MAP_KEY: atom_index_map})
 
 
 def dumps(payload: Dict[str, Any]) -> str:
@@ -676,7 +661,7 @@ def apply_to_structure(struct, sidecar_data: Dict[str, Any]) -> None:
     # (`structure.RETIRED_METADATA_KEYS` says which and why).
     #
     # `StructureCodec.load` never reaches here with a stray key, because
-    # `parse.sidecars.molstruct.load_text` answers first.  This gate takes a
+    # `parse.sidecars.molstruct.load_record` answers first.  This gate takes a
     # payload DIRECTLY, so a caller that builds one in code does reach it.
     said = unread_keys(sidecar_data)
     if said:
@@ -780,8 +765,8 @@ def _map_agrees(block, struct) -> None:
 def load(sidecar_path: Union[str, Path], *,
          retired_out: "Dict[str, Any] | None" = None,
          stated_out: "set | None" = None) -> Dict[str, Any]:
-    """THE READ DOOR of a sidecar file: its text read, then its one reader
-    (``parse.sidecars.molstruct.load_text`` -- the version gate, the
+    """THE READ DOOR of a sidecar file: its bytes read, then its one reader
+    (``parse.sidecars.molstruct.load_record`` -- the version gate, the
     stray-key gate, then :func:`to_dict`), the normalised payload back, its
     version the file's.  An unreadable file raises
     :class:`MolstructJsonError` naming it.  ``retired_out`` is the
@@ -789,18 +774,16 @@ def load(sidecar_path: Union[str, Path], *,
     (every metadata field the file states, a null one among them).  The
     reader is imported here, not at load: it imports this module.
     """
-    from ..parse.sidecars.molstruct import load_text
+    from ..parse.sidecars.molstruct import load_record
     sidecar_path = Path(sidecar_path)
     try:
-        # ``encoding="utf-8-sig"`` accepts an optional BOM (some
-        # Windows editors insert one) and decodes as UTF-8.
-        text = sidecar_path.read_text(encoding="utf-8-sig")
-    except (OSError, UnicodeDecodeError) as exc:
+        data = sidecar_path.read_bytes()
+    except OSError as exc:
         raise MolstructJsonError(
             f"failed to read sidecar {sidecar_path}: {exc}"
         ) from exc
-    return load_text(text, source=str(sidecar_path), retired_out=retired_out,
-                     stated_out=stated_out)
+    return load_record(data, source=str(sidecar_path),
+                       retired_out=retired_out, stated_out=stated_out)
 
 
 __all__ = [
@@ -812,7 +795,6 @@ __all__ = [
     "geometry_hash",
     "is_geometry_hash",
     "GEOMETRY_SUFFIXES",
-    "PAIRED_SUFFIX",
     "is_paired",
     "paired_sidecar",
     "geometry_for",
@@ -820,7 +802,6 @@ __all__ = [
     "apply_to_structure",
     "load",
     "renewed",
-    "stamp",
     "sidecar_path_for",
     "to_dict",
 ]
@@ -830,5 +811,7 @@ __all__ = [
 #: imports there by their bare names (`runwrap.bundle_members`).
 TRAVELS_WITH = ("molbuilder.atom_permutation",
                 "molbuilder.persist",
+                "molbuilder.runfiles",
+                "molbuilder.runrecord",
                 "molbuilder.structure",
                 "molbuilder.structure_pair")

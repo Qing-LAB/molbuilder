@@ -370,6 +370,12 @@ def not_done_why(verdict: Optional[Tuple[str, bool]], *, counts: bool,
 #: run door's vocabulary (`job.RUN_STATES`) and the index's reader
 #: (`runpoints`) both take it from below them.
 NOT_RUN = "not run"
+#: ...AND A POINT'S OTHER WORDS ONCE IT HAS ENDED (`runpoints.state_word`,
+#: § 1.3): *done*; *not done*, it ran to its end and is not done; *failed*,
+#: it ran and ended with an error -- every point not yet ended is said by
+#: its run's state as it stands.
+DONE, NOT_DONE, FAILED = "done", "not done", "failed"
+ENDED_WORDS = (DONE, NOT_DONE, FAILED, NOT_RUN)
 
 
 def points_state(states) -> str:

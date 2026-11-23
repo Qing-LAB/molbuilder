@@ -397,7 +397,7 @@ def normalise_customized(raw: Any, n_frames: int,
 #: SHARED, because THREE gates ask this question and they must give one
 #: answer:
 #:
-#:   1. `parse.sidecars.molstruct.load_text` -- refuses stray keys while the
+#:   1. `parse.sidecars.molstruct.load_record` -- refuses stray keys while the
 #:      payload is still whole, deliberately upstream of anything that
 #:      applies it;
 #:   2. `sidecars.molstruct.apply_to_structure` -- refuses them again before

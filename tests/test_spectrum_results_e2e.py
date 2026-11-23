@@ -383,6 +383,19 @@ class TestOnSIESTA(_EveryState):
     def state(self, siesta_state):
         return siesta_state
 
+    def test_its_timestamp_is_the_clock_its_runs_records_are_stamped_by(
+            self, state):
+        """§ 6.2: a SIESTA result's `timestamp` by the clock every record of
+        its run is stamped with (`runrecord.stamp`: UTC, to the second,
+        ``Z``), at every state its file passes through.  THE SILENT FAILURE: a
+        spelling of its own -- microseconds, an offset -- the run's records do
+        not compare with."""
+        import re
+        path, _states = state
+        stamped = _read(path)["timestamp"]
+        assert re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z",
+                            stamped), stamped
+
 
 # --------------------------------------------------------------------- #
 #  The element shares -- by the masses the file states                   #

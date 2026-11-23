@@ -36,7 +36,6 @@ force-constant run relaxes nothing, and its result says so.
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
 from typing import Any, Mapping, Optional, Sequence
 
 import numpy as np
@@ -52,10 +51,11 @@ try:                                        # inside molbuilder
     from .methods import extract_citation_keys
     from .normal_modes import (display_form, frequencies_cm1,
                                vibrational_modes, vibrational_only_thermo)
-    from .results import (PHASE_COMPLETE, PHASE_NOT_REQUESTED,
+    from .results import (PHASE_COMPLETE, PHASE_NOT_REQUESTED, ROUTE_NONE,
                           SCHEMA_VERSION, ModeData, SpectraResults,
                           relaxation_block, removed_motions_of)
     from ..runfiles import TASK_FILE
+    from ..runrecord import stamp
 except ImportError:                         # beside a job, in mb_vibration.pyz
     from atom_permutation import (AtomIndexMap, Permutation,  # type: ignore
                                   map_rows_to_user_order, map_to_user_index)
@@ -66,10 +66,11 @@ except ImportError:                         # beside a job, in mb_vibration.pyz
     from methods import extract_citation_keys
     from normal_modes import (display_form, frequencies_cm1,
                               vibrational_modes, vibrational_only_thermo)
-    from results import (PHASE_COMPLETE, PHASE_NOT_REQUESTED,
+    from results import (PHASE_COMPLETE, PHASE_NOT_REQUESTED, ROUTE_NONE,
                          SCHEMA_VERSION, ModeData, SpectraResults,
                          relaxation_block, removed_motions_of)
     from runfiles import TASK_FILE  # type: ignore[no-redef]
+    from runrecord import stamp  # type: ignore[no-redef]
 
 def vibrational_analysis(hessian, masses_amu: Sequence[float],
                          positions_ang, elements: Sequence[str],
@@ -114,8 +115,8 @@ def vibrational_analysis(hessian, masses_amu: Sequence[float],
     for the remedy (:func:`nonstationary_remedy`), beside this one, ``config``'s
     ``stage``.  ``structure`` is the
     equilibrium structure, whole and in the user order --
-    ``Structure.to_dict()``, the one serialiser (`engines/vibration.md`
-    § 6.10.1) -- which the result states; the reader checks its atom count,
+    ``Structure.to_dict(view=False)``, the one serialiser
+    (`engines/vibration.md` § 6.10.1) -- which the result states; the reader checks its atom count,
     coordinates and held label against the result's own.
 
     Raises ``ValueError`` naming the mismatch -- every atom held, a
@@ -188,8 +189,8 @@ def vibrational_analysis(hessian, masses_amu: Sequence[float],
         engine=str(engine),
         engine_version=str(engine_version),
         molbuilder_version=str(molbuilder_version),
-        timestamp=(timestamp or datetime.now(timezone.utc).isoformat()
-                   .replace("+00:00", "Z")),
+        # THE CLOCK every record of a run is stamped with (`runrecord.stamp`).
+        timestamp=(timestamp or stamp()),
         structure=(dict(structure) if structure is not None else None),
         # LISTED BY USER INDEX, each atom's engine index the deck's order
         # (`model/overview.md` § 2.2b, F2: a result for the user).
@@ -223,8 +224,8 @@ def vibrational_analysis(hessian, masses_amu: Sequence[float],
         hessian_scope=("free" if held_b else "all"),
         n_atoms_in_hessian=len(free_b),
         hessian_density_fit=None,
-        ir_route="none",
-        raman_route="none",
+        ir_route=ROUTE_NONE,
+        raman_route=ROUTE_NONE,
         equilibrium_elements=elements_in,
         equilibrium_positions_ang=np.asarray(positions_in, dtype=float),
         # THE MASSES THE ANALYSIS WEIGHTED BY, beside the geometry
@@ -375,5 +376,6 @@ TRAVELS_WITH = ("molbuilder.atom_permutation",
                 "molbuilder.identity",
                 "molbuilder.runfiles",
                 "molbuilder.spectra.methods",
+                "molbuilder.runrecord",
                 "molbuilder.spectra.normal_modes",
                 "molbuilder.spectra.results")

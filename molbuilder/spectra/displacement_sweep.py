@@ -35,7 +35,6 @@ failure -- and a run that failed, or ended without its result, is
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -131,6 +130,7 @@ def collect_sweep(calc, *,
     measured at different geometries."""
     from ..parse.sidecars.fc_sweep import SWEEP_SCHEMA
     from .. import __version__ as _mb_version
+    from ..runrecord import stamp
     from ..constants import HARTREE_BOHR_EV_ANGSTROM_ASE
     from .results import mass_of
     from ..engine_atom_index import convert_from_engine_numbering
@@ -381,8 +381,7 @@ def collect_sweep(calc, *,
     record: Dict[str, Any] = {
         "schema": SWEEP_SCHEMA,
         "label": task.label,
-        "generated_at": datetime.now(timezone.utc).isoformat()
-                        .replace("+00:00", "Z"),
+        "generated_at": stamp(),
         "molbuilder_version": str(_mb_version),
         "reference_stage": ref_name,
         "tolerance_cm1": (None if tolerance_cm1 is None

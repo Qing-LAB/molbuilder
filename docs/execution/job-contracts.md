@@ -1548,7 +1548,9 @@ JSON provider, the trajectory's wire form and the transport record all ask.
 Where a format states that such a number is refused instead — the spectra
 file ([`engines/vibration.md`](?doc=engines/vibration.md) § 6.8), the
 structure sidecar ([`model/structure.md`](?doc=model/structure.md) § 2.4) —
-its writer refuses it before `json_text` writes.
+its writer refuses it before `json_text` writes (`refuse_non_finite`), and the
+spectra file's reader refuses one it reads by the one record reader's switch of
+the same name (`persist.object_of`).
 
 **One writer, one reader, for every JSON file molbuilder writes.** Written by
 `persist.json_text` (`write_json`): two-space indent, a trailing newline, a

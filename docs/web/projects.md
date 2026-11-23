@@ -441,7 +441,7 @@ with nothing selected). The rule beside it is [`ui-contract.md`](?doc=web/ui-con
 |---|---|
 | `getCurrentDir()` / `getCurrentFile()` | the current folder / selected file, right now |
 | `getProjectsRoot()` / `atRoot()` | your projects folder; whether you're at its top |
-| `isStructureFile(path)` · `isPairedFile(path)` | whether `path` names a structure file molbuilder reads (`molstruct.GEOMETRY_SUFFIXES`), and whether it names the one a sidecar pairs with and molbuilder writes (`molstruct.PAIRED_SUFFIX`, `.xyz`; `pairedSuffix()` names it) — the server's pairing rule, which the page header states for every page (the app's template context). The one test a page asks: no page tests a suffix list of its own |
+| `isStructureFile(path)` · `isPairedFile(path)` | whether `path` names a structure file molbuilder reads (`molstruct.GEOMETRY_SUFFIXES`), and whether it names the one a sidecar pairs with and molbuilder writes (`runfiles.PAIRED_SUFFIX`, `.xyz`; `pairedSuffix()` names it) — the server's pairing rule, which the page header states for every page (the app's template context). The one test a page asks: no page tests a suffix list of its own |
 | `onChange(cb)` | selection changed — fires once on subscribe too |
 | `onCommit(cb)` | a file was committed (double-clicked) — does not fire on subscribe |
 | `publishCommit(dir, path)` | commit a file from code (also moves the selection). **`path` is the file's FULL path**, not its name — subscribers use it as one |

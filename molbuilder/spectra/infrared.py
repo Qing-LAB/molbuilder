@@ -56,8 +56,13 @@ DIRECTIONS: Dict[str, Tuple[float, float, float]] = {
 #: (the user, 2026-10-24: "default to z direction").
 DEFAULT_DIRECTION = "z"
 #: The partition a view is taken by when the person names none -- Hirshfeld,
-#: whose shares change smoothly as the atoms move (the method's § 1a).
+#: whose shares change smoothly as the atoms move (the method's § 1a): this
+#: view's choice, one of the partitions SIESTA's table holds -- checked at
+#: load.
 DEFAULT_PARTITION = "hirshfeld"
+if DEFAULT_PARTITION not in PARTITIONS:
+    raise ValueError(f"the infrared's default partition {DEFAULT_PARTITION!r} "
+                      f"is none of SIESTA's table's {PARTITIONS}")
 #: The release that first keeps a force-constant run's charges in its result.
 CHARGES_KEPT_SINCE = "2.36.0"
 
@@ -384,7 +389,7 @@ def infrared_view(result: SpectraResults, *,
         return ((p[free] - centre) * qs[:, None]).sum(axis=0), float(qs.sum())
 
     # THE DERIVATIVES PER ATOM AND AXIS -- steps come in -/+ pairs
-    # (`results.FC_STEP_PATTERN`, checked when the result was built).
+    # (`siesta_grammar.FC_STEP_PATTERN`, checked when the result was built).
     dmu_dR: Dict[Tuple[int, int], np.ndarray] = {}
     dQ_dR: Dict[Tuple[int, int], float] = {}
     for i in range(1, len(steps), 2):

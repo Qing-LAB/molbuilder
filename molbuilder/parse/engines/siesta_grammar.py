@@ -6,6 +6,10 @@ the monitor, which imports this module from beside the job
 (`runwrap.members`, `execution/run-reports.md` § 2.3); the
 wrapper's SCF-timing tee, being shell, gets its pattern rendered from here.
 
+And what those lines are read as: the force-constant run's step order
+(:data:`FC_STEP_PATTERN`) and the charge partitions a step prints, each with
+the deck line that asks for it (:data:`CHARGE_PARTITIONS`).
+
 Every pattern is read off SIESTA 5.4.2's own writer, named beside it.  The
 one older spelling kept, the 5.0 betas' ``Siesta Version``, is off that
 build's own output (a BDT run's, read 2026-09-26).
@@ -20,6 +24,56 @@ import os
 import re
 from typing import (Any, Dict, Iterable, List, NamedTuple, Optional,
                     Tuple)
+
+# ---- The force-constant run's steps -------------------------------------------
+#: THE ORDER SIESTA DISPLACES EACH ATOM IN under ``MD.TypeOfRun FC``
+#: (``Src/fc``; `engines/vibration.md` § 5.4): along x, y, z, each side -1
+#: before +1 -- the force-constant run's steps after its reference step, and
+#: the ``.FC`` file's rows for each displaced atom (`siesta_fc`).
+FC_STEP_PATTERN = (("x", -1), ("x", 1), ("y", -1), ("y", 1),
+                   ("z", -1), ("z", 1))
+
+
+def fc_step_count(n_displaced: int) -> int:
+    """How many steps the force-constant run takes over ``n_displaced``
+    atoms: the reference step, then :data:`FC_STEP_PATTERN` for each."""
+    return 1 + len(FC_STEP_PATTERN) * int(n_displaced)
+
+
+class ChargePartition(NamedTuple):
+    """One partition SIESTA can share a step's electrons by: ``name``, the
+    word every record of the charges carries; ``keyword`` and ``value``,
+    the deck's line that asks for it; ``method``, how SIESTA's output and
+    the Methods paragraph name it; ``citation``, its reference's key."""
+    name: str
+    keyword: str
+    value: str
+    method: str
+    citation: str
+
+
+#: THE INFRARED'S CHARGES (`engines/vibration.md` § 5.3, § 5.10 ②): each
+#: partition the force-constant phase asks SIESTA for at every step when
+#: Compute IR is on -- written by the deck (`vibration_deck.fc_block`), read
+#: back by the finish and the output reader, checked in the result, named in
+#: the Methods paragraph; which a view is taken by when the person names
+#: none is the view's (`spectra.infrared.DEFAULT_PARTITION`).
+CHARGE_PARTITIONS = (
+    ChargePartition("hirshfeld", "Charge.Hirshfeld", "geometry",
+                    "Hirshfeld", "Hirshfeld1977"),
+    ChargePartition("voronoi", "Charge.Voronoi", "geometry",
+                    "Voronoi", "FonsecaGuerra2004"),
+)
+
+
+def charge_partition(word: str) -> ChargePartition:
+    """The row :data:`CHARGE_PARTITIONS` holds for ``word`` -- the word its
+    records carry or the one SIESTA prints, in any case; ``KeyError`` for a
+    word no row holds."""
+    for row in CHARGE_PARTITIONS:
+        if word.lower() in (row.name, row.method.lower()):
+            return row
+    raise KeyError(word)
 
 # ---- The SCF row, both phases ------------------------------------------------
 #: SIESTA's periodic SCF and TranSIESTA's NEGF loop print one row per
@@ -540,10 +594,11 @@ FORCE_ROW_PREFIX = re.compile(r"^\s*siesta:\s+(?=\d)", re.IGNORECASE)
 #: its charge in e (valence less the electrons it holds, positive where
 #: electrons left), its electrons, [its spin,] its species -- a dashed rule
 #: and the total.  Group 1 is the partition, its word in lower case the name
-#: every record of the charges carries (`spectra.results.PARTITIONS`,
+#: every record of the charges carries (:data:`CHARGE_PARTITIONS`,
 #: `engines/vibration.md` § 5.10 ②).
 PARTIAL_CHARGES_BEGIN = re.compile(
-    r"^\s*(Hirshfeld|Voronoi)\s+Atomic\s+Populations:\s*$", re.IGNORECASE)
+    r"^\s*(" + "|".join(p.method for p in CHARGE_PARTITIONS)
+    + r")\s+Atomic\s+Populations:\s*$", re.IGNORECASE)
 #: A step's Kohn-Sham energy, ``siesta: E_KS(eV) = ...`` -- it sits mid-line.
 E_KS_LINE = "siesta: E_KS(eV)"
 #: The bare ``siesta: Etot = ...`` of the energy decomposition, never

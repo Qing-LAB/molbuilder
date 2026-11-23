@@ -46,8 +46,9 @@ from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 import numpy as np
 
 from ..constants import HC_EV_NM
-from ..runpoints import NOT_RUN
+from ..runpoints import FAILED, NOT_DONE, NOT_RUN
 from .activity import CHANNEL_PRESENT_FLOOR_RAMAN_A4_AMU, relative_to_strongest
+from .results import OPTICAL_FINISHED, OPTICAL_PENDING, ROUTE_OPTICAL
 
 #: The view's data file, written only by an export (`model/datafiles.md` § 1).
 RAMAN_SCHEMA = "molbuilder/raman-view@4"
@@ -330,7 +331,7 @@ def _cell_volume_a3(optical: Mapping[str, Any]) -> float:
 def has_optical_route(result) -> bool:
     """Whether ``result``'s Raman is SIESTA's optical route, its calls
     cited -- the only one with a spectrum to take a laser to."""
-    return result.raman_route == "optical" and bool(result.optical)
+    return result.raman_route == ROUTE_OPTICAL and bool(result.optical)
 
 
 def require_optical_route(result, where: str = "") -> None:
@@ -384,7 +385,7 @@ def raman_view(result, optical: Mapping[str, Any], *, laser_nm: float,
     def alphas(frame) -> Optional[Tuple[float, complex]]:
         """A frame's polarizability, static and at the laser -- complex
         there, its imaginary part ``V/4pi eps2(omega)``."""
-        if frame is None or frame.get("state") != "finished" \
+        if frame is None or frame.get("state") != OPTICAL_FINISHED \
                 or frame.get("eps2") is None:
             return None
         y = spread(np.asarray(frame["eps2"]).sum(axis=0))
@@ -406,23 +407,23 @@ def raman_view(result, optical: Mapping[str, Any], *, laser_nm: float,
             # A SIDE NOT DONE: the row names it and its state -- never a
             # number from one side.  A side with no result is *not ended*
             # (`execution/runs-of-points.md` § 1.3); `pending` is the data
-            # file's word for it, kept there.
+            # file's word for it (`results.OPTICAL_PENDING`), kept there.
             def shown(side):
                 said = (sides.get(side) or {}).get("state")
-                return NOT_ENDED if said in (None, "pending") else said
+                return NOT_ENDED if said in (None, OPTICAL_PENDING) else said
             states = {name: shown(s)
                       for name, s, a in (("+δQ", 1, plus), ("−δQ", -1, minus))
                       if a is None}
             said = set(states.values())
             rows.append((m, None, None,
-                         next((w for w in ("failed", NOT_RUN, "not done")
+                         next((w for w in (FAILED, NOT_RUN, NOT_DONE)
                                if w in said), NOT_ENDED),
                          "; ".join(f"the {name} side {state}"
                                    for name, state in states.items())))
             continue
         d_static = (plus[0] - minus[0]) / (2.0 * dq)
         d_laser = (plus[1] - minus[1]) / (2.0 * dq)
-        rows.append((m, d_static, d_laser, "finished", ""))
+        rows.append((m, d_static, d_laser, OPTICAL_FINISHED, ""))
     relative = relative_to_strongest(
         [None if dl is None else abs(dl) ** 2 for _m, _s, dl, _st, _w in rows],
         [real.get(m["mode"], True) for m, *_ in rows],

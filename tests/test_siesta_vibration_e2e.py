@@ -56,6 +56,7 @@ under the wall (`process/testing.md` tier 3: each run made once a pass).
 """
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import numpy as np
@@ -464,9 +465,11 @@ def test_unticked_the_run_relaxes_first_and_measures_at_the_relaxed_geometry(
     in the user order with the reference forces within the stage's own
     tolerance (`engines/vibration.md` § 5.11 §§ 1–3, § 5.5); the index
     lists every call with how it ended, the selection as asked and applied,
-    and the finish; the run sent its start, a milestone after the
-    relaxation and after the force constants, each saying its phase's
-    outcome, and its finish (§ 7a, `run-reports.md` § 2.9); and
+    and the finish; the relaxation record its step wrote is the one a
+    viewer makes of the same output (`model/parse.md` § 4a, § 5b.1); the
+    run sent its start, a milestone after the relaxation and after the force
+    constants, each saying its phase's outcome, and its finish (§ 7a,
+    `run-reports.md` § 2.9); and
     `status` counts the run in its phases' words (§ 7).  Launched again warm
     with every call done and the result written, a launch has nothing to
     run and says so, naming `--cold` (§ 6).
@@ -582,6 +585,13 @@ def test_unticked_the_run_relaxes_first_and_measures_at_the_relaxed_geometry(
     # wrote, and the run's count after it (`run-reports.md` § 2.9).
     after_relax, after_fc = told(run, "milestone", "freq")
     rec = index["points"][0]["facts"]["relaxation"]
+    # THE RECORD ITS STEP WROTE IS THE VIEWER'S of the same output, beside
+    # the job as in molbuilder: one conversion of the reading into frames
+    # (`siesta_frames`, `model/parse.md` § 4a, § 5b.1), so the two count
+    # the same steps and judge the same forces.
+    from molbuilder.parse.contract import relaxation_of
+    assert relaxation_of(run.call("freq", RELAX) / rec["source"],
+                         engine="siesta") == rec, rec
     assert after_relax.startswith(
         f"running (the relaxation "
         f"{'converged' if rec['converged'] else 'did not converge'} in "
@@ -1255,7 +1265,8 @@ def test_the_results_tab_shows_a_siesta_vibrations_free_atoms_infrared(
       carbon held -- along z by Hirshfeld charges: a spectrum, the column
       titled with its note's mark, a number in every cell, its note under the table
       naming the free atoms, the light and the charges, the run summary
-      saying the same; no choice of atoms anywhere;
+      saying the same and its *Engine* line the engine table's words; no
+      choice of atoms anywhere;
     * the bar above the chart holding *Light along* and *Charges*, no Raman
       boxes -- the run asked for none -- and *Update* disabled;
     * a change in the bar asks nothing: the line says it waits, the column
@@ -1345,6 +1356,12 @@ def test_the_results_tab_shows_a_siesta_vibrations_free_atoms_infrared(
         assert summary()["IR intensities"] == (
             "from the run's charges — the free atoms (2), along z, "
             "Hirshfeld"), summary()["IR intensities"]
+        # THE ENGINE AS THE ENGINE TABLE NAMES IT, its version the result's
+        # (`web/spectra.md` § 6) -- never the file's key, `siesta`.
+        from molbuilder.engine_table import engine
+        assert summary()["Engine"] == (
+            f"{engine(d['engine']).words} {d['engine_version']}"), \
+            summary()["Engine"]
 
         # THE BAR (§ 2.1): the light and the charges, no Raman -- the run
         # asked for none -- and nothing to update.  NO SET OF ATOMS IS
@@ -1729,7 +1746,8 @@ def test_the_page_asks_the_raman_at_a_laser_and_exports_it(
 
 
 def test_a_displacement_sweep_compares_every_stages_force_constants(unticked):
-    """A displacement sweep (`engines/vibration.md` § 5.9): two stages --
+    """A displacement sweep (`engines/vibration.md` § 5.9), its record stamped
+    by the run's clock: two stages --
     `freq` at the template's 0.04 Bohr and `freq_half` at 0.02 -- each one
     run in phases, each at a relaxed geometry; each stage's job writes its
     own spectrum; and `summarize task` compares them into
@@ -1801,6 +1819,10 @@ def test_a_displacement_sweep_compares_every_stages_force_constants(unticked):
 
     assert rec["schema"] == "molbuilder/fc-displacement-sweep@2"
     assert rec["pending"] == [] and rec["failed"] == []  # every stage has one
+    # STAMPED BY THE CLOCK every record of a run is (§ 5.9: UTC, to the
+    # second, Z).
+    assert re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z",
+                        rec["generated_at"]), rec["generated_at"]
     # the Results tab offers only what the parse registry reads
     # (`model/parse.md` § 5.5): the record has its own reader
     from molbuilder.parse import detect

@@ -92,6 +92,7 @@ from ..runfiles import PYSCF_BUNDLE
 from ..spectra.methods import frequency_range_words
 from ..spectra.results import (PHASE_COMPLETE, PHASE_EMPTY,
                                PHASE_NOT_REQUESTED, PHASE_RUNNING,
+                               ROUTE_FINITE_DIFFERENCE, ROUTE_NONE,
                                SCHEMA_VERSION)
 
 
@@ -590,8 +591,10 @@ def _emit_initial_state() -> List[str]:
     out.append("    phase_raman=(PHASE_EMPTY if COMPUTE_RAMAN else PHASE_NOT_REQUESTED),")
     out.append("    phase_ir=(PHASE_EMPTY if COMPUTE_IR else PHASE_NOT_REQUESTED),")
     out.append("    phase_es=(PHASE_EMPTY if ES_MODE_SELECTION != 'skip' else PHASE_NOT_REQUESTED),")
-    out.append("    ir_route='none',")
-    out.append("    raman_route='none',")
+    # THE ROUTE WORDS, written from their one home at render
+    # (`spectra.results.ROUTE_*`), as the phase words are.
+    out.append(f"    ir_route={ROUTE_NONE!r},")
+    out.append(f"    raman_route={ROUTE_NONE!r},")
     out.append("    # Runtime facts collected by the deck's runtime-facts")
     out.append("    # and GPU-probe blocks (n_threads, gpu name, etc.).  Visible")
     out.append("    # on the /results page so users can verify the run")
@@ -837,10 +840,10 @@ def _emit_hessian_block(cfg: "VibrationConfigView") -> List[str]:
     out.append("state['hessian_density_fit'] = HESSIAN_DENSITY_FIT")
     out.append("print(f'  Hessian scope: {HESSIAN_SCOPE} ({N_FREE} of {N_ATOMS} atoms)')")
     out.append("if COMPUTE_IR and not _WANT_ANALYTIC_IR:")
-    out.append("    IR_ROUTE = 'finite-difference'   # the Raman loop, or with "
+    out.append(f"    IR_ROUTE = {ROUTE_FINITE_DIFFERENCE!r}   # the Raman loop, or with "
                "Raman off the dipole sweep, supplies it")
     out.append("state['ir_route'] = IR_ROUTE")
-    out.append("if IR_ROUTE == 'finite-difference':")
+    out.append(f"if IR_ROUTE == {ROUTE_FINITE_DIFFERENCE!r}:")
     out.append("    # The step belongs to the RESULT, not to whichever block")
     out.append("    # happened to spend it: both finite-difference paths use")
     out.append("    # the one step (the Raman loop's, when Raman is on and")
@@ -1288,7 +1291,7 @@ def _emit_raman_block(cfg: "VibrationConfigView") -> List[str]:
     out.append("# How dalpha/dR was obtained, for the run as a whole -- the one")
     out.append("# Raman route there is, and the step a Methods paragraph must")
     out.append("# quote to be reproducible (SpectraResults.raman_route).")
-    out.append("state['raman_route'] = 'finite-difference'")
+    out.append(f"state['raman_route'] = {ROUTE_FINITE_DIFFERENCE!r}")
     out.append("state['raman_fd_step_ang'] = RAMAN_FD_STEP_ANG")
     out.append("_mb_write_spectra_payload(state, JSON_PATH)")
     if cfg.compute_ir:

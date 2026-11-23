@@ -568,12 +568,13 @@ molbuilder/parse/
 │   ├── xyz.py                 # registered: any other XYZ with no sidecar, read alone → TrajectoryResult (below)
 │   ├── siesta_fdflog.py       # registered: fdf.<stamp>.log → EngineParamsResult (§ 5d.3)
 │   ├── siesta_mdnc.py         # registered: a run's .MD.nc — sibling upgrade (§ 5a)
-│   ├── siesta_grammar.py      # the SIESTA family's output lines (§ 5d.5)   ─┐
+│   ├── siesta_grammar.py      # SIESTA's lines, FC steps, charges (§ 5d.5)  ─┐
 │   ├── molwatch_grammar.py    # the progress log's lines                     │ stdlib;
 │   ├── siesta_reader.py       # SiestaReader — the SIESTA reading pass        │ travel in
 │   ├── molwatch_reader.py     # MolwatchReader — the progress-log pass       │ mb_monitor.pyz
 │   ├── _section_rules.py      # the line-rule engine both passes run on      │ (§ 4a)
 │   ├── _run_ending.py         # HOW A RUN ENDED — one reader per role (§ 2b) ─┘
+│   ├── siesta_frames.py       # the reading made Frames, the parser's one conversion — numpy; travels in mb_vibration.pyz (§ 4a)
 │   ├── tbtrans.py             # TBtrans's loop in words · its k-averaged text files (§ 5e) — not registered; travels
 │   ├── tbtrans_nc.py          # registered: a TBtrans data file → TransmissionResult, its reading kept beside it (§ 5e)
 │   ├── siesta_epsimg_reader.py # SIESTA's .EPSIMG, its one reader — numpy; travels in mb_vibration.pyz (§ 5f)
@@ -676,7 +677,13 @@ flowchart LR
 * **The reading pass is the parser, minus the arrays.** It keeps every rule and
   all the parser's state as plain Python records; the registered parser feeds
   it the whole file and builds Frames from `finish()`. So the Results tab and a
-  report sent at 3 a.m. cannot say different things about one file.
+  report sent at 3 a.m. cannot say different things about one file. **The
+  arrays are one conversion too**: a SIESTA reading becomes Frames and a
+  `Trajectory` by `siesta_frames.trajectory_of` — numpy, travelling in
+  `mb_vibration.pyz` — which a SIESTA vibration's record step asks of its
+  `relax` call's output as well (§ 5b.1), so the record it writes into the
+  run's index and the one a viewer makes of the same output count the same
+  steps.
 * **Stdlib only, and it travels.** The grammars, the passes, `_section_rules`,
   `scf_timing_rows`, `_run_ending`, `tbtrans` (TBtrans's loop in words, § 5d.5),
   `wrapper_log`, `monitor_log` and `dirs/job.py` import
@@ -1830,8 +1837,9 @@ case-blind throughout (user, 2026-05-28).
 | criteria: `redata: Require … convergence for SCF`, `redata: … tolerance for SCF`, TranSIESTA's echoed tolerances (`read_options.F90`, `m_ts_options.F90`) | `SCF_REQUIRE`, `SCF_TOLERANCE`, `SCF_CRITERION_OF`, `TS_CRITERIA` | `read_criterion_line`, `negf_criteria` | `{phase: {column: {tolerance, unit, required}}}` |
 | limits: `redata: Force tolerance`, `Max. number of SCF Iter`, … | `TARGET_LINES` | `read_target_line` | `convergence_targets` |
 | a step: `Begin Broyden opt. move = N` (or CG, FIRE), `Begin FC step = N`, `Begin MD step = N` (`state_init.F`); a single point prints none — and which of those kinds move the geometry | `STEP_BEGIN`, `MOVES_GEOMETRY` | the reading pass | `step_kind`, `step`, `step_moves` |
+| a force-constant run's steps after its reference: each displaced atom along x, y, z, side −1 before +1 (`Src/fc`) | `FC_STEP_PATTERN`; `fc_step_count(n)`, the run's steps over n atoms | the `.FC` reader (`siesta_fc`), the vibration's finish and its result's charges check, the run's size words ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.4) | — |
 | a step's forces, `Atomic forces (eV/Ang):` and its rows — and again, after the step's `Max` lines, each row prefixed `siesta:`, the same forces (`write_subs.F`) | `FORCES_BEGIN` | the reading pass | the step's `forces` |
-| a step's partial charges, `Hirshfeld Atomic Populations:` / `Voronoi Atomic Populations:` and one row per atom — its number, its charge in e, its electrons, [its spin,] its species — then a dashed rule and the total (`partial_charges.F90`), printed after the step's SCF when the deck asks (`Charge.Hirshfeld` / `Charge.Voronoi`) | `PARTIAL_CHARGES_BEGIN` | the reading pass (its `partial_charges` section) | the step's `charges`, each partition the block's word in lower case |
+| a step's partial charges, `Hirshfeld Atomic Populations:` / `Voronoi Atomic Populations:` and one row per atom — its number, its charge in e, its electrons, [its spin,] its species — then a dashed rule and the total (`partial_charges.F90`), printed after the step's SCF when the deck asks (`Charge.Hirshfeld` / `Charge.Voronoi`) | `PARTIAL_CHARGES_BEGIN`, built from `CHARGE_PARTITIONS` — each partition's record word, the deck line that asks for it, the word SIESTA prints and its citation; `charge_partition(word)` its row for either word | the reading pass (its `partial_charges` section); the vibration deck, its result, the Methods paragraph ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.10 ②) | the step's `charges`, each partition by its record word |
 | the forces' closing `Max` / `Max … constrained` (`write_subs.F`, printed both, always: every atom's largest component, then the free atoms') | `MAX_FORCE` | the reading pass | `max_force_all`, `max_force` |
 | TranSIESTA computing no forces: `ts: *** ALL FORCES AFTER TRANSIESTA HAS RUN ARE WRONG ***` (`m_ts_options.F90`), printed when it does not update forces — every molbuilder device, whose continued-fraction equilibrium contour switches them off whatever the deck asks (`m_ts_options.F90`, *"the forces are not updated, dispite the user requests"*); it then sets the energy-density matrix to zero (`m_transiesta.F90`), which the stress is built from too (`overfsm.f90`) | `TS_FORCES_WRONG` | the reading pass, before the `ts:` echo rule | `forces_not_computed` |
 | the stress after each step's forces: `Stress tensor Voigt[x,y,z,yz,xz,xy] (kbar):` and six numbers (`write_subs.F`) | `STRESS_VOIGT` | the reading pass | `stress_voigt_kbar` |

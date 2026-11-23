@@ -1142,7 +1142,7 @@ A key is written where the result states it.
 | `optical` | **record**: the optical calls' citation — their data file (9.3) and its sha256, the light's direction, δ, the selection asked and applied, frame 0's state and each mode's frequency, δQ and its two sides' states ([`engines/vibration.md`](?doc=engines/vibration.md) § 6.2); null on PySCF and where no optical call was planned |
 | `phase_frequencies` · `phase_relaxation` · `phase_raman` · `phase_ir` · `phase_es` | each phase's state: `empty`, `running`, `complete` or `not requested` ([`engines/vibration.md`](?doc=engines/vibration.md) § 4.9) |
 | `ir_route` | the route the IR strengths came by: `analytic`, `finite-difference`, `charges` (SIESTA: from the stored charges) or `none` |
-| `raman_route` | the route the Raman came by: `analytic`, `finite-difference`, `optical` (SIESTA: its optical calls, the strength a view, 9.4) or `none` |
+| `raman_route` | the route the Raman came by: `finite-difference`, `optical` (SIESTA: its optical calls, the strength a view, 9.4) or `none` |
 | `hessian_scope` | `free` — second derivatives for the free atoms only — or `all` |
 | `n_atoms_in_hessian` | how many atoms the Hessian covers; `−1` not stated |
 | `hessian_density_fit` | `1`, `0`, `−1`: whether the Hessian itself was density-fitted; `−1` not stated (SIESTA) |

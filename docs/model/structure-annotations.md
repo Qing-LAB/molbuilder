@@ -172,7 +172,7 @@ carrier of the run's labels — through the block's one reader
 (`Structure.apply_atom_metadata`).
 **Trusted fragment ≠ sidecar file:** the block omits the sidecar envelope's
 `geometry_hash`, so it is applied by that reader and never through
-`parse.sidecars.molstruct.load_text`, the validator for untrusted standalone files, which
+`parse.sidecars.molstruct.load_record`, the validator for untrusted standalone files, which
 would reject the envelope-less block.
 
 **The block states the deck's order record, and the block is the serialiser's**

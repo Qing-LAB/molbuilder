@@ -16,9 +16,6 @@ from pathlib import Path
 from molbuilder.parse.base import FileParser
 from molbuilder.parse.types import SidecarResult
 from molbuilder.runfiles import ROLE_SPECTRA, role_of
-# The file's reader is its owner's (`sidecars.spectra`).
-from molbuilder.sidecars.spectra import parse_spectra_json
-
 from ._helpers import build_sidecar_result
 
 
@@ -44,6 +41,12 @@ class SpectraSidecarFileParser(FileParser):
 
     @classmethod
     def parse(cls, path: Path) -> SidecarResult:
+        # THE FILE'S READER IS ITS OWNER'S (`sidecars.spectra`), imported
+        # here, not at load -- the codec pair's way (`backend-architecture.md`
+        # § 2): its module loads the result's, which loads this package (the
+        # SIESTA grammar's step order and charge partitions), so an import
+        # at load meets it half-loaded when a script imports it first.
+        from molbuilder.sidecars.spectra import parse_spectra_json
         results = parse_spectra_json(path)
         # Use .to_dict() (not dataclasses.asdict) so numpy ndarrays
         # convert to JSON-trivially-serialisable lists -- ndarrays

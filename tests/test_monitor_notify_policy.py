@@ -886,7 +886,9 @@ def test_the_shipped_vibration_finish_loads_its_readers_from_the_bundle_alone(
     making a relative import inside itself (`from ..persist`) stopped
     every SIESTA vibration recording its charges at its force-constant
     call's record step, before any result was written (2.69.56) -- so the
-    check is called here, not only imported."""
+    check is called here, not only imported; and the `relax` call's record
+    is of the parser's own trajectory (`siesta_frames`, `model/parse.md`
+    § 4a), built there too."""
     from molbuilder import runwrap
     from molbuilder.runfiles import VIBRATION_BUNDLE
 
@@ -896,10 +898,13 @@ def test_the_shipped_vibration_finish_loads_its_readers_from_the_bundle_alone(
     # NO MOLBUILDER ON ITS PATH, enforced (`support.job_python`).
     proc = job_python.run(
         [f"import sys; sys.path.insert(0, {VIBRATION_BUNDLE!r}); "
-         "import siesta_reader, siesta_fc, fdf, results; "
+         "import siesta_reader, siesta_fc, siesta_grammar, fdf, results, "
+         "siesta_frames; "
+         "siesta_frames.trajectory_of(siesta_reader.SiestaReader().finish(), "
+         "source_format='siesta'); "
          "steps = [{'atom': None, 'axis': None, 'side': 0}] + "
          "[{'atom': 1, 'axis': a, 'side': s} "
-         "for a, s in results.FC_STEP_PATTERN]; "
+         "for a, s in siesta_grammar.FC_STEP_PATTERN]; "
          "results.checked_partial_charges({'displacement_ang': 0.04, "
          "'steps': steps, "
          "'charges_e': {'hirshfeld': [[0.1, -0.1]] * len(steps)}}, "

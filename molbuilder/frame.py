@@ -19,6 +19,11 @@ from the parser class's `cls.name` -- so the parser interface needs
 *something* that carries that string alongside the frames.  The
 minimal Trajectory below resolves that need without committing to a
 richer trajectory type now.
+
+TRAVELS beside a SIESTA vibration, in ``mb_vibration.pyz``
+(``runwrap.members``): its record step builds its `relax` call's trajectory
+by the parser's own conversion (``parse.engines.siesta_frames``).  So it
+imports only the standard library, numpy and :mod:`molbuilder.structure`.
 """
 
 from __future__ import annotations
@@ -28,7 +33,11 @@ from typing import Any, Dict, List, Optional
 
 import numpy as np
 
-from .structure import Structure
+# TWO WAYS, because this module travels beside the job in a bundle.
+try:                                        # inside molbuilder
+    from .structure import Structure
+except ImportError:                         # beside a job, in a bundle
+    from structure import Structure  # type: ignore[no-redef]
 
 
 @dataclass
@@ -260,3 +269,8 @@ class Trajectory:
 
     def __getitem__(self, idx):
         return self.frames[idx]
+
+
+#: WHAT THIS MODULE NEEDS BESIDE IT in a job's bundle -- the modules it
+#: imports there by their bare names (`runwrap.bundle_members`).
+TRAVELS_WITH = ("molbuilder.structure",)

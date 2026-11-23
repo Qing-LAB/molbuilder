@@ -16,8 +16,12 @@ Format reference (.molwatch.log):
                                         by engine index, from 0)
     # runtime.<key>: <value>           (optional, repeated)
     # convergence.<key>: <value>       (optional, repeated)
-    ==== molwatch step 0 begin ====
-    step_index: 0
+    ==== molwatch step 0 begin ====   (the preview: the input, `kind:
+    ...                                 initial_preview`, no energy)
+    ==== molwatch step 0 end ====
+    ==== molwatch step 1 begin ====
+    step_index: 1
+    wall_time: 1718000000.123        (epoch -> Frame.wall_clock_s)
     n_atoms: 3
     coordinates (Ang):
        O   0.00 0.00 0.00
@@ -27,11 +31,10 @@ Format reference (.molwatch.log):
        ...
     max_force (eV/Ang): 0.0024
     scf_history begin
-    # cycle energy delta_E gnorm ddm
-       1   -76.00   0.00   5e-2   1e-1
-    scf_history end
-    wall_time: 1718000000.123        (epoch -> Frame.wall_clock_s)
-    ==== molwatch step 0 end ====
+    #  cycle   energy(eV)   delta_E(eV)   gnorm(eV)   ddm   wall_time(s)
+           1   -76.00   0.00   5e-2   1e-1   1718000000.100
+    scf_history end                  (columns: trajectory_log.keys.SCF_TABLE)
+    ==== molwatch step 1 end ====
     ...
     # concluded: success                (optional footer)
     # error: <message>                  (optional footer)

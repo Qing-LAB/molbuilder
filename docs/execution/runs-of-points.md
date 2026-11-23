@@ -652,8 +652,11 @@ Every file has one reader; every side asks it.
   `add_point`, `entry_of`, `planned_by`, `taken_from`; the stamps: `stamp_start`, `stamp_end`,
   `stamp_step_error`, `stamp_finish`, and a kind's own step's facts and outcome, `note`; the rules: `rows_of`,
   `still_to_run`, `why_not_run`, `close`, `run_state`, `round_ended`, `said`, `reason`; the words: `count`,
-  `round_outcome`, `outcomes`, `not_done_words`, `NOT_RUN` (spelled beside `_run_ending.points_state`),
-  `NEVER_REACHED`; a part resolved beside the job: `part`.
+  `round_outcome`, `outcomes`, `not_done_words`, a point's words once it has ended — `DONE`, `NOT_DONE`,
+  `FAILED`, `NOT_RUN`, `ENDED_WORDS`, spelled beside `_run_ending.points_state` and read from there by
+  the index's readers and the words that count a run's points (`transport.run_words`,
+  `siesta.vibration_phases.count_words`, the transport record) — `RAN` and `NEVER_REACHED`; a part
+  resolved beside the job: `part`.
 - **`calcdirs`** — `where` reads which run and which point a folder is, and whether it is a run of points' root
   (`Where.of_points`); `read_with` the point a `shared/` folder is read with; `RunPlace` composes the folders —
   `point`, `prepared`, `scratch`, `walked`, `walked_all`; `prepared_folder` at prep.

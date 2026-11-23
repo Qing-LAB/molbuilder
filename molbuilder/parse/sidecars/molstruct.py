@@ -1,10 +1,11 @@
-"""``.molstruct.json`` sidecar FileParser, and the sidecar's text reader.
+"""``.molstruct.json`` sidecar FileParser, and the sidecar's reader.
 
-The READ side: :func:`load_text`, the one reader of a sidecar's text,
-which the read door -- ``load``, beside the write side (``dumps``,
-``sidecar_path_for``, ``to_dict``, ``apply_to_structure``,
-``geometry_hash``) in :mod:`molbuilder.sidecars.molstruct` -- asks with the
-file's text, and the registry's FileParser, which asks that door.
+The READ side: :func:`load_record`, the one reader of a sidecar's bytes
+(through the one record reader, `persist.object_of`), which the read door
+-- ``load``, beside the write side (``dumps``, ``sidecar_path_for``,
+``to_dict``, ``apply_to_structure``, ``geometry_hash``) in
+:mod:`molbuilder.sidecars.molstruct` -- asks with the file's bytes, and the
+registry's FileParser, which asks that door.
 
 The sidecar carries per-atom region + frozen-atom metadata that
 rides next to a structure file (``<stem>.molstruct.json``).
@@ -12,7 +13,6 @@ rides next to a structure file (``<stem>.molstruct.json``).
 
 from __future__ import annotations
 
-import json as _json
 from pathlib import Path
 from typing import Any, Dict
 
@@ -30,20 +30,22 @@ from molbuilder.sidecars.molstruct import (
     unread_keys,
 )
 from molbuilder.atom_permutation import MAP_KEY
+from molbuilder.persist import object_of
 from molbuilder.structure_pair import MolstructJsonError
 
 from ._helpers import build_sidecar_result
 
 
 # The readable-version gate is `sidecars.molstruct.READABLE_VERSIONS`,
-# imported above and used by `load_text` below.
+# imported above and used by `load_record` below.
 
 
-def load_text(text: str, *, source: str = "<sidecar>",
-              retired_out: "Dict[str, Any] | None" = None,
-              stated_out: "set | None" = None) -> Dict[str, Any]:
-    """Parse + validate a sidecar JSON **string** -- the text the read
-    door (``sidecars.molstruct.load``) read from the file.  Returns the
+def load_record(data: bytes, *, source: str = "<sidecar>",
+                retired_out: "Dict[str, Any] | None" = None,
+                stated_out: "set | None" = None) -> Dict[str, Any]:
+    """Parse + validate a sidecar's **bytes** -- what the read door
+    (``sidecars.molstruct.load``) read from the file -- through the one
+    record reader (`persist.object_of`: UTF-8 text, one JSON object).  Returns the
     normalised dict, built by the payload's one builder
     (``sidecars.molstruct.to_dict``) with the version the file STATES,
     never this build's (`model/overview.md` § 2.2b, F4), so an on-disk
@@ -69,17 +71,9 @@ def load_text(text: str, *, source: str = "<sidecar>",
     are permissive (missing == empty); everything else is required.
     """
     try:
-        data = _json.loads(text)
-    except _json.JSONDecodeError as exc:
-        raise MolstructJsonError(
-            f"sidecar {source} is not valid JSON: {exc}"
-        ) from exc
-
-    if not isinstance(data, dict):
-        raise MolstructJsonError(
-            f"sidecar {source}: top-level value must be an "
-            f"object; got {type(data).__name__}"
-        )
+        data = object_of(data)
+    except ValueError as exc:
+        raise MolstructJsonError(f"sidecar {source}: {exc}") from exc
 
     sv = data.get("schema_version")
     if sv not in READABLE_VERSIONS:

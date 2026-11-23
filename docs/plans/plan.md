@@ -37,6 +37,7 @@ shipped:
 | 2.77.23 | R3c2 | every printed command is one you can type, from any folder (the host env's path file, [`ops/deployment.md`](?doc=ops/deployment.md) § 0) | `fix15-review.md` |
 | 2.77.24 | R3c3 | templates and engines, each fact in one home; every env command by the checkout's full path, in molbuilder's checkout in a file for another machine and in every run script | `fix16-review.md` |
 | 2.77.25 | R3d1a | transport, each fact in one home; every data file names its engine in the engine table's words, a voltage said one way | `fix17-review.md` |
+| 2.77.26 | R3d1b | the spectra, each fact in one home; the spectra page names its engine in the engine table's words | `fix18-review.md` |
 
 Records: `archive/audits/2026-11-18-f12-review/fix<N>-review.md`. Since
 2.77.23 the host env holds `molbuilder-source.pth` on the development machine
@@ -119,21 +120,10 @@ built in R3d with the vibration's data files.
   [`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md),
   [`science/vibrational-optical-response.md`](?doc=science/vibrational-optical-response.md)).
 
-### 2. R3d — spectra, then the vibration framework
+### 2. R3d2 — the vibration framework
 
-R3d1b (2.77.26) is the spectra's one-home rows; R3d2 builds the framework
-(§ 1).
+R3d1 shipped (2.77.25, 2.77.26). R3d2 builds the framework (§ 1).
 
-- **Spectra** (`r2-6`): F1 sidecar readers through `persist.object_of`; F2
-  `from_dict`'s version gate dropped; F3 `SUFFIX`/`PAIRED_SUFFIX` in
-  `runfiles`; F4 the state words in one table; F5 the IR charges' row table;
-  F6 the route constants; F8 one step-to-frame function; F9
-  `runrecord.stamp`; F10 `Structure.frozen_atoms`; F11 `to_dict(view=False)`;
-  F12 an import-time table check; F13 the `siesta_fc` step pattern; F15 the
-  SCF log's column order in `keys.py` and one atom-row formatter (= `r2-7`
-  #13). And the spectra page's Engine row, which says `siesta 5.4.2` where
-  every data file now says the engine table's words — its wire carries no
-  engine words yet (`fix17-review.md` round 1 #28).
 - **The vibration framework, built** (§ 1, after the user's yes), with the
   SIESTA vibration's data files on the shared writers
   (`ncdata.copy_stated`, `ncdata.json_attrs`, as the transport file and a
@@ -141,6 +131,13 @@ R3d1b (2.77.26) is the spectra's one-home rows; R3d2 builds the framework
   loops and encode their attributes by hand; and the status door's
   unreadable copy note in its own field, where the transport record says
   `unreadable`; the record's and the data file's builders are long functions.
+- **With the PySCF decks' change, said as its visible change**
+  (`fix18-review.md` round 1 #2): the progress log's writer told its engine
+  and writer by the deck that builds it (`r2-6` F15's third part), and the
+  PySCF script's result stamped by `runrecord.stamp` (F9's PySCF part) —
+  each a statement a launched PySCF stage's deck is compared by
+  ([`execution/job-request.md`](?doc=execution/job-request.md) § 5), so the
+  release that makes them says a launched PySCF stage is started again.
 
 ### 3. R3e — parse, structure and builders
 
@@ -220,6 +217,14 @@ R3d1b (2.77.26) is the spectra's one-home rows; R3d2 builds the framework
 - **Carried from R3c** (`fix16-review.md`): the path tool's
   (`tools/classify_path_finders.py`) stale `launch` row and its `--check`
   failure on `jobset/submit.py`'s `rglob`, both older than R3c.
+- **Carried from R3d1b** (`fix18-review.md` round 2 #5, #6, the full-text
+  readers' D7/B2): the spectra page types the charge partitions' options and
+  default (`_spectra_inspector.html`, `lib/spectra/core.js`) and compares the
+  route words as literals in its run summary; a point's words typed by the
+  pages (`lib/state-chip.js`, `lib/trajectory/core.js`, the transport
+  inspector's report head) and by the walk script's log lines
+  (`jobset/submit._walk_script`); `transport/record`'s *not ended* beside
+  `raman.NOT_ENDED`.
 - Round 2's items for the pages, MolView, the viewers and the test harness
   (`r2-10`…`r2-14`) — the Results tab's file-menu pick copied in ten test
   files, its door now `support.sidebar.result_picked`; every T row the
@@ -252,7 +257,7 @@ R3d1b (2.77.26) is the spectra's one-home rows; R3d2 builds the framework
 
 ## Waiting on the user
 
-- **Next**: nothing — R3d1a is shipped (2.77.25); R3d1b runs.
+- **Next**: nothing — R3d1b is shipped (2.77.26); R3d2 runs.
 - At their releases: R3f's Prep-as-a-process
   design, the side rail's change after measuring, and deletions #6, #26; R4's
   selection-route design and MolView's atom filter; every deletion, listed

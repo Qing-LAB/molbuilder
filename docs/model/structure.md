@@ -192,7 +192,7 @@ key MolView must show or edit in a shape of its own joins
 `SHAPED_METADATA_KEYS` and is folded and unfolded there; (5) add a
 save→load→apply round-trip test. You do **not** touch `to_dict`, the sidecar
 writer (`sidecars/molstruct.to_dict`), its reader
-(`parse/sidecars/molstruct.load_text`) or `apply_to_structure` — each SPREADS
+(`parse/sidecars/molstruct.load_record`) or `apply_to_structure` — each SPREADS
 `FILE_FIELDS` through the two methods above, so it picks the field up for
 free; a field a file must not state is the view's, added to `VIEW_FIELDS`.
 
@@ -816,9 +816,12 @@ together. That pairing + atomicity is owned by one L2 object,
 copy of any of them:
 
 1. **the pairing rule** — `<stem>.xyz` ↔ `<stem>.molstruct.json`, including how
-   the sidecar's name is derived (`molstruct.sidecar_path_for`); only a `.xyz`
-   pairs with a sidecar (`molstruct.PAIRED_SUFFIX`, `is_paired`), so a `.pdb`
-   beside one never takes it for its own;
+   the sidecar's name is derived (`molstruct.sidecar_path_for`, which asks the
+   one rule a pair's names are spelled by, `runfiles.sidecar_of` — the file
+   catalogue's sidecar rows ask it too — and the suffix,
+   `runfiles.SIDECAR_SUFFIX`); only a `.xyz` pairs with a sidecar
+   (`runfiles.PAIRED_SUFFIX`, `molstruct.is_paired`), so a `.pdb` beside one
+   never takes it for its own;
 2. **the format choice** — molbuilder writes plain XYZ, one block per frame
    the structure holds (§ 2.2e), its comment line the title and nothing else
    (§ 2.3, *the comment line is never metadata*). **A `.pdb` is read, never
@@ -1168,8 +1171,8 @@ every frame, and no frame chosen (the load route's put-back branch).
 
 **Where the sidecar schema lives** (server, one home):
 `sidecars/molstruct.py` — `apply_to_structure(struct, dict)`, `load(path)`,
-`to_dict(…)`, `dumps(payload)`, `sidecar_path_for(xyz)`, and its text's reader in `parse/`,
-`parse.sidecars.molstruct.load_text`. The
+`to_dict(…)`, `dumps(payload)`, `sidecar_path_for(xyz)`, and its bytes' reader in `parse/`,
+`parse.sidecars.molstruct.load_record`. The
 byte layer knows the pair only as "which bytes travel together"; interpreting
 it (parse + apply the schema) happens only inside the server seam. Clicking a
 `.molstruct.json` in the sidebar shows its JSON via the `source` inspector —

@@ -702,10 +702,13 @@
     // hammering the API forever.
     const WATCH_MAX_ERRORS = 5;
 
-    /* THE PHYSICAL CONSTANTS THIS PAGE CONVERTS WITH ARE SERVED, not copied:
-     * `/api/spectra/load` sends them with every result, from their one home
-     * (`molbuilder.constants`; `web/blueprints/spectra.py::_page_constants`),
-     * and `renderResults` takes them in before any panel draws
+    /* WHAT THIS PAGE CONVERTS AND SAYS BY IS SERVED, not copied:
+     * `/api/spectra/load` sends it with every result
+     * (`web/blueprints/spectra.py::_page_constants`) -- the physical
+     * constants from their one home (`molbuilder.constants`), each channel's
+     * band floor (`spectra.activity`), the frame-set rules
+     * (`spectra.mode_frames`) and each engine's name (the engine table) --
+     * and `renderResults` takes it in before any panel draws
      * (`architecture.md` § 3; user: one source per fact). */
     const K = {};
 
@@ -2290,7 +2293,12 @@
             return r.phase_es;
         }
         const meta = [
-            ["Engine",            results.engine + " " + (results.engine_version || "?")],
+            // THE ENGINE AS THE ENGINE TABLE NAMES IT (served with the
+            // page's constants); a result of an engine the table does not
+            // hold says the file's own word.
+            ["Engine",            ((K.engine_words || {})[results.engine]
+                                   || results.engine)
+                                  + " " + (results.engine_version || "?")],
             ["Atoms (total)",     results.n_atoms_total],
             ["Free / frozen",     (results.free_atom_idxs || []).length
                                     + " / "

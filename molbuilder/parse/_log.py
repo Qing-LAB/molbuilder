@@ -42,12 +42,12 @@ from __future__ import annotations
 import os
 import sys
 import time
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
 from molbuilder.runfiles import (ROLE_MOLWATCH, ROLE_MOLWATCH_PARSE_LOG,
                                  ROLE_PARSE_LOG, named_beside, role_of)
+from molbuilder.runrecord import stamp
 
 
 _ENV_VAR = "MOLBUILDER_PARSE_LOG"
@@ -65,13 +65,6 @@ def _enabled() -> bool:
     if raw is None:
         return False
     return raw.strip().lower() not in ("0", "false", "no", "off")
-
-
-def _now_iso() -> str:
-    """ISO-8601 UTC timestamp with 'Z' suffix.  Compact form (no
-    microseconds) since the per-event resolution we care about is
-    seconds."""
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def _sidecar_path(input_path: str) -> Optional[Path]:
@@ -136,7 +129,7 @@ class ParseLogger:
                 size_str = ""
             banner = (
                 f"# ----------------------------------------------------\n"
-                f"# {_now_iso()} {self.parser_name} scan begin\n"
+                f"# {stamp()} {self.parser_name} scan begin\n"
                 f"# ----------------------------------------------------\n"
             )
             self._fh.write(banner)
@@ -205,7 +198,8 @@ class ParseLogger:
         if self._fh is None:
             return
         try:
-            self._fh.write(f"{_now_iso()} {level:<5} {message}\n")
+            # THE CLOCK every record of a run is stamped with (`runrecord`).
+            self._fh.write(f"{stamp()} {level:<5} {message}\n")
         except OSError:
             pass
 

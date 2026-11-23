@@ -528,7 +528,10 @@ scf_history end                          # empty on step 0 (no header line)
 
 A **real** opt step (index ≥ 1) carries an energy/forces/max_force value and an
 `scf_history` block with a header + one row per SCF cycle:
-`#  cycle   energy(eV)   delta_E(eV)   gnorm(eV)   ddm   wall_time(s)`. The
+`#  cycle   energy(eV)   delta_E(eV)   gnorm(eV)   ddm   wall_time(s)` — the
+columns one table in the log's vocabulary (`trajectory_log.keys.SCF_TABLE`),
+in the order each row writes them, which the writer renders the header and
+every row from and the reader takes each value's place from. The
 orbital-gradient norm is an energy — PySCF's `norm_gorb` in Hartree, over
 dimensionless orbital rotations — so it is written in eV; a log whose header
 says `gnorm(eV/Ang)` scaled it as a force, and the reader converts it back.

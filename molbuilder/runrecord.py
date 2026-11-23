@@ -254,10 +254,13 @@ def stamp() -> str:
     """THE CLOCK every record of a run is stamped with -- UTC, to the
     second, ``Z``: the launch record's `launched_at`, the ending's
     `asked_at`, a run of points' index (each point's start and end, the
-    finish's; `runpoints`).  One spelling, so two records of
+    finish's; `runpoints`), a SIESTA vibration's result (`timestamp`,
+    `spectra.vibrational_analysis`) and its displacement sweep's
+    (`generated_at`).  One spelling, so two records of
     one run compare -- and the job's own address (`joblist`) and a sequence
     of groups' record (`jobset.sequence`), which a run's is compared with
-    (:func:`stamp_time`)."""
+    (:func:`stamp_time`); a structure sidecar's `created_at` and a parse
+    log's lines are stamped by it too."""
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 

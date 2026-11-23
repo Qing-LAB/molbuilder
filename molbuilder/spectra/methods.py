@@ -33,6 +33,17 @@ import re
 from typing import Any, List, Mapping, Optional, Sequence
 
 from typing import TYPE_CHECKING
+
+try:                                        # inside molbuilder
+    from ..parse.engines.siesta_grammar import (CHARGE_PARTITIONS,
+                                                charge_partition)
+    from .results import (ROUTE_ANALYTIC, ROUTE_FINITE_DIFFERENCE,
+                          ROUTE_OPTICAL)
+except ImportError:                         # beside a job, in a bundle
+    from siesta_grammar import (  # type: ignore[no-redef]
+        CHARGE_PARTITIONS, charge_partition)
+    from results import (  # type: ignore[no-redef]
+        ROUTE_ANALYTIC, ROUTE_FINITE_DIFFERENCE, ROUTE_OPTICAL)
 if TYPE_CHECKING:            # annotations only -- importing
     # vibration_deck at run time would cycle (it imports this), and the
     # other is named in annotations and never called: this module travels
@@ -156,11 +167,11 @@ def ir_route_sentence(ir_route: str,
     never drift into two different claims.  Returns "" when there is
     nothing to say.
     """
-    if ir_route == "analytic":
+    if ir_route == ROUTE_ANALYTIC:
         return ("These were evaluated analytically, from the "
                 "coupled-perturbed self-consistent-field response also "
                 "used for the force constants.")
-    if ir_route == "finite-difference":
+    if ir_route == ROUTE_FINITE_DIFFERENCE:
         step = (f" (±{fd_step_ang:g} Å per Cartesian coordinate)"
                 if fd_step_ang else "")
         return f"These were evaluated by central finite differences{step}."
@@ -206,13 +217,16 @@ def infrared_view_sentence(view: Mapping[str, Any]) -> str:
     orientation average itself (`science/vibrational-optical-response.md`
     § 2.3)."""
     from .infrared import ORIENTATION_FREE, SOURCE_DIPOLE
-    partition = str(view["partition"]).capitalize()
-    head = ("The infrared shown is the whole system's, from the dipole "
-            "change the engine computed along each mode"
-            if view.get("source") == SOURCE_DIPOLE else
-            f"The infrared shown is that of {view['atoms_label']}, the "
-            f"{len(view['atoms'])} atoms the vibration moved, from their "
-            f"{partition} charges")
+    if view.get("source") == SOURCE_DIPOLE:
+        # THE WHOLE SYSTEM'S DIPOLE names no partition (`web/spectra.md`
+        # § 3.2) -- its view states none.
+        head = ("The infrared shown is the whole system's, from the dipole "
+                "change the engine computed along each mode")
+    else:
+        partition = charge_partition(str(view["partition"])).method
+        head = (f"The infrared shown is that of {view['atoms_label']}, the "
+                f"{len(view['atoms'])} atoms the vibration moved, from "
+                f"their {partition} charges")
     if view.get("orientation") == ORIENTATION_FREE:
         return (f"{head}, averaged over orientations: no atom is held, so the "
                 f"molecule tumbles, as a free molecule's infrared intensity "
@@ -275,7 +289,7 @@ def siesta_raman_sentence(raman_route: str, raman=None) -> str:
     § 8): its optical calls planned -- the strengths derived on request at
     a laser; Raman asked (``raman``, the deck's `vibration` block's) over a
     range that kept no mode; or none asked."""
-    if raman_route == "optical":
+    if raman_route == ROUTE_OPTICAL:
         return ("Raman strengths are derived on request, at a laser the "
                 "reader names, from SIESTA's optical calculation "
                 "(independent states, no local field) at ±δQ along each "
@@ -306,9 +320,10 @@ def with_raman_view(methods_md: str, view: Mapping[str, Any]) -> str:
 
 
 #: Each partition the force-constant run's charges may be taken by, as the
-#: Methods paragraph names and cites it (`engines/vibration.md` § 5.10 ②).
-CHARGE_PARTITION_WORDS = {"hirshfeld": "Hirshfeld [Hirshfeld1977]",
-                          "voronoi": "Voronoi [FonsecaGuerra2004]"}
+#: Methods paragraph names and cites it (`engines/vibration.md` § 5.10 ②;
+#: `siesta_grammar.CHARGE_PARTITIONS`).
+CHARGE_PARTITION_WORDS = {p.name: f"{p.method} [{p.citation}]"
+                          for p in CHARGE_PARTITIONS}
 
 
 def siesta_methods_text(*, displacement_bohr: float, n_free: int,
@@ -519,6 +534,11 @@ def _frequency_window_clause(cfg: "VibrationConfigView") -> str:
     words = frequency_range_words(cfg.freq_min_cm1, cfg.freq_max_cm1)
     return f" with frequencies {words}" if words else ""
 
+
+#: WHAT THIS MODULE NEEDS BESIDE IT in a job's bundle -- the modules it
+#: imports there by their bare names (`runwrap.bundle_members`).
+TRAVELS_WITH = ("molbuilder.parse.engines.siesta_grammar",
+                "molbuilder.spectra.results")
 
 
 __all__ = ["render_methods_md", "extract_citation_keys"]

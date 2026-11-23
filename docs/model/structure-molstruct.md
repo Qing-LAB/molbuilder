@@ -290,7 +290,7 @@ gate**, because it converts a loud failure into a quiet one.
 
 | Surface | On a payload of a version it does not read (outside `READABLE_VERSIONS`) |
 |---|---|
-| `molstruct.load` / `parse.sidecars.molstruct.load_text` (the `.molstruct.json` sidecar) | raises `MolstructJsonError`; nothing is read |
+| `molstruct.load` / `parse.sidecars.molstruct.load_record` (the `.molstruct.json` sidecar) | raises `MolstructJsonError`; nothing is read |
 | the in-script `ATOM-METADATA` block, wherever it arrives from — a run directory, the transport composite, or `/api/build/load` — | **one reader**, `Structure.apply_atom_metadata`. The block is read as written today: a retired layout is not translated, so whatever it spells the current way applies and the rest simply is not there. The run still opens. The one refusal is a block whose `n_atoms_total` disagrees with the structure — `MolstructPairingError`, the same name the sidecar's identical guard uses |
 
 The sidecar file's message names the specific difference and says what to do:
@@ -324,7 +324,7 @@ A key that is neither a structure metadata field nor an envelope key is an
 **error**, at the point the payload is still whole. *A key nobody reads is
 metadata the writer thinks it saved.*
 
-The guard stands where the payload arrives whole (`load_text`, `unread_keys`),
+The guard stands where the payload arrives whole (`load_record`, `unread_keys`),
 never downstream of a normaliser that would already have dropped the key.
 
 ### Version history
@@ -442,8 +442,9 @@ prep (`engines/stages.md` § 6.3).
 ## 4. The codec (server, one home)
 
 All read/write of `.molstruct.json` goes through `sidecars/molstruct.py`, its
-text read by its reader in `parse/` (`parse.sidecars.molstruct.load_text`,
-which asks the same one builder):
+bytes read by its reader in `parse/` (`parse.sidecars.molstruct.load_record`,
+through the one record reader, `persist.object_of`, and asking the same one
+builder):
 
 ```mermaid
 flowchart LR
@@ -452,17 +453,17 @@ flowchart LR
     JSON[".molstruct.json<br/>on disk"]
     ST -- "metadata_to_dict()" --> MD
     MD -- "to_dict(+envelope) → dumps() → StructureCodec.write" --> JSON
-    JSON -- "load() → parse/ load_text()" --> MD2["the payload"]
+    JSON -- "load() → parse/ load_record()" --> MD2["the payload"]
     MD2 -- "apply_to_structure()" --> ST
 ```
 
 | Function | Role |
 |---|---|
-| `sidecar_path_for(xyz)` | derive `<stem>.molstruct.json` from a geometry path — the one pairing rule |
+| `sidecar_path_for(xyz)` | derive `<stem>.molstruct.json` from a geometry path, by the one rule a pair's names are spelled by (`runfiles.sidecar_of`) |
 | `to_dict(fields, n_atoms_total, n_frames_total, geometry_hash, …)` | THE ONE BUILDER — the envelope + the validated metadata fields spread in, for a payload written and one read alike |
 | `dumps(payload)` | the one serialisation — written with its geometry, both or neither, by `StructureCodec.write` |
-| `load(path)` — its text read by `parse.sidecars.molstruct.load_text(text)` | read + validate the version → the payload, through the one builder |
-| `renewed(sidecar, …)` · `stamp()` | a payload renewed for its moved geometry · the moment a sidecar is written, its `created_at` |
+| `load(path)` — its bytes read by `parse.sidecars.molstruct.load_record(data)` | read + validate the version → the payload, through the one builder |
+| `renewed(sidecar, …)` | a payload renewed for its moved geometry; a sidecar's `created_at` the moment it is written, by the clock every record of a run is stamped with (`runrecord.stamp`) |
 | `apply_to_structure(struct, dict)` | apply the metadata onto a `Structure` (via `apply_metadata_dict`); guards `n_atoms_total` and `n_frames_total` |
 | `MolstructJsonError` / `MolstructPairingError` / `GeometryChangedError` — named once in `structure_pair` (L1, standard library, travelling with the codec and the structure), raised by the codec and, for a deck's block, by the structure | the payload is unreadable / the payload is for a **different structure** (its atom or frame count) / the payload is for **these atoms at other coordinates** (§ 3's geometry hash). Separate types because each gets its own answer: a surface may forgive an unreadable *version*, none may forgive a wrong *pairing*, and the browser's load door opens a *changed geometry*, saying so, so it can be saved anew |
 

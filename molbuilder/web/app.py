@@ -576,7 +576,8 @@ def create_app(*, config=None) -> Flask:
         # page's scripts (`molbuilder.typed`): a page never spells it.
         from .. import __version__
         from ..identity import PROG
-        from ..sidecars.molstruct import GEOMETRY_SUFFIXES, PAIRED_SUFFIX
+        from ..runfiles import PAIRED_SUFFIX
+        from ..sidecars.molstruct import GEOMETRY_SUFFIXES
         return {"tabs": TABS, "molbuilder_version": __version__,
                 "molbuilder_typed": PROG,
                 "structure_suffixes": GEOMETRY_SUFFIXES,

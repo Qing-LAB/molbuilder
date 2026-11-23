@@ -15,10 +15,14 @@ try:                                        # inside molbuilder
     from ..constants import DEBYE_E_ANGSTROM
     from ..sidecars.molstruct import apply_to_structure
     from ..structure import Structure
+    from .results import (ROUTE_ANALYTIC, ROUTE_FINITE_DIFFERENCE,
+                          ROUTE_NONE)
 except ImportError:                         # beside a job, in mb_pyscf.pyz
     from constants import DEBYE_E_ANGSTROM
     from molstruct import apply_to_structure
     from structure import Structure
+    from results import (  # type: ignore[no-redef]
+        ROUTE_ANALYTIC, ROUTE_FINITE_DIFFERENCE, ROUTE_NONE)
 
 
 def equilibrium_structure(elements, positions_ang, sidecar) -> dict:
@@ -28,8 +32,8 @@ def equilibrium_structure(elements, positions_ang, sidecar) -> dict:
     the run's own sidecar payload, ``_MB_SIDECAR``, applied whole through
     the envelope's door (`molstruct.apply_to_structure`: the labels, the
     held atoms, the box, the identity columns, ``info``), as
-    ``Structure.to_dict()``, the one serialiser.  The deck calls it from
-    ``mb_pyscf.pyz`` at its equilibrium write."""
+    ``Structure.to_dict(view=False)``, the one serialiser.  The deck calls
+    it from ``mb_pyscf.pyz`` at its equilibrium write."""
     import numpy as np
     struct = Structure(elements=[str(e) for e in elements],
                        positions=np.asarray(positions_ang, dtype=float))
@@ -161,7 +165,8 @@ def dipole_derivatives(mf, free_atom_idxs, want_ir, *, repair: str):
             _block = _block + _np.asarray(_hobj.get_dispersion())[_free][:, _free]
         _full = _np.zeros((_n_atoms, _n_atoms, 3, 3))
         _full[_np.ix_(_free, _free)] = _block
-        return _full, None, ("finite-difference" if want_ir else "none")
+        return _full, None, (ROUTE_FINITE_DIFFERENCE if want_ir
+                             else ROUTE_NONE)
 
     def _infrared_class(infrared, mf_):
         """Upstream splits by reference, and so must we.
@@ -215,7 +220,7 @@ def dipole_derivatives(mf, free_atom_idxs, want_ir, *, repair: str):
             if mf.do_disp():
                 _hess = _hess + _np.asarray(_hobj.get_dispersion())
             _de = _np.asarray(_mf_ir.de)[list(free_atom_idxs)]
-            return _hess, _de * _AU_BOHR_TO_DEBYE_ANG, "analytic"
+            return _hess, _de * _AU_BOHR_TO_DEBYE_ANG, ROUTE_ANALYTIC
         except ImportError:
             print("  pyscf.prop.infrared not installed -- IR falls back to "
                   "finite-difference dipoles (same intensities, 6N extra "
@@ -229,7 +234,7 @@ def dipole_derivatives(mf, free_atom_idxs, want_ir, *, repair: str):
             print(f"  analytic dmu/dR unavailable ({type(_exc).__name__}: "
                   f"{_exc}) -- falling back to finite-difference dipoles")
     return (_np.asarray(mf.Hessian().kernel()), None,
-            "finite-difference" if want_ir else "none")
+            ROUTE_FINITE_DIFFERENCE if want_ir else ROUTE_NONE)
 
 
 def mo_window(mo_energy, homo, n_below, n_above):
@@ -268,4 +273,5 @@ __all__ = ["homo_index", "mo_window", "dipole_derivatives", "as_numpy"]
 #: imports there by their bare names (`runwrap.bundle_members`).
 TRAVELS_WITH = ("molbuilder.constants",
                 "molbuilder.sidecars.molstruct",
+                "molbuilder.spectra.results",
                 "molbuilder.structure")

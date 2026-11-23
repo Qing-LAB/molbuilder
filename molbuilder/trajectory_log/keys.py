@@ -115,6 +115,24 @@ FORCES_LINE = f"{FORCES} (eV/Ang):"
 MAX_FORCE = "max_force (eV/Ang):"
 SCF_HISTORY_BEGIN = "scf_history begin"
 SCF_HISTORY_END = "scf_history end"
+#: THE SCF TABLE'S COLUMNS, in the order each row writes them, each with the
+#: word the table's header says it by: the writer renders the header and every
+#: row in this order (`emitter.py`), and the reader takes each value from its
+#: place here (`molwatch_grammar.scf_history_row`), so a column inserted moves
+#: for both.  The last, the deck's clock as the cycle finished (epoch
+#: seconds), a log written before it was kept lacks.
+SCF_CLOCK = "wall_time"
+SCF_TABLE = (
+    ("cycle", "cycle"),
+    ("energy", "energy(eV)"),
+    ("delta_E", "delta_E(eV)"),
+    ("gnorm", "gnorm(eV)"),
+    ("ddm", "ddm"),
+    (SCF_CLOCK, "wall_time(s)"),
+)
+SCF_TABLE_KEYS = tuple(key for key, _ in SCF_TABLE)
+#: ...and the header line it opens with (`engines/pyscf.md` § 4).
+SCF_TABLE_HEADER = "#  " + "   ".join(word for _, word in SCF_TABLE)
 #: The ``kind`` of the step-0 block the writer puts down before the run
 #: starts (prep seeds it, the emitter writes it on construction) -- a preview
 #: of the input, not a step the run took.
@@ -142,5 +160,6 @@ __all__ = ["MAX_FORCE_TOL", "RMS_FORCE_TOL", "MAX_DISPL", "RMS_DISPL",
            "ATOM_INDEX_MAP_LINE", "RUNTIME_LINE", "CONVERGENCE_LINE",
            "STEP_BEGIN", "STEP_END", "KIND", "WALL_TIME", "COORDINATES",
            "COORDINATES_LINE", "ENERGY", "FORCES", "FORCES_LINE", "MAX_FORCE",
-           "SCF_HISTORY_BEGIN", "SCF_HISTORY_END", "PREVIEW_KIND",
+           "SCF_HISTORY_BEGIN", "SCF_HISTORY_END", "SCF_CLOCK", "SCF_TABLE",
+           "SCF_TABLE_KEYS", "SCF_TABLE_HEADER", "PREVIEW_KIND",
            "FOOTER_ERROR", "FOOTER_CONCLUDED", "FOOTER_RELAXED"]

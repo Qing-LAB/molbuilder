@@ -29,13 +29,14 @@ from typing import Any, Dict, Optional, Sequence
 try:                                       # inside molbuilder
     from .. import runrecord as _rr
     from ..calcdirs import RunPlace
-    from ..runpoints import NOT_RUN
+    from ..runpoints import DONE, FAILED, NOT_DONE, NOT_RUN
     from ..runpoints import state_word, tally, why_not_run
     from ..identity import COMPUTES_PRODUCT, COMPUTES_SCF
 except ImportError:                        # beside a job
     import runrecord as _rr  # type: ignore[no-redef]
     from identity import COMPUTES_PRODUCT, COMPUTES_SCF  # type: ignore[no-redef]
-    from runpoints import NOT_RUN  # type: ignore[no-redef]
+    from runpoints import (  # type: ignore[no-redef]
+        DONE, FAILED, NOT_DONE, NOT_RUN)
     from runpoints import state_word, tally, why_not_run  # type: ignore[no-redef]
     from calcdirs import RunPlace  # type: ignore[no-redef]
 
@@ -54,10 +55,10 @@ def count_words(rows, facts=None) -> str:
     failed, not_run, not_done = tally(rows)
     n_frames = len({r.get("frame") for r in rows})
     n_volts = len({r["bias_v"] for r in rows})
-    return (f"{n_done} of {len(rows)} points done"
-            + (f", {failed} failed" if failed else "")
-            + (f", {not_run} not run" if not_run else "")
-            + (f", {not_done} not done" if not_done else "")
+    return (f"{n_done} of {len(rows)} points {DONE}"
+            + (f", {failed} {FAILED}" if failed else "")
+            + (f", {not_run} {NOT_RUN}" if not_run else "")
+            + (f", {not_done} {NOT_DONE}" if not_done else "")
             + f" ({n_frames} frame{'' if n_frames == 1 else 's'} × "
               f"{n_volts} voltage{'' if n_volts == 1 else 's'})")
 

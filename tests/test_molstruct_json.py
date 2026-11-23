@@ -302,7 +302,9 @@ class TestLoadErrors:
         """
         p = tmp_path / "bad.molstruct.json"
         p.write_text("{not json,,,")
-        with pytest.raises(MolstructJsonError, match="not valid JSON"):
+        # THE FILE NAMED (`job-contracts.md` § 6.1: the reader that asked
+        # names the file); the words are the record reader's.
+        with pytest.raises(MolstructJsonError, match=r"bad\.molstruct\.json"):
             msj.load(p)
 
     def test_top_level_must_be_object(self, tmp_path):
@@ -315,7 +317,7 @@ class TestLoadErrors:
         """
         p = tmp_path / "bad.molstruct.json"
         p.write_text('[1, 2, 3]')
-        with pytest.raises(MolstructJsonError, match="must be an object"):
+        with pytest.raises(MolstructJsonError, match=r"bad\.molstruct\.json"):
             msj.load(p)
 
 
@@ -595,7 +597,7 @@ class TestAnUnknownKeyIsRefused:
 
         Asserted at TWO gates in one test, because the property is that the
         gates AGREE and a gate is not a call site: the door a user reaches
-        (`StructureCodec.load`, which answers at `load_text`) and the
+        (`StructureCodec.load`, which answers at `load_record`) and the
         structure-side authority underneath it.
         """
         import json

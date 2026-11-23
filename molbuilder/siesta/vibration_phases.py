@@ -38,6 +38,8 @@ try:                                       # inside molbuilder
     from ..runfiles import SIESTA_DM, SIESTA_EPSIMG, SIESTA_FC, compose
     from ..runpoints import AGAIN, CONTINUE
     from ..units import size_words
+    from ..parse.engines.siesta_grammar import (FC_STEP_PATTERN,
+                                                fc_step_count)
 except ImportError:                        # beside a job
     from calcdirs import RunPlace  # type: ignore[no-redef]
     from paths import frame_index  # type: ignore[no-redef]
@@ -45,6 +47,8 @@ except ImportError:                        # beside a job
         SIESTA_DM, SIESTA_EPSIMG, SIESTA_FC, compose)
     from runpoints import AGAIN, CONTINUE  # type: ignore[no-redef]
     from units import size_words  # type: ignore[no-redef]
+    from siesta_grammar import (  # type: ignore[no-redef]
+        FC_STEP_PATTERN, fc_step_count)
 
 #: The phases' names -- one spelling each, the folder below the stage and
 #: below a run that holds the phase's deck, and a call's.
@@ -130,17 +134,6 @@ PHASES: Tuple[PhaseRule, ...] = (
               products=(SIESTA_EPSIMG,),
               verdict_counts=True, warm_kind="optical", needs=(FC,),
               planned_by=FC),
-)
-
-
-#: THE INFRARED'S CHARGES (`engines/vibration.md` § 5.3, § 5.10 ②): each
-#: partition the force-constant phase asks SIESTA for at every step when
-#: Compute IR is on -- its keyword, at its value, written by the deck
-#: (`vibration_deck.fc_block`) and read back by the finish -- beside the name
-#: the output reader gives its blocks (`siesta_reader`).
-IR_CHARGES: Tuple[Tuple[str, str, str], ...] = (
-    ("Charge.Hirshfeld", "geometry", "hirshfeld"),
-    ("Charge.Voronoi", "geometry", "voronoi"),
 )
 
 
@@ -317,9 +310,11 @@ def count_words(rows, facts) -> str:
     (`continuation.point_rows`): one shape."""
     phases = tuple((facts or {}).get("phases") or ())
     try:                                   # inside molbuilder
-        from ..runpoints import state_word, tally
+        from ..runpoints import (DONE, FAILED, NOT_DONE, NOT_RUN,
+                                 state_word, tally)
     except ImportError:                    # beside a job, the monitor's
-        from runpoints import state_word, tally  # type: ignore[no-redef]
+        from runpoints import (  # type: ignore[no-redef]
+            DONE, FAILED, NOT_DONE, NOT_RUN, state_word, tally)
     parts: List[str] = []
     by: Dict[str, list] = {}
     for r in rows:
@@ -345,10 +340,10 @@ def count_words(rows, facts) -> str:
             parts.append(f"{p.name} {state_word(got[0])}")
         else:
             notes = ([f"{taken} taken over"] if taken else []) + (
-                [f"{failed} failed"] if failed else []) + (
-                [f"{not_run} not run"] if not_run else []) + (
-                [f"{not_done} not done"] if not_done else [])
-            parts.append(f"{p.name} {n_done} of {len(got)} done"
+                [f"{failed} {FAILED}"] if failed else []) + (
+                [f"{not_run} {NOT_RUN}"] if not_run else []) + (
+                [f"{not_done} {NOT_DONE}"] if not_done else [])
+            parts.append(f"{p.name} {n_done} of {len(got)} {DONE}"
                          + (f" ({', '.join(notes)})" if notes else ""))
     return " · ".join(parts) if parts else "no call yet"
 
@@ -379,8 +374,8 @@ def run_size_words(cfg, n_free: int, n_modes: int) -> str:
     parts = []
     if RELAX in on:
         parts.append(f"relax up to {int(cfg.relax_steps)} geometry steps")
-    parts.append(f"fc {_n(1 + 6 * n_free, 'SCF')} (1 + 6 × "
-                 f"{_n(n_free, 'free atom')})")
+    parts.append(f"fc {_n(fc_step_count(n_free), 'SCF')} "
+                 f"(1 + {len(FC_STEP_PATTERN)} × {_n(n_free, 'free atom')})")
     if OPTICAL in on:
         if str(cfg.raman_modes) == "all":
             calls = (f"{_n(1 + 2 * n_modes, 'call')} (1 + 2 × "
@@ -412,7 +407,7 @@ def force_constants_call(run_dir) -> Path:
 
 
 __all__ = ["RELAX", "FC", "OPTICAL", "PhaseRule", "PHASES", "phase",
-           "phases_on", "continues_from", "IR_CHARGES", "Call", "calls_of",
+           "phases_on", "continues_from", "Call", "calls_of",
            "must_hold",
            "point_entry", "count_words", "run_size_words",
            "force_constants_call"]
@@ -421,6 +416,7 @@ __all__ = ["RELAX", "FC", "OPTICAL", "PhaseRule", "PHASES", "phase",
 #: WHAT THIS MODULE NEEDS BESIDE IT in a job's bundle -- the modules it
 #: imports there by their bare names (`runwrap.bundle_members`).
 TRAVELS_WITH = ("molbuilder.calcdirs",
+                "molbuilder.parse.engines.siesta_grammar",
                 "molbuilder.paths",
                 "molbuilder.runfiles",
                 "molbuilder.runpoints",

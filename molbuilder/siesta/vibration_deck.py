@@ -33,7 +33,8 @@ from ..atom_permutation import SORT_HELD_FIRST
 from ..engine_atom_index import siesta_numbering
 from ..runfiles import ROLE_SPECTRA, SIESTA_EPSIMG, SIESTA_FC, compose
 from ..structure import Structure
-from .vibration_phases import IR_CHARGES, PHASES
+from ..parse.engines.siesta_grammar import CHARGE_PARTITIONS
+from .vibration_phases import PHASES
 
 #: THE PARTS A VIBRATION DECK IS, one per phase of the run
 #: (`vibration_phases.PHASES`, `engines/vibration.md` § 5.11 § 4) -- what
@@ -149,7 +150,8 @@ def fc_facts(struct: Structure, cfg) -> dict:
 
 def fc_block(struct: Structure, cfg, derived: dict) -> str:
     """The run type, the range and -- when Compute IR is on -- every atom's
-    partial charges at every step (:data:`IR_CHARGES`): structural text,
+    partial charges at every step (`siesta_grammar.CHARGE_PARTITIONS`):
+    structural text,
     like the electrode blocks of a transport deck, the run type fixed by the
     kind and the charges by the setting both engines share
     (`engines/vibration.md` § 3.1, § 5.3).  With Compute IR off the block
@@ -191,11 +193,12 @@ def fc_block(struct: Structure, cfg, derived: dict) -> str:
         if v:
             out.append("# Compute IR: every atom's charge at every step, by "
                        "both partitions (engines/vibration.md 5.10)")
-        out += [f"{kw:<18}{value}" for kw, value, _p in IR_CHARGES]
+        out += [f"{p.keyword:<18}{p.value}" for p in CHARGE_PARTITIONS]
     else:
-        out.append(f"# {', '.join(kw for kw, _v, _p in IR_CHARGES)} not "
+        out.append(f"# {', '.join(p.keyword for p in CHARGE_PARTITIONS)} not "
                    f"written: Compute IR is off -- SIESTA computes no "
-                   f"Hirshfeld or Voronoi population, and the result's "
+                   f"{' or '.join(p.method for p in CHARGE_PARTITIONS)} "
+                   f"population, and the result's "
                    f"infrared is not requested")
     out.append("")
     return "\n".join(out)

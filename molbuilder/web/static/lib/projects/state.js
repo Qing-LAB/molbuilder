@@ -329,7 +329,7 @@ export function getProjectsRoot()     { return projectsRoot; }
 
 /* THE SERVER'S PAIRING RULE, as the page header states it: the suffixes of
  * a structure file molbuilder reads (`molstruct.GEOMETRY_SUFFIXES`) and the
- * one it writes, which a sidecar pairs with (`molstruct.PAIRED_SUFFIX`) --
+ * one it writes, which a sidecar pairs with (`runfiles.PAIRED_SUFFIX`) --
  * the app's template context puts them there for every page
  * (`app._inject_tabs`), so a page has them from its first moment.  Read at
  * the first question, kept. */

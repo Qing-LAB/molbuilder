@@ -18,7 +18,9 @@ No run makes a number whose conversion a test knows in advance; the log a
 real PySCF run writes through this class is read end to end by
 `test_pyscf_relaxation_outcome_e2e.py` (the run, `support.real_runs`).
 
-This file focuses on the writer's output bytes."""
+This file pins the writer's lines -- and, for its SCF table, what the
+reader reads back from them (the one table both take their order from,
+`trajectory_log.keys.SCF_TABLE`)."""
 
 from __future__ import annotations
 
@@ -222,61 +224,37 @@ def test_emitted_lines_exact_for_zero_force_step(tmp_path, h2_mol):
         assert needle in block, f"missing {needle!r}; block:\n{block}"
 
 
-def test_scf_cycle_hook_snapshots_wall_time(tmp_path, h2_mol):
-    """Each scf_cycle_hook call records a 'wall_time' (epoch seconds)
-    on the per-cycle buffer dict.  Surfaces per-SCF-cycle timing all
-    the way through to the parser without any client-side stitching."""
-    p = tmp_path / "wt.molwatch.log"
+def test_each_scf_value_is_read_back_from_the_column_it_was_written_in(
+        tmp_path, h2_mol):
+    """`engines/pyscf.md` § 4: the SCF table's columns are one table, in the
+    order its rows write them (`trajectory_log.keys.SCF_TABLE`), which the
+    writer renders and the reader reads by -- so each cycle's energy, its
+    change, the orbital gradient's norm, the density's change and the clock
+    come back from the registered reader as the deck wrote them: a norm the
+    deck did not have read as none, and the first cycle's change 0, the
+    change from no energy before it as the columns' declaration states it
+    (`molwatch_grammar.SCF_COLUMNS`).  THE SILENT FAILURE: a column inserted
+    in the writer alone, and the reader taking the density's change for the
+    gradient's norm, with no error."""
+    import time
+    from molbuilder.parse import parse
+    p = tmp_path / "h2.molwatch.log"
     em = MolwatchEmitter(str(p), "h2", h2_mol)
+    before = time.time()
     em.scf_cycle_hook({"cycle": 0, "e_tot": -1.10, "last_hf_e": None,
                        "norm_gorb": 1.0e-2, "norm_ddm": 1.0e-3})
     em.scf_cycle_hook({"cycle": 1, "e_tot": -1.15, "last_hf_e": -1.10,
-                       "norm_gorb": 1.0e-4, "norm_ddm": 1.0e-5})
-    assert "wall_time" in em._scf_buf[0]
-    assert isinstance(em._scf_buf[0]["wall_time"], float)
-    assert "wall_time" in em._scf_buf[1]
-    # Second cycle's wall_time is >= first cycle's (time only marches
-    # forward; identical is OK on fast hardware within the same tick).
-    assert em._scf_buf[1]["wall_time"] >= em._scf_buf[0]["wall_time"]
-
-
-def test_opt_step_hook_emits_wall_time_column_in_scf_rows(tmp_path, h2_mol):
-    """The 6-column SCF row (`cycle energy delta_E gnorm ddm wall_time`)
-    is what the parser reads back as the per-cycle dict's 'wall_time'
-    field.  This pins the on-disk format: each SCF row has a trailing
-    epoch-seconds token, the header advertises 'wall_time(s)', and the
-    column is the 6th whitespace-separated field."""
-    import numpy as np
-    p = tmp_path / "fmt.molwatch.log"
-    em = MolwatchEmitter(str(p), "h2", h2_mol)
-    em.scf_cycle_hook({"cycle": 0, "e_tot": -1.15, "last_hf_e": -1.10,
-                       "norm_gorb": 1.0e-4, "norm_ddm": 1.0e-5})
+                       "norm_gorb": None, "norm_ddm": 1.0e-5})
+    after = time.time()
     em.opt_step_hook({"mol": h2_mol, "energy": -1.15,
                       "gradients": np.zeros((2, 3))})
-    body = p.read_text()
-    # Header advertises wall_time(s).
-    assert "wall_time(s)" in body
-    # Find the one SCF data line (the one inside scf_history begin/end,
-    # not starting with '#') and check it has at least 6 tokens.
-    in_scf = False
-    found_row = None
-    for ln in body.splitlines():
-        if ln.startswith("scf_history begin"):
-            in_scf = True
-            continue
-        if ln.startswith("scf_history end"):
-            in_scf = False
-            continue
-        if not in_scf:
-            continue
-        if not ln.strip() or ln.lstrip().startswith("#"):
-            continue
-        found_row = ln
-        break
-    assert found_row is not None, f"no SCF data row in:\n{body}"
-    tokens = found_row.split()
-    assert len(tokens) == 6, (
-        f"SCF row must have 6 tokens (cycle/energy/delta_E/gnorm/ddm/"
-        f"wall_time); got {len(tokens)}: {tokens!r}")
-    # 6th token parses as a float epoch.
-    assert float(tokens[5]) > 0
+    rows = parse(str(p)).frames[1].scf_history
+    assert [(r["cycle"], r["energy"], r["delta_E"], r["gnorm"], r["ddm"])
+            for r in rows] == [
+        (1, pytest.approx(-1.10 * HARTREE_EV), 0.0,
+         pytest.approx(1.0e-2 * HARTREE_EV), pytest.approx(1.0e-3)),
+        (2, pytest.approx(-1.15 * HARTREE_EV),
+         pytest.approx(-0.05 * HARTREE_EV), None, pytest.approx(1.0e-5)),
+    ], rows
+    assert all(before - 1e-3 <= r["wall_clock_s"] <= after + 1e-3
+               for r in rows), rows

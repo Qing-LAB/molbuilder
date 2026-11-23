@@ -37,8 +37,9 @@ try:                                       # inside molbuilder
     from . import persist as _persist
     from . import runfiles as _rf
     from .calcdirs import RunPlace
-    from .parse.engines._run_ending import (NOT_RUN, holds, not_done_why,
-                                            points_state)
+    from .parse.engines._run_ending import (DONE, ENDED_WORDS, FAILED,
+                                            NOT_DONE, NOT_RUN, holds,
+                                            not_done_why, points_state)
     from .runrecord import LaunchRecordError
     #: Where this module was imported from: the package, or the bundle
     #: beside a job -- where a part the index names is resolved too
@@ -47,8 +48,9 @@ try:                                       # inside molbuilder
 except ImportError:                        # beside a job
     import persist as _persist  # type: ignore[no-redef]
     import runfiles as _rf  # type: ignore[no-redef]
-    from _run_ending import (NOT_RUN,  # type: ignore[no-redef]
-                             holds, not_done_why, points_state)
+    from _run_ending import (DONE, ENDED_WORDS,  # type: ignore[no-redef]
+                             FAILED, NOT_DONE, NOT_RUN, holds,
+                             not_done_why, points_state)
     from runrecord import LaunchRecordError  # type: ignore[no-redef]
     from calcdirs import RunPlace  # type: ignore[no-redef]
     _IN_PACKAGE = False
@@ -56,8 +58,9 @@ except ImportError:                        # beside a job
 SCHEMA = "molbuilder/run-points@1"
 
 #: WHEN THE RUN IS FINISHED (`runs-of-points.md` § 1.3; the kind table's
-#: ``finished``): every point DONE, or every point RAN -- converged or not.
-DONE, RAN = "done", "ran"
+#: ``finished``): every point DONE (a point's own word, `_run_ending`), or
+#: every point RAN -- converged or not.
+RAN = "ran"
 
 #: WHAT A RELAUNCH DOES with a point short of done (`runs-of-points.md`
 #: § 1.2): runs it AGAIN from its start, or CONTINUES it from its own last
@@ -389,17 +392,18 @@ def close(index: Dict[str, Any], rows) -> Dict[str, Any]:
 
 def state_word(row: Dict[str, Any]) -> str:
     """A POINT'S OWN WORD (`runs-of-points.md` § 1.3) -- the one every
-    printer of a point says it by: *done*; *failed*, it ran and ended with
-    an error; *not run*, its ended walk never started it (§ 4.5); *not
-    done*, it ran to its end and is not done; else its run's state as it
-    stands (*queued*, *running*).  ``row`` the job's (:func:`rows_of`) or
-    `status`'s (`continuation.point_rows`)."""
+    printer of a point says it by: one of :data:`ENDED_WORDS` -- *done*;
+    *failed*, it ran and ended with an error; *not run*, its ended walk
+    never started it (§ 4.5); *not done*, it ran to its end and is not
+    done -- else its run's state as it stands (*queued*, *running*).
+    ``row`` the job's (:func:`rows_of`) or `status`'s
+    (`continuation.point_rows`)."""
     if row.get("done"):
-        return "done"
+        return DONE
     state = row.get("state")
-    return ("not run" if state == NOT_RUN else
-            "failed" if state == "failed" else
-            "not done" if state == "finished" else str(state))
+    return (NOT_RUN if state == NOT_RUN else
+            FAILED if state == "failed" else
+            NOT_DONE if state == "finished" else str(state))
 
 
 def not_done_words(row: Dict[str, Any]) -> str:
@@ -438,7 +442,7 @@ def run_state(rows, index: Dict[str, Any]) -> Tuple[str, Optional[str]]:
     else:
         state = points_state(r["state"] for r in rows)
     left = [r for r in rows if not r["done"]]
-    short = ("not done" if all(r["state"] == "finished" for r in left)
+    short = (NOT_DONE if all(r["state"] == "finished" for r in left)
              else "short of done")
     why = (not_done_words(left[0]) + (
         f"; {len(left)} of {len(rows)} {index['unit']}s {short}"
@@ -459,7 +463,7 @@ def reason(row: Dict[str, Any]) -> str:
     err = row.get("step_error")
     if err:
         return str(err["what"])
-    return row.get("why") or row.get("state") or "not done"
+    return row.get("why") or row.get("state") or NOT_DONE
 
 
 def round_ended(rows, rel: str) -> bool:
@@ -559,7 +563,8 @@ def part(ref: str) -> Any:
         raise ValueError(f"{ref!r} does not resolve: {exc}") from exc
 
 
-__all__ = ["SCHEMA", "DONE", "RAN", "AGAIN", "CONTINUE", "NOT_RUN", "tally",
+__all__ = ["SCHEMA", "DONE", "RAN", "FAILED", "NOT_DONE", "ENDED_WORDS",
+           "AGAIN", "CONTINUE", "NOT_RUN", "tally",
            "NEVER_REACHED", "NOT_STARTED", "walk_began",
            "index_path",
            "index_of", "read_index", "index_at", "write_index",

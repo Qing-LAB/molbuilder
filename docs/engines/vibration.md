@@ -1438,8 +1438,9 @@ states:
 ```
 
 `relaxation` is `null` in the deck: the relaxation record
-(`parse.contract.relaxation_of_output`) of the `relax` call is written into the
-run's index by that call's record step and carried into the result by the
+(`parse.contract.relaxation_of_output`) of the `relax` call — of its output
+made the parser's trajectory by the parser's own conversion
+(`siesta_frames.trajectory_of`) — is written into the run's index by that call's record step and carried into the result by the
 finish (§ 5.11 § 3), so the finish never re-picks an attempt. `raman` is
 *Raman for* as asked, the one fact of the optical phase no SIESTA keyword
 states — `null` when *Compute Raman* is off, and the stage then runs no
@@ -1866,6 +1867,7 @@ root; it adds only what the comparison derives:
 | `tolerance_cm1` | the threshold a person gave (`summarize task --tolerance-cm1 X`), or `null` | a mode is flagged when its spread exceeds it; without one nothing is flagged — the numbers are stated and the judgement is the person's |
 | `pending[]` | stages whose result is still to come: the stage, its attempt, its state (described; prepared and not launched — *ready to launch* or *waits for*, the ready door's; `queued`, `running`) and the detail of the door that answered | |
 | `failed[]` | stages whose run ended without a readable result: the stage, its attempt, its state (`failed`, `finished` without the spectrum, `unreadable`) and why | |
+| `generated_at` | when the record was written | by the clock every record of a run is stamped with (`runrecord.stamp`: UTC, to the second, `Z`) |
 
 `stages[]` also carries `varies_units` — the catalogue's unit for each value
 a stage varies (`fc_displacement` is in Bohr, the Å beside it is the
@@ -2452,7 +2454,7 @@ use, in the bundle; nothing of their own but the verb that walks the table:
 
 | what it does | module | who else calls it |
 |---|---|---|
-| reads the previous call's output — the relaxed geometry; the force-constant run's reference geometry, charges, version | `parse/engines/siesta_reader.py`, SIESTA's one reading pass | every reader of a SIESTA output |
+| reads the previous call's output — the relaxed geometry; the force-constant run's reference geometry, charges, version | `parse/engines/siesta_reader.py`, SIESTA's one reading pass, its steps made the parser's frames and structures by `parse/engines/siesta_frames.py` | every reader of a SIESTA output |
 | reads `.FC` → the Hessian, and $\delta$ | `parse/engines/siesta_fc.py` (`read_fc`, `hessian_from_fc`) | the displacement sweep (§ 5.9) |
 | the modes | `spectra/vibrational_analysis.py` → `normal_modes.vibrational_modes`, the analysis the finish runs | the PySCF route, its `normal_modes.vibrational_modes` (§ 4.5) |
 | which modes | `spectra/selection.select_modes`, the one selector, on *Raman for* as the deck's `vibration` block carries it (§ 4) | the PySCF route; it travels in both bundles |
@@ -3111,7 +3113,7 @@ registered in [`execution/job-contracts.md`](?doc=execution/job-contracts.md)
 | 6 | `removed_motions`, `hessian_scope`, `n_atoms_in_hessian`, `hessian_density_fit`; the equilibrium block optional as a whole; `eigenvector_display` derived when a file carries only the canonical form — additive |
 | **7** | `equilibrium.masses_amu` — every atom's mass, as the deck stated it and the analysis weighted by it (I3); the derived per-mode keys — the activity classes, the zero-point amplitude and displacement — **written by both engines** through one function and checked on read (§ 6.6). A v4–v6 file reads as before: no masses, its derived keys computed on read |
 | **8** | the SIESTA route's `engine_metadata` names its force-constant range in SIESTA's numbering, `fc_range_engine_1based` — the deck's held-first order, an engine fact and not an atom's identity ([`model/overview.md`](?doc=model/overview.md) § 2.2a). A v4–v7 file reads as before, its range read under v8's name (`SpectraResults.from_dict`) |
-| **9** | **the result states its structure whole** — `structure`, `Structure.to_dict()` of the equilibrium structure (§ 6.10.1): the geometry, the box, the labels with the held atoms as `frozen_atoms`, the identity columns, `info`; `frozen_atom_idxs` and `equilibrium.{elements, positions_ang}` are read from a v4–v8 file and never written, `structure_hash` accepted there and never read (`frozen_atom_idxs` still in a PySCF file written before any geometry exists, § 6.10.2); `relaxation.record` carries the relaxing stage's record whole. The reader serves every file as this shape |
+| **9** | **the result states its structure whole** — `structure`, `Structure.to_dict(view=False)` of the equilibrium structure (§ 6.10.1): the geometry, the box, the labels with the held atoms as `frozen_atoms`, the identity columns, `info`; `frozen_atom_idxs` and `equilibrium.{elements, positions_ang}` are read from a v4–v8 file and never written, `structure_hash` accepted there and never read (`frozen_atom_idxs` still in a PySCF file written before any geometry exists, § 6.10.2); `relaxation.record` carries the relaxing stage's record whole. The reader serves every file as this shape |
 | **10** | **the result states its atom index map** — `atom_index_map` ([`model/overview.md`](?doc=model/overview.md) § 2.2b): listed by user index, each atom's engine index its stages' deck order (held atoms first for SIESTA's; the user order for PySCF's) — always written, each column where it is known; a v4–v9 file reads, its map made on read from its structure (the user column) and its stages' deck (the engine column) |
 | **11** | **the force-constant run's charges** — `partial_charges`: every atom's Hirshfeld and Voronoi charge at every step, in the user order, beside each step's displaced atom, axis and side (§ 5.10 ②); `null` on PySCF and from a deck that asked for none. A v4–v10 file reads as before, `partial_charges` null |
 | **12** | **each mode's dipole change, whole** — `modes[].dipole_derivative_d_per_ang_amu12`, $d\mu/dQ$ in D/(Å·√amu), three components, on PySCF where infrared was computed (§ 4.6); `null` on SIESTA, whose infrared is derived from the charges (§ 5.10 ②). A v4–v11 file reads as before, the key absent |
@@ -3125,8 +3127,8 @@ refused by name.
 
 | key | written by | meaning |
 |---|---|---|
-| `schema_version` · `engine` · `engine_version` · `molbuilder_version` · `timestamp` | both | provenance; `engine` is `pyscf` or `siesta` |
-| `structure` | both, from v9 (§ 6.10.1) | the equilibrium structure whole, `Structure.to_dict()`: the geometry the Hessian is taken at, in the user order, its box, its labels — the held atoms as `frozen_atoms` — its identity columns and `info`. A v4–v8 file's is built on read from its old keys. `structure_hash` (v4–v8) is accepted, never read or written |
+| `schema_version` · `engine` · `engine_version` · `molbuilder_version` · `timestamp` | both | provenance; `engine` is `pyscf` or `siesta`; `timestamp`, on SIESTA, by the clock every record of its run is stamped with (`runrecord.stamp`: UTC, to the second, `Z`), so it compares with its run's — on PySCF, its script's own clock, to the microsecond |
+| `structure` | both, from v9 (§ 6.10.1) | the equilibrium structure whole, `Structure.to_dict(view=False)`: the geometry the Hessian is taken at, in the user order, its box, its labels — the held atoms as `frozen_atoms` — its identity columns and `info`. A v4–v8 file's is built on read from its old keys. `structure_hash` (v4–v8) is accepted, never read or written |
 | `n_atoms_total` · `free_atom_idxs` · `frozen_atom_idxs` | both | 0-based, in the **user** order (SIESTA: mapped back through the record); the two lists partition `range(n_atoms_total)` and the reader refuses otherwise. From v9 the held list is the structure's label, and `frozen_atom_idxs` is written only before any geometry exists (§ 6.10.2) |
 | `atom_index_map` | both, from v10 | which index the result's atoms are listed by — `user_index` — and each atom's user and engine index (`model/overview.md` § 2.2b); the SIESTA finish from its deck's order record, the PySCF deck the identity |
 | `equilibrium.{scf_energy_eh, mo_energies_eh, homo_idx}` | PySCF | the reference SCF and its orbital ladder — the **energy subgroup** of the equilibrium block, which travels whole or not at all: **`null` in all three on SIESTA** (a periodic engine has a Fermi level, not a HOMO), and `null` in one slot only is a broken file. The two geometry keys below are separate and always present |
@@ -3221,7 +3223,7 @@ way `homo_index` did.
 | `modes[].ir_intensity_km_mol`, `raman_activity_a4_amu` | numbers, or `null` when not requested | **`null` on every mode** |
 | `modes[].dipole_derivative_d_per_ang_amu12` | the vector, where infrared was computed (v12) | `null` — the free atoms' infrared is derived from `partial_charges` |
 | `modes[].electronic_structure` | present on selected modes | `null` |
-| `ir_route` / `raman_route` | `analytic` · `finite-difference` · `none` | `ir_route` `charges` once the charges are stored, else `none`; `raman_route` `optical` where the run's optical calls were planned (§ 5.11 § 8), else `none` |
+| `ir_route` / `raman_route` | `ir_route` `analytic` · `finite-difference` · `none`; `raman_route` `finite-difference` · `none` | `ir_route` `charges` once the charges are stored, else `none`; `raman_route` `optical` where the run's optical calls were planned (§ 5.11 § 8), else `none` |
 | `thermo.regime` | `rrho` or `vibrational-only` | `vibrational-only`, the vibrational contributions alone (no total energy is reported, so `h_eh` and `g_eh` are sums above an electronic minimum taken as zero) |
 | `relaxation` | the tracked phase | the force-constant run relaxes nothing: `enabled` says whether the run's `relax` call did (§ 5.11 § 3), and the verdict is the force at FC step 0 (§ 5.5) |
 | `hessian_density_fit` | `true` / `false` | `null` |
@@ -3302,7 +3304,12 @@ rule at a temperature, from the mode's zero-point amplitude and its pattern
 ### 6.7 What the reader refuses
 
 `SpectraResults` is built at the boundary and refuses, by name: a schema
-version outside `{4, 5, …, 14}` (`READABLE_SCHEMA_VERSIONS`, § 6.1); an `optical` citation in a file older than schema 13, or one with a key not its own or missing, a mode row likewise, a direction not three numbers, no `displacement_ang`, or a frame state not `finished`, `not done`, `failed`, `not run` or `pending` (`checked_optical`, `OPTICAL_STATES`, § 6.2);
+version outside `{4, 5, …, 14}` (`READABLE_SCHEMA_VERSIONS`, § 6.1), or one
+written as anything but a whole number (`readable_version`, the reader's rule
+and the typed decoder's); a phase's state not one of its words, and an
+`ir_route` not `analytic`, `finite-difference`, `charges` or `none`
+(`IR_ROUTES`), a `raman_route` not `finite-difference`, `optical` or `none`
+(`RAMAN_ROUTES`) — the words the writers write, from one home; an `optical` citation in a file older than schema 13, or one with a key not its own or missing, a mode row likewise, a direction not three numbers, no `displacement_ang`, or a frame state not `finished`, `not done`, `failed`, `not run` or `pending` (`checked_optical`, `OPTICAL_STATES`, § 6.2);
 `partial_charges` whose steps are not the force-constant run's — $1 + 6\,n_{\mathrm{free}}$
 of them, step 0 the reference, then each free atom along x, y, z, side −1
 before +1 — or whose charges are not one finite number per atom at every
@@ -3431,7 +3438,7 @@ whole needs no fingerprint, and the one file is the whole citation.**
 
 #### 1. The structure, whole
 
-`structure` is `Structure.to_dict()` of the **equilibrium structure** — the
+`structure` is `Structure.to_dict(view=False)` of the **equilibrium structure** — the
 one loss-free serialiser, read back by `Structure.from_dict`
 ([`model/structure.md`](?doc=model/structure.md) § 2.1):
 
@@ -3474,10 +3481,13 @@ run's index (§ 5.11 § 3).
   `frozen_atoms` — a deck whose two statements of the held set disagree is
   refused by the finish.
 - `mb_vibration.pyz` carries `structure.py`, `persist.py`, `ncdata.py` and
-  `spectra/datafile.py` (the finish applies the deck's labels through
+  `spectra/datafile.py` with the result's keys it checks its tables against
+  (`spectra/result_keys.py`) (the finish applies the deck's labels through
   `Structure.apply_atom_metadata` and needs no sidecar codec).
   `mb_pyscf.pyz` carries `persist.py`, `ncdata.py`, `spectra/datafile.py`
-  and `runfiles.py`, beside the structure and the sidecar codec.
+  with the result's keys it checks its tables against
+  (`spectra/result_keys.py`) and
+  `runfiles.py`, beside the structure and the sidecar codec.
 
 #### 2. One home for each fact
 
@@ -3597,9 +3607,15 @@ second flag beside them. **Every variable states itself** — `units`,
 variable record and the writing loop the transport data file uses
 (`ncdata.Var`, `ncdata.write_group` — the module both data files and both
 job bundles share); each file keeps its own table of variables
-(`spectra/datafile.py`).  A key of the result, its `relaxation` or its
-`thermo` block that the file's tables do not know is refused by name — a
-fact the writer thinks it saved and the file would drop.
+(`spectra/datafile.py`).  A key of the result, its `relaxation`, its
+`thermo`, its `equilibrium`, a mode or a mode's probe that the file's tables
+do not know is refused by name — a fact the writer thinks it saved and the
+file would drop. **The result's keys are one table** (`spectra/result_keys.py`):
+the reader refuses a key outside it, and the data file, as it loads, checks that
+its tables state every key a writer states — every key the reader takes but
+those only an older file holds (`structure_hash`, the equilibrium's
+`elements` and `positions_ang`) — so a key that starts being written has a
+row in the data file or nothing that writes the result loads.
 **Encoding**, so the round trip is exact: `null` is the fill value (a
 number's NaN, a text's empty string, an integer's stated fill); a boolean is
 an `int8` with `flag_values 0 1`; an empty list is a dimension of length 0; a
@@ -3806,8 +3822,8 @@ then orbital — and in `/modes/electronic_structure` a `node` dimension in
 place of today's three fixed points. A file of schema 14 or before reads as
 today, its three points at $-A$, $0$, $+A$. The reader refuses a stored derived
 value that disagrees with its derivation, as § 6.7 does today. **The writer
-refuses a mode or probe key it has no variable for** — today it drops one
-silently, while the JSON's reader refuses it.
+refuses a mode or probe key it has no variable for**, as it does today
+(§ 6.10.5).
 
 #### 6. Reading it, and computing with it — `postprocess.vibration`
 
@@ -3943,7 +3959,7 @@ Each names where it holds and what pins it.
 | I12 | **A cost claim is read from the code** (R8): the advisories say what the code skips, and what it cannot | `validation/spectra.py`; § 4.4, § 5.7 | review |
 | I13 | **The Methods paragraph is composed once**, route-neutral before the run, the route added at load; the count it states is R2's, and the level of theory `is_dft`'s | `spectra/methods.py`, `_loaded` in `web/blueprints/spectra.py` | `tests/spectra/test_methods.py`; the IR-only and solvated runs assert the text; `tests/data/the_deck.toml` the level of theory |
 | I14 | **Absent is never zero** in the file, on both engines; the equilibrium energy subgroup travels whole or not at all | `SpectraResults.__post_init__`, `spectra/vibrational_analysis.py` | `tests/test_spectrum_results_e2e.py`, on both engines' runs |
-| I15 | **One structure**: the result states its structure through the one serialiser (`Structure.to_dict()`), each writer building it from what its deck already carries once (§ 6.10.1) — never a hash of a structure kept elsewhere | `spectra/pyscf_vibration.py`, `spectra/siesta_vibration.py` | review; the reader checks the structure against the result's own count, coordinates and held list (§ 6.7) |
+| I15 | **One structure**: the result states its structure through the one serialiser (`Structure.to_dict(view=False)`), each writer building it from what its deck already carries once (§ 6.10.1) — never a hash of a structure kept elsewhere | `spectra/pyscf_vibration.py`, `spectra/siesta_vibration.py` | review; the reader checks the structure against the result's own count, coordinates and held list (§ 6.7) |
 | I16 | **The derived per-mode values are written by one function, beside what they come from, on both engines, and checked on read**; the element shares at load, never in the file (§ 6.6) | `spectra/derived.py`, `SpectraResults` (the check), `_loaded` | `tests/spectra/test_activity.py`, `test_motion_share.py`; the end-to-end runs read them from each engine's file |
 | I17 | **Every catalogue citation resolves** in `science/references.bib`, and every key the prose cites is an entry | the catalogue-refs test | `tests/spectra/test_methods.py` |
 | I18 | **No second producer**: a deck is written by `prep` from a description, through `spec_for`; there is no engine verb and the tab renders nothing | [`engines/pyscf.md`](?doc=engines/pyscf.md) § 1 | review |
@@ -3966,6 +3982,7 @@ Each names where it holds and what pins it.
 | `molbuilder/spectra/normal_modes.py` | `rigid_motions`, `vibrational_modes`, `vibrational_thermo`, `vibrational_thermo_grid`, `thermo_block`, `vibrational_only_thermo`, `THERMO_GRID_K` — the one harmonic path, the thermo sums and the vibrational-only block both routes write; travels in both bundles, `mb_pyscf.pyz` and `mb_vibration.pyz` |
 | `molbuilder/spectra/pyscf_vibration.py` | `homo_index`, `mo_window`, `dipole_derivatives`, `as_numpy` — the PySCF route's rules, which the vibration script calls inside its run, imported from `mb_pyscf.pyz` |
 | `molbuilder/spectra/results.py` | `equilibrium_block`, `removed_motions_of`, `finite_or_none`, `SpectraResults`, `ModeData`, `ModeElectronicStructure`; the schema and its history; the reader's gates; the activity classes at serialisation; `motion_share_by_element` |
+| `molbuilder/spectra/result_keys.py` | the result's keys, each block's, and what a writer states of each (`WRITTEN_KEYS`) — the reader's refusal and the data file's load check (§ 6.10.5) |
 | `molbuilder/spectra/activity.py` | the active/inactive decision per channel (§ 6.6); travels in both bundles |
 | `molbuilder/spectra/derived.py` | the derived per-mode values — the activity classes and the zero-point amplitude and displacement — computed once for both writers and the reader's check (§ 6.6); travels in both bundles |
 | `molbuilder/spectra/selection.py` | the mode selectors and the window (§ 4.8) |
@@ -3979,6 +3996,7 @@ Each names where it holds and what pins it.
 | `molbuilder/spectra/vibrational_analysis.py` | the analysis, engine-neutral: `vibrational_analysis` — a free-atom block, masses, geometry, held set and frame → `SpectraResults` (§ 5.5) |
 | `molbuilder/spectra/siesta_vibration.py` | the SIESTA run's Python: `plan`, `record` and `finish-run`, the vibration's own steps, which each call's report steps run around its engine and once no call is left; `read_force_constant_run`; `main`, which the entry of `mb_vibration.pyz` runs, and `VERBS`, the steps it runs, which a kind's record may name (`finish`, the analysis by hand, is none) (§ 5.5, § 5.11 § 3) |
 | `molbuilder/parse/engines/siesta_epsimg_reader.py` · `parse/engines/siesta_epsimg.py` | an optical call's `.EPSIMG`: its one reader, travelling, and its registered parser (§ 5.11 § 7) |
+| `molbuilder/parse/engines/siesta_frames.py` | a SIESTA reading made the parser's Frames — `trajectory_of`, `structure_of`, travelling: the `relax` call's record is of its trajectory, and the record step's geometry rows its structures (§ 5.11 § 3) |
 | `molbuilder/jobset/submit.py` · `jobset/materialize.py` · `monitor.py` | the one walk of a run of points (`_points_walk`, `_walk_script`); the run and its calls opened, a warm launch's take-over (`open_sweep_run`, `HandOver`); each call's member monitor, its report steps (`_point_main`) and the run's `notify` (§ 5.11 §§ 3, 6, 7a) |
 | `molbuilder/spectra/displacement_sweep.py` | a SIESTA displacement sweep's summary: `match_modes` (by shape), `collect_sweep`, `sweep_path`, `write_sweep`, `sweep_table_text` — `<label>.fc-sweep.json` (§ 5.9); which stages take part is `sweep_stages` |
 | `molbuilder/parse/engines/siesta_fc.py` | `read_fc`, `hessian_from_fc` — the `.FC` reader (§ 5.4) |

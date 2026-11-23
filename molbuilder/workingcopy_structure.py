@@ -57,6 +57,8 @@ try:                                        # inside molbuilder
     from .sidecars import molstruct
     from .structure_pair import GeometryChangedError
     from .persist import stage_bytes, text_of
+    from . import runrecord as _runrecord
+    from .runfiles import PAIRED_SUFFIX
 except ImportError:                         # beside a job, in mb_pyscf.pyz
     from atom_permutation import (  # type: ignore[no-redef]
         LISTED_NOT_STATED, MAP_KEY, AtomIndexMap, Permutation)
@@ -64,6 +66,8 @@ except ImportError:                         # beside a job, in mb_pyscf.pyz
     import molstruct
     from structure_pair import GeometryChangedError
     from persist import stage_bytes, text_of  # type: ignore[no-redef]
+    import runrecord as _runrecord  # type: ignore[no-redef]
+    from runfiles import PAIRED_SUFFIX  # type: ignore[no-redef]
 
 
 class StructurePair(NamedTuple):
@@ -267,10 +271,10 @@ class StructureCodec:
     """``.xyz`` + ``.molstruct.json`` ⇄ :class:`~molbuilder.structure.Structure`."""
 
     #: THE ONE EXTENSION THIS CODEC WRITES -- the one a sidecar pairs with
-    #: (`molstruct.PAIRED_SUFFIX`).  One frame or four hundred, the file is
+    #: (`runfiles.PAIRED_SUFFIX`).  One frame or four hundred, the file is
     #: plain XYZ under ``.xyz``, a block per frame; a ``.pdb`` is read,
     #: never written (`model/structure.md` § 2.4).
-    GEOMETRY_SUFFIX = molstruct.PAIRED_SUFFIX
+    GEOMETRY_SUFFIX = PAIRED_SUFFIX
 
     #: Extensions RECOGNISED on a target so they are replaced rather than
     #: appended to (:meth:`named`).  ``.extxyz`` and ``.pdb`` are here because
@@ -594,7 +598,7 @@ class StructureCodec:
             geometry_hash  = molstruct.geometry_hash(
                 document, meta["cell"], meta["axis_kind"]),
             info           = dict(struct.info) if struct.info else None,
-            created_at     = molstruct.stamp(),
+            created_at     = _runrecord.stamp(),
             atom_index_map = atoms.to_dict(),
         )
         return StructurePair(document=document, sidecar=payload)
@@ -831,6 +835,8 @@ class StructureCodec:
 #: imports there by their bare names (`runwrap.bundle_members`).
 TRAVELS_WITH = ("molbuilder.atom_permutation",
                 "molbuilder.persist",
+                "molbuilder.runfiles",
+                "molbuilder.runrecord",
                 "molbuilder.sidecars.molstruct",
                 "molbuilder.structure",
                 "molbuilder.structure_pair")

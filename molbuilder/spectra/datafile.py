@@ -31,11 +31,14 @@ whole or not at all (§ 6.2), so its total energy (the result's
 ``scf_energy_eh``) says for all three.
 
 **Nothing is stated twice**: ``/structure`` holds the arrays an analysis
-reaches for and ``Structure.to_dict()`` whole as JSON text -- never a second
-encoding of the labels, channels or ``info`` by hand (`model/structure.md`
-§ 2.1), so a field the structure gains later reaches the ``.nc`` with no
-edit here.  A key of a block this file does not know is refused by name --
-a fact the writer thinks it saved and this file would drop.
+reaches for and ``Structure.to_dict(view=False)`` whole as JSON text --
+never a second encoding of the labels, channels or ``info`` by hand
+(`model/structure.md` § 2.1), so a field the structure gains later
+reaches the ``.nc`` with no edit here.  A key of a block this file does
+not know is refused by name -- a fact the writer thinks it saved and this
+file would drop -- and its tables state every key the result writes,
+checked as it loads against the result's one table of keys
+(`spectra.result_keys`).
 """
 from __future__ import annotations
 
@@ -55,6 +58,7 @@ try:                                        # inside molbuilder
                           state, unflag, unjson_attr, unnumber_attr,
                           write_group, write_structure_group)
     from ..persist import unknown_keys, write_bytes
+    from .result_keys import WRITTEN_KEYS
 except ImportError:                         # beside a job, in a bundle
     from atom_permutation import MAP_KEY, AtomIndexMap  # type: ignore[no-redef]
     from ncdata import (NC_LOCK, Var, as_bytes, axis_values, checked,
@@ -64,6 +68,7 @@ except ImportError:                         # beside a job, in a bundle
                         state, unflag, unjson_attr, unnumber_attr,
                         write_group, write_structure_group)
     from persist import unknown_keys, write_bytes  # type: ignore[no-redef]
+    from result_keys import WRITTEN_KEYS  # type: ignore[no-redef]
 
 #: Why a key a data file does not state is refused at its write -- this
 #: one's and the optical calls' (`spectra.optical_data`).
@@ -518,12 +523,7 @@ def write_spectra_data(payload: Mapping[str, Any], path, *,
     the one atomic writer (`persist.write_bytes`); returns the path.
     ``json_sha256`` ties the file to the JSON written with it."""
     p = Path(path)
-    said = unknown_keys(payload, (
-        *_ROOT, "schema_version", "free_atom_idxs", "frozen_atom_idxs",
-        "structure", "equilibrium", "modes", "relaxation", "thermo",
-        "removed_motions", MAP_KEY, "partial_charges"), note=UNSTATED)
-    if said:
-        raise SpectraDataError(f"the result: {said}")
+    _refuse_unstated(payload, "result", "the result")
     structure = payload.get("structure")
     n_atoms = int(payload["n_atoms_total"])
     free = [int(i) for i in payload["free_atom_idxs"]]
@@ -584,6 +584,7 @@ def write_spectra_data(payload: Mapping[str, Any], path, *,
 
         # /equilibrium -- the energy subgroup, whole or not at all (§ 6.2).
         g = ds.createGroup("equilibrium")
+        _refuse_unstated(eq, "equilibrium", "the equilibrium")
         mo = eq.get("mo_energies_eh")
         block = {k: eq.get(k) for k in _EQUILIBRIUM}
         g.setncatts(_block_attrs(block, _EQUILIBRIUM, "", "the equilibrium"))
@@ -609,6 +610,7 @@ def write_spectra_data(payload: Mapping[str, Any], path, *,
         values["xyz"][:] = axis_values("xyz", 3)
         values["removed"][:] = np.arange(len(patterns))
         for k, m in enumerate(modes):
+            _refuse_unstated(m, "mode", f"mode {m.get('index_1based')}")
             values["mode"][k] = int(m["index_1based"])
             values["frequency_cm1"][k] = float(m["frequency_cm1"])
             values["eigenvector_canonical_per_amu12"][k] = np.asarray(
@@ -655,6 +657,9 @@ def write_spectra_data(payload: Mapping[str, Any], path, *,
         values["window"][:] = np.arange(window)
         for k, m in enumerate(probed):
             es = m["electronic_structure"]
+            _refuse_unstated(es, "electronic_structure",
+                             f"mode {m['index_1based']}'s electronic "
+                             f"structure")
             values["probed_mode"][k] = int(m["index_1based"])
             values["homo_index_in_window"][k] = int(es["homo_index_in_window"])
             for v in _ES_SCALARS:
@@ -884,11 +889,65 @@ MODE = {v.name: v for v in MODE_VARS}
 GRID_VARS = _grid_vars()
 
 
+#: WHAT THIS FILE STATES OF EACH BLOCK OF THE RESULT, by the result's keys:
+#: the root's attributes and numbers and the blocks it gives a group or
+#: an attribute of their own; the equilibrium's, its orbital energies and
+#: the masses its structure group holds; a mode's variables along ``mode``
+#: and its probe's subgroup; the probe's numbers and windows.
+STATED_KEYS = {
+    "result": frozenset({
+        *_ROOT, "schema_version", "free_atom_idxs", "frozen_atom_idxs",
+        "structure", "equilibrium", "modes", "relaxation", "thermo",
+        "removed_motions", MAP_KEY, "partial_charges"}),
+    "equilibrium": frozenset({*_EQUILIBRIUM, "mo_energies_eh",
+                              "masses_amu"}),
+    "mode": frozenset({
+        "index_1based", "electronic_structure",
+        *(key_of(v) for v in MODE_VARS
+          if v.dims[:1] == ("mode",) and v.kind != "coordinate")}),
+    "electronic_structure": frozenset({
+        "homo_index_in_window",
+        *(key_of(v) for v in (*_ES_SCALARS, *_ES_WINDOWS))}),
+}
+
+
+def _refuse_unstated(block: Mapping[str, Any], name: str, where: str) -> None:
+    """Refuse a key of ``block`` this file does not state -- a fact the
+    writer thinks it saved and the ``.nc`` would drop."""
+    said = unknown_keys(block, STATED_KEYS[name], note=UNSTATED)
+    if said:
+        raise SpectraDataError(f"{where}: {said}")
+
+
+def _check_tables(written: Mapping[str, Any]) -> None:
+    """Refuse a block whose keys this file states otherwise than the result
+    writes them (`spectra.result_keys.WRITTEN_KEYS`) -- at import, so the gap
+    stops the first thing that loads this module, not the first run that
+    fills the key: a key the result writes and this file has no row for
+    would be written to the JSON and left out of the ``.nc``."""
+    for name, keys in written.items():
+        missing = sorted(set(keys) - STATED_KEYS[name])
+        extra = sorted(STATED_KEYS[name] - set(keys))
+        if missing or extra:
+            raise SpectraDataError(
+                f"spectra.datafile states the result's {name} block "
+                f"otherwise than the result writes it (spectra.result_keys): "
+                + "; ".join(
+                    [f"no row for {missing}" if missing else "",
+                     f"a row for keys it does not write, {extra}"
+                     if extra else ""]).strip("; ")
+                + " -- give each key a row here, or drop it")
+
+
+_check_tables(WRITTEN_KEYS)
+
+
 #: WHAT THIS MODULE NEEDS BESIDE IT in a job's bundle -- the modules it
 #: imports there by their bare names (`runwrap.bundle_members`).
 TRAVELS_WITH = ("molbuilder.atom_permutation",
                 "molbuilder.ncdata",
-                "molbuilder.persist")
+                "molbuilder.persist",
+                "molbuilder.spectra.result_keys")
 
 
 #: ITS NAME BESIDE A JOB (`runwrap.bundle_members`) -- its own, apart from the transport data file's.

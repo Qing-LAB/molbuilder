@@ -196,10 +196,30 @@ def text_of(data: bytes) -> str:
     return data.decode("utf-8-sig")
 
 
-def json_of(data: bytes) -> Any:
+def json_of(data: bytes, *, refuse_non_finite: bool = False) -> Any:
     """A JSON document's bytes, parsed (:func:`text_of`); text that is not
-    JSON raises :class:`json.JSONDecodeError`, a :class:`ValueError`."""
-    return json.loads(text_of(data))
+    JSON raises :class:`json.JSONDecodeError`, a :class:`ValueError`.
+    ``refuse_non_finite`` refuses a number JSON cannot hold -- ``NaN``,
+    ``Infinity``, a literal that overflows to one (``1e500``) -- as a
+    :class:`ValueError` naming it: a record whose readers downstream (a
+    browser, jq) reject one (:func:`json_text` writes none)."""
+    if not refuse_non_finite:
+        return json.loads(text_of(data))
+    return json.loads(text_of(data), parse_constant=_non_finite_refused,
+                      parse_float=_finite_float)
+
+
+def _non_finite_refused(token: str):
+    raise ValueError(f"the non-finite number {token!r}, which JSON cannot "
+                     f"hold")
+
+
+def _finite_float(text: str) -> float:
+    value = float(text)
+    if not math.isfinite(value):
+        raise ValueError(f"the number {text!r}, which overflows to "
+                         f"{value!r}, which JSON cannot hold")
+    return value
 
 
 def read_json(path) -> Any:
@@ -207,7 +227,8 @@ def read_json(path) -> Any:
     return json_of(Path(path).read_bytes())
 
 
-def object_of(data: bytes, *, schema: Optional[str] = None) -> dict:
+def object_of(data: bytes, *, schema: Optional[str] = None,
+              refuse_non_finite: bool = False) -> dict:
     """A RECORD's bytes: one JSON object (:func:`json_of`) -- any other
     value refused, never a reader's crash on the value it did not expect --
     and, given ``schema``, the artifact it names at that major
@@ -216,9 +237,11 @@ def object_of(data: bytes, *, schema: Optional[str] = None) -> dict:
     :func:`unread_words` says it; the reader that asked names the file and
     the way out.  The core of :func:`read_object`
     and of a prep plan's (`jobset.planned.Plan.read_object`), so a record
-    reads one way from the disk and through a plan."""
+    reads one way from the disk and through a plan.  ``refuse_non_finite``:
+    a number JSON cannot hold refused too (:func:`json_of`), as the writer's
+    switch of the same name refuses it (:func:`json_text`)."""
     try:
-        obj = json_of(data)
+        obj = json_of(data, refuse_non_finite=refuse_non_finite)
     except ValueError as exc:
         raise ValueError(unread_words(exc)) from exc
     if not isinstance(obj, dict):

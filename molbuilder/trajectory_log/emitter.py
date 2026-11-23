@@ -64,6 +64,45 @@ def _convergence_lines(targets) -> list:
     return flat("", targets)
 
 
+def _atom_row(element, xyz) -> str:
+    """One atom's row of a block's coordinates or forces table: its element,
+    then its three numbers."""
+    x, y, z = (float(v) for v in xyz)
+    return f"   {element:<2s}  {x:14.8f}  {y:14.8f}  {z:14.8f}"
+
+
+def _optional(value, spec: str) -> str:
+    return "None" if value is None else format(value, spec)
+
+
+#: HOW EACH SCF COLUMN IS WRITTEN, by its key in the log's table
+#: (`keys.SCF_TABLE`, whose order the row takes); a value not stated is
+#: ``None``.
+_SCF_CELLS = {
+    "cycle":     lambda v: f"{v:5d}",
+    "energy":    lambda v: f"{v:18.8f}",
+    "delta_E":   lambda v: f"{v:18.8f}",
+    "gnorm":     lambda v: f"{_optional(v, '.8e'):>20s}",
+    "ddm":       lambda v: f"{_optional(v, '.8e'):>16s}",
+    "wall_time": lambda v: f"{_optional(v, '.3f'):>16s}",
+}
+if set(_SCF_CELLS) != set(_k.SCF_TABLE_KEYS):
+    # AT IMPORT, so a column the table gains stops the first thing that
+    # loads the writer, not a run's first SCF row -- as a ValueError: an
+    # ImportError would be caught by an importer's two-way import and said
+    # as a module not found.
+    raise ValueError(
+        f"trajectory_log.emitter writes SCF columns "
+        f"{sorted(_SCF_CELLS)} where the log's table is "
+        f"{list(_k.SCF_TABLE_KEYS)}: give each column its cell here")
+
+
+def _scf_row(cycle_record) -> str:
+    """One SCF cycle's row, its columns in the table's order."""
+    return "   " + "  ".join(_SCF_CELLS[key](cycle_record.get(key))
+                             for key in _k.SCF_TABLE_KEYS)
+
+
 def header_and_preview(*, job, engine, generator, elements, coords_ang,
                        frozen_atoms=(), runtime_info=None,
                        convergence_targets=None, atom_index_map=None) -> str:
@@ -106,9 +145,7 @@ def header_and_preview(*, job, engine, generator, elements, coords_ang,
               f"{_k.WALL_TIME} {time.time():.3f}",
               f"n_atoms: {len(elements)}",
               _k.COORDINATES_LINE]
-    for el, (x, y, z) in zip(elements, coords_ang):
-        lines.append(f"   {el:<2s}  {float(x):14.8f}  {float(y):14.8f}  "
-                     f"{float(z):14.8f}")
+    lines += [_atom_row(el, xyz) for el, xyz in zip(elements, coords_ang)]
     lines += [f"{_k.ENERGY} None",
               _k.FORCES_LINE,
               f"{_k.MAX_FORCE} None",
@@ -137,6 +174,13 @@ class MolwatchEmitter:
         # too (:func:`header_and_preview`).
         with open(self.path, 'w') as fh:
             fh.write(header_and_preview(
+                # THE ENGINE AND THE WRITER the header names stay typed here,
+                # not handed in by the deck: the deck's line that builds this
+                # emitter is a statement its same-calculation reading
+                # compares (`pyscf.script_input`), so a word added there
+                # would refuse a launched PySCF stage prepared again
+                # (`execution/job-request.md` § 5).  Only PySCF's decks
+                # build it.
                 job=job, engine="pyscf", generator="molbuilder/pyscf_input",
                 elements=[mol.atom_symbol(i) for i in range(mol.natm)],
                 coords_ang=mol.atom_coords(unit='Ang'),
@@ -212,32 +256,17 @@ class MolwatchEmitter:
             fh.write(f"{_k.WALL_TIME} {time.time():.3f}\n")
             fh.write(f"n_atoms: {mol.natm}\n")
             fh.write(f"{_k.COORDINATES_LINE}\n")
-            for i, el in enumerate(elements):
-                x, y, z = coords_A[i]
-                fh.write(f"   {el:<2s}  {x:14.8f}  {y:14.8f}  {z:14.8f}\n")
+            for el, xyz in zip(elements, coords_A):
+                fh.write(_atom_row(el, xyz) + "\n")
             fh.write(f"{_k.ENERGY} {e_eV:.8f}\n")
             fh.write(f"{_k.FORCES_LINE}\n")
-            for i, el in enumerate(elements):
-                fx, fy, fz = F[i]
-                fh.write(f"   {el:<2s}  {fx:14.8f}  {fy:14.8f}  {fz:14.8f}\n")
+            for el, force in zip(elements, F):
+                fh.write(_atom_row(el, force) + "\n")
             fh.write(f"{_k.MAX_FORCE} {max_f:.8f}\n")
             fh.write(f"{_k.SCF_HISTORY_BEGIN}\n")
-            fh.write("#  cycle      energy(eV)         delta_E(eV)        gnorm(eV)                ddm        wall_time(s)\n")
+            fh.write(f"{_k.SCF_TABLE_HEADER}\n")
             for c in cycles:
-                g_str = (f"{c['gnorm']:.8e}" if c['gnorm'] is not None
-                         else 'None')
-                d_str = (f"{c['ddm']:.8e}" if c['ddm'] is not None
-                         else 'None')
-                # wall_time is the 6th column (epoch seconds, .3f).
-                # Older logs without this column round-trip fine
-                # through the parser (it skips beyond the 5th token).
-                wt    = c.get('wall_time')
-                w_str = (f"{wt:.3f}" if wt is not None else 'None')
-                fh.write(
-                    f"   {c['cycle']:5d}   {c['energy']:18.8f}"
-                    f"  {c['delta_E']:18.8f}  {g_str:>20s}  {d_str:>16s}"
-                    f"  {w_str:>16s}\n"
-                )
+                fh.write(_scf_row(c) + "\n")
             fh.write(f"{_k.SCF_HISTORY_END}\n")
             fh.write(f"{_k.STEP_END.format(idx)}\n")
             fh.write("\n")

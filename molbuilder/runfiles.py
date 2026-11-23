@@ -68,6 +68,26 @@ STAGE_ORDINAL = "[0-9]{2,}"
 #: then the stage's name.
 _STAGE = re.compile(f"{STAGE_ORDINAL}_[{STAGE_NAME_CHARS}]+")
 
+#: THE STRUCTURE PAIR'S TWO SUFFIXES (`model/structure.md` § 2.4): the one
+#: geometry molbuilder writes and a sidecar pairs with (a `.pdb` is read,
+#: never written, so it holds no sidecar of its own), and the sidecar's --
+#: ``<stem>.xyz`` beside ``<stem>.molstruct.json``
+#: (`sidecars.molstruct.sidecar_path_for`).
+PAIRED_SUFFIX = ".xyz"
+SIDECAR_SUFFIX = ".molstruct.json"
+
+
+def sidecar_of(geometry: str) -> str:
+    """The name of the sidecar beside the geometry named ``geometry``: its
+    last suffix replaced by :data:`SIDECAR_SUFFIX` (``relaxed.xyz`` ->
+    ``relaxed.molstruct.json``) -- the one rule a pair's names are spelled
+    by, which this catalogue's rows and the codec
+    (`sidecars.molstruct.sidecar_path_for`) ask.  The suffix is not read:
+    whether a geometry pairs with a sidecar at all is the codec's
+    (`is_paired`, :data:`PAIRED_SUFFIX` in any case)."""
+    return Path(geometry).stem + SIDECAR_SUFFIX
+
+
 #: THE ROLES OF OUR FILES -- one constant per row of :data:`WRITTEN` named on
 #: the label, each spelled here and nowhere else (`model/parse.md` § 5.5
 #: R-RO1; `job-contracts.md` § 2.2): the rows are written with them, and
@@ -76,11 +96,10 @@ _STAGE = re.compile(f"{STAGE_ORDINAL}_[{STAGE_NAME_CHARS}]+")
 #: SIESTA's deck where any engine's would do.
 ROLE_TEMPLATE      = ".template.toml"      # every parameter, as given
 ROLE_SOURCE        = ".source.xyz"         # the structure the calculation is of
-ROLE_SOURCE_SIDECAR = ".source.molstruct.json"   # its cell and labels
+ROLE_SOURCE_SIDECAR = sidecar_of(ROLE_SOURCE)   # its cell and labels
 ROLE_VALIDATION    = ".validation.txt"     # what prep checked, beside the deck
 ROLE_INITIAL       = "_initial.xyz"        # a PySCF run's input geometry
-ROLE_INITIAL_SIDECAR = "_initial.molstruct.json"
-ROLE_OPTIMIZED_SIDECAR = "_optimized.molstruct.json"
+ROLE_INITIAL_SIDECAR = sidecar_of(ROLE_INITIAL)
 ROLE_CONSTRAINTS   = ".constraints.txt"    # geomeTRIC's held atoms
 ROLE_POINTS        = ".points.json"        # a run of points: its index
 ROLE_SPECTRA       = ".spectra.json"       # a vibration's result
@@ -148,6 +167,9 @@ TBTRANS_AVBDOS     = ".{tbt}.AVBDOS_{lead}"    # ... a lead's bulk DOS
 PYSCF_CHK          = ".chk"                # PySCF's checkpoint
 PYSCF_CUBE         = ".cube"               # a grid `cubegen` writes
 PYSCF_OPTIMIZED    = "_optimized.xyz"      # a PySCF relaxation's geometry
+# ...and the sidecar molbuilder writes beside that geometry: not the engine's
+# file but a row of :data:`WRITTEN`, its name by the pair's one rule.
+ROLE_OPTIMIZED_SIDECAR = sidecar_of(PYSCF_OPTIMIZED)
 GEOMETRIC_SCRATCH  = GEOMETRIC_PREFIX + ".tmp"  # geomeTRIC's scratch folder
 
 #: THE NAME TOKEN'S CHARACTERS (job-contracts.md § 2.1: "a single token
@@ -1149,7 +1171,7 @@ PLAN_FILE = "STAGE-PLAN.md"
 LEDGER_FILE = "jobset-decisions.log"
 PSEUDO_DIR = "pseudos"
 JUNCTION_FILE = "junction.xyz"
-JUNCTION_SIDECAR_FILE = "junction.molstruct.json"
+JUNCTION_SIDECAR_FILE = sidecar_of(JUNCTION_FILE)
 JUNCTION_CITED_FILE = "junction.cited.fdf"
 SLOT_PROVENANCE_FILE = "slot-provenance.json"
 CALCDIR_FILE = "calcdir.json"

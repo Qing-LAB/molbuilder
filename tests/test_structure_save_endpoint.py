@@ -3,7 +3,7 @@
 REGRESSION (task #75, the save->reload breaker): the browser used to write the
 ``.molstruct.json`` sidecar itself -- a blob with NO ``schema_version`` and an EMPTY
 ``structure_hash`` -- which the strict file-only load door (``StructureCodec.load`` ->
-``molstruct.load_text``) then REJECTED, so every save produced a pair the app could no
+the sidecar's reader) then REJECTED, so every save produced a pair the app could no
 longer open.  The fix routes the save through the SERVER, which reconstructs the Structure
 from the wire envelope (``_shared.struct_from_body``) and writes the pair via
 ``StructureCodec.write`` -- Python owns the pairing AND stamps the sidecar schema.

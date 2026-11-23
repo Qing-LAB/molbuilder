@@ -12,8 +12,6 @@ classes (``SpectraJsonError`` etc.); the FileParser's module asks the reader.
 
 from __future__ import annotations
 
-import json
-import math
 import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, Union
@@ -38,6 +36,7 @@ if TYPE_CHECKING:
 # TWO WAYS, because this module travels beside the job in both bundles.
 try:                                        # inside molbuilder
     from ..persist import json_text as _json_text
+    from ..persist import object_of as _object_of
     from ..persist import sha256_of_bytes as _sha256_of_bytes
     from ..persist import write_bytes as _write_bytes
     from ..runfiles import (ROLE_SPECTRA, ROLE_SPECTRA_DATA,
@@ -47,6 +46,7 @@ try:                                        # inside molbuilder
     from ..spectra.derived import with_derived as _with_derived
 except ImportError:                         # beside a job, in a bundle
     from persist import json_text as _json_text  # type: ignore[no-redef]
+    from persist import object_of as _object_of  # type: ignore[no-redef]
     from persist import sha256_of_bytes as _sha256_of_bytes  # type: ignore[no-redef]
     from persist import write_bytes as _write_bytes
     from runfiles import (ROLE_SPECTRA, ROLE_SPECTRA_DATA,  # type: ignore[no-redef]
@@ -178,46 +178,15 @@ def dump_spectra_json(results: "SpectraResults",
 # --------------------------------------------------------------------- #
 
 
-def _reject_nonfinite_constant(token: str):
-    """``json.loads(..., parse_constant=...)`` hook.  Fires for symbolic
-    ``NaN`` / ``Infinity`` / ``-Infinity`` -- non-standard tokens that
-    Python accepts on input but downstream consumers (browsers, jq,
-    RFC-8259 parsers) reject."""
-    raise SpectraJsonMalformedError(
-        f"non-finite numeric literal {token!r} is not valid JSON; "
-        f"the engine must filter or null out NaN/Inf before "
-        f"writing (likely an SCF that failed to converge produced "
-        f"a divergent energy)"
-    )
-
-
-def _strict_finite_float(s: str) -> float:
-    """``json.loads(..., parse_float=...)`` hook.  Rejects overflow-
-    to-infinity from valid-syntax literals (``1e500``) that
-    ``parse_constant`` does not see.  Underflow to 0.0 is accepted."""
-    v = float(s)
-    if not math.isfinite(v):
-        raise SpectraJsonMalformedError(
-            f"numeric literal {s!r} overflows to non-finite {v!r}; "
-            f"the wire format requires finite IEEE 754 doubles "
-            f"(a divergent SCF or unit-mismatched energy is the "
-            f"common cause)"
-        )
-    return v
-
-
 def _validate_schema_version(actual: Any) -> None:
-    """Version check against the readable set -- ONE home for it:
-    `spectra/results.py` owns it (``READABLE_SCHEMA_VERSIONS``; per-version
-    read-time handling lives in the typed classes' ``from_dict`` methods).
-    Rejects bool (``True == 1`` would otherwise sneak past), non-int types,
-    and unsupported version numbers."""
-    from ..spectra.results import (READABLE_SCHEMA_VERSIONS,
-                                            SCHEMA_VERSION)
-    if not isinstance(actual, int) or isinstance(actual, bool):
-        raise SpectraJsonSchemaError(SCHEMA_VERSION, actual)
-    if actual not in READABLE_SCHEMA_VERSIONS:
-        raise SpectraJsonSchemaError(SCHEMA_VERSION, actual)
+    """The version, by the one rule (`spectra.results.readable_version`,
+    which `SpectraResults.from_dict` asks too), refused in this reader's
+    own error."""
+    from ..spectra.results import SCHEMA_VERSION, readable_version
+    try:
+        readable_version(actual)
+    except ValueError:
+        raise SpectraJsonSchemaError(SCHEMA_VERSION, actual) from None
 
 
 def _validate_dict_to_results(d: Dict[str, Any],
@@ -256,32 +225,19 @@ def parse_spectra_json(
         )
 
     try:
-        with open(p, "r", encoding="utf-8-sig") as fh:
+        with open(p, "rb") as fh:
             raw = fh.read()
-    except UnicodeDecodeError as e:
-        raise SpectraJsonMalformedError(
-            f"{p!r} is not valid UTF-8 ({e.reason} at byte {e.start})"
-        ) from e
     except OSError as e:
         raise SpectraJsonError(f"failed to read {p!r}: {e}") from e
 
+    # THE ONE RECORD READER (`persist.object_of`): one JSON object, its
+    # text UTF-8 -- and no number JSON cannot hold: the writer refuses one
+    # before the file is written (`engines/vibration.md` § 6.8), and a file
+    # that holds one anyway is refused here by name.
     try:
-        d = json.loads(
-            raw,
-            parse_constant=_reject_nonfinite_constant,
-            parse_float=_strict_finite_float,
-        )
-    except json.JSONDecodeError as e:
-        raise SpectraJsonMalformedError(
-            f"{p!r} is not valid JSON ({e.msg} at line {e.lineno} "
-            f"col {e.colno})"
-        ) from e
-
-    if not isinstance(d, dict):
-        raise SpectraJsonMalformedError(
-            f"{p!r} top-level JSON value must be an object, got "
-            f"{type(d).__name__}"
-        )
+        d = _object_of(raw, refuse_non_finite=True)
+    except ValueError as e:
+        raise SpectraJsonMalformedError(f"{p!r}: {e}") from e
 
     if "schema_version" not in d:
         raise SpectraJsonSchemaError(SCHEMA_VERSION, None)

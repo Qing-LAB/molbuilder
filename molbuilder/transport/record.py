@@ -42,6 +42,7 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Sequence, Tuple
 from ..calcdirs import RunPlace
 from ..constants import BOLTZMANN_EV_K, CONDUCTANCE_QUANTUM_S
 from ..persist import json_safe
+from ..runpoints import FAILED, NOT_RUN
 from ..identity import COMPUTES_PRODUCT
 from ..task import LOW_BIAS_APPROXIMATION, SELF_CONSISTENT, SINGLE_BIAS
 from ..units import volts_words
@@ -1296,8 +1297,8 @@ def collect_record(calc, *, partial: bool = False) -> Dict:
                                   f"{p['state']} ({p['why']})"
                                   for p in got) + ")\n"
                       for what, got in (("pending", pending),
-                                        ("not run", not_run),
-                                        ("failed", failed)) if got))
+                                        (NOT_RUN, not_run),
+                                        (FAILED, failed)) if got))
 
     try:
         # A PAGE STILL OPENS (`engines/transport.md` § 3.8.1): the Results
@@ -1817,9 +1818,9 @@ def iv_table_text(record: Dict) -> str:
              f"{len(record['points'])} point(s)"
              + (f", {len(record['pending'])} not ended"
                 if record.get("pending") else "")
-             + (f", {len(record['not_run'])} not run"
+             + (f", {len(record['not_run'])} {NOT_RUN}"
                 if record.get("not_run") else "")
-             + (f", {len(record['failed'])} failed"
+             + (f", {len(record['failed'])} {FAILED}"
                 if record.get("failed") else "")]
     from ..structure import frame_words
     lines.append(f"  {'':>8}  {'V [V]':>8}  {'G(E_F) [G0]':>12}  "
@@ -1836,8 +1837,8 @@ def iv_table_text(record: Dict) -> str:
             + "  "
             + (f"{i:>12.4e}" if i is not None else f"{'--':>12}")
             + "  " + printed_said(p))
-    for what, said in (("pending", "not ended"), ("not_run", "not run"),
-                       ("failed", "failed")):
+    for what, said in (("pending", "not ended"), ("not_run", NOT_RUN),
+                       ("failed", FAILED)):
         for p in record.get(what, ()):
             lines.append(f"  {_frame(p.get('frame')):>8}  {p['bias_v']:>8.3f}  "
                          f"{said:>12}  {p['state']:>12}  ({p['why']})")

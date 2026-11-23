@@ -52,17 +52,31 @@ import numpy as np
 # TWO WAYS, because this module travels beside the SIESTA finish and the PySCF
 # script (`runwrap.members`).
 try:                                        # inside molbuilder
-    from .derived import DERIVED_MODE_KEYS, disagreements, with_derived
+    from .derived import disagreements, with_derived
     from .normal_modes import display_form
+    from .result_keys import (CHARGE_STEP_KEYS, EQUILIBRIUM_KEYS, ES_KEYS,
+                              MODE_KEYS, OPTICAL_KEYS, OPTICAL_MODE_KEYS,
+                              PARTIAL_CHARGES_KEYS, RESULT_KEYS)
     from ..atom_permutation import MAP_KEY
     from ..persist import check_keys
-    from ..structure import FROZEN_LABEL, Structure as _Structure
+    from ..structure import Structure as _Structure
+    from ..parse.engines.siesta_grammar import (CHARGE_PARTITIONS,
+                                                FC_STEP_PATTERN,
+                                                fc_step_count)
+    from ..parse.engines._run_ending import FAILED, NOT_DONE, NOT_RUN
 except ImportError:                         # beside a job, in a bundle
-    from derived import DERIVED_MODE_KEYS, disagreements, with_derived
+    from derived import disagreements, with_derived
     from normal_modes import display_form  # type: ignore[no-redef]
+    from result_keys import (  # type: ignore[no-redef]
+        CHARGE_STEP_KEYS, EQUILIBRIUM_KEYS, ES_KEYS, MODE_KEYS,
+        OPTICAL_KEYS, OPTICAL_MODE_KEYS, PARTIAL_CHARGES_KEYS, RESULT_KEYS)
     from atom_permutation import MAP_KEY  # type: ignore[no-redef]
     from persist import check_keys  # type: ignore[no-redef]
-    from structure import FROZEN_LABEL, Structure as _Structure
+    from structure import Structure as _Structure  # type: ignore[no-redef]
+    from siesta_grammar import (  # type: ignore[no-redef]
+        CHARGE_PARTITIONS, FC_STEP_PATTERN, fc_step_count)
+    from _run_ending import (  # type: ignore[no-redef]
+        FAILED, NOT_DONE, NOT_RUN)
 
 
 # SCHEMA_VERSION (incremented when the on-disk JSON shape changes):
@@ -116,8 +130,9 @@ SCHEMA_VERSION = 14  # 14: an optical frame's state may be `not run` --
 #                    v4-v9 file reads, its map made on read
 #                    (`atom_index_map_stated`).  9: the result states its
 #                    STRUCTURE whole
-#                    (engines/vibration.md § 6.10): `Structure.to_dict()` of
-#                    the equilibrium structure -- the geometry, the box, the
+#                    (engines/vibration.md § 6.10):
+#                    `Structure.to_dict(view=False)` of the equilibrium
+#                    structure -- the geometry, the box, the
 #                    labels, the held atoms; `frozen_atom_idxs` and
 #                    `equilibrium.elements` / `positions_ang` are read from
 #                    a v4-v8 file, never written, and its `structure_hash`
@@ -129,6 +144,26 @@ SCHEMA_VERSION = 14  # 14: an optical frame's state may be `not run` --
 #: Every version the reader serves as the v9 shape.
 READABLE_SCHEMA_VERSIONS = frozenset({4, 5, 6, 7, 8, 9, 10, 11, 12, 13,
                                       14})
+
+
+def readable_version(actual: Any) -> int:
+    """THE RESULT FILE'S VERSION, if this build reads it -- the one rule,
+    asked by the sidecar reader and :meth:`SpectraResults.from_dict` alike:
+    a whole number (never a bool, which ``True == 1`` would let past, nor a
+    string or a float) of :data:`READABLE_SCHEMA_VERSIONS`; else
+    :class:`ValueError`, naming the versions it reads."""
+    if (not isinstance(actual, int) or isinstance(actual, bool)
+            or actual not in READABLE_SCHEMA_VERSIONS):
+        raise ValueError(
+            f"SpectraResults: schema_version {actual!r} is not supported; "
+            f"this molbuilder build reads "
+            f"{sorted(READABLE_SCHEMA_VERSIONS)} (v5 and v6 added only "
+            f"optional blocks -- relaxation/thermo, then removed_motions -- "
+            f"and v7 the masses and the stated derived values, so a v4 file "
+            f"reads whole; older versions do not).")
+    return actual
+
+
 #: The schema that first carries a SIESTA force-constant run's charges,
 #: ``partial_charges`` (11, above): a file before it cannot state them.
 CHARGES_SCHEMA = 11
@@ -150,6 +185,21 @@ PHASE_COMPLETE = "complete"  # phase done, data is final for this run
 #: *nothing yet* (empty) or *done with nothing behind it* (complete).
 #: Terminal: the viewer counts it finished (`engines/vibration.md` § 4.9).
 PHASE_NOT_REQUESTED = "not requested"
+
+#: HOW A RESULT'S STRENGTHS WERE OBTAINED, for the run as a whole
+#: (`engines/vibration.md` § 4.6): each route word the engine's own road
+#: writes, read by the Methods paragraph and the Raman view; checked at
+#: ``__post_init__``, ``""`` a file written before the field.
+ROUTE_ANALYTIC = "analytic"
+ROUTE_FINITE_DIFFERENCE = "finite-difference"
+ROUTE_CHARGES = "charges"
+ROUTE_OPTICAL = "optical"
+ROUTE_NONE = "none"
+#: ...the infrared's, dmu/dR (:attr:`SpectraResults.ir_route`), and the
+#: Raman's, dalpha/dR (:attr:`SpectraResults.raman_route`).
+IR_ROUTES = (ROUTE_ANALYTIC, ROUTE_FINITE_DIFFERENCE, ROUTE_CHARGES,
+             ROUTE_NONE)
+RAMAN_ROUTES = (ROUTE_FINITE_DIFFERENCE, ROUTE_OPTICAL, ROUTE_NONE)
 
 _VALID_PHASE_STATES = (PHASE_EMPTY, PHASE_RUNNING, PHASE_COMPLETE,
                        PHASE_NOT_REQUESTED)
@@ -214,95 +264,58 @@ def _no_equality(self, other):  # noqa: ARG001
 # --------------------------------------------------------------------- #
 
 
-#: THE KEYS EACH BLOCK MAY CARRY -- the rows of `engines/vibration.md` § 6.2-6.4, and
-#: nothing else.  The reader refuses a key outside them BY NAME.
-#: A key that starts being written is a row in § 6.2-6.4 first, then here.
-_ES_KEYS = frozenset({
-    "amplitude_ang", "mo_energies_eq_eh", "mo_energies_minus_eh",
-    "mo_energies_plus_eh", "homo_index_in_window", "scf_energy_eq_eh",
-    "scf_energy_minus_eh", "scf_energy_plus_eh",
-})
-_MODE_KEYS = frozenset({
-    "index_1based", "frequency_cm1", "raman_activity_a4_amu",
-    "ir_intensity_km_mol", "eigenvector_canonical", "eigenvector_display",
-    "has_imag", "electronic_structure", "dipole_derivative_d_per_ang_amu12",
-    # DERIVED (`spectra.derived`, `engines/vibration.md` § 6.6) -- stated by
-    # every writer from v7, checked on read.
-    *DERIVED_MODE_KEYS,
-})
-_EQUILIBRIUM_KEYS = frozenset({
-    "scf_energy_eh", "mo_energies_eh", "homo_idx", "elements", "positions_ang",
-    "masses_amu",
-})
-_RESULTS_KEYS = frozenset({
-    "schema_version", "engine", "engine_version", "molbuilder_version",
-    "timestamp", "structure_hash", "n_atoms_total", "free_atom_idxs",
-    "frozen_atom_idxs", "structure", "equilibrium", "modes",
-    "selected_mode_idxs_1based",
-    "config", "methods_text", "bibliography_keys", "phase_frequencies",
-    "phase_relaxation", "relaxation", "thermo", "removed_motions",
-    "hessian_scope", "n_atoms_in_hessian", "hessian_density_fit", "ir_route",
-    "ir_fd_step_ang", "raman_route", "raman_fd_step_ang", "phase_raman",
-    "phase_ir", "phase_es", "engine_metadata", "runtime_info",
-    MAP_KEY, "partial_charges", "optical",
-})
-
-#: A FRAME'S STATE as the optical citation states it -- the run's one done
-#: rule's words (`engines/vibration.md` § 5.11 § 6, § 7).
-OPTICAL_STATES = ("finished", "not done", "failed", "not run", "pending")
-#: The optical citation's keys (`engines/vibration.md` § 6.2).
-_OPTICAL_KEYS = frozenset({"data_file", "data_sha256", "direction",
-                           "displacement_ang", "selection", "reference",
-                           "modes"})
-#: ...and each of its mode rows'.
-_OPTICAL_MODE_KEYS = frozenset({"mode", "frequency_cm1", "dq_amu12_ang",
-                                "plus", "minus"})
+#: A FRAME'S STATE as the optical citation states it (`engines/vibration.md`
+#: § 5.11 § 6, § 7): its point's own word (`runpoints.state_word`) -- but
+#: *finished* for done, and *pending* for a call not yet ended (queued,
+#: running), the file's own two words.
+OPTICAL_FINISHED, OPTICAL_PENDING = "finished", "pending"
+OPTICAL_STATES = (OPTICAL_FINISHED, NOT_DONE, FAILED, NOT_RUN,
+                  OPTICAL_PENDING)
 
 #: THE PARTITIONS a result's charges may state (`engines/vibration.md`
 #: § 5.10 ②, `science/vibrational-optical-response.md` § 1a).
-PARTITIONS = ("hirshfeld", "voronoi")
-#: The order SIESTA displaces each free atom in, after the reference step
-#: (`engines/vibration.md` § 5.4): along x, y, z, side -1 before +1.
-FC_STEP_PATTERN = (("x", -1), ("x", 1), ("y", -1), ("y", 1),
-                   ("z", -1), ("z", 1))
+PARTITIONS = tuple(p.name for p in CHARGE_PARTITIONS)
 
 
 def checked_partial_charges(block: Mapping[str, Any], n_atoms: int,
                             free_atom_idxs: Sequence[int]) -> Dict[str, Any]:
     """A result's ``partial_charges`` (v11), checked and in its one shape:
     ``{displacement_ang, steps, charges_e}`` -- the steps the force-constant
-    run's own (``1 + 6·n_free``: the reference, then each free atom along x,
-    y, z, side -1 before +1, :data:`FC_STEP_PATTERN`), every partition one
+    run's own (the reference, then each free atom along x, y, z, side -1
+    before +1, SIESTA's order, `siesta_grammar.FC_STEP_PATTERN`), every
+    partition one
     of :data:`PARTITIONS` with one finite charge per atom at every step.
     Refused by name otherwise (`engines/vibration.md` § 6.7)."""
     where = "SpectraResults.partial_charges"
-    check_keys(where, block, {"displacement_ang", "steps", "charges_e"},
-               needed=())
+    check_keys(where, block, PARTIAL_CHARGES_KEYS, needed=())
     delta = float(block.get("displacement_ang", "nan"))
     if not (math.isfinite(delta) and delta > 0):
         raise ValueError(f"{where}: displacement_ang must be a positive "
                          f"number of Angstrom, not {block.get('displacement_ang')!r}")
     steps = [dict(s) for s in block.get("steps") or ()]
     free = sorted(int(i) for i in free_atom_idxs)
-    if len(steps) != 1 + 6 * len(free):
+    expected = fc_step_count(len(free))
+    if len(steps) != expected:
         raise ValueError(f"{where}: {len(steps)} steps; the force-constant "
                          f"run over {len(free)} free atom(s) takes "
-                         f"{1 + 6 * len(free)}")
+                         f"{expected}")
     for s in steps:
-        check_keys(f"{where}.steps", s, {"atom", "axis", "side"}, needed=())
+        check_keys(f"{where}.steps", s, CHARGE_STEP_KEYS, needed=())
     if (steps[0].get("atom"), steps[0].get("axis"),
             steps[0].get("side")) != (None, None, 0):
         raise ValueError(f"{where}: step 0 is the reference geometry "
                          f"{{atom: null, axis: null, side: 0}}, not {steps[0]}")
     moved = []
+    per_atom = len(FC_STEP_PATTERN)
     for k in range(len(free)):
-        group = steps[1 + 6 * k: 7 + 6 * k]
+        first = 1 + per_atom * k
+        group = steps[first: first + per_atom]
         atoms = {s.get("atom") for s in group}
         pattern = tuple((s.get("axis"), s.get("side")) for s in group)
         if len(atoms) != 1 or pattern != FC_STEP_PATTERN:
-            raise ValueError(f"{where}: steps {1 + 6 * k}..{6 + 6 * k} are "
-                             f"not one atom along x, y, z, side -1 before "
-                             f"+1: {group}")
+            raise ValueError(f"{where}: steps {first}..{first + per_atom - 1} "
+                             f"are not one atom along x, y, z, side -1 "
+                             f"before +1: {group}")
         moved.append(int(group[0]["atom"]))
     if sorted(moved) != free:
         raise ValueError(f"{where}: the steps move atoms {sorted(moved)}; "
@@ -339,9 +352,9 @@ def checked_optical(block: Mapping[str, Any]) -> Dict[str, Any]:
     not three numbers, no ``δ`` or a state not one of
     :data:`OPTICAL_STATES` is refused by name."""
     where = "SpectraResults.optical"
-    check_keys(where, block, sorted(_OPTICAL_KEYS))
+    check_keys(where, block, sorted(OPTICAL_KEYS))
     for m in block.get("modes") or ():
-        check_keys(f"{where}.modes", m, sorted(_OPTICAL_MODE_KEYS))
+        check_keys(f"{where}.modes", m, sorted(OPTICAL_MODE_KEYS))
     if block.get("displacement_ang") is None:
         raise ValueError(f"{where} states no displacement_ang -- the "
                          f"force constants' step the frames were moved by")
@@ -499,7 +512,7 @@ class ModeElectronicStructure:
         """Inverse of :meth:`to_dict`.  Coerces list-of-float arrays
         back to ``np.ndarray`` so the typed surface always carries
         numpy.  An unknown key is refused by name, never ignored."""
-        check_keys("ModeElectronicStructure", d, _ES_KEYS, needed=())
+        check_keys("ModeElectronicStructure", d, ES_KEYS, needed=())
         return cls(
             amplitude_ang        = float(d["amplitude_ang"]),
             mo_energies_eq_eh    = np.asarray(d["mo_energies_eq_eh"],    dtype=float),
@@ -652,7 +665,7 @@ class ModeData:
 
     @classmethod
     def from_dict(cls, d: Dict[str, Any]) -> "ModeData":
-        check_keys("ModeData", d, _MODE_KEYS, needed=())
+        check_keys("ModeData", d, MODE_KEYS, needed=())
         es = d.get("electronic_structure")
         # THE EIGENVECTOR PAIR: the canonical form as written; the display
         # form as written, else derived.
@@ -983,8 +996,8 @@ class SpectraResults:
     # missing keys).
     runtime_info:              Dict[str, Any] = field(default_factory=dict)
 
-    #: v9: THE STRUCTURE, WHOLE -- `Structure.to_dict()` of the equilibrium
-    #: structure (engines/vibration.md § 6.10): the geometry the Hessian is
+    #: v9: THE STRUCTURE, WHOLE -- `Structure.to_dict(view=False)` of the
+    #: equilibrium structure (engines/vibration.md § 6.10): the geometry the Hessian is
     #: taken at, its box, its labels, the held atoms as `frozen_atoms`.  A
     #: v4-v8 file's is built from its old keys on read -- elements,
     #: coordinates, the held list; no box, no other label: stated absent,
@@ -1114,6 +1127,14 @@ class SpectraResults:
                     f"SpectraResults.{name}={val!r} is not a valid "
                     f"phase status; expected one of {_VALID_PHASE_STATES}"
                 )
+        for name, val, routes in (("ir_route", self.ir_route, IR_ROUTES),
+                                  ("raman_route", self.raman_route,
+                                   RAMAN_ROUTES)):
+            if val not in routes + ("",):
+                raise ValueError(
+                    f"SpectraResults.{name}={val!r} is not a route; "
+                    f"expected one of {routes}, or '' for a file written "
+                    f"before the field")
         if self.phase_ir not in _VALID_PHASE_STATES + ("",):
             raise ValueError(
                 f"SpectraResults.phase_ir={self.phase_ir!r} is not a valid "
@@ -1130,8 +1151,7 @@ class SpectraResults:
                 raise ValueError(
                     f"SpectraResults: the structure holds {s.n_atoms} atoms "
                     f"and n_atoms_total says {self.n_atoms_total}")
-            held = sorted(int(i) for i in
-                          (s.regions or {}).get(FROZEN_LABEL, ()))
+            held = sorted(s.frozen_atoms)
             if held != sorted(frozen_set):
                 raise ValueError(
                     f"SpectraResults: the structure holds {held} as "
@@ -1265,19 +1285,21 @@ class SpectraResults:
     def structure_stated(self) -> Optional[Dict[str, Any]]:
         """THE STRUCTURE THE RESULT STATES (v9, § 6.10): the one it was read
         with, or -- a file before v9, or one built in memory -- the one its
-        equilibrium geometry and held list make (`Structure.to_dict()`: no
+        equilibrium geometry and held list make (`Structure.to_dict`: no
         box, no other label -- stated absent, never invented); ``None``
         before any geometry exists (§ 4.9)."""
         if self.structure is not None:
             return dict(self.structure)
         if self.equilibrium_elements is None:
             return None
-        held = sorted(int(i) for i in self.frozen_atom_idxs)
         s = _Structure(elements=list(self.equilibrium_elements),
                        positions=np.asarray(self.equilibrium_positions_ang,
                                             dtype=float),
-                       regions=({FROZEN_LABEL: held} if held else {}))
-        return s.to_dict()
+                       frozen_atoms=sorted(int(i)
+                                           for i in self.frozen_atom_idxs))
+        # A RESULT FILE'S STRUCTURE, as both writers state it: the view's
+        # fields left out (`Structure.to_dict(view=False)`).
+        return s.to_dict(view=False)
 
     def atom_index_map_stated(self):
         """THE ATOM INDEX MAP the result states (v10), or -- a file before
@@ -1369,30 +1391,18 @@ class SpectraResults:
 
     @classmethod
     def from_dict(cls, d: Dict[str, Any]) -> "SpectraResults":
-        # Strict version gate: the decoder self-enforces
-        # the schema version rather than trusting the outer sidecar
-        # reader.  Missing or unreadable versions raise instead of
-        # being silently reconstituted at whatever version the payload
-        # claims.
-        sv = d.get("schema_version")
-        if sv is None or int(sv) not in READABLE_SCHEMA_VERSIONS:
-            raise ValueError(
-                f"SpectraResults: schema_version {sv!r} is not "
-                f"supported; this molbuilder build reads "
-                f"{sorted(READABLE_SCHEMA_VERSIONS)} (v5 and v6 added only "
-                f"optional blocks -- relaxation/thermo, then "
-                f"removed_motions -- and v7 the masses and the stated "
-                f"derived values, so a v4 file reads whole; older versions "
-                f"do not)."
-            )
-        check_keys("SpectraResults", d, _RESULTS_KEYS, needed=())
+        # THE ONE VERSION RULE, the reader's too (:func:`readable_version`):
+        # a version missing or unreadable raises, never reconstituted at
+        # whatever version the payload claims.
+        sv = readable_version(d.get("schema_version"))
+        check_keys("SpectraResults", d, RESULT_KEYS, needed=())
         # A v4-v7 FILE NAMES THE SIESTA ROUTE'S RANGE BY ITS OLD NAME; it is
         # read under v8's, SIESTA's numbering said (engines/vibration.md 6.1).
         meta = dict(d.get("engine_metadata", {}))
         if int(sv) < 8 and "fc_range_1based" in meta:
             meta["fc_range_engine_1based"] = meta.pop("fc_range_1based")
         eq = d["equilibrium"]
-        check_keys("SpectraResults.equilibrium", eq, _EQUILIBRIUM_KEYS,
+        check_keys("SpectraResults.equilibrium", eq, EQUILIBRIUM_KEYS,
                    needed=())
         # THE HELD ATOMS: a v9 file states them in its structure's
         # `frozen_atoms` label, or -- written before any geometry exists
@@ -1506,7 +1516,10 @@ __all__ = [
 #: WHAT THIS MODULE NEEDS BESIDE IT in a job's bundle -- the modules it
 #: imports there by their bare names (`runwrap.bundle_members`).
 TRAVELS_WITH = ("molbuilder.atom_permutation",
+                "molbuilder.parse.engines.siesta_grammar",
                 "molbuilder.persist",
+                "molbuilder.parse.engines._run_ending",
                 "molbuilder.spectra.derived",
                 "molbuilder.spectra.normal_modes",
+                "molbuilder.spectra.result_keys",
                 "molbuilder.structure")
